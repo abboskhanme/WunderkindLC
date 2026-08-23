@@ -55,6 +55,30 @@ public static class DocxKnowledge
     /// <summary>Bo'lak nomining chegarasi (uzun sarlavha izi qisqartiriladi).</summary>
     public const int MaxTitleChars = 200;
 
+    /// <summary>
+    /// YO'RIQNOMA QATORI belgisi. Shu bilan boshlangan qator bilim bazasiga <b>TUSHMAYDI</b>.
+    ///
+    /// <para><b>Nega kerak (namuna hujjati bilan birga tug'ilgan qoida):</b> markazga
+    /// to'ldirish uchun tayyor Word namunasi beriladi (<see cref="DocxKnowledgeTemplate"/>) va
+    /// unda «qanday to'ldiriladi» yo'riqnomasi hamda har bo'lim uchun maslahat bo'ladi. Belgisiz
+    /// ular ham bilim bazasiga tushardi — ya'ni AI mijozga «Har bo'limni mustaqil yozing» deb
+    /// javob berib qo'yishi mumkin edi, RAG esa savolga eng yaqin 6 ta bo'lakni tanlaganda
+    /// o'rinlarni yo'riqnoma egallab olardi.</para>
+    ///
+    /// <para>🔴 Ikkinchi, undan ham muhimroq foydasi: <b>namuna XAVFSIZ bo'ladi</b>. Har bir
+    /// maslahat va misol shu belgi bilan yozilgani uchun to'ldirilmagan namuna yuklansa
+    /// bilim bazasiga <b>hech narsa</b> tushmaydi. Aks holda «(bu yerga narxlarni yozing)»
+    /// yoki namunadagi <b>o'ylab topilgan narx</b> haqiqiy ma'lumot bo'lib qolardi va AI uni
+    /// mijozga aytardi.</para>
+    ///
+    /// <para>Uchinchi foydasi: markaz o'z hujjatida ichki eslatma qoldira oladi («bu narxni
+    /// sentabrda ko'rib chiqamiz») va u mijozga hech qachon chiqmaydi.</para>
+    ///
+    /// <para>⚠️ SARLAVHAGA qo'yilsa BUTUN bo'lim (va uning ichki bo'limlari) tashlanadi —
+    /// yo'riqnoma sahifasi aynan shunday chiqarib tashlanadi.</para>
+    /// </summary>
+    public const string NoteMarker = "//";
+
     /// <summary>Sarlavha izidagi bo'g'inlar ajratgichi.</summary>
     private const string TrailSeparator = " › ";
 
@@ -112,7 +136,14 @@ public static class DocxKnowledge
 
         var all = Split(lines, TitleFromFileName(fileName));
         if (all.Count == 0)
-            return new DocxParseResult([], 0, "Hujjatda bilim bazasiga yozadigan matn topilmadi.");
+            // ⚠️ Ikki sabab BUTUNLAY boshqa ishni talab qiladi: to'ldirilmagan NAMUNA («o'z
+            // matningizni yozing») va mazmunsiz hujjat («bu hujjatda umuman ma'lumot yo'q»).
+            // Umumiy matn birinchi holatda foydalanuvchini boshi berk ko'chaga olib kirardi.
+            return new DocxParseResult([], 0, lines.Any(l => IsNote(l.Text))
+                ? $"Hujjatda faqat yo'riqnoma qatorlari («{NoteMarker}» bilan boshlanadi) qolibdi — "
+                  + "ular ATAYIN yuklanmaydi. Namunani o'z ma'lumotlaringiz bilan to'ldirib, "
+                  + "qaytadan yuklang."
+                : "Hujjatda bilim bazasiga yozadigan matn topilmadi.");
 
         return all.Count <= MaxChunks
             ? new DocxParseResult(all, 0, "")
@@ -265,6 +296,10 @@ public static class DocxKnowledge
         var buffer = new List<string>();
         var currentTitle = fallback;
 
+        // Yo'riqnoma SARLAVHASI ochgan bo'lim: shu darajadan pastdagi hamma narsa tashlanadi.
+        // 0 — hozir tashlanmayapti.
+        var skipBelow = 0;
+
         void Flush()
         {
             foreach (var chunk in Emit(currentTitle, buffer)) result.Add(chunk);
@@ -275,11 +310,26 @@ public static class DocxKnowledge
         {
             if (line.Level == 0)
             {
+                // Tashlanayotgan bo'lim ichidagi matn ham, yakka yo'riqnoma qatori ham olinmaydi.
+                if (skipBelow > 0 || IsNote(line.Text)) continue;
                 buffer.Add(line.Text);
                 continue;
             }
 
+            // Shu daraja yoki undan YUQORI sarlavha — tashlanayotgan bo'lim TUGADI.
+            // (Ichki, chuqurroq sarlavhalar esa o'sha bo'limning davomi va ular ham tashlanadi.)
+            if (skipBelow > 0 && line.Level <= skipBelow) skipBelow = 0;
+            if (skipBelow > 0) continue;
+
             Flush();
+
+            if (IsNote(line.Text))
+            {
+                // ⚠️ Bunday sarlavha IZGA ham kirmaydi: aks holda undan keyingi haqiqiy
+                // bo'lim nomiga yo'riqnoma matni yopishib qolardi.
+                skipBelow = line.Level;
+                continue;
+            }
 
             // Iz: shu darajadan PAST bo'lgan bo'g'inlar olib tashlanadi, so'ng yangisi qo'yiladi.
             // Aks holda «Kurslar › IELTS › Ingliz tili» kabi noto'g'ri ketma-ketlik chiqardi
@@ -312,6 +362,8 @@ public static class DocxKnowledge
 
         foreach (var line in lines)
         {
+            if (IsNote(line.Text)) continue;
+
             // Paragrafning O'ZI chegaradan uzun bo'lsa ham bo'linmaydi: uni o'rtasidan kesish
             // gapni buzardi, bitta uzun paragraf esa `MaxChunkChars` dan sezilarli oshmaydi.
             if (length > 0 && length + line.Text.Length > PlainChunkChars) Flush();
@@ -422,6 +474,10 @@ public static class DocxKnowledge
         foreach (var c in s) if (char.IsLetterOrDigit(c)) return true;
         return false;
     }
+
+    /// <summary>Qator yo'riqnomami (<see cref="NoteMarker"/> bilan boshlanadimi).</summary>
+    public static bool IsNote(string? text) =>
+        (text ?? "").TrimStart().StartsWith(NoteMarker, StringComparison.Ordinal);
 
     /// <summary>Ketma-ket bo'shliqlarni bittaga keltiradi va chetlarini tozalaydi.</summary>
     private static string Collapse(string s)

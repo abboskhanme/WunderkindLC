@@ -2,8 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { usePerm } from '@/lib/permissions'
 import { apiErrorMessage } from '@/lib/utils'
 import {
-  deleteIgKnowledgeSource, getIgKnowledge, getIgKnowledgeStatus, importIgKnowledgeDocx,
-  saveIgKnowledge, type IgKnowledge, type IgKnowledgeStatus,
+  deleteIgKnowledgeSource, downloadIgKnowledgeTemplate, getIgKnowledge, getIgKnowledgeStatus,
+  importIgKnowledgeDocx, saveIgKnowledge, type IgKnowledge, type IgKnowledgeStatus,
 } from '@/api/services/instagram'
 import { Icon, MarketingPage, MkEmpty, MkError, MkLoading, MkNotice, MkStat } from './mk'
 
@@ -86,6 +86,21 @@ export function InstagramKnowledge() {
       setError(apiErrorMessage(e, "Hujjatni yuklab bo'lmadi"))
     } finally {
       setUploading(false)
+    }
+  }
+
+  /**
+   * Tayyor namunani yuklab olish.
+   *
+   * ⚠️ Xatosi ekranda ko'rsatiladi: brauzer fayl yuklab olishni JIMGINA tashlab yuborishi
+   * mumkin va foydalanuvchi tugmani bosaverib, nima bo'layotganini bilmay qolardi.
+   */
+  const downloadTemplate = async () => {
+    setError('')
+    try {
+      await downloadIgKnowledgeTemplate()
+    } catch (e) {
+      setError(apiErrorMessage(e, "Namunani yuklab bo'lmadi"))
     }
   }
 
@@ -190,6 +205,15 @@ export function InstagramKnowledge() {
               if (f) void upload(f)
             }}
           />
+          {/* ⚠️ «Namuna» tugmasi «Word yuklash» dan OLDIN turadi — ish tartibi shunday:
+              avval namunani olib to'ldiriladi, keyin yuklanadi. */}
+          <button
+            className="btn btn-outline"
+            onClick={() => void downloadTemplate()}
+            title="To'ldirish uchun tayyor Word namunasi (sarlavha uslublari to'g'ri qo'yilgan)"
+          >
+            <Icon name="download" /> Namuna (Word)
+          </button>
           <button
             className="btn btn-outline"
             onClick={() => fileRef.current?.click()}
@@ -230,7 +254,7 @@ export function InstagramKnowledge() {
         {!loading && items.length === 0 && (
           <MkEmpty
             text="Bilim bazasi bo'sh"
-            hint="Kurslar, narxlar, manzil, ish vaqti — har mavzu uchun alohida bo'lak qo'shing yoki tayyor Word hujjatini yuklang."
+            hint="«Namuna (Word)» ni yuklab oling, to'ldiring va «Word yuklash» bilan qaytaring — bo'limlarga o'zi bo'linadi. Yoki bo'laklarni qo'lda qo'shing."
           />
         )}
 

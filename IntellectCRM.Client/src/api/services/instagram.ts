@@ -554,6 +554,23 @@ export async function importIgKnowledgeDocx(file: File): Promise<IgKnowledgeImpo
   return data
 }
 
+/**
+ * TO'LDIRISH UCHUN TAYYOR WORD NAMUNASINI yuklab olish.
+ *
+ * ⚠️ Namunadagi maslahatlar « // » bilan boshlanadi va ular bilim bazasiga TUSHMAYDI —
+ * ya'ni to'ldirilmagan namuna yuklansa hech narsa qo'shilmaydi (o'ylab topilgan namuna
+ * narxi haqiqiy ma'lumot bo'lib qolmaydi).
+ */
+export async function downloadIgKnowledgeTemplate(): Promise<void> {
+  const res = await api.get('/admin/instagram/knowledge/template', { responseType: 'blob' })
+  const href = URL.createObjectURL(res.data as Blob)
+  const a = document.createElement('a')
+  a.href = href
+  a.download = 'bilim-bazasi-namuna.docx'
+  a.click()
+  URL.revokeObjectURL(href)
+}
+
 /** Bitta hujjatdan kelgan BARCHA bo'laklarni o'chirish (eski versiyani almashtirish uchun). */
 export async function deleteIgKnowledgeSource(fileName: string): Promise<IgKnowledgeImportResult> {
   const { data } = await api.delete<IgKnowledgeImportResult>('/admin/instagram/knowledge/source', {

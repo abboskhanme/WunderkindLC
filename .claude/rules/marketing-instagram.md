@@ -1788,6 +1788,8 @@ ishlatiladi va u bilan ajratish hujjatni o'nlab mayda bo'lakka parchalab tashlar
 esa Word'ning TIL versiyasiga qarab o'zgaradi, shuning uchun `head`/`title`/`заголов`/`sarlavha`
 bo'lagi qidiriladi va daraja nomining oxiridagi raqamdan olinadi.
 
+⚠️ **Yo'riqnoma qatorlari (`//`) olinmaydi** — §21.11 ga qarang.
+
 ⚠️ Chegara `MaxChunks` (200) dan oshgani **JIM TASHLANMAYDI** — `Skipped` da qaytadi va ekranda
 ochiq yoziladi.
 
@@ -1825,11 +1827,77 @@ hisoblanadi — ekrandagi holat modulning haqiqiy qarori bilan bir xil bo'lsin.
   ostida ochiq izoh: hujjat yangilansa avval eskisini o'chirish kerak, aks holda ikkala versiya
   ham qolib, AI eski narxni aytishi mumkin.
 
+### 21.11. 🔴 TAYYOR WORD NAMUNASI va «YO'RIQNOMA QATORI»
+
+Namuna — `Application/Services/DocxKnowledgeTemplate.cs`, yuklab olish —
+`GET /api/admin/instagram/knowledge/template` (sinf ruxsati), tugma — Bilim bazasi sahifasida
+«Namuna (Word)».
+
+**Muammo.** Yuklash imkoniyati paydo bo'lgach keyingi savol chiqdi: markaz hujjatni QANDAY
+yozsa, u to'g'ri bo'linadi? Ajratish Word'ning **sarlavha USLUBLARIGA** tayanadi, oddiy
+foydalanuvchi esa sarlavhani «qalin qilib kattalashtirib» yozadi — bunday hujjat bitta ulkan
+bo'lak bo'lib tushardi va RAG undan kerakli qismni ajrata olmasdi. Ya'ni yuklash
+«ishlagandek» ko'rinib, javob sifati past qolardi.
+
+#### 🔴 NAMUNA KOD BILAN QURILADI — repoda tayyor fayl SAQLANMAYDI
+
+Namuna va parser bir-biriga bog'liq. Ajratish qoidasi o'zgarsa (sarlavha aniqlash, yo'riqnoma
+belgisi, uslub nomlari), tayyor ikkilik fayl **jimgina eskirardi** va biz markazga o'zimiz
+qabul qilmaydigan hujjatni berib turardik — nosozlik faqat «yukladim, lekin AI hech narsa
+bilmaydi» shikoyati orqali chiqardi. `DocxKnowledgeTemplateTests` namunani **haqiqiy
+parserdan o'tkazadi**, ya'ni ikkisi test bilan qulflangan.
+
+#### 🔴 YO'RIQNOMA QATORI — `DocxKnowledge.NoteMarker` (`//`)
+
+Shu bilan boshlangan qator bilim bazasiga **tushmaydi**. Sarlavhaga qo'yilsa **butun bo'lim**
+(va ichki bo'limlari) tashlanadi — yo'riqnoma sahifasi aynan shunday chiqarib tashlanadi.
+
+| Nima beradi | Nega kerak |
+|---|---|
+| Yo'riqnoma bilim bazasiga tushmaydi | Aks holda AI mijozga «Har bo'limni mustaqil yozing» deb javob berib qo'yishi mumkin edi, RAG'ning 6 ta o'rnini esa yo'riqnoma egallardi |
+| **Namuna XAVFSIZ bo'ladi** | Har maslahat va misol shu belgi bilan yozilgan, ya'ni **to'ldirilmagan namuna yuklansa hech narsa tushmaydi**. Busiz «(bu yerga narxlarni yozing)» — yoki namunadagi **o'ylab topilgan narx** — haqiqiy ma'lumot bo'lib qolar va AI uni mijozga aytardi |
+| Ichki eslatma qoldirish | «Bu narxni sentabrda ko'rib chiqamiz» — hujjatda qoladi, mijozga hech qachon chiqmaydi |
+
+⚠️ Hammasi tashlanganda `Parse` **boshqa xato matni** qaytaradi («namunani to'ldirib, qaytadan
+yuklang»). Ikki holat butunlay boshqa ishni talab qiladi: to'ldirilmagan NAMUNA va mazmunsiz
+HUJJAT — umumiy matn birinchisida foydalanuvchini boshi berk ko'chaga olib kirardi.
+
+#### Namunaning tuzilishi
+
+Yo'riqnoma bo'limi (`//` sarlavha ostida) + to'ldiriladigan `Heading 1` bo'limlari: Markaz
+haqida · Manzil va ish vaqti · Aloqa · Kurslar (`Heading 2` — har kurs) · Narxlar va to'lov ·
+Chegirmalar · Sinov darsi · Dars jadvali · O'qituvchilar · Sertifikat · Ko'p so'raladigan
+savollar (`Heading 2` — har savol).
+
+Bo'limlar tanlovi — Instagram'da eng ko'p so'raladigan narsalar. Bilim bazasida bo'lmagan
+savolga AI javob bermaydi, ya'ni bu ro'yxat amalda **«AI nimaga javob bera oladi»** ro'yxati.
+
+⚠️ Yo'riqnomada aytiladigan eng muhim qoida: **har bo'lim MUSTAQIL o'qilsin**. RAG savolga
+faqat bir nechta bo'lakni beradi, ya'ni «yuqorida yozilgan», «o'sha narx» kabi havolalar
+ishlamaydi — narx har joyda to'liq yozilishi kerak.
+
+⚠️ Namunada **bo'sh qator YO'Q**: bo'shliq uslublardagi `spacing` orqali beriladi. Bo'sh
+paragraflar model ichida yursa ular bo'lak matniga ham tushib, promptni kerakmas bo'sh
+qatorlar bilan to'ldirardi.
+
+#### ⚠️ OOXML ELEMENT TARTIBI — Word faylni rad etadi
+
+Uslub ichidagi elementlar tartibi sxema bilan belgilangan: `w:pPr` da
+**keepNext → spacing → outlineLvl**, `w:rPr` da **b → color → sz**. Tartib buzilsa **parser
+baribir o'qiydi** (u tartibga qaramaydi), Word esa faylni «buzuq» deb rad etadi — ya'ni
+nosozlik bizda emas, markazning stolida chiqardi. Bu ilk yozilishda AYNAN shunday xato
+bo'lgan va `Namuna_OOXML_sxemasiga_MOS` testi uni ushlagan.
+
+⚠️ `StyleName` Word'ning **ichki nomi** bo'lishi shart (`heading 1`, kichik harflar): shundagina
+Word uni o'zining «Heading 1» uslubi deb taniydi va foydalanuvchi yangi bo'limni tanish joydan
+qo'sha oladi hamda Navigatsiya panelida tuzilishni ko'radi.
+
 ### 21.9. Testlar
 
 | Test sinfi | Nimani qulflaydi |
 |---|---|
 | `IgKnowledgeRagTests` (44) | Vektor JSON'iga yozib-o'qish va **o'nlik ajratgich HAR DOIM nuqta**, buzuq/ulkan JSON istisno otmasligi; kosinus (ayni vektor → 1, perpendikulyar → 0, **turli o'lcham va nol vektorda YIQILMASLIK**); tanlov tartibi, chegaradan o'tmagan bo'lak, **teng ballda BARQAROR tartib**; **kichik bazada va bitta bo'lak embedding qilinmaganda RAG ISHLATILMASLIGI**; `Compose` eski formatni saqlashi va chegaradan oshmasligi; `NeedsEmbedding` to'rt sababi va **sarlavhaning hashga kirishi**; `QueryText` da xabar oldinda turishi |
+| `DocxKnowledgeTemplateTests` (10) | Namuna haqiqiy `.docx` paketligi, **OOXML sxemasiga mosligi**, sarlavhalarning `Heading1/2` uslubi bilan qo'yilishi va uslub nomlarining Word ichki nomi ekani, **to'ldirilmagan namuna HECH NARSA qo'shmasligi** va tushunarli sabab qaytarishi, to'ldirilganda to'g'ri bo'limlarga bo'linishi (`Kurslar › …` izi bilan), namunada bo'sh qator yo'qligi |
 | `DocxKnowledgeTests` (25) | Sarlavha bo'yicha ajratish va **IZ** (ichma-ich / bir darajali almashuv / yuqoriga qaytish), sarlavhadan oldingi matn yo'qolmasligi, matnsiz sarlavha, sarlavhasiz hujjatning bo'linishi, uzun bo'limning «(N-qism)» ga bo'linishi, **qisqa lekin MA'NOLI javob QOLISHI**, ma'nosiz qoldiq tashlanishi, uzun izning qisqarishi, fayl nomidan bo'lak nomi (Windows yo'li, boshqaruv belgilari), **buzuq fayl istisno otmasligi** |
 | `IgQualityLogTests` | Bosh harf/bo'shliq va **turli apostroflar** farq emasligi, Levenshtein masofasi, ayni matn → 100%, bitta tomon bo'sh → 0; **operatorning o'z xabari va kiruvchi xabar taklif EMASLIGI**, eski taklif va buzuq sanali xabar olinmasligi |
 | `InstagramCaptionTests` (24) | §18.10 jadvalida |

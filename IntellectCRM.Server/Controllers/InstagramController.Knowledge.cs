@@ -42,6 +42,29 @@ public partial class InstagramController
     private const string KnowledgeAuditId = "knowledge";
 
     // =============================================================================================
+    //  TAYYOR NAMUNA — yuklab olish
+    // =============================================================================================
+
+    /// <summary>
+    /// To'ldirish uchun tayyor Word namunasi (<see cref="DocxKnowledgeTemplate"/>).
+    ///
+    /// <para><b>Nega kerak:</b> ajratish Word'ning SARLAVHA uslublariga tayanadi, oddiy
+    /// foydalanuvchi esa sarlavhani «qalin qilib kattalashtirib» yozadi — bunday hujjat bitta
+    /// ulkan bo'lak bo'lib tushardi va yuklash «ishlagandek» ko'rinib, javob sifati past
+    /// qolardi. Namunada uslublar allaqachon to'g'ri qo'yilgan.</para>
+    ///
+    /// <para>⚠️ Fayl HAR SO'ROVDA qayta quriladi va diskda saqlanmaydi — u kod bilan bir
+    /// joyda turadi, ya'ni ajratish qoidasi o'zgarsa namuna ham o'z-o'zidan yangilanadi
+    /// (eskirgan ikkilik fayl tarqatib yuborilmaydi).</para>
+    ///
+    /// <para>Ruxsat — sinf darajasida (<c>marketing</c>): namunada markazning hech qanday
+    /// ma'lumoti yo'q, u faqat bo'sh shakl.</para>
+    /// </summary>
+    [HttpGet("knowledge/template")]
+    public IActionResult KnowledgeTemplate() =>
+        File(DocxKnowledgeTemplate.Build(), DocxKnowledgeTemplate.ContentType, DocxKnowledgeTemplate.FileName);
+
+    // =============================================================================================
     //  WORD HUJJATINI YUKLASH
     // =============================================================================================
 
