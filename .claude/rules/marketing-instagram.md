@@ -69,7 +69,7 @@ talab qiladi.
 | `sarlavhasi YO'Q — so'rov Meta'dan kelmagan` | **Hech narsa.** Manzil ochiq, skanerlar POST qiladi — 403 to'g'ri javob |
 | `App Secret sozlanmagan — fail-closed` | `.env` **va** `docker-compose.yml` `environment:` (§7 dagi tuzoq) |
 | `imzo uzunligi noto'g'ri` / `hex formatda emas` | Buzuq/soxta so'rov — Meta bunday yubormaydi |
-| `imzo BOSHQA App Secret bilan qilingan` | Meta konsolida **boshqa ilova** shu manzilga obuna. Ortiqcha obunani o'chiring yoki `INSTAGRAM_APP_SECRET` ni yuboruvchi ilovaniki bilan almashtiring |
+| `imzo BOSHQA App Secret bilan qilingan` | **Avval kalitni tekshiring:** «Instagram → API setup with Instagram login» dagi *Instagram app secret* kerak — «App settings → Basic» dagi *Facebook app secret* BOSHQA qiymat va webhook u bilan imzolanmaydi. Kalit to'g'ri bo'lsa: manzilga **boshqa ilova** obuna (token qaysi ilovadan olingan bo'lsa, `SubscribeWebhookAsync` obunani o'shanga qo'yadi) |
 | `imzo META (Page) kaliti bilan MOS KELDI` | Page hodisasi `/webhook` ga kelyapti — konsolda uni `/leadgen` ga yo'naltiring |
 
 ⚠️ **Sabab aniqlanishi QABUL QILISH degani EMAS.** `DescribeFailure` ikkinchi kalitni faqat
@@ -80,6 +80,12 @@ talab qiladi.
 ⚠️ **Ikkala kalit BIR XIL bo'lishi mumkin:** `META_APP_SECRET` bo'sh bo'lsa `MetaAppSecret`
 Instagram kalitiga qaytadi. O'shanda "Page hodisasi" degan xulosa yolg'on bo'lardi — shuning
 uchun tekshiruv kalitlar farq qilgandagina bajariladi.
+
+⚠️ **Logda payloadning `object` turi ham bor** (`obyekt: instagram (izoh/DM)` /
+`page (…)`, `InstagramEventParser.ObjectType`) — rad etilgan so'rov qayta ishlanmaydi, ya'ni
+"qaysi mahsulot yuboryapti" savoli boshqa hech qayerdan javob topmasdi. Qiymat **oq
+ro'yxatdan** olinadi: uni tashqaridagi yuboruvchi belgilaydi va xom holicha yozilsa soxta log
+qatorlarini "yozib" qo'yardi (User-Agent bilan bir xil mulohaza).
 
 ⚠️ Logga **kalit ham, imzo qiymati ham, body ham** yozilmaydi (§7). User-Agent yoziladi, lekin
 80 belgiga qisqartirilib, yangi qatorlar olib tashlanadi (log injection).

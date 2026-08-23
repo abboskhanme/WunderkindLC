@@ -633,6 +633,47 @@ public static class InstagramEventParser
     }
 
     /// <summary>
+    /// Payloadning <c>object</c> maydoni — <b>qaysi Meta mahsuloti</b> yuborganini bildiradi
+    /// (<c>instagram</c> — izoh/DM, <c>page</c> — Facebook Page / reklama lidi).
+    ///
+    /// <para><b>Nega kerak:</b> imzo mos kelmagan so'rov qayta ishlanmaydi, ya'ni "nima keldi"
+    /// hech qayerda ko'rinmaydi. Kalit xatosini tuzatish esa AYNAN shu javobga bog'liq:
+    /// <c>instagram</c> bo'lsa Instagram App Secret kerak, <c>page</c> bo'lsa so'rov umuman
+    /// boshqa manzilga (<c>/leadgen</c>) ketishi kerak edi.</para>
+    ///
+    /// <para>⚠️ Natija ATAYIN <b>oq ro'yxatdan</b>: qiymatni tashqaridagi yuboruvchi belgilaydi
+    /// va u to'g'ridan-to'g'ri logga tushadi (log injection — <c>ShortUa</c> bilan bir xil
+    /// mulohaza). Notanish qiymat "boshqa" deb yoziladi, xom matn sifatida EMAS.</para>
+    ///
+    /// <para>Sof funksiya: buzuq JSON'da ham yiqilmaydi, "noma'lum" qaytaradi.</para>
+    /// </summary>
+    public static string ObjectType(string? rawJson)
+    {
+        if (string.IsNullOrWhiteSpace(rawJson)) return "noma'lum";
+
+        try
+        {
+            using var doc = JsonDocument.Parse(rawJson);
+            var root = doc.RootElement;
+            if (root.ValueKind != JsonValueKind.Object) return "noma'lum";
+
+            var value = Str(root, "object");
+            return value switch
+            {
+                "instagram" => "instagram (izoh/DM)",
+                "page" => "page (Facebook Page / reklama lidi)",
+                "user" or "permissions" or "application" => value,
+                "" => "noma'lum",
+                _ => "boshqa",
+            };
+        }
+        catch (JsonException)
+        {
+            return "noma'lum";
+        }
+    }
+
+    /// <summary>
     /// Payloadda siyosat ogohlantirishi bormi — <b>webhook controlleri</b> uchun tez tekshiruv.
     /// <para>Navbat fon xizmatida qayta ishlanadi, ya'ni ogohlantirish logga bir necha soniya
     /// (yoki modul o'chiq bo'lsa — umuman) kechikib tushardi. Bu funksiya so'rov kelgan

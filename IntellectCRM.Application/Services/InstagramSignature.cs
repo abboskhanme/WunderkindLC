@@ -93,8 +93,23 @@ public static class InstagramSignature
                    + "kelyapti; Meta konsolida uni /leadgen manziliga yo'naltiring";
         }
 
-        return "imzo BOSHQA App Secret bilan qilingan — yuboruvchi ilova "
-               + "INSTAGRAM_APP_SECRET egasi EMAS (Meta konsolida boshqa ilova obuna bo'lgan)";
+        // ⚠️ Bu yerga tushgan holat ENG KO'P UCHRAYDIGANI va u YAKKA emas — ikkita butunlay
+        // boshqa ish talab qiladigan sabab bor, shuning uchun ikkalasi ham NOMLANADI:
+        //
+        // (1) «Instagram API with Instagram Login» mahsulotining O'Z App Secret'i bor
+        //     (Instagram → API setup with Instagram login), u «App settings → Basic» dagi
+        //     Facebook App Secret'idan BOSHQA qiymat. Webhook imzosini AYNAN Instagram
+        //     kaliti qo'yadi — noto'g'risini nusxalash oson, chunki ikkalasi ham "App
+        //     Secret" deb ataladi va ikkalasi ham 32 hex, ya'ni struktura tekshiruvidan
+        //     bemalol o'tadi (yuqoridagi qadamlarning hech biri buni ushlay olmaydi).
+        // (2) Manzilga BOSHQA Meta ilovasi obuna bo'lgan (masalan token boshqa ilovadan
+        //     olingan — `SubscribeWebhookAsync` obunani TOKEN egasi ilovaga qo'yadi).
+        return "imzo BOSHQA App Secret bilan qilingan — INSTAGRAM_APP_SECRET webhookni "
+               + "imzolagan ilovaniki EMAS. (1) Meta konsolida «Instagram → API setup with "
+               + "Instagram login» dagi *Instagram app secret* ni oling — «App settings → "
+               + "Basic» dagi *Facebook app secret* BOSHQA qiymat va webhook u bilan "
+               + "imzolanmaydi; (2) yoki manzilga boshqa ilova obuna bo'lgan (token qaysi "
+               + "ilovadan olingan bo'lsa, obuna ham o'shanga qo'yiladi)";
     }
 
     /// <summary>

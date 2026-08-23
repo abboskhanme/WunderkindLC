@@ -122,9 +122,10 @@ public class InstagramWebhookController(
             // bilan har safar tekshiruv noldan boshlanardi.
             logger.LogWarning(
                 "[instagram] webhook imzosi mos kelmadi — so'rov rad etildi. Sabab: {Reason} "
-                + "(body: {Bytes} bayt, UA: {UserAgent})",
+                + "(obyekt: {Object}, body: {Bytes} bayt, UA: {UserAgent})",
                 InstagramSignature.DescribeFailure(
                     raw, header, AppSecrets.InstagramAppSecret, AppSecrets.MetaAppSecret),
+                RejectedObjectType(raw),
                 raw.Length, ShortUa(Request.Headers.UserAgent.ToString()));
             return StatusCode(StatusCodes.Status403Forbidden);
         }
@@ -205,9 +206,10 @@ public class InstagramWebhookController(
         {
             logger.LogWarning(
                 "[leadgen] webhook imzosi mos kelmadi — so'rov rad etildi. Sabab: {Reason} "
-                + "(body: {Bytes} bayt, UA: {UserAgent})",
+                + "(obyekt: {Object}, body: {Bytes} bayt, UA: {UserAgent})",
                 InstagramSignature.DescribeFailure(
                     raw, header, AppSecrets.MetaAppSecret, AppSecrets.InstagramAppSecret),
+                RejectedObjectType(raw),
                 raw.Length, ShortUa(Request.Headers.UserAgent.ToString()));
             return StatusCode(StatusCodes.Status403Forbidden);
         }
@@ -338,6 +340,23 @@ public class InstagramWebhookController(
         {
             // Log yozish webhook qabul qilishni HECH QACHON buzmaydi.
         }
+    }
+
+    /// <summary>
+    /// Rad etilgan payloadning <c>object</c> turi — log uchun.
+    ///
+    /// <para><b>Nega imzosi mos kelmagan body'ga umuman qaralyapti?</b> Undan HECH QANDAY
+    /// qaror chiqarilmaydi (so'rov baribir 403), faqat <b>bitta oq ro'yxatdagi</b> so'z
+    /// logga yoziladi. Busiz "qaysi mahsulot yuboryapti" savoli javobsiz qolardi, tuzatish
+    /// esa aynan shunga bog'liq: <c>instagram</c> → Instagram App Secret, <c>page</c> →
+    /// so'rov <c>/leadgen</c> manziliga ketishi kerak.</para>
+    ///
+    /// <para>Xato yutiladi: log yozish webhook qabul qilishni HECH QACHON buzmaydi.</para>
+    /// </summary>
+    private static string RejectedObjectType(byte[] raw)
+    {
+        try { return InstagramEventParser.ObjectType(Encoding.UTF8.GetString(raw)); }
+        catch { return "noma'lum"; }
     }
 
     /// <summary>

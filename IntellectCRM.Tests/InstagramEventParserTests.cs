@@ -364,6 +364,41 @@ public class InstagramEventParserTests
         Assert.Equal("message_edit", InstagramEventParser.UnsupportedFields(raw));
     }
 
+    // ===================== ObjectType — RAD ETILGAN so'rov uchun tashxis =====================
+
+    /// <summary>
+    /// Imzo mos kelmagan so'rov qayta ishlanmaydi, ya'ni "qaysi mahsulot yuboryapti" savoli
+    /// FAQAT shu funksiya orqali javob topadi — tuzatish esa aynan shunga bog'liq
+    /// (<c>instagram</c> → Instagram App Secret, <c>page</c> → so'rov <c>/leadgen</c> ga).
+    /// </summary>
+    [Theory]
+    [InlineData("""{"object":"instagram","entry":[]}""", "instagram (izoh/DM)")]
+    [InlineData("""{"object":"page","entry":[]}""", "page (Facebook Page / reklama lidi)")]
+    public void ObjectType_manbani_nomlaydi(string raw, string kutilgan) =>
+        Assert.Equal(kutilgan, InstagramEventParser.ObjectType(raw));
+
+    /// <summary>
+    /// ⚠️ Qiymatni TASHQARIDAGI yuboruvchi belgilaydi va u to'g'ridan-to'g'ri logga tushadi.
+    /// Oq ro'yxatda yo'q qiymat xom holicha CHIQMAYDI — aks holda soxta qatorli
+    /// <c>object</c> log fayliga yozib qo'yardi (<c>ShortUa</c> bilan bir xil mulohaza).
+    /// </summary>
+    [Fact]
+    public void ObjectType_notanish_qiymatni_XOM_HOLICHA_qaytarmaydi()
+    {
+        const string raw = """{"object":"begona\nwarn: soxta qator","entry":[]}""";
+
+        Assert.Equal("boshqa", InstagramEventParser.ObjectType(raw));
+    }
+
+    /// <summary>Buzuq/bo'sh payload ham yiqilmasin — tashxis logi asosiy oqimni buzmaydi.</summary>
+    [Theory]
+    [InlineData("")]
+    [InlineData("{buzuq")]
+    [InlineData("[1,2,3]")]
+    [InlineData("""{"entry":[]}""")]
+    public void ObjectType_buzuq_payloadda_yiqilmaydi(string raw) =>
+        Assert.Equal("noma'lum", InstagramEventParser.ObjectType(raw));
+
     /// <summary>Konvert maydonlari (kim/kimga/qachon) hodisa turi EMAS — ro'yxatga tushmasin,
     /// aks holda har xabarda "sender, recipient, timestamp" degan shovqin chiqardi.</summary>
     [Fact]
