@@ -232,6 +232,28 @@ diagnostika kartochkasida `webhookSubscribed` ✓ (ulashdan keyin).
 | "Kod muddati o'tgan" | Authorize kodi **1 soat** va **bir marta** ishlaydi — tugmani qayta bosing |
 | Ulanish tugadi, lekin `webhookSubscribed` ✗ | 5-qadamdagi Subscribe maydonlari belgilanmagan |
 
+### 6b. ZAXIRA yo'l — «Token bilan qo'lda ulash»
+
+OAuth hech qanday tuzatishdan keyin ham yurmasa (ko'pincha `Invalid redirect_uri` yoki domen
+hali tashqaridan ochilmagan bo'lsa), akkauntni **tokenning o'zi bilan** ulash mumkin:
+
+1. Meta konsoli → **Instagram → API setup with Instagram login** → 2-bo'lim
+   **Generate token** → akkauntni tanlang → tokenni ko'chiring;
+2. CRM → **Marketing → Sozlamalar** → «Instagram akkaunt» kartasi →
+   **«Token bilan qo'lda ulash»** → tokenni qo'ying → **«Tekshirib ulash»**.
+
+Server tokenni **ishonch bilan saqlamaydi** — OAuth bilan AYNAN bir xil ketma-ketlikni bajaradi:
+`me` bilan qaysi akkauntniki ekanini aniqlaydi (uchala identifikator: `user_id`, app-scoped `id`,
+`username` — halqa himoyasi shularga tayanadi), tokenni 60 kunlikka aylantiradi va webhook
+obunasini qiladi. Token yaroqsiz bo'lsa **hech narsa saqlanmaydi**.
+
+⚠️ **Bu ATAYIN ikkinchi darajali yo'l.** OAuth'da token o'zi olinadi va admin hech narsa
+ko'chirmaydi; qo'lda ulashda esa jonli kalit ekrandan o'tadi. Iloji bo'lsa 6-qadamdagi tugmadan
+foydalaning. Ikkala yo'lda ham token keyinchalik 45-kunda avtomatik yangilanadi.
+
+⚠️ Muddat "noma'lum" chiqsa — token uzaytirilmadi (masalan endigina yaratilgan yoki qisqa
+muddatli). Akkaunt baribir ulanadi va fon xizmati keyingi yurishida muddatni o'zi to'g'rilaydi.
+
 ---
 
 ## ☐ 7-qadam. Bilim bazasini to'ldirish (~10 daqiqa) — ENG MUHIM QADAM

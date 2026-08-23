@@ -4,8 +4,8 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { usePerm } from '@/lib/permissions'
 import { apiErrorMessage, formatDateTime } from '@/lib/utils'
 import {
-  disconnectIg, disconnectIgAdPage, getIgAdStatus, getIgConnectUrl, getIgSettings, getIgStatus,
-  refreshIgToken, saveIgAdPage, saveIgSettings, testIgAgent,
+  connectIgWithToken, disconnectIg, disconnectIgAdPage, getIgAdStatus, getIgConnectUrl,
+  getIgSettings, getIgStatus, refreshIgToken, saveIgAdPage, saveIgSettings, testIgAgent,
   type IgAdStatus, type IgChannel, type IgSettings, type IgStatus, type IgTestAgentResult,
 } from '@/api/services/instagram'
 import {
@@ -117,6 +117,10 @@ export function InstagramSettings() {
   const [saved, setSaved] = useState('')
   const [busy, setBusy] = useState('')
 
+  /** «Token bilan ulash» paneli ochiqmi — ATAYIN yopiq turadi (asosiy yo'l — «Ulash» tugmasi). */
+  const [showManual, setShowManual] = useState(false)
+  const [manualToken, setManualToken] = useState('')
+
   /** OAuth callback'dan qaytganda (`?connected=1`) muvaffaqiyat xabari ko'rsatiladi. */
   const justConnected = params.get('connected') === '1'
 
@@ -218,6 +222,35 @@ export function InstagramSettings() {
       window.location.href = url
     } catch (e) {
       setError(apiErrorMessage(e, "Ulanish manzilini olib bo'lmadi"))
+      setBusy('')
+    }
+  }
+
+  /**
+   * QO'LDA ULASH — OAuth yurmaganda ishlatiladigan ZAXIRA yo'l.
+   *
+   * ⚠️ Token maydonda SAQLANMAYDI: muvaffaqiyatdan keyin darhol tozalanadi va panel yopiladi.
+   * Sabab — u ekranda ochiq turgan jonli kalit; yonidan o'tgan odam ko'chirib olishi mumkin
+   * (server ham uni hech qachon qaytarmaydi, ya'ni qayta ko'rsatib bo'lmaydi).
+   */
+  const connectToken = async () => {
+    const value = manualToken.trim()
+    if (!value) return
+    setBusy('token')
+    setError('')
+    try {
+      const next = await connectIgWithToken(value)
+      setStatus(next)
+      setManualToken('')
+      setShowManual(false)
+      setSaved(
+        next.webhookSubscribed
+          ? `Ulandi: @${next.username}.`
+          : `Ulandi: @${next.username}, LEKIN webhook obunasi bo'lmadi — izoh/DM kelmaydi.`,
+      )
+    } catch (e) {
+      setError(apiErrorMessage(e, "Token bilan ulab bo'lmadi"))
+    } finally {
       setBusy('')
     }
   }
@@ -396,6 +429,56 @@ export function InstagramSettings() {
                   <button className="btn btn-primary" onClick={connect} disabled={busy === 'connect'}>
                     <Icon name="link" /> Instagram akkauntni ulash
                   </button>
+                )}
+              </div>
+            )}
+
+            {/* ── TOKEN BILAN QO'LDA ULASH (zaxira yo'l) ──
+                ⚠️ ATAYIN YOPIQ va ATAYIN ikkinchi darajali: asosiy yo'l — yuqoridagi «Ulash»
+                tugmasi, chunki OAuth tokenni O'ZI oladi va u 45-kunda avtomatik yangilanadi.
+                Bu panel OAuth yurmagan holatlar uchun: `Invalid redirect_uri`, domen hali
+                ochilmagan, yoki token Meta konsolidagi «Generate token» dan olingan. */}
+            {canEdit && (
+              <div style={{ marginTop: 14, borderTop: '1px solid var(--border)', paddingTop: 12 }}>
+                {!showManual ? (
+                  <button className="btn btn-ghost btn-sm" onClick={() => setShowManual(true)}>
+                    <Icon name="link" /> Token bilan qo'lda ulash
+                  </button>
+                ) : (
+                  <div className="field" style={{ marginBottom: 0 }}>
+                    <label className="field-label">Instagram Login access token</label>
+                    <input
+                      className="input" type="password" autoComplete="off" spellCheck={false}
+                      value={manualToken}
+                      onChange={(e) => setManualToken(e.target.value)}
+                      placeholder="IGAA..."
+                    />
+                    <div className="field-hint">
+                      Meta konsoli → <b>Instagram → API setup with Instagram login</b> →
+                      2-bo'lim <b>Generate token</b> → akkauntni tanlab tokenni ko'chiring.
+                      Server uni saqlashdan oldin TEKSHIRADI: qaysi akkauntniki ekanini aniqlaydi,
+                      60 kunlik tokenga aylantiradi va webhook obunasini qiladi. Yaroqsiz bo'lsa
+                      hech narsa saqlanmaydi.
+                      <br />
+                      ⚠️ Bu — <b>zaxira</b> yo'l. Iloji bo'lsa «Instagram akkauntni ulash» tugmasidan
+                      foydalaning: u tokenni o'zi oladi va qo'lda ko'chirish umuman kerak bo'lmaydi.
+                    </div>
+                    <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+                      <button
+                        className="btn btn-primary btn-sm" onClick={connectToken}
+                        disabled={busy === 'token' || !manualToken.trim()}
+                      >
+                        <Icon name="link" /> {busy === 'token' ? 'Tekshirilmoqda…' : 'Tekshirib ulash'}
+                      </button>
+                      <button
+                        className="btn btn-ghost btn-sm"
+                        onClick={() => { setShowManual(false); setManualToken('') }}
+                        disabled={busy === 'token'}
+                      >
+                        Bekor qilish
+                      </button>
+                    </div>
+                  </div>
                 )}
               </div>
             )}

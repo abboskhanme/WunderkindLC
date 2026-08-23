@@ -400,6 +400,18 @@ export async function getIgConnectUrl(): Promise<string> {
   return data.url
 }
 
+/**
+ * QO'LDA ulash — Instagram Login tokenini to'g'ridan-to'g'ri berish (OAuth'ga ZAXIRA yo'l).
+ *
+ * ⚠️ Server tokenni ishonch bilan saqlamaydi: avval `me` bilan tekshiradi, uzoq muddatliga
+ * aylantiradi va webhook obunasini qiladi. Javob — `GET /status` bilan AYNAN bir xil DTO,
+ * ya'ni sahifa holatni qayta so'ramasdan darhol yangilaydi.
+ */
+export async function connectIgWithToken(accessToken: string): Promise<IgStatus> {
+  const { data } = await api.post<IgStatus>('/admin/instagram/connect-token', { accessToken })
+  return data
+}
+
 /** Akkauntni uzish — token tozalanadi, jonli javob to'xtaydi. */
 export async function disconnectIg(): Promise<void> {
   await api.post('/admin/instagram/disconnect')

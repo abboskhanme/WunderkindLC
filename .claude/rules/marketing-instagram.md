@@ -178,6 +178,29 @@ tashqaridan bu "Meta tasdiqlamayapti" bo'lib ko'rinadi. `EnvKeysWiringTests` shu
 `…/api/public/instagram/**webhook**` qo'yiladi. `…/callback` — bu OAuth qaytish manzili, faqat
 "Valid OAuth Redirect URIs" uchun; webhook maydoniga qo'yilsa Meta 302 oladi va tasdiqlamaydi.
 
+### 7.1. AKKAUNTNI ULASHNING IKKI YO'LI
+
+| Yo'l | Endpoint | Qachon |
+|---|---|---|
+| **OAuth (asosiy)** | `GET /connect-url` → `GET /api/public/instagram/callback` | odatda har doim |
+| **Qo'lda token (zaxira)** | `POST /connect-token` (`marketing.settings`) | OAuth yurmasa: `Invalid redirect_uri`, domen hali ochilmagan, yoki token Meta konsolidagi «Generate token» dan olingan |
+
+⚠️ **Ikkalasi ham AYNAN bir xil ketma-ketlikni bajaradi** — `me` → uzoq muddatliga aylantirish →
+webhook obunasi → eski akkauntni arxivlash (tokenini tozalash bilan) → yangi `IgAccount`.
+Qo'lda kiritilgan token **ishonch bilan saqlanmaydi**: `MeAsync` yiqilsa hech narsa yozilmaydi.
+
+⚠️ **NEGA token yolg'iz yoziladigan maydon EMAS.** Halqa himoyasi (§4) **uchala**
+identifikatorga tayanadi (`IgUserId`, `AppScopedUserId`, `Username`), ularni esa faqat `me`
+qaytaradi. Admin token yozadigan "oddiy sozlama maydoni" qo'shilsa, bu qiymatlar bo'sh qolib
+bot o'z xabariga javob yoza boshlardi — shuning uchun token har doim `me` orqali o'tadi.
+
+⚠️ **Muddat noma'lum qolishi MUMKIN:** `ig_refresh_token` faqat uzoq muddatli tokenda ishlaydi.
+Yiqilsa token baribir saqlanadi (u ishlashi `me` bilan tasdiqlangan), `TokenExpiresAt` esa bo'sh
+qoladi — `RefreshTokensAsync` "muddat noma'lum" holatini ham yangilaydi, ya'ni o'zi to'g'rilaydi.
+
+⚠️ **Yangi ulash yo'li qo'shsangiz** — u ham shu ketma-ketlikdan o'tsin va eski faol akkauntning
+tokenini TOZALASIN (uzilgan akkaunt tokeni bazada qolib ketmasin).
+
 **Token hayoti:** uzoq token ~60 kun; `InstagramWorkerService` kuniga bir marta tekshiradi
 va muddatiga **< 15 kun** qolganda (`IgConst.TokenRefreshDays = 45`) yangilaydi.
 Muvaffaqiyatsiz bo'lsa — **Telegram alert**, jim yiqilmaydi.

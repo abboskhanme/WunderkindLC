@@ -284,6 +284,105 @@ public partial class InstagramController(
         return Ok(await BuildStatusAsync(ct));
     }
 
+    /// <summary>
+    /// QO'LDA TOKEN BILAN ULASH — OAuth'ga <b>ZAXIRA</b> yo'l.
+    ///
+    /// <para><b>Asosiy yo'l baribir «Ulash» tugmasi (OAuth)</b>: u tokenni ham, uchala
+    /// identifikatorni ham o'zi oladi va admin hech narsa ko'chirmaydi. Bu endpoint OAuth
+    /// yurmaydigan holatlar uchun: <c>Invalid redirect_uri</c> tuzatilmayotgan bo'lsa, domen
+    /// hali ochilmagan bo'lsa yoki token Meta konsolidagi «Generate token» dan olingan bo'lsa.</para>
+    ///
+    /// <para>⚠️ <b>Token QAYTA TEKSHIRILADI, ishonch bilan qabul qilinmaydi.</b> Ketma-ketlik
+    /// callback bilan AYNAN bir xil: <c>me</c> → uzoq muddatliga aylantirish → webhook obunasi →
+    /// saqlash. Sabab: qo'lda kiritilgan qiymat noto'g'ri akkauntniki, muddati o'tgan yoki
+    /// qisqa muddatli bo'lishi mumkin — bularning hammasi keyinchalik "bot javob bermayapti"
+    /// bo'lib ko'rinardi.</para>
+    ///
+    /// <para>⚠️ <b>Uchala identifikator ham saqlanadi</b> (<c>user_id</c>, app-scoped <c>id</c>,
+    /// <c>username</c>) — faqat bittasiga tayanish cheksiz halqa himoyasini teshadi
+    /// (<c>.claude/rules/marketing-instagram.md</c> §4). Shuning uchun ham token yolg'iz
+    /// yozib qo'yiladigan maydon EMAS: u avval <c>me</c> ga yuboriladi.</para>
+    /// </summary>
+    [HttpPost("connect-token")]
+    [AdminPerm("marketing.settings")]
+    public async Task<IActionResult> ConnectWithToken(IgConnectTokenPayload payload, CancellationToken ct)
+    {
+        var token = (payload.AccessToken ?? "").Trim();
+        if (token.Length == 0)
+            return BadRequest(new { message = "Token kiritilmagan." });
+
+        // --- 1) Token haqiqiymi va KIMNIKI (halqa himoyasi shu qiymatlarga tayanadi) ---
+        var (okMe, igUserId, appScopedId, username, name, pictureUrl, errMe) = await api.MeAsync(token, ct);
+        if (!okMe || string.IsNullOrWhiteSpace(igUserId))
+        {
+            logger.LogWarning("[instagram] qo'lda kiritilgan token rad etildi: {Err}", errMe);
+            return BadRequest(new
+            {
+                message = "Token yaroqsiz — Instagram uni qabul qilmadi. "
+                          + "Meta konsolidagi «Generate token» dan YANGISINI oling. "
+                          + (errMe.Length > 0 ? $"Instagram javobi: {errMe}" : ""),
+            });
+        }
+
+        // --- 2) UZOQ MUDDATLIGA aylantirish ---
+        // ⚠️ Bu qadam ATAYIN: `ig_refresh_token` faqat uzoq muddatli tokenda ishlaydi, ya'ni
+        // muvaffaqiyat bir vaqtning o'zida "token 60 kunlik" ekanining ISBOTI va aniq muddat
+        // manbai. Yiqilsa token BARIBIR saqlanadi (u ishlayotgani `me` bilan tasdiqlangan),
+        // faqat muddat "noma'lum" qoladi — fon xizmati uni keyingi yurishida o'zi yangilaydi
+        // (`RefreshTokensAsync`: muddat noma'lum bo'lsa ham yangilanadi).
+        var (okRef, freshToken, expiresIn, errRef) = await api.RefreshTokenAsync(token, ct);
+        var saveToken = okRef && freshToken.Length > 0 ? freshToken : token;
+        var expiresAt = okRef && expiresIn > 0
+            ? AppClock.Now.AddSeconds(expiresIn).ToString("yyyy-MM-ddTHH:mm:ss")
+            : "";
+        if (!okRef)
+            logger.LogWarning("[instagram] qo'lda ulash: tokenni uzaytirib bo'lmadi: {Err}", errRef);
+
+        // --- 3) Webhook obunasi (obunasiz hodisa UMUMAN kelmaydi) ---
+        var (okSub, errSub) = await api.SubscribeWebhookAsync(saveToken, ct);
+        if (!okSub) logger.LogWarning("[instagram] qo'lda ulash: webhook obunasi bo'lmadi: {Err}", errSub);
+
+        // --- 4) Saqlash: eskisi arxivga (tokeni tozalanadi), yangisi faol ---
+        var now = AppClock.Iso();
+        var olds = await db.IgAccounts.Where(a => a.IsActive).ToListAsync(ct);
+        foreach (var o in olds)
+        {
+            o.IsActive = false;
+            o.AccessToken = "";
+        }
+
+        var account = new IgAccount
+        {
+            IgUserId = igUserId,
+            AppScopedUserId = appScopedId ?? "",
+            Username = username ?? "",
+            Name = name ?? "",
+            ProfilePictureUrl = pictureUrl ?? "",
+            AccessToken = saveToken,
+            TokenExpiresAt = expiresAt,
+            TokenRefreshedAt = okRef ? now : "",
+            WebhookSubscribed = okSub,
+            IsActive = true,
+            ConnectedAt = now,
+            ConnectedBy = Actor,
+        };
+        db.IgAccounts.Add(account);
+
+        // ⚠️ Token QIYMATI auditga HECH QACHON tushmaydi (sinf izohidagi maxfiylik chegarasi).
+        // Yozuvda faqat "qo'lda ulandi" fakti — OAuth yozuvidan farqi ko'rinib tursin.
+        audit.Record(AuditEntity, account.Id, "create",
+            $"Instagram akkaunti QO'LDA (token bilan) ulandi: @{account.Username} "
+            + $"(webhook obunasi: {(okSub ? "bor" : "YO'Q")}, "
+            + $"token muddati: {(expiresAt.Length > 0 ? $"{DaysLeft(expiresAt)} kun" : "noma'lum")})");
+        await db.SaveChangesAsync(ct);
+
+        logger.LogInformation(
+            "[instagram] akkaunt QO'LDA ulandi: @{Username} (obuna: {Sub}, muddat aniq: {Known})",
+            username, okSub, okRef);
+
+        return Ok(await BuildStatusAsync(ct));
+    }
+
     // =============================================================================================
     //  SUHBATLAR (INBOX)
     // =============================================================================================
@@ -1398,6 +1497,15 @@ public record IgSettingsDto(
     // `PUT` da o'zlashtirilmasdi — ya'ni modullarni UI'dan YOQIB BO'LMASDI va admin ularni faqat
     // bazadan qo'lda yoqishi mumkin edi. Sozlamalar sahifasi aynan shu DTO'ni o'qiydi.
     bool InstagramAdsStatsEnabled, bool InstagramPublishEnabled);
+
+/// <summary>
+/// QO'LDA ulash uchun Instagram Login tokeni (<c>POST /connect-token</c>).
+///
+/// <para>⚠️ <b>Bo'sh yuborilsa mavjud token SAQLANMAYDI</b> — <see cref="IgAdPagePayload"/>
+/// dagidan farqi shu. Sabab: u yerda forma Page ID va tokenni birga tahrirlaydi, bu yerda esa
+/// yagona maydon bor va uni bo'sh yuborish "akkauntni tokensiz ulash" degani bo'lardi.</para>
+/// </summary>
+public record IgConnectTokenPayload(string? AccessToken);
 
 /* ---------------- REKLAMA LIDLARI (Meta Lead Ads) ---------------- */
 
