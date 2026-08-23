@@ -178,7 +178,7 @@ konversiya allaqachon bor). Parallel `InstagramLead` jadvali ham **yaratilmaydi*
 | `conv.LeadId` bor | **yangi lid yaratilmaydi** — mavjudi yangilanadi, `RepeatCount++`, `LeadEvent` yoziladi |
 | **`Lead.Source` va `Lead.Stage`** | mavjud lidda **O'ZGARMAYDI** (first-touch: birinchi murojaat manbasi saqlanadi) |
 | `Lead.PhoneKey` | **qo'lda yozilmaydi** — `AppDbContext.SaveChanges` o'zi to'ldiradi (`crm-leads.md`) |
-| Telefonsiz qaynoq lid | baribir yoziladi: `FullName = "@username (Instagram)"` |
+| Telefonsiz qaynoq lid | baribir yoziladi: `FullName = "username (Instagram)"` (**`@` YO'Q** — §6.2) |
 | Har suhbat lid bo'lmaydi | `InstagramContract.ShouldCreateLead` = `IsHot || kontakt bor`. Salom-alik va spam CRM'ni ifloslantirmaydi |
 
 ### 6.1. 🔴 TELEGRAM GURUHIGA KARTA — Instagram YAGONA ISTISNO edi
@@ -206,6 +206,38 @@ ham boshqaradi.
 
 ⚠️ Inbox'dagi **«Lidga aylantirish»** tugmasi (`POST conversations/{id}/create-lead`) AYNAN shu
 qoidadan o'tadi — operator qo'lda bosgani ham lidning tug'ilishi.
+
+### 6.2. 🔴 MIJOZ PROFILI — `@username` EMAS, BOSILADIGAN HAVOLA
+
+Xabarga `@ali_valiyev` yozilsa **Telegram uni O'ZINING mentioni deb chizadi**: menejer bosganda
+Instagram profiliga emas, mavjud bo'lmagan TELEGRAM foydalanuvchisiga tushardi — ya'ni lid
+kartasidan mijozga yozib bo'lmasdi. Shuning uchun Telegram'ga ketadigan HAR joyda
+`InstagramContract.ProfileRef(conv.Username)` ishlatiladi:
+
+`https://instagram.com/<username>` → bo'lmasa `@username` → u ham bo'lmasa `Mijoz`
+(qator hech qachon yo'qolmaydi).
+
+| Qayerda | Nima |
+|---|---|
+| `InstagramLeadBridge.BuildNote` | lid izohi — kartadagi «📝 …» qatori |
+| `InstagramLeadBridge` `created` / `note` hodisalari | lid tarixi (shaxsiy kartadagi izohlar lentasi) |
+| `InstagramPipeline.BuildHotAlert` va barcha `NotifyAdminsAsync` signallari | «👤 …» qatori |
+| `Lead.FullName` (telefonsiz lid) | `username (Instagram)` — `@` OLIB TASHLANGAN |
+
+⚠️ **`parse_mode` ATAYIN ishlatilmaydi** (ya'ni `<a href>` emas, XOM URL): karta matnida mijoz
+yozgan erkin matn bor (ism, izoh), HTML'ga o'tish uni ekranlash majburiyatini tug'dirardi va
+bitta `<` Telegram'da 400 berib **butun kartani yo'qotardi** (`LeadNotifier` xatoni jim yutadi).
+
+⚠️ **Havola QAVS ICHIGA olinmaydi va matn OXIRIDA turadi**: Telegram xom URL'ni avtomatik
+havolaga aylantirganda yopuvchi `)` ni ham manzilga qo'shib yuborardi.
+
+⚠️ Buzuq username (bo'shliq, `/`, `?`) **havola BERMAYDI** — `ProfileUrl` faqat harf/raqam/`.`/`_`
+qabul qiladi. Sabab: bosib «sahifa topilmadi» ko'rgandan ko'ra oddiy matn ko'rgani yaxshiroq.
+
+⚠️ **HAVOLA OLDI KO'RINISHI O'CHIQ** — `TelegramService.NoLinkPreview` (`link_preview_options`)
+`sendMessage` VA `editMessageText` da. Aks holda guruhdagi har lid kartasi ostiga Instagram'ning
+login devori rasmi tushib, ro'yxat o'qib bo'lmas holga kelardi. Ikkisida ham bir xil bo'lishi
+SHART — aks holda karta tahrirlangan zahoti oldi ko'rinishi «qaytib» chiqardi.
 
 ⚠️ Izoh va DM'da ID formatlari farq qilishi mumkin — lid dedup **faqat** `IgUserId` ga
 tayanmasin (telefon + `conv.LeadId` birga ishlaydi), aks holda bir mijoz uchun **ikki lid**

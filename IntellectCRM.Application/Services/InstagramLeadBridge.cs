@@ -11,7 +11,14 @@ namespace IntellectCRM.Application.Services;
 /// (<see cref="IgConversation.LeadId"/>) yangisi YARATILMAYDI; (2) telefon topilsa
 /// <see cref="LeadIntake.FindByPhoneAsync"/> orqali mavjud lid izlanadi (lid formasi va daraja
 /// testi bilan AYNAN bir xil qoida); (3) telefonsiz qaynoq lid ham yoziladi, lekin uning nomi
-/// <c>@username (Instagram)</c> — keyin telefon kelsa o'sha lid to'ldiriladi.</para>
+/// <c>username (Instagram)</c> — keyin telefon kelsa o'sha lid to'ldiriladi.</para>
+///
+/// <para>⚠️ <b>MATNLARDA <c>@username</c> EMAS, PROFIL HAVOLASI</b>
+/// (<see cref="InstagramContract.ProfileRef"/>): lid izohi Telegram guruhidagi lid kartasiga
+/// tushadi, u yerda esa <c>@nom</c> Telegram mentioni bo'lib chizilib, bosilganda mavjud
+/// bo'lmagan TELEGRAM foydalanuvchisiga olib borardi — menejer mijozga yoza olmasdi. Shu sabab
+/// lid ISMIDAGI <c>@</c> ham olib tashlangan (CRM ro'yxatida u shunchaki bezak edi, Telegram
+/// kartasida esa yolg'on havola).</para>
 ///
 /// <para><b>FIRST-TOUCH:</b> mavjud lidda <c>Source</c> ham, <c>Stage</c> ham O'ZGARMAYDI —
 /// odamni birinchi qaysi kanal olib kelgani va menejerning kanbandagi qo'lda qo'ygan holati
@@ -58,13 +65,19 @@ public static class InstagramLeadBridge
             lead.LastRepeatAt = now;
             // ⚠️ Source va Stage ATAYIN tegilmaydi (first-touch).
 
+            // ⚠️ Havola QAVS ICHIGA olinmaydi: Telegram xom URL'ni avtomatik havolaga aylantirganda
+            // yopuvchi ")" ni ham manzilga qo'shib yuborardi — havola singan bo'lardi.
+            var again = new List<string> { "Instagram'da yana yozdi" };
+            if (output.LeadSummary.Length > 0) again.Add(InstagramContract.Trim(output.LeadSummary, 200));
+            again.Add(InstagramContract.ProfileRef(conv.Username));
+
             db.LeadEvents.Add(new LeadEvent
             {
                 LeadId = lead.Id,
                 Type = "note",
                 ActorName = ActorName,
                 CreatedAt = now,
-                Text = $"Instagram'da yana yozdi (@{conv.Username}): {InstagramContract.Trim(output.LeadSummary, 200)}",
+                Text = string.Join(" · ", again),
             });
 
             conv.LeadId = lead.Id;
@@ -75,7 +88,7 @@ public static class InstagramLeadBridge
         var stage = await LeadIntake.FirstStageIdAsync(db, ct);
         var name = output.LeadName.Length > 0
             ? output.LeadName
-            : (string.IsNullOrWhiteSpace(conv.Username) ? "Instagram mijozi" : $"@{conv.Username} (Instagram)");
+            : (string.IsNullOrWhiteSpace(conv.Username) ? "Instagram mijozi" : $"{conv.Username.Trim().TrimStart('@')} (Instagram)");
 
         var fresh = new Lead
         {
@@ -94,7 +107,9 @@ public static class InstagramLeadBridge
             Type = "created",
             ActorName = ActorName,
             CreatedAt = now,
-            Text = $"Instagram orqali keldi (@{conv.Username})",
+            // ⚠️ Havola ENG OXIRIDA va qavssiz — Telegram avtomatik havolaga aylantirganda
+            // ortidagi belgi manzilga yopishib qolmasin.
+            Text = $"Instagram orqali keldi — {InstagramContract.ProfileRef(conv.Username)}",
             ToStage = stage,
         });
 
@@ -105,7 +120,10 @@ public static class InstagramLeadBridge
     /// <summary>Lid izohi — operator suhbatni ochmasdan turib nima bo'lganini tushunsin.</summary>
     private static string BuildNote(IgConversation conv, IgAgentOutput output)
     {
-        var parts = new List<string> { $"Instagram: @{conv.Username}" };
+        // ⚠️ Bu izoh Telegram guruhidagi lid kartasiga («📝 …» qatori) TUSHADI — shuning uchun
+        // profil MANZIL bilan yoziladi: menejer kartadan to'g'ridan-to'g'ri Instagram profiliga
+        // o'tib yoza oladi.
+        var parts = new List<string> { $"Instagram: {InstagramContract.ProfileRef(conv.Username)}" };
         if (output.LeadSummary.Length > 0) parts.Add(output.LeadSummary);
         if (output.LeadContact.Length > 0) parts.Add($"Aloqa: {output.LeadContact}");
         parts.Add($"Qiziqish bali: {InstagramContract.ClampScore(output.LeadScore)}");

@@ -683,4 +683,44 @@ public class InstagramHardeningTests
         }
     }
 
+    // ===================== ProfileUrl / ProfileRef =====================
+
+    /// <summary>Username'dan bosiladigan profil manzili chiqadi. "@", bo'shliq va "/" tozalanadi —
+    /// username turli joydan keladi (webhook, profil so'rovi, qo'lda kiritilgan).</summary>
+    [Theory]
+    [InlineData("ali_valiyev", "https://instagram.com/ali_valiyev")]
+    [InlineData("@ali_valiyev", "https://instagram.com/ali_valiyev")]
+    [InlineData("  @ali.valiyev  ", "https://instagram.com/ali.valiyev")]
+    [InlineData("ali_valiyev/", "https://instagram.com/ali_valiyev")]
+    public void Profil_manzili_tozalab_quriladi(string username, string expected)
+    {
+        Assert.Equal(expected, InstagramContract.ProfileUrl(username));
+    }
+
+    /// <summary>Bo'sh yoki buzuq username — bo'sh satr. ⚠️ Buzuq havola YUBORILMAYDI: menejer
+    /// bosib "sahifa topilmadi" ko'rgandan ko'ra oddiy matn ko'rgani yaxshiroq.</summary>
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    [InlineData("@")]
+    [InlineData("ali valiyev")]
+    [InlineData("ali/valiyev")]
+    [InlineData("ali?x=1")]
+    public void Buzuq_username_manzil_bermaydi(string? username)
+    {
+        Assert.Equal("", InstagramContract.ProfileUrl(username));
+    }
+
+    /// <summary>🔴 Telegram xabaridagi qator HECH QACHON yo'qolmaydi: havola bo'lmasa
+    /// "@username", u ham bo'lmasa zaxira matn.</summary>
+    [Fact]
+    public void ProfileRef_har_holatda_matn_qaytaradi()
+    {
+        Assert.Equal("https://instagram.com/ali", InstagramContract.ProfileRef("ali"));
+        Assert.Equal("@ali valiyev", InstagramContract.ProfileRef("ali valiyev"));
+        Assert.Equal("Mijoz", InstagramContract.ProfileRef(""));
+        Assert.Equal("Mijoz", InstagramContract.ProfileRef(null));
+        Assert.Equal("—", InstagramContract.ProfileRef(null, "—"));
+    }
 }

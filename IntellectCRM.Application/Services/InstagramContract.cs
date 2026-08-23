@@ -322,6 +322,49 @@ public static class InstagramContract
     /// <summary>Kontakt (telefon yoki boshqa aloqa) berilganmi.</summary>
     public static bool HasContact(IgAgentOutput o) => !string.IsNullOrWhiteSpace(o.LeadContact);
 
+    // ─────────────── MIJOZ PROFILIGA HAVOLA (Telegram xabarlari uchun) ───────────────
+
+    /// <summary>
+    /// Instagram profilining OCHIQ manzili (<c>https://instagram.com/&lt;username&gt;</c>).
+    /// Bo'sh yoki buzuq username — bo'sh satr.
+    ///
+    /// <para>🔴 <b>NEGA @username EMAS.</b> Telegram xabar matnidagi <c>@username</c>ni O'ZINING
+    /// mentioni deb chizadi: menejer bosganda Instagram profiliga emas, mavjud bo'lmagan TELEGRAM
+    /// foydalanuvchisiga tushardi — ya'ni lid kartasidan mijozga yozib bo'lmasdi. Xom URL esa
+    /// Telegram tomonidan avtomatik havolaga aylanadi.</para>
+    ///
+    /// <para>⚠️ <c>parse_mode</c> ATAYIN ishlatilmaydi (ya'ni <c>&lt;a href&gt;</c> emas, xom URL):
+    /// karta matnida mijoz yozgan ERKIN matn bor (ism, izoh), HTML'ga o'tish uni ekranlash
+    /// majburiyatini tug'dirardi va bitta <c>&lt;</c> Telegram'da 400 berib BUTUN kartani
+    /// yo'qotardi (<c>LeadNotifier</c> bu xatoni jim yutadi).</para>
+    ///
+    /// <para>⚠️ Ruxsat etilgan belgilar Instagram qoidasi bo'yicha: harf, raqam, <c>.</c> va
+    /// <c>_</c>. Boshqasi bo'lsa bo'sh satr qaytadi — buzuq havola yuborgandan ko'ra
+    /// <see cref="ProfileRef"/> zaxira matnga tushgani yaxshiroq.</para>
+    /// </summary>
+    public static string ProfileUrl(string? username)
+    {
+        var u = CleanUsername(username);
+        if (u.Length == 0) return "";
+        foreach (var c in u)
+            if (!char.IsAsciiLetterOrDigit(c) && c != '.' && c != '_') return "";
+        return "https://instagram.com/" + u;
+    }
+
+    /// <summary>Xabarda mijozni ko'rsatadigan matn: profil havolasi → bo'lmasa <c>@username</c> →
+    /// u ham bo'lmasa <paramref name="fallback"/>. Ya'ni qator HECH QACHON yo'qolmaydi.</summary>
+    public static string ProfileRef(string? username, string fallback = "Mijoz")
+    {
+        var url = ProfileUrl(username);
+        if (url.Length > 0) return url;
+        var u = CleanUsername(username);
+        return u.Length > 0 ? "@" + u : fallback;
+    }
+
+    /// <summary>Username'ni tozalaydi: bo'shliq, oldidagi <c>@</c> va <c>/</c> olib tashlanadi.</summary>
+    private static string CleanUsername(string? username) =>
+        (username ?? "").Trim().TrimStart('@').Trim('/').Trim();
+
     // ─────────────────────── REKLAMA ATRIBUTSIYASI (E3) — ko'rinadigan qism ───────────────────────
 
     /// <summary>

@@ -291,7 +291,9 @@ public sealed class InstagramPipeline(IServiceProvider services, ILogger<Instagr
                 ? InstagramContract.Trim(context, 300)
                 : "[matnsiz xabar]";
             await db.SaveChangesAsync(ct);
-            await NotifyAdminsAsync(db, telegram, meta, $"📎 Instagram: @{conv.Username} matnsiz xabar yubordi — operator ko'rsin.", ct);
+            await NotifyAdminsAsync(db, telegram, meta,
+                $"📎 Instagram: mijoz matnsiz xabar yubordi — operator ko'rsin.\n"
+                + $"👤 {InstagramContract.ProfileRef(conv.Username)}", ct);
             return;
         }
 
@@ -394,7 +396,8 @@ public sealed class InstagramPipeline(IServiceProvider services, ILogger<Instagr
                 Escalate(conv, InstagramContract.Trim($"AI javob bera olmadi: {aiErr}", 200));
                 await db.SaveChangesAsync(ct);
                 await NotifyAdminsAsync(db, telegram, meta,
-                    $"🤖 Instagram: AI javob bera olmadi (@{conv.Username}). Sabab: {aiErr}", ct);
+                    $"🤖 Instagram: AI javob bera olmadi. Sabab: {aiErr}\n"
+                    + $"👤 {InstagramContract.ProfileRef(conv.Username)}", ct);
                 return;
             }
         }
@@ -453,7 +456,8 @@ public sealed class InstagramPipeline(IServiceProvider services, ILogger<Instagr
                 Escalate(conv, "24 soatlik javob oynasi yopiq — DM yuborib bo'lmadi, operator boshqa yo'l bilan bog'lansin");
                 await db.SaveChangesAsync(ct);
                 await NotifyAdminsAsync(db, telegram, meta,
-                    $"⏰ Instagram: @{conv.Username} bilan 24 soatlik oyna yopiq — javob yuborilmadi.", ct);
+                    $"⏰ Instagram: 24 soatlik oyna yopiq — javob yuborilmadi.\n"
+                    + $"👤 {InstagramContract.ProfileRef(conv.Username)}", ct);
                 return;
             }
 
@@ -465,7 +469,8 @@ public sealed class InstagramPipeline(IServiceProvider services, ILogger<Instagr
         if (sendError.Length > 0)
         {
             Escalate(conv, InstagramContract.Trim($"Javob yuborilmadi: {sendError}", 200));
-            alert = $"❌ Instagram: @{conv.Username} ga javob yuborilmadi. {sendError}";
+            alert = $"❌ Instagram: mijozga javob yuborilmadi. {sendError}\n"
+                    + $"👤 {InstagramContract.ProfileRef(conv.Username)}";
         }
         else
         {
@@ -1032,7 +1037,9 @@ public sealed class InstagramPipeline(IServiceProvider services, ILogger<Instagr
         var lines = new List<string>
         {
             "🔥 Instagram: qaynoq lid!",
-            $"👤 @{conv.Username}",
+            // ⚠️ @username EMAS, PROFIL HAVOLASI: Telegram "@nom"ni o'zining mentioni deb
+            // chizadi va menejer bosganda Instagram'ga emas, hech qayerga tushardi.
+            $"👤 {InstagramContract.ProfileRef(conv.Username)}",
         };
         if (o.LeadName.Length > 0) lines.Add($"🧑 {o.LeadName}");
         if (o.LeadContact.Length > 0) lines.Add($"📞 {o.LeadContact}");

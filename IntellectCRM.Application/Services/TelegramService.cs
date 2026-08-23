@@ -87,6 +87,17 @@ public class TelegramService(IHttpClientFactory httpFactory, ILogger<TelegramSer
 
     private string ApiBase => $"https://api.telegram.org/bot{BotToken}";
 
+    /// <summary>
+    /// Havola oldi ko'rinishi (link preview) O'CHIQ — barcha matnli xabarlarda.
+    ///
+    /// <para>⚠️ Xabarlarimizda endi xom URL bor (masalan lid kartasidagi mijozning Instagram
+    /// profili — <c>InstagramContract.ProfileUrl</c>). Telegram bunday manzilga katta oldi
+    /// ko'rinishi chizadi: guruhdagi har lid kartasi ostiga Instagram'ning login devori
+    /// rasmi tushib, ro'yxat o'qib bo'lmas holga kelardi. Havolaning O'ZI qoladi — u faqat
+    /// bosiladigan matn.</para>
+    /// </summary>
+    private static readonly Dictionary<string, object?> NoLinkPreview = new() { ["is_disabled"] = true };
+
     /// <summary>Berilgan chatga matn yuboradi (ixtiyoriy reply_markup va parseMode bilan). Muvaffaqiyat — true.
     /// parseMode="HTML" bersa — masalan &lt;code&gt; bilan o'ralgan qism Telegram mijozlarida
     /// bosilganda avtomatik nusxa olinadigan (tap-to-copy) monospace bo'lib ko'rinadi.
@@ -101,7 +112,10 @@ public class TelegramService(IHttpClientFactory httpFactory, ILogger<TelegramSer
         if (!IsConfigured) return false;
         try
         {
-            var payload = new Dictionary<string, object?> { ["chat_id"] = chatId, ["text"] = text };
+            var payload = new Dictionary<string, object?>
+            {
+                ["chat_id"] = chatId, ["text"] = text, ["link_preview_options"] = NoLinkPreview,
+            };
             if (replyMarkup is not null) payload["reply_markup"] = replyMarkup;
             if (parseMode is not null) payload["parse_mode"] = parseMode;
             // ⚠️ Xom `reply_to_message_id` EMAS: javob berilayotgan xabar o'chirilgan bo'lsa Telegram
@@ -143,7 +157,10 @@ public class TelegramService(IHttpClientFactory httpFactory, ILogger<TelegramSer
         if (!IsConfigured) return null;
         try
         {
-            var payload = new Dictionary<string, object?> { ["chat_id"] = chatId, ["text"] = text };
+            var payload = new Dictionary<string, object?>
+            {
+                ["chat_id"] = chatId, ["text"] = text, ["link_preview_options"] = NoLinkPreview,
+            };
             if (replyMarkup is not null) payload["reply_markup"] = replyMarkup;
             if (parseMode is not null) payload["parse_mode"] = parseMode;
             // ⚠️ Xom `reply_to_message_id` EMAS: javob berilayotgan xabar o'chirilgan bo'lsa Telegram
@@ -226,6 +243,9 @@ public class TelegramService(IHttpClientFactory httpFactory, ILogger<TelegramSer
             var payload = new Dictionary<string, object?>
             {
                 ["chat_id"] = chatId, ["message_id"] = messageId, ["text"] = text,
+                // ⚠️ YUBORISHDAGI bilan BIR XIL bo'lishi shart — aks holda karta tahrirlangan
+                // zahoti havola oldi ko'rinishi "qaytib" chiqardi.
+                ["link_preview_options"] = NoLinkPreview,
             };
             if (replyMarkup is not null) payload["reply_markup"] = replyMarkup;
             if (parseMode is not null) payload["parse_mode"] = parseMode;

@@ -115,7 +115,10 @@ public class InstagramLeadBridgeTests
         Assert.Equal(leadId, ev.LeadId);
         Assert.Equal("created", ev.Type);
         Assert.Equal(InstagramLeadBridge.ActorName, ev.ActorName);
-        Assert.Contains("@ali_valiyev", ev.Text);
+        // ⚠️ "@ali_valiyev" EMAS, BOSILADIGAN havola — bu matn Telegram kartasidagi izohlar
+        // lentasiga tushadi.
+        Assert.Contains("https://instagram.com/ali_valiyev", ev.Text);
+        Assert.DoesNotContain("@ali_valiyev", ev.Text);
         Assert.Equal(FirstStage, ev.ToStage);
     }
 
@@ -194,6 +197,7 @@ public class InstagramLeadBridgeTests
         var ev = Assert.Single(db.Context.LeadEvents);
         Assert.Equal("note", ev.Type);
         Assert.Contains("yana yozdi", ev.Text);
+        Assert.Contains("https://instagram.com/ali_valiyev", ev.Text);
     }
 
     [Fact]
@@ -262,7 +266,9 @@ public class InstagramLeadBridgeTests
 
         Assert.True(isNew);
         var lead = db.Context.Leads.Single();
-        Assert.Equal("@ali_valiyev (Instagram)", lead.FullName);
+        // ⚠️ "@" YO'Q: bu nom Telegram lid kartasiga tushadi va u yerda "@nom" Telegram
+        // mentioni bo'lib chizilardi (bosilganda Instagram'ga OLIB BORMASDI).
+        Assert.Equal("ali_valiyev (Instagram)", lead.FullName);
         Assert.Equal("", lead.Phone);
     }
 
@@ -400,7 +406,9 @@ public class InstagramLeadBridgeTests
         await db.Context.SaveChangesAsync();
 
         var note = db.Context.Leads.Single().Note ?? "";
-        Assert.Contains("Instagram: @ali_valiyev", note);
+        // Izoh Telegram kartasiga tushadi — profil BOSILADIGAN havola bo'lishi shart.
+        Assert.Contains("Instagram: https://instagram.com/ali_valiyev", note);
+        Assert.DoesNotContain("@ali_valiyev", note);
         Assert.Contains("Narx so'radi", note);
         Assert.Contains("Qiziqish bali: 95", note);
     }
