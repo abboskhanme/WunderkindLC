@@ -374,12 +374,7 @@ public sealed class InstagramPipeline(IServiceProvider services, ILogger<Instagr
                 catch (Exception ex) { logger.LogWarning(ex, "Instagram post matnini olib bo'lmadi"); }
             }
 
-            var history = await db.IgMessages.AsNoTracking()
-                .Where(m => m.ConversationId == conv.Id)
-                .OrderByDescending(m => m.CreatedAt)
-                .Take(IgConst.DmHistoryLimit)
-                .ToListAsync(ct);
-            history.Reverse();
+            var history = await LoadHistoryAsync(db, conv.Id, channel, inc.MediaId, ct);
 
             // ⚠️ AI'ga KONTEKSTLI matn beriladi (`storedText`): story'ga yozilgan "Salom!" javobi
             // kontekstsiz umuman tushunarsiz bo'lardi. Tarix ham bazadan shu ko'rinishda keladi.
@@ -482,6 +477,8 @@ public sealed class InstagramPipeline(IServiceProvider services, ILogger<Instagr
         // Karta sinxronizatsiyasi uchun lid id SaveChanges'dan KEYIN ham kerak — shu sababdan
         // o'zgaruvchi try blokidan tashqarida e'lon qilinadi.
         var cardLeadId = "";
+        var cardIsNewLead = false;
+        var firstLink = false;
         if (output is not null)
         {
             conv.Language = output.Language;
@@ -492,9 +489,15 @@ public sealed class InstagramPipeline(IServiceProvider services, ILogger<Instagr
             {
                 try
                 {
+                    // ⚠️ Suhbat lidga BIRINCHI marta bog'lanyaptimi — Upsert'dan OLDIN o'qiladi
+                    // (u `conv.LeadId` ni to'ldirib qo'yadi). Telegram kartasi shu bilan hal
+                    // qilinadi, pastdagi §9.1 ga qarang.
+                    firstLink = string.IsNullOrWhiteSpace(conv.LeadId);
+
                     var source = string.IsNullOrWhiteSpace(meta.InstagramLeadSource) ? "Instagram" : meta.InstagramLeadSource;
                     var (leadId, isNew) = await InstagramLeadBridge.UpsertAsync(db, conv, output, source, ct);
                     cardLeadId = leadId;
+                    cardIsNewLead = isNew;
                     logger.LogInformation("Instagram lid {State} ({LeadId})", isNew ? "yaratildi" : "yangilandi", leadId);
                 }
                 catch (Exception ex)
@@ -512,19 +515,106 @@ public sealed class InstagramPipeline(IServiceProvider services, ILogger<Instagr
 
         await db.SaveChangesAsync(ct);
 
-        // ── 9.1) LID KARTASI — guruhdagi xabar JOYIDA yangilanadi ──
-        // NEGA: takroriy murojaatda `RepeatCount`, izoh va `LeadEvent` o'zgaradi, lekin karta
-        // eski holatida qolib ketardi — ya'ni Telegramdagi karta JIMGINA eskirardi. Chaqiruv
-        // SaveChanges'dan KEYIN: karta bazadagi YOZILGAN holatdan quriladi.
-        // (Kartasi yo'q lidga yangi xabar YUBORILMAYDI — `LeadNotifier.SyncCardAsync` qoidasi.)
+        // ── 9.1) LID KARTASI — Telegram guruhiga YANGI LID sifatida ──
+        //
+        // 🔴 Ilgari bu yerda FAQAT `SyncCardAsync` turardi, u esa o'z qoidasi bo'yicha kartasi
+        // YO'Q lidga hech narsa yubormaydi — ya'ni Instagram'dan kelgan lid guruhga UMUMAN
+        // tushmasdi. Qolgan barcha kanallar (lid formasi, daraja testi, reklama lidi, qo'lda
+        // kiritish) `NotifyNewLeadAsync` ni chaqiradi; Instagram YAGONA istisno bo'lib qolgan
+        // va nosozlik jimgina edi: lid CRM'da bor, guruhda esa yo'q.
+        //
+        // ⚠️ Karta suhbat lidga BIRINCHI marta bog'langanda yuboriladi (`firstLink`), har
+        // xabarda EMAS. Sabab: `ShouldCreateLead` qaynoq suhbatda HAR xabarda rost bo'ladi
+        // (telefon berilgan), ya'ni har «rahmat» ga ham guruhga signal ketardi va karta
+        // shovqinga aylanardi. Keyingi xabarlar kartani JIMGINA yangilaydi.
+        //
+        // ⚠️ `isNewLead` — lid YOZUVI yangimi degani (kartaning yetkazilishini hal qiladi):
+        // yangi lid → to'liq karta; mavjud lid (masalan formadan kelgan odam endi Instagram'da
+        // yozdi) → mavjud karta tahrirlanadi va ustiga bitta qatorli signal ketadi.
+        //
+        // ⚠️ Chaqiruv SaveChanges'dan KEYIN: karta bazadagi YOZILGAN holatdan quriladi.
+        // ⚠️ Xatosi JIM yutiladi (`LeadNotifier` siyosati) — xabarnoma javobni buzmaydi.
         if (cardLeadId.Length > 0)
-            await LeadNotifier.SyncCardAsync(db, telegram, cardLeadId, ct);
+        {
+            if (firstLink && meta.InstagramNotifyTelegram)
+            {
+                var lead = await db.Leads.FirstOrDefaultAsync(l => l.Id == cardLeadId, ct);
+                if (lead is not null)
+                    await LeadNotifier.NotifyNewLeadAsync(
+                        db, telegram, lead, isNewLead: cardIsNewLead,
+                        createdBy: InstagramLeadBridge.ActorName, ct: ct, logger: logger);
+            }
+            else
+            {
+                await LeadNotifier.SyncCardAsync(db, telegram, cardLeadId, ct, logger);
+            }
+        }
 
         // ── 10) TELEGRAM SIGNALI (xatosi JIM yutiladi) ──
         if (alert.Length == 0 && output is not null && (output.EscalateToHuman || InstagramContract.IsHot(output)))
             alert = BuildHotAlert(conv, output);
         if (alert.Length > 0)
             await NotifyAdminsAsync(db, telegram, meta, alert, ct);
+    }
+
+    /* ═════════════════════════ AI uchun suhbat tarixi ═════════════════════════ */
+
+    /// <summary>
+    /// AI promptiga tushadigan tarix. <b>Kanalga QARAB</b> ikki xil to'planadi.
+    ///
+    /// <para><b>DM</b> — butun suhbatning oxirgi <see cref="IgConst.DmHistoryLimit"/> xabari
+    /// (avvalgidek): shaxsiy yozishma bitta uzluksiz muloqot va oldingi gap keyingisining
+    /// ma'nosini belgilaydi.</para>
+    ///
+    /// <para>🔴 <b>IZOH — FAQAT O'SHA POST OSTIDAGI izohlar.</b> Ilgari izohga ham butun suhbat
+    /// tarixi berilardi va bu ikki xil zarar keltirardi:</para>
+    /// <list type="number">
+    ///   <item><b>Javob izohga qaramay yozilardi.</b> Odam A postiga «Narxi qancha?» deb yozgan,
+    ///     bir hafta oldin B postiga boshqa savol bergan yoki DM'da butunlay boshqa mavzuda
+    ///     yozishgan bo'lsa — model o'sha eski suhbatni davom ettirib, ostidagi izohga
+    ///     tegishsiz javob berardi. Izoh esa DM emas: u <b>yakka savol</b>, konteksti — post
+    ///     matni va o'sha post ostidagi yozishma.</item>
+    ///   <item><b>SHAXSIY yozishma OMMAGA chiqardi.</b> Javob ochiq izoh sifatida chop etiladi;
+    ///     promptdagi DM tarixi (telefon raqami, to'lov haqidagi gap) modelning javobiga
+    ///     kirib qolsa uni post ostida hamma o'qirdi. Chegara <b>tuzilma darajasida</b>
+    ///     qo'yilgan: DM qatorlari so'rovga UMUMAN olinmaydi.</item>
+    /// </list>
+    ///
+    /// <para>⚠️ Filtr <see cref="IgMessage.MediaId"/> bo'yicha — chiquvchi izoh javoblarida ham
+    /// shu ustun to'ldiriladi (<c>AddOutbound</c>), ya'ni "biz nima deb javob berdik" tarixda
+    /// qoladi va bir xil savolga ikki xil javob yozilmaydi.</para>
+    ///
+    /// <para>⚠️ <c>MediaId</c> bo'sh bo'lsa (eski yozuv yoki Meta post id bermagan holat) post
+    /// bo'yicha ajratib bo'lmaydi — u holda hech bo'lmaganda <b>KANAL</b> bo'yicha filtrlanadi,
+    /// ya'ni DM baribir promptga tushmaydi. Bu ATAYIN: bo'sh natija zarar qilmaydi (izoh
+    /// tarixsiz ham to'liq javob beriladi — post matni va bilim bazasi joyida), aralashib
+    /// ketgan tarix esa yuqoridagi ikkala zararni ham qaytarardi.</para>
+    /// </summary>
+    public static async Task<List<IgMessage>> LoadHistoryAsync(
+        IAppDbContext db, string convId, string channel, string mediaId, CancellationToken ct)
+    {
+        var q = db.IgMessages.AsNoTracking().Where(m => m.ConversationId == convId);
+
+        if (channel == IgConst.ChannelComment)
+        {
+            // Ochiq kanal: DM qatorlari OLINMAYDI (yopiq javob — o'sha izohning davomi, qoladi).
+            q = q.Where(m => m.Channel == IgConst.ChannelComment || m.Channel == IgConst.ChannelPrivateReply);
+            if (!string.IsNullOrWhiteSpace(mediaId)) q = q.Where(m => m.MediaId == mediaId);
+
+            var thread = await q
+                .OrderByDescending(m => m.CreatedAt)
+                .Take(IgConst.CommentHistoryLimit)
+                .ToListAsync(ct);
+            thread.Reverse();
+            return thread;
+        }
+
+        var history = await q
+            .OrderByDescending(m => m.CreatedAt)
+            .Take(IgConst.DmHistoryLimit)
+            .ToListAsync(ct);
+        history.Reverse();
+        return history;
     }
 
     /* ═════════════════════════ Hodisa darajasidagi dedup ═════════════════════════ */

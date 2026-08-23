@@ -594,6 +594,130 @@ public class InstagramPipelineTests
         Assert.Contains("mentions", done.Error);
     }
 
+    // ═══════════════ IZOH TARIXI — o'z posti bilan chegaralangan ═══════════════
+
+    /// <summary>Tarix uchun bitta xabar qatori (vaqt tartibi CreatedAt bo'yicha).</summary>
+    private static IgMessage Msg(string convId, string channel, string mediaId, string text, string at) =>
+        new()
+        {
+            ConversationId = convId, Direction = IgConst.DirIn, Channel = channel,
+            MediaId = mediaId, Text = text, CreatedAt = at,
+        };
+
+    /// <summary>
+    /// 🔴 Ochiq izohga javob YOZILADI, ya'ni promptdagi har bir qator omma o'qiydigan matnga
+    /// aylanishi mumkin. Shaxsiy yozishma (telefon, to'lov haqidagi gap) u yerga tushmasligi
+    /// SHART — chegara tuzilma darajasida: DM qatorlari so'rovga UMUMAN olinmaydi.
+    /// </summary>
+    [Fact]
+    public async Task Izoh_tarixiga_DM_qatorlari_TUSHMAYDI()
+    {
+        using var db = TestDb.Sqlite();
+        db.Context.IgMessages.AddRange(
+            Msg("c1", IgConst.ChannelDm, "", "Telefonim 901234567", "2026-08-23T10:00:00"),
+            Msg("c1", IgConst.ChannelComment, "post-1", "Narxi qancha?", "2026-08-23T10:01:00"));
+        await db.Context.SaveChangesAsync();
+
+        var history = await InstagramPipeline.LoadHistoryAsync(
+            db.Context, "c1", IgConst.ChannelComment, "post-1", CancellationToken.None);
+
+        var only = Assert.Single(history);
+        Assert.Equal("Narxi qancha?", only.Text);
+    }
+
+    /// <summary>
+    /// Izoh — YAKKA savol: konteksti post matni va O'SHA post ostidagi yozishma. Boshqa post
+    /// ostidagi eski savol qo'shilsa model ostidagi izohga tegishsiz javob yozardi.
+    /// </summary>
+    [Fact]
+    public async Task Izoh_tarixiga_BOSHQA_post_izohlari_tushmaydi()
+    {
+        using var db = TestDb.Sqlite();
+        db.Context.IgMessages.AddRange(
+            Msg("c1", IgConst.ChannelComment, "post-1", "IELTS bormi?", "2026-08-23T10:00:00"),
+            Msg("c1", IgConst.ChannelComment, "post-2", "Manzilingiz?", "2026-08-23T10:01:00"));
+        await db.Context.SaveChangesAsync();
+
+        var history = await InstagramPipeline.LoadHistoryAsync(
+            db.Context, "c1", IgConst.ChannelComment, "post-2", CancellationToken.None);
+
+        var only = Assert.Single(history);
+        Assert.Equal("Manzilingiz?", only.Text);
+    }
+
+    /// <summary>
+    /// ⚠️ <c>MediaId</c> bo'sh bo'lsa (eski yozuv / Meta post id bermagan) post bo'yicha ajratib
+    /// bo'lmaydi — u holda hech bo'lmaganda KANAL bo'yicha filtrlanadi, ya'ni DM baribir
+    /// promptga tushmaydi. Zaxira yo'l ham OCHIQ kanal qoidasini buzmaydi.
+    /// </summary>
+    [Fact]
+    public async Task MediaId_bosh_bolsa_ham_DM_tushmaydi()
+    {
+        using var db = TestDb.Sqlite();
+        db.Context.IgMessages.AddRange(
+            Msg("c1", IgConst.ChannelDm, "", "Shaxsiy gap", "2026-08-23T10:00:00"),
+            Msg("c1", IgConst.ChannelComment, "", "Ochiq savol", "2026-08-23T10:01:00"));
+        await db.Context.SaveChangesAsync();
+
+        var history = await InstagramPipeline.LoadHistoryAsync(
+            db.Context, "c1", IgConst.ChannelComment, "", CancellationToken.None);
+
+        var only = Assert.Single(history);
+        Assert.Equal("Ochiq savol", only.Text);
+    }
+
+    /// <summary>Yopiq javob (private reply) — o'sha IZOHNING davomi, shuning uchun QOLADI.</summary>
+    [Fact]
+    public async Task Izoh_tarixida_yopiq_javob_QOLADI()
+    {
+        using var db = TestDb.Sqlite();
+        db.Context.IgMessages.AddRange(
+            Msg("c1", IgConst.ChannelComment, "post-1", "Narxi?", "2026-08-23T10:00:00"),
+            Msg("c1", IgConst.ChannelPrivateReply, "post-1", "DM'ga yozdik", "2026-08-23T10:00:30"));
+        await db.Context.SaveChangesAsync();
+
+        var history = await InstagramPipeline.LoadHistoryAsync(
+            db.Context, "c1", IgConst.ChannelComment, "post-1", CancellationToken.None);
+
+        Assert.Equal(2, history.Count);
+    }
+
+    /// <summary>
+    /// DM tomonida xulq O'ZGARMAYDI: shaxsiy yozishma bitta uzluksiz muloqot, izohlar ham
+    /// o'sha odamning tarixi — hammasi qoladi.
+    /// </summary>
+    [Fact]
+    public async Task DM_tarixi_avvalgidek_HAMMASINI_oladi()
+    {
+        using var db = TestDb.Sqlite();
+        db.Context.IgMessages.AddRange(
+            Msg("c1", IgConst.ChannelComment, "post-1", "Izoh", "2026-08-23T10:00:00"),
+            Msg("c1", IgConst.ChannelDm, "", "DM", "2026-08-23T10:01:00"));
+        await db.Context.SaveChangesAsync();
+
+        var history = await InstagramPipeline.LoadHistoryAsync(
+            db.Context, "c1", IgConst.ChannelDm, "", CancellationToken.None);
+
+        Assert.Equal(2, history.Count);
+    }
+
+    /// <summary>Tarix ESKIDAN YANGIGA tartiblanadi — prompt suhbatni shu ko'rinishda o'qiydi.</summary>
+    [Fact]
+    public async Task Tarix_eskisidan_yangisiga_tartiblanadi()
+    {
+        using var db = TestDb.Sqlite();
+        db.Context.IgMessages.AddRange(
+            Msg("c1", IgConst.ChannelComment, "post-1", "Ikkinchi", "2026-08-23T10:05:00"),
+            Msg("c1", IgConst.ChannelComment, "post-1", "Birinchi", "2026-08-23T10:00:00"));
+        await db.Context.SaveChangesAsync();
+
+        var history = await InstagramPipeline.LoadHistoryAsync(
+            db.Context, "c1", IgConst.ChannelComment, "post-1", CancellationToken.None);
+
+        Assert.Equal("Birinchi", history[0].Text);
+        Assert.Equal("Ikkinchi", history[1].Text);
+    }
+
     [Fact]
     public async Task Yoq_hodisa_uchun_yiqilmaydi()
     {

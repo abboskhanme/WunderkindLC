@@ -190,6 +190,15 @@ public static class IgConst
 
     /// <summary>AI'ga beriladigan suhbat tarixi (oxirgi N ta xabar).</summary>
     public const int DmHistoryLimit = 20;
+    /// <summary>
+    /// IZOH uchun tarix — o'sha post ostidagi oxirgi N ta yozishma
+    /// (<c>InstagramPipeline.LoadHistoryAsync</c>).
+    ///
+    /// <para>DM'nikidan (20) ATAYIN qisqa: post ostidagi yozishma bir-ikki qadamdan iborat
+    /// («savol → javob → rahmat»), uzun tarix esa modelni ostidagi izohdan chalg'itardi —
+    /// izoh yakka savol, uzluksiz muloqot emas.</para>
+    /// </summary>
+    public const int CommentHistoryLimit = 6;
     /// <summary>Post matni (caption) promptga shuncha belgigacha kiradi.</summary>
     public const int MediaCaptionLimit = 300;
     /// <summary>Bilim bazasi promptga shuncha belgigacha kiradi (token narxi cheksiz o'smasin).</summary>

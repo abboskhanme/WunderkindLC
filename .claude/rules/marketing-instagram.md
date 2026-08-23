@@ -181,6 +181,32 @@ konversiya allaqachon bor). Parallel `InstagramLead` jadvali ham **yaratilmaydi*
 | Telefonsiz qaynoq lid | baribir yoziladi: `FullName = "@username (Instagram)"` |
 | Har suhbat lid bo'lmaydi | `InstagramContract.ShouldCreateLead` = `IsHot || kontakt bor`. Salom-alik va spam CRM'ni ifloslantirmaydi |
 
+### 6.1. 🔴 TELEGRAM GURUHIGA KARTA — Instagram YAGONA ISTISNO edi
+
+Lid yaratilgach `LeadNotifier.NotifyNewLeadAsync` chaqiriladi (guruh + superadmin shaxsiy chati).
+Ilgari bu yerda FAQAT `SyncCardAsync` turardi, u esa o'z qoidasi bo'yicha **kartasi YO'Q lidga
+hech narsa yubormaydi** — ya'ni Instagram lidi CRM'da paydo bo'lar, Telegram guruhiga esa
+**umuman tushmasdi**. Qolgan barcha kanallar (lid formasi, daraja testi, reklama lidi §16, qo'lda
+kiritish) `NotifyNewLeadAsync` ni chaqiradi; nosozlik jimgina edi.
+
+| Holat | Nima yuboriladi |
+|---|---|
+| Suhbat lidga **BIRINCHI** marta bog'landi + lid YANGI | to'liq karta (guruh + superadmin) |
+| Suhbat lidga **BIRINCHI** marta bog'landi, lekin lid MAVJUD (masalan formadan kelgan odam endi Instagram'da yozdi) | mavjud karta tahrirlanadi + bitta qatorli signal |
+| O'sha suhbatning **keyingi** xabarlari | karta JIMGINA yangilanadi (`SyncCardAsync`) |
+
+⚠️ **Karta suhbat lidga BIRINCHI bog'langanda yuboriladi, har xabarda EMAS.** Sabab:
+`ShouldCreateLead` qaynoq suhbatda HAR xabarda rost bo'ladi (telefon allaqachon berilgan), ya'ni
+har «rahmat» ga ham guruhga signal ketardi va karta shovqinga aylanardi. Bayroq `UpsertAsync` dan
+**OLDIN** o'qiladi (`conv.LeadId` bo'shmi) — u chaqiruv ichida to'ldirib qo'yiladi.
+
+⚠️ Darvoza — `CenterMeta.InstagramNotifyTelegram` (reklama lidlaridagi bilan bir xil). Toggle
+izohi shu sababdan yangilangan: u endi faqat "admin ogohlantirishi" emas, guruhdagi lid kartasini
+ham boshqaradi.
+
+⚠️ Inbox'dagi **«Lidga aylantirish»** tugmasi (`POST conversations/{id}/create-lead`) AYNAN shu
+qoidadan o'tadi — operator qo'lda bosgani ham lidning tug'ilishi.
+
 ⚠️ Izoh va DM'da ID formatlari farq qilishi mumkin — lid dedup **faqat** `IgUserId` ga
 tayanmasin (telefon + `conv.LeadId` birga ishlaydi), aks holda bir mijoz uchun **ikki lid**
 paydo bo'ladi.
@@ -346,6 +372,40 @@ ko'ra operatorga signal berish yaxshiroq.
 | 15 | **Javob kechikishi navbatda kutgan vaqtni HISOBGA oladi** | aks holda ketma-ket siklda 10 hodisa × 5 soniya = bitta tsiklga 50+ soniya qo'shilardi |
 | 16 | Chiquvchi xabarga **`MediaId` yoziladi** | halqa avtomat o'chirgichi "shu post ostida nechta javob" ni AYNAN shu ustundan sanaydi |
 | 13 | Telegram bildirishnomasi | xatosi **jim yutiladi** (`LeadNotifier`/`BookSalesService` bilan bir xil siyosat) — bildirishnoma javobni buzmasin |
+
+### 11.1. 🔴 AI PROMPTI — «oxirgi xabar» va IZOH TARIXI
+
+**Muammo A — mavzuga yopishib qolish.** Model suhbatning BOSHIDAGI qiziqishni sotishda davom
+etardi: odam avval IELTS so'rab, keyin bolalar kursini so'rasa ham javob yana IELTS haqida
+chiqardi. Sabab tuzilmada: tarix promptning katta qismi, oxirgi xabar esa bitta qator, ustiga
+tizim ko'rsatmasi «qiziqqan odamni bog'lanishga olib kel» deydi. Yechim — **1-qoida**
+(«JAVOB — MIJOZNING OXIRGI XABARIGA, tarix FAQAT kontekst, mavzu o'zgargan bo'lsa eskisiga
+QAYTARMA») va `BuildContext` da oxirgi xabarning ochiq nomlanishi
+(`[JAVOB YOZILADIGAN XABAR …]`).
+
+**Muammo B — izohga DM tarixi berilardi.** `InstagramPipeline.LoadHistoryAsync` endi kanalga
+qarab ikki xil ishlaydi:
+
+| Kanal | Tarix |
+|---|---|
+| DM | butun suhbatning oxirgi `DmHistoryLimit` (20) xabari — avvalgidek |
+| **Izoh** | **FAQAT o'sha post ostidagi** `comment` + `private_reply` qatorlari, `CommentHistoryLimit` (6) ta |
+
+🔴 Ikki zarar bor edi: (1) boshqa post ostidagi eski savol yoki DM suhbati modelni ostidagi
+izohdan chalg'itardi; (2) **shaxsiy yozishma OMMAGA chiqardi** — javob ochiq izoh sifatida chop
+etiladi, promptdagi DM tarixi (telefon, to'lov haqidagi gap) javobga kirib qolsa uni post ostida
+hamma o'qirdi. Chegara **tuzilma darajasida**: DM qatorlari so'rovga umuman olinmaydi.
+
+⚠️ `MediaId` bo'sh bo'lsa (eski yozuv / Meta post id bermagan) post bo'yicha ajratib bo'lmaydi —
+u holda hech bo'lmaganda **KANAL** bo'yicha filtrlanadi. Bo'sh tarix zarar qilmaydi (post matni
+va bilim bazasi joyida), aralashgan tarix esa ikkala zararni ham qaytarardi.
+
+⚠️ Yopiq javob (`private_reply`) izoh tarixida **QOLADI** — u o'sha izohning davomi.
+
+⚠️ **Kalit so'z qoidalari (`IgAutoRules`) AI'dan OLDIN ishlaydi** va aniq faktlar (narx, manzil,
+jadval) uchun aynan shu yo'l tavsiya etiladi: `StopAi` bilan javob qat'iy bo'ladi. Lekin ular
+AI'ning O'RNINI bosa olmaydi — bir xil shablon takrorlansa Instagram uni spam deb belgilaydi
+(§10) va ro'yxatda yo'q savol javobsiz qoladi.
 
 **Xatolarga chidamlilik:** har bosqich alohida `try/catch`. Yordamchi tizim yiqilsa
 (dedup, tarix, lid, Telegram) — **asosiy vazifa, mijozga javob berish, baribir bajariladi**.

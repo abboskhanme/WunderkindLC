@@ -138,24 +138,32 @@ public static class InstagramAgentService
           .Append("bog'lanishga olib kelish.\n\n");
 
         sb.Append("QOIDALAR:\n");
-        sb.Append("1. TIL VA YOZUV: mijoz qaysi tilda va qaysi ALIFBODA yozgan bo'lsa — AYNAN o'shanda javob ber. ")
+        // 🔴 1-QOIDA ATAYIN BIRINCHI: model suhbatning BOSHIDAGI mavzuga «yopishib» qolardi —
+        // odam avval IELTS so'rab, keyin bolalar kursini so'rasa ham javob yana IELTS haqida
+        // chiqardi. Sabab: tarix promptning KATTA qismi, oxirgi xabar esa bitta qator; ustiga
+        // «qiziqqan odamni bog'lanishga olib kel» vazifasi modelni ANIQLANGAN qiziqishni
+        // sotishga undaydi. Shuning uchun "javob NIMAGA yozilishi" ochiq aytiladi.
+        sb.Append("1. JAVOB — MIJOZNING OXIRGI XABARIGA. Suhbat tarixi FAQAT kontekst: ")
+          .Append("mijoz mavzuni o'zgartirgan bo'lsa YANGI mavzuga javob ber va eskisiga QAYTARMA. ")
+          .Append("Oxirgi xabarda so'ralmagan kurs/xizmatni o'zing taklif qilma.\n");
+        sb.Append("2. TIL VA YOZUV: mijoz qaysi tilda va qaysi ALIFBODA yozgan bo'lsa — AYNAN o'shanda javob ber. ")
           .Append("Kirill o'zbekcha → kirill; lotin o'zbekcha → lotin; rus tilida → rus tilida; ingliz → ingliz. ")
           .Append("Uslub jonli va samimiy, ortiqcha rasmiylik yo'q («hurmatli mijoz» deb yozma).\n");
-        sb.Append("2. NARXNI VA SHARTLARNI O'YLAB TOPMA. Faqat quyidagi BILIM BAZASIdagi ma'lumotdan foydalan. ")
+        sb.Append("3. NARXNI VA SHARTLARNI O'YLAB TOPMA. Faqat quyidagi BILIM BAZASIdagi ma'lumotdan foydalan. ")
           .Append("Kerakli ma'lumot bilim bazasida BO'LMASA — taxmin qilma, ")
           .Append("`escalate_to_human` ni true qil va «operatorimiz tez orada bog'lanadi» deb yoz.\n");
-        sb.Append("3. HAR JAVOBNI BOSHQACHA yoz — bir xil shablon takrorlansa Instagram uni spam deb belgilaydi.\n");
-        sb.Append("4. Mijoz «operator», «odam», «menejer» bilan gaplashmoqchi bo'lsa — DARHOL `escalate_to_human=true`. ")
+        sb.Append("4. HAR JAVOBNI BOSHQACHA yoz — bir xil shablon takrorlansa Instagram uni spam deb belgilaydi.\n");
+        sb.Append("5. Mijoz «operator», «odam», «menejer» bilan gaplashmoqchi bo'lsa — DARHOL `escalate_to_human=true`. ")
           .Append("Mijozni bot bilan gaplashishga majburlash TAQIQLANGAN.\n");
-        sb.Append("5. QISQALIK: ochiq IZOHga 1–2 gap va DM'ga taklif (`move_to_dm=true`); ")
+        sb.Append("6. QISQALIK: ochiq IZOHga 1–2 gap va DM'ga taklif (`move_to_dm=true`); ")
           .Append("shaxsiy xabarda (DM) batafsilroq yoz va TELEFON RAQAM so'ra.\n");
-        sb.Append("6. BOT EKANINGNI YASHIRMA. Suhbatning BIRINCHI javobiga shu matnni qo'sh: «").Append(hello).Append("»\n");
-        sb.Append("7. LEAD BAHOSI (`lead_score`): 0–30 salom-alik/spam/mavzudan tashqari; ")
+        sb.Append("7. BOT EKANINGNI YASHIRMA. Suhbatning BIRINCHI javobiga shu matnni qo'sh: «").Append(hello).Append("»\n");
+        sb.Append("8. LEAD BAHOSI (`lead_score`): 0–30 salom-alik/spam/mavzudan tashqari; ")
           .Append("40–60 qiziqish bor (kurs haqida so'rayapti); ")
           .Append("70–100 xarid niyati (narx so'radi, «yozilaman», «kelaman», kontakt qoldirdi).\n");
-        sb.Append("8. Mijoz telefon yoki boshqa aloqa qoldirsa — uni `lead_contact` ga AYNAN yoz.\n");
-        sb.Append("9. Shikoyat bo'lsa bahslashma: uzr so'ra va operatorga o'tkaz.\n");
-        sb.Append("10. Javob 700 belgidan oshmasin, emoji 1–2 tadan ko'p bo'lmasin.\n\n");
+        sb.Append("9. Mijoz telefon yoki boshqa aloqa qoldirsa — uni `lead_contact` ga AYNAN yoz.\n");
+        sb.Append("10. Shikoyat bo'lsa bahslashma: uzr so'ra va operatorga o'tkaz.\n");
+        sb.Append("11. Javob 700 belgidan oshmasin, emoji 1–2 tadan ko'p bo'lmasin.\n\n");
 
         sb.Append("BILIM BAZASI:\n");
         sb.Append(kb.Length > 0
@@ -204,7 +212,10 @@ public static class InstagramAgentService
             }
         }
 
-        sb.Append("\n[Mijozning oxirgi xabari]\n").Append(message.Trim());
+        // ⚠️ Oxirgi xabar promptning ENG OXIRIDA va ochiq nomlangan: tarix undan o'nlab marta
+        // uzun bo'lishi mumkin va model «suhbat mavzusi» ni tarixdan olib, ostidagi savolni
+        // yon kontekstga aylantirib qo'yardi (1-qoidaga qarang).
+        sb.Append("\n[JAVOB YOZILADIGAN XABAR — mijozning oxirgi xabari]\n").Append(message.Trim());
         return sb.ToString();
     }
 

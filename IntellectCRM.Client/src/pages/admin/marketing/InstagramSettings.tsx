@@ -608,7 +608,7 @@ export function InstagramSettings() {
             />
             <Toggle
               name="Telegram'ga xabar berish"
-              desc="Qaynoq lid paydo bo'lsa yoki operator kerak bo'lsa adminlarga Telegram xabari ketadi."
+              desc="Yangi lid Telegram guruhiga karta bo'lib tushadi; qaynoq lid yoki operator kerak bo'lgan holatda adminlarga xabar ketadi."
               on={form.instagramNotifyTelegram}
               disabled={!canEdit}
               onToggle={() => patch({ instagramNotifyTelegram: !form.instagramNotifyTelegram })}

@@ -738,6 +738,8 @@ public partial class InstagramController(
                 ? $"Instagram suhbatidan qo'lda yaratildi (@{c.Username})"
                 : payload.Note!.Trim());
 
+        // ⚠️ Upsert `c.LeadId` ni to'ldirib qo'yadi — "birinchi bog'lanish" undan OLDIN o'qiladi.
+        var firstLink = string.IsNullOrWhiteSpace(c.LeadId);
         var (leadId, isNew) = await InstagramLeadBridge.UpsertAsync(db, c, output, source, ct);
         if (string.IsNullOrEmpty(leadId))
             return BadRequest(new { message = "Lid yaratilmadi — keyinroq qaytadan urinib ko'ring." });
@@ -748,10 +750,24 @@ public partial class InstagramController(
                 : $"Instagram suhbati mavjud lidga bog'landi (@{c.Username})");
         await db.SaveChangesAsync(ct);
 
-        // Guruhdagi lid kartasi JORIY holatga keltiriladi: mavjud lidga bog'langanda `RepeatCount`,
-        // izoh va hodisalar o'zgardi — kartani yangilamasak u eski ma'lumot bilan qolib ketardi.
+        // Telegram kartasi. Suhbat lidga BIRINCHI marta bog'lanayotgan bo'lsa — guruhga YANGI
+        // LID sifatida yuboriladi (AI oqimidagi §9.1 bilan AYNAN bir xil qoida: operator
+        // «Lidga aylantirish» ni bosgani ham lidning tug'ilishi). Aks holda — mavjud karta
+        // JIMGINA yangilanadi: `RepeatCount`, izoh va hodisalar o'zgargan, karta esa eski
+        // ma'lumot bilan qolib ketardi.
         // SaveChanges'dan KEYIN chaqiriladi (karta bazadagi yozilgan holatdan quriladi).
-        await LeadNotifier.SyncCardAsync(db, telegram, leadId, ct);
+        if (firstLink && (meta?.InstagramNotifyTelegram ?? true))
+        {
+            var fresh = await db.Leads.FirstOrDefaultAsync(l => l.Id == leadId, ct);
+            if (fresh is not null)
+                await LeadNotifier.NotifyNewLeadAsync(
+                    db, telegram, fresh, isNewLead: isNew,
+                    createdBy: InstagramLeadBridge.ActorName, ct: ct, logger: logger);
+        }
+        else
+        {
+            await LeadNotifier.SyncCardAsync(db, telegram, leadId, ct, logger);
+        }
 
         // Yaratilgan/bog'langan LID qaytadi — suhbat sarlavhasidagi "Lidga bog'langan" bloki
         // shu javobdan chiziladi (suhbat detalidagi `lead` bilan bir xil shakl).
