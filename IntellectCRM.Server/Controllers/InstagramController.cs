@@ -904,10 +904,7 @@ public partial class InstagramController(
     /// <summary>Bilim bazasi bo'laklari (AI FAQAT shulardan javob beradi).</summary>
     [HttpGet("knowledge")]
     public async Task<ActionResult<List<IgKnowledgeDto>>> Knowledge(CancellationToken ct) =>
-        await db.IgKnowledges.AsNoTracking()
-            .OrderBy(k => k.Order).ThenBy(k => k.Title)
-            .Select(k => new IgKnowledgeDto(k.Id, k.Title, k.Content, k.Order, k.IsActive, k.UpdatedAt, k.UpdatedBy))
-            .ToListAsync(ct);
+        await KnowledgeRowsAsync(ct);
 
     /// <summary>
     /// Bilim bazasini BUTUNLIGICHA saqlash (bulk). Sahifa bir nechta bo'lakni birdaniga
@@ -944,6 +941,10 @@ public partial class InstagramController(
             row.IsActive = item.IsActive;
             row.UpdatedAt = now;
             row.UpdatedBy = Actor;
+            // ⚠️ `SourceFile` ATAYIN tegilmaydi: u payloadda yo'q va mavjud qator bazadan
+            // o'qilgani uchun o'z qiymatida qoladi. Aks holda bilim bazasini bir marta
+            // saqlash Word'dan kelgan bo'laklarning manbasini o'chirib yuborardi va
+            // «shu fayldan kelganlarini o'chirish» amali ishlamay qolardi.
         }
 
         audit.Record(AuditEntity, "knowledge", "update",
@@ -1603,8 +1604,11 @@ public record IgRulePayload(
     string Title, string Keywords, string? Channel, string ReplyText,
     bool StopAi, bool IsActive, int Order);
 
+/// <param name="SourceFile">Qaysi Word hujjatidan kelgani; qo'lda yozilgan bo'lakda BO'SH
+/// (<c>InstagramController.Knowledge.cs</c>).</param>
 public record IgKnowledgeDto(
-    string Id, string Title, string Content, int Order, bool IsActive, string UpdatedAt, string UpdatedBy);
+    string Id, string Title, string Content, int Order, bool IsActive, string UpdatedAt, string UpdatedBy,
+    string SourceFile);
 
 public record IgKnowledgeItemPayload(string? Id, string Title, string? Content, bool IsActive);
 

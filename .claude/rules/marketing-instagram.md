@@ -1727,10 +1727,109 @@ operator yuborgani), niyat, kanal va **XODIM** ismi.
 ya'ni "faqat matnlar" qoidasi **bilvosita** buzilardi. Bu ICHKI SIFAT ma'lumoti; "kim bilan
 yozishilgani" savolining joyi — Inbox.
 
+### 21.10. 🔴 WORD HUJJATIDAN YUKLASH — bilim bazasini to'ldirish
+
+Migratsiya: `AddIgKnowledgeSourceFile`. Parser — `Application/Services/DocxKnowledge.cs`
+(deterministik funksiyalar, `DocxKnowledgeTests`), endpointlar —
+`InstagramController.Knowledge.cs`, sahifa — `InstagramKnowledge.tsx`.
+
+**Muammo.** Markazning ma'lumotlari (kurslar, narxlar, jadval, shartlar) Word hujjatida tayyor
+turadi. Uni bilim bazasiga tushirishning yagona yo'li har bo'limni QO'LDA nusxalash edi —
+40 betlik hujjat uchun bir necha soatlik ish. Amalda bilim bazasi yarim to'ldirilgan qolar va
+AI «bu haqda ma'lumotim yo'q» deb javob berardi.
+
+| Verb + route | Nima | Ruxsat |
+|---|---|---|
+| `POST knowledge/import` | `.docx` yuklash → bo'laklar QO'SHILADI | `marketing.knowledge` |
+| `DELETE knowledge/source?file=` | Bitta hujjatdan kelgan BARCHA bo'laklarni o'chirish | `marketing.knowledge` |
+| `GET knowledge/status` | Vektorlar tayyorligi + yuklangan hujjatlar ro'yxati | klass (`marketing`) |
+
+#### 🔴 QO'SHILADI, ALMASHTIRMAYDI
+
+Markaz hujjatlarni bir marta emas, vaqti-vaqti bilan yuklaydi (avval «Kurslar», keyin
+«Narxlar», keyin «Ichki tartib»). Har yuklash bazani tozalab yuborsa **ikkinchi hujjat
+birinchisini YO'Q QILARDI** va buni hech kim darhol sezmasdi — AI shunchaki eski savollarga
+javob bera olmay qolardi. Qo'lda yozilgan bo'laklar ham hech qachon tegilmaydi; yangilari
+ro'yxatning OXIRIGA (`Order` davomi bilan) qo'shiladi.
+
+`IgKnowledge.SourceFile` — qaysi hujjatdan kelgani. Busiz «narxlar hujjatining eski versiyasini
+olib tashlash» degan oddiy ish qo'lda, bo'lakma-bo'lak bajarilardi (amalda esa bajarilmasdi va
+bilim bazasida ESKI NARX qolib ketardi). ⚠️ Bulk `PUT /knowledge` bu ustunga TEGMAYDI — payloadda
+yo'q va qator bazadan o'qiladi; aks holda bir marta saqlash manbani o'chirib yuborardi.
+
+#### Bo'laklarga ajratish qoidasi (`DocxKnowledge.Split` — sof funksiya)
+
+| Holat | Natija |
+|---|---|
+| Sarlavhali hujjat | Har sarlavha yangi bo'lak; nomi — **SARLAVHALAR IZI** («Kurslar › IELTS › Narxlar») |
+| Sarlavhasiz hujjat | `PlainChunkChars` (2000) hajmidagi bo'laklar, nomi fayldan («Narxlar — 1») |
+| Bo'lim `MaxChunkChars` (4000) dan uzun | Paragraf chegarasida bo'linadi, nomiga «(N-qism)» |
+| Sarlavhadan OLDINGI matn | Yo'qolmaydi — fayl nomi bilan atalgan birinchi bo'lakka tushadi |
+| Matnsiz sarlavha | Bo'lak yaratmaydi, lekin IZDA qoladi |
+
+⚠️ **Nega umuman bo'laklarga bo'linadi:** prompt `KnowledgeLimit` (12000) da KESILADI, RAG esa
+`TopN` (6) ta BO'LAKNI tanlaydi. 40 betlik hujjat bitta qator bo'lib yozilsa u yo qolgan
+ma'lumotni siqib chiqarardi, yo o'rtasidan kesilardi — ikkalasida ham AI «ma'lumot yo'q» derdi.
+
+⚠️ **Sarlavha izi kerak, chunki sarlavha ham vektorga kiradi** (`ContentHash`): «Narxlar» degan
+yolg'iz so'z qaysi kursnikini bildirmasdi — bitta hujjatda o'nlab «Narxlar» bo'limi bo'lishi
+mumkin. Bir darajadagi keyingi sarlavha izning o'sha bo'g'inini ALMASHTIRADI.
+
+⚠️ **JADVALLAR ham olinadi** (`katak | katak` ko'rinishida) — narx ro'yxati va dars jadvali
+deyarli har doim jadvalda. `Body.Elements()` ishlatiladi, `Descendants<Paragraph>()` EMAS:
+ikkinchisi jadval katakchalarini tartibdan chiqarib aralashtirardi.
+
+⚠️ **Tashlanish mezoni — MA'NO, uzunlik EMAS** (`HasMeaning`: kamida bitta harf yoki raqam).
+Dastlab «10 belgidan qisqa bo'lak tashlansin» qoidasi qo'yilgan va u haqiqiy ma'lumotni yeb
+qo'yardi: «Sinov darsi → **Bepul**» (5 belgi) — bilim bazasidagi eng qimmat qatorlardan.
+
+⚠️ **QALIN matn sarlavha DEB HISOBLANMAYDI** — hujjatlarda qalin matn eng ko'p urg'u uchun
+ishlatiladi va u bilan ajratish hujjatni o'nlab mayda bo'lakka parchalab tashlardi. Uslub nomi
+esa Word'ning TIL versiyasiga qarab o'zgaradi, shuning uchun `head`/`title`/`заголов`/`sarlavha`
+bo'lagi qidiriladi va daraja nomining oxiridagi raqamdan olinadi.
+
+⚠️ Chegara `MaxChunks` (200) dan oshgani **JIM TASHLANMAYDI** — `Skipped` da qaytadi va ekranda
+ochiq yoziladi.
+
+#### Fayl tekshiruvi va saqlash
+
+- **Uchta mustaqil tekshiruv:** kengaytma · `Content-Type` · fayl boshidagi **ZIP imzosi**
+  (`PK\x03\x04` — `.docx` aslida ZIP arxiv). Eski `.doc` shu yerda ushlanadi va sabab
+  foydalanuvchiga OCHIQ aytiladi («Save As → .docx»), jimgina bo'sh natija qaytarilmaydi.
+- Chegara **10 MB**.
+- ⚠️ **Fayl DISKKA YOZILMAYDI** — bizga matn kerak, faylning o'zi emas. Shu sababdan
+  `/uploads` qoidalari (darvoza, zaxira, tozalash) bu yerga umuman tegishli emas.
+- Auditga hujjat MATNI yozilmaydi — faqat nomi va bo'laklar soni.
+
+#### ⚠️ VEKTORLAR DARHOL HISOBLANMAYDI
+
+Buni fon xizmati bajaradi (`BatchPerTick` = 5, har 60 soniyada). 200 ta bo'lak uchun 200 ta
+Gemini so'rovini so'rovning O'ZI ichida bajarish yuklashni bir necha daqiqaga osib qo'yardi
+(va brauzer uzardi). Shu oraliqda modul ESKI YO'L bilan ishlaydi (butun bilim bazasi,
+`KnowledgeLimit` gacha) — javob beradi, faqat tanlov aniqligi pastroq (§21.2 zaxira yo'li).
+
+🔴 Jarayon **EKRANDA KO'RINADI** (`GET knowledge/status` → «AI qidiruvi tayyorlanmoqda: 40 / 180»).
+Busiz admin «AI hujjatni ko'rmayapti» deb o'ylab, hujjatni qayta-qayta yuklardi va bilim bazasi
+takror bo'laklar bilan to'lib ketardi. `RagReady` AYNAN `IgKnowledgeRag.CanUseRag` dan
+hisoblanadi — ekrandagi holat modulning haqiqiy qarori bilan bir xil bo'lsin.
+
+#### UI qoidalari
+
+- ⚠️ **Saqlanmagan o'zgarish bo'lsa yuklash TO'XTATILADI:** server javobidagi ro'yxat ekrandagini
+  butunlay almashtiradi, ya'ni admin qo'lda yozgan matni jimgina yo'qolardi.
+- ⚠️ Yuklash **bulk «Saqlash» dan MUSTAQIL** — serverda darhol saqlanadi. «Saqlanmagan
+  o'zgarish» holatida ushlab turilsa, sahifa yopilganda 40 betlik hujjat yo'qolardi.
+- ⚠️ `<input type="file">` ning `value` si har tanlovdan keyin tozalanadi — aks holda AYNI
+  faylni qayta yuklash (hujjat tuzatilgandan keyin) `onChange` ni umuman ishga tushirmasdi.
+- «Yuklangan hujjatlar» panelida har fayl uchun bo'laklar soni va **o'chirish** tugmasi;
+  ostida ochiq izoh: hujjat yangilansa avval eskisini o'chirish kerak, aks holda ikkala versiya
+  ham qolib, AI eski narxni aytishi mumkin.
+
 ### 21.9. Testlar
 
 | Test sinfi | Nimani qulflaydi |
 |---|---|
 | `IgKnowledgeRagTests` (44) | Vektor JSON'iga yozib-o'qish va **o'nlik ajratgich HAR DOIM nuqta**, buzuq/ulkan JSON istisno otmasligi; kosinus (ayni vektor → 1, perpendikulyar → 0, **turli o'lcham va nol vektorda YIQILMASLIK**); tanlov tartibi, chegaradan o'tmagan bo'lak, **teng ballda BARQAROR tartib**; **kichik bazada va bitta bo'lak embedding qilinmaganda RAG ISHLATILMASLIGI**; `Compose` eski formatni saqlashi va chegaradan oshmasligi; `NeedsEmbedding` to'rt sababi va **sarlavhaning hashga kirishi**; `QueryText` da xabar oldinda turishi |
+| `DocxKnowledgeTests` (25) | Sarlavha bo'yicha ajratish va **IZ** (ichma-ich / bir darajali almashuv / yuqoriga qaytish), sarlavhadan oldingi matn yo'qolmasligi, matnsiz sarlavha, sarlavhasiz hujjatning bo'linishi, uzun bo'limning «(N-qism)» ga bo'linishi, **qisqa lekin MA'NOLI javob QOLISHI**, ma'nosiz qoldiq tashlanishi, uzun izning qisqarishi, fayl nomidan bo'lak nomi (Windows yo'li, boshqaruv belgilari), **buzuq fayl istisno otmasligi** |
 | `IgQualityLogTests` | Bosh harf/bo'shliq va **turli apostroflar** farq emasligi, Levenshtein masofasi, ayni matn → 100%, bitta tomon bo'sh → 0; **operatorning o'z xabari va kiruvchi xabar taklif EMASLIGI**, eski taklif va buzuq sanali xabar olinmasligi |
 | `InstagramCaptionTests` (24) | §18.10 jadvalida |

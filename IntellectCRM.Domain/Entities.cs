@@ -4114,6 +4114,20 @@ public class IgKnowledge
     public string UpdatedAt { get; set; } = string.Empty;
     public string UpdatedBy { get; set; } = string.Empty;
 
+    /// <summary>
+    /// Bo'lak QAYSI Word faylidan kelgani (asl fayl nomi). Qo'lda yozilgan bo'lakda BO'SH.
+    ///
+    /// <para><b>Nega kerak:</b> bilim bazasiga vaqti-vaqti bilan yangi hujjat yuklanadi va
+    /// bir necha yuz bo'lak yig'iladi. Manba yozilmasa «narxlar hujjatining eski versiyasini
+    /// olib tashlash» degan oddiy ish qo'lda, bo'lakma-bo'lak bajarilardi — amalda esa
+    /// bajarilmasdi va bilim bazasida ESKI NARX qolib ketardi (AI eski narxni aytardi).
+    /// Endi bitta amal: «shu fayldan kelganlarini o'chirish».</para>
+    ///
+    /// <para>⚠️ Faqat NOM saqlanadi — faylning O'ZI hech qayerga yozilmaydi (matn allaqachon
+    /// <see cref="Content"/> da; nusxasini saqlash zaxira hajmini bekorga oshirardi).</para>
+    /// </summary>
+    public string SourceFile { get; set; } = string.Empty;
+
     // ── E6.5 — RAG (semantik qidiruv) ──
     // Bilim bazasi o'sganda BUTUNLIGICHA promptga sig'maydi (`IgConst.KnowledgeLimit`) va oxiri
     // KESILADI — ya'ni aynan kerakli bo'lak tushib qolib, AI "bilmayman" deyishi mumkin edi.

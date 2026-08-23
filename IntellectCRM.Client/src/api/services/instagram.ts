@@ -310,6 +310,40 @@ export interface IgKnowledge {
   isActive: boolean
   updatedAt?: string
   updatedBy?: string
+  /** Qaysi Word hujjatidan kelgani; qo'lda yozilgan bo'lakda bo'sh. */
+  sourceFile?: string
+}
+
+/** Yuklangan bitta hujjat: nomi, bo'laklari va matn hajmi. */
+export interface IgKnowledgeSource {
+  fileName: string
+  chunks: number
+  chars: number
+}
+
+/**
+ * Bilim bazasi holati — «AI qidiruvi tayyormi».
+ *
+ * ⚠️ `ragReady` backendda AYNAN `IgKnowledgeRag.CanUseRag` dan hisoblanadi: ekrandagi holat
+ * modulning haqiqiy qarori bilan bir xil bo'lsin (ikki joyda ayri hisoblansa ular vaqt o'tib
+ * bir-biridan uzoqlashardi).
+ */
+export interface IgKnowledgeStatus {
+  total: number
+  active: number
+  embedded: number
+  ragReady: boolean
+  geminiConfigured: boolean
+  sources: IgKnowledgeSource[]
+}
+
+/** Word yuklash / fayl bo'yicha o'chirish natijasi + YANGILANGAN ro'yxat. */
+export interface IgKnowledgeImportResult {
+  fileName: string
+  added: number
+  /** Importda — chegaradan oshib olinmagan bo'laklar; o'chirishda — o'chirilganlar soni. */
+  skipped: number
+  items: IgKnowledge[]
 }
 
 /** Sinov: AI javobi ko'rsatiladi, mijozga JONLI yuborilmaydi. */
@@ -500,6 +534,37 @@ export async function deleteIgRule(id: string): Promise<void> {
 
 export async function getIgKnowledge(): Promise<IgKnowledge[]> {
   const { data } = await api.get<IgKnowledge[]>('/admin/instagram/knowledge')
+  return data
+}
+
+/**
+ * WORD HUJJATIDAN YUKLASH — bo'laklar bilim bazasiga QO'SHILADI (almashtirmaydi).
+ *
+ * ⚠️ Markaz hujjatlarni vaqti-vaqti bilan yuklaydi (avval «Kurslar», keyin «Narxlar»):
+ * har yuklash bazani tozalasa ikkinchi hujjat birinchisini yo'q qilardi.
+ *
+ * Javobda YANGILANGAN to'liq ro'yxat qaytadi — klient qo'shimcha `GET` qilmaydi.
+ */
+export async function importIgKnowledgeDocx(file: File): Promise<IgKnowledgeImportResult> {
+  const form = new FormData()
+  form.append('file', file)
+  const { data } = await api.post<IgKnowledgeImportResult>('/admin/instagram/knowledge/import', form, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  })
+  return data
+}
+
+/** Bitta hujjatdan kelgan BARCHA bo'laklarni o'chirish (eski versiyani almashtirish uchun). */
+export async function deleteIgKnowledgeSource(fileName: string): Promise<IgKnowledgeImportResult> {
+  const { data } = await api.delete<IgKnowledgeImportResult>('/admin/instagram/knowledge/source', {
+    params: { file: fileName },
+  })
+  return data
+}
+
+/** «AI qidiruvi tayyormi» + yuklangan hujjatlar ro'yxati. */
+export async function getIgKnowledgeStatus(): Promise<IgKnowledgeStatus> {
+  const { data } = await api.get<IgKnowledgeStatus>('/admin/instagram/knowledge/status')
   return data
 }
 
