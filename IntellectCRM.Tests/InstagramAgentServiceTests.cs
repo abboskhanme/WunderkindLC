@@ -301,4 +301,65 @@ public class InstagramAgentServiceTests
         Assert.True(kb.IndexOf("A matni", StringComparison.Ordinal) <
                     kb.IndexOf("B matni", StringComparison.Ordinal));
     }
+
+    // ===================== ISM VA RAQAM SO'RASH (7-qoida) =====================
+    //
+    // 🔴 Bu bo'lim ATAYIN qo'shildi: modulning ASOSIY maqsadi — qiziqqan odamni ismi va
+    // telefoni bilan CRM'ga olib kelish, lekin prompt matnining shu qismi hech qanday test
+    // bilan qulflanmagan edi. Ya'ni uni olib tashlasa bironta test qizarmasdi va agent
+    // jimgina "shunchaki savolga javob beradigan" botga aylanib qolardi.
+
+    /// <summary>Prompt mijozdan ISM va RAQAMni so'rashni ochiq talab qiladi.</summary>
+    [Fact]
+    public void Prompt_ism_va_raqam_sorashni_talab_qiladi()
+    {
+        var prompt = InstagramAgentService.BuildSystemPrompt("", "Intellect", "");
+
+        Assert.Contains("ISM VA RAQAM SO'RA", prompt);
+        // Tayyor jumla — model o'zi o'ylab topmasin, so'rash bir xil va tushunarli bo'lsin.
+        Assert.Contains("Ismingiz va telefon raqamingizni qoldiring", prompt);
+    }
+
+    /// <summary>⚠️ IKKALASI BIRGA: faqat raqam bo'lsa operator kimga qo'ng'iroq qilayotganini
+    /// bilmaydi, faqat ism bo'lsa umuman bog'lana olmaydi.</summary>
+    [Fact]
+    public void Prompt_ism_va_raqamni_BIRGA_sorashni_talab_qiladi()
+    {
+        var prompt = InstagramAgentService.BuildSystemPrompt("", "Intellect", "");
+        Assert.Contains("BIRGA so'ra", prompt);
+    }
+
+    /// <summary>Allaqachon bergan mijozdan QAYTA so'ralmaydi — takror so'rash bezor qiladi
+    /// va suhbatni tugatib yuboradi.</summary>
+    [Fact]
+    public void Prompt_kontakt_bergan_mijozdan_qayta_soramaslikni_aytadi()
+    {
+        var prompt = InstagramAgentService.BuildSystemPrompt("", "Intellect", "");
+        Assert.Contains("QAYTA SO'RAMA", prompt);
+    }
+
+    /// <summary>
+    /// 🔴 OCHIQ IZOHda raqam SO'RALMAYDI: u post ostida hamma ko'radigan joyga tushardi
+    /// (mijoz uchun xavf), Instagram esa bunday izohlarni spam deb belgilaydi.
+    /// Izohda vazifa — DM'ga taklif qilish.
+    /// </summary>
+    [Fact]
+    public void Prompt_ochiq_izohda_raqam_soramaslikni_talab_qiladi()
+    {
+        var prompt = InstagramAgentService.BuildSystemPrompt("", "Intellect", "");
+        Assert.Contains("OCHIQ IZOHda raqam SO'RAMA", prompt);
+    }
+
+    /// <summary>Qoidalar raqamlanishi UZLUKSIZ (1..12) — tushib qolgan yoki takrorlangan raqam
+    /// modelni chalg'itadi va yangi qoida qo'shilganda jimgina buziladi.</summary>
+    [Fact]
+    public void Prompt_qoidalari_uzluksiz_raqamlangan()
+    {
+        var prompt = InstagramAgentService.BuildSystemPrompt("", "Intellect", "");
+        var rules = prompt[prompt.IndexOf("QOIDALAR:", StringComparison.Ordinal)..];
+
+        for (var i = 1; i <= 12; i++)
+            Assert.Contains($"\n{i}. ", rules);
+        Assert.DoesNotContain("\n13. ", rules);
+    }
 }

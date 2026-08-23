@@ -412,7 +412,8 @@ kalit = yangi billing). Model — `CenterMeta.InstagramAiModel`, bo'sh bo'lsa lo
 | **Spamga qarshi xilma-xillik** | bir xil shablon takrorlansa Instagram uni **spam** deb belgilaydi |
 | **Operatorga o'tish** | "operator"/"odam" so'ralsa darhol eskalatsiya; majburlash **taqiqlangan** (platforma talabi) |
 | **Bot oshkorligi** | birinchi xabarga `CenterMeta.InstagramGreeting` qo'shiladi (Meta talabi) |
-| Uzunlik | ochiq izohga 1–2 gap; DM'da batafsilroq + telefon so'rash |
+| Uzunlik | ochiq izohga 1–2 gap (+ `move_to_dm`); DM'da batafsilroq |
+| **Ism va raqam so'rash** | alohida 7-qoida — §11.2 |
 
 ⚠️ Enum qiymatlari **bir joyda** — `IgConst.Intents` / `IgConst.Languages`. Manba loyihada
 mock `price_inquiry`, sxemada `price_question` edi — mos kelmagani sezilmay qolgan.
@@ -483,6 +484,37 @@ AI'ning O'RNINI bosa olmaydi — bir xil shablon takrorlansa Instagram uni spam 
 **Xatolarga chidamlilik:** har bosqich alohida `try/catch`. Yordamchi tizim yiqilsa
 (dedup, tarix, lid, Telegram) — **asosiy vazifa, mijozga javob berish, baribir bajariladi**.
 Yagona istisno: **AI javobi** yiqilsa oqim to'xtaydi (yuboradigan narsa yo'q).
+
+### 11.2. 🔴 «ISMINGIZ VA RAQAMINGIZNI QOLDIRING» — 7-qoida
+
+Modulning ASOSIY maqsadi — qiziqqan odamni **ismi va telefoni bilan** CRM'ga olib kelish.
+Ilgari bu 6-qoidaning oxiridagi uchta so'z edi («va TELEFON RAQAM so'ra»): model uni ko'pincha
+e'tiborsiz qoldirar, savolga javob berib suhbatni tugatardi — **odam ketardi, CRM'da esa hech
+narsa qolmasdi**. Endi u alohida qoida, TAYYOR JUMLA va uch xil holat uchun ko'rsatma bilan.
+
+| Holat | Agent nima qiladi |
+|---|---|
+| Qiziqish bor, kontakt YO'Q | javob OXIRIDA: «Ismingiz va telefon raqamingizni qoldiring — operatorimiz bog'lanib, hammasini batafsil tushuntiradi.» |
+| Ikkalasi ALLAQACHON berilgan | **qayta so'ramaydi** — rahmat aytadi va operator bog'lanishini tasdiqlaydi |
+| Faqat BITTASI berilgan | yetmaganini so'raydi («Ismingizni ham…» / «…raqamingizni ham») |
+| Kanal — **ochiq izoh** | raqam **SO'RAMAYDI**, faqat DM'ga taklif qiladi |
+
+⚠️ **IKKALASI BIRGA so'raladi.** Faqat raqam bo'lsa operator kimga qo'ng'iroq qilayotganini
+bilmaydi (qo'ng'iroq notanish bo'ladi), faqat ism bo'lsa umuman bog'lana olmaydi.
+
+⚠️ **OCHIQ IZOHda raqam so'ralmaydi** — u post ostida hamma ko'radigan joyga tushardi (mijoz
+uchun xavf), Instagram esa bunday izohlarni spam deb belgilaydi. Izohda vazifa — DM'ga taklif.
+
+⚠️ **QAYTA SO'RAMASLIK** ham qoidaning bir qismi: raqamini bergan odamdan yana so'rash bezor
+qiladi va suhbatni tugatib yuboradi. Model buni suhbat TARIXIDAN aniqlaydi.
+
+⚠️ **Prompt matni endi TESTLAR BILAN QULFLANGAN** (`InstagramAgentServiceTests`): so'rash
+jumlasi, «BIRGA so'ra», «QAYTA SO'RAMA», «OCHIQ IZOHda raqam SO'RAMA» va qoidalar
+raqamlanishining uzluksizligi (1..12). Ilgari bu qismni olib tashlasa **bironta test
+qizarmasdi** — agent jimgina «shunchaki savolga javob beradigan» botga aylanib qolardi.
+
+⚠️ So'rash — **qabul qilishning o'rnini bosmaydi**: raqam kelganda lid baribir AI'siz yoziladi
+(§6.3). Ikkisi mustaqil qatlam.
 
 ## 12. NIMA ATAYIN QILINMAGAN
 

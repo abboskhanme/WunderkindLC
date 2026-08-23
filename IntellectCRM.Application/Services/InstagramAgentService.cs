@@ -156,16 +156,36 @@ public static class InstagramAgentService
         sb.Append("5. Mijoz «operator», «odam», «menejer» bilan gaplashmoqchi bo'lsa — DARHOL `escalate_to_human=true`. ")
           .Append("Mijozni bot bilan gaplashishga majburlash TAQIQLANGAN.\n");
         sb.Append("6. QISQALIK: ochiq IZOHga 1–2 gap va DM'ga taklif (`move_to_dm=true`); ")
-          .Append("shaxsiy xabarda (DM) batafsilroq yoz va TELEFON RAQAM so'ra.\n");
-        sb.Append("7. BOT EKANINGNI YASHIRMA. Suhbatning BIRINCHI javobiga shu matnni qo'sh: «").Append(hello).Append("»\n");
-        sb.Append("8. LEAD BAHOSI (`lead_score`): 0–30 salom-alik/spam/mavzudan tashqari; ")
+          .Append("shaxsiy xabarda (DM) batafsilroq yoz.\n");
+        // 🔴 7-QOIDA — MODULNING ASOSIY MAQSADI. Ilgari bu 6-qoidaning oxiridagi uchta so'z edi
+        // («va TELEFON RAQAM so'ra»): model uni ko'pincha e'tiborsiz qoldirar, savolga javob
+        // berib suhbatni tugatardi. Odam ketardi, CRM'da esa hech narsa qolmasdi. Endi u alohida
+        // qoida, TAYYOR JUMLA bilan va uch xil holat uchun aniq ko'rsatma bilan.
+        sb.Append("7. ISM VA RAQAM SO'RA — bu sening ASOSIY vazifang. Mijoz kursga qiziqsa ")
+          .Append("(narx, jadval, «yozilaman», «qanday qo'shilaman») va suhbat tarixida hali ")
+          .Append("kontakt bermagan bo'lsa — javobning OXIRIDA aniq so'ra: ")
+          .Append("«Ismingiz va telefon raqamingizni qoldiring — operatorimiz bog'lanib, ")
+          .Append("hammasini batafsil tushuntiradi.» ")
+          // ⚠️ IKKALASI BIRGA: faqat raqam bo'lsa operator kimga qo'ng'iroq qilayotganini
+          // bilmaydi, faqat ism bo'lsa bog'lana olmaydi.
+          .Append("Ism va raqamni BIRGA so'ra — bittasi yetmaydi.\n");
+        sb.Append("   • Mijoz ism va raqamni ALLAQACHON bergan bo'lsa (tarixda bor) — QAYTA SO'RAMA: ")
+          .Append("rahmat ayt va operator bog'lanishini tasdiqla.\n");
+        sb.Append("   • Faqat BITTASI berilgan bo'lsa — yetmaganini so'ra ")
+          .Append("(«Rahmat! Ismingizni ham yozib qoldiring» / «… telefon raqamingizni ham»).\n");
+        // ⚠️ Ochiq izohda raqam SO'RALMAYDI: u post ostida hamma ko'radigan joyga tushardi
+        // (mijoz uchun xavf), Instagram esa bunday izohlarni spam deb belgilaydi.
+        sb.Append("   • OCHIQ IZOHda raqam SO'RAMA — u hamma ko'radigan joyga tushib qolardi. ")
+          .Append("Izohda faqat DM'ga taklif qil, so'rashni DM'da davom ettir.\n");
+        sb.Append("8. BOT EKANINGNI YASHIRMA. Suhbatning BIRINCHI javobiga shu matnni qo'sh: «").Append(hello).Append("»\n");
+        sb.Append("9. LEAD BAHOSI (`lead_score`): 0–30 salom-alik/spam/mavzudan tashqari; ")
           .Append("40–60 qiziqish bor (kurs haqida so'rayapti); ")
           .Append("70–100 xarid niyati (narx so'radi, «yozilaman», «kelaman», kontakt qoldirdi).\n");
-        sb.Append("9. Mijoz telefon yoki boshqa aloqa qoldirsa — uni `lead_contact` ga AYNAN yoz. ")
+        sb.Append("10. Mijoz telefon yoki boshqa aloqa qoldirsa — uni `lead_contact` ga AYNAN yoz. ")
           .Append("Ismini aytsa (masalan «Ali Valiyev 90 123 45 67») — `lead_name` ga FAQAT ismni yoz, ")
           .Append("raqamsiz. Raqam berilgan xabarda `lead_score` 70 dan kam bo'lmasin.\n");
-        sb.Append("10. Shikoyat bo'lsa bahslashma: uzr so'ra va operatorga o'tkaz.\n");
-        sb.Append("11. Javob 700 belgidan oshmasin, emoji 1–2 tadan ko'p bo'lmasin.\n\n");
+        sb.Append("11. Shikoyat bo'lsa bahslashma: uzr so'ra va operatorga o'tkaz.\n");
+        sb.Append("12. Javob 700 belgidan oshmasin, emoji 1–2 tadan ko'p bo'lmasin.\n\n");
 
         sb.Append("BILIM BAZASI:\n");
         sb.Append(kb.Length > 0
