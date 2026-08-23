@@ -117,7 +117,15 @@ public class InstagramWebhookController(
         var header = Request.Headers["X-Hub-Signature-256"].ToString();
         if (!InstagramSignature.Verify(raw, header, AppSecrets.InstagramAppSecret))
         {
-            logger.LogWarning("[instagram] webhook imzosi mos kelmadi — so'rov rad etildi");
+            // ⚠️ SABAB nomlanadi: «mos kelmadi» ning olti xil sababi bor va ular butunlay
+            // boshqa ishni talab qiladi (`InstagramSignature.DescribeFailure`). Yalang matn
+            // bilan har safar tekshiruv noldan boshlanardi.
+            logger.LogWarning(
+                "[instagram] webhook imzosi mos kelmadi — so'rov rad etildi. Sabab: {Reason} "
+                + "(body: {Bytes} bayt, UA: {UserAgent})",
+                InstagramSignature.DescribeFailure(
+                    raw, header, AppSecrets.InstagramAppSecret, AppSecrets.MetaAppSecret),
+                raw.Length, ShortUa(Request.Headers.UserAgent.ToString()));
             return StatusCode(StatusCodes.Status403Forbidden);
         }
 
@@ -212,7 +220,12 @@ public class InstagramWebhookController(
         var header = Request.Headers["X-Hub-Signature-256"].ToString();
         if (!InstagramSignature.Verify(raw, header, AppSecrets.MetaAppSecret))
         {
-            logger.LogWarning("[leadgen] webhook imzosi mos kelmadi — so'rov rad etildi");
+            logger.LogWarning(
+                "[leadgen] webhook imzosi mos kelmadi — so'rov rad etildi. Sabab: {Reason} "
+                + "(body: {Bytes} bayt, UA: {UserAgent})",
+                InstagramSignature.DescribeFailure(
+                    raw, header, AppSecrets.MetaAppSecret, AppSecrets.InstagramAppSecret),
+                raw.Length, ShortUa(Request.Headers.UserAgent.ToString()));
             return StatusCode(StatusCodes.Status403Forbidden);
         }
 
@@ -305,6 +318,18 @@ public class InstagramWebhookController(
         {
             // Log yozish webhook qabul qilishni HECH QACHON buzmaydi.
         }
+    }
+
+    /// <summary>
+    /// Log uchun User-Agent: qisqartiriladi va yangi qator olib tashlanadi.
+    /// <para>⚠️ Qiymatni TASHQARIDAGI yuboruvchi belgilaydi — uzun yoki ko'p qatorli UA log
+    /// faylini to'ldirib, soxta qatorlar "yozib" qo'yishi mumkin edi (log injection).</para>
+    /// </summary>
+    private static string ShortUa(string? ua)
+    {
+        var s = (ua ?? "").Replace('\n', ' ').Replace('\r', ' ').Trim();
+        if (s.Length == 0) return "yo'q";
+        return s.Length <= 80 ? s : s[..80] + "…";
     }
 
     /// <summary>

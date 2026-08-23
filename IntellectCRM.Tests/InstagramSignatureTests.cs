@@ -27,6 +27,88 @@ public class InstagramSignatureTests
         return "sha256=" + Convert.ToHexString(hmac.ComputeHash(body)).ToLowerInvariant();
     }
 
+    // ===================== 0) DescribeFailure — SABAB nomlanadi =====================
+    //
+    // ⚠️ Bu funksiya XAVFSIZLIK QARORINI o'zgartirmaydi (`Verify` baribir false) — u faqat
+    // logga sabab yozadi. Testlar shuni qulflaydi: sabablar ARALASHIB ketmasin, chunki
+    // ularning har biri butunlay boshqa ishni talab qiladi.
+
+    [Fact]
+    public void Sabab_sarlavha_yoq_bolsa_Metadan_kelmagani_aytiladi()
+    {
+        var reason = InstagramSignature.DescribeFailure(Body(), "", Secret);
+        Assert.Contains("sarlavhasi YO'Q", reason);
+    }
+
+    [Fact]
+    public void Sabab_kalit_sozlanmagani_boshqa_hammasidan_USTUN()
+    {
+        // Kalit bo'sh bo'lsa sabab AYNAN shu bo'lishi kerak: bu `.env`/compose ishi va
+        // "imzo noto'g'ri" deb ko'rsatilsa Meta konsolida bekorga qidirilardi.
+        var body = Body();
+        var reason = InstagramSignature.DescribeFailure(body, Sign(body, Secret), "");
+        Assert.Contains("App Secret sozlanmagan", reason);
+    }
+
+    [Fact]
+    public void Sabab_uzunlik_notogri_bolsa_aytiladi()
+    {
+        var reason = InstagramSignature.DescribeFailure(Body(), "sha256=abcdef", Secret);
+        Assert.Contains("uzunligi noto'g'ri", reason);
+    }
+
+    [Fact]
+    public void Sabab_boshqa_kalit_bilan_imzolangani_aytiladi()
+    {
+        var body = Body();
+        var reason = InstagramSignature.DescribeFailure(body, Sign(body, "begona-secret"), Secret);
+        Assert.Contains("BOSHQA App Secret", reason);
+    }
+
+    [Fact]
+    public void Sabab_alt_kalit_mos_kelsa_YONALTIRISH_xatosi_deb_aytiladi()
+    {
+        // Page hodisasi Instagram manziliga kelgan holat: struktura to'g'ri, HMAC esa
+        // ikkinchi kalitniki. Bu — Meta konsolidagi yo'naltirish xatosi, kalit xatosi EMAS.
+        var body = Body();
+        var reason = InstagramSignature.DescribeFailure(
+            body, Sign(body, "meta-page-secret"), Secret, "meta-page-secret");
+        Assert.Contains("/leadgen", reason);
+    }
+
+    [Fact]
+    public void Alt_kalit_ASOSIY_kalit_bilan_bir_xil_bolsa_yonaltirish_xatosi_DEYILMAYDI()
+    {
+        // ⚠️ `MetaAppSecret` bo'sh bo'lsa Instagram kalitiga QAYTADI (AppSecrets) — ya'ni
+        // ikkala kalit bir xil bo'ladi. O'shanda "Page hodisasi" degan xulosa YOLG'ON bo'lardi.
+        var body = Body();
+        var reason = InstagramSignature.DescribeFailure(
+            body, Sign(body, "begona-secret"), Secret, Secret);
+        Assert.DoesNotContain("/leadgen", reason);
+        Assert.Contains("BOSHQA App Secret", reason);
+    }
+
+    [Fact]
+    public void DescribeFailure_qarorni_ozgartirmaydi_Verify_baribir_false()
+    {
+        var body = Body();
+        var header = Sign(body, "meta-page-secret");
+        Assert.Contains("/leadgen", InstagramSignature.DescribeFailure(body, header, Secret, "meta-page-secret"));
+        // ⚠️ ENG MUHIMI: sabab aniqlangani so'rovni QABUL QILISHGA olib kelmaydi.
+        Assert.False(InstagramSignature.Verify(body, header, Secret));
+    }
+
+    [Fact]
+    public void Sabab_matnida_KALIT_ham_IMZO_ham_bolmaydi()
+    {
+        var body = Body();
+        var header = Sign(body, "begona-secret");
+        var reason = InstagramSignature.DescribeFailure(body, header, Secret, "meta-page-secret");
+        Assert.DoesNotContain(Secret, reason);
+        Assert.DoesNotContain("meta-page-secret", reason);
+        Assert.DoesNotContain(header, reason);
+    }
+
     // ===================== 1) Verify — to'g'ri imzo =====================
 
     [Fact]

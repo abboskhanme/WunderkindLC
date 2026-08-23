@@ -58,6 +58,32 @@ yuborilardi ("lokal test qulay bo'lsin") — prodda bu istalgan odam bizning nom
 hodisa yubora oladigan **himoyasiz endpoint** degani. `InstagramSignatureTests` shu xulqni
 test bilan qulflaydi — testni "qulaylik uchun" yumshatmang.
 
+### 2.1. «IMZO MOS KELMADI» — SABAB LOGDA NOMLANADI
+
+Rad etish sababi `InstagramSignature.DescribeFailure` (sof funksiya, testlangan) orqali logga
+yoziladi. Sabab: bu xatoning kamida olti xil manbai bor va ular **butunlay boshqa** ishni
+talab qiladi.
+
+| Logdagi sabab | Nima qilish kerak |
+|---|---|
+| `sarlavhasi YO'Q — so'rov Meta'dan kelmagan` | **Hech narsa.** Manzil ochiq, skanerlar POST qiladi — 403 to'g'ri javob |
+| `App Secret sozlanmagan — fail-closed` | `.env` **va** `docker-compose.yml` `environment:` (§7 dagi tuzoq) |
+| `imzo uzunligi noto'g'ri` / `hex formatda emas` | Buzuq/soxta so'rov — Meta bunday yubormaydi |
+| `imzo BOSHQA App Secret bilan qilingan` | Meta konsolida **boshqa ilova** shu manzilga obuna. Ortiqcha obunani o'chiring yoki `INSTAGRAM_APP_SECRET` ni yuboruvchi ilovaniki bilan almashtiring |
+| `imzo META (Page) kaliti bilan MOS KELDI` | Page hodisasi `/webhook` ga kelyapti — konsolda uni `/leadgen` ga yo'naltiring |
+
+⚠️ **Sabab aniqlanishi QABUL QILISH degani EMAS.** `DescribeFailure` ikkinchi kalitni faqat
+*tashxis* uchun solishtiradi; `Verify` baribir `false` qaytaradi va so'rov 403 bo'ladi.
+`InstagramSignatureTests` shuni alohida qulflaydi — "sabab topildi, demak o'tkazamiz" degan
+"tuzatish" kelajakda kiritilmasin.
+
+⚠️ **Ikkala kalit BIR XIL bo'lishi mumkin:** `META_APP_SECRET` bo'sh bo'lsa `MetaAppSecret`
+Instagram kalitiga qaytadi. O'shanda "Page hodisasi" degan xulosa yolg'on bo'lardi — shuning
+uchun tekshiruv kalitlar farq qilgandagina bajariladi.
+
+⚠️ Logga **kalit ham, imzo qiymati ham, body ham** yozilmaydi (§7). User-Agent yoziladi, lekin
+80 belgiga qisqartirilib, yangi qatorlar olib tashlanadi (log injection).
+
 ⚠️ Body **buferlanmasa** imzo HECH QACHON mos kelmaydi: framework deserializatsiya qilib
 bo'lgan obyektni qayta seriyalasak bo'sh joylar va kalit tartibi o'zgaradi. Bu — eng ko'p
 uchraydigan xato.
