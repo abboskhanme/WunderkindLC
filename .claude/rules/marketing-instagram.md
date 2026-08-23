@@ -141,6 +141,16 @@ TAQIQLANADI.** Manba loyihada DM kaliti runtime hash'dan qurilar — restartdan 
 o'zgarardi va dedup **umuman ishlamasdi**. `InstagramEventParserTests` bir xil payload
 ikki marta parse qilinganda bir xil kalit chiqishini tekshiradi.
 
+⚠️ **Dedup IKKI QATLAM** (`InstagramWebhookController.EnqueueAsync` — ikkala marshrut ham
+shundan o'tadi): avval "kalit bazada bormi" deb qaraladi, so'ng INSERT qilinadi. Tez yo'l
+KAFOLAT EMAS — bir vaqtda kelgan ikki bir xil webhook undan ikkalasi ham o'tishi mumkin va
+takrorni FAQAT unikal indeks to'xtatadi.
+
+🔴 Tez yo'l **LOG uchun** qo'shilgan (2026-08-23, prodda o'lchangan): rad etilgan INSERT uchun
+EF Core `fail:` darajasida **~60 qatorlik stack trace** yozadi va Meta'ning bir nechta takroriy
+hodisasi logni butunlay to'ldirib, haqiqiy ogohlantirishlarni ko'rinmas qilgan edi. EF log
+darajasini tushirish bilan yechib BO'LMAYDI — haqiqiy baza xatolari ham yashirinardi.
+
 `IgWebhookEvent.EventKey` — **UNIKAL indeks**: bir vaqtda kelgan ikki bir xil webhook ham
 to'g'ri filtrlanadi (ikkinchisi `skipped`).
 

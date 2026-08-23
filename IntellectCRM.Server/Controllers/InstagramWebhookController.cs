@@ -139,24 +139,7 @@ public class InstagramWebhookController(
             .Select(a => a.IgUserId)
             .FirstOrDefaultAsync(ct) ?? "";
 
-        db.IgWebhookEvents.Add(new IgWebhookEvent
-        {
-            EventKey = BuildEventKey(json, raw, ourIgUserId),
-            RawJson = json,
-            Status = IgConst.EvPending,
-            ReceivedAt = AppClock.Iso(),
-        });
-
-        try
-        {
-            await db.SaveChangesAsync(ct);
-        }
-        catch (DbUpdateException)
-        {
-            // Takroriy hodisa (unikal indeks) — normal holat, xato EMAS.
-            db.ChangeTracker.Clear();
-            logger.LogInformation("[instagram] takroriy webhook hodisasi o'tkazib yuborildi");
-        }
+        await EnqueueAsync(json, raw, ourIgUserId, "instagram", ct);
 
         // (4) DARHOL 200 — qolgan ishni fon xizmati bajaradi.
         return Ok();
@@ -232,9 +215,45 @@ public class InstagramWebhookController(
         var json = Encoding.UTF8.GetString(raw);
         LogPolicyEnforcement(json, "leadgen");
 
+        await EnqueueAsync(json, raw, ourIgUserId: "", source: "leadgen", ct: ct);
+
+        return Ok();
+    }
+
+    /// <summary>
+    /// Hodisani navbatga yozadi — <b>ikkala</b> webhook marshruti uchun yagona yo'l.
+    ///
+    /// <para><b>Dedup IKKI QATLAM:</b> (1) tez yo'l — kalit bazada bormi; (2) KAFOLAT —
+    /// <c>EventKey</c> ustunidagi UNIKAL indeks.</para>
+    ///
+    /// <para>⚠️ (1) ni (2) ning O'RNIGA tushunmang: bir vaqtda kelgan ikki bir xil webhook
+    /// tekshiruvdan ikkalasi ham o'tib ketishi mumkin va takrorni FAQAT indeks to'xtatadi.
+    /// Tez yo'l XATTI-HARAKAT uchun emas, <b>LOG</b> uchun qo'shilgan: Meta takroriy
+    /// yuborishlarni soniya/daqiqa oralig'ida qiladi, ya'ni ular deyarli har doim shu yerda
+    /// to'xtaydi.</para>
+    ///
+    /// <para>🔴 <b>Nega bu muhim (2026-08-23, prodda o'lchangan):</b> rad etilgan INSERT uchun
+    /// EF Core <c>fail:</c> darajasida <b>~60 qatorlik stack trace</b> yozadi (
+    /// <c>Database.Command[20102]</c> + <c>Update[10000]</c>). Meta'ning bir nechta test
+    /// hodisasi shu tarzda logni to'ldirib yuborgan va haqiqiy ogohlantirishlar ko'rinmay
+    /// qolgan edi. Buni EF log darajasini tushirish bilan yechib BO'LMAYDI — u holda
+    /// haqiqiy baza xatolari ham yashirinardi; shuning uchun yechim istisnoning O'ZINI
+    /// kamaytirish.</para>
+    /// </summary>
+    private async Task EnqueueAsync(
+        string json, byte[] raw, string ourIgUserId, string source, CancellationToken ct)
+    {
+        var key = BuildEventKey(json, raw, ourIgUserId);
+
+        if (await db.IgWebhookEvents.AsNoTracking().AnyAsync(e => e.EventKey == key, ct))
+        {
+            logger.LogInformation("[{Source}] takroriy webhook hodisasi o'tkazib yuborildi", source);
+            return;
+        }
+
         db.IgWebhookEvents.Add(new IgWebhookEvent
         {
-            EventKey = BuildEventKey(json, raw, ourIgUserId: ""),
+            EventKey = key,
             RawJson = json,
             Status = IgConst.EvPending,
             ReceivedAt = AppClock.Iso(),
@@ -246,11 +265,12 @@ public class InstagramWebhookController(
         }
         catch (DbUpdateException)
         {
+            // POYGA: tekshiruvdan keyin, INSERT dan oldin boshqa nusxa yozib ulgurdi.
+            // Kafolat shu yerda — unikal indeks. Normal holat, xato EMAS.
             db.ChangeTracker.Clear();
-            logger.LogInformation("[leadgen] takroriy webhook hodisasi o'tkazib yuborildi");
+            logger.LogInformation(
+                "[{Source}] takroriy webhook hodisasi (poyga) o'tkazib yuborildi", source);
         }
-
-        return Ok();
     }
 
     /// <summary>
