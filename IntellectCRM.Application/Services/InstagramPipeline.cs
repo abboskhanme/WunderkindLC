@@ -299,6 +299,84 @@ public sealed class InstagramPipeline(IServiceProvider services, ILogger<Instagr
 
         // ── 3) DARVOZALAR: shu yerdan keyin tashqi so'rov ketishi mumkin ──
         if (meta is null || !meta.InstagramEnabled) { await db.SaveChangesAsync(ct); return; }
+
+        // ── 3.1) 🔴 TELEFON RAQAMI → LID (AI'ga ham, javob oqimiga ham BOG'LIQ EMAS) ──
+        //
+        // Mijoz raqamini (yoki «Ali Valiyev 90 123 45 67» kabi ism + raqamini) yozdi — bu markaz
+        // uchun TAYYOR lid. Ilgari lid FAQAT §9 da, faqat AI `lead_contact` ni to'ldirgan
+        // taqdirda yozilardi. Ya'ni raqam quyidagi hollarda JIMGINA yo'qolardi:
+        //
+        //   • operator suhbatni o'z qo'liga olgan (`BotMayReply` false) — eng ko'p uchraydigani:
+        //     odam aynan operator bilan gaplashib turib raqamini beradi;
+        //   • DM yoki izoh avtojavobi sozlamalardan o'chirilgan;
+        //   • kalit so'z qoidasi `StopAi` bilan ishlagan — AI umuman chaqirilmaydi;
+        //   • AI yiqilgan, kunlik/halqa chegarasi urilgan, token yo'q, 24 soatlik oyna yopiq;
+        //   • AI ishladi, lekin `lead_contact` ni to'ldirmadi (model xatosi).
+        //
+        // Bularning HAMMASI javob berish haqida, LID haqida emas — shuning uchun tekshiruv
+        // darvozalardan OLDIN turadi va faqat «modul yoqilganmi» gatega bo'ysunadi.
+        //
+        // ⚠️ Manba — mijoz YOZGAN matn (`inc.Text`), `storedText` EMAS: story/ulashilgan post
+        // konteksti ichida ham raqamlar bor (media id, url) va ular telefon deb olinishi mumkin.
+        var inboundPhone = InstagramContract.ExtractPhone(inc.Text);
+        var phoneLeadId = "";
+        var phoneLeadGuessedName = false;
+
+        // ⚠️ Karta o'zgaruvchilari SHU YERDA e'lon qilinadi (ilgari §9 da edi): telefon yo'li
+        // ham, AI yo'li ham bitta kartani boshqaradi — §9.1 ga qarang.
+        var cardLeadId = "";
+        var cardIsNewLead = false;
+        var firstLink = false;
+
+        if (inboundPhone.Length > 0)
+        {
+            try
+            {
+                // Ism — AI'siz, ehtiyotkor taxmin (`ExtractLeadName`). Topilmasa lid baribir
+                // yoziladi, nomi «username (Instagram)» bo'ladi va AI kelganda aniqlashadi.
+                var guessedName = InstagramContract.ExtractLeadName(inc.Text);
+                var firstPhoneLink = string.IsNullOrWhiteSpace(conv.LeadId);
+                var phoneSource = string.IsNullOrWhiteSpace(meta.InstagramLeadSource) ? "Instagram" : meta.InstagramLeadSource;
+
+                var (pid, pIsNew) = await InstagramLeadBridge.UpsertAsync(
+                    db, conv,
+                    InstagramContract.PhoneOnlyOutput(inboundPhone, guessedName, conv.Language),
+                    phoneSource, ct);
+
+                // Kontakt qoldirgan odam ta'rifga ko'ra qaynoq — Inbox'da ham shunday ko'rinsin.
+                conv.LeadScore = Math.Max(conv.LeadScore, IgConst.HotLeadScore);
+                phoneLeadId = pid;
+                phoneLeadGuessedName = guessedName.Length > 0;
+
+                // 🔴 DARHOL saqlanadi: pastdagi darvozalardan biri `return` qilsa ham lid QOLADI.
+                await db.SaveChangesAsync(ct);
+
+                // Telegram kartasi shu yerda yuboriladi — §9.1 ga yetib bormaydigan yo'llar bor.
+                // Keyin AI xulosasi qo'shilsa karta JOYIDA tahrirlanadi (`SyncCardAsync`).
+                if (firstPhoneLink && meta.InstagramNotifyTelegram)
+                {
+                    var phoneLead = await db.Leads.FirstOrDefaultAsync(l => l.Id == pid, ct);
+                    if (phoneLead is not null)
+                        await LeadNotifier.NotifyNewLeadAsync(
+                            db, telegram, phoneLead, isNewLead: pIsNew,
+                            createdBy: InstagramLeadBridge.ActorName, ct: ct, logger: logger);
+                }
+                else
+                {
+                    await LeadNotifier.SyncCardAsync(db, telegram, pid, ct, logger);
+                }
+
+                logger.LogInformation(
+                    "Instagram: xabarda telefon topildi — lid {State} ({LeadId})",
+                    pIsNew ? "yaratildi" : "yangilandi", pid);
+            }
+            catch (Exception ex)
+            {
+                // ⚠️ Jim yiqilmaydi: raqam berilgan, ya'ni bu YO'QOTILGAN mijoz bo'lishi mumkin.
+                logger.LogError(ex, "Instagram: telefon bo'yicha lid yozib bo'lmadi ({Conv})", conv.Id);
+                Escalate(conv, "Mijoz telefon qoldirdi, lekin lid yozilmadi — operator qo'lda kiritsin");
+            }
+        }
         if (channel == IgConst.ChannelComment && !meta.InstagramAutoReplyComments) { await db.SaveChangesAsync(ct); return; }
         if (channel == IgConst.ChannelDm && !meta.InstagramAutoReplyDm) { await db.SaveChangesAsync(ct); return; }
         if (!InstagramContract.BotMayReply(conv, now)) { await db.SaveChangesAsync(ct); return; }
@@ -479,18 +557,32 @@ public sealed class InstagramPipeline(IServiceProvider services, ILogger<Instagr
         }
 
         // ── 9) LID (faqat qiziqish belgisi bo'lsa — salom-alik CRM'ni ifloslantirmaydi) ──
-        // Karta sinxronizatsiyasi uchun lid id SaveChanges'dan KEYIN ham kerak — shu sababdan
-        // o'zgaruvchi try blokidan tashqarida e'lon qilinadi.
-        var cardLeadId = "";
-        var cardIsNewLead = false;
-        var firstLink = false;
+        // ⚠️ `cardLeadId` / `cardIsNewLead` / `firstLink` §3.1 da e'lon qilingan: telefon yo'li
+        // ham, AI yo'li ham AYNI kartani boshqaradi.
         if (output is not null)
         {
             conv.Language = output.Language;
             conv.Intent = output.Intent;
             conv.LeadScore = Math.Max(conv.LeadScore, InstagramContract.ClampScore(output.LeadScore));
 
-            if (InstagramContract.ShouldCreateLead(output))
+            if (phoneLeadId.Length > 0)
+            {
+                // §3.1 lidni ALLAQACHON yozdi. Qayta `UpsertAsync` qilinmaydi: u `RepeatCount++`
+                // qiladi va hodisa yozadi — bitta xabar uchun takror ×2 bo'lib ko'rinardi.
+                // O'rniga AI bilgan narsa (ism, qiziqish, xulosa) mavjud lidga QO'SHILADI.
+                try
+                {
+                    await InstagramLeadBridge.EnrichAsync(db, phoneLeadId, output, phoneLeadGuessedName, ct);
+                    // Karta §9.1 da JOYIDA yangilanadi (yangi xabar yuborilmaydi — u ketib bo'lgan).
+                    cardLeadId = phoneLeadId;
+                    firstLink = false;
+                }
+                catch (Exception ex)
+                {
+                    logger.LogWarning(ex, "Instagram: lidni AI xulosasi bilan boyitib bo'lmadi ({Lead})", phoneLeadId);
+                }
+            }
+            else if (InstagramContract.ShouldCreateLead(output))
             {
                 try
                 {

@@ -161,7 +161,9 @@ public static class InstagramAgentService
         sb.Append("8. LEAD BAHOSI (`lead_score`): 0–30 salom-alik/spam/mavzudan tashqari; ")
           .Append("40–60 qiziqish bor (kurs haqida so'rayapti); ")
           .Append("70–100 xarid niyati (narx so'radi, «yozilaman», «kelaman», kontakt qoldirdi).\n");
-        sb.Append("9. Mijoz telefon yoki boshqa aloqa qoldirsa — uni `lead_contact` ga AYNAN yoz.\n");
+        sb.Append("9. Mijoz telefon yoki boshqa aloqa qoldirsa — uni `lead_contact` ga AYNAN yoz. ")
+          .Append("Ismini aytsa (masalan «Ali Valiyev 90 123 45 67») — `lead_name` ga FAQAT ismni yoz, ")
+          .Append("raqamsiz. Raqam berilgan xabarda `lead_score` 70 dan kam bo'lmasin.\n");
         sb.Append("10. Shikoyat bo'lsa bahslashma: uzr so'ra va operatorga o'tkaz.\n");
         sb.Append("11. Javob 700 belgidan oshmasin, emoji 1–2 tadan ko'p bo'lmasin.\n\n");
 

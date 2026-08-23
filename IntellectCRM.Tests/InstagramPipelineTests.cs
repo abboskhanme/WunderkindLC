@@ -729,4 +729,108 @@ public class InstagramPipelineTests
 
         await pipeline.ProcessAsync("yoq-id", CancellationToken.None);   // istisno OTILMAYDI
     }
+
+    // ===================== TELEFON RAQAMI → LID (AI'siz) =====================
+    //
+    // Qoida: mijoz raqamini bersa u LIDGA tushadi — javob berilish-berilmasligidan QAT'I NAZAR.
+    // (`.claude/rules/marketing-instagram.md` §6.3)
+
+    /// <summary>
+    /// 🔴 ASOSIY HOLAT: DM avtojavobi O'CHIQ. Bot mijozga hech narsa yozmaydi, lekin raqam
+    /// baribir lidga tushadi — ilgari bu yerda lid UMUMAN yozilmasdi.
+    /// </summary>
+    [Fact]
+    public async Task Avtojavob_ochiq_bolsa_ham_telefon_lidga_tushadi()
+    {
+        using var db = TestDb.Sqlite();
+        db.Context.CenterMeta.Add(Meta(dm: false));
+        db.Context.IgAccounts.Add(Account());
+        var ev = Event(DmJson(text: "Ali Valiyev 90 123 45 67"));
+        db.Context.IgWebhookEvents.Add(ev);
+        await db.Context.SaveChangesAsync();
+
+        var handler = new RecordingHandler();
+        await RunAsync(db, ev, handler);
+
+        Assert.Empty(Sends(handler));                       // mijozga javob KETMAYDI
+        var lead = Assert.Single(db.Context.Leads);
+        Assert.Equal(PhoneUtil.Normalize("998901234567"), lead.Phone);
+        Assert.Equal("Ali Valiyev", lead.FullName);         // ism matndan ajratildi
+        var conv = Assert.Single(db.Context.IgConversations);
+        Assert.Equal(lead.Id, conv.LeadId);                 // suhbat lidga BOG'LANDI
+        Assert.True(conv.LeadScore >= IgConst.HotLeadScore);
+    }
+
+    /// <summary>Ism topilmasa lid baribir yoziladi — raqam eng qimmatli ma'lumot.</summary>
+    [Fact]
+    public async Task Ismsiz_raqam_ham_lid_ochadi()
+    {
+        using var db = TestDb.Sqlite();
+        db.Context.CenterMeta.Add(Meta(dm: false));
+        db.Context.IgAccounts.Add(Account());
+        var ev = Event(DmJson(text: "901234567"));
+        db.Context.IgWebhookEvents.Add(ev);
+        await db.Context.SaveChangesAsync();
+
+        await RunAsync(db, ev, new RecordingHandler());
+
+        var lead = Assert.Single(db.Context.Leads);
+        Assert.Equal(PhoneUtil.Normalize("998901234567"), lead.Phone);
+        Assert.Contains("Instagram", lead.FullName);        // «username (Instagram)» zaxira nomi
+    }
+
+    /// <summary>Raqamsiz oddiy savol lid OCHMAYDI — CRM salom-alik bilan to'lib ketmasin.</summary>
+    [Fact]
+    public async Task Raqamsiz_xabar_lid_ochmaydi()
+    {
+        using var db = TestDb.Sqlite();
+        db.Context.CenterMeta.Add(Meta(dm: false));
+        db.Context.IgAccounts.Add(Account());
+        var ev = Event(DmJson(text: "Assalomu alaykum, narxi qancha?"));
+        db.Context.IgWebhookEvents.Add(ev);
+        await db.Context.SaveChangesAsync();
+
+        await RunAsync(db, ev, new RecordingHandler());
+
+        Assert.Empty(db.Context.Leads);
+    }
+
+    /// <summary>⚠️ Modul BUTUNLAY o'chiq bo'lsa lid ham yozilmaydi: master darvoza hamma
+    /// narsadan yuqori turadi (qoidalar §3).</summary>
+    [Fact]
+    public async Task Modul_ochiq_bolsa_telefon_ham_lid_ochmaydi()
+    {
+        using var db = TestDb.Sqlite();
+        db.Context.CenterMeta.Add(Meta(enabled: false));
+        db.Context.IgAccounts.Add(Account());
+        var ev = Event(DmJson(text: "901234567"));
+        db.Context.IgWebhookEvents.Add(ev);
+        await db.Context.SaveChangesAsync();
+
+        await RunAsync(db, ev, new RecordingHandler());
+
+        Assert.Empty(db.Context.Leads);
+    }
+
+    /// <summary>
+    /// Bir odam raqamini IKKI marta yozsa IKKINCHI lid ochilmaydi — navbat bir xil odam bilan
+    /// to'lib ketmasin (takror faqat `RepeatCount` da ko'rinadi).
+    /// </summary>
+    [Fact]
+    public async Task Ikkinchi_raqamli_xabar_yangi_lid_ochmaydi()
+    {
+        using var db = TestDb.Sqlite();
+        db.Context.CenterMeta.Add(Meta(dm: false));
+        db.Context.IgAccounts.Add(Account());
+        var first = Event(DmJson(text: "901234567", mid: "mid-a"));
+        var second = Event(DmJson(text: "Yana yozdim 901234567", mid: "mid-b"));
+        db.Context.IgWebhookEvents.AddRange(first, second);
+        await db.Context.SaveChangesAsync();
+
+        await RunAsync(db, first, new RecordingHandler());
+        await RunAsync(db, second, new RecordingHandler());
+
+        var lead = Assert.Single(db.Context.Leads);
+        Assert.Equal(1, lead.RepeatCount);
+    }
 }

@@ -634,6 +634,149 @@ public static class InstagramContract
         return "";
     }
 
+    /// <summary>
+    /// Xabar matnidan mijozning ISM-SHARIFINI ajratadi (ishonch past bo'lsa — <c>""</c>).
+    ///
+    /// <para>🔴 <b>NEGA KERAK:</b> «Ali Valiyev 90 123 45 67» deb yozgan odam lidga tushishi
+    /// kerak, LEKIN ismi bilan. AI odatda buni o'zi ajratadi — bu funksiya AI ishlamagan yoki
+    /// umuman chaqirilmagan yo'llar uchun (qoida <c>StopAi</c>, operator pauzasi, kunlik
+    /// chegara): u yerda lid baribir yoziladi.</para>
+    ///
+    /// <para><b>IKKI YO'L.</b> (1) OCHIQ BELGI — «ismim …», «F.I.Sh: …», «меня зовут …»:
+    /// belgidan keyingi 1–3 so'z olinadi. (2) BELGISIZ — telefon olib tashlangach qolgan
+    /// matnning O'ZI 2–3 so'zdan iborat bo'lsa.</para>
+    ///
+    /// <para>⚠️ (2) yo'lida <b>BOSH HARF TALAB QILINADI</b>. Ismini yozgan odam uni bosh harf
+    /// bilan yozadi («Ali Valiyev»), savol esa kichik harfda keladi («narxi qancha»,
+    /// «ingliz tili»). Busiz har savol ism bo'lib CRM'ga tushardi — bu tuzatishdan ko'ra
+    /// ko'proq zarar edi.</para>
+    ///
+    /// <para>⚠️ Apostrof (<c>'</c> <c>ʻ</c> <c>’</c> <c>`</c>) SO'ZNING BIR QISMI:
+    /// «G'ayrat», «Ulug'bek» ikkiga bo'linib, ikkala bo'lagi ham qisqa bo'lib rad etilardi.</para>
+    ///
+    /// <para>⚠️ Salomlashuv/savol so'zlari (<see cref="NameStopWords"/>) TASHLANADI, ya'ni
+    /// «Assalomu alaykum. Ali Valiyev 901234567» ham ishlaydi.</para>
+    /// </summary>
+    public static string ExtractLeadName(string? text)
+    {
+        var t = (text ?? "").Trim();
+        if (t.Length == 0) return "";
+
+        // (1) OCHIQ BELGI — bosh harf shart emas: odam ataylab ismini aytyapti.
+        foreach (var marker in NameMarkers)
+        {
+            var i = t.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
+            if (i < 0) continue;
+            // ⚠️ Belgidan keyingi qism GAP OXIRIGACHA olinadi: «ismim Ali, narxi qancha?» da
+            // «narxi qancha» ismga qo'shilib ketmasin.
+            var tail = t[(i + marker.Length)..];
+            var stop = tail.IndexOfAny(new[] { ',', '.', '!', '?', ';', '\n', '\r' });
+            if (stop >= 0) tail = tail[..stop];
+            var marked = NameFrom(tail, requireCapital: false);
+            if (marked.Length > 0) return marked;
+        }
+
+        // (2) BELGISIZ — telefon o'rniga bo'shliq qo'yiladi, qolgani ism bo'lishi mumkin.
+        var rest = new StringBuilder(t.Length);
+        foreach (var c in t) rest.Append(char.IsDigit(c) ? ' ' : c);
+        return NameFrom(rest.ToString(), requireCapital: true);
+    }
+
+    /// <summary>Matndan ism yasaydi: so'zlarga bo'ladi, shovqin so'zlarni tashlaydi va
+    /// 1–3 so'z qolgandagina qaytaradi.</summary>
+    private static string NameFrom(string text, bool requireCapital)
+    {
+        var words = new List<string>();
+        var w = new StringBuilder();
+
+        void End()
+        {
+            if (w.Length > 0)
+            {
+                words.Add(w.ToString());
+                w.Clear();
+            }
+        }
+
+        foreach (var c in text)
+        {
+            if (char.IsLetter(c) || IsNameApostrophe(c)) w.Append(c);
+            else End();
+        }
+        End();
+
+        var picked = new List<string>();
+        foreach (var word in words)
+        {
+            if (NameStopWords.Contains(word)) continue;
+            // Apostrofdan boshqa HARFLAR soni — «'» yolg'iz o'zi so'z bo'lib qolmasin.
+            var letters = 0;
+            foreach (var c in word) if (char.IsLetter(c)) letters++;
+            if (letters is < 2 or > 20) return "";
+            if (requireCapital && !char.IsUpper(word[0])) return "";
+            picked.Add(word);
+            if (picked.Count > 3) return "";   // 4 so'zdan ko'pi — ism emas, gap
+        }
+
+        // ⚠️ BELGISIZ yo'lda BITTA so'z qabul qilinmaydi: «Salom 901234567» dagi bir so'z
+        // ismmi yoki yo'qmi — bilib bo'lmaydi. Ochiq belgi bo'lsa bitta so'z ham yetadi.
+        var min = requireCapital ? 2 : 1;
+        if (picked.Count < min) return "";
+        return Trim(string.Join(" ", picked), 100);
+    }
+
+    private static bool IsNameApostrophe(char c) => c is '\'' or 'ʻ' or '’' or '`' or 'ʼ';
+
+    /// <summary>Ism OLDIDAN keladigan ochiq belgilar (registr farqsiz taqqoslanadi).</summary>
+    private static readonly string[] NameMarkers =
+    {
+        "ism sharifim", "ism-sharifim", "ism sharif", "ism-sharif", "ismi sharifi",
+        "f.i.sh", "fish", "fio", "ismim", "isimim", "familiyam",
+        "меня зовут", "моё имя", "мое имя", "имя",
+    };
+
+    /// <summary>Ism BO'LA OLMAYDIGAN so'zlar — salomlashuv, savol va xizmat so'zlari.
+    /// ⚠️ Ro'yxat ATAYIN qisqa: uzun ro'yxat haqiqiy ismni ham (masalan «Nodir») tashlab
+    /// yuborardi. Asosiy filtr — bosh harf talabi.</summary>
+    private static readonly HashSet<string> NameStopWords = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "salom", "assalom", "assalomu", "alaykum", "aleykum", "xayrli", "kun", "tong", "kech",
+        "rahmat", "iltimos", "telefon", "raqam", "raqamim", "raqami", "nomer", "nomerim",
+        "men", "meni", "mening", "ism", "ismim", "familiya", "familiyam",
+        "narx", "narxi", "qancha", "necha", "kurs", "kurslar", "dars", "darslar", "guruh",
+        "privet", "zdravstvuyte", "spasibo",
+        "привет", "здравствуйте", "спасибо", "имя", "телефон", "номер",
+    };
+
+    /// <summary>
+    /// AI'siz (deterministik) topilgan telefon uchun sintetik agent chiqishi — shu ko'rinishda
+    /// <c>InstagramLeadBridge.UpsertAsync</c> ga beriladi.
+    ///
+    /// <para>⚠️ <c>LeadScore</c> = <see cref="IgConst.HotLeadScore"/>: kontakt qoldirgan odam
+    /// ta'rifga ko'ra QAYNOQ lid (<see cref="IsHot"/> shu qoidada ishlaydi), ya'ni lid izohida
+    /// «Qiziqish bali: 0» degan chalg'ituvchi qator chiqmaydi.</para>
+    ///
+    /// <para>⚠️ <c>Reply</c> BO'SH: bu chiqish mijozga HECH QACHON yuborilmaydi, u faqat lid
+    /// yozish uchun.</para>
+    /// </summary>
+    public static IgAgentOutput PhoneOnlyOutput(string phone, string name, string language) =>
+        new(Reply: "",
+            Language: NormalizeLanguage(language),
+            Intent: DefaultIntentForPhone,
+            LeadScore: IgConst.HotLeadScore,
+            IsHotLead: true,
+            MoveToDm: false,
+            EscalateToHuman: false,
+            LeadName: Trim(name, 100),
+            LeadContact: Trim(phone, 100),
+            LeadProductInterest: "",
+            LeadSummary: "");
+
+    /// <summary>Telefon qoldirilgan xabarning niyati — <c>buying_intent</c> («yozilaman»).
+    /// ⚠️ Qiymat <see cref="IgConst.Intents"/> ro'yxatidan olinadi: bo'lmagan nom Inbox
+    /// filtrida hech qachon topilmasdi.</summary>
+    private const string DefaultIntentForPhone = "buying_intent";
+
     private static bool IsPhoneSeparator(char c) =>
         c is ' ' or '-' or '(' or ')' or '.' or '+' or ' ' or '‑' or '–';
 

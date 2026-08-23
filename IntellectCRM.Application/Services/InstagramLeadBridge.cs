@@ -117,6 +117,43 @@ public static class InstagramLeadBridge
         return (fresh.Id, true);
     }
 
+    /// <summary>
+    /// AI xulosasi bilan MAVJUD lidni boyitadi — <b>shu so'rovda</b> telefon bo'yicha
+    /// (AI'siz) allaqachon yozilgan lid uchun.
+    ///
+    /// <para>🔴 <b>NEGA <see cref="UpsertAsync"/> EMAS:</b> u <c>RepeatCount++</c> qiladi va
+    /// hodisa yozadi. Bitta xabar uchun ikki marta chaqirilsa takror ×2 bo'lib ko'rinar,
+    /// tarixda esa bir xil hodisa ikki marta turardi.</para>
+    ///
+    /// <para>⚠️ To'ldiriladigan maydonlar faqat BO'SH bo'lsa yoziladi (menejer kiritgani
+    /// ustiga yozilmaydi) — bitta ISTISNO: <paramref name="allowNameOverwrite"/>. U ism SHU
+    /// so'rovda matndan TAXMIN qilib qo'yilgan bo'lsa rost bo'ladi: AI aniqroq biladi, ya'ni
+    /// «Ali Valiyev» taxmini AI bergan to'liq ism bilan almashadi.</para>
+    ///
+    /// <para>⚠️ <c>SaveChangesAsync</c> chaqirilmaydi (chaqiruvchining tranzaksiyasi).</para>
+    /// </summary>
+    public static async Task EnrichAsync(
+        IAppDbContext db, string leadId, IgAgentOutput output, bool allowNameOverwrite,
+        CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(leadId)) return;
+        var lead = await db.Leads.FirstOrDefaultAsync(l => l.Id == leadId, ct);
+        if (lead is null) return;
+
+        var phone = InstagramContract.ExtractPhone(output.LeadContact);
+        if (string.IsNullOrWhiteSpace(lead.Phone) && phone.Length > 0) lead.Phone = phone;
+        if (string.IsNullOrWhiteSpace(lead.InterestSubject) && output.LeadProductInterest.Length > 0)
+            lead.InterestSubject = output.LeadProductInterest;
+        if (output.LeadName.Length > 0
+            && (string.IsNullOrWhiteSpace(lead.FullName) || allowNameOverwrite))
+            lead.FullName = output.LeadName;
+
+        // AI xulosasi izohga QO'SHILADI — telefon bo'yicha yozilgan qatorda u yo'q edi, karta esa
+        // aynan izohni ko'rsatadi ("nega bu odam yozdi?" savoliga javob shu yerda).
+        if (output.LeadSummary.Length > 0)
+            lead.Note = ((lead.Note ?? "").TrimEnd() + "\n" + InstagramContract.Trim(output.LeadSummary, 300)).Trim();
+    }
+
     /// <summary>Lid izohi — operator suhbatni ochmasdan turib nima bo'lganini tushunsin.</summary>
     private static string BuildNote(IgConversation conv, IgAgentOutput output)
     {

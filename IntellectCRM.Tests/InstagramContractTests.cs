@@ -723,4 +723,67 @@ public class InstagramHardeningTests
         Assert.Equal("Mijoz", InstagramContract.ProfileRef(null));
         Assert.Equal("—", InstagramContract.ProfileRef(null, "—"));
     }
+
+    // ===================== ExtractLeadName =====================
+
+    /// <summary>OCHIQ BELGI («ismim …», «F.I.Sh: …», «меня зовут …») — bosh harf shart emas.</summary>
+    [Theory]
+    [InlineData("ismim Ali Valiyev, raqamim 901234567", "Ali Valiyev")]
+    [InlineData("Mening ismim aziz", "aziz")]
+    [InlineData("F.I.Sh: Valiyev Ali Akramovich", "Valiyev Ali Akramovich")]
+    [InlineData("Меня зовут Алишер", "Алишер")]
+    public void Ochiq_belgi_bilan_ism_ajratiladi(string text, string expected)
+    {
+        Assert.Equal(expected, InstagramContract.ExtractLeadName(text));
+    }
+
+    /// <summary>BELGISIZ: telefon olib tashlangach qolgani ism bo'lsa. Salomlashuv tashlanadi.</summary>
+    [Theory]
+    [InlineData("Ali Valiyev 901234567", "Ali Valiyev")]
+    [InlineData("Assalomu alaykum. Ali Valiyev 90 123 45 67", "Ali Valiyev")]
+    [InlineData("Ulug'bek G'ayratov 901234567", "Ulug'bek G'ayratov")]
+    public void Belgisiz_ism_faqat_bosh_harf_bilan_ajratiladi(string text, string expected)
+    {
+        Assert.Equal(expected, InstagramContract.ExtractLeadName(text));
+    }
+
+    /// <summary>
+    /// 🔴 ENG MUHIM QOIDA: shubhali matndan ism YASALMAYDI. Kichik harfdagi savol
+    /// («narxi qancha», «ingliz tili») CRM'ga ISM bo'lib tushsa, bu tuzatishdan ko'ra
+    /// ko'proq zarar bo'lardi — bunday holda "" qaytadi va nom AI'dan yoki username'dan olinadi.
+    /// </summary>
+    [Theory]
+    [InlineData("")]
+    [InlineData(null)]
+    [InlineData("narxi qancha 901234567")]
+    [InlineData("ingliz tili 901234567")]
+    [InlineData("901234567")]
+    [InlineData("Salom 901234567")]
+    [InlineData("Kurs narxi qanday va qachon boshlanadi 901234567")]
+    [InlineData("A B 901234567")]
+    public void Shubhali_matndan_ism_yasalmaydi(string? text)
+    {
+        Assert.Equal("", InstagramContract.ExtractLeadName(text));
+    }
+
+    // ===================== PhoneOnlyOutput =====================
+
+    /// <summary>AI'siz topilgan telefon uchun sintetik chiqish — u lid YOZISH uchun, mijozga
+    /// yuborish uchun EMAS (`Reply` bo'sh) va ta'rifga ko'ra QAYNOQ.</summary>
+    [Fact]
+    public void PhoneOnlyOutput_qaynoq_lid_beradi_va_javob_yozmaydi()
+    {
+        var o = InstagramContract.PhoneOnlyOutput("998901234567", "Ali Valiyev", "uz-Latn");
+
+        Assert.Equal("", o.Reply);
+        Assert.Equal("998901234567", o.LeadContact);
+        Assert.Equal("Ali Valiyev", o.LeadName);
+        Assert.True(InstagramContract.IsHot(o));
+        Assert.True(InstagramContract.ShouldCreateLead(o));
+        Assert.Equal(IgConst.HotLeadScore, o.LeadScore);
+        // ⚠️ Niyat ro'yxatdan bo'lishi shart — aks holda Inbox filtri uni topa olmasdi.
+        Assert.Contains(o.Intent, IgConst.Intents);
+        Assert.False(o.EscalateToHuman);
+        Assert.False(o.MoveToDm);
+    }
 }

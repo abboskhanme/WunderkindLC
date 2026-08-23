@@ -243,6 +243,47 @@ SHART — aks holda karta tahrirlangan zahoti oldi ko'rinishi «qaytib» chiqard
 tayanmasin (telefon + `conv.LeadId` birga ishlaydi), aks holda bir mijoz uchun **ikki lid**
 paydo bo'ladi.
 
+### 6.3. 🔴 TELEFON RAQAMI → LID (AI'ga BOG'LIQ EMAS)
+
+Mijoz raqamini (yoki «Ali Valiyev 90 123 45 67» kabi ism + raqamini) yozsa — **lid yoziladi**,
+javob berilish-berilmasligidan qat'i nazar. Tekshiruv `InstagramPipeline` §3.1 da, ya'ni
+**master darvozadan keyin, qolgan hamma darvozadan OLDIN**.
+
+Ilgari lid FAQAT §9 da, faqat AI `lead_contact` ni to'ldirgan taqdirda yozilardi — ya'ni raqam
+quyidagi hollarda **jimgina yo'qolardi**:
+
+| Yo'l | Nega lid yo'q edi |
+|---|---|
+| **Operator suhbatni o'z qo'liga olgan** (`BotMayReply` false) | eng ko'p uchraydigani — odam aynan operator bilan gaplashib turib raqamini beradi |
+| DM/izoh avtojavobi sozlamadan o'chirilgan | §3 darvozasi `return` qilardi |
+| Kalit so'z qoidasi `StopAi` bilan ishlagan | AI umuman chaqirilmaydi ⇒ `output == null` ⇒ §9 o'tkazib yuboriladi |
+| AI yiqilgan / kunlik / halqa chegarasi / token yo'q / 24 soatlik oyna yopiq | hammasi `return` |
+| AI ishladi, lekin `lead_contact` ni to'ldirmadi | model xatosi |
+
+Bularning hammasi **javob berish** haqida, lid haqida emas.
+
+- Manba — mijoz **yozgan matn** (`inc.Text`), `storedText` **EMAS**: story/ulashilgan post
+  konteksti ichida ham raqamlar bor (media id, url) va telefon deb olinishi mumkin edi.
+- Raqam ajratkich — mavjud `InstagramContract.ExtractPhone` (9 yoki `998`+12 raqam).
+- Lid **darhol saqlanadi** (`SaveChangesAsync`) — pastdagi darvozalardan biri `return` qilsa ham
+  qolsin. Telegram kartasi ham **shu yerda** yuboriladi: §9.1 ga yetib bormaydigan yo'llar bor.
+- `conv.LeadScore` kamida `HotLeadScore` ga ko'tariladi — Inbox'da qaynoq bo'lib ko'rinsin.
+- Yiqilsa **jim qolmaydi**: `Escalate` + xato logi (raqam berilgan ⇒ bu yo'qotilgan mijoz).
+
+⚠️ **TAKROR YOZILMAYDI.** AI keyin ishga tushsa §9 `UpsertAsync` ni QAYTA chaqirmaydi (u
+`RepeatCount++` qilar va hodisa yozardi — bitta xabar uchun takror ×2 bo'lib ko'rinardi).
+O'rniga `InstagramLeadBridge.EnrichAsync`: bo'sh maydonlar (ism, telefon, qiziqish) to'ldiriladi
+va AI xulosasi izohga qo'shiladi. Karta §9.1 da **joyida** tahrirlanadi.
+
+⚠️ **ISM — EHTIYOTKOR TAXMIN** (`InstagramContract.ExtractLeadName`). Ikki yo'l:
+(1) **ochiq belgi** — «ismim …», «F.I.Sh: …», «меня зовут …» → keyingi 1–3 so'z;
+(2) **belgisiz** — telefon olib tashlangach qolgani 2–3 so'z bo'lsa **VA hammasi bosh harf bilan**
+boshlansa. Bosh harf talabi ATAYIN: busiz «narxi qancha» va «ingliz tili» CRM'ga ISM bo'lib
+tushardi. Topilmasa lid baribir yoziladi, nomi `username (Instagram)`, keyin AI aniqlashtiradi
+(`EnrichAsync` taxminiy ismning ustiga yozishga HAQLI — AI aniqroq biladi).
+
+⚠️ **Modul BUTUNLAY o'chiq bo'lsa lid ham yozilmaydi** — master darvoza hamma narsadan yuqori.
+
 ## 7. TOKEN VA MAXFIY QIYMATLAR
 
 | Qiymat | Qayerda | Nega |
