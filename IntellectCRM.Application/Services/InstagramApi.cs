@@ -349,6 +349,69 @@ public sealed class InstagramApi(HttpClient http, ILogger<InstagramApi> logger)
         return (ok, err);
     }
 
+    /// <summary>
+    /// FAQ TUGMALARINI (ice breakers) Meta'ga yozadi — <c>POST /me/messenger_profile</c>.
+    ///
+    /// <para>Tugmalar Direct birinchi ochilganda mijozga savol ro'yxati bo'lib ko'rinadi;
+    /// bosilganda webhook'ga <c>messaging_postbacks</c> hodisasi keladi (payload —
+    /// <c>InstagramContract.FaqPayload</c>). So'rov messenger profile'ni BUTUNLIGICHA
+    /// almashtiradi, ya'ni har chaqiruvda TO'LIQ ro'yxat yuboriladi (qisman qo'shish yo'q).</para>
+    ///
+    /// <para>⚠️ Ko'pi bilan <see cref="IgConst.MaxFaqItems"/> ta savol — Meta chegarasi;
+    /// ortiqchasini yuborish butun so'rovni <c>code 100</c> bilan yiqitadi, shuning uchun
+    /// ro'yxat shu yerda ham kesiladi (chaqiruvchi xatosi mijozga yetib bormasin).</para>
+    /// </summary>
+    /// <param name="items">Tartibda: savol matni + postback payload (<c>FAQ:&lt;id&gt;</c>).</param>
+    public async Task<(bool Ok, string Error)> SetIceBreakersAsync(
+        string token, IReadOnlyList<(string Question, string Payload)> items, CancellationToken ct)
+    {
+        var payload = new
+        {
+            platform = "instagram",
+            ice_breakers = new[]
+            {
+                new
+                {
+                    call_to_actions = items
+                        .Take(IgConst.MaxFaqItems)
+                        .Select(i => new { question = i.Question ?? "", payload = i.Payload ?? "" })
+                        .ToArray(),
+                    locale = "default",
+                },
+            },
+        };
+
+        var url = $"{IgConst.GraphBase}/me/messenger_profile?access_token={Uri.EscapeDataString(token ?? "")}";
+        var json = JsonSerializer.Serialize(payload, JsonOpts);
+        var (ok, _, err) = await SendAsync(
+            () => new HttpRequestMessage(HttpMethod.Post, url)
+            {
+                Content = new StringContent(json, Encoding.UTF8, "application/json")
+            }, ct);
+        return (ok, err);
+    }
+
+    /// <summary>
+    /// FAQ tugmalarini Meta'dan OLIB TASHLAYDI — <c>DELETE /me/messenger_profile</c>
+    /// (<c>fields=["ice_breakers"]</c>).
+    ///
+    /// <para>Bo'sh ro'yxat bilan <see cref="SetIceBreakersAsync"/> chaqirish O'RNIGA ishlatiladi:
+    /// Meta bo'sh <c>call_to_actions</c> massivini rad etadi — profil maydonini tozalashning
+    /// rasmiy yo'li aynan DELETE.</para>
+    /// </summary>
+    public async Task<(bool Ok, string Error)> DeleteIceBreakersAsync(string token, CancellationToken ct)
+    {
+        var payload = new { platform = "instagram", fields = new[] { "ice_breakers" } };
+        var url = $"{IgConst.GraphBase}/me/messenger_profile?access_token={Uri.EscapeDataString(token ?? "")}";
+        var json = JsonSerializer.Serialize(payload, JsonOpts);
+        var (ok, _, err) = await SendAsync(
+            () => new HttpRequestMessage(HttpMethod.Delete, url)
+            {
+                Content = new StringContent(json, Encoding.UTF8, "application/json")
+            }, ct);
+        return (ok, err);
+    }
+
     /// <summary>Post matni (caption) — AI'ga "mijoz qaysi post ostida yozdi" konteksti uchun.</summary>
     public async Task<(bool Ok, string Caption, string Permalink, string Error)> GetMediaAsync(
         string mediaId, string token, CancellationToken ct)

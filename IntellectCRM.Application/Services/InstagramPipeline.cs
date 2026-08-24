@@ -230,6 +230,14 @@ public sealed class InstagramPipeline(IServiceProvider services, ILogger<Instagr
 
         var channel = inc.Kind == IgConst.KindComment ? IgConst.ChannelComment : IgConst.ChannelDm;
 
+        // ── 0.45) POSTBACK (FAQ tugmasi) — "xabar matni" tugma SARLAVHASI ──
+        // Meta title'ni bo'sh yuborishi ham mumkin: lentada bo'sh qator qolmasin va pastdagi
+        // "matnsiz xabar → operator" eskalatsiyasi ishlab ketmasin (tugma bosilgani mazmunan
+        // matnli murojaat, rasm/stiker emas).
+        var inboundText = inc.Text;
+        if (inc.Kind == InstagramEventParser.KindPostback && string.IsNullOrWhiteSpace(inboundText))
+            inboundText = "[FAQ tugmasi bosildi]";
+
         // ── 0.5) REKLAMA ATRIBUTSIYASI (E3) — TAXMINIY, yiqilsa oqim DAVOM ETADI ──
         var ad = await TryAttributeAdAsync(db, inc, ct);
         if (ad.Found && conv.AdId.Length == 0)
@@ -246,8 +254,8 @@ public sealed class InstagramPipeline(IServiceProvider services, ILogger<Instagr
         // beradi. Konteksti bo'lmagan oddiy xabarda satr BO'SH — mavjud xulq o'zgarmaydi.
         var context = InstagramEventParser.ContextNote(inc);
         var storedText = context.Length == 0
-            ? inc.Text
-            : (inc.Text.Length == 0 ? context : context + "\n" + inc.Text);
+            ? inboundText
+            : (inboundText.Length == 0 ? context : context + "\n" + inboundText);
 
         // ── 1) Kiruvchi xabar HAR DOIM yoziladi (javob berilmasa ham tarix qoladi) ──
         db.IgMessages.Add(new IgMessage
@@ -281,7 +289,8 @@ public sealed class InstagramPipeline(IServiceProvider services, ILogger<Instagr
         conv.Unread = true;
 
         // ── 2) MATNSIZ xabar (rasm/stiker/ovoz) — jimgina yo'qolmaydi ──
-        if (string.IsNullOrWhiteSpace(inc.Text))
+        // (Postback bu yerga tushmaydi: `inboundText` 0.45-qadamda har doim to'ldiriladi.)
+        if (string.IsNullOrWhiteSpace(inboundText))
         {
             Escalate(conv, "Matnsiz xabar keldi (rasm/stiker/ovozli xabar) — AI javob bera olmaydi"
                            + (context.Length > 0 ? " " + context : ""));
@@ -425,23 +434,48 @@ public sealed class InstagramPipeline(IServiceProvider services, ILogger<Instagr
             return;
         }
 
+        // ── 4.7) FAQ TUGMASI (ice breaker postback) — qoidadan ham, AI'dan ham OLDIN ──
+        //
+        // Tugma bosilganda javob SAQLANGAN matndan yuboriladi: AI umuman chaqirilmaydi (tayyor
+        // savolga tayyor javob — kalit so'z qoidasi bilan bir xil mulohaza, faqat mijoz
+        // yozmasdan bosadi). Payload mos FAQ'ga kelmasa (tugma o'chirilgan/o'chirib yuborilgan
+        // yoki begona payload) — hodisa ODDIY DM kabi qoida→AI oqimiga tushadi, jimgina
+        // tashlanmaydi: mijoz baribir savol berdi.
+        IgIceBreaker? faq = null;
+        if (inc.Kind == InstagramEventParser.KindPostback)
+        {
+            var faqId = InstagramContract.FaqIdFromPayload(inc.PostbackPayload);
+            if (faqId.Length > 0)
+                faq = await db.IgIceBreakers.FirstOrDefaultAsync(b => b.Id == faqId && b.IsActive, ct);
+        }
+
         // ── 5) KALIT SO'Z QOIDASI (AI'dan oldin: tez, arzon, aniq) ──
         var reply = "";
         var actor = "";
         var isAi = false;
         IgAgentOutput? output = null;
+        IgAutoRule? matched = null;
 
-        var rules = await db.IgAutoRules.Where(r => r.IsActive).OrderBy(r => r.Order).ToListAsync(ct);
-        var matched = rules.FirstOrDefault(r => InstagramContract.RuleMatches(r, channel, inc.Text));
-        if (matched is not null)
+        if (faq is not null)
         {
-            matched.MatchCount += 1;
-            reply = matched.ReplyText;
-            actor = matched.Title.Length > 0 ? $"Qoida: {matched.Title}" : IgConst.ActorRule;
+            faq.TapCount += 1;
+            reply = faq.Answer;
+            actor = IgConst.ActorFaq;
+        }
+        else
+        {
+            var rules = await db.IgAutoRules.Where(r => r.IsActive).OrderBy(r => r.Order).ToListAsync(ct);
+            matched = rules.FirstOrDefault(r => InstagramContract.RuleMatches(r, channel, inboundText));
+            if (matched is not null)
+            {
+                matched.MatchCount += 1;
+                reply = matched.ReplyText;
+                actor = matched.Title.Length > 0 ? $"Qoida: {matched.Title}" : IgConst.ActorRule;
+            }
         }
 
-        // ── 6) AI (qoida topilmasa yoki qoida AI'ni to'xtatmasa) ──
-        if (matched is null || !matched.StopAi)
+        // ── 6) AI (FAQ ishlamagan bo'lsa VA qoida topilmasa yoki qoida AI'ni to'xtatmasa) ──
+        if (faq is null && (matched is null || !matched.StopAi))
         {
             var caption = "";
             if (channel == IgConst.ChannelComment && inc.MediaId.Length > 0)

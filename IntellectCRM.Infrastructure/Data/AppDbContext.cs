@@ -195,6 +195,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options)
     public DbSet<IgConversation> IgConversations => Set<IgConversation>();
     public DbSet<IgMessage> IgMessages => Set<IgMessage>();
     public DbSet<IgAutoRule> IgAutoRules => Set<IgAutoRule>();
+    public DbSet<IgIceBreaker> IgIceBreakers => Set<IgIceBreaker>();
     public DbSet<IgKnowledge> IgKnowledges => Set<IgKnowledge>();
     public DbSet<IgOAuthState> IgOAuthStates => Set<IgOAuthState>();
 
@@ -385,6 +386,10 @@ public class AppDbContext(DbContextOptions<AppDbContext> options)
         b.Entity<IgMessage>().HasIndex(m => m.IgMessageId);
         b.Entity<IgMessage>().Property(m => m.CommentId).HasMaxLength(200);
         b.Entity<IgMessage>().HasIndex(m => m.CommentId);
+        // FAQ tugmalari (ice breakers): uzunliklar Meta chegaralari bilan bir xil (savol 80,
+        // javob 1000). Indeks ATAYIN yo'q — jadvalda ko'pi bilan 4 qator bo'ladi.
+        b.Entity<IgIceBreaker>().Property(x => x.Question).HasMaxLength(80);
+        b.Entity<IgIceBreaker>().Property(x => x.Answer).HasMaxLength(1000);
 
         // REKLAMA LIDLARI (Meta Lead Ads).
         // 1) `LeadgenId` — UNIKAL: Meta yetkazishni "at-least-once" kafolatlaydi va bir lidni

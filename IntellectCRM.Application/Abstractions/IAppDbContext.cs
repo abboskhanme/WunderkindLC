@@ -197,6 +197,7 @@ public interface IAppDbContext
     DbSet<IgConversation> IgConversations { get; }
     DbSet<IgMessage> IgMessages { get; }
     DbSet<IgAutoRule> IgAutoRules { get; }
+    DbSet<IgIceBreaker> IgIceBreakers { get; }
     DbSet<IgKnowledge> IgKnowledges { get; }
     DbSet<IgOAuthState> IgOAuthStates { get; }
 

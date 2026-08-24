@@ -283,6 +283,40 @@ public class InstagramContractTests
         Assert.False(InstagramContract.RuleMatches(Rule(keywords: "  ,  "), IgConst.ChannelDm, "narx"));
     }
 
+    // ===================== 7.5) FAQ tugmasi payload'i =====================
+
+    [Fact]
+    public void Faq_payload_prefiks_bilan_quriladi()
+    {
+        Assert.Equal("FAQ:abc-123", InstagramContract.FaqPayload("abc-123"));
+    }
+
+    [Fact]
+    public void Faq_payload_aylanma_yolda_id_ozgarissiz_qaytadi()
+    {
+        // Yozish (`FaqPayload`) va o'qish (`FaqIdFromPayload`) juftligi ayri ketmasin.
+        var id = Guid.NewGuid().ToString();
+        Assert.Equal(id, InstagramContract.FaqIdFromPayload(InstagramContract.FaqPayload(id)));
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    [InlineData("boshqa-payload")]
+    [InlineData("faq:abc")]     // kichik registr — bizniki emas (payloadni o'zimiz yozamiz)
+    [InlineData("FAQ:")]        // prefiks bor, id yo'q
+    public void Faq_bolmagan_payload_bosh_satr_beradi(string? payload)
+    {
+        Assert.Equal("", InstagramContract.FaqIdFromPayload(payload));
+    }
+
+    [Fact]
+    public void Faq_payload_atrofidagi_bosh_joy_kesiladi()
+    {
+        Assert.Equal("abc", InstagramContract.FaqIdFromPayload("  FAQ:abc  "));
+    }
+
     // ===================== 8) Trim =====================
 
     [Fact]
@@ -552,9 +586,11 @@ public class InstagramHardeningTests
     [Fact]
     public void Obuna_royxati_faqat_qollab_quvvatlanadigan_maydonlardan()
     {
-        Assert.Equal(new[] { "comments", "messages" }, IgConst.WebhookFields);
+        // `messaging_postbacks` — FAQ tugmalari (ice breakers) uchun; parser uni to'liq
+        // ishlaydi (`InstagramPostbackParserTests`), ya'ni §11 tuzoq 8 sharti bajarilgan.
+        Assert.Equal(new[] { "comments", "messages", "messaging_postbacks" }, IgConst.WebhookFields);
         Assert.DoesNotContain("message_echoes", IgConst.WebhookFieldsCsv);
-        Assert.Equal("comments,messages", IgConst.WebhookFieldsCsv);
+        Assert.Equal("comments,messages,messaging_postbacks", IgConst.WebhookFieldsCsv);
     }
 
     /// <summary>Yetishmayotgan maydon ANIQ ko'rsatiladi — "obuna yo'q" degan umumiy xabar
@@ -562,9 +598,12 @@ public class InstagramHardeningTests
     [Fact]
     public void Yetishmayotgan_obuna_maydoni_topiladi()
     {
-        Assert.Equal(new[] { "comments" }, InstagramContract.MissingWebhookFields(new[] { "messages" }));
-        Assert.Equal(new[] { "comments", "messages" }, InstagramContract.MissingWebhookFields(Array.Empty<string>()));
-        Assert.Empty(InstagramContract.MissingWebhookFields(new[] { "messages", "comments" }));
+        Assert.Equal(new[] { "comments" },
+            InstagramContract.MissingWebhookFields(new[] { "messages", "messaging_postbacks" }));
+        Assert.Equal(new[] { "comments", "messages", "messaging_postbacks" },
+            InstagramContract.MissingWebhookFields(Array.Empty<string>()));
+        Assert.Empty(InstagramContract.MissingWebhookFields(
+            new[] { "messages", "comments", "messaging_postbacks" }));
     }
 
     /// <summary>Ortiqcha maydon XATO emas (admin Dashboard'dan qo'shgan bo'lishi mumkin),
@@ -572,9 +611,11 @@ public class InstagramHardeningTests
     [Fact]
     public void Ortiqcha_maydon_va_harf_registri_muammo_emas()
     {
-        Assert.Empty(InstagramContract.MissingWebhookFields(new[] { "Comments", "MESSAGES", "mentions" }));
-        Assert.Equal(2, InstagramContract.MissingWebhookFields(null).Count);
-        Assert.Equal(new[] { "comments" }, InstagramContract.MissingWebhookFields(new[] { " messages " }));
+        Assert.Empty(InstagramContract.MissingWebhookFields(
+            new[] { "Comments", "MESSAGES", "Messaging_Postbacks", "mentions" }));
+        Assert.Equal(3, InstagramContract.MissingWebhookFields(null).Count);
+        Assert.Equal(new[] { "comments" },
+            InstagramContract.MissingWebhookFields(new[] { " messages ", "messaging_postbacks" }));
     }
 
 

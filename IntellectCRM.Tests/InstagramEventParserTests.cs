@@ -1074,3 +1074,107 @@ public class IgAdAttributionTests
     }
 
 }
+
+/// <summary>
+/// FAQ TUGMASI (ice breaker) POSTBACK'i — <c>messaging[].postback</c> (FAQ moduli).
+///
+/// <para>Uch qoida qulflanadi: (1) <c>message</c>siz postback elementi TASHLANMAYDI (ilgari
+/// «xabar emas» deb jimgina yo'qolardi — tugmani bosgan mijoz javobsiz qolardi);
+/// (2) dedup kaliti <c>postback:</c> prefiksi bilan va DETERMINISTIK (§5 qoidasi);
+/// (3) halqa himoyasi postback'da ham ishlaydi.</para>
+/// </summary>
+public class InstagramPostbackParserTests
+{
+    private const string OurId = "17841400000000000";
+    private const string ClientId = "5550001112223";
+
+    private static string PostbackJson(
+        string senderId = ClientId, string payload = "FAQ:faq-1", string title = "Narxlar qancha?",
+        string? mid = "pb-mid-1")
+    {
+        var midPart = mid is null ? "" : $"\"mid\": \"{mid}\", ";
+        return $$"""
+        {
+          "object": "instagram",
+          "entry": [{
+            "id": "{{OurId}}",
+            "time": 1786500002,
+            "messaging": [{
+              "sender": { "id": "{{senderId}}" },
+              "recipient": { "id": "{{OurId}}" },
+              "timestamp": 1786500002000,
+              "postback": { {{midPart}}"title": "{{title}}", "payload": "{{payload}}" }
+            }]
+          }]
+        }
+        """;
+    }
+
+    [Fact]
+    public void Postback_hodisasi_oqiladi()
+    {
+        var ev = Assert.Single(InstagramEventParser.Parse(PostbackJson(), OurId));
+
+        Assert.Equal(InstagramEventParser.KindPostback, ev.Kind);
+        Assert.Equal("Narxlar qancha?", ev.Text);              // matn — tugma SARLAVHASI
+        Assert.Equal("FAQ:faq-1", ev.PostbackPayload);
+        Assert.Equal(ClientId, ev.SenderId);
+        Assert.Equal("pb-mid-1", ev.IgMessageId);
+        Assert.False(ev.IsEcho);
+    }
+
+    [Fact]
+    public void Postback_kaliti_mid_dan_alohida_prefiks_bilan_quriladi()
+    {
+        // ⚠️ `dm:` EMAS: kalit turlari aralashsa unikal indeks postback'ni DM takrori deb
+        // rad etishi mumkin edi (KindDeleted bilan bir xil sabab).
+        var ev = Assert.Single(InstagramEventParser.Parse(PostbackJson(), OurId));
+        Assert.Equal("postback:pb-mid-1", ev.EventKey);
+    }
+
+    [Fact]
+    public void Mid_bolmasa_kalit_deterministik_hash_dan_quriladi()
+    {
+        var json = PostbackJson(mid: null);
+        var first = Assert.Single(InstagramEventParser.Parse(json, OurId));
+        var second = Assert.Single(InstagramEventParser.Parse(json, OurId));
+
+        Assert.StartsWith("postback:", first.EventKey);
+        Assert.Equal(first.EventKey, second.EventKey);         // §5: restartdan keyin ham bir xil
+    }
+
+    [Fact]
+    public void Oz_akkauntimizdan_kelgan_postback_tashlanadi()
+    {
+        Assert.Empty(InstagramEventParser.Parse(PostbackJson(senderId: OurId), OurId));
+    }
+
+    [Fact]
+    public void Postback_qollab_quvvatlanmaydigan_maydon_deb_belgilanmaydi()
+    {
+        // Aks holda navbatda «Qo'llab-quvvatlanmaydigan hodisa: postback» degan CHALG'ITUVCHI
+        // xato ko'rinardi (Meta «Test» tugmasidagi `messages` sabog'i bilan bir xil).
+        Assert.Equal("", InstagramEventParser.UnsupportedFields(PostbackJson()));
+    }
+
+    [Fact]
+    public void Postback_ichidagi_referral_reklama_atributsiyasini_beradi()
+    {
+        var json = PostbackJson().Replace(
+            "\"payload\": \"FAQ:faq-1\"",
+            "\"payload\": \"FAQ:faq-1\", \"referral\": { \"ad_id\": \"ad-77\", \"source\": \"ADS\" }");
+
+        var ev = Assert.Single(InstagramEventParser.Parse(json, OurId));
+        Assert.Equal("ad-77", ev.AdId);
+        Assert.Equal("ADS", ev.AdReferralSource);
+    }
+
+    [Fact]
+    public void Oddiy_dm_regressiyasi_postback_qoshilgani_bilan_buzilmaydi()
+    {
+        // `message` majburiyligi FAQAT postback uchun yumshadi — reaction/read kabi boshqa
+        // `message`siz elementlar avvalgidek tashlanadi.
+        var reaction = PostbackJson().Replace("\"postback\"", "\"reaction\"");
+        Assert.Empty(InstagramEventParser.Parse(reaction, OurId));
+    }
+}

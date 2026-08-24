@@ -3885,6 +3885,17 @@ public class IgAccount
     public string ConnectedAt { get; set; } = string.Empty;
     /// <summary>Kim ulagani (xodim ismi) — audit yozuvi bilan bir xil ism.</summary>
     public string ConnectedBy { get; set; } = string.Empty;
+
+    /// <summary>FAQ tugmalari (<see cref="IgIceBreaker"/>) Meta'ga oxirgi marta MUVAFFAQIYATLI
+    /// yuborilgan vaqt (ISO). Bo'sh = hali sinxronlanmagan. Sinxronlash BEST-EFFORT: yiqilsa
+    /// CRUD baribir o'tadi, sabab esa <see cref="FaqSyncError"/> da ko'rinadi — aks holda
+    /// "tugma saqlandi, lekin Instagram'da chiqmayapti" holati sababsiz qolardi.</summary>
+    public string FaqSyncedAt { get; set; } = string.Empty;
+
+    /// <summary>FAQ sinxronlashning OXIRGI xatosi (o'zbekcha). Bo'sh = muammo yo'q.
+    /// Muvaffaqiyatli sinxron uni tozalaydi; <see cref="FaqSyncedAt"/> esa xatoda O'CHMAYDI
+    /// (oxirgi muvaffaqiyat vaqti diagnostika uchun qimmatli).</summary>
+    public string FaqSyncError { get; set; } = string.Empty;
 }
 
 /// <summary>
@@ -4094,6 +4105,45 @@ public class IgAutoRule
     public int MatchCount { get; set; }
 
     public string CreatedAt { get; set; } = string.Empty;
+}
+
+/// <summary>
+/// FAQ tugmasi (Instagram <b>ice breaker</b>) — Direct ochilganda mijozga ko'rinadigan
+/// TAYYOR savol tugmasi.
+/// <para><b>Nega kerak?</b> Ko'p mijoz nima so'rashni bilmay chiqib ketadi. Tayyor tugma
+/// («Narxlar qancha?», «Manzil qayerda?») suhbatni boshlab beradi, javob esa saqlangan
+/// matndan DARHOL yuboriladi — AI chaqirilmaydi (tez, arzon, aniq — <see cref="IgAutoRule"/>
+/// bilan bir xil mulohaza, faqat mijoz yozmasdan bosadi).</para>
+/// <para>⚠️ <b>Ko'pi bilan 4 ta</b> — bu Meta'ning ice breaker chegarasi (bitta locale'da
+/// 4 tagacha savol), bizning tanlovimiz emas. 5-chisini saqlashga urinish 400 bilan rad
+/// etiladi, Meta'ga esa faol tugmalardan faqat birinchi 4 tasi yuboriladi.</para>
+/// <para>Tugma bosilganda webhook'ga <c>messaging_postbacks</c> hodisasi keladi, payload —
+/// <c>FAQ:&lt;Id&gt;</c> (prefiks <c>IgConst.FaqPayloadPrefix</c>).</para>
+/// </summary>
+public class IgIceBreaker
+{
+    public string Id { get; set; } = Guid.NewGuid().ToString();
+
+    /// <summary>Tugmada ko'rinadigan savol. Meta chegarasi — 80 belgi.</summary>
+    public string Question { get; set; } = string.Empty;
+
+    /// <summary>Tugma bosilganda yuboriladigan tayyor javob. DM chegarasi bilan bir o'lchovda
+    /// (≤1000 — yuborishda baribir `TrimBytes` dan o'tadi).</summary>
+    public string Answer { get; set; } = string.Empty;
+
+    /// <summary>Tugmalar Direct'da shu tartibda ko'rinadi (kichigi yuqorida).</summary>
+    public int Order { get; set; }
+
+    /// <summary>O'chirilgan tugma Meta'ga yuborilmaydi va bosilsa (eski suhbatda qolgan bo'lsa)
+    /// javob o'rniga oddiy qoida→AI oqimi ishlaydi.</summary>
+    public bool IsActive { get; set; } = true;
+
+    /// <summary>Necha marta bosilgani — "qaysi savol mijozlarni qiziqtiradi" savoliga
+    /// analitikada javob (<see cref="IgAutoRule.MatchCount"/> bilan bir xil maqsad).</summary>
+    public int TapCount { get; set; }
+
+    public string CreatedAt { get; set; } = string.Empty;
+    public string UpdatedAt { get; set; } = string.Empty;
 }
 
 /// <summary>

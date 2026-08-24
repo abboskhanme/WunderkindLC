@@ -301,6 +301,56 @@ export interface IgRulePayload {
   order: number
 }
 
+/**
+ * FAQ tugmasi (Instagram ice breaker) — mijoz Direct'ni BIRINCHI marta ochganda
+ * ko'rinadigan tayyor savol. Bosilsa savol mijoz nomidan yuboriladi va bot
+ * `answer` bilan javob beradi.
+ */
+export interface IgFaq {
+  id: string
+  question: string
+  answer: string
+  /** Ko'rsatilish tartibi — kichigi yuqorida. */
+  order: number
+  isActive: boolean
+  /** Tugma necha marta bosilgani. */
+  tapCount: number
+  createdAt: string
+}
+
+export interface IgFaqPayload {
+  question: string
+  answer: string
+  isActive: boolean
+  /** Faqat PUT'da — yaratishda server o'zi oxiriga qo'yadi. */
+  order?: number
+}
+
+/**
+ * Meta'ga sinxron natijasi. ⚠️ CRUD amalning O'ZI muvaffaqiyatli bo'lsa ham
+ * `ok=false` kelishi mumkin — bazaga yozildi, lekin Instagram'ga yetkazilmadi.
+ * Chaqiruvchi bu ikkisini FARQLAB ko'rsatishi shart.
+ */
+export interface IgFaqSyncResult {
+  ok: boolean
+  message: string
+}
+
+export interface IgFaqList {
+  items: IgFaq[]
+  /** Meta cheklovi — odatda 4. Klientda qattiq yozilmaydi, serverdan olinadi. */
+  maxItems: number
+  /** Oxirgi muvaffaqiyatli sinxron vaqti (ISO), hali bo'lmagan bo'lsa null. */
+  syncedAt: string | null
+  /** Oxirgi sinxron xatosi — muvaffaqiyatli sinxron uni tozalaydi. */
+  syncError: string | null
+}
+
+export interface IgFaqSaveResult {
+  item: IgFaq
+  sync: IgFaqSyncResult
+}
+
 /** Bilim bazasi bo'lagi — AI FAQAT shu ma'lumot asosida javob beradi. */
 export interface IgKnowledge {
   id?: string
@@ -528,6 +578,35 @@ export async function updateIgRule(id: string, payload: IgRulePayload): Promise<
 
 export async function deleteIgRule(id: string): Promise<void> {
   await api.delete(`/admin/instagram/rules/${id}`)
+}
+
+// ═══════════════════════════════════════════════ FAQ TUGMALARI (ICE BREAKERS)
+
+export async function getIgFaq(): Promise<IgFaqList> {
+  const { data } = await api.get<IgFaqList>('/admin/instagram/faq')
+  return data
+}
+
+export async function createIgFaq(payload: IgFaqPayload): Promise<IgFaqSaveResult> {
+  const { data } = await api.post<IgFaqSaveResult>('/admin/instagram/faq', payload)
+  return data
+}
+
+export async function updateIgFaq(id: string, payload: IgFaqPayload): Promise<IgFaqSaveResult> {
+  const { data } = await api.put<IgFaqSaveResult>(`/admin/instagram/faq/${id}`, payload)
+  return data
+}
+
+/** O'chirish ham Meta'ga sinxronlanadi — natijasi javobda qaytadi. */
+export async function deleteIgFaq(id: string): Promise<{ sync: IgFaqSyncResult }> {
+  const { data } = await api.delete<{ sync: IgFaqSyncResult }>(`/admin/instagram/faq/${id}`)
+  return data
+}
+
+/** Qo'lda sinxron — oxirgi avtomatik urinish yiqilgan bo'lsa qayta yuboriladi. */
+export async function syncIgFaq(): Promise<IgFaqSyncResult> {
+  const { data } = await api.post<IgFaqSyncResult>('/admin/instagram/faq/sync')
+  return data
 }
 
 // ═══════════════════════════════════════════════ BILIM BAZASI

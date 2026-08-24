@@ -2006,3 +2006,30 @@ qo'sha oladi hamda Navigatsiya panelida tuzilishni ko'radi.
 | `DocxKnowledgeTests` (25) | Sarlavha bo'yicha ajratish va **IZ** (ichma-ich / bir darajali almashuv / yuqoriga qaytish), sarlavhadan oldingi matn yo'qolmasligi, matnsiz sarlavha, sarlavhasiz hujjatning bo'linishi, uzun bo'limning «(N-qism)» ga bo'linishi, **qisqa lekin MA'NOLI javob QOLISHI**, ma'nosiz qoldiq tashlanishi, uzun izning qisqarishi, fayl nomidan bo'lak nomi (Windows yo'li, boshqaruv belgilari), **buzuq fayl istisno otmasligi** |
 | `IgQualityLogTests` | Bosh harf/bo'shliq va **turli apostroflar** farq emasligi, Levenshtein masofasi, ayni matn → 100%, bitta tomon bo'sh → 0; **operatorning o'z xabari va kiruvchi xabar taklif EMASLIGI**, eski taklif va buzuq sanali xabar olinmasligi |
 | `InstagramCaptionTests` (24) | §18.10 jadvalida |
+
+---
+
+## 22. FAQ TUGMALARI (ice breakers)
+
+Migratsiya: `AddIgIceBreakers`. Entity `IgIceBreaker`, sinxron/CRUD —
+`InstagramController.Faq.cs` (`/api/admin/instagram/faq`), oqim — `InstagramPipeline` §4.7.
+Direct birinchi ochilganda mijozga **4 tagacha tayyor savol tugmasi** ko'rinadi; bosilganda
+saqlangan javob **AI'siz** yuboriladi (kalit so'z qoidasi bilan bir xil mulohaza, faqat mijoz
+yozmasdan bosadi).
+
+| Qoida | Tafsilot |
+|---|---|
+| **4 talik limit — Meta cheklovi** | Bitta locale'da 4 tagacha savol. 5-chisi API'da 400 («Ko'pi bilan 4 ta…»); Meta'ga faol tugmalardan faqat birinchi 4 tasi ketadi (`IgConst.MaxFaqItems`) |
+| **Payload prefiksi `FAQ:`** | Yagona manba `IgConst.FaqPayloadPrefix`; qurish/o'qish FAQAT `InstagramContract.FaqPayload` / `FaqIdFromPayload`. Prefikssiz postback FAQ emas — oddiy qoida→AI oqimiga tushadi, jimgina tashlanmaydi |
+| **Sinxron BEST-EFFORT** | Har CRUD mutatsiyasidan keyin `POST /me/messenger_profile` (bo'sh ro'yxatda `DELETE` — Meta bo'sh massivni rad etadi). Yiqilsa CRUD **bekor bo'lmaydi**: xato `IgAccount.FaqSyncError` da va javobdagi `sync.ok=false` da ochiq; `FaqSyncedAt` xatoda O'CHMAYDI (oxirgi muvaffaqiyat vaqti diagnostika). Qo'lda qayta yuborish — `POST /faq/sync` |
+| **Modul o'chiq → tashqariga so'rov YO'Q** | Sinxron ham §3 darvozasidan o'tadi (akkaunt ulanmagan holat ham `sync.ok=false` + CRUD muvaffaqiyatli) |
+| **`messaging_postbacks` obunasi** | `IgConst.WebhookFields` ga qo'shilgan; FAQ sinxroni obunani ham best-effort yangilaydi (eski ulangan akkauntga tugma bosilgani KELMASDI). Parser postback'ni to'liq ishlaydi — §11 tuzoq 8 sharti bajarilgan |
+| **Postback = alohida tur** | `InstagramEventParser.KindPostback`, dedup kaliti `postback:{mid}` (`dm:` bilan aralashsa unikal indeks uni takror deb rad etardi). Matn — tugma SARLAVHASI (payload texnik qiymat, lentaga chiqmaydi) |
+| **Darvozalar FAQ uchun ham amal qiladi** | Avto-javob o'chiq / operator pauzasi / kunlik-burst chegarasi — tugma javobi ham AVTOMATIK javob. O'chirilgan tugma bosilsa (eski suhbat) — qoida→AI oqimi |
+| Ruxsat | O'qish — sinf (`marketing`), yozish — `marketing.rules` (yangi kalit yasalmadi, §8 naqsh) |
+| Audit | create/update/delete/sync — `EntityType="Instagram"`; token yozilmaydi |
+| `TapCount` | Har muvaffaqiyatli FAQ javobida +1 (`IgAutoRule.MatchCount` bilan bir xil maqsad) |
+
+Testlar: `InstagramContractTests` (payload sof funksiyalari), `InstagramPostbackParserTests`
+(postback o'qilishi, kalit deterministikligi, halqa himoyasi, `message`siz element regressiyasi),
+`InstagramPipelineTests` (FAQ javobi + TapCount, o'chiq tugma → AI yo'li, DM darvozasi).

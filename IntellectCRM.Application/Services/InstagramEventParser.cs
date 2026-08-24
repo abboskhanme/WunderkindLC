@@ -97,6 +97,12 @@ public record IgIncomingEvent(
     /// xabarda kutilmasin.</para></summary>
     string AdId = "",
 
+    /// <summary>Postback (FAQ tugmasi bosilgani) payload'i — <c>messaging[].postback.payload</c>.
+    /// <para>Faqat <c>Kind == InstagramEventParser.KindPostback</c> hodisada to'ladi. Qiymat
+    /// Meta bergan HOLICHA saqlanadi; "bu bizning FAQ'imizmi" qarori pipeline'da
+    /// (<c>InstagramContract.FaqIdFromPayload</c>) — parser payload mazmuniga aralashmaydi.</para></summary>
+    string PostbackPayload = "",
+
     /// <summary><c>referral.source</c> — murojaat qayerdan boshlangani (masalan <c>ADS</c>,
     /// <c>SHORTLINK</c>, <c>QR_CODE</c>, <c>IG_ME_LINK</c>).
     /// <para>Meta bergan HOLICHA saqlanadi (tarjima/normalizatsiya YO'Q): ro'yxat Meta tomonida
@@ -174,6 +180,20 @@ public static class InstagramEventParser
     /// keyinchalik xuddi shu ishni qaytadan yozishni talab qilardi.</para>
     /// </summary>
     public const string KindPolicy = "policy";
+
+    /// <summary>
+    /// FAQ tugmasi (ice breaker) bosildi — <c>messaging[].postback</c>.
+    ///
+    /// <para><b>Nega alohida tur:</b> postback'da <c>message</c> obyekti UMUMAN yo'q, ya'ni u
+    /// ilgari "xabar emas" deb jimgina tashlanardi — tugmani bosgan mijoz javobsiz qolardi.
+    /// Matn o'rnida tugma SARLAVHASI (<c>postback.title</c>) yuradi, payload esa
+    /// <see cref="IgIncomingEvent.PostbackPayload"/> da.</para>
+    ///
+    /// <para>⚠️ Dedup kaliti <c>postback:{mid}</c> — <c>dm:</c> dan ATAYIN farq qiladi
+    /// (<see cref="KindDeleted"/> bilan bir xil sabab: kalit turlari aralashsa unikal indeks
+    /// boshqa turdagi hodisani "takror" deb rad etishi mumkin edi).</para>
+    /// </summary>
+    public const string KindPostback = "postback";
 
     /// <summary>Story'da eslatib o'tish attachment turi.</summary>
     public const string AttachStoryMention = "story_mention";
@@ -306,12 +326,12 @@ public static class InstagramEventParser
                     foreach (var m in messaging.EnumerateArray())
                     {
                         if (m.ValueKind != JsonValueKind.Object) continue;
-                        // `message` — biz ishlaydigan yagona kalit; qolgan uchtasi konvert
-                        // ma'lumoti (kim, kimga, qachon), hodisa turi emas.
+                        // `message` va `postback` — biz ishlaydigan kalitlar; qolgan uchtasi
+                        // konvert ma'lumoti (kim, kimga, qachon), hodisa turi emas.
                         foreach (var prop in m.EnumerateObject())
                         {
                             var key = prop.Name;
-                            if (key is "message" or "sender" or "recipient" or "timestamp") continue;
+                            if (key is "message" or "postback" or "sender" or "recipient" or "timestamp") continue;
                             if (!found.Contains(key)) found.Add(key);
                         }
                     }
@@ -428,8 +448,17 @@ public static class InstagramEventParser
                 return;
             }
 
-            // `reaction`, `read`, `delivery` — xabar emas, e'tiborga olinmaydi.
-            if (!m.TryGetProperty("message", out var msg) || msg.ValueKind != JsonValueKind.Object) return;
+            // ── POSTBACK (FAQ tugmasi bosildi) ──
+            // `message` obyekti YO'Q, shuning uchun u pastdagi "message majburiy" tekshiruvidan
+            // OLDIN ko'riladi — aks holda tugma bosilgani jimgina tashlanib, mijoz javobsiz
+            // qolardi. `message` majburiyligi FAQAT shu tur uchun yumshaydi: qolgan hodisalar
+            // (reaction, read, delivery) avvalgidek e'tiborga olinmaydi.
+            if (!m.TryGetProperty("message", out var msg) || msg.ValueKind != JsonValueKind.Object)
+            {
+                if (m.TryGetProperty("postback", out var pb) && pb.ValueKind == JsonValueKind.Object)
+                    ReadPostback(m, pb, entryId, entryTime, self, outList);
+                return;
+            }
 
             var senderId = Sub(m, "sender", "id");
             var recipientId = Sub(m, "recipient", "id");
@@ -478,6 +507,52 @@ public static class InstagramEventParser
                 IsStoryMention: isMention, HasSharedPost: hasPost, SharedPostUrl: postUrl,
                 AdId: adId, AdReferralSource: adSource, AdTitle: adTitle));
         }
+    }
+
+    /// <summary>
+    /// FAQ tugmasi (ice breaker) postback'i: <c>messaging[].postback.{mid, title, payload}</c>.
+    ///
+    /// <para>Matn — tugma SARLAVHASI (<c>title</c>): u suhbat lentasida mijozning "savoli"
+    /// bo'lib ko'rinadi (payload esa texnik qiymat, uni lentaga chiqarish operatorga hech
+    /// narsa aytmasdi). Payload <see cref="IgIncomingEvent.PostbackPayload"/> da alohida
+    /// yuradi — mos FAQ javobini pipeline aynan u bo'yicha topadi.</para>
+    ///
+    /// <para>⚠️ Halqa himoyasi bu yerda ham ishlaydi (o'z akkauntimizdan kelgan postback
+    /// tashlanadi) va <c>postback.referral</c> dagi reklama atributsiyasi ham o'qiladi
+    /// (mavjud <see cref="ReadReferral"/> bilan bir xil ustunlik qoidasi).</para>
+    /// </summary>
+    private static void ReadPostback(
+        JsonElement m, JsonElement pb, string entryId, string entryTime, IgSelf self, List<IgIncomingEvent> outList)
+    {
+        var senderId = Sub(m, "sender", "id");
+        if (senderId.Length == 0) return;
+        if (IsOurs(senderId, "", self, entryId)) return;   // halqa himoyasi — o'z tugmamiz "bosilishi"
+
+        var mid = Str(pb, "mid");
+        var title = Str(pb, "title");
+        var payload = Str(pb, "payload");
+        if (payload.Length == 0 && title.Length == 0 && mid.Length == 0) return;   // taniqli hech narsa yo'q
+
+        var ts = Raw(m, "timestamp") is { Length: > 0 } t ? t : entryTime;
+
+        // Reklama atributsiyasi: postback ichidagi (yoki elementdagi) `referral`.
+        var (adId, adSource, adTitle) = ("", "", "");
+        if (TryReferral(pb, out var r) || TryReferral(m, out r))
+        {
+            adTitle = r.TryGetProperty("ads_context_data", out var ctx) && ctx.ValueKind == JsonValueKind.Object
+                ? Str(ctx, "ad_title")
+                : "";
+            adId = Raw(r, "ad_id");
+            adSource = Str(r, "source");
+        }
+
+        // ⚠️ Kalit hash tarmog'ida MATN sifatida PAYLOAD ishlatiladi (title emas): tugmani
+        // aynan payload identifikatsiya qiladi va u tahrirlanmaydi — kalit barqaror qoladi.
+        var key = EventKeyOf(KindPostback, "", mid, senderId, ts, payload);
+        outList.Add(new IgIncomingEvent(
+            KindPostback, title, senderId, "", "", "", mid, key, false, ToIso(ts),
+            PostbackPayload: payload,
+            AdId: adId, AdReferralSource: adSource, AdTitle: adTitle));
     }
 
     /* ---------------- E6: story, attachment, o'chirish, siyosat ---------------- */

@@ -86,6 +86,7 @@ import { AccountPage } from '@/pages/admin/account/AccountPage'
 import { InstagramDashboard } from '@/pages/admin/marketing/InstagramDashboard'
 import { InstagramInbox } from '@/pages/admin/marketing/InstagramInbox'
 import { InstagramRules } from '@/pages/admin/marketing/InstagramRules'
+import { InstagramFaq } from '@/pages/admin/marketing/InstagramFaq'
 import { InstagramKnowledge } from '@/pages/admin/marketing/InstagramKnowledge'
 import { InstagramAnalytics } from '@/pages/admin/marketing/InstagramAnalytics'
 import { InstagramAdLeads } from '@/pages/admin/marketing/InstagramAdLeads'
@@ -196,6 +197,9 @@ export default function App() {
           <Route path="marketing" element={<RequirePerm perm="marketing.dashboard"><InstagramDashboard /></RequirePerm>} />
           <Route path="marketing/inbox" element={<RequirePerm perm="marketing.inbox"><InstagramInbox /></RequirePerm>} />
           <Route path="marketing/rules" element={<RequirePerm perm="marketing.rules"><InstagramRules /></RequirePerm>} />
+          {/* FAQ tugmalari (ice breakers) — qoidalar bilan BITTA ruxsat (`marketing.rules`):
+              ikkalasi ham "tayyor javob" sozlamasi, yangi kalit ATAYIN ochilmagan. */}
+          <Route path="marketing/faq" element={<RequirePerm perm="marketing.rules"><InstagramFaq /></RequirePerm>} />
           <Route path="marketing/knowledge" element={<RequirePerm perm="marketing.knowledge"><InstagramKnowledge /></RequirePerm>} />
           <Route path="marketing/analytics" element={<RequirePerm perm="marketing.analytics"><InstagramAnalytics /></RequirePerm>} />
           <Route path="marketing/reklama-lidlari" element={<RequirePerm perm="marketing.leadads"><InstagramAdLeads /></RequirePerm>} />

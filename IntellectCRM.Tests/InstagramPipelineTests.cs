@@ -833,4 +833,106 @@ public class InstagramPipelineTests
         var lead = Assert.Single(db.Context.Leads);
         Assert.Equal(1, lead.RepeatCount);
     }
+
+    // ===================== FAQ TUGMALARI (ice breaker postback) =====================
+
+    private static string PostbackJson(string payload, string title = "Narxlar qancha?", string mid = "pb-1") => $$"""
+        { "entry": [{ "id": "{{OurId}}", "time": {{NowSeconds}}, "messaging": [{
+            "sender": { "id": "{{ClientId}}" },
+            "recipient": { "id": "{{OurId}}" },
+            "timestamp": {{NowMillis}},
+            "postback": { "mid": "{{mid}}", "title": "{{title}}", "payload": "{{payload}}" } }]}]}
+        """;
+
+    private static IgIceBreaker IceBreaker(bool active = true) => new()
+    {
+        Question = "Narxlar qancha?",
+        Answer = "Narxlar: IELTS — 700 000 so'm/oy.",
+        IsActive = active,
+        Order = 0,
+        CreatedAt = AppClock.Iso(),
+        UpdatedAt = AppClock.Iso(),
+    };
+
+    /// <summary>Tugma bosildi → saqlangan javob yuboriladi, AI CHAQIRILMAYDI (Gemini kaliti
+    /// yo'q muhitda AI yo'li «AI javob bera olmadi» eskalatsiyasi berardi — bermagani javob
+    /// FAQ'dan ketganining isboti), TapCount oshadi.</summary>
+    [Fact]
+    public async Task Faq_tugmasi_bosilsa_saqlangan_javob_yuboriladi_va_tap_count_oshadi()
+    {
+        using var db = TestDb.Sqlite();
+        db.Context.CenterMeta.Add(Meta());
+        db.Context.IgAccounts.Add(Account());
+        var faq = IceBreaker();
+        db.Context.IgIceBreakers.Add(faq);
+        var ev = Event(PostbackJson(InstagramContract.FaqPayload(faq.Id)));
+        db.Context.IgWebhookEvents.Add(ev);
+        await db.Context.SaveChangesAsync();
+
+        var handler = new RecordingHandler();
+        var done = await RunAsync(db, ev, handler);
+
+        Assert.Equal(IgConst.EvDone, done.Status);
+        var outbound = Assert.Single(db.Context.IgMessages.Where(m => m.Direction == IgConst.DirOut).ToList());
+        Assert.Equal("Narxlar: IELTS — 700 000 so'm/oy.", outbound.Text);
+        Assert.Equal(IgConst.ActorFaq, outbound.ActorName);
+        Assert.False(outbound.IsAi);
+        Assert.Equal("", outbound.Error);
+        Assert.Single(Sends(handler));                                    // aynan bitta DM
+        Assert.Equal(1, db.Context.IgIceBreakers.Single().TapCount);
+
+        // Kiruvchi qator — tugma SARLAVHASI bilan (lentada mijozning "savoli" bo'lib turadi).
+        var inbound = db.Context.IgMessages.Single(m => m.Direction == IgConst.DirIn);
+        Assert.Equal("Narxlar qancha?", inbound.Text);
+        var conv = db.Context.IgConversations.Single();
+        Assert.False(conv.NeedsOperator);                                 // AI yo'liga tushmadi
+    }
+
+    /// <summary>O'chirilgan tugma (yoki eski suhbatda qolgan payload) → oddiy qoida→AI oqimi.
+    /// AI kaliti yo'q muhitda bu «AI javob bera olmadi» eskalatsiyasi bilan ko'rinadi —
+    /// ya'ni hodisa FAQ yo'lida emas, umumiy yo'lda ketgan.</summary>
+    [Fact]
+    public async Task Ochirilgan_faq_tugmasi_oddiy_ai_oqimiga_tushadi()
+    {
+        using var db = TestDb.Sqlite();
+        db.Context.CenterMeta.Add(Meta());
+        db.Context.IgAccounts.Add(Account());
+        var faq = IceBreaker(active: false);
+        db.Context.IgIceBreakers.Add(faq);
+        var ev = Event(PostbackJson(InstagramContract.FaqPayload(faq.Id)));
+        db.Context.IgWebhookEvents.Add(ev);
+        await db.Context.SaveChangesAsync();
+
+        var handler = new RecordingHandler();
+        await RunAsync(db, ev, handler);
+
+        Assert.Empty(Sends(handler));                                     // javob KETMADI
+        Assert.Equal(0, db.Context.IgIceBreakers.Single().TapCount);      // o'chiq tugma sanalmaydi
+        var conv = db.Context.IgConversations.Single();
+        Assert.True(conv.NeedsOperator);
+        Assert.Contains("AI javob bera olmadi", conv.NeedsOperatorReason);
+    }
+
+    /// <summary>DM avto-javobi o'chirilgan bo'lsa FAQ javobi ham yuborilmaydi — darvozalar
+    /// FAQ uchun ham hurmat qilinadi (tugma javobi ham AVTOMATIK javob).</summary>
+    [Fact]
+    public async Task Dm_avtojavobi_ochiq_bolsa_faq_javobi_ham_yuborilmaydi()
+    {
+        using var db = TestDb.Sqlite();
+        db.Context.CenterMeta.Add(Meta(dm: false));
+        db.Context.IgAccounts.Add(Account());
+        var faq = IceBreaker();
+        db.Context.IgIceBreakers.Add(faq);
+        var ev = Event(PostbackJson(InstagramContract.FaqPayload(faq.Id)));
+        db.Context.IgWebhookEvents.Add(ev);
+        await db.Context.SaveChangesAsync();
+
+        var handler = new RecordingHandler();
+        await RunAsync(db, ev, handler);
+
+        Assert.Empty(Sends(handler));
+        Assert.Equal(0, db.Context.IgIceBreakers.Single().TapCount);
+        // Kiruvchi qator baribir yoziladi — tarix yo'qolmaydi.
+        Assert.Single(db.Context.IgMessages.Where(m => m.Direction == IgConst.DirIn).ToList());
+    }
 }

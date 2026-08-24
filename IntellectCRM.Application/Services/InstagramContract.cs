@@ -63,8 +63,13 @@ public static class IgConst
     /// <para>⚠️ Yangi maydon QO'SHISHDAN oldin parser uni ISHLAY OLISHINI tekshiring:
     /// obuna bo'lingan, lekin qo'llab-quvvatlanmaydigan maydon navbatni <c>skipped</c>
     /// yozuvlar bilan to'ldiradi (<c>mentions</c>, <c>live_comments</c>).</para>
+    ///
+    /// <para><c>messaging_postbacks</c> — FAQ tugmasi (ice breaker) bosilganda keladigan
+    /// hodisa. Parser uni to'liq ishlaydi (<c>InstagramEventParser</c>, kind
+    /// <c>postback</c>); obunasiz tugma bosilgani bizga UMUMAN yetib kelmasdi va mijoz
+    /// javobsiz qolardi.</para>
     /// </summary>
-    public static readonly string[] WebhookFields = { "comments", "messages" };
+    public static readonly string[] WebhookFields = { "comments", "messages", "messaging_postbacks" };
 
     /// <summary>Obuna so'rovi uchun vergul bilan ajratilgan ro'yxat.</summary>
     public static string WebhookFieldsCsv => string.Join(",", WebhookFields);
@@ -152,7 +157,29 @@ public static class IgConst
     /// <summary>Javobni kim yozgani (<see cref="IgMessage.ActorName"/>) — inbox lentasida ko'rinadi.</summary>
     public const string ActorAi = "AI agent";
     public const string ActorRule = "Avto-qoida";
+    public const string ActorFaq = "FAQ tugmasi";
     public const string ActorOperatorIg = "Operator (Instagram ilovasidan)";
+
+    /* ---- FAQ TUGMALARI (ice breakers) ---- */
+
+    /// <summary>Ice breaker postback payload'ining prefiksi — <c>FAQ:&lt;IgIceBreaker.Id&gt;</c>.
+    /// <para>Prefiks SHART: postback boshqa manbadan ham kelishi mumkin (kelajakdagi tugmalar,
+    /// referral) va yalang GUID'ni "bu bizning FAQ'imiz" deb qabul qilish noto'g'ri javob
+    /// yuborishga olib kelardi. Yagona manba shu konstanta — qurish/o'qish faqat
+    /// <see cref="InstagramContract.FaqPayload"/> / <see cref="InstagramContract.FaqIdFromPayload"/>
+    /// orqali.</para></summary>
+    public const string FaqPayloadPrefix = "FAQ:";
+
+    /// <summary>Ice breaker'lar soni chegarasi — <b>Meta cheklovi</b> (bitta locale'da 4 tagacha
+    /// savol), bizning tanlovimiz emas. 5-chisi API darajasida rad etiladi.</summary>
+    public const int MaxFaqItems = 4;
+
+    /// <summary>FAQ savolining chegarasi (Meta: ice breaker question ≤ 80 belgi).</summary>
+    public const int FaqQuestionMaxLength = 80;
+
+    /// <summary>FAQ javobining chegarasi — DM matni bilan bir o'lchovda (yuborishda baribir
+    /// <see cref="MaxReplyBytes"/> bo'yicha kesiladi).</summary>
+    public const int FaqAnswerMaxLength = 1000;
 
     public static readonly string[] Intents =
     {
@@ -788,6 +815,27 @@ public static class InstagramContract
         else return "";
         if (local[0] == '0') return "";   // mahalliy raqam 0 bilan boshlanmaydi
         return PhoneUtil.Normalize("998" + local);
+    }
+
+    /* ─────────────── FAQ TUGMALARI (ice breakers) — payload qoidasi ─────────────── */
+
+    /// <summary>FAQ tugmasining postback payload'i — <c>FAQ:&lt;id&gt;</c>.
+    /// <para>Qurish FAQAT shu yerda: prefiks bir joyda o'zgarsa o'qish bilan yozish ayri
+    /// ketmasin (<see cref="FaqIdFromPayload"/> bilan juftlik).</para></summary>
+    public static string FaqPayload(string id) => IgConst.FaqPayloadPrefix + (id ?? "").Trim();
+
+    /// <summary>
+    /// Postback payload'idan FAQ tugmasining id'sini ajratadi; FAQ payload'i bo'lmasa <c>""</c>.
+    /// <para>⚠️ Prefiks AYNAN (registrga sezgir) tekshiriladi: payloadni biz o'zimiz yozamiz
+    /// (<see cref="FaqPayload"/>), ya'ni boshqa registr — boshqa manbaning payload'i. Bo'sh
+    /// qiymat "FAQ emas" degani: bunday postback oddiy DM kabi qoida→AI oqimiga tushadi,
+    /// jimgina tashlanmaydi.</para>
+    /// </summary>
+    public static string FaqIdFromPayload(string? payload)
+    {
+        var p = (payload ?? "").Trim();
+        if (!p.StartsWith(IgConst.FaqPayloadPrefix, StringComparison.Ordinal)) return "";
+        return p[IgConst.FaqPayloadPrefix.Length..].Trim();
     }
 
     /// <summary>
