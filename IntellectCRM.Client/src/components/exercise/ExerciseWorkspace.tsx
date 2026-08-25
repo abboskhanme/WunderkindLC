@@ -8,6 +8,8 @@
  */
 import { useMemo, useState } from 'react'
 import type { ReactElement } from 'react'
+// Konstruktor CSS'i (`.dc-*`) shu yerda — main.tsx'da EMAS: faqat mashq ekranlari bilan yuklanadi
+import '@/styles/exercise.css'
 import { UI, kindInfo, kindTheme, sans } from './catalog'
 import { ExercisePicker } from './ExercisePicker'
 import {

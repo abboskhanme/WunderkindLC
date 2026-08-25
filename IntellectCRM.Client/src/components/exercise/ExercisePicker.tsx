@@ -8,6 +8,8 @@
  */
 import { Fragment, useEffect, useState } from 'react'
 import type { CSSProperties } from 'react'
+// Konstruktor CSS'i (`.dc-*`) shu yerda — main.tsx'da EMAS: faqat mashq ekranlari bilan yuklanadi
+import '@/styles/exercise.css'
 import type { LessonType } from '@/types'
 import type { ExerciseKind } from './model'
 import { CATEGORIES, LegacyPreview, MiniPreview, OTHER_CATEGORY, UI, display, sans, Icon } from './catalog'

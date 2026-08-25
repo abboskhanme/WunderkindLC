@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { MapContainer, TileLayer, Marker, useMap, useMapEvents } from 'react-leaflet'
 import L from 'leaflet'
+// Leaflet CSS shu yerda — global index.css'da EMAS (faqat xarita sahifalariga kerak)
+import 'leaflet/dist/leaflet.css'
 import { Icon, fmtDate } from '@/pages/student/lib'
 import { getStudentLocation, updateStudentLocation } from '@/api/services/studentPortal'
 

@@ -1,5 +1,7 @@
 @import 'tailwindcss';
-@import 'leaflet/dist/leaflet.css';
+
+/* Leaflet CSS bu yerda EMAS — u faqat xarita sahifalarida kerak, shuning uchun
+   o'sha sahifalarning o'zida import qilinadi (boshlang'ich CSS yengil qolsin). */
 
 /* ============================================================
    Intellect CRM — design tokens (crm/ reference: violet + Manrope)

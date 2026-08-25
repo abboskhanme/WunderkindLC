@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet'
 import L from 'leaflet'
+// Leaflet CSS shu yerda — global index.css'da EMAS (faqat xarita sahifalariga kerak)
+import 'leaflet/dist/leaflet.css'
 import { MapPin } from 'lucide-react'
 import type { Group, StudentLocationRow } from '@/types'
 import { getStudentLocations } from '@/api/services/locations'

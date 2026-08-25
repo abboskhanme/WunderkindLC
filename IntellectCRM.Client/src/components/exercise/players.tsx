@@ -9,6 +9,8 @@
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties, MutableRefObject, ReactNode } from 'react'
+// Konstruktor CSS'i (`.dc-*`) shu yerda ham — pleyer o'quvchi portalida mustaqil ishlatiladi
+import '@/styles/exercise.css'
 import { display, sans, kindTheme } from './catalog'
 import type { Theme } from './catalog'
 import { PlayButton, ResultBar } from './kit'

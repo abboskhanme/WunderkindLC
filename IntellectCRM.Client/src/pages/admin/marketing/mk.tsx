@@ -12,6 +12,9 @@
 import { useEffect, useState } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
 import { Link, NavLink } from 'react-router-dom'
+// Marketing bo'limining CSS'i shu yerda — main.tsx'da EMAS: barcha marketing sahifalari
+// shu fayldan import qiladi, ya'ni CSS ular bilan birga (lazy) yuklanadi.
+import '@/styles/marketing.css'
 
 /* ---------------- ICONS (line) ---------------- */
 /**

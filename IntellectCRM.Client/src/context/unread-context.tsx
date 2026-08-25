@@ -1,8 +1,8 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import type { ChatMessage } from '@/types'
+import type { HubConnection } from '@microsoft/signalr'
 import { useAuth } from './auth-context'
-import { connectChat, getAdminLastMessages } from '@/api/services/messages'
 import { getTeacherLastMessages } from '@/api/services/teacher'
 
 /* ---------- localStorage yordamchilari ---------- */
@@ -76,55 +76,66 @@ export function UnreadProvider({ children }: { children: ReactNode }) {
     const userId = user.id
     const role = user.role
     let active = true
+    // Ulanish dinamik import ICHIDA ochiladi — teardown uni shu o'zgaruvchidan topadi
+    let conn: HubConnection | null = null
 
-    // 1. Rol bo'yicha to'g'ri endpoint ni tanlaymiz
-    const fetchLastMessages =
-      role === 'admin' || role === 'superadmin' || role === 'staff'
-        ? getAdminLastMessages
-        : role === 'teacher'
-          ? getTeacherLastMessages
-          : null // student/parent uchun chat tarixi yo'q
+    // messages.ts (va u orqali og'ir @microsoft/signalr) boshlang'ich chunk'ka kirmasligi
+    // uchun DINAMIK yuklanadi. Import unmount'dan KEYIN kelib qolsa — `active` bayrog'i
+    // ulanish ochilishini to'xtatadi (aks holda hech kim stop qilmaydigan ulanish qolardi).
+    import('@/api/services/messages')
+      .then((messages) => {
+        if (!active) return
 
-    if (fetchLastMessages) {
-      const lastRead = loadLastRead(userId)
-      fetchLastMessages()
-        .then((channelTimes) => {
-          if (!active) return
-          const unread = new Set<string>()
-          for (const [channel, lastMsgAt] of Object.entries(channelTimes)) {
-            // lastMsgAt: backend ISO vaqti; lastRead[channel]: localStorage ISO vaqti
-            // ISO string leksikografik taqqoslash UTC uchun to'g'ri ishlaydi
-            if (lastMsgAt && (!lastRead[channel] || lastMsgAt > lastRead[channel])) {
-              unread.add(channel)
-            }
+        // 1. Rol bo'yicha to'g'ri endpoint ni tanlaymiz
+        const fetchLastMessages =
+          role === 'admin' || role === 'superadmin' || role === 'staff'
+            ? messages.getAdminLastMessages
+            : role === 'teacher'
+              ? getTeacherLastMessages
+              : null // student/parent uchun chat tarixi yo'q
+
+        if (fetchLastMessages) {
+          const lastRead = loadLastRead(userId)
+          fetchLastMessages()
+            .then((channelTimes) => {
+              if (!active) return
+              const unread = new Set<string>()
+              for (const [channel, lastMsgAt] of Object.entries(channelTimes)) {
+                // lastMsgAt: backend ISO vaqti; lastRead[channel]: localStorage ISO vaqti
+                // ISO string leksikografik taqqoslash UTC uchun to'g'ri ishlaydi
+                if (lastMsgAt && (!lastRead[channel] || lastMsgAt > lastRead[channel])) {
+                  unread.add(channel)
+                }
+              }
+              setUnreadChannels(unread)
+            })
+            .catch(() => {})
+        }
+
+        // 2. Global SignalR ulanish (barcha kanallardan xabar qabul qiladi)
+        conn = messages.connectChat((m) => {
+          // Aktiv ChatPanel ga yo'naltiramiz (agar kanal ochiq bo'lsa)
+          subscribersRef.current.get(m.className)?.(m)
+          // Kanal hozir ko'rilmayotgan bo'lsa — o'qilmagan deb belgilaymiz
+          if (!subscribersRef.current.has(m.className)) {
+            setUnreadChannels((prev) => {
+              if (prev.has(m.className)) return prev
+              return new Set([...prev, m.className])
+            })
           }
-          setUnreadChannels(unread)
         })
-        .catch(() => {})
-    }
 
-    // 2. Global SignalR ulanish (barcha kanallardan xabar qabul qiladi)
-    const conn = connectChat((m) => {
-      // Aktiv ChatPanel ga yo'naltiramiz (agar kanal ochiq bo'lsa)
-      subscribersRef.current.get(m.className)?.(m)
-      // Kanal hozir ko'rilmayotgan bo'lsa — o'qilmagan deb belgilaymiz
-      if (!subscribersRef.current.has(m.className)) {
-        setUnreadChannels((prev) => {
-          if (prev.has(m.className)) return prev
-          return new Set([...prev, m.className])
-        })
-      }
-    })
-
-    if (conn) {
-      conn.onreconnecting(() => {
-        reconnectListenersRef.current.forEach((cb) => cb('reconnecting'))
+        if (conn) {
+          conn.onreconnecting(() => {
+            reconnectListenersRef.current.forEach((cb) => cb('reconnecting'))
+          })
+          conn.onreconnected(() => {
+            reconnectListenersRef.current.forEach((cb) => cb('reconnected'))
+          })
+          conn.start().catch(() => {})
+        }
       })
-      conn.onreconnected(() => {
-        reconnectListenersRef.current.forEach((cb) => cb('reconnected'))
-      })
-      conn.start().catch(() => {})
-    }
+      .catch(() => {}) // chunk yuklanmasa (offline va h.k.) — badge'siz davom etamiz
 
     return () => {
       active = false
