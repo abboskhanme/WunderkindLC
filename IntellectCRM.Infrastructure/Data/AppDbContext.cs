@@ -13,6 +13,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options)
 {
     // Maktab ma'lumotlari
     public DbSet<AppUser> Users => Set<AppUser>();
+    public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
     public DbSet<Student> Students => Set<Student>();
     public DbSet<Teacher> Teachers => Set<Teacher>();
     public DbSet<TeacherAttendance> TeacherAttendances => Set<TeacherAttendance>();
@@ -242,6 +243,18 @@ public class AppDbContext(DbContextOptions<AppDbContext> options)
         // Login (Email) unikal — DB darajasidagi unique indeks TOCTOU poyga holatida ham dublikatni
         // bloklaydi (parallel ro'yxatdan o'tish login'ni buzmasin).
         b.Entity<AppUser>().HasIndex(u => u.Email).IsUnique();
+
+        // REFRESH TOKEN — hash bo'yicha topiladi (unikal: dedup + tez qidiruv), foydalanuvchi va
+        // family bo'yicha bekor qilinadi. Indekslanadigan matn ustunlariga uzunlik beriladi
+        // (loyihadagi umumiy qoida — SQL Server nvarchar(max) ni indekslay olmaydi).
+        b.Entity<RefreshToken>().Property(r => r.TokenHash).HasMaxLength(128);
+        b.Entity<RefreshToken>().Property(r => r.UserId).HasMaxLength(200);
+        b.Entity<RefreshToken>().Property(r => r.ReplacedByHash).HasMaxLength(128);
+        b.Entity<RefreshToken>().Property(r => r.CreatedByIp).HasMaxLength(64);
+        b.Entity<RefreshToken>().Property(r => r.UserAgent).HasMaxLength(256);
+        b.Entity<RefreshToken>().HasIndex(r => r.TokenHash).IsUnique();
+        b.Entity<RefreshToken>().HasIndex(r => r.UserId);
+        b.Entity<RefreshToken>().HasIndex(r => r.FamilyId);
 
         // Pul maydonlari uchun aniqlik (SQL Server decimal(18,2))
         b.Entity<Student>().Property(s => s.Balance).HasPrecision(18, 2);

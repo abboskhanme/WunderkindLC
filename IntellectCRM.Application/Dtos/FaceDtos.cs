@@ -44,9 +44,10 @@ public record FaceChallengeDto(
 /// ⚠️ Rad etilgan urinish ham HTTP 200 bilan qaytadi (ilova sababni ko'rsatadi); 4xx faqat
 /// texnik xatolarda (buzuq vektor, katta fayl, ruxsat yo'q).</summary>
 /// <param name="Token">Muvaffaqiyatda — TO'LIQ JWT (cheklangan token o'rniga qo'yiladi).</param>
+/// <param name="RefreshToken">Muvaffaqiyatda — 30 kunlik refresh token (MOBIL uchun; web cookie'dan oladi).</param>
 public record FaceVerifyResponse(
     bool Ok, string Status, string Reason, double? Score, int AttemptsLeft,
-    string? Token = null, bool Enrolled = false);
+    string? Token = null, bool Enrolled = false, string? RefreshToken = null);
 
 /* ---------- Admin ---------- */
 

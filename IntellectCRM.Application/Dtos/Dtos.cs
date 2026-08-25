@@ -38,8 +38,15 @@ public record UserDto(
 /// Eski klientlar bu ikki maydonni e'tiborsiz qoldiradi (JSON'da qo'shimcha maydon).
 /// </summary>
 /// <param name="FaceStatus">enroll (etalon yo'q — birinchi marta) | verify.</param>
+/// <param name="RefreshToken">Uzoq muddatli (30 kun) refresh token — MOBIL uchun (web uni cookie'dan
+/// oladi va e'tiborsiz qoldiradi). Access token (60 daq) eskirganda <c>POST /api/auth/refresh</c> ga
+/// yuboriladi. FaceRequired javobida bo'lmaydi (cheklangan token to'liq sessiya emas).</param>
 public record LoginResponse(
-    string Token, UserDto User, bool FaceRequired = false, string? FaceStatus = null);
+    string Token, UserDto User, bool FaceRequired = false, string? FaceStatus = null,
+    string? RefreshToken = null);
+/// <summary>Refresh so'rovi (MOBIL). Web'da <c>rt</c> cookie ishlatiladi, body kerak emas.
+/// Nullable — cookie bilan kelganda body umuman bo'lmasligi mumkin.</summary>
+public record RefreshRequest(string? RefreshToken = null);
 /// <summary>O'quvchi/o'qituvchiga biriktirilgan tizim akkaunti ma'lumotlari (admin uchun).</summary>
 public record CredentialsDto(string Login, string Password, string Role);
 /// <summary>Joriy foydalanuvchi o'z login (email) va/yoki parolini o'zgartirishi uchun.

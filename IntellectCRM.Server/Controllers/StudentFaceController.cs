@@ -26,7 +26,8 @@ namespace IntellectCRM.Server.Controllers;
 [Route("api/student/face")]
 public class StudentFaceController(
     AppDbContext db, FaceLoginService face, JwtTokenService jwt, AppAttestation attest,
-    IWebHostEnvironment env, ILogger<StudentFaceController> logger) : ControllerBase
+    IWebHostEnvironment env, ILogger<StudentFaceController> logger,
+    RefreshTokenService refreshTokens) : ControllerBase
 {
     /// <summary>Selfi uchun eng katta fayl hajmi. Kichik ATAYIN: rasm faqat "dalil" sifatida
     /// saqlanadi, qaror baribir VEKTOR bo'yicha chiqadi (va biometrik fayllar disk/zaxirani
@@ -196,9 +197,9 @@ public class StudentFaceController(
         if (!settings.Enabled)
         {
             var fullToken = jwt.CreateToken(user);
-            IssueAuthCookies(fullToken);   // DUAL-MODE: web cookie rejimi (mobil e'tibor bermaydi)
+            var rt0 = await IssueSessionAsync(user.Id, fullToken, ct);   // refresh + DUAL-MODE cookie
             return new FaceVerifyResponse(true, FaceLoginService.StatusApproved, "", null,
-                FaceLoginService.MaxAttemptsPerHour, fullToken);
+                FaceLoginService.MaxAttemptsPerHour, fullToken, RefreshToken: rt0);
         }
 
         var device = (deviceId ?? "").Trim();
@@ -272,17 +273,23 @@ public class StudentFaceController(
             "Yuz tasdiqlandi: studentId={StudentId}, ball={Score}, etalon={Enrolled}",
             me.Id, result.Score, result.Enrolled);
         var token = jwt.CreateToken(user);
-        IssueAuthCookies(token);   // DUAL-MODE: web cookie rejimi (mobil e'tibor bermaydi)
+        var rt = await IssueSessionAsync(user.Id, token, ct);   // refresh + DUAL-MODE cookie
         return new FaceVerifyResponse(true, result.Status, "", result.Score, result.AttemptsLeft,
-            token, result.Enrolled);
+            token, result.Enrolled, RefreshToken: rt);
     }
 
-    /// <summary>Web cookie rejimi uchun `at`/`csrf` cookie'larini qo'yadi (token JSON'da ham qaytadi).</summary>
-    private void IssueAuthCookies(string token)
+    /// <summary>To'liq sessiya chiqaradi: refresh token (30 kun) yaratadi va `at`/`csrf`/`rt`
+    /// cookie'larni qo'yadi (token/refresh JSON'da ham qaytadi — mobil uchun). Xom refresh tokenni
+    /// qaytaradi.</summary>
+    private async Task<string> IssueSessionAsync(string userId, string token, CancellationToken ct)
     {
         var expiresUtc = new System.IdentityModel.Tokens.Jwt.JwtSecurityTokenHandler()
             .ReadJwtToken(token).ValidTo; // UTC
-        IntellectCRM.Server.AuthCookies.Issue(HttpContext, token, expiresUtc);
+        var ua = Request.Headers.UserAgent.ToString();
+        var rt = await refreshTokens.IssueAsync(
+            userId, ip: ClientIp(), ua: string.IsNullOrWhiteSpace(ua) ? null : ua, ct: ct);
+        IntellectCRM.Server.AuthCookies.Issue(HttpContext, token, expiresUtc, rt.RawToken, rt.ExpiresUtc);
+        return rt.RawToken;
     }
 
     private void DeleteFiles(IReadOnlyList<string> urls)

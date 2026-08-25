@@ -32,11 +32,25 @@ public static class AuthCookies
     /// <summary>Double-submit uchun so'rov sarlavhasi.</summary>
     public const string CsrfHeader = "X-CSRF-Token";
 
+    /// <summary>Refresh token cookie nomi. <c>Path=/api/auth</c> — faqat refresh/logout endpointlariga
+    /// yuboriladi (butun API bo'ylab sizib yurmasin), <c>HttpOnly</c> (JS o'qiy olmaydi).</summary>
+    public const string RtCookie = "rt";
+
+    /// <summary>Refresh cookie faqat shu yo'l ostiga yuboriladi.</summary>
+    public const string RtPath = "/api/auth";
+
     /// <summary>
-    /// Login muvaffaqiyatli bo'lganda: <c>at</c> (auth) va <c>csrf</c> cookie'larini qo'yadi.
-    /// Token JSON body'da ham qaytishda davom etadi (mobil uchun) — bu QO'SHIMCHA.
+    /// Login muvaffaqiyatli bo'lganda: <c>at</c> (auth), <c>csrf</c> va (berilsa) <c>rt</c> (refresh)
+    /// cookie'larini qo'yadi. Tokenlar JSON body'da ham qaytishda davom etadi (mobil uchun) — bu QO'SHIMCHA.
+    ///
+    /// <para><paramref name="refreshToken"/> berilsa: <c>rt</c> cookie qo'yiladi va <c>csrf</c>
+    /// REFRESH muddati (<paramref name="refreshExpiresUtc"/>) bilan yashaydi — SPA access tokenni
+    /// refresh qilganda ham double-submit uchun csrf saqlanib qolsin (access 60 daqiqada eskiradi,
+    /// csrf esa refresh bilan birga 30 kun).</para>
     /// </summary>
-    public static void Issue(HttpContext ctx, string token, DateTime expiresUtc)
+    public static void Issue(
+        HttpContext ctx, string token, DateTime expiresUtc,
+        string? refreshToken = null, DateTime? refreshExpiresUtc = null)
     {
         var https = ctx.Request.IsHttps;
         var expires = new DateTimeOffset(expiresUtc, TimeSpan.Zero);
@@ -55,8 +69,31 @@ public static class AuthCookies
             IsEssential = true,
         });
 
-        IssueCsrf(ctx, expiresUtc);
+        // csrf — refresh bo'lsa u bilan birga uzoq yashaydi (aks holda access muddati bilan).
+        IssueCsrf(ctx, refreshExpiresUtc ?? expiresUtc);
+
+        if (!string.IsNullOrEmpty(refreshToken))
+            IssueRefresh(ctx, refreshToken, refreshExpiresUtc ?? expiresUtc);
     }
+
+    /// <summary>FAQAT <c>rt</c> (refresh) cookie'ni qo'yadi — <c>Path=/api/auth</c>, HttpOnly.</summary>
+    public static void IssueRefresh(HttpContext ctx, string refreshToken, DateTime expiresUtc)
+    {
+        var https = ctx.Request.IsHttps;
+        ctx.Response.Cookies.Append(RtCookie, refreshToken, new CookieOptions
+        {
+            HttpOnly = true,                // JS o'qiy olmaydi (XSS bilan o'g'irlanmasin)
+            Secure = https,
+            SameSite = https ? SameSiteMode.None : SameSiteMode.Lax,
+            Path = RtPath,                  // faqat /api/auth/* ga yuboriladi
+            Expires = new DateTimeOffset(expiresUtc, TimeSpan.Zero),
+            IsEssential = true,
+        });
+    }
+
+    /// <summary><c>rt</c> cookie'ni o'chiradi (logout).</summary>
+    public static void ClearRefresh(HttpContext ctx) =>
+        ctx.Response.Cookies.Delete(RtCookie, new CookieOptions { Path = RtPath });
 
     /// <summary>
     /// FAQAT <c>csrf</c> cookie'ni qo'yadi (yangi tasodifiy qiymat bilan). Login'da
@@ -108,6 +145,8 @@ public sealed class CsrfMiddleware(RequestDelegate next)
     {
         "/api/auth/login",                  // hali autentifikatsiya yo'q
         "/api/auth/otp-login",              // hali autentifikatsiya yo'q
+        "/api/auth/refresh",                // access token eskirgan — csrf cookie ham eskirgan bo'lishi mumkin
+                                            // (rt cookie o'zi cross-site forge'dan himoyalangan: Path cheklovi + HttpOnly)
         "/api/public/instagram/webhook",    // Meta webhook (tashqi, cookie yubormaydi)
         "/api/public/instagram/leadgen",    // Meta lead webhook
         "/api/telephony/",                  // telefoniya webhook (moizvonki/{secret})

@@ -101,6 +101,8 @@ if (string.IsNullOrWhiteSpace(jwtOptions.Key) || jwtOptions.Key.Length < 32)
 }
 builder.Services.AddSingleton(jwtOptions);
 builder.Services.AddSingleton<JwtTokenService>();
+// Refresh token oqimi (chiqarish/rotatsiya/bekor qilish) — AppDbContext'ga bog'liq (scoped).
+builder.Services.AddScoped<RefreshTokenService>();
 
 builder.Services
     .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)

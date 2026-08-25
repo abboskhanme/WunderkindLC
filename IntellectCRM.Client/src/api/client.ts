@@ -1,4 +1,4 @@
-import axios from 'axios'
+import axios, { AxiosError, type AxiosRequestConfig } from 'axios'
 import posthog from '@/lib/posthog'
 
 /**
@@ -34,22 +34,78 @@ api.interceptors.request.use((config) => {
   return config
 })
 
-// Token tugagan/yaroqsiz bo'lsa (401) — sessiyani tozalab login sahifasiga qaytaramiz.
-// Login so'rovining o'zidagi 401 (parol noto'g'ri) bundan mustasno — uni LoginPage ko'rsatadi.
+// So'rov konfiguratsiyasiga qo'shiladigan bayroq: bu so'rov refresh'dan keyin BIR MARTA
+// qayta yuborilganini belgilaydi — aks holda cheksiz sikl bo'lardi.
+type RetriableConfig = AxiosRequestConfig & { _retry?: boolean }
+
+// SINGLE-FLIGHT: bir vaqtda kelgan bir nechta 401 uchun refresh FAQAT BIR MARTA chaqiriladi.
+// Birinchi 401 shu promise'ni o'rnatadi, qolganlari SHUNI kutadi; tugagach null'ga qaytadi.
+let refreshPromise: Promise<void> | null = null
+
+/**
+ * `POST /auth/refresh` — web rejimida `rt` HttpOnly cookie avtomatik ketadi (body kerak emas).
+ * Muvaffaqiyatda server yangi `at`+`csrf`+`rt` cookie'larini o'rnatadi (biz body'ni e'tiborsiz
+ * qoldiramiz). Xato bo'lsa promise reject bo'ladi. Single-flight'ni ta'minlash uchun mavjud
+ * `refreshPromise` bo'lsa yangisini boshlamaymiz.
+ */
+function refreshSession(): Promise<void> {
+  if (!refreshPromise) {
+    refreshPromise = api
+      .post('/auth/refresh')
+      .then(() => undefined)
+      .finally(() => {
+        refreshPromise = null
+      })
+  }
+  return refreshPromise
+}
+
+/** Sessiyani tozalab login sahifasiga qaytaramiz (refresh ham muvaffaqiyatsiz bo'lganda). */
+function forceLogout(): void {
+  posthog.reset()
+  localStorage.removeItem('user')
+  if (window.location.pathname !== '/login') {
+    window.location.assign('/login')
+  }
+}
+
+// Token tugagan/yaroqsiz bo'lsa (401):
+//  - login/otp-login/refresh so'rovlaridan tashqari so'rovlarda avval `/auth/refresh` orqali
+//    access token'ni yangilashga urinamiz va original so'rovni BIR MARTA qayta yuboramiz;
+//  - refresh muvaffaqiyatsiz bo'lsa — sessiyani tozalab login sahifasiga qaytaramiz.
+// Login/otp-login/refresh so'rovining o'zidagi 401 bundan mustasno (parol noto'g'ri / sessiya
+// tugagan) — refresh chaqirilmaydi, cheksiz sikl bo'lmaydi.
 api.interceptors.response.use(
   (response) => response,
-  (error) => {
+  async (error: AxiosError) => {
     const status = error.response?.status
-    const url: string = error.config?.url ?? ''
-    const isLoginCall = url.includes('/auth/login')
-    if (status === 401 && !isLoginCall) {
-      posthog.reset()
-      localStorage.removeItem('user')
-      if (window.location.pathname !== '/login') {
-        window.location.assign('/login')
-      }
+    const config = error.config as RetriableConfig | undefined
+    const url: string = config?.url ?? ''
+    const isAuthCall =
+      url.includes('/auth/login') ||
+      url.includes('/auth/otp-login') ||
+      url.includes('/auth/refresh')
+
+    // Refresh yo'li bilan tiklab bo'lmaydigan holatlar: 401 emas, auth so'rovi, config yo'q,
+    // yoki bu so'rov allaqachon bir marta qayta urinilgan.
+    if (status !== 401 || isAuthCall || !config || config._retry) {
+      if (status === 401 && !isAuthCall) forceLogout()
+      return Promise.reject(error)
     }
-    return Promise.reject(error)
+
+    try {
+      // Single-flight: parallel 401'lar bitta refresh'ni kutadi.
+      await refreshSession()
+    } catch {
+      // Refresh muvaffaqiyatsiz (masalan `rt` ham tugagan) — sessiyani tozalaymiz.
+      forceLogout()
+      return Promise.reject(error)
+    }
+
+    // Refresh muvaffaqiyatli: yangi `at` cookie server tomonidan o'rnatildi, original so'rovni
+    // BIR MARTA (`_retry`) qayta yuboramiz — cookie brauzer orqali avtomatik ketadi.
+    config._retry = true
+    return api(config)
   },
 )
 

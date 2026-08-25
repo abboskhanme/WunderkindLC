@@ -15,7 +15,7 @@ namespace IntellectCRM.Server.Controllers;
 [Route("api/auth")]
 public class AuthController(
     AppDbContext db, JwtTokenService jwt, ILogger<AuthController> logger,
-    FaceLoginService face) : ControllerBase
+    FaceLoginService face, RefreshTokenService refreshTokens) : ControllerBase
 {
     /// <summary>Akkaunt bloklanishidan oldingi ketma-ket noto'g'ri urinishlar chegarasi.</summary>
     private const int MaxFailedAttempts = 5;
@@ -110,11 +110,13 @@ public class AuthController(
         await db.SaveChangesAsync();
 
         var token = jwt.CreateToken(user);
-        // DUAL-MODE: token JSON body'da qaytadi (mobil Bearer), QO'SHIMCHA `at`/`csrf` cookie
+        // DUAL-MODE: token + refresh JSON body'da qaytadi (mobil), QO'SHIMCHA `at`/`csrf`/`rt` cookie
         // ham qo'yiladi (web HttpOnly cookie rejimi). Orqaga moslik buzilmaydi.
-        IssueAuthCookies(token);
+        var rt = await refreshTokens.IssueAsync(user.Id, ip: ip, ua: UserAgent(), ct: HttpContext.RequestAborted);
+        IssueAuthCookies(token, rt.RawToken, rt.ExpiresUtc);
         return new LoginResponse(token, new UserDto(
-            user.Id, user.FullName, user.Role, user.Email, user.AvatarUrl, await PermsFor(user)));
+            user.Id, user.FullName, user.Role, user.Email, user.AvatarUrl, await PermsFor(user)),
+            RefreshToken: rt.RawToken);
     }
 
     /// <summary>Bot orqali olingan bir martalik kod bilan login (parol o'rniga) — xuddi shu JWT/UserDto
@@ -170,18 +172,63 @@ public class AuthController(
 
         logger.LogInformation("OTP orqali login: userId={UserId}, IP={IP}", user.Id, ip);
         var token = jwt.CreateToken(user);
-        // DUAL-MODE: `Login` bilan bir xil — body'da token + `at`/`csrf` cookie.
-        IssueAuthCookies(token);
+        // DUAL-MODE: `Login` bilan bir xil — body'da token + refresh, `at`/`csrf`/`rt` cookie.
+        var rt = await refreshTokens.IssueAsync(user.Id, ip: ip, ua: UserAgent(), ct: HttpContext.RequestAborted);
+        IssueAuthCookies(token, rt.RawToken, rt.ExpiresUtc);
         return new LoginResponse(token, new UserDto(
-            user.Id, user.FullName, user.Role, user.Email, user.AvatarUrl, await PermsFor(user)));
+            user.Id, user.FullName, user.Role, user.Email, user.AvatarUrl, await PermsFor(user)),
+            RefreshToken: rt.RawToken);
     }
 
-    /// <summary>Web cookie rejimi uchun `at` (HttpOnly) va `csrf` cookie'larini qo'yadi.
-    /// Muddat token'ning o'z `exp` (12 soat) qiymatidan olinadi — cookie va token birga eskiradi.</summary>
-    private void IssueAuthCookies(string token)
+    /// <summary>
+    /// ACCESS TOKENni yangilash (refresh oqimi). DUAL:
+    /// <list type="bullet">
+    /// <item><b>Web:</b> <c>rt</c> HttpOnly cookie'dan o'qiladi (body kerak emas). Muvaffaqiyatda
+    /// yangi <c>at</c>+<c>csrf</c>+<c>rt</c> cookie o'rnatiladi.</item>
+    /// <item><b>Mobil:</b> <c>rt</c> cookie yo'q → body'dagi <c>refreshToken</c> ishlatiladi.</item>
+    /// </list>
+    /// Har ikkalasida javob <c>{ token, refreshToken, user }</c>. Xato (topilmadi/eskirgan/bekor/
+    /// reuse) → 401. Rotatsiya + grace + family revocation — <see cref="RefreshTokenService"/>.
+    /// CSRF'dan ISTISNO (login kabi).
+    /// </summary>
+    [HttpPost("refresh")]
+    [AllowAnonymous]
+    public async Task<ActionResult<LoginResponse>> Refresh([FromBody] RefreshRequest? req = null)
+    {
+        // Web — cookie ustun; mobil — body.
+        var raw = Request.Cookies[IntellectCRM.Server.AuthCookies.RtCookie];
+        if (string.IsNullOrEmpty(raw)) raw = req?.RefreshToken;
+        if (string.IsNullOrEmpty(raw)) return Unauthorized(new { message = "Refresh token topilmadi" });
+
+        var ip = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "?";
+        var result = await refreshTokens.RotateAsync(raw, ip, UserAgent(), HttpContext.RequestAborted);
+        if (!result.Ok || result.User is null || result.AccessToken is null || result.RefreshToken is null)
+        {
+            logger.LogWarning("Refresh rad etildi: sabab={Reason}, IP={IP}", result.Error, ip);
+            return Unauthorized(new { message = "Sessiya muddati tugagan. Qayta kiring." });
+        }
+
+        // Yangi juftlik: at (60 daq) + csrf + rt (30 kun) cookie va body (mobil).
+        IssueAuthCookies(result.AccessToken, result.RefreshToken, result.RefreshExpiresUtc);
+        var user = result.User;
+        return new LoginResponse(result.AccessToken, new UserDto(
+            user.Id, user.FullName, user.Role, user.Email, user.AvatarUrl, await PermsFor(user)),
+            RefreshToken: result.RefreshToken);
+    }
+
+    /// <summary>Web cookie rejimi uchun `at` (HttpOnly, 60 daq), `csrf` (30 kun) va `rt` (refresh,
+    /// 30 kun) cookie'larini qo'yadi. `at` muddati token'ning o'z `exp` qiymatidan olinadi.</summary>
+    private void IssueAuthCookies(string token, string refreshToken, DateTime refreshExpiresUtc)
     {
         var expiresUtc = new JwtSecurityTokenHandler().ReadJwtToken(token).ValidTo; // UTC
-        IntellectCRM.Server.AuthCookies.Issue(HttpContext, token, expiresUtc);
+        IntellectCRM.Server.AuthCookies.Issue(HttpContext, token, expiresUtc, refreshToken, refreshExpiresUtc);
+    }
+
+    /// <summary>Kuzatuv uchun so'rov User-Agent'i (refresh token yozuviga).</summary>
+    private string? UserAgent()
+    {
+        var ua = Request.Headers.UserAgent.ToString();
+        return string.IsNullOrWhiteSpace(ua) ? null : ua;
     }
 
     /// <summary>
@@ -228,12 +275,20 @@ public class AuthController(
     /// tozalanadi; bu yerda faqat brauzer cookie'si serverdan o'chiriladi.</summary>
     [HttpPost("logout")]
     [Authorize]
-    public IActionResult Logout()
+    public async Task<IActionResult> Logout([FromBody] RefreshRequest? req = null)
     {
+        // Joriy refresh token'ni DB'da bekor qilamiz (rt cookie yoki mobil body'dan) — logout'dan
+        // keyin o'sha token bilan qayta refresh qilib bo'lmasin.
+        var raw = Request.Cookies[IntellectCRM.Server.AuthCookies.RtCookie];
+        if (string.IsNullOrEmpty(raw)) raw = req?.RefreshToken;
+        if (!string.IsNullOrEmpty(raw))
+            await refreshTokens.RevokeAsync(raw, HttpContext.RequestAborted);
+
         IntellectCRM.Server.UploadsGuard.ClearCookie(HttpContext);
         // DUAL-MODE cookie'lari ham o'chiriladi (umumiy kompyuterda keyingi odam kirmasin).
         Response.Cookies.Delete(IntellectCRM.Server.AuthCookies.AtCookie, new CookieOptions { Path = "/" });
         Response.Cookies.Delete(IntellectCRM.Server.AuthCookies.CsrfCookie, new CookieOptions { Path = "/" });
+        IntellectCRM.Server.AuthCookies.ClearRefresh(HttpContext);
         return NoContent();
     }
 

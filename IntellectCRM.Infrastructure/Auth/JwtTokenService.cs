@@ -11,7 +11,14 @@ public class JwtOptions
     public string Key { get; set; } = string.Empty;
     public string Issuer { get; set; } = "IntellectCRM";
     public string Audience { get; set; } = "IntellectCRM";
+    /// <summary>ESKI sozlama — agent (CTI) tokeni uchun standart muddat. Oddiy foydalanuvchi access
+    /// tokeni endi <see cref="AccessMinutes"/> ishlatadi (12 soat emas, 60 daqiqa).</summary>
     public int ExpiresHours { get; set; } = 12;
+    /// <summary>Oddiy foydalanuvchi ACCESS tokeni muddati (daqiqa). Qisqa: o'g'irlansa uzoq
+    /// yashamasin — mijoz refresh token bilan tinch uzaytiradi.</summary>
+    public int AccessMinutes { get; set; } = 60;
+    /// <summary>REFRESH token muddati (kun). Shu davr ichida foydalanuvchi qayta login qilmaydi.</summary>
+    public int RefreshDays { get; set; } = 30;
 }
 
 public class JwtTokenService(JwtOptions options)
@@ -29,7 +36,8 @@ public class JwtTokenService(JwtOptions options)
             new(ClaimTypes.Email, user.Email),
             new(ClaimTypes.Role, user.Role),
         };
-        return Write(claims);
+        // Access token QISQA (AccessMinutes, standart 60 daq) — refresh oqimi bilan uzaytiriladi.
+        return Write(claims, TimeSpan.FromMinutes(_o.AccessMinutes));
     }
 
     /// <summary>CTI (Local Call) Android agent-ilovasi uchun token — <see cref="AppUser"/>siz,

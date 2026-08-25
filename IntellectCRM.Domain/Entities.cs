@@ -61,6 +61,47 @@ public class AppUser
     public List<string> Permissions { get; set; } = new();
 }
 
+/// <summary>
+/// REFRESH TOKEN — uzoq muddatli (30 kun) opaque tasodifiy token. Access token (60 daq) eskirganda
+/// mijoz `POST /api/auth/refresh` orqali yangi access + refresh juftligini oladi (qayta login shart
+/// emas). ⚠️ Xom (raw) token HECH QACHON saqlanmaydi — bazada faqat uning SHA-256 hashi (<see
+/// cref="TokenHash"/>) turadi, ya'ni baza sizib chiqsa ham tokenlarni tiklab bo'lmaydi
+/// (<see cref="LoginOtpCode.CodeHash"/> bilan bir xil naqsh).
+///
+/// <para><b>Rotatsiya + nasl-nasab (family):</b> har refresh'da eski token bekor qilinadi
+/// (<see cref="RevokedAt"/>) va yangisi AYNI <see cref="FamilyId"/> bilan chiqadi. Bekor qilingan
+/// tokenni qayta ishlatishga urinish (reuse) — o'g'irlik belgisi: butun family bekor qilinadi
+/// (`RefreshTokenService`). 60 soniyalik grace oynasi ko'p-tab / parallel so'rovni hujjatdan
+/// ajratadi.</para>
+/// </summary>
+public class RefreshToken
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    /// <summary>Egasi (<see cref="AppUser.Id"/>).</summary>
+    public string UserId { get; set; } = string.Empty;
+    /// <summary>Xom tokenning SHA-256 hashi (hex). Raw token saqlanmaydi.</summary>
+    public string TokenHash { get; set; } = string.Empty;
+    /// <summary>Rotatsiya nasl-nasabi — bir login zanjiridagi barcha tokenlar bir xil FamilyId.
+    /// Reuse aniqlanganda shu family butunlay bekor qilinadi.</summary>
+    public Guid FamilyId { get; set; } = Guid.NewGuid();
+    /// <summary>Yaratilgan vaqt (UTC).</summary>
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    /// <summary>Amal qilish muddati (UTC) — CreatedAt + 30 kun.</summary>
+    public DateTime ExpiresAt { get; set; }
+    /// <summary>Bekor qilingan vaqt (UTC). null = bekor qilinmagan. Rotatsiyada yoki family
+    /// bekor qilinganda to'ldiriladi.</summary>
+    public DateTime? RevokedAt { get; set; }
+    /// <summary>Rotatsiyada — shu tokenni ALMASHTIRGAN yangi tokenning hashi (audit izi).</summary>
+    public string? ReplacedByHash { get; set; }
+    /// <summary>Yaratilgan so'rov IP'si (ixtiyoriy — kuzatuv uchun).</summary>
+    public string? CreatedByIp { get; set; }
+    /// <summary>Yaratilgan so'rov User-Agent'i (ixtiyoriy — kuzatuv uchun).</summary>
+    public string? UserAgent { get; set; }
+
+    /// <summary>Hozir faolmi (bekor qilinmagan va muddati o'tmagan).</summary>
+    public bool IsActive(DateTime utcNow) => RevokedAt is null && ExpiresAt > utcNow;
+}
+
 /// <summary>O'quv markazi filiali — nomi, manzil, GPS joylashuv va radius (mobil geo-yo'qlama uchun).</summary>
 public class Branch
 {
