@@ -423,8 +423,9 @@ export async function getAdminLastMessages(): Promise<Record<string, string | nu
  */
 export function connectChat(onMessage: (m: ChatMessage) => void): signalR.HubConnection | null {
   if (USE_MOCK) return null
+  // Auth `at` cookie'si WS handshake'da avtomatik ketadi (backend OnMessageReceived cookie'ni o'qiydi).
   const conn = new signalR.HubConnectionBuilder()
-    .withUrl('/hubs/chat', { accessTokenFactory: () => localStorage.getItem('token') ?? '' })
+    .withUrl('/hubs/chat', { withCredentials: true })
     .withAutomaticReconnect()
     .build()
   conn.on('message', (m: ChatMessage) => onMessage(m))

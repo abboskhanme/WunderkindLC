@@ -1,3 +1,4 @@
+using System.IdentityModel.Tokens.Jwt;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
@@ -109,6 +110,9 @@ public class AuthController(
         await db.SaveChangesAsync();
 
         var token = jwt.CreateToken(user);
+        // DUAL-MODE: token JSON body'da qaytadi (mobil Bearer), QO'SHIMCHA `at`/`csrf` cookie
+        // ham qo'yiladi (web HttpOnly cookie rejimi). Orqaga moslik buzilmaydi.
+        IssueAuthCookies(token);
         return new LoginResponse(token, new UserDto(
             user.Id, user.FullName, user.Role, user.Email, user.AvatarUrl, await PermsFor(user)));
     }
@@ -166,8 +170,18 @@ public class AuthController(
 
         logger.LogInformation("OTP orqali login: userId={UserId}, IP={IP}", user.Id, ip);
         var token = jwt.CreateToken(user);
+        // DUAL-MODE: `Login` bilan bir xil — body'da token + `at`/`csrf` cookie.
+        IssueAuthCookies(token);
         return new LoginResponse(token, new UserDto(
             user.Id, user.FullName, user.Role, user.Email, user.AvatarUrl, await PermsFor(user)));
+    }
+
+    /// <summary>Web cookie rejimi uchun `at` (HttpOnly) va `csrf` cookie'larini qo'yadi.
+    /// Muddat token'ning o'z `exp` (12 soat) qiymatidan olinadi — cookie va token birga eskiradi.</summary>
+    private void IssueAuthCookies(string token)
+    {
+        var expiresUtc = new JwtSecurityTokenHandler().ReadJwtToken(token).ValidTo; // UTC
+        IntellectCRM.Server.AuthCookies.Issue(HttpContext, token, expiresUtc);
     }
 
     /// <summary>
@@ -217,6 +231,9 @@ public class AuthController(
     public IActionResult Logout()
     {
         IntellectCRM.Server.UploadsGuard.ClearCookie(HttpContext);
+        // DUAL-MODE cookie'lari ham o'chiriladi (umumiy kompyuterda keyingi odam kirmasin).
+        Response.Cookies.Delete(IntellectCRM.Server.AuthCookies.AtCookie, new CookieOptions { Path = "/" });
+        Response.Cookies.Delete(IntellectCRM.Server.AuthCookies.CsrfCookie, new CookieOptions { Path = "/" });
         return NoContent();
     }
 

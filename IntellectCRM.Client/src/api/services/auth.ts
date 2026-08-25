@@ -3,6 +3,8 @@ import { delay } from '@/lib/utils'
 import { api, USE_MOCK } from '../client'
 
 export interface LoginResult {
+  /** Backend hamon qaytaradi (mobil ilova uchun), lekin WEB uni SAQLAMAYDI —
+   *  auth `at` va CSRF `csrf` cookie'lari server tomonidan avtomatik o'rnatiladi. */
   token: string
   user: User
 }

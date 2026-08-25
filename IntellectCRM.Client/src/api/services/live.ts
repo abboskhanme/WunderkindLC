@@ -9,8 +9,9 @@ export type LiveHandlers = Record<string, (...args: unknown[]) => void>
  * Komponent unmount bo'lganda qaytgan ulanishni `.stop()` qiling.
  */
 export async function connectLiveTopic(topic: string, handlers: LiveHandlers): Promise<signalR.HubConnection> {
+  // Auth `at` cookie'si WS handshake'da avtomatik ketadi (backend OnMessageReceived cookie'ni o'qiydi).
   const conn = new signalR.HubConnectionBuilder()
-    .withUrl('/hubs/live', { accessTokenFactory: () => localStorage.getItem('token') ?? '' })
+    .withUrl('/hubs/live', { withCredentials: true })
     .withAutomaticReconnect()
     .build()
 

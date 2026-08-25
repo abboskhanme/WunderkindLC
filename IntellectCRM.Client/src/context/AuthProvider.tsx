@@ -8,7 +8,8 @@ import { api, USE_MOCK } from '@/api/client'
 import { setFcmToken, getFcmToken, registerDevice, unregisterDevice, pushBase } from '@/api/services/push'
 import { initWebPush, isWebPushSupported } from '@/api/services/webpush'
 
-const TOKEN_KEY = 'token'
+// JWT endi localStorage'da EMAS — HttpOnly `at` cookie'sida (XSS token o'g'irlay olmaydi).
+// Faqat `user` optimistik startup uchun saqlanadi (maxfiy sir emas), haqiqat manbai — GET /auth/me.
 const USER_KEY = 'user'
 
 function readStoredUser(): User | null {
@@ -21,10 +22,9 @@ function readStoredUser(): User | null {
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  // Sahifa yangilanganda sessiyani localStorage'dan tiklaymiz (token bo'lsa).
-  const [user, setUser] = useState<User | null>(() =>
-    localStorage.getItem(TOKEN_KEY) ? readStoredUser() : null,
-  )
+  // Sahifa yangilanganda user'ni localStorage'dan OPTIMISTIK tiklaymiz (tez startup).
+  // Sessiyaning haqiqiyligi keyin GET /auth/me bilan tasdiqlanadi (pastdagi effekt).
+  const [user, setUser] = useState<User | null>(() => readStoredUser())
   const identifiedUserId = useRef<string | null>(null)
 
   const identifyUser = useCallback((u: User) => {
@@ -41,28 +41,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const logout = useCallback(() => {
-    // Push: qurilma tokenini o'chirib qo'yamiz (JWT hali tozalanmagan — explicit header bilan).
-    const jwt = localStorage.getItem(TOKEN_KEY)
+    // Push: qurilma tokenini o'chirib qo'yamiz. Auth `at` cookie'si hali o'chirilmagan bo'lishi
+    // uchun buni logout endpointidan OLDIN qilamiz — so'rov cookie bilan avtomatik avtorizatsiyalanadi.
     const role = readStoredUser()?.role
     const fcm = getFcmToken()
-    if (jwt && role && fcm) unregisterDevice(role, fcm, jwt).catch(() => {})
+    if (role && fcm) unregisterDevice(role, fcm).catch(() => {})
 
-    // Serverga chiqish signalini yuboramiz — u `up_at` cookie'sini o'chiradi (umumiy kompyuterda
-    // keyingi odam login'siz `/uploads` hujjatlarini ocholmasin). Best-effort: server yetib
+    // Serverga chiqish signalini yuboramiz — u `at`, `csrf` va `up_at` cookie'larini o'chiradi
+    // (umumiy kompyuterda keyingi odam login'siz kira olmasin). Best-effort: server yetib
     // bormasa ham (offline va h.k.) foydalanuvchi baribir chiqishi shart, shuning uchun xatoni
     // yutib yuboramiz va quyidagi klient tozalash HAR HOLDA bajariladi.
     if (!USE_MOCK) api.post('/auth/logout').catch(() => {})
 
     posthog.reset()
     identifiedUserId.current = null
-    localStorage.removeItem(TOKEN_KEY)
     localStorage.removeItem(USER_KEY)
     setUser(null)
   }, [])
 
-  // Login/OTP ikkalasi ham bir xil "token + user" natija shakli qaytaradi — sessiyani o'rnatish umumiy.
-  const applySession = useCallback((token: string, u: User) => {
-    localStorage.setItem(TOKEN_KEY, token)
+  // Login/OTP ikkalasi ham bir xil "token + user" natija shakli qaytaradi, lekin WEB tokenni
+  // SAQLAMAYDI: server `at`+`csrf` cookie'larini javobda avtomatik o'rnatgan. Shuning uchun
+  // applySession faqat user'ni oladi.
+  const applySession = useCallback((u: User) => {
     localStorage.setItem(USER_KEY, JSON.stringify(u))
     identifyUser(u)
     setUser(u)
@@ -74,16 +74,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = useCallback(
     async (email: string, password: string) => {
-      const { token, user: u } = await loginRequest(email, password)
-      return applySession(token, u)
+      const { user: u } = await loginRequest(email, password)
+      return applySession(u)
     },
     [applySession],
   )
 
   const loginWithCode = useCallback(
     async (code: string) => {
-      const { token, user: u } = await otpLogin(code)
-      return applySession(token, u)
+      const { user: u } = await otpLogin(code)
+      return applySession(u)
     },
     [applySession],
   )
@@ -98,9 +98,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (user) identifyUser(user)
   }, [identifyUser, user])
 
-  // Real rejimda tokenni /me orqali tekshiramiz: amal qilmasa — chiqaramiz.
+  // Real rejimda sessiyani startupda /me bilan tekshiramiz. Token HttpOnly cookie'da bo'lgani uchun
+  // JS uni ko'rmaydi — haqiqat manbai `at` cookie bilan ketadigan GET /auth/me javobi.
+  // Optimistik saqlangan user bo'lmasa (mehmon), /me ni bejiz chaqirmaymiz: 401 interceptori
+  // login sahifasida keraksiz redirect/tozalashga urinardi.
   useEffect(() => {
-    if (USE_MOCK || !localStorage.getItem(TOKEN_KEY)) return
+    if (USE_MOCK || !readStoredUser()) return
     fetchMe()
       .then((u) => {
         localStorage.setItem(USER_KEY, JSON.stringify(u))
@@ -135,7 +138,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const tryRegister = (token: string) => {
       setFcmToken(token)
       const u = readStoredUser()
-      if (u && localStorage.getItem(TOKEN_KEY)) registerDevice(u.role, token).catch(() => {})
+      // Sessiya bor-yo'qligini cookie'dan bila olmaymiz; saqlangan user bo'lsa register qilamiz —
+      // sessiya haqiqiy bo'lmasa so'rov 401 bo'lib jimgina yutiladi.
+      if (u) registerDevice(u.role, token).catch(() => {})
     }
     // Flutter to'g'ridan-to'g'ri chaqirishi uchun global funksiya (eng ishonchli yo'l).
     window.registerFcmToken = (token: string) => {

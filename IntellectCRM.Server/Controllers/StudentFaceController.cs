@@ -194,8 +194,12 @@ public class StudentFaceController(
         // Sozlama o'chirilgan bo'lsa tekshiradigan narsa yo'q — darhol TO'LIQ token
         // (admin modulni o'chirib qo'yganda ilovada "selfi" ekrani osilib qolmasin).
         if (!settings.Enabled)
+        {
+            var fullToken = jwt.CreateToken(user);
+            IssueAuthCookies(fullToken);   // DUAL-MODE: web cookie rejimi (mobil e'tibor bermaydi)
             return new FaceVerifyResponse(true, FaceLoginService.StatusApproved, "", null,
-                FaceLoginService.MaxAttemptsPerHour, jwt.CreateToken(user));
+                FaceLoginService.MaxAttemptsPerHour, fullToken);
+        }
 
         var device = (deviceId ?? "").Trim();
         if (device.Length == 0)
@@ -267,8 +271,18 @@ public class StudentFaceController(
         logger.LogInformation(
             "Yuz tasdiqlandi: studentId={StudentId}, ball={Score}, etalon={Enrolled}",
             me.Id, result.Score, result.Enrolled);
+        var token = jwt.CreateToken(user);
+        IssueAuthCookies(token);   // DUAL-MODE: web cookie rejimi (mobil e'tibor bermaydi)
         return new FaceVerifyResponse(true, result.Status, "", result.Score, result.AttemptsLeft,
-            jwt.CreateToken(user), result.Enrolled);
+            token, result.Enrolled);
+    }
+
+    /// <summary>Web cookie rejimi uchun `at`/`csrf` cookie'larini qo'yadi (token JSON'da ham qaytadi).</summary>
+    private void IssueAuthCookies(string token)
+    {
+        var expiresUtc = new System.IdentityModel.Tokens.Jwt.JwtSecurityTokenHandler()
+            .ReadJwtToken(token).ValidTo; // UTC
+        IntellectCRM.Server.AuthCookies.Issue(HttpContext, token, expiresUtc);
     }
 
     private void DeleteFiles(IReadOnlyList<string> urls)

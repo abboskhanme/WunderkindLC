@@ -57,12 +57,12 @@ export async function registerDevice(
   })
 }
 
-/** Qurilma tokenini o'chiradi. jwt berilsa — explicit header (logout timing uchun). */
-export async function unregisterDevice(role: string | undefined, token: string, jwt?: string): Promise<void> {
+/** Qurilma tokenini o'chiradi. So'rov `at` cookie'si bilan avtorizatsiyalanadi (withCredentials);
+ *  shuning uchun logout endpointidan OLDIN, cookie hali o'chirilmagan paytda chaqiriladi. */
+export async function unregisterDevice(role: string | undefined, token: string): Promise<void> {
   const base = pushBase(role)
   if (!base || !token) return
   await api.delete(`${base}/notifications/register`, {
     params: { token },
-    headers: jwt ? { Authorization: `Bearer ${jwt}` } : undefined,
   })
 }

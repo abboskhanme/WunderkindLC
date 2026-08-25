@@ -15,7 +15,7 @@ import { Loader } from '@/components/ui/Loader'
 import { Modal } from '@/components/ui/Modal'
 import { usePerm } from '@/lib/permissions'
 
-/** Jonli HLS pleyer — hls.js orqali (har so'rovga auth sarlavhasi qo'shiladi). */
+/** Jonli HLS pleyer — hls.js orqali (har so'rov auth `at` cookie'si bilan ketadi). */
 function LivePlayer({ id, className }: { id: string; className?: string }) {
   const ref = useRef<HTMLVideoElement>(null)
   const [failed, setFailed] = useState(false)
@@ -25,11 +25,11 @@ function LivePlayer({ id, className }: { id: string; className?: string }) {
     if (!video) return
     setFailed(false)
     if (!Hls.isSupported()) { setFailed(true); return }
-    const token = localStorage.getItem('token')
     const hls = new Hls({
       manifestLoadingTimeOut: 15000,
+      // Token endi JS'da yo'q — HttpOnly `at` cookie'sini har segment/manifest so'roviga qo'shamiz.
       xhrSetup: (xhr) => {
-        if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`)
+        xhr.withCredentials = true
       },
     })
     hls.loadSource(cameraLiveUrl(id))

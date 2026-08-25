@@ -4,17 +4,32 @@ import posthog from '@/lib/posthog'
 /**
  * Markaziy axios klienti.
  * Base URL .env faylidagi VITE_API_BASE_URL dan olinadi.
+ * withCredentials: true — auth (`at`) va CSRF (`csrf`) cookie'lari har so'rovda avtomatik ketadi.
+ * JWT endi localStorage'da EMAS, HttpOnly `at` cookie'sida — XSS token o'g'irlay olmaydi.
  */
 export const api = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL ?? '/api',
   headers: { 'Content-Type': 'application/json' },
+  withCredentials: true,
 })
 
-// Har bir so'rovga auth tokenni qo'shamiz
+/** `document.cookie` dan bitta cookie qiymatini o'qiydi (topilmasa null). */
+export function readCookie(name: string): string | null {
+  const prefix = `${name}=`
+  for (const part of document.cookie.split('; ')) {
+    if (part.startsWith(prefix)) return decodeURIComponent(part.slice(prefix.length))
+  }
+  return null
+}
+
+// Cookie rejimi: xavfsiz bo'lmagan (POST/PUT/PATCH/DELETE) so'rovlarga CSRF sarlavhasini qo'shamiz.
+// Qiymati aynan `csrf` cookie qiymati — GET/HEAD/OPTIONS uchun kerak emas. Auth `at` cookie'si
+// HttpOnly bo'lgani uchun bu yerda o'qilmaydi — brauzer uni withCredentials orqali o'zi yuboradi.
 api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('token')
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`
+  const method = (config.method ?? 'get').toLowerCase()
+  if (method === 'post' || method === 'put' || method === 'patch' || method === 'delete') {
+    const csrf = readCookie('csrf')
+    if (csrf) config.headers['X-CSRF-Token'] = csrf
   }
   return config
 })
@@ -29,7 +44,6 @@ api.interceptors.response.use(
     const isLoginCall = url.includes('/auth/login')
     if (status === 401 && !isLoginCall) {
       posthog.reset()
-      localStorage.removeItem('token')
       localStorage.removeItem('user')
       if (window.location.pathname !== '/login') {
         window.location.assign('/login')

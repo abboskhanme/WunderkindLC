@@ -126,7 +126,21 @@ builder.Services
                 var accessToken = context.Request.Query["access_token"];
                 var path = context.HttpContext.Request.Path;
                 if (!string.IsNullOrEmpty(accessToken) && path.StartsWithSegments("/hubs"))
+                {
                     context.Token = accessToken;
+                    return Task.CompletedTask;
+                }
+
+                // DUAL-MODE (web cookie rejimi): Authorization sarlavhasi YO'Q bo'lsa (ya'ni
+                // mobil Bearer emas) va `at` cookie bor bo'lsa — tokenni cookie'dan olamiz.
+                // Bearer HAR DOIM ustun (mobil orqaga moslik buzilmaydi). SignalR WS handshake
+                // cookie'ni avtomatik yuboradi, shuning uchun `/hubs` ham cookie bilan ishlaydi.
+                if (string.IsNullOrEmpty(context.Token)
+                    && string.IsNullOrEmpty(context.Request.Headers.Authorization.ToString())
+                    && context.Request.Cookies.TryGetValue(IntellectCRM.Server.AuthCookies.AtCookie, out var atCookie)
+                    && !string.IsNullOrEmpty(atCookie))
+                    context.Token = atCookie;
+
                 return Task.CompletedTask;
             },
 
@@ -1213,6 +1227,12 @@ app.Use(async (context, next) =>
 });
 
 app.UseAuthorization();
+
+// CSRF himoyasi (double-submit) — auth'dan KEYIN (User to'ldirilgan bo'lsin), controllerlardan
+// OLDIN. Faqat COOKIE bilan autentifikatsiya qilingan UNSAFE so'rovlarni tekshiradi; Bearer
+// bilan kelgan mobil/web so'rovlari ISTISNO (batafsil: CsrfMiddleware).
+app.UseMiddleware<IntellectCRM.Server.CsrfMiddleware>();
+
 app.UseRateLimiter();
 // OutputCache middleware — tayyor turadi, lekin [OutputCache] faqat ochiq endpointlarga qo'yiladi
 // (multi-tenant xavfsizligi uchun; pastdagi izohga qarang). Auth'dan keyin turishi shart.
