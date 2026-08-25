@@ -36,6 +36,10 @@ namespace IntellectCRM.Server.Controllers;
 public class InstagramWebhookController(
     AppDbContext db,
     InstagramApi api,
+    // FAQ tugmalarini (ice breakers) Meta'ga sinxronlash — YAGONA manba (§22). OAuth callback
+    // yangi akkaunt ulanganda uni chaqiradi; `InstagramController` (connect-token/SaveSettings)
+    // AYNAN shu servisdan foydalanadi, ya'ni mantiq ikki joyda ayri ketmaydi.
+    InstagramFaqSync faqSync,
     AuditService audit,
     ILogger<InstagramWebhookController> logger) : ControllerBase
 {
@@ -507,6 +511,22 @@ public class InstagramWebhookController(
             + $"(ulagan: {(st.CreatedBy.Length > 0 ? st.CreatedBy : "noma'lum")}, "
             + $"webhook obunasi: {(okSub ? "bor" : "YO'Q")})");
         await db.SaveChangesAsync(ct);
+
+        // 🔴 Yangi akkaunt ulandi — modul yoqilgan bo'lsa faol FAQ tugmalarini Meta'ga yuboramiz
+        // (aks holda yangi ulangan akkauntda tugmalar ko'rinmasdi, §22). Sinxron
+        // SaveChangesAsync'dan KEYIN: u faol akkauntni bazadan o'qiydi. Mantiq YAGONA servisda —
+        // `InstagramController` ham (connect-token/SaveSettings) shuni chaqiradi. BEST-EFFORT:
+        // yiqilsa callback redirect'i BUZILMAYDI — sabab IgAccount.FaqSyncError da qoladi.
+        try
+        {
+            var faq = await faqSync.SyncAsync(ct);
+            if (!faq.Ok)
+                logger.LogWarning("[instagram] OAuth ulash: FAQ sinxroni: {Msg}", faq.Message);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "[instagram] OAuth ulash: FAQ sinxronida kutilmagan xato");
+        }
 
         logger.LogInformation("[instagram] akkaunt ulandi: @{Username} (obuna: {Sub})", username, okSub);
         return Redirect("/admin/marketing/settings?connected=1");

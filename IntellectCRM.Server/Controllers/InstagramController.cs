@@ -40,6 +40,9 @@ namespace IntellectCRM.Server.Controllers;
 public partial class InstagramController(
     AppDbContext db,
     InstagramApi api,
+    // FAQ tugmalarini (ice breakers) Meta'ga sinxronlash — YAGONA manba (§22): FAQ CRUD,
+    // modul yoqilishi va akkaunt ulash (connect-token) shu servisdan o'tadi.
+    InstagramFaqSync faqSync,
     MetaAdsApi adsApi,
     AuditService audit,
     IConfiguration config,
@@ -183,6 +186,26 @@ public partial class InstagramController(
 
         if (wasEnabled != meta.InstagramEnabled)
             logger.LogInformation("[instagram] modul {State}", meta.InstagramEnabled ? "yoqildi" : "o'chirildi");
+
+        // 🔴 Modul O'CHIQDAN → YOQILGANga o'tganda FAQ tugmalarini Meta'ga QAYTA yuboramiz:
+        // tugmalar modul o'chiq paytida qo'shilgan bo'lsa bazada bor, Meta'da esa yo'q edi —
+        // ular «Qayta yuborish» qo'lda bosilmaguncha ko'rinmasdi (§22). Sinxron o'zi §3
+        // darvozasidan o'tadi (endi modul yoqilgan, ya'ni so'rov ketadi). BEST-EFFORT: yiqilsa
+        // sozlama saqlash BUZILMAYDI — sabab IgAccount.FaqSyncError da qoladi. ToSettings javobi
+        // o'zgarmaydi (sinxron holati alohida `GET /faq` da ko'rinadi).
+        if (!wasEnabled && meta.InstagramEnabled)
+        {
+            try
+            {
+                var faq = await faqSync.SyncAsync(ct);
+                if (!faq.Ok)
+                    logger.LogWarning("[instagram] modul yoqilganda FAQ sinxroni: {Msg}", faq.Message);
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "[instagram] modul yoqilganda FAQ sinxronida kutilmagan xato");
+            }
+        }
 
         return ToSettings(meta);
     }
@@ -375,6 +398,22 @@ public partial class InstagramController(
             + $"(webhook obunasi: {(okSub ? "bor" : "YO'Q")}, "
             + $"token muddati: {(expiresAt.Length > 0 ? $"{DaysLeft(expiresAt)} kun" : "noma'lum")})");
         await db.SaveChangesAsync(ct);
+
+        // 🔴 Yangi akkaunt ulandi — modul yoqilgan bo'lsa faol FAQ tugmalarini darhol Meta'ga
+        // yuboramiz (yangi ulangan akkauntda tugmalar ro'yxatga tushsin, §22). Sinxron
+        // SaveChangesAsync'dan KEYIN: u faol akkauntni bazadan o'qiydi. Modul o'chiq yoki tugma
+        // yo'q bo'lsa SyncAsync jimgina qaytadi. BEST-EFFORT: yiqilsa ulash BUZILMAYDI —
+        // sabab IgAccount.FaqSyncError da qoladi.
+        try
+        {
+            var faq = await faqSync.SyncAsync(ct);
+            if (!faq.Ok)
+                logger.LogWarning("[instagram] qo'lda ulash: FAQ sinxroni: {Msg}", faq.Message);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "[instagram] qo'lda ulash: FAQ sinxronida kutilmagan xato");
+        }
 
         logger.LogInformation(
             "[instagram] akkaunt QO'LDA ulandi: @{Username} (obuna: {Sub}, muddat aniq: {Known})",

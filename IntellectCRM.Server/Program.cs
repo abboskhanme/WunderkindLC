@@ -359,6 +359,11 @@ builder.Services.AddHttpClient<IntellectCRM.Application.Services.InstagramApi>()
 // Oqim (webhook hodisasi → qoida/AI → javob → lid) — har hodisa uchun O'ZI scope ochadi,
 // shuning uchun Singleton (fon xizmati uni bir marta oladi va sikl bo'yi ishlatadi).
 builder.Services.AddSingleton<IntellectCRM.Application.Services.InstagramPipeline>();
+// FAQ tugmalarini (ice breakers) Meta'ga sinxronlash — YAGONA manba (§22). Uni FAQ CRUD,
+// modul yoqilishi (SaveSettings) va akkaunt ulash (connect-token + OAuth callback) chaqiradi;
+// callback boshqa controllerda bo'lgani uchun mantiq shu servisda birlashtirilgan. Scoped:
+// `IAppDbContext`ga bog'liq (so'rov bilan bir xil DbContext instansiyasi).
+builder.Services.AddScoped<IntellectCRM.Application.Services.InstagramFaqSync>();
 // Navbatni qayta ishlovchi + tokenni 45-kunda yangilovchi + eski hodisalarni tozalovchi fon xizmati.
 // ⚠️ `CenterMeta.InstagramEnabled == false` bo'lsa u HECH QANDAY tashqi so'rov qilmaydi.
 builder.Services.AddHostedService<IntellectCRM.Application.Services.InstagramWorkerService>();

@@ -130,61 +130,13 @@ public partial class InstagramController
     // =============================================================================================
 
     /// <summary>Meta'ga sinxronlash — BEST-EFFORT (CRUD natijasiga ta'sir qilmaydi).
-    /// <para>Faol tugmalar bo'lsa <c>SetIceBreakersAsync</c>, bo'lmasa
-    /// <c>DeleteIceBreakersAsync</c> (Meta bo'sh ro'yxatni rad etadi — profil maydoni DELETE
-    /// bilan tozalanadi). Natija <see cref="IgAccount.FaqSyncedAt"/> /
-    /// <see cref="IgAccount.FaqSyncError"/> ga yoziladi.</para>
-    /// <para>⚠️ Modul o'chiq bo'lsa tashqariga HECH QANDAY so'rov ketmaydi (qoidalar §3 —
-    /// "kichkina bitta so'rov" ham shu darvozadan o'tadi). Token logga/javobga tushmaydi.</para></summary>
+    /// <para>Mantiq YAGONA manbada — <see cref="InstagramFaqSync"/>: FAQ CRUD, modul yoqilishi va
+    /// akkaunt ulash (`connect-token` + OAuth callback) AYNAN shuni chaqiradi (§22). Bu yerda
+    /// faqat servis natijasi CRUD javobidagi <see cref="IgFaqSyncDto"/> ga o'raladi.</para></summary>
     private async Task<IgFaqSyncDto> SyncFaqToMetaAsync(CancellationToken ct)
     {
-        var account = await db.IgAccounts.FirstOrDefaultAsync(a => a.IsActive, ct);
-        if (account is null || string.IsNullOrWhiteSpace(account.AccessToken))
-            return new IgFaqSyncDto(false,
-                "Instagram akkaunti ulanmagan — tugmalar saqlandi, akkaunt ulangach «Sinxronlash» bosing.");
-
-        var meta = await db.CenterMeta.AsNoTracking().FirstOrDefaultAsync(ct);
-        if (meta is null || !meta.InstagramEnabled)
-            return new IgFaqSyncDto(false,
-                "Instagram moduli o'chiq — tugmalar saqlandi, modul yoqilgach «Sinxronlash» bosing.");
-
-        var items = await db.IgIceBreakers.AsNoTracking()
-            .Where(b => b.IsActive)
-            .OrderBy(b => b.Order).ThenBy(b => b.CreatedAt)
-            .Take(IgConst.MaxFaqItems)
-            .ToListAsync(ct);
-
-        var (ok, err) = items.Count == 0
-            ? await api.DeleteIceBreakersAsync(account.AccessToken, ct)
-            : await api.SetIceBreakersAsync(
-                account.AccessToken,
-                items.Select(b => (b.Question, InstagramContract.FaqPayload(b.Id))).ToList(),
-                ct);
-
-        if (!ok)
-        {
-            // ⚠️ `FaqSyncedAt` ATAYIN o'chirilmaydi — oxirgi muvaffaqiyat vaqti diagnostika
-            // uchun qimmatli ("qachongacha ishlagan edi" savoli).
-            account.FaqSyncError = InstagramContract.Trim(err, 500);
-            await db.SaveChangesAsync(ct);
-            return new IgFaqSyncDto(false, err);
-        }
-
-        // Obuna BEST-EFFORT yangilanadi: eski ulangan akkaunt `messaging_postbacks` ga obuna
-        // emas va tugma bosilgani unga umuman kelmasdi. Yiqilsa sinxron natijasi buzilmaydi —
-        // sabab logda qoladi (tokensiz).
-        var sub = await api.SubscribeWebhookAsync(account.AccessToken, ct);
-        if (!sub.Ok)
-            logger.LogWarning("Instagram: FAQ sinxronida webhook obunasini yangilab bo'lmadi: {Err}", sub.Error);
-        else
-            account.WebhookSubscribed = true;
-
-        account.FaqSyncedAt = AppClock.Iso();
-        account.FaqSyncError = "";
-        await db.SaveChangesAsync(ct);
-        return new IgFaqSyncDto(true, items.Count == 0
-            ? "FAQ tugmalari Instagram'dan olib tashlandi."
-            : $"FAQ tugmalari Instagram bilan sinxronlandi ({items.Count} ta).");
+        var (ok, message) = await faqSync.SyncAsync(ct);
+        return new IgFaqSyncDto(ok, message);
     }
 
     private static string? ValidateFaq(IgFaqPayload p)
