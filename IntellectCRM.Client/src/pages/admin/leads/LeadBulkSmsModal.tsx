@@ -6,7 +6,6 @@ import {
   getPickableTemplates,
   sendLeadSmsBulk,
   watchSmsProgress,
-  type SmsProvider,
   type PickableTemplate,
   type LeadBulkSmsResult,
 } from '@/api/services/messages'
@@ -14,7 +13,6 @@ import { getMessageTokens } from '@/api/services/autoMessages'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { MessageEditor, type TokenDef } from '@/components/messaging/MessageEditor'
-import { SmsProviderPicker } from '@/components/messaging/SmsProviderPicker'
 import { cn } from '@/lib/utils'
 
 interface Props {
@@ -32,9 +30,9 @@ export function LeadBulkSmsModal({ open, onClose, leads, stages }: Props) {
   const [selStages, setSelStages] = useState<Set<string>>(new Set())
   const [allStages, setAllStages] = useState(true)
   const [text, setText] = useState('')
-  const [provider, setProvider] = useState<SmsProvider>('eskiz')
-  const [agentId, setAgentId] = useState('')
   const [configured, setConfigured] = useState(true)
+  // Kanal (Eskiz/Local) tanlanmaydi — server Sozlamalardan oladi; bu faqat ogohlantirish uchun.
+  const [localSms, setLocalSms] = useState(false)
   const [templates, setTemplates] = useState<PickableTemplate[]>([])
   const [tokens, setTokens] = useState<TokenDef[]>([])
   const [sending, setSending] = useState(false)
@@ -55,12 +53,15 @@ export function LeadBulkSmsModal({ open, onClose, leads, stages }: Props) {
     setSelStages(new Set())
     setAllStages(true)
     setText('')
-    setProvider('eskiz')
-    setAgentId('')
     setResult(null)
     setError('')
     setSending(false)
-    getSmsStatus().then((s) => setConfigured(s.configured)).catch(() => setConfigured(false))
+    getSmsStatus()
+      .then((s) => {
+        setConfigured(s.configured)
+        setLocalSms(s.localEnabled)
+      })
+      .catch(() => setConfigured(false))
     getPickableTemplates('lead').then(setTemplates).catch(() => setTemplates([]))
     getMessageTokens()
       .then((ts) => setTokens(ts.filter((t) => t.group === 'lead' || t.group === 'common')))
@@ -107,7 +108,7 @@ export function LeadBulkSmsModal({ open, onClose, leads, stages }: Props) {
     setResult(null)
     setError('')
     try {
-      const r = await sendLeadSmsBulk(targets.map((l) => l.id), text.trim(), { provider, agentId: agentId || undefined })
+      const r = await sendLeadSmsBulk(targets.map((l) => l.id), text.trim())
       setResult(r)
       // Ko'p lid — SMS'lar FONDA ketmoqda. Jonli holatni kuzatamiz (oyna yopilsa ham yuborish davom etadi).
       if (r.queued && r.batchId) {
@@ -147,7 +148,8 @@ export function LeadBulkSmsModal({ open, onClose, leads, stages }: Props) {
       }
     >
       <div className="space-y-4">
-        {!configured && provider === 'eskiz' && (
+        {/* Local yoqilgan bo'lsa kanal — Local (Eskiz kerak emas), ogohlantirish chiqmaydi. */}
+        {!configured && !localSms && (
           <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
             <p>SMS (Eskiz) sozlanmagan. "Sozlamalar → Xabar kanallari"da login/parol kiriting.</p>
@@ -194,13 +196,6 @@ export function LeadBulkSmsModal({ open, onClose, leads, stages }: Props) {
             <b className={withPhone === 0 ? 'text-red-500' : 'text-emerald-600'}>{withPhone}</b>
           </p>
         </div>
-
-        <SmsProviderPicker
-          provider={provider}
-          onProviderChange={setProvider}
-          agentId={agentId}
-          onAgentChange={setAgentId}
-        />
 
         {/* Matn */}
         <MessageEditor

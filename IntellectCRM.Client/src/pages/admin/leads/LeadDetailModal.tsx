@@ -13,10 +13,9 @@ import {
 } from 'lucide-react'
 import { ReceiptModal } from '@/components/finance/ReceiptModal'
 import { CallPickerModal, type CallOption } from '@/components/CallPickerModal'
-import { getPickableTemplates, sendLeadSms, type SmsProvider, type PickableTemplate } from '@/api/services/messages'
+import { getPickableTemplates, sendLeadSms, type PickableTemplate } from '@/api/services/messages'
 import { getMessageTokens } from '@/api/services/autoMessages'
 import { MessageEditor, type TokenDef } from '@/components/messaging/MessageEditor'
-import { SmsProviderPicker } from '@/components/messaging/SmsProviderPicker'
 import { getLevelTests, sendLeadTest } from '@/api/services/levelTests'
 import type { LevelTestListItem } from '@/types'
 import type { Lead, LeadEvent, LeadEventType, TrialLesson, Group, Teacher } from '@/types'
@@ -149,8 +148,6 @@ export function LeadDetailModal({
   const [smsTemplates, setSmsTemplates] = useState<PickableTemplate[]>([])
   const [smsTokens, setSmsTokens] = useState<TokenDef[]>([])
   const [smsText, setSmsText] = useState('')
-  const [smsProvider, setSmsProvider] = useState<SmsProvider>('eskiz')
-  const [smsAgentId, setSmsAgentId] = useState('')
   const [smsSending, setSmsSending] = useState(false)
   const [smsResult, setSmsResult] = useState<string | null>(null)
 
@@ -254,7 +251,8 @@ export function LeadDetailModal({
     setSmsSending(true)
     setSmsResult(null)
     try {
-      const b = await sendLeadSms(leadId, smsText.trim(), { provider: smsProvider, agentId: smsAgentId || undefined })
+      // Kanal (Eskiz/Local) tanlanmaydi — server Sozlamalardagi qiymatdan o'zi oladi.
+      const b = await sendLeadSms(leadId, smsText.trim())
       setSmsResult(b.sentCount > 0 ? 'SMS yuborildi ✓' : 'Yuborildi (holat kutilmoqda)')
       setSmsText('')
       refreshTimeline(leadId)
@@ -463,12 +461,6 @@ export function LeadDetailModal({
                 <p className="text-xs text-slate-400">
                   Raqam: <span className="font-mono text-slate-600">{leadPhone}</span>
                 </p>
-                <SmsProviderPicker
-                  provider={smsProvider}
-                  onProviderChange={setSmsProvider}
-                  agentId={smsAgentId}
-                  onAgentChange={setSmsAgentId}
-                />
                 <MessageEditor
                   value={smsText}
                   onChange={setSmsText}

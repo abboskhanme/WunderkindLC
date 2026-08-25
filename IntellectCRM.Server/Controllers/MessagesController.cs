@@ -44,6 +44,15 @@ public class MessagesController(
     private static string NormalizeProvider(string? provider) =>
         provider?.Trim().ToLowerInvariant() == "local" ? "local" : "eskiz";
 
+    /// <summary>Lid SMS'lari uchun kanal SOZLAMALARDAN olinadi (lid oynalarida provider tanlovi
+    /// yo'q): Local SMS yoqilgan bo'lsa (Sozlamalar → Xabar kanallari → SMS) "local", aks holda
+    /// "eskiz". Mijoz provider'ni ANIQ bergan bo'lsa (eski frontend/API) o'sha ishlatiladi —
+    /// xatti-harakat buzilmaydi.</summary>
+    private static string LeadSmsProviderOf(string? requested, CenterMeta? meta) =>
+        string.IsNullOrWhiteSpace(requested)
+            ? (meta?.LocalSmsEnabled == true ? "local" : "eskiz")
+            : NormalizeProvider(requested);
+
     /// <summary>provider="local" bo'lsa CenterMeta.LocalSmsEnabled yoqilganini va (agentId berilmasa)
     /// standart agent sozlanganini tekshiradi — batch boshlanishidan oldin tezkor xato qaytarish uchun.</summary>
     private async Task<string?> ValidateLocalSmsAsync(string provider, string? agentId, CenterMeta? meta)
@@ -833,7 +842,8 @@ public class MessagesController(
         var lead = await db.Leads.FirstOrDefaultAsync(l => l.Id == req.LeadId);
         if (lead is null) return NotFound();
         var meta = await db.CenterMeta.FirstOrDefaultAsync();
-        var provider = NormalizeProvider(req.Provider);
+        // Kanal Sozlamalardan (lid oynasida tanlov yo'q): Local yoqilgan bo'lsa — local, aks holda eskiz.
+        var provider = LeadSmsProviderOf(req.Provider, meta);
         if (provider == "eskiz" && !eskiz.IsConfigured(meta))
             return BadRequest(new { message = "Eskiz SMS sozlanmagan. Sozlamalar → SMS (Eskiz)da login/parol kiriting." });
         if (await ValidateLocalSmsAsync(provider, req.AgentId, meta) is { } localErr)
@@ -858,7 +868,8 @@ public class MessagesController(
             .Where(x => !string.IsNullOrWhiteSpace(x)).Distinct().ToList();
         if (ids.Count == 0) return BadRequest(new { message = "Kamida bitta lid tanlang" });
         var meta = await db.CenterMeta.FirstOrDefaultAsync();
-        var provider = NormalizeProvider(req.Provider);
+        // Kanal Sozlamalardan (lid oynasida tanlov yo'q): Local yoqilgan bo'lsa — local, aks holda eskiz.
+        var provider = LeadSmsProviderOf(req.Provider, meta);
         if (provider == "eskiz" && !eskiz.IsConfigured(meta))
             return BadRequest(new { message = "Eskiz SMS sozlanmagan. Sozlamalar → SMS (Eskiz)da login/parol kiriting." });
         if (await ValidateLocalSmsAsync(provider, req.AgentId, meta) is { } localErr)
