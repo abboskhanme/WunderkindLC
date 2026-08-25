@@ -7,6 +7,7 @@ import {
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { AiAnalysisView } from './AiAnalysisView'
+import { escapeHtml } from '@/lib/ai'
 
 interface Props {
   open: boolean
@@ -17,10 +18,6 @@ interface Props {
   records: StudentAiAnalysisRecord[]
   /** Yangi tahlil yaratilganda sahifa ro'yxatini yangilash uchun. */
   onGenerated: (rec: StudentAiAnalysisRecord) => void
-}
-
-function escapeHtml(s: string): string {
-  return (s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 }
 
 function buildPrintHtml(rec: StudentAiAnalysisRecord, studentName: string): string {

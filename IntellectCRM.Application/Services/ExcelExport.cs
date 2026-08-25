@@ -57,9 +57,20 @@ public static class ExcelExport
             row.Append(new Cell
             {
                 DataType = CellValues.InlineString,
-                InlineString = new InlineString(new Text(c ?? string.Empty) { Space = SpaceProcessingModeValues.Preserve }),
+                InlineString = new InlineString(new Text(SafeCell(c)) { Space = SpaceProcessingModeValues.Preserve }),
             });
         }
         return row;
+    }
+
+    /// <summary>
+    /// CSV/Excel formula injection oldini oladi: matn `=`, `+`, `-`, `@`, TAB yoki CR bilan boshlansa
+    /// oldiga bitta apostrof (`'`) qo'yiladi — Excel uni formula emas, oddiy matn deb o'qiydi.
+    /// Bu yerda BARCHA kataklar matn (InlineString) sifatida yoziladi, shuning uchun hammasiga qo'llanadi.
+    /// </summary>
+    private static string SafeCell(string? v)
+    {
+        if (string.IsNullOrEmpty(v)) return v ?? string.Empty;
+        return "=+-@\t\r".IndexOf(v[0]) >= 0 ? "'" + v : v;
     }
 }

@@ -4,7 +4,7 @@ import type { User } from '@/types'
 import posthog from '@/lib/posthog'
 import { AuthContext } from './auth-context'
 import { login as loginRequest, otpLogin, fetchMe } from '@/api/services/auth'
-import { USE_MOCK } from '@/api/client'
+import { api, USE_MOCK } from '@/api/client'
 import { setFcmToken, getFcmToken, registerDevice, unregisterDevice, pushBase } from '@/api/services/push'
 import { initWebPush, isWebPushSupported } from '@/api/services/webpush'
 
@@ -46,6 +46,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const role = readStoredUser()?.role
     const fcm = getFcmToken()
     if (jwt && role && fcm) unregisterDevice(role, fcm, jwt).catch(() => {})
+
+    // Serverga chiqish signalini yuboramiz — u `up_at` cookie'sini o'chiradi (umumiy kompyuterda
+    // keyingi odam login'siz `/uploads` hujjatlarini ocholmasin). Best-effort: server yetib
+    // bormasa ham (offline va h.k.) foydalanuvchi baribir chiqishi shart, shuning uchun xatoni
+    // yutib yuboramiz va quyidagi klient tozalash HAR HOLDA bajariladi.
+    if (!USE_MOCK) api.post('/auth/logout').catch(() => {})
 
     posthog.reset()
     identifiedUserId.current = null

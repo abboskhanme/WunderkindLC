@@ -462,6 +462,16 @@ builder.Services.AddOutputCache(options =>
 
 builder.Services.AddControllers();
 
+// HSTS — brauzer domenni 1 yil davomida FAQAT https deb eslab qoladi (subdomenlar ham).
+// `Preload` ATAYIN qo'shilmadi: preload ro'yxatiga tushish qaytarib bo'lmas majburiyat
+// (barcha subdomenlar abadiy https bo'lishi shart) — bu qaror alohida ko'rib chiqiladi.
+// Amalda faqat prod'da qo'llanadi (`app.UseHsts()` ham `!IsDevelopment()` ostida).
+builder.Services.AddHsts(o =>
+{
+    o.MaxAge = TimeSpan.FromDays(365);
+    o.IncludeSubDomains = true;
+});
+
 var app = builder.Build();
 
 // ---------- Bazani yaratish va seed ----------
@@ -823,6 +833,11 @@ app.Use(async (context, next) =>
     var isUpload = context.Request.Path.StartsWithSegments("/uploads");
     headers["X-Content-Type-Options"] = "nosniff";
     headers["Referrer-Policy"] = "no-referrer";
+    // Brauzer imkoniyatlarini cheklash. To'lov va USB — UMUMAN o'chiq (bu ilovaga kerak emas).
+    // Kamera (PhotoDialog), mikrofon (ovoz yozish/Call Center) va joylashuv (o'quvchi GPS) esa
+    // O'Z domenimizda ATAYIN ishlaydi — shuning uchun 'self', begona/iframe'dagi manbaga esa yo'q.
+    headers["Permissions-Policy"] =
+        "camera=(self), microphone=(self), geolocation=(self), payment=(), usb=()";
     // CSP faqat prod'da — dev'da SPA Vite serverida alohida beriladi.
     if (!app.Environment.IsDevelopment() && isUpload)
     {
@@ -847,12 +862,16 @@ app.Use(async (context, next) =>
             // <link rel="stylesheet"> bilan yuklaydi (SPA emas, statik marketing sahifalari).
             // Busiz prod'da shrift STYLESHEET'i bloklanadi va sahifa zaxira shriftda chiqadi.
             "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
-            // gstatic — FCM web SW (firebase-messaging-sw.js) importScripts qiladi.
-            // telegram.org — bot Menu Button orqali Web App sifatida ochilganda kerak bo'ladigan SDK.
-            "script-src 'self' https://www.gstatic.com https://telegram.org; " +
+            // gstatic — FCM web SW (firebase-messaging-sw.js) `firebasejs`'ni importScripts qiladi.
+            // telegram.org — bot Menu Button orqali Web App sifatida ochilganda kerak bo'ladigan SDK
+            // (`/js/telegram-web-app.js`). Ikkalasi ham ANIQ yo'l bilan toraytirilgan — host darajasidagi
+            // ruxsat kerak emas, aks holda o'sha domendagi boshqa har qanday skript ham yuklanardi.
+            "script-src 'self' https://www.gstatic.com/firebasejs/ https://telegram.org/js/; " +
             "worker-src 'self'; " +
-            // googleapis/gstatic — FCM web token olish (getToken) so'rovlari.
-            "connect-src 'self' ws: wss: https://*.googleapis.com https://*.gstatic.com https://fcm.googleapis.com; " +
+            // googleapis/gstatic — FCM web token olish (getToken) so'rovlari. Yalang `ws: wss:` ATAYIN
+            // OLIB TASHLANDI — u istalgan hostga WebSocket ochilishiga yo'l qo'yib, token oqib ketish
+            // kanali bo'lardi. Bizning WS/SignalR same-origin, CSP3'da 'self' same-origin wss'ni qamraydi.
+            "connect-src 'self' https://*.googleapis.com https://*.gstatic.com https://fcm.googleapis.com; " +
             // fonts.gstatic.com — Google Fonts'ning .woff2 fayllari aynan shu hostdan keladi
             // (stylesheet googleapis'da, shriftning O'ZI gstatic'da — ikkalasi ham kerak).
             "font-src 'self' data: https://fonts.gstatic.com; " +
@@ -866,7 +885,11 @@ app.Use(async (context, next) =>
             "frame-src 'self' https://yandex.uz https://*.yandex.uz https://yandex.ru https://*.yandex.ru " +
                 "https://www.google.com https://maps.google.com https://*.google.com " +
                 "https://www.openstreetmap.org https://*.openstreetmap.org; " +
-            "frame-ancestors 'self' https://web.telegram.org https://*.web.telegram.org; object-src 'none'; base-uri 'self'";
+            "frame-ancestors 'self' https://web.telegram.org https://*.web.telegram.org; " +
+            // object-src/base-uri — plagin va <base> orqali inyeksiyani yopadi. form-action 'self' —
+            // forma ma'lumotini begona hostga POST qilib bo'lmaydi. upgrade-insecure-requests — qolgan
+            // har qanday http:// so'rov avtomatik https'ga ko'chiriladi (aralash kontent bo'lmasin).
+            "object-src 'none'; base-uri 'self'; form-action 'self'; upgrade-insecure-requests";
     }
     else
     {
@@ -1073,7 +1096,16 @@ app.UseStaticFiles(new StaticFileOptions
 {
     FileProvider = Guarded(new PhysicalFileProvider(uploadsDir)),
     RequestPath = "/uploads",
-    OnPrepareResponse = ctx => ctx.Context.Response.Headers.CacheControl = "private,max-age=3600",
+    OnPrepareResponse = ctx =>
+    {
+        ctx.Context.Response.Headers.CacheControl = "private,max-age=3600";
+        // Yuklangan fayl javobiga skript o'ldiruvchi CSP: `default-src 'none'` + `sandbox` —
+        // agar biror HTML/SVG shu papkadan berilib qolsa ham u JS ishga tushira olmaydi (bizning
+        // domenda saqlangan XSS bo'lmasin). `frame-ancestors 'self'` SAQLANADI — dars PDF'lari SPA
+        // iframe'ida ochiladi. (Ochiq `marketing-public` media ALOHIDA marshrutda — bunga tegmaydi.)
+        ctx.Context.Response.Headers["Content-Security-Policy"] =
+            "default-src 'none'; sandbox; frame-ancestors 'self'";
+    },
 });
 
 // Swagger ATAYLAB o'chirilgan (global) — butun API yuzasini ochib qo'ymaslik uchun

@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Encodings.Web;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Hosting;
 using IntellectCRM.Application.Abstractions;
@@ -290,12 +291,12 @@ public class CertificateService(IAppDbContext db, IHostEnvironment env)
             .Replace("{{expires_date}}", expiresStr);
     }
 
-    /// <summary>HTML maxsus belgilarni encode qiladi.</summary>
-    public static string HtmlEncode(string text) =>
-        text.Replace("&", "&amp;")
-            .Replace("<", "&lt;")
-            .Replace(">", "&gt;")
-            .Replace("\"", "&quot;");
+    /// <summary>
+    /// HTML maxsus belgilarni encode qiladi.
+    /// Qat'iy, kontekstga chidamli encoder ishlatiladi (apostrof va non-ASCII ham escape qilinadi) —
+    /// token bir-qo'shtirnoqli atribut yoki skript/uslub kontekstiga tushsa ham teshik ochilmaydi.
+    /// </summary>
+    public static string HtmlEncode(string text) => HtmlEncoder.Default.Encode(text ?? "");
 
     // ─────────────────────────────────────────────────────────────
     // Xususiy yordamchilar

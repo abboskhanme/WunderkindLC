@@ -20,9 +20,12 @@ export function trendInfo(trend: string): { label: string; cls: string; Icon: ty
   return { label: 'Barqaror', cls: 'bg-slate-100 text-slate-600', Icon: Minus }
 }
 
-/** PDF (chop etish) oynasi uchun HTML'ga xavfsiz matn. */
+/** PDF (chop etish) oynasi uchun HTML'ga xavfsiz matn (barcha 5 belgi: & < > " '). */
 export function escapeHtml(s: string): string {
-  return (s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  return (s ?? '').replace(
+    /[&<>"']/g,
+    (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c] as string,
+  )
 }
 
 /** Tayyor HTML'ni yangi oynada ochib chop etish (PDF sifatida saqlash uchun). */

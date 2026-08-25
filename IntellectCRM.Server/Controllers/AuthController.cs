@@ -209,6 +209,17 @@ public class AuthController(
         _ => null,
     };
 
+    /// <summary>Chiqish (logout): `up_at` cookie'sini o'chiradi — umumiy kompyuterda keyingi odam
+    /// login'siz `/uploads` maxfiy hujjatlarini ocholmasin. JWT'ning o'zi klientda (localStorage'da)
+    /// tozalanadi; bu yerda faqat brauzer cookie'si serverdan o'chiriladi.</summary>
+    [HttpPost("logout")]
+    [Authorize]
+    public IActionResult Logout()
+    {
+        IntellectCRM.Server.UploadsGuard.ClearCookie(HttpContext);
+        return NoContent();
+    }
+
     [HttpGet("me")]
     [Authorize]
     public async Task<ActionResult<UserDto>> Me()
