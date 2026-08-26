@@ -28,3 +28,8 @@ services:
     # Lokalda cloudflared KERAK EMAS — profil bilan o'chiramiz (oddiy `up` uni ishga tushirmaydi).
     # Serverda override yo'q → cloudflared profilsiz → normal ishlaydi.
     profiles: ["donotstart"]
+
+  nginx:
+    # Lokalda nginx ham KERAK EMAS: /root/certs yo'q (Origin Cert faqat serverda)
+    # va 80/443 portlar band bo'lishi mumkin. App to'g'ridan-to'g'ri 8080 da ochiq.
+    profiles: ["donotstart"]

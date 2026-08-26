@@ -1,6 +1,7 @@
-# IntellectCRM — prod: app (API + SPA) + PostgreSQL + Cloudflare Tunnel + kunlik backup.
+# IntellectCRM — prod: app (API + SPA) + PostgreSQL + nginx (TLS) + kunlik backup.
 # Bitta o'quv markazi (multi-tenant YO'Q). Sozlamalar .env faylidan keladi (.env.example dan nusxa oling).
-# Diqqat: app porti TASHQARIGA OCHILMAGAN — unga faqat cloudflared (ichki tarmoq) kiradi.
+# Diqqat: app porti TASHQARIGA OCHILMAGAN — unga faqat nginx / cloudflared (ichki tarmoq) kiradi.
+# Public IP'ga o'tish rejasi: PUBLIC-IP-OTISH.md (nginx + Cloudflare Origin Cert + ufw firewall).
 # PostgreSQL yengil — 1GB RAM serverga ham sig'adi (SQL Server >=2GB talab qilardi).
 
 services:
@@ -188,6 +189,32 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  # TLS terminatsiya — Cloudflare Origin Certificate bilan (public IP rejimi).
+  # Sertifikat serverda /root/certs (origin.pem + origin.key) — PUBLIC-IP-OTISH.md 1-qadam.
+  # 80/443 portlarni faqat firewall skripti (infra/cloudflare-firewall.sh) ishga
+  # tushirilgandan KEYIN oching — u portlarni FAQAT Cloudflare IP'lariga cheklaydi.
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: intellectcrm-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./infra/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - /root/certs:/etc/nginx/certs:ro     # Cloudflare Origin Cert (serverda yaratiladi)
+    depends_on:
+      app:
+        condition: service_healthy          # app tayyor bo'lmaguncha 502 bermasin
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ⚠️ VAQTINCHALIK: public IP'ga o'tish yakunlangach bu servis O'CHIRILADI
+  # (PUBLIC-IP-OTISH.md 6-qadam). O'tish davrida nginx bilan PARALLEL ishlaydi —
+  # DNS hali tunnelga qaragan bo'lsa trafik shu yerdan kelaveradi (rollback oson).
   cloudflared:
     image: cloudflare/cloudflared:latest
     container_name: intellectcrm-tunnel
