@@ -1,6 +1,8 @@
+import { Suspense } from 'react'
 import { NavLink, Outlet } from 'react-router-dom'
 import { Wallet, ReceiptText, LogOut } from 'lucide-react'
 import { useAuth } from '@/context/auth-context'
+import { Loader } from '@/components/ui/Loader'
 import { cn } from '@/lib/utils'
 
 const TABS = [
@@ -43,7 +45,10 @@ export function KassaMobileLayout() {
       {/* Kontent — har bir ekran o'z sarlavha/paddingini beradi */}
       <main className="flex-1 overflow-y-auto">
         <div className="mx-auto w-full max-w-3xl px-3 py-3">
-          <Outlet />
+          {/* Suspense LAYOUT ICHIDA — sahifa chunk'i yuklanayotganda qobiq (header/tab) qoladi. */}
+          <Suspense fallback={<Loader className="min-h-[240px]" />}>
+            <Outlet />
+          </Suspense>
         </div>
       </main>
 

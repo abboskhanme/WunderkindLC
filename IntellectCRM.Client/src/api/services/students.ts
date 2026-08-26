@@ -144,65 +144,81 @@ export async function getStudent(id: string): Promise<Student> {
   return data
 }
 
+/** Qidiruv natijasidagi bitta a'zolik: guruh nomi + holati ('active' | 'trial' | 'frozen'). */
+export interface StudentSearchGroup {
+  name: string
+  status: string
+}
+
 /**
- * Global qidiruv (Ctrl+K) uchun o'quvchilarni FISH yoki telefon (o'z/ota/ona/ota-ona) bo'yicha
- * qidiradi — ARXIVLANGANLAR ham qaytadi (natijada `isArchived` bilan belgilanadi). Mavjud
- * `GET /admin/students?includeArchived=true` endpointidan foydalanadi (yangi backend shart emas);
- * filtrlash frontend'da. `limit` — qaytariladigan maksimal natija.
+ * Global qidiruv natijasi — ATAYIN yengil (to'liq `Student` emas): backend
+ * `StudentSearchResultDto` bilan bir xil shakl. Hujjat manzillari bu tipga umuman kirmaydi.
  */
-export async function searchStudents(q: string, limit = 12): Promise<Student[]> {
-  const term = q.trim().toLowerCase()
+export interface StudentSearchResult {
+  id: string
+  fullName: string
+  /** O'quvchining o'z raqami (bo'sh bo'lishi mumkin). */
+  phone: string
+  /** Ota-onaning birinchi mavjud raqami (asosiy → ota → ona). */
+  parentPhone: string
+  isArchived: boolean
+  /** 'active' | 'trial' | 'frozen' | '' — badge uchun. */
+  memberState: string
+  groups: StudentSearchGroup[]
+}
+
+/**
+ * Global qidiruv (Ctrl+K / topbar): FISH (so'z tartibi muhim emas, o'quvchi + ota-ona ismlari)
+ * yoki telefon (o'z/ota/ona/ota-ona) bo'yicha; ARXIVLANGANLAR ham qaytadi. Filtrlash endi
+ * SERVERDA (`GET /admin/students/search`) — ilgari butun ro'yxat tortilib brauzerda
+ * filtrlanardi. `signal` — debounce bekor bo'lganda so'rovni haqiqatan uzish uchun
+ * (axios so'rovni `CanceledError` bilan rad etadi — chaqiruvchi jim yutadi).
+ */
+export async function searchStudents(
+  q: string,
+  limit = 12,
+  signal?: AbortSignal,
+): Promise<StudentSearchResult[]> {
+  const term = q.trim()
   if (!term) return []
-  let all: Student[]
   if (USE_MOCK) {
     await delay(100)
-    all = studentsMock
-  } else {
-    const { data } = await api.get<Student[]>('/admin/students', {
-      params: { includeArchived: true },
-    })
-    all = data
+    // Serverdagi qoidaning yengil nusxasi: so'zlarga ajratib (tartibi muhim emas) ism bo'yicha,
+    // kamida 3 raqam bo'lsa telefon bo'yicha. Apostrof turlari birxillashtiriladi.
+    const norm = (v: string) =>
+      v.toLowerCase().replace(/[ʻʼ‘’`´]/g, "'")
+    const words = norm(term).split(/\s+/).filter(Boolean)
+    const digits = term.replace(/\D/g, '')
+    return studentsMock
+      .filter((s) => {
+        const haystack = norm(
+          [s.fullName, s.parentFullName, s.fatherFullName, s.motherFullName]
+            .filter(Boolean)
+            .join(' '),
+        )
+        if (words.length > 0 && words.every((w) => haystack.includes(w))) return true
+        if (digits.length >= 3) {
+          const phones = [s.phone, s.fatherPhone, s.motherPhone, s.parentPhone]
+          if (phones.some((p) => p && p.replace(/\D/g, '').includes(digits))) return true
+        }
+        return false
+      })
+      .slice(0, limit)
+      .map((s) => ({
+        id: s.id,
+        fullName: s.fullName,
+        phone: s.phone ?? '',
+        parentPhone: s.parentPhone || s.fatherPhone || s.motherPhone || '',
+        isArchived: !!s.isArchived,
+        memberState: s.memberState ?? '',
+        groups: (s.groupStates ?? []).map((g) => ({ name: g.name, status: g.status })),
+      }))
   }
-  // Telefonni faqat raqamlar bo'yicha solishtirish uchun normallashtiramiz (oxirgi raqamlar).
-  const digits = term.replace(/\D/g, '')
-
-  /**
-   * SO'ZLARGA AJRATIB qidiramiz: har bir so'z topilishi SHART, lekin TARTIBI muhim emas.
-   *
-   * Sabab: bazada F.I.Sh. "Familiya Ism Otasining ismi" tartibida, odam esa ko'pincha
-   * "ism familiya" deb yozadi — oddiy `includes` bunday holatda HECH NARSA topmasdi.
-   * Apostrof turlari ham birxillashtiriladi ("To'lqin" / "Toʻlqin" bitta so'z).
-   */
-  const norm = (v: string) =>
-    v.toLowerCase().replace(/[\u02bb\u02bc\u2018\u2019`\u00b4]/g, "'")
-  const words = norm(term).split(/\s+/).filter(Boolean)
-
-  const matches = all.filter((s) => {
-    // Ism/familiya — o'quvchi va ota-ona ismlari bo'ylab (kim so'ralsa ham topilsin).
-    const haystack = norm(
-      [s.fullName, s.parentFullName, s.fatherFullName, s.motherFullName]
-        .filter(Boolean)
-        .join(' '),
-    )
-    if (words.length > 0 && words.every((w) => haystack.includes(w))) return true
-
-    // RAQAM: kamida 3 ta raqam bo'lsa telefonlar bo'yicha (o'zi + ota-ona).
-    if (digits.length >= 3) {
-      const phones = [s.phone, s.fatherPhone, s.motherPhone, s.parentPhone]
-      if (phones.some((p) => p && p.replace(/\D/g, '').includes(digits))) return true
-    }
-    return false
+  const { data } = await api.get<StudentSearchResult[]>('/admin/students/search', {
+    params: { q: term, limit, includeArchived: true },
+    signal,
   })
-
-  // Tartib: ism BOSHIDAN mos kelganlar tepada (odam odatda shuni qidiradi), keyin qolganlari.
-  const first = words[0] ?? ''
-  return matches
-    .sort((a, b) => {
-      const rank = (s: Student) => (norm(s.fullName ?? '').startsWith(first) ? 0 : 1)
-      const d = rank(a) - rank(b)
-      return d !== 0 ? d : (a.fullName ?? '').localeCompare(b.fullName ?? '')
-    })
-    .slice(0, limit)
+  return data
 }
 
 /** Faqat arxivlangan o'quvchilar ro'yxati (alohida ko'rish uchun). */

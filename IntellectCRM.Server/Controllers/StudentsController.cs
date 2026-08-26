@@ -109,6 +109,116 @@ public class StudentsController(AppDbContext db, AuditService audit, IConfigurat
         return students;
     }
 
+    /// <summary>Qidiruv uchun YENGIL ichki proyeksiya — SELECT'ga faqat shu ustunlar tushadi
+    /// (hujjat manzillari umuman o'qilmaydi, ya'ni <see cref="RedactDocs"/> ham kerak emas).</summary>
+    private sealed record SearchRow(
+        string Id, string FullName, string Phone, string ParentPhone,
+        string FatherPhone, string MotherPhone, bool IsArchived);
+
+    /// <summary>
+    /// GLOBAL QIDIRUV (topbar / Ctrl+K): FISH (o'quvchi + ota-ona ismlari, so'z TARTIBI muhim
+    /// emas) YOKI telefon (o'z/ota/ona/asosiy) bo'yicha. Filtrlash va <c>Take</c> SQL'da —
+    /// ilgari frontend BUTUN ro'yxatni tortib brauzerda filtrlar edi.
+    ///
+    /// <para>Npgsql'da <c>EF.Functions.ILike</c> (pg_trgm GIN indekslariga mos), SQLite
+    /// testlarida provayderga bog'liq bo'lmagan <see cref="StudentSearch.WhereNameFallback"/>
+    /// tarmog'i (<c>ILike</c> SQLite'da ishlamaydi — <c>AuditController</c> dagi bilan bir xil
+    /// sabab). Qoidalarning o'zi <see cref="StudentSearch"/> da (sof, testlangan).</para>
+    ///
+    /// <para>Ruxsat — sinf darajasidagi <c>[AdminPerm("students.list")]</c>
+    /// (<see cref="GetAll"/> bilan bir xil).</para>
+    /// </summary>
+    [HttpGet("search")]
+    public async Task<ActionResult<IEnumerable<StudentSearchResultDto>>> Search(
+        [FromQuery] string? q,
+        [FromQuery] int limit = StudentSearch.DefaultLimit,
+        [FromQuery] bool includeArchived = true)
+    {
+        limit = StudentSearch.ClampLimit(limit);
+        var term = (q ?? string.Empty).Trim();
+        if (term.Length == 0) return new List<StudentSearchResultDto>();
+
+        IQueryable<Student> Base()
+        {
+            var s = db.Students.AsNoTracking().AsQueryable();
+            return includeArchived ? s : s.Where(x => !x.IsArchived);
+        }
+
+        static IQueryable<SearchRow> Project(IQueryable<Student> src) => src.Select(s =>
+            new SearchRow(s.Id, s.FullName, s.Phone, s.ParentPhone,
+                s.FatherPhone, s.MotherPhone, s.IsArchived));
+
+        var words = StudentSearch.Words(term);
+        var digits = StudentSearch.Digits(term);
+
+        // ISM bo'yicha: har so'z topilishi SHART (AND), qaysi ism ustunida ekani muhim emas.
+        var nameRows = new List<SearchRow>();
+        if (words.Length > 0)
+        {
+            var nq = Base();
+            if (db.Database.IsNpgsql())
+            {
+                foreach (var w in words)
+                {
+                    var p = StudentSearch.LikePattern(w);
+                    nq = nq.Where(s =>
+                        EF.Functions.ILike(s.FullName, p, "\\")
+                        || EF.Functions.ILike(s.ParentFullName, p, "\\")
+                        || EF.Functions.ILike(s.FatherFullName, p, "\\")
+                        || EF.Functions.ILike(s.MotherFullName, p, "\\"));
+                }
+            }
+            else
+            {
+                nq = StudentSearch.WhereNameFallback(nq, words);
+            }
+            nameRows = await Project(nq).OrderBy(r => r.FullName).Take(limit).ToListAsync();
+        }
+
+        // TELEFON bo'yicha — ALOHIDA yengil so'rov (ism AND-zanjiri bilan OR qilish LINQ'da
+        // qo'pol expression-tree talab qilardi; ikkita kichik SQL o'rniga bitta murakkabi shart emas).
+        var phoneRows = new List<SearchRow>();
+        if (digits.Length >= StudentSearch.MinPhoneDigits)
+            phoneRows = await Project(StudentSearch.WherePhone(Base(), digits))
+                .OrderBy(r => r.FullName).Take(limit).ToListAsync();
+
+        // Birlashtirish + tartib: ismi so'rovning BIRINCHI so'zi bilan BOSHLANGANLAR tepada
+        // (odam odatda shuni qidiradi) — frontenddagi eski tartib bilan bir xil.
+        var first = words.FirstOrDefault() ?? string.Empty;
+        var merged = nameRows.Concat(phoneRows)
+            .GroupBy(r => r.Id).Select(g => g.First())
+            .OrderBy(r => first.Length > 0 && StudentSearch.Normalize(r.FullName).StartsWith(first) ? 0 : 1)
+            .ThenBy(r => r.FullName, StringComparer.OrdinalIgnoreCase)
+            .Take(limit)
+            .ToList();
+        if (merged.Count == 0) return new List<StudentSearchResultDto>();
+
+        // Guruh nomlari — TOPILGAN idlar bo'yicha alohida yengil so'rov (butun jadval emas).
+        // MUZLATILGANLAR ham kiradi — dropdown "qayerda va qanday holatda"ni ko'rsatadi
+        // (GetAll'ning GroupStates xatti-harakati bilan bir xil).
+        var ids = merged.Select(r => r.Id).ToList();
+        var memberships = await (from sg in db.StudentGroups
+                                 join c in db.Classes on sg.GroupId equals c.Id
+                                 where sg.IsActive && ids.Contains(sg.StudentId)
+                                 select new { sg.StudentId, c.Name, sg.Status })
+            .ToListAsync();
+        var groupsBy = memberships.GroupBy(m => m.StudentId)
+            .ToDictionary(g => g.Key, g => g
+                .OrderBy(x => x.Name, StringComparer.OrdinalIgnoreCase)
+                .Select(x => new StudentSearchGroupDto(x.Name, x.Status ?? ""))
+                .ToList());
+
+        return merged.Select(r =>
+        {
+            var groups = groupsBy.GetValueOrDefault(r.Id) ?? new List<StudentSearchGroupDto>();
+            var parentPhone = !string.IsNullOrEmpty(r.ParentPhone) ? r.ParentPhone
+                : !string.IsNullOrEmpty(r.FatherPhone) ? r.FatherPhone : r.MotherPhone;
+            return new StudentSearchResultDto(
+                r.Id, r.FullName, r.Phone, parentPhone, r.IsArchived,
+                StudentSearch.MemberState(groups.Select(x => (string?)x.Status)), groups);
+        }).ToList();
+    }
+
     /// <summary>O'quvchi shaxsiy daftari — bitta o'quvchi haqida barcha ma'lumot (profil, o'zlashtirish, davomat, oylik baholash, uy vazifa/xulq).</summary>
     [HttpGet("{id}/profile")]
     public async Task<ActionResult<StudentNotebookDto>> GetProfile(string id)

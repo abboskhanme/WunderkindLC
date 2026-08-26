@@ -49,13 +49,33 @@ public class InstagramWorkerService(
     /// kvotasini bekorga yeyardi.</para></summary>
     private const int EmbedTickSeconds = 60;
 
+    /// <summary>CenterMeta kesh muddati (soniya) — sozlamalar HAR tsiklda emas, shu oraliqda
+    /// bir marta o'qiladi. Har 2 soniyada bazaga borish (modul o'chiq bo'lsa ham) bekorga yuk edi.</summary>
+    private const int MetaCacheSeconds = 30;
+
+    /// <summary>Barcha Instagram modullari O'CHIQ bo'lganda tsikl oralig'i (soniya) —
+    /// qiladigan tezkor ish yo'q, 2 soniyalik aylanish bekorga scope ochardi.</summary>
+    private const int IdleTickSeconds = 60;
+
+    /// <summary>Keshlangan CenterMeta (AsNoTracking — scope yopilgach ham xavfsiz o'qiladigan POCO).</summary>
+    private CenterMeta? _cachedMeta;
+    /// <summary>CenterMeta oxirgi o'qilgan vaqti.</summary>
+    private DateTime _lastMetaRead = DateTime.MinValue;
+    /// <summary>Oxirgi tsiklda barcha modullar o'chiq bo'lganmi — keyingi kutish shundan tanlanadi.</summary>
+    private bool _idle;
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         while (!stoppingToken.IsCancellationRequested)
         {
             try { await TickAsync(stoppingToken); }
             catch (Exception ex) { logger.LogError(ex, "Instagram fon siklida xatolik"); }
-            try { await Task.Delay(TimeSpan.FromSeconds(2), stoppingToken); }
+            // Barcha modullar o'chiq bo'lsa tsikl 60 soniyaga cho'ziladi. Modul yoqilganda
+            // (meta keshi yangilangach) 2 soniyalik tsikl O'ZI qaytadi — yoqish ko'pi bilan
+            // ~60 soniyada seziladi. QABUL QILINGAN SAVDO: fon xizmati uchun bir daqiqagacha
+            // kechikish zararsiz, tejaladigan yuk esa doimiy. Modul yoqiq bo'lsa xulq
+            // O'ZGARMAGAN — 2 soniyalik tsikl qoladi (webhook navbati kechikmasin).
+            try { await Task.Delay(TimeSpan.FromSeconds(_idle ? IdleTickSeconds : 2), stoppingToken); }
             catch (TaskCanceledException) { break; }
         }
     }
@@ -66,8 +86,21 @@ public class InstagramWorkerService(
         var sp = scope.ServiceProvider;
         var db = sp.GetRequiredService<IAppDbContext>();
 
-        var meta = await db.CenterMeta.FirstOrDefaultAsync(ct);
-        if (meta is null) return;
+        // CenterMeta HAR tsiklda emas, MetaCacheSeconds da bir o'qiladi. Sozlama (bayroq)
+        // o'zgarishi ko'pi bilan 30 soniyada seziladi — qabul qilingan savdo.
+        if (_cachedMeta is null || (AppClock.Now - _lastMetaRead).TotalSeconds >= MetaCacheSeconds)
+        {
+            _cachedMeta = await db.CenterMeta.AsNoTracking().FirstOrDefaultAsync(ct);
+            _lastMetaRead = AppClock.Now;
+        }
+        var meta = _cachedMeta;
+        if (meta is null) { _idle = true; return; }
+
+        // Hech bir modul yoqilmagan bo'lsa keyingi kutish IdleTickSeconds (ExecuteAsync o'qiydi).
+        // Kunlik ishlar (tozalash §5, yetim media) 60 soniyalik tsiklda ham o'z vaqtida bajariladi.
+        _idle = !(meta.InstagramEnabled || meta.InstagramLeadAdsEnabled
+                  || meta.InstagramPublishEnabled || meta.InstagramAdsStatsEnabled
+                  || meta.InstagramCapiEnabled);
 
         // ⚠️ BIR NECHTA MUSTAQIL MODUL, bitta fon xizmati. Har birining O'Z bayrog'i bor va
         // biri o'chiq bo'lgani boshqasini to'xtatmasligi SHART. Ilgari bu yerda yalang

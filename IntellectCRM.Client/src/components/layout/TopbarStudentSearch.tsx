@@ -1,7 +1,6 @@
 ﻿import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Search, User, X } from 'lucide-react'
-import type { Student } from '@/types'
 import { useAuth } from '@/context/auth-context'
 import { searchStudents } from '@/api/services/students'
 import { studentStateBadge } from '@/config/constants'
@@ -54,7 +53,9 @@ export function TopbarStudentSearch() {
     return () => document.removeEventListener('mousedown', onClick)
   }, [])
 
-  // FISH/telefon bo'yicha qidirish (debounce 250ms)
+  // FISH/telefon bo'yicha qidirish (debounce 250ms). Qidiruv endi SERVERDA — cleanup'da
+  // so'rov `AbortController` bilan haqiqatan uziladi (tez terilganda eski so'rovlar tarmoqda
+  // qolib ketmasin); abort xatosi (`CanceledError`) `cancelled` bayrog'i orqali jim yutiladi.
   useEffect(() => {
     if (!canSearch) return
     const q = query.trim()
@@ -65,20 +66,21 @@ export function TopbarStudentSearch() {
     }
     setSearching(true)
     let cancelled = false
+    const controller = new AbortController()
     const t = setTimeout(async () => {
       try {
-        const list = await searchStudents(q)
+        const list = await searchStudents(q, 12, controller.signal)
         if (cancelled) return
         setHits(
-          list.map((s: Student) => ({
+          list.map((s) => ({
             id: s.id,
             fullName: s.fullName,
-            phone: s.phone || s.parentPhone || s.fatherPhone || s.motherPhone || undefined,
-            archived: !!s.isArchived,
+            phone: s.phone || s.parentPhone || undefined,
+            archived: s.isArchived,
             memberState: s.memberState,
             // BARCHA a'zoliklar (muzlatilganlari ham) — bu yerda maqsad "qayerda va qanday
             // holatda" ni ko'rsatish, ro'yxat ustunidan farqli o'laroq.
-            groups: (s.groupStates ?? []).map((g) => ({ name: g.name, status: g.status })),
+            groups: s.groups,
           })),
         )
         setActive(0)
@@ -90,6 +92,7 @@ export function TopbarStudentSearch() {
     }, 250)
     return () => {
       cancelled = true
+      controller.abort()
       clearTimeout(t)
     }
   }, [query, canSearch])

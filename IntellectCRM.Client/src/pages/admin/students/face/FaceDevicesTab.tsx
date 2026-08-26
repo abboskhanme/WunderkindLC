@@ -3,7 +3,7 @@ import { AlertTriangle, Loader2, Search, ShieldOff, Smartphone, Trash2 } from 'l
 import type { FaceDevice, FaceProfile } from '@/api/services/face'
 import { deleteFaceProfile, getFaceDevices, getFaceProfile, revokeFaceDevice } from '@/api/services/face'
 import { searchStudents } from '@/api/services/students'
-import type { Student } from '@/types'
+import type { StudentSearchResult } from '@/api/services/students'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
@@ -246,7 +246,7 @@ export function FaceDevicesTab({ canEdit }: Props) {
 /** O'quvchini qidirib etalonini tozalash (qurilmasi yo'q o'quvchi uchun ham kerak). */
 function ClearEtalonCard({ onPick }: { onPick: (t: EtalonTarget) => void }) {
   const [q, setQ] = useState('')
-  const [results, setResults] = useState<Student[]>([])
+  const [results, setResults] = useState<StudentSearchResult[]>([])
   const [searching, setSearching] = useState(false)
 
   useEffect(() => {
@@ -299,7 +299,7 @@ function ClearEtalonCard({ onPick }: { onPick: (t: EtalonTarget) => void }) {
               >
                 <span className="min-w-0 truncate font-medium text-slate-700">{s.fullName}</span>
                 <span className="shrink-0 text-xs text-slate-400">
-                  {s.isArchived ? 'arxiv' : s.className || ''}
+                  {s.isArchived ? 'arxiv' : s.groups[0]?.name || ''}
                 </span>
               </button>
             ))}

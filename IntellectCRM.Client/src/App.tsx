@@ -140,6 +140,9 @@ const CertificatesPage = lazy(() => import('@/pages/student/Certificates').then(
 const StudentContractsScreen = lazy(() => import('@/pages/student/Contracts').then((m) => ({ default: m.StudentContractsScreen })))
 
 // Lazy sahifa chunk'i yuklanayotganda ko'rsatiladigan zaxira ekran.
+// ⚠️ Bu TASHQI boundary faqat LAYOUTSIZ marshrutlar (login, ommaviy sahifalar) uchun:
+// layoutli marshrutlarda Suspense LAYOUT ICHIDA (`<Outlet/>` atrofida) turadi — sahifa
+// almashganda sidebar/topbar qayta mount bo'lmaydi va SignalR ulanishlari uzilmaydi.
 function PageFallback() {
   return <Loader className="min-h-screen" />
 }

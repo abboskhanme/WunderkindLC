@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react'
+import { Suspense, useEffect, useState } from 'react'
 import { NavLink, Outlet } from 'react-router-dom'
 import { Home, ClipboardCheck, Trophy, MessageCircle, User } from 'lucide-react'
 import { UnreadProvider, useUnread } from '@/context/unread-context'
 import { useAuth } from '@/context/auth-context'
+import { Loader } from '@/components/ui/Loader'
 import { cn } from '@/lib/utils'
 
 function initials(name: string): string {
@@ -113,7 +114,11 @@ function Shell() {
       <div className="flex h-full flex-1 flex-col overflow-hidden bg-paper">
         {/* Kontent — har bir ekran o'z sarlavha/paddingini beradi */}
         <main className="flex-1 overflow-y-auto">
-          <Outlet />
+          {/* Suspense LAYOUT ICHIDA — sahifa chunk'i yuklanayotganda qobiq (tab/menyu) qoladi,
+              UnreadProvider (SignalR) qayta mount bo'lmaydi. */}
+          <Suspense fallback={<Loader className="min-h-[240px]" />}>
+            <Outlet />
+          </Suspense>
         </main>
 
         {/* PASTKI NAVIGATSIYA — 5 tab (faqat telefon/WebView; desktopda yon menyu) */}

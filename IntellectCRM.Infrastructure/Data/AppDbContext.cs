@@ -283,6 +283,32 @@ public class AppDbContext(DbContextOptions<AppDbContext> options)
         b.Entity<StudentGroup>().HasIndex(sg => new { sg.StudentId, sg.GroupId }).IsUnique();
         b.Entity<StudentGroup>().HasIndex(sg => sg.GroupId);
         b.Entity<StudentGroup>().HasIndex(sg => new { sg.StudentId, sg.IsActive });
+
+        // ---------- PERFORMANS INDEKSLARI (auth + qidiruv) ----------
+        // Student/Teacher.UserId — HAR bir API so'rovida `OnTokenValidated` shu ustun bo'yicha
+        // profilni qidiradi (token → o'quvchi/o'qituvchi bog'lash). Indekssiz bu har so'rovda
+        // seq-scan edi. Indeksda qatnashgani uchun uzunlik ham beriladi (faylning boshidagi
+        // umumiy qoida).
+        b.Entity<Student>().Property(s => s.UserId).HasMaxLength(200);
+        b.Entity<Teacher>().Property(t => t.UserId).HasMaxLength(200);
+        b.Entity<Student>().HasIndex(s => s.UserId);
+        b.Entity<Teacher>().HasIndex(t => t.UserId);
+        // Bildirishnomalar ro'yxati doim "foydalanuvchi + eng yangisi tepada" kesimida o'qiladi.
+        b.Entity<UserNotification>().Property(n => n.UserId).HasMaxLength(200);
+        b.Entity<UserNotification>().HasIndex(n => new { n.UserId, n.CreatedAt });
+        // O'quvchilar ro'yxati deyarli har so'rovda arxivlanganlarni chiqarib tashlaydi.
+        b.Entity<Student>().HasIndex(s => s.IsArchived);
+        // pg_trgm + GIN trigram indekslar — qidiruv endpointining ILIKE '%...%' so'rovlari
+        // indeksdan foydalanishi uchun (oddiy b-tree o'rtadan boshlangan LIKE'ni qo'llamaydi).
+        // ⚠️ Bular Npgsql'ga xos annotatsiyalar — SQLite (testlar) ularni e'tiborsiz qoldiradi:
+        // indekslar oddiy b-tree bo'lib yaratiladi, extension esa umuman yozilmaydi.
+        b.HasPostgresExtension("pg_trgm");
+        b.Entity<Student>().HasIndex(s => s.FullName).HasMethod("gin").HasOperators("gin_trgm_ops");
+        b.Entity<Student>().HasIndex(s => s.Phone).HasMethod("gin").HasOperators("gin_trgm_ops");
+        b.Entity<Student>().HasIndex(s => s.ParentPhone).HasMethod("gin").HasOperators("gin_trgm_ops");
+        b.Entity<Student>().HasIndex(s => s.FatherPhone).HasMethod("gin").HasOperators("gin_trgm_ops");
+        b.Entity<Student>().HasIndex(s => s.MotherPhone).HasMethod("gin").HasOperators("gin_trgm_ops");
+
         b.Entity<LeadEvent>().HasIndex(e => e.LeadId);
         // Lid kartasi HAR CHAT uchun bitta: unikal indeks bir guruhda ikkinchi karta paydo
         // bo'lishiga yo'l qo'ymaydi (aks holda ikkalasi ham yangilanib, guruhda dubl ko'rinardi).

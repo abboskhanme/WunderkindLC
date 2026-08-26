@@ -3756,3 +3756,28 @@ public record SubstituteFeePreviewDto(
 /// <summary>Guruhning oydagi rejalashtirilgan dars sanasi (modal uchun).</summary>
 public record GroupLessonDateDto(string Date, string DayName, bool IsScheduled);
 
+/* ---------- Global o'quvchi qidiruvi (topbar / Ctrl+K) ---------- */
+
+/// <summary>Qidiruv natijasidagi bitta a'zolik: guruh nomi + holati (dropdownda chip bo'lib
+/// ko'rinadi). MUZLATILGANLAR ham kiradi — maqsad "qayerda va qanday holatda"ni ko'rsatish.</summary>
+public record StudentSearchGroupDto(string Name, string Status);
+
+/// <summary>
+/// <c>GET /api/admin/students/search</c> javobi — ATAYIN yengil: to'liq <c>Student</c> emas.
+/// Hujjat manzillari (<c>BirthCertificateUrl</c>, <c>ParentPassportUrl</c>) bu DTO'ga UMUMAN
+/// kirmaydi, ya'ni <c>RedactDocs</c> ga ehtiyoj yo'q (<c>uploads-security.md</c> qoidasi).
+/// </summary>
+/// <param name="Phone">O'quvchining o'z raqami (bo'sh bo'lishi mumkin).</param>
+/// <param name="ParentPhone">Ota-onaning BIRINCHI mavjud raqami (asosiy → ota → ona) —
+/// dropdownda o'z raqami bo'lmaganda ko'rsatiladi.</param>
+/// <param name="MemberState">"active" | "trial" | "frozen" | "" — badge uchun
+/// (<c>GetAll</c> dagi ustunlik bilan bir xil).</param>
+public record StudentSearchResultDto(
+    string Id,
+    string FullName,
+    string Phone,
+    string ParentPhone,
+    bool IsArchived,
+    string MemberState,
+    List<StudentSearchGroupDto> Groups);
+

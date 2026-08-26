@@ -5,6 +5,7 @@ using Microsoft.Extensions.FileProviders;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.ResponseCompression;
+using Microsoft.Extensions.Caching.Memory;
 using System.IO.Compression;
 using System.Security.Claims;
 using IntellectCRM.Domain;
@@ -146,9 +147,17 @@ builder.Services
                 return Task.CompletedTask;
             },
 
-            // Token bekor qilish (revocation): imzo/muddat to'g'ri bo'lsa ham, akkaunt holatini
-            // HAR so'rovda tekshiramiz — arxivlangan o'qituvchi/o'quvchi yoki o'chirilgan xodim/admin
+            // Token bekor qilish (revocation): imzo/muddat to'g'ri bo'lsa ham, akkaunt holati
+            // tekshiriladi — arxivlangan o'qituvchi/o'quvchi yoki o'chirilgan xodim/admin
             // eski tokeni bilan KIRA OLMAYDI. Parent (telefon orqali bog'lanadi) tekshirilmaydi.
+            //
+            // ⚠️ KESH (IMemoryCache, 60 soniya, kalit = rol + userId): ilgari bu tekshiruv HAR
+            // avtorizatsiyalangan so'rovda DB'ga borardi. Endi natija (bloklanganmi + rol +
+            // ruxsatlar) 60 soniyaga keshlanadi; kesh o'tib ketgach birinchi so'rov DB'dan
+            // yangilaydi. QABUL QILINGAN SAVDO: bloklangan/arxivlangan foydalanuvchi, rol yoki
+            // ruxsat o'zgarishi KO'PI BILAN 60 soniya kechikib amal qiladi — "qayta login shart
+            // emas" siyosati saqlanadi, faqat bir daqiqagacha kechikish bilan. AddMemoryCache
+            // yuqorida (ReferenceCache bilan birga) ro'yxatdan o'tgan.
             OnTokenValidated = async context =>
             {
                 var p = context.Principal;
@@ -156,26 +165,50 @@ builder.Services
                              ?? p?.FindFirst("sub")?.Value;
                 if (p is null || string.IsNullOrEmpty(userId)) return;
 
-                var db = context.HttpContext.RequestServices.GetRequiredService<AppDbContext>();
+                var http = context.HttpContext;
+                var cache = http.RequestServices.GetRequiredService<IMemoryCache>();
+                var ttl = TimeSpan.FromSeconds(60);
 
                 bool blocked;
                 if (p.IsInRole(Roles.Teacher))
                     // Arxivlangan YOKI "vaqtincha aktiv emas" qilingan o'qituvchi eski tokeni bilan
                     // ham kira olmaydi (o'quvchidagi LoginBlocked bilan bir xil mantiq).
-                    blocked = !await db.Teachers.AnyAsync(t => t.UserId == userId && !t.IsArchived && !t.IsBlocked);
+                    blocked = await cache.GetOrCreateAsync("auth:teacher:" + userId, async e =>
+                    {
+                        e.AbsoluteExpirationRelativeToNow = ttl;
+                        var db = http.RequestServices.GetRequiredService<AppDbContext>();
+                        return !await db.Teachers.AsNoTracking()
+                            .AnyAsync(t => t.UserId == userId && !t.IsArchived && !t.IsBlocked);
+                    });
                 else if (p.IsInRole(Roles.Student))
                     // Arxivlangan YOKI admin tomonidan login cheklangan o'quvchi eski tokeni bilan kira olmaydi.
-                    blocked = !await db.Students.AnyAsync(s => s.UserId == userId && !s.IsArchived && !s.LoginBlocked);
+                    blocked = await cache.GetOrCreateAsync("auth:student:" + userId, async e =>
+                    {
+                        e.AbsoluteExpirationRelativeToNow = ttl;
+                        var db = http.RequestServices.GetRequiredService<AppDbContext>();
+                        return !await db.Students.AsNoTracking()
+                            .AnyAsync(s => s.UserId == userId && !s.IsArchived && !s.LoginBlocked);
+                    });
                 else if (p.IsInRole(Roles.Staff) || p.IsInRole(Roles.Admin) || p.IsInRole(Roles.SuperAdmin))
                 {
-                    var u = await db.Users.FirstOrDefaultAsync(x => x.Id == userId);
+                    // Butun User qatori emas, faqat kerakli maydonlar (rol + ruxsatlar)
+                    // proyeksiya qilinadi — parol hashi va boshqa ustunlar xotira keshiga tushmaydi.
+                    var u = await cache.GetOrCreateAsync("auth:user:" + userId, async e =>
+                    {
+                        e.AbsoluteExpirationRelativeToNow = ttl;
+                        var db = http.RequestServices.GetRequiredService<AppDbContext>();
+                        return await db.Users.AsNoTracking()
+                            .Where(x => x.Id == userId)
+                            .Select(x => new { x.Role, x.Permissions })
+                            .FirstOrDefaultAsync();
+                    });
                     blocked = u is null;
                     if (!blocked && p.Identity is ClaimsIdentity ident)
                     {
-                        // ROL ham HAR so'rovda DB'dan olinadi. Sabab: "ikkinchi superadmin" tayinlansa
-                        // (StaffController.SetRole) yoki qaytarilsa, tokendagi ESKI rol 12 soatgacha
-                        // amal qilib turardi — ko'tarilgan odam qayta login qilmaguncha yangi
-                        // huquqlarni olmasdi, tushirilgani esa eski huquqlar bilan ishlayverardi.
+                        // ROL ham DB'dan olinadi (kesh orqali, 60 s). Sabab: "ikkinchi superadmin"
+                        // tayinlansa (StaffController.SetRole) yoki qaytarilsa, tokendagi ESKI rol
+                        // 12 soatgacha amal qilib turardi — ko'tarilgan odam qayta login qilmaguncha
+                        // yangi huquqlarni olmasdi, tushirilgani esa eski huquqlar bilan ishlayverardi.
                         // Ruxsat claim'lari bilan bir xil siyosat: qayta login SHART EMAS.
                         if (!string.IsNullOrEmpty(u!.Role))
                         {
@@ -188,9 +221,10 @@ builder.Services
                             }
                         }
 
-                        // Xodim (staff) ruxsatlarini HAR so'rovda DB'dan claim sifatida qo'shamiz — tokenga
-                        // yozilmaydi, shuning uchun superadmin ruxsatni o'zgartirsa darrov amal qiladi
-                        // (qayta login shart emas). AdminPerm atributi shu claim'larni tekshiradi.
+                        // Xodim (staff) ruxsatlari DB'dan (kesh orqali) claim sifatida qo'shiladi —
+                        // tokenga yozilmaydi, shuning uchun superadmin ruxsatni o'zgartirsa 60
+                        // soniyagacha kechikish bilan amal qiladi (qayta login shart emas).
+                        // AdminPerm atributi shu claim'larni tekshiradi.
                         // DIQQAT: shart TOKENdagi emas, DB'dagi rolga qaraydi (yuqorida sinxronlandi).
                         if (u.Role == Roles.Staff && u.Permissions is { Count: > 0 } perms)
                             foreach (var perm in perms)

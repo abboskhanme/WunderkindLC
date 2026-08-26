@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react'
+import { Suspense, useEffect, useState } from 'react'
 import { Outlet } from 'react-router-dom'
 import { UnreadProvider } from '@/context/unread-context'
+import { Loader } from '@/components/ui/Loader'
 import { Sidebar } from './Sidebar'
 import { Topbar } from './Topbar'
 import { CommandPalette } from './CommandPalette'
@@ -63,7 +64,12 @@ export function AppLayout() {
         <div className="flex flex-1 flex-col overflow-hidden">
           <Topbar onMenuClick={toggleMenu} />
           <main className="flex-1 overflow-y-auto p-6">
-            <Outlet />
+            {/* Suspense LAYOUT ICHIDA — lazy sahifa chunk'i yuklanayotganda faqat kontent
+                maydoni almashadi; Sidebar/Topbar joyida qoladi (qayta mount bo'lmaydi,
+                SignalR/unread ulanishlari uzilmaydi). */}
+            <Suspense fallback={<Loader className="h-full min-h-[240px]" />}>
+              <Outlet />
+            </Suspense>
           </main>
         </div>
       </div>

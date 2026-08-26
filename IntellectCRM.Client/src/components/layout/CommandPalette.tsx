@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Search, User } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
-import type { Role, Student } from '@/types'
+import type { Role } from '@/types'
 import { useAuth } from '@/context/auth-context'
 import { navByRole } from '@/config/navigation'
 import { teacherTabs, roomTabs, formTabs } from '@/config/sectionTabs'
@@ -157,6 +157,8 @@ export function CommandPalette() {
   }, [commands, query])
 
   // O'quvchilarni FISH/telefon bo'yicha qidirish (debounce). Arxivdagilar ham qaytadi.
+  // Qidiruv endi SERVERDA — cleanup'da so'rov `AbortController` bilan haqiqatan uziladi;
+  // abort xatosi (`CanceledError`) `cancelled` bayrog'i orqali jim yutiladi.
   useEffect(() => {
     if (!open || !canSearchStudents) {
       setStudents([])
@@ -170,17 +172,18 @@ export function CommandPalette() {
     }
     setSearching(true)
     let cancelled = false
+    const controller = new AbortController()
     const t = setTimeout(async () => {
       try {
-        const list = await searchStudents(q)
+        const list = await searchStudents(q, 12, controller.signal)
         if (cancelled) return
         setStudents(
-          list.map((s: Student) => ({
+          list.map((s) => ({
             id: s.id,
             fullName: s.fullName,
-            phone: s.phone || s.parentPhone || s.fatherPhone || s.motherPhone || undefined,
-            className: s.groups?.[0] || s.className || undefined,
-            archived: !!s.isArchived,
+            phone: s.phone || s.parentPhone || undefined,
+            className: s.groups[0]?.name || undefined,
+            archived: s.isArchived,
             memberState: s.memberState,
           })),
         )
@@ -192,6 +195,7 @@ export function CommandPalette() {
     }, 250)
     return () => {
       cancelled = true
+      controller.abort()
       clearTimeout(t)
     }
   }, [query, open, canSearchStudents])

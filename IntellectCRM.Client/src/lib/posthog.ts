@@ -38,24 +38,19 @@ export function loadPosthog(): Promise<PostHogInstance | null> {
           defaults: '2026-05-30',
 
           // ── Avtomatik kuzatuv ──────────────────────────────────────────
-          // Barcha kliklar, forma o'zgarishlari va sahifa almashinuvi
-          // hech qanday qo'shimcha kod yozmasdan yoziladi.
-          autocapture: true,
+          // ATAYIN O'CHIQ: har klik/forma hodisasini yozish tarmoq va CPU
+          // sarfini oshirardi. Muhim hodisalar qo'lda `capture` bilan yoziladi.
+          autocapture: false,
 
           // ── Sahifa ko'rishlar ──────────────────────────────────────────
-          // Qaysi sahifa qancha marta ochilgan — avtomatik.
+          // Qaysi sahifa qancha marta ochilgan — avtomatik (bu QOLADI).
           capture_pageview: true,
 
           // ── Sessiya yozuvi ─────────────────────────────────────────────
-          // Har bir foydalanuvchi sessiyasini PostHog dashboardida
-          // "video" kabi ko'rish mumkin: qayerga bosdi, nima qildi.
-          session_recording: {
-            maskAllInputs: false,       // parol maydonlari avtomatik berkitiladi
-            maskInputOptions: {
-              password: true,           // parollar HECH QACHON yozilmaydi
-              email: false,
-            },
-          },
+          // ATAYIN O'CHIQ: rrweb yozuvchisi og'ir (bundle + runtime) va CRM
+          // ekranlarida shaxsiy ma'lumot (telefon, to'lov) ko'p — "video"
+          // yozuv xavfsiz emas. Kerak bo'lsa alohida qaror bilan yoqiladi.
+          disable_session_recording: true,
 
           // ── Xato kuzatuvi ─────────────────────────────────────────────
           // So'ralmagan JS xatolari va Promise rejection'lari avtomatik.

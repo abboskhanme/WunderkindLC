@@ -9,16 +9,31 @@
     <link rel="apple-touch-icon" href="/favicon.svg" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <!-- Shrift RENDER-BLOKLAMAYDI: `media="print"` bilan brauzer uni past ustuvorlikda,
+         chizishni to'xtatmasdan yuklaydi; yuklangach `onload` media'ni 'all' ga o'tkazadi.
+         Shrift kelguncha matn fallback (system) shriftda ko'rinadi (display=swap).
+         JS o'chiq bo'lsa <noscript> odatiy bloklovchi variantni beradi. -->
     <link
       href="https://fonts.googleapis.com/css2?family=Pliant:ital,wght@0,100..900;1,100..900&display=swap"
       rel="stylesheet"
+      media="print"
+      onload="this.onload=null;this.media='all'"
     />
+    <noscript>
+      <link
+        href="https://fonts.googleapis.com/css2?family=Pliant:ital,wght@0,100..900;1,100..900&display=swap"
+        rel="stylesheet"
+      />
+    </noscript>
     <title>O'quv markazi</title>
     <!-- Telegram bot Menu Button orqali Web App sifatida ochilganda ishlatiladi (mavjud bo'lmasa
          no-op — oddiy brauzerda hech narsaga ta'sir qilmaydi). SDK yuklanmasa React Router
          (pushState) navigatsiyasini Telegram WebView noto'g'ri boshqarib, sahifa o'tishda
-         "Oops" xatosini ko'rsatishi mumkin. -->
-    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+         "Oops" xatosini ko'rsatishi mumkin.
+         `defer` — HTML tahlilini BLOKLAMAYDI, lekin modul (main.tsx) ishga tushishidan OLDIN
+         bajariladi: `type="module"` skriptlar o'zi defer, defer'lar esa hujjat tartibida oldin
+         ishlaydi — ya'ni `window.Telegram?.WebApp?.ready()` chaqirilganda SDK tayyor bo'ladi. -->
+    <script defer src="https://telegram.org/js/telegram-web-app.js"></script>
   </head>
   <body>
     <div id="root"></div>

@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react'
+import { Suspense, useEffect, useState } from 'react'
 import { NavLink, Outlet } from 'react-router-dom'
+import { Loader } from '@/components/ui/Loader'
 import { Icon } from '@/pages/student/lib'
 
 interface Tab {
@@ -71,7 +72,10 @@ export function StudentMobileLayout() {
       {/* Content area — flex:1, min-height:0. Har sahifa .screen class bilan flex:1 oladi.
           Tashqi overflow:hidden — sahifalar o'z ichki .scroll orqali scroll qiladi. */}
       <div className="st-main" style={{ flex: 1, minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-        <Outlet />
+        {/* Suspense LAYOUT ICHIDA — ekran chunk'i yuklanayotganda qobiq (tabbar/yon-menyu) qoladi. */}
+        <Suspense fallback={<Loader className="flex-1" />}>
+          <Outlet />
+        </Suspense>
       </div>
 
       {/* Bottom navigation — telefon/WebView'da pastda; desktop'da yashiriladi (yon-menyu o'rniga). */}
