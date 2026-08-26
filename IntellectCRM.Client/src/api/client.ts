@@ -1,5 +1,6 @@
 import axios, { AxiosError, type AxiosRequestConfig } from 'axios'
 import posthog from '@/lib/posthog'
+import { installApiCache } from './cache'
 
 /**
  * Markaziy axios klienti.
@@ -12,6 +13,12 @@ export const api = axios.create({
   headers: { 'Content-Type': 'application/json' },
   withCredentials: true,
 })
+
+// SHAFFOF GET-KESH (25 s TTL + in-flight dedup) — adapter darajasida, qoidalar `cache.ts` da.
+// Muvaffaqiyatli POST/PUT/PATCH/DELETE butun keshni tozalaydi — tahrirdan keyin eski ro'yxat
+// qolmaydi. Bitta so'rovda o'chirish: `api.get(url, { headers: { 'X-No-Cache': '1' } })`
+// yoki `api.get(url, { cache: false })`. `/auth/`, blob va abort bo'lgan so'rovlar keshlanmaydi.
+installApiCache(api)
 
 /** `document.cookie` dan bitta cookie qiymatini o'qiydi (topilmasa null). */
 export function readCookie(name: string): string | null {
