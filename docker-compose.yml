@@ -7,24 +7,25 @@ services:
   postgres:
     image: postgres:16-alpine
     container_name: intellectcrm-postgres
-    # Sozlamalar KICHIK VPS (1-2 GB RAM) uchun KONSERVATIV tanlangan:
-    #   shared_buffers 256MB      — RAM'ning ~25%; default 128MB kichik server uchun ham oz edi
-    #   effective_cache_size 512MB— rejalashtiruvchiga OS fayl keshi haqida maslahat (xotira band qilmaydi)
-    #   work_mem 8MB              — sort/hash uchun; max_connections=50 bilan birga xavfsiz chegara
-    #   maintenance_work_mem 64MB — VACUUM / indeks qurish tezlashadi
+    # Sozlamalar PROD SERVER (Contabo, 4 yadro / 7.8 GB RAM, 2026-08 ko'chirilgan) uchun:
+    #   shared_buffers 1GB        — RAM'ning ~12%; app + boshqa konteynerlar bilan bo'lishiladi
+    #   effective_cache_size 3GB  — rejalashtiruvchiga OS fayl keshi haqida maslahat (xotira band qilmaydi);
+    #                               kichik qiymat plannerni indeks o'rniga seq scan tanlashga undardi
+    #   work_mem 16MB             — sort/hash uchun; max_connections=50 bilan birga xavfsiz chegara
+    #   maintenance_work_mem 128MB— VACUUM / indeks qurish tezlashadi
     #   max_connections 50        — bitta app + backup uchun yetarli; har ulanish xotira yeydi
     #   random_page_cost 1.1      — SSD disk (default 4.0 HDD uchun edi)
     #   log_min_duration_statement 500 — 500ms dan sekin so'rovlar logda ko'rinsin (diagnostika)
     command:
       - postgres
       - -c
-      - shared_buffers=256MB
+      - shared_buffers=1GB
       - -c
-      - effective_cache_size=512MB
+      - effective_cache_size=3GB
       - -c
-      - work_mem=8MB
+      - work_mem=16MB
       - -c
-      - maintenance_work_mem=64MB
+      - maintenance_work_mem=128MB
       - -c
       - max_connections=50
       - -c
@@ -32,7 +33,7 @@ services:
       - -c
       - log_min_duration_statement=500
     # Parallel so'rovlar /dev/shm dan foydalanadi — docker default 64MB tor edi.
-    shm_size: 256mb
+    shm_size: 512mb
     environment:
       POSTGRES_USER: "${POSTGRES_USER:-intellectcrm}"
       POSTGRES_PASSWORD: "${POSTGRES_PASSWORD}"
