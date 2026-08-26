@@ -1,48 +1,79 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.OutputCaching;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using IntellectCRM.Infrastructure.Data;
+using IntellectCRM.Application.Abstractions;
 using IntellectCRM.Application.Dtos;
 using IntellectCRM.Application.Services;
+using IntellectCRM.Domain;
 
 namespace IntellectCRM.Server.Controllers;
 
 /// <summary>
 /// Ommaviy (autentifikatsiyasiz) daraja testi: bo'lajak o'quvchi `/test/{slug}` orqali kiradi,
 /// testni ishlaydi va topshiradi — natija CRM'da yangi LID bo'lib tushadi.
+///
+/// <para><b>KESH (brand / push-config / manifest):</b> bu uch endpoint HAR sahifa yuklanishida
+/// chaqiriladi va faqat <see cref="CenterMeta"/> (bitta qator) ni o'qiydi. Ikki qatlam:</para>
+/// <para>1) <see cref="DataCache"/> — DB o'qishning o'zi keshlanadi (dependsOn: CenterMeta);
+/// admin sozlamani saqlashi bilan interceptor versiyani oshiradi va kesh DARHOL yangilanadi.
+/// Authorization sarlavhasi bilan kelgan so'rovlar uchun ham ishlaydi.</para>
+/// <para>2) <c>[OutputCache(Duration = 300)]</c> — anonim so'rovlarda tayyor HTTP javob 5 daqiqa
+/// beriladi (serializatsiya/pipeline ham tejaladi). ⚠️ QABUL QILINGAN SAVDO: OutputCache
+/// interceptor'ni SEZMAYDI — admin logotip/nomni almashtirsa anonim mehmon (login sahifasi,
+/// PWA manifest) 5 daqiqagacha eski brendni ko'rishi mumkin. Brending o'zgarishi juda kam va
+/// shoshilinch emas — bu qabul qilinadi.</para>
 /// </summary>
 [ApiController]
 [AllowAnonymous]
 [Route("api/public/test")]
-public class PublicTestController(AppDbContext db, TelegramService telegram, AutoMessageService autoMsg) : ControllerBase
+public class PublicTestController(
+    AppDbContext db, TelegramService telegram, AutoMessageService autoMsg, DataCache dataCache) : ControllerBase
 {
+    /// <summary>DataCache TTL — faqat xavfsizlik tarmog'i (asosiy yangilanish CenterMeta versiyasi orqali).</summary>
+    private static readonly TimeSpan MetaTtl = TimeSpan.FromMinutes(10);
+
     /// <summary>Ommaviy brending — markaz nomi/logo/telefon (login, daraja testi kabi sahifalar uchun).</summary>
     [HttpGet("/api/public/brand")]
-    public async Task<ActionResult<PublicBrandDto>> Brand()
-    {
-        var m = await db.CenterMeta.FirstOrDefaultAsync();
-        return new PublicBrandDto(m?.Name ?? "", m?.LogoUrl ?? "", m?.Phone ?? "", m?.Email ?? "");
-    }
+    [OutputCache(Duration = 300)]
+    public async Task<PublicBrandDto> Brand() =>
+        await dataCache.GetOrCreateAsync("public:brand", [nameof(CenterMeta)], MetaTtl, async cdb =>
+        {
+            var m = await cdb.CenterMeta.AsNoTracking().FirstOrDefaultAsync();
+            return new PublicBrandDto(m?.Name ?? "", m?.LogoUrl ?? "", m?.Phone ?? "", m?.Email ?? "");
+        });
 
     /// <summary>Ommaviy web/PWA push konfiguratsiyasi — brauzer Firebase JS SDK'ni ishga tushirib
     /// FCM token olishi uchun (web app config + VAPID ochiq kaliti). Maxfiy emas.</summary>
     [HttpGet("/api/public/push-config")]
-    public async Task<ActionResult<PublicPushConfigDto>> PushConfig()
-    {
-        var m = await db.CenterMeta.FirstOrDefaultAsync();
-        var web = m?.FcmWebConfigJson ?? "";
-        var vapid = m?.FcmVapidKey ?? "";
-        var configured = vapid.Trim().Length > 0 && !string.IsNullOrWhiteSpace(web);
-        return new PublicPushConfigDto(web, vapid, configured);
-    }
+    [OutputCache(Duration = 300)]
+    public async Task<PublicPushConfigDto> PushConfig() =>
+        await dataCache.GetOrCreateAsync("public:push-config", [nameof(CenterMeta)], MetaTtl, async cdb =>
+        {
+            var m = await cdb.CenterMeta.AsNoTracking().FirstOrDefaultAsync();
+            var web = m?.FcmWebConfigJson ?? "";
+            var vapid = m?.FcmVapidKey ?? "";
+            var configured = vapid.Trim().Length > 0 && !string.IsNullOrWhiteSpace(web);
+            return new PublicPushConfigDto(web, vapid, configured);
+        });
 
     /// <summary>PWA manifest (DINAMIK) — markaz nomi va LOGOSI bilan. Ilova o'rnatilganda (Android/desktop)
     /// shu logo ikonka bo'lib ko'rinadi. Logo bo'lmasa favicon'ga qaytadi.</summary>
     [HttpGet("/api/public/manifest.webmanifest")]
+    [OutputCache(Duration = 300)]
     public async Task<IActionResult> Manifest()
     {
-        var m = await db.CenterMeta.FirstOrDefaultAsync();
+        // Tayyor JSON matni keshlanadi (o'zgarmas string) — serializatsiya ham qayta bajarilmaydi.
+        var json = await dataCache.GetOrCreateAsync(
+            "public:manifest", [nameof(CenterMeta)], MetaTtl, BuildManifestJsonAsync);
+        return Content(json, "application/manifest+json");
+    }
+
+    private static async Task<string> BuildManifestJsonAsync(IAppDbContext cdb)
+    {
+        var m = await cdb.CenterMeta.AsNoTracking().FirstOrDefaultAsync();
         var name = string.IsNullOrWhiteSpace(m?.Name) ? "O'quv markazi" : m!.Name.Trim();
         var logo = (m?.LogoUrl ?? "").Trim();
 
@@ -75,8 +106,7 @@ public class PublicTestController(AppDbContext db, TelegramService telegram, Aut
             theme_color = "#4f46e5",
             icons,
         };
-        var json = System.Text.Json.JsonSerializer.Serialize(manifest);
-        return Content(json, "application/manifest+json");
+        return System.Text.Json.JsonSerializer.Serialize(manifest);
     }
 
     /// <summary>Slug bo'yicha faol testni oladi (to'g'ri javobSIZ). Topilmasa 404.</summary>

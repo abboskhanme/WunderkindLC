@@ -14,7 +14,9 @@ namespace IntellectCRM.Server.Controllers;
 [Authorize]
 [AdminPerm("students.list")]
 [Route("api/admin/students")]
-public class StudentsController(AppDbContext db, AuditService audit, IConfiguration config, AutoMessageService autoMsg) : ControllerBase
+public class StudentsController(
+    AppDbContext db, AuditService audit, IConfiguration config, AutoMessageService autoMsg,
+    DataCache dataCache) : ControllerBase
 {
     private const int MinPasswordLength = 8;
     private const string WeakPasswordMessage = "Parol kamida 8 belgidan iborat bo'lsin";
@@ -90,8 +92,17 @@ public class StudentsController(AppDbContext db, AuditService audit, IConfigurat
         var frozenIds = memberships.Where(m => m.Status == "frozen").Select(m => m.StudentId).ToHashSet();
 
         // Tuman + maktab nomlarini biriktiramiz (DB'ga yozilmaydi — faqat ko'rsatish uchun).
-        var districtNames = await db.Districts.ToDictionaryAsync(d => d.Id, d => d.Name);
-        var schoolNames = await db.Schools.ToDictionaryAsync(s => s.Id, s => s.Name);
+        // Bu lug'atlar deyarli o'zgarmaydi, ro'yxat esa tez-tez ochiladi — DataCache orqali:
+        // tuman/maktab tahrirlanganda interceptor versiyani oshiradi va kesh o'zi yangilanadi,
+        // TTL faqat zaxira. Faqat Id/Name proyeksiya qilinadi (butun entity emas, trackingsiz).
+        var districtNames = await dataCache.GetOrCreateAsync(
+            "ref:districtNames", [nameof(District)], TimeSpan.FromMinutes(10),
+            cdb => cdb.Districts.AsNoTracking().Select(d => new { d.Id, d.Name })
+                .ToDictionaryAsync(x => x.Id, x => x.Name));
+        var schoolNames = await dataCache.GetOrCreateAsync(
+            "ref:schoolNames", [nameof(School)], TimeSpan.FromMinutes(10),
+            cdb => cdb.Schools.AsNoTracking().Select(s => new { s.Id, s.Name })
+                .ToDictionaryAsync(x => x.Id, x => x.Name));
 
         foreach (var s in students)
         {

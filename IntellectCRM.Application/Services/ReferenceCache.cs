@@ -35,13 +35,18 @@ public class ReferenceCache(IMemoryCache cache, IServiceScopeFactory scopeFactor
             return new PortalMetaDto(new List<LessonTimeDto>(), reasons, quarters, 1, 1);
         });
 
+    // Quyida faqat Id/Name proyeksiya qilinadi (AsNoTracking): ilgari ToDictionaryAsync BUTUN
+    // entityni tracking bilan materializatsiya qilardi — lug'atga esa ikkita ustun yetadi.
+
     /// <summary>Fan id → nomi. TTL 2 daqiqa.</summary>
     public Task<Dictionary<string, string>> SubjectNamesAsync() =>
         GetAsync("ref:subjectNames", TimeSpan.FromMinutes(2),
-            db => db.Subjects.ToDictionaryAsync(s => s.Id, s => s.Name));
+            db => db.Subjects.AsNoTracking().Select(s => new { s.Id, s.Name })
+                .ToDictionaryAsync(x => x.Id, x => x.Name));
 
     /// <summary>O'qituvchi id → FISH. TTL 2 daqiqa.</summary>
     public Task<Dictionary<string, string>> TeacherNamesAsync() =>
         GetAsync("ref:teacherNames", TimeSpan.FromMinutes(2),
-            db => db.Teachers.ToDictionaryAsync(t => t.Id, t => t.FullName));
+            db => db.Teachers.AsNoTracking().Select(t => new { t.Id, Name = t.FullName })
+                .ToDictionaryAsync(x => x.Id, x => x.Name));
 }
