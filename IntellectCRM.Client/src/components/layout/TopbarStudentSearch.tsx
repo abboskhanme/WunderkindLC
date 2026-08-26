@@ -4,6 +4,7 @@ import { Search, User, X } from 'lucide-react'
 import { useAuth } from '@/context/auth-context'
 import { searchStudents } from '@/api/services/students'
 import { studentStateBadge } from '@/config/constants'
+import { can } from '@/lib/permissions'
 import { cn } from '@/lib/utils'
 
 /** Qidiruv natijasidagi o'quvchi (arxivdagilar ham). */
@@ -38,11 +39,17 @@ export function TopbarStudentSearch() {
   const [hits, setHits] = useState<Hit[]>([])
   const [open, setOpen] = useState(false)
   const [searching, setSearching] = useState(false)
+  /** Oxirgi so'rov XATO bilan tugadi (tarmoq/server) — "topilmadi" bilan adashtirmaymiz. */
+  const [failed, setFailed] = useState(false)
   const [active, setActive] = useState(0)
   const boxRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
-  const canSearch = !!user && (!user.permissions || user.permissions.includes('students'))
+  // ⚠️ `can(...)` — yalang `includes('students')` EMAS: xodim ruxsati granular bo'lishi mumkin
+  // (`students:view`, `students.list`, `students.list:edit` ...). Eski tekshiruv faqat yalang
+  // `"students"` tokenini tanir edi — qisman ruxsatli xodim uchun qidiruv maydoni UMUMAN
+  // chizilmasdi ("qidiruv tizimi yo'q"). Endpoint kaliti bilan bir xil: `students.list`.
+  const canSearch = !!user && can(user.permissions, 'students.list', 'view')
 
   // Tashqariga bosilganda dropdown'ni yopamiz
   useEffect(() => {
@@ -65,6 +72,7 @@ export function TopbarStudentSearch() {
       return
     }
     setSearching(true)
+    setFailed(false)
     let cancelled = false
     const controller = new AbortController()
     const t = setTimeout(async () => {
@@ -85,7 +93,13 @@ export function TopbarStudentSearch() {
         )
         setActive(0)
       } catch {
-        if (!cancelled) setHits([])
+        // Abort (`cancelled=true`) jim yutiladi; QOLGANI haqiqiy xato — foydalanuvchiga
+        // "topilmadi" o'rniga xato ekani ko'rsatiladi (aks holda tarmoq/server nosozligi
+        // "o'quvchi yo'q" bo'lib ko'rinardi).
+        if (!cancelled) {
+          setHits([])
+          setFailed(true)
+        }
       } finally {
         if (!cancelled) setSearching(false)
       }
@@ -165,7 +179,11 @@ export function TopbarStudentSearch() {
         <div className="absolute left-0 right-0 top-full z-40 mt-2 max-h-96 overflow-y-auto rounded-xl border border-slate-200 bg-white p-2 shadow-lg">
           {hits.length === 0 ? (
             <p className="py-6 text-center text-sm text-slate-400">
-              {searching ? 'Qidirilmoqda...' : 'Hech narsa topilmadi'}
+              {searching
+                ? 'Qidirilmoqda...'
+                : failed
+                  ? "Qidiruv xatosi — internet yoki serverni tekshiring"
+                  : 'Hech narsa topilmadi'}
             </p>
           ) : (
             hits.map((s, i) => {

@@ -48,11 +48,16 @@ export function CommandPalette() {
   const [active, setActive] = useState(0)
   const [students, setStudents] = useState<StudentHit[]>([])
   const [searching, setSearching] = useState(false)
+  /** Oxirgi o'quvchi qidiruvi XATO bilan tugadi (tarmoq/server) — "topilmadi" emas. */
+  const [searchFailed, setSearchFailed] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
 
-  // O'quvchi qidiruvi faqat admin (students ruxsati borlar) uchun.
-  const canSearchStudents = !!user && (!user.permissions || user.permissions.includes('students'))
+  // O'quvchi qidiruvi — `students.list` ni ko'ra oladiganlar uchun. ⚠️ `hasPerm(...)` — yalang
+  // `includes('students')` EMAS: xodim ruxsati granular bo'lishi mumkin (`students:view`,
+  // `students.list`, `students.list:edit` ...). Eski tekshiruv faqat yalang `"students"`
+  // tokenini tanir edi — qisman ruxsatli xodimga o'quvchi qidiruvi umuman ochilmasdi.
+  const canSearchStudents = !!user && hasPerm(user.permissions, 'students.list', 'view')
 
   // Ochish/yopish: Ctrl/⌘+K yoki tashqi 'cmdk:open' hodisasi
   useEffect(() => {
@@ -171,6 +176,7 @@ export function CommandPalette() {
       return
     }
     setSearching(true)
+    setSearchFailed(false)
     let cancelled = false
     const controller = new AbortController()
     const t = setTimeout(async () => {
@@ -188,7 +194,12 @@ export function CommandPalette() {
           })),
         )
       } catch {
-        if (!cancelled) setStudents([])
+        // Abort jim yutiladi; qolgani haqiqiy xato — bo'sh holatda "topilmadi" o'rniga
+        // xato ekani yoziladi.
+        if (!cancelled) {
+          setStudents([])
+          setSearchFailed(true)
+        }
       } finally {
         if (!cancelled) setSearching(false)
       }
@@ -281,7 +292,11 @@ export function CommandPalette() {
         <div ref={listRef} className="max-h-96 overflow-y-auto p-2">
           {total === 0 ? (
             <p className="py-10 text-center text-sm text-slate-400">
-              {searching ? 'Qidirilmoqda...' : 'Hech narsa topilmadi'}
+              {searching
+                ? 'Qidirilmoqda...'
+                : searchFailed
+                  ? "Qidiruv xatosi — internet yoki serverni tekshiring"
+                  : 'Hech narsa topilmadi'}
             </p>
           ) : (
             <>

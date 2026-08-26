@@ -172,15 +172,20 @@ public class StudentsController(AppDbContext db, AuditService audit, IConfigurat
             {
                 nq = StudentSearch.WhereNameFallback(nq, words);
             }
-            nameRows = await Project(nq).OrderBy(r => r.FullName).Take(limit).ToListAsync();
+            // ⚠️ OrderBy/Take PROYEKSIYADAN OLDIN: `SearchRow` pozitsion record bo'lgani uchun
+            // EF uni KONSTRUKTOR orqali quradi, konstruktor-proyeksiya a'zosiga esa keyingi
+            // operatorda (`Project(...).OrderBy(r => r.FullName)`) murojaat qilib BO'LMAYDI —
+            // butun so'rov "could not be translated" bilan yiqilib, qidiruv HAR DOIM 500 qaytarardi
+            // (`StudentSearchTests.Endpoint_Oqimi...` shu holatni qulflaydi).
+            nameRows = await Project(nq.OrderBy(s => s.FullName).Take(limit)).ToListAsync();
         }
 
         // TELEFON bo'yicha — ALOHIDA yengil so'rov (ism AND-zanjiri bilan OR qilish LINQ'da
         // qo'pol expression-tree talab qilardi; ikkita kichik SQL o'rniga bitta murakkabi shart emas).
         var phoneRows = new List<SearchRow>();
         if (digits.Length >= StudentSearch.MinPhoneDigits)
-            phoneRows = await Project(StudentSearch.WherePhone(Base(), digits))
-                .OrderBy(r => r.FullName).Take(limit).ToListAsync();
+            phoneRows = await Project(StudentSearch.WherePhone(Base(), digits)
+                .OrderBy(s => s.FullName).Take(limit)).ToListAsync();
 
         // Birlashtirish + tartib: ismi so'rovning BIRINCHI so'zi bilan BOSHLANGANLAR tepada
         // (odam odatda shuni qidiradi) — frontenddagi eski tartib bilan bir xil.

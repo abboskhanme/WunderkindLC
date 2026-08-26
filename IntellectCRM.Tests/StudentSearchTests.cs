@@ -1,5 +1,6 @@
 using IntellectCRM.Application.Services;
 using IntellectCRM.Domain;
+using IntellectCRM.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Xunit;
 
@@ -148,5 +149,160 @@ public class StudentSearchTests
     {
         // Controller tartibi: birinchi so'z bilan BOSHLANGAN ism tepaga chiqadi.
         Assert.StartsWith("to'lqin", StudentSearch.Normalize("Toʻlqin Aliyev"));
+    }
+
+    /* ---------- ENDPOINT OQIMI (SQLite, provayder-neytral tarmoq) ----------
+     *
+     * `StudentsController.Search` bilan BIR XIL bosqichlar: so'zlar → ism filtri → telefon
+     * filtri (alohida) → birlashtirish/takrorsizlash → a'zoliklar join → MemberState.
+     * Controller test loyihasidan chaqirib bo'lmaydi (Server reference yo'q) — shu sabab
+     * pipeline shu yerda aynan takrorlanadi va DTO'gacha tekshiriladi. */
+
+    private sealed record Row(string Id, string FullName, string Phone, string ParentPhone,
+        string FatherPhone, string MotherPhone, bool IsArchived);
+
+    /// <summary>Controller'dagi Search'ning provayder-neytral nusxasi (SQLite tarmog'i).</summary>
+    private static async Task<List<(string FullName, string MemberState, string[] Groups, bool IsArchived)>>
+        RunSearchAsync(AppDbContext db, string term, int limit = 12)
+    {
+        static IQueryable<Row> Project(IQueryable<Student> src) => src.Select(s =>
+            new Row(s.Id, s.FullName, s.Phone, s.ParentPhone, s.FatherPhone, s.MotherPhone, s.IsArchived));
+
+        var words = StudentSearch.Words(term);
+        var digits = StudentSearch.Digits(term);
+
+        // ⚠️ Controller'dagi TUZATILGAN tartib: OrderBy/Take PROYEKSIYADAN OLDIN. `Row`/`SearchRow`
+        // pozitsion record — EF uni KONSTRUKTOR orqali quradi va konstruktor-proyeksiya a'zosiga
+        // keyingi operatorda murojaat qilib bo'lmaydi (`Project(...).OrderBy(r => r.FullName)`
+        // "could not be translated" bilan yiqilardi — qidiruv HAR DOIM 500 edi).
+        var nameRows = new List<Row>();
+        if (words.Length > 0)
+            nameRows = await Project(StudentSearch.WhereNameFallback(db.Students.AsNoTracking(), words)
+                .OrderBy(s => s.FullName).Take(limit)).ToListAsync();
+
+        var phoneRows = new List<Row>();
+        if (digits.Length >= StudentSearch.MinPhoneDigits)
+            phoneRows = await Project(StudentSearch.WherePhone(db.Students.AsNoTracking(), digits)
+                .OrderBy(s => s.FullName).Take(limit)).ToListAsync();
+
+        var first = words.FirstOrDefault() ?? string.Empty;
+        var merged = nameRows.Concat(phoneRows)
+            .GroupBy(r => r.Id).Select(g => g.First())
+            .OrderBy(r => first.Length > 0 && StudentSearch.Normalize(r.FullName).StartsWith(first) ? 0 : 1)
+            .ThenBy(r => r.FullName, StringComparer.OrdinalIgnoreCase)
+            .Take(limit)
+            .ToList();
+
+        var ids = merged.Select(r => r.Id).ToList();
+        var memberships = await (from sg in db.StudentGroups
+                                 join c in db.Classes on sg.GroupId equals c.Id
+                                 where sg.IsActive && ids.Contains(sg.StudentId)
+                                 select new { sg.StudentId, c.Name, sg.Status }).ToListAsync();
+        var groupsBy = memberships.GroupBy(m => m.StudentId)
+            .ToDictionary(g => g.Key, g => g.Select(x => (x.Name, Status: x.Status ?? "")).ToList());
+
+        return merged.Select(r =>
+        {
+            var groups = groupsBy.GetValueOrDefault(r.Id) ?? new();
+            return (r.FullName,
+                StudentSearch.MemberState(groups.Select(x => (string?)x.Status)),
+                groups.Select(x => x.Name).ToArray(),
+                r.IsArchived);
+        }).ToList();
+    }
+
+    [Fact]
+    public async Task Endpoint_Oqimi_Ism_Telefon_Azolik_Arxiv()
+    {
+        using var db = TestDb.Sqlite();
+        var g1 = new Group { Name = "IELTS-1" };
+        var g2 = new Group { Name = "IELTS-2" };
+        var tolqin = St("Aliyev Toʻlqin", phone: "+998-90-123-45-67");
+        var lola = St("Karimova Lola", fatherPhone: "+998 (91) 765-43-21", archived: true);
+        var bekzod = St("Toshmatov Bekzod");
+        db.Context.Classes.AddRange(g1, g2);
+        db.Context.Students.AddRange(tolqin, lola, bekzod);
+        db.Context.StudentGroups.AddRange(
+            new StudentGroup { StudentId = tolqin.Id, GroupId = g1.Id, IsActive = true, Status = "active" },
+            new StudentGroup { StudentId = tolqin.Id, GroupId = g2.Id, IsActive = true, Status = "frozen" },
+            // IsActive=false a'zolik natijaga KIRMAYDI (chiqib ketgan guruh).
+            new StudentGroup { StudentId = bekzod.Id, GroupId = g1.Id, IsActive = false, Status = "active" });
+        await db.Context.SaveChangesAsync();
+
+        // Ism bo'yicha ("ism familiya" tartibida, apostrof oddiy '): a'zoliklar ham keladi,
+        // MemberState — active > frozen ustunligi bilan.
+        var byName = await RunSearchAsync(db.Context, "to'lqin aliyev");
+        var hit = Assert.Single(byName);
+        Assert.Equal("Aliyev Toʻlqin", hit.FullName);
+        Assert.Equal("active", hit.MemberState);
+        Assert.Equal(2, hit.Groups.Length);
+
+        // Telefon bo'yicha (ajratkichlarsiz qismiy) — ARXIVLANGAN o'quvchi ham topiladi
+        // (ota raqami orqali), guruhsiz — MemberState bo'sh.
+        var byPhone = await RunSearchAsync(db.Context, "917654");
+        var lolaHit = Assert.Single(byPhone);
+        Assert.Equal("Karimova Lola", lolaHit.FullName);
+        Assert.True(lolaHit.IsArchived);
+        Assert.Equal("", lolaHit.MemberState);
+
+        // Aralash so'rov ("ism + raqam"): ism tarmog'i topmaydi (raqam ismda yo'q),
+        // telefon tarmog'i topadi — natija YO'QOLMAYDI va takrorlanmaydi.
+        var mixed = await RunSearchAsync(db.Context, "aliyev 9012345");
+        Assert.Equal("Aliyev Toʻlqin", Assert.Single(mixed).FullName);
+
+        // Chiqib ketgan (IsActive=false) a'zolik guruh ro'yxatida ko'rinmaydi.
+        var bek = await RunSearchAsync(db.Context, "bekzod");
+        Assert.Empty(Assert.Single(bek).Groups);
+    }
+
+    /* ---------- Npgsql tarmog'i: ILIKE tarjimasi (jonli baza KERAK EMAS) ---------- */
+
+    /// <summary>
+    /// Prod'dagi (Npgsql) tarmoq testlarda ishlamay qolmasin: controller'dagi AYNAN shu
+    /// ifoda (<c>EF.Functions.ILike(..., pattern, "\")</c> + <c>SearchRow</c> proyeksiyasi)
+    /// SQL'ga tarjima bo'lishini <c>ToQueryString</c> bilan tekshiramiz — tarjima buzilsa
+    /// bu chaqiruv istisno otadi (500 regressiyasi shu yerda ushlanadi).
+    /// </summary>
+    [Fact]
+    public void Npgsql_ILike_VaTelefon_Tarjimasi_SqlGaOtadi()
+    {
+        var options = new DbContextOptionsBuilder<AppDbContext>()
+            .UseNpgsql("Host=localhost;Database=_tarjima_test_")
+            .Options;
+        using var ctx = new AppDbContext(options);
+
+        var words = StudentSearch.Words("to'lqin aliyev");
+        IQueryable<Student> nq = ctx.Students.AsNoTracking();
+        foreach (var w in words)
+        {
+            var p = StudentSearch.LikePattern(w);
+            nq = nq.Where(s =>
+                EF.Functions.ILike(s.FullName, p, "\\")
+                || EF.Functions.ILike(s.ParentFullName, p, "\\")
+                || EF.Functions.ILike(s.FatherFullName, p, "\\")
+                || EF.Functions.ILike(s.MotherFullName, p, "\\"));
+        }
+        // Controller'dagi TUZATILGAN shakl: OrderBy/Take avval, RECORD proyeksiyasi keyin.
+        var nameSql = nq.OrderBy(s => s.FullName).Take(12)
+            .Select(s => new Row(s.Id, s.FullName, s.Phone, s.ParentPhone,
+                s.FatherPhone, s.MotherPhone, s.IsArchived))
+            .ToQueryString();
+        Assert.Contains("ILIKE", nameSql);
+        Assert.Contains("ESCAPE", nameSql);
+
+        var phoneSql = StudentSearch.WherePhone(ctx.Students.AsNoTracking(), "9012345")
+            .OrderBy(s => s.FullName).Take(12)
+            .Select(s => new Row(s.Id, s.FullName, s.Phone, s.ParentPhone,
+                s.FatherPhone, s.MotherPhone, s.IsArchived))
+            .ToQueryString();
+        Assert.Contains("replace", phoneSql, StringComparison.OrdinalIgnoreCase);
+
+        // REGRESSIYA QULFI: ESKI tartib (avval pozitsion-record proyeksiya, KEYIN OrderBy) EF'da
+        // tarjima bo'lmaydi ("could not be translated") — endpoint shu sabab HAR so'rovda 500
+        // qaytargan edi. Kimdir shu naqshga qaytarsa, bu assert darhol qizaradi.
+        Assert.Throws<InvalidOperationException>(() => nq
+            .Select(s => new Row(s.Id, s.FullName, s.Phone, s.ParentPhone,
+                s.FatherPhone, s.MotherPhone, s.IsArchived))
+            .OrderBy(r => r.FullName).Take(12).ToQueryString());
     }
 }
