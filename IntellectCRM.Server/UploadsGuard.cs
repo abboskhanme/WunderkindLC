@@ -27,6 +27,13 @@ namespace IntellectCRM.Server;
 /// avtorizatsiyalangan API so'rovi qilganda cookie o'z-o'zidan qo'yiladi
 /// (<see cref="IssueCookie"/>). Ya'ni mavjud sessiyalar ham qayta login qilmasdan ishlayveradi.</para>
 ///
+/// <para><b>DUAL-MODE (f69e0a1 dan keyin):</b> web SPA endi JWT'ni <c>Authorization</c> sarlavhasi
+/// o'rniga HttpOnly <c>at</c> cookie'da yuboradi (<see cref="AuthCookies"/>), mobil esa
+/// ilgarigidek Bearer'da. Shuning uchun darvoza tokenni UCH manbadan qabul qiladi
+/// (<see cref="TokensOf"/>): Bearer sarlavha → <c>up_at</c> cookie → <c>at</c> cookie, va
+/// <see cref="IssueCookie"/> ham ikkala rejimda ishlaydi. Busiz cookie-rejimdagi foydalanuvchiga
+/// barcha rasmlar 404 bo'lardi (aynan shu xato prodda kuzatilgan edi).</para>
+///
 /// <para><b>Nima OCHIQ qoladi:</b> markaz LOGOTIPI (login sahifasi, PWA manifesti, ochiq vakansiya
 /// sahifasi) VA landing sahifasining ommaviy rasmlari — faol o'qituvchi surati, faol
 /// sertifikat/natija rasmi hamda faol FIKR (testimonial) avatari. Landing login'siz ko'riladi,
@@ -119,13 +126,39 @@ public sealed class UploadsGuard(
         }
     }
 
-    /// <summary>So'rovdagi token: avval <c>Authorization: Bearer</c>, keyin cookie.</summary>
-    private static string? TokenOf(HttpContext ctx)
+    /// <summary>
+    /// So'rovdagi token NOMZODLARI, ustuvorlik tartibida:
+    ///
+    /// <para>1. <c>Authorization: Bearer</c> — mobil (Flutter) ilovalar va Bearer rejimidagi
+    /// so'rovlar; 2. <c>up_at</c> cookie (<c>Path=/uploads</c>) — brauzer <c>&lt;img&gt;</c> ga
+    /// sarlavha yubora olmagani uchun qo'yiladigan maxsus cookie; 3. <c>at</c> auth cookie
+    /// (<see cref="AuthCookies.AtCookie"/>, <c>Path=/</c>).</para>
+    ///
+    /// <para><b>Nega <c>at</c> ham kerak (DUAL-MODE):</b> web SPA endi JWT'ni <c>Authorization</c>
+    /// sarlavhasi O'RNIGA HttpOnly <c>at</c> cookie orqali yuboradi (<see cref="AuthCookies"/>).
+    /// U <c>Path=/</c> bilan qo'yilgani uchun brauzer uni <c>/uploads</c> so'rovlariga O'ZI
+    /// qo'shib yuboradi — o'qimaslik esa cookie-rejimdagi foydalanuvchiga rasmlarni 404 qilardi
+    /// (aynan shu xato prodda bo'lgan edi: Bearer yo'q → <c>up_at</c> hech qachon qo'yilmasdi).</para>
+    ///
+    /// <para>⚠️ NOMZODLAR BIRMA-BIR tekshiriladi (faqat birinchi topilgani EMAS): access token
+    /// 60 daqiqada eskiradi va refresh'dan keyin <c>at</c> yangilanadi, <c>up_at</c> esa keyingi
+    /// API so'rovigacha ESKI qiymatda qolishi mumkin — eskirgan <c>up_at</c> tufayli yangi
+    /// <c>at</c> bilan kelgan so'rov rad etilib qolmasin.</para>
+    /// </summary>
+    private static IEnumerable<string> TokensOf(HttpContext ctx)
     {
         var header = ctx.Request.Headers.Authorization.ToString();
         if (header.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
-            return header["Bearer ".Length..].Trim();
-        return ctx.Request.Cookies[UploadAccessRules.CookieName];
+        {
+            var bearer = header["Bearer ".Length..].Trim();
+            if (bearer.Length > 0) yield return bearer;
+        }
+
+        var upAt = ctx.Request.Cookies[UploadAccessRules.CookieName];
+        if (!string.IsNullOrEmpty(upAt)) yield return upAt;
+
+        var at = ctx.Request.Cookies[AuthCookies.AtCookie];
+        if (!string.IsNullOrEmpty(at)) yield return at;
     }
 
     /// <summary>
@@ -198,7 +231,11 @@ public sealed class UploadsGuard(
     public async Task<bool> IsAllowedAsync(HttpContext ctx)
     {
         if (!Enabled) return true;
-        if (IsTokenValid(TokenOf(ctx))) return true;
+        // Manbalardan BITTASI haqiqiy bo'lsa yetadi — har biri bir xil qat'iy tekshiruvdan
+        // o'tadi (imzo/muddat/issuer/audience + yuz tasdig'i scope'i), qayerdan kelgani farqsiz:
+        // `up_at` va `at` ichida AYNAN bir xil formatdagi JWT yotadi.
+        foreach (var token in TokensOf(ctx))
+            if (IsTokenValid(token)) return true;
         return UploadAccessRules.IsPublicFile(ctx.Request.Path.Value, await PublicNamesAsync());
     }
 
@@ -209,10 +246,17 @@ public sealed class UploadsGuard(
     public void IssueCookie(HttpContext ctx)
     {
         if (!Enabled) return;
+        // DUAL-MODE manba: mobil/Bearer rejimida token `Authorization` sarlavhasida, web SPA'da
+        // esa HttpOnly `at` cookie'da (AuthCookies) — sarlavha umuman bo'lmasligi mumkin.
+        // Faqat sarlavhaga qarash `up_at` cookie'sining web'da HECH QACHON qo'yilmasligiga olib
+        // kelardi. `at` (Path=/) o'zi ham /uploads ga boradi, lekin `up_at` baribir qo'yiladi —
+        // rasm ko'rsatish bitta manbaga qaram bo'lib qolmasin (ikkalasi ham qo'llab-quvvatlanadi,
+        // hech biri olib tashlanmaydi).
         var header = ctx.Request.Headers.Authorization.ToString();
-        if (!header.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase)) return;
-        var token = header["Bearer ".Length..].Trim();
-        if (token.Length == 0) return;
+        var token = header.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase)
+            ? header["Bearer ".Length..].Trim()
+            : ctx.Request.Cookies[AuthCookies.AtCookie];
+        if (string.IsNullOrEmpty(token)) return;
         // Allaqachon shu token turgan bo'lsa — qayta qo'yish shart emas.
         if (ctx.Request.Cookies[UploadAccessRules.CookieName] == token) return;
         if (!IsTokenValid(token)) return;
