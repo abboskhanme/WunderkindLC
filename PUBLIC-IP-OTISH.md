@@ -1,8 +1,13 @@
 # Cloudflare Tunnel'dan PUBLIC IP'ga o'tish (169.58.207.222)
 
 Maqsad: trafik `Cloudflare Tunnel (cloudflared)` o'rniga `Cloudflare (proxied DNS) → server
-80/443 (nginx) → app` yo'lidan yursin. Tunnel o'tish tugaguncha PARALLEL ishlab turadi —
+80/8443 (nginx) → app` yo'lidan yursin. Tunnel o'tish tugaguncha PARALLEL ishlab turadi —
 har qadamda orqaga qaytish oson.
+
+⚠️ **PORTLAR:** serverdagi **443 xray (shaxsiy VPN)niki** — unga TEGILMAYMIZ. Nginx hostda
+**8443** da turadi (konteyner ichida baribir 443). Tashrifchi buni sezmaydi: Cloudflare
+dashboard'dagi **Origin Rule** (4-qadam) Cloudflare→server ulanishini 443 o'rniga 8443 ga
+yo'naltiradi. 80-port bo'sh (xray faqat 443 da) — u nginx'niki bo'ladi.
 
 **TARTIB MUHIM.** Har qadamda "Rollback" bo'limi bor — muammo chiqsa o'sha yerdan qaytiladi.
 
@@ -11,8 +16,8 @@ Tayyorlangan narsalar (repoda):
 | Nima | Qayerda |
 |---|---|
 | nginx konfiguratsiyasi (TLS, WebSocket, 1GB yuklash) | `infra/nginx/nginx.conf` |
-| `nginx` servisi (80/443 portlar bilan) | `docker-compose.yml` |
-| Firewall skripti (80/443 faqat Cloudflare'ga) | `infra/cloudflare-firewall.sh` |
+| `nginx` servisi (80:80, 8443:443 portlar bilan) | `docker-compose.yml` |
+| Firewall skripti (80/8443 faqat Cloudflare'ga; 443'ga tegmaydi) | `infra/cloudflare-firewall.sh` |
 
 ⚠️ **IKKITA QATTIQ QOIDA (butun jarayon davomida):**
 
@@ -20,10 +25,11 @@ Tayyorlangan narsalar (repoda):
    - server IP'si ommaga oshkor bo'ladi (DDoS/skanerlash nishoni);
    - Origin Certificate brauzerlar uchun ishonchsiz — sayt "sertifikat xatosi" bilan ochilmay qoladi;
    - firewall faqat Cloudflare'ga ochiq — oddiy foydalanuvchi umuman ulana olmaydi.
-2. **Firewall skriptisiz 80/443 ochilmaydi.** `docker compose up -d nginx` FAQAT
+2. **Firewall skriptisiz 80/8443 ochilmaydi.** `docker compose up -d nginx` FAQAT
    `infra/cloudflare-firewall.sh` muvaffaqiyatli o'tgandan keyin. Docker `ports:` ufw'ni
    chetlab o'tadi — skript buni `DOCKER-USER` zanjiri bilan yopadi, ya'ni "keyin sozlayman"
-   degani "hozircha butun internetga ochiq" degani bo'lardi.
+   degani "hozircha butun internetga ochiq" degani bo'lardi. (Skript 443'ga — xray'ga —
+   umuman tegmaydi: qoida qo'shmaydi ham, o'chirmaydi ham.)
 
 ---
 
@@ -70,7 +76,7 @@ etmaslik mumkin.
 cd /root/IntellectCRM
 git pull
 
-# 1) AVVAL firewall (80/443 faqat Cloudflare'ga; 22 ochiq qoladi):
+# 1) AVVAL firewall (80/8443 faqat Cloudflare'ga; 22 ochiq, 443/xray'ga tegilmaydi):
 bash infra/cloudflare-firewall.sh
 # oxirida `ufw status verbose` va DOCKER-USER qoidalari chiqadi — Cloudflare
 # oralig'lari ro'yxatda ekanini ko'zdan kechiring.
@@ -81,11 +87,13 @@ docker compose up -d nginx
 # 3) tekshiruv:
 docker compose ps                      # nginx: Up bo'lsin (restart-loop EMAS)
 docker compose logs --tail=30 nginx    # xato yo'qligini ko'ring
-# serverning O'ZIDAN (firewall ichkaridan bo'g'moqda yo'q):
-curl -k --resolve crm.intellectschool.uz:443:127.0.0.1 https://crm.intellectschool.uz/api/health
+# serverning O'ZIDAN (firewall ichkaridan bo'g'moqda yo'q; nginx hostda 8443 da!):
+curl -k --resolve crm.intellectschool.uz:8443:127.0.0.1 https://crm.intellectschool.uz:8443/api/health
 # javob: 200 (health OK)
-curl -k --resolve intellectschool.uz:443:127.0.0.1 https://intellectschool.uz/ | head -5
+curl -k --resolve intellectschool.uz:8443:127.0.0.1 https://intellectschool.uz:8443/ | head -5
 # javob: landing.html boshlanishi
+# 443 hamon xray'niki ekanini ham tekshirib qo'ying (nginx uni EGALLAMAGANI):
+ss -tlnp | grep -E ':(80|443|8443) '
 ```
 
 `cloudflared` ISHLAYVERADI — DNS hali tunnelga qaragan, foydalanuvchilar hech narsani sezmaydi.
@@ -97,14 +105,14 @@ Firewall qoidalari zarar qilmaydi (tunnel chiquvchi ulanish, unga to'siq yo'q).
 
 ## 3-qadam. Lokal sinov (DNS'ni almashtirmasdan)
 
-Firewall 443'ni faqat Cloudflare'ga ochgan, shuning uchun avval O'Z IP'ingizga vaqtincha
+Firewall 8443'ni faqat Cloudflare'ga ochgan, shuning uchun avval O'Z IP'ingizga vaqtincha
 ruxsat bering:
 
 ```bash
 # o'z IP'ingizni bilib oling (lokal mashinada):  curl -4 -s ifconfig.me
 # serverda (MENING_IP o'rniga o'sha IP):
-ufw allow from MENING_IP to any port 443 proto tcp comment 'vaqtinchalik sinov'
-iptables -I DOCKER-USER 1 -s MENING_IP -p tcp -m conntrack --ctorigdstport 443 --ctdir ORIGINAL -j ACCEPT
+ufw allow from MENING_IP to any port 8443 proto tcp comment 'vaqtinchalik sinov'
+iptables -I DOCKER-USER 1 -s MENING_IP -p tcp -m conntrack --ctorigdstport 8443 --ctdir ORIGINAL -j ACCEPT
 ```
 
 Lokal mashinada `/etc/hosts` ga qo'shing (sudo bilan):
@@ -113,23 +121,25 @@ Lokal mashinada `/etc/hosts` ga qo'shing (sudo bilan):
 169.58.207.222 intellectschool.uz www.intellectschool.uz crm.intellectschool.uz
 ```
 
-⚠️ Brauzer **"sertifikat ishonchsiz"** deb ogohlantiradi — bu KUTILGAN holat: Origin Cert'ga
-faqat Cloudflare ishonadi, siz esa hozir Cloudflare'ni chetlab to'g'ridan-to'g'ri kiryapsiz.
-"Advanced → Proceed" bilan davom eting (faqat shu sinovda!). DNS almashtirilgach foydalanuvchilar
-Cloudflare'ning oddiy (ishonchli) sertifikatini ko'radi.
+⚠️ Brauzerda manzilni **`:8443` porti bilan** oching (nginx shu portda; `:8443`siz 443 ga —
+xray'ga tushasiz): `https://crm.intellectschool.uz:8443`. Brauzer **"sertifikat ishonchsiz"**
+deb ogohlantiradi — bu KUTILGAN holat: Origin Cert'ga faqat Cloudflare ishonadi, siz esa hozir
+Cloudflare'ni chetlab to'g'ridan-to'g'ri kiryapsiz. "Advanced → Proceed" bilan davom eting
+(faqat shu sinovda!). DNS almashtirilgach foydalanuvchilar odatdagi `https://...` (portsiz)
+manzildan kiradi va Cloudflare'ning oddiy (ishonchli) sertifikatini ko'radi.
 
 **Tekshirish ro'yxati:**
 
-- [ ] `https://crm.intellectschool.uz` — login qilish (cookie/CSRF ishlashi = `X-Forwarded-Proto` to'g'ri);
+- [ ] `https://crm.intellectschool.uz:8443` — login qilish (cookie/CSRF ishlashi = `X-Forwarded-Proto` to'g'ri);
 - [ ] rasmlar ochiladi (`/uploads` — o'quvchi surati, logotip);
 - [ ] chat ishlaydi (SignalR `/hubs/chat` — xabar real vaqtda kelsin; brauzer DevTools →
       Network → WS da `101 Switching Protocols` ko'rinsin);
 - [ ] jonli yangilanishlar (`/hubs/live`);
 - [ ] kamera ko'rinishi (Kameralar sahifasi — HLS app orqali proksilanadi);
 - [ ] katta fayl yuklash (masalan Marketing → kontent video) — 413 xatosi chiqmasin;
-- [ ] `https://intellectschool.uz` — landing ochiladi (xarita iframe'i bilan).
+- [ ] `https://intellectschool.uz:8443` — landing ochiladi (xarita iframe'i bilan).
 - Telegram Mini App'ni bu usulda tekshirib bo'lmaydi (Telegram real DNS ishlatadi) — u
-  4-qadamdan keyin tekshiriladi.
+  5-qadamdan keyin tekshiriladi.
 
 Sinov tugagach vaqtinchalik ruxsatlarni OLIB TASHLANG va `/etc/hosts` qatorini o'chiring:
 
@@ -144,7 +154,32 @@ bash infra/cloudflare-firewall.sh   # DOCKER-USER zanjirini toza holatga qayta q
 
 ---
 
-## 4-qadam. Cloudflare DNS: tunnel CNAME → A yozuv (Proxy YOQIQ)
+## 4-qadam. Cloudflare Origin Rule: 443 → 8443 (DNS'DAN OLDIN!)
+
+⚠️ **BU QADAM DNS ALMASHTIRISHDAN (5-qadam) ALBATTA OLDIN.** Aks holda Cloudflare serverga
+odatdagi 443-portga ulanadi va **xray'ga tushadi** — sayt "yotib qoladi" (xatolik yoki
+tushunarsiz javob), foydalanuvchilar buni darhol sezadi. Origin Rule oldindan qo'yilsa,
+DNS almashganda trafik to'g'ridan-to'g'ri 8443 ga (nginx'ga) boradi. Qoida tunnelga
+qaragan DNS'ga TA'SIR QILMAYDI (tunnel trafigi origin portidan yurmaydi) — shuning uchun
+uni xotirjam oldindan yoqib qo'yish mumkin.
+
+Cloudflare dashboard → domen `intellectschool.uz` → **Rules → Origin Rules → Create rule**:
+
+- **Rule name:** `nginx 8443`
+- **If** (Custom filter expression):
+  `(http.host eq "intellectschool.uz") or (http.host eq "www.intellectschool.uz") or (http.host eq "crm.intellectschool.uz")`
+- **Then → Destination Port → Rewrite to:** `8443`
+- **Deploy**.
+
+Tashrifchi uchun HECH NARSA o'zgarmaydi: u odatdagidek `https://crm.intellectschool.uz`
+(443) ga kiradi, portni Cloudflare o'zi server tomonda 8443 ga almashtiradi.
+
+**Rollback:** qoidani o'chirish/pauza qilish — hozircha trafik baribir tunnelda, hech narsa
+buzilmaydi.
+
+---
+
+## 5-qadam. Cloudflare DNS: tunnel CNAME → A yozuv (Proxy YOQIQ)
 
 Cloudflare dashboard → **DNS → Records**. Hozir uchta yozuv tunnelga qaraydi
 (`<tunnel-id>.cfargotunnel.com` ga CNAME). Ularni BIRMA-BIR almashtiring:
@@ -167,16 +202,19 @@ dig +short crm.intellectschool.uz        # Cloudflare IP'lari chiqadi (104.x/172
 curl -s https://crm.intellectschool.uz/api/health
 ```
 
-Brauzerda login, chat, rasm, kamera — 3-qadamdagi ro'yxat + **Telegram Mini App** (web.telegram.org
-ichida ochilishi — iframe cookie'lari) va **mobil ilovalar** (Flutter — login, rasmlar).
+Brauzerda (endi ODDIY, portsiz manzilda) login, chat, rasm, kamera — 3-qadamdagi ro'yxat +
+**Telegram Mini App** (web.telegram.org ichida ochilishi — iframe cookie'lari) va **mobil
+ilovalar** (Flutter — login, rasmlar). Shaxsiy **xray VPN ham ishlayotganini** tekshiring —
+u 443 da qoldi, unga hech narsa tegmagan bo'lishi kerak.
 
 **Rollback (eng muhimi):** DNS yozuvini qaytadan CNAME `80531fd7-f356-4bc6-ab30-9e3fd2c134ee.cfargotunnel.com`
 (Proxied) ga qaytaring — cloudflared ishlab turgani uchun 1-2 daqiqada hammasi tunnel orqali
-qaytadi. Shuning uchun bu bosqichda cloudflared O'CHIRILMAYDI.
+qaytadi. Shuning uchun bu bosqichda cloudflared O'CHIRILMAYDI. (Origin Rule'ni o'chirish shart
+emas — tunnel trafigiga ta'siri yo'q.)
 
 ---
 
-## 5-qadam. 1-2 kun kuzatish
+## 6-qadam. 1-2 kun kuzatish
 
 Tunnel va nginx parallel turadi. Kuzatiladiganlar:
 
@@ -191,11 +229,11 @@ docker stats --no-stream                    # nginx resurs yemayaptimi
 - Telegram Mini App va Career bot mini-app;
 - kunlik backup odatdagidek o'tganini tekshiring (unga bu o'tish ta'sir qilmasligi kerak).
 
-**Rollback:** 4-qadamdagi DNS qaytarish — hali ham bir daqiqalik ish.
+**Rollback:** 5-qadamdagi DNS qaytarish — hali ham bir daqiqalik ish.
 
 ---
 
-## 6-qadam. cloudflared'ni o'chirish (hammasi barqaror bo'lgach)
+## 7-qadam. cloudflared'ni o'chirish (hammasi barqaror bo'lgach)
 
 1. Repoda: `docker-compose.yml` dan `cloudflared` servisini olib tashlash (ustidagi
    "VAQTINCHALIK" izohli blok), `docker-compose.override.example.yml` dagi `cloudflared`
@@ -220,8 +258,9 @@ ishlagandan keyin bajariladi.
 
 ## Texnik ma'lumotnoma (nima qayerda)
 
-- **App ichki porti:** `8080` (`ASPNETCORE_URLS=http://+:8080`), `ports:` YO'Q — tashqariga
-  faqat nginx (yoki tunnel) orqali.
+- **Portlar:** app ichkarida `8080` (`ASPNETCORE_URLS`, `ports:` yo'q — tashqariga faqat
+  nginx/tunnel orqali); nginx konteyner ichida `80`+`443`, hostda `80`+`8443` (**host 443 =
+  xray VPN, unga tegilmagan**); Cloudflare→server ulanishini Origin Rule 8443 ga buradi.
 - **Ikkala domen bitta app'ga boradi** — hostni app o'zi ajratadi (`Program.cs`: apex/www →
   `landing.html`, `App__Host` → CRM SPA). Nginx'da alohida routing YO'Q, `Host` sarlavhasi
   o'zgartirilmasdan uzatiladi.

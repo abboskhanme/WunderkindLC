@@ -191,14 +191,18 @@ services:
 
   # TLS terminatsiya — Cloudflare Origin Certificate bilan (public IP rejimi).
   # Sertifikat serverda /root/certs (origin.pem + origin.key) — PUBLIC-IP-OTISH.md 1-qadam.
-  # 80/443 portlarni faqat firewall skripti (infra/cloudflare-firewall.sh) ishga
+  # ⚠️ HOST 443 BAND — u serverdagi xray (shaxsiy VPN)niki, unga TEGILMAYDI.
+  # Shuning uchun nginx hostda 8443 da turadi (konteyner ichida baribir 443);
+  # Cloudflare tomonda Origin Rule 443→8443 port rewrite qiladi — tashrifchi uchun
+  # hech narsa o'zgarmaydi (PUBLIC-IP-OTISH.md 4-qadam).
+  # 80/8443 portlarni faqat firewall skripti (infra/cloudflare-firewall.sh) ishga
   # tushirilgandan KEYIN oching — u portlarni FAQAT Cloudflare IP'lariga cheklaydi.
   nginx:
     image: nginx:1.27-alpine
     container_name: intellectcrm-nginx
     ports:
-      - "80:80"
-      - "443:443"
+      - "80:80"          # 80 bo'sh (xray faqat 443 da) — Cloudflare http so'rovlari uchun
+      - "8443:443"       # host 8443 -> konteyner 443 (host 443 = xray)
     volumes:
       - ./infra/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - /root/certs:/etc/nginx/certs:ro     # Cloudflare Origin Cert (serverda yaratiladi)
@@ -213,7 +217,7 @@ services:
         max-file: "3"
 
   # ⚠️ VAQTINCHALIK: public IP'ga o'tish yakunlangach bu servis O'CHIRILADI
-  # (PUBLIC-IP-OTISH.md 6-qadam). O'tish davrida nginx bilan PARALLEL ishlaydi —
+  # (PUBLIC-IP-OTISH.md 7-qadam). O'tish davrida nginx bilan PARALLEL ishlaydi —
   # DNS hali tunnelga qaragan bo'lsa trafik shu yerdan kelaveradi (rollback oson).
   cloudflared:
     image: cloudflare/cloudflared:latest
