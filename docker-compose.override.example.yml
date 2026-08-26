@@ -5,9 +5,9 @@
 #  Docker Compose `docker-compose.override.yml`ni AVTOMATIK qo'shadi (qo'shimcha -f shart emas).
 #  Shuning uchun:
 #    • LOKAL (bu mashinada, override bor)  → `docker compose up -d --build` → http://localhost:8080,
-#      cloudflared ishlamaydi (tunnel kerak emas).
-#    • SERVER (override YO'Q, git'dan kelmagan) → `docker compose up -d --build` → prod
-#      (cloudflared + port ochilmaydi). HECH NIMA o'zgarmaydi.
+#      nginx ishlamaydi (cert yo'q, kerak ham emas).
+#    • SERVER (override YO'Q, git'dan kelmagan) → `docker compose up -d --build` → prod.
+#      HECH NIMA o'zgarmaydi.
 #
 #  O'rnatish (bu mashinada bir marta):
 #    cp docker-compose.override.example.yml docker-compose.override.yml
@@ -23,11 +23,6 @@ services:
   postgres:
     ports:
       - "5432:5432"          # (ixtiyoriy) lokal DB kirish: psql/DBeaver localhost:5432
-
-  cloudflared:
-    # Lokalda cloudflared KERAK EMAS — profil bilan o'chiramiz (oddiy `up` uni ishga tushirmaydi).
-    # Serverda override yo'q → cloudflared profilsiz → normal ishlaydi.
-    profiles: ["donotstart"]
 
   nginx:
     # Lokalda nginx ham KERAK EMAS: /root/certs yo'q (Origin Cert faqat serverda)

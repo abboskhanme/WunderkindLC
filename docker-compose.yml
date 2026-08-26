@@ -1,6 +1,6 @@
 # IntellectCRM — prod: app (API + SPA) + PostgreSQL + nginx (TLS) + kunlik backup.
 # Bitta o'quv markazi (multi-tenant YO'Q). Sozlamalar .env faylidan keladi (.env.example dan nusxa oling).
-# Diqqat: app porti TASHQARIGA OCHILMAGAN — unga faqat nginx / cloudflared (ichki tarmoq) kiradi.
+# Diqqat: app porti TASHQARIGA OCHILMAGAN — unga faqat nginx (ichki tarmoq) kiradi.
 # Public IP'ga o'tish rejasi: PUBLIC-IP-OTISH.md (nginx + Cloudflare Origin Cert + ufw firewall).
 # PostgreSQL yengil — 1GB RAM serverga ham sig'adi (SQL Server >=2GB talab qilardi).
 
@@ -168,7 +168,7 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
-    # Diqqat: bu yerda `ports:` YO'Q — internetga ochilmaydi (faqat cloudflared kiradi).
+    # Diqqat: bu yerda `ports:` YO'Q — internetga ochilmaydi (faqat nginx kiradi).
 
   # Kamera media-shlyuzi: IP kameralar RTSP oqimini brauzer ko'radigan HLS ga o'giradi.
   mediamtx:
@@ -209,29 +209,6 @@ services:
     depends_on:
       app:
         condition: service_healthy          # app tayyor bo'lmaguncha 502 bermasin
-    restart: unless-stopped
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "3"
-
-  # ⚠️ VAQTINCHALIK: public IP'ga o'tish yakunlangach bu servis O'CHIRILADI
-  # (PUBLIC-IP-OTISH.md 7-qadam). O'tish davrida nginx bilan PARALLEL ishlaydi —
-  # DNS hali tunnelga qaragan bo'lsa trafik shu yerdan kelaveradi (rollback oson).
-  cloudflared:
-    image: cloudflare/cloudflared:latest
-    container_name: intellectcrm-tunnel
-    command: tunnel --no-autoupdate run
-    environment:
-      TUNNEL_TOKEN: "${TUNNEL_TOKEN}"
-      # QUIC (UDP) edge ulanishi uzilib qolmasligi uchun HTTP/2 (TCP) — barqarorroq.
-      TUNNEL_TRANSPORT_PROTOCOL: "http2"
-    # Tunnel faqat app HAQIQATAN javob berganda ochiladi — aks holda deploy/restart paytida
-    # tashqi foydalanuvchilar bir necha soniya 502 ko'rardi.
-    depends_on:
-      app:
-        condition: service_healthy
     restart: unless-stopped
     logging:
       driver: json-file
