@@ -543,6 +543,53 @@ public record BulkMembershipRequest(
 public record BulkMembershipResultDto(
     int Requested, int Memberships, int Changed, int Students, int Skipped, int Failed,
     int NoMembership, decimal Restored, decimal MovedAdvance, int CatchUpMonths, string[] Errors);
+/* ---------- DARS JADVALI (ScheduleService / ScheduleRules) ---------- */
+
+/// <summary>Jadvaldagi bitta dars (guruh × hafta kuni).</summary>
+/// <param name="Day">0=Dushanba … 6=Yakshanba.</param>
+/// <param name="Minutes">Dars uzunligi (daqiqa) — kataklarning balandligi shundan chiziladi.</param>
+public record ScheduleLessonDto(
+    string GroupId, string GroupName, string TeacherId, string TeacherName,
+    string RoomId, string RoomName, string CourseName,
+    int Day, string DayLabel, string Start, string End, int Minutes);
+
+/// <summary>Jadval egasi — xona yoki o'qituvchi (ro'yxatdan tanlash uchun).</summary>
+/// <param name="GroupCount">Unga biriktirilgan faol guruhlar soni.</param>
+public record ScheduleOwnerDto(string Id, string Name, int GroupCount);
+
+/// <summary>TIG'IZLIK katagi: shu kun va shu yarim soatda nechta dars davom etyapti.</summary>
+public record SchedulePeakDto(int Day, string Bucket, int Count);
+
+/// <summary>Bo'sh oraliqni to'ldirish TAVSIYASI.</summary>
+/// <param name="Kind">"teacher" (xona teshigi uchun — bo'sh o'qituvchi) yoki
+/// "room" (o'qituvchi teshigi uchun — bo'sh xona).</param>
+/// <param name="Note">Nega aynan shu tavsiya etilgani — o'zbekcha, to'liq jumla.</param>
+/// <param name="WeeklyMinutes">Haftalik yuki (daqiqa): kimda bo'sh quvvat borligi ko'rinsin.</param>
+public record ScheduleSuggestionDto(string Kind, string Id, string Name, string Note, int WeeklyMinutes);
+
+/// <summary>
+/// IKKI DARS ORASIDA qolib ketgan bo'sh oraliq ("4-soatda dars bor, 5-soat bo'sh, 6-soatda yana dars").
+/// </summary>
+/// <param name="Scope">"room" — xona bekor turibdi; "teacher" — o'qituvchi kutib o'tiribdi.</param>
+/// <param name="PeakScore">Shu oraliqda markazda nechta dars ketyapti — TIG'IZLIK o'lchovi.
+/// Ro'yxat aynan shu bo'yicha saralanadi: tig'iz paytdagi bo'sh xonaning "narxi" eng baland.</param>
+public record ScheduleGapDto(
+    string Scope, string OwnerId, string OwnerName,
+    int Day, string DayLabel, string Start, string End, int Minutes,
+    string BeforeGroup, string AfterGroup, int PeakScore,
+    List<ScheduleSuggestionDto> Suggestions);
+
+/// <summary>Jadval sahifasining butun ma'lumoti — bitta so'rovda.</summary>
+/// <param name="SkippedGroups">Vaqti/kunlari to'ldirilmagan yoki BUZUQ guruhlar soni
+/// (masalan "13:30 → 03:00"). Ular jadvalga kirmaydi — son ekranda ochiq yoziladi,
+/// aks holda guruh jimgina yo'qolib qolardi.</param>
+public record ScheduleBoardDto(
+    List<ScheduleLessonDto> Lessons,
+    List<ScheduleOwnerDto> Rooms,
+    List<ScheduleOwnerDto> Teachers,
+    List<SchedulePeakDto> Peak,
+    int SkippedGroups);
+
 /// <summary>Guruh to'ldirish hisoboti qatori: sig'im vs ro'yxatdagilar.</summary>
 public record GroupFillRowDto(
     string GroupId, string Name, int Grade, int Capacity, int Enrolled, int FreeSeats, string Status);

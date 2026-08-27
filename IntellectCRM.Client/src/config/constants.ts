@@ -148,6 +148,7 @@ export const adminPermissions: AdminPermSection[] = [
     label: "O'quv bo'limi (kurslar)",
     pages: [
       { key: 'schedule.courses', label: 'Kurslar' },
+      { key: 'schedule.timetable', label: 'Dars jadvali' },
       { key: 'schedule.analytics', label: 'Kurslar analitikasi' },
       { key: 'schedule.curricula', label: "O'quv dasturi" },
       { key: 'schedule.grading', label: 'Baholash mezonlari' },

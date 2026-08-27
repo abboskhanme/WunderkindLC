@@ -273,6 +273,8 @@ Admin controllerlar `[AdminPerm("<kalit>")]` bilan himoyalangan:
 | POST | /api/admin/classes/{id}/members/bulk-activate | OMMAVIY aktivlashtirish — shu guruhda tanlanganlar (`studentIds`, `date`). |
 | POST | /api/admin/classes/members/bulk-freeze | OMMAVIY muzlatish — tanlanganlarning BARCHA guruhlardagi a'zoliklari. |
 | POST | /api/admin/classes/members/bulk-activate | OMMAVIY aktivlashtirish — tanlanganlarning BARCHA guruhlardagi a'zoliklari. |
+| GET | /api/admin/schedule | Dars jadvali: darslar, xonalar/o'qituvchilar va tig'izlik (`schedule.timetable`). |
+| GET | /api/admin/schedule/gaps | Bo'sh oraliqlar + tavsiyalar (`scope=room\|teacher`, `ownerId`, `minMinutes`). |
 | GET | /api/admin/classes/student/{studentId}/groups | O'quvchining barcha a'zoliklari. |
 | GET | /api/admin/classes/fill | Guruh to'ldirish hisoboti (bo'sh o'rinlar). |
 | POST | /api/admin/classes/{id}/complete-and-transfer | Yakunlab arxivlaydi, sertifikat, yangi guruh. |

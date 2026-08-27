@@ -1,4 +1,4 @@
-using Microsoft.AspNetCore.Authentication.JwtBearer;
+﻿using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.FileProviders;
@@ -494,6 +494,7 @@ builder.Services.AddScoped<IntellectCRM.Application.Services.RoomConflictService
 
 // Xona bandlik va samaradorlik metrikalari
 builder.Services.AddScoped<IntellectCRM.Application.Services.RoomUtilizationService>();
+builder.Services.AddScoped<IntellectCRM.Application.Services.ScheduleService>();
 
 // Kamera (videokuzatuv) media-shlyuzi (MediaMTX) bilan ishlash
 builder.Services.AddHttpClient<IntellectCRM.Application.Services.CameraGateway>();

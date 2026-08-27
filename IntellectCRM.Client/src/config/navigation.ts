@@ -103,6 +103,9 @@ export const navByRole: Record<Role, NavItem[]> = {
       icon: BookOpen,
       children: [
         { label: 'Kurslar', to: '/admin/subjects', perm: 'schedule.courses' },
+        // Dars jadvali — haftalik ko'rinish, bo'sh oraliqlar va tavsiyalar.
+        // Bu SOF hisobot EMAS (jadval tuzish ishi), shuning uchun "Hisobotlar"ga tushmadi.
+        { label: 'Dars jadvali', to: '/admin/jadval', perm: 'schedule.timetable' },
         { label: "O'quv dasturi", to: '/admin/curricula', perm: 'schedule.curricula' },
         { label: 'Baholash mezonlari', to: '/admin/grading', perm: 'schedule.grading' },
         // Xonalar — ilgari yuqori darajadagi alohida menyu edi; ikkinchi sahifasi

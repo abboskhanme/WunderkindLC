@@ -18,6 +18,7 @@ const LocalCallPage = lazy(() => import('@/pages/admin/calls/local/LocalCallPage
 const LeadsPage = lazy(() => import('@/pages/admin/leads/LeadsPage').then((m) => ({ default: m.LeadsPage })))
 const CrmStatsPage = lazy(() => import('@/pages/admin/leads/CrmStatsPage').then((m) => ({ default: m.CrmStatsPage })))
 const ReportsPage = lazy(() => import('@/pages/admin/reports/ReportsPage').then((m) => ({ default: m.ReportsPage })))
+const SchedulePage = lazy(() => import('@/pages/admin/schedule/SchedulePage').then((m) => ({ default: m.SchedulePage })))
 const StudentsPage = lazy(() => import('@/pages/admin/students/StudentsPage').then((m) => ({ default: m.StudentsPage })))
 const RetentionBonusPage = lazy(() => import('@/pages/admin/students/RetentionBonusPage').then((m) => ({ default: m.RetentionBonusPage })))
 const StudentDetailPage = lazy(() => import('@/pages/admin/students/StudentDetailPage').then((m) => ({ default: m.StudentDetailPage })))
@@ -260,6 +261,7 @@ export default function App() {
             <Route path="classes/:id" element={<RequirePerm perm="classes.list"><ClassDetailPage /></RequirePerm>} />
             <Route path="rooms" element={<RequirePerm perm="classes.rooms"><RoomsPage /></RequirePerm>} />
             <Route path="rooms/utilization" element={<RequirePerm perm="classes.rooms"><RoomUtilizationPage /></RequirePerm>} />
+            <Route path="jadval" element={<RequirePerm perm="schedule.timetable"><SchedulePage /></RequirePerm>} />
             <Route path="subjects" element={<RequirePerm perm="schedule.courses"><SubjectsPage /></RequirePerm>} />
             {/* Kurslar analitikasi — O'quv bo'limi ichida, "Kurslar" ruxsati (`schedule`) bilan. */}
             <Route path="subjects/analitika" element={<RequirePerm perm="schedule.analytics"><CourseAnalyticsPage /></RequirePerm>} />
