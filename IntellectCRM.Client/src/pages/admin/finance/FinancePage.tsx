@@ -53,6 +53,7 @@ import { RefundModal } from './RefundModal'
 import { RetentionBonusTab } from './RetentionBonusTab'
 import { useAuth } from '@/context/auth-context'
 import { usePerm } from '@/lib/permissions'
+import { tabFromUrl } from '@/lib/tabParam'
 
 const todayStr = new Date().toISOString().slice(0, 10)
 const yearOf = (d: string) => Number(d.slice(0, 4))
@@ -78,6 +79,7 @@ type ReceiptFilter = 'all' | 'with' | 'without'
 /** To'lovlar ro'yxatining saralanishi — sana yoki kvitansiya raqami bo'yicha. */
 type PaySort = 'date-desc' | 'date-asc' | 'receipt-asc' | 'receipt-desc'
 type Tab = 'overview' | 'groups' | 'teachers' | 'payments' | 'refunds' | 'cashiers' | 'bonuses'
+const FINANCE_TABS = ['overview', 'groups', 'teachers', 'payments', 'refunds', 'cashiers', 'bonuses'] as const
 
 const paySortOptions: { value: PaySort; label: string }[] = [
   { value: 'date-desc', label: 'Sana: yangi → eski' },
@@ -127,7 +129,9 @@ export function FinancePage() {
   // O'zgarishlar tarixi — alohida `audit` ruxsati (admin/superadmin uchun har doim true).
   const canSeeAudit = can('audit', 'view')
   const navigate = useNavigate()
-  const [tab, setTab] = useState<Tab>('overview')
+  // Boshlang'ich tab manzildan ham kelishi mumkin (`?tab=bonuses`) — "Hisobotlar" bo'limi
+  // to'g'ridan-to'g'ri kerakli hisobot tabiga havola beradi.
+  const [tab, setTab] = useState<Tab>(() => tabFromUrl(FINANCE_TABS, 'overview'))
   const [from, setFrom] = useState(`${yearOf(todayStr)}-01-01`)
   const [to, setTo] = useState(todayStr)
   const [dirFilter, setDirFilter] = useState<DirFilter>('all')

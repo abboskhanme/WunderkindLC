@@ -19,8 +19,10 @@ import { Loader } from '@/components/ui/Loader'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { usePerm } from '@/lib/permissions'
 import { apiErrorMessage, cn, formatDate, formatDateTime } from '@/lib/utils'
+import { tabFromUrl } from '@/lib/tabParam'
 
 type Tab = 'navbat' | 'hisobot'
+const CONTACT_TABS = ['navbat', 'hisobot'] as const
 
 /**
  * MUDDAT guruhlari — operatorning asosiy savoli bosqich emas, VAQT: "bugun kimga qo'ng'iroq
@@ -66,7 +68,8 @@ export function ContactQueuePage() {
   const canWrite = can('contacts', 'edit')
   const canDelete = can('contacts', 'delete')
 
-  const [tab, setTab] = useState<Tab>('navbat')
+  // `?tab=hisobot` — "Hisobotlar" bo'limidan to'g'ridan-to'g'ri bog'lanish hisobotiga.
+  const [tab, setTab] = useState<Tab>(() => tabFromUrl(CONTACT_TABS, 'navbat'))
   const [meta, setMeta] = useState<ContactMeta>({ statuses: [], results: [], counts: [], overdue: 0 })
   const [items, setItems] = useState<ContactRequestItem[]>([])
   const [loading, setLoading] = useState(true)

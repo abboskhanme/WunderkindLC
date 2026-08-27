@@ -12,8 +12,10 @@ import { BookInventoryTab } from './BookInventoryTab'
 import { BookCreditsTab } from './BookCreditsTab'
 import { BookAnalyticsTab } from './BookAnalyticsTab'
 import { BookSettingsTab } from './BookSettingsTab'
+import { tabFromUrl } from '@/lib/tabParam'
 
 type Tab = 'orders' | 'card' | 'credits' | 'inventory' | 'analytics' | 'settings'
+const BOOK_TABS = ['orders', 'card', 'credits', 'inventory', 'analytics', 'settings'] as const
 
 const NO_BADGES: BookBadges = { count: 0, credits: 0, overdue: 0 }
 
@@ -29,7 +31,8 @@ const NO_BADGES: BookBadges = { count: 0, credits: 0, overdue: 0 }
  */
 export function BookSalesPage() {
   const { can } = usePerm()
-  const [tab, setTab] = useState<Tab>('orders')
+  // `?tab=analytics` — "Hisobotlar" bo'limidan to'g'ridan-to'g'ri sotuv analitikasiga.
+  const [tab, setTab] = useState<Tab>(() => tabFromUrl(BOOK_TABS, 'orders'))
   const [badges, setBadges] = useState<BookBadges>(NO_BADGES)
 
   const refreshPending = useCallback(() => {

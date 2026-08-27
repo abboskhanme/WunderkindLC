@@ -17,6 +17,7 @@ const CallCenterPage = lazy(() => import('@/pages/admin/calls/CallCenterPage').t
 const LocalCallPage = lazy(() => import('@/pages/admin/calls/local/LocalCallPage').then((m) => ({ default: m.LocalCallPage })))
 const LeadsPage = lazy(() => import('@/pages/admin/leads/LeadsPage').then((m) => ({ default: m.LeadsPage })))
 const CrmStatsPage = lazy(() => import('@/pages/admin/leads/CrmStatsPage').then((m) => ({ default: m.CrmStatsPage })))
+const ReportsPage = lazy(() => import('@/pages/admin/reports/ReportsPage').then((m) => ({ default: m.ReportsPage })))
 const StudentsPage = lazy(() => import('@/pages/admin/students/StudentsPage').then((m) => ({ default: m.StudentsPage })))
 const RetentionBonusPage = lazy(() => import('@/pages/admin/students/RetentionBonusPage').then((m) => ({ default: m.RetentionBonusPage })))
 const StudentDetailPage = lazy(() => import('@/pages/admin/students/StudentDetailPage').then((m) => ({ default: m.StudentDetailPage })))
@@ -232,6 +233,12 @@ export default function App() {
             <Route path="leads" element={<RequirePerm perm="leads.list"><LeadsPage /></RequirePerm>} />
             <Route path="calls" element={<RequirePerm perm="calls.cloud"><CallCenterPage /></RequirePerm>} />
             <Route path="calls/local" element={<RequirePerm perm="calls.local"><LocalCallPage /></RequirePerm>} />
+            {/* HISOBOTLAR hub — barcha analitika/hisobotlar ro'yxati (`config/reports.ts`).
+                `RequirePerm` ATAYIN YO'Q: sahifa har bir havolani O'ZI ruxsat bo'yicha
+                filtrlaydi va bittasi ham ochiq bo'lmasa buni ochiq yozadi. Bitta kalit
+                qo'ysak, hisobotlarning ARALASH ruxsatlari (leads/finance/audit ...) bilan
+                mos kelmasdi. Menyuda esa bo'lim `permAny` bilan darvozalangan. */}
+            <Route path="hisobotlar" element={<ReportsPage />} />
             <Route path="crm-stats" element={<RequirePerm perm="leads.stats"><CrmStatsPage /></RequirePerm>} />
             <Route path="students" element={<RequirePerm perm="students.list"><StudentsPage /></RequirePerm>} />
             <Route path="students/turniket" element={<RequirePerm perm="students.turnstile"><StudentTurnstilePage /></RequirePerm>} />

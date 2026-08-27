@@ -18,8 +18,10 @@ import {
   Archive,
   Megaphone,
   PhoneCall,
+  BarChart3,
 } from 'lucide-react'
 import type { Role } from '@/types'
+import { navReports, reportPerms } from './reports'
 
 export interface NavChild {
   label: string
@@ -57,16 +59,10 @@ export interface NavItem {
 export const navByRole: Record<Role, NavItem[]> = {
   admin: [
     { label: 'Bosh sahifa', to: '/admin', icon: LayoutDashboard },
-    {
-      label: 'Lidlar',
-      to: '/admin/leads',
-      icon: UserPlus,
-      perm: 'leads',
-      children: [
-        { label: 'Lidlar (Kanban)', to: '/admin/leads', end: true, perm: 'leads.list' },
-        { label: 'CRM statistika', to: '/admin/crm-stats', perm: 'leads.stats' },
-      ],
-    },
+    // "CRM statistika" HISOBOTLAR bo'limiga ko'chdi (marshrut o'zgarmadi) — shundan keyin
+    // guruhda bitta bola qolgani uchun band YOYILMAYDIGAN qilib tekislandi: bitta bolali
+    // ochiladigan menyu ortiqcha bosish talab qilardi.
+    { label: 'Lidlar', to: '/admin/leads', icon: UserPlus, perm: 'leads.list' },
     {
       // Guruhning O'ZIDA `perm` YO'Q — bolalarga ko'chirilgan ("Sozlamalar" bilan bir xil sabab):
       // "Bog'lanish kerak" boshqa ruxsat (`contacts`) bilan ishlaydi, guruhda `perm: 'students'`
@@ -107,7 +103,6 @@ export const navByRole: Record<Role, NavItem[]> = {
       icon: BookOpen,
       children: [
         { label: 'Kurslar', to: '/admin/subjects', perm: 'schedule.courses' },
-        { label: 'Kurslar analitikasi', to: '/admin/subjects/analitika', perm: 'schedule.analytics' },
         { label: "O'quv dasturi", to: '/admin/curricula', perm: 'schedule.curricula' },
         { label: 'Baholash mezonlari', to: '/admin/grading', perm: 'schedule.grading' },
         // Xonalar — ilgari yuqori darajadagi alohida menyu edi; ikkinchi sahifasi
@@ -158,6 +153,25 @@ export const navByRole: Record<Role, NavItem[]> = {
     { label: 'Kassa', to: '/admin/kassa', icon: Banknote, perm: 'kassa' },
     { label: 'Moliya', to: '/admin/finance', icon: Wallet, perm: 'finance.main' },
     {
+      // HISOBOTLAR — barcha analitika/hisobot bir joyda. Ro'yxat `config/reports.ts` da:
+      // hub sahifasi ham, shu menyu ham AYNAN o'sha katalogdan quriladi (ayrilib ketmasin).
+      //
+      // ⚠️ Guruhda `perm` emas, `permAny` — katalogdagi BARCHA ruxsatlar: birorta hisoboti
+      // bo'lmagan xodimga bo'lim umuman ko'rinmaydi (bosib bo'sh sahifaga tushmasin).
+      //
+      // Menyuda faqat SOF hisobotlar (`inNav`) — ular eski bo'limidan KO'CHIRILDI. Ichida
+      // yozuvchi amal bor sahifalar (Moliya, Kitoblar, "Bog'lanish kerak" ...) o'z operativ
+      // bo'limida QOLDI va hub sahifasida havola bo'lib turadi — kundalik ish yo'li uzilmasin.
+      label: 'Hisobotlar',
+      to: '/admin/hisobotlar',
+      icon: BarChart3,
+      permAny: reportPerms,
+      children: [
+        { label: 'Barcha hisobotlar', to: '/admin/hisobotlar', end: true, permAny: reportPerms },
+        ...navReports.map((r) => ({ label: r.label, to: r.to, perm: r.perm })),
+      ],
+    },
+    {
       label: 'Marketing',
       to: '/admin/marketing',
       icon: Megaphone,
@@ -168,11 +182,9 @@ export const navByRole: Record<Role, NavItem[]> = {
         { label: 'Javob qoidalari', to: '/admin/marketing/rules', perm: 'marketing.rules' },
         { label: 'FAQ tugmalari', to: '/admin/marketing/faq', perm: 'marketing.rules' },
         { label: 'Bilim bazasi', to: '/admin/marketing/knowledge', perm: 'marketing.knowledge' },
-        { label: 'Analitika', to: '/admin/marketing/analytics', perm: 'marketing.analytics' },
         { label: 'Reklama lidlari', to: '/admin/marketing/reklama-lidlari', perm: 'marketing.leadads' },
         { label: 'Reklama statistikasi', to: '/admin/marketing/reklama-statistikasi', perm: 'marketing.adsstats' },
         { label: 'Kontent', to: '/admin/marketing/kontent', perm: 'marketing.content' },
-        { label: 'Javob sifati', to: '/admin/marketing/javob-sifati', perm: 'marketing.quality' },
         { label: 'Sozlamalar', to: '/admin/marketing/settings', perm: 'marketing.settings' },
       ],
     },
@@ -190,10 +202,11 @@ export const navByRole: Record<Role, NavItem[]> = {
       ],
     },
     {
-      // DIQQAT: guruhning O'ZIDA `perm` YO'Q — u ATAYIN bolalarga ko'chirilgan. Sabab:
-      // "O'zgarishlar tarixi" boshqa ruxsat (`audit`) bilan ishlaydi, guruhda `perm: 'settings'`
-      // qolsa faqat `audit` berilgan xodim uni umuman ko'rmasdi. Sidebar bolalari qolmagan
-      // guruhni o'zi yashiradi (filterNav), ya'ni ruxsatsiz xodimga guruh baribir ko'rinmaydi.
+      // Guruhning O'ZIDA `perm` YO'Q — u bolalarga ko'chirilgan. Tarixiy sabab: bu yerda
+      // "O'zgarishlar tarixi" turardi va u boshqa ruxsat (`audit`) bilan ishlardi; endi u
+      // HISOBOTLAR bo'limida (marshrut o'zgarmadi). Qoida ATAYIN saqlanyapti — Sidebar
+      // bolalari qolmagan guruhni o'zi yashiradi (filterNav), ya'ni ruxsatsiz xodimga guruh
+      // baribir ko'rinmaydi va yangi band qo'shilganda qayta o'ylash kerak bo'lmaydi.
       label: 'Sozlamalar',
       to: '/admin/settings/school',
       icon: Settings,
@@ -210,7 +223,6 @@ export const navByRole: Record<Role, NavItem[]> = {
         { label: 'Turniket integratsiya', to: '/admin/settings/turnstile', perm: 'settings.turnstile' },
         { label: 'Kamera integratsiya', to: '/admin/settings/cameras', perm: 'settings.cameras' },
         { label: 'PostHog Analitika', to: '/admin/settings/posthog', perm: 'settings.posthog' },
-        { label: "O'zgarishlar tarixi", to: '/admin/settings/history', perm: 'audit' },
       ],
     },
     { label: 'Arxiv', to: '/admin/archive', icon: Archive, perm: 'settings.archive' },
