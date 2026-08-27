@@ -5,7 +5,7 @@ import type { Role } from '@/types'
 import { useAuth } from '@/context/auth-context'
 import { useUnread } from '@/context/unread-context'
 import { getSchoolName } from '@/api/services/settings'
-import { navByRole, roleLabels, homeByRole, type NavItem, type NavChild } from '@/config/navigation'
+import { navByRole, roleLabels, homeByRole, activeNavTo, type NavItem, type NavChild } from '@/config/navigation'
 import { can } from '@/lib/permissions'
 import { cn } from '@/lib/utils'
 
@@ -28,6 +28,7 @@ function initialsOf(name: string): string {
 }
 
 export function Sidebar({ open, collapsed = false, onNavigate }: SidebarProps) {
+  const location = useLocation()
   const { user } = useAuth()
   const { unreadChannels } = useUnread()
   const totalUnread = unreadChannels.size
@@ -73,6 +74,10 @@ export function Sidebar({ open, collapsed = false, onNavigate }: SidebarProps) {
       .filter((i) => !i.children || i.children.length > 0)
   }
   const items = filterNav(navByRole[role])
+  // Manzil FAQAT BITTA bandga tegishli — eng aniq moslik g'olib (`activeNavTo`).
+  // Har guruh o'zini mustaqil tekshirganda bitta manzil bir nechta guruhni ochib
+  // yuborardi (masalan hisobot marshruti o'zining ESKI bo'limini ham ochardi).
+  const activeTo = activeNavTo(items, location.pathname)
 
   return (
     <aside
@@ -127,7 +132,7 @@ export function Sidebar({ open, collapsed = false, onNavigate }: SidebarProps) {
         </div>
         {items.map((item) =>
           item.children ? (
-            <NavGroup key={item.to} item={item} onNavigate={onNavigate} />
+            <NavGroup key={item.to} item={item} active={item.to === activeTo} onNavigate={onNavigate} />
           ) : (
             <NavLink
               key={item.to}
@@ -174,25 +179,26 @@ export function Sidebar({ open, collapsed = false, onNavigate }: SidebarProps) {
   )
 }
 
-function NavGroup({ item, onNavigate }: { item: NavItem; onNavigate: () => void }) {
-  const location = useLocation()
+function NavGroup({
+  item,
+  active,
+  onNavigate,
+}: {
+  item: NavItem
+  /** Joriy manzil AYNAN shu guruhga tegishlimi — qaror `Sidebar` da (`activeNavTo`),
+   *  chunki u faqat qo'shni guruhlar bilan solishtirib aniqlanadi. */
+  active: boolean
+  onNavigate: () => void
+}) {
   // "Chats" guruhi yig'ilgan holatda ham o'qilmagan xabar sonini ko'rsatadi.
   const { unreadChannels } = useUnread()
   const groupUnread = item.to.endsWith('/chats') ? unreadChannels.size : 0
-  // Guruh — o'z manzili ostida YOKI bolalaridan biri faol bo'lsa belgilanadi/ochiladi
-  // (bolalar boshqa yo'l ostida bo'lishi mumkin, masalan Fanlar yoki Sozlamalar).
-  const isUnder =
-    location.pathname.startsWith(item.to) ||
-    (item.children?.some(
-      (c) => location.pathname === c.to || location.pathname.startsWith(c.to + '/'),
-    ) ??
-      false)
-  const [openGroup, setOpenGroup] = useState(isUnder)
+  const [openGroup, setOpenGroup] = useState(active)
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- marshrut shu guruh ostida bo'lsa, uni avtomatik ochamiz (maqsadli)
-    if (isUnder) setOpenGroup(true)
-  }, [isUnder])
+    if (active) setOpenGroup(true)
+  }, [active])
 
   return (
     <div>
@@ -201,7 +207,7 @@ function NavGroup({ item, onNavigate }: { item: NavItem; onNavigate: () => void 
         onClick={() => setOpenGroup((o) => !o)}
         className={cn(
           'flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-[13.5px] transition-colors',
-          isUnder
+          active
             ? 'bg-slate-50 font-semibold text-slate-900'
             : 'font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900',
         )}

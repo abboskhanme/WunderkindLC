@@ -9,7 +9,7 @@ import {
   visibleReportGroups,
 } from '../reports'
 import { permLabel } from '../constants'
-import { navByRole } from '../navigation'
+import { navByRole, activeNavTo } from '../navigation'
 
 /**
  * HISOBOTLAR KATALOGI — `config/reports.ts` yagona manba bo'lgani uchun undagi xato
@@ -94,5 +94,55 @@ describe('visibleReportGroups — ruxsat bo\'yicha filtr', () => {
     const groups = visibleReportGroups(() => true)
     expect(groups).toHaveLength(reportGroups.length)
     expect(groups.flatMap((g) => g.items)).toHaveLength(allReports.length)
+  })
+})
+
+/**
+ * MENYU MOSLIGI — bitta manzil FAQAT BITTA yuqori darajadagi bandga tegishli bo'lishi kerak.
+ *
+ * ⚠️ Bu testlar HAQIQIY nosozlikni qulflaydi: "Hisobotlar" bo'limi paydo bo'lgach,
+ * hisobot marshruti o'zining ESKI bo'limini ham ochib yuborardi (masalan
+ * `/admin/subjects/analitika` — "O'quv bo'limi" ichida `/admin/subjects` bor).
+ */
+describe('activeNavTo — qaysi menyu bandi faol', () => {
+  const admin = navByRole.admin
+  const find = (label: string) => admin.find((i) => i.label === label)!.to
+
+  it.each([
+    ['/admin/subjects/analitika', 'Hisobotlar'],
+    ['/admin/rooms/utilization', 'Hisobotlar'],
+    ['/admin/forms/statistika', 'Hisobotlar'],
+    ['/admin/marketing/analytics', 'Hisobotlar'],
+    ['/admin/settings/history', 'Hisobotlar'],
+    ['/admin/crm-stats', 'Hisobotlar'],
+    ['/admin/hisobotlar', 'Hisobotlar'],
+  ])('%s → «%s»', (path, label) => {
+    expect(activeNavTo(admin, path)).toBe(find(label))
+  })
+
+  it.each([
+    // Eski bo'limlar O'Z sahifalarida avvalgidek faol qoladi.
+    ['/admin/subjects', "O'quv bo'limi"],
+    ['/admin/rooms', "O'quv bo'limi"],
+    ['/admin/marketing/inbox', 'Marketing'],
+    ['/admin/settings/school', 'Sozlamalar'],
+    ['/admin/students/davomat', "O'quvchilar"],
+    // Moliya "Hisobotlar"ga KO'CHIRILMAGAN (ichida amal bor) — o'z bandida qoladi.
+    ['/admin/finance', 'Moliya'],
+  ])('%s → «%s»', (path, label) => {
+    expect(activeNavTo(admin, path)).toBe(find(label))
+  })
+
+  it("menyuda yo'q manzilda hech qaysi GURUH ochilmaydi", () => {
+    // Eslatma: noma'lum `/admin/...` manzili "Bosh sahifa" (`/admin`) ga prefiks bo'yicha
+    // mos keladi — bu ZARARSIZ, chunki u guruh emas (yon menyuda ochiladigan narsa yo'q)
+    // va yassi bandning O'Z `NavLink end` qoidasi uni yoritmaydi. Muhimi — guruh ochilmasin.
+    const to = activeNavTo(admin, '/admin/bunday-sahifa-yoq')
+    const groups = admin.filter((i) => i.children)
+    expect(groups.some((g) => g.to === to)).toBe(false)
+  })
+
+  it("admin panelidan tashqaridagi manzilda hech narsa faol emas", () => {
+    expect(activeNavTo(admin, '/login')).toBeNull()
   })
 })

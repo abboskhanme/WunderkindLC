@@ -64,6 +64,23 @@ shuning uchun bo'limning O'Z kaliti YO'Q:
 - Hisobot SAHIFASINING o'zi avvalgidek o'z `RequirePerm`i bilan darvozalangan — hub qo'shimcha
   eshik ochmaydi.
 
+## 5.5. MENYUDA BITTA MANZIL = BITTA BAND (`activeNavTo`)
+
+Yon menyu ilgari har guruhni MUSTAQIL tekshirardi (`pathname.startsWith(...)`), shuning uchun
+bitta manzil bir NECHTA guruhni ochib yuborardi. "Hisobotlar" paydo bo'lgach bu ko'rindi:
+`/admin/subjects/analitika` ochilganda ESKI "O'quv bo'limi" ham ochilardi (u yerda
+`/admin/subjects` bor va yangi marshrut uning prefiksi ostiga tushadi). Xuddi shu
+`/admin/rooms/utilization`, `/admin/forms/statistika`, `/admin/marketing/analytics` da ham.
+
+Endi qaror `navigation.ts` dagi **`activeNavTo`** da: **ENG ANIQ (eng uzun) moslik g'olib**,
+qolganlari ochilmaydi. `Sidebar` uni bir marta hisoblab, har guruhga `active` propi bilan
+uzatadi (guruh o'zini o'zi tekshirmaydi — qaror faqat qo'shnilar bilan solishtirib chiqadi).
+
+⚠️ `?tab=` solishtirishga KIRMAYDI: u sahifani emas, sahifa ichidagi bo'limni tanlaydi.
+
+Testlar: `reports.test.ts` → `activeNavTo — qaysi menyu bandi faol` (har bir ko'chirilgan
+marshrut "Hisobotlar"ga, eski bo'limlar esa O'Z sahifalarida faol qolishi qulflangan).
+
 ## 6. KONTEKSTGA BOG'LIQ hisobotlar KIRMAYDI
 
 Guruh/o'quvchi/o'qituvchi ICHIDAGI tablar (guruh davomati, o'quvchi to'lov tarixi, o'qituvchi

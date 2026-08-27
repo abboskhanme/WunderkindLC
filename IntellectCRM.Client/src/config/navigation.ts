@@ -246,6 +246,51 @@ export const navByRole: Record<Role, NavItem[]> = {
 navByRole.superadmin = navByRole.admin
 navByRole.staff = navByRole.admin
 
+/**
+ * Manzil shu marshrutga to'g'ri keladimi — kelsa marshrut UZUNLIGI, aks holda 0.
+ * Uzunlik "qanchalik ANIQ mos kelgani" o'lchovi bo'lib ishlatiladi.
+ */
+function matchLength(to: string, pathname: string): number {
+  // `?tab=` kabi parametr solishtirishga kirmaydi — u sahifani emas, sahifa ICHIDAGI
+  // bo'limni tanlaydi (`lib/tabParam.ts`).
+  const path = to.split('?')[0]
+  return pathname === path || pathname.startsWith(path + '/') ? path.length : 0
+}
+
+/** Band (yoki uning bolalaridan biri) manzilga qanchalik ANIQ mos kelgani. */
+export function navMatchScore(
+  item: { to: string; children?: NavChild[] },
+  pathname: string,
+): number {
+  let best = matchLength(item.to, pathname)
+  for (const c of item.children ?? []) best = Math.max(best, navMatchScore(c, pathname))
+  return best
+}
+
+/**
+ * Joriy manzil QAYSI yuqori darajadagi menyu bandiga tegishli — ENG ANIQ (eng uzun)
+ * moslik g'olib. Mos band yo'q bo'lsa `null`.
+ *
+ * ⚠️ NEGA KERAK: ilgari har guruh o'zini MUSTAQIL tekshirardi (`pathname.startsWith(...)`),
+ * shuning uchun bitta manzil bir NECHTA guruhni ochib yuborardi. "Hisobotlar" bo'limi
+ * paydo bo'lgach bu ko'zga tashlandi: `/admin/subjects/analitika` ochilganda
+ * "Kurslar analitikasi" ham, ESKI "O'quv bo'limi" ham (chunki u yerda `/admin/subjects`
+ * bor) birga ochilardi. Endi manzil FAQAT bitta bandga tegishli bo'ladi — eng aniq
+ * mos kelganiga.
+ */
+export function activeNavTo(items: NavItem[], pathname: string): string | null {
+  let bestTo: string | null = null
+  let bestScore = 0
+  for (const item of items) {
+    const score = navMatchScore(item, pathname)
+    if (score > bestScore) {
+      bestScore = score
+      bestTo = item.to
+    }
+  }
+  return bestTo
+}
+
 /** Rol bo'yicha asosiy sahifa manzili */
 export const homeByRole: Record<Role, string> = {
   superadmin: '/admin',
