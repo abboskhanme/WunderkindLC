@@ -1,4 +1,4 @@
-﻿import { useEffect, useRef, useState } from 'react'
+﻿import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { usePersistentState } from '@/hooks/usePersistentState'
 import { StudentViewModal } from './StudentViewModal'
@@ -71,6 +71,20 @@ const control =
  * "Holat" ustuni (va CSV eksporti) uchun a'zolik holati. `memberState` — backend hisoblagan
  * yorliq (active > trial > frozen); eski javoblarda bo'lmasa `active` bayrog'iga tushamiz.
  */
+type StateFilter = 'all' | 'active' | 'trial' | 'frozen' | 'inactive'
+
+/**
+ * O'quvchining USTUN ko'rsatadigan holati — filtr ham AYNAN shundan ishlaydi, ya'ni
+ * "Muzlatilgan" tanlanganda ro'yxatdagi har qatorda "Muzlatilgan" yozib turadi.
+ * (Bir nechta guruhda turlicha bo'lsa backend ustunlik beradi: active > trial > frozen.)
+ */
+function studentState(s: Student): 'active' | 'trial' | 'frozen' | 'none' {
+  if (s.memberState === 'frozen') return 'frozen'
+  if (s.memberState === 'trial') return 'trial'
+  if (s.active || s.memberState === 'active') return 'active'
+  return 'none'
+}
+
 function memberStateInfo(s: Student): { label: string; chip: string; dot: string } {
   if (s.memberState === 'frozen')
     return { label: 'Muzlatilgan', chip: 'bg-sky-50 text-sky-700', dot: 'bg-sky-500' }
@@ -136,7 +150,12 @@ export function StudentsPage() {
    */
   const [debtMin, setDebtMin] = usePersistentState('students.debtMin', '')
   const [debtMax, setDebtMax] = usePersistentState('students.debtMax', '')
-  const [activeFilter, setActiveFilter] = usePersistentState<'all' | 'active' | 'inactive'>('students.activeFilter', 'all')
+  /**
+   * A'zolik HOLATI filtri — "Holat" ustunidagi yorliq bilan AYNAN bir xil qiymatlar
+   * (`memberStateInfo`). `inactive` ("Aktiv emas") ATAYIN qoldirildi: u sinov + muzlatilgan +
+   * guruhsizlarni birga beradi va eski saqlangan tanlov ham buzilmaydi.
+   */
+  const [activeFilter, setActiveFilter] = usePersistentState<StateFilter>('students.activeFilter', 'all')
   const [districtFilter, setDistrictFilter] = usePersistentState('students.districtFilter', 'all')
   const [schoolFilter, setSchoolFilter] = usePersistentState('students.schoolFilter', 'all')
   const [photoFilter, setPhotoFilter] = usePersistentState<PhotoFilter>('students.photoFilter', 'all')
@@ -254,6 +273,24 @@ export function StudentsPage() {
 
   // Joriy tab manbai.
   const source = tab === 'active' ? students : archived
+  /**
+   * Holat filtri variantlaridagi sonlar — BOSHQA filtrlarga bog'liq emas (qidiruv/guruh
+   * tanlangan bo'lsa ham): savol "markazda nechta muzlatilgan bor", "shu qidiruv ichida
+   * nechta" emas. Aks holda son filtr o'zgargan sayin sakrab, ma'nosini yo'qotardi.
+   */
+  const stateCounts = useMemo(() => {
+    const c = { active: 0, trial: 0, frozen: 0, inactive: 0 }
+    for (const s of source) {
+      const st = studentState(s)
+      if (st === 'active') c.active++
+      else {
+        c.inactive++
+        if (st === 'trial') c.trial++
+        else if (st === 'frozen') c.frozen++
+      }
+    }
+    return c
+  }, [source])
   // "Bugun tug'ilgan kun" filtri uchun — yilsiz "MM-DD" solishtirish.
   const todayMonthDay = new Date().toISOString().slice(5, 10)
 
@@ -286,9 +323,11 @@ export function StudentsPage() {
      * Endi shart BITTA a'zolik ustida tekshiriladi: «X ning guruhida AKTIV a'zoligi bor».
      */
     const states = s.groupStates ?? []
-    /** Shu a'zolik tanlangan aktivlik filtriga mos keladimi. */
+    /** Shu a'zolik tanlangan holat filtriga mos keladimi. */
     const memberMatches = (st: string) =>
-      activeFilter === 'all' ? true : activeFilter === 'active' ? st === 'active' : st !== 'active'
+      activeFilter === 'all' ? true
+      : activeFilter === 'inactive' ? st !== 'active'
+      : st === activeFilter
 
     const matchClass =
       classFilter === 'all' ||
@@ -322,7 +361,7 @@ export function StudentsPage() {
     const groupScoped = classFilter !== 'all' || teacherFilter !== 'all'
     const matchActive =
       activeFilter === 'all' || groupScoped ||
-      (activeFilter === 'active' ? s.active : !s.active)
+      (activeFilter === 'inactive' ? studentState(s) !== 'active' : studentState(s) === activeFilter)
     const matchDistrict = districtFilter === 'all' || s.districtId === districtFilter
     const matchSchool = schoolFilter === 'all' || s.schoolId === schoolFilter
     const matchBirthday = !birthdayToday || (s.birthDate && s.birthDate.slice(5, 10) === todayMonthDay)
@@ -918,14 +957,19 @@ export function StudentsPage() {
               «dan» «gacha»dan katta
             </span>
           )}
+          {/* Holat filtri — variantlar "Holat" USTUNIDAGI yorliqlar bilan bir xil.
+              Qavsdagi son joriy ro'yxatdagi (faol/arxiv tabi) miqdor: filtrni tanlashdan
+              OLDIN nechta odam chiqishini ko'rsatadi. */}
           <select
             value={activeFilter}
-            onChange={(e) => setActiveFilter(e.target.value as 'all' | 'active' | 'inactive')}
+            onChange={(e) => setActiveFilter(e.target.value as StateFilter)}
             className={control}
           >
-            <option value="all">Barcha holat</option>
-            <option value="active">● Aktiv</option>
-            <option value="inactive">● Aktiv emas</option>
+            <option value="all">Barcha holat ({source.length})</option>
+            <option value="active">● Aktiv ({stateCounts.active})</option>
+            <option value="trial">● Sinovda ({stateCounts.trial})</option>
+            <option value="frozen">● Muzlatilgan ({stateCounts.frozen})</option>
+            <option value="inactive">Aktiv emas ({stateCounts.inactive})</option>
           </select>
           <select
             value={districtFilter}
