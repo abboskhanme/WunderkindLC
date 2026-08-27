@@ -7,7 +7,7 @@ import {
   CalendarDays, Clock, MapPin, Wallet, Snowflake, CheckCircle2,
   ListChecks, ChevronRight, ChevronDown, Plus, Minus, Repeat, CalendarClock, Flag, TrendingUp, Trophy,
   ArrowLeftRight, RotateCcw, X, Pencil, ClipboardList, CalendarCheck, History,
-  UserPlus, MessageSquare, ArrowUpDown, Sparkles, EyeOff, PhoneCall,
+  UserPlus, MessageSquare, ArrowUpDown, Sparkles, EyeOff, PhoneCall, Settings2,
 } from 'lucide-react'
 import type { AbsenceReason, MasteryLevel, Group, GroupMember } from '@/types'
 import {
@@ -789,16 +789,32 @@ export function ClassDetailPage() {
                     <Users className="h-5 w-5 text-brand-600" />
                     <h2 className="font-semibold text-slate-800">A'zolar</h2>
                     <span className="text-sm text-slate-400">{members.filter((m) => m.isActive).length}</span>
-                    {members.length > 1 && (
-                      <button
-                        type="button"
-                        onClick={() => setMembersSortAsc((v) => !v)}
-                        title="Ism bo'yicha alfavit tartibida saralash"
-                        className="ml-auto inline-flex shrink-0 items-center gap-1 rounded-lg border border-slate-200 px-2 py-1 text-xs font-medium text-slate-500 transition-colors hover:border-brand-300 hover:text-brand-700"
-                      >
-                        <ArrowUpDown className="h-3.5 w-3.5" /> {membersSortAsc ? 'A-Z' : 'Z-A'}
-                      </button>
-                    )}
+                    <div className="ml-auto flex shrink-0 items-center gap-1">
+                      {members.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => setMembersSortAsc((v) => !v)}
+                          title="Ism bo'yicha alfavit tartibida saralash"
+                          className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-slate-200 px-2 py-1 text-xs font-medium text-slate-500 transition-colors hover:border-brand-300 hover:text-brand-700"
+                        >
+                          <ArrowUpDown className="h-3.5 w-3.5" /> {membersSortAsc ? 'A-Z' : 'Z-A'}
+                        </button>
+                      )}
+                      {/* A'zolar modali — qo'shish/qidirish bilan bir qatorda OMMAVIY muzlatish va
+                          aktivlashtirish shu yerda. Ilgari modalga faqat "⋮ → Yangi talaba qo'shish"
+                          orqali kirilardi, ya'ni ommaviy amallar nomi aldaydigan menyu ostida
+                          ko'rinmay qolardi. */}
+                      {can('classes.list', 'create') && (
+                        <button
+                          type="button"
+                          onClick={() => setMembersOpen(true)}
+                          title="A'zolarni boshqarish: qo'shish, ommaviy muzlatish/aktivlashtirish"
+                          className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-slate-200 px-2 py-1 text-xs font-medium text-slate-500 transition-colors hover:border-brand-300 hover:text-brand-700"
+                        >
+                          <Settings2 className="h-3.5 w-3.5" /> Boshqarish
+                        </button>
+                      )}
+                    </div>
                   </div>
                   {members.length === 0 ? (
                     <p className="py-6 text-center text-sm text-slate-400">Bu guruhda a'zo yo'q.</p>

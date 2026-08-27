@@ -269,6 +269,10 @@ Admin controllerlar `[AdminPerm("<kalit>")]` bilan himoyalangan:
 | POST | /api/admin/classes/{id}/members/{studentId}/return-trial | A'zolikni sinovga qaytaradi. |
 | POST | /api/admin/classes/{id}/members/{studentId}/activate | Aktivlashtiradi (qisman birinchi oy to'lovi). |
 | POST | /api/admin/classes/{id}/members/{studentId}/freeze | Muzlatadi (qisman to'lov). |
+| POST | /api/admin/classes/{id}/members/bulk-freeze | OMMAVIY muzlatish — shu guruhda tanlanganlar (`studentIds`, `date`, `reasonId`). |
+| POST | /api/admin/classes/{id}/members/bulk-activate | OMMAVIY aktivlashtirish — shu guruhda tanlanganlar (`studentIds`, `date`). |
+| POST | /api/admin/classes/members/bulk-freeze | OMMAVIY muzlatish — tanlanganlarning BARCHA guruhlardagi a'zoliklari. |
+| POST | /api/admin/classes/members/bulk-activate | OMMAVIY aktivlashtirish — tanlanganlarning BARCHA guruhlardagi a'zoliklari. |
 | GET | /api/admin/classes/student/{studentId}/groups | O'quvchining barcha a'zoliklari. |
 | GET | /api/admin/classes/fill | Guruh to'ldirish hisoboti (bo'sh o'rinlar). |
 | POST | /api/admin/classes/{id}/complete-and-transfer | Yakunlab arxivlaydi, sertifikat, yangi guruh. |

@@ -193,6 +193,35 @@ paths:
   (`TransferMember`), **Guruhni yopish** (`Close`) va **Guruhni tugatish — sertifikat bilan**
   (`CompleteAndTransfer`). Yangi muzlatish yo'li qo'shilsa — SHU metod chaqiriladi, nusxa ko'chirilmaydi.
 
+- **OMMAVIY MUZLATISH / AKTIVLASHTIRISH** (bir paytda ko'p o'quvchi). Ikki kirish nuqtasi:
+  guruh sahifasi a'zolar modalidan (`POST /api/admin/classes/{id}/members/bulk-freeze` va
+  `.../bulk-activate` — faqat SHU guruh a'zoliklari) va **o'quvchilar ro'yxatidan**
+  (`POST /api/admin/classes/members/bulk-freeze` / `bulk-activate` — guruhsiz, ya'ni tanlangan
+  o'quvchining **BARCHA faol a'zoliklari**).
+
+  ⚠️ **Yangi hisob-kitob YO'Q.** Ikkala yo'l ham `ClassesController.FreezeCoreAsync` /
+  `ActivateCoreAsync` ni chaqiradi — AYNAN o'sha metodlarni yakka `FreezeMember`/`ActivateMember`
+  ham chaqiradi. Ya'ni qisman oy to'lovi, orqaga sanalgan hisoblarni bekor qilish, avans ko'chishi,
+  catch-up oylar va **auditga har o'quvchi uchun ALOHIDA qator** — hammasi o'zgarishsiz.
+
+  ⚠️ **Har a'zolik ALOHIDA `SaveChanges` bilan saqlanadi**: bittasi xato bersa qolganlari baribir
+  bajariladi (`contacts` bulk qoidasi bilan bir xil mantiq — 100 tadan bittasi tufayli hech kim
+  tushib qolmasin). Xato bergan a'zolikning yarim o'zgarishlari `ChangeTracker.Clear()` bilan
+  bekor qilinadi, aks holda ular KEYINGI o'quvchining saqlashi bilan bazaga tushib ketardi.
+
+  ⚠️ **`studentIds` BO'SH bo'lishi mumkin emas** — "hammasi"ni server o'zi qidirmaydi. Tanlov har
+  doim UI'da ko'rinib turadi, ya'ni tasodifan butun guruhni muzlatib qo'yish yo'li ochilmaydi.
+
+  Qaysi a'zolik tushishi — `MembershipBulk.IsEligible` (sof funksiya, `MembershipBulkTests`):
+  muzlatishga `active`/`trial`, aktivlashtirishga `active` dan boshqasi. Filtr **SQL'da EMAS**,
+  shu funksiyada — qoida bir joyda tursin va mos kelmagan a'zolik jimgina yo'qolmasin: u **xato
+  emas**, javobda `skipped` bo'lib sanaladi va `noMembership` ("umuman a'zoligi yo'q") bilan
+  ARALASHMAYDI. Chegara `MembershipBulk.MaxTargets` = 500 a'zolik.
+
+  Javob (`BulkMembershipResultDto`) "nima bo'ldi"ni to'liq ochadi:
+  `changed` · `students` · `skipped` · `failed` · `noMembership` · `restored` · `movedAdvance` ·
+  `catchUpMonths` · `errors[]` — jimgina tushib qolgan o'quvchi bo'lmasin.
+
 - **GURUHNI TUGATISH (SERTIFIKAT BILAN)** (`POST /api/admin/classes/{id}/complete-and-transfer`,
   guruh sahifasi "⋮" → "Tugatish (sertifikat bilan)"): modalda **IKKITA SANA** so'raladi —
   `closeDate` (eski guruh yopiladigan sana) va `activateDate` (yangi guruhda aktivlashtirish sanasi;

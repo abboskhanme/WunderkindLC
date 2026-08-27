@@ -1,4 +1,4 @@
-namespace IntellectCRM.Application.Dtos;
+﻿namespace IntellectCRM.Application.Dtos;
 
 using System.ComponentModel.DataAnnotations;
 using IntellectCRM.Domain;
@@ -515,6 +515,34 @@ public record MembershipStatusRequest(string? Date, string? ReasonId = null, boo
 /// aktivlashtiriladi (ikkalasi bo'sh bo'lsa — bugun; ActivateDate bo'sh, FreezeDate berilgan bo'lsa — FreezeDate).
 /// </summary>
 public record TransferMemberRequest(string ToGroupId, string? FreezeDate, string? ActivateDate, string? ReasonId = null);
+/// <summary>
+/// OMMAVIY (bir paytda ko'p o'quvchi) muzlatish/aktivlashtirish so'rovi.
+/// <para><paramref name="StudentIds"/> — TANLANGAN o'quvchilar; BO'SH bo'lishi mumkin emas
+/// ("hammasi" ni server o'zi qidirmaydi — tanlov har doim UI'da ko'rinib turadi va tasodifiy
+/// butun guruhni muzlatib qo'yish yo'li ochilmaydi).</para>
+/// <para>Guruh sahifasidan chaqirilsa marshrutda guruh bo'ladi (faqat SHU guruh a'zoliklari),
+/// o'quvchilar ro'yxatidan chaqirilsa guruhsiz — o'quvchining BARCHA faol a'zoliklari.</para>
+/// </summary>
+public record BulkMembershipRequest(
+    string[]? StudentIds, string? Date = null, string? ReasonId = null, bool? RetentionBonus = null);
+/// <summary>
+/// Ommaviy a'zolik amalining natijasi. Amal BITTA xato tufayli to'xtamaydi, shuning uchun
+/// javob "nima bo'ldi" ni to'liq ochib beradi (jimgina tushib qolgan o'quvchi bo'lmasin).
+/// </summary>
+/// <param name="Requested">So'ralgan o'quvchilar soni.</param>
+/// <param name="Memberships">Mos kelgan a'zoliklar soni (bitta o'quvchi bir necha guruhda bo'lishi mumkin).</param>
+/// <param name="Changed">Haqiqatan o'zgargan a'zoliklar soni.</param>
+/// <param name="Students">Haqiqatan o'zgargan O'QUVCHILAR soni.</param>
+/// <param name="Skipped">Allaqachon kerakli holatda bo'lgani uchun o'tkazib yuborilgani.</param>
+/// <param name="Failed">Xato bergani (qolganlari baribir bajarilgan).</param>
+/// <param name="NoMembership">Umuman faol a'zoligi topilmagan o'quvchilar soni.</param>
+/// <param name="Restored">Muzlatishda bekor qilinib balansga qaytarilgan umumiy summa.</param>
+/// <param name="MovedAdvance">Aktivlashtirishda boshqa guruhdan ko'chirilgan avans summasi.</param>
+/// <param name="CatchUpMonths">Orqaga sanalgan aktivlashtirishda yozilgan oylar soni (jami).</param>
+/// <param name="Errors">Qisqa xato xabarlari (ko'pi bilan 20 ta; qolganlari serverda logda).</param>
+public record BulkMembershipResultDto(
+    int Requested, int Memberships, int Changed, int Students, int Skipped, int Failed,
+    int NoMembership, decimal Restored, decimal MovedAdvance, int CatchUpMonths, string[] Errors);
 /// <summary>Guruh to'ldirish hisoboti qatori: sig'im vs ro'yxatdagilar.</summary>
 public record GroupFillRowDto(
     string GroupId, string Name, int Grade, int Capacity, int Enrolled, int FreeSeats, string Status);

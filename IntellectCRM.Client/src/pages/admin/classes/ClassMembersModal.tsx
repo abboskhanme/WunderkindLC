@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react'
-import { Trash2, UserPlus, Search, CheckCircle2, Snowflake, Plus, RotateCcw, ArrowLeftRight } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { Trash2, UserPlus, Search, CheckCircle2, Snowflake, Plus, RotateCcw, ArrowLeftRight, X } from 'lucide-react'
 import type { Group, GroupMember, Student } from '@/types'
 import {
   getGroupMembers,
@@ -8,6 +8,9 @@ import {
   activateMember,
   freezeMember,
   returnMemberToTrial,
+  bulkFreezeMembers,
+  bulkActivateMembers,
+  bulkMembershipSummary,
 } from '@/api/services/classes'
 import { getStudents, getArchivedStudents, createStudent } from '@/api/services/students'
 import type { StudentPayload } from '@/api/services/students'
@@ -50,11 +53,16 @@ export function ClassMembersModal({ group, onClose }: Props) {
   const [newStudentOpen, setNewStudentOpen] = useState(false)
   /** Guruhni almashtirish modali — tanlangan a'zo. */
   const [transferMemberTarget, setTransferMemberTarget] = useState<GroupMember | null>(null)
+  /** Ommaviy amal uchun belgilangan o'quvchilar (faqat yuqoridagi "faol a'zolar" jadvali). */
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  /** Ommaviy amal tasdiqlash modali ochiqmi va qaysi amal uchun. */
+  const [bulkAction, setBulkAction] = useState<'freeze' | 'activate' | null>(null)
 
   useEffect(() => {
     if (!group) {
       setMembers([])
       setQuery('')
+      setSelected(new Set())
       return
     }
     let active = true
@@ -66,6 +74,8 @@ export function ClassMembersModal({ group, onClose }: Props) {
         if (!active) return
         setMembers(m)
         setStudents([...s, ...arch])
+        // Guruh almashdi — oldingi guruhning tanlovi yangisiga o'tib ketmasligi kerak.
+        setSelected(new Set())
       })
       .finally(() => active && setLoading(false))
     return () => {
@@ -76,6 +86,31 @@ export function ClassMembersModal({ group, onClose }: Props) {
   const activeMembers = members.filter((m) => m.isActive)
   const capacity = group?.capacity ?? 0
   const isFull = capacity > 0 && activeMembers.length >= capacity
+
+  // Tanlov ro'yxat bilan KESISHTIRIB olinadi: ro'yxat yangilangach jadvalda endi YO'Q id na
+  // sanoqqa, na so'rovga tushadi — aks holda "3 ta tanlandi" deb ko'rinib, amal 2 tasiga tegardi.
+  const selectedIds = activeMembers.filter((m) => selected.has(m.studentId)).map((m) => m.studentId)
+  const selectedCount = selectedIds.length
+
+  // "Hammasini tanlash" holati: hech biri / bir qismi (indeterminate) / hammasi.
+  const allSelected = activeMembers.length > 0 && selectedCount === activeMembers.length
+  const someSelected = selectedCount > 0 && !allSelected
+  const headerCbRef = useRef<HTMLInputElement>(null)
+  useEffect(() => {
+    // `indeterminate` HTML atributi emas — faqat DOM xossasi orqali qo'yiladi.
+    if (headerCbRef.current) headerCbRef.current.indeterminate = someSelected
+  })
+
+  const toggleOne = (id: string) =>
+    setSelected((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+
+  const toggleAll = () =>
+    setSelected(() => (allSelected ? new Set<string>() : new Set(activeMembers.map((m) => m.studentId))))
 
   const memberIds = useMemo(
     () => new Set(activeMembers.map((m) => m.studentId)),
@@ -180,6 +215,38 @@ Kerak bo'lsa "Parolni tiklash" orqali yangi parol bering.`)
     }
   }
 
+  /**
+   * Ommaviy muzlatish/aktivlashtirish. Mos kelmaydigan tanlovni (masalan allaqachon muzlatilgani)
+   * SERVER o'zi chetlab o'tadi — shuning uchun bu yerda oldindan filtrlamaymiz, natija esa
+   * jimgina yo'qolmasin deb `bulkMembershipSummary` bilan to'liq ko'rsatiladi.
+   */
+  const confirmBulkAction = async (
+    reasonId: string | undefined,
+    date?: string,
+    retentionBonus?: boolean,
+  ) => {
+    if (!group || !bulkAction || busy) return
+    const action = bulkAction
+    const ids = selectedIds
+    const day = date ?? new Date().toISOString().slice(0, 10)
+    setBusy(true)
+    try {
+      // Bonus maydoni ruxsati yo'q bo'lsa umuman yuborilmaydi (server ham shu qoidani tekshiradi).
+      const res = action === 'freeze'
+        ? await bulkFreezeMembers(group.id, ids, day, reasonId)
+        : await bulkActivateMembers(group.id, ids, day, canSetBonus ? retentionBonus : undefined)
+      const fresh = await getGroupMembers(group.id)
+      setMembers(fresh)
+      setSelected(new Set())
+      setBulkAction(null)
+      alert(bulkMembershipSummary(res, action))
+    } catch (err) {
+      alert(apiErrorMessage(err, 'Ommaviy amal bajarilmadi'))
+    } finally {
+      setBusy(false)
+    }
+  }
+
   const handleRemove = (m: GroupMember) => {
     if (!group || busy) return
     setReasonAction({ kind: 'remove', m })
@@ -271,11 +338,52 @@ Kerak bo'lsa "Parolni tiklash" orqali yangi parol bering.`)
             </button>
           </div>
 
+          {/* Tanlanganlar uchun amal paneli — modal ichida bo'lgani uchun ixcham */}
+          {selectedCount > 0 && (
+            <div className="flex flex-wrap items-center gap-2 rounded-lg bg-brand-50/60 px-3 py-2">
+              <span className="text-sm font-semibold text-brand-700">{selectedCount} ta tanlandi</span>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => setBulkAction('freeze')}
+                className="inline-flex items-center gap-1 rounded-lg bg-sky-50 px-2.5 py-1 text-xs font-medium text-sky-700 transition-colors hover:bg-sky-100 disabled:opacity-50"
+              >
+                <Snowflake className="h-3.5 w-3.5" /> Muzlatish ({selectedCount})
+              </button>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => setBulkAction('activate')}
+                className="inline-flex items-center gap-1 rounded-lg bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700 transition-colors hover:bg-emerald-100 disabled:opacity-50"
+              >
+                <CheckCircle2 className="h-3.5 w-3.5" /> Aktivlashtirish ({selectedCount})
+              </button>
+              <button
+                type="button"
+                onClick={() => setSelected(new Set())}
+                className="ml-auto inline-flex items-center gap-1 text-xs text-slate-500 transition-colors hover:text-slate-700"
+              >
+                <X className="h-3.5 w-3.5" /> Bekor qilish
+              </button>
+            </div>
+          )}
+
           {/* A'zolar ro'yxati */}
           <div className="overflow-hidden rounded-lg border border-slate-100">
             <table className="w-full text-left text-sm">
               <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-400">
                 <tr>
+                  <th className="w-10 px-3 py-2">
+                    <input
+                      ref={headerCbRef}
+                      type="checkbox"
+                      checked={allSelected}
+                      onChange={toggleAll}
+                      disabled={activeMembers.length === 0}
+                      title="Hammasini tanlash"
+                      className="h-4 w-4 accent-brand-600 disabled:opacity-50"
+                    />
+                  </th>
                   <th className="px-3 py-2">O'quvchi</th>
                   <th className="px-3 py-2">Holat</th>
                   <th className="px-3 py-2">Qo'shilgan sana</th>
@@ -287,6 +395,14 @@ Kerak bo'lsa "Parolni tiklash" orqali yangi parol bering.`)
                   const sb = statusBadge(m.status)
                   return (
                     <tr key={m.studentId} className="hover:bg-slate-50/60">
+                      <td className="px-3 py-2">
+                        <input
+                          type="checkbox"
+                          checked={selected.has(m.studentId)}
+                          onChange={() => toggleOne(m.studentId)}
+                          className="h-4 w-4 accent-brand-600"
+                        />
+                      </td>
                       <td className="px-3 py-2">
                         <div className="flex items-center gap-2">
                           <span className="w-6 text-right text-xs font-medium text-slate-400">{idx + 1}.</span>
@@ -369,7 +485,7 @@ Kerak bo'lsa "Parolni tiklash" orqali yangi parol bering.`)
                 })}
                 {activeMembers.length === 0 && members.filter(m => !m.isActive).length === 0 && (
                   <tr>
-                    <td colSpan={4} className="px-3 py-8 text-center text-slate-400">
+                    <td colSpan={5} className="px-3 py-8 text-center text-slate-400">
                       A'zolar yo'q
                     </td>
                   </tr>
@@ -511,6 +627,25 @@ Kerak bo'lsa "Parolni tiklash" orqali yangi parol bering.`)
         showDate={reasonAction?.kind === 'freeze'}
         onConfirm={confirmReasonAction}
         onClose={() => setReasonAction(null)}
+      />
+
+      {/* Ommaviy muzlatish/aktivlashtirish — sabab va sana BIR marta tanlanadi va hammasiga
+          bir xil qo'llanadi. Yakka amaldagi modal bilan aralashmasin deb ALOHIDA element. */}
+      <ReasonPromptModal
+        open={!!bulkAction}
+        category={bulkAction === 'freeze' ? 'freeze' : 'activate'}
+        title={bulkAction === 'freeze' ? 'Ommaviy muzlatish' : 'Ommaviy aktivlashtirish'}
+        message={
+          bulkAction === 'freeze'
+            ? `${selectedCount} ta o'quvchi — shu sanadan boshlab oylik to'lov hisoblanmaydi.`
+            : `${selectedCount} ta o'quvchi — shu sanadan boshlab qisman oylik hisoblanadi.`
+        }
+        confirmLabel={bulkAction === 'freeze' ? 'Muzlatish' : 'Aktivlashtirish'}
+        tone={bulkAction === 'freeze' ? 'sky' : 'brand'}
+        showDate
+        showRetentionBonus={bulkAction === 'activate' && canSetBonus}
+        onConfirm={confirmBulkAction}
+        onClose={() => setBulkAction(null)}
       />
 
       {/* Yangi o'quvchi yaratish — saqlangach avtomatik shu guruhga qo'shiladi. */}

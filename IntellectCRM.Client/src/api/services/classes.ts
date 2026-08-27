@@ -207,6 +207,98 @@ export async function transferMember(
   })
 }
 
+/**
+ * OMMAVIY (bir paytda ko'p o'quvchi) muzlatish/aktivlashtirish natijasi.
+ * Amal BITTA xato tufayli TO'XTAMAYDI — shuning uchun javob "nima bo'ldi" ni to'liq ochib beradi.
+ */
+export interface BulkMembershipResult {
+  /** So'ralgan o'quvchilar soni. */
+  requested: number
+  /** Mos kelgan a'zoliklar (bitta o'quvchi bir necha guruhda bo'lishi mumkin). */
+  memberships: number
+  /** Haqiqatan o'zgargan a'zoliklar. */
+  changed: number
+  /** Haqiqatan o'zgargan o'quvchilar. */
+  students: number
+  /** Allaqachon kerakli holatda bo'lgani uchun o'tkazib yuborilgani. */
+  skipped: number
+  failed: number
+  /** Umuman faol a'zoligi topilmagan o'quvchilar. */
+  noMembership: number
+  /** Muzlatishda balansga qaytarilgan umumiy summa. */
+  restored: number
+  movedAdvance: number
+  catchUpMonths: number
+  errors: string[]
+}
+
+const EMPTY_BULK: BulkMembershipResult = {
+  requested: 0, memberships: 0, changed: 0, students: 0, skipped: 0, failed: 0,
+  noMembership: 0, restored: 0, movedAdvance: 0, catchUpMonths: 0, errors: [],
+}
+
+/**
+ * Tanlangan o'quvchilarni BIR PAYTDA muzlatish.
+ *
+ * `groupId` berilsa — faqat SHU guruhdagi a'zoliklar (guruh sahifasi);
+ * `null` bo'lsa — o'quvchilarning BARCHA guruhlardagi faol a'zoliklari (o'quvchilar ro'yxati).
+ * Hisob-kitob yakka "Muzlatish" bilan AYNAN bir xil (server bitta manbadan ishlaydi).
+ */
+export async function bulkFreezeMembers(
+  groupId: string | null,
+  studentIds: string[],
+  date: string,
+  reasonId?: string,
+): Promise<BulkMembershipResult> {
+  if (USE_MOCK) {
+    await delay(200)
+    return { ...EMPTY_BULK, requested: studentIds.length, memberships: studentIds.length, changed: studentIds.length, students: studentIds.length }
+  }
+  const url = groupId
+    ? `/admin/classes/${groupId}/members/bulk-freeze`
+    : '/admin/classes/members/bulk-freeze'
+  const { data } = await api.post<BulkMembershipResult>(url, { studentIds, date, reasonId })
+  return data
+}
+
+/**
+ * Tanlangan o'quvchilarni BIR PAYTDA aktivlashtirish (sinov/muzlatilgan → faol).
+ * Har biriga qisman oy to'lovi yakka aktivlashtirishdagidek hisoblanadi.
+ */
+export async function bulkActivateMembers(
+  groupId: string | null,
+  studentIds: string[],
+  date: string,
+  retentionBonus?: boolean,
+): Promise<BulkMembershipResult> {
+  if (USE_MOCK) {
+    await delay(200)
+    return { ...EMPTY_BULK, requested: studentIds.length, memberships: studentIds.length, changed: studentIds.length, students: studentIds.length }
+  }
+  const url = groupId
+    ? `/admin/classes/${groupId}/members/bulk-activate`
+    : '/admin/classes/members/bulk-activate'
+  const body: Record<string, unknown> = { studentIds, date }
+  if (retentionBonus !== undefined) body.retentionBonus = retentionBonus
+  const { data } = await api.post<BulkMembershipResult>(url, body)
+  return data
+}
+
+/**
+ * Ommaviy amal natijasini foydalanuvchiga ko'rsatiladigan QISQA matnga aylantiradi.
+ * "Jimgina tushib qolgan o'quvchi bo'lmasin" — o'tkazib yuborilgani ham, xatosi ham yoziladi.
+ */
+export function bulkMembershipSummary(r: BulkMembershipResult, action: 'freeze' | 'activate'): string {
+  const verb = action === 'freeze' ? 'muzlatildi' : 'aktivlashtirildi'
+  const parts = [`${r.changed} ta a'zolik ${verb}` + (r.students && r.students !== r.changed ? ` (${r.students} ta o'quvchi)` : '')]
+  if (r.skipped > 0) parts.push(`${r.skipped} tasi allaqachon shu holatda edi`)
+  if (r.noMembership > 0) parts.push(`${r.noMembership} tasida mos a'zolik topilmadi`)
+  if (r.failed > 0) parts.push(`${r.failed} tasida xato`)
+  let text = parts.join(', ') + '.'
+  if (r.errors.length > 0) text += `\n\n${r.errors.join('\n')}`
+  return text
+}
+
 /** A'zolikni SINOVGA qaytarish (active/frozen → trial). Sabab (ixtiyoriy). */
 export async function returnMemberToTrial(id: string, studentId: string, reasonId?: string): Promise<void> {
   if (USE_MOCK) {

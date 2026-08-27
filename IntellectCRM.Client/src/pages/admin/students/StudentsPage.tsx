@@ -2,7 +2,7 @@
 import { Link, useNavigate } from 'react-router-dom'
 import { usePersistentState } from '@/hooks/usePersistentState'
 import { StudentViewModal } from './StudentViewModal'
-import { Plus, Search, Pencil, Trash2, Send, Download, X, Wallet, History, Archive, RotateCcw, FileDown, Upload, ChevronLeft, ChevronRight, Lock, LockOpen, Loader2, Phone, PhoneCall, Cake, Medal } from 'lucide-react'
+import { Plus, Search, Pencil, Trash2, Send, Download, X, Wallet, History, Archive, RotateCcw, FileDown, Upload, ChevronLeft, ChevronRight, Lock, LockOpen, Loader2, Phone, PhoneCall, Cake, Medal, Snowflake, CheckCircle2 } from 'lucide-react'
 import type { Gender, Student, Teacher, District } from '@/types'
 import { getDistricts } from '@/api/services/districts'
 import type { StudentPayload, StudentImportResult } from '@/api/services/students'
@@ -23,10 +23,15 @@ import {
   downloadSelectedStudents,
   getStudentBalls,
 } from '@/api/services/students'
-import { getClasses } from '@/api/services/classes'
+import {
+  getClasses,
+  bulkFreezeMembers,
+  bulkActivateMembers,
+  bulkMembershipSummary,
+} from '@/api/services/classes'
 import { getTeachers } from '@/api/services/teachers'
 import { genderLabels } from '@/config/constants'
-import { formatDate, formatMoney, exportToCsv, cn } from '@/lib/utils'
+import { formatDate, formatMoney, exportToCsv, cn, apiErrorMessage } from '@/lib/utils'
 import { useAuth } from '@/context/auth-context'
 import { usePerm } from '@/lib/permissions'
 import { Card } from '@/components/ui/Card'
@@ -165,6 +170,13 @@ export function StudentsPage() {
   const [archiveReasonModal, setArchiveReasonModal] = useState(false)
   /** Tanlanganlar login'ini ommaviy cheklash/ochish — so'rov jarayonida. */
   const [bulkLoginBlocking, setBulkLoginBlocking] = useState(false)
+  /**
+   * Tanlanganlarni ommaviy MUZLATISH / AKTIVLASHTIRISH — qaysi amal uchun tasdiq modali ochiq.
+   * `null` = modal yopiq. Ikkala amal bitta state'da, chunki ular bir vaqtda ochilmaydi.
+   */
+  const [bulkMembership, setBulkMembership] = useState<'freeze' | 'activate' | null>(null)
+  /** Ommaviy a'zolik amali so'rov jarayonida — `bulkLoginBlocking` naqshi bilan bir xil. */
+  const [membershipBusy, setMembershipBusy] = useState(false)
 
   // Excel'dan ommaviy import
   const [importing, setImporting] = useState(false)
@@ -630,6 +642,50 @@ export function StudentsPage() {
       .finally(() => setBulkLoginBlocking(false))
   }
 
+  /**
+   * Tanlanganlarni BIR PAYTDA muzlatish yoki aktivlashtirish.
+   *
+   * ⚠️ Bu sahifada GURUH tanlanmaydi — shuning uchun `groupId = null`, ya'ni amal o'quvchining
+   * BARCHA guruhlardagi a'zoligiga tegadi (foydalanuvchi tasdiq modalida shu haqda ochiq
+   * ogohlantiriladi). Serverning o'zi holat bo'yicha filtrlaydi: muzlatishda faqat
+   * `active`/`trial`, aktivlashtirishda faqat aktiv BO'LMAGAN a'zoliklar olinadi, mos
+   * kelmagani jimgina o'tkazib yuboriladi — ya'ni bitta noto'g'ri tanlangan o'quvchi tufayli
+   * butun amal to'xtab qolmaydi. Nima bo'lgani `bulkMembershipSummary` da yoziladi.
+   */
+  const handleBulkMembership = (reasonId?: string, date?: string, retentionBonus?: boolean) => {
+    const action = bulkMembership
+    if (!action) return
+    const ids = selectedStudents.map((s) => s.id)
+    if (ids.length === 0) {
+      setBulkMembership(null)
+      return
+    }
+    // Sana modaldan keladi (`showDate`); zaxira sifatida bugungi kun — server sanasiz ishlamaydi.
+    const day = date || new Date().toISOString().slice(0, 10)
+    setMembershipBusy(true)
+    const request =
+      action === 'freeze'
+        ? bulkFreezeMembers(null, ids, day, reasonId)
+        : bulkActivateMembers(null, ids, day, retentionBonus)
+    request
+      .then(async (res) => {
+        alert(bulkMembershipSummary(res, action))
+        setBulkMembership(null)
+        clearSelection()
+        // Ro'yxatni QAYTA yuklaymiz: a'zolik holati ham, BALANS ham o'zgargan bo'lishi mumkin
+        // (muzlatishda summa qaytariladi, aktivlashtirishda qisman oy yoziladi) — buni lokal
+        // yamoq bilan to'g'ri ko'rsatib bo'lmaydi.
+        setStudents(await getStudents())
+      })
+      .catch((e) => {
+        // Modalni YOPAMIZ: uning ichki `submitting` bayrog'i qaytmaydi, ya'ni ochiq qoldirsak
+        // tasdiq tugmasi abadiy o'chiq bo'lib qolardi. Tanlov saqlanadi — qayta urinish mumkin.
+        setBulkMembership(null)
+        alert(apiErrorMessage(e, 'Amalni bajarib bo\'lmadi'))
+      })
+      .finally(() => setMembershipBusy(false))
+  }
+
   /** Arxivdan qaytarish. */
   const handleRestore = (s: Student) => {
     if (!confirm(`"${s.fullName}" o'quvchini arxivdan qaytarish? Login bloklangicha qoladi — keyin parol generatsiya qiling.`)) return
@@ -1007,6 +1063,30 @@ export function StudentsPage() {
                 >
                   <LockOpen className="h-4 w-4" /> Blokdan chiqarish ({selected.size})
                 </Button>
+                {/*
+                  Ommaviy muzlatish/aktivlashtirish — a'zolik holatini o'zgartirish GURUH amali,
+                  shuning uchun darvoza `classes.list` (o'quvchilar ruxsati emas).
+                */}
+                {can('classes.list', 'create') && (
+                  <>
+                    <Button
+                      variant="secondary"
+                      onClick={() => setBulkMembership('freeze')}
+                      disabled={membershipBusy}
+                      className="text-sky-600 hover:text-sky-700"
+                    >
+                      <Snowflake className="h-4 w-4" /> Muzlatish ({selected.size})
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      onClick={() => setBulkMembership('activate')}
+                      disabled={membershipBusy}
+                      className="text-emerald-600 hover:text-emerald-700"
+                    >
+                      <CheckCircle2 className="h-4 w-4" /> Aktivlashtirish ({selected.size})
+                    </Button>
+                  </>
+                )}
               </>
             )}
             {can('students.list', 'delete') && (
@@ -1505,6 +1585,40 @@ export function StudentsPage() {
         onConfirm={handleArchiveSelected}
         onClose={() => {
           if (!archivingSelected) setArchiveReasonModal(false)
+        }}
+      />
+
+      {/*
+        Ommaviy MUZLATISH — sabab va sana bilan.
+        ⚠️ `message` da "BARCHA guruhlardagi" deb ochiq yozilgan: bu sahifada guruh tanlanmaydi,
+        ya'ni foydalanuvchi qamrovni boshqa hech qayerdan bila olmaydi.
+      */}
+      <ReasonPromptModal
+        open={bulkMembership === 'freeze'}
+        category="freeze"
+        title="Ommaviy muzlatish"
+        message={`${selected.size} ta o'quvchining BARCHA guruhlardagi a'zoligi shu sanadan muzlatiladi.`}
+        confirmLabel={membershipBusy ? 'Muzlatilyapti…' : 'Muzlatish'}
+        tone="sky"
+        showDate
+        onConfirm={handleBulkMembership}
+        onClose={() => {
+          if (!membershipBusy) setBulkMembership(null)
+        }}
+      />
+
+      {/* Ommaviy AKTIVLASHTIRISH — sinov/muzlatilgan a'zoliklar faolga o'tadi. */}
+      <ReasonPromptModal
+        open={bulkMembership === 'activate'}
+        category="activate"
+        title="Ommaviy aktivlashtirish"
+        message={`${selected.size} ta o'quvchining BARCHA guruhlardagi a'zoligi shu sanadan aktivlashtiriladi.`}
+        confirmLabel={membershipBusy ? 'Aktivlashtirilyapti…' : 'Aktivlashtirish'}
+        tone="brand"
+        showDate
+        onConfirm={handleBulkMembership}
+        onClose={() => {
+          if (!membershipBusy) setBulkMembership(null)
         }}
       />
     </div>

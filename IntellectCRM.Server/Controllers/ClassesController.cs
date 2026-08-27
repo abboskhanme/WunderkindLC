@@ -606,89 +606,105 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
             if (sg is null)
                 return NotFound(new { message = "Faol a'zolik topilmadi" });
 
+            var r = await ActivateCoreAsync(cls, sg, date, req.RetentionBonus);
             // Allaqachon faol bo'lsa — qayta aktivlashtirish kerak emas (ikki marta hisoblamaslik uchun).
-            if (sg.Status == "active")
-                return Ok(new { ok = true, already = true });
-
-            // SHU OYDA muzlatilgandan keyin qayta aktivlashtirilyaptimi? Bo'lsa, muzlatishgacha studied segment
-            // saqlanib, yangi segment USTIGA QO'SHILADI (aks holda studied portion yo'qolardi).
-            // Muzlatilgan a'zolikni qayta aktivlashtirishga RUXSAT beriladi (avval guard noto'g'ri bloklardi).
-            var reactivateFromFreeze = sg.Status == "frozen"
-                && sg.FrozenAt.Length >= 7 && date.Length >= 7 && sg.FrozenAt[..7] == date[..7];
-
-            sg.Status = "active";
-            sg.ActivatedAt = date;
-            sg.FrozenAt = string.Empty;
-            // RecordedAt — HAQIQIY bugungi sana (date orqaga sanalgan bo'lishi mumkin, masalan o'tgan
-            // oydan aktivlashtirilsa). Jurnalda MemberStart (=date) bilan RecordedAt orasidagi allaqachon
-            // o'tilgan darslar avtomatik "keldi" bo'lib ko'rinmasin — o'qituvchi ularni qo'lda belgilaydi.
-            sg.RecordedAt = AppClock.Today.ToString("yyyy-MM-dd");
-
-            var s = await db.Students.FindAsync(studentId);
-            audit.Record("Membership", $"{id}:{studentId}", "update",
-                $"Aktivlashtirildi: {s?.FullName ?? studentId} — {cls.Name} ({date} sanasidan, " +
-                $"oylik {AuditService.Money(cls.MonthlyFee)} so'm)" +
-                (reactivateFromFreeze ? " — muzlatishdan qaytarildi" : ""),
-                studentId: studentId);
-
-            var catchUpMonths = 0;
-            if (s is not null)
-            {
-                await TuitionService.ChargeActivationProrateAsync(db, s, cls, date, addSegment: reactivateFromFreeze);
-                // ORQAGA SANALGAN aktivlashtirish: aktivlashtirilgan oydan KEYINGI oylardan joriy oygacha
-                // to'liq oylik hisoblar DARHOL yoziladi (aks holda fon xizmati 12 soatgacha kechikardi).
-                // Idempotent — mavjud hisoblarga tegmaydi, kelajak oy yozmaydi.
-                catchUpMonths = await TuitionService.AccrueCatchUpAsync(db, s, cls, date);
-
-                // USHLAB TURISH BONUSI: shu guruh FANI bo'yicha bonus hisoblansinmi (aktivlashtirish
-                // oynasidagi ptichka). Sanoq AYNAN shu — aktivlashtirilgan — oydan boshlanadi:
-                // o'quvchi guruhga bir oyda qo'shilib, keyingi oydan aktivlashtirilishi mumkin.
-                // req.RetentionBonus == null bo'lsa tegilmaydi (eski chaqiruvlar).
-                //
-                // RUXSAT: ptichkani FAQAT superadmin yoki "retentionBonus" ruxsati berilgan xodim
-                // qo'ya oladi (oddiy `admin` roli ham kirmaydi — markaz egasining talabi).
-                // Ruxsatsiz kelgan qiymat JIM e'tiborsiz qoldiriladi: UI ptichkani ko'rsatmaydi,
-                // ya'ni bunday so'rov faqat qo'lda yasalgan bo'lishi mumkin va u aktivlashtirishning
-                // o'zini bloklamasligi kerak.
-                var maySetBonus = AdminPermAttribute.IsSuperAdminOrGranted(User, RetentionBonusPerm);
-                await RetentionBonusService.ApplyOnActivateAsync(
-                    db, studentId, cls, date, maySetBonus ? req.RetentionBonus : null, Actor);
-            }
-
-            // AVANSNI KO'CHIRISH (guruh almashtirish QO'LDA bajarilganda): o'quvchi SHU OYDA boshqa guruhda
-            // muzlatilgan bo'lib, o'sha guruhga to'lagan puli muzlatish hisobidan ORTIB QOLGAN bo'lsa — u shu
-            // yangi guruhga o'tadi. Aks holda to'lagan o'quvchi yangi guruhda "qarzdor" (qizil) ko'rinardi.
-            // Faqat AYNAN SHU OYDA muzlatilgan a'zolik (ya'ni guruh almashtirish belgisi) hisobga olinadi —
-            // ilgari muzlatilgan (masalan ta'tildagi) a'zolikning avansi tegilmaydi.
-            var movedAdvance = 0m;
-            if (s is not null && date.Length >= 7)
-            {
-                var month = date[..7];
-                var frozen = await db.StudentGroups
-                    .Where(x => x.StudentId == studentId && x.GroupId != id && x.Status == "frozen")
-                    .ToListAsync();
-                foreach (var fz in frozen.Where(x => x.FrozenAt.Length >= 7 && x.FrozenAt[..7] == month))
-                {
-                    var fromGroup = await db.Classes.FindAsync(fz.GroupId);
-                    if (fromGroup is null) continue;
-                    var carried = await TuitionService.CarryGroupAdvanceAsync(db, s, fromGroup, cls, month);
-                    if (carried <= 0) continue;
-                    movedAdvance += carried;
-                    audit.Record("Membership", $"{id}:{studentId}", "update",
-                        $"To'lov guruhi ko'chirildi: {fromGroup.Name} → {cls.Name} — {AuditService.Money(carried)} so'm ({month})",
-                        studentId: studentId);
-                }
-            }
+            if (r.Already) return Ok(new { ok = true, already = true });
 
             await db.SaveChangesAsync();
 
-            return Ok(new { ok = true, movedAdvance, catchUpMonths });
+            return Ok(new { ok = true, movedAdvance = r.MovedAdvance, catchUpMonths = r.CatchUpMonths });
         }
         catch (Exception ex)
         {
             logger.LogError(ex, "ActivateMember error for group={GroupId}, student={StudentId}: {Message}", id, studentId, ex.Message);
             return StatusCode(500, new { message = "Aktivlashtirish xatosi", error = ex.Message });
         }
+    }
+
+    /// <summary>Bitta a'zolikni AKTIVLASHTIRISH — hisob-kitobning YAGONA manbai: yakka
+    /// <see cref="ActivateMember"/> ham, OMMAVIY <see cref="BulkApplyAsync"/> ham AYNAN shuni chaqiradi
+    /// (aks holda ikki oqim vaqt o'tib bir-biridan ayrilib ketardi).
+    /// <para><c>SaveChangesAsync</c> QILMAYDI — chaqiruvchi saqlaydi (audit yozuvi ham shu tranzaksiyada).</para></summary>
+    /// <returns><c>Already</c> — allaqachon faol edi (hech narsa o'zgarmadi).</returns>
+    private async Task<(bool Already, decimal MovedAdvance, int CatchUpMonths)> ActivateCoreAsync(
+        Group cls, StudentGroup sg, string date, bool? retentionBonus)
+    {
+        // Allaqachon faol bo'lsa — qayta aktivlashtirish kerak emas (ikki marta hisoblamaslik uchun).
+        if (sg.Status == "active") return (true, 0m, 0);
+
+        var studentId = sg.StudentId;
+
+        // SHU OYDA muzlatilgandan keyin qayta aktivlashtirilyaptimi? Bo'lsa, muzlatishgacha studied segment
+        // saqlanib, yangi segment USTIGA QO'SHILADI (aks holda studied portion yo'qolardi).
+        // Muzlatilgan a'zolikni qayta aktivlashtirishga RUXSAT beriladi (avval guard noto'g'ri bloklardi).
+        var reactivateFromFreeze = sg.Status == "frozen"
+            && sg.FrozenAt.Length >= 7 && date.Length >= 7 && sg.FrozenAt[..7] == date[..7];
+
+        sg.Status = "active";
+        sg.ActivatedAt = date;
+        sg.FrozenAt = string.Empty;
+        // RecordedAt — HAQIQIY bugungi sana (date orqaga sanalgan bo'lishi mumkin, masalan o'tgan
+        // oydan aktivlashtirilsa). Jurnalda MemberStart (=date) bilan RecordedAt orasidagi allaqachon
+        // o'tilgan darslar avtomatik "keldi" bo'lib ko'rinmasin — o'qituvchi ularni qo'lda belgilaydi.
+        sg.RecordedAt = AppClock.Today.ToString("yyyy-MM-dd");
+
+        var s = await db.Students.FindAsync(studentId);
+        audit.Record("Membership", $"{cls.Id}:{studentId}", "update",
+            $"Aktivlashtirildi: {s?.FullName ?? studentId} — {cls.Name} ({date} sanasidan, " +
+            $"oylik {AuditService.Money(cls.MonthlyFee)} so'm)" +
+            (reactivateFromFreeze ? " — muzlatishdan qaytarildi" : ""),
+            studentId: studentId);
+
+        var catchUpMonths = 0;
+        if (s is not null)
+        {
+            await TuitionService.ChargeActivationProrateAsync(db, s, cls, date, addSegment: reactivateFromFreeze);
+            // ORQAGA SANALGAN aktivlashtirish: aktivlashtirilgan oydan KEYINGI oylardan joriy oygacha
+            // to'liq oylik hisoblar DARHOL yoziladi (aks holda fon xizmati 12 soatgacha kechikardi).
+            // Idempotent — mavjud hisoblarga tegmaydi, kelajak oy yozmaydi.
+            catchUpMonths = await TuitionService.AccrueCatchUpAsync(db, s, cls, date);
+
+            // USHLAB TURISH BONUSI: shu guruh FANI bo'yicha bonus hisoblansinmi (aktivlashtirish
+            // oynasidagi ptichka). Sanoq AYNAN shu — aktivlashtirilgan — oydan boshlanadi:
+            // o'quvchi guruhga bir oyda qo'shilib, keyingi oydan aktivlashtirilishi mumkin.
+            // retentionBonus == null bo'lsa tegilmaydi (eski chaqiruvlar).
+            //
+            // RUXSAT: ptichkani FAQAT superadmin yoki "retentionBonus" ruxsati berilgan xodim
+            // qo'ya oladi (oddiy `admin` roli ham kirmaydi — markaz egasining talabi).
+            // Ruxsatsiz kelgan qiymat JIM e'tiborsiz qoldiriladi: UI ptichkani ko'rsatmaydi,
+            // ya'ni bunday so'rov faqat qo'lda yasalgan bo'lishi mumkin va u aktivlashtirishning
+            // o'zini bloklamasligi kerak.
+            var maySetBonus = AdminPermAttribute.IsSuperAdminOrGranted(User, RetentionBonusPerm);
+            await RetentionBonusService.ApplyOnActivateAsync(
+                db, studentId, cls, date, maySetBonus ? retentionBonus : null, Actor);
+        }
+
+        // AVANSNI KO'CHIRISH (guruh almashtirish QO'LDA bajarilganda): o'quvchi SHU OYDA boshqa guruhda
+        // muzlatilgan bo'lib, o'sha guruhga to'lagan puli muzlatish hisobidan ORTIB QOLGAN bo'lsa — u shu
+        // yangi guruhga o'tadi. Aks holda to'lagan o'quvchi yangi guruhda "qarzdor" (qizil) ko'rinardi.
+        // Faqat AYNAN SHU OYDA muzlatilgan a'zolik (ya'ni guruh almashtirish belgisi) hisobga olinadi —
+        // ilgari muzlatilgan (masalan ta'tildagi) a'zolikning avansi tegilmaydi.
+        var movedAdvance = 0m;
+        if (s is not null && date.Length >= 7)
+        {
+            var month = date[..7];
+            var frozen = await db.StudentGroups
+                .Where(x => x.StudentId == studentId && x.GroupId != cls.Id && x.Status == "frozen")
+                .ToListAsync();
+            foreach (var fz in frozen.Where(x => x.FrozenAt.Length >= 7 && x.FrozenAt[..7] == month))
+            {
+                var fromGroup = await db.Classes.FindAsync(fz.GroupId);
+                if (fromGroup is null) continue;
+                var carried = await TuitionService.CarryGroupAdvanceAsync(db, s, fromGroup, cls, month);
+                if (carried <= 0) continue;
+                movedAdvance += carried;
+                audit.Record("Membership", $"{cls.Id}:{studentId}", "update",
+                    $"To'lov guruhi ko'chirildi: {fromGroup.Name} → {cls.Name} — {AuditService.Money(carried)} so'm ({month})",
+                    studentId: studentId);
+            }
+        }
+
+        return (false, movedAdvance, catchUpMonths);
     }
 
     /// <summary>A'zolikni MUZLATISH — kiritilgan sanadan (shu oydan) boshlab oylik to'lov hisoblanmaydi. TRANSACTION:
@@ -704,28 +720,46 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
     {
         var date = string.IsNullOrWhiteSpace(req.Date) ? AppClock.Today.ToString("yyyy-MM-dd") : req.Date!.Trim();
 
+        var cls = await db.Classes.FindAsync(id);
+        if (cls is null) return NotFound(new { message = "Guruh topilmadi" });
+
         // Refresh'langan ma'lumot bilan oqiylik (dirty-read oldini olish).
         var sg = await db.StudentGroups
             .FirstOrDefaultAsync(x => x.GroupId == id && x.StudentId == studentId && x.IsActive);
         if (sg is null)
             return NotFound(new { message = "Faol a'zolik topilmadi" });
 
+        var reason = await ReasonLabelAsync(req.ReasonId);
+        var r = await FreezeCoreAsync(cls, sg, date, reason);
+        // trial yoki active emas — kutilmagan holat (eski/buzilgan yozuv).
+        if (r.Error is not null) return BadRequest(new { message = r.Error });
         // Allaqachon muzlatilgan bo'lsa — qayta muzlatish kerak emas (takroriy prorate'ni oldini olamiz).
         // Idempotent: 400 o'rniga jim qaytamiz (foydalanuvchi tugmani qayta bossa xato chiqmasin).
-        if (sg.Status == "frozen")
-            return Ok(new { ok = true, already = true });
-        // trial yoki active emas — kutilmagan holat (eski/buzilgan yozuv).
+        if (r.Already) return Ok(new { ok = true, already = true });
+
+        await db.SaveChangesAsync();
+
+        return Ok(new { ok = true, restored = r.Restored });
+    }
+
+    /// <summary>Bitta a'zolikni MUZLATISH — hisob-kitobning YAGONA manbai: yakka
+    /// <see cref="FreezeMember"/> ham, OMMAVIY <see cref="BulkApplyAsync"/> ham AYNAN shuni chaqiradi.
+    /// <para><c>SaveChangesAsync</c> QILMAYDI — chaqiruvchi saqlaydi.</para></summary>
+    /// <returns><c>Already</c> — allaqachon muzlatilgan; <c>Error</c> — holat mos emas (hech narsa o'zgarmadi).</returns>
+    private async Task<(bool Already, decimal Restored, string? Error)> FreezeCoreAsync(
+        Group cls, StudentGroup sg, string date, string reasonLabel)
+    {
+        if (sg.Status == "frozen") return (true, 0m, null);
         if (sg.Status != "active" && sg.Status != "trial")
-            return BadRequest(new { message = $"A'zolik holatini o'zgartirib bo'lmadi (hozirgi holat: {sg.Status})" });
+            return (false, 0m, $"A'zolik holatini o'zgartirib bo'lmadi (hozirgi holat: {sg.Status})");
 
         var activatedAt = sg.ActivatedAt;
         sg.Status = "frozen";
         sg.FrozenAt = date;
 
-        var cls = await db.Classes.FindAsync(id);
-        var s = await db.Students.FindAsync(studentId);
+        var s = await db.Students.FindAsync(sg.StudentId);
         var restored = 0m;
-        if (cls is not null && s is not null)
+        if (s is not null)
         {
             // Muzlatish OYINING qisman to'lovi (shu sanagacha qatnashgan darslar) + ORQAGA SANALGAN
             // muzlatishda keyingi oylar hisobini bekor qilish — hammasi YAGONA manbada
@@ -733,15 +767,184 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
             restored = (await MembershipBilling.SettleFreezeAsync(db, s, cls, activatedAt, date)).Restored;
         }
 
-        var reason = await ReasonLabelAsync(req.ReasonId);
-        audit.Record("Membership", $"{id}:{studentId}", "update",
-            $"Muzlatildi ({date}, guruh: {cls?.Name ?? id})"
+        audit.Record("Membership", $"{cls.Id}:{sg.StudentId}", "update",
+            $"Muzlatildi ({date}, guruh: {cls.Name})"
                 + (restored > 0 ? $" — keyingi oylar hisobi bekor qilindi: {AuditService.Money(restored)} so'm" : "")
-                + (reason.Length > 0 ? $" — sabab: {reason}" : ""),
-            studentId: studentId);
-        await db.SaveChangesAsync();
+                + (reasonLabel.Length > 0 ? $" — sabab: {reasonLabel}" : ""),
+            studentId: sg.StudentId);
 
-        return Ok(new { ok = true, restored });
+        return (false, restored, null);
+    }
+
+    /* ---------- OMMAVIY (bir paytda ko'p o'quvchi) muzlatish / aktivlashtirish ---------- */
+
+    /// <summary>Bir so'rovda ko'rib chiqiladigan A'ZOLIKLAR chegarasi — qoida
+    /// <see cref="MembershipBulk"/> da (sof funksiya, testlangan).</summary>
+    private const int MaxBulkMembers = MembershipBulk.MaxTargets;
+
+    /// <summary>Javobga tushadigan xato xabarlari chegarasi — qolganlari faqat logda.</summary>
+    private const int MaxBulkErrors = 20;
+
+    /// <summary>GURUH ichida tanlangan o'quvchilarni BIR PAYTDA muzlatish.</summary>
+    [HttpPost("{id}/members/bulk-freeze")]
+    public Task<ActionResult<BulkMembershipResultDto>> BulkFreezeMembers(string id, BulkMembershipRequest req)
+        => BulkApplyAsync(id, req, freeze: true);
+
+    /// <summary>GURUH ichida tanlangan o'quvchilarni BIR PAYTDA aktivlashtirish.</summary>
+    [HttpPost("{id}/members/bulk-activate")]
+    public Task<ActionResult<BulkMembershipResultDto>> BulkActivateMembers(string id, BulkMembershipRequest req)
+        => BulkApplyAsync(id, req, freeze: false);
+
+    /// <summary>O'QUVCHILAR RO'YXATIDAN: tanlanganlarning BARCHA guruhlardagi faol a'zoliklarini muzlatish.</summary>
+    [HttpPost("members/bulk-freeze")]
+    public Task<ActionResult<BulkMembershipResultDto>> BulkFreezeAllGroups(BulkMembershipRequest req)
+        => BulkApplyAsync(null, req, freeze: true);
+
+    /// <summary>O'QUVCHILAR RO'YXATIDAN: tanlanganlarning BARCHA guruhlardagi faol a'zoliklarini aktivlashtirish.</summary>
+    [HttpPost("members/bulk-activate")]
+    public Task<ActionResult<BulkMembershipResultDto>> BulkActivateAllGroups(BulkMembershipRequest req)
+        => BulkApplyAsync(null, req, freeze: false);
+
+    /// <summary>
+    /// OMMAVIY muzlatish/aktivlashtirish. Hisob-kitob yakka amallar bilan AYNAN bir xil —
+    /// <see cref="FreezeCoreAsync"/> / <see cref="ActivateCoreAsync"/> chaqiriladi, ya'ni
+    /// qisman oy to'lovi, orqaga sanalgan hisoblar, avans ko'chishi va AUDIT yozuvi
+    /// (har o'quvchiga ALOHIDA qator) o'zgarishsiz qoladi.
+    /// </summary>
+    /// <param name="groupId">Guruh (guruh sahifasidan) yoki <c>null</c> — o'quvchining BARCHA faol a'zoliklari
+    /// (o'quvchilar ro'yxatidan).</param>
+    /// <remarks>
+    /// ⚠️ Har a'zolik ALOHIDA saqlanadi (o'z <c>SaveChanges</c>i bilan): bittasi xato bersa qolganlari
+    /// baribir bajariladi — 100 ta tanlangandan bittasi tufayli hech kim muzlamay qolmasin
+    /// (`contacts` bulk qoidasi bilan bir xil mantiq). Xato bergan a'zolikning yarim o'zgarishlari
+    /// <c>ChangeTracker.Clear()</c> bilan bekor qilinadi, aks holda ular KEYINGI o'quvchining
+    /// saqlashi bilan birga bazaga tushib ketardi.
+    /// </remarks>
+    private async Task<ActionResult<BulkMembershipResultDto>> BulkApplyAsync(
+        string? groupId, BulkMembershipRequest req, bool freeze)
+    {
+        var ids = (req.StudentIds ?? Array.Empty<string>())
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Select(x => x.Trim())
+            .Distinct()
+            .ToList();
+        if (ids.Count == 0) return BadRequest(new { message = "O'quvchi tanlanmagan" });
+        if (ids.Count > MaxBulkMembers)
+            return BadRequest(new { message = $"Bir vaqtda ko'pi bilan {MaxBulkMembers} ta o'quvchi tanlash mumkin" });
+
+        var date = string.IsNullOrWhiteSpace(req.Date) ? AppClock.Today.ToString("yyyy-MM-dd") : req.Date!.Trim();
+        if (date.Length < 10 || !DateOnly.TryParse(date, out _))
+            return BadRequest(new { message = "Sana noto'g'ri (yyyy-MM-dd)" });
+
+        if (groupId is not null && await db.Classes.FindAsync(groupId) is null)
+            return NotFound(new { message = "Guruh topilmadi" });
+
+        // Tanlanganlarning FAOL a'zoliklari — faqat KALITLAR (tracking'siz): har bir a'zolik sikl
+        // ichida QAYTA o'qiladi, chunki xato bo'lganda `ChangeTracker.Clear()` oldindan yuklangan
+        // obyektlarni uzib qo'yardi.
+        var q = db.StudentGroups.AsNoTracking().Where(x => x.IsActive && ids.Contains(x.StudentId));
+        if (groupId is not null) q = q.Where(x => x.GroupId == groupId);
+        var all = await q
+            .OrderBy(x => x.GroupId).ThenBy(x => x.StudentId)
+            .Select(x => new { x.GroupId, x.StudentId, x.Status })
+            .ToListAsync();
+        if (all.Count > MaxBulkMembers)
+            return BadRequest(new { message = $"Bir vaqtda ko'pi bilan {MaxBulkMembers} ta a'zolik o'zgartiriladi (topildi: {all.Count})" });
+
+        // ⚠️ Holat filtri SQL'da EMAS, `MembershipBulk.IsEligible` da (sof funksiya, testlangan):
+        // qoida bir joyda tursin. Yon foydasi — allaqachon kerakli holatdagilar YO'QOLMAYDI,
+        // ular javobda "o'tkazib yuborildi" bo'lib sanaladi ("nega bu odam o'zgarmadi?" savoli
+        // "a'zoligi yo'q" bilan ARALASHMASIN).
+        var keys = all.Where(x => MembershipBulk.IsEligible(x.Status, freeze)).ToList();
+        var skippedNotEligible = all.Count - keys.Count;
+
+        var names = await db.Students.AsNoTracking()
+            .Where(s => ids.Contains(s.Id))
+            .Select(s => new { s.Id, s.FullName })
+            .ToDictionaryAsync(x => x.Id, x => x.FullName);
+
+        var reasonLabel = await ReasonLabelAsync(req.ReasonId);
+
+        var changed = 0;
+        var skipped = skippedNotEligible;
+        var failed = 0;
+        var restored = 0m;
+        var movedAdvance = 0m;
+        var catchUpMonths = 0;
+        var errors = new List<string>();
+        var touched = new HashSet<string>();
+
+        foreach (var key in keys)
+        {
+            var who = names.TryGetValue(key.StudentId, out var n) ? n : key.StudentId;
+            try
+            {
+                var cls = await db.Classes.FindAsync(key.GroupId);
+                var sg = await db.StudentGroups
+                    .FirstOrDefaultAsync(x => x.GroupId == key.GroupId && x.StudentId == key.StudentId && x.IsActive);
+                // Oradan o'chib ketgan bo'lsa (parallel amal) — jim o'tkazamiz.
+                if (cls is null || sg is null) { skipped++; continue; }
+
+                if (freeze)
+                {
+                    var r = await FreezeCoreAsync(cls, sg, date, reasonLabel);
+                    if (r.Error is not null)
+                    {
+                        failed++;
+                        if (errors.Count < MaxBulkErrors) errors.Add($"{who} ({cls.Name}): {r.Error}");
+                        continue;
+                    }
+                    if (r.Already) { skipped++; continue; }
+                    restored += r.Restored;
+                }
+                else
+                {
+                    var r = await ActivateCoreAsync(cls, sg, date, req.RetentionBonus);
+                    if (r.Already) { skipped++; continue; }
+                    movedAdvance += r.MovedAdvance;
+                    catchUpMonths += r.CatchUpMonths;
+                }
+
+                await db.SaveChangesAsync();
+                changed++;
+                touched.Add(key.StudentId);
+            }
+            catch (Exception ex)
+            {
+                failed++;
+                if (errors.Count < MaxBulkErrors) errors.Add($"{who}: {ex.Message}");
+                logger.LogError(ex, "Bulk {Action} error: group={GroupId}, student={StudentId}: {Message}",
+                    freeze ? "freeze" : "activate", key.GroupId, key.StudentId, ex.Message);
+            }
+            finally
+            {
+                // Saqlangandan keyin ham tozalanadi: har a'zolik MUSTAQIL bo'lsin (bittasining
+                // yarim o'zgarishi keyingisining saqlashiga qo'shilib ketmasin) va 500 ta
+                // kuzatilayotgan obyekt har saqlashda qayta tekshirilmasin.
+                db.ChangeTracker.Clear();
+            }
+        }
+
+        // "Faol a'zoligi umuman yo'q" — allaqachon kerakli holatda bo'lganlar bunga KIRMAYDI
+        // (ular `skipped` da), aks holda ikki butunlay boshqa sabab bitta songa qo'shilib ketardi.
+        var noMembership = ids.Count - all.Select(k => k.StudentId).Distinct().Count();
+
+        logger.LogInformation(
+            "BulkMembership: action={Action} group={GroupId} date={Date} requested={Requested} memberships={Memberships} changed={Changed} skipped={Skipped} failed={Failed}",
+            freeze ? "freeze" : "activate", groupId ?? "*", date, ids.Count, all.Count, changed, skipped, failed);
+
+        return Ok(new BulkMembershipResultDto(
+            Requested: ids.Count,
+            Memberships: all.Count,
+            Changed: changed,
+            Students: touched.Count,
+            Skipped: skipped,
+            Failed: failed,
+            NoMembership: noMembership,
+            Restored: restored,
+            MovedAdvance: movedAdvance,
+            CatchUpMonths: catchUpMonths,
+            Errors: errors.ToArray()));
     }
 
     /// <summary>
