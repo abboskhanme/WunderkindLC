@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import type { ChatMessage } from '@/types'
 import type { HubConnection } from '@microsoft/signalr'
@@ -172,8 +172,18 @@ export function UnreadProvider({ children }: { children: ReactNode }) {
     }
   }, [])
 
+  // ⚠️ `value` MEMO qilinadi (AuthProvider dagi bilan bir xil naqsh). Ilgari bu yerda har
+  // renderda YANGI obyekt tug'ilardi — ya'ni har SignalR xabarida `useUnread()` chaqiradigan
+  // HAR bir consumer (Sidebar belgisi, ChatPanel, NotificationBell) qayta render bo'lardi,
+  // holbuki `unreadChannels` o'zgarmagan bo'lishi mumkin. Uchala funksiya `useCallback` bilan,
+  // shuning uchun obyekt faqat `unreadChannels` haqiqatan o'zgarganda yangilanadi.
+  const value = useMemo(
+    () => ({ unreadChannels, markRead, subscribe, onReconnect }),
+    [unreadChannels, markRead, subscribe, onReconnect],
+  )
+
   return (
-    <UnreadContext.Provider value={{ unreadChannels, markRead, subscribe, onReconnect }}>
+    <UnreadContext.Provider value={value}>
       {children}
     </UnreadContext.Provider>
   )

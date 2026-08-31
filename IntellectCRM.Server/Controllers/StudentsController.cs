@@ -486,7 +486,18 @@ public class StudentsController(
         var candidateKeys = candidates.Select(c => c.Key).ToHashSet();
 
         // Arxivdagilar ham — barcha o'quvchilar.
-        var students = await db.Students.ToListAsync();
+        // ⚠️ Faqat KERAKLI ustunlar va `AsNoTracking()`: bu endpoint forma to'ldirilayotganda
+        // (har maydon `blur`ida) chaqiriladi, ilgari esa har safar to'liq `Student` entity'lari
+        // (passport, manzil, chegirma va h.k.) change-tracker bilan yuklanardi.
+        // `PhoneUtil.Key` normalizatsiyasi SQL'ga tarjima bo'lmaydi, shuning uchun solishtirish
+        // C# da qoladi — lekin tortiladigan ma'lumot bir necha barobar kamaydi.
+        var students = await db.Students.AsNoTracking()
+            .Select(s => new
+            {
+                s.Id, s.FullName, s.ClassName, s.IsArchived,
+                s.Phone, s.FatherPhone, s.MotherPhone, s.ParentPhone,
+            })
+            .ToListAsync();
         var matches = new List<PhoneMatchDto>();
         foreach (var s in students)
         {

@@ -139,6 +139,20 @@ export function StudentsPage() {
 
   // filtrlar — sahifadan chiqib qaytilganda saqlanadi (usePersistentState)
   const [search, setSearch] = usePersistentState('students.search', '')
+  /**
+   * Qidiruv maydonining JORIY matni. `usePersistentState` har `setState` da
+   * `sessionStorage.setItem` (sinxron I/O) qiladi — ya'ni har HARF diskka yozilib, yozish
+   * sezilarli sekinlashardi. Endi input LOKAL state'dan chiziladi (darhol), saqlanadigan va
+   * FILTRLAYDIGAN qiymat esa 250 ms tinchlikdan keyin yangilanadi.
+   * ⚠️ Boshlang'ich qiymat saqlangan `search` dan olinadi — sahifaga qaytilganda qidiruv
+   * avvalgidek TIKLANADI.
+   */
+  const [searchInput, setSearchInput] = useState(search)
+  useEffect(() => {
+    if (searchInput === search) return
+    const t = setTimeout(() => setSearch(searchInput), 250)
+    return () => clearTimeout(t)
+  }, [searchInput, search, setSearch])
   const [classFilter, setClassFilter] = usePersistentState('students.classFilter', 'all')
   const [teacherFilter, setTeacherFilter] = usePersistentState('students.teacherFilter', 'all')
   const [genderFilter, setGenderFilter] = usePersistentState<'all' | Gender>('students.genderFilter', 'all')
@@ -308,7 +322,13 @@ export function StudentsPage() {
   /** "dan" > "gacha" — hech kim topilmaydi; foydalanuvchiga ochiq aytiladi (jim bo'sh ro'yxat emas). */
   const debtRangeInvalid = debtMinNum !== null && debtMaxNum !== null && debtMinNum > debtMaxNum
 
-  const filtered = source.filter((s) => {
+  /**
+   * Filtrlash + saralash — `useMemo` bilan (yuqoridagi `stateCounts` naqshi). Ilgari bu ish HAR
+   * renderda qaytadan bajarilardi: bitta harf yozilganda ham, katakcha belgilanganda ham, modal
+   * ochilganda ham butun ro'yxat qaytadan filtrlanib-saralanardi. Natija o'zgarmaydi — faqat
+   * haqiqatan bog'liq qiymat o'zgargandagina qayta hisoblanadi.
+   */
+  const filtered = useMemo(() => source.filter((s) => {
     const q = search.trim().toLowerCase()
     const matchSearch =
       !q ||
@@ -380,17 +400,24 @@ export function StudentsPage() {
       }
       // "Yangi kiritilgani tepada": tizimga kiritilgan vaqt (bo'lmasa qabul sanasi) bo'yicha kamayish.
       return (b.createdAt || b.enrollmentDate || '').localeCompare(a.createdAt || a.enrollmentDate || '')
-    })
+    }),
+  [source, search, classFilter, teacherFilter, genderFilter, balanceFilter, debtRangeOn, debtMinNum, debtMaxNum, activeFilter, districtFilter, schoolFilter, birthdayToday, todayMonthDay, photoFilter, sort, ballMap])
 
   /** Filtrlangan ro'yxatdagi JAMI qarz (musbat son) — toolbar o'ng tomonida ko'rsatiladi. */
-  const filteredDebtTotal = filtered.reduce((sum, s) => sum + (s.balance < 0 ? -s.balance : 0), 0)
+  const filteredDebtTotal = useMemo(
+    () => filtered.reduce((sum, s) => sum + (s.balance < 0 ? -s.balance : 0), 0),
+    [filtered],
+  )
 
   // Pagination — standart 30 talik, pastda sahifa hajmini tanlash mumkin.
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(30)
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize))
   const pageClamped = Math.min(page, totalPages)
-  const paged = filtered.slice((pageClamped - 1) * pageSize, pageClamped * pageSize)
+  const paged = useMemo(
+    () => filtered.slice((pageClamped - 1) * pageSize, pageClamped * pageSize),
+    [filtered, pageClamped, pageSize],
+  )
   const rangeFrom = filtered.length === 0 ? 0 : (pageClamped - 1) * pageSize + 1
   const rangeTo = Math.min(filtered.length, pageClamped * pageSize)
   // Filtr/qidiruv/hajm o'zgarsa — birinchi sahifaga qaytamiz. Tanlov SAQLANADI — foydalanuvchi
@@ -403,14 +430,21 @@ export function StudentsPage() {
     setSelected(new Set())
   }, [tab])
 
-  const selectedStudents = source.filter((s) => selected.has(s.id))
+  const selectedStudents = useMemo(
+    () => source.filter((s) => selected.has(s.id)),
+    [source, selected],
+  )
 
   // Umumiy ball bo'yicha TOP-3 o'quvchi (filtrdan qat'i nazar) — medal ikonkasi uchun.
-  const top3StudentIds = Object.entries(ballMap)
-    .filter(([, ball]) => ball > 0)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 3)
-    .map(([id]) => id)
+  const top3StudentIds = useMemo(
+    () =>
+      Object.entries(ballMap)
+        .filter(([, ball]) => ball > 0)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 3)
+        .map(([id]) => id),
+    [ballMap],
+  )
 
   // hammasini tanlash holati
   const allSelected = filtered.length > 0 && filtered.every((s) => selected.has(s.id))
@@ -453,6 +487,8 @@ export function StudentsPage() {
     birthdayToday ||
     sort !== 'default'
   const clearFilters = () => {
+    // Maydonning o'zi ham darhol tozalanadi (debounce kutib turmasin).
+    setSearchInput('')
     setSearch('')
     setClassFilter('all')
     setTeacherFilter('all')
@@ -822,8 +858,8 @@ export function StudentsPage() {
           <div className="search-inline">
             <Search className="h-4 w-4 shrink-0 text-slate-400" />
             <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
               placeholder="F.I.SH yoki ota-ona bo'yicha qidirish..."
             />
           </div>

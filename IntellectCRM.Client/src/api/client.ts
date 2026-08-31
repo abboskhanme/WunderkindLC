@@ -12,6 +12,13 @@ export const api = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL ?? '/api',
   headers: { 'Content-Type': 'application/json' },
   withCredentials: true,
+  // ⚠️ Timeout ATAYIN 120 s — 30 s EMAS. Axios standarti 0 (cheksiz) edi: backend osilib qolsa
+  // so'rov nginx'ning `proxy_read_timeout 300s` chegarasigacha jim osilib turar, foydalanuvchi
+  // esa 5 daqiqa "yuklanmoqda" ko'rib, xato ham ko'rmasdi.
+  // Nega aynan 120: `GeminiService` HttpClient'i 90 s timeout bilan ishlaydi, ya'ni AI tahlil
+  // so'rovi qonuniy ravishda ~90 s davom etishi mumkin. Kichikroq qiymat (30 s) AI tahlilni
+  // BUZARDI. 120 s — Gemini shiftidan yuqori, nginx chegarasidan past.
+  timeout: 120_000,
 })
 
 // SHAFFOF GET-KESH (25 s TTL + in-flight dedup) — adapter darajasida, qoidalar `cache.ts` da.

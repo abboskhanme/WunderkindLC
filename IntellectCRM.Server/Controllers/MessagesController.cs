@@ -375,9 +375,20 @@ public class MessagesController(
         var list = await db.PushMessages.OrderByDescending(p => p.CreatedAt).Take(100).ToListAsync();
         var ids = list.Select(p => p.Id).ToList();
         // Har broadcast bo'yicha: jami oluvchi (tarix) + tasdiqlaganlar soni.
-        var stats = (await db.UserNotifications.Where(n => ids.Contains(n.PushMessageId)).ToListAsync())
-            .GroupBy(n => n.PushMessageId)
-            .ToDictionary(g => g.Key, g => (Target: g.Count(), Confirmed: g.Count(n => n.ConfirmedAt != null)));
+        // ⚠️ Sanoq SQL darajasida (GROUP BY) — ilgari mos qatorlar XOTIRAGA tortilib, C# da
+        // guruhlanardi. `PushMessageId` indekssiz bo'lgani bilan qo'shilib, prodda bu so'rov
+        // 161 mln qator o'qigan edi (jadvalning deyarli hammasi, 8000+ marta).
+        var stats = (await db.UserNotifications.AsNoTracking()
+                .Where(n => ids.Contains(n.PushMessageId))
+                .GroupBy(n => n.PushMessageId)
+                .Select(g => new
+                {
+                    Id = g.Key,
+                    Target = g.Count(),
+                    Confirmed = g.Sum(n => n.ConfirmedAt != null ? 1 : 0),
+                })
+                .ToListAsync())
+            .ToDictionary(x => x.Id, x => (Target: x.Target, Confirmed: x.Confirmed));
         return list.Select(p =>
         {
             stats.TryGetValue(p.Id, out var s);
@@ -390,12 +401,13 @@ public class MessagesController(
     [HttpGet("push/{id}/confirmations")]
     public async Task<ActionResult<IEnumerable<PushConfirmationDto>>> PushConfirmations(string id)
     {
-        var notifs = await db.UserNotifications.Where(n => n.PushMessageId == id).ToListAsync();
+        // Faqat o'qish — tracking keraksiz (bu yerda hech narsa saqlanmaydi).
+        var notifs = await db.UserNotifications.AsNoTracking().Where(n => n.PushMessageId == id).ToListAsync();
         if (notifs.Count == 0) return new List<PushConfirmationDto>();
         var userIds = notifs.Select(n => n.UserId).Distinct().ToList();
-        var studentByUser = (await db.Students.Where(s => s.UserId != null && userIds.Contains(s.UserId)).ToListAsync())
+        var studentByUser = (await db.Students.AsNoTracking().Where(s => s.UserId != null && userIds.Contains(s.UserId)).ToListAsync())
             .GroupBy(s => s.UserId!).ToDictionary(g => g.Key, g => g.First());
-        var teacherByUser = (await db.Teachers.Where(t => t.UserId != null && userIds.Contains(t.UserId)).ToListAsync())
+        var teacherByUser = (await db.Teachers.AsNoTracking().Where(t => t.UserId != null && userIds.Contains(t.UserId)).ToListAsync())
             .GroupBy(t => t.UserId!).ToDictionary(g => g.Key, g => g.First());
         return notifs.Select(n =>
         {

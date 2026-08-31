@@ -66,7 +66,14 @@ services:
     environment:
       ASPNETCORE_ENVIRONMENT: "Production"
       ASPNETCORE_URLS: "http://+:8080"
-      ConnectionStrings__Default: "Host=postgres;Port=5432;Database=${POSTGRES_DB:-intellectcrm};Username=${POSTGRES_USER:-intellectcrm};Password=${POSTGRES_PASSWORD}"
+      # ⚠️ Pool chegarasi ATAYIN aniq yozilgan. Npgsql standarti — 100, Postgres esa yuqorida
+      # max_connections=50 bilan ishga tushadi: yuklama ostida app 50 dan oshirishga urinib,
+      # "FATAL: sorry, too many clients already" olardi (sekinlik emas, QATTIQ xato). 30 —
+      # backup konteyneri va superuser zaxirasiga joy qoldiradi.
+      # Minimum Pool Size=2 — tanaffusdan keyingi birinchi so'rov sovuq ulanish (TCP+SCRAM auth)
+      # ochmasin. SSL Mode=Disable — postgres konteynerida `ssl=off` (tekshirilgan), ya'ni
+      # standart "Prefer" har ulanishda SSL so'rab, rad javobini bekorga kutardi.
+      ConnectionStrings__Default: "Host=postgres;Port=5432;Database=${POSTGRES_DB:-intellectcrm};Username=${POSTGRES_USER:-intellectcrm};Password=${POSTGRES_PASSWORD};Maximum Pool Size=30;Minimum Pool Size=2;SSL Mode=Disable"
       Tenancy__RootDomain: "${ROOT_DOMAIN}"
       App__Host: "${APP_HOST}"             # FAQAT shu host ilovani (SPA) ochadi; qolganlari -> landing
       Jwt__Key: "${JWT_KEY}"               # >=32 belgi; prod'da MAJBURIY

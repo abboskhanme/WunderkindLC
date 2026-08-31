@@ -269,6 +269,22 @@ export function StudentDetailPage() {
   const [bonusError, setBonusError] = useState('')
   /** Bonus ma'lumoti QAYSI o'quvchi uchun yuklangani — o'quvchi almashsa qayta yuklanadi. */
   const [bonusLoadedFor, setBonusLoadedFor] = useState('')
+  /**
+   * Tab ma'lumoti QAYSI o'quvchi uchun yuklangani (tab kaliti → studentId) — «Bonus» dagi
+   * `bonusLoadedFor` bilan bir xil mantiq, faqat bir nechta tab uchun.
+   *
+   * <p>Sabab: server Fransiyada, foydalanuvchi O'zbekistonda — HAR so'rov ~350-400 ms. Sahifa
+   * ochilishida 13 ta so'rov ketardi va ularning ko'pi foydalanuvchi UMUMAN ochmaydigan
+   * tablarniki edi. Endi mount'da faqat standart «Guruhlar» tabiga keraklisi so'raladi,
+   * qolgani esa o'z tabi BIRINCHI marta ochilganda.</p>
+   *
+   * <p>Bayroq tufayli tablar orasida u yoq-bu yoq o'tilganda qayta so'ralmaydi. Qiymat —
+   * studentId (bayroqning O'ZI emas), shuning uchun o'quvchi almashsa taqqoslash mos kelmaydi
+   * va tab ochilganda YANGI o'quvchiniki yuklanadi — `bonusLoadedFor` dagi bilan aynan bir xil.
+   * Xaritani ALOHIDA tozalash SHART EMAS va zararli ham: tab effekti bilan bir commit'da
+   * tozalansa, so'rov ikki marta ketardi.</p>
+   */
+  const [tabLoadedFor, setTabLoadedFor] = useState<Partial<Record<Tab, string>>>({})
 
   // Bonus — faqat tab ochilganda va faqat admin/superadmin uchun so'raladi (aks holda 403 keladi).
   useEffect(() => {
@@ -294,34 +310,65 @@ export function StudentDetailPage() {
     }
   }, [tab, id, isBonusAllowed, bonusLoadedFor])
 
+  // Darslar tarixi (o'tilgan mavzular) — faqat «Dastur» tabi ochilganda.
   useEffect(() => {
-    if (!id) return
-    setLoading(true)
-    getStudentNotebook(id)
-      .then(setData)
-      .catch(() => setNotFound(true))
-      .finally(() => setLoading(false))
-    getStudentGroups(id)
-      .then(setGroups)
-      .catch(() => {})
+    if (tab !== 'dastur' || !id || tabLoadedFor.dastur === id) return
+    setTabLoadedFor((p) => ({ ...p, dastur: id }))
     getStudentCoverageLog(id)
       .then(setCoverageLog)
       .catch(() => {})
+  }, [tab, id, tabLoadedFor])
+
+  // Baholash xulosasi — faqat «Baholar» tabi ochilganda.
+  useEffect(() => {
+    if (tab !== 'baholar' || !id || tabLoadedFor.baholar === id) return
+    setTabLoadedFor((p) => ({ ...p, baholar: id }))
     getStudentGradingSummary(id)
       .then(setGradingSummary)
       .catch(() => {})
+  }, [tab, id, tabLoadedFor])
+
+  // Test natijalari — faqat «Testlar» tabi ochilganda.
+  useEffect(() => {
+    if (tab !== 'testlar' || !id || tabLoadedFor.testlar === id) return
+    setTabLoadedFor((p) => ({ ...p, testlar: id }))
     getStudentTestResults(id)
       .then(setTestResults)
       .catch(() => {})
+  }, [tab, id, tabLoadedFor])
+
+  // Tugatgan kurslar va sertifikatlar — faqat «Sertifikatlar» tabi ochilganda.
+  useEffect(() => {
+    if (tab !== 'sertifikatlar' || !id || tabLoadedFor.sertifikatlar === id) return
+    setTabLoadedFor((p) => ({ ...p, sertifikatlar: id }))
     getStudentCertificates(id)
       .then(setCertificates)
       .catch((e) => console.warn('Sertifikatlar yuklanmadi:', e))
+  }, [tab, id, tabLoadedFor])
+
+  // Qo'llab-quvvatlash fikrlari — faqat «Fikr» tabi ochilganda.
+  useEffect(() => {
+    if (tab !== 'fikr' || !id || tabLoadedFor.fikr === id) return
+    setTabLoadedFor((p) => ({ ...p, fikr: id }))
     getStudentSupportFeedback(id)
       .then(setSupportFeedback)
       .catch(() => {})
+  }, [tab, id, tabLoadedFor])
+
+  // Saqlangan AI tahlillari — faqat «AI» tabi ochilganda (modal ham shu tabdan ochiladi).
+  useEffect(() => {
+    if (tab !== 'ai' || !id || tabLoadedFor.ai === id) return
+    setTabLoadedFor((p) => ({ ...p, ai: id }))
     getStudentAiAnalyses(id)
       .then(setAiRecords)
       .catch(() => {})
+  }, [tab, id, tabLoadedFor])
+
+  // «Aloqa» tabi — bog'lanish talablari, qo'ng'iroqlar va SMS lentasi BIR JOYDA ko'rinadi,
+  // shuning uchun uchalasi ham shu tab ochilganda birga so'raladi.
+  useEffect(() => {
+    if (tab !== 'aloqa' || !id || tabLoadedFor.aloqa === id) return
+    setTabLoadedFor((p) => ({ ...p, aloqa: id }))
     // Bog'lanish talablari — `contacts` ruxsati bo'lmasa server 403 qaytaradi, shuning uchun
     // umuman so'ramaymiz (konsolda keraksiz xato chiqmasin).
     if (canSeeContacts) getStudentContactRequests(id).then(setContacts).catch(() => setContacts([]))
@@ -335,6 +382,20 @@ export function StudentDetailPage() {
       .then(setSms)
       .catch(() => setSms([]))
       .finally(() => setSmsLoading(false))
+  }, [tab, id, tabLoadedFor, canSeeContacts])
+
+  // Mount'da FAQAT standart «Guruhlar» tabiga keragi so'raladi — qolgani tab ochilganda
+  // (yuqoridagi effektlar): har ortiqcha so'rov O'zbekistondan ~350-400 ms turadi.
+  useEffect(() => {
+    if (!id) return
+    setLoading(true)
+    getStudentNotebook(id)
+      .then(setData)
+      .catch(() => setNotFound(true))
+      .finally(() => setLoading(false))
+    getStudentGroups(id)
+      .then(setGroups)
+      .catch(() => {})
   }, [id, reloadKey])
 
   // O'quvchi ALMASHGANDA (tepadagi qidiruv orqali bir profildan boshqasiga o'tilganda — bir xil route,
@@ -350,6 +411,18 @@ export function StudentDetailPage() {
     // Bonus ma'lumoti ham eski o'quvchiniki bo'lib qolmasin (yangisi tab ochilganda yuklanadi).
     setBonus(null)
     setBonusError('')
+    // Tab ma'lumotlari ham tozalanadi — aks holda yangi o'quvchining tabi ochilganda javob
+    // kelguncha ESKI o'quvchining ro'yxati ko'rinib turardi. (`tabLoadedFor` tozalanmaydi —
+    // u studentId saqlaydi va o'zi eskiradi, qarang: yuqoridagi izoh.)
+    setCoverageLog([])
+    setGradingSummary([])
+    setTestResults([])
+    setCertificates([])
+    setSupportFeedback([])
+    setAiRecords([])
+    setContacts([])
+    setCalls([])
+    setSms([])
   }, [id])
 
   /** "Tahrirlash" bosilganda — StudentFormModal uchun TO'LIQ Student kerak (data — StudentNotebook, formaga yaramaydi). */

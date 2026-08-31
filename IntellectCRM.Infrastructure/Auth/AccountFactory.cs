@@ -39,8 +39,14 @@ public static class AccountFactory
         if (baseName.Length == 0) baseName = "user";
 
         // Band bo'lgan login'lar: bazadagi + hali saqlanmagan (Local) akkauntlar.
+        // ⚠️ FAQAT shu baseName bilan boshlanadiganlar olinadi. Ilgari BUTUN `Users` jadvali
+        // xotiraga tortilardi — import paytida har qatorda takrorlanib (500 o'quvchi × 5000
+        // akkaunt), amal kvadratik sekinlashardi. To'qnashuv faqat shu prefiksda bo'lishi mumkin.
+        // `ToLower()` ataylab (Npgsql `ILike` SQLite testlarida ishlamaydi) — ikkala provayderda
+        // bir xil, va `taken` baribir OrdinalIgnoreCase bilan solishtiradi.
         var taken = new HashSet<string>(
-            db.Users.Select(u => u.Email).ToList(), StringComparer.OrdinalIgnoreCase);
+            db.Users.Where(u => u.Email != null && u.Email.ToLower().StartsWith(baseName))
+                    .Select(u => u.Email!).ToList(), StringComparer.OrdinalIgnoreCase);
         foreach (var local in db.Users.Local) taken.Add(local.Email);
 
         var candidate = baseName;

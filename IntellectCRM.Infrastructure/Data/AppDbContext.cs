@@ -296,8 +296,19 @@ public class AppDbContext(DbContextOptions<AppDbContext> options)
         // Bildirishnomalar ro'yxati doim "foydalanuvchi + eng yangisi tepada" kesimida o'qiladi.
         b.Entity<UserNotification>().Property(n => n.UserId).HasMaxLength(200);
         b.Entity<UserNotification>().HasIndex(n => new { n.UserId, n.CreatedAt });
+        // ⚠️ E'lon (broadcast) statistikasi `PushMessageId` bo'yicha o'qiladi — bu ustun
+        // yuqoridagi (UserId, CreatedAt) indeksiga KIRMAYDI. Prod o'lchovi: shu sabab
+        // `UserNotifications` dan 161 mln qator sequential scan bilan o'qilgan edi.
+        b.Entity<UserNotification>().HasIndex(n => n.PushMessageId);
         // O'quvchilar ro'yxati deyarli har so'rovda arxivlanganlarni chiqarib tashlaydi.
         b.Entity<Student>().HasIndex(s => s.IsArchived);
+        // ⚠️ Quyidagilar prod statistikasi (pg_stat_user_tables.seq_tup_read) asosida qo'shildi:
+        // o'quvchi profili va moliya sahifalari shu ustunlar bo'yicha filtrlaydi, lekin
+        // munosabatlar haqiqiy FK emas (oddiy `string` ustun) — EF avtomatik indeks yaratmaydi.
+        b.Entity<JournalEntry>().HasIndex(e => e.StudentId);   // 21 mln qator seq scan
+        b.Entity<JournalEntry>().HasIndex(e => e.Date);
+        b.Entity<FinanceTransaction>().HasIndex(t => t.StudentId);  // 8.9 mln qator seq scan
+        b.Entity<FinanceTransaction>().HasIndex(t => t.TeacherId);  // maosh tarixi
         // pg_trgm + GIN trigram indekslar — qidiruv endpointining ILIKE '%...%' so'rovlari
         // indeksdan foydalanishi uchun (oddiy b-tree o'rtadan boshlangan LIKE'ni qo'llamaydi).
         // ⚠️ Bular Npgsql'ga xos annotatsiyalar — SQLite (testlar) ularni e'tiborsiz qoldiradi:
