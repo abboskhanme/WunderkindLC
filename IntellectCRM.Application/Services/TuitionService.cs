@@ -278,7 +278,14 @@ public static class TuitionService
     /// <param name="addSegment">true bo'lsa (shu OYDA muzlatilgandan keyin QAYTA aktivlashtirish) — yangi
     /// studied segment mavjud (muzlatishgacha studied) hisobga QO'SHILADI, almashtirilmaydi. Aks holda
     /// (birinchi aktivlashtirish / ikki marta bosish) idempotent ALMASHTIRADI.</param>
-    public static async Task ChargeActivationProrateAsync(IAppDbContext db, Student s, Group cls, string dateIso, bool addSegment = false)
+    /// <param name="lessonFee">Kursning bir dars yaxlit narxi, OLDINDAN hisoblangan bo'lsa (ommaviy
+    /// amalda — <see cref="LessonFeesForCoursesAsync"/>). ⚠️ FAQAT tezlik uchun: <c>null</c> bo'lsa
+    /// AYNAN o'sha qiymat shu yerda yakka so'rov bilan olinadi, ya'ni natija bir xil. Ommaviy
+    /// aktivlashtirishda guruh (demak kurs) bitta bo'lgani uchun bu bir xil so'rovni 500 martadan
+    /// 1 martaga tushiradi. Qolgan chaqiruvchilar (yakka aktivlashtirish, guruh almashtirish,
+    /// sertifikat bilan tugatish) parametrni bermaydi va avvalgidek ishlaydi —
+    /// <see cref="ChargeFreezeProrateAsync"/> dagi bilan AYNAN bir xil naqsh.</param>
+    public static async Task ChargeActivationProrateAsync(IAppDbContext db, Student s, Group cls, string dateIso, bool addSegment = false, decimal? lessonFee = null)
     {
         try
         {
@@ -291,18 +298,35 @@ public static class TuitionService
 
         // Yangi formula: birinchi darsdan (remaining == jami) yoki 12+ dars qolgan → to'liq oylik;
         // 12 tadan kam qolgan → qolgan dars × kursning bir dars yaxlit narxi (LessonPrice).
-        var lessonFee = await LessonFeeForCourseAsync(db, cls.CourseId);
-        var gross = ProratedLessonCharge(cls.MonthlyFee, lessonFee, remaining, totalInMonth);
+        var fee = lessonFee ?? await LessonFeeForCourseAsync(db, cls.CourseId);
+        var gross = ProratedLessonCharge(cls.MonthlyFee, fee, remaining, totalInMonth);
         if (gross <= 0) return;
 
         var month = dateIso[..7];
         var discount = DiscountForMonth(s, gross, month, cls.Id);
         var effective = gross - discount;
 
-        // Per-guruh billingga o'tdik — shu oyning eski aggregate (GroupId=null) qatorini darhol tozalaymiz.
-        await PurgeAggregateRowAsync(db, s, month);
+        // Shu (o'quvchi, oy) uchun kerak bo'ladigan IKKALA qator ham BITTA so'rovda: aggregate
+        // (GroupId=null) va shu guruhniki. Ilgari bular ketma-ket ikki so'rov edi
+        // (`PurgeAggregateRowAsync` + `existing`) — ommaviy amalda a'zolik boshiga ikkita ortiqcha
+        // aylanish. Filtr `MonthlyCharges(StudentId, GroupId, Month)` unikal indeksining prefiksiga
+        // tushadi. Naqsh `ChargeFreezeProrateAsync` dagi bilan AYNAN bir xil.
+        var monthRows = await db.MonthlyCharges
+            .Where(c => c.StudentId == s.Id && c.Month == month && (c.GroupId == null || c.GroupId == cls.Id))
+            .ToListAsync();
+
+        // ⚠️ TARTIB O'ZGARMAYDI: per-guruh billingga o'tdik — shu oyning eski aggregate (GroupId=null)
+        // qatorini `existing` bilan ishlashdan OLDIN tozalaymiz (dublikat hisob bo'lmasin). Balans
+        // hisobi shunga tayanadi: aggregate qatorning effektivi avval balansga QAYTARILADI, keyin
+        // quyida per-guruh qisman hisob yechiladi.
+        var aggregateRow = monthRows.FirstOrDefault(c => c.GroupId == null);
+        if (aggregateRow is not null)
+        {
+            s.Balance += Math.Max(0m, aggregateRow.Amount - aggregateRow.Discount);
+            db.MonthlyCharges.Remove(aggregateRow);
+        }
         // Per-guruh: hisob shu GURUH (cls.Id) uchun yoziladi.
-        var existing = await db.MonthlyCharges.FirstOrDefaultAsync(c => c.StudentId == s.Id && c.GroupId == cls.Id && c.Month == month);
+        var existing = monthRows.FirstOrDefault(c => c.GroupId == cls.Id);
         if (existing is null)
         {
             db.MonthlyCharges.Add(new MonthlyCharge

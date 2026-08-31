@@ -690,8 +690,13 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
     /// (aks holda ikki oqim vaqt o'tib bir-biridan ayrilib ketardi).
     /// <para><c>SaveChangesAsync</c> QILMAYDI — chaqiruvchi saqlaydi (audit yozuvi ham shu tranzaksiyada).</para></summary>
     /// <returns><c>Already</c> — allaqachon faol edi (hech narsa o'zgarmadi).</returns>
+    /// <param name="lessonFee">Kursning bir dars yaxlit narxi, OLDINDAN hisoblangan bo'lsa (OMMAVIY
+    /// amalda — <see cref="TuitionService.LessonFeesForCoursesAsync"/>). ⚠️ FAQAT tezlik uchun:
+    /// <c>null</c> bo'lsa AYNAN o'sha qiymat pastda yakka so'rov bilan olinadi. Yakka
+    /// <see cref="ActivateMember"/> uni bermaydi va avvalgidek ishlaydi —
+    /// <see cref="FreezeCoreAsync"/> dagi bilan bir xil naqsh.</param>
     private async Task<(bool Already, decimal MovedAdvance, int CatchUpMonths)> ActivateCoreAsync(
-        Group cls, StudentGroup sg, string date, bool? retentionBonus)
+        Group cls, StudentGroup sg, string date, bool? retentionBonus, decimal? lessonFee = null)
     {
         // Allaqachon faol bo'lsa — qayta aktivlashtirish kerak emas (ikki marta hisoblamaslik uchun).
         if (sg.Status == "active") return (true, 0m, 0);
@@ -725,7 +730,7 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
         var catchUpMonths = 0;
         if (s is not null)
         {
-            await TuitionService.ChargeActivationProrateAsync(db, s, cls, date, addSegment: reactivateFromFreeze);
+            await TuitionService.ChargeActivationProrateAsync(db, s, cls, date, addSegment: reactivateFromFreeze, lessonFee: lessonFee);
             // ORQAGA SANALGAN aktivlashtirish: aktivlashtirilgan oydan KEYINGI oylardan joriy oygacha
             // to'liq oylik hisoblar DARHOL yoziladi (aks holda fon xizmati 12 soatgacha kechikardi).
             // Idempotent — mavjud hisoblarga tegmaydi, kelajak oy yozmaydi.
@@ -976,10 +981,11 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
             .ToDictionaryAsync(c => c.Id);
 
         // KURSNING BIR DARS NARXI (LessonPrice) — bir marta, DISTINCT kurslar uchun. Ilgari uni
-        // `ChargeFreezeProrateAsync` har a'zolik uchun qaytadan so'rardi, holbuki ommaviy amalda
-        // guruh (demak kurs) odatda bitta — bir xil qiymat 500 marta o'qilardi. Qiymat halqada
-        // `lessonFee` sifatida pastga uzatiladi; hisob-kitob formulasi O'ZGARMAYDI (parametr
-        // berilmasa `ChargeFreezeProrateAsync` aynan shu qiymatni o'zi so'raydi).
+        // `ChargeFreezeProrateAsync` va `ChargeActivationProrateAsync` har a'zolik uchun qaytadan
+        // so'rardi, holbuki ommaviy amalda guruh (demak kurs) odatda bitta — bir xil qiymat 500
+        // marta o'qilardi. Qiymat halqada `lessonFee` sifatida pastga uzatiladi (IKKALA tarmoqda
+        // ham); hisob-kitob formulasi O'ZGARMAYDI — parametr berilmasa har ikki metod aynan shu
+        // qiymatni o'zi so'raydi.
         var lessonFees = await TuitionService.LessonFeesForCoursesAsync(db, groups.Values.Select(g => g.CourseId));
         decimal FeeFor(string? courseId) =>
             !string.IsNullOrEmpty(courseId) && lessonFees.TryGetValue(courseId, out var f) ? f : 0m;
@@ -1031,7 +1037,7 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
                     }
                     else
                     {
-                        var r = await ActivateCoreAsync(cls, sg, date, req.RetentionBonus);
+                        var r = await ActivateCoreAsync(cls, sg, date, req.RetentionBonus, FeeFor(cls.CourseId));
                         if (r.Already) { skipped++; continue; }
                         movedAdvance += r.MovedAdvance;
                         catchUpMonths += r.CatchUpMonths;
