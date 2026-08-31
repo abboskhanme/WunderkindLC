@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useState } from 'react'
+﻿import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 import {
   ArrowLeft, GraduationCap, CalendarCheck, ClipboardCheck,
@@ -8,6 +8,7 @@ import {
   PhoneIncoming, PhoneOutgoing, PhoneMissed, PhoneCall, MessageSquareText,
   Snowflake, CheckCircle2, RotateCcw, ArrowLeftRight, Plus, NotebookText, X,
   StickyNote, Gift, Camera,
+  DoorOpen, LogIn, LogOut, RefreshCw, Wifi, WifiOff,
 } from 'lucide-react'
 import { genderLabels } from '@/config/constants'
 import {
@@ -73,6 +74,14 @@ import { TeacherReviewsSection } from './TeacherReviewsSection'
 import { StudentPhotoDialog } from './StudentPhotoDialog'
 import { NeedContactModal } from './contacts/NeedContactModal'
 import { StudentNotesThread } from '@/components/students/StudentNotesThread'
+import { MonthDayStrip } from '@/components/ui/MonthDayStrip'
+import { currentMonth, todayIso } from '@/lib/month'
+import {
+  getStudentTurnstileHistory,
+  syncStudentTurnstile,
+  setStudentDevice,
+  type StudentTurnstileHistory,
+} from '@/api/services/studentTurnstile'
 import { getStudentContactRequests, type ContactRequestItem } from '@/api/services/contacts'
 import { ReceiptModal } from '@/components/finance/ReceiptModal'
 import { PaymentModal } from './PaymentModal'
@@ -127,6 +136,7 @@ type Tab =
   | 'sertifikatlar'
   | 'aloqa'
   | 'izohlar'
+  | 'turniket'
   | 'bonus'
   | 'ai'
 
@@ -151,6 +161,12 @@ export function StudentDetailPage() {
   const [contacts, setContacts] = useState<ContactRequestItem[]>([])
   /** Ro'yxatni KO'RISH ruxsati — talab ochish (`create`) dan alohida. */
   const canSeeContacts = can('contacts', 'view')
+  // «Turniket» tabi — ALOHIDA sahifa ruxsati (`students.turnstile`). Ilgari bu alohida sahifa edi
+  // (barcha o'quvchi, bitta kun); endi kesim o'quvchi bo'yicha va profil ichida, lekin darvoza
+  // O'SHA kalit: turniketni ko'rmasligi kerak xodimga tab UMUMAN chizilmaydi.
+  const canTurnstile = can('students.turnstile', 'view')
+  /** Qurilma ID'ni biriktirish/olib tashlash — YOZISH amali, ko'rishdan alohida. */
+  const canEditTurnstile = can('students.turnstile', 'edit')
 
   const [photoOpen, setPhotoOpen] = useState(false)
   /** To'lov cheki — to'lov kiritilgach shu tranzaksiya cheki ochiladi. */
@@ -384,6 +400,77 @@ export function StudentDetailPage() {
       .finally(() => setSmsLoading(false))
   }, [tab, id, tabLoadedFor, canSeeContacts])
 
+  /* ── «Turniket» tabi — kirish/chiqish tarixi ────────────────────────────────────────── */
+
+  /** Kalendarda tanlangan KUN ("yyyy-MM-dd") — ochilganda BUGUN. */
+  const [tsDate, setTsDate] = useState(todayIso())
+  /** Kalendar chizig'i ko'rsatayotgan OY ("yyyy-MM"). */
+  const [tsMonth, setTsMonth] = useState(currentMonth())
+  const [tsData, setTsData] = useState<StudentTurnstileHistory | null>(null)
+  const [tsLoading, setTsLoading] = useState(false)
+  const [tsSyncing, setTsSyncing] = useState(false)
+
+  /**
+   * Tarixni so'rash — kun VA oy birga (bitta so'rovda kunning hodisalari ham, oydagi "faol
+   * kunlar" ham keladi: kalendar bo'shab qolmasin).
+   */
+  const loadTurnstile = useCallback((studentId: string, date: string, month: string) => {
+    setTsLoading(true)
+    getStudentTurnstileHistory(studentId, date, month)
+      .then(setTsData)
+      .catch(() => setTsData(null))
+      .finally(() => setTsLoading(false))
+  }, [])
+
+  // BIRINCHI yuklash — qolgan tablar bilan AYNAN bir xil `tabLoadedFor` naqshi: tab ochilmaguncha
+  // so'rov ketmaydi, tablar orasida u yoq-bu yoq o'tilganda esa qayta so'ralmaydi.
+  // (Kun/oy almashtirilganda quyidagi ishlovchilar `loadTurnstile` ni O'ZI chaqiradi.)
+  useEffect(() => {
+    if (tab !== 'turniket' || !id || !canTurnstile || tabLoadedFor.turniket === id) return
+    setTabLoadedFor((p) => ({ ...p, turniket: id }))
+    loadTurnstile(id, tsDate, tsMonth)
+  }, [tab, id, canTurnstile, tabLoadedFor, tsDate, tsMonth, loadTurnstile])
+
+  /** Kalendardan kun tanlash. Bo'sh qiymat (o'sha kunni QAYTA bosish) e'tiborsiz — bu yerda
+   *  "kunsiz" holat yo'q: ro'yxat DOIM bitta kunniki. */
+  const selectTurnstileDay = (d: string) => {
+    if (!d || !id || d === tsDate) return
+    setTsDate(d)
+    loadTurnstile(id, d, tsMonth)
+  }
+
+  /** Oy almashtirish — tanlangan kun ham o'sha oyga ko'chadi (aks holda kalendar bir oyni,
+   *  ro'yxat esa boshqasini ko'rsatib turardi). Joriy oyga qaytilsa yana BUGUN tanlanadi. */
+  const changeTurnstileMonth = (m: string) => {
+    if (!id || m === tsMonth) return
+    const d = m === currentMonth() ? todayIso() : `${m}-01`
+    setTsMonth(m)
+    setTsDate(d)
+    loadTurnstile(id, d, m)
+  }
+
+  /** «Yangilash» — qurilmadan yangi qaydlarni tortib olib, keyin joriy kunni qayta so'raydi. */
+  const onTurnstileSync = async () => {
+    if (!id) return
+    setTsSyncing(true)
+    try {
+      const res = await syncStudentTurnstile()
+      if (!res.ok && res.message) alert(res.message)
+      loadTurnstile(id, tsDate, tsMonth)
+    } catch (e) {
+      alert(apiErrorMessage(e, 'Sinxronlashda xatolik'))
+    } finally {
+      setTsSyncing(false)
+    }
+  }
+
+  /** Qurilma ID'ni biriktirish/olib tashlash (bo'sh qiymat — biriktirishni bekor qiladi). */
+  const saveTurnstileDevice = async (value: string) => {
+    if (!id) return
+    await setStudentDevice(id, value.trim())
+    loadTurnstile(id, tsDate, tsMonth)
+  }
+
   // Mount'da FAQAT standart «Guruhlar» tabiga keragi so'raladi — qolgani tab ochilganda
   // (yuqoridagi effektlar): har ortiqcha so'rov O'zbekistondan ~350-400 ms turadi.
   useEffect(() => {
@@ -423,6 +510,11 @@ export function StudentDetailPage() {
     setContacts([])
     setCalls([])
     setSms([])
+    // Turniket — ma'lumot ham, tanlangan kun/oy ham boshiga qaytadi (yangi o'quvchi uchun
+    // "bugun" so'raladi, aks holda avvalgi profildagi sana bilan ochilardi).
+    setTsData(null)
+    setTsDate(todayIso())
+    setTsMonth(currentMonth())
   }, [id])
 
   /** "Tahrirlash" bosilganda — StudentFormModal uchun TO'LIQ Student kerak (data — StudentNotebook, formaga yaramaydi). */
@@ -911,6 +1003,12 @@ export function StudentDetailPage() {
             <button type="button" className={cn('tab', tab === 'izohlar' && 'active')} onClick={() => setTab('izohlar')}>
               <StickyNote className="mr-1 inline h-3.5 w-3.5" /> Izohlar
             </button>
+            {/* Turniket — alohida sahifa ruxsati (`students.turnstile`) bo'lgan xodimga. */}
+            {canTurnstile && (
+              <button type="button" className={cn('tab', tab === 'turniket' && 'active')} onClick={() => setTab('turniket')}>
+                <DoorOpen className="mr-1 inline h-3.5 w-3.5" /> Turniket
+              </button>
+            )}
             {/* Bonus — faqat admin/superadmin ko'radi (o'qituvchi haqiga oid ma'lumot). */}
             {isBonusAllowed && (
               <button type="button" className={cn('tab', tab === 'bonus' && 'active')} onClick={() => setTab('bonus')}>
@@ -929,6 +1027,22 @@ export function StudentDetailPage() {
 
           {/* Izohlar — xodim yozadigan erkin eslatmalar (tarix: kim, qachon) */}
           {tab === 'izohlar' && <NotesSection studentId={data.id} />}
+
+          {/* Turniket — SHU o'quvchining kirish/chiqish qaydlari, kun kalendardan tanlanadi */}
+          {tab === 'turniket' && canTurnstile && (
+            <TurnstileSection
+              data={tsData}
+              loading={tsLoading}
+              syncing={tsSyncing}
+              date={tsDate}
+              month={tsMonth}
+              canEdit={canEditTurnstile}
+              onSelectDay={selectTurnstileDay}
+              onMonthChange={changeTurnstileMonth}
+              onSync={onTurnstileSync}
+              onSaveDevice={saveTurnstileDevice}
+            />
+          )}
 
           {/* AI Tahlil — saqlangan tahlillar tarixi (kuniga bir marta) */}
           {tab === 'ai' && (
@@ -2576,6 +2690,191 @@ function NotesSection({ studentId }: { studentId: string }) {
   return (
     <Section title="Izohlar" icon={StickyNote}>
       <StudentNotesThread studentId={studentId} />
+    </Section>
+  )
+}
+
+/** ISO vaqtdan "yyyy-MM-dd HH:mm" (oxirgi sinxronizatsiya uchun). */
+const syncLabel = (iso: string) => (iso && iso.length >= 16 ? `${iso.slice(0, 10)} ${iso.slice(11, 16)}` : '—')
+
+/**
+ * TURNIKET — SHU o'quvchining kirish/chiqish qaydlari (turniket/FaceID qurilmasidan).
+ *
+ * <p>Ilgari bu alohida sahifa edi va BARCHA o'quvchini BITTA kun uchun ko'rsatardi. Lekin
+ * amaldagi savol deyarli har doim bitta odam haqida ("shu bola qachon kelgan, qachon
+ * ketgan"), shuning uchun ro'yxat profil ichiga ko'chdi: kesim — o'quvchi, kun esa oylik
+ * kalendardan tanlanadi (bog'lanish navbati va izohlar sahifasidagi AYNAN shu komponent).</p>
+ *
+ * <p>Kalendarda kunlar SON bilan emas, NUQTA bilan belgilanadi: server `activeDays` ni beradi,
+ * ya'ni "qayd bor/yo'q" — har katakka "1" yozib qo'yish aldamchi bo'lardi.</p>
+ */
+function TurnstileSection({
+  data,
+  loading,
+  syncing,
+  date,
+  month,
+  canEdit,
+  onSelectDay,
+  onMonthChange,
+  onSync,
+  onSaveDevice,
+}: {
+  data: StudentTurnstileHistory | null
+  loading: boolean
+  syncing: boolean
+  date: string
+  month: string
+  canEdit: boolean
+  onSelectDay: (date: string) => void
+  onMonthChange: (month: string) => void
+  onSync: () => void
+  onSaveDevice: (deviceUserId: string) => Promise<void>
+}) {
+  /** Qurilma ID inputi — `null` bo'lsa tahrir boshlanmagan (serverdagi qiymat ko'rinadi). */
+  const [draft, setDraft] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [err, setErr] = useState('')
+
+  const device = data?.deviceUserId ?? ''
+  const save = async () => {
+    if (draft === null || draft.trim() === device.trim()) {
+      setDraft(null)
+      return
+    }
+    setSaving(true)
+    setErr('')
+    try {
+      await onSaveDevice(draft)
+      setDraft(null)
+    } catch (e) {
+      setErr(apiErrorMessage(e, "Qurilma ID'ni saqlashda xatolik"))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Section
+      title="Turniket"
+      icon={DoorOpen}
+      action={
+        <Button variant="secondary" onClick={onSync} disabled={syncing}>
+          <RefreshCw className={cn('h-4 w-4', syncing && 'animate-spin')} />
+          {syncing ? 'Yangilanmoqda...' : 'Yangilash'}
+        </Button>
+      }
+    >
+      {/* Integratsiya holati + oxirgi sinxronizatsiya */}
+      <div className="mb-4 flex flex-wrap items-center gap-2">
+        {data?.enabled ? (
+          <Badge tone="green">
+            <Wifi className="h-3.5 w-3.5" /> Turniket yoqilgan
+          </Badge>
+        ) : (
+          <Link to="/admin/settings/turnstile" className="hover:opacity-80">
+            <Badge>
+              <WifiOff className="h-3.5 w-3.5" /> Turniket o'chiq — sozlash
+            </Badge>
+          </Link>
+        )}
+        {data?.lastSync && (
+          <span className="text-xs text-slate-400">Oxirgi sinx: {syncLabel(data.lastSync)}</span>
+        )}
+      </div>
+
+      {/* Qurilma ID — bo'sh bo'lsa qaydlar UMUMAN kelmaydi, shuning uchun eng tepada */}
+      <div className="mb-4 rounded-xl border border-slate-100 bg-slate-50/60 px-4 py-3">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+          <div className="min-w-0">
+            <p className="text-xs text-slate-400">Qurilma ID (employeeNo)</p>
+            {canEdit ? (
+              <input
+                value={draft ?? device}
+                onChange={(e) => setDraft(e.target.value)}
+                onBlur={save}
+                onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
+                disabled={saving}
+                placeholder="ID..."
+                title="Turniket qurilmasidagi raqam (employeeNo). Bo'sh qoldirilsa biriktirish bekor qilinadi."
+                className="mt-1 w-36 rounded-md border border-slate-200 bg-white px-2 py-1 font-mono text-sm text-slate-700 outline-none focus:border-brand-400 disabled:opacity-50"
+              />
+            ) : (
+              <p className="mt-1 font-mono text-sm font-medium text-slate-700">{device || '—'}</p>
+            )}
+          </div>
+          {!device && (
+            <p className="text-xs text-amber-600">
+              Bu o'quvchiga turniket qurilmasi biriktirilmagan — qaydlar yig'ilmaydi.
+              {canEdit && " Qurilmadagi raqamni yozing."}
+            </p>
+          )}
+        </div>
+        {err && <p className="mt-2 text-xs font-medium text-red-500">{err}</p>}
+      </div>
+
+      {/* Kun tanlash — oylik kalendar chizig'i (nuqta = o'sha kuni qayd bor) */}
+      <MonthDayStrip
+        month={month}
+        onMonthChange={onMonthChange}
+        selected={date}
+        onSelect={onSelectDay}
+        marked={data?.activeDays ?? []}
+        hint="Nuqta bilan belgilangan kunlarda turniketdan o'tish qayd etilgan. Kunni bosing — o'sha kunning qaydlari chiqadi."
+      />
+
+      {loading ? (
+        <Loader label="Yuklanmoqda..." />
+      ) : !data ? (
+        <Empty>Turniket qaydlarini yuklab bo'lmadi</Empty>
+      ) : !data.enabled ? (
+        <Empty>
+          Turniket integratsiyasi o'chirilgan — qaydlar yig'ilmayapti.{' '}
+          <Link to="/admin/settings/turnstile" className="font-medium text-brand-600 hover:underline">
+            Sozlamalar
+          </Link>
+        </Empty>
+      ) : !device ? (
+        <Empty>Qurilma biriktirilmagan — ko'rsatadigan qayd yo'q</Empty>
+      ) : (
+        <>
+          {/* Kunning jamlanmasi */}
+          <div className="mt-4 grid grid-cols-3 gap-3">
+            <div className="rounded-xl border border-slate-100 bg-slate-50/60 px-4 py-3">
+              <div className="font-mono text-2xl font-semibold text-slate-800">{data.passes}</div>
+              <div className="text-xs text-slate-400">O'tishlar soni</div>
+            </div>
+            <div className="rounded-xl border border-slate-100 bg-slate-50/60 px-4 py-3">
+              <div className="font-mono text-2xl font-semibold text-emerald-600">{data.firstIn || '—'}</div>
+              <div className="text-xs text-slate-400">Birinchi kirish</div>
+            </div>
+            <div className="rounded-xl border border-slate-100 bg-slate-50/60 px-4 py-3">
+              <div className="font-mono text-2xl font-semibold text-slate-500">{data.lastOut || '—'}</div>
+              <div className="text-xs text-slate-400">Oxirgi chiqish</div>
+            </div>
+          </div>
+
+          {/* Kunning hodisalari */}
+          {data.events.length === 0 ? (
+            <Empty>{formatDate(date)} kuni turniketdan o'tish qayd etilmagan</Empty>
+          ) : (
+            <div className="mt-2 divide-y divide-slate-100">
+              {data.events.map((ev, i) => {
+                const isIn = ev.direction === 'in'
+                const Icon = isIn ? LogIn : LogOut
+                return (
+                  <div key={`${ev.time}-${i}`} className="flex items-center gap-3 py-2.5">
+                    <Icon className={cn('h-4 w-4 shrink-0', isIn ? 'text-emerald-500' : 'text-slate-400')} />
+                    <span className="font-mono text-sm font-semibold text-slate-700">{ev.time}</span>
+                    <Badge tone={isIn ? 'green' : 'default'}>{isIn ? 'Kirdi' : 'Chiqdi'}</Badge>
+                    <span className="min-w-0 truncate text-xs text-slate-400">{ev.deviceName || '—'}</span>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </>
+      )}
     </Section>
   )
 }

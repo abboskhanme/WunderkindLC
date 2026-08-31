@@ -68,40 +68,60 @@ public class TurnstileService
     }
 
     /// <summary>
-    /// Tanlangan kun uchun O'QUVCHILAR turniketi: har o'quvchining kirgan (birinchi o'tish) va
-    /// chiqqan (oxirgi o'tish) vaqti. Xom turniket hodisalari (<see cref="TurnstileEvent"/>) o'quvchining
-    /// <c>DeviceUserId</c>'si bo'yicha moslanadi — alohida jadval shart emas, hodisalar tarix sifatida saqlanadi.
+    /// BITTA o'quvchining turniket tarixi (o'quvchi profilidagi "Turniket" tabi uchun).
+    /// Xom hodisalar (<see cref="TurnstileEvent"/>) o'quvchining <c>DeviceUserId</c>'si bo'yicha
+    /// moslanadi — alohida jadval shart emas, hodisalar jurnalining o'zi tarix.
+    /// <para>Qaytadi: <paramref name="date"/> kunidagi hodisalar (vaqt bo'yicha o'sish tartibida)
+    /// va <paramref name="month"/> ("yyyy-MM") ichidagi FAOL kunlar — kalendar chizig'ida
+    /// belgilanadigan kunlar.</para>
+    /// <para>⚠️ Qurilma biriktirilmagan o'quvchi uchun bo'sh natija qaytadi (istisno EMAS):
+    /// bu odatiy holat, sahifa "qurilma biriktirilmagan" deb ko'rsatadi va shu yerdan
+    /// biriktirish tugmasini beradi.</para>
     /// </summary>
-    public async Task<StudentTurnstileDashboardDto> BuildStudentDashboardAsync(IAppDbContext db, string date)
+    public async Task<StudentTurnstileHistoryDto> BuildStudentHistoryAsync(
+        IAppDbContext db, Student student, string date, string month)
     {
         var meta = await db.CenterMeta.FirstOrDefaultAsync();
-        var students = await db.Students.Where(s => !s.IsArchived)
-            .OrderBy(s => s.ClassName).ThenBy(s => s.FullName).ToListAsync();
+        var enabled = meta?.TurnstileEnabled ?? false;
+        var lastSync = meta?.TurnstileLastSync ?? "";
+        var device = student.DeviceUserId ?? "";
 
-        // Tanlangan kundagi hodisalar → qurilma ID bo'yicha tartiblangan "HH:mm" ro'yxati.
-        var events = await db.TurnstileEvents
-            .Where(e => e.DeviceUserId != "" && e.EventAt.StartsWith(date))
+        if (device.Length == 0)
+            return new StudentTurnstileHistoryDto(date, month, enabled, lastSync, "", 0, "", "", [], []);
+
+        // Kun ham, oy ham BITTA so'rovda olinadi (indeks: DeviceUserId + EventAt).
+        // ⚠️ Tanlangan kun oydan TASHQARIDA bo'lishi mumkin — foydalanuvchi kalendarni boshqa oyga
+        // surganda kun o'zgarmay qoladi. Shuning uchun kun alohida shart bilan qo'shiladi,
+        // aks holda ro'yxat jimgina bo'shab qolardi.
+        var events = await db.TurnstileEvents.AsNoTracking()
+            .Where(e => e.DeviceUserId == device
+                        && (e.EventAt.StartsWith(month) || e.EventAt.StartsWith(date)))
             .ToListAsync();
-        var byDevice = events
-            .Where(e => e.EventAt.Length >= 16)
-            .GroupBy(e => e.DeviceUserId)
-            .ToDictionary(g => g.Key, g => g.Select(e => e.EventAt.Substring(11, 5))
-                .OrderBy(x => x, StringComparer.Ordinal).ToList());
 
-        var rows = new List<StudentTurnstileRowDto>();
-        var present = 0;
-        foreach (var s in students)
-        {
-            List<string>? times = null;
-            if (!string.IsNullOrEmpty(s.DeviceUserId)) byDevice.TryGetValue(s.DeviceUserId, out times);
-            var checkIn = times is { Count: > 0 } ? times[0] : "";
-            var checkOut = times is { Count: > 1 } ? times[^1] : "";
-            var passes = times?.Count ?? 0;
-            if (passes > 0) present++;
-            rows.Add(new StudentTurnstileRowDto(s.Id, s.FullName, s.ClassName, s.DeviceUserId, checkIn, checkOut, passes));
-        }
-        return new StudentTurnstileDashboardDto(
-            date, meta?.TurnstileEnabled ?? false, meta?.TurnstileLastSync ?? "", present, students.Count, rows);
+        // Buzuq/kalta ISO qatorlar (Substring yiqilmasin) — tashlab yuboriladi.
+        var valid = events.Where(e => e.EventAt.Length >= 16).ToList();
+
+        var day = valid
+            .Where(e => e.EventAt.StartsWith(date))
+            .OrderBy(e => e.EventAt, StringComparer.Ordinal)
+            .Select(e => new StudentTurnstileEventDto(e.EventAt.Substring(11, 5), e.Direction, e.DeviceName))
+            .ToList();
+
+        // "Kirdi" — kunning BIRINCHI kirishi, "chiqdi" — OXIRGI chiqishi. Kun davomida bir necha
+        // marta kirib-chiqish mumkin (tanaffus), shuning uchun birinchi/oxirgi hodisa emas,
+        // aynan yo'nalish bo'yicha olinadi.
+        var firstIn = day.FirstOrDefault(e => e.Direction == "in")?.Time ?? "";
+        var lastOut = day.LastOrDefault(e => e.Direction == "out")?.Time ?? "";
+
+        var activeDays = valid
+            .Where(e => e.EventAt.StartsWith(month))
+            .Select(e => e.EventAt[..10])
+            .Distinct()
+            .OrderBy(d => d, StringComparer.Ordinal)
+            .ToList();
+
+        return new StudentTurnstileHistoryDto(
+            date, month, enabled, lastSync, device, day.Count, firstIn, lastOut, day, activeDays);
     }
 
     /// <summary>Qurilmadan so'nggi (≈2 kun) hodisalarni tortib olib, davomatni qayta hisoblaydi.</summary>

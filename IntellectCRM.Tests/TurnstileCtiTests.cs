@@ -442,18 +442,27 @@ public class TurnstileCtiTests
     }
 
     // =============================================================================================
-    //  3) TURNIKET — o'quvchilar dashboardi
+    //  3) TURNIKET — BITTA o'quvchining tarixi (o'quvchi profilidagi tab)
     // =============================================================================================
+    //  ⚠️ Ilgari bu yerda "barcha o'quvchilar bir kunda" dashboardi sinalardi. Sahifa olib
+    //  tashlangach testlar AYNAN o'sha holatlarni yangi `BuildStudentHistoryAsync` ustida
+    //  tekshiradi: qurilma bo'yicha moslash, vaqtlar, o'tishlar soni.
+
+    private static Student AddStudent(TestDb db, string device, string name = "Ali Valiyev", bool archived = false)
+    {
+        var s = new Student { FullName = name, ClassName = "A1-1", DeviceUserId = device, IsArchived = archived };
+        db.Context.Students.Add(s);
+        db.Context.SaveChanges();
+        return s;
+    }
 
     [Fact]
-    public async Task StudentDashboard_BirinchiVaOxirgiOtish_VaOtishlarSoni()
+    public async Task StudentHistory_BirinchiKirishOxirgiChiqish_VaOtishlarSoni()
     {
         using var db = TestDb.Sqlite();
         var ctx = db.Context;
         SeedMeta(db);
-        var s = new Student { FullName = "Ali Valiyev", ClassName = "A1-1", DeviceUserId = "S-1" };
-        ctx.Students.Add(s);
-        await ctx.SaveChangesAsync();
+        var s = AddStudent(db, "S-1");
         await new TurnstileService().IngestAsync(ctx, new()
         {
             new("S-1", Iso(Kecha, "14:55"), "in", "Eshik"),
@@ -461,63 +470,99 @@ public class TurnstileCtiTests
             new("S-1", Iso(Kecha, "15:30"), "out", "Eshik"),
         });
 
-        var dash = await new TurnstileService().BuildStudentDashboardAsync(ctx, $"{Kecha:yyyy-MM-dd}");
+        var h = await new TurnstileService()
+            .BuildStudentHistoryAsync(ctx, s, $"{Kecha:yyyy-MM-dd}", $"{Kecha:yyyy-MM}");
 
-        var row = Assert.Single(dash.Rows);
-        Assert.Equal("14:55", row.CheckIn);
-        Assert.Equal("16:05", row.CheckOut);
-        Assert.Equal(3, row.Passes);
-        Assert.Equal(1, dash.Present);
-        Assert.Equal(1, dash.Total);
-        Assert.True(dash.TurnstileEnabled);
+        Assert.Equal("14:55", h.FirstIn);
+        Assert.Equal("16:05", h.LastOut);
+        Assert.Equal(3, h.Passes);
+        // Hodisalar vaqt bo'yicha O'SISH tartibida (jadval xronologik o'qiladi).
+        Assert.Equal(new[] { "14:55", "15:30", "16:05" }, h.Events.Select(e => e.Time).ToArray());
+        Assert.Equal(new[] { "in", "out", "out" }, h.Events.Select(e => e.Direction).ToArray());
+        Assert.Equal(new[] { $"{Kecha:yyyy-MM-dd}" }, h.ActiveDays.ToArray());
+        Assert.True(h.Enabled);
+        Assert.Equal("S-1", h.DeviceUserId);
     }
 
     [Fact]
-    public async Task StudentDashboard_QurilmaIdSizOquvchi_BoshQator()
+    public async Task StudentHistory_QurilmaIdSizOquvchi_BoshNatija_XatoEmas()
     {
         using var db = TestDb.Sqlite();
         var ctx = db.Context;
-        ctx.Students.Add(new Student { FullName = "Ali", ClassName = "A1", DeviceUserId = "" });
-        await ctx.SaveChangesAsync();
+        var s = AddStudent(db, "", "Ali");
 
-        var dash = await new TurnstileService().BuildStudentDashboardAsync(ctx, $"{Kecha:yyyy-MM-dd}");
+        var h = await new TurnstileService()
+            .BuildStudentHistoryAsync(ctx, s, $"{Kecha:yyyy-MM-dd}", $"{Kecha:yyyy-MM}");
 
-        var row = Assert.Single(dash.Rows);
-        Assert.Equal("", row.CheckIn);
-        Assert.Equal(0, row.Passes);
-        Assert.Equal(0, dash.Present);
-        Assert.False(dash.TurnstileEnabled);   // CenterMeta yo'q → o'chiq deb ko'rsatiladi
+        Assert.Equal("", h.DeviceUserId);
+        Assert.Equal(0, h.Passes);
+        Assert.Equal("", h.FirstIn);
+        Assert.Equal("", h.LastOut);
+        Assert.Empty(h.Events);
+        Assert.Empty(h.ActiveDays);
+        Assert.False(h.Enabled);   // CenterMeta yo'q → o'chiq deb ko'rsatiladi
     }
 
     [Fact]
-    public async Task StudentDashboard_BoshqaKundagiHodisa_HisoblanmasligiKerak()
+    public async Task StudentHistory_BoshqaKundagiHodisa_KunRoyxatidaYoq_LekinFaolKunlarda_Bor()
     {
         using var db = TestDb.Sqlite();
         var ctx = db.Context;
-        ctx.Students.Add(new Student { FullName = "Ali", ClassName = "A1", DeviceUserId = "S-1" });
-        await ctx.SaveChangesAsync();
+        var s = AddStudent(db, "S-1", "Ali");
+        var oldingi = Kecha.AddDays(-1);
         await new TurnstileService().IngestAsync(ctx, new()
         {
-            new("S-1", Iso(Kecha.AddDays(-1), "09:00"), "in", "Eshik"),
+            new("S-1", Iso(oldingi, "09:00"), "in", "Eshik"),
         });
 
-        var dash = await new TurnstileService().BuildStudentDashboardAsync(ctx, $"{Kecha:yyyy-MM-dd}");
+        // Oy — hodisa bo'lgan kunniki: shunda "boshqa kun" kalendarda BELGILANADI, lekin
+        // tanlangan kunning ro'yxatiga TUSHMAYDI.
+        var h = await new TurnstileService()
+            .BuildStudentHistoryAsync(ctx, s, $"{Kecha:yyyy-MM-dd}", $"{oldingi:yyyy-MM}");
 
-        Assert.Equal(0, Assert.Single(dash.Rows).Passes);
+        Assert.Equal(0, h.Passes);
+        Assert.Empty(h.Events);
+        Assert.Contains($"{oldingi:yyyy-MM-dd}", h.ActiveDays);
     }
 
     [Fact]
-    public async Task StudentDashboard_ArxivlanganOquvchi_RoyxatdaYoq()
+    public async Task StudentHistory_BoshqaQurilmaHodisasi_HisoblanmasligiKerak()
     {
         using var db = TestDb.Sqlite();
         var ctx = db.Context;
-        ctx.Students.Add(new Student { FullName = "Arxiv", ClassName = "A1", DeviceUserId = "S-1", IsArchived = true });
-        await ctx.SaveChangesAsync();
+        var s = AddStudent(db, "S-1", "Ali");
+        await new TurnstileService().IngestAsync(ctx, new()
+        {
+            new("S-2", Iso(Kecha, "09:00"), "in", "Eshik"),   // BOSHQA o'quvchining qurilmasi
+        });
 
-        var dash = await new TurnstileService().BuildStudentDashboardAsync(ctx, $"{Kecha:yyyy-MM-dd}");
+        var h = await new TurnstileService()
+            .BuildStudentHistoryAsync(ctx, s, $"{Kecha:yyyy-MM-dd}", $"{Kecha:yyyy-MM}");
 
-        Assert.Empty(dash.Rows);
-        Assert.Equal(0, dash.Total);
+        Assert.Equal(0, h.Passes);
+        Assert.Empty(h.Events);
+        Assert.Empty(h.ActiveDays);
+    }
+
+    [Fact]
+    public async Task StudentHistory_ArxivlanganOquvchi_TarixiOchiladi()
+    {
+        // Ilgari arxivlangan o'quvchi RO'YXATdan chiqarilardi. Endi tarix uning PROFILIDA —
+        // profil arxivda ham ochiladi, ya'ni tarix ko'rinishi KERAK (yo'qolib qolmasin).
+        using var db = TestDb.Sqlite();
+        var ctx = db.Context;
+        var s = AddStudent(db, "S-1", "Arxiv", archived: true);
+        await new TurnstileService().IngestAsync(ctx, new()
+        {
+            new("S-1", Iso(Kecha, "10:00"), "in", "Eshik"),
+        });
+
+        var h = await new TurnstileService()
+            .BuildStudentHistoryAsync(ctx, s, $"{Kecha:yyyy-MM-dd}", $"{Kecha:yyyy-MM}");
+
+        Assert.Equal(1, h.Passes);
+        Assert.Equal("10:00", h.FirstIn);
+        Assert.Equal("", h.LastOut);   // chiqish hodisasi yo'q
     }
 
     // =============================================================================================

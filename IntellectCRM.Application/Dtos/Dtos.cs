@@ -302,15 +302,22 @@ public record TeacherAttendanceDashboardDto(
 /// <summary>Sinxronlash natijasi.</summary>
 public record TurnstileSyncResultDto(bool Ok, string Message, int EventsFetched, int Updated, string LastSync);
 
-// ---------- Turniket: o'quvchilar kirgan/chiqqan vaqti ----------
-/// <summary>O'quvchi turniket qatori: FISH, guruh, qurilma ID, kirgan/chiqqan vaqt (tanlangan kun).</summary>
-public record StudentTurnstileRowDto(
-    string StudentId, string FullName, string ClassName, string DeviceUserId,
-    string CheckIn, string CheckOut, int Passes);
-/// <summary>O'quvchilar turniket dashboard (tanlangan kun).</summary>
-public record StudentTurnstileDashboardDto(
-    string Date, bool TurnstileEnabled, string LastSync, int Present, int Total,
-    List<StudentTurnstileRowDto> Rows);
+// ---------- Turniket: BITTA o'quvchining kirgan/chiqqan tarixi ----------
+// ⚠️ Ilgari bu yerda "barcha o'quvchilar bir kunda" dashboardi turardi. U OLIB TASHLANDI:
+// turniket tarixi endi o'quvchi PROFILIDA ko'rsatiladi — savol "bugun kim keldi" emas,
+// "shu o'quvchi qachon kirgan-chiqqan" (profildagi qolgan tarix bilan bir joyda).
+/// <summary>Bitta o'tish hodisasi: vaqt ("HH:mm"), yo'nalish ("in"|"out"), qaysi eshik.</summary>
+public record StudentTurnstileEventDto(string Time, string Direction, string DeviceName);
+/// <summary>
+/// O'quvchining turniket tarixi: tanlangan KUN hodisalari + kalendar uchun shu OYdagi faol kunlar.
+/// <para><c>Enabled</c>/<c>LastSync</c> — integratsiya holati (sahifada "sinxronlash" tugmasi uchun).</para>
+/// <para>Qurilma biriktirilmagan bo'lsa <c>DeviceUserId</c> bo'sh va sanoqlar nol — bu XATO emas,
+/// frontend "qurilma biriktirilmagan" deb ko'rsatadi.</para>
+/// </summary>
+public record StudentTurnstileHistoryDto(
+    string Date, string Month, bool Enabled, string LastSync,
+    string DeviceUserId, int Passes, string FirstIn, string LastOut,
+    List<StudentTurnstileEventDto> Events, List<string> ActiveDays);
 /// <summary>O'quvchiga qurilma (turniket) ID biriktirish.</summary>
 public record SetStudentDeviceRequest(string StudentId, string? DeviceUserId);
 // ---------- Kamera (videokuzatuv) ----------

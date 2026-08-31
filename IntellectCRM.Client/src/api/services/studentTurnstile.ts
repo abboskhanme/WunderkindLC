@@ -1,27 +1,43 @@
 import { api } from '../client'
 
-export interface StudentTurnstileRow {
-  studentId: string
-  fullName: string
-  className: string
-  /** Turniket qurilma ID (employeeNo) — bo'sh bo'lsa hali biriktirilmagan */
-  deviceUserId: string
-  /** "HH:mm" — birinchi o'tish (kirgan) */
-  checkIn: string
-  /** "HH:mm" — oxirgi o'tish (chiqqan) */
-  checkOut: string
-  /** O'sha kungi o'tishlar soni */
-  passes: number
+/** Bitta o'tish hodisasi — turniket/FaceID qurilmasidan kelgan qayd. */
+export interface StudentTurnstileEvent {
+  /** "HH:mm" */
+  time: string
+  /** Yo'nalish: kirdi / chiqdi */
+  direction: 'in' | 'out'
+  /** Qurilma nomi (qaysi eshikdan o'tgan) */
+  deviceName: string
 }
 
-export interface StudentTurnstileDashboard {
-  /** "yyyy-MM-dd" */
+/**
+ * BITTA o'quvchining turniket tarixi — o'quvchi profilidagi «Turniket» tabi uchun.
+ *
+ * <p>Ilgari alohida "O'quvchilar turniketi" sahifasi BARCHA o'quvchini bir kun uchun
+ * ko'rsatardi; endi savol boshqacha — "SHU o'quvchi qachon kirgan/chiqqan", shuning uchun
+ * kesim o'quvchi bo'yicha va kun kalendardan tanlanadi.</p>
+ */
+export interface StudentTurnstileHistory {
+  /** Tanlangan kun "yyyy-MM-dd" */
   date: string
-  turnstileEnabled: boolean
+  /** Kalendar chizig'i ko'rsatayotgan oy "yyyy-MM" */
+  month: string
+  /** Turniket integratsiyasi umuman yoqilganmi (sozlamalarda) */
+  enabled: boolean
+  /** Oxirgi sinxronizatsiya vaqti (ISO) */
   lastSync: string
-  present: number
-  total: number
-  rows: StudentTurnstileRow[]
+  /** Qurilmadagi raqam (employeeNo) — bo'sh bo'lsa qurilma biriktirilmagan */
+  deviceUserId: string
+  /** Tanlangan kundagi o'tishlar soni */
+  passes: number
+  /** "HH:mm" — o'sha kungi birinchi kirish */
+  firstIn: string
+  /** "HH:mm" — o'sha kungi oxirgi chiqish */
+  lastOut: string
+  /** Tanlangan kundagi hodisalar (vaqt bo'yicha) */
+  events: StudentTurnstileEvent[]
+  /** Shu OYda hodisa bor kunlar ("yyyy-MM-dd") — kalendarda belgilanadi */
+  activeDays: string[]
 }
 
 export interface SyncResult {
@@ -32,10 +48,16 @@ export interface SyncResult {
   lastSync: string
 }
 
-export async function getStudentTurnstile(date: string): Promise<StudentTurnstileDashboard> {
-  const { data } = await api.get<StudentTurnstileDashboard>('/admin/students/turnstile/dashboard', {
-    params: { date },
-  })
+/** Bitta o'quvchining kirish/chiqish tarixi: tanlangan KUN + shu OYdagi faol kunlar. */
+export async function getStudentTurnstileHistory(
+  studentId: string,
+  date: string,
+  month: string,
+): Promise<StudentTurnstileHistory> {
+  const { data } = await api.get<StudentTurnstileHistory>(
+    `/admin/students/turnstile/${studentId}`,
+    { params: { date, month } },
+  )
   return data
 }
 

@@ -309,6 +309,10 @@ public class AppDbContext(DbContextOptions<AppDbContext> options)
         b.Entity<JournalEntry>().HasIndex(e => e.Date);
         b.Entity<FinanceTransaction>().HasIndex(t => t.StudentId);  // 8.9 mln qator seq scan
         b.Entity<FinanceTransaction>().HasIndex(t => t.TeacherId);  // maosh tarixi
+        // ⚠️ `TurnstileEvents` da UMUMAN indeks yo'q edi. O'quvchi profilidagi turniket tarixi
+        // aynan (qurilma ID + sana) kesimida o'qiladi (`DeviceUserId == ... && EventAt LIKE 'oy%'`),
+        // hodisalar esa har sinxronda o'sib boradi — indekssiz bu butun jadval bo'ylab skan edi.
+        b.Entity<TurnstileEvent>().HasIndex(e => new { e.DeviceUserId, e.EventAt });
         // pg_trgm + GIN trigram indekslar — qidiruv endpointining ILIKE '%...%' so'rovlari
         // indeksdan foydalanishi uchun (oddiy b-tree o'rtadan boshlangan LIKE'ni qo'llamaydi).
         // ⚠️ Bular Npgsql'ga xos annotatsiyalar — SQLite (testlar) ularni e'tiborsiz qoldiradi:

@@ -80,7 +80,6 @@ export const navByRole: Record<Role, NavItem[]> = {
         { label: "O'quvchilar davomati", to: '/admin/students/davomat', perm: 'students.attendance' },
         // Bonus — MOLIYA ruxsati (`finance.bonus`), menyudagi joyi esa o'quvchilar bilan.
         { label: 'Bonus hisoboti', to: '/admin/students/bonus', perm: 'finance.bonus' },
-        { label: 'Turniket', to: '/admin/students/turniket', perm: 'students.turnstile' },
         // Yuz bilan kirish — o'quvchi ilovasiga yangi qurilmadan kirishdagi selfi tekshiruvi.
         { label: 'Yuz bilan kirish', to: '/admin/students/yuz', perm: 'students.face' },
       ],

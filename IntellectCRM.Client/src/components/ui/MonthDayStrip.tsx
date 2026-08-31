@@ -26,6 +26,7 @@ export function MonthDayStrip({
   selected,
   onSelect,
   counts,
+  marked,
   hint,
   todayCount,
 }: {
@@ -37,12 +38,23 @@ export function MonthDayStrip({
   onSelect: (date: string) => void
   /** Kun → son. Berilmagan kun 0 deb hisoblanadi. */
   counts?: Record<string, number>
+  /**
+   * SON o'rniga oddiy BELGI kerak bo'lganda — "shu kunda ma'lumot bor" kunlar ro'yxati.
+   *
+   * <p>Manba faqat "bor/yo'q" ni bilganda ishlatiladi (masalan turniket tarixi: serverdan
+   * `activeDays` keladi, nechtaligi emas). Har katakka "1" yozib qo'yish ALDAMCHI bo'lardi —
+   * o'sha kuni bitta o'tish bo'lgandek ko'rinardi.</p>
+   *
+   * <p>Berilgan bo'lsa `counts`/`todayCount` chizilmaydi (rejim BITTA bo'ladi).</p>
+   */
+  marked?: string[]
   /** Chiziq ostidagi tushuntirish. */
   hint?: string
   /** BUGUNGI katak uchun maxsus son (masalan "bugun qilish kerak" — kechikkanlar bilan). */
   todayCount?: number
 }) {
   const days = useMemo(() => daysOfMonth(month), [month])
+  const markedSet = useMemo(() => (marked ? new Set(marked) : null), [marked])
   const today = todayIso()
   const scrollRef = useRef<HTMLDivElement>(null)
   const todayRef = useRef<HTMLButtonElement>(null)
@@ -117,14 +129,27 @@ export function MonthDayStrip({
               >
                 {d.slice(8, 10)}
               </span>
-              <span
-                className={cn(
-                  'mt-1 text-xs font-bold leading-none',
-                  n === 0 ? 'text-slate-300' : active ? 'text-brand-700' : 'text-slate-800',
-                )}
-              >
-                {n === 0 ? '·' : n}
-              </span>
+              {markedSet ? (
+                <span
+                  className={cn(
+                    'mt-[7px] mb-[3px] h-1.5 w-1.5 rounded-full',
+                    markedSet.has(d)
+                      ? active
+                        ? 'bg-brand-600'
+                        : 'bg-brand-400'
+                      : 'bg-slate-200',
+                  )}
+                />
+              ) : (
+                <span
+                  className={cn(
+                    'mt-1 text-xs font-bold leading-none',
+                    n === 0 ? 'text-slate-300' : active ? 'text-brand-700' : 'text-slate-800',
+                  )}
+                >
+                  {n === 0 ? '·' : n}
+                </span>
+              )}
             </button>
           )
         })}

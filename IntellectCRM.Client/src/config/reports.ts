@@ -93,12 +93,6 @@ export const reportGroups: ReportGroup[] = [
         perm: 'finance.bonus',
         description: "Bonusga chiqqan o'quvchilar, berilgan va bekor qilingan bonuslar",
       },
-      {
-        label: 'Turniket qaydlari',
-        to: '/admin/students/turniket',
-        perm: 'students.turnstile',
-        description: "O'quvchilarning kirish-chiqish qaydlari va qurilma holati",
-      },
     ],
   },
   {

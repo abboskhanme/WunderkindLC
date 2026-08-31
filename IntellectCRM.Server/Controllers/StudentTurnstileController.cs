@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.SignalR;
+using Microsoft.EntityFrameworkCore;
 using IntellectCRM.Application.Dtos;
 using IntellectCRM.Application.Hubs;
 using IntellectCRM.Application.Services;
@@ -10,9 +11,12 @@ using IntellectCRM.Infrastructure.Data;
 namespace IntellectCRM.Server.Controllers;
 
 /// <summary>
-/// O'quvchilar turniketi — har o'quvchining kunlik turniket/FaceID kirgan va chiqqan vaqti.
+/// O'quvchilar turniketi — o'quvchining turniket/FaceID kirgan va chiqqan vaqtlari.
 /// Ma'lumot turniket integratsiyasidan keladi (xom hodisalar Student.DeviceUserId bo'yicha moslanadi).
 /// Tarix hodisalar jurnalida (TurnstileEvent) saqlanadi — istalgan kunni ko'rish mumkin.
+/// <para>⚠️ "Barcha o'quvchilar bir kunda" sahifasi OLIB TASHLANDI — tarix endi o'quvchi
+/// PROFILIDA ko'rsatiladi, ya'ni bitta o'quvchi haqidagi barcha ma'lumot bir joyda turadi.
+/// Shu sabab bu yerda ro'yxat emas, <c>GET {studentId}</c> bor.</para>
 /// </summary>
 [ApiController]
 [Authorize]
@@ -21,12 +25,22 @@ namespace IntellectCRM.Server.Controllers;
 public class StudentTurnstileController(
     AppDbContext db, TurnstileService turnstile, IHubContext<LiveHub> live) : ControllerBase
 {
-    /// <summary>Tanlangan kun (yyyy-MM-dd) uchun o'quvchilar turniketi: FISH, guruh, kirgan/chiqqan vaqt.</summary>
-    [HttpGet("dashboard")]
-    public async Task<ActionResult<StudentTurnstileDashboardDto>> Dashboard([FromQuery] string? date)
+    /// <summary>
+    /// BITTA o'quvchining turniket tarixi: <c>date</c> (yyyy-MM-dd) kunidagi o'tishlar va
+    /// <c>month</c> (yyyy-MM) ichidagi faol kunlar (kalendar chizig'i uchun).
+    /// Ikkalasi ham ixtiyoriy: <c>date</c> — bugun, <c>month</c> — o'sha kunning oyi.
+    /// </summary>
+    [HttpGet("{studentId}")]
+    public async Task<ActionResult<StudentTurnstileHistoryDto>> History(
+        string studentId, [FromQuery] string? date, [FromQuery] string? month)
     {
+        // AsNoTracking — javob faqat O'QISH uchun, tasodifan bazaga yozib yubormaylik.
+        var student = await db.Students.AsNoTracking().FirstOrDefaultAsync(s => s.Id == studentId);
+        if (student is null) return NotFound();
+
         var d = string.IsNullOrEmpty(date) || date.Length < 10 ? AppClock.Today.ToString("yyyy-MM-dd") : date[..10];
-        return await turnstile.BuildStudentDashboardAsync(db, d);
+        var m = string.IsNullOrEmpty(month) || month.Length < 7 ? d[..7] : month[..7];
+        return await turnstile.BuildStudentHistoryAsync(db, student, d, m);
     }
 
     /// <summary>Turniket qurilmasidan so'nggi hodisalarni tortib oladi (o'quvchi/o'qituvchi — barchasi bir sync).</summary>
