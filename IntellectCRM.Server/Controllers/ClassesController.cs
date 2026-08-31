@@ -12,7 +12,7 @@ namespace IntellectCRM.Server.Controllers;
 [Authorize]
 [AdminPerm("classes.list")]
 [Route("api/admin/classes")]
-public class ClassesController(AppDbContext db, AuditService audit, ILogger<ClassesController> logger, CertificateService certSvc, RoomConflictService roomConflict, AutoMessageService autoMsg, IConfiguration config) : ControllerBase
+public class ClassesController(AppDbContext db, AuditService audit, ILogger<ClassesController> logger, CertificateService certSvc, RoomConflictService roomConflict, AutoMessageService autoMsg, IConfiguration config, DataCache dataCache) : ControllerBase
 {
     private string Actor => User.FindFirst(System.Security.Claims.ClaimTypes.Name)?.Value ?? "Admin";
 
@@ -819,8 +819,13 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
     /// <param name="yearFreeze">«AKTIV MUZLATISH» — yangi o'quv yiliga o'tish belgisi. ⚠️ FAQAT
     /// ko'rsatuv: <c>Status</c> baribir "frozen", hisob-kitob (qisman to'lov, keyingi oylarni bekor
     /// qilish) oddiy muzlatish bilan AYNAN bir xil — quyida bu bayroq hech qanday shartga kirmaydi.</param>
+    /// <param name="lessonFee">Kursning bir dars yaxlit narxi, OLDINDAN hisoblangan bo'lsa (OMMAVIY
+    /// amalda — <see cref="TuitionService.LessonFeesForCoursesAsync"/>). ⚠️ FAQAT tezlik uchun:
+    /// <c>null</c> bo'lsa AYNAN o'sha qiymat pastda yakka so'rov bilan olinadi. Yakka
+    /// <see cref="FreezeMember"/> uni bermaydi va avvalgidek ishlaydi.</param>
     private async Task<(bool Already, decimal Restored, string? Error)> FreezeCoreAsync(
-        Group cls, StudentGroup sg, string date, string reasonLabel, bool yearFreeze)
+        Group cls, StudentGroup sg, string date, string reasonLabel, bool yearFreeze,
+        decimal? lessonFee = null)
     {
         if (sg.Status == "frozen") return (true, 0m, null);
         if (sg.Status != "active" && sg.Status != "trial")
@@ -840,7 +845,7 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
             // Muzlatish OYINING qisman to'lovi (shu sanagacha qatnashgan darslar) + ORQAGA SANALGAN
             // muzlatishda keyingi oylar hisobini bekor qilish — hammasi YAGONA manbada
             // (guruhni yopish / tugatish / guruh almashtirish bilan aynan bir xil).
-            restored = (await MembershipBilling.SettleFreezeAsync(db, s, cls, activatedAt, date)).Restored;
+            restored = (await MembershipBilling.SettleFreezeAsync(db, s, cls, activatedAt, date, lessonFee)).Restored;
         }
 
         audit.Record("Membership", $"{cls.Id}:{sg.StudentId}", "update",
@@ -949,6 +954,36 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
 
         var reasonLabel = await ReasonLabelAsync(req.ReasonId);
 
+        // GURUHLAR OLDINDAN — BITTA so'rov. Ilgari halqa ichida har a'zolik uchun
+        // `db.Classes.FindAsync(key.GroupId)` chaqirilardi va `ChangeTracker.Clear()` har iteratsiyada
+        // EF keshini tozalagani uchun bu HAQIQATAN bazaga borardi: `keys` GroupId bo'yicha saralangan,
+        // ya'ni guruh sahifasidan kelgan oqimda AYNAN BIR XIL qator 500 marta o'qilardi.
+        //
+        // ⚠️ NEGA `AsNoTracking`: bu yo'lda `Group` obyekti HECH QAYERDA o'zgartirilmaydi — na
+        // `FreezeCoreAsync`/`ActivateCoreAsync` da, na ular chaqiradigan `MembershipBilling`,
+        // `TuitionService`, `RetentionBonusService`, `AuditService` da (faqat Id/Name/MonthlyFee/
+        // Days/CourseId O'QILADI; yoziladigan narsalar — StudentGroup, Student.Balance, MonthlyCharge,
+        // FinanceTransaction). Kuzatilmagan obyekt esa har iteratsiyadagi `ChangeTracker.Clear()` dan
+        // MUSTAQIL — u lug'atda tirik qoladi va uzilib qolmaydi.
+        //
+        // ⚠️ Kelishilgan murosa: guruh endi halqa BOSHIDAGI holatida (bir marta o'qilgan). Amal
+        // davomida parallel o'chirilgan guruh "topilmadi" bo'lib sanalmaydi — lekin a'zoliklar
+        // ro'yxati (`all`) ham allaqachon shunday suratdan olingan, ya'ni oqim avvaldan shu
+        // konvensiyada. A'zolikning O'ZI esa avvalgidek har iteratsiyada QAYTA o'qiladi.
+        var groupIds = keys.Select(k => k.GroupId).Distinct().ToList();
+        var groups = await db.Classes.AsNoTracking()
+            .Where(c => groupIds.Contains(c.Id))
+            .ToDictionaryAsync(c => c.Id);
+
+        // KURSNING BIR DARS NARXI (LessonPrice) — bir marta, DISTINCT kurslar uchun. Ilgari uni
+        // `ChargeFreezeProrateAsync` har a'zolik uchun qaytadan so'rardi, holbuki ommaviy amalda
+        // guruh (demak kurs) odatda bitta — bir xil qiymat 500 marta o'qilardi. Qiymat halqada
+        // `lessonFee` sifatida pastga uzatiladi; hisob-kitob formulasi O'ZGARMAYDI (parametr
+        // berilmasa `ChargeFreezeProrateAsync` aynan shu qiymatni o'zi so'raydi).
+        var lessonFees = await TuitionService.LessonFeesForCoursesAsync(db, groups.Values.Select(g => g.CourseId));
+        decimal FeeFor(string? courseId) =>
+            !string.IsNullOrEmpty(courseId) && lessonFees.TryGetValue(courseId, out var f) ? f : 0m;
+
         var changed = 0;
         var skipped = skippedNotEligible;
         var failed = 0;
@@ -958,54 +993,68 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
         var errors = new List<string>();
         var touched = new HashSet<string>();
 
-        foreach (var key in keys)
+        // KESH BUMP'INI BIR MARTAGA YIG'ISH. Har a'zolik o'z `SaveChanges`i bilan saqlanadi, ya'ni
+        // `CacheInvalidationInterceptor` har iteratsiyada `DataCache.Bump` chaqiradi — 500 a'zolikda
+        // ~1500 versiya oshirilishi. Natijada bosh sahifa, reyting, ball, kurslar analitikasi va
+        // baholash keshlari butun jarayon davomida qayta-qayta eskirib, bir necha marta boshqatdan
+        // hisoblanadi (hisoblangani esa keyingi iteratsiyada darhol yana eskiradi). To'plash rejimida
+        // turlar yig'iladi va blok tugaganda BIR MARTA qo'llanadi.
+        //
+        // ⚠️ Kelishilgan murosa: to'plash davom etayotgan bir necha soniya ichida parallel
+        // foydalanuvchilar keshning ESKI qiymatini ko'radi — bu ATAYIN va hozirgidan yaxshiroq.
+        // ⚠️ `using` BLOK javob qaytarilishidan OLDIN yopiladi: aks holda klient darhol yangi
+        // ma'lumot so'raganda kesh hali eski bo'lardi.
+        using (dataCache.BeginBatch())
         {
-            var who = names.TryGetValue(key.StudentId, out var n) ? n : key.StudentId;
-            try
+            foreach (var key in keys)
             {
-                var cls = await db.Classes.FindAsync(key.GroupId);
-                var sg = await db.StudentGroups
-                    .FirstOrDefaultAsync(x => x.GroupId == key.GroupId && x.StudentId == key.StudentId && x.IsActive);
-                // Oradan o'chib ketgan bo'lsa (parallel amal) — jim o'tkazamiz.
-                if (cls is null || sg is null) { skipped++; continue; }
-
-                if (freeze)
+                var who = names.TryGetValue(key.StudentId, out var n) ? n : key.StudentId;
+                try
                 {
-                    var r = await FreezeCoreAsync(cls, sg, date, reasonLabel, yearFreeze);
-                    if (r.Error is not null)
+                    groups.TryGetValue(key.GroupId, out var cls);
+                    var sg = await db.StudentGroups
+                        .FirstOrDefaultAsync(x => x.GroupId == key.GroupId && x.StudentId == key.StudentId && x.IsActive);
+                    // Oradan o'chib ketgan bo'lsa (parallel amal) — jim o'tkazamiz.
+                    if (cls is null || sg is null) { skipped++; continue; }
+
+                    if (freeze)
                     {
-                        failed++;
-                        if (errors.Count < MaxBulkErrors) errors.Add($"{who} ({cls.Name}): {r.Error}");
-                        continue;
+                        var r = await FreezeCoreAsync(cls, sg, date, reasonLabel, yearFreeze, FeeFor(cls.CourseId));
+                        if (r.Error is not null)
+                        {
+                            failed++;
+                            if (errors.Count < MaxBulkErrors) errors.Add($"{who} ({cls.Name}): {r.Error}");
+                            continue;
+                        }
+                        if (r.Already) { skipped++; continue; }
+                        restored += r.Restored;
                     }
-                    if (r.Already) { skipped++; continue; }
-                    restored += r.Restored;
-                }
-                else
-                {
-                    var r = await ActivateCoreAsync(cls, sg, date, req.RetentionBonus);
-                    if (r.Already) { skipped++; continue; }
-                    movedAdvance += r.MovedAdvance;
-                    catchUpMonths += r.CatchUpMonths;
-                }
+                    else
+                    {
+                        var r = await ActivateCoreAsync(cls, sg, date, req.RetentionBonus);
+                        if (r.Already) { skipped++; continue; }
+                        movedAdvance += r.MovedAdvance;
+                        catchUpMonths += r.CatchUpMonths;
+                    }
 
-                await db.SaveChangesAsync();
-                changed++;
-                touched.Add(key.StudentId);
-            }
-            catch (Exception ex)
-            {
-                failed++;
-                if (errors.Count < MaxBulkErrors) errors.Add($"{who}: {ex.Message}");
-                logger.LogError(ex, "Bulk {Action} error: group={GroupId}, student={StudentId}: {Message}",
-                    freeze ? "freeze" : "activate", key.GroupId, key.StudentId, ex.Message);
-            }
-            finally
-            {
-                // Saqlangandan keyin ham tozalanadi: har a'zolik MUSTAQIL bo'lsin (bittasining
-                // yarim o'zgarishi keyingisining saqlashiga qo'shilib ketmasin) va 500 ta
-                // kuzatilayotgan obyekt har saqlashda qayta tekshirilmasin.
-                db.ChangeTracker.Clear();
+                    await db.SaveChangesAsync();
+                    changed++;
+                    touched.Add(key.StudentId);
+                }
+                catch (Exception ex)
+                {
+                    failed++;
+                    if (errors.Count < MaxBulkErrors) errors.Add($"{who}: {ex.Message}");
+                    logger.LogError(ex, "Bulk {Action} error: group={GroupId}, student={StudentId}: {Message}",
+                        freeze ? "freeze" : "activate", key.GroupId, key.StudentId, ex.Message);
+                }
+                finally
+                {
+                    // Saqlangandan keyin ham tozalanadi: har a'zolik MUSTAQIL bo'lsin (bittasining
+                    // yarim o'zgarishi keyingisining saqlashiga qo'shilib ketmasin) va 500 ta
+                    // kuzatilayotgan obyekt har saqlashda qayta tekshirilmasin.
+                    db.ChangeTracker.Clear();
+                }
             }
         }
 

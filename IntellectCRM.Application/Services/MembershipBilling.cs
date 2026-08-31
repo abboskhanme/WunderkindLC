@@ -1,4 +1,4 @@
-using IntellectCRM.Application.Abstractions;
+﻿using IntellectCRM.Application.Abstractions;
 using IntellectCRM.Domain;
 
 namespace IntellectCRM.Application.Services;
@@ -43,14 +43,21 @@ public static class MembershipBilling
     /// har bir chaqiruvchi o'z holatini o'zi qo'yadi (muzlatish, ketkazish yoki "tugatgan").
     /// </summary>
     /// <param name="activatedAt">A'zolikning aktivlashtirilgan sanasi (<see cref="StudentGroup.ActivatedAt"/>).</param>
+    /// <param name="lessonFee">Kursning bir dars yaxlit narxi, OLDINDAN hisoblangan bo'lsa
+    /// (<see cref="TuitionService.LessonFeesForCoursesAsync"/>). ⚠️ FAQAT tezlik uchun — <c>null</c>
+    /// bo'lsa AYNAN o'sha qiymat quyida yakka so'rov bilan olinadi, ya'ni hisob o'zgarmaydi.
+    /// Ommaviy muzlatishda guruh (demak kurs) bitta bo'lgani uchun bu bir xil so'rovni har a'zolik
+    /// uchun takrorlamaslikka imkon beradi. Qolgan uchta yo'l (guruh almashtirish, guruhni yopish,
+    /// sertifikat bilan tugatish) parametrni bermaydi va avvalgidek ishlaydi.</param>
     public static async Task<FreezeSettlement> SettleFreezeAsync(
-        IAppDbContext db, Student student, Group group, string activatedAt, string freezeDate)
+        IAppDbContext db, Student student, Group group, string activatedAt, string freezeDate,
+        decimal? lessonFee = null)
     {
         var frozenBeforeActive = activatedAt.Length >= 10
                                  && string.CompareOrdinal(activatedAt, freezeDate) > 0;
 
         if (!frozenBeforeActive)
-            await TuitionService.ChargeFreezeProrateAsync(db, student, group, activatedAt, freezeDate);
+            await TuitionService.ChargeFreezeProrateAsync(db, student, group, activatedAt, freezeDate, lessonFee);
 
         var (restored, purged) = await TuitionService.PurgeChargesAfterMonthAsync(
             db, student, group.Id, freezeDate, inclusive: frozenBeforeActive);

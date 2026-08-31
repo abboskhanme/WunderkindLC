@@ -1,4 +1,4 @@
-using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
 using Microsoft.Extensions.Caching.Memory;
 using IntellectCRM.Application.Abstractions;
 
@@ -32,15 +32,87 @@ public sealed class DataCache(IMemoryCache cache, IServiceScopeFactory scopeFact
     // Entity turi nomi (masalan nameof(JournalEntry)) → joriy versiya. Yozuv o'zgarganda +1.
     private readonly ConcurrentDictionary<string, long> _versions = new();
 
+    /// <summary>OMMAVIY amal uchun "to'plash rejimi" (qarang: <see cref="BeginBatch"/>).
+    /// <para>⚠️ <b>AsyncLocal bo'lishi SHART.</b> <see cref="DataCache"/> — SINGLETON: oddiy maydon
+    /// bo'lsa bitta so'rovning to'plash rejimi butun ilovani, ya'ni PARALLEL ishlayotgan boshqa
+    /// foydalanuvchilarning bump'larini ham yutib yuborardi. AsyncLocal esa qiymatni faqat SHU
+    /// so'rovning asinxron oqimiga bog'laydi.</para></summary>
+    private static readonly AsyncLocal<HashSet<string>?> _batch = new();
+
     /// <summary>Guruh (entity turi) joriy versiyasi. Hali ko'rilmagan bo'lsa 0 dan boshlanadi.</summary>
     public long Version(string group) => _versions.GetOrAdd(group, 0);
 
     /// <summary>Berilgan guruhlarning har birining versiyasini +1 qiladi — shu turga bog'liq barcha
-    /// kesh yozuvlarining to'liq kaliti o'zgaradi va keyingi so'rovda qayta hisoblanadi.</summary>
+    /// kesh yozuvlarining to'liq kaliti o'zgaradi va keyingi so'rovda qayta hisoblanadi.
+    /// <para>To'plash rejimi (<see cref="BeginBatch"/>) yoqilgan bo'lsa versiya DARHOL oshmaydi —
+    /// turlar to'planadi va <c>Dispose</c> da BIR MARTA qo'llanadi.</para></summary>
     public void Bump(IEnumerable<string> groups)
+    {
+        var batch = _batch.Value;
+        if (batch is not null)
+        {
+            foreach (var g in groups) batch.Add(g);
+            return;
+        }
+        BumpNow(groups);
+    }
+
+    private void BumpNow(IEnumerable<string> groups)
     {
         foreach (var g in groups)
             _versions.AddOrUpdate(g, 1, (_, v) => v + 1);
+    }
+
+    /// <summary>
+    /// OMMAVIY amal uchun to'plash rejimi: blok ichidagi barcha <see cref="Bump"/> chaqiruvlari
+    /// TO'PLANADI va <c>Dispose</c> da har bir tur uchun BIR MARTA qo'llanadi.
+    ///
+    /// <para><b>Nega kerak:</b> ommaviy muzlatish/aktivlashtirish har a'zolikni ALOHIDA
+    /// <c>SaveChanges</c> bilan saqlaydi (bittasi xato bersa qolganlari bajarilsin), ya'ni 500 ta
+    /// o'quvchida <c>CacheInvalidationInterceptor</c> ~1500 marta bump qiladi. Natijada bosh sahifa,
+    /// reyting, ball, kurslar analitikasi kabi OG'IR keshlar butun jarayon davomida qayta-qayta
+    /// eskiradi va bir necha marta boshqatdan hisoblanadi — hisoblangani esa keyingi iteratsiyada
+    /// darhol yana eskiradi.</para>
+    ///
+    /// <para>⚠️ <b>Kelishilgan murosa:</b> to'plash davom etayotgan bir necha soniya ichida parallel
+    /// foydalanuvchilar keshning ESKI qiymatini ko'radi. Bu ATAYIN va hozirgidan yaxshiroq —
+    /// hozir ular baribir eskirgan natijani, ustiga har safar qaytadan hisoblab olishadi.</para>
+    ///
+    /// <para>ICHMA-ICH (nested) qo'llab-quvvatlanadi: ichki blok <c>Dispose</c> da turlarni TASHQI
+    /// to'plamga qo'shadi (bump qilmaydi), haqiqiy bump esa eng tashqi blokda bo'ladi. Istisno
+    /// bo'lganda ham <c>using</c> tufayli <c>Dispose</c> ishlaydi — bump YO'QOLMAYDI.</para>
+    /// </summary>
+    public IDisposable BeginBatch() => new BatchScope(this);
+
+    private sealed class BatchScope : IDisposable
+    {
+        private readonly DataCache _owner;
+        private readonly HashSet<string>? _parent;   // ichma-ich blokda — tashqi to'plam
+        private readonly HashSet<string> _own;
+        private bool _disposed;
+
+        public BatchScope(DataCache owner)
+        {
+            _owner = owner;
+            _parent = _batch.Value;
+            _own = new HashSet<string>(StringComparer.Ordinal);
+            _batch.Value = _own;
+        }
+
+        public void Dispose()
+        {
+            if (_disposed) return;   // ikki marta Dispose qilinsa turlar ikki marta qo'llanmasin
+            _disposed = true;
+            _batch.Value = _parent;  // oldingi (tashqi yoki yo'q) holatni TIKLAYMIZ
+            if (_own.Count == 0) return;
+            // Tashqi to'plam bo'lsa — unga QO'SHAMIZ (bump eng tashqi blokda bir marta bo'ladi).
+            if (_parent is not null)
+            {
+                foreach (var g in _own) _parent.Add(g);
+                return;
+            }
+            _owner.BumpNow(_own);
+        }
     }
 
     /// <summary>

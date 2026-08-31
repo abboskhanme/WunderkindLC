@@ -1,4 +1,4 @@
-using Microsoft.EntityFrameworkCore;
+﻿using Microsoft.EntityFrameworkCore;
 using IntellectCRM.Application.Abstractions;
 using IntellectCRM.Application.Dtos;
 using IntellectCRM.Domain;
@@ -222,11 +222,38 @@ public static class TuitionService
         return decimal.Round(Math.Min(partial, monthlyFee), 2);
     }
 
-    /// <summary>Kursning (Subject) bir dars yaxlit narxi (LessonPrice). CourseId bo'sh/topilmasa 0.</summary>
+    /// <summary>Kursning (Subject) bir dars yaxlit narxi (LessonPrice). CourseId bo'sh/topilmasa 0.
+    /// <para>⚠️ Mantiq OMMAVIY variantda (<see cref="LessonFeesForCoursesAsync"/>) — ikki joyda ayri
+    /// qoida QOLMASIN: bo'sh CourseId, topilmagan kurs va kiritilmagan narx uchun ikkalasi ham
+    /// AYNAN bir xil (0) qaytaradi.</para></summary>
     private static async Task<decimal> LessonFeeForCourseAsync(IAppDbContext db, string? courseId)
     {
         if (string.IsNullOrEmpty(courseId)) return 0m;
-        return await db.Subjects.Where(x => x.Id == courseId).Select(x => x.LessonPrice).FirstOrDefaultAsync();
+        var fees = await LessonFeesForCoursesAsync(db, [courseId]);
+        return fees.TryGetValue(courseId, out var fee) ? fee : 0m;
+    }
+
+    /// <summary>
+    /// Bir nechta kursning bir dars yaxlit narxi (LessonPrice) — BITTA so'rovda.
+    ///
+    /// <para><b>Nega kerak:</b> ommaviy muzlatishda guruh (demak KURS ham) odatda bitta va bir xil,
+    /// lekin narx har a'zolik uchun qaytadan so'ralardi — 500 ta o'quvchida <c>Subjects</c> jadvaliga
+    /// 500 ta bir xil so'rov. Bu yerda distinct kurslar bir marta yuklanadi va natija halqada
+    /// <c>lessonFee</c> sifatida pastga uzatiladi.</para>
+    ///
+    /// <para>Bo'sh/null <c>courseId</c> lug'atga umuman KIRMAYDI, topilmagan kurs ham yo'q — ikkala
+    /// holatda chaqiruvchi 0 oladi, ya'ni yakka variant bilan bir xil semantika.</para>
+    /// </summary>
+    public static async Task<Dictionary<string, decimal>> LessonFeesForCoursesAsync(
+        IAppDbContext db, IEnumerable<string?> courseIds)
+    {
+        var ids = courseIds.Where(x => !string.IsNullOrEmpty(x)).Select(x => x!).Distinct().ToList();
+        var result = new Dictionary<string, decimal>(StringComparer.Ordinal);
+        if (ids.Count == 0) return result;
+        var rows = await db.Subjects.Where(x => ids.Contains(x.Id))
+            .Select(x => new { x.Id, x.LessonPrice }).ToListAsync();
+        foreach (var r in rows) result[r.Id] = r.LessonPrice;
+        return result;
     }
 
     /// <summary>Hafta kunlari (0=Du..6=Yak) bo'yicha [from..to] (inklyuziv) oralig'idagi darslar soni.</summary>
@@ -331,7 +358,11 @@ public static class TuitionService
     /// natija "carry" (oldingi segmentlar summasi). Yangi jami = min(carry + joriy segment gross, oylik narx).
     /// Oy davomida BIRINCHI muzlatishda (existing shu aktivlashtirishga tegishli emas yoki umuman yo'q) carry=0 —
     /// eski almashtirish xatti-harakati o'zgarmaydi.</para></summary>
-    public static async Task ChargeFreezeProrateAsync(IAppDbContext db, Student s, Group cls, string activatedAtIso, string freezeDateIso)
+    /// <param name="lessonFee">Kursning bir dars yaxlit narxi, OLDINDAN hisoblangan bo'lsa (ommaviy
+    /// amalda — <see cref="LessonFeesForCoursesAsync"/>). ⚠️ FAQAT tezlik uchun: <c>null</c> bo'lsa
+    /// aynan o'sha qiymat shu yerda yakka so'rov bilan olinadi, ya'ni natija bir xil. Ommaviy
+    /// muzlatishda guruh bitta bo'lgani uchun bu bir xil so'rovni 500 martadan 1 martaga tushiradi.</param>
+    public static async Task ChargeFreezeProrateAsync(IAppDbContext db, Student s, Group cls, string activatedAtIso, string freezeDateIso, decimal? lessonFee = null)
     {
         if (cls.MonthlyFee <= 0 || freezeDateIso.Length < 10 || !DateOnly.TryParse(freezeDateIso, out var fz)) return;
         var monthStart = new DateOnly(fz.Year, fz.Month, 1);
@@ -354,13 +385,27 @@ public static class TuitionService
         var studied = fz >= activeFrom ? LessonsInRange(cls.Days, activeFrom, fz) : 0;
         // Qatnashilgan darslar uchun (aktivlashtirish bilan bir xil formula): jami/12+ → to'liq, aks holda
         // qatnashilgan dars × kursning bir dars yaxlit narxi (LessonPrice; yo'q bo'lsa eski pro-rata).
-        var lessonFee = await LessonFeeForCourseAsync(db, cls.CourseId);
-        var gross = ProratedLessonCharge(cls.MonthlyFee, lessonFee, studied, totalInMonth);
+        var fee = lessonFee ?? await LessonFeeForCourseAsync(db, cls.CourseId);
+        var gross = ProratedLessonCharge(cls.MonthlyFee, fee, studied, totalInMonth);
 
-        // Per-guruh billingga o'tdik — shu oyning eski aggregate (GroupId=null) qatorini darhol tozalaymiz
-        // (aks holda muzlatish faqat per-guruh qatorni kamaytirib, aggregate qator to'liq oy bo'lib qolardi).
-        await PurgeAggregateRowAsync(db, s, month);
-        var existing = await db.MonthlyCharges.FirstOrDefaultAsync(c => c.StudentId == s.Id && c.GroupId == cls.Id && c.Month == month);
+        // Shu (o'quvchi, oy) uchun kerak bo'ladigan IKKALA qator ham BITTA so'rovda: aggregate
+        // (GroupId=null) va shu guruhniki. Ilgari bular ketma-ket ikki so'rov edi
+        // (`PurgeAggregateRowAsync` + `existing`) — ommaviy amalda a'zolik boshiga ikkita ortiqcha
+        // aylanish. Filtr `MonthlyCharges(StudentId, GroupId, Month)` indeksining prefiksiga tushadi.
+        var monthRows = await db.MonthlyCharges
+            .Where(c => c.StudentId == s.Id && c.Month == month && (c.GroupId == null || c.GroupId == cls.Id))
+            .ToListAsync();
+
+        // ⚠️ TARTIB O'ZGARMAYDI: per-guruh billingga o'tdik — shu oyning eski aggregate (GroupId=null)
+        // qatorini `existing` bilan ishlashdan OLDIN tozalaymiz (aks holda muzlatish faqat per-guruh
+        // qatorni kamaytirib, aggregate qator to'liq oy bo'lib qolardi). Balans hisobi shunga tayanadi.
+        var aggregateRow = monthRows.FirstOrDefault(c => c.GroupId == null);
+        if (aggregateRow is not null)
+        {
+            s.Balance += Math.Max(0m, aggregateRow.Amount - aggregateRow.Discount);
+            db.MonthlyCharges.Remove(aggregateRow);
+        }
+        var existing = monthRows.FirstOrDefault(c => c.GroupId == cls.Id);
 
         // SHU OYDA muzlatib-qayta aktivlashtirish tsikli bo'lgan bo'lsa (existing aynan shu aktivlashtirish
         // paytida yozilgan — Date == activatedAtIso), oldingi (allaqachon yakunlangan) segmentlar summasini
@@ -369,7 +414,7 @@ public static class TuitionService
         if (activatedThisMonth && existing is not null && existing.Date == activatedAtIso)
         {
             var remainingAtActivation = LessonsInRange(cls.Days, act, monthEnd);
-            var projectedAtActivation = ProratedLessonCharge(cls.MonthlyFee, lessonFee, remainingAtActivation, totalInMonth);
+            var projectedAtActivation = ProratedLessonCharge(cls.MonthlyFee, fee, remainingAtActivation, totalInMonth);
             carry = Math.Max(0m, existing.Amount - projectedAtActivation);
         }
         var totalGross = Math.Min(carry + gross, cls.MonthlyFee);
