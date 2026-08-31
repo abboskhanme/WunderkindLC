@@ -66,6 +66,44 @@ public class StudentSearchTests
         Assert.Equal("", StudentSearch.MemberState(Array.Empty<string?>()));
     }
 
+    /// <summary>
+    /// «AKTIV MUZLATISH» (yangi o'quv yiliga o'tish) — a'zolik <c>Status</c>i baribir "frozen",
+    /// belgi ALOHIDA bayroqda keladi. Ustunlikda u oddiy "frozen" dan YUQORI: ikkala xil
+    /// muzlatishi bor o'quvchi ro'yxatda aynan "aktiv muzlatilgan" bo'lib ko'rinishi kerak
+    /// (savol — "yangi yilga nechta o'quvchi bilan o'tyapmiz").
+    /// </summary>
+    [Fact]
+    public void MemberState_YearFrozen_FrozenDAN_YUQORI_ammo_TrialDAN_PAST()
+    {
+        Assert.Equal("yearFrozen", StudentSearch.MemberState(new[] { "frozen" }, yearFreeze: true));
+        // Faol yoki sinovdagi a'zoligi bor o'quvchi — muzlatilgan deb ko'rsatilmaydi: u haqiqatan
+        // qatnayapti, "aktiv muzlatish" esa faqat qatnamayotganini ajratish uchun.
+        Assert.Equal("active", StudentSearch.MemberState(new[] { "frozen", "active" }, yearFreeze: true));
+        Assert.Equal("trial", StudentSearch.MemberState(new[] { "frozen", "trial" }, yearFreeze: true));
+    }
+
+    /// <summary>
+    /// Bayroq FAQAT muzlatilgan a'zolik bor bo'lganda ma'noga ega — u muzlatishning TURINI
+    /// bildiradi, o'z-o'zidan holat EMAS. Guruhsiz o'quvchi baribir bo'sh yorliq oladi.
+    /// </summary>
+    [Fact]
+    public void MemberState_Muzlatilgan_azolik_YOQ_bolsa_bayroq_HECH_NARSA_ozgartirmaydi()
+    {
+        Assert.Equal("", StudentSearch.MemberState(Array.Empty<string?>(), yearFreeze: true));
+        Assert.Equal("active", StudentSearch.MemberState(new[] { "active" }, yearFreeze: true));
+    }
+
+    /// <summary>
+    /// ORTGA MOSLIK: bayroqsiz (eski) chaqiruvlar avvalgidek "frozen" olishi SHART — overload
+    /// standart qiymat bilan qo'shildi, mavjud chaqiruv joylari o'zgartirilmagan.
+    /// </summary>
+    [Fact]
+    public void MemberState_Bayroqsiz_chaqiruv_avvalgidek_frozen()
+    {
+        Assert.Equal("frozen", StudentSearch.MemberState(new[] { "frozen" }));
+        Assert.Equal("frozen", StudentSearch.MemberState(new[] { "frozen" }, yearFreeze: false));
+    }
+
     /* ---------- ClampLimit ---------- */
 
     [Fact]

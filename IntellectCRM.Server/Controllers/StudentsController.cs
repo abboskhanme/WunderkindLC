@@ -66,7 +66,7 @@ public class StudentsController(
         var memberships = await (from sg in db.StudentGroups
                                  join c in db.Classes on sg.GroupId equals c.Id
                                  where sg.IsActive && ids.Contains(sg.StudentId)
-                                 select new { sg.StudentId, c.Id, c.Name, c.TeacherId, sg.Status })
+                                 select new { sg.StudentId, c.Id, c.Name, c.TeacherId, sg.Status, sg.YearFreeze })
             .ToListAsync();
 
         var statesByStudent = memberships.GroupBy(m => m.StudentId)
@@ -75,6 +75,7 @@ public class StudentsController(
                 .Select(x => new StudentGroupState
                 {
                     GroupId = x.Id, Name = x.Name, TeacherId = x.TeacherId ?? "", Status = x.Status ?? "",
+                    YearFreeze = x.YearFreeze,
                 }).ToList());
 
         // Ro'yxat ustunidagi NOMLAR — MUZLATILGANLARSIZ. O'quvchi eski guruhida muzlatilib,
@@ -90,6 +91,14 @@ public class StudentsController(
         // ro'yxat/qidiruvda "Aktiv emas" emas, aynan "Muzlatilgan" deb ko'rinishi uchun.
         var trialIds = memberships.Where(m => m.Status == "trial").Select(m => m.StudentId).ToHashSet();
         var frozenIds = memberships.Where(m => m.Status == "frozen").Select(m => m.StudentId).ToHashSet();
+        // «AKTIV MUZLATISH» (yangi o'quv yiliga o'tish) — a'zolik holati baribir "frozen", shuning
+        // uchun bu ALOHIDA bayroqdan olinadi. Yorliq oddiy "frozen" dan OLDIN tekshiriladi: ikkala
+        // xil muzlatishi bor o'quvchi ro'yxatda aynan "aktiv muzlatilgan" bo'lib ko'rinsin
+        // (savol — "yangi yilga nechta o'quvchi bilan o'tyapmiz").
+        // ⚠️ Yuqoridagi `byStudent` (guruh NOMLARI) va `activeIds` bunga TEGILMAYDI: hisob-kitobda
+        // ham, "kursda aktiv" belgisida ham oddiy muzlatishdan farqi YO'Q.
+        var yearFrozenIds = memberships.Where(m => m.Status == "frozen" && m.YearFreeze)
+            .Select(m => m.StudentId).ToHashSet();
 
         // Tuman + maktab nomlarini biriktiramiz (DB'ga yozilmaydi — faqat ko'rsatish uchun).
         // Bu lug'atlar deyarli o'zgarmaydi, ro'yxat esa tez-tez ochiladi — DataCache orqali:
@@ -111,6 +120,7 @@ public class StudentsController(
             s.Active = activeIds.Contains(s.Id);
             s.MemberState = activeIds.Contains(s.Id) ? "active"
                 : trialIds.Contains(s.Id) ? "trial"
+                : yearFrozenIds.Contains(s.Id) ? "yearFrozen"
                 : frozenIds.Contains(s.Id) ? "frozen" : "";
             if (!string.IsNullOrEmpty(s.DistrictId))
                 s.DistrictName = districtNames.GetValueOrDefault(s.DistrictId, "");
@@ -216,8 +226,13 @@ public class StudentsController(
         var memberships = await (from sg in db.StudentGroups
                                  join c in db.Classes on sg.GroupId equals c.Id
                                  where sg.IsActive && ids.Contains(sg.StudentId)
-                                 select new { sg.StudentId, c.Name, sg.Status })
+                                 select new { sg.StudentId, c.Name, sg.Status, sg.YearFreeze })
             .ToListAsync();
+        // «Aktiv muzlatish» — a'zolik `Status`ida EMAS, alohida bayroqda (qarang: GetAll).
+        // Guruh chiplari (`StudentSearchGroupDto`) o'zgarmaydi: dropdownda "qayerda va qanday
+        // holatda" yetarli, ajratish esa o'quvchi darajasidagi `memberState` belgisida ko'rinadi.
+        var yearFrozenIds = memberships.Where(m => m.Status == "frozen" && m.YearFreeze)
+            .Select(m => m.StudentId).ToHashSet();
         var groupsBy = memberships.GroupBy(m => m.StudentId)
             .ToDictionary(g => g.Key, g => g
                 .OrderBy(x => x.Name, StringComparer.OrdinalIgnoreCase)
@@ -231,7 +246,8 @@ public class StudentsController(
                 : !string.IsNullOrEmpty(r.FatherPhone) ? r.FatherPhone : r.MotherPhone;
             return new StudentSearchResultDto(
                 r.Id, r.FullName, r.Phone, parentPhone, r.IsArchived,
-                StudentSearch.MemberState(groups.Select(x => (string?)x.Status)), groups);
+                StudentSearch.MemberState(groups.Select(x => (string?)x.Status), yearFrozenIds.Contains(r.Id)),
+                groups);
         }).ToList();
     }
 

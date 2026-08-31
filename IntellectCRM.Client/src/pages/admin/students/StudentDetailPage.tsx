@@ -102,12 +102,18 @@ const monthLabel = (m: string) =>
   m && m.length >= 7 ? `${uzMonths[Number(m.slice(5, 7)) - 1] ?? m} ${m.slice(0, 4)}` : m
 const weekdayShort = ['Du', 'Se', 'Cho', 'Pa', 'Ju', 'Sha', 'Ya']
 
-function groupStatusBadge(status: string): { label: string; tone: BadgeTone } {
+/**
+ * A'zolik holati belgisi. `yearFreeze` — «Aktiv muzlatish» (yangi o'quv yili): holat baribir
+ * "frozen", shuning uchun bu ALOHIDA status emas, o'sha belgining aniqroq yozuvi.
+ */
+function groupStatusBadge(status: string, yearFreeze?: boolean): { label: string; tone: BadgeTone } {
   switch (status) {
     case 'active':
       return { label: 'Aktiv', tone: 'green' }
     case 'frozen':
-      return { label: 'Muzlatilgan', tone: 'blue' }
+      return yearFreeze
+        ? { label: 'Aktiv muzlatilgan', tone: 'indigo' }
+        : { label: 'Muzlatilgan', tone: 'blue' }
     case 'completed':
       return { label: 'Tugatilgan', tone: 'teal' }
     case 'left':
@@ -249,7 +255,8 @@ export function StudentDetailPage() {
   /** "Guruhlar" kartasi bosilganda — a'zolik boshqaruvi modali (muzlatish/aktivlashtirish/sinovga/almashtirish). */
   const [groupModal, setGroupModal] = useState<StudentGroupMembership | null>(null)
   const [groupActionDate, setGroupActionDate] = useState('')
-  const [groupReasonAction, setGroupReasonAction] = useState<'freeze' | 'return' | 'remove' | 'activate' | null>(null)
+  /** `yearFreeze` — «Aktiv muzlatish»: o'sha muzlatishning O'ZI, faqat yangi o'quv yili belgisi bilan. */
+  const [groupReasonAction, setGroupReasonAction] = useState<'freeze' | 'yearFreeze' | 'return' | 'remove' | 'activate' | null>(null)
   const [groupTransferOpen, setGroupTransferOpen] = useState(false)
   const [groupBusy, setGroupBusy] = useState(false)
   /** "Guruhga qo'shish" — barcha (arxivlanmagan) guruhlar ro'yxati + o'qituvchi→guruh tanlash modali. */
@@ -612,8 +619,12 @@ export function StudentDetailPage() {
     if (!id || !groupModal || !groupReasonAction || groupBusy) return
     setGroupBusy(true)
     try {
-      if (groupReasonAction === 'freeze') {
-        await freezeMember(groupModal.groupId, id, date ?? groupActionDate, reasonId)
+      if (groupReasonAction === 'freeze' || groupReasonAction === 'yearFreeze') {
+        // AYNAN o'sha endpoint — farq faqat bayroqda (hisob-kitob va holat bir xil).
+        await freezeMember(
+          groupModal.groupId, id, date ?? groupActionDate, reasonId,
+          groupReasonAction === 'yearFreeze',
+        )
       } else if (groupReasonAction === 'activate') {
         // Bonus ptichkasi faqat aktivlashtirish oynasida ko'rinadi — qolgan oqimlarda `undefined`.
         await activateMember(groupModal.groupId, id, date ?? groupActionDate, retentionBonus)
@@ -1080,6 +1091,7 @@ export function StudentDetailPage() {
             {groups.map((gr) => {
               const sb = groupStatusBadge(
                 gr.status === 'completed' ? 'completed' : gr.isActive ? gr.status : 'left',
+                gr.yearFreeze,
               )
               // O'qituvchi id'si a'zolikda yo'q — guruhlar ro'yxatidan (allGroups) groupId orqali topamiz (profilga link uchun).
               const grTeacherId = allGroups.find((x) => x.id === gr.groupId)?.teacherId
@@ -1101,10 +1113,20 @@ export function StudentDetailPage() {
                                 label: 'Faollashtirish', icon: CheckCircle2,
                                 onClick: () => { openGroupModal(gr); setGroupReasonAction('activate') },
                               }]
-                            : [{
-                                label: 'Muzlatish', icon: Snowflake,
-                                onClick: () => { openGroupModal(gr); setGroupReasonAction('freeze') },
-                              }]),
+                            : [
+                                {
+                                  label: 'Muzlatish', icon: Snowflake,
+                                  onClick: () => { openGroupModal(gr); setGroupReasonAction('freeze') },
+                                },
+                                // «Aktiv muzlatish» — FAQAT superadmin. `can()` bu yerda
+                                // yaramaydi: u oddiy admin uchun ham true qaytaradi.
+                                ...(user?.role === 'superadmin'
+                                  ? [{
+                                      label: 'Aktiv muzlatish', icon: CalendarClock,
+                                      onClick: () => { openGroupModal(gr); setGroupReasonAction('yearFreeze') },
+                                    }]
+                                  : []),
+                              ]),
                           ...(gr.status !== 'trial'
                             ? [{
                                 label: 'Sinov darsiga qaytarish', icon: RotateCcw,
@@ -1193,6 +1215,7 @@ export function StudentDetailPage() {
               {groups.map((gr) => {
                 const sb = groupStatusBadge(
                   gr.status === 'completed' ? 'completed' : gr.isActive ? gr.status : 'left',
+                  gr.yearFreeze,
                 )
                 return (
                   <div key={gr.id} className="rounded-xl border border-slate-200 p-3 text-sm">
@@ -1941,13 +1964,14 @@ export function StudentDetailPage() {
       <ReasonPromptModal
         open={!!groupReasonAction}
         category={
-          groupReasonAction === 'freeze' ? 'freeze'
+          groupReasonAction === 'freeze' || groupReasonAction === 'yearFreeze' ? 'freeze'
           : groupReasonAction === 'activate' ? 'activate'
           : groupReasonAction === 'remove' ? removeGroupCategory(groupModal?.status ?? 'trial')
           : 'return_trial'
         }
         title={
           groupReasonAction === 'freeze' ? 'Muzlatish'
+          : groupReasonAction === 'yearFreeze' ? 'Aktiv muzlatish'
           : groupReasonAction === 'activate' ? 'Aktivlashtirish'
           : groupReasonAction === 'remove' ? "Guruhdan chiqarish"
           : 'Sinovga qaytarish'
@@ -1956,6 +1980,8 @@ export function StudentDetailPage() {
           groupModal
             ? groupReasonAction === 'freeze'
               ? `${groupModal.groupName} — shu sanadan boshlab oylik to'lov hisoblanmaydi.`
+              : groupReasonAction === 'yearFreeze'
+              ? `${groupModal.groupName} — shu sanadan muzlatiladi va «yangi o'quv yiliga o'tish» deb belgilanadi. Hisob-kitob oddiy muzlatish bilan bir xil.`
               : groupReasonAction === 'activate'
                 ? `${groupModal.groupName} — shu sanadan boshlab oylik to'lov hisoblanadi.`
                 : groupReasonAction === 'remove'
@@ -1965,12 +1991,13 @@ export function StudentDetailPage() {
         }
         confirmLabel={
           groupReasonAction === 'freeze' ? 'Muzlatish'
+          : groupReasonAction === 'yearFreeze' ? 'Aktiv muzlatish'
           : groupReasonAction === 'activate' ? 'Aktivlashtirish'
           : groupReasonAction === 'remove' ? 'Chiqarish'
           : 'Sinovga qaytarish'
         }
-        tone={groupReasonAction === 'freeze' ? 'sky' : groupReasonAction === 'remove' ? 'red' : 'brand'}
-        showDate={groupReasonAction === 'freeze' || groupReasonAction === 'activate'}
+        tone={groupReasonAction === 'freeze' || groupReasonAction === 'yearFreeze' ? 'sky' : groupReasonAction === 'remove' ? 'red' : 'brand'}
+        showDate={groupReasonAction === 'freeze' || groupReasonAction === 'yearFreeze' || groupReasonAction === 'activate'}
         showRetentionBonus={groupReasonAction === 'activate' && canSetBonus}
         defaultDate={groupActionDate}
         onConfirm={confirmGroupReason}

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Trash2, UserPlus, Search, CheckCircle2, Snowflake, Plus, RotateCcw, ArrowLeftRight, X } from 'lucide-react'
+import { Trash2, UserPlus, Search, CheckCircle2, Snowflake, CalendarClock, Plus, RotateCcw, ArrowLeftRight, X } from 'lucide-react'
 import type { Group, GroupMember, Student } from '@/types'
 import {
   getGroupMembers,
@@ -20,6 +20,7 @@ import { Loader } from '@/components/ui/Loader'
 import { ReasonPromptModal } from '@/components/ui/ReasonPromptModal'
 import { formatDate, formatMoney, cn, apiErrorMessage } from '@/lib/utils'
 import { useSuperOrGranted } from '@/lib/permissions'
+import { useAuth } from '@/context/auth-context'
 import { StudentFormModal } from '../students/StudentFormModal'
 import { TransferGroupModal } from './TransferGroupModal'
 
@@ -34,6 +35,10 @@ interface Props {
 }
 
 export function ClassMembersModal({ group, onClose }: Props) {
+  /** «Aktiv muzlatish» FAQAT superadmin uchun — `usePerm().can()` bu yerda yaramaydi:
+   *  u oddiy admin uchun ham true qaytaradi, amal esa admin'ga yopiq (server ham rad etadi). */
+  const { user } = useAuth()
+  const isSuperAdmin = user?.role === 'superadmin'
   const [members, setMembers] = useState<GroupMember[]>([])
   const [students, setStudents] = useState<Student[]>([])
   const [loading, setLoading] = useState(false)
@@ -48,7 +53,7 @@ export function ClassMembersModal({ group, onClose }: Props) {
    *  (oddiy "admin" ham ko'rmaydi; server tomonda ham AYNAN shu qoida tekshiriladi). */
   const canSetBonus = useSuperOrGranted('retentionBonus')
   /** Sabab bilan amal (muzlatish/chiqarish/sinovga qaytarish). */
-  const [reasonAction, setReasonAction] = useState<{ kind: 'freeze' | 'remove' | 'return'; m: GroupMember } | null>(null)
+  const [reasonAction, setReasonAction] = useState<{ kind: 'freeze' | 'yearFreeze' | 'remove' | 'return'; m: GroupMember } | null>(null)
   /** "Yangi o'quvchi" yaratish formasi ochiqmi — yaratilgach shu guruhga qo'shiladi. */
   const [newStudentOpen, setNewStudentOpen] = useState(false)
   /** Guruhni almashtirish modali — tanlangan a'zo. */
@@ -56,7 +61,7 @@ export function ClassMembersModal({ group, onClose }: Props) {
   /** Ommaviy amal uchun belgilangan o'quvchilar (faqat yuqoridagi "faol a'zolar" jadvali). */
   const [selected, setSelected] = useState<Set<string>>(new Set())
   /** Ommaviy amal tasdiqlash modali ochiqmi va qaysi amal uchun. */
-  const [bulkAction, setBulkAction] = useState<'freeze' | 'activate' | null>(null)
+  const [bulkAction, setBulkAction] = useState<'freeze' | 'yearFreeze' | 'activate' | null>(null)
 
   useEffect(() => {
     if (!group) {
@@ -202,7 +207,9 @@ Kerak bo'lsa "Parolni tiklash" orqali yangi parol bering.`)
     const { kind, m } = reasonAction
     setBusy(true)
     try {
-      if (kind === 'freeze') await freezeMember(group.id, m.studentId, date ?? new Date().toISOString().slice(0, 10), reasonId)
+      // «Aktiv muzlatish» — AYNAN o'sha endpoint, farq faqat bayroqda.
+      if (kind === 'freeze' || kind === 'yearFreeze')
+        await freezeMember(group.id, m.studentId, date ?? new Date().toISOString().slice(0, 10), reasonId, kind === 'yearFreeze')
       else if (kind === 'remove') await removeGroupMember(group.id, m.studentId, reasonId)
       else await returnMemberToTrial(group.id, m.studentId, reasonId)
       const fresh = await getGroupMembers(group.id)
@@ -232,14 +239,15 @@ Kerak bo'lsa "Parolni tiklash" orqali yangi parol bering.`)
     setBusy(true)
     try {
       // Bonus maydoni ruxsati yo'q bo'lsa umuman yuborilmaydi (server ham shu qoidani tekshiradi).
-      const res = action === 'freeze'
-        ? await bulkFreezeMembers(group.id, ids, day, reasonId)
+      const freezing = action === 'freeze' || action === 'yearFreeze'
+      const res = freezing
+        ? await bulkFreezeMembers(group.id, ids, day, reasonId, action === 'yearFreeze')
         : await bulkActivateMembers(group.id, ids, day, canSetBonus ? retentionBonus : undefined)
       const fresh = await getGroupMembers(group.id)
       setMembers(fresh)
       setSelected(new Set())
       setBulkAction(null)
-      alert(bulkMembershipSummary(res, action))
+      alert(bulkMembershipSummary(res, action === 'activate' ? 'activate' : 'freeze'))
     } catch (err) {
       alert(apiErrorMessage(err, 'Ommaviy amal bajarilmadi'))
     } finally {
@@ -350,6 +358,17 @@ Kerak bo'lsa "Parolni tiklash" orqali yangi parol bering.`)
               >
                 <Snowflake className="h-3.5 w-3.5" /> Muzlatish ({selectedCount})
               </button>
+              {/* «Aktiv muzlatish» — guruh sahifasidagi bilan AYNAN bir xil, faqat superadmin. */}
+              {isSuperAdmin && (
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => setBulkAction('yearFreeze')}
+                  className="inline-flex items-center gap-1 rounded-lg bg-indigo-50 px-2.5 py-1 text-xs font-medium text-indigo-700 transition-colors hover:bg-indigo-100 disabled:opacity-50"
+                >
+                  <CalendarClock className="h-3.5 w-3.5" /> Aktiv muzlatish ({selectedCount})
+                </button>
+              )}
               <button
                 type="button"
                 disabled={busy}
@@ -392,7 +411,7 @@ Kerak bo'lsa "Parolni tiklash" orqali yangi parol bering.`)
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {activeMembers.map((m, idx) => {
-                  const sb = statusBadge(m.status)
+                  const sb = statusBadge(m.status, m.yearFreeze)
                   return (
                     <tr key={m.studentId} className="hover:bg-slate-50/60">
                       <td className="px-3 py-2">
@@ -447,6 +466,17 @@ Kerak bo'lsa "Parolni tiklash" orqali yangi parol bering.`)
                               className="inline-flex items-center gap-1 rounded-lg bg-sky-50 px-2.5 py-1 text-xs font-medium text-sky-700 transition-colors hover:bg-sky-100 disabled:opacity-50"
                             >
                               <Snowflake className="h-3.5 w-3.5" /> Muzlatish
+                            </button>
+                          )}
+                          {m.status === 'active' && isSuperAdmin && (
+                            <button
+                              type="button"
+                              disabled={busy}
+                              title="Yangi o'quv yiliga o'tish belgisi bilan muzlatish"
+                              onClick={() => setReasonAction({ kind: 'yearFreeze', m })}
+                              className="inline-flex items-center gap-1 rounded-lg bg-indigo-50 px-2.5 py-1 text-xs font-medium text-indigo-700 transition-colors hover:bg-indigo-100 disabled:opacity-50"
+                            >
+                              <CalendarClock className="h-3.5 w-3.5" /> Aktiv muzlatish
                             </button>
                           )}
                           {m.status !== 'trial' && (
@@ -600,12 +630,13 @@ Kerak bo'lsa "Parolni tiklash" orqali yangi parol bering.`)
       <ReasonPromptModal
         open={!!reasonAction}
         category={
-          reasonAction?.kind === 'freeze' ? 'freeze'
+          reasonAction?.kind === 'freeze' || reasonAction?.kind === 'yearFreeze' ? 'freeze'
           : reasonAction?.kind === 'return' ? 'return_trial'
           : removeCategory(reasonAction?.m.status ?? 'trial')
         }
         title={
           reasonAction?.kind === 'freeze' ? 'Muzlatish'
+          : reasonAction?.kind === 'yearFreeze' ? 'Aktiv muzlatish'
           : reasonAction?.kind === 'return' ? 'Sinovga qaytarish'
           : "Guruhdan chiqarish"
         }
@@ -613,18 +644,21 @@ Kerak bo'lsa "Parolni tiklash" orqali yangi parol bering.`)
           reasonAction
             ? reasonAction.kind === 'freeze'
               ? `${reasonAction.m.fullName} — shu sanadan boshlab oylik to'lov hisoblanmaydi.`
-              : reasonAction.kind === 'return'
-                ? `${reasonAction.m.fullName} — sinov holatiga qaytariladi (oylik to'lov hisoblanmaydi).`
-                : `${reasonAction.m.fullName} ni guruhdan chiqarasizmi?`
+              : reasonAction.kind === 'yearFreeze'
+                ? `${reasonAction.m.fullName} — shu sanadan muzlatiladi va «yangi o'quv yiliga o'tish» deb belgilanadi. Hisob-kitob oddiy muzlatish bilan bir xil.`
+                : reasonAction.kind === 'return'
+                  ? `${reasonAction.m.fullName} — sinov holatiga qaytariladi (oylik to'lov hisoblanmaydi).`
+                  : `${reasonAction.m.fullName} ni guruhdan chiqarasizmi?`
             : undefined
         }
         confirmLabel={
           reasonAction?.kind === 'freeze' ? 'Muzlatish'
+          : reasonAction?.kind === 'yearFreeze' ? 'Aktiv muzlatish'
           : reasonAction?.kind === 'return' ? 'Sinovga qaytarish'
           : 'Chiqarish'
         }
-        tone={reasonAction?.kind === 'freeze' ? 'sky' : reasonAction?.kind === 'return' ? 'brand' : 'red'}
-        showDate={reasonAction?.kind === 'freeze'}
+        tone={reasonAction?.kind === 'freeze' || reasonAction?.kind === 'yearFreeze' ? 'sky' : reasonAction?.kind === 'return' ? 'brand' : 'red'}
+        showDate={reasonAction?.kind === 'freeze' || reasonAction?.kind === 'yearFreeze'}
         onConfirm={confirmReasonAction}
         onClose={() => setReasonAction(null)}
       />
@@ -633,15 +667,25 @@ Kerak bo'lsa "Parolni tiklash" orqali yangi parol bering.`)
           bir xil qo'llanadi. Yakka amaldagi modal bilan aralashmasin deb ALOHIDA element. */}
       <ReasonPromptModal
         open={!!bulkAction}
-        category={bulkAction === 'freeze' ? 'freeze' : 'activate'}
-        title={bulkAction === 'freeze' ? 'Ommaviy muzlatish' : 'Ommaviy aktivlashtirish'}
+        category={bulkAction === 'activate' ? 'activate' : 'freeze'}
+        title={
+          bulkAction === 'freeze' ? 'Ommaviy muzlatish'
+          : bulkAction === 'yearFreeze' ? 'Ommaviy aktiv muzlatish'
+          : 'Ommaviy aktivlashtirish'
+        }
         message={
           bulkAction === 'freeze'
             ? `${selectedCount} ta o'quvchi — shu sanadan boshlab oylik to'lov hisoblanmaydi.`
-            : `${selectedCount} ta o'quvchi — shu sanadan boshlab qisman oylik hisoblanadi.`
+            : bulkAction === 'yearFreeze'
+              ? `${selectedCount} ta o'quvchi shu sanadan muzlatiladi va «yangi o'quv yiliga o'tish» deb belgilanadi. Hisob-kitob oddiy muzlatish bilan bir xil.`
+              : `${selectedCount} ta o'quvchi — shu sanadan boshlab qisman oylik hisoblanadi.`
         }
-        confirmLabel={bulkAction === 'freeze' ? 'Muzlatish' : 'Aktivlashtirish'}
-        tone={bulkAction === 'freeze' ? 'sky' : 'brand'}
+        confirmLabel={
+          bulkAction === 'freeze' ? 'Muzlatish'
+          : bulkAction === 'yearFreeze' ? 'Aktiv muzlatish'
+          : 'Aktivlashtirish'
+        }
+        tone={bulkAction === 'activate' ? 'brand' : 'sky'}
         showDate
         showRetentionBonus={bulkAction === 'activate' && canSetBonus}
         onConfirm={confirmBulkAction}
@@ -675,12 +719,15 @@ Kerak bo'lsa "Parolni tiklash" orqali yangi parol bering.`)
   )
 }
 
-function statusBadge(status: string): { label: string; cls: string } {
+/** `yearFreeze` — «Aktiv muzlatish»: holat baribir "frozen", bu faqat aniqroq (indigo) yozuv. */
+function statusBadge(status: string, yearFreeze?: boolean): { label: string; cls: string } {
   switch (status) {
     case 'active':
       return { label: 'Aktiv', cls: 'bg-emerald-50 text-emerald-700' }
     case 'frozen':
-      return { label: 'Muzlatilgan', cls: 'bg-sky-50 text-sky-700' }
+      return yearFreeze
+        ? { label: 'Aktiv muzlatilgan', cls: 'bg-indigo-50 text-indigo-700' }
+        : { label: 'Muzlatilgan', cls: 'bg-sky-50 text-sky-700' }
     default:
       return { label: 'Sinov', cls: 'bg-amber-50 text-amber-700' }
   }

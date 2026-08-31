@@ -107,13 +107,20 @@ public static class StudentSearch
     }
 
     /// <summary>A'zolik holati yorlig'i — <c>GetAll</c> dagi bilan BIR XIL ustunlik:
-    /// active &gt; trial &gt; frozen, guruhsiz — bo'sh.</summary>
-    public static string MemberState(IEnumerable<string?> statuses)
+    /// active &gt; trial &gt; yearFrozen &gt; frozen, guruhsiz — bo'sh.
+    /// <para><paramref name="yearFreeze"/> — o'quvchining muzlatilgan a'zoliklaridan birortasi
+    /// «AKTIV MUZLATISH» (yangi o'quv yiliga o'tish) belgisi bilan muzlatilganmi. Bu ALOHIDA
+    /// parametr, chunki a'zolik <c>Status</c>i baribir "frozen" bo'lib qoladi — belgi statusda
+    /// EMAS, alohida bayroqda yashaydi (aks holda "frozen" ni tekshiradigan o'nlab joy buzilardi).
+    /// Standart qiymat <c>false</c> — eski chaqiruvlar avvalgidek "frozen" oladi.</para></summary>
+    public static string MemberState(IEnumerable<string?> statuses, bool yearFreeze = false)
     {
         var set = statuses.Where(s => s != null).Select(s => s!).ToHashSet();
         return set.Contains("active") ? "active"
             : set.Contains("trial") ? "trial"
-            : set.Contains("frozen") ? "frozen" : "";
+            // "yearFrozen" faqat MUZLATILGAN a'zolik bor bo'lsa mantiqiy: bayroq muzlatishning
+            // turini bildiradi, o'z-o'zidan holat emas.
+            : set.Contains("frozen") ? (yearFreeze ? "yearFrozen" : "frozen") : "";
     }
 
     /// <summary>In-memory tartiblash uchun birxillashtirish (kichik harf + apostrof <c>'</c>).</summary>

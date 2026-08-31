@@ -298,6 +298,38 @@ public class FinanceLogicTests
         Assert.False(MembershipLifecycle.BillableInMonth("trial", "", "", "2026-05"));
     }
 
+    /// <summary>
+    /// «AKTIV MUZLATISH» (yangi o'quv yiliga o'tish) HISOB-KITOBGA TA'SIR QILMAYDI — bu modulning
+    /// ENG MUHIM shartnomasi. Belgi <c>StudentGroup.YearFreeze</c> bayrog'ida yashaydi, a'zolik
+    /// <c>Status</c>i esa baribir "frozen" bo'lib qoladi; shuning uchun pullik oy qoidasi ikkala
+    /// muzlatishda ham AYNAN bir xil natija berishi kerak.
+    /// <para>Test AYNAN shu qulfni ushlab turadi: agar kimdir kelajakda <c>BillableInMonth</c> ga
+    /// (yoki uni chaqiradigan hisob mantig'iga) yangi bayroqni "hisobga olsin" deb qo'shsa, bu
+    /// test qizaradi — chunki o'sha payt muzlatishning IKKI USULI pul jihatidan ayrilib ketardi.</para>
+    /// </summary>
+    [Fact]
+    public void BillableInMonth_AKTIVMUZLATISH_oddiy_muzlatish_bilan_AYNAN_BIR_XIL()
+    {
+        // Bayroq entity darajasidagi overload orqali ham hech narsani o'zgartirmasligi kerak:
+        // yagona farq YearFreeze, qolgan hamma maydon bir xil.
+        var oddiy = new StudentGroup
+        {
+            Status = "frozen", ActivatedAt = "2026-01-10", FrozenAt = "2026-05-14", YearFreeze = false,
+        };
+        var aktiv = new StudentGroup
+        {
+            Status = "frozen", ActivatedAt = "2026-01-10", FrozenAt = "2026-05-14", YearFreeze = true,
+        };
+
+        // Muzlatish oyi — ikkalasida ham pullik; keyingi oy — ikkalasida ham emas.
+        Assert.Equal(MembershipLifecycle.BillableInMonth(oddiy, "2026-05"),
+                     MembershipLifecycle.BillableInMonth(aktiv, "2026-05"));
+        Assert.Equal(MembershipLifecycle.BillableInMonth(oddiy, "2026-06"),
+                     MembershipLifecycle.BillableInMonth(aktiv, "2026-06"));
+        Assert.True(MembershipLifecycle.BillableInMonth(aktiv, "2026-05"));
+        Assert.False(MembershipLifecycle.BillableInMonth(aktiv, "2026-06"));
+    }
+
     [Fact(Skip = "XATO (MembershipLifecycle.cs:65 ↔ TuitionService.cs:438): bo'sh ActivatedAt da ikki xil ta'rif")]
     public void BillableInMonth_boshActivatedAt_AccrueMonth_bilan_mos_bolishiKerak()
     {

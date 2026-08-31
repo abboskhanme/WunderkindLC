@@ -20,6 +20,15 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
     /// ("Xodimlar va rollar" da ko'rinadi). Klientdagi `adminPermissions` bilan bir xil bo'lishi shart.</summary>
     private const string RetentionBonusPerm = "retentionBonus";
 
+    /// <summary>«AKTIV MUZLATISH» (yangi o'quv yiliga o'tish) — FAQAT superadmin.
+    /// <para>⚠️ Bu yerda <c>[AdminPerm]</c> YARAMAYDI: u admin va superadmin IKKALASINI ham
+    /// o'tkazib yuboradi (<see cref="AdminPermAttribute"/>), talab esa oddiy <c>admin</c> ham
+    /// kirmasligi. Shuning uchun HARD rol tekshiruvi; yangi ruxsat kaliti kiritilmaydi.</para>
+    /// <para>⚠️ Ruxsatsiz so'rov JIMGINA oddiy muzlatishga TUSHIRILMAYDI (retentionBonus dagidek
+    /// emas): tugma "Aktiv muzlatish" deb bosilib, natijada oddiy muzlatish bo'lib qolsa —
+    /// "yangi yilga nechta o'quvchi bilan o'tyapmiz" hisoboti YOLG'ON bo'lardi.</para></summary>
+    private bool MaySetYearFreeze => User.IsInRole(Roles.SuperAdmin);
+
     /// <summary>
     /// Faol (arxivlanmagan) guruhlar. <paramref name="includeArchived"/>=true bo'lsa hammasi.
     /// <para><paramref name="teacherId"/> berilsa — FAQAT o'sha o'qituvchining guruhlari.
@@ -468,7 +477,7 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
                           where sg.GroupId == id
                           orderby sg.IsActive descending, s.FullName
                           select new GroupMemberDto(s.Id, s.FullName, sg.JoinedAt, sg.LeftAt, sg.IsActive,
-                              sg.Status, sg.ActivatedAt, sg.FrozenAt, s.Balance))
+                              sg.Status, sg.ActivatedAt, sg.FrozenAt, s.Balance, sg.YearFreeze))
                          .ToListAsync();
         // Balans — SHU GURUH bo'yicha (umumiy Student.Balance emas): boshqa guruhdagi qarz bu ro'yxatni
         // qizil qilib qo'ymasin (jurnal ro'yxati bilan bir xil mantiq).
@@ -544,6 +553,9 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
             existing.Status = "trial";
             existing.ActivatedAt = string.Empty;
             existing.FrozenAt = string.Empty;
+            // «Aktiv muzlatish» belgisi muzlatish bilan BIRGA yashaydi: a'zolik sinovga qaytdi,
+            // demak eski belgi ro'yxatda yolg'on ko'rinib qolmasin (belgi KO'RSATUV uchun xolos).
+            existing.YearFreeze = false;
             existing.RecordedAt = recordedAt;
         }
         else
@@ -623,6 +635,8 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
         sg.Status = "trial";
         sg.ActivatedAt = string.Empty;
         sg.FrozenAt = string.Empty;
+        // Muzlatish bekor bo'ldi — «aktiv muzlatish» belgisi ham qolmaydi (faqat KO'RSATUV belgisi).
+        sg.YearFreeze = false;
 
         var reason = await ReasonLabelAsync(req.ReasonId);
         var cls = await db.Classes.FindAsync(id);
@@ -693,6 +707,9 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
         sg.Status = "active";
         sg.ActivatedAt = date;
         sg.FrozenAt = string.Empty;
+        // «Aktiv muzlatish» belgisi FrozenAt bilan birga tozalanadi: o'quvchi yangi o'quv yiliga
+        // qaytdi. Belgi hisob-kitobga tegmaydi — u faqat ro'yxatdagi ko'rsatuv uchun edi.
+        sg.YearFreeze = false;
         // RecordedAt — HAQIQIY bugungi sana (date orqaga sanalgan bo'lishi mumkin, masalan o'tgan
         // oydan aktivlashtirilsa). Jurnalda MemberStart (=date) bilan RecordedAt orasidagi allaqachon
         // o'tilgan darslar avtomatik "keldi" bo'lib ko'rinmasin — o'qituvchi ularni qo'lda belgilaydi.
@@ -768,6 +785,9 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
     [HttpPost("{id}/members/{studentId}/freeze")]
     public async Task<IActionResult> FreezeMember(string id, string studentId, MembershipStatusRequest req)
     {
+        if (req.YearFreeze == true && !MaySetYearFreeze)
+            return StatusCode(403, new { message = "«Aktiv muzlatish» faqat superadmin uchun" });
+
         var date = string.IsNullOrWhiteSpace(req.Date) ? AppClock.Today.ToString("yyyy-MM-dd") : req.Date!.Trim();
 
         var cls = await db.Classes.FindAsync(id);
@@ -780,7 +800,7 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
             return NotFound(new { message = "Faol a'zolik topilmadi" });
 
         var reason = await ReasonLabelAsync(req.ReasonId);
-        var r = await FreezeCoreAsync(cls, sg, date, reason);
+        var r = await FreezeCoreAsync(cls, sg, date, reason, req.YearFreeze == true);
         // trial yoki active emas — kutilmagan holat (eski/buzilgan yozuv).
         if (r.Error is not null) return BadRequest(new { message = r.Error });
         // Allaqachon muzlatilgan bo'lsa — qayta muzlatish kerak emas (takroriy prorate'ni oldini olamiz).
@@ -796,8 +816,11 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
     /// <see cref="FreezeMember"/> ham, OMMAVIY <see cref="BulkApplyAsync"/> ham AYNAN shuni chaqiradi.
     /// <para><c>SaveChangesAsync</c> QILMAYDI — chaqiruvchi saqlaydi.</para></summary>
     /// <returns><c>Already</c> — allaqachon muzlatilgan; <c>Error</c> — holat mos emas (hech narsa o'zgarmadi).</returns>
+    /// <param name="yearFreeze">«AKTIV MUZLATISH» — yangi o'quv yiliga o'tish belgisi. ⚠️ FAQAT
+    /// ko'rsatuv: <c>Status</c> baribir "frozen", hisob-kitob (qisman to'lov, keyingi oylarni bekor
+    /// qilish) oddiy muzlatish bilan AYNAN bir xil — quyida bu bayroq hech qanday shartga kirmaydi.</param>
     private async Task<(bool Already, decimal Restored, string? Error)> FreezeCoreAsync(
-        Group cls, StudentGroup sg, string date, string reasonLabel)
+        Group cls, StudentGroup sg, string date, string reasonLabel, bool yearFreeze)
     {
         if (sg.Status == "frozen") return (true, 0m, null);
         if (sg.Status != "active" && sg.Status != "trial")
@@ -806,6 +829,9 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
         var activatedAt = sg.ActivatedAt;
         sg.Status = "frozen";
         sg.FrozenAt = date;
+        // ⚠️ YANGI STATUS EMAS — muzlatishning ikkinchi USULI. Bayroq faqat o'quvchilar ro'yxatida
+        // ajratib sanash uchun ("yangi yilga nechta o'quvchi bilan o'tyapmiz").
+        sg.YearFreeze = yearFreeze;
 
         var s = await db.Students.FindAsync(sg.StudentId);
         var restored = 0m;
@@ -818,7 +844,9 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
         }
 
         audit.Record("Membership", $"{cls.Id}:{sg.StudentId}", "update",
-            $"Muzlatildi ({date}, guruh: {cls.Name})"
+            (yearFreeze
+                ? $"Aktiv muzlatildi (yangi o'quv yili) ({date}, guruh: {cls.Name})"
+                : $"Muzlatildi ({date}, guruh: {cls.Name})")
                 + (restored > 0 ? $" — keyingi oylar hisobi bekor qilindi: {AuditService.Money(restored)} so'm" : "")
                 + (reasonLabel.Length > 0 ? $" — sabab: {reasonLabel}" : ""),
             studentId: sg.StudentId);
@@ -873,6 +901,12 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
     private async Task<ActionResult<BulkMembershipResultDto>> BulkApplyAsync(
         string? groupId, BulkMembershipRequest req, bool freeze)
     {
+        // «Aktiv muzlatish» — FAQAT superadmin va FAQAT muzlatish tarmog'ida. Aktivlashtirishda
+        // bayroq ma'nosiz (u belgini TOZALAYDI), shuning uchun u yerda tekshiruv ham kerak emas.
+        var yearFreeze = freeze && req.YearFreeze == true;
+        if (yearFreeze && !MaySetYearFreeze)
+            return StatusCode(403, new { message = "«Aktiv muzlatish» faqat superadmin uchun" });
+
         var ids = (req.StudentIds ?? Array.Empty<string>())
             .Where(x => !string.IsNullOrWhiteSpace(x))
             .Select(x => x.Trim())
@@ -937,7 +971,7 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
 
                 if (freeze)
                 {
-                    var r = await FreezeCoreAsync(cls, sg, date, reasonLabel);
+                    var r = await FreezeCoreAsync(cls, sg, date, reasonLabel, yearFreeze);
                     if (r.Error is not null)
                     {
                         failed++;
@@ -1083,6 +1117,9 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
         toSg.Status = "active";
         toSg.ActivatedAt = activateDate;
         toSg.FrozenAt = string.Empty;
+        // FrozenAt tozalangan HAR joyda «aktiv muzlatish» belgisi ham tozalanadi: maqsad guruhda
+        // eski (o'tgan yilgi) muzlatish qolgan bo'lsa, u faol a'zolikda yolg'on ko'rinib qolardi.
+        toSg.YearFreeze = false;
         // RecordedAt — HAQIQIY bugungi sana (activateDate ORQAGA sanalgan bo'lishi mumkin).
         // Jurnalda MemberStart bilan RecordedAt orasidagi, allaqachon davomati olingan darslar
         // avto-"keldi" ✓ bo'lib to'lib qolmasin (AddMember/ActivateMember bilan bir xil qoida).
@@ -1177,7 +1214,7 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
                     string.IsNullOrEmpty(c.CourseId) ? "" : courseNames.GetValueOrDefault(c.CourseId, ""),
                     string.IsNullOrEmpty(c.TeacherId) ? "" : teacherNames.GetValueOrDefault(c.TeacherId, ""),
                     c.MonthlyFee, c.Days, c.StartTime, c.EndTime, c.Room ?? "",
-                    m.ActivatedAt ?? "", m.FrozenAt ?? "");
+                    m.ActivatedAt ?? "", m.FrozenAt ?? "", m.YearFreeze);
             })
             .OrderByDescending(r => r.IsActive).ThenBy(r => r.GroupName, StringComparer.OrdinalIgnoreCase)
             .ToList();

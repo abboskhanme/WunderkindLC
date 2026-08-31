@@ -495,16 +495,20 @@ public record ClassPayload(
     string? RoomId = null);
 
 /// <summary>O'quvchining bitta guruh a'zoligi (M2M).</summary>
+/// <param name="YearFreeze">«Aktiv muzlatish» belgisi — FAQAT ko'rsatish uchun. <c>Status</c> baribir
+/// "frozen", hisob-kitobda oddiy muzlatishdan farqi YO'Q.</param>
 public record StudentGroupDto(
     string Id, string GroupId, string GroupName, string JoinedAt, string? LeftAt, bool IsActive,
     string Status, string CourseName, string TeacherName, decimal MonthlyFee,
     List<int> Days, string StartTime, string EndTime, string Room,
-    string ActivatedAt, string FrozenAt);
+    string ActivatedAt, string FrozenAt, bool YearFreeze);
 /// <summary>Guruhdagi bitta o'quvchi (a'zolar ro'yxati). <c>Balance</c> — SHU GURUH bo'yicha balans
 /// (manfiy = qarz), umumiy <see cref="Student.Balance"/> EMAS (qarang: GroupBalanceService).</summary>
+/// <param name="YearFreeze">«Aktiv muzlatish» belgisi — FAQAT ko'rsatish uchun. <c>Status</c> baribir
+/// "frozen", hisob-kitobda oddiy muzlatishdan farqi YO'Q.</param>
 public record GroupMemberDto(
     string StudentId, string FullName, string JoinedAt, string? LeftAt, bool IsActive,
-    string Status, string ActivatedAt, string FrozenAt, decimal Balance);
+    string Status, string ActivatedAt, string FrozenAt, decimal Balance, bool YearFreeze);
 /// <summary>
 /// Guruhning FAOL a'zosi — SMS modali uchun (telefonlar + a'zolik holati + SHU GURUH balansi).
 /// <para>⚠️ Telefonlar ATAYIN <see cref="GroupMemberDto"/> ga qo'shilmadi, alohida DTO qilindi:
@@ -525,8 +529,15 @@ public record AddStudentToGroupRequest(string StudentId, string? JoinedAt);
 /// turish bonusi hisoblansinmi. Sanoq AKTIVLASHTIRILGAN oydan boshlanadi (o'quvchi guruhga bir
 /// oyda qo'shilib, keyingi oydan aktivlashtirilishi mumkin — shuning uchun ptichka qo'shishda
 /// emas, aynan shu yerda). <c>null</c> = tegilmaydi (eski chaqiruvlar buzilmaydi).
+/// <paramref name="YearFreeze"/> — FAQAT muzlatishda: «AKTIV MUZLATISH» (yangi o'quv yiliga o'tish).
+/// Hisob-kitobga TA'SIR QILMAYDI — a'zolik holati baribir "frozen", oylik baribir hisoblanmaydi;
+/// belgi faqat o'quvchilar ro'yxatida ajratib ko'rsatish uchun ("yangi yilga nechta o'quvchi bilan
+/// o'tyapmiz"). FAQAT superadmin qo'ya oladi: controller HARD rol tekshiruvi bilan 403 qaytaradi —
+/// jimgina oddiy muzlatishga TUSHIRILMAYDI, aks holda tugma "Aktiv muzlatish" deb bosilib hisobot
+/// yolg'on chiqardi.
 /// </summary>
-public record MembershipStatusRequest(string? Date, string? ReasonId = null, bool? RetentionBonus = null);
+public record MembershipStatusRequest(
+    string? Date, string? ReasonId = null, bool? RetentionBonus = null, bool? YearFreeze = null);
 /// <summary>
 /// O'quvchini boshqa guruhga o'tkazish so'rovi: joriy guruh <paramref name="FreezeDate"/>dan
 /// muzlatiladi, maqsad guruh (<paramref name="ToGroupId"/>) <paramref name="ActivateDate"/>dan
@@ -541,8 +552,11 @@ public record TransferMemberRequest(string ToGroupId, string? FreezeDate, string
 /// <para>Guruh sahifasidan chaqirilsa marshrutda guruh bo'ladi (faqat SHU guruh a'zoliklari),
 /// o'quvchilar ro'yxatidan chaqirilsa guruhsiz — o'quvchining BARCHA faol a'zoliklari.</para>
 /// </summary>
+/// <para><paramref name="YearFreeze"/> — FAQAT muzlatishda: «AKTIV MUZLATISH»
+/// (qarang: <see cref="MembershipStatusRequest"/>). FAQAT superadmin qo'ya oladi.</para>
 public record BulkMembershipRequest(
-    string[]? StudentIds, string? Date = null, string? ReasonId = null, bool? RetentionBonus = null);
+    string[]? StudentIds, string? Date = null, string? ReasonId = null, bool? RetentionBonus = null,
+    bool? YearFreeze = null);
 /// <summary>
 /// Ommaviy a'zolik amalining natijasi. Amal BITTA xato tufayli to'xtamaydi, shuning uchun
 /// javob "nima bo'ldi" ni to'liq ochib beradi (jimgina tushib qolgan o'quvchi bo'lmasin).

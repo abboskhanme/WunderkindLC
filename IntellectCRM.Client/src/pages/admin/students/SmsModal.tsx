@@ -43,6 +43,10 @@ const STATUS_META: { key: string; label: string; chip: string; badge: string }[]
   { key: 'active', label: 'Aktiv', chip: 'border-emerald-300 bg-emerald-50 text-emerald-700', badge: 'bg-emerald-50 text-emerald-700' },
   { key: 'trial', label: 'Sinov', chip: 'border-amber-300 bg-amber-50 text-amber-700', badge: 'bg-amber-50 text-amber-700' },
   { key: 'frozen', label: 'Muzlatilgan', chip: 'border-sky-300 bg-sky-50 text-sky-700', badge: 'bg-sky-50 text-sky-700' },
+  // «Aktiv muzlatilgan» — `memberState` "yearFrozen" (kichik harfda), ya'ni ALOHIDA kalit.
+  // Bu yerda bo'lmasa bunday oluvchi hech bir chipga tushmay, holat filtridan JIMGINA
+  // yo'qolib qolardi (guruh a'zosida esa `status` baribir "frozen" bo'lib qolaveradi).
+  { key: 'yearfrozen', label: 'Aktiv muzlatilgan', chip: 'border-indigo-300 bg-indigo-50 text-indigo-700', badge: 'bg-indigo-50 text-indigo-700' },
 ]
 
 /** A'zolik holati — `status` yoki (Student uzatilganda) `memberState`dan. */

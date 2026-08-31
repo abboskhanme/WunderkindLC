@@ -266,6 +266,10 @@ public class StudentGroupState
     public string TeacherId { get; set; } = string.Empty;
     /// <summary>active | trial | frozen</summary>
     public string Status { get; set; } = string.Empty;
+    /// <summary>«Aktiv muzlatish» belgisi (<see cref="StudentGroup.YearFreeze"/>) — FAQAT ko'rsatish uchun.
+    /// ⚠️ <see cref="Status"/> baribir "frozen" bo'lib QOLADI: bu yangi holat emas, muzlatishning
+    /// ikkinchi USULI (yangi o'quv yiliga o'tish), hisob-kitobda farqi YO'Q.</summary>
+    public bool YearFreeze { get; set; }
 }
 
 /// <summary>O'quvchi.</summary>
@@ -364,8 +368,12 @@ public class Student
     [System.ComponentModel.DataAnnotations.Schema.NotMapped]
     public bool Active { get; set; }
     /// <summary>A'zolik holati yorlig'i (ro'yxat/qidiruvda "Aktiv / Sinovda / Muzlatilgan" belgisi uchun):
-    /// "active" | "trial" | "frozen" | "" (guruhsiz). Bir nechta guruhda turlicha bo'lsa ustunlik tartibi:
-    /// active &gt; trial &gt; frozen. DB'ga yozilmaydi — ro'yxat endpointida M2M a'zoliklardan hisoblanadi.</summary>
+    /// "active" | "trial" | "yearFrozen" | "frozen" | "" (guruhsiz). Bir nechta guruhda turlicha bo'lsa
+    /// ustunlik tartibi: active &gt; trial &gt; yearFrozen &gt; frozen. DB'ga yozilmaydi — ro'yxat
+    /// endpointida M2M a'zoliklardan hisoblanadi.
+    /// <para>"yearFrozen" — «aktiv muzlatish» (<see cref="StudentGroup.YearFreeze"/>): a'zolik holati
+    /// baribir "frozen", bu FAQAT ro'yxatda ajratib ko'rsatish uchun ("yangi yilga nechta o'quvchi
+    /// bilan o'tyapmiz").</para></summary>
     [System.ComponentModel.DataAnnotations.Schema.NotMapped]
     public string MemberState { get; set; } = string.Empty;
     /// <summary>Markazga kelgan (qabul) sanasi (ISO "YYYY-MM-DD"). Oylik to'lov shu oydan boshlanadi.</summary>
@@ -847,6 +855,14 @@ public class StudentGroup
     public string ActivatedAt { get; set; } = string.Empty;
     /// <summary>Muzlatilgan sana (ISO). Shu oydan boshlab oylik to'lov hisoblanmaydi. Bo'sh = muzlatilmagan.</summary>
     public string FrozenAt { get; set; } = string.Empty;
+    /// <summary>«AKTIV MUZLATISH» — yangi o'quv yiliga o'tishda qilingan muzlatish belgisi.
+    /// <para>Hisob-kitobga, holatga va boshqa HECH QANDAY mantiqqa ta'sir qilmaydi:
+    /// <c>Status</c> baribir "frozen", oylik baribir hisoblanmaydi — oddiy muzlatish bilan
+    /// AYNAN bir xil. Yagona vazifasi — o'quvchilar ro'yxatida ajratib ko'rsatish
+    /// ("yangi yilga nechta o'quvchi bilan o'tyapmiz").</para>
+    /// <para>FAQAT superadmin qo'yadi. Aktivlashtirish/sinovga qaytarish/qayta qo'shishda
+    /// <c>FrozenAt</c> bilan BIRGA tozalanadi.</para></summary>
+    public bool YearFreeze { get; set; }
     /// <summary>Joriy holat (JoinedAt/ActivatedAt) HAQIQATDA tizimga kiritilgan sana (ISO, ORQAGA SANALMAYDI —
     /// har doim shu amal bajarilgan kundagi AppClock.Today). JoinedAt/ActivatedAt orqaga sanalgan bo'lishi mumkin
     /// (masalan o'quvchi o'tgan oydan aktivlashtirilsa) — jurnaldagi "dars o'tildi + yozuv yo'q = keldi"

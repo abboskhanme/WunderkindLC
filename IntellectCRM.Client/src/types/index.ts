@@ -666,6 +666,12 @@ export interface StudentGroupState {
   teacherId: string
   /** active | trial | frozen */
   status: string
+  /**
+   * «Aktiv muzlatish» — yangi o'quv yiliga o'tishda qilingan muzlatish belgisi.
+   * `status` baribir "frozen" bo'lib qoladi (hisob-kitob oddiy muzlatish bilan AYNAN bir xil) —
+   * bu bayroq FAQAT ro'yxatda ajratib ko'rsatish uchun.
+   */
+  yearFreeze: boolean
 }
 
 export interface Student {
@@ -744,9 +750,10 @@ export interface Student {
   groupStates?: StudentGroupState[]
   /** Kursda aktiv — kamida bitta a'zoligi "active" (sinov/muzlatilgan/guruhsiz emas) */
   active?: boolean
-  /** A'zolik holati yorlig'i: 'active' | 'trial' | 'frozen' | '' (guruhsiz).
-   *  Bir nechta guruhda turlicha bo'lsa ustunlik: active > trial > frozen. */
-  memberState?: 'active' | 'trial' | 'frozen' | ''
+  /** A'zolik holati yorlig'i: 'active' | 'trial' | 'yearFrozen' | 'frozen' | '' (guruhsiz).
+   *  Bir nechta guruhda turlicha bo'lsa ustunlik: active > trial > yearFrozen > frozen.
+   *  `yearFrozen` — muzlatilgan, lekin «Aktiv muzlatish» (yangi o'quv yili) bilan. */
+  memberState?: 'active' | 'trial' | 'yearFrozen' | 'frozen' | ''
   /** Login/parol orqali tizimga kirish admin tomonidan cheklanganmi */
   loginBlocked?: boolean
   /** Markazga kelgan (qabul) sanasi (ISO) — oylik to'lov shu oydan boshlanadi */
@@ -1017,6 +1024,8 @@ export interface GroupMember {
   /** SHU GURUH bo'yicha balans (manfiy = qarz) — o'quvchining umumiy balansi EMAS
    *  (boshqa guruhdagi qarz bu ro'yxatni qizil qilmaydi; server: GroupBalanceService). */
   balance: number
+  /** «Aktiv muzlatish» — yangi o'quv yiliga o'tishdagi muzlatish belgisi (`status` = "frozen"). */
+  yearFreeze: boolean
 }
 
 /** O'quvchining guruh a'zoligi */
@@ -1039,6 +1048,8 @@ export interface StudentGroupMembership {
   activatedAt: string
   /** Muzlatilgan sana ("yyyy-MM-dd"). Bo'sh = muzlatilmagan. */
   frozenAt: string
+  /** «Aktiv muzlatish» — yangi o'quv yiliga o'tishdagi muzlatish belgisi (`status` = "frozen"). */
+  yearFreeze: boolean
 }
 
 /** Guruh to'ldirish qatori */

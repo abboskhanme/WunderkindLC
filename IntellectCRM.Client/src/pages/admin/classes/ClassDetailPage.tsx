@@ -68,12 +68,18 @@ interface RatingMonthData {
   grading: GradingBoard | null
 }
 
-function statusBadge(status: string): { label: string; cls: string } {
+/**
+ * A'zolik holati belgisi. `yearFreeze` — «Aktiv muzlatish» (yangi o'quv yili): holat baribir
+ * "frozen", shuning uchun bu yangi status EMAS, o'sha belgining aniqroq (indigo) yozuvi.
+ */
+function statusBadge(status: string, yearFreeze?: boolean): { label: string; cls: string } {
   switch (status) {
     case 'active':
       return { label: 'Aktiv', cls: 'bg-emerald-50 text-emerald-700' }
     case 'frozen':
-      return { label: 'Muzlatilgan', cls: 'bg-sky-50 text-sky-700' }
+      return yearFreeze
+        ? { label: 'Aktiv muzlatilgan', cls: 'bg-indigo-50 text-indigo-700' }
+        : { label: 'Muzlatilgan', cls: 'bg-sky-50 text-sky-700' }
     default:
       return { label: 'Sinov', cls: 'bg-amber-50 text-amber-700' }
   }
@@ -143,12 +149,13 @@ export function ClassDetailPage() {
   const [membersSortAsc, setMembersSortAsc] = useState(true)
   /** Ro'yxatdagi "⋮" menyudan tanlangan a'zo + amal. */
   const [rosterTarget, setRosterTarget] = useState<GroupMember | null>(null)
-  const [rosterReason, setRosterReason] = useState<'freeze' | 'return' | 'remove' | 'activate' | null>(null)
+  /** `yearFreeze` — «Aktiv muzlatish»: o'sha muzlatishning O'ZI, faqat yangi o'quv yili belgisi bilan. */
+  const [rosterReason, setRosterReason] = useState<'freeze' | 'yearFreeze' | 'return' | 'remove' | 'activate' | null>(null)
   const [rosterTransferOpen, setRosterTransferOpen] = useState(false)
   const [rosterDate, setRosterDate] = useState('')
   const [rosterBusy, setRosterBusy] = useState(false)
   /** Guruh "⋮" menyusidan OMMAVIY amal — qaysi amal uchun tasdiq modali ochiq (`null` = yopiq). */
-  const [groupBulk, setGroupBulk] = useState<'freeze' | 'activate' | null>(null)
+  const [groupBulk, setGroupBulk] = useState<'freeze' | 'yearFreeze' | 'activate' | null>(null)
   /** Ommaviy amal so'rov jarayonida — takroriy bosishni bloklaydi. */
   const [groupBulkBusy, setGroupBulkBusy] = useState(false)
   /** Guruh o'qituvchisi id'si — profilga link uchun (jurnal DTO'sida faqat teacherName bor). */
@@ -539,7 +546,9 @@ export function ClassDetailPage() {
     if (!rosterTarget || !rosterReason || rosterBusy) return
     setRosterBusy(true)
     try {
-      if (rosterReason === 'freeze') await freezeMember(id, rosterTarget.studentId, date ?? rosterDate, reasonId)
+      // «Aktiv muzlatish» — AYNAN o'sha endpoint, farq faqat bayroqda.
+      if (rosterReason === 'freeze' || rosterReason === 'yearFreeze')
+        await freezeMember(id, rosterTarget.studentId, date ?? rosterDate, reasonId, rosterReason === 'yearFreeze')
       // Bonus ptichkasi faqat aktivlashtirish oynasida bo'ladi — boshqa oqimlarda `undefined`.
       else if (rosterReason === 'activate') await activateMember(id, rosterTarget.studentId, date ?? rosterDate, retentionBonus)
       else if (rosterReason === 'remove') await removeGroupMember(id, rosterTarget.studentId, reasonId)
@@ -584,7 +593,9 @@ export function ClassDetailPage() {
   ) => {
     if (!groupBulk || groupBulkBusy) return
     const action = groupBulk
-    const targets = action === 'freeze' ? bulkFreezeTargets : bulkActivateTargets
+    // «Aktiv muzlatish» — o'sha muzlatish, ya'ni mos a'zolar ro'yxati ham AYNAN o'sha.
+    const freezing = action === 'freeze' || action === 'yearFreeze'
+    const targets = freezing ? bulkFreezeTargets : bulkActivateTargets
     const ids = targets.map((m) => m.studentId)
     if (ids.length === 0) {
       setGroupBulk(null)
@@ -593,14 +604,14 @@ export function ClassDetailPage() {
     const day = date || today
     setGroupBulkBusy(true)
     try {
-      const res = action === 'freeze'
-        ? await bulkFreezeMembers(id, ids, day, reasonId)
+      const res = freezing
+        ? await bulkFreezeMembers(id, ids, day, reasonId, action === 'yearFreeze')
         // Bonus ptichkasi ruxsatsiz bo'lsa umuman yuborilmaydi (server ham shu qoidani tekshiradi).
         : await bulkActivateMembers(id, ids, day, canSetBonus ? retentionBonus : undefined)
       setGroupBulk(null)
       reloadMembers()
       load(journal?.month)
-      alert(bulkMembershipSummary(res, action))
+      alert(bulkMembershipSummary(res, freezing ? 'freeze' : 'activate'))
     } catch (err) {
       // Modal YOPILADI: uning ichki "submitting" bayrog'i faqat `open` o'zgarganda tiklanadi,
       // ochiq qoldirsak tasdiq tugmasi abadiy o'chiq qolardi.
@@ -825,6 +836,14 @@ export function ClassDetailPage() {
                             onClick: () => setGroupBulk('freeze'),
                           }]
                         : []),
+                      // «Aktiv muzlatish» — FAQAT superadmin. `can()` bu yerda yaramaydi:
+                      // u oddiy admin uchun ham true qaytaradi, amal esa admin'ga yopiq.
+                      ...(user?.role === 'superadmin' && bulkFreezeTargets.length > 0
+                        ? [{
+                            label: `Hammasini aktiv muzlatish (${bulkFreezeTargets.length})`, icon: CalendarClock,
+                            onClick: () => setGroupBulk('yearFreeze'),
+                          }]
+                        : []),
                       ...(can('classes.list', 'create') && bulkActivateTargets.length > 0
                         ? [{
                             label: `Hammasini aktivlashtirish (${bulkActivateTargets.length})`, icon: CheckCircle2,
@@ -929,6 +948,9 @@ export function ClassDetailPage() {
                           <span className="h-2 w-2 rounded-full bg-sky-500" /> Muzlatilgan
                         </span>
                         <span className="inline-flex items-center gap-1">
+                          <span className="h-2 w-2 rounded-full bg-indigo-500" /> Aktiv muzlatilgan
+                        </span>
+                        <span className="inline-flex items-center gap-1">
                           <span className="h-2 w-2 rounded-full bg-amber-500" /> Sinovda
                         </span>
                         <span className="inline-flex items-center gap-1">
@@ -944,8 +966,10 @@ export function ClassDetailPage() {
                               m={m}
                               back={memberBack}
                               canManage={can('classes.list', 'create')}
+                              canYearFreeze={user?.role === 'superadmin'}
                               onActivate={() => { openRoster(m); setRosterReason('activate') }}
                               onFreeze={() => { openRoster(m); setRosterReason('freeze') }}
+                              onYearFreeze={() => { openRoster(m); setRosterReason('yearFreeze') }}
                               onReturn={() => { openRoster(m); setRosterReason('return') }}
                               onTransfer={() => { openRoster(m); setRosterTransferOpen(true) }}
                               onRemove={() => { openRoster(m); setRosterReason('remove') }}
@@ -964,8 +988,10 @@ export function ClassDetailPage() {
                                   m={m}
                                   back={memberBack}
                                   canManage={can('classes.list', 'create')}
+                                  canYearFreeze={user?.role === 'superadmin'}
                                   onActivate={() => { openRoster(m); setRosterReason('activate') }}
                                   onFreeze={() => { openRoster(m); setRosterReason('freeze') }}
+                                  onYearFreeze={() => { openRoster(m); setRosterReason('yearFreeze') }}
                                   onReturn={() => { openRoster(m); setRosterReason('return') }}
                                   onTransfer={() => { openRoster(m); setRosterTransferOpen(true) }}
                                   onRemove={() => { openRoster(m); setRosterReason('remove') }}
@@ -1742,13 +1768,14 @@ export function ClassDetailPage() {
       <ReasonPromptModal
         open={!!rosterReason}
         category={
-          rosterReason === 'freeze' ? 'freeze'
+          rosterReason === 'freeze' || rosterReason === 'yearFreeze' ? 'freeze'
           : rosterReason === 'activate' ? 'activate'
           : rosterReason === 'remove' ? rosterRemoveCategory(rosterTarget?.status ?? 'trial')
           : 'return_trial'
         }
         title={
           rosterReason === 'freeze' ? 'Muzlatish'
+          : rosterReason === 'yearFreeze' ? 'Aktiv muzlatish'
           : rosterReason === 'activate' ? 'Aktivlashtirish'
           : rosterReason === 'remove' ? "Guruhdan chiqarish"
           : 'Sinov darsiga qaytarish'
@@ -1757,6 +1784,8 @@ export function ClassDetailPage() {
           rosterTarget
             ? rosterReason === 'freeze'
               ? `${rosterTarget.fullName} — shu sanadan boshlab oylik to'lov hisoblanmaydi.`
+              : rosterReason === 'yearFreeze'
+              ? `${rosterTarget.fullName} — shu sanadan muzlatiladi va «yangi o'quv yiliga o'tish» deb belgilanadi. Hisob-kitob oddiy muzlatish bilan bir xil.`
               : rosterReason === 'activate'
                 ? `${rosterTarget.fullName} — shu sanadan boshlab qisman oylik hisoblanadi.`
                 : rosterReason === 'remove'
@@ -1766,12 +1795,13 @@ export function ClassDetailPage() {
         }
         confirmLabel={
           rosterReason === 'freeze' ? 'Muzlatish'
+          : rosterReason === 'yearFreeze' ? 'Aktiv muzlatish'
           : rosterReason === 'activate' ? 'Aktivlashtirish'
           : rosterReason === 'remove' ? 'Chiqarish'
           : 'Sinovga qaytarish'
         }
-        tone={rosterReason === 'freeze' ? 'sky' : rosterReason === 'remove' ? 'red' : 'brand'}
-        showDate={rosterReason === 'freeze' || rosterReason === 'activate'}
+        tone={rosterReason === 'freeze' || rosterReason === 'yearFreeze' ? 'sky' : rosterReason === 'remove' ? 'red' : 'brand'}
+        showDate={rosterReason === 'freeze' || rosterReason === 'yearFreeze' || rosterReason === 'activate'}
         showRetentionBonus={rosterReason === 'activate' && canSetBonus}
         defaultDate={rosterDate}
         onConfirm={confirmRosterReason}
@@ -1800,19 +1830,27 @@ export function ClassDetailPage() {
           Yakka a'zo modali (`rosterReason`) bilan aralashmasin deb ALOHIDA element. */}
       <ReasonPromptModal
         open={!!groupBulk}
-        category={groupBulk === 'freeze' ? 'freeze' : 'activate'}
-        title={groupBulk === 'freeze' ? 'Hammasini muzlatish' : 'Hammasini aktivlashtirish'}
+        category={groupBulk === 'activate' ? 'activate' : 'freeze'}
+        title={
+          groupBulk === 'freeze' ? 'Hammasini muzlatish'
+          : groupBulk === 'yearFreeze' ? 'Hammasini aktiv muzlatish'
+          : 'Hammasini aktivlashtirish'
+        }
         message={
           groupBulk === 'freeze'
             ? `Guruhning ${bulkFreezeTargets.length} ta a'zosi shu sanadan muzlatiladi — oylik to'lov hisoblanmaydi.`
-            : `Guruhning ${bulkActivateTargets.length} ta a'zosi shu sanadan aktivlashtiriladi — qisman oylik hisoblanadi.`
+            : groupBulk === 'yearFreeze'
+              ? `Guruhning ${bulkFreezeTargets.length} ta a'zosi shu sanadan muzlatiladi va «yangi o'quv yiliga o'tish» deb belgilanadi. Hisob-kitob oddiy muzlatish bilan bir xil.`
+              : `Guruhning ${bulkActivateTargets.length} ta a'zosi shu sanadan aktivlashtiriladi — qisman oylik hisoblanadi.`
         }
         confirmLabel={
           groupBulk === 'freeze'
             ? (groupBulkBusy ? 'Muzlatilyapti…' : 'Muzlatish')
-            : (groupBulkBusy ? 'Aktivlashtirilyapti…' : 'Aktivlashtirish')
+            : groupBulk === 'yearFreeze'
+              ? (groupBulkBusy ? 'Muzlatilyapti…' : 'Aktiv muzlatish')
+              : (groupBulkBusy ? 'Aktivlashtirilyapti…' : 'Aktivlashtirish')
         }
-        tone={groupBulk === 'freeze' ? 'sky' : 'brand'}
+        tone={groupBulk === 'activate' ? 'brand' : 'sky'}
         showDate
         defaultDate={today}
         showRetentionBonus={groupBulk === 'activate' && canSetBonus}
@@ -1937,14 +1975,17 @@ function Info({
 
 /** Chap ustundagi bitta a'zolik qatori — bosilsa profilga o'tadi, "⋮" menyu faqat FAOL a'zolarda. */
 function MemberRow({
-  m, back, canManage, onActivate, onFreeze, onReturn, onTransfer, onRemove,
+  m, back, canManage, canYearFreeze, onActivate, onFreeze, onYearFreeze, onReturn, onTransfer, onRemove,
 }: {
   m: GroupMember
   /** Profilga o'tilganda "Orqaga" shu guruhga qaytarsin. */
   back: BackState
   canManage: boolean
+  /** «Aktiv muzlatish» bandi ko'rsatilsinmi — FAQAT superadmin (`can()` bunga yaramaydi). */
+  canYearFreeze: boolean
   onActivate: () => void
   onFreeze: () => void
+  onYearFreeze: () => void
   onReturn: () => void
   onTransfer: () => void
   onRemove: () => void
@@ -1962,7 +2003,7 @@ function MemberRow({
       : m.status === 'trial'
         ? 'text-amber-600'
         : 'text-emerald-700'
-  const sb = statusBadge(m.status)
+  const sb = statusBadge(m.status, m.yearFreeze)
 
   return (
     <li className="relative">
@@ -1995,7 +2036,12 @@ function MemberRow({
             items={[
               ...(m.status !== 'active'
                 ? [{ label: 'Faollashtirish', icon: CheckCircle2, onClick: onActivate }]
-                : [{ label: 'Muzlatish', icon: Snowflake, onClick: onFreeze }]),
+                : [
+                    { label: 'Muzlatish', icon: Snowflake, onClick: onFreeze },
+                    ...(canYearFreeze
+                      ? [{ label: 'Aktiv muzlatish', icon: CalendarClock, onClick: onYearFreeze }]
+                      : []),
+                  ]),
               ...(m.status !== 'trial'
                 ? [{ label: 'Sinov darsiga qaytarish', icon: RotateCcw, onClick: onReturn }]
                 : []),

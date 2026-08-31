@@ -355,14 +355,19 @@ export const monthStatusLabels: Record<MonthStatus, string> = {
 
 /**
  * O'quvchining holat belgisi (qidiruv natijalari va ro'yxatlar uchun). Arxiv eng ustun,
- * so'ng a'zolik holati (`Student.memberState`: active | trial | frozen | "").
+ * so'ng a'zolik holati (`Student.memberState`: active | trial | yearFrozen | frozen | "").
  * `null` — normal holat (aktiv), belgi ko'rsatilmaydi.
+ *
+ * `yearFrozen` («Aktiv muzlatish») ATAYIN alohida rangda (indigo): hisob-kitobi oddiy
+ * muzlatish (sky) bilan bir xil bo'lsa ham, "yangi o'quv yiliga nechta o'quvchi bilan
+ * o'tyapmiz" degan savolga javob shu belgi orqali ko'zga tashlanadi.
  */
 export function studentStateBadge(
   memberState?: string,
   isArchived?: boolean,
 ): { label: string; className: string } | null {
   if (isArchived) return { label: 'arxiv', className: 'bg-amber-100 text-amber-700' }
+  if (memberState === 'yearFrozen') return { label: 'aktiv muzlatilgan', className: 'bg-indigo-100 text-indigo-700' }
   if (memberState === 'frozen') return { label: 'muzlatilgan', className: 'bg-sky-100 text-sky-700' }
   if (memberState === 'trial') return { label: 'sinov', className: 'bg-violet-100 text-violet-700' }
   return null

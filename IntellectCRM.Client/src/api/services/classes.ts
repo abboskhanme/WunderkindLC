@@ -231,13 +231,26 @@ export async function activateMember(
   await api.post(`/admin/classes/${id}/members/${studentId}/activate`, body)
 }
 
-/** A'zolikni MUZLATISH — kiritilgan sanadan boshlab oylik to'lov hisoblanmaydi. Sabab (ixtiyoriy). */
-export async function freezeMember(id: string, studentId: string, date: string, reasonId?: string): Promise<void> {
+/**
+ * A'zolikni MUZLATISH — kiritilgan sanadan boshlab oylik to'lov hisoblanmaydi. Sabab (ixtiyoriy).
+ *
+ * `yearFreeze` — «Aktiv muzlatish» (yangi o'quv yiliga o'tish) belgisi. Hisob-kitobga TA'SIR
+ * QILMAYDI: holat baribir "frozen", oylik baribir hisoblanmaydi — farq faqat ro'yxatdagi
+ * belgida. Faqat superadmin uzatadi (server ham AYNAN shu qoidani tekshiradi va rad etadi —
+ * jimgina oddiy muzlatishga tushirmaydi).
+ */
+export async function freezeMember(
+  id: string,
+  studentId: string,
+  date: string,
+  reasonId?: string,
+  yearFreeze?: boolean,
+): Promise<void> {
   if (USE_MOCK) {
     await delay(150)
     return
   }
-  await api.post(`/admin/classes/${id}/members/${studentId}/freeze`, { date, reasonId })
+  await api.post(`/admin/classes/${id}/members/${studentId}/freeze`, { date, reasonId, yearFreeze })
 }
 
 /**
@@ -299,12 +312,15 @@ const EMPTY_BULK: BulkMembershipResult = {
  * `groupId` berilsa — faqat SHU guruhdagi a'zoliklar (guruh sahifasi);
  * `null` bo'lsa — o'quvchilarning BARCHA guruhlardagi faol a'zoliklari (o'quvchilar ro'yxati).
  * Hisob-kitob yakka "Muzlatish" bilan AYNAN bir xil (server bitta manbadan ishlaydi).
+ *
+ * `yearFreeze` — «Aktiv muzlatish» belgisi (yakka `freezeMember` dagi bilan bir xil ma'no).
  */
 export async function bulkFreezeMembers(
   groupId: string | null,
   studentIds: string[],
   date: string,
   reasonId?: string,
+  yearFreeze?: boolean,
 ): Promise<BulkMembershipResult> {
   if (USE_MOCK) {
     await delay(200)
@@ -313,7 +329,7 @@ export async function bulkFreezeMembers(
   const url = groupId
     ? `/admin/classes/${groupId}/members/bulk-freeze`
     : '/admin/classes/members/bulk-freeze'
-  const { data } = await api.post<BulkMembershipResult>(url, { studentIds, date, reasonId })
+  const { data } = await api.post<BulkMembershipResult>(url, { studentIds, date, reasonId, yearFreeze })
   return data
 }
 

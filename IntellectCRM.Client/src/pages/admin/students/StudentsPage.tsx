@@ -2,7 +2,7 @@
 import { Link, useNavigate } from 'react-router-dom'
 import { usePersistentState } from '@/hooks/usePersistentState'
 import { StudentViewModal } from './StudentViewModal'
-import { Plus, Search, Pencil, Trash2, Send, Download, X, Wallet, History, Archive, RotateCcw, FileDown, Upload, ChevronLeft, ChevronRight, Lock, LockOpen, Loader2, Phone, PhoneCall, Cake, Medal, Snowflake, CheckCircle2 } from 'lucide-react'
+import { Plus, Search, Pencil, Trash2, Send, Download, X, Wallet, History, Archive, RotateCcw, FileDown, Upload, ChevronLeft, ChevronRight, Lock, LockOpen, Loader2, Phone, PhoneCall, Cake, Medal, Snowflake, CalendarClock, CheckCircle2 } from 'lucide-react'
 import type { Gender, Student, Teacher, District } from '@/types'
 import { getDistricts } from '@/api/services/districts'
 import type { StudentPayload, StudentImportResult } from '@/api/services/students'
@@ -69,16 +69,21 @@ const control =
 
 /**
  * "Holat" ustuni (va CSV eksporti) uchun a'zolik holati. `memberState` — backend hisoblagan
- * yorliq (active > trial > frozen); eski javoblarda bo'lmasa `active` bayrog'iga tushamiz.
+ * yorliq (active > trial > yearFrozen > frozen); eski javoblarda bo'lmasa `active` bayrog'iga
+ * tushamiz.
  */
-type StateFilter = 'all' | 'active' | 'trial' | 'frozen' | 'inactive'
+type StateFilter = 'all' | 'active' | 'trial' | 'yearFrozen' | 'frozen' | 'inactive'
 
 /**
  * O'quvchining USTUN ko'rsatadigan holati — filtr ham AYNAN shundan ishlaydi, ya'ni
  * "Muzlatilgan" tanlanganda ro'yxatdagi har qatorda "Muzlatilgan" yozib turadi.
- * (Bir nechta guruhda turlicha bo'lsa backend ustunlik beradi: active > trial > frozen.)
+ * (Bir nechta guruhda turlicha bo'lsa backend ustunlik beradi: active > trial > yearFrozen > frozen.)
+ *
+ * ⚠️ `yearFrozen` ("Aktiv muzlatilgan") oddiy `frozen` dan ALOHIDA qiymat: hisob-kitobi bir xil
+ * bo'lsa ham, "yangi o'quv yiliga nechta o'quvchi bilan o'tyapmiz" ni ajratib sanash uchun.
  */
-function studentState(s: Student): 'active' | 'trial' | 'frozen' | 'none' {
+function studentState(s: Student): 'active' | 'trial' | 'yearFrozen' | 'frozen' | 'none' {
+  if (s.memberState === 'yearFrozen') return 'yearFrozen'
   if (s.memberState === 'frozen') return 'frozen'
   if (s.memberState === 'trial') return 'trial'
   if (s.active || s.memberState === 'active') return 'active'
@@ -86,6 +91,9 @@ function studentState(s: Student): 'active' | 'trial' | 'frozen' | 'none' {
 }
 
 function memberStateInfo(s: Student): { label: string; chip: string; dot: string } {
+  // Indigo — oddiy muzlatishning sky rangidan va sinovning violet rangidan ajralib tursin.
+  if (s.memberState === 'yearFrozen')
+    return { label: 'Aktiv muzlatilgan', chip: 'bg-indigo-50 text-indigo-700', dot: 'bg-indigo-500' }
   if (s.memberState === 'frozen')
     return { label: 'Muzlatilgan', chip: 'bg-sky-50 text-sky-700', dot: 'bg-sky-500' }
   if (s.memberState === 'trial')
@@ -204,10 +212,11 @@ export function StudentsPage() {
   /** Tanlanganlar login'ini ommaviy cheklash/ochish — so'rov jarayonida. */
   const [bulkLoginBlocking, setBulkLoginBlocking] = useState(false)
   /**
-   * Tanlanganlarni ommaviy MUZLATISH / AKTIVLASHTIRISH — qaysi amal uchun tasdiq modali ochiq.
-   * `null` = modal yopiq. Ikkala amal bitta state'da, chunki ular bir vaqtda ochilmaydi.
+   * Tanlanganlarni ommaviy MUZLATISH / «AKTIV MUZLATISH» / AKTIVLASHTIRISH — qaysi amal uchun
+   * tasdiq modali ochiq. `null` = modal yopiq. Hammasi bitta state'da, chunki ular bir vaqtda
+   * ochilmaydi. `yearFreeze` — o'sha muzlatishning O'ZI, faqat yangi o'quv yili belgisi bilan.
    */
-  const [bulkMembership, setBulkMembership] = useState<'freeze' | 'activate' | null>(null)
+  const [bulkMembership, setBulkMembership] = useState<'freeze' | 'yearFreeze' | 'activate' | null>(null)
   /** Ommaviy a'zolik amali so'rov jarayonida — `bulkLoginBlocking` naqshi bilan bir xil. */
   const [membershipBusy, setMembershipBusy] = useState(false)
 
@@ -293,13 +302,14 @@ export function StudentsPage() {
    * nechta" emas. Aks holda son filtr o'zgargan sayin sakrab, ma'nosini yo'qotardi.
    */
   const stateCounts = useMemo(() => {
-    const c = { active: 0, trial: 0, frozen: 0, inactive: 0 }
+    const c = { active: 0, trial: 0, yearFrozen: 0, frozen: 0, inactive: 0 }
     for (const s of source) {
       const st = studentState(s)
       if (st === 'active') c.active++
       else {
         c.inactive++
         if (st === 'trial') c.trial++
+        else if (st === 'yearFrozen') c.yearFrozen++
         else if (st === 'frozen') c.frozen++
       }
     }
@@ -738,13 +748,15 @@ export function StudentsPage() {
     // Sana modaldan keladi (`showDate`); zaxira sifatida bugungi kun — server sanasiz ishlamaydi.
     const day = date || new Date().toISOString().slice(0, 10)
     setMembershipBusy(true)
-    const request =
-      action === 'freeze'
-        ? bulkFreezeMembers(null, ids, day, reasonId)
-        : bulkActivateMembers(null, ids, day, retentionBonus)
+    // «Aktiv muzlatish» — AYNAN o'sha endpoint, farqi faqat `yearFreeze` bayrog'ida
+    // (hisob-kitob, holat va natija xabari oddiy muzlatish bilan bir xil).
+    const freezing = action === 'freeze' || action === 'yearFreeze'
+    const request = freezing
+      ? bulkFreezeMembers(null, ids, day, reasonId, action === 'yearFreeze')
+      : bulkActivateMembers(null, ids, day, retentionBonus)
     request
       .then(async (res) => {
-        alert(bulkMembershipSummary(res, action))
+        alert(bulkMembershipSummary(res, freezing ? 'freeze' : 'activate'))
         setBulkMembership(null)
         clearSelection()
         // Ro'yxatni QAYTA yuklaymiz: a'zolik holati ham, BALANS ham o'zgargan bo'lishi mumkin
@@ -1004,6 +1016,11 @@ export function StudentsPage() {
             <option value="all">Barcha holat ({source.length})</option>
             <option value="active">● Aktiv ({stateCounts.active})</option>
             <option value="trial">● Sinovda ({stateCounts.trial})</option>
+            {/* «Aktiv muzlatilgan» — oddiy muzlatishdan ALOHIDA variant: aynan shu son
+                "yangi o'quv yiliga nechta o'quvchi bilan o'tyapmiz" degan savolga javob beradi.
+                Amalni faqat superadmin qiladi, KO'RISH esa hammaga ochiq — belgi qatorda
+                baribir turibdi, filtrni yashirish faqat sanashni qiyinlashtirardi. */}
+            <option value="yearFrozen">● Aktiv muzlatilgan ({stateCounts.yearFrozen})</option>
             <option value="frozen">● Muzlatilgan ({stateCounts.frozen})</option>
             <option value="inactive">Aktiv emas ({stateCounts.inactive})</option>
           </select>
@@ -1157,6 +1174,19 @@ export function StudentsPage() {
                     >
                       <Snowflake className="h-4 w-4" /> Muzlatish ({selected.size})
                     </Button>
+                    {/* «Aktiv muzlatish» — yangi o'quv yiliga o'tish belgisi bilan muzlatish.
+                        FAQAT superadmin: `can()` bu yerda yaramaydi — u oddiy admin uchun ham
+                        true qaytaradi (`students.list` naqshi), amal esa admin'ga yopiq. */}
+                    {user?.role === 'superadmin' && (
+                      <Button
+                        variant="secondary"
+                        onClick={() => setBulkMembership('yearFreeze')}
+                        disabled={membershipBusy}
+                        className="text-indigo-600 hover:text-indigo-700"
+                      >
+                        <CalendarClock className="h-4 w-4" /> Aktiv muzlatish ({selected.size})
+                      </Button>
+                    )}
                     <Button
                       variant="secondary"
                       onClick={() => setBulkMembership('activate')}
@@ -1283,7 +1313,7 @@ export function StudentsPage() {
                             <div className="flex flex-wrap gap-1">
                               {frozen.map((g) => (
                                 <Badge key={g.groupId} tone="default">
-                                  {g.name} · muzlatilgan
+                                  {g.name} · {g.yearFreeze ? 'aktiv muzlatilgan' : 'muzlatilgan'}
                                 </Badge>
                               ))}
                             </div>
@@ -1679,6 +1709,25 @@ export function StudentsPage() {
         title="Ommaviy muzlatish"
         message={`${selected.size} ta o'quvchining BARCHA guruhlardagi a'zoligi shu sanadan muzlatiladi.`}
         confirmLabel={membershipBusy ? 'Muzlatilyapti…' : 'Muzlatish'}
+        tone="sky"
+        showDate
+        onConfirm={handleBulkMembership}
+        onClose={() => {
+          if (!membershipBusy) setBulkMembership(null)
+        }}
+      />
+
+      {/*
+        Ommaviy «AKTIV MUZLATISH» — oddiy muzlatish bilan AYNAN bir xil amal, farqi faqat yangi
+        o'quv yili belgisida. Shuning uchun sabab kategoriyasi ham o'sha (`freeze`) — yangi
+        kategoriya "bir xil sabablar ikki ro'yxatda" degani bo'lardi.
+      */}
+      <ReasonPromptModal
+        open={bulkMembership === 'yearFreeze'}
+        category="freeze"
+        title="Ommaviy aktiv muzlatish"
+        message={`${selected.size} ta o'quvchining BARCHA guruhlardagi a'zoligi shu sanadan muzlatiladi va «yangi o'quv yiliga o'tish» deb belgilanadi. Hisob-kitob oddiy muzlatish bilan bir xil — belgi faqat ro'yxatda ajratib sanash uchun.`}
+        confirmLabel={membershipBusy ? 'Muzlatilyapti…' : 'Aktiv muzlatish'}
         tone="sky"
         showDate
         onConfirm={handleBulkMembership}

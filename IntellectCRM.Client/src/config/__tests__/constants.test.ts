@@ -102,6 +102,19 @@ describe('studentStateBadge', () => {
     expect(studentStateBadge('trial')?.label).toBe('sinov')
   })
 
+  it('«aktiv muzlatish» oddiy muzlatishdan ALOHIDA belgi va ALOHIDA rang', () => {
+    const year = studentStateBadge('yearFrozen')
+    const plain = studentStateBadge('frozen')
+    expect(year?.label).toBe('aktiv muzlatilgan')
+    // Ranglar bir xil bo'lsa belgi ma'nosini yo'qotardi: modulning butun maqsadi —
+    // "yangi o'quv yiliga nechta o'quvchi bilan o'tyapmiz" ni ko'z bilan ajratish.
+    expect(year?.className).not.toBe(plain?.className)
+  })
+
+  it('arxiv «aktiv muzlatish»dan ham USTUN', () => {
+    expect(studentStateBadge('yearFrozen', true)?.label).toBe('arxiv')
+  })
+
   it('normal (aktiv) o\'quvchida belgi yo\'q', () => {
     expect(studentStateBadge('active')).toBeNull()
     expect(studentStateBadge('')).toBeNull()
