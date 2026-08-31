@@ -2175,6 +2175,10 @@ export interface TeacherRating {
   studentsCount: number
   averageBall: number
   rows: TeacherRatingRow[]
+  /** Qaysi oy kesimi qaytarildi ("yyyy-MM"); "" = Umumiy (barcha vaqt) — standart */
+  month: string
+  /** Tanlash mumkin bo'lgan oylar (eng erta ma'lumot oyidan JORIY oygacha) — kelajak yo'q */
+  months: string[]
 }
 
 /** Lid manbasi (ma'lumotnoma) */

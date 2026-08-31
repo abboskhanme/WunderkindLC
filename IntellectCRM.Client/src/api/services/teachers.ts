@@ -275,13 +275,18 @@ export async function getSalaryMonth(id: string, month: string): Promise<MonthSa
 /**
  * O'qituvchi guruhlaridagi o'quvchilar reytingi: ball = jurnal baholari yig'indisi +
  * bajarilgan baholash mezonlari. Faqat SHU o'qituvchi guruhlaridagi ball hisoblanadi.
+ * `month` ("yyyy-MM") berilmasa — Umumiy (barcha vaqt), ya'ni avvalgi xatti-harakat.
  */
-export async function getTeacherRating(id: string): Promise<TeacherRating> {
+export async function getTeacherRating(id: string, month?: string): Promise<TeacherRating> {
   if (USE_MOCK) {
     await delay()
-    return { teacherId: id, fullName: '', groupsCount: 0, studentsCount: 0, averageBall: 0, rows: [] }
+    return {
+      teacherId: id, fullName: '', groupsCount: 0, studentsCount: 0, averageBall: 0, rows: [],
+      month: month ?? '', months: [],
+    }
   }
-  const { data } = await api.get<TeacherRating>(`/admin/teachers/${id}/rating`)
+  const q = month ? `?month=${encodeURIComponent(month)}` : ''
+  const { data } = await api.get<TeacherRating>(`/admin/teachers/${id}/rating${q}`)
   return data
 }
 

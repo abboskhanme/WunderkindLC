@@ -271,10 +271,14 @@ export async function getTeacherLastMessages(): Promise<Record<string, string | 
 
 /* ---------- O'quvchilar reytingi (o'z guruhlari, ball bo'yicha) ---------- */
 
-/** Ball = jurnal baholari yig'indisi + bajarilgan baholash mezonlari (faqat o'z guruhlarida). */
-export async function getMyStudentRating(): Promise<TeacherRating | null> {
+/**
+ * Ball = jurnal baholari yig'indisi + bajarilgan baholash mezonlari (faqat o'z guruhlarida).
+ * `month` ("yyyy-MM") berilmasa — Umumiy (barcha vaqt), ya'ni avvalgi xatti-harakat.
+ */
+export async function getMyStudentRating(month?: string): Promise<TeacherRating | null> {
   if (USE_MOCK) return null
-  const { data } = await api.get<TeacherRating>('/teacher/rating')
+  const q = month ? `?month=${encodeURIComponent(month)}` : ''
+  const { data } = await api.get<TeacherRating>(`/teacher/rating${q}`)
   return data
 }
 

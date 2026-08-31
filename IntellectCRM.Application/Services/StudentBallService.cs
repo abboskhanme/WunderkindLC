@@ -61,16 +61,24 @@ public static class StudentBallService
     /// <summary>
     /// <b>PER-GURUH ball</b> — kalit <c>(StudentId, GroupId)</c>. <paramref name="groupIds"/> berilsa
     /// faqat shu guruhlar hisoblanadi (o'qituvchi reytingi / guruh tahlili); null — barcha guruhlar.
+    ///
+    /// <para><paramref name="month"/> ("yyyy-MM") berilsa — FAQAT shu oydagi ball. Bo'sh/null =
+    /// UMUMIY (barcha vaqt) — eski xatti-harakat, hech narsa o'zgarmaydi. Qo'lda tuzatish
+    /// (<see cref="StudentBallAdjustment"/>) YOZILGAN oyiga tegishli deb hisoblanadi
+    /// (<c>CreatedAt</c> boshlanishi "yyyy-MM"), ya'ni oy kesimida ham hisobga olinadi.</para>
     /// </summary>
     public static async Task<Dictionary<(string StudentId, string GroupId), BallStat>> ComputeByGroupAsync(
-        IAppDbContext db, IReadOnlyCollection<string>? groupIds = null)
+        IAppDbContext db, IReadOnlyCollection<string>? groupIds = null, string? month = null)
     {
         var result = new Dictionary<(string, string), BallStat>();
         if (groupIds is { Count: 0 }) return result;
+        // Bo'sh satr = filtr yo'q (Umumiy) — controllerdan "?month=" bo'sh kelsa ham to'g'ri ishlasin.
+        var m = string.IsNullOrEmpty(month) ? null : month;
 
         // Jurnal baholari — GURUH (ClassId) ham guruhlash kalitida.
         var jq = db.JournalEntries.AsNoTracking().Where(e => e.Grade != null);
         if (groupIds is not null) jq = jq.Where(e => groupIds.Contains(e.ClassId));
+        if (m is not null) jq = jq.Where(e => e.Date.StartsWith(m));
         var journal = await jq
             .GroupBy(e => new { e.StudentId, e.ClassId })
             .Select(g => new
@@ -84,6 +92,7 @@ public static class StudentBallService
 
         var cq = db.CriterionGrades.AsNoTracking().Where(g => g.Done);
         if (groupIds is not null) cq = cq.Where(g => groupIds.Contains(g.GroupId));
+        if (m is not null) cq = cq.Where(g => g.Date.StartsWith(m));
         var criteria = await cq
             .GroupBy(g => new { g.StudentId, g.GroupId })
             .Select(g => new { g.Key.StudentId, g.Key.GroupId, Done = g.Count() })
@@ -91,6 +100,7 @@ public static class StudentBallService
 
         var aq = db.StudentBallAdjustments.AsNoTracking();
         if (groupIds is not null) aq = aq.Where(a => groupIds.Contains(a.GroupId));
+        if (m is not null) aq = aq.Where(a => a.CreatedAt.StartsWith(m));
         var adjustments = await aq
             .GroupBy(a => new { a.StudentId, a.GroupId })
             .Select(g => new { g.Key.StudentId, g.Key.GroupId, Delta = g.Sum(x => x.Delta) })
@@ -191,18 +201,31 @@ public static class StudentBallService
     ///
     /// Faqat FAOL a'zolar va arxivlanmagan o'quvchilar. Davomat — SHU guruhda o'tilgan darslar
     /// bo'yicha (kech kelish sababi qatnashmaydi).
+    ///
+    /// <para><paramref name="month"/> ("yyyy-MM") — OY kesimi: ball, davomat va o'tilgan darslar
+    /// faqat shu oy bo'yicha hisoblanadi. Bo'sh/null = <b>Umumiy</b> (barcha vaqt) — ESKI, standart
+    /// xatti-harakat: parametrsiz chaqiruvlar (masalan <c>TeacherSnapshotBuilder</c>) o'zgarmaydi.</para>
+    ///
+    /// <para>Javobdagi <c>Months</c> — tanlash mumkin bo'lgan oylar (eng erta ma'lumot oyidan JORIY
+    /// oygacha, uzluksiz): kelajakdagi oy ro'yxatga umuman tushmaydi, ya'ni UI bo'sh oyga o'tolmaydi.
+    /// <c>Month</c> — aynan qaysi oy qaytarilgani ("" = Umumiy).</para>
     /// </summary>
-    public static async Task<TeacherRatingDto> TeacherAsync(IAppDbContext db, Teacher teacher)
+    public static async Task<TeacherRatingDto> TeacherAsync(
+        IAppDbContext db, Teacher teacher, string? month = null)
     {
+        var mon = string.IsNullOrEmpty(month) ? null : month;
         var groups = await db.Classes.AsNoTracking()
             .Where(c => c.TeacherId == teacher.Id && !c.IsArchived)
             .Select(c => new { c.Id, c.Name })
             .ToListAsync();
         if (groups.Count == 0)
-            return new TeacherRatingDto(teacher.Id, teacher.FullName, 0, 0, 0, new List<TeacherRatingRowDto>());
+            return new TeacherRatingDto(
+                teacher.Id, teacher.FullName, 0, 0, 0, new List<TeacherRatingRowDto>(),
+                0, mon ?? "", new List<string> { TuitionService.CurrentMonth() });
 
         var groupIds = groups.Select(g => g.Id).ToList();
         var groupName = groups.ToDictionary(g => g.Id, g => g.Name);
+        var months = await RatingMonthsAsync(db, groupIds);
 
         // Faol a'zoliklar: o'quvchi → shu o'qituvchining qaysi guruhlarida o'qiydi.
         var memberships = await db.StudentGroups.AsNoTracking()
@@ -210,9 +233,11 @@ public static class StudentBallService
             .Select(sg => new { sg.StudentId, sg.GroupId })
             .Distinct()
             .ToListAsync();
-        var studentIds = memberships.Select(m => m.StudentId).Distinct().ToList();
+        var studentIds = memberships.Select(x => x.StudentId).Distinct().ToList();
         if (studentIds.Count == 0)
-            return new TeacherRatingDto(teacher.Id, teacher.FullName, groups.Count, 0, 0, new List<TeacherRatingRowDto>());
+            return new TeacherRatingDto(
+                teacher.Id, teacher.FullName, groups.Count, 0, 0, new List<TeacherRatingRowDto>(),
+                0, mon ?? "", months);
 
         var studentName = (await db.Students.AsNoTracking()
                 .Where(s => studentIds.Contains(s.Id) && !s.IsArchived)
@@ -220,19 +245,25 @@ public static class StudentBallService
                 .ToListAsync())
             .ToDictionary(s => s.Id, s => s.FullName);
 
-        var balls = await ComputeByGroupAsync(db, groupIds);
+        var balls = await ComputeByGroupAsync(db, groupIds, mon);
 
         // Davomat: o'tilgan darslar (LessonNote.Conducted) va sababli qoldirilganlar (kech kelish emas).
+        // OY tanlanganda surat ham, maxraj ham AYNAN o'sha oydan olinadi — aks holda "shu oy
+        // qoldirgan / barcha vaqt o'tilgan darslar" degan ma'nosiz nisbat chiqardi.
         var lateIds = (await db.AbsenceReasons.AsNoTracking().Where(r => r.IsLate).Select(r => r.Id).ToListAsync())
             .ToHashSet();
-        var conductedByGroup = (await db.LessonNotes.AsNoTracking()
-                .Where(n => groupIds.Contains(n.ClassId) && n.Conducted)
+        var notesQuery = db.LessonNotes.AsNoTracking()
+            .Where(n => groupIds.Contains(n.ClassId) && n.Conducted);
+        if (mon is not null) notesQuery = notesQuery.Where(n => n.Date.StartsWith(mon));
+        var conductedByGroup = (await notesQuery
                 .Select(n => new { n.ClassId, n.SubjectId, n.Date, n.Period })
                 .ToListAsync())
             .GroupBy(n => n.ClassId)
             .ToDictionary(g => g.Key, g => g.Select(n => (n.SubjectId, n.Date, n.Period)).ToHashSet());
-        var absencesByKey = (await db.JournalEntries.AsNoTracking()
-                .Where(e => groupIds.Contains(e.ClassId) && e.ReasonId != null)
+        var absenceQuery = db.JournalEntries.AsNoTracking()
+            .Where(e => groupIds.Contains(e.ClassId) && e.ReasonId != null);
+        if (mon is not null) absenceQuery = absenceQuery.Where(e => e.Date.StartsWith(mon));
+        var absencesByKey = (await absenceQuery
                 .Select(e => new { e.StudentId, e.ClassId, e.SubjectId, e.Date, e.Period, e.ReasonId })
                 .ToListAsync())
             .Where(e => !lateIds.Contains(e.ReasonId!))
@@ -287,6 +318,39 @@ public static class StudentBallService
         // bo'lsa "o'quvchilar soni" ikki barobar ko'rinib qolardi.
         var studentsCount = rows.Select(r => r.StudentId).Distinct().Count();
         return new TeacherRatingDto(
-            teacher.Id, teacher.FullName, groups.Count, studentsCount, avgBall, rows, rows.Count);
+            teacher.Id, teacher.FullName, groups.Count, studentsCount, avgBall, rows, rows.Count,
+            mon ?? "", months);
+    }
+
+    /// <summary>
+    /// Reyting uchun TANLASH MUMKIN bo'lgan oylar ("yyyy-MM"): eng erta ma'lumot (jurnal bahosi,
+    /// mezon belgisi yoki o'tilgan dars) oyidan JORIY oygacha uzluksiz.
+    /// <para>Kelajakdagi oy ATAYIN qaytarilmaydi — foydalanuvchi baribir bo'sh ekranga tushardi.
+    /// Ma'lumot umuman bo'lmasa — faqat joriy oy.</para>
+    /// </summary>
+    private static async Task<List<string>> RatingMonthsAsync(
+        IAppDbContext db, IReadOnlyCollection<string> groupIds)
+    {
+        var current = TuitionService.CurrentMonth();
+        if (groupIds.Count == 0) return new List<string> { current };
+
+        var minJournal = await db.JournalEntries.AsNoTracking()
+            .Where(e => groupIds.Contains(e.ClassId) && e.Date != "")
+            .MinAsync(e => (string?)e.Date);
+        var minCriteria = await db.CriterionGrades.AsNoTracking()
+            .Where(g => groupIds.Contains(g.GroupId) && g.Date != "")
+            .MinAsync(g => (string?)g.Date);
+        var minLesson = await db.LessonNotes.AsNoTracking()
+            .Where(n => groupIds.Contains(n.ClassId) && n.Date != "")
+            .MinAsync(n => (string?)n.Date);
+
+        var start = new[] { minJournal, minCriteria, minLesson }
+            .Where(d => d is { Length: >= 7 })
+            .Select(d => d![..7])
+            .DefaultIfEmpty(current)
+            .Min()!;
+        // Buzuq sana kelajakni ko'rsatib qo'ysa ham ro'yxat joriy oydan oshmaydi.
+        if (string.CompareOrdinal(start, current) > 0) start = current;
+        return TuitionService.MonthRange(start, current).ToList();
     }
 }

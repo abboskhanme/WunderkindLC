@@ -300,13 +300,16 @@ public class TeacherPortalController(
 
     // ---------- O'quvchilar reytingi (faqat o'z guruhlari) ----------
 
-    /// <summary>O'qituvchi guruhlaridagi o'quvchilar ball bo'yicha reytingi.</summary>
+    /// <summary>O'qituvchi guruhlaridagi o'quvchilar ball bo'yicha reytingi.
+    /// <para><c>month</c> ("yyyy-MM") IXTIYORIY — berilsa shu oy kesimi, bo'sh/berilmagan bo'lsa
+    /// AVVALGIDEK Umumiy. Guruhlar baribir <c>Me()</c> orqali FAQAT o'ziniki: oy parametri
+    /// ko'rish doirasini kengaytirmaydi.</para></summary>
     [HttpGet("rating")]
-    public async Task<ActionResult<TeacherRatingDto>> Rating()
+    public async Task<ActionResult<TeacherRatingDto>> Rating([FromQuery] string? month = null)
     {
         var t = await Me();
         if (t is null) return NotFound();
-        return await StudentBallService.TeacherAsync(db, t);
+        return await StudentBallService.TeacherAsync(db, t, month);
     }
 
     // ---------- Maosh (faqat o'ziniki) ----------

@@ -1220,10 +1220,14 @@ public record TeacherRatingRowDto(
 
 /// <summary>O'qituvchi guruhlaridagi o'quvchilar reytingi (ball bo'yicha, o'rin bilan).
 /// <para><paramref name="StudentsCount"/> — DISTINCT o'quvchi soni (qatorlar soni EMAS: qator =
-/// o'quvchi×guruh). Qatorlar soni kerak bo'lsa — <paramref name="RowsCount"/>.</para></summary>
+/// o'quvchi×guruh). Qatorlar soni kerak bo'lsa — <paramref name="RowsCount"/>.</para>
+/// <para><paramref name="Month"/> — qaysi oy kesimi qaytarildi ("yyyy-MM"); <b>"" = Umumiy</b>
+/// (barcha vaqt) — standart. <paramref name="Months"/> — tanlash mumkin bo'lgan oylar (eng erta
+/// ma'lumot oyidan JORIY oygacha): kelajakdagi oy ro'yxatda yo'q.</para></summary>
 public record TeacherRatingDto(
     string TeacherId, string FullName, int GroupsCount, int StudentsCount, double AverageBall,
-    List<TeacherRatingRowDto> Rows, int RowsCount = 0);
+    List<TeacherRatingRowDto> Rows, int RowsCount = 0,
+    string Month = "", List<string>? Months = null);
 
 /* ---------- BALL TAFSILOTI, TARIXI va QO'LDA TUZATISH (admin/superadmin) ---------- */
 

@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ArrowLeft, Medal, Trophy } from 'lucide-react'
+import { ArrowLeft, ChevronLeft, ChevronRight, Medal, Trophy } from 'lucide-react'
 import { getMyStudentRating } from '@/api/services/teacher'
 import type { TeacherRating } from '@/types'
-import { apiErrorMessage } from '@/lib/utils'
+import { formatMonth } from '@/config/constants'
+import { apiErrorMessage, cn } from '@/lib/utils'
 import { Loader } from '@/components/ui/Loader'
 
 /** Podium (TOP-3) rangi va medal fon rangi — o'rin bo'yicha. */
@@ -19,14 +20,30 @@ export function TeacherRatingPage() {
   const [rating, setRating] = useState<TeacherRating | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  // OY kesimi: '' = Umumiy (barcha vaqt) — STANDART, ya'ni tugmaga tegmagan o'qituvchi
+  // avvalgidek to'liq reytingni ko'radi. Oy tanlansa "yyyy-MM".
+  const [month, setMonth] = useState('')
+  // Mavjud oylar serverdan keladi (kelajakdagi oy YO'Q) va alohida saqlanadi — oy almashganda
+  // `rating` vaqtincha null bo'ladi, navigatsiya esa ekrandan yo'qolmasin.
+  const [months, setMonths] = useState<string[]>([])
+  const loadedRef = useRef<string | null>(null)
 
   useEffect(() => {
+    if (loadedRef.current === month) return
+    loadedRef.current = month
     let alive = true
-    getMyStudentRating()
+    setLoading(true)
+    setError(null)
+    setRating(null)
+    getMyStudentRating(month || undefined)
       .then((d) => {
-        if (alive) setRating(d)
+        if (!alive) return
+        setRating(d)
+        if (d?.months?.length) setMonths(d.months)
       })
       .catch((err) => {
+        // Xato bo'lsa kalitni tozalaymiz — oyni qayta tanlaganda so'rov YANA yuboriladi.
+        loadedRef.current = null
         if (alive) setError(apiErrorMessage(err, "Reytingni yuklab bo'lmadi"))
       })
       .finally(() => {
@@ -35,7 +52,23 @@ export function TeacherRatingPage() {
     return () => {
       alive = false
     }
-  }, [])
+  }, [month])
+
+  // Oy navigatsiyasi. Ro'yxat eng eskisidan JORIY oygacha — "keyingi" joriy oyda to'xtaydi,
+  // ya'ni kelajakdagi bo'sh oyga o'tib bo'lmaydi.
+  const idx = month ? months.indexOf(month) : -1
+  const canPrev = months.length > 0 && (month === '' || idx > 0)
+  const canNext = month !== '' && idx >= 0 && idx < months.length - 1
+  /** delta: -1 = oldingi oy, +1 = keyingi oy. «Umumiy»dan orqaga bosilsa — ENG YANGI (joriy) oy. */
+  const goto = (delta: number) => {
+    if (months.length === 0) return
+    if (month === '') {
+      if (delta < 0) setMonth(months[months.length - 1])
+      return
+    }
+    const i = idx + delta
+    if (i >= 0 && i < months.length) setMonth(months[i])
+  }
 
   const rows = rating?.rows ?? []
   const top3 = rows.slice(0, 3)
@@ -56,6 +89,44 @@ export function TeacherRatingPage() {
         <p className="text-[17px] font-extrabold text-ink">O'quvchilar reytingi</p>
       </div>
 
+      {/* Oy navigatsiyasi — «Umumiy» (standart) yoki bitta oy kesimi. Yuklanish paytida
+          ham ekranda qoladi, ya'ni oy almashtirish uzilmaydi. */}
+      <div className="mb-3 rounded-[20px] border border-line bg-white p-2.5 shadow-[var(--shadow-card)]">
+        <div className="flex items-center justify-center gap-2">
+          <button
+            type="button"
+            onClick={() => setMonth('')}
+            className={cn(
+              'tap-scale rounded-xl px-3 py-1.5 text-[12px] font-bold transition',
+              month === '' ? 'bg-teal-600 text-white' : 'bg-slate-100 text-mute',
+            )}
+          >
+            Umumiy
+          </button>
+          <button
+            type="button"
+            onClick={() => goto(-1)}
+            disabled={!canPrev}
+            aria-label="Oldingi oy"
+            className="tap-scale flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-line bg-white text-mute disabled:opacity-40"
+          >
+            <ChevronLeft className="h-4 w-4" />
+          </button>
+          <span className="min-w-[92px] text-center text-[13px] font-bold text-ink">
+            {month ? formatMonth(month) : 'Umumiy'}
+          </span>
+          <button
+            type="button"
+            onClick={() => goto(1)}
+            disabled={!canNext}
+            aria-label="Keyingi oy"
+            className="tap-scale flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-line bg-white text-mute disabled:opacity-40"
+          >
+            <ChevronRight className="h-4 w-4" />
+          </button>
+        </div>
+      </div>
+
       {loading ? (
         <Loader label="Yuklanmoqda..." />
       ) : error ? (
@@ -69,7 +140,9 @@ export function TeacherRatingPage() {
           </div>
           <p className="text-[14px] font-semibold text-ink">Reyting uchun ma'lumot yo'q</p>
           <p className="text-[13px] text-mute">
-            Guruhlaringizda hali jurnal bahosi yoki bajarilgan mezon qayd etilmagan.
+            {month
+              ? `${formatMonth(month)} oyida jurnal bahosi yoki bajarilgan mezon qayd etilmagan.`
+              : 'Guruhlaringizda hali jurnal bahosi yoki bajarilgan mezon qayd etilmagan.'}
           </p>
         </div>
       ) : (
@@ -178,6 +251,7 @@ export function TeacherRatingPage() {
           {/* Izoh */}
           <p className="mt-3 px-1 text-center text-[11px] text-faint">
             Ball = jurnal baholari + bajarilgan mezonlar
+            {month ? ` · ${formatMonth(month)}` : " · barcha vaqt"}
           </p>
         </>
       )}

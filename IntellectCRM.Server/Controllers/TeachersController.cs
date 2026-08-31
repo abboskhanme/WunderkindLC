@@ -559,13 +559,15 @@ public class TeachersController(AppDbContext db, AuditService audit, IConfigurat
     /// <summary>
     /// O'qituvchi o'quvchilarining REYTINGI — faqat shu o'qituvchi guruhlaridagi ball bo'yicha
     /// (ball = jurnal baholari yig'indisi + bajarilgan baholash mezonlari).
+    /// <para><c>month</c> ("yyyy-MM") IXTIYORIY: berilsa faqat shu oy kesimi, bo'sh/berilmagan —
+    /// AVVALGIDEK Umumiy (barcha vaqt). Javobdagi <c>months</c> — tanlash mumkin bo'lgan oylar.</para>
     /// </summary>
     [HttpGet("{id}/rating")]
-    public async Task<ActionResult<TeacherRatingDto>> Rating(string id)
+    public async Task<ActionResult<TeacherRatingDto>> Rating(string id, [FromQuery] string? month = null)
     {
         var teacher = await db.Teachers.FindAsync(id);
         if (teacher is null) return NotFound();
-        return await StudentBallService.TeacherAsync(db, teacher);
+        return await StudentBallService.TeacherAsync(db, teacher, month);
     }
 
     /// <summary>

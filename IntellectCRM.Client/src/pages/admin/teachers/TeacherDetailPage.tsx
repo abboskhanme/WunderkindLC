@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import {
   ArrowLeft,
   ArrowUpRight,
+  ChevronLeft,
   ChevronRight,
   Users,
   TrendingUp,
@@ -124,6 +125,14 @@ export function TeacherDetailPage() {
   const [rating, setRating] = useState<TeacherRating | null>(null)
   const [ratingLoading, setRatingLoading] = useState(false)
   const [ratingError, setRatingError] = useState<string | null>(null)
+  // Reyting OY kesimi: '' = Umumiy (barcha vaqt) — STANDART, ya'ni tugmaga tegmagan
+  // foydalanuvchi uchun hech narsa o'zgarmaydi. Oy tanlansa "yyyy-MM".
+  const [ratingMonth, setRatingMonth] = useState('')
+  // Mavjud oylar serverdan keladi (kelajakdagi oy ro'yxatda YO'Q). Alohida state'da saqlanadi —
+  // oy almashganda `rating` vaqtincha null bo'ladi, navigatsiya esa ekrandan yo'qolmasin.
+  const [ratingMonths, setRatingMonths] = useState<string[]>([])
+  // Qaysi (o'qituvchi, oy) yuklanganini eslab qolamiz — takroriy so'rov bo'lmasin.
+  const ratingLoadedRef = useRef<string | null>(null)
 
   // Joriy oy kaliti ("YYYY-MM") — stat karta va oy tanlagichi uchun bir manba.
   const currentMonthKey = useMemo(() => {
@@ -394,15 +403,25 @@ export function TeacherDetailPage() {
   }, [tab, id, bonuses])
 
   useEffect(() => {
-    if (tab !== 'rating' || !id || rating) return
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- tab ochilganda bir marta yuklash (maqsadli)
+    if (tab !== 'rating' || !id) return
+    const key = `${id}|${ratingMonth}`
+    if (ratingLoadedRef.current === key) return
+    ratingLoadedRef.current = key
     setRatingLoading(true)
+    setRating(null)
     setRatingError(null)
-    getTeacherRating(id)
-      .then(setRating)
-      .catch((e) => setRatingError(apiErrorMessage(e, "Reytingni yuklab bo'lmadi")))
+    getTeacherRating(id, ratingMonth || undefined)
+      .then((r) => {
+        setRating(r)
+        if (r.months?.length) setRatingMonths(r.months)
+      })
+      .catch((e) => {
+        // Xato bo'lsa kalitni tozalaymiz — oyni qayta tanlaganda so'rov YANA yuboriladi.
+        ratingLoadedRef.current = null
+        setRatingError(apiErrorMessage(e, "Reytingni yuklab bo'lmadi"))
+      })
       .finally(() => setRatingLoading(false))
-  }, [tab, id, rating])
+  }, [tab, id, ratingMonth])
 
   useEffect(() => {
     if (tab !== 'salary' || !id || salaryLedger) return
@@ -415,6 +434,23 @@ export function TeacherDetailPage() {
     loadSelMonth(selMonth)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab, id, selMonth])
+
+  // --- Reyting: oy navigatsiyasi (sof hisob, hook emas) ---
+  // Ro'yxat serverdan eng eskisidan JORIY oygacha keladi, ya'ni "keyingi" tugmasi joriy oyda
+  // to'xtaydi — kelajakdagi bo'sh oyga o'tib bo'lmaydi.
+  const ratingIdx = ratingMonth ? ratingMonths.indexOf(ratingMonth) : -1
+  const canRatingPrev = ratingMonths.length > 0 && (ratingMonth === '' || ratingIdx > 0)
+  const canRatingNext = ratingMonth !== '' && ratingIdx >= 0 && ratingIdx < ratingMonths.length - 1
+  /** delta: -1 = oldingi oy, +1 = keyingi oy. «Umumiy»dan orqaga bosilsa — ENG YANGI (joriy) oy. */
+  const gotoRatingMonth = (delta: number) => {
+    if (ratingMonths.length === 0) return
+    if (ratingMonth === '') {
+      if (delta < 0) setRatingMonth(ratingMonths[ratingMonths.length - 1])
+      return
+    }
+    const i = ratingIdx + delta
+    if (i >= 0 && i < ratingMonths.length) setRatingMonth(ratingMonths[i])
+  }
 
   if (loading)
     return (
@@ -785,6 +821,51 @@ export function TeacherDetailPage() {
       {/* RATING TAB */}
       {tab === 'rating' && (
         <div className="space-y-4">
+          {/* Oy navigatsiyasi — «Umumiy» (standart, barcha vaqt) yoki bitta oy kesimi.
+              Yuklanish paytida ham ekranda qoladi (oylar alohida state'da). */}
+          <Card tight>
+            <div className="flex flex-wrap items-center justify-center gap-2 px-4 py-3">
+              <button
+                type="button"
+                onClick={() => setRatingMonth('')}
+                className={cn(
+                  'rounded-lg px-3 py-1.5 text-sm font-medium transition',
+                  ratingMonth === ''
+                    ? 'bg-brand-600 text-white shadow-sm'
+                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200',
+                )}
+              >
+                Umumiy
+              </button>
+              <button
+                type="button"
+                onClick={() => gotoRatingMonth(-1)}
+                disabled={!canRatingPrev}
+                title="Oldingi oy"
+                className="rounded-lg border border-slate-200 p-1.5 text-slate-500 hover:bg-slate-50 disabled:opacity-40"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </button>
+              <span className="min-w-[120px] text-center text-sm font-semibold text-slate-700">
+                {ratingMonth ? formatMonth(ratingMonth) : 'Umumiy'}
+              </span>
+              <button
+                type="button"
+                onClick={() => gotoRatingMonth(1)}
+                disabled={!canRatingNext}
+                title="Keyingi oy"
+                className="rounded-lg border border-slate-200 p-1.5 text-slate-500 hover:bg-slate-50 disabled:opacity-40"
+              >
+                <ChevronRight className="h-4 w-4" />
+              </button>
+            </div>
+            <p className="px-4 pb-3 text-center text-xs text-slate-400">
+              {ratingMonth
+                ? `Faqat ${formatMonth(ratingMonth)} oyidagi baho, mezon va davomat hisoblanadi`
+                : "Barcha vaqt bo'yicha — oy kesimi uchun strelkalardan foydalaning"}
+            </p>
+          </Card>
+
           {ratingLoading || !rating ? (
             ratingError ? (
               <Card>
@@ -802,7 +883,11 @@ export function TeacherDetailPage() {
             <Card>
               <div className="state">
                 <h4>Reyting uchun ma'lumot yo'q</h4>
-                <p>Bu o'qituvchi guruhlarida hali baho/mezon kiritilmagan.</p>
+                <p>
+                  {ratingMonth
+                    ? `${formatMonth(ratingMonth)} oyida bu o'qituvchi guruhlarida baho/mezon kiritilmagan.`
+                    : "Bu o'qituvchi guruhlarida hali baho/mezon kiritilmagan."}
+                </p>
               </div>
             </Card>
           ) : (
