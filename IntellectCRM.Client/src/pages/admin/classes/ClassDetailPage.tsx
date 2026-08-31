@@ -20,11 +20,10 @@ import {
   type GroupCurriculum,
 } from '@/api/services/curriculum'
 import {
-  activateMember, freezeMember, returnMemberToTrial, getClasses, updateClass,
+  activateMember, freezeMember, returnMemberToTrial, getClass, getGroupSmsRecipients, updateClass,
   getGroupMembers, removeGroupMember, type ClassPayload,
   bulkFreezeMembers, bulkActivateMembers, bulkMembershipSummary,
 } from '@/api/services/classes'
-import { getStudents } from '@/api/services/students'
 import { getGroupPayments, type GroupPaymentsReport } from '@/api/services/finance'
 import { GroupTestsPanel } from '../tests/GroupTestsPanel'
 import { getSettings } from '@/api/services/settings'
@@ -168,6 +167,20 @@ export function ClassDetailPage() {
 
   // ---- O'ng ustundagi faol bo'lim (tab) ----
   const [tab, setTab] = useState<Tab>('jurnal')
+  /**
+   * Qaysi tab uchun ma'lumot ALLAQACHON so'ralgan: tab kaliti → guruh id'si.
+   *
+   * <p>Sabab: server Fransiyada, foydalanuvchi O'zbekistonda — HAR so'rov ~350-400 ms.
+   * Mount'da faqat STANDART «Jurnal» tabiga keraklisi so'raladi (jurnal, a'zolar, sabablar,
+   * guruh), qolgani esa o'z tabi BIRINCHI marta ochilganda. Tablar orasida u yoq-bu yoq
+   * o'tilganda qayta so'ralmaydi.</p>
+   *
+   * <p>Qiymat — bayroq EMAS, guruh id'si: guruh almashsa taqqoslash mos kelmaydi va tab
+   * ochilganda YANGI guruhniki yuklanadi. Xaritani alohida tozalash shart emas (aks holda
+   * tozalash va tab effekti bir commit'da uchrashib, so'rov ikki marta ketardi).
+   * `StudentDetailPage` dagi `tabLoadedFor` bilan AYNAN bir xil naqsh.</p>
+   */
+  const [tabLoadedFor, setTabLoadedFor] = useState<Partial<Record<Tab, string>>>({})
   /** "Oylik to'lov yig'ilishi" tabi — moliya ruxsati bor xodimga (o'qituvchiga KO'RINMAYDI:
    *  hisobot endpointi ham "finance" ruxsatini talab qiladi). */
   const canSeePayments = user?.role !== 'teacher' && can('finance.main', 'view')
@@ -215,16 +228,17 @@ export function ClassDetailPage() {
     if (smsLoading) return
     setSmsLoading(true)
     try {
-      const byId = new Map(members.filter((m) => m.isActive).map((m) => [m.studentId, m]))
-      const all = await getStudents()
+      // ⚠️ Guruhga CHEKLANGAN endpoint. Ilgari bu yerda `getStudents()` chaqirilib, markazning
+      // BARCHA o'quvchisi (to'liq entity) tortilar va brauzerda ~15 a'zo filtrlanardi.
+      // Holat va balansni ham server qaytaradi — a'zolar ro'yxati bilan AYNAN bir manbadan
+      // (SHU GURUH balansi, umumiy `Student.Balance` emas).
+      const rows = await getGroupSmsRecipients(id!)
       setSmsRecipients(
-        all
-          .filter((s) => byId.has(s.id))
-          .map((s) => ({
-            id: s.id, fullName: s.fullName, phone: s.phone,
-            parentPhone: s.parentPhone, fatherPhone: s.fatherPhone, motherPhone: s.motherPhone,
-            status: byId.get(s.id)!.status, balance: byId.get(s.id)!.balance,
-          })),
+        rows.map((r) => ({
+          id: r.studentId, fullName: r.fullName, phone: r.phone,
+          parentPhone: r.parentPhone, fatherPhone: r.fatherPhone, motherPhone: r.motherPhone,
+          status: r.status, balance: r.balance,
+        })),
       )
       setSmsOpen(true)
     } catch {
@@ -243,9 +257,13 @@ export function ClassDetailPage() {
       .finally(() => setCurrLoading(false))
   }, [id])
 
+  // O'quv dasturi — FAQAT «Dastur» tabi birinchi ochilganda (mount'da emas): u alohida tab,
+  // ochmagan foydalanuvchiga uning so'rovi ~350-400 ms behuda kutish edi.
   useEffect(() => {
+    if (tab !== 'dastur' || !id || tabLoadedFor.dastur === id) return
+    setTabLoadedFor((p) => ({ ...p, dastur: id }))
     loadCurr()
-  }, [loadCurr])
+  }, [tab, id, tabLoadedFor, loadCurr])
 
   const load = useCallback(
     (month?: string) => {
@@ -288,13 +306,16 @@ export function ClassDetailPage() {
   // Guruh o'qituvchisi id'si — "O'qituvchi" nomini profilga link qilish uchun (jurnal DTO'sida yo'q).
   useEffect(() => {
     if (!id) return
-    // includeArchived=true — TUGATILGAN (arxivlangan) guruh sahifasi ham to'liq ochilsin
-    // (o'qituvchi profilidan yoki havola orqali kirilganda ma'lumotlari ko'rinadi).
-    getClasses(true)
-      .then((cs) => {
-        const cls = cs.find((c) => c.id === id)
-        setGroup(cls ?? null)
-        setTeacherId(cls?.teacherId ?? '')
+    // ⚠️ Ilgari bu yerda `getClasses(true)` turardi va BITTA guruhni topish uchun markazning
+    // BARCHA guruhlari tortilardi (prodda `Classes` jadvali shu sabab 38 000+ marta to'liq
+    // skanerlangan). Endi `getClass(id)` — bitta yozuv, bitta so'rov. Server Fransiyada,
+    // foydalanuvchi O'zbekistonda: har ortiqcha bayt ham, har ortiqcha so'rov ham ~350-400 ms.
+    // Endpoint arxivlangan guruhni ham qaytaradi — TUGATILGAN guruh sahifasi avvalgidek
+    // to'liq ochiladi (o'qituvchi profilidan yoki havola orqali kirilganda).
+    getClass(id)
+      .then((cls) => {
+        setGroup(cls)
+        setTeacherId(cls.teacherId ?? '')
       })
       .catch(() => {
         setGroup(null)

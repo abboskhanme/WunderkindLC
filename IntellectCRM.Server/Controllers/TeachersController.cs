@@ -67,9 +67,22 @@ public class TeachersController(AppDbContext db, AuditService audit, IConfigurat
     [HttpGet]
     public async Task<ActionResult<IEnumerable<Teacher>>> GetAll([FromQuery] bool includeArchived = false)
     {
-        var q = db.Teachers.AsQueryable();
+        var q = db.Teachers.AsNoTracking().AsQueryable();
         if (!includeArchived) q = q.Where(t => !t.IsArchived);
         return await q.OrderBy(t => t.FullName).ToListAsync();
+    }
+
+    /// <summary>
+    /// BITTA o'qituvchi id bo'yicha — ro'yxatdagi element bilan AYNAN bir xil shakl (`Teacher`).
+    /// <para>⚠️ ATAYIN qo'shildi: o'qituvchi sahifasi bitta o'qituvchini topish uchun BUTUN
+    /// ro'yxatni tortardi. Prod o'lchovi: <c>Teachers</c> jadvali 20 000 martadan ko'p sequential
+    /// scan qilingan. Arxivlangan o'qituvchi ham qaytadi — uning sahifasi ochilishi kerak.</para>
+    /// </summary>
+    [HttpGet("{id}")]
+    public async Task<ActionResult<Teacher>> GetOne(string id)
+    {
+        var t = await db.Teachers.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id);
+        return t is null ? NotFound() : t;
     }
 
     /// <summary>Faqat arxivlangan o'qituvchilar.</summary>

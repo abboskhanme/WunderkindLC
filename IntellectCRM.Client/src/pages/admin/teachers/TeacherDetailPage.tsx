@@ -32,7 +32,7 @@ import type {
   TeacherRatingRow,
 } from '@/types'
 import {
-  getTeachers,
+  getTeacher,
   getTeacherCredentials,
   getTeacherPerformanceSingle,
   getTeacherRating,
@@ -105,6 +105,18 @@ export function TeacherDetailPage() {
   const [subjects, setSubjects] = useState<Subject[]>([])
   const [loading, setLoading] = useState(true)
   const [tab, setTab] = useState<Tab>('info')
+  /**
+   * Tab ma'lumoti QAYSI o'qituvchi uchun yuklangani (tab kaliti → teacherId).
+   *
+   * <p>Sabab: server Fransiyada, foydalanuvchi O'zbekistonda — HAR so'rov ~350-400 ms tarmoq
+   * vaqti. Shuning uchun tab ma'lumoti FAQAT o'sha tab birinchi marta ochilganda so'raladi,
+   * tablar orasida u yoq-bu yoq o'tilganda esa qayta so'ralmaydi.</p>
+   *
+   * <p>Qiymat — teacherId (bayroqning O'ZI emas): o'qituvchi almashsa taqqoslash mos kelmaydi
+   * va tab ochilganda YANGISI yuklanadi. Xaritani ALOHIDA tozalash SHART EMAS va zararli ham:
+   * tab effekti bilan bir commit'da tozalansa, so'rov ikki marta ketardi.</p>
+   */
+  const [tabLoadedFor, setTabLoadedFor] = useState<Partial<Record<Tab, string>>>({})
 
   // «Fikrlar» tabi — o'quvchilardan yig'ilgan, o'qituvchi haqidagi ichki baholash. FAQAT
   // admin/superadmin (server ham shu rolda cheklaydi); xodimga (staff) ko'rsatilmaydi.
@@ -240,9 +252,21 @@ export function TeacherDetailPage() {
     setDedOpen(false)
     getSalaryMonth(id, month)
       .then(setSelMonthData)
-      .catch(() => setSelMonthData(null))
+      .catch(() => {
+        // Xato bo'lsa kalitni tozalaymiz — oy qayta tanlanganda so'rov YANA yuboriladi
+        // (`ratingLoadedRef` dagi bilan bir xil mantiq).
+        selMonthLoadedRef.current = null
+        setSelMonthData(null)
+      })
       .finally(() => setSelMonthLoading(false))
   }
+
+  /**
+   * Tanlangan oy tafsiloti QAYSI (o'qituvchi, oy) uchun yuklangani — `ratingLoadedRef` bilan
+   * bir xil mantiq: «Maosh» tabiga QAYTA kirilganda o'sha oy uchun so'rov qayta ketmasin
+   * (har ortiqcha borish-kelish ~350-400 ms).
+   */
+  const selMonthLoadedRef = useRef<string | null>(null)
 
   const [payType, setPayType] = useState<'all' | 'main' | 'substitute'>('all')
 
@@ -333,6 +357,8 @@ export function TeacherDetailPage() {
       const m = await getSalaryMonth(id, payMonth)
       setSelMonth(payMonth)
       setSelMonthData(m)
+      // Yangi oy ma'lumoti ALLAQACHON qo'lda — pastdagi effekt uni QAYTA so'ramasin.
+      selMonthLoadedRef.current = `${id}|${payMonth}`
       reloadSalary()
       setPayOpen(false)
     } catch (err) {
@@ -342,15 +368,26 @@ export function TeacherDetailPage() {
     }
   }
 
-  const reloadSalary = () => {
+  /**
+   * Maosh hisobini qayta yuklaydi.
+   *
+   * @param refreshGroups guruhlar ro'yxati ham qayta so'ralsinmi. Tab BIRINCHI ochilganda
+   *   KERAK EMAS — guruhlar mount'da allaqachon kelgan, ya'ni bu bitta ortiqcha borish-kelish
+   *   (~350-400 ms) bo'lardi. Saqlash/to'lovdan keyin esa yangilanadi.
+   */
+  const reloadSalary = (refreshGroups = true) => {
     if (!id) return
     setSalaryLoading(true)
-    Promise.all([getSalaryLedger(id), getClasses(true)])
+    Promise.all([
+      getSalaryLedger(id),
+      refreshGroups ? getClasses(true, id) : Promise.resolve(null),
+    ])
       .then(([ledger, classes]) => {
         setSalaryLedger(ledger)
-        const mine = classes.filter((c) => c.teacherId === id)
-        setGroups(mine.filter((c) => !c.isArchived))
-        setArchivedGroups(mine.filter((c) => c.isArchived))
+        if (classes) {
+          setGroups(classes.filter((c) => !c.isArchived))
+          setArchivedGroups(classes.filter((c) => c.isArchived))
+        }
         setSalaryVersion((v) => v + 1)
       })
       .finally(() => setSalaryLoading(false))
@@ -363,44 +400,63 @@ export function TeacherDetailPage() {
   // Credentials
   const [credentials, setCredentials] = useState<Credentials | null>(null)
 
+  // Mount — BITTA to'lqin: standart «Ma'lumot» tabi ko'rsatadigan hamma narsa birga so'raladi.
+  // Kredensiallar ilgari `teacher` kelgandan KEYIN so'ralardi, ya'ni sahifa ochilishi ikkita
+  // KETMA-KET tarmoq borishiga (~350-400 ms har biri) tushardi. Qolgan tablar ma'lumoti esa
+  // o'z tabi birinchi ochilganda keladi (pastdagi effektlar).
   useEffect(() => {
     if (!id) return
-    Promise.all([getTeachers(), getClasses(true), getSubjects()])
-      .then(([teachers, classes, subs]) => {
-        const t = teachers.find((x) => x.id === id) ?? null
+    Promise.all([
+      // Bitta o'qituvchi (ilgari BUTUN ro'yxat tortilib, `.find()` qilinardi) va
+      // FAQAT shu o'qituvchining guruhlari (filtr endi serverda) — ikkalasi ham
+      // tarmoqdan o'tadigan ma'lumotni keskin kamaytiradi.
+      getTeacher(id).catch(() => null),
+      getClasses(true, id),
+      getSubjects(),
+      // Xato (masalan o'qituvchi topilmadi) butun to'lqinni yiqitmasin — avvalgidek `null`.
+      getTeacherCredentials(id).catch(() => null),
+    ])
+      .then(([t, classes, subs, creds]) => {
         setTeacher(t)
         // Arxivlangan (tugatilgan) guruhlar ham keladi — faol va tugatilgan alohida ko'rsatiladi.
-        const mine = classes.filter((c) => c.teacherId === id)
-        setGroups(mine.filter((c) => !c.isArchived))
-        setArchivedGroups(mine.filter((c) => c.isArchived))
+        setGroups(classes.filter((c) => !c.isArchived))
+        setArchivedGroups(classes.filter((c) => c.isArchived))
         setSubjects(subs)
+        setCredentials(creds)
       })
       .finally(() => setLoading(false))
   }, [id])
 
+  // O'qituvchi ALMASHGANDA (guruh/reyting havolasidan boshqa profilga o'tilganda — bir xil
+  // marshrut, faqat `id` o'zgaradi) tab ma'lumotlari eski o'qituvchiniki bo'lib qolmasin.
+  // (`tabLoadedFor` tozalanmaydi — u teacherId saqlaydi va o'zi eskiradi.)
   useEffect(() => {
-    if (!id || !teacher) return
-    getTeacherCredentials(id)
-      .then(setCredentials)
-      .catch(() => setCredentials(null))
-  }, [id, teacher])
+    setPerf(null)
+    setBonuses(null)
+    setSalaryLedger(null)
+    // `selMonthLoadedRef` tozalanmaydi — uning kaliti teacherId'ni O'Z ICHIGA oladi
+    // (`${id}|${selMonth}`), ya'ni o'qituvchi almashsa mos kelmaydi va o'zi eskiradi.
+    setSelMonthData(null)
+  }, [id])
 
   useEffect(() => {
-    if (tab !== 'performance' || !id || perf) return
+    if (tab !== 'performance' || !id || tabLoadedFor.performance === id) return
+    setTabLoadedFor((p) => ({ ...p, performance: id }))
     setPerfLoading(true)
     getTeacherPerformanceSingle(id)
       .then(setPerf)
       .finally(() => setPerfLoading(false))
-  }, [tab, id, perf])
+  }, [tab, id, tabLoadedFor])
 
   useEffect(() => {
-    if (tab !== 'bonus' || !id || bonuses) return
+    if (tab !== 'bonus' || !id || tabLoadedFor.bonus === id) return
+    setTabLoadedFor((p) => ({ ...p, bonus: id }))
     setBonusLoading(true)
     getTeacherRetentionBonuses(id)
       .then(setBonuses)
       .catch(() => setBonuses({ total: 0, count: 0, items: [] }))
       .finally(() => setBonusLoading(false))
-  }, [tab, id, bonuses])
+  }, [tab, id, tabLoadedFor])
 
   useEffect(() => {
     if (tab !== 'rating' || !id) return
@@ -424,13 +480,19 @@ export function TeacherDetailPage() {
   }, [tab, id, ratingMonth])
 
   useEffect(() => {
-    if (tab !== 'salary' || !id || salaryLedger) return
-    reloadSalary()
+    if (tab !== 'salary' || !id || tabLoadedFor.salary === id) return
+    setTabLoadedFor((p) => ({ ...p, salary: id }))
+    // Guruhlar mount'da ALLAQACHON kelgan — tab ochilganda ularni qayta so'ramaymiz.
+    reloadSalary(false)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab, id, salaryLedger])
+  }, [tab, id, tabLoadedFor])
 
   useEffect(() => {
     if (tab !== 'salary' || !id) return
+    // Oy o'zgarsa YANGI so'rov, tabga qaytilganda esa YO'Q (kalit — o'qituvchi + oy).
+    const key = `${id}|${selMonth}`
+    if (selMonthLoadedRef.current === key) return
+    selMonthLoadedRef.current = key
     loadSelMonth(selMonth)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab, id, selMonth])

@@ -49,6 +49,27 @@ export async function getTeachers(): Promise<Teacher[]> {
   return data
 }
 
+/**
+ * BITTA o'qituvchi id bo'yicha — `getTeachers()` bilan AYNAN bir xil shakl (`Teacher`).
+ *
+ * ⚠️ Bitta o'qituvchi kerak bo'lganda SHUNI ishlating: ilgari o'qituvchi sahifasi bittasini
+ * topish uchun markazning BARCHA o'qituvchilarini tortardi (prodda `Teachers` jadvali
+ * 20 000 martadan ko'p sequential scan qilingan). Server Fransiyada — har ortiqcha bayt
+ * ~350-400 ms tarmoq vaqtiga qo'shiladi.
+ *
+ * Arxivlangan o'qituvchi ham qaytadi. Topilmasa server 404 beradi.
+ */
+export async function getTeacher(id: string): Promise<Teacher> {
+  if (USE_MOCK) {
+    await delay()
+    const found = teachersMock.find((t) => t.id === id)
+    if (!found) throw new Error('O\'qituvchi topilmadi')
+    return found
+  }
+  const { data } = await api.get<Teacher>(`/admin/teachers/${id}`)
+  return data
+}
+
 export async function createTeacher(payload: TeacherPayload): Promise<Teacher> {
   if (USE_MOCK) {
     await delay(300)

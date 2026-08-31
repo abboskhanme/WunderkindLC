@@ -7,6 +7,9 @@ import {
 } from '@/api/services/notifications'
 import { formatDateTime } from '@/lib/utils'
 
+/** Fon so'rovlari oralig'i (5 daqiqa) — pastdagi izohda nega aynan shuncha. */
+const POLL_MS = 5 * 60_000
+
 /**
  * Topbar bildirishnoma qo'ng'irog'i — bosilganda joriy foydalanuvchining bildirishnomalari (DB'dan)
  * ochiladi; o'qilmaganlar bo'lsa qizil nuqta ko'rinadi; bo'sh bo'lsa "Hozirda bildirishnoma mavjud emas".
@@ -16,8 +19,11 @@ export function NotificationBell() {
   const [data, setData] = useState<NotificationsResponse | null>(null)
   const [loading, setLoading] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
+  // Oxirgi muvaffaqiyatli/urinilgan yuklanish vaqti — tabga qaytganda "eskirdimi" savoliga.
+  const lastLoadRef = useRef(0)
 
   const load = () => {
+    lastLoadRef.current = Date.now()
     setLoading(true)
     getNotifications()
       .then(setData)
@@ -25,11 +31,43 @@ export function NotificationBell() {
       .finally(() => setLoading(false))
   }
 
-  // Boshlanishida + har 60 soniyada o'qilmaganlar sonini yangilaymiz (qizil nuqta uchun).
+  /**
+   * FON SO'ROVLARI — nega 60 s emas, 5 daqiqa va faqat ko'rinib turgan tabda?
+   *
+   * Bu qo'ng'iroq HAR BIR admin sahifasida turadi, ya'ni 60 s'lik interval har ochiq tabdan
+   * daqiqada bitta so'rov degani. Server Fransiyada, foydalanuvchi O'zbekistonda — har so'rov
+   * ~350-400 ms sof tarmoq. Bildirishnoma esa "shu soniyada" ko'rinishi shart bo'lgan ma'lumot
+   * emas: qizil nuqta bir necha daqiqa kechiksa hech narsa buzilmaydi.
+   *
+   * ⚠️ SignalR (`/hubs/live`) orqali ATAYIN qilinmadi: `LiveHub` mavzulari faqat "turnstile"
+   * va qo'ng'iroqlar (`IHubContext<LiveHub>` chaqiruvchilari), `NotificationStore` esa yozuvni
+   * FAQAT bazaga yozadi — bildirishnoma uchun jonli signal umuman YO'Q. Yangi hub o'ylab
+   * topish o'rniga arzon va mustaqil yechim: uzunroq interval + yashirin tabda so'ramaslik.
+   */
   useEffect(() => {
     load()
-    const t = setInterval(load, 60000)
-    return () => clearInterval(t)
+
+    const tick = () => {
+      // Yashirin tab (boshqa oynada/minimallashtirilgan) — so'rov bekorga ketardi.
+      if (document.visibilityState === 'hidden') return
+      load()
+    }
+    const t = setInterval(tick, POLL_MS)
+
+    // Tabga QAYTGANDA: yashirin turganda o'tkazib yuborilgan yangilanishni qaytaramiz,
+    // lekin faqat ma'lumot eskirgan bo'lsa — tez-tez tab almashtirish so'rov yog'dirmasin.
+    const onVisible = () => {
+      if (document.visibilityState !== 'visible') return
+      if (Date.now() - lastLoadRef.current < POLL_MS) return
+      load()
+    }
+    document.addEventListener('visibilitychange', onVisible)
+
+    return () => {
+      clearInterval(t)
+      document.removeEventListener('visibilitychange', onVisible)
+    }
+    // `load` state O'QIMAYDI (faqat setter va ref) — closure eskirmaydi, deps kerak emas.
   }, [])
 
   // Tashqariga bosilganda / Escape'da yopamiz.

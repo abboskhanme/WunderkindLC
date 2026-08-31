@@ -22,8 +22,13 @@ export const api = axios.create({
 })
 
 // SHAFFOF GET-KESH (25 s TTL + in-flight dedup) — adapter darajasida, qoidalar `cache.ts` da.
-// Muvaffaqiyatli POST/PUT/PATCH/DELETE butun keshni tozalaydi — tahrirdan keyin eski ro'yxat
-// qolmaydi. Bitta so'rovda o'chirish: `api.get(url, { headers: { 'X-No-Cache': '1' } })`
+// Muvaffaqiyatli POST/PUT/PATCH/DELETE keshni RESURS BO'YICHA tozalaydi: mutatsiya manzilidan
+// "scope" (masalan `/admin/students`) olinadi va faqat o'sha scope + `cache.ts` dagi
+// CROSS_INVALIDATION xaritasida ko'rsatilgan bog'liq scope'lar o'chiriladi (masalan to'lov →
+// o'quvchi balansi ham). Xaritada yo'q scope — EHTIYOT uchun butun keshni tozalaydi.
+// Ilgari HAR QANDAY mutatsiya butun keshni o'chirardi: kassir bitta to'lov kiritsa o'quvchilar
+// va guruhlar ro'yxati ham bekor bo'lib, 25 s kesh aynan eng band paytda ishlamasdi.
+// Bitta so'rovda o'chirish: `api.get(url, { headers: { 'X-No-Cache': '1' } })`
 // yoki `api.get(url, { cache: false })`. `/auth/`, blob va abort bo'lgan so'rovlar keshlanmaydi.
 installApiCache(api)
 

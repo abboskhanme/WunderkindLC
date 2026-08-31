@@ -20,20 +20,44 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
     /// ("Xodimlar va rollar" da ko'rinadi). Klientdagi `adminPermissions` bilan bir xil bo'lishi shart.</summary>
     private const string RetentionBonusPerm = "retentionBonus";
 
-    /// <summary>Faol (arxivlanmagan) guruhlar. <paramref name="includeArchived"/>=true bo'lsa hammasi.</summary>
+    /// <summary>
+    /// Faol (arxivlanmagan) guruhlar. <paramref name="includeArchived"/>=true bo'lsa hammasi.
+    /// <para><paramref name="teacherId"/> berilsa — FAQAT o'sha o'qituvchining guruhlari.
+    /// ⚠️ ATAYIN qo'shildi: o'qituvchi sahifasi markazning BARCHA guruhlarini tortib, keyin
+    /// brauzerda <c>teacherId</c> bo'yicha filtrlardi. Filtr SQL'ga tushirildi —
+    /// <c>Group.TeacherId</c> allaqachon indekslangan (<c>AppDbContext</c>).</para>
+    /// </summary>
     [HttpGet]
-    public async Task<ActionResult<IEnumerable<Group>>> GetAll([FromQuery] bool includeArchived = false)
+    public async Task<ActionResult<IEnumerable<Group>>> GetAll(
+        [FromQuery] bool includeArchived = false, [FromQuery] string? teacherId = null)
     {
-        var q = db.Classes.AsQueryable();
+        var q = db.Classes.AsNoTracking().AsQueryable();
         if (!includeArchived) q = q.Where(c => !c.IsArchived);
+        if (!string.IsNullOrWhiteSpace(teacherId)) q = q.Where(c => c.TeacherId == teacherId);
         return await q.OrderBy(c => c.Grade).ThenBy(c => c.Name).ToListAsync();
     }
 
     /// <summary>Arxivlangan guruhlar ro'yxati.</summary>
     [HttpGet("archived")]
     public async Task<ActionResult<IEnumerable<Group>>> GetArchived() =>
-        await db.Classes.Where(c => c.IsArchived)
+        await db.Classes.AsNoTracking().Where(c => c.IsArchived)
             .OrderByDescending(c => c.ArchivedAt).ThenBy(c => c.Name).ToListAsync();
+
+    /// <summary>
+    /// BITTA guruh — ro'yxatdagi element bilan AYNAN bir xil shakl (`Group`).
+    /// <para>⚠️ Bu endpoint ATAYIN qo'shildi: guruh sahifasi bitta guruhni topish uchun BUTUN
+    /// ro'yxatni (<c>GET /classes?includeArchived=true</c>) tortardi. Prod o'lchovi:
+    /// <c>Classes</c> jadvali 38 000 martadan ko'p sequential scan qilingan, va har guruh
+    /// sahifasi ochilishi markazning HAMMA guruhini tarmoqdan o'tkazardi.</para>
+    /// <para>Arxivlangan guruh ham qaytadi — tugatilgan guruh sahifasi (o'qituvchi profilidan
+    /// yoki eski havoladan kirilganda) ochilishi kerak.</para>
+    /// </summary>
+    [HttpGet("{id}")]
+    public async Task<ActionResult<Group>> GetOne(string id)
+    {
+        var g = await db.Classes.AsNoTracking().FirstOrDefaultAsync(c => c.Id == id);
+        return g is null ? NotFound() : g;
+    }
 
     [HttpPost]
     public async Task<ActionResult<Group>> Create(ClassPayload p, [FromQuery] bool force = false)
@@ -448,6 +472,32 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
                          .ToListAsync();
         // Balans — SHU GURUH bo'yicha (umumiy Student.Balance emas): boshqa guruhdagi qarz bu ro'yxatni
         // qizil qilib qo'ymasin (jurnal ro'yxati bilan bir xil mantiq).
+        var balances = await GroupBalanceService.ForGroupAsync(db, id, rows.Select(r => r.StudentId));
+        return rows
+            .Select(r => r with { Balance = balances.GetValueOrDefault(r.StudentId, 0m) })
+            .ToList();
+    }
+
+    /// <summary>
+    /// Guruhning FAOL a'zolari SMS yuborish uchun: telefonlar + a'zolik holati + SHU GURUH balansi.
+    /// <para>⚠️ Bu endpoint ATAYIN qo'shildi. Ilgari guruh sahifasidagi "SMS jo'natish" modali
+    /// <c>GET /admin/students</c> bilan markazning BARCHA o'quvchisini (to'liq entity — passport,
+    /// manzil, chegirma va h.k.) tortib olib, brauzerda ~15 a'zoni filtrlardi. Server Fransiyada,
+    /// foydalanuvchi O'zbekistonda — bu bir necha yuz kilobayt ortiqcha trafik edi.</para>
+    /// <para>Balans <see cref="GroupBalanceService"/> orqali SHU GURUH bo'yicha (umumiy
+    /// <c>Student.Balance</c> emas) — "faqat qarzdorlar" filtri a'zolar ro'yxatidagi bilan
+    /// bir xil raqamga tayanishi uchun.</para>
+    /// </summary>
+    [HttpGet("{id}/sms-recipients")]
+    public async Task<ActionResult<IEnumerable<GroupSmsRecipientDto>>> SmsRecipients(string id)
+    {
+        var rows = await (from sg in db.StudentGroups
+                          join s in db.Students on sg.StudentId equals s.Id
+                          where sg.GroupId == id && sg.IsActive
+                          orderby s.FullName
+                          select new GroupSmsRecipientDto(s.Id, s.FullName, s.Phone, s.ParentPhone,
+                              s.FatherPhone, s.MotherPhone, sg.Status, 0m))
+                         .ToListAsync();
         var balances = await GroupBalanceService.ForGroupAsync(db, id, rows.Select(r => r.StudentId));
         return rows
             .Select(r => r with { Balance = balances.GetValueOrDefault(r.StudentId, 0m) })

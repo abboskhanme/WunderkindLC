@@ -18,14 +18,70 @@ export type ClassPayload = Omit<Group, 'id'>
  * tugatilgan (arxivlangan) guruhlar ham qo'shiladi — o'qituvchi profilidagi "Tugatilgan guruhlar",
  * o'quvchilar ro'yxatidagi guruh filtri va arxiv guruh sahifasini ochish uchun.
  */
-export async function getClasses(includeArchived = false): Promise<Group[]> {
+export async function getClasses(includeArchived = false, teacherId?: string): Promise<Group[]> {
   if (USE_MOCK) {
     await delay()
-    return classesMock
+    return teacherId ? classesMock.filter((c) => c.teacherId === teacherId) : classesMock
   }
+  // ⚠️ `teacherId` berilsa filtr SERVERDA bajariladi. Ilgari o'qituvchi sahifasi markazning
+  // BARCHA guruhini tortib, brauzerda filtrlardi — bu tarmoqdan keraksiz ma'lumot o'tkazardi.
+  const params: Record<string, unknown> = {}
+  if (includeArchived) params.includeArchived = true
+  if (teacherId) params.teacherId = teacherId
   const { data } = await api.get<Group[]>('/admin/classes', {
-    params: includeArchived ? { includeArchived: true } : undefined,
+    params: Object.keys(params).length > 0 ? params : undefined,
   })
+  return data
+}
+
+/**
+ * BITTA guruh id bo'yicha — `getClasses()` bilan AYNAN bir xil shakl (`Group`).
+ *
+ * ⚠️ Bitta guruh kerak bo'lganda SHUNI ishlating, `getClasses()` ni EMAS: ilgari guruh
+ * sahifasi bitta guruhni topish uchun markazning BARCHA guruhlarini tortardi. Server
+ * Fransiyada, foydalanuvchi O'zbekistonda — har ortiqcha bayt va har ortiqcha so'rov
+ * ~350-400 ms tarmoq vaqtiga tushadi.
+ *
+ * Arxivlangan guruh ham qaytadi (tugatilgan guruh sahifasi ochilishi kerak).
+ * Topilmasa server 404 beradi — chaqiruvchi `catch` bilan ishlaydi.
+ */
+export async function getClass(id: string): Promise<Group> {
+  if (USE_MOCK) {
+    await delay()
+    const found = classesMock.find((c) => c.id === id)
+    if (!found) throw new Error('Guruh topilmadi')
+    return found
+  }
+  const { data } = await api.get<Group>(`/admin/classes/${id}`)
+  return data
+}
+
+/** Guruhning FAOL a'zosi — SMS modali uchun (telefonlar + a'zolik holati + SHU GURUH balansi). */
+export interface GroupSmsRecipient {
+  studentId: string
+  fullName: string
+  phone: string
+  parentPhone: string
+  fatherPhone: string
+  motherPhone: string
+  status: string
+  balance: number
+}
+
+/**
+ * Guruh a'zolarining SMS uchun kerakli ma'lumoti.
+ *
+ * ⚠️ Ilgari SMS modali `getStudents()` bilan markazning BARCHA o'quvchisini (to'liq entity —
+ * passport, manzil, chegirma va h.k.) tortib olib, brauzerda ~15 a'zoni filtrlardi. Endi
+ * server faqat shu guruhning faol a'zolarini va faqat kerakli maydonlarni qaytaradi.
+ * Balans — a'zolar ro'yxatidagi bilan bir xil manbadan (SHU GURUH bo'yicha).
+ */
+export async function getGroupSmsRecipients(id: string): Promise<GroupSmsRecipient[]> {
+  if (USE_MOCK) {
+    await delay()
+    return []
+  }
+  const { data } = await api.get<GroupSmsRecipient[]>(`/admin/classes/${id}/sms-recipients`)
   return data
 }
 

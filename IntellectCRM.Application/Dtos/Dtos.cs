@@ -505,6 +505,17 @@ public record StudentGroupDto(
 public record GroupMemberDto(
     string StudentId, string FullName, string JoinedAt, string? LeftAt, bool IsActive,
     string Status, string ActivatedAt, string FrozenAt, decimal Balance);
+/// <summary>
+/// Guruhning FAOL a'zosi — SMS modali uchun (telefonlar + a'zolik holati + SHU GURUH balansi).
+/// <para>⚠️ Telefonlar ATAYIN <see cref="GroupMemberDto"/> ga qo'shilmadi, alohida DTO qilindi:
+/// a'zolar ro'yxati guruh sahifasida doim yuklanadi, telefon esa faqat SMS yuborishda kerak.</para>
+/// <para>Bu DTO butun <c>Student</c> entity'sining O'RNINI bosadi: ilgari SMS modali
+/// <c>GET /admin/students</c> bilan markazning BARCHA o'quvchisini (hamma maydoni bilan)
+/// tortib, keyin ~15 a'zoni brauzerda filtrlab olardi.</para>
+/// </summary>
+public record GroupSmsRecipientDto(
+    string StudentId, string FullName, string Phone, string ParentPhone,
+    string FatherPhone, string MotherPhone, string Status, decimal Balance);
 /// <summary>O'quvchini guruhga qo'shish so'rovi.</summary>
 public record AddStudentToGroupRequest(string StudentId, string? JoinedAt);
 /// <summary>A'zolikni aktivlashtirish/muzlatish so'rovi (sana ISO "YYYY-MM-DD"; bo'sh = bugun).</summary>
