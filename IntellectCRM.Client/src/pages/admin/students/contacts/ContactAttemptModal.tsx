@@ -32,12 +32,23 @@ export function ContactAttemptModal({
   open,
   request,
   meta,
+  presetNextStatus,
+  presetDueDate,
   onClose,
   onSaved,
 }: {
   open: boolean
   request: ContactRequestItem | null
   meta: ContactMeta
+  /**
+   * Kanban taxtasida karta SUDRAB tashlanganda oldindan tanlanadigan keyingi qadam va sanasi.
+   *
+   * ⚠️ Faqat BOSHLANG'ICH qiymat — operator baribir o'zgartira oladi va natijani ("ko'tardimi")
+   * baribir o'zi tanlaydi. Sudrash hech qachon bosqichni o'z-o'zidan yozmaydi: har o'tish
+   * hodisa sifatida yoziladi (`.claude/rules/contacts.md` §2).
+   */
+  presetNextStatus?: string
+  presetDueDate?: string
   onClose: () => void
   onSaved: (updated: ContactRequestItem) => void
 }) {
@@ -53,11 +64,11 @@ export function ContactAttemptModal({
     // eslint-disable-next-line react-hooks/set-state-in-effect -- modal ochilganda holatni tiklash (maqsadli)
     setResult('')
     setResponse('')
-    setNextStatus('')
-    setDueDate(inDays(1))
+    setNextStatus(presetNextStatus ?? '')
+    setDueDate(presetDueDate || inDays(1))
     setError('')
     setBusy(false)
-  }, [open])
+  }, [open, presetNextStatus, presetDueDate])
 
   // Ko'tarmagan/band bo'lsa keyingi qadam deyarli har doim "qayta qo'ng'iroq" — oldindan taklif
   // qilamiz (operator baribir o'zgartira oladi). Bu klik sonini kamaytiradi, qoidani buzmaydi.

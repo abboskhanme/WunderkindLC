@@ -5,6 +5,7 @@ import type { Lead } from '@/types'
 import { genderLabels } from '@/config/constants'
 import { Badge } from '@/components/ui/Badge'
 import { formatDate, formatDateTime, cn } from '@/lib/utils'
+import { avatarColor, initials } from '@/lib/avatar'
 
 /** Lid yaratilganidan beri o'tgan kun (createdAt "yyyy-MM-ddTHH:mm:ss"). */
 function leadAgeDays(createdAt?: string): number | null {
@@ -43,29 +44,6 @@ function leadAging(lead: Lead): {
 function ageLabel(days: number): string {
   if (days <= 0) return 'Bugun'
   return `${days} kun`
-}
-
-/** Ism-sharifdan bosh harflar (avatar uchun) */
-function initials(name: string): string {
-  const parts = name.trim().split(/\s+/).filter(Boolean)
-  if (parts.length === 0) return '?'
-  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase()
-  return (parts[0][0] + parts[1][0]).toUpperCase()
-}
-
-/** Ismdan barqaror avatar fon rangi */
-const AVATAR_BG = [
-  'oklch(0.7 0.12 30)',
-  'oklch(0.65 0.14 350)',
-  'oklch(0.6 0.18 282)',
-  'oklch(0.62 0.14 158)',
-  'oklch(0.65 0.13 230)',
-  'oklch(0.72 0.14 70)',
-]
-function avatarColor(name: string): string {
-  let h = 0
-  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) | 0
-  return AVATAR_BG[Math.abs(h) % AVATAR_BG.length]
 }
 
 /** Faqat ko'rinish (drag overlay uchun ham ishlatiladi) */

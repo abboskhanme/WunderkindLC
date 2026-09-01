@@ -142,6 +142,13 @@ export async function getContactRequests(params: {
   due?: ContactDue
   /** ANIQ kun ("yyyy-MM-dd") — "yaqin kunlar" chizig'idan tanlanganda. */
   dueDate?: string
+  /**
+   * Ko'pi bilan nechta qator (server: 1..500, standart 200).
+   *
+   * Kanban taxtasi BUTUN navbatni bir so'rovda oladi va ustunlarga o'zi bo'ladi
+   * (`lib/contactDue.ts`), shuning uchun u chegarani maksimumga qo'yadi.
+   */
+  limit?: number
 } = {}): Promise<ContactRequestItem[]> {
   if (USE_MOCK) {
     await delay()

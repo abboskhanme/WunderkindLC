@@ -1,16 +1,21 @@
-﻿import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
-  PhoneCall, RotateCcw, Search, AlertTriangle, Trash2, MessageSquarePlus, History, CalendarDays,
+  PhoneCall, Search, AlertTriangle, History, CalendarDays, X, Columns3,
+  LayoutGrid, RefreshCw, Sun, Flame, CalendarClock, Filter,
 } from 'lucide-react'
 import {
   getContactMeta, getContactRequests, getContactRequest, reopenContactRequest,
   deleteContactRequest, addContactNote,
   type ContactMeta, type ContactRequestItem, type ContactDue,
 } from '@/api/services/contacts'
+import { getActionReasons } from '@/api/services/actionReasons'
+import type { ActionReason } from '@/types'
 import { ContactAttemptModal } from './ContactAttemptModal'
+import { ContactBoard, type DropIntent } from './ContactBoard'
+import { ContactCardContent, type ContactCardActions } from './ContactCard'
 import { MonthDayStrip } from '@/components/ui/MonthDayStrip'
 import { currentMonth, todayIso } from '@/lib/month'
+import { bucketOf, isTodo, DUE_COLUMNS, STATUS_COLUMNS } from '@/lib/contactDue'
 import { ContactStatsPanel } from './ContactStatsPanel'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
@@ -24,21 +29,29 @@ import { tabFromUrl } from '@/lib/tabParam'
 type Tab = 'navbat' | 'hisobot'
 const CONTACT_TABS = ['navbat', 'hisobot'] as const
 
-/**
- * MUDDAT guruhlari — operatorning asosiy savoli bosqich emas, VAQT: "bugun kimga qo'ng'iroq
- * qilishim kerak?". Kalitlar backend `ContactService.Due` bilan AYNAN bir xil.
- */
-const DUE_CHIPS: { key: ContactDue; label: string; tone?: string; hint?: string }[] = [
-  { key: 'todo', label: 'Bugun qilish kerak', tone: 'amber', hint: "Muddati o'tgan + bugungi + sanasiz" },
-  { key: 'overdue', label: "Muddati o'tgan", tone: 'rose' },
-  { key: 'today', label: 'Bugun', tone: 'sky' },
-  { key: 'tomorrow', label: 'Ertaga' },
-  { key: 'week', label: 'Shu hafta', hint: 'Ertadan keyingi 6 kun' },
-  { key: 'later', label: 'Keyinroq' },
-  { key: 'nodate', label: 'Sanasiz', hint: "Sana belgilanmagan — hoziroq navbatda" },
+type GroupBy = 'due' | 'status'
+type View = 'board' | 'list'
+
+/** Serverning bir so'rovdagi chegarasi (`ContactsController`: `Math.Clamp(limit, 1, 500)`). */
+const MAX_ROWS = 500
+
+/** Ustunlarni toraytiradigan "fokus" tugmalari — sahifadagi eng katta raqamlar. */
+const FOCUS_TILES: {
+  key: ContactDue
+  label: string
+  hint: string
+  icon: typeof Flame
+  ring: string
+  text: string
+  iconCls: string
+}[] = [
+  { key: 'todo', label: 'Bugun qilish kerak', hint: "Muddati o'tgan + bugungi + sanasiz", icon: Flame, ring: 'border-amber-300 bg-amber-50', text: 'text-amber-600', iconCls: 'bg-amber-100 text-amber-600' },
+  { key: 'overdue', label: "Muddati o'tgan", hint: 'Kechikkan — birinchi shular', icon: AlertTriangle, ring: 'border-rose-300 bg-rose-50', text: 'text-rose-600', iconCls: 'bg-rose-100 text-rose-600' },
+  { key: 'today', label: 'Bugun', hint: 'Aynan bugunga rejalashtirilgan', icon: Sun, ring: 'border-sky-300 bg-sky-50', text: 'text-sky-600', iconCls: 'bg-sky-100 text-sky-600' },
+  { key: 'tomorrow', label: 'Ertaga', hint: "Ertangi qayta qo'ng'iroqlar", icon: CalendarClock, ring: 'border-slate-300 bg-slate-50', text: 'text-slate-700', iconCls: 'bg-slate-100 text-slate-500' },
 ]
 
-/** "2026-08-05" → "05.08, Chor" (kun chizig'i uchun qisqa yorliq). */
+/** "2026-08-05" → "05.08, Chor". */
 const weekdays = ['Yak', 'Du', 'Se', 'Chor', 'Pay', 'Ju', 'Sha']
 function dayLabel(iso: string): string {
   const d = new Date(`${iso}T00:00:00`)
@@ -46,20 +59,29 @@ function dayLabel(iso: string): string {
   return `${iso.slice(8, 10)}.${iso.slice(5, 7)}, ${weekdays[d.getDay()]}`
 }
 
-/** Chip rangi — server bergan `color` kalitidan (ContactService.Statuses). */
-const chipTone: Record<string, string> = {
-  amber: 'border-amber-500 bg-amber-50 text-amber-700',
-  sky: 'border-sky-500 bg-sky-50 text-sky-700',
-  emerald: 'border-emerald-500 bg-emerald-50 text-emerald-700',
-  rose: 'border-rose-500 bg-rose-50 text-rose-700',
+/** Ro'yxat ko'rinishidagi tartib — SHOSHILINCHLIK bo'yicha (taxtadagi ustunlar tartibi). */
+const URGENCY: Record<string, number> = {
+  overdue: 0, today: 1, nodate: 2, tomorrow: 3, week: 4, later: 5, '': 6,
+}
+
+function readPref<T extends string>(key: string, allowed: readonly T[], fallback: T): T {
+  if (typeof window === 'undefined') return fallback
+  const raw = window.localStorage.getItem(key)
+  return raw && (allowed as readonly string[]).includes(raw) ? (raw as T) : fallback
 }
 
 /**
- * BOG'LANISH KERAK — o'quvchi bilan bog'lanish NAVBATI va uning hisobotlari.
+ * BOG'LANISH KERAK — o'quvchi bilan bog'lanish NAVBATI (kanban taxtasi) va hisobotlari.
  *
- * <p>O'quvchi profilidagi "⋮ → Bog'lanish kerak" shu navbatga yozadi. Operator qatordan
- * "Bog'lanildi" bosadi, natija va "javobi nima dedi"ni yozadi, keyingi qadamni tanlaydi.
- * Muddati o'tgan qayta qo'ng'iroqlar tepada va qizil.</p>
+ * <p>Taxta ikki xil guruhlanadi: <b>Muddat</b> (standart — "qachon qo'ng'iroq kerak", operatorning
+ * asosiy savoli, `.claude/rules/contacts.md` §3.6) va <b>Bosqich</b> ("talab qayerda turibdi").
+ * Ranglar HAR IKKI rejimda ham shoshilinchlikni bildiradi, ya'ni kechikkan karta bosqich
+ * rejimida ham qizil bo'lib ko'zga tashlanadi.</p>
+ *
+ * <p>⚠️ <b>Navbat BIR so'rovda olinadi</b> (`limit=500`) va ustunlarga KLIENTDA bo'linadi
+ * (`lib/contactDue.ts`) — shuning uchun qidiruv, sabab va "yuborgan" filtrlari serverga
+ * so'rov yubormaydi va bir zumda ishlaydi. Serverga faqat QAMROV (ochiqlar/hammasi) va
+ * kalendar oyi uzatiladi.</p>
  *
  * <p>Ruxsat: `contacts` (O'quvchilar bo'limidan alohida).</p>
  */
@@ -72,52 +94,64 @@ export function ContactQueuePage() {
   const [tab, setTab] = useState<Tab>(() => tabFromUrl(CONTACT_TABS, 'navbat'))
   const [meta, setMeta] = useState<ContactMeta>({ statuses: [], results: [], counts: [], overdue: 0 })
   const [items, setItems] = useState<ContactRequestItem[]>([])
+  const [reasons, setReasons] = useState<ActionReason[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
 
-  const [status, setStatus] = useState('')          // '' = ochiqlar, 'all' = hammasi
+  /** Bugungi kun — sahifa ochilganda bir marta (barcha muddat hisoblari shundan). */
+  const today = useMemo(() => todayIso(), [])
+
+  /* ---------- Ko'rinish (brauzerda eslab qolinadi) ---------- */
+  const [groupBy, setGroupBy] = useState<GroupBy>(() => readPref('contacts:groupBy', ['due', 'status'] as const, 'due'))
+  const [view, setView] = useState<View>(() => readPref('contacts:view', ['board', 'list'] as const, 'board'))
+
+  /* ---------- Filtrlar ---------- */
   /**
-   * MUDDAT filtri. Holat filtri bilan BIRGA ishlatilmaydi — biri tanlansa ikkinchisi tozalanadi:
-   * "Hal bo'ldi + bugun" kabi mantiqan bo'sh kesishmalar operatorni chalg'itardi.
+   * YAGONA server filtri: ochiqlar (new+callback) yoki hammasi.
+   *
+   * ⚠️ Boshlang'ich qiymat GURUHLASHDAN kelib chiqadi: "Bosqich" rejimida yakuniy ("Hal bo'ldi",
+   * "Bog'lanib bo'lmadi") ustunlari ham bor — ochiqlar bilan ular DOIM bo'sh turardi, ya'ni
+   * saqlangan tanlov bilan sahifa qayta ochilganda taxta yarim ishlagandek ko'rinardi.
    */
-  const [due, setDue] = useState<ContactDue | ''>('')
-  /** Kalendar chizig'idan tanlangan ANIQ kun (muddat guruhidan ustun turadi). */
+  const [scope, setScope] = useState<'open' | 'all'>(() => (groupBy === 'status' ? 'all' : 'open'))
+  const [search, setSearch] = useState('')
+  /** Sabab: 'all' | '__none__' (sababsiz) | reasonId. */
+  const [reason, setReason] = useState('all')
+  /** Talabni ochgan xodim/o'qituvchi: 'all' | ism. */
+  const [author, setAuthor] = useState('all')
+  /** Katta raqamlardan tanlangan fokus — taxtani shu guruhga toraytiradi. */
+  const [focus, setFocus] = useState<ContactDue | ''>('')
+  /** Kalendardan tanlangan ANIQ kun. */
   const [dueDate, setDueDate] = useState('')
-  /** Kalendarda ko'rinayotgan oy ("yyyy-MM"). */
   const [month, setMonth] = useState(currentMonth())
-  const [term, setTerm] = useState('')
-  const [q, setQ] = useState('')
+  const [calOpen, setCalOpen] = useState(false)
 
-  /** Muddat guruhini tanlash — holat filtri va aniq kun tozalanadi (bir vaqtda bitta o'lchov). */
-  const pickDue = (key: ContactDue | '') => {
-    setDue(key)
-    setDueDate('')
-    setStatus('')
+  const pickGroupBy = (g: GroupBy) => {
+    setGroupBy(g)
+    window.localStorage.setItem('contacts:groupBy', g)
+    // Bosqich rejimida yakuniy ustunlar ham ko'rinsin — aks holda ikkitasi doim bo'sh turardi.
+    if (g === 'status') setScope('all')
+  }
+  const pickView = (v: View) => {
+    setView(v)
+    window.localStorage.setItem('contacts:view', v)
   }
 
-  /** Holatni tanlash — muddat filtri tozalanadi. */
-  const pickStatus = (key: string) => {
-    setStatus(key)
-    setDue('')
-    setDueDate('')
-  }
-
+  /* ---------- Modallar ---------- */
   const [attemptFor, setAttemptFor] = useState<ContactRequestItem | null>(null)
+  /** Karta sudrab tashlanganda oldindan tanlanadigan keyingi qadam. */
+  const [preset, setPreset] = useState<{ nextStatus?: string; dueDate?: string }>({})
   const [detail, setDetail] = useState<ContactRequestItem | null>(null)
   const [noteFor, setNoteFor] = useState<ContactRequestItem | null>(null)
   const [noteText, setNoteText] = useState('')
-  const [error, setError] = useState('')
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
       const [m, list] = await Promise.all([
         getContactMeta(month),
-        getContactRequests({
-          status: status || undefined,
-          q: q || undefined,
-          due: due || undefined,
-          dueDate: dueDate || undefined,
-        }),
+        // Butun navbat BIR so'rovda — qolgan filtrlar klientda (yuqoridagi izoh).
+        getContactRequests({ status: scope === 'all' ? 'all' : undefined, limit: MAX_ROWS }),
       ])
       setMeta(m)
       setItems(list)
@@ -127,28 +161,19 @@ export function ContactQueuePage() {
     } finally {
       setLoading(false)
     }
-  }, [status, q, due, dueDate, month])
+  }, [scope, month])
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- qamrov/oy o'zgarganda qayta yuklash (maqsadli)
     void load()
   }, [load])
 
-  /**
-   * BUGUNGI kun doim tanlangan bo'lib turadi: sahifa ochilganda ham, kalendarda joriy oyga
-   * qaytilganda ham. Boshqa oyga o'tilganda tanlov tozalanadi — u oyda "bugun" yo'q va
-   * tasodifiy kun tanlab qo'yish operatorni chalg'itardi.
-   */
+  /** Sabablar katalogi — "Sabab" filtri uchun (bir marta). */
   useEffect(() => {
-    if (month === currentMonth()) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- oy almashganda tanlovni tiklash (maqsadli)
-      setDueDate(todayIso())
-      setDue('')
-      setStatus('')
-    } else {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setDueDate('')
-    }
-  }, [month])
+    getActionReasons()
+      .then((all) => setReasons(all.filter((r) => r.category === 'contact')))
+      .catch(() => setReasons([]))
+  }, [])
 
   const countOf = useCallback(
     (key: string) => meta.counts.find((c) => c.key === key)?.count ?? 0,
@@ -156,41 +181,154 @@ export function ContactQueuePage() {
   )
   const openCount = useMemo(() => countOf('new') + countOf('callback'), [countOf])
 
-  /** Talab yangilangach ro'yxatni ham, sanoqlarni ham qayta o'qiymiz (chiplar eskirmasin). */
+  /** "Yuborgan" ro'yxati — kelgan ma'lumotdan (alohida so'rov kerak emas). */
+  const authors = useMemo(
+    () => [...new Set(items.map((r) => r.createdBy).filter(Boolean))].sort((a, b) => a.localeCompare(b)),
+    [items],
+  )
+
+  /* ---------- KLIENT filtri ---------- */
+  const visible = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    const qDigits = q.replace(/\D/g, '')
+    return items.filter((r) => {
+      if (reason === '__none__' ? !!r.reasonId : reason !== 'all' && r.reasonId !== reason) return false
+      if (author !== 'all' && r.createdBy !== author) return false
+      // Aniq kun — server semantikasi bilan bir xil: faqat o'sha kunga rejalashtirilganlar.
+      if (dueDate && !(r.status === 'callback' && r.dueDate === dueDate)) return false
+      if (focus) {
+        const b = bucketOf(r.status, r.dueDate, today)
+        if (focus === 'todo' ? !isTodo(b) : b !== focus) return false
+      }
+      if (!q) return true
+      // Qidiruv serverdagidan KENG: server faqat ism va sababdan qidiradi, bu yerda izoh,
+      // oxirgi javob, yuborgan xodim va telefon raqamlari ham qamraladi.
+      const text = [r.studentName, r.reasonLabel, r.note, r.lastResponse, r.createdBy, r.lastActorName]
+        .filter(Boolean).join(' ').toLowerCase()
+      if (text.includes(q)) return true
+      return qDigits.length >= 3 && r.phones.some((p) => p.replace(/\D/g, '').includes(qDigits))
+    })
+  }, [items, search, reason, author, dueDate, focus, today])
+
+  /** Ro'yxat ko'rinishi — shoshilinchlik bo'yicha saralangan. */
+  const sorted = useMemo(
+    () =>
+      [...visible].sort((a, b) => {
+        const ra = URGENCY[bucketOf(a.status, a.dueDate, today)] ?? 9
+        const rb = URGENCY[bucketOf(b.status, b.dueDate, today)] ?? 9
+        if (ra !== rb) return ra - rb
+        if (a.dueDate !== b.dueDate) return (a.dueDate || '9999').localeCompare(b.dueDate || '9999')
+        return b.createdAt.localeCompare(a.createdAt)
+      }),
+    [visible, today],
+  )
+
+  /** Fokus tanlanganda MUDDAT ustunlari ham toraytiriladi (bo'sh ustunlar chalg'itmasin). */
+  const columns = useMemo(() => {
+    const all = groupBy === 'status' ? STATUS_COLUMNS : DUE_COLUMNS
+    if (groupBy !== 'due' || !focus) return all
+    return all.filter((c) => (focus === 'todo' ? isTodo(c.key as never) : c.key === focus))
+  }, [groupBy, focus])
+
+  /**
+   * Taxtada HAQIQATAN chiziladiganlar.
+   *
+   * ⚠️ "Muddat" rejimida yakuniy (done/failed) talabning ustuni YO'Q (`bucketOf` bo'sh qaytaradi),
+   * "Hammasi" qamrovida esa ular ro'yxatga tushadi. Ularni shu yerda chiqarib tashlamasak,
+   * pastdagi sanoq chizilganidan KO'P ko'rsatib, "talab yo'qolgan"dek tuyulardi.
+   */
+  const boardItems = useMemo(() => {
+    const keys = new Set(columns.map((c) => c.key))
+    return visible.filter((r) => keys.has(groupBy === 'status' ? r.status : bucketOf(r.status, r.dueDate, today)))
+  }, [visible, columns, groupBy, today])
+
+  /** Ekranda ko'rinadiganlar — bo'sh holat va sanoq AYNAN shundan hisoblanadi. */
+  const shown = view === 'board' ? boardItems : sorted
+
+  const filterCount =
+    (search.trim() ? 1 : 0) + (reason !== 'all' ? 1 : 0) + (author !== 'all' ? 1 : 0) +
+    (focus ? 1 : 0) + (dueDate ? 1 : 0)
+
+  const clearFilters = () => {
+    setSearch('')
+    setReason('all')
+    setAuthor('all')
+    setFocus('')
+    setDueDate('')
+  }
+
+  /* ---------- Amallar ---------- */
   const afterChange = async (updated?: ContactRequestItem) => {
     if (updated && detail?.id === updated.id) setDetail(await getContactRequest(updated.id))
     await load()
   }
 
-  const openDetail = async (id: string) => {
+  const openAttempt = (r: ContactRequestItem) => {
+    setPreset({})
+    setAttemptFor(r)
+  }
+
+  /**
+   * Karta boshqa ustunga SUDRAB tashlandi — "Bog'lanildi" oynasi keyingi qadam oldindan
+   * tanlangan holda ochiladi. Bosqich JIMGINA o'zgarmaydi (`ContactBoard` izohiga qarang).
+   */
+  const handleDrop = (intent: DropIntent) => {
+    setPreset({ nextStatus: intent.nextStatus, dueDate: intent.dueDate })
+    setAttemptFor(intent.request)
+  }
+
+  const openDetail = async (r: ContactRequestItem) => {
     try {
-      setDetail(await getContactRequest(id))
+      setDetail(await getContactRequest(r.id))
     } catch (e) {
       setError(apiErrorMessage(e, "Tarixni yuklab bo'lmadi"))
     }
+  }
+
+  const actions: ContactCardActions = {
+    canWrite,
+    canDelete,
+    onAttempt: openAttempt,
+    onDetail: (r) => void openDetail(r),
+    onNote: (r) => { setNoteFor(r); setNoteText('') },
+    onReopen: async (r) => {
+      try {
+        await reopenContactRequest(r.id)
+        await afterChange()
+      } catch (e) {
+        setError(apiErrorMessage(e, "Qayta ochib bo'lmadi"))
+      }
+    },
+    onDelete: async (r) => {
+      // Tasdiq oddiy `confirm` bilan (loyihadagi boshqa joylar kabi).
+      if (!confirm(`"${r.studentName}" talabini o'chirasizmi?`)) return
+      try {
+        await deleteContactRequest(r.id)
+        await afterChange()
+      } catch (e) {
+        setError(apiErrorMessage(e, "O'chirib bo'lmadi"))
+      }
+    },
   }
 
   return (
     <div>
       <PageHeader
         title="Bog'lanish kerak"
-        sub="O'quvchi bilan bog'lanish navbati — kim bilan bog'lanish kerak, nima deyildi va keyingi qadam"
+        sub="Kim bilan bog'lanish kerak, nima deyildi va keyingi qadam — kartani sudrang yoki ustiga bosing"
+        actions={
+          <Button variant="secondary" onClick={() => void load()} disabled={loading}>
+            <RefreshCw className={cn('h-4 w-4', loading && 'animate-spin')} /> Yangilash
+          </Button>
+        }
       />
 
       <div className="mb-4 flex gap-1 border-b border-slate-200">
-        <button
-          type="button"
-          className={cn('tab', tab === 'navbat' && 'active')}
-          onClick={() => setTab('navbat')}
-        >
+        <button type="button" className={cn('tab', tab === 'navbat' && 'active')} onClick={() => setTab('navbat')}>
           <PhoneCall className="mr-1 inline h-3.5 w-3.5" /> Navbat
           {openCount > 0 && <span className="ml-1.5 text-xs text-slate-400">({openCount})</span>}
         </button>
-        <button
-          type="button"
-          className={cn('tab', tab === 'hisobot' && 'active')}
-          onClick={() => setTab('hisobot')}
-        >
+        <button type="button" className={cn('tab', tab === 'hisobot' && 'active')} onClick={() => setTab('hisobot')}>
           <History className="mr-1 inline h-3.5 w-3.5" /> Hisobot
         </button>
       </div>
@@ -201,300 +339,237 @@ export function ContactQueuePage() {
         <ContactStatsPanel />
       ) : (
         <div className="space-y-4">
-          {/* BUGUNGI ISH — sahifa ochilganda birinchi ko'rinadigan raqam. */}
+          {/* ====== BUGUNGI ISH — sahifadagi eng katta raqamlar, ayni paytda fokus tugmalari ====== */}
           {meta.due && (
-            <div className="grid gap-3 sm:grid-cols-3">
-              <SummaryTile
-                label="Bugun qilish kerak"
-                value={meta.due.todo}
-                hint="Muddati o'tgan + bugungi + sanasiz"
-                tone="amber"
-                active={due === 'todo'}
-                onClick={() => pickDue(due === 'todo' ? '' : 'todo')}
-              />
-              <SummaryTile
-                label="Muddati o'tgan"
-                value={meta.due.overdue}
-                hint={meta.due.overdue > 0 ? 'Kechikkan — birinchi shular' : 'Kechikkan yo\'q'}
-                tone={meta.due.overdue > 0 ? 'rose' : undefined}
-                active={due === 'overdue'}
-                onClick={() => pickDue(due === 'overdue' ? '' : 'overdue')}
-              />
-              <SummaryTile
-                label="Ertaga"
-                value={meta.due.tomorrow}
-                hint="Ertangi qayta qo'ng'iroqlar"
-                tone="sky"
-                active={due === 'tomorrow'}
-                onClick={() => pickDue(due === 'tomorrow' ? '' : 'tomorrow')}
-              />
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              {FOCUS_TILES.map((t) => {
+                const Icon = t.icon
+                const value = meta.due![t.key as keyof typeof meta.due] as number
+                const active = focus === t.key
+                return (
+                  <button
+                    key={t.key}
+                    type="button"
+                    title={t.hint}
+                    onClick={() => setFocus(active ? '' : t.key)}
+                    className={cn(
+                      'flex items-center gap-3 rounded-xl border p-4 text-left shadow-[var(--shadow-1)] transition-all',
+                      active
+                        ? 'border-brand-500 bg-brand-50 ring-1 ring-brand-200'
+                        : value > 0
+                          ? `${t.ring} hover:shadow-[var(--shadow-2)]`
+                          : 'border-slate-200 bg-white hover:border-slate-300',
+                    )}
+                  >
+                    <span className={cn('grid h-9 w-9 shrink-0 place-items-center rounded-lg', value > 0 ? t.iconCls : 'bg-slate-100 text-slate-400')}>
+                      <Icon className="h-4.5 w-4.5" />
+                    </span>
+                    <span className="min-w-0">
+                      <span className={cn('block font-mono text-[26px] font-bold leading-none', value === 0 ? 'text-slate-300' : t.text)}>
+                        {value}
+                      </span>
+                      <span className="mt-1 block truncate text-xs font-semibold text-slate-500">{t.label}</span>
+                    </span>
+                  </button>
+                )
+              })}
             </div>
           )}
 
-          {/* Muddati o'tganlar — eng muhim ogohlantirish, tepada turadi. */}
-          {meta.overdue > 0 && due !== 'overdue' && due !== 'todo' && (
-            <button
-              type="button"
-              onClick={() => pickDue('overdue')}
-              className="flex w-full items-center gap-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-left text-sm text-rose-700 transition-colors hover:bg-rose-100"
-            >
-              <AlertTriangle className="h-4 w-4 shrink-0" />
-              <span>
-                <strong>{meta.overdue} ta</strong> qayta qo'ng'iroq muddati o'tgan — ko'rish uchun bosing
-              </span>
-            </button>
-          )}
-
-          {/* OYLIK KALENDAR — oy bo'ylab har kun va o'sha kunga rejalashtirilgan qo'ng'iroqlar. */}
-          <Card
-            title={
-              <span className="inline-flex items-center gap-2">
-                <CalendarDays className="h-4 w-4 text-slate-400" />
-                Kunlik reja
-              </span>
-            }
-            sub="Kunni bosib o'sha kunning ro'yxatini ko'ring. Oyni strelkalar bilan almashtiring."
-          >
-            <MonthDayStrip
-              month={month}
-              onMonthChange={setMonth}
-              selected={dueDate}
-              onSelect={(d) => {
-                setDueDate(d)
-                setDue('')
-                setStatus('')
-              }}
-              counts={Object.fromEntries((meta.days ?? []).map((d) => [d.date, d.count]))}
-              // BUGUNGI katak "bugun qilish kerak" ni ko'rsatadi: aynan bugungi qo'ng'iroqlar
-              // bilan birga MUDDATI O'TGAN va SANASIZLAR ham kiradi — operator kechagi ishni
-              // ko'rmay qolmasin.
-              todayCount={meta.due?.todo}
-              hint="Bugungi katak muddati o'tgan va sana belgilanmagan talablarni ham qamraydi."
-            />
-          </Card>
-
-          <Card title="Filtr">
-            <div className="space-y-3">
-              {/* MUDDAT bo'yicha — "qachon qo'ng'iroq qilish kerak". */}
-              {meta.due && (
-                <div>
-                  <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-400">
-                    Muddat
-                  </p>
-                  <div className="flex flex-wrap gap-2">
-                    {DUE_CHIPS.map((d) => (
-                      <Chip
-                        key={d.key}
-                        label={d.label}
-                        title={d.hint}
-                        count={meta.due![d.key]}
-                        tone={d.tone}
-                        active={due === d.key && !dueDate}
-                        onClick={() => pickDue(due === d.key ? '' : d.key)}
-                      />
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* HOLAT bo'yicha — bosqich kesimi. */}
-              <div>
-                <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-400">
-                  Holat
-                </p>
-                <div className="flex flex-wrap items-center gap-2">
-                  <Chip
-                    label="Ochiqlar"
-                    count={openCount}
-                    active={status === '' && !due && !dueDate}
-                    onClick={() => pickStatus('')}
-                  />
-                  {meta.statuses.map((s) => (
-                    <Chip
-                      key={s.key}
-                      label={s.label}
-                      count={countOf(s.key)}
-                      tone={s.color}
-                      active={status === s.key}
-                      onClick={() => pickStatus(s.key)}
-                    />
-                  ))}
-                  <Chip
-                    label="Hammasi"
-                    count={meta.counts.reduce((a, c) => a + c.count, 0)}
-                    active={status === 'all'}
-                    onClick={() => pickStatus('all')}
-                  />
-
-                  <form
-                    className="ml-auto flex gap-2"
-                    onSubmit={(e) => {
-                      e.preventDefault()
-                      setQ(term.trim())
-                    }}
-                  >
-                    <input
-                      value={term}
-                      onChange={(e) => setTerm(e.target.value)}
-                      placeholder="O'quvchi yoki sabab"
-                      className="min-w-[180px] rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 outline-none focus:border-brand-400"
-                    />
-                    <Button type="submit" variant="secondary">
-                      <Search className="h-4 w-4" /> Qidirish
-                    </Button>
-                  </form>
-                </div>
+          {/* ====== ASBOBLAR PANELI — bitta qatorda, hamma filtr shu yerda ====== */}
+          <div className="sticky top-0 z-20 -mx-1 rounded-xl border border-slate-200 bg-white/95 px-3 py-2.5 shadow-[var(--shadow-1)] backdrop-blur">
+            <div className="flex flex-wrap items-center gap-2">
+              {/* Qidiruv — JONLI (Enter bosish shart emas) */}
+              <div className="flex items-center gap-2 rounded-lg border border-slate-200 px-2.5 py-1.5 focus-within:border-brand-400">
+                <Search className="h-4 w-4 shrink-0 text-slate-400" />
+                <input
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Ism, telefon, sabab, javob..."
+                  className="w-52 border-0 bg-transparent text-sm text-slate-700 outline-none placeholder:text-slate-400"
+                />
+                {search && (
+                  <button type="button" title="Tozalash" onClick={() => setSearch('')} className="text-slate-400 hover:text-slate-600">
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                )}
               </div>
 
-              {dueDate && (
-                <p className="text-sm text-slate-500">
-                  <strong className="text-slate-700">{dayLabel(dueDate)}</strong> kuni rejalashtirilganlar
-                  {' · '}
-                  <button
-                    type="button"
-                    onClick={() => setDueDate('')}
-                    className="font-medium text-brand-600 hover:underline"
-                  >
-                    filtrni olib tashlash
-                  </button>
-                </p>
+              <select
+                value={reason}
+                onChange={(e) => setReason(e.target.value)}
+                title="Sabab bo'yicha"
+                className="rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-sm text-slate-700 outline-none focus:border-brand-400"
+              >
+                <option value="all">Barcha sabablar</option>
+                <option value="__none__">— sababsiz —</option>
+                {reasons.map((r) => (
+                  <option key={r.id} value={r.id}>{r.label}</option>
+                ))}
+              </select>
+
+              {authors.length > 1 && (
+                <select
+                  value={author}
+                  onChange={(e) => setAuthor(e.target.value)}
+                  title="Talabni kim yuborgan"
+                  className="rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-sm text-slate-700 outline-none focus:border-brand-400"
+                >
+                  <option value="all">Kim yuborgan: hammasi</option>
+                  {authors.map((a) => (
+                    <option key={a} value={a}>{a}</option>
+                  ))}
+                </select>
+              )}
+
+              <Seg
+                value={scope}
+                onChange={(v) => setScope(v)}
+                options={[
+                  { key: 'open', label: `Ochiqlar${openCount ? ` (${openCount})` : ''}` },
+                  { key: 'all', label: 'Hammasi' },
+                ]}
+              />
+
+              <span className="mx-0.5 hidden h-6 w-px bg-slate-200 sm:block" />
+
+              <Seg
+                value={groupBy}
+                onChange={pickGroupBy}
+                title="Ustunlar nima bo'yicha bo'linadi"
+                options={[
+                  { key: 'due', label: 'Muddat', icon: CalendarClock },
+                  { key: 'status', label: 'Bosqich', icon: Columns3 },
+                ]}
+              />
+
+              <Seg
+                value={view}
+                onChange={pickView}
+                options={[
+                  { key: 'board', label: 'Taxta', icon: Columns3 },
+                  { key: 'list', label: "Ro'yxat", icon: LayoutGrid },
+                ]}
+              />
+
+              <button
+                type="button"
+                onClick={() => setCalOpen((v) => !v)}
+                title="Oylik kunlik reja"
+                className={cn(
+                  'inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-2 text-[13px] font-semibold transition-colors',
+                  calOpen || dueDate
+                    ? 'border-brand-500 bg-brand-50 text-brand-700'
+                    : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50',
+                )}
+              >
+                <CalendarDays className="h-4 w-4" />
+                {dueDate ? dayLabel(dueDate) : 'Kalendar'}
+              </button>
+
+              {filterCount > 0 && (
+                <button
+                  type="button"
+                  onClick={clearFilters}
+                  className="ml-auto inline-flex items-center gap-1.5 rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-2 text-[13px] font-semibold text-rose-600 transition-colors hover:bg-rose-100"
+                >
+                  <Filter className="h-3.5 w-3.5" /> Filtrni tozalash ({filterCount})
+                </button>
               )}
             </div>
-          </Card>
+          </div>
 
+          {/* OYLIK KALENDAR — yig'iladi, chunki taxtaning O'ZI "qachon" savoliga javob beradi */}
+          {calOpen && (
+            <Card
+              title={
+                <span className="inline-flex items-center gap-2">
+                  <CalendarDays className="h-4 w-4 text-slate-400" /> Kunlik reja
+                </span>
+              }
+              sub="Kunni bosib o'sha kunga rejalashtirilganlarni ko'ring. Oyni strelkalar bilan almashtiring."
+              actions={
+                dueDate && (
+                  <Button variant="ghost" onClick={() => setDueDate('')}>
+                    <X className="h-3.5 w-3.5" /> Kun filtrini olib tashlash
+                  </Button>
+                )
+              }
+            >
+              <MonthDayStrip
+                month={month}
+                onMonthChange={(m) => {
+                  setMonth(m)
+                  // Boshqa oyga o'tilganda o'tgan oyning tanlangan kuni filtrda qolib ketmasin.
+                  if (dueDate && !dueDate.startsWith(m)) setDueDate('')
+                }}
+                selected={dueDate}
+                onSelect={(d) => setDueDate(d === dueDate ? '' : d)}
+                counts={Object.fromEntries((meta.days ?? []).map((d) => [d.date, d.count]))}
+                // BUGUNGI katak "bugun qilish kerak" ni ko'rsatadi: muddati o'tgan va sanasizlar
+                // ham kiradi — operator kechagi ishni ko'rmay qolmasin.
+                todayCount={meta.due?.todo}
+                hint="Bugungi katak muddati o'tgan va sana belgilanmagan talablarni ham qamraydi."
+              />
+            </Card>
+          )}
+
+          {/* ====== NAVBAT ====== */}
           {loading ? (
             <Loader label="Yuklanmoqda..." />
-          ) : items.length === 0 ? (
+          ) : shown.length === 0 ? (
             <Card>
-              <p className="py-8 text-center text-sm text-slate-400">
-                Navbat bo'sh — bog'lanish kerak bo'lgan o'quvchi yo'q.
-              </p>
+              <div className="py-12 text-center">
+                <span className="mx-auto mb-3 grid h-12 w-12 place-items-center rounded-full bg-emerald-50 text-emerald-500">
+                  <PhoneCall className="h-6 w-6" />
+                </span>
+                <p className="text-sm font-semibold text-slate-600">
+                  {filterCount > 0 ? 'Bu filtrda hech narsa topilmadi' : "Navbat bo'sh"}
+                </p>
+                <p className="mt-1 text-xs text-slate-400">
+                  {filterCount > 0
+                    ? "Filtrni tozalab ko'ring."
+                    : "Bog'lanish kerak bo'lgan o'quvchi yo'q — hammasi bilan bog'lanilgan."}
+                </p>
+                {filterCount > 0 && (
+                  <Button variant="secondary" className="mt-3" onClick={clearFilters}>
+                    Filtrni tozalash
+                  </Button>
+                )}
+              </div>
             </Card>
+          ) : view === 'board' ? (
+            <ContactBoard
+              columns={columns}
+              items={boardItems}
+              groupBy={groupBy}
+              today={today}
+              actions={actions}
+              onCardClick={(r) => void openDetail(r)}
+              onDrop={handleDrop}
+            />
           ) : (
-            <Card>
-              <ul className="divide-y divide-slate-100">
-                {items.map((r) => (
-                  <li key={r.id} className="py-3 first:pt-0 last:pb-0">
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <Link
-                            to={`/admin/students/${r.studentId}`}
-                            className="text-sm font-semibold text-slate-800 hover:text-brand-600 hover:underline"
-                          >
-                            {r.studentName}
-                          </Link>
-                          <StatusBadge label={r.statusLabel} status={r.status} overdue={r.overdue} />
-                          {r.reasonLabel && (
-                            <span className="rounded-md bg-slate-100 px-2 py-0.5 text-xs text-slate-500">
-                              {r.reasonLabel}
-                            </span>
-                          )}
-                          {r.attemptCount > 0 && (
-                            <span className="text-xs text-slate-400">{r.attemptCount} urinish</span>
-                          )}
-                        </div>
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+              {sorted.map((r) => (
+                <div key={r.id} onClick={() => void openDetail(r)}>
+                  <ContactCardContent r={r} today={today} actions={actions} />
+                </div>
+              ))}
+            </div>
+          )}
 
-                        {r.status === 'callback' && r.dueDate && (
-                          <p className={cn('mt-1 text-xs', r.overdue ? 'font-semibold text-rose-600' : 'text-sky-600')}>
-                            {r.overdue ? 'Muddati o\'tgan: ' : 'Qayta qo\'ng\'iroq: '}
-                            {formatDate(r.dueDate)}
-                          </p>
-                        )}
+          {/* Chegaraga yetildi — jimgina qirqib qo'ymaymiz */}
+          {!loading && items.length >= MAX_ROWS && (
+            <p className="text-center text-xs text-slate-400">
+              Eng so'nggi {MAX_ROWS} ta talab ko'rsatildi — qolganini ko'rish uchun filtrdan foydalaning.
+            </p>
+          )}
 
-                        {r.lastResponse && (
-                          <p className="mt-1 line-clamp-2 text-sm text-slate-600">
-                            <span className="text-slate-400">Javobi: </span>{r.lastResponse}
-                          </p>
-                        )}
-                        {!r.lastResponse && r.note && (
-                          <p className="mt-1 line-clamp-2 text-sm text-slate-500">{r.note}</p>
-                        )}
-
-                        <p className="mt-1 text-xs text-slate-400">
-                          {/* KIM YUBORGANI — talabni ochgan xodim/o'qituvchi. Guruh jurnalidan
-                              yuborilgan bo'lsa bu o'qituvchining ismi bo'ladi, ya'ni operator
-                              kimning iltimosi bilan qo'ng'iroq qilayotganini biladi. */}
-                          Yuborgan: <span className="text-slate-500">{r.createdBy || 'Tizim'}</span>
-                          {' · '}
-                          {formatDateTime(r.createdAt)}
-                        </p>
-                        {r.lastActionAt && r.lastActionAt !== r.createdAt && (
-                          <p className="text-xs text-slate-400">
-                            Oxirgi harakat: {formatDateTime(r.lastActionAt)}
-                            {r.lastActorName && ` · ${r.lastActorName}`}
-                          </p>
-                        )}
-
-                        {r.phones.length > 0 && (
-                          <p className="mt-1 flex flex-wrap gap-3">
-                            {r.phones.map((p) => (
-                              <a key={p} href={`tel:${p}`} className="font-mono text-xs text-brand-600 hover:underline">
-                                {p}
-                              </a>
-                            ))}
-                          </p>
-                        )}
-                      </div>
-
-                      <div className="flex shrink-0 flex-wrap gap-2">
-                        {canWrite && (r.status === 'new' || r.status === 'callback') && (
-                          <Button onClick={() => setAttemptFor(r)}>
-                            <PhoneCall className="h-4 w-4" /> Bog'lanildi
-                          </Button>
-                        )}
-                        {canWrite && (r.status === 'done' || r.status === 'failed') && (
-                          <Button
-                            variant="secondary"
-                            onClick={async () => {
-                              try {
-                                await reopenContactRequest(r.id)
-                                await afterChange()
-                              } catch (e) {
-                                setError(apiErrorMessage(e, "Qayta ochib bo'lmadi"))
-                              }
-                            }}
-                          >
-                            <RotateCcw className="h-4 w-4" /> Qayta ochish
-                          </Button>
-                        )}
-                        <Button variant="secondary" onClick={() => void openDetail(r.id)}>
-                          <History className="h-4 w-4" /> Tarix
-                        </Button>
-                        {canWrite && (
-                          <Button
-                            variant="ghost"
-                            onClick={() => { setNoteFor(r); setNoteText('') }}
-                            title="Izoh qo'shish"
-                          >
-                            <MessageSquarePlus className="h-4 w-4" />
-                          </Button>
-                        )}
-                        {canDelete && (
-                          <Button
-                            variant="ghost"
-                            title="O'chirish"
-                            onClick={async () => {
-                              // Modal ochilishi TelegramWebApp/brauzer dialogini bloklamasin uchun
-                              // tasdiqni oddiy confirm bilan olamiz (loyihadagi boshqa joylar kabi).
-                              if (!confirm(`"${r.studentName}" talabini o'chirasizmi?`)) return
-                              try {
-                                await deleteContactRequest(r.id)
-                                await afterChange()
-                              } catch (e) {
-                                setError(apiErrorMessage(e, "O'chirib bo'lmadi"))
-                              }
-                            }}
-                          >
-                            <Trash2 className="h-4 w-4 text-slate-400" />
-                          </Button>
-                        )}
-                      </div>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            </Card>
+          {!loading && shown.length > 0 && (
+            <p className="text-center text-xs text-slate-400">
+              {shown.length} ta talab
+              {shown.length !== items.length && ` (jami ${items.length} tadan)`}
+            </p>
           )}
         </div>
       )}
@@ -503,6 +578,8 @@ export function ContactQueuePage() {
         open={!!attemptFor}
         request={attemptFor}
         meta={meta}
+        presetNextStatus={preset.nextStatus}
+        presetDueDate={preset.dueDate}
         onClose={() => setAttemptFor(null)}
         onSaved={(u) => void afterChange(u)}
       />
@@ -519,6 +596,18 @@ export function ContactQueuePage() {
               <p className="mt-0.5 text-xs text-slate-400">
                 Ochgan: {detail.createdBy} · {formatDateTime(detail.createdAt)}
               </p>
+              {canWrite && (detail.status === 'new' || detail.status === 'callback') && (
+                <Button
+                  className="mt-2"
+                  onClick={() => {
+                    const r = detail
+                    setDetail(null)
+                    openAttempt(r)
+                  }}
+                >
+                  <PhoneCall className="h-4 w-4" /> Bog'lanildi
+                </Button>
+              )}
             </div>
             <ul className="space-y-2">
               {(detail.history ?? []).map((h) => (
@@ -526,9 +615,7 @@ export function ContactQueuePage() {
                   <div className="flex flex-wrap items-center gap-2 text-sm">
                     <span className="font-medium text-slate-700">{eventTitle(h.type)}</span>
                     {h.resultLabel && (
-                      <span className="rounded-md bg-slate-100 px-2 py-0.5 text-xs text-slate-600">
-                        {h.resultLabel}
-                      </span>
+                      <span className="rounded-md bg-slate-100 px-2 py-0.5 text-xs text-slate-600">{h.resultLabel}</span>
                     )}
                     {h.nextStatusLabel && (
                       <span className="text-xs text-slate-400">
@@ -559,9 +646,7 @@ export function ContactQueuePage() {
         title="Izoh qo'shish"
         footer={
           <>
-            <Button variant="secondary" onClick={() => setNoteFor(null)}>
-              Bekor
-            </Button>
+            <Button variant="secondary" onClick={() => setNoteFor(null)}>Bekor</Button>
             <Button
               disabled={!noteText.trim()}
               onClick={async () => {
@@ -604,92 +689,34 @@ function eventTitle(type: string): string {
   }
 }
 
-/** Tepadagi katta raqam — bosilsa navbat o'sha guruh bo'yicha filtrlanadi. */
-function SummaryTile({
-  label, value, hint, tone, active, onClick,
+/** Segmentli tanlov (qamrov · guruhlash · ko'rinish) — asboblar panelini bir qatorda ushlaydi. */
+function Seg<T extends string>({
+  value, onChange, options, title,
 }: {
-  label: string
-  value: number
-  hint?: string
-  tone?: 'amber' | 'rose' | 'sky'
-  active: boolean
-  onClick: () => void
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={cn(
-        'rounded-xl border px-4 py-3 text-left transition-colors',
-        active
-          ? 'border-brand-500 bg-brand-50'
-          : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50',
-      )}
-    >
-      <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">{label}</p>
-      <p
-        className={cn(
-          'mt-1 text-3xl font-bold leading-none',
-          value === 0 ? 'text-slate-300'
-          : tone === 'rose' ? 'text-rose-600'
-          : tone === 'amber' ? 'text-amber-600'
-          : tone === 'sky' ? 'text-sky-600'
-          : 'text-slate-800',
-        )}
-      >
-        {value}
-      </p>
-      {hint && <p className="mt-1 text-xs text-slate-400">{hint}</p>}
-    </button>
-  )
-}
-
-function StatusBadge({ label, status, overdue }: { label: string; status: string; overdue: boolean }) {
-  const tone =
-    overdue ? 'bg-rose-100 text-rose-700'
-    : status === 'new' ? 'bg-amber-100 text-amber-700'
-    : status === 'callback' ? 'bg-sky-100 text-sky-700'
-    : status === 'done' ? 'bg-emerald-100 text-emerald-700'
-    : 'bg-slate-200 text-slate-600'
-  return (
-    <span className={cn('rounded-md px-2 py-0.5 text-xs font-medium', tone)}>
-      {overdue ? 'Muddati o\'tgan' : label}
-    </span>
-  )
-}
-
-function Chip({
-  label, count, active, onClick, tone, title,
-}: {
-  label: string
-  count: number
-  active: boolean
-  onClick: () => void
-  tone?: string
-  /** Tushuntirish (hover) — masalan "muddati o'tgan + bugungi + sanasiz". */
+  value: T
+  onChange: (v: T) => void
+  options: { key: T; label: string; icon?: typeof Flame }[]
   title?: string
 }) {
   return (
-    <button
-      type="button"
-      title={title}
-      onClick={onClick}
-      className={cn(
-        'inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium transition-colors',
-        active
-          ? (tone && chipTone[tone]) || 'border-brand-500 bg-brand-50 text-brand-700'
-          : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50',
-      )}
-    >
-      {label}
-      <span
-        className={cn(
-          'rounded-full px-1.5 text-xs font-semibold',
-          active ? 'bg-white/70' : 'bg-slate-100 text-slate-500',
-        )}
-      >
-        {count}
-      </span>
-    </button>
+    <div title={title} className="inline-flex items-center gap-0.5 rounded-lg border border-slate-200 bg-slate-50 p-0.5">
+      {options.map((o) => {
+        const Icon = o.icon
+        return (
+          <button
+            key={o.key}
+            type="button"
+            onClick={() => onChange(o.key)}
+            className={cn(
+              'inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[13px] font-semibold transition-colors',
+              value === o.key ? 'bg-white text-brand-700 shadow-[var(--shadow-1)]' : 'text-slate-500 hover:text-slate-700',
+            )}
+          >
+            {Icon && <Icon className="h-3.5 w-3.5" />}
+            {o.label}
+          </button>
+        )
+      })}
+    </div>
   )
 }

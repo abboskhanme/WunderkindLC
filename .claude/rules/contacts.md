@@ -91,17 +91,27 @@ tuzatilgan yozuv shunday bo'lsa **`nodate` ga tushadi** — yo'qolib ketmaydi. B
 javobida `due` (kesim) va `days` (yaqin 14 kun rejasi, faqat ish BOR kunlar) qaytadi.
 SQL tarjimasi controllerda, QOIDA esa `ContactService` da — ikkisi bir xil bo'lishi shart.
 
-**UI:** navbat tepasida uchta katta raqam (Bugun qilish kerak · Muddati o'tgan · Ertaga),
-**oylik kalendar chizig'i** (`MonthDayStrip`) va "Muddat" chiplari.
+**UI — KANBAN TAXTASI** (`ContactBoard` · `ContactColumn` · `ContactCard`): navbat tepasida
+to'rtta katta raqam (Bugun qilish kerak · Muddati o'tgan · Bugun · Ertaga — ular ayni paytda
+FOKUS tugmalari: bosilsa taxta o'sha guruhga toraytiriladi), ostida bitta asboblar paneli va
+taxta.
+
+Batafsil: §3.65.
 
 Kalendar komponenti — `components/ui/MonthDayStrip.tsx` (sana funksiyalari `lib/month.ts` da:
 komponent va oddiy funksiyalar bir faylda ARALASHMAYDI — eslint
 `react-refresh/only-export-components`). U "Izohlarga javoblar" sahifasida ham ishlatiladi.
 
 Kalendar: OY TO'LIQ chiqadi (bo'sh kunlar ham o'z o'rnida — ilgari faqat "ish bor" kunlar
-ko'rsatilib, ro'yxat sakrab turardi), strelkalar bilan oy almashadi, **BUGUN doim tanlangan**
-(sahifa ochilganda va joriy oyga qaytilganda). Boshqa oyga o'tilganda tanlov tozalanadi —
-u oyda "bugun" yo'q, tasodifiy kun tanlab qo'yish chalg'itardi.
+ko'rsatilib, ro'yxat sakrab turardi), strelkalar bilan oy almashadi. Boshqa oyga o'tilganda
+tanlangan kun tozalanadi — u oyda "bugun" yo'q, tasodifiy kun tanlab qo'yish chalg'itardi.
+
+⚠️ **KALENDAR ENDI YIG'ILGAN va BUGUN AVTOMATIK TANLANMAYDI.** Ilgari sahifa ochilganda
+`dueDate = bugun` qo'yilardi, ya'ni operator FAQAT bugunga rejalashtirilgan qayta
+qo'ng'iroqlarni ko'rardi — muddati o'tganlar ham, yangi (sanasiz) talablar ham ro'yxatga
+kirmasdi, holbuki §3.6 bo'yicha aynan ular "bugungi ish". Endi taxtaning O'ZI "qachon"
+savoliga javob beradi (har muddat guruhi alohida ustun), kalendar esa ATAYIN qidiruv asbobi:
+"Kalendar" tugmasi bilan ochiladi va kun tanlansagina filtrlaydi.
 
 ⚠️ **BUGUNGI katak `todo` sonini ko'rsatadi** (muddati o'tgan + bugungi + sanasiz), qolgan
 kunlar esa aynan o'sha kunga rejalashtirilganini. Sabab: "bugun" operator uchun "bugungi
@@ -109,8 +119,71 @@ ish" degani — kechagi kechikkanlar ham unga kiradi. Chiziq ostida shu izoh yoz
 
 `GET /contacts/meta?month=yyyy-MM` — kunlik reja shu oy uchun qaytadi (chiplar/sanoqlar
 oyga BOG'LIQ EMAS, ular har doim joriy holat).
-Muddat va Holat filtrlari **BIR-BIRINI TOZALAYDI** — "Hal bo'ldi + bugun" kabi mantiqan bo'sh
-kesishmalar operatorni chalg'itardi.
+
+## 3.65. TAXTA (kanban) — ko'rinish, filtrlar va SUDRASH
+
+Sahifa `/admin/students/boglanish` → "Navbat" tabi. Lidlar taxtasi bilan BIR XIL texnika:
+`@dnd-kit/core` + `.kanban` / `.kanban-col` / `.kanban-col-body` CSS klasslari.
+
+### Guruhlash — ikki rejim (tanlov brauzerda eslab qolinadi)
+
+| Rejim | Ustunlar | Qachon |
+|---|---|---|
+| **Muddat** (standart) | Muddati o'tgan · Bugun · Sanasiz · Ertaga · Shu hafta · Keyinroq | "Bugun kimga qo'ng'iroq qilaman" — §3.6 dagi asosiy savol |
+| **Bosqich** | Bog'lanish kerak · Qayta qo'ng'iroq · Hal bo'ldi · Bog'lanib bo'lmadi | "Talab qayerda turibdi va qanday yakunlandi" |
+
+⚠️ **RANG HAR IKKI REJIMDA ham SHOSHILINCHLIKNI bildiradi**, ustunni emas — shuning uchun
+"Bosqich" rejimida "Qayta qo'ng'iroq" ustunidagi KECHIKKAN karta ham qizil bo'lib ko'zga
+tashlanadi. Aks holda bosqich rejimiga o'tgan operator muddati o'tganlarni ko'rmay qolardi.
+
+⚠️ "Bosqich" rejimi tanlanganda QAMROV avtomatik "Hammasi" ga o'tadi (saqlangan tanlov bilan
+sahifa ochilganda ham) — aks holda yakuniy ikki ustun DOIM bo'sh turardi.
+
+⚠️ "Muddat" rejimida yakuniy talabning ustuni YO'Q (`bucketOf` bo'sh qaytaradi). "Hammasi"
+qamrovida ular ro'yxatga tushadi, lekin taxtada chizilmaydi — shuning uchun pastdagi sanoq
+`boardItems` dan hisoblanadi, aks holda "talab yo'qolgan"dek tuyulardi.
+
+### ⚠️ SUDRASH HOLATNI JIMGINA O'ZGARTIRMAYDI
+
+Serverda kartani ustundan ustunga ko'chiradigan endpoint **YO'Q va bo'lmaydi**: har o'tish —
+HODISA (`ContactAttempt`), ya'ni "kim, qachon, nima dedi" yozilishi SHART (§2, §7). Karta
+tashlanganda **"Bog'lanildi" oynasi keyingi qadam OLDINDAN TANLANGAN holda ochiladi**
+(`presetNextStatus` / `presetDueDate`), operator faqat natijani va javobni yozadi.
+
+- Qabul QILMAYDIGAN ustunlar: **"Bog'lanish kerak"** va **"Sanasiz"** — `new` ga qaytarish
+  serverda ham taqiqlangan (`ContactService.CanTransitionTo`). Ular sudrash paytida
+  xiralashadi, ya'ni foydalanuvchi server rad etadigan amalni BOSHLAY olmaydi.
+- Yakuniy (done/failed) karta **sudralmaydi** — `attempt` faqat ochiq talabga yoziladi.
+- Muddat ustunlari `callback` + o'sha guruhning boshlang'ich sanasini taklif qiladi
+  (`BoardColumn.drop.offsetDays`), sana oynada o'zgartirilishi mumkin.
+
+### `lib/contactDue.ts` — ustunlar katalogi va BUCKET nusxasi
+
+⚠️ `bucketOf` — serverdagi `ContactService.BucketOf` ning **AYNAN nusxasi**. Nusxa ATAYIN:
+taxta butun navbatni BITTA so'rovda oladi (`limit=500`) va ustunlarga klientda bo'ladi;
+server bir so'rovda faqat bitta guruhni qaytara oladi (`?due=`), ya'ni olti ustun = olti
+so'rov bo'lardi. **Serverdagi qoida o'zgarsa shu faylni ham o'zgartiring** —
+`lib/__tests__/contactDue.test.ts` ikkisining bir xilligini qulflaydi.
+
+### Filtrlar — bittadan boshqasi KLIENTDA
+
+Serverga faqat **QAMROV** (`status` = ochiqlar / hammasi) va kalendar OYI uzatiladi. Qidiruv,
+sabab, "kim yuborgan" va fokus — kelgan ro'yxat ustida, ya'ni bir zumda ishlaydi va so'rov
+yubormaydi.
+
+- **Qidiruv JONLI** (Enter bosish shart emas) va serverdagidan KENG: server faqat ism va
+  sabab bo'yicha qidiradi, klient esa izoh, oxirgi javob, yuborgan xodim va TELEFON
+  raqamlari bo'yicha ham (raqamlar bo'yicha — "901234567" ham "+998 90 123 45 67" ni topadi).
+- **Sabab** (`ActionReasons`, kategoriya `contact`) va **"Kim yuborgan"** — YANGI filtrlar;
+  ikkinchisi kelgan ma'lumotdagi `createdBy` dan quriladi (alohida so'rov yo'q).
+- ⚠️ Muddat va Holat chiplari **OLIB TASHLANDI**: ular bir-birini tozalardi va nima
+  tanlangani ko'rinmasdi. Muddat endi USTUN, holat esa qamrov tugmasi.
+
+### Ro'yxat ko'rinishi
+
+"Ro'yxat" tugmasi AYNAN o'sha kartalarni tarmoq (grid) qilib chizadi, **shoshilinchlik
+bo'yicha saralab**: muddati o'tgan → bugun → sanasiz → ertaga → shu hafta → keyinroq.
+Tor ekranda ham, "hammasini bir ro'yxatda ko'raman" deganda ham shu qulay.
 
 ## 3.7. GURUH JURNALIDAGI "ALOQA" TABI (o'qituvchi ham, admin ham)
 
