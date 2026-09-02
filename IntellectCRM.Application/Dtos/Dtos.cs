@@ -3530,7 +3530,29 @@ public record CreateContactRequest(string StudentId, string? ReasonId = null, st
 /// <param name="NextStatus">Keyingi bosqich: callback | done | failed
 /// (<c>ContactService.CanTransitionTo</c>).</param>
 /// <param name="DueDate">Qayta qo'ng'iroq sanasi — <paramref name="NextStatus"/>=="callback" da MAJBURIY.</param>
-public record ContactAttemptRequest(string Result, string? Response, string NextStatus, string? DueDate = null);
+/// <param name="StageId">Kanban USTUNI (ixtiyoriy) — karta sudrab tashlanganda beriladi.
+/// Ustunning <c>BaseStatus</c> i <paramref name="NextStatus"/> bilan mos kelmasa E'TIBORSIZ
+/// qoldiriladi va talab o'z holatining TIZIM ustuniga tushadi (amal RAD ETILMAYDI: ustun —
+/// ko'rinish, holat esa mantiq).</param>
+public record ContactAttemptRequest(
+    string Result, string? Response, string NextStatus, string? DueDate = null, string? StageId = null);
+
+/// <summary>Kartani BOSHQA USTUNGA ko'chirish — bosqich (Status) O'ZGARMAGANDA.</summary>
+public record ContactStageMoveRequest(string StageId);
+
+/// <summary>Kanban ustuni (foydalanuvchi boshqaradi).</summary>
+/// <param name="BaseStatus">Bazaviy holat: new | callback | done | failed — hisobotlar shu bo'yicha.</param>
+/// <param name="IsSystem">Tizim ustuni: o'chirilmaydi, <paramref name="BaseStatus"/> i o'zgarmaydi.</param>
+/// <param name="Count">Shu ustundagi talablar soni (o'chirish mumkinligini ko'rsatish uchun).</param>
+public record ContactStageDto(
+    string Id, string Title, string Color, int Order,
+    string BaseStatus, string BaseStatusLabel, bool IsSystem, int Count);
+
+/// <summary>Ustun yaratish/tahrirlash.</summary>
+public record ContactStageRequest(string Title, string? Color = null, string? BaseStatus = null);
+
+/// <summary>Ustunlar tartibi (kelgan id'lar tartibida).</summary>
+public record ContactStageReorderRequest(List<string> Ids);
 
 /// <summary>Talabga oddiy izoh qo'shish (bosqich o'zgarmaydi).</summary>
 public record ContactNoteRequest(string Text);
@@ -3554,7 +3576,9 @@ public record ContactRequestDto(
     int AttemptCount, string LastResponse, string LastActorName, string LastActionAt,
     string CreatedAt, string CreatedBy, string ClosedAt, string ClosedBy,
     List<string> Phones,
-    List<ContactAttemptDto>? History = null);
+    List<ContactAttemptDto>? History = null,
+    /// <summary>Kanban ustuni. Bo'sh — talab o'z holatining TIZIM ustunida.</summary>
+    string StageId = "");
 
 /// <summary>Bosqich/natija KATALOGI + navbat sanoqlari (sahifa bir so'rovda to'liq ochilsin).</summary>
 /// <param name="Due">MUDDAT bo'yicha kesim — "bugun nechta odamga bog'lanish kerak".</param>

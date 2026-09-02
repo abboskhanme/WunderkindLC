@@ -357,6 +357,19 @@ public class ContactsController(
         c.AttemptCount++;
         c.Status = req.NextStatus;
         c.DueDate = due;
+
+        // USTUN: karta sudrab tashlangan bo'lsa O'SHA ustun, aks holda yangi holatning TIZIM
+        // ustuni (bo'sh StageId aynan shuni bildiradi). Mos kelmagan ustun JIM e'tiborsiz —
+        // amalning o'zi (bog'lanish natijasi) ustun tufayli rad etilmasligi kerak.
+        c.StageId = "";
+        var wantStage = (req.StageId ?? "").Trim();
+        if (wantStage.Length > 0)
+        {
+            var target = await db.ContactStages.FirstOrDefaultAsync(x => x.Id == wantStage);
+            if (target is not null && ContactService.StageMatches(target.BaseStatus, c.Status))
+                c.StageId = target.Id;
+        }
+
         c.LastResponse = response;
         c.LastActorName = Actor;
         c.LastActionAt = now;
@@ -427,6 +440,8 @@ public class ContactsController(
         var note = (req.Note ?? "").Trim();
         c.Status = ContactStatuses.New;
         c.DueDate = "";
+        // Holat o'zgardi — eski ustun yangi holatga ZID bo'lib qolmasin (tizim ustuniga qaytadi).
+        c.StageId = "";
         c.ClosedAt = "";
         c.ClosedBy = "";
         c.LastActorName = Actor;
@@ -631,5 +646,189 @@ public class ContactsController(
             history?.Select(a => new ContactAttemptDto(
                 a.Id, a.Type, a.Result, ContactService.ResultLabel(a.Result), a.Response,
                 a.NextStatus, ContactService.StatusLabel(a.NextStatus), a.DueDate,
-                a.ActorName, a.CreatedAt)).ToList());
+                a.ActorName, a.CreatedAt)).ToList(),
+            c.StageId);
+
+    /* =========================================================================================
+     *  KANBAN USTUNLARI (ContactStage)
+     *
+     *  ⚠️ Ustun HOLATNI ALMASHTIRMAYDI. Har ustunning BaseStatus'i bor va u to'rtta bazaviy
+     *  holatdan biri; hisobotlar, navbat va muddat guruhlari avvalgidek Status bo'yicha
+     *  ishlaydi. Foydalanuvchi xohlagancha ustun qo'shadi, hisobot esa o'zgarmaydi.
+     * ====================================================================================== */
+
+    /// <summary>Ustunlar ro'yxati (tartibi bilan) + har birida nechta talab borligi.</summary>
+    [HttpGet("stages")]
+    public async Task<ActionResult<IEnumerable<ContactStageDto>>> Stages()
+    {
+        var stages = await db.ContactStages.AsNoTracking().OrderBy(x => x.Order).ToListAsync();
+        var requests = await db.ContactRequests.AsNoTracking()
+            .Select(c => new { c.StageId, c.Status }).ToListAsync();
+
+        // StageId bo'sh (yoki o'chirilgan ustunga ishora qiladigan) talab o'z holatining TIZIM
+        // ustuniga sanaladi — ekranda ham aynan o'sha yerda ko'rinadi.
+        var known = stages.Select(x => x.Id).ToHashSet();
+        var counts = new Dictionary<string, int>();
+        foreach (var r in requests)
+        {
+            var key = !string.IsNullOrEmpty(r.StageId) && known.Contains(r.StageId) ? r.StageId : r.Status;
+            counts[key] = counts.GetValueOrDefault(key) + 1;
+        }
+
+        return stages.Select(x => new ContactStageDto(
+            x.Id, x.Title, x.Color, x.Order, x.BaseStatus,
+            ContactService.StatusLabel(x.BaseStatus), x.IsSystem, counts.GetValueOrDefault(x.Id))).ToList();
+    }
+
+    /// <summary>Yangi ustun (oxiriga qo'shiladi).</summary>
+    [HttpPost("stages")]
+    public async Task<ActionResult<ContactStageDto>> CreateStage(ContactStageRequest p)
+    {
+        var title = (p.Title ?? "").Trim();
+        if (title.Length == 0) return BadRequest(new { message = "Ustun nomi bo'sh" });
+        if (title.Length > 100) title = title[..100];
+
+        // Bazaviy holat berilmasa "qayta qo'ng'iroq" — yangi ustunlar odatda ORALIQ qadam
+        // ("SMS yuborildi", "Ota-onasi bilan gaplashildi"), ya'ni talab hali navbatda turadi.
+        var baseStatus = (p.BaseStatus ?? "").Trim();
+        if (baseStatus.Length == 0) baseStatus = ContactStatuses.Callback;
+        if (!ContactService.CanAnchorTo(baseStatus))
+            return BadRequest(new { message = "Bazaviy bosqich noto'g'ri" });
+
+        var maxOrder = await db.ContactStages.AnyAsync()
+            ? await db.ContactStages.MaxAsync(x => x.Order) : -1;
+        var stage = new ContactStage
+        {
+            Title = title,
+            Color = ContactService.SafeColor(p.Color),
+            BaseStatus = baseStatus,
+            Order = maxOrder + 1,
+        };
+        db.ContactStages.Add(stage);
+        audit.Record(AuditEntity, stage.Id, "create",
+            $"Bog'lanish taxtasiga ustun qo'shildi: {stage.Title} ({ContactService.StatusLabel(baseStatus)})");
+        await db.SaveChangesAsync();
+        return new ContactStageDto(stage.Id, stage.Title, stage.Color, stage.Order,
+            stage.BaseStatus, ContactService.StatusLabel(stage.BaseStatus), stage.IsSystem, 0);
+    }
+
+    /// <summary>
+    /// Ustunni tahrirlash. ⚠️ TIZIM ustunining bazaviy bosqichi O'ZGARTIRILMAYDI (nomi va
+    /// rangi esa o'zgaradi) — u har holat uchun "uy" bo'lib qolishi kerak.
+    /// </summary>
+    [HttpPut("stages/{stageId}")]
+    public async Task<ActionResult<ContactStageDto>> UpdateStage(string stageId, ContactStageRequest p)
+    {
+        var stage = await db.ContactStages.FirstOrDefaultAsync(x => x.Id == stageId);
+        if (stage is null) return NotFound(new { message = "Ustun topilmadi" });
+
+        var title = (p.Title ?? "").Trim();
+        if (title.Length == 0) return BadRequest(new { message = "Ustun nomi bo'sh" });
+        if (title.Length > 100) title = title[..100];
+
+        var before = stage.Title;
+        stage.Title = title;
+        stage.Color = ContactService.SafeColor(p.Color);
+
+        var baseStatus = (p.BaseStatus ?? "").Trim();
+        if (baseStatus.Length > 0 && baseStatus != stage.BaseStatus)
+        {
+            if (stage.IsSystem)
+                return BadRequest(new { message = "Tizim ustunining bazaviy bosqichi o'zgartirilmaydi" });
+            if (!ContactService.CanAnchorTo(baseStatus))
+                return BadRequest(new { message = "Bazaviy bosqich noto'g'ri" });
+            // Ustun boshqa holatga ko'chsa, ichidagi talablar unga ZID bo'lib qolardi —
+            // ularni o'z holatining tizim ustuniga qaytaramiz (karta yo'qolmaydi).
+            var inside = await db.ContactRequests.Where(c => c.StageId == stage.Id).ToListAsync();
+            foreach (var c in inside) c.StageId = "";
+            stage.BaseStatus = baseStatus;
+        }
+
+        audit.Record(AuditEntity, stage.Id, "update",
+            $"Bog'lanish taxtasi ustuni tahrirlandi: {before} → {stage.Title}");
+        await db.SaveChangesAsync();
+        return new ContactStageDto(stage.Id, stage.Title, stage.Color, stage.Order,
+            stage.BaseStatus, ContactService.StatusLabel(stage.BaseStatus), stage.IsSystem, 0);
+    }
+
+    /// <summary>
+    /// Ustunni o'chirish. TIZIM ustuni o'chirilmaydi; ichida talab bor ustun ham o'chirilmaydi
+    /// (avval ko'chirilsin) — lidlardagidek "jimgina yetim qoldirish" bu yerda qilinmaydi.
+    /// </summary>
+    [HttpDelete("stages/{stageId}")]
+    public async Task<IActionResult> DeleteStage(string stageId)
+    {
+        var stage = await db.ContactStages.FirstOrDefaultAsync(x => x.Id == stageId);
+        if (stage is null) return NotFound(new { message = "Ustun topilmadi" });
+        if (stage.IsSystem)
+            return BadRequest(new { message = "Tizim ustunini o'chirib bo'lmaydi" });
+
+        var count = await db.ContactRequests.CountAsync(c => c.StageId == stage.Id);
+        if (count > 0)
+            return BadRequest(new { message = $"Bu ustunda {count} ta talab bor — avval ularni boshqa ustunga ko'chiring." });
+
+        db.ContactStages.Remove(stage);
+        audit.Record(AuditEntity, stage.Id, "delete",
+            $"Bog'lanish taxtasi ustuni o'chirildi: {stage.Title}");
+        await db.SaveChangesAsync();
+        return NoContent();
+    }
+
+    /// <summary>Ustunlar tartibini saqlash (kelgan id'lar tartibida).</summary>
+    [HttpPatch("stages/reorder")]
+    public async Task<IActionResult> ReorderStages(ContactStageReorderRequest req)
+    {
+        var stages = await db.ContactStages.ToListAsync();
+        for (var i = 0; i < req.Ids.Count; i++)
+        {
+            var stage = stages.FirstOrDefault(x => x.Id == req.Ids[i]);
+            if (stage is not null) stage.Order = i;
+        }
+        await db.SaveChangesAsync();
+        return NoContent();
+    }
+
+    /// <summary>
+    /// Kartani BOSHQA USTUNGA ko'chirish — bosqich (Status) O'ZGARMAGANDA.
+    ///
+    /// <para>⚠️ Holatni o'zgartiradigan ko'chirish bu yerdan O'TMAYDI: u
+    /// <c>POST {id}/attempt</c> orqali, natija va javob bilan yoziladi (§ qoidalar §2).
+    /// Shu sabab mos kelmagan ustun 400 bilan rad etiladi va klientga nima qilish kerakligi
+    /// aytiladi — jimgina "boshqa narsa" qilib qo'yilmaydi.</para>
+    /// </summary>
+    [HttpPost("{id}/stage")]
+    public async Task<ActionResult<ContactRequestDto>> MoveStage(string id, ContactStageMoveRequest req)
+    {
+        var c = await db.ContactRequests.FirstOrDefaultAsync(x => x.Id == id);
+        if (c is null) return NotFound(new { message = "Talab topilmadi" });
+
+        var stage = await db.ContactStages.FirstOrDefaultAsync(x => x.Id == req.StageId);
+        if (stage is null) return NotFound(new { message = "Ustun topilmadi" });
+        if (!ContactService.StageMatches(stage.BaseStatus, c.Status))
+            return BadRequest(new
+            {
+                message = "Bu ustun boshqa bosqichga tegishli — «Bog'lanildi» orqali o'tkazing.",
+            });
+        if (c.StageId == stage.Id) return ToDto(c, Today, await PhonesAsync(new List<string> { c.StudentId }));
+
+        var now = AppClock.Iso();
+        c.StageId = stage.Id;
+        c.LastActorName = Actor;
+        c.LastActionAt = now;
+
+        // Ko'chirish TARIXGA yoziladi (izoh turi) — "kim, qachon" yo'qolmasin. `note` turi
+        // ATAYIN: hisobotlardagi "urinish"/"bog'lanildi" sonlari FAQAT `contact` turini
+        // sanaydi, ya'ni ustun ko'chirish raqamlarni buzmaydi.
+        db.ContactAttempts.Add(new ContactAttempt
+        {
+            RequestId = c.Id, StudentId = c.StudentId, Type = ContactAttemptTypes.Note,
+            Response = $"Ustun: {stage.Title}",
+            ActorId = ActorId, ActorName = Actor, CreatedAt = now, Date = Today,
+        });
+
+        audit.Record(AuditEntity, c.Id, "update",
+            $"Bog'lanish ustuni o'zgardi ({c.StudentName}): {stage.Title}", studentId: c.StudentId);
+        await db.SaveChangesAsync();
+        return ToDto(c, Today, await PhonesAsync(new List<string> { c.StudentId }));
+    }
 }

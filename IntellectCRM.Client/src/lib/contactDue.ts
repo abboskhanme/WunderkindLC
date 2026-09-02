@@ -1,5 +1,7 @@
-import type { ContactDue } from '@/api/services/contacts'
+import type { ContactDue, ContactRequestItem } from '@/api/services/contacts'
+import type { ContactStage } from '@/api/services/contactStages'
 import type { StageColor } from '@/types'
+import { stageColorKeys } from '@/config/stageColors'
 
 /* ======================================================================================
  *  "BOG'LANISH KERAK" — MUDDAT GURUHLARI (kanban ustunlari)
@@ -60,7 +62,7 @@ export function isTodo(bucket: ContactDue | ''): boolean {
  * ====================================================================================== */
 
 export interface BoardColumn {
-  /** Ustun kaliti — muddat guruhi yoki bosqich (`ContactStatus`). */
+  /** Ustun kaliti — muddat guruhi yoki USTUN id'si (`ContactStage.id`). */
   key: string
   label: string
   hint: string
@@ -71,6 +73,8 @@ export interface BoardColumn {
    * "Bog'lanildi" oynasini shu qadam bilan OLDINDAN to'ldirib ochadi (§ ContactBoard).
    */
   drop: { nextStatus: 'callback' | 'done' | 'failed'; offsetDays?: number } | null
+  /** Serverdagi ustun — FAQAT "Bosqich" rejimida bo'ladi (tahrirlash shu bilan ochiladi). */
+  stage?: ContactStage
 }
 
 /**
@@ -125,7 +129,9 @@ export const DUE_COLUMNS: BoardColumn[] = [
 ]
 
 /**
- * BOSQICH bo'yicha ustunlar — "voronka": talab qayerda turibdi va qanday yakunlandi.
+ * BOSQICH ustunlarining ZAXIRA ro'yxati — server ustunlarni bermasa (eski backend yoki
+ * so'rov xatosi) taxta baribir ishlashi kerak. Odatda ustunlar SERVERDAN keladi va
+ * `stageColumns()` bilan quriladi.
  *
  * ⚠️ "Bog'lanish kerak" ustuni karta QABUL QILMAYDI: bog'langandan keyin boshiga qaytarish
  * navbatni cheksiz aylantirardi (server `ContactService.CanTransitionTo` da `new` yo'q).
@@ -160,3 +166,44 @@ export const STATUS_COLUMNS: BoardColumn[] = [
     drop: { nextStatus: 'failed' },
   },
 ]
+
+/* ======================================================================================
+ *  SERVERDAN KELGAN USTUNLAR ("Bosqich" rejimi)
+ * ====================================================================================== */
+
+/**
+ * Foydalanuvchi ustunlaridan taxta ustunlarini quradi.
+ *
+ * ⚠️ `drop` ustunning BAZAVIY HOLATIDAN kelib chiqadi: `new` ga o'tish serverda taqiqlangan,
+ * shuning uchun `new` ga bog'langan ustun BOSHQA holatdagi kartani qabul qilmaydi. O'SHA
+ * holatdagi kartani esa qabul qiladi (bu holat o'zgarishi emas, oddiy ustun ko'chirish) —
+ * bu qaror `ContactBoard` da, sudralayotgan kartaga qarab beriladi.
+ */
+export function stageColumns(stages: ContactStage[]): BoardColumn[] {
+  return stages.map((s) => ({
+    key: s.id,
+    label: s.title,
+    hint: `Bazaviy bosqich: ${s.baseStatusLabel}`,
+    color: (stageColorKeys as string[]).includes(s.color) ? s.color : 'slate',
+    drop:
+      s.baseStatus === 'new'
+        ? null
+        : {
+            nextStatus: s.baseStatus as 'callback' | 'done' | 'failed',
+            offsetDays: s.baseStatus === 'callback' ? 1 : undefined,
+          },
+    stage: s,
+  }))
+}
+
+/**
+ * Talab QAYSI ustunda turibdi ("Bosqich" rejimi).
+ *
+ * ⚠️ Xavfsizlik tarmog'i: `stageId` bo'sh yoki o'chirilgan ustunga ishora qilsa, talab O'Z
+ * HOLATINING tizim ustuniga tushadi (tizim ustunining id'si holat kalitining o'zi). Ya'ni
+ * karta HECH QACHON taxtadan yo'qolmaydi — lidlardagi "birinchi ustunga tashlab qo'yish"
+ * tarmog'idan aniqroq, chunki bu yerda kartaning o'z holati bor.
+ */
+export function stageKeyOf(r: ContactRequestItem, knownIds: Set<string>): string {
+  return r.stageId && knownIds.has(r.stageId) ? r.stageId : r.status
+}

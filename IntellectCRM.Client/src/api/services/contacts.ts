@@ -52,6 +52,11 @@ export interface ContactRequestItem {
   phones: string[]
   /** Faqat bitta talab so'ralganda to'ladi. */
   history?: ContactAttempt[]
+  /**
+   * Kanban USTUNI (`ContactStage.id`). Bo'sh — talab o'z holatining TIZIM ustunida
+   * (tizim ustunining id'si holat kalitining o'zi), ya'ni karta hech qachon yo'qolmaydi.
+   */
+  stageId?: string
 }
 
 /** Navbatning MUDDAT guruhlari — "bugun kimga qo'ng'iroq qilish kerak?". */
@@ -191,9 +196,28 @@ export async function createContactRequest(payload: {
 /** BOG'LANILDI — natija + javobi + keyingi bosqich. */
 export async function addContactAttempt(
   id: string,
-  payload: { result: string; response?: string; nextStatus: string; dueDate?: string },
+  payload: {
+    result: string
+    response?: string
+    nextStatus: string
+    dueDate?: string
+    /** Karta SUDRAB tashlangan ustun. Mos kelmasa server JIM e'tiborsiz qoldiradi. */
+    stageId?: string
+  },
 ): Promise<ContactRequestItem> {
   const { data } = await api.post<ContactRequestItem>(`/admin/contacts/${id}/attempt`, payload)
+  return data
+}
+
+/**
+ * Kartani BOSHQA USTUNGA ko'chirish — bosqich (`status`) O'ZGARMAGANDA.
+ *
+ * ⚠️ Holatni o'zgartiradigan ko'chirish bu yerdan O'TMAYDI (server 400 qaytaradi): u
+ * `addContactAttempt` orqali, natija va javob bilan yoziladi — har o'tish HODISA bo'lishi
+ * shart, aks holda hisobot yolg'on chiqardi.
+ */
+export async function moveContactStage(id: string, stageId: string): Promise<ContactRequestItem> {
+  const { data } = await api.post<ContactRequestItem>(`/admin/contacts/${id}/stage`, { stageId })
   return data
 }
 

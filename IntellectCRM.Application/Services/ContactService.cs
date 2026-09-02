@@ -263,4 +263,52 @@ public static class ContactService
     /// </summary>
     public static bool CanTransitionTo(string? next) =>
         next is ContactStatuses.Callback or ContactStatuses.Done or ContactStatuses.Failed;
+
+    /* ======================================================================================
+     *  KANBAN USTUNLARI (ContactStage) — foydalanuvchi qo'shadigan bosqichlar
+     * ====================================================================================== */
+
+    /// <summary>Ustun rangi kalitlari — klientdagi <c>config/stageColors.ts</c> bilan AYNAN bir xil.</summary>
+    public static readonly IReadOnlyList<string> StageColorKeys = new List<string>
+    {
+        "slate", "blue", "emerald", "amber", "violet", "rose", "cyan", "orange",
+    };
+
+    /// <summary>Rang kaliti ma'lummi. Noma'lum rang RAD ETILMAYDI — chaqiruvchi uni
+    /// "slate" ga tushiradi (klient ham shunday himoyalangan).</summary>
+    public static bool IsValidColor(string? color) =>
+        !string.IsNullOrWhiteSpace(color) && StageColorKeys.Contains(color.Trim());
+
+    /// <summary>Rangni xavfsiz qiymatga keltiradi.</summary>
+    public static string SafeColor(string? color) =>
+        IsValidColor(color) ? color!.Trim() : "slate";
+
+    /// <summary>TIZIM ustuni ta'rifi (seed uchun).</summary>
+    /// <param name="Key">Ustun Id'si VA bazaviy holat — ikkisi ATAYIN bir xil, shuning uchun
+    /// <c>StageId</c> bo'sh talab o'z holatining ustunida qo'shimcha izlashsiz ko'rinadi.</param>
+    public readonly record struct SystemStage(string Key, string Title, string Color);
+
+    /// <summary>
+    /// Har bazaviy holat uchun BITTA tizim ustuni — taxtaning boshlang'ich ko'rinishi
+    /// (bugungi to'rt bosqich bilan AYNAN bir xil, ya'ni seed'dan keyin hech narsa o'zgarmaydi).
+    /// </summary>
+    public static readonly IReadOnlyList<SystemStage> SystemStages = new List<SystemStage>
+    {
+        new(ContactStatuses.New, "Bog'lanish kerak", "amber"),
+        new(ContactStatuses.Callback, "Qayta qo'ng'iroq", "blue"),
+        new(ContactStatuses.Done, "Hal bo'ldi", "emerald"),
+        new(ContactStatuses.Failed, "Bog'lanib bo'lmadi", "rose"),
+    };
+
+    /// <summary>Ustun shu bazaviy holatga BOG'LANA oladimi (to'rt holatdan biri bo'lishi shart).</summary>
+    public static bool CanAnchorTo(string? baseStatus) => IsValidStatus(baseStatus);
+
+    /// <summary>
+    /// Ustun shu talabga MOS keladimi — ustunning bazaviy holati talab holati bilan bir xilmi.
+    ///
+    /// <para>⚠️ Taxtaning asosiy qoidasi: ustun HOLATNI almashtirmaydi, unga bog'lanadi. Mos
+    /// kelmasa karta o'z holatiga ZID ustunda ko'rinib, hisobot bilan ziddiyat yuzaga kelardi.</para>
+    /// </summary>
+    public static bool StageMatches(string? stageBaseStatus, string? requestStatus) =>
+        !string.IsNullOrEmpty(stageBaseStatus) && stageBaseStatus == requestStatus;
 }

@@ -253,4 +253,73 @@ public class ContactServiceTests
         // talab hech kimga ko'rinmay yo'qolardi.
         Assert.True(ContactService.IsOpen(new ContactRequest().Status));
     }
+
+    // ==================== Kanban ustunlari (ContactStage) ====================
+
+    [Fact]
+    public void Har_bazaviy_holat_uchun_AYNAN_bitta_tizim_ustuni_bor()
+    {
+        // Tizim ustuni — "StageId bo'sh" talabning uyi. Bir holat uchun ikkitasi bo'lsa qaysi
+        // biriga tushishi noaniq bo'lardi; biri yetishmasa esa karta taxtadan YO'QOLARDI.
+        var keys = ContactService.SystemStages.Select(x => x.Key).OrderBy(k => k).ToList();
+        var statuses = ContactService.Statuses.Select(s => s.Key).OrderBy(k => k).ToList();
+        Assert.Equal(statuses, keys);
+        Assert.Equal(keys.Count, keys.Distinct().Count());
+    }
+
+    [Fact]
+    public void Tizim_ustunining_Id_si_holat_kaliti_bilan_bir_xil()
+    {
+        // Bu ATAYIN: `StageId` bo'sh talab o'z holatining ustuniga qo'shimcha izlashsiz tushadi,
+        // ya'ni eski qatorlarni to'ldirish (backfill) kerak emas.
+        foreach (var def in ContactService.SystemStages)
+            Assert.True(ContactService.IsValidStatus(def.Key));
+    }
+
+    [Fact]
+    public void Tizim_ustunlarining_rangi_katalogdan()
+    {
+        foreach (var def in ContactService.SystemStages)
+            Assert.True(ContactService.IsValidColor(def.Color));
+    }
+
+    [Theory]
+    [InlineData("slate", "slate")]
+    [InlineData("emerald", "emerald")]
+    [InlineData("qandaydir-rang", "slate")]
+    [InlineData("", "slate")]
+    [InlineData(null, "slate")]
+    public void Notanish_rang_slate_ga_tushadi(string? given, string expected)
+        // Rang tufayli ustun YARATILMAY qolmasin — u ko'rinish, mantiq emas.
+        => Assert.Equal(expected, ContactService.SafeColor(given));
+
+    [Theory]
+    [InlineData(ContactStatuses.New, true)]
+    [InlineData(ContactStatuses.Callback, true)]
+    [InlineData(ContactStatuses.Done, true)]
+    [InlineData(ContactStatuses.Failed, true)]
+    [InlineData("boshqa", false)]
+    [InlineData(null, false)]
+    public void Ustun_faqat_MAVJUD_bazaviy_holatga_boglanadi(string? baseStatus, bool expected)
+        => Assert.Equal(expected, ContactService.CanAnchorTo(baseStatus));
+
+    [Fact]
+    public void Ustun_faqat_OZ_bazaviy_holatidagi_talabni_qabul_qiladi()
+    {
+        // Taxtaning asosiy qoidasi: ustun HOLATNI almashtirmaydi, unga bog'lanadi. Mos kelmasa
+        // karta o'z holatiga ZID ustunda ko'rinib, hisobot bilan ziddiyat yuzaga kelardi.
+        Assert.True(ContactService.StageMatches(ContactStatuses.Callback, ContactStatuses.Callback));
+        Assert.False(ContactService.StageMatches(ContactStatuses.Done, ContactStatuses.Callback));
+        Assert.False(ContactService.StageMatches("", ContactStatuses.Callback));
+        Assert.False(ContactService.StageMatches(null, null));
+    }
+
+    [Fact]
+    public void Yangi_ustun_HAM_ochiq_HAM_yakuniy_holatga_boglana_oladi()
+    {
+        // Foydalanuvchi "Bog'lanildi" kabi ORALIQ ustun ham, "Shartnoma imzolandi" kabi YAKUNIY
+        // ustun ham qo'sha olishi kerak — cheklov faqat "mavjud holat bo'lsin".
+        Assert.True(ContactService.CanAnchorTo(ContactStatuses.Callback));
+        Assert.True(ContactService.CanAnchorTo(ContactStatuses.Done));
+    }
 }

@@ -179,6 +179,7 @@ public interface IAppDbContext
     DbSet<CtiCommandLog> CtiCommandLogs { get; }
 
     // Bog'lanish kerak (follow-up navbati)
+    DbSet<ContactStage> ContactStages { get; }
     DbSet<ContactRequest> ContactRequests { get; }
     DbSet<ContactAttempt> ContactAttempts { get; }
     // "Bog'lanish kerak" hisobotining AI tahlili (davr bo'yicha)

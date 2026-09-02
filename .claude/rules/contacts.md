@@ -129,8 +129,11 @@ Sahifa `/admin/students/boglanish` → "Navbat" tabi. Lidlar taxtasi bilan BIR X
 
 | Rejim | Ustunlar | Qachon |
 |---|---|---|
-| **Muddat** (standart) | Muddati o'tgan · Bugun · Sanasiz · Ertaga · Shu hafta · Keyinroq | "Bugun kimga qo'ng'iroq qilaman" — §3.6 dagi asosiy savol |
-| **Bosqich** | Bog'lanish kerak · Qayta qo'ng'iroq · Hal bo'ldi · Bog'lanib bo'lmadi | "Talab qayerda turibdi va qanday yakunlandi" |
+| **Muddat** (standart) | Muddati o'tgan · Bugun · Sanasiz · Ertaga · Shu hafta · Keyinroq — **HISOBLANADI** (sanadan), tahrirlanmaydi | "Bugun kimga qo'ng'iroq qilaman" — §3.6 dagi asosiy savol |
+| **Bosqich** | `ContactStage` jadvalidan — foydalanuvchi **qo'shadi/tahrirlaydi/o'chiradi/tartiblaydi** (§3.66) | "Talab qayerda turibdi va qanday yakunlandi" |
+
+⚠️ Ustunlarni boshqarish FAQAT "Bosqich" rejimida. Muddat ustunlari — ma'lumot emas, sanadan
+HISOBLANADIGAN natija; ularni tahrirlash mumkin bo'lgan narsa emas.
 
 ⚠️ **RANG HAR IKKI REJIMDA ham SHOSHILINCHLIKNI bildiradi**, ustunni emas — shuning uchun
 "Bosqich" rejimida "Qayta qo'ng'iroq" ustunidagi KECHIKKAN karta ham qizil bo'lib ko'zga
@@ -179,11 +182,87 @@ yubormaydi.
 - ⚠️ Muddat va Holat chiplari **OLIB TASHLANDI**: ular bir-birini tozalardi va nima
   tanlangani ko'rinmasdi. Muddat endi USTUN, holat esa qamrov tugmasi.
 
+### `lib/contactDue.ts` — MUDDAT ustunlari
+
+`DUE_COLUMNS` — muddat rejimidagi olti ustun. `STATUS_COLUMNS` esa faqat **ZAXIRA**: server
+ustunlarni bermasa (eski backend yoki so'rov xatosi) taxta baribir ishlashi kerak. Odatda
+bosqich ustunlari serverdan keladi va `stageColumns()` bilan quriladi.
+
 ### Ro'yxat ko'rinishi
 
 "Ro'yxat" tugmasi AYNAN o'sha kartalarni tarmoq (grid) qilib chizadi, **shoshilinchlik
 bo'yicha saralab**: muddati o'tgan → bugun → sanasiz → ertaga → shu hafta → keyinroq.
 Tor ekranda ham, "hammasini bir ro'yxatda ko'raman" deganda ham shu qulay.
+
+## 3.66. USTUNLARNI BOSHQARISH — `ContactStage` (migratsiya `AddContactStages`)
+
+Foydalanuvchi taxtaga o'z ustunini qo'shadi ("Bog'lanildi", "SMS yuborildi", "Ota-onasi bilan
+gaplashildi"), nomini/rangini tahrirlaydi, tartibini o'zgartiradi va o'chiradi — lidlar
+taxtasidagi `LeadStage` bilan bir xil ish yo'li.
+
+### ⚠️ ENG MUHIM QOIDA — ustun HOLATNI ALMASHTIRMAYDI
+
+Lidda bosqich hech narsaga ta'sir qilmaydi, bu yerda esa `ContactRequest.Status` **butun
+mantiqni** boshqaradi: navbat (ochiq/yopiq), muddat guruhlari (`BucketOf`), o'tish qoidalari
+(`CanTransitionTo`), "bitta ochiq talab" qoidasi va **BARCHA hisobotlar** (`ContactReport`,
+jurnal, AI tahlil — §7). Erkin ustunlar bularning hammasini buzardi.
+
+Shuning uchun ustun holatga **BOG'LANADI**: har `ContactStage` da `BaseStatus` bor va u
+to'rtta bazaviy holatdan biri (`new`/`callback`/`done`/`failed`).
+
+⚠️ **Natijada hisobotlar O'ZGARMAYDI**: nechta ustun qo'shilsa ham `/stats`, jurnal va AI
+avvalgidek `Status` bo'yicha sanaydi. Yangi ko'rsatkich qo'shsangiz — `StageId` ga
+**QARAMANG** (bu «Aktiv muzlatish» §1 dagi bilan bir xil printsip: ko'rinish qatlami
+mantiqqa aralashmaydi).
+
+### TIZIM ustunlari
+
+Har bazaviy holat uchun **AYNAN bitta** tizim ustuni bor va uning **Id'si holat kalitining
+o'zi** (`"new"`, `"callback"`, `"done"`, `"failed"`).
+
+- Seed — `Program.cs` da, **idempotent** (yo'q bo'lgani qo'shiladi), lidlardagi bilan bir xil naqsh.
+- ⚠️ `StageId` **BO'SH** bo'lishi ODDIY holat: talab o'z holatining tizim ustunida turibdi.
+  Shuning uchun eski qatorlarni to'ldirish (backfill) **KERAK EMAS** va ustun o'chirilsa ham
+  karta taxtadan **yo'qolmaydi** (klientda `stageKeyOf`, serverda `Stages` sanog'i).
+- Tizim ustuni **o'chirilmaydi** va `BaseStatus` i **o'zgartirilmaydi** (nomi va rangi — bemalol):
+  u o'z holatidagi kartalar uchun doimiy "uy".
+
+### SUDRASH — ikki xil, farqi PRINSIPIAL
+
+| Holat | Nima bo'ladi |
+|---|---|
+| Maqsad ustunning `BaseStatus` i **BIR XIL** | Oddiy siljish — `POST {id}/stage`, DARHOL saqlanadi, oyna so'ralmaydi |
+| `BaseStatus` **BOSHQA** | "Bog'lanildi" oynasi keyingi qadam va ustun OLDINDAN tanlangan holda ochiladi |
+
+⚠️ Ikkinchisi shart, chunki har HOLAT o'zgarishi hodisa (`ContactAttempt`) bo'lishi kerak —
+"kim, qachon, nima dedi" yozilmasa hisobot yolg'on chiqardi (§2).
+
+⚠️ Ustun ko'chirish ham tarixga yoziladi, lekin **`note` turi bilan** — hisobotlardagi
+"urinish"/"bog'lanildi" sonlari FAQAT `contact` turini sanaydi, ya'ni ustun ko'chirish
+raqamlarni **buzmaydi**.
+
+⚠️ Ustun QABUL QILISHI sudralayotgan KARTAGA bog'liq (`ContactBoard.acceptsActive`): `new` ga
+bog'langan ustun boshqa bosqichdagi kartani qabul qilmaydi (serverda `new` ga qaytish
+taqiqlangan), lekin **o'sha bosqichdagi** kartani qabul qiladi — u holat o'zgarishi emas.
+Qabul qilmaydigan ustun sudrash paytida xiralashadi.
+
+### Holat o'zgarsa — ustun TOZALANADI
+
+`StageId` `""` ga qaytadi (talab yangi holatining tizim ustuniga tushadi): `attempt` da
+(sudralgan ustun mos kelsa — o'sha ustun), `reopen` da, va ustunning `BaseStatus` i
+tahrirlanganda (ichidagi talablar unga ZID bo'lib qolmasin).
+
+### Endpointlar (hammasi `ContactsController` da — ruxsat `contacts` avtomatik meros)
+
+`GET stages` · `POST stages` · `PUT stages/{id}` · `DELETE stages/{id}` ·
+`PATCH stages/reorder` · `POST {id}/stage`.
+
+⚠️ **O'chirish**: tizim ustuni — 400; ichida talab bor ustun — 400 (soni bilan). Lidlardagi
+"jimgina yetim qoldirish va keyingi restartda tuzatish" bu yerda **ATAYIN qilinmadi**.
+
+Qoidalarning sof qismi — `ContactService` (`SystemStages`, `CanAnchorTo`, `StageMatches`,
+`SafeColor`), testlari `ContactServiceTests` da; klient tomoni `lib/contactDue.ts`
+(`stageColumns`, `stageKeyOf`) va `contactDue.test.ts`.
 
 ## 3.7. GURUH JURNALIDAGI "ALOQA" TABI (o'qituvchi ham, admin ham)
 

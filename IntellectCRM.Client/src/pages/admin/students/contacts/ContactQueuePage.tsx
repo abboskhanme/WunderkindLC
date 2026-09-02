@@ -8,14 +8,23 @@ import {
   deleteContactRequest, addContactNote,
   type ContactMeta, type ContactRequestItem, type ContactDue,
 } from '@/api/services/contacts'
+import { moveContactStage } from '@/api/services/contacts'
+import {
+  getContactStages, createContactStage, updateContactStage, deleteContactStage,
+  reorderContactStages, type ContactStage, type ContactStagePayload,
+} from '@/api/services/contactStages'
 import { getActionReasons } from '@/api/services/actionReasons'
 import type { ActionReason } from '@/types'
 import { ContactAttemptModal } from './ContactAttemptModal'
 import { ContactBoard, type DropIntent } from './ContactBoard'
 import { ContactCardContent, type ContactCardActions } from './ContactCard'
+import { ContactStageFormModal } from './ContactStageFormModal'
 import { MonthDayStrip } from '@/components/ui/MonthDayStrip'
 import { currentMonth, todayIso } from '@/lib/month'
-import { bucketOf, isTodo, DUE_COLUMNS, STATUS_COLUMNS } from '@/lib/contactDue'
+import {
+  bucketOf, isTodo, stageKeyOf, stageColumns, DUE_COLUMNS, STATUS_COLUMNS,
+  type BoardColumn,
+} from '@/lib/contactDue'
 import { ContactStatsPanel } from './ContactStatsPanel'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
@@ -95,6 +104,8 @@ export function ContactQueuePage() {
   const [meta, setMeta] = useState<ContactMeta>({ statuses: [], results: [], counts: [], overdue: 0 })
   const [items, setItems] = useState<ContactRequestItem[]>([])
   const [reasons, setReasons] = useState<ActionReason[]>([])
+  /** Taxta ustunlari (foydalanuvchi boshqaradi) — "Bosqich" rejimida ishlatiladi. */
+  const [stages, setStages] = useState<ContactStage[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
@@ -140,7 +151,11 @@ export function ContactQueuePage() {
   /* ---------- Modallar ---------- */
   const [attemptFor, setAttemptFor] = useState<ContactRequestItem | null>(null)
   /** Karta sudrab tashlanganda oldindan tanlanadigan keyingi qadam. */
-  const [preset, setPreset] = useState<{ nextStatus?: string; dueDate?: string }>({})
+  const [preset, setPreset] = useState<{ nextStatus?: string; dueDate?: string; stageId?: string }>({})
+  /* Ustun (kanban) oynasi */
+  const [stageFormOpen, setStageFormOpen] = useState(false)
+  const [editingStage, setEditingStage] = useState<ContactStage | null>(null)
+  const [stageBusy, setStageBusy] = useState(false)
   const [detail, setDetail] = useState<ContactRequestItem | null>(null)
   const [noteFor, setNoteFor] = useState<ContactRequestItem | null>(null)
   const [noteText, setNoteText] = useState('')
@@ -148,13 +163,16 @@ export function ContactQueuePage() {
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const [m, list] = await Promise.all([
+      const [m, list, st] = await Promise.all([
         getContactMeta(month),
         // Butun navbat BIR so'rovda — qolgan filtrlar klientda (yuqoridagi izoh).
         getContactRequests({ status: scope === 'all' ? 'all' : undefined, limit: MAX_ROWS }),
+        // Ustunlar server bermasa (eski backend) taxta ZAXIRA ro'yxat bilan ishlayveradi.
+        getContactStages().catch(() => [] as ContactStage[]),
       ])
       setMeta(m)
       setItems(list)
+      setStages(st)
       setError('')
     } catch (e) {
       setError(apiErrorMessage(e, "Navbatni yuklab bo'lmadi"))
@@ -225,10 +243,13 @@ export function ContactQueuePage() {
 
   /** Fokus tanlanganda MUDDAT ustunlari ham toraytiriladi (bo'sh ustunlar chalg'itmasin). */
   const columns = useMemo(() => {
-    const all = groupBy === 'status' ? STATUS_COLUMNS : DUE_COLUMNS
-    if (groupBy !== 'due' || !focus) return all
-    return all.filter((c) => (focus === 'todo' ? isTodo(c.key as never) : c.key === focus))
-  }, [groupBy, focus])
+    if (groupBy === 'status') {
+      // Ustunlar SERVERDAN; javob bo'sh bo'lsa (eski backend/xato) zaxira ro'yxat.
+      return stages.length > 0 ? stageColumns(stages) : STATUS_COLUMNS
+    }
+    if (!focus) return DUE_COLUMNS
+    return DUE_COLUMNS.filter((c) => (focus === 'todo' ? isTodo(c.key as never) : c.key === focus))
+  }, [groupBy, focus, stages])
 
   /**
    * Taxtada HAQIQATAN chiziladiganlar.
@@ -239,7 +260,8 @@ export function ContactQueuePage() {
    */
   const boardItems = useMemo(() => {
     const keys = new Set(columns.map((c) => c.key))
-    return visible.filter((r) => keys.has(groupBy === 'status' ? r.status : bucketOf(r.status, r.dueDate, today)))
+    return visible.filter((r) =>
+      keys.has(groupBy === 'status' ? stageKeyOf(r, keys) : bucketOf(r.status, r.dueDate, today)))
   }, [visible, columns, groupBy, today])
 
   /** Ekranda ko'rinadiganlar — bo'sh holat va sanoq AYNAN shundan hisoblanadi. */
@@ -269,12 +291,86 @@ export function ContactQueuePage() {
   }
 
   /**
-   * Karta boshqa ustunga SUDRAB tashlandi — "Bog'lanildi" oynasi keyingi qadam oldindan
-   * tanlangan holda ochiladi. Bosqich JIMGINA o'zgarmaydi (`ContactBoard` izohiga qarang).
+   * Karta boshqa ustunga SUDRAB tashlandi.
+   *
+   * <p>Ikki xil holat bor va farqi PRINSIPIAL:</p>
+   * <ul>
+   *   <li><b>Bazaviy bosqich BIR XIL</b> — bu bog'lanish emas, taxta ichidagi siljish.
+   *       Darhol saqlanadi (server uni tarixga izoh sifatida yozadi), oyna so'ralmaydi.</li>
+   *   <li><b>Bosqich O'ZGARADI</b> — "Bog'lanildi" oynasi keyingi qadam va ustun oldindan
+   *       tanlangan holda ochiladi: har o'tish natija va javob bilan yozilishi SHART.</li>
+   * </ul>
    */
-  const handleDrop = (intent: DropIntent) => {
-    setPreset({ nextStatus: intent.nextStatus, dueDate: intent.dueDate })
-    setAttemptFor(intent.request)
+  const handleDrop = async (intent: DropIntent) => {
+    if (!intent.sameStatus) {
+      setPreset({ nextStatus: intent.nextStatus, dueDate: intent.dueDate, stageId: intent.stageId })
+      setAttemptFor(intent.request)
+      return
+    }
+    if (!intent.stageId) return
+    const id = intent.request.id
+    const before = intent.request.stageId ?? ''
+    // Optimistik: karta darhol yangi ustunda ko'rinadi, xato bo'lsa joyiga qaytadi.
+    setItems((prev) => prev.map((x) => (x.id === id ? { ...x, stageId: intent.stageId } : x)))
+    try {
+      await moveContactStage(id, intent.stageId)
+    } catch (e) {
+      setItems((prev) => prev.map((x) => (x.id === id ? { ...x, stageId: before } : x)))
+      setError(apiErrorMessage(e, "Ustunni o'zgartirib bo'lmadi"))
+    }
+  }
+
+  /* ---------- Ustun (kanban) CRUD ---------- */
+
+  const submitStage = async (values: ContactStagePayload) => {
+    if (stageBusy) return
+    setStageBusy(true)
+    try {
+      if (editingStage) await updateContactStage(editingStage.id, values)
+      else await createContactStage(values)
+      setStageFormOpen(false)
+      setEditingStage(null)
+      setStages(await getContactStages())
+      setError('')
+    } catch (e) {
+      setError(apiErrorMessage(e, "Ustunni saqlab bo'lmadi"))
+    } finally {
+      setStageBusy(false)
+    }
+  }
+
+  const removeStage = async (col: BoardColumn) => {
+    const stage = col.stage
+    if (!stage) return
+    // Server ham tekshiradi, lekin sababni DARHOL aytamiz — bosib ko'rib xato olishdan yaxshi.
+    if (stage.isSystem) {
+      alert("Tizim ustunini o'chirib bo'lmaydi — u shu bosqichdagi kartalar uchun doimiy joy.")
+      return
+    }
+    if (stage.count > 0) {
+      alert(`Bu ustunda ${stage.count} ta talab bor. Avval ularni boshqa ustunga ko'chiring.`)
+      return
+    }
+    if (!confirm(`"${stage.title}" ustunini o'chirasizmi?`)) return
+    try {
+      await deleteContactStage(stage.id)
+      setStages(await getContactStages())
+    } catch (e) {
+      setError(apiErrorMessage(e, "Ustunni o'chirib bo'lmadi"))
+    }
+  }
+
+  const moveStageColumn = (col: BoardColumn, dir: -1 | 1) => {
+    setStages((prev) => {
+      const idx = prev.findIndex((s) => s.id === col.key)
+      const j = idx + dir
+      if (idx < 0 || j < 0 || j >= prev.length) return prev
+      const next = [...prev]
+      ;[next[idx], next[j]] = [next[j], next[idx]]
+      reorderContactStages(next.map((s) => s.id)).catch((e) =>
+        setError(apiErrorMessage(e, "Tartibni saqlab bo'lmadi")))
+      return next
+    })
   }
 
   const openDetail = async (r: ContactRequestItem) => {
@@ -546,7 +642,22 @@ export function ContactQueuePage() {
               today={today}
               actions={actions}
               onCardClick={(r) => void openDetail(r)}
-              onDrop={handleDrop}
+              onDrop={(i) => void handleDrop(i)}
+              // Ustunlarni boshqarish FAQAT "Bosqich" rejimida: muddat ustunlari sana bo'yicha
+              // HISOBLANADI, ular ma'lumot emas — tahrirlash mumkin bo'lgan narsa emas.
+              onAddColumn={groupBy === 'status' && canWrite ? () => {
+                setEditingStage(null)
+                setStageFormOpen(true)
+              } : undefined}
+              columnAdmin={groupBy === 'status' && canWrite ? {
+                onEdit: (col) => {
+                  if (!col.stage) return
+                  setEditingStage(col.stage)
+                  setStageFormOpen(true)
+                },
+                onDelete: (col) => void removeStage(col),
+                onMove: moveStageColumn,
+              } : undefined}
             />
           ) : (
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
@@ -580,8 +691,21 @@ export function ContactQueuePage() {
         meta={meta}
         presetNextStatus={preset.nextStatus}
         presetDueDate={preset.dueDate}
+        presetStageId={preset.stageId}
         onClose={() => setAttemptFor(null)}
         onSaved={(u) => void afterChange(u)}
+      />
+
+      <ContactStageFormModal
+        open={stageFormOpen}
+        initial={editingStage}
+        meta={meta}
+        busy={stageBusy}
+        onClose={() => {
+          setStageFormOpen(false)
+          setEditingStage(null)
+        }}
+        onSubmit={(v) => void submitStage(v)}
       />
 
       {/* TARIX — "kim qaysi bosqichga oldi, natijasi qanday bo'ldi" */}

@@ -180,6 +180,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options)
     public DbSet<CareerBotUser> CareerBotUsers => Set<CareerBotUser>();
 
     /* ---------- Bog'lanish kerak (follow-up navbati) ---------- */
+    public DbSet<ContactStage> ContactStages => Set<ContactStage>();
     public DbSet<ContactRequest> ContactRequests => Set<ContactRequest>();
     public DbSet<ContactAttempt> ContactAttempts => Set<ContactAttempt>();
     public DbSet<ContactAiAnalysis> ContactAiAnalyses => Set<ContactAiAnalysis>();
@@ -371,6 +372,9 @@ public class AppDbContext(DbContextOptions<AppDbContext> options)
         b.Entity<ContactRequest>().Property(c => c.StudentId).HasMaxLength(200);
         b.Entity<ContactRequest>().HasIndex(c => new { c.Status, c.DueDate });
         b.Entity<ContactRequest>().HasIndex(c => c.StudentId);
+        b.Entity<ContactRequest>().Property(c => c.StageId).HasMaxLength(200);
+        b.Entity<ContactStage>().Property(x => x.BaseStatus).HasMaxLength(200);
+        b.Entity<ContactStage>().Property(x => x.Color).HasMaxLength(50);
         b.Entity<ContactAttempt>().Property(a => a.RequestId).HasMaxLength(200);
         b.Entity<ContactAttempt>().Property(a => a.Date).HasMaxLength(200);
         b.Entity<ContactAttempt>().HasIndex(a => a.RequestId);

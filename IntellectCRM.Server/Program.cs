@@ -713,7 +713,37 @@ using (var scope = app.Services.CreateScope())
     // matnlarni (qo'lda "Yangi matn" + "Xabar yaratish" avto qoidalari) ko'rsatadi. Bo'sh boshlanadi.
     // (Eski ReminderRule/SmsTemplate.IsAuto ko'chirish seed'i ham olib tashlangan.)
 
-    // YETIM LIDLARNI TUZATISH: bosqichi mavjud bo'lmagan (eski bo'sh "" yoki o'chirilgan ustunga
+    // "Bog'lanish kerak" TAXTASINING TIZIM USTUNLARI — har bazaviy holat uchun bittadan.
+// IDEMPOTENT: yo'q bo'lgani qo'shiladi (jadval bo'sh bo'lishi shart emas), shuning uchun
+// keyinchalik yangi holat qo'shilsa ham ustuni o'z-o'zidan paydo bo'ladi.
+// ⚠️ MUHIM: ustun HOLATNI almashtirmaydi — StageId bo'sh talab o'z holatining TIZIM ustunida
+// ko'rinadi (tizim ustunining Id'si = holat kaliti), ya'ni eski qatorlarni to'ldirish shart emas.
+{
+    var existing = db.ContactStages.Select(x => x.Id).ToHashSet();
+    var added = 0;
+    for (var i = 0; i < ContactService.SystemStages.Count; i++)
+    {
+        var def = ContactService.SystemStages[i];
+        if (existing.Contains(def.Key)) continue;
+        db.ContactStages.Add(new ContactStage
+        {
+            Id = def.Key,
+            Title = def.Title,
+            Color = def.Color,
+            BaseStatus = def.Key,
+            Order = i,
+            IsSystem = true,
+        });
+        added++;
+    }
+    if (added > 0)
+    {
+        db.SaveChanges();
+        app.Logger.LogInformation("[seed] Bog'lanish taxtasining {Count} ta tizim ustuni yaratildi", added);
+    }
+}
+
+// YETIM LIDLARNI TUZATISH: bosqichi mavjud bo'lmagan (eski bo'sh "" yoki o'chirilgan ustunga
     // tegishli) lidlar kanbanda ko'rinmaydi — ularni birinchi (Order) bosqichga ko'chiramiz.
     // Har restartda arzon ishlaydi (faqat yetim bo'lsa yozadi) → prod'dagi mavjud yetimlarni tuzatadi.
     {

@@ -34,6 +34,7 @@ export function ContactAttemptModal({
   meta,
   presetNextStatus,
   presetDueDate,
+  presetStageId,
   onClose,
   onSaved,
 }: {
@@ -49,6 +50,8 @@ export function ContactAttemptModal({
    */
   presetNextStatus?: string
   presetDueDate?: string
+  /** Sudrab tashlangan USTUN — bosqich bilan birga saqlanadi (mos kelmasa server e'tiborsiz). */
+  presetStageId?: string
   onClose: () => void
   onSaved: (updated: ContactRequestItem) => void
 }) {
@@ -91,6 +94,7 @@ export function ContactAttemptModal({
         response: response.trim() || undefined,
         nextStatus,
         dueDate: nextStatus === 'callback' ? dueDate : undefined,
+        stageId: presetStageId,
       })
       onSaved(updated)
       onClose()

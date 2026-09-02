@@ -3589,6 +3589,20 @@ public class ContactRequest
     /// <summary>Holat: new | callback | done | failed (<c>ContactService.Statuses</c>).</summary>
     public string Status { get; set; } = ContactStatuses.New;
 
+    /// <summary>
+    /// Kanban USTUNI (<see cref="ContactStage"/>.Id) — foydalanuvchi qo'shgan bosqich.
+    ///
+    /// <para>⚠️ Bu <see cref="Status"/> ni ALMASHTIRMAYDI, ustiga qo'shiladi: hisobotlar, navbat
+    /// mantiqi va muddat guruhlari baribir <see cref="Status"/> bo'yicha ishlaydi. Ustunning
+    /// <see cref="ContactStage.BaseStatus"/> i talabning <see cref="Status"/> i bilan MOS
+    /// bo'lishi shart (server tekshiradi).</para>
+    ///
+    /// <para>BO'SH bo'lishi ODDIY holat: talab o'z holatining TIZIM ustunida turibdi
+    /// (tizim ustunining Id'si holat kalitining o'zi). Shuning uchun eski qatorlarni
+    /// to'ldirish (backfill) KERAK EMAS va ustun o'chirilsa ham karta yo'qolmaydi.</para>
+    /// </summary>
+    public string StageId { get; set; } = string.Empty;
+
     /// <summary>QAYTA QO'NG'IROQ sanasi ("yyyy-MM-dd"). Faqat <c>Status=="callback"</c> da to'ladi;
     /// bugundan oldin bo'lsa — "muddati o'tgan" (navbatda qizil).</summary>
     public string DueDate { get; set; } = string.Empty;
@@ -3648,6 +3662,47 @@ public class ContactAttempt
     /// <summary>Kun ("yyyy-MM-dd") — KUNLIK hisobot AYNAN shu ustun bo'yicha guruhlanadi
     /// (ISO vaqtdan `Substring` qilib guruhlash SQLda indeksdan foydalana olmasdi).</summary>
     public string Date { get; set; } = string.Empty;
+}
+
+/// <summary>
+/// "BOG'LANISH KERAK" KANBAN USTUNI — foydalanuvchi boshqaradigan bosqich.
+///
+/// <para>Lidlardagi <see cref="LeadStage"/> bilan bir xil g'oya, lekin BITTA muhim farq bor:
+/// lidning bosqichi hech narsaga ta'sir qilmaydi, bu modulda esa <c>ContactRequest.Status</c>
+/// butun mantiqni boshqaradi — navbat (ochiq/yopiq), muddat guruhlari, o'tish qoidalari va
+/// BARCHA hisobotlar (<c>ContactReport</c>, jurnal, AI tahlil) aynan shundan hisoblanadi.</para>
+///
+/// <para>⚠️ Shuning uchun ustun holatni ALMASHTIRMAYDI, unga BOG'LANADI: har ustunning
+/// <see cref="BaseStatus"/> i bor va u to'rtta bazaviy holatdan biri. Foydalanuvchi xohlagancha
+/// ustun qo'shadi ("SMS yuborildi", "Ota-onasi bilan gaplashildi"), lekin har biri baribir
+/// <c>new/callback/done/failed</c> dan biriga tegishli bo'ladi — natijada hisobotlar
+/// o'zgarmaydi va "AI boshqa son ko'rsatyapti" holati kelib chiqmaydi.</para>
+/// </summary>
+public class ContactStage
+{
+    /// <summary>Tizim ustunlarida Id = HOLAT KALITI ("new"/"callback"/"done"/"failed") — shu sabab
+    /// <c>StageId</c> bo'sh talab o'z holatining ustunida ko'rinadi, qo'shimcha izlashsiz.</summary>
+    public string Id { get; set; } = Guid.NewGuid().ToString();
+    public string Title { get; set; } = string.Empty;
+    /// <summary>slate | blue | emerald | amber | violet | rose | cyan | orange</summary>
+    public string Color { get; set; } = "slate";
+    /// <summary>Ustunlar tartibi.</summary>
+    public int Order { get; set; }
+
+    /// <summary>
+    /// Bazaviy HOLAT: new | callback | done | failed. Hisobot va navbat mantiqi shu bo'yicha.
+    /// </summary>
+    public string BaseStatus { get; set; } = ContactStatuses.Callback;
+
+    /// <summary>
+    /// TIZIM ustuni — o'chirib bo'lmaydi va <see cref="BaseStatus"/> i o'zgartirilmaydi
+    /// (nomi va rangi esa tahrirlanadi).
+    ///
+    /// <para>Har bazaviy holat uchun AYNAN bittasi bor: <c>StageId</c> bo'sh yoki o'chirilgan
+    /// ustunga ishora qiladigan talab shu ustunga qaytadi — ya'ni karta HECH QACHON
+    /// taxtadan yo'qolmaydi.</para>
+    /// </summary>
+    public bool IsSystem { get; set; }
 }
 
 /// <summary>"Bog'lanish kerak" talabining holat kalitlari (entity default'i uchun — yorliqlar
