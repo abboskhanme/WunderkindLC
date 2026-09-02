@@ -162,12 +162,27 @@ public class CertificateTests : IDisposable
     }
 
     [Fact]
-    public void HtmlEncode_ApostrofniEKRANLAMAYDI_HOZIRGI_XULQ()
+    public void HtmlEncode_ApostrofniHAM_EKRANLAYDI()
     {
-        // O'zbek ismlarida apostrof ko'p ("G'ulomov"). Andoza atributlari IKKI tirnoqli bo'lgani
-        // uchun bu hozircha xavfsiz — lekin andozaga bitta tirnoqli atribut qo'shilsa (style='...')
-        // bu teshikka aylanadi. Shu sabab xulq test bilan qulflandi.
-        Assert.Equal("G'ulomov", CertificateService.HtmlEncode("G'ulomov"));
+        // Ilgari apostrof EKRANLANMAS edi va bu ochiq teshik hisoblanardi: andoza atributlari
+        // ikki tirnoqli bo'lgani uchungina xavfsiz edi, bitta tirnoqli atribut (style='...')
+        // qo'shilsa darhol XSS'ga aylanardi. Endi encoder QAT'IY (`HtmlEncoder.Default`) —
+        // apostrof ham ekranlanadi, ya'ni token qaysi kontekstga tushishidan qat'i nazar xavfsiz.
+        Assert.Equal("G&#x27;ulomov", CertificateService.HtmlEncode("G'ulomov"));
+    }
+
+    [Fact]
+    public void HtmlEncode_NonASCII_ni_ham_ekranlaydi_LEKIN_MATN_YOQOLMAYDI()
+    {
+        // Qat'iy encoder o'zbek/kirill harflarini ham raqamli havolaga aylantiradi. Bu ATAYIN
+        // (kontekstga chidamli bo'lsin), lekin MA'NO yo'qolmasligi shart — brauzer uni asl
+        // ko'rinishida chizadi. Shuning uchun aniq kodlarni emas, TESKARI o'girishni qulflaymiz.
+        foreach (var asl in new[] { "Gʻulomov", "Тошматов", "Ўқитувчи" })
+        {
+            var kodlangan = CertificateService.HtmlEncode(asl);
+            Assert.DoesNotContain(asl, kodlangan);                       // haqiqatan ekranlangan
+            Assert.Equal(asl, System.Net.WebUtility.HtmlDecode(kodlangan)); // ma'no yo'qolmagan
+        }
     }
 
     // =============================================================================================
@@ -318,7 +333,9 @@ public class CertificateTests : IDisposable
         var cert = await Service(db).GenerateCertificateAsync(student.Id, course.Id);
         var html = await File.ReadAllTextAsync(Path.Combine(CertsDir, cert.FileName));
 
-        Assert.Contains("G'ulom Toshmatov", html);
+        // Ism HTML'ga EKRANLANGAN holda tushadi (apostrof → &#x27;) — brauzer uni "G'ulom
+        // Toshmatov" qilib chizadi. Qarang: HtmlEncode_ApostrofniHAM_EKRANLAYDI.
+        Assert.Contains("G&#x27;ulom Toshmatov", html);
         Assert.Contains("Ingliz tili A1", html);
         Assert.DoesNotContain("{{", html);   // andozada to'ldirilmagan token qolmasin
     }
@@ -386,7 +403,7 @@ public class CertificateTests : IDisposable
         var cert = await Service(db).GenerateCertificateAsync(student.Id, course.Id);
         var html = await File.ReadAllTextAsync(Path.Combine(CertsDir, cert.FileName));
 
-        Assert.Equal("<x>O'qituvchi</x>", html);
+        Assert.Equal("<x>O&#x27;qituvchi</x>", html);
     }
 
     [Fact]

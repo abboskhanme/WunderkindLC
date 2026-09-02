@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   PhoneCall, Search, AlertTriangle, History, CalendarDays, X, Columns3,
-  LayoutGrid, RefreshCw, Sun, Flame, CalendarClock, Filter,
+  RefreshCw, Sun, Flame, CalendarClock, Filter, Plus,
 } from 'lucide-react'
 import {
   getContactMeta, getContactRequests, getContactRequest, reopenContactRequest,
@@ -17,7 +17,7 @@ import { getActionReasons } from '@/api/services/actionReasons'
 import type { ActionReason } from '@/types'
 import { ContactAttemptModal } from './ContactAttemptModal'
 import { ContactBoard, type DropIntent } from './ContactBoard'
-import { ContactCardContent, type ContactCardActions } from './ContactCard'
+import type { ContactCardActions } from './ContactCard'
 import { ContactStageFormModal } from './ContactStageFormModal'
 import { MonthDayStrip } from '@/components/ui/MonthDayStrip'
 import { currentMonth, todayIso } from '@/lib/month'
@@ -39,7 +39,6 @@ type Tab = 'navbat' | 'hisobot'
 const CONTACT_TABS = ['navbat', 'hisobot'] as const
 
 type GroupBy = 'due' | 'status'
-type View = 'board' | 'list'
 
 /** Serverning bir so'rovdagi chegarasi (`ContactsController`: `Math.Clamp(limit, 1, 500)`). */
 const MAX_ROWS = 500
@@ -66,11 +65,6 @@ function dayLabel(iso: string): string {
   const d = new Date(`${iso}T00:00:00`)
   if (Number.isNaN(d.getTime())) return iso
   return `${iso.slice(8, 10)}.${iso.slice(5, 7)}, ${weekdays[d.getDay()]}`
-}
-
-/** Ro'yxat ko'rinishidagi tartib — SHOSHILINCHLIK bo'yicha (taxtadagi ustunlar tartibi). */
-const URGENCY: Record<string, number> = {
-  overdue: 0, today: 1, nodate: 2, tomorrow: 3, week: 4, later: 5, '': 6,
 }
 
 function readPref<T extends string>(key: string, allowed: readonly T[], fallback: T): T {
@@ -114,7 +108,6 @@ export function ContactQueuePage() {
 
   /* ---------- Ko'rinish (brauzerda eslab qolinadi) ---------- */
   const [groupBy, setGroupBy] = useState<GroupBy>(() => readPref('contacts:groupBy', ['due', 'status'] as const, 'due'))
-  const [view, setView] = useState<View>(() => readPref('contacts:view', ['board', 'list'] as const, 'board'))
 
   /* ---------- Filtrlar ---------- */
   /**
@@ -142,10 +135,6 @@ export function ContactQueuePage() {
     window.localStorage.setItem('contacts:groupBy', g)
     // Bosqich rejimida yakuniy ustunlar ham ko'rinsin — aks holda ikkitasi doim bo'sh turardi.
     if (g === 'status') setScope('all')
-  }
-  const pickView = (v: View) => {
-    setView(v)
-    window.localStorage.setItem('contacts:view', v)
   }
 
   /* ---------- Modallar ---------- */
@@ -228,19 +217,6 @@ export function ContactQueuePage() {
     })
   }, [items, search, reason, author, dueDate, focus, today])
 
-  /** Ro'yxat ko'rinishi — shoshilinchlik bo'yicha saralangan. */
-  const sorted = useMemo(
-    () =>
-      [...visible].sort((a, b) => {
-        const ra = URGENCY[bucketOf(a.status, a.dueDate, today)] ?? 9
-        const rb = URGENCY[bucketOf(b.status, b.dueDate, today)] ?? 9
-        if (ra !== rb) return ra - rb
-        if (a.dueDate !== b.dueDate) return (a.dueDate || '9999').localeCompare(b.dueDate || '9999')
-        return b.createdAt.localeCompare(a.createdAt)
-      }),
-    [visible, today],
-  )
-
   /** Fokus tanlanganda MUDDAT ustunlari ham toraytiriladi (bo'sh ustunlar chalg'itmasin). */
   const columns = useMemo(() => {
     if (groupBy === 'status') {
@@ -263,9 +239,6 @@ export function ContactQueuePage() {
     return visible.filter((r) =>
       keys.has(groupBy === 'status' ? stageKeyOf(r, keys) : bucketOf(r.status, r.dueDate, today)))
   }, [visible, columns, groupBy, today])
-
-  /** Ekranda ko'rinadiganlar — bo'sh holat va sanoq AYNAN shundan hisoblanadi. */
-  const shown = view === 'board' ? boardItems : sorted
 
   const filterCount =
     (search.trim() ? 1 : 0) + (reason !== 'all' ? 1 : 0) + (author !== 'all' ? 1 : 0) +
@@ -321,6 +294,20 @@ export function ContactQueuePage() {
   }
 
   /* ---------- Ustun (kanban) CRUD ---------- */
+
+  /**
+   * "Ustun qo'shish" — sahifa SARLAVHASIDAN (Yangilash yonidan).
+   *
+   * ⚠️ Ustunlar faqat "Bosqich" rejimida ma'noga ega (muddat ustunlari sanadan HISOBLANADI).
+   * Sarlavhadagi tugma esa har doim ko'rinadi va kerak bo'lsa O'ZI shu rejimga o'tkazadi —
+   * aks holda tugma standart ("Muddat") ko'rinishda umuman topilmasdi: taxta oxiridagi
+   * "+" ustuni gorizontal aylantirishning narigi chetida qolib ketardi.
+   */
+  const openStageForm = () => {
+    if (groupBy !== 'status') pickGroupBy('status')
+    setEditingStage(null)
+    setStageFormOpen(true)
+  }
 
   const submitStage = async (values: ContactStagePayload) => {
     if (stageBusy) return
@@ -413,9 +400,18 @@ export function ContactQueuePage() {
         title="Bog'lanish kerak"
         sub="Kim bilan bog'lanish kerak, nima deyildi va keyingi qadam — kartani sudrang yoki ustiga bosing"
         actions={
-          <Button variant="secondary" onClick={() => void load()} disabled={loading}>
-            <RefreshCw className={cn('h-4 w-4', loading && 'animate-spin')} /> Yangilash
-          </Button>
+          tab === 'navbat' && (
+            <>
+              {canWrite && (
+                <Button variant="secondary" onClick={openStageForm}>
+                  <Plus className="h-4 w-4" /> Ustun qo'shish
+                </Button>
+              )}
+              <Button variant="secondary" onClick={() => void load()} disabled={loading}>
+                <RefreshCw className={cn('h-4 w-4', loading && 'animate-spin')} /> Yangilash
+              </Button>
+            </>
+          )
         }
       />
 
@@ -539,14 +535,6 @@ export function ContactQueuePage() {
                 ]}
               />
 
-              <Seg
-                value={view}
-                onChange={pickView}
-                options={[
-                  { key: 'board', label: 'Taxta', icon: Columns3 },
-                  { key: 'list', label: "Ro'yxat", icon: LayoutGrid },
-                ]}
-              />
 
               <button
                 type="button"
@@ -613,7 +601,7 @@ export function ContactQueuePage() {
           {/* ====== NAVBAT ====== */}
           {loading ? (
             <Loader label="Yuklanmoqda..." />
-          ) : shown.length === 0 ? (
+          ) : boardItems.length === 0 ? (
             <Card>
               <div className="py-12 text-center">
                 <span className="mx-auto mb-3 grid h-12 w-12 place-items-center rounded-full bg-emerald-50 text-emerald-500">
@@ -634,7 +622,7 @@ export function ContactQueuePage() {
                 )}
               </div>
             </Card>
-          ) : view === 'board' ? (
+          ) : (
             <ContactBoard
               columns={columns}
               items={boardItems}
@@ -645,10 +633,7 @@ export function ContactQueuePage() {
               onDrop={(i) => void handleDrop(i)}
               // Ustunlarni boshqarish FAQAT "Bosqich" rejimida: muddat ustunlari sana bo'yicha
               // HISOBLANADI, ular ma'lumot emas — tahrirlash mumkin bo'lgan narsa emas.
-              onAddColumn={groupBy === 'status' && canWrite ? () => {
-                setEditingStage(null)
-                setStageFormOpen(true)
-              } : undefined}
+              onAddColumn={groupBy === 'status' && canWrite ? openStageForm : undefined}
               columnAdmin={groupBy === 'status' && canWrite ? {
                 onEdit: (col) => {
                   if (!col.stage) return
@@ -659,14 +644,6 @@ export function ContactQueuePage() {
                 onMove: moveStageColumn,
               } : undefined}
             />
-          ) : (
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-              {sorted.map((r) => (
-                <div key={r.id} onClick={() => void openDetail(r)}>
-                  <ContactCardContent r={r} today={today} actions={actions} />
-                </div>
-              ))}
-            </div>
           )}
 
           {/* Chegaraga yetildi — jimgina qirqib qo'ymaymiz */}
@@ -676,10 +653,10 @@ export function ContactQueuePage() {
             </p>
           )}
 
-          {!loading && shown.length > 0 && (
+          {!loading && boardItems.length > 0 && (
             <p className="text-center text-xs text-slate-400">
-              {shown.length} ta talab
-              {shown.length !== items.length && ` (jami ${items.length} tadan)`}
+              {boardItems.length} ta talab
+              {boardItems.length !== items.length && ` (jami ${items.length} tadan)`}
             </p>
           )}
         </div>

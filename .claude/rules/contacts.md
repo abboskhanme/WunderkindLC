@@ -188,11 +188,12 @@ yubormaydi.
 ustunlarni bermasa (eski backend yoki so'rov xatosi) taxta baribir ishlashi kerak. Odatda
 bosqich ustunlari serverdan keladi va `stageColumns()` bilan quriladi.
 
-### Ro'yxat ko'rinishi
+### ⚠️ FAQAT KANBAN — ro'yxat ko'rinishi YO'Q
 
-"Ro'yxat" tugmasi AYNAN o'sha kartalarni tarmoq (grid) qilib chizadi, **shoshilinchlik
-bo'yicha saralab**: muddati o'tgan → bugun → sanasiz → ertaga → shu hafta → keyinroq.
-Tor ekranda ham, "hammasini bir ro'yxatda ko'raman" deganda ham shu qulay.
+Ilgari "Taxta / Ro'yxat" almashtirgichi bor edi; u **OLIB TASHLANDI** — navbat sahifasi
+bitta ko'rinishga ega. Sabab: ikkita ko'rinish bir xil ma'lumotni ikki xil chizib, ikkalasini
+ham qo'llab-quvvatlashni talab qilardi, holbuki taxta tor ekranda ham ishlaydi (ustunlar
+gorizontal aylanadi, sahifa emas). Yangi ko'rinish rejimi QO'SHMANG.
 
 ## 3.66. USTUNLARNI BOSHQARISH — `ContactStage` (migratsiya `AddContactStages`)
 
@@ -214,6 +215,16 @@ to'rtta bazaviy holatdan biri (`new`/`callback`/`done`/`failed`).
 avvalgidek `Status` bo'yicha sanaydi. Yangi ko'rsatkich qo'shsangiz — `StageId` ga
 **QARAMANG** (bu «Aktiv muzlatish» §1 dagi bilan bir xil printsip: ko'rinish qatlami
 mantiqqa aralashmaydi).
+
+### «Ustun qo'shish» QAYERDA
+
+Ikki joyda, ikkalasi ham BITTA `openStageForm` ni chaqiradi:
+
+1. **Sahifa sarlavhasida, «Yangilash» yonida** — asosiy yo'l. ⚠️ U **har doim** ko'rinadi
+   (standart "Muddat" rejimida ham) va kerak bo'lsa O'ZI "Bosqich" rejimiga o'tkazadi.
+   Sabab: taxta oxiridagi "+" ustuni gorizontal aylantirishning narigi chetida qolib
+   ketardi va foydalanuvchi tugmani **umuman topa olmasdi** (aynan shu xato bo'lgan).
+2. Taxta oxiridagi punktir **"+" ustuni** — lidlar taxtasidagi odat saqlanadi.
 
 ### TIZIM ustunlari
 
@@ -251,6 +262,24 @@ Qabul qilmaydigan ustun sudrash paytida xiralashadi.
 `StageId` `""` ga qaytadi (talab yangi holatining tizim ustuniga tushadi): `attempt` da
 (sudralgan ustun mos kelsa — o'sha ustun), `reopen` da, va ustunning `BaseStatus` i
 tahrirlanganda (ichidagi talablar unga ZID bo'lib qolmasin).
+
+### ⚠️ SABAB ≠ USTUN (ikkisi MUTLAQO bog'liq emas)
+
+"Sabablar" katalogiga (`ActionReason`, kategoriya `contact`) yangi sabab qo'shilsa **ustun
+PAYDO BO'LMAYDI** va ustunlar soni o'zgarmaydi. Ular boshqa-boshqa narsalar:
+
+| | Sabab (`ActionReason`) | Ustun (`ContactStage`) |
+|---|---|---|
+| Savol | **NEGA** bog'lanamiz | Talab **QAYERDA** turibdi |
+| Qayerdan boshqariladi | O'quv bo'limi → Sabablar | Taxtadagi «Ustun qo'shish» |
+| Taxtada nima bo'ladi | "Sabab" FILTRIDA variant + kartada kulrang matn | ALOHIDA ustun |
+
+`ContactStage` faqat IKKI joyda yaratiladi: `Program.cs` dagi tizim seed'i va
+`POST contacts/stages` (qo'lda qo'shish). Sabab esa navbat mantiqiga faqat `ResolveReasonAsync`
+orqali tegadi — u sababning MATNINI talabga snapshot qilib yozadi, xolos.
+
+Sabab bo'yicha guruhlash (uchinchi rejim) hozircha YO'Q — kerak bo'lsa alohida ish sifatida
+ko'rib chiqilsin.
 
 ### Endpointlar (hammasi `ContactsController` da — ruxsat `contacts` avtomatik meros)
 
