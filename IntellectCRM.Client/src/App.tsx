@@ -60,6 +60,7 @@ const LevelTestsPage = lazy(() => import('@/pages/admin/level-tests/LevelTestsPa
 const FormsEntry = lazy(() => import('@/pages/admin/forms/FormsEntry').then((m) => ({ default: m.FormsEntry })))
 const FormEditorPage = lazy(() => import('@/pages/admin/forms/FormEditorPage').then((m) => ({ default: m.FormEditorPage })))
 const FormStatsPage = lazy(() => import('@/pages/admin/forms/FormStatsPage').then((m) => ({ default: m.FormStatsPage })))
+const LeadEntryFormPage = lazy(() => import('@/pages/admin/forms/LeadEntryFormPage').then((m) => ({ default: m.LeadEntryFormPage })))
 const PublicLeadFormPage = lazy(() => import('@/pages/public/PublicLeadFormPage').then((m) => ({ default: m.PublicLeadFormPage })))
 const LevelTestEditorPage = lazy(() => import('@/pages/admin/level-tests/LevelTestEditorPage').then((m) => ({ default: m.LevelTestEditorPage })))
 const LevelTestStatsPage = lazy(() => import('@/pages/admin/level-tests/LevelTestStatsPage').then((m) => ({ default: m.LevelTestStatsPage })))
@@ -284,6 +285,8 @@ export default function App() {
                 (aks holda u menyudan kelib "ruxsat yo'q" da qolib ketardi). */}
             <Route path="forms" element={<FormsEntry />} />
             <Route path="forms/statistika" element={<RequirePerm perm="leads.forms"><FormStatsPage /></RequirePerm>} />
+            {/* ⚠️ `forms/:id` dan OLDIN: aks holda "lid-kiritish" forma id'si deb tushunilardi */}
+            <Route path="forms/lid-kiritish" element={<RequirePerm perm="leads.forms"><LeadEntryFormPage /></RequirePerm>} />
             <Route path="forms/:id" element={<RequirePerm perm="leads.forms"><FormEditorPage /></RequirePerm>} />
             <Route path="level-tests" element={<RequirePerm perm="schedule.levelTests"><LevelTestsPage /></RequirePerm>} />
             <Route path="level-tests/stats" element={<RequirePerm perm="schedule.levelTests"><LevelTestStatsPage /></RequirePerm>} />

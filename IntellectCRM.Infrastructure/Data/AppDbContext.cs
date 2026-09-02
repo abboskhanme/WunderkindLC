@@ -104,6 +104,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options)
     // Lid formalari (kanal → ommaviy forma → lid)
     public DbSet<LeadForm> LeadForms => Set<LeadForm>();
     public DbSet<LeadFormField> LeadFormFields => Set<LeadFormField>();
+    /// <summary>«Lid kiritish formasi» bandlari — standart maydon holati + qo'shimcha savollar.</summary>
+    public DbSet<LeadEntryField> LeadEntryFields => Set<LeadEntryField>();
     public DbSet<LeadFormSubmission> LeadFormSubmissions => Set<LeadFormSubmission>();
 
     // Support o'qituvchi bo'sh vaqt slotlari + bron
@@ -759,6 +761,11 @@ public class AppDbContext(DbContextOptions<AppDbContext> options)
         b.Entity<LeadForm>().HasIndex(f => f.Slug).IsUnique();
         b.Entity<LeadFormField>().Property(f => f.FormId).HasMaxLength(200);
         b.Entity<LeadFormField>().HasIndex(f => new { f.FormId, f.Order });
+        // «Lid kiritish formasi» — bir markazda bitta forma, shuning uchun FormId YO'Q. Standart
+        // maydon `Key` bilan topiladi (unikal), qo'shimcha savolda `Key` bo'sh — takrorlanishi
+        // mumkin, shu sabab unikal indeks EMAS, oddiy tartib indeksi.
+        b.Entity<LeadEntryField>().Property(f => f.Key).HasMaxLength(200);
+        b.Entity<LeadEntryField>().HasIndex(f => new { f.Key, f.Order });
         b.Entity<LeadFormSubmission>().Property(s => s.FormId).HasMaxLength(200);
         b.Entity<LeadFormSubmission>().HasIndex(s => new { s.FormId, s.CreatedAt });
         b.Entity<LeadFormSubmission>().Property(s => s.LeadId).HasMaxLength(200);

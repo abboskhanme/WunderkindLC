@@ -769,7 +769,8 @@ public record LeadCreateRequest(
     string? Phone, string? FatherFullName, string? FatherPhone,
     string? MotherFullName, string? MotherPhone, string? Note, string Stage,
     string? Source = null, string? InterestSubject = null,
-    string? DistrictId = null, string? SchoolId = null);
+    string? DistrictId = null, string? SchoolId = null,
+    Dictionary<string, List<string>>? Answers = null);
 /// <summary>Lid (bo'lajak o'quvchi) tahrirlash so'rovi.
 /// TELEFON VALIDATSIYA (PhoneUtil.Normalize orqali standartlashtirilib saqlanadi):
 /// - <paramref name="Phone"/> — lidning o'z raqami (ixtiyoriy, max 32 belgi); format: +998-XX-XXX-XX-XX
@@ -782,7 +783,8 @@ public record LeadUpdateRequest(
     string? Phone, string? FatherFullName, string? FatherPhone,
     string? MotherFullName, string? MotherPhone, string? Note,
     string? Source = null, string? InterestSubject = null,
-    string? DistrictId = null, string? SchoolId = null);
+    string? DistrictId = null, string? SchoolId = null,
+    Dictionary<string, List<string>>? Answers = null);
 public record LeadStageRequest(string Stage);
 
 /// <summary>O'quvchi profilidagi izoh (tarix). CanDelete/CanEdit — joriy foydalanuvchi o'chira/tahrirlay
@@ -2275,6 +2277,35 @@ public record LeadFormPayload(
     string? Intro, string? SuccessText, string? ButtonText,
     bool AskAge, bool AskCourse, bool AskParentPhone, bool IsActive,
     List<LeadFormFieldInput>? Fields, LeadFormSocialsDto? Socials);
+
+// ============================ LID KIRITISH FORMASI (qo'lda kiritish) ============================
+// ⚠️ Bu OMMAVIY forma EMAS: menejer /admin/leads da "Yangi lid" oynasida ko'radigan maydonlar
+// sozlamasi. Boshqariladi "O'quv bo'limi → Formalar → Lid kiritish formasi" sahifasidan.
+
+/// <summary>Standart maydon holati. <paramref name="State"/> — hidden | optional | required;
+/// <paramref name="Locked"/> — sozlab bo'lmaydi (F.I.SH doim majburiy).</summary>
+public record LeadEntryStandardDto(string Key, string Label, string State, bool Locked);
+
+/// <summary>Qo'shimcha savol (sozlamada va lid oynasida chizish uchun).</summary>
+public record LeadEntryFieldDto(
+    string Id, string Label, string Kind, List<string> Options, string Placeholder,
+    bool Required, int Order);
+
+/// <summary>Butun sozlama — standart maydonlar holati + qo'shimcha savollar.</summary>
+public record LeadEntryFormDto(
+    List<LeadEntryStandardDto> Standard, List<LeadEntryFieldDto> Fields);
+
+/// <summary>Standart maydon payload'i.</summary>
+public record LeadEntryStandardInput(string Key, string State);
+
+/// <summary>Qo'shimcha savol payload'i (<paramref name="Id"/> bo'sh — yangi).</summary>
+public record LeadEntryFieldInput(
+    string? Id, string Label, string Kind, List<string>? Options, string? Placeholder, bool Required);
+
+/// <summary>Sozlamani saqlash payload'i — bandlar TO'LIQ almashtiriladi (lid formasidagi bilan
+/// bir xil, sodda va ishonchli usul).</summary>
+public record LeadEntryFormPayload(
+    List<LeadEntryStandardInput>? Standard, List<LeadEntryFieldInput>? Fields);
 
 /// <summary>
 /// Formaga tushgan ariza (admin ro'yxati) + lidning HOZIRGI holati.

@@ -46,6 +46,15 @@ public class LeadsController(
         )).ToList();
     }
 
+    /// <summary>
+    /// Yangi lid (qo'lda kiritish).
+    ///
+    /// <para>⚠️ Maydonlar «Lid kiritish formasi» sozlamasi bo'yicha TEKSHIRILADI
+    /// (<see cref="LeadEntryFormService.ValidateAsync"/>): markaz majburiy deb belgilagan maydon
+    /// bo'sh bo'lsa lid SAQLANMAYDI va 400 qaytadi. Tekshiruv AYNAN shu endpointda — ommaviy
+    /// forma, daraja testi, landing, Instagram va Meta leadgen o'z qoidalari bilan ishlaydi
+    /// (aks holda sozlama tashqi kanallardan kelayotgan lidlarni jimgina rad etardi).</para>
+    /// </summary>
     [HttpPost]
     public async Task<ActionResult<Lead>> Create(LeadCreateRequest p)
     {
@@ -67,6 +76,14 @@ public class LeadsController(
             SchoolId = p.SchoolId ?? "",
             CreatedAt = Now(),
         };
+        // ⚠️ Tekshiruv `db.Leads.Add` dan OLDIN: rad etilgan lid kontekstda osilib qolmasin.
+        // Yaratishda javoblar lug'ati BO'SH bo'lsa ham uzatiladi (null EMAS) — ya'ni majburiy
+        // qo'shimcha savol chindan tekshiriladi (tahrirlashdagi "tegilmadi" holati bu yerda yo'q).
+        var (entryError, answersJson) = await LeadEntryFormService.ValidateAsync(
+            db, lead, p.Answers ?? new Dictionary<string, List<string>>());
+        if (entryError is not null) return BadRequest(new { message = entryError });
+        lead.AnswersJson = answersJson ?? "";
+
         db.Leads.Add(lead);
         // Voronka uchun: lid QAYSI bosqichda tug'ilgani ham tarixga tushadi (FromStage yo'q).
         AddEvent(lead.Id, "created", $"Lid yaratildi ({lead.FullName})", toStage: lead.Stage);
@@ -124,6 +141,15 @@ public class LeadsController(
         if (p.InterestSubject is not null) lead.InterestSubject = p.InterestSubject;
         if (p.DistrictId is not null) lead.DistrictId = p.DistrictId;
         if (p.SchoolId is not null) lead.SchoolId = p.SchoolId;
+
+        // «Lid kiritish formasi» qoidalari tahrirlashda ham amal qiladi — aks holda majburiy
+        // maydon bir marta to'ldirilib, keyin tahrirlashda bo'shatib yuborilardi.
+        // ⚠️ `p.Answers` null bo'lsa qo'shimcha javoblar TEGILMAYDI (eskirgan yoki boshqa
+        // chaqiruvchi lidning javoblarini jimgina o'chirib yubormasin).
+        var (entryError, answersJson) = await LeadEntryFormService.ValidateAsync(db, lead, p.Answers);
+        if (entryError is not null) return BadRequest(new { message = entryError });
+        if (answersJson is not null) lead.AnswersJson = answersJson;
+
         await db.SaveChangesAsync();
         // Telegramdagi lid kartasi JOYIDA yangilanadi (yangi xabar yuborilmaydi) — kartasi yo'q
         // eski lidga esa hech narsa yuborilmaydi (`SyncCardAsync` izohiga qarang).
@@ -346,6 +372,23 @@ public class LeadsController(
     /// <summary>Lid formasi "Qiziqqan fani" ro'yxati uchun KURSLAR (Subject) nomlari. Kurslar bo'limi
     /// "schedule" ruxsatida — CRM xodimida u bo'lmasligi mumkin, shuning uchun "leads" ruxsati ostida
     /// shu yerda ochiladi. Yangi kurs yaratilsa — shu ro'yxatda avtomatik chiqadi.</summary>
+    /// <summary>
+    /// Lidning «Lid kiritish formasi» qo'shimcha savollariga bergan javoblari.
+    ///
+    /// <para>Alohida endpoint ATAYIN: javoblar lidlar RO'YXATIGA qo'shilsa har bir kanban
+    /// yuklanishida keraksiz matn tashilardi, holbuki ular faqat bitta lid ochilganda kerak.
+    /// (`GET /api/admin/lead-forms/submissions` bu yerda YARAMAYDI — u `leads.forms` ruxsati
+    /// bilan yopiq va OMMAVIY forma arizalarini qaytaradi.)</para>
+    /// </summary>
+    [HttpGet("{id}/answers")]
+    public async Task<ActionResult<IEnumerable<SurveyAnswerDto>>> Answers(string id)
+    {
+        var json = await db.Leads.AsNoTracking().Where(l => l.Id == id)
+            .Select(l => l.AnswersJson).FirstOrDefaultAsync();
+        if (json is null) return NotFound();
+        return LeadFormService.ParseAnswers(json);
+    }
+
     [HttpGet("courses")]
     public async Task<ActionResult<IEnumerable<string>>> Courses() =>
         await db.Subjects.AsNoTracking()

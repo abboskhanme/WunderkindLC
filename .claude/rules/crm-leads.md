@@ -13,6 +13,13 @@ paths:
 - **CRM:** `Lead`(Source/InterestSubject/CreatedAt/ConvertedStudentId), `LeadEvent`(tarix),
   `TrialLesson`(sinov). Endpointlar `LeadsController`da: events, trials, `/{id}/convert`, `/stats`.
 
+- **QO'LDA lid kiritishda qaysi maydon MAJBURIY ekanini markaz o'zi belgilaydi** —
+  «Lid kiritish formasi» (`/admin/forms/lid-kiritish`, entity `LeadEntryField`,
+  `Lead.AnswersJson`). Tekshiruv AYNAN `POST/PUT /api/admin/leads` da; ommaviy forma, daraja
+  testi, landing, Instagram va Meta leadgen unga BO'YSUNMAYDI. `Lead` ga yangi maydon
+  qo'shsangiz — uni `LeadEntryRules.Standard` katalogiga ham qo'shish kerakmi degan savolga
+  javob bering. Batafsil: `.claude/rules/lead-entry-form.md`.
+
 - **`Lead.PhoneKey`** (migratsiya `AddLeadPhoneKeyAndRepeat`) — telefonning oxirgi 9 raqami,
   INDEKSLANGAN. "Shu telefon bilan lid bormi?" (`LeadIntake.FindByPhoneAsync` — ommaviy forma va
   daraja testi har murojaatda so'raydi) endi bitta SQL so'rovi; ilgari butun `Leads` jadvali

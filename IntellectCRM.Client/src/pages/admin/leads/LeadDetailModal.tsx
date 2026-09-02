@@ -32,6 +32,7 @@ import {
   setTrialResult,
   convertLead,
 } from '@/api/services/leads'
+import { getLeadAnswers, type LeadAnswer } from '@/api/services/leadEntryForm'
 import { getClasses } from '@/api/services/classes'
 import { getTeachers } from '@/api/services/teachers'
 
@@ -175,6 +176,9 @@ export function LeadDetailModal({
   // Qo'ng'iroq qilish oynasi
   const [callOpen, setCallOpen] = useState(false)
 
+  // «Lid kiritish formasi» QO'SHIMCHA savollariga berilgan javoblar (savol matni + javob(lar)).
+  const [answers, setAnswers] = useState<LeadAnswer[]>([])
+
   const refreshTimeline = (id: string) => {
     getLeadEvents(id).then(setEvents).catch(() => setEvents([]))
     getLeadTrials(id).then(setTrials).catch(() => setTrials([]))
@@ -195,6 +199,12 @@ export function LeadDetailModal({
     setSendTestId('')
     setSendTestResult(null)
     refreshTimeline(leadId)
+    // Qo'shimcha savollar javobi: sozlama bo'sh bo'lsa ham so'rov yengil (bo'sh ro'yxat qaytadi),
+    // xato bo'lsa bo'lim shunchaki chizilmaydi — lid oynasining qolgani ishlayveradi.
+    // ⚠️ Avval TOZALANADI: aks holda boshqa lid ochilganda eskisining javoblari qisqa vaqt
+    // ko'rinib turardi (bir lidning ma'lumoti boshqasinikidek o'qilardi).
+    setAnswers([])
+    getLeadAnswers(leadId).then(setAnswers).catch(() => setAnswers([]))
     getPickableTemplates('lead').then(setSmsTemplates).catch(() => setSmsTemplates([]))
     // Lid uchun faqat lid + umumiy guruh tokenlari mos keladi
     getMessageTokens()
@@ -448,6 +458,23 @@ export function LeadDetailModal({
               </div>
             )}
           </div>
+
+          {/* QO'SHIMCHA MA'LUMOT — «Lid kiritish formasi»dagi markaz qo'shgan savollar javobi.
+              Javob yo'q bo'lsa bo'lim UMUMAN chizilmaydi: sozlamada savol qo'shmagan markaz
+              lid oynasida bo'm-bo'sh sarlavha ko'rmasin. */}
+          {answers.length > 0 && (
+            <section className="rounded-xl border border-slate-100 p-4">
+              <h4 className="mb-3 font-semibold text-slate-800">Qo&apos;shimcha ma&apos;lumot</h4>
+              <div className="space-y-3">
+                {answers.map((a, i) => (
+                  <div key={`${a.question}-${i}`}>
+                    <p className="text-xs text-slate-400">{a.question}</p>
+                    <p className="text-sm text-slate-800">{a.answers.join(', ') || '—'}</p>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
 
           {/* SMS yuborish */}
           <section className="rounded-xl border border-slate-100 p-4">

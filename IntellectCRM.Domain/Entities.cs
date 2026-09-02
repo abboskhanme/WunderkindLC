@@ -1151,6 +1151,20 @@ public class Lead
     public int RepeatCount { get; set; }
     /// <summary>Oxirgi takroriy murojaat vaqti (ISO "yyyy-MM-ddTHH:mm:ss"); bo'sh = takror yo'q.</summary>
     public string LastRepeatAt { get; set; } = string.Empty;
+
+    /// <summary>
+    /// «Lid kiritish formasi»ning QO'SHIMCHA savollariga berilgan javoblar, JSON:
+    /// <c>[{"question":"...","answers":["..."]}]</c> — <see cref="LeadFormSubmission.AnswersJson"/>
+    /// bilan AYNAN bir xil format (klientda bitta tip, serverda bitta parser).
+    ///
+    /// <para>Savol MATNI snapshot sifatida saqlanadi (id emas): sozlama keyin tahrirlansa yoki
+    /// savol o'chirilsa ham lidning javobi "noma'lum savolga javob" bo'lib qolmasin.</para>
+    ///
+    /// <para>⚠️ FAQAT QO'LDA kiritilgan lidda to'ladi (<c>POST/PUT /api/admin/leads</c>). Ommaviy
+    /// forma, daraja testi, landing, Instagram va Meta leadgen bu maydonni TO'LDIRMAYDI — ular
+    /// o'z savollariga ega (bo'sh = qo'shimcha savol berilmagan).</para>
+    /// </summary>
+    public string AnswersJson { get; set; } = string.Empty;
 }
 
 /// <summary>
@@ -2539,6 +2553,46 @@ public class LeadFormSubmission
     /// <summary>Qo'shimcha savollar javobi JSON: [{"question":"...","answers":["..."]}].</summary>
     public string AnswersJson { get; set; } = string.Empty;
     public string CreatedAt { get; set; } = string.Empty;
+}
+
+/// <summary>
+/// «LID KIRITISH FORMASI» ning bitta bandi — menejer <c>/admin/leads</c> da YANGI LID
+/// kiritganda ko'radigan maydon.
+///
+/// <para>Ikki xil band BITTA jadvalda turadi va ular <see cref="Key"/> bilan farqlanadi:</para>
+/// <list type="bullet">
+/// <item><b>STANDART maydon</b> (<c>Key</c> to'la — "phone", "birthDate" ...): maydonning O'ZI
+/// kodda mavjud (<see cref="Lead"/> ustuni), bu yerda faqat uning HOLATI saqlanadi —
+/// ko'rinadimi (<see cref="Visible"/>) va majburiymi (<see cref="Required"/>).</item>
+/// <item><b>QO'SHIMCHA savol</b> (<c>Key</c> BO'SH): markazning o'zi qo'shgan savol —
+/// yorlig'i, turi va variantlari bilan. Javobi <see cref="Lead.AnswersJson"/> ga tushadi.</item>
+/// </list>
+///
+/// <para>⚠️ <b>QATOR YO'QLIGI — ODDIY HOLAT:</b> standart maydonning qatori bo'lmasa u
+/// STANDART holatda (ko'rinadi, majburiy emas) ishlaydi. Shuning uchun eski bazani to'ldirish
+/// (backfill) KERAK EMAS va kelajakda yangi standart maydon qo'shilsa ham forma buzilmaydi —
+/// qoida <c>LeadEntryRules.Standard</c> katalogida (yagona manba).</para>
+/// </summary>
+public class LeadEntryField
+{
+    public string Id { get; set; } = Guid.NewGuid().ToString();
+    /// <summary>Standart maydon kaliti (<c>LeadEntryRules.Standard</c> dan). BO'SH = qo'shimcha savol.</summary>
+    public string Key { get; set; } = string.Empty;
+    /// <summary>Savol matni / maydon yorlig'i (standart maydonda — katalogdagi nom).</summary>
+    public string Label { get; set; } = string.Empty;
+    /// <summary>Turi: text | textarea | number | select | radio | checkbox (qo'shimcha savol uchun).</summary>
+    public string Kind { get; set; } = "text";
+    /// <summary>Variantlar (EF Core 8 primitive collection) — faqat select/radio/checkbox uchun.</summary>
+    public List<string> Options { get; set; } = new();
+    /// <summary>Maydon ichidagi yordamchi matn (placeholder).</summary>
+    public string Placeholder { get; set; } = string.Empty;
+    /// <summary>Formada ko'rsatiladimi. <c>false</c> — maydon umuman so'ralmaydi.</summary>
+    public bool Visible { get; set; } = true;
+    /// <summary>Majburiymi — bo'sh qoldirilsa lid SAQLANMAYDI (server 400 qaytaradi).</summary>
+    public bool Required { get; set; }
+    /// <summary>Tartib. ⚠️ Faqat QO'SHIMCHA savollarga ta'sir qiladi — standart maydonlar
+    /// formada tayin (katalog) tartibida chiziladi.</summary>
+    public int Order { get; set; }
 }
 
 

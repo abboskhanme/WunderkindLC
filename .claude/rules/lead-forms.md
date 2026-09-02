@@ -25,14 +25,21 @@ Ilgari menyuda «Daraja testi» turardi. Endi u **«Formalar»** bo'limining bir
 | **Daraja testlari** (mavjud) | `/admin/level-tests` | `/test/{slug}` | `schedule` |
 
 Sahifalar orasida `CardTabs` bilan o'tiladi (`config/sectionTabs.ts` → `formTabs`), marshrutlar
-o'zgarmagan — eski havolalar ishlayveradi. **To'rtta card:**
+o'zgarmagan — eski havolalar ishlayveradi. **Beshta card:**
 
 | Card | Sahifa | Ruxsat |
 |---|---|---|
 | **Lid formalari** | `/admin/forms` | `leads` |
+| **Lid kiritish formasi** | `/admin/forms/lid-kiritish` | `leads` |
 | **Lid statistikasi** | `/admin/forms/statistika` | `leads` |
 | **Daraja testlari** | `/admin/level-tests` | `schedule` |
 | **Test statistikasi** | `/admin/level-tests/stats` | `schedule` |
+
+⚠️ **«Lid kiritish formasi» BU HUJJATGA KIRMAYDI** — u OMMAVIY forma emas, balki markaz
+XODIMI `/admin/leads` da qo'lda lid kiritganda ko'radigan maydonlar sozlamasi (boshqa entity,
+boshqa jadval, boshqa tekshiruv oqimi). Batafsil: **`.claude/rules/lead-entry-form.md`**.
+Bo'limda turishining sababi bitta: ikkalasi ham "lid qanday yig'iladi" degan savolga javob
+beradi va marketolog/rahbar ularni bir joyda qidiradi.
 
 Tartib ATAYIN "tur → o'sha turning statistikasi" juftligi bo'yicha: ikkala statistika oxiriga
 yig'ilsa, qaysi biri qaysi turga tegishli ekani nomdan boshqa hech narsadan bilinmasdi. Shu

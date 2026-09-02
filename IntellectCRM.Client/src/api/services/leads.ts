@@ -18,21 +18,33 @@ export async function getLeads(): Promise<Lead[]> {
   }))
 }
 
-export async function createLead(payload: LeadPayload, stage: string): Promise<Lead> {
+/**
+ * `answers` — «Lid kiritish formasi» QO'SHIMCHA savollariga javoblar: `{ savolId: [javob...] }`.
+ *
+ * ⚠️ YARATISHDA doim uzatiladi (bo'sh bo'lsa ham) — server majburiy savolni AYNAN shu bilan
+ * tekshiradi. TAHRIRLASHDA esa uzatilmasa lidning eski javoblari TEGILMAYDI (o'chirilmaydi).
+ */
+export type LeadAnswersPayload = Record<string, string[]>
+
+export async function createLead(
+  payload: LeadPayload, stage: string, answers: LeadAnswersPayload = {},
+): Promise<Lead> {
   if (USE_MOCK) {
     await delay(300)
     return { ...payload, id: uid(), stage }
   }
-  const { data } = await api.post<Lead>('/admin/leads', { ...payload, stage })
+  const { data } = await api.post<Lead>('/admin/leads', { ...payload, stage, answers })
   return data
 }
 
-export async function updateLead(id: string, payload: LeadPayload): Promise<void> {
+export async function updateLead(
+  id: string, payload: LeadPayload, answers?: LeadAnswersPayload,
+): Promise<void> {
   if (USE_MOCK) {
     await delay(300)
     return
   }
-  await api.put(`/admin/leads/${id}`, payload)
+  await api.put(`/admin/leads/${id}`, answers ? { ...payload, answers } : payload)
 }
 
 export async function updateLeadStage(id: string, stage: string): Promise<void> {

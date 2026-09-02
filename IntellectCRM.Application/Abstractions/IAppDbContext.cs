@@ -134,6 +134,7 @@ public interface IAppDbContext
     // Lid formalari (kanal → ommaviy forma → lid)
     DbSet<LeadForm> LeadForms { get; }
     DbSet<LeadFormField> LeadFormFields { get; }
+    DbSet<LeadEntryField> LeadEntryFields { get; }
     DbSet<LeadFormSubmission> LeadFormSubmissions { get; }
 
     // Support o'qituvchi bo'sh vaqt slotlari + bron

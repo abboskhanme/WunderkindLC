@@ -11,7 +11,14 @@ import {
 } from '@dnd-kit/core'
 import { Plus, MessageSquare, Search, X } from 'lucide-react'
 import type { Lead, Stage, LeadSource, District } from '@/types'
-import { getLeads, createLead, updateLead, updateLeadStage, deleteLead } from '@/api/services/leads'
+import {
+  getLeads,
+  createLead,
+  updateLead,
+  updateLeadStage,
+  deleteLead,
+  type LeadAnswersPayload,
+} from '@/api/services/leads'
 import { getLeadSources } from '@/api/services/leadSources'
 import { getDistricts } from '@/api/services/districts'
 import {
@@ -119,17 +126,24 @@ export function LeadsPage() {
   }
 
   /* ---------- Lid CRUD ---------- */
-  const handleLeadSubmit = (values: LeadFormValues) => {
+  /**
+   * ⚠️ Promise QAYTARADI va xatoni YUQORIGA (modalga) o'tkazadi: oynani yopish endi modalning
+   * o'zida (`onClose` ni u chaqiradi), ya'ni saqlash muvaffaqiyatsiz bo'lsa oyna ochiq qoladi va
+   * xato ko'rinadi.
+   *
+   * ⚠️ Ro'yxat SERVER JAVOBIDAN KEYIN yangilanadi (optimistik emas): server rad etgan tahrir
+   * ilgari ekranda o'zgargan bo'lib qolib ketardi — sahifa yangilanmaguncha yolg'on ko'rinardi.
+   */
+  const handleLeadSubmit = async (values: LeadFormValues, answers: LeadAnswersPayload) => {
     if (editingLead) {
       const id = editingLead.id
+      await updateLead(id, values, answers)
       setLeads((prev) => prev.map((l) => (l.id === id ? { ...l, ...values } : l)))
-      updateLead(id, values)
     } else {
       const stageId = stages[0]?.id ?? 'new'
-      createLead(values, stageId).then((lead) => setLeads((prev) => [lead, ...prev]))
+      const lead = await createLead(values, stageId, answers)
+      setLeads((prev) => [lead, ...prev])
     }
-    setLeadFormOpen(false)
-    setEditingLead(null)
   }
 
   const handleLeadEdit = (lead: Lead) => {
