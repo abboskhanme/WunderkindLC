@@ -32,6 +32,7 @@ import { Modal } from '@/components/ui/Modal'
 import { Loader } from '@/components/ui/Loader'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { usePerm } from '@/lib/permissions'
+import { useAuth } from '@/context/auth-context'
 import { apiErrorMessage, cn, formatDate, formatDateTime } from '@/lib/utils'
 import { tabFromUrl } from '@/lib/tabParam'
 
@@ -93,8 +94,25 @@ export function ContactQueuePage() {
   const canWrite = can('contacts', 'edit')
   const canDelete = can('contacts', 'delete')
 
+  /**
+   * HISOBOT tabi — FAQAT superadminga.
+   *
+   * ⚠️ `can()` bu yerda YARAMAYDI: u `permissions == null` bo'lgan har kimga (ya'ni oddiy
+   * `admin` ga ham) `true` qaytaradi. Shuning uchun HARD rol tekshiruvi — loyihadagi boshqa
+   * "faqat superadmin" joylari bilan bir xil naqsh. Serverda ham shunday
+   * (`ContactsController.MaySeeReports`), ya'ni tabni yashirish yolg'iz himoya emas.
+   *
+   * NAVBAT esa avvalgidek `contacts` ruxsati bo'lgan hammaga ochiq.
+   */
+  const { user } = useAuth()
+  const canSeeReports = user?.role === 'superadmin'
+
   // `?tab=hisobot` — "Hisobotlar" bo'limidan to'g'ridan-to'g'ri bog'lanish hisobotiga.
-  const [tab, setTab] = useState<Tab>(() => tabFromUrl(CONTACT_TABS, 'navbat'))
+  // ⚠️ Ruxsati yo'q odam havolani qo'lda yozsa ham navbatda qoladi (xatcho'p/eskirgan havola).
+  const [tab, setTab] = useState<Tab>(() => {
+    const t = tabFromUrl(CONTACT_TABS, 'navbat')
+    return t === 'hisobot' && !canSeeReports ? 'navbat' : t
+  })
   const [meta, setMeta] = useState<ContactMeta>({ statuses: [], results: [], counts: [], overdue: 0 })
   const [items, setItems] = useState<ContactRequestItem[]>([])
   const [reasons, setReasons] = useState<ActionReason[]>([])
@@ -420,14 +438,16 @@ export function ContactQueuePage() {
           <PhoneCall className="mr-1 inline h-3.5 w-3.5" /> Navbat
           {openCount > 0 && <span className="ml-1.5 text-xs text-slate-400">({openCount})</span>}
         </button>
-        <button type="button" className={cn('tab', tab === 'hisobot' && 'active')} onClick={() => setTab('hisobot')}>
-          <History className="mr-1 inline h-3.5 w-3.5" /> Hisobot
-        </button>
+        {canSeeReports && (
+          <button type="button" className={cn('tab', tab === 'hisobot' && 'active')} onClick={() => setTab('hisobot')}>
+            <History className="mr-1 inline h-3.5 w-3.5" /> Hisobot
+          </button>
+        )}
       </div>
 
       {error && <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{error}</p>}
 
-      {tab === 'hisobot' ? (
+      {tab === 'hisobot' && canSeeReports ? (
         <ContactStatsPanel />
       ) : (
         <div className="space-y-4">

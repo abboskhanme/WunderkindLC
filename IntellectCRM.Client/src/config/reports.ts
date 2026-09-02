@@ -32,6 +32,18 @@ export interface ReportLink {
    * kundalik ish yo'li uzilib qolardi.
    */
   inNav?: boolean
+  /**
+   * FAQAT superadmin ko'radi (oddiy `admin` ham, ruxsat berilgan xodim ham EMAS).
+   *
+   * ⚠️ `perm` bilan buni ifodalab BO'LMAYDI: `can()` da `permissions == null` — ya'ni
+   * admin/superadmin — har doim `true` qaytadi, demak ruxsat kaliti adminni CHETLATA olmaydi.
+   * Shuning uchun alohida bayroq va HARD rol tekshiruvi
+   * (`.claude/rules/year-freeze.md` §3 dagi bilan bir xil sabab).
+   *
+   * ⚠️ Bunday hisobot yon menyuga QO'SHILMAYDI (`inNav` bilan birga ishlatilmaydi) — Sidebar
+   * rolni bilmaydi. Buni `reports.test.ts` qulflaydi.
+   */
+  superadminOnly?: boolean
 }
 
 export interface ReportGroup {
@@ -80,6 +92,9 @@ export const reportGroups: ReportGroup[] = [
         to: '/admin/students/boglanish?tab=hisobot',
         perm: 'contacts',
         description: "Qo'ng'iroqlar, natijalar, sabablar va xodimlar kesimi + kunlik jurnal",
+        // Navbatning O'ZI `contacts` ruxsatiga ega hammaga ochiq; HISOBOT esa faqat
+        // superadminga (serverda ham shunday — `ContactsController.MaySeeReports`).
+        superadminOnly: true,
       },
       {
         label: "O'quvchilar davomati",
@@ -250,11 +265,19 @@ export const reportGroups: ReportGroup[] = [
 export const allReports: ReportLink[] = reportGroups.flatMap((g) => g.items)
 
 /**
- * Katalogdagi BARCHA ruxsat kalitlari (takrorsiz) — "Hisobotlar" bo'limi menyuda
- * ko'rinishi uchun `permAny` sifatida ishlatiladi: birorta hisoboti bo'lmagan xodimga
- * bo'lim umuman ko'rinmaydi (bosib bo'sh sahifaga tushib qolmasin).
+ * "Hisobotlar" bo'limi menyuda ko'rinishi uchun `permAny` — birorta hisoboti bo'lmagan
+ * xodimga bo'lim umuman ko'rinmaydi (bosib bo'sh sahifaga tushib qolmasin).
+ *
+ * ⚠️ `superadminOnly` hisobotlarning kaliti bu yerga KIRMAYDI. Aks holda faqat `contacts`
+ * ruxsati bor operator menyuda "Hisobotlar"ni ko'rib, ichidan hech narsa topmasdi — hub uni
+ * baribir rol bo'yicha filtrlaydi. Superadmin uchun bu hech narsani o'zgartirmaydi: unda
+ * `can()` har qanday kalitga `true` qaytaradi.
+ *
+ * Kalit HAM oddiy, HAM superadmin-only hisobotda ishlatilsa — u qoladi (oddiysi saqlab qoladi).
  */
-export const reportPerms: string[] = [...new Set(allReports.map((r) => r.perm))]
+export const reportPerms: string[] = [
+  ...new Set(allReports.filter((r) => !r.superadminOnly).map((r) => r.perm)),
+]
 
 /** Yon menyudagi "Hisobotlar" guruhiga tushadigan (eski bo'limidan KO'CHIRILGAN) hisobotlar. */
 export const navReports: ReportLink[] = allReports.filter((r) => r.inNav)
@@ -263,8 +286,15 @@ export const navReports: ReportLink[] = allReports.filter((r) => r.inNav)
  * Ruxsati bor hisobotlar — bo'sh qolgan guruh umuman qaytarilmaydi
  * (Sidebar'dagi `filterNav` qoidasi bilan bir xil).
  */
-export function visibleReportGroups(canSee: (perm: string) => boolean): ReportGroup[] {
+export function visibleReportGroups(
+  canSee: (perm: string) => boolean,
+  /** Joriy foydalanuvchi superadminmi — `superadminOnly` hisobotlar shu bilan filtrlanadi. */
+  isSuperAdmin: boolean,
+): ReportGroup[] {
   return reportGroups
-    .map((g) => ({ ...g, items: g.items.filter((i) => canSee(i.perm)) }))
+    .map((g) => ({
+      ...g,
+      items: g.items.filter((i) => (!i.superadminOnly || isSuperAdmin) && canSee(i.perm)),
+    }))
     .filter((g) => g.items.length > 0)
 }

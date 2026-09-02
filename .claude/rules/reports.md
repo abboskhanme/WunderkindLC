@@ -58,6 +58,12 @@ shuning uchun bo'limning O'Z kaliti YO'Q:
 
 - **Menyuda** — guruh `permAny: reportPerms` (katalogdagi barcha kalitlar): birorta hisoboti
   bo'lmagan xodimga bo'lim umuman ko'rinmaydi.
+- ⚠️ **`superadminOnly: true`** — ruxsat kaliti YETMAYDIGAN holat. `can()` admin uchun ham
+  `true` qaytargani sababli "faqat superadmin" ni kalit bilan ifodalab bo'lmaydi; shuning uchun
+  bandda alohida bayroq bor va `visibleReportGroups(canSee, isSuperAdmin)` uni rol bo'yicha
+  filtrlaydi. Bunday bandning kaliti **`reportPerms` ga kirmaydi** (menyu bo'sh bo'lim
+  ko'rsatmasin) va u **`inNav` bilan ishlatilmaydi** (Sidebar rolni bilmaydi) — ikkalasi ham
+  `reports.test.ts` da qulflangan. Hozir shunday band bitta: "Bog'lanish hisoboti".
 - **Marshrutda `RequirePerm` YO'Q** — hub har havolani O'ZI `can(perm, 'view')` bilan
   filtrlaydi va bittasi ham ochiq bo'lmasa buni ochiq yozadi. Bitta kalit qo'ysak, aralash
   ruxsatlar bilan mos kelmasdi.

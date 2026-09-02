@@ -4,6 +4,7 @@ import { ChevronRight, Search, X } from 'lucide-react'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { Card } from '@/components/ui/Card'
 import { usePerm } from '@/lib/permissions'
+import { useAuth } from '@/context/auth-context'
 import { visibleReportGroups, type ReportGroup } from '@/config/reports'
 import { cn } from '@/lib/utils'
 
@@ -19,12 +20,15 @@ import { cn } from '@/lib/utils'
  */
 export function ReportsPage() {
   const { can } = usePerm()
+  // Rol — `can()` bilan aniqlanmaydi (admin uchun ham `true`), shuning uchun ALOHIDA.
+  const { user } = useAuth()
+  const isSuperAdmin = user?.role === 'superadmin'
   const [query, setQuery] = useState('')
 
   // Ruxsati bor hisobotlargina — bo'sh qolgan guruh umuman chizilmaydi (Sidebar qoidasi bilan bir xil).
   const groups = useMemo<ReportGroup[]>(
-    () => visibleReportGroups((perm) => can(perm, 'view')),
-    [can],
+    () => visibleReportGroups((perm) => can(perm, 'view'), isSuperAdmin),
+    [can, isSuperAdmin],
   )
 
   const q = query.trim().toLowerCase()

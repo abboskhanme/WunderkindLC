@@ -38,6 +38,24 @@ public class ContactsController(
     /// <summary>Audit tur nomi — <see cref="AuditSections"/> da "Bog'lanish kerak" bo'limiga tushadi.</summary>
     private const string AuditEntity = ContactQueueService.AuditEntity;
 
+    /// <summary>
+    /// HISOBOT tomoni (stats · journal · responses · ai-*) FAQAT superadminga ochiq.
+    ///
+    /// <para>⚠️ <c>[AdminPerm]</c> bu yerda YARAMAYDI: u to'liq huquqli rollarni cheklovsiz
+    /// o'tkazib yuboradi (<c>AdminPermAttribute</c>: "to'liq huquqli rollar — cheklovsiz"),
+    /// ya'ni oddiy <c>admin</c> ham kirib qolardi. Shuning uchun HARD rol tekshiruvi —
+    /// «Aktiv muzlatish» dagi <c>MaySetYearFreeze</c> bilan bir xil naqsh
+    /// (<c>.claude/rules/year-freeze.md</c> §3).</para>
+    ///
+    /// <para>NAVBAT tomoni esa avvalgidek <c>contacts</c> ruxsati bilan ochiq: operator/admin
+    /// ishlayveradi, faqat hisobotni ko'ra olmaydi.</para>
+    /// </summary>
+    private bool MaySeeReports => User.IsInRole(Roles.SuperAdmin);
+
+    /// <summary>Hisobot rad javobi — sabab bilan (jim 404/bo'sh ro'yxat emas).</summary>
+    private ObjectResult ReportsForbidden() =>
+        StatusCode(403, new { message = "Bog'lanish hisoboti faqat superadmin uchun" });
+
     /// <summary>Bir amalda navbatga qo'shiladigan eng ko'p o'quvchi ("hammasini tanlash"
     /// bosilsa ham so'rov cheksiz o'smasin).</summary>
     private const int MaxBulk = ContactQueueService.MaxBulk;
@@ -491,6 +509,7 @@ public class ContactsController(
     [HttpGet("stats")]
     public async Task<ActionResult<ContactStatsDto>> Stats([FromQuery] string? from, [FromQuery] string? to)
     {
+        if (!MaySeeReports) return ReportsForbidden();
         if (!TryPeriod(from, to, out var fromDate, out var toDate))
             return BadRequest(new { message = "Sana noto'g'ri (YYYY-MM-DD)" });
 
@@ -514,6 +533,7 @@ public class ContactsController(
         [FromQuery] string? from, [FromQuery] string? to, [FromQuery] string? type,
         [FromQuery] int limit = ContactReport.DefaultJournalItems)
     {
+        if (!MaySeeReports) return ReportsForbidden();
         if (!TryPeriod(from, to, out var fromDate, out var toDate))
             return BadRequest(new { message = "Sana noto'g'ri (YYYY-MM-DD)" });
 
@@ -534,8 +554,11 @@ public class ContactsController(
     /// <summary>Saqlangan tahlillar — eng yangisi birinchi. Davr berilsa faqat AYNI o'sha davrniki.</summary>
     [HttpGet("ai-analyses")]
     public async Task<ActionResult<IEnumerable<ContactAiRecordDto>>> AiAnalyses(
-        [FromQuery] string? from, [FromQuery] string? to, CancellationToken ct) =>
-        await ContactAiAnalysisService.HistoryAsync(db, from, to, ct);
+        [FromQuery] string? from, [FromQuery] string? to, CancellationToken ct)
+    {
+        if (!MaySeeReports) return ReportsForbidden();
+        return await ContactAiAnalysisService.HistoryAsync(db, from, to, ct);
+    }
 
     /// <summary>
     /// Tanlangan davr uchun yangi AI tahlil. Shu davr uchun BUGUN tahlil qilingan bo'lsa Gemini
@@ -546,8 +569,11 @@ public class ContactsController(
     /// yangisini (pulli Gemini chaqiruvini) boshlay olmaydi — voronka tahlilidagi bilan bir xil qoida.</remarks>
     [HttpPost("ai-analysis")]
     public async Task<ActionResult<ContactAiResponseDto>> AiAnalysis(
-        ContactAiRequest? req, CancellationToken ct) =>
-        await ContactAiAnalysisService.GenerateAsync(db, config, req?.From, req?.To, ct);
+        ContactAiRequest? req, CancellationToken ct)
+    {
+        if (!MaySeeReports) return ReportsForbidden();
+        return await ContactAiAnalysisService.GenerateAsync(db, config, req?.From, req?.To, ct);
+    }
 
     /// <summary>Davr chegaralari: bo'sh bo'lsa oxirgi 30 kun; teskari berilsa almashtiriladi.</summary>
     private static bool TryPeriod(string? from, string? to, out string fromDate, out string toDate)
@@ -573,6 +599,7 @@ public class ContactsController(
         [FromQuery] string? from, [FromQuery] string? to, [FromQuery] string? result,
         [FromQuery] string? actor, [FromQuery] string? q, [FromQuery] int limit = 200)
     {
+        if (!MaySeeReports) return ReportsForbidden();
         var query = db.ContactAttempts.AsNoTracking()
             // Faqat HAQIQIY bog'lanish urinishlari va faqat MATN yozilganlari — bo'sh qatorlar
             // lentani suyultirib, o'qishni qiyinlashtirardi.

@@ -49,7 +49,11 @@ describe('hisobotlar katalogi', () => {
   })
 
   it("`reportPerms` — katalogdagi barcha kalitlar, takrorsiz", () => {
-    expect([...reportPerms].sort()).toEqual([...new Set(allReports.map((r) => r.perm))].sort())
+    // ⚠️ `superadminOnly` hisobotlar KIRMAYDI: aks holda faqat `contacts` ruxsati bor operator
+    // menyuda "Hisobotlar"ni ko'rib, ichidan hech narsa topmasdi.
+    expect([...reportPerms].sort()).toEqual(
+      [...new Set(allReports.filter((r) => !r.superadminOnly).map((r) => r.perm))].sort(),
+    )
   })
 
   it("menyuga faqat `inNav` belgilangan hisobotlar tushadi", () => {
@@ -81,19 +85,42 @@ describe('hisobotlar katalogi', () => {
 describe('visibleReportGroups — ruxsat bo\'yicha filtr', () => {
   it('ruxsati yo\'q hisobot chiqmaydi, bo\'shab qolgan guruh esa umuman chizilmaydi', () => {
     const only = 'schedule.analytics'
-    const groups = visibleReportGroups((p) => p === only)
+    const groups = visibleReportGroups((p) => p === only, true)
     expect(groups).toHaveLength(1)
     expect(groups[0].items.map((i) => i.perm)).toEqual([only])
   })
 
   it('hech qanday ruxsat bo\'lmasa bo\'sh ro\'yxat (hub o\'zi buni yozadi)', () => {
-    expect(visibleReportGroups(() => false)).toEqual([])
+    expect(visibleReportGroups(() => false, true)).toEqual([])
   })
 
-  it('to\'liq ruxsatda katalog to\'liq qaytadi', () => {
-    const groups = visibleReportGroups(() => true)
+  it('to\'liq ruxsatda (superadmin) katalog to\'liq qaytadi', () => {
+    const groups = visibleReportGroups(() => true, true)
     expect(groups).toHaveLength(reportGroups.length)
     expect(groups.flatMap((g) => g.items)).toHaveLength(allReports.length)
+  })
+})
+
+describe('superadminOnly — faqat superadmin ko\'radigan hisobotlar', () => {
+  const superOnly = allReports.filter((r) => r.superadminOnly)
+
+  it('katalogda shunday hisobot BOR (bog\'lanish hisoboti)', () => {
+    // Bayroq ishlatilmay qolib ketmasin — aks holda filtr "o'lik kod" bo'lardi.
+    expect(superOnly.map((r) => r.to)).toContain('/admin/students/boglanish?tab=hisobot')
+  })
+
+  it('SUPERADMIN BO\'LMAGANDA ular ro\'yxatdan tushib qoladi — ruxsati bo\'lsa ham', () => {
+    // ⚠️ Aynan shu holat `perm` bilan ifodalab bo'lmaydi: `can()` admin uchun ham `true`.
+    const shown = visibleReportGroups(() => true, false).flatMap((g) => g.items)
+    expect(shown).toHaveLength(allReports.length - superOnly.length)
+    for (const r of superOnly) expect(shown).not.toContain(r)
+  })
+
+  it('YON MENYUGA tushmaydi — Sidebar rolni bilmaydi', () => {
+    // `navReports` faqat `inNav` bo'yicha quriladi va rolni ko'rmaydi; superadmin-only
+    // hisobot u yerga tushsa, oddiy admin menyuda ocha olmaydigan bandni ko'rardi.
+    for (const r of superOnly) expect(r.inNav).toBeFalsy()
+    expect(navReports.some((r) => r.superadminOnly)).toBe(false)
   })
 })
 

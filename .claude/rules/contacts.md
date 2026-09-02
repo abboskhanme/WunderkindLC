@@ -340,6 +340,37 @@ Yangi sabab paydo bo'lsa — yangi talab emas, mavjud talabga **izoh** (`POST {i
   har qanday xodimga ochib bo'lmaydi.
 - Amallar: `contacts:create` — talab ochish ("⋮" tugmasi), `contacts:edit` — bog'lanildi/izoh/qayta
   ochish, `contacts:delete` — talabni o'chirish.
+
+### ⚠️ HISOBOT — FAQAT SUPERADMIN (navbat esa hammaga)
+
+Sahifa ikki tabli va ular RUXSAT jihatidan AJRATILGAN:
+
+| Tab | Kim ko'radi |
+|---|---|
+| **Navbat** (taxta, ustunlar, "Bog'lanildi") | superadmin · admin · `contacts` ruxsati berilgan xodim |
+| **Hisobot** (stats · jurnal · javoblar · AI tahlil) | **FAQAT superadmin** |
+
+⚠️ **Buni ruxsat KALITI bilan ifodalab BO'LMAYDI.** `AdminPermAttribute` da to'liq huquqli
+rollar cheklovsiz o'tadi ("to'liq huquqli rollar — cheklovsiz"), klientda esa `can()`
+`permissions == null` bo'lganda har doim `true` qaytaradi — ya'ni istalgan yangi kalit oddiy
+`admin` ni ham o'tkazib yuborardi. Shuning uchun HARD rol tekshiruvi
+(`.claude/rules/year-freeze.md` §3 dagi bilan bir xil sabab):
+
+- **Server:** `ContactsController.MaySeeReports => User.IsInRole(Roles.SuperAdmin)`, beshta
+  hisobot endpointining boshida `403` (jim bo'sh ro'yxat EMAS — sabab yoziladi):
+  `GET stats` · `GET journal` · `GET responses` · `GET ai-analyses` · `POST ai-analysis`.
+- **Klient:** `user?.role === 'superadmin'` — "Hisobot" tabi umuman chizilmaydi va
+  `?tab=hisobot` bilan kelingan havola ham navbatga tushiradi (xatcho'p sahifani buzmasin).
+
+⚠️ **Yangi ruxsat kaliti QO'SHILMAGAN** — `adminPermissions` katalogi va `PermissionCatalogTests`
+tegilmaydi. Amal delegatsiya qilinmaydi: foydalanuvchi aniq "faqat superadmin" dedi. Kerak
+bo'lsa keyinchalik `superOrGranted` ("superadmin yoki ruxsat berilgan xodim") ga o'tkazish mumkin.
+
+⚠️ **Hisobotlar hub'i ham filtrlanadi** — `config/reports.ts` dagi band `superadminOnly: true`
+bilan belgilangan, `visibleReportGroups(canSee, isSuperAdmin)` uni rolsizlarga ko'rsatmaydi va
+uning kaliti `reportPerms` ga KIRMAYDI (aks holda faqat `contacts` ruxsati bor operator menyuda
+"Hisobotlar"ni ko'rib, ichidan hech narsa topmasdi). Qulflovchi testlar: `reports.test.ts` →
+`superadminOnly — faqat superadmin ko'radigan hisobotlar`.
 - Nav: "O'quvchilar" guruhining O'ZIDA `perm` YO'Q (bolalarga ko'chirilgan) — aks holda faqat
   `contacts` berilgan operator guruhni umuman ko'rmasdi.
 
