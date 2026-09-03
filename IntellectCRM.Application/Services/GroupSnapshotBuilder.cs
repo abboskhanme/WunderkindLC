@@ -69,7 +69,9 @@ public static class GroupSnapshotBuilder
         var flow = months.Select(m => new GroupFlowPointDto(
             m,
             memberships.Count(x => MonthOf(x.JoinedAt) == m),
-            memberships.Count(x => MonthOf(x.ActivatedAt) == m),
+            // Yopilgan davrlar ham: qayta aktivlashtirilgan a'zolikda eski aktivlashish
+            // hodisasi yo'qolib, grafikda keyingi oyga ko'chib ketardi.
+            memberships.Count(x => MembershipLifecycle.ActivatedInMonth(x, m)),
             memberships.Count(x => MonthOf(x.FrozenAt) == m),
             memberships.Count(x => MonthOf(x.LeftAt) == m))).ToList();
 

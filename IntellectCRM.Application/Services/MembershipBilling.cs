@@ -49,10 +49,20 @@ public static class MembershipBilling
     /// Ommaviy muzlatishda guruh (demak kurs) bitta bo'lgani uchun bu bir xil so'rovni har a'zolik
     /// uchun takrorlamaslikka imkon beradi. Qolgan uchta yo'l (guruh almashtirish, guruhni yopish,
     /// sertifikat bilan tugatish) parametrni bermaydi va avvalgidek ishlaydi.</param>
+    /// <param name="membership">Muzlatilayotgan a'zolik — berilsa uning YOPILGAN faol davrlari
+    /// (<see cref="StudentGroup.PastPeriods"/>) muzlatish sanasiga QIRQILADI.
+    /// <para>⚠️ ORQAGA sanalgan muzlatishda purge shu (o'quvchi, guruh) ning muzlatish oyidan
+    /// keyingi BARCHA hisoblarini o'chiradi — eski yopilgan davr ichidagilarni ham. Davrlar
+    /// qirqilmasa, keyingi accrual sikli o'sha oylarni QAYTA yozardi
+    /// (<see cref="MembershipLifecycle.TruncatePastPeriodsAfter"/>).</para>
+    /// <c>null</c> bo'lsa tarixga tegilmaydi (eski chaqiruvlar).</param>
     public static async Task<FreezeSettlement> SettleFreezeAsync(
         IAppDbContext db, Student student, Group group, string activatedAt, string freezeDate,
-        decimal? lessonFee = null)
+        decimal? lessonFee = null, StudentGroup? membership = null)
     {
+        if (membership is not null)
+            MembershipLifecycle.TruncatePastPeriodsAfter(membership, freezeDate);
+
         var frozenBeforeActive = activatedAt.Length >= 10
                                  && string.CompareOrdinal(activatedAt, freezeDate) > 0;
 

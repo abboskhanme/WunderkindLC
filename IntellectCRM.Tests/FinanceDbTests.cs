@@ -799,4 +799,107 @@ public class FinanceDbTests
         Assert.Equal(600_000m, oy.Paid);
         Assert.Equal("paid", oy.Status);
     }
+
+    // ============ AccrueMonth — MUZLATIB QAYTA AKTIVLASHTIRILGAN a'zolik (PastPeriods) ============
+
+    [Fact]
+    public async Task AccrueMonth_qayta_aktivlashtirilgach_ESKI_davrdagi_TUSHIB_QOLGAN_oy_yoziladi()
+    {
+        // MUAMMO edi: qayta aktivlashtirishda ActivatedAt yangi sanaga o'tar va eski davrdagi
+        // hisobsiz qolgan oy HECH QACHON yozilmasdi (AccrueMonth sharti "oy > ActivatedAt").
+        // Endi yopilgan davr (PastPeriods) shu oyni qamrab oladi.
+        using var db = TestDb.Sqlite();
+        var ctx = db.Context;
+        var g = AddGroup(ctx, 600_000m, "A guruh");
+        var s = AddStudent(ctx, className: "A guruh");
+        var m = AddMembership(ctx, s, g, activatedAt: $"{M(0)}-01");
+        m.PastPeriods = new List<string> { $"{M(-5)}-10|{M(-2)}-15" };
+        await ctx.SaveChangesAsync();
+
+        // M(-4), M(-3) — davr ICHIDA, chegaralar emas → yoziladi.
+        Assert.Equal(1, (await TuitionService.AccrueMonth(ctx, M(-4))).Count);
+        await ctx.SaveChangesAsync();
+        Assert.Equal(1, (await TuitionService.AccrueMonth(ctx, M(-3))).Count);
+        await ctx.SaveChangesAsync();
+
+        // Chegaralar (aktivlashtirish va muzlatish oylari) QISMAN hisob bilan o'z vaqtida
+        // yozilgan — bu yerda takrorlanmaydi.
+        Assert.Equal(0, (await TuitionService.AccrueMonth(ctx, M(-5))).Count);
+        Assert.Equal(0, (await TuitionService.AccrueMonth(ctx, M(-2))).Count);
+        // Muzlatilgan davr — hisoblanmaydi.
+        Assert.Equal(0, (await TuitionService.AccrueMonth(ctx, M(-1))).Count);
+    }
+
+    [Fact]
+    public async Task AccrueMonth_PastPeriods_BOSH_bolsa_bironta_ham_yangi_hisob_YOZILMAYDI()
+    {
+        // Deploy xavfsizligi: mavjud qatorlarda tarix bo'sh (backfill YO'Q), ya'ni fon xizmati
+        // butun tarixni qayta skanerlaganda ham retroaktiv qarz paydo bo'lmaydi.
+        using var db = TestDb.Sqlite();
+        var ctx = db.Context;
+        var g = AddGroup(ctx, 600_000m, "A guruh");
+        var s = AddStudent(ctx, className: "A guruh");
+        AddMembership(ctx, s, g, activatedAt: $"{M(0)}-01"); // PastPeriods bo'sh
+        await ctx.SaveChangesAsync();
+
+        foreach (var delta in new[] { -5, -4, -3, -2, -1 })
+            Assert.Equal(0, (await TuitionService.AccrueMonth(ctx, M(delta))).Count);
+    }
+
+    [Fact]
+    public async Task AccrueMonth_guruhdan_CHIQARILGAN_azolikka_retroaktiv_qarz_yozilmaydi()
+    {
+        // Yopilgan davr bor, lekin a'zolik endi faol emas — chiqib ketgan o'quvchiga orqaga
+        // qarab qarz yozilmasligi kerak (AccrueMonth dagi Status/IsActive sharti tegilmagan).
+        using var db = TestDb.Sqlite();
+        var ctx = db.Context;
+        var g = AddGroup(ctx, 600_000m, "A guruh");
+        var s = AddStudent(ctx, className: "A guruh");
+        var m = AddMembership(ctx, s, g, activatedAt: $"{M(0)}-01", isActive: false);
+        m.LeftAt = $"{M(0)}-01";
+        m.PastPeriods = new List<string> { $"{M(-5)}-10|{M(-2)}-15" };
+        await ctx.SaveChangesAsync();
+
+        Assert.Equal(0, (await TuitionService.AccrueMonth(ctx, M(-4))).Count);
+    }
+
+    [Fact]
+    public async Task AccrueCatchUp_yopilgan_davrdagi_boshliqni_DARHOL_toldiradi()
+    {
+        // Aktivlashtirish tugmasi bosilganda kutish shart emas: catch-up yopilgan davrlardagi
+        // tushib qolgan oylarni ham o'sha zahoti yozadi (fon xizmati 12 soat kutmasin).
+        using var db = TestDb.Sqlite();
+        var ctx = db.Context;
+        var g = AddGroup(ctx, 600_000m, "A guruh");
+        var s = AddStudent(ctx, className: "A guruh");
+        var m = AddMembership(ctx, s, g, activatedAt: $"{M(0)}-01");
+        m.PastPeriods = new List<string> { $"{M(-5)}-10|{M(-2)}-15" };
+        await ctx.SaveChangesAsync();
+
+        // Bugundan aktivlashtirilgan → oldingi mantiqda catch-up 0 qaytarardi.
+        var created = await TuitionService.AccrueCatchUpAsync(ctx, s, g, $"{M(0)}-01", m);
+        await ctx.SaveChangesAsync();
+
+        Assert.Equal(2, created); // M(-4) va M(-3)
+        var oylar = ctx.MonthlyCharges.Where(c => c.GroupId == g.Id).Select(c => c.Month).OrderBy(x => x).ToList();
+        Assert.Equal(new[] { M(-4), M(-3) }, oylar);
+    }
+
+    [Fact]
+    public async Task AccrueCatchUp_azoliksiz_chaqiriq_ESKI_xattiharakatni_saqlaydi()
+    {
+        // membership berilmasa (eski chaqiruvlar) — faqat orqaga sanalgan aktivlashtirish oralig'i.
+        using var db = TestDb.Sqlite();
+        var ctx = db.Context;
+        var g = AddGroup(ctx, 600_000m, "A guruh");
+        var s = AddStudent(ctx, className: "A guruh");
+        AddMembership(ctx, s, g, activatedAt: $"{M(-2)}-01");
+        await ctx.SaveChangesAsync();
+
+        var created = await TuitionService.AccrueCatchUpAsync(ctx, s, g, $"{M(-2)}-01");
+        await ctx.SaveChangesAsync();
+
+        Assert.Equal(2, created); // M(-1), M(0) — kelajak oy yozilmaydi
+        Assert.DoesNotContain(M(1), ctx.MonthlyCharges.Select(c => c.Month).ToList());
+    }
 }

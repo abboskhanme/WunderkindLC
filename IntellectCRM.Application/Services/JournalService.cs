@@ -127,7 +127,11 @@ public static class JournalService
     public static string? MemberStart(StudentGroup? m)
     {
         if (m is null) return null;
-        if (!string.IsNullOrEmpty(m.ActivatedAt) && m.ActivatedAt.Length >= 10) return m.ActivatedAt[..10];
+        // ENG ERTA aktivlashtirish — yopilgan davrlar ham. Joriy ActivatedAt ga qarasak, muzlatib
+        // qayta aktivlashtirilgan o'quvchida O'TGAN oylardagi (allaqachon kiritilgan) davomat va
+        // baholar "a'zolikdan oldingi" deb bloklangan ko'rinardi.
+        var first = MembershipLifecycle.FirstActivatedAt(m);
+        if (first.Length >= 10) return first[..10];
         if (!string.IsNullOrEmpty(m.JoinedAt) && m.JoinedAt.Length >= 10) return m.JoinedAt[..10];
         return null;
     }

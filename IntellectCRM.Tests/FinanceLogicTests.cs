@@ -599,4 +599,225 @@ public class FinanceLogicTests
     [Fact]
     public void StartDateOf_ikkalasi_bosh_null()
         => Assert.Null(TeacherSalaryCalc.StartDateOf(new Teacher()));
+
+    // ==================== YOPILGAN FAOL DAVRLAR (StudentGroup.PastPeriods) ====================
+
+    private static StudentGroup Sg(string status, string activatedAt, string frozenAt,
+                                   params string[] pastPeriods) => new()
+    {
+        Status = status, ActivatedAt = activatedAt, FrozenAt = frozenAt,
+        PastPeriods = pastPeriods.ToList(),
+    };
+
+    [Fact]
+    public void ClosePeriod_muzlatilgan_azolik_ESKI_davrni_saqlaydi()
+    {
+        // Muzlatib qayta aktivlashtirish: ActivatedAt ustidan yozilishidan OLDIN davr tarixga o'tadi.
+        var m = Sg("frozen", "2026-01-10", "2026-05-15");
+        MembershipLifecycle.ClosePeriod(m, "2026-09-01");
+        Assert.Equal(new[] { "2026-01-10|2026-05-15" }, m.PastPeriods);
+    }
+
+    [Fact]
+    public void ClosePeriod_IDEMPOTENT_va_ActivatedAt_bosh_bolsa_hech_narsa_qilmaydi()
+    {
+        var m = Sg("frozen", "2026-01-10", "2026-05-15");
+        MembershipLifecycle.ClosePeriod(m, "2026-09-01");
+        MembershipLifecycle.ClosePeriod(m, "2026-09-01");
+        Assert.Single(m.PastPeriods); // ikki marta bosilgan tugma tarixni ikkilantirmaydi
+
+        var trial = Sg("trial", "", "");
+        MembershipLifecycle.ClosePeriod(trial, "2026-09-01");
+        Assert.Empty(trial.PastPeriods); // faol davr umuman boshlanmagan
+    }
+
+    [Fact]
+    public void ClosePeriod_TESKARI_oraliq_yasamaydi()
+    {
+        // Orqaga sanalgan muzlatish: tugash boshlanishdan oldin. Davr bir kunlik bo'lib yopiladi,
+        // aks holda hech bir oy unga tushmasdi.
+        var m = Sg("frozen", "2026-05-10", "2026-03-01");
+        MembershipLifecycle.ClosePeriod(m, "2026-09-01");
+        Assert.Equal(new[] { "2026-05-10|2026-05-10" }, m.PastPeriods);
+    }
+
+    [Fact]
+    public void ClosePeriod_FrozenAt_bosh_bolsa_LeftAt_keyin_fallback_ishlatiladi()
+    {
+        var left = new StudentGroup { Status = "active", ActivatedAt = "2026-01-10", LeftAt = "2026-04-20" };
+        MembershipLifecycle.ClosePeriod(left, "2026-09-01");
+        Assert.Equal(new[] { "2026-01-10|2026-04-20" }, left.PastPeriods);
+
+        var neither = Sg("active", "2026-01-10", "");
+        MembershipLifecycle.ClosePeriod(neither, "2026-09-01");
+        Assert.Equal(new[] { "2026-01-10|2026-09-01" }, neither.PastPeriods);
+    }
+
+    [Fact]
+    public void BillableInMonth_qayta_aktivlashtirilgach_ESKI_oylar_PULLIK_boladi()
+    {
+        // 2026-01 aktiv → 2026-05 muzlatildi → 2026-09 qayta aktiv.
+        var m = Sg("active", "2026-09-01", "", "2026-01-10|2026-05-15");
+
+        Assert.True(MembershipLifecycle.BillableInMonth(m, "2026-01"));  // aktivlashtirish oyi KIRADI
+        Assert.True(MembershipLifecycle.BillableInMonth(m, "2026-03"));
+        Assert.True(MembershipLifecycle.BillableInMonth(m, "2026-05"));  // muzlatish oyi KIRADI
+        Assert.False(MembershipLifecycle.BillableInMonth(m, "2026-06")); // muzlatilgan davr
+        Assert.False(MembershipLifecycle.BillableInMonth(m, "2026-08"));
+        Assert.True(MembershipLifecycle.BillableInMonth(m, "2026-09"));  // yangi davr
+        Assert.False(MembershipLifecycle.BillableInMonth(m, "2025-12")); // davrdan oldin
+    }
+
+    [Fact]
+    public void BillableInMonth_SINOVGA_qaytarilgan_azolikda_OTMISH_pullik_boligicha_qoladi()
+    {
+        // "trial" tekshiruvi yopilgan davrlardan KEYIN turadi — o'quvchi bugun sinovga qaytarilgani
+        // o'tmishda pul to'lamagan degani emas.
+        var m = Sg("trial", "", "", "2026-01-10|2026-04-20");
+        Assert.True(MembershipLifecycle.BillableInMonth(m, "2026-02"));
+        Assert.False(MembershipLifecycle.BillableInMonth(m, "2026-06"));
+    }
+
+    [Fact]
+    public void BillableInMonth_PastPeriods_BOSH_bolsa_ESKI_xattiharakat_AYNAN_saqlanadi()
+    {
+        // Mavjud ma'lumotda ro'yxat bo'sh — ya'ni deploy hech narsani o'zgartirmaydi.
+        foreach (var month in new[] { "2025-12", "2026-01", "2026-03", "2026-05", "2026-06" })
+            Assert.Equal(
+                MembershipLifecycle.BillableInMonth("active", "2026-01-10", "2026-05-15", month),
+                MembershipLifecycle.BillableInMonth(Sg("active", "2026-01-10", "2026-05-15"), month));
+    }
+
+    [Fact]
+    public void TryParsePeriod_BUZUQ_yozuvlar_hisobni_yiqitmaydi()
+    {
+        Assert.False(MembershipLifecycle.TryParsePeriod(null, out _, out _));
+        Assert.False(MembershipLifecycle.TryParsePeriod("", out _, out _));
+        Assert.False(MembershipLifecycle.TryParsePeriod("2026-01-10", out _, out _));   // ajratkich yo'q
+        Assert.False(MembershipLifecycle.TryParsePeriod("2026|x", out _, out _));       // boshlanish qisqa
+        Assert.False(MembershipLifecycle.MonthInPeriod("axlat", "2026-03"));
+        Assert.False(MembershipLifecycle.AccruableInPeriod("axlat", "2026-03"));
+
+        // Ikkinchi "|" — tugash qismida qoladi va sana sifatida yaroqsiz bo'ladi (ochiq davr).
+        Assert.True(MembershipLifecycle.TryParsePeriod("2026-01-10|a|b", out var f, out var t));
+        Assert.Equal("2026-01-10", f);
+        Assert.Equal("a|b", t);
+    }
+
+    [Fact]
+    public void AccruableInPeriod_CHEGARALAR_kirmaydi_MonthInPeriod_dan_FARQI()
+    {
+        const string p = "2026-01-10|2026-05-15";
+        // Aktivlashtirish va muzlatish oylari QISMAN hisob bilan o'z vaqtida yozilgan —
+        // accrual ularni qayta yozmasligi kerak (ikki marta hisoblanardi).
+        Assert.False(MembershipLifecycle.AccruableInPeriod(p, "2026-01"));
+        Assert.True(MembershipLifecycle.AccruableInPeriod(p, "2026-02"));
+        Assert.True(MembershipLifecycle.AccruableInPeriod(p, "2026-04"));
+        Assert.False(MembershipLifecycle.AccruableInPeriod(p, "2026-05"));
+        Assert.False(MembershipLifecycle.AccruableInPeriod(p, "2026-06"));
+
+        // MonthInPeriod esa chegaralarni KIRITADI.
+        Assert.True(MembershipLifecycle.MonthInPeriod(p, "2026-01"));
+        Assert.True(MembershipLifecycle.MonthInPeriod(p, "2026-05"));
+
+        // Tugashi yo'q davr accrual uchun YOPIQ emas — hech narsa yozilmaydi.
+        Assert.False(MembershipLifecycle.AccruableInPeriod("2026-01-10|", "2026-03"));
+    }
+
+    [Fact]
+    public void FirstActivatedAt_va_ActivatedInMonth_ENG_ERTA_hodisani_topadi()
+    {
+        var m = Sg("active", "2026-09-01", "", "2026-03-01|2026-06-10", "2026-01-10|2026-02-20");
+        Assert.Equal("2026-01-10", MembershipLifecycle.FirstActivatedAt(m));
+        Assert.True(MembershipLifecycle.ActivatedInMonth(m, "2026-01"));
+        Assert.True(MembershipLifecycle.ActivatedInMonth(m, "2026-03"));
+        Assert.True(MembershipLifecycle.ActivatedInMonth(m, "2026-09"));
+        Assert.False(MembershipLifecycle.ActivatedInMonth(m, "2026-05"));
+
+        Assert.Equal("", MembershipLifecycle.FirstActivatedAt(Sg("trial", "", "")));
+    }
+
+    [Fact]
+    public void AccruableMonth_orqaga_sanalgan_MUZLATISHDA_ochirilgan_oylar_TIRILMAYDI()
+    {
+        // Bugun 2026-09, muzlatish 2026-06 dan (orqaga sanalgan) → PurgeChargesAfterMonthAsync
+        // 07/08 hisoblarini o'chirgan. Qayta aktivlashtirilgach ular QAYTA yozilmasligi shart:
+        // davr muzlatish sanasida yopilgani uchun 07/08 undan TASHQARIDA qoladi.
+        var m = Sg("active", "2026-09-01", "", "2026-01-10|2026-06-05");
+        Assert.False(TuitionService.AccruableMonth(m, "2026-07"));
+        Assert.False(TuitionService.AccruableMonth(m, "2026-08"));
+        Assert.False(TuitionService.AccruableMonth(m, "2026-06")); // muzlatish oyi — qisman, yozilmaydi
+        Assert.True(TuitionService.AccruableMonth(m, "2026-03"));  // haqiqiy bo'shliq — yoziladi
+        Assert.False(TuitionService.AccruableMonth(m, "2026-01")); // aktivlashtirish oyi — qisman
+    }
+
+    [Fact]
+    public void AccruableMonth_PastPeriods_BOSH_bolsa_ESKI_shart_AYNAN_saqlanadi()
+    {
+        var m = Sg("active", "2026-01-10", "2026-05-15");
+        foreach (var month in new[] { "2025-12", "2026-01", "2026-02", "2026-05", "2026-06" })
+        {
+            var eski = m.ActivatedAt.Length >= 7 && string.CompareOrdinal(month, m.ActivatedAt[..7]) > 0
+                       && (m.FrozenAt.Length < 7 || string.CompareOrdinal(month, m.FrozenAt[..7]) < 0);
+            Assert.Equal(eski, TuitionService.AccruableMonth(m, month));
+        }
+    }
+
+    [Fact]
+    public void ClosePeriod_BUZUQ_sana_yozilmaydi()
+    {
+        // Aktivlashtirish endpointi sanani validatsiya qilmaydi — bazaga "2026-13-99" tushishi mumkin.
+        // Bunday qator oylar oralig'ini hisoblaganda CHEKSIZ siklga olib borardi.
+        var buzuq = Sg("frozen", "2026-13-99", "2026-05-15");
+        MembershipLifecycle.ClosePeriod(buzuq, "2026-09-01");
+        Assert.Empty(buzuq.PastPeriods);
+
+        var buzuqTugash = Sg("frozen", "2026-01-10", "2026-99-99");
+        MembershipLifecycle.ClosePeriod(buzuqTugash, "yaroqsiz");
+        Assert.Empty(buzuqTugash.PastPeriods);
+    }
+
+    [Fact]
+    public void MonthRange_BUZUQ_oy_bilan_osilib_qolmaydi()
+    {
+        // "2026-13" ordinal solishtiruvda hech qachon "2027-01" dan katta bo'lmaydi
+        // ("2026-100" < "2027-01") — xavfsizlik chegarasi bo'lmasa sikl abadiy davom etardi.
+        var oylar = TuitionService.MonthRange("2026-13", "2027-01").Take(5000).Count();
+        Assert.True(oylar <= 1200, $"MonthRange chegarasi ishlamadi: {oylar}");
+    }
+
+    [Fact]
+    public void TruncatePastPeriodsAfter_orqaga_sanalgan_muzlatish_ESKI_davrni_ham_qirqadi()
+    {
+        // P1: 2026-01-10..2026-06-15. Keyin 2026-11 da admin ORQAGA sanalgan muzlatish qiladi
+        // (2026-03-01) — purge 03 dan keyingi HAMMA hisobni o'chiradi, jumladan P1 ichidagi
+        // 04/05/06 ni. Davr qirqilmasa, accrual ularni QAYTA yozib qo'yardi.
+        var m = Sg("active", "2026-07-01", "", "2026-01-10|2026-06-15");
+        MembershipLifecycle.TruncatePastPeriodsAfter(m, "2026-03-01");
+
+        Assert.Equal(new[] { "2026-01-10|2026-03-01" }, m.PastPeriods);
+        Assert.False(TuitionService.AccruableMonth(m, "2026-04"));
+        Assert.False(TuitionService.AccruableMonth(m, "2026-05"));
+        Assert.True(TuitionService.AccruableMonth(m, "2026-02")); // qirqishdan oldingi oy qoladi
+    }
+
+    [Fact]
+    public void TruncatePastPeriodsAfter_butunlay_KEYIN_boshlangan_davr_ochiriladi()
+    {
+        var m = Sg("active", "2026-09-01", "", "2026-01-10|2026-02-20", "2026-05-01|2026-06-10");
+        MembershipLifecycle.TruncatePastPeriodsAfter(m, "2026-03-01");
+        Assert.Equal(new[] { "2026-01-10|2026-02-20" }, m.PastPeriods); // birinchisi tegilmagan
+    }
+
+    [Fact]
+    public void TruncatePastPeriodsAfter_BUZUQ_sana_va_bosh_royxat_xavfsiz()
+    {
+        var m = Sg("active", "2026-09-01", "", "2026-01-10|2026-06-15");
+        MembershipLifecycle.TruncatePastPeriodsAfter(m, "yaroqsiz");
+        Assert.Equal(new[] { "2026-01-10|2026-06-15" }, m.PastPeriods); // tegilmaydi
+
+        var bosh = Sg("active", "2026-09-01", "");
+        MembershipLifecycle.TruncatePastPeriodsAfter(bosh, "2026-03-01");
+        Assert.Empty(bosh.PastPeriods);
+    }
 }

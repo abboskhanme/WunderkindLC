@@ -141,12 +141,19 @@ public static class TuitionService
         return $"{year:D4}-{m:D2}";
     }
 
+    /// <summary>Bitta <see cref="MonthRange"/> chaqirig'i qaytaradigan oylarning MAKSIMUMI (buzuq
+    /// sanaga qarshi xavfsizlik chegarasi).</summary>
+    private const int MaxRangeMonths = 1200;
+
     /// <summary>fromMonth..toMonth (inklyuziv) oralig'idagi oylar ("yyyy-MM"). from > to bo'lsa — bo'sh.</summary>
     public static IEnumerable<string> MonthRange(string fromMonth, string toMonth)
     {
         if (string.IsNullOrEmpty(fromMonth) || string.IsNullOrEmpty(toMonth)) yield break;
         var m = fromMonth;
-        while (string.CompareOrdinal(m, toMonth) <= 0)
+        // XAVFSIZLIK CHEGARASI: NextMonth oyni normallashtirmaydi ("2026-13" → "2026-14" → ...),
+        // shuning uchun BUZUQ oy bilan shart hech qachon buzilmas va sikl abadiy davom etardi
+        // (so'rov osilib qolardi). 1200 oy = 100 yil — haqiqiy ma'lumotda erishib bo'lmaydi.
+        for (var guard = 0; guard < MaxRangeMonths && string.CompareOrdinal(m, toMonth) <= 0; guard++)
         {
             yield return m;
             m = NextMonth(m);
@@ -504,8 +511,7 @@ public static class TuitionService
                     // Guruhdan chiqarilgan (IsActive=false) a'zolik Status="active" bo'lib qolishi mumkin —
                     // shuning uchun IsActive ham talab qilinadi (aks holda chiqib ketgan o'quvchi har oy hisoblanardi).
                     if (m.Status != "active" || !m.IsActive) continue;
-                    if (!(m.ActivatedAt.Length >= 7 && string.CompareOrdinal(month, m.ActivatedAt[..7]) > 0)) continue;
-                    if (!(m.FrozenAt.Length < 7 || string.CompareOrdinal(month, m.FrozenAt[..7]) < 0)) continue;
+                    if (!AccruableMonth(m, month)) continue;
                     if (already.Contains((s.Id, (string?)m.GroupId))) continue;
                     var gfee = feesById.TryGetValue(m.GroupId, out var f) ? f : 0m;
                     if (gfee <= 0) continue;
@@ -551,6 +557,33 @@ public static class TuitionService
         return effective;
     }
 
+    /// <summary>Shu a'zolik uchun <paramref name="month"/> oyiga TO'LIQ oylik hisob yozilishi kerakmi.
+    ///
+    /// <para>JORIY davr: aktivlashtirilgan oydan KEYINGI oydan muzlatish oyidan OLDINGI oygacha.
+    /// Chegaralar ATAYIN kirmaydi — aktivlashtirish va muzlatish oylari QISMAN hisob bilan o'sha
+    /// paytning o'zida yoziladi (<see cref="ChargeActivationProrateAsync"/> /
+    /// <see cref="ChargeFreezeProrateAsync"/>); ularni bu yerda yozsak IKKI marta hisoblanardi.</para>
+    ///
+    /// <para>YOPILGAN DAVRLAR (<see cref="Domain.StudentGroup.PastPeriods"/>) — xuddi shu qoida bilan.
+    /// Ular bo'lmasa muzlatib qayta aktivlashtirilgan a'zolikda <c>ActivatedAt</c> yangi sanaga
+    /// o'tgani uchun eski davrdagi TUSHIB QOLGAN oy hech qachon yozilmasdi.</para>
+    ///
+    /// <para>⚠️ Bu ORTGA QARAB HISOB YOZISHNI xavfsiz qiladigan uchta narsa:
+    /// (1) mavjud qatorlarda <c>PastPeriods</c> BO'SH — backfill yo'q, ya'ni deploy paytida bironta ham
+    /// yangi hisob yozilmaydi; (2) davr MUZLATISH sanasida yopilgani uchun orqaga sanalgan muzlatishda
+    /// <see cref="PurgeChargesAfterMonthAsync"/> o'chirgan oylar davrdan TASHQARIDA qoladi va qayta
+    /// tirilmaydi; (3) chaqiruvchi <c>Status=="active" &amp;&amp; IsActive</c> ni talab qiladi — guruhdan
+    /// chiqib ketgan o'quvchiga retroaktiv qarz yozilmaydi.</para></summary>
+    public static bool AccruableMonth(Domain.StudentGroup m, string month)
+    {
+        var actOk = m.ActivatedAt.Length >= 7 && string.CompareOrdinal(month, m.ActivatedAt[..7]) > 0;
+        var frzOk = m.FrozenAt.Length < 7 || string.CompareOrdinal(month, m.FrozenAt[..7]) < 0;
+        if (actOk && frzOk) return true;
+        foreach (var p in m.PastPeriods)
+            if (MembershipLifecycle.AccruableInPeriod(p, month)) return true;
+        return false;
+    }
+
     /// <summary>
     /// ORQAGA SANALGAN aktivlashtirishdan keyin ORALIQ oylarni darhol hisoblaydi: aktivlashtirilgan
     /// oydan KEYINGI oydan joriy oygacha har oy uchun TO'LIQ oylik. Aktivlashtirilgan oyning O'ZI bu
@@ -562,16 +595,27 @@ public static class TuitionService
     /// ko'rmaydi — o'quvchi qarzi kam bo'lib turadi.</para>
     /// <para>IDEMPOTENT: mavjud (o'quvchi, guruh, oy) hisobiga TEGILMAYDI — shu bilan qo'lda
     /// tahrirlangan (<c>Locked</c>) qatorlar ham himoyalanadi. KELAJAK oy yozilmaydi. Muzlatilgandan
-    /// keyin qayta aktivlashtirishda ham xavfsiz (faqat KEYINGI oylardan boshlaydi).</para>
+    /// keyin qayta aktivlashtirishda ham xavfsiz: yopilgan davrlardagi bo'shliqlar ham faqat
+    /// hisobi YO'Q oylarga yoziladi (<paramref name="membership"/>).</para>
     /// SaveChanges QILINMAYDI — chaqiruvchi saqlaydi.
     /// </summary>
     /// <returns>Nechta oy uchun yangi hisob yaratildi.</returns>
-    public static async Task<int> AccrueCatchUpAsync(IAppDbContext db, Student s, Group cls, string activatedAtIso)
+    /// <param name="membership">Aktivlashtirilayotgan a'zolik — berilsa uning YOPILGAN faol davrlaridagi
+    /// (<see cref="Domain.StudentGroup.PastPeriods"/>) tushib qolgan oylar ham SHU YERDA to'ldiriladi.
+    /// <para>Usiz ham ular yo'qolmaydi — <see cref="AccrueMonth"/> endi davrlarni biladi va fon xizmati
+    /// 12 soat ichida yozadi; parametr faqat KECHIKISHNI yo'q qiladi (aynan shu sabab bilan bu metod
+    /// umuman paydo bo'lgan). <c>null</c> bo'lsa eski xatti-harakat — hech narsa o'zgarmaydi.</para></param>
+    public static async Task<int> AccrueCatchUpAsync(IAppDbContext db, Student s, Group cls, string activatedAtIso,
+                                                     Domain.StudentGroup? membership = null)
     {
         if (cls.MonthlyFee <= 0 || string.IsNullOrEmpty(activatedAtIso) || activatedAtIso.Length < 7) return 0;
         var from = NextMonth(activatedAtIso[..7]);
         var cur = CurrentMonth();
-        if (string.CompareOrdinal(from, cur) > 0) return 0; // odatdagi holat: joriy oydan aktivlashtirilgan
+        // ODATDAGI HOLAT (joriy oydan aktivlashtirish, tarix yo'q) — qiladigan ish yo'q, pastdagi
+        // MonthlyCharges so'rovi ham qilinmaydi. Yopilgan davrlar BOR bo'lsa esa "from > cur" da ham
+        // davom etamiz: ulardagi bo'shliqlar joriy oydan OLDIN va ular to'ldirilishi kerak.
+
+        if (string.CompareOrdinal(from, cur) > 0 && (membership?.PastPeriods.Count ?? 0) == 0) return 0;
 
         // Shu (o'quvchi, guruh) uchun allaqachon mavjud oylar — ular ustidan yozilmaydi.
         var existing = (await db.MonthlyCharges
@@ -579,9 +623,25 @@ public static class TuitionService
                 .Select(c => c.Month).ToListAsync())
             .Where(m => m.Length >= 7).Select(m => m[..7]).ToHashSet();
 
+        // Yoziladigan oylar: (1) ORQAGA SANALGAN aktivlashtirish oralig'i — aktivlashtirilgan oydan
+        // KEYINGI oydan joriy oygacha; (2) YOPILGAN faol davrlardagi tushib qolgan oylar (muzlatib,
+        // keyin qayta aktivlashtirilgan a'zolik). Ikkalasi bir ro'yxatga birlashtirilib TARTIBLANADI.
+        var months = new SortedSet<string>(StringComparer.Ordinal);
+        if (string.CompareOrdinal(from, cur) <= 0)
+            foreach (var m in MonthRange(from, cur)) months.Add(m);
+        if (membership is not null)
+            foreach (var period in membership.PastPeriods)
+            {
+                if (!MembershipLifecycle.TryParsePeriod(period, out var pFrom, out var pTo)) continue;
+                if (pTo.Length < 7) continue;
+                foreach (var m in MonthRange(pFrom[..7], pTo[..7]))
+                    if (MembershipLifecycle.AccruableInPeriod(period, m)) months.Add(m);
+            }
+
         var created = 0;
-        foreach (var month in MonthRange(from, cur))
+        foreach (var month in months)
         {
+            if (string.CompareOrdinal(month, cur) > 0) continue; // KELAJAK oy hech qachon yozilmaydi
             if (existing.Contains(month)) continue;
             // Eski aggregate (GroupId=null) qator bo'lsa — dublikat bo'lmasin.
             await PurgeAggregateRowAsync(db, s, month);

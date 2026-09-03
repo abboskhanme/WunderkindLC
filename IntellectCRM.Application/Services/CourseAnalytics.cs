@@ -31,10 +31,15 @@ public static class CourseAnalytics
     /// <param name="FrozenAt">Muzlatilgan sana; bo'sh — muzlatilmagan.</param>
     /// <param name="Status">trial | active | frozen | completed.</param>
     /// <param name="MonthlyFee">Guruh oyligi — joriy oylik tushum bahosi uchun.</param>
+    /// <param name="PastPeriods">YOPILGAN faol davrlar (<see cref="Domain.StudentGroup.PastPeriods"/>).
+    /// ⚠️ Ularsiz muzlatib qayta aktivlashtirilgan a'zolikda <c>ActivatedAt</c> yangi sanaga o'tgani
+    /// uchun "oy oxirida faol" chizig'i IKKI xil xato berardi: o'tmishdagi haqiqatan faol oylar
+    /// tushib qolar, muzlab yotgan oylar esa (<c>FrozenAt</c> tozalangani uchun) faol ko'rinardi.</param>
     public readonly record struct MembershipRow(
         string StudentId, string CourseId,
         string JoinedAt, string ActivatedAt, string? LeftAt, string FrozenAt,
-        string Status, bool IsActive, decimal MonthlyFee);
+        string Status, bool IsActive, decimal MonthlyFee,
+        IReadOnlyList<string>? PastPeriods = null);
 
     /// <summary>Kurs haqidagi ma'lumotnoma (nom/narx) va unga bog'langan guruh/o'qituvchi sanog'i.</summary>
     public readonly record struct CourseRow(
@@ -145,8 +150,11 @@ public static class CourseAnalytics
         var intervals = byStudent.ToDictionary(kv => kv.Key, kv => MergeIntervals(kv.Value));
         var firstActivation = byStudent.ToDictionary(
             kv => kv.Key,
-            kv => kv.Value.Where(r => r.ActivatedAt.Length >= 7)
-                .Select(r => r.ActivatedAt).OrderBy(d => d, StringComparer.Ordinal).FirstOrDefault());
+            // ⚠️ Joriy ActivatedAt EMAS: qayta aktivlashtirishda u ustidan yoziladi va "birinchi marta
+            // aktivlashdi" hodisasi noto'g'ri oyga ko'chib ketardi. MembershipLifecycle yopilgan
+            // davrlarning boshlanishini ham ko'radi.
+            kv => kv.Value.Select(r => MembershipLifecycle.FirstActivatedAt(r.ActivatedAt, r.PastPeriods))
+                .Where(d => d.Length >= 7).OrderBy(d => d, StringComparer.Ordinal).FirstOrDefault());
 
         var flows = new List<MonthFlow>(months.Count);
         foreach (var month in months)
@@ -187,6 +195,14 @@ public static class CourseAnalytics
     /// </summary>
     public static bool WasActiveAt(MembershipRow r, string date)
     {
+        // YOPILGAN davrlar avval: o'sha paytda a'zolik haqiqatan faol edi, garchi bugungi
+        // ActivatedAt/FrozenAt boshqa (keyingi) davrni ko'rsatayotgan bo'lsa ham.
+        if (r.PastPeriods is not null)
+            foreach (var p in r.PastPeriods)
+                if (MembershipLifecycle.TryParsePeriod(p, out var pFrom, out var pTo)
+                    && string.CompareOrdinal(pFrom, date) <= 0
+                    && (pTo.Length < 10 || string.CompareOrdinal(date, pTo) < 0))
+                    return true;
         if (r.ActivatedAt.Length < 10 || string.CompareOrdinal(r.ActivatedAt, date) > 0) return false;
         if (!string.IsNullOrEmpty(r.LeftAt) && string.CompareOrdinal(r.LeftAt, date) <= 0) return false;
         if (r.FrozenAt.Length >= 10 && string.CompareOrdinal(r.FrozenAt, date) <= 0) return false;

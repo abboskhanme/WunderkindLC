@@ -63,6 +63,9 @@ public class CourseAnalyticsController(DataCache dataCache) : ControllerBase
             {
                 m.StudentId, m.GroupId, m.JoinedAt, m.ActivatedAt, m.LeftAt, m.FrozenAt,
                 m.Status, m.IsActive,
+                // ⚠️ Proyeksiya — yangi maydon O'ZI kelmaydi. Usiz CourseAnalytics.WasActiveAt va
+                // "birinchi aktivlashish" qayta aktivlashtirilgan a'zolikda noto'g'ri hisoblanardi.
+                m.PastPeriods,
             })
             .ToListAsync();
 
@@ -79,7 +82,7 @@ public class CourseAnalyticsController(DataCache dataCache) : ControllerBase
 
             var row = new CourseAnalytics.MembershipRow(
                 m.StudentId, courseId, m.JoinedAt, m.ActivatedAt ?? "", m.LeftAt, m.FrozenAt ?? "",
-                m.Status ?? "", m.IsActive, g.MonthlyFee);
+                m.Status ?? "", m.IsActive, g.MonthlyFee, m.PastPeriods);
 
             if (!rowsByCourse.TryGetValue(courseId, out var byStudent))
                 rowsByCourse[courseId] = byStudent = new Dictionary<string, List<CourseAnalytics.MembershipRow>>();

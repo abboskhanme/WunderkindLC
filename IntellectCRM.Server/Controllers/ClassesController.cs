@@ -546,6 +546,9 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
         var recordedAt = AppClock.Today.ToString("yyyy-MM-dd");
         if (existing is not null)
         {
+            // Joriy faol davr tarixga ko'chiriladi — pastda ActivatedAt/FrozenAt/LeftAt TOZALANADI
+            // va usiz o'tmish "pullik emas" bo'lib qolardi (MembershipLifecycle.ClosePeriod izohi).
+            MembershipLifecycle.ClosePeriod(existing, recordedAt);
             existing.IsActive = true;
             existing.LeftAt = null;
             existing.JoinedAt = joinedAt;
@@ -632,6 +635,9 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
         var sg = await db.StudentGroups
             .FirstOrDefaultAsync(x => x.GroupId == id && x.StudentId == studentId && x.IsActive);
         if (sg is null) return NotFound(new { message = "Faol a'zolik topilmadi" });
+        // ActivatedAt tozalanishidan OLDIN joriy faol davrni tarixga ko'chiramiz: o'quvchi sinovga
+        // qaytdi degani "u hech qachon pullik bo'lmagan" degani EMAS.
+        MembershipLifecycle.ClosePeriod(sg, AppClock.Today.ToString("yyyy-MM-dd"));
         sg.Status = "trial";
         sg.ActivatedAt = string.Empty;
         sg.FrozenAt = string.Empty;
@@ -709,6 +715,10 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
         var reactivateFromFreeze = sg.Status == "frozen"
             && sg.FrozenAt.Length >= 7 && date.Length >= 7 && sg.FrozenAt[..7] == date[..7];
 
+        // ⚠️ ActivatedAt USTIDAN yozilmoqda — oldingi faol davr shu yerda tarixga ko'chirilmasa,
+        // izsiz yo'qolardi (aynan shu sabab muzlashdan oldingi oylar "pullik emas" bo'lib qolar,
+        // to'lov oynasida ko'rinmas, maosh/bonus/analitika esa noto'g'ri hisoblanardi).
+        MembershipLifecycle.ClosePeriod(sg, date);
         sg.Status = "active";
         sg.ActivatedAt = date;
         sg.FrozenAt = string.Empty;
@@ -734,7 +744,7 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
             // ORQAGA SANALGAN aktivlashtirish: aktivlashtirilgan oydan KEYINGI oylardan joriy oygacha
             // to'liq oylik hisoblar DARHOL yoziladi (aks holda fon xizmati 12 soatgacha kechikardi).
             // Idempotent — mavjud hisoblarga tegmaydi, kelajak oy yozmaydi.
-            catchUpMonths = await TuitionService.AccrueCatchUpAsync(db, s, cls, date);
+            catchUpMonths = await TuitionService.AccrueCatchUpAsync(db, s, cls, date, sg);
 
             // USHLAB TURISH BONUSI: shu guruh FANI bo'yicha bonus hisoblansinmi (aktivlashtirish
             // oynasidagi ptichka). Sanoq AYNAN shu — aktivlashtirilgan — oydan boshlanadi:
@@ -850,7 +860,8 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
             // Muzlatish OYINING qisman to'lovi (shu sanagacha qatnashgan darslar) + ORQAGA SANALGAN
             // muzlatishda keyingi oylar hisobini bekor qilish — hammasi YAGONA manbada
             // (guruhni yopish / tugatish / guruh almashtirish bilan aynan bir xil).
-            restored = (await MembershipBilling.SettleFreezeAsync(db, s, cls, activatedAt, date, lessonFee)).Restored;
+            restored = (await MembershipBilling.SettleFreezeAsync(
+                db, s, cls, activatedAt, date, lessonFee, sg)).Restored;
         }
 
         audit.Record("Membership", $"{cls.Id}:{sg.StudentId}", "update",
@@ -1148,12 +1159,17 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
             // o'sha oylarga to'langan pul "ortiqcha" bo'lib qoladi va yangi guruhga ko'chadi. Aks
             // holda o'quvchi eski guruhda ham hisoblanib, yangi guruhda ham qarzdor bo'lib ko'rinardi.
             purgedMonths = (await MembershipBilling.SettleFreezeAsync(
-                db, s, fromGroup, activatedAt, freezeDate)).PurgedMonths;
+                db, s, fromGroup, activatedAt, freezeDate, membership: fromSg)).PurgedMonths;
         }
 
         // 2) Maqsad guruh — a'zolik yaratish yoki tiklash (AddMember bilan bir xil mantiq).
         if (toSg is not null)
         {
+            // ⚠️ ENG BIRINCHI QATOR: maqsad guruhda o'quvchi ILGARI ham o'qigan bo'lishi mumkin
+            // (qaytib kelgan). Uning oldingi faol davri LeftAt/ActivatedAt tozalanishidan OLDIN
+            // tarixga ko'chirilishi SHART — aks holda tugash sanasi yo'qolib, davr bugungi sanagacha
+            // cho'zilib ketardi va o'quvchi guruhda umuman bo'lmagan oylarga qarz yozilardi.
+            MembershipLifecycle.ClosePeriod(toSg, activateDate);
             toSg.IsActive = true;
             toSg.LeftAt = null;
             toSg.JoinedAt = activateDate;
@@ -1168,7 +1184,8 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
             db.StudentGroups.Add(toSg);
         }
 
-        // 3) Maqsad guruh — DARHOL AKTIVLASHTIRISH.
+        // 3) Maqsad guruh — DARHOL AKTIVLASHTIRISH. (Oldingi davr yuqorida, LeftAt tozalanishidan
+        // OLDIN yopilgan — bu yerda kech bo'lardi.)
         toSg.Status = "active";
         toSg.ActivatedAt = activateDate;
         toSg.FrozenAt = string.Empty;
@@ -1393,7 +1410,8 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
             {
                 if (students.TryGetValue(m.StudentId, out var s))
                 {
-                    var settle = await MembershipBilling.SettleFreezeAsync(db, s, group, m.ActivatedAt, closeDate);
+                    var settle = await MembershipBilling.SettleFreezeAsync(
+                        db, s, group, m.ActivatedAt, closeDate, membership: m);
                     if (settle.Charged) chargedOldGroup++;
                     restored += settle.Restored;
                 }
@@ -1629,7 +1647,8 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
             // Qisman to'lov (yopish sanasigacha o'qilgan darslar) + yopishdan keyingi oylar hisobini
             // bekor qilish — YAGONA manbada ("Muzlatish"/"Tugatish" bilan aynan bir xil).
             if (students.TryGetValue(m.StudentId, out var s))
-                restored += (await MembershipBilling.SettleFreezeAsync(db, s, group, activatedAt, date)).Restored;
+                restored += (await MembershipBilling.SettleFreezeAsync(
+                    db, s, group, activatedAt, date, membership: m)).Restored;
 
             frozen++;
             audit.Record("Membership", $"{id}:{m.StudentId}", "update",

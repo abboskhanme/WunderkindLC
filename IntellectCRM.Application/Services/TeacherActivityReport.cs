@@ -246,8 +246,11 @@ public static class TeacherActivityReport
             // OQIM (event oyi bo'yicha)
             var joinedMonth = MonthOf(sg.JoinedAt);
             if (filterMonth == null || joinedMonth == filterMonth) lc.Came++;
-            var activatedMonth = MonthOf(sg.ActivatedAt);
-            if (activatedMonth != "" && (filterMonth == null || activatedMonth == filterMonth)) lc.Active++;
+            // Aktivlashish — yopilgan davrlar ham hisobga olinadi (qayta aktivlashtirilgan a'zolikda
+            // joriy ActivatedAt eski hodisani ustidan yozib yuborardi).
+            if (filterMonth == null
+                ? MembershipLifecycle.FirstActivatedAt(sg).Length >= 7
+                : MembershipLifecycle.ActivatedInMonth(sg, filterMonth)) lc.Active++;
             var frozenMonth = MonthOf(sg.FrozenAt);
             if (frozenMonth != "" && (filterMonth == null || frozenMonth == filterMonth)) lc.Frozen++;
             var leftMonth = MonthOf(sg.LeftAt);

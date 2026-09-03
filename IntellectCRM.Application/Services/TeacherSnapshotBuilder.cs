@@ -67,7 +67,9 @@ public static class TeacherSnapshotBuilder
         var flow = months.Select(m => new TeacherFlowPointDto(
             m,
             liveMembers.Count(x => MonthOf(x.JoinedAt) == m),
-            liveMembers.Count(x => MonthOf(x.ActivatedAt) == m),
+            // Yopilgan davrlar ham: qayta aktivlashtirilgan a'zolikda eski aktivlashish
+            // hodisasi yo'qolib, grafikda keyingi oyga ko'chib ketardi.
+            liveMembers.Count(x => MembershipLifecycle.ActivatedInMonth(x, m)),
             liveMembers.Count(x => MonthOf(x.FrozenAt) == m),
             liveMembers.Count(x => MonthOf(x.LeftAt) == m))).ToList();
 

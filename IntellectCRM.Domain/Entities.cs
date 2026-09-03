@@ -855,6 +855,19 @@ public class StudentGroup
     public string ActivatedAt { get; set; } = string.Empty;
     /// <summary>Muzlatilgan sana (ISO). Shu oydan boshlab oylik to'lov hisoblanmaydi. Bo'sh = muzlatilmagan.</summary>
     public string FrozenAt { get; set; } = string.Empty;
+    /// <summary>YOPILGAN (o'tgan) faol davrlar: har biri "boshlanish|tugash" (ikkalasi ISO "YYYY-MM-DD").
+    /// <para>JORIY davr bu ro'yxatda YO'Q — u <see cref="ActivatedAt"/>/<see cref="FrozenAt"/> juftligida.
+    /// Qator faqat joriy davr YO'QOLIB KETADIGAN joyda qo'shiladi: aktivlashtirish, sinovga qaytarish,
+    /// guruhga qayta qo'shish va guruh almashtirishning MAQSAD tomoni (hammasi <c>ActivatedAt</c> ni
+    /// ustidan yozadi). Muzlatish/chiqarish/guruh yopishda qo'shilmaydi — u yerda joriy davr
+    /// <c>ActivatedAt</c>+<c>FrozenAt</c> bilan hamon o'qiladi.</para>
+    /// <para>NEGA KERAK: bitta a'zolikda bir necha faol davr bo'lishi mumkin (muzlatib, keyin qayta
+    /// aktivlashtirish). Ilgari <c>ActivatedAt</c> ustidan yozilgach oldingi davr izsiz yo'qolar va
+    /// o'tmish "pullik emas" bo'lib qolardi — maosh, bonus, kurs moliyasi va analitika buzilardi.
+    /// Batafsil: <c>.claude/rules/membership-periods.md</c>.</para>
+    /// <para>Mavjud qatorlarda BO'SH — tarix backfill QILINMAGAN, ya'ni bu maydon eski ma'lumot
+    /// uchun hech narsani o'zgartirmaydi.</para></summary>
+    public List<string> PastPeriods { get; set; } = new();
     /// <summary>«AKTIV MUZLATISH» — yangi o'quv yiliga o'tishda qilingan muzlatish belgisi.
     /// <para>Hisob-kitobga, holatga va boshqa HECH QANDAY mantiqqa ta'sir qilmaydi:
     /// <c>Status</c> baribir "frozen", oylik baribir hisoblanmaydi — oddiy muzlatish bilan

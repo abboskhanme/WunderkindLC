@@ -384,12 +384,11 @@ public static class CourseFinanceReport
     /// (oyi yo'q eski yozuvda sanadan olinadi), Amount — vozvrat bo'lsa manfiy.</summary>
     private sealed record PaymentRow(string StudentId, string? GroupId, string Month, decimal Amount, bool IsCash);
 
-    /// <summary>A'zolik shu oyda hisob-kitobga kiradimi (trial emas, aktiv-muzlat oralig'ida).</summary>
-    private static bool BillableInMonth(StudentGroup m, string month)
-    {
-        if (m.Status == "trial") return false;
-        var actOk = m.ActivatedAt.Length < 7 || string.CompareOrdinal(month, m.ActivatedAt[..7]) >= 0;
-        var frzOk = m.FrozenAt.Length < 7 || string.CompareOrdinal(month, m.FrozenAt[..7]) <= 0;
-        return actOk && frzOk;
-    }
+    /// <summary>A'zolik shu oyda hisob-kitobga kiradimi — <b>YAGONA TA'RIF</b>ga delegat qiladi.
+    /// <para>⚠️ Ilgari bu yerda mantiq QAYTA YOZILGAN edi (belgi-ma-belgi bir xil nusxa).
+    /// <c>MembershipLifecycle</c> yopilgan faol davrlarni (<c>StudentGroup.PastPeriods</c>) hisobga
+    /// oladigan bo'lgach, nusxa jimgina eski xatti-harakatda qolib, bu hisobot maosh va bonusdan
+    /// AJRALIB ketardi. Nusxa QAYTA TIKLANMASIN.</para></summary>
+    private static bool BillableInMonth(StudentGroup m, string month) =>
+        MembershipLifecycle.BillableInMonth(m, month);
 }
