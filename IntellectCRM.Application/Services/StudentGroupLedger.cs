@@ -32,6 +32,22 @@ public static class StudentGroupLedger
         if (membership.Status == "trial")
             return new GroupLedgerDto(group.Id, group.Name, courseName, months);
 
+        // To'lovlar va hisoblar oraliqni hisoblashdan OLDIN o'qiladi — oylar oralig'i pastda AYNAN
+        // shular bilan kengaytiriladi (qarang: "TARIXIY OYLAR").
+        // Shu guruhga TEGLANGAN tuition to'lovlari — oy bo'yicha.
+        var paidByMonth = (await db.FinanceTransactions
+                .Where(t => t.StudentId == student.Id && t.GroupId == group.Id
+                            && t.Direction == "income" && t.Category == "tuition" && t.Month != null)
+                .ToListAsync())
+            .GroupBy(t => t.Month!)
+            .ToDictionary(g => g.Key, g => g.Sum(x => x.Amount));
+
+        // Mavjud per-guruh hisoblar — HAQIQAT MANBAI (super-admin qo'lda tahrir/Locked shu yerda).
+        var chargeByMonth = (await db.MonthlyCharges
+                .Where(c => c.StudentId == student.Id && c.GroupId == group.Id)
+                .ToListAsync())
+            .GroupBy(c => c.Month).ToDictionary(g => g.Key, g => g.First());
+
         var current = TuitionService.CurrentMonth();
         var startMonth = membership.ActivatedAt.Length >= 7 ? membership.ActivatedAt[..7]
             : membership.JoinedAt.Length >= 7 ? membership.JoinedAt[..7] : current;
@@ -53,22 +69,31 @@ public static class StudentGroupLedger
             // AVANS: faol a'zolik uchun joriy oydan keyingi 3 oyni ham ko'rsatamiz — kassir
             // oldindan to'lay olsin (to'lov qilinsa o'sha oy hisobi EnsureCharge orqali ochiladi).
             for (var i = 0; i < AdvanceMonths; i++) endMonth = TuitionService.NextMonth(endMonth);
+
+        // ── TARIXIY OYLAR: oraliq HAQIQATAN pul biriktirilgan oylar bilan KENGAYTIRILADI ──
+        // A'zolik muzlatilib, keyin qayta aktivlashtirilganda `ActivatedAt` YANGI sana bilan
+        // ustidan yoziladi (`ClassesController.ActivateCoreAsync`) — eski faol davrning izi
+        // qolmaydi. Natijada muzlashdan OLDINGI to'lanmagan oylar bu oraliqdan tushib qolar va
+        // kassir ularni to'lov oynasida umuman TANLAY OLMASDI, holbuki `MonthlyCharge` qatori
+        // bazada turgani uchun qarz balansda ham, guruh ro'yxatida ham ko'rinib turardi
+        // ("2 oy qarz", lekin to'lash mumkin emas).
+        //
+        // Shuning uchun oraliqqa mavjud HISOB qatorlari va shu guruhga TEGLANGAN to'lovlarning
+        // oylari ham kiritiladi. Bu faqat KO'RSATUV oralig'i: hisob-kitob qoidalari
+        // (`BillableInMonth`, accrual, muzlatish) tegilmaydi — o'ylab topilgan qarz ham
+        // qo'shilmaydi (pastdagi `outside` shartiga qarang).
+        var naturalStart = startMonth;
+        var naturalEnd = endMonth;
+        foreach (var m in chargeByMonth.Keys.Concat(paidByMonth.Keys))
+        {
+            if (m.Length < 7) continue;
+            var mm = m[..7];
+            if (string.CompareOrdinal(mm, startMonth) < 0) startMonth = mm;
+            if (string.CompareOrdinal(mm, endMonth) > 0) endMonth = mm;
+        }
+
         if (string.CompareOrdinal(startMonth, endMonth) > 0)
             return new GroupLedgerDto(group.Id, group.Name, courseName, months);
-
-        // Shu guruhga TEGLANGAN tuition to'lovlari — oy bo'yicha.
-        var paidByMonth = (await db.FinanceTransactions
-                .Where(t => t.StudentId == student.Id && t.GroupId == group.Id
-                            && t.Direction == "income" && t.Category == "tuition" && t.Month != null)
-                .ToListAsync())
-            .GroupBy(t => t.Month!)
-            .ToDictionary(g => g.Key, g => g.Sum(x => x.Amount));
-
-        // Mavjud per-guruh hisoblar — HAQIQAT MANBAI (super-admin qo'lda tahrir/Locked shu yerda).
-        var chargeByMonth = (await db.MonthlyCharges
-                .Where(c => c.StudentId == student.Id && c.GroupId == group.Id)
-                .ToListAsync())
-            .GroupBy(c => c.Month).ToDictionary(g => g.Key, g => g.First());
 
         foreach (var month in TuitionService.MonthRange(startMonth, endMonth))
         {
@@ -78,6 +103,15 @@ public static class StudentGroupLedger
                 // Hisob mavjud — uning summasi/chegirmasi (haqiqat).
                 gross = ch.Amount;
                 discount = ch.Discount;
+            }
+            else if (string.CompareOrdinal(month, naturalStart) < 0
+                     || string.CompareOrdinal(month, naturalEnd) > 0)
+            {
+                // Kengaytirilgan (tarixiy/uzoq kelajak) oy va hisob qatori YO'Q — demak bu yerga
+                // faqat TO'LOV tufayli tushdik. Hech narsa O'YLAB TOPILMAYDI (guruh oyligi
+                // qo'yilsa, mavjud bo'lmagan qarz paydo bo'lardi): oy to'langan bo'lib ko'rinadi.
+                gross = 0m;
+                discount = 0m;
             }
             else
             {

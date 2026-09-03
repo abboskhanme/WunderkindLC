@@ -723,4 +723,80 @@ public class FinanceDbTests
         Assert.False(s.RetentionBonus);
         Assert.Single(ctx.RetentionBonusTracks);
     }
+
+    // ==================== StudentGroupLedger — MUZLATIB, QAYTA AKTIVLASHTIRILGAN a'zolik ====================
+
+    [Fact]
+    public async Task StudentGroupLedger_qayta_aktivlashtirilgach_ESKI_qarzdor_oy_royxatda_QOLADI()
+    {
+        // MUAMMO edi: `ActivateCoreAsync` (ClassesController.cs:713) `ActivatedAt` ni YANGI sana bilan
+        // ustidan yozadi va `FrozenAt` ni tozalaydi — muzlashdan OLDINGI faol davrning izi qolmaydi.
+        // Ledger esa oylar oralig'ini AYNAN `ActivatedAt` dan boshlagani uchun to'lanmagan eski oy
+        // to'lov oynasidagi ro'yxatga tushmasdi: qarz balansda ko'rinar, lekin uni to'lab bo'lmasdi.
+        // KUTILGAN: hisob qatori (MonthlyCharge) bor har bir oy ro'yxatda bo'ladi.
+        using var db = TestDb.Sqlite();
+        var ctx = db.Context;
+        var g = AddGroup(ctx, 600_000m, "A guruh");
+        var s = AddStudent(ctx, className: "A guruh");
+        // 4 oy oldin aktiv edi, 3 oy oldin muzlatildi, BUGUN qayta aktivlashtirildi.
+        var m = AddMembership(ctx, s, g, activatedAt: $"{M(0)}-01");
+        AddCharge(ctx, s, g.Id, M(-4), 600_000m); // TO'LANMAGAN eski oy
+        AddCharge(ctx, s, g.Id, M(-3), 600_000m);
+        AddPayment(ctx, s, g.Id, M(-3), 600_000m); // bu oy to'langan
+        await ctx.SaveChangesAsync();
+
+        var dto = await StudentGroupLedger.BuildAsync(ctx, s, g, m);
+
+        var eski = dto.Months.Single(x => x.Month == M(-4));
+        Assert.Equal(600_000m, eski.Remaining);
+        Assert.Equal("unpaid", eski.Status);
+        Assert.Equal("paid", dto.Months.Single(x => x.Month == M(-3)).Status);
+        Assert.Contains(dto.Months, x => x.Month == M(0)); // joriy oy ham joyida
+    }
+
+    [Fact]
+    public async Task StudentGroupLedger_hisobi_YOQ_eski_oylar_uchun_QARZ_OYLAB_TOPILMAYDI()
+    {
+        // Oraliq faqat HAQIQATAN pul biriktirilgan (hisob yoki teglangan to'lov) oylar bilan
+        // kengaytiriladi. Oradagi bo'sh oylar (muzlatilgan davr) ro'yxatga TUSHMAYDI, ya'ni
+        // mavjud bo'lmagan qarz paydo bo'lmaydi.
+        using var db = TestDb.Sqlite();
+        var ctx = db.Context;
+        var g = AddGroup(ctx, 600_000m, "A guruh");
+        var s = AddStudent(ctx, className: "A guruh");
+        var m = AddMembership(ctx, s, g, activatedAt: $"{M(0)}-01");
+        AddCharge(ctx, s, g.Id, M(-4), 600_000m);
+        await ctx.SaveChangesAsync();
+
+        var dto = await StudentGroupLedger.BuildAsync(ctx, s, g, m);
+
+        // M(-3), M(-2), M(-1) — muzlatilgan davr: hisob ham, to'lov ham yo'q → summa 0.
+        foreach (var delta in new[] { -3, -2, -1 })
+        {
+            var oy = dto.Months.SingleOrDefault(x => x.Month == M(delta));
+            if (oy is not null) Assert.Equal(0m, oy.Remaining);
+        }
+        Assert.Equal(600_000m, dto.Months.Single(x => x.Month == M(-4)).Remaining);
+    }
+
+    [Fact]
+    public async Task StudentGroupLedger_teglangan_ESKI_tolov_uchun_qarz_YOZILMAYDI()
+    {
+        // Eski oyda hisob YO'Q, faqat teglangan to'lov bor (masalan hisob qatori o'chirilgan).
+        // Oy ro'yxatga tushadi, lekin guruh oyligi O'YLAB TOPILMAYDI — "to'langan" bo'lib turadi.
+        using var db = TestDb.Sqlite();
+        var ctx = db.Context;
+        var g = AddGroup(ctx, 600_000m, "A guruh");
+        var s = AddStudent(ctx, className: "A guruh");
+        var m = AddMembership(ctx, s, g, activatedAt: $"{M(0)}-01");
+        AddPayment(ctx, s, g.Id, M(-5), 600_000m);
+        await ctx.SaveChangesAsync();
+
+        var dto = await StudentGroupLedger.BuildAsync(ctx, s, g, m);
+
+        var oy = dto.Months.Single(x => x.Month == M(-5));
+        Assert.Equal(0m, oy.Remaining);
+        Assert.Equal(600_000m, oy.Paid);
+        Assert.Equal("paid", oy.Status);
+    }
 }
