@@ -1760,6 +1760,17 @@ public class CenterMeta
     /// <summary>Xodim checklisti jo'natiladigan daqiqa (0-59). Default 0.</summary>
     public int StaffTaskMinute { get; set; }
 
+    // ---------- Topshiriqlar moduli (Kanban) kunlik eslatmasi ----------
+    /// <summary>"Topshiriqlar" moduli (loyihaviy topshiriqlar) bo'yicha kunlik eslatma yoqilganmi.
+    /// Yoqilgan bo'lsa fon xizmati har kuni <see cref="WorkTaskReminderHour"/>:<see
+    /// cref="WorkTaskReminderMinute"/> (Toshkent) da har bir mas'ulga BUGUN muddati keladigan va
+    /// MUDDATI O'TGAN topshiriqlar ro'yxatini Telegram bot orqali yuboradi.</summary>
+    public bool WorkTaskReminderEnabled { get; set; } = true;
+    /// <summary>Topshiriq eslatmasi yuboriladigan soat (0-23, Toshkent). Default 9.</summary>
+    public int WorkTaskReminderHour { get; set; } = 9;
+    /// <summary>Topshiriq eslatmasi yuboriladigan daqiqa (0-59). Default 30.</summary>
+    public int WorkTaskReminderMinute { get; set; } = 30;
+
     // ---------- Eskiz.uz SMS shlyuzi ----------
     // Kabinet login/paroli — .env: ESKIZ_EMAIL / ESKIZ_PASSWORD (AppSecrets). Bearer token esa
     // endi XOTIRADA keshlanadi (EskizService) — bazada saqlanmaydi.
@@ -4989,4 +5000,136 @@ public class LandingFaq
     public int Order { get; set; } = 0;
     public bool IsActive { get; set; } = true;
     public string CreatedAt { get; set; } = string.Empty;
+}
+
+// =====================================================================================
+//  TOPSHIRIQLAR (Kanban) — "Topshiriqlar" bo'limi
+// =====================================================================================
+//
+//  Bu modul "Adminga topshiriq" (StaffTask/StaffTaskLog — HAR KUNI takrorlanadigan checklist)
+//  dan ALOHIDA: bu yerda bir martalik LOYIHAVIY topshiriqlar — muddat, muhimlik, mas'ul,
+//  ichki qadamlar (checklist), izohlar va harakatlar tarixi bilan. Ikkalasi bir bo'limda
+//  ("Topshiriqlar") yashaydi, lekin ma'lumot modeli va Telegram oqimi mustaqil.
+//
+//  Ierarxiya:  WorkTaskBoard (doska/loyiha)  →  WorkTaskColumn (holat ustuni)  →  WorkTask
+//              WorkTask  →  WorkTaskItem (qadamlar) · WorkTaskComment (izohlar) · WorkTaskEvent (tarix)
+
+/// <summary>
+/// DOSKA (loyiha) — topshiriqlar to'plami. Har doskada o'z ustunlari bo'ladi, ya'ni bir bo'lim
+/// "Rejada → Jarayonda → Bajarildi" bilan, boshqasi butunlay boshqa bosqichlar bilan ishlashi
+/// mumkin. Birinchi ochilishda "Umumiy" doskasi 4 ta standart ustun bilan avtomatik yaratiladi.
+/// </summary>
+public class WorkTaskBoard
+{
+    public string Id { get; set; } = Guid.NewGuid().ToString();
+    public string Title { get; set; } = string.Empty;
+    /// <summary>Rang kaliti (klientdagi `stageColors`): slate|blue|emerald|amber|violet|rose|cyan|orange.</summary>
+    public string Color { get; set; } = "violet";
+    public int Order { get; set; }
+    /// <summary>Arxivlangan doska ro'yxatlarda ko'rinmaydi, lekin topshiriqlari va tarixi saqlanadi.</summary>
+    public bool IsArchived { get; set; }
+    public DateTime CreatedAt { get; set; } = AppClock.Now;
+    public string CreatedById { get; set; } = string.Empty;
+}
+
+/// <summary>
+/// Doskadagi USTUN (holat) — Kanbanning bir bosqichi. Topshiriq ustundan ustunga sudralganda
+/// <see cref="WorkTask.ColumnId"/> o'zgaradi; <see cref="IsDone"/> yoqilgan ustun esa "bajarildi"
+/// degani (statistika, muddat eslatmasi va takroriylik shu bayroqqa qarab ishlaydi).
+/// </summary>
+public class WorkTaskColumn
+{
+    public string Id { get; set; } = Guid.NewGuid().ToString();
+    public string BoardId { get; set; } = string.Empty;
+    public string Title { get; set; } = string.Empty;
+    /// <summary>Rang kaliti (klientdagi `stageColors`).</summary>
+    public string Color { get; set; } = "slate";
+    public int Order { get; set; }
+    /// <summary>Bu ustundagi topshiriq BAJARILGAN hisoblanadi (yopiluvchi ustun).</summary>
+    public bool IsDone { get; set; }
+    /// <summary>Tizim ustuni — o'chirib bo'lmaydi (doskada kamida bitta ochiq va bitta yopiluvchi
+    /// ustun qolishi shart, aks holda topshiriqlarning "uyi" yo'qolardi).</summary>
+    public bool IsSystem { get; set; }
+}
+
+/// <summary>
+/// TOPSHIRIQ. Mas'ul (<see cref="AssigneeId"/>) — AppUser.Id (admin yoki xodim). Muddat sana
+/// (+ixtiyoriy soat) sifatida saqlanadi: kun bo'yicha filtr/kalendar oddiy satr solishtiruvi
+/// bilan ishlaydi va vaqt zonasi muammosi chiqmaydi (loyihadagi boshqa "kun" maydonlari bilan bir xil).
+/// </summary>
+public class WorkTask
+{
+    public string Id { get; set; } = Guid.NewGuid().ToString();
+    public string BoardId { get; set; } = string.Empty;
+    public string ColumnId { get; set; } = string.Empty;
+    public string Title { get; set; } = string.Empty;
+    public string Description { get; set; } = string.Empty;
+    /// <summary>Mas'ul xodim (AppUser.Id). Bo'sh — hali biriktirilmagan.</summary>
+    public string AssigneeId { get; set; } = string.Empty;
+    /// <summary>Topshiriqni bergan foydalanuvchi (AppUser.Id).</summary>
+    public string CreatedById { get; set; } = string.Empty;
+    /// <summary>0 = past, 1 = o'rta, 2 = yuqori, 3 = shoshilinch.</summary>
+    public int Priority { get; set; } = 1;
+    /// <summary>Muddat kuni ("yyyy-MM-dd"). null — muddatsiz.</summary>
+    public string? DueDate { get; set; }
+    /// <summary>Muddat soati ("HH:mm") — ixtiyoriy, faqat ko'rsatish va eslatma matni uchun.</summary>
+    public string? DueTime { get; set; }
+    /// <summary>Ustun ICHIDAGI tartib (sudrab ko'chirilganda qayta hisoblanadi).</summary>
+    public int Order { get; set; }
+    /// <summary>Erkin teglar (filtr uchun). EF Core primitive collection — `text[]`.</summary>
+    public List<string> Tags { get; set; } = new();
+    public DateTime CreatedAt { get; set; } = AppClock.Now;
+    public DateTime UpdatedAt { get; set; } = AppClock.Now;
+    /// <summary>Yopiluvchi ustunga birinchi marta tushgan vaqt (null = hali bajarilmagan).</summary>
+    public DateTime? CompletedAt { get; set; }
+    /// <summary>Bajarildi deb belgilagan foydalanuvchi (AppUser.Id yoki "" — bot orqali mas'ulning o'zi).</summary>
+    public string CompletedById { get; set; } = string.Empty;
+    /// <summary>Arxivlangan topshiriq doskada ko'rinmaydi (o'chirilmaydi — tarix saqlanadi).</summary>
+    public bool IsArchived { get; set; }
+    /// <summary>Takroriylik: none | daily | weekly | monthly. Bajarilgan takroriy topshiriq
+    /// yopilganda DARHOL keyingi nusxasini tug'diradi (muddat mos ravishda suriladi).</summary>
+    public string Repeat { get; set; } = "none";
+    /// <summary>Shu topshiriq nusxasi tug'ilgan ona topshiriq (takroriylik zanjiri uchun).</summary>
+    public string RepeatOfId { get; set; } = string.Empty;
+    /// <summary>Muddat eslatmasi OXIRGI yuborilgan kun ("yyyy-MM-dd") — bir kunda bir marta.</summary>
+    public string? ReminderSentDate { get; set; }
+}
+
+/// <summary>Topshiriq ichidagi QADAM (subtask/checklist bandi). Bajarilganlar ulushi kartochkada
+/// "3/5" ko'rinishida chiqadi.</summary>
+public class WorkTaskItem
+{
+    public string Id { get; set; } = Guid.NewGuid().ToString();
+    public string TaskId { get; set; } = string.Empty;
+    public string Title { get; set; } = string.Empty;
+    public bool Done { get; set; }
+    public DateTime? DoneAt { get; set; }
+    public int Order { get; set; }
+}
+
+/// <summary>Topshiriqqa yozilgan izoh (muhokama).</summary>
+public class WorkTaskComment
+{
+    public string Id { get; set; } = Guid.NewGuid().ToString();
+    public string TaskId { get; set; } = string.Empty;
+    public string AuthorId { get; set; } = string.Empty;
+    public string Text { get; set; } = string.Empty;
+    public DateTime CreatedAt { get; set; } = AppClock.Now;
+}
+
+/// <summary>
+/// Topshiriq HARAKATLAR TARIXI — "kim, qachon, nimani o'zgartirdi". Nazorat bo'limining asosiy
+/// dalili: mas'ul topshiriqni qachon boshlagani va qachon yopgani shu yerdan ko'rinadi.
+/// </summary>
+public class WorkTaskEvent
+{
+    public string Id { get; set; } = Guid.NewGuid().ToString();
+    public string TaskId { get; set; } = string.Empty;
+    /// <summary>Amalni bajargan foydalanuvchi (AppUser.Id); bot orqali bo'lsa mas'ulning o'zi.</summary>
+    public string ActorId { get; set; } = string.Empty;
+    /// <summary>created | moved | assigned | due | priority | renamed | comment | step | archived | reopened</summary>
+    public string Kind { get; set; } = string.Empty;
+    /// <summary>Tayyor o'zbekcha matn ("«Rejada» → «Jarayonda»") — klient uni shundayligicha ko'rsatadi.</summary>
+    public string Text { get; set; } = string.Empty;
+    public DateTime CreatedAt { get; set; } = AppClock.Now;
 }

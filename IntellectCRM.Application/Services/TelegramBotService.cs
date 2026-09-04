@@ -512,6 +512,56 @@ public class TelegramBotService(
                 messageId = midEl.GetInt64();
             await HandleStaffTaskDoneAsync(chatId, messageId, logId, ct);
         }
+        else if (data.StartsWith(WorkTaskTelegram.CallbackDone, StringComparison.Ordinal))
+        {
+            await HandleWorkTaskDoneAsync(chatId, data[WorkTaskTelegram.CallbackDone.Length..], ct);
+        }
+    }
+
+    /// <summary>
+    /// "Topshiriqlar" modulidagi topshiriqni MAS'ULNING O'ZI bot orqali "bajarildi" qiladi:
+    /// topshiriq doskaning birinchi YOPILUVCHI ustuniga ko'chadi, tarixga yozuv tushadi va
+    /// takroriy bo'lsa keyingi nusxasi tug'iladi (panel bilan AYNAN bir xil —
+    /// <see cref="WorkTaskFlow"/>).
+    ///
+    /// <para>Xavfsizlik: faqat topshiriq MAS'ULI (o'z chatidan) belgilay oladi.</para>
+    /// </summary>
+    private async Task HandleWorkTaskDoneAsync(long chatId, string taskId, CancellationToken ct)
+    {
+        using var scope = sp.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<IAppDbContext>();
+
+        var t = await db.WorkTasks.FirstOrDefaultAsync(x => x.Id == taskId, ct);
+        if (t is null) return;
+
+        var owns = await db.TelegramRegistrations.AnyAsync(
+            r => r.ChatId == chatId && r.UserId == t.AssigneeId, ct);
+        if (!owns) return;
+
+        var doneCol = await db.WorkTaskColumns
+            .Where(c => c.BoardId == t.BoardId && c.IsDone)
+            .OrderBy(c => c.Order).FirstOrDefaultAsync(ct);
+        if (doneCol is null) return;
+
+        if (t.ColumnId == doneCol.Id)
+        {
+            await telegram.SendMessageAsync(chatId, $"✅ «{t.Title}» allaqachon bajarilgan.", null, ct);
+            return;
+        }
+
+        t.ColumnId = doneCol.Id;
+        t.CompletedAt = AppClock.Now;
+        t.CompletedById = t.AssigneeId;
+        t.UpdatedAt = AppClock.Now;
+        db.WorkTaskEvents.Add(new WorkTaskEvent
+        {
+            TaskId = t.Id, ActorId = t.AssigneeId, Kind = "moved",
+            Text = "Telegram bot orqali bajarildi deb belgilandi",
+        });
+        await WorkTaskFlow.SpawnRepeatAsync(db, t, ct);
+        await db.SaveChangesAsync(ct);
+
+        await telegram.SendMessageAsync(chatId, $"✅ Bajarildi: «{t.Title}»", null, ct);
     }
 
     /// <summary>Xodim checklistdagi bandni "bajarildi/bekor" qiladi (toggle) va o'sha xabar tugmalarini

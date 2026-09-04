@@ -240,6 +240,19 @@ export const adminPermissions: AdminPermSection[] = [
   // Bo'limlarga bo'lib berish ATAYIN qilinmagan: bitta tushunarli kalit, kimga berilishi o'ylab
   // tanlansin. Admin/superadmin bu ruxsatsiz ham ko'radi (odatdagi qoida).
   { key: 'audit', label: "O'zgarishlar tarixi" },
+  // TOPSHIRIQLAR — xodimlarga beriladigan LOYIHAVIY topshiriqlar (Kanban doskasi, ro'yxat,
+  // kalendar) va ular bo'yicha nazorat paneli. Bo'lim ichidagi "Kunlik checklist" (eski
+  // "Adminga topshiriq") katalogda YO'Q — u ATAYIN faqat superadmin roli bilan darvozalangan
+  // va serverda eski `staff` ruxsatida qolgan (ruxsat lineyasi o'zgarmasin).
+  {
+    key: 'tasks',
+    label: 'Topshiriqlar',
+    pages: [
+      { key: 'tasks.board', label: "Doska va ro'yxat" },
+      { key: 'tasks.dashboard', label: 'Nazorat paneli' },
+      { key: 'tasks.settings', label: 'Doska va ustun sozlamalari' },
+    ],
+  },
   { key: 'staff', label: 'Xodimlar' },
   { key: 'feedback', label: 'Taklif va shikoyatlar' },
   { key: 'cameras', label: 'Kameralar' },

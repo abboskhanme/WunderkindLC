@@ -59,3 +59,25 @@ export const roomTabs: CardTabItem[] = [
   { label: "Xonalar ro'yxati", to: '/admin/rooms', end: true },
   { label: 'Samaradorlik', to: '/admin/rooms/utilization' },
 ]
+
+/**
+ * TOPSHIRIQLAR bo'limi: **Doska · Ro'yxat · Kalendar · Nazorat paneli · Kunlik checklist**.
+ *
+ * Dastlabki uchtasi AYNI ma'lumotning uch ko'rinishi (ruxsati ham bitta — `tasks.board`),
+ * nazorat paneli esa alohida beriladi (`tasks.dashboard`): bo'lim boshlig'iga xodimlar kesimi
+ * kerak, oddiy adminga esa faqat o'z doskasi.
+ *
+ * ⚠️ "Kunlik checklist" — eski "Adminga topshiriq" moduli (StaffTask). U ruxsat KATALOGIDA yo'q,
+ * faqat SUPERADMIN roli bilan darvozalangan (ko'chirishda ruxsat lineyasi o'zgarmasin), shuning
+ * uchun cardi ham `isSuper` bo'yicha yashiriladi.
+ */
+export function taskTabs(canSee: (perm: string) => boolean, isSuper: boolean): CardTabItem[] {
+  return [
+    // `end` — ichki sahifalar ochilganda «Doska» ham faol bo'lib qolmasin
+    { label: 'Doska', to: '/admin/topshiriqlar', end: true, hidden: !canSee('tasks.board') },
+    { label: "Ro'yxat", to: '/admin/topshiriqlar/royxat', hidden: !canSee('tasks.board') },
+    { label: 'Kalendar', to: '/admin/topshiriqlar/kalendar', hidden: !canSee('tasks.board') },
+    { label: 'Nazorat paneli', to: '/admin/topshiriqlar/nazorat', hidden: !canSee('tasks.dashboard') },
+    { label: 'Kunlik checklist', to: '/admin/topshiriqlar/kunlik', hidden: !isSuper },
+  ]
+}

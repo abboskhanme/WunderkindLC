@@ -245,6 +245,9 @@ const CROSS_INVALIDATION: Record<string, string[]> = {
   '/admin/landing': ['/public', '/school'],
   '/admin/career': ['/public'],
   '/admin/staff-tasks': [],
+  // Topshiriqlar (Kanban) — doska/ustun/topshiriq/izoh hammasi shu miqyosda; boshqa bo'lim
+  // ro'yxatlariga ta'sir qilmaydi, shuning uchun bog'liq miqyos yo'q.
+  '/admin/work-tasks': [],
   // Sof fayl yuklash — hech qanday ro'yxatni o'zgartirmaydi (manzil javobda qaytadi).
   '/admin/uploads': [],
 }

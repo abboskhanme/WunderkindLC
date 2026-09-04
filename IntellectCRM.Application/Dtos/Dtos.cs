@@ -3947,3 +3947,80 @@ public record StudentSearchResultDto(
     string MemberState,
     List<StudentSearchGroupDto> Groups);
 
+
+/* =====================================================================================
+   TOPSHIRIQLAR (Kanban) — "Topshiriqlar" bo'limi
+   =====================================================================================
+   "Adminga topshiriq" (StaffTask*) — HAR KUNI takrorlanadigan checklist; bu yerdagilar esa
+   LOYIHAVIY topshiriqlar: doska → ustun → topshiriq, muddat/muhimlik/mas'ul bilan. */
+
+/// <summary>Doska (loyiha) — ustunlari va topshiriqlar soni bilan.</summary>
+public record WorkTaskBoardDto(
+    string Id, string Title, string Color, int Order, bool IsArchived,
+    List<WorkTaskColumnDto> Columns, int TaskCount);
+
+/// <summary>Doskadagi ustun (holat). <paramref name="IsDone"/> — bu ustundagi topshiriq bajarilgan
+/// hisoblanadi; <paramref name="IsSystem"/> — o'chirib bo'lmaydi.</summary>
+public record WorkTaskColumnDto(
+    string Id, string BoardId, string Title, string Color, int Order, bool IsDone, bool IsSystem, int TaskCount);
+
+/// <summary>Doska yaratish/tahrirlash payload'i.</summary>
+public record WorkTaskBoardInput(string Title, string? Color);
+/// <summary>Ustun yaratish/tahrirlash payload'i.</summary>
+public record WorkTaskColumnInput(string BoardId, string Title, string? Color, bool IsDone);
+
+/// <summary>Topshiriq biriktirish mumkin bo'lgan xodim (admin/superadmin/staff) — ochiq va
+/// muddati o'tgan topshiriqlari soni bilan (mas'ul tanlash ro'yxati uchun).</summary>
+public record WorkTaskAssigneeDto(
+    string UserId, string FullName, string Role, string Position, string? AvatarUrl,
+    bool HasTelegram, int OpenCount, int OverdueCount);
+
+/// <summary>Doskadagi/ro'yxatdagi bitta topshiriq (kartochka uchun yetarli barcha maydonlar).</summary>
+public record WorkTaskDto(
+    string Id, string BoardId, string ColumnId, string Title, string Description,
+    string AssigneeId, string AssigneeName, string? AssigneeAvatarUrl,
+    string CreatedById, string CreatedByName,
+    int Priority, string? DueDate, string? DueTime, int Order, List<string> Tags,
+    bool IsDone, bool IsOverdue, int StepsTotal, int StepsDone, int CommentCount,
+    string CreatedAt, string UpdatedAt, string? CompletedAt, string Repeat, bool IsArchived);
+
+/// <summary>Topshiriq ichidagi qadam (checklist bandi).</summary>
+public record WorkTaskStepDto(string Id, string Title, bool Done, string? DoneAt, int Order);
+/// <summary>Topshiriqqa yozilgan izoh.</summary>
+public record WorkTaskCommentDto(string Id, string AuthorId, string AuthorName, string Text, string CreatedAt);
+/// <summary>Harakatlar tarixining bitta yozuvi.</summary>
+public record WorkTaskEventDto(string Id, string ActorId, string ActorName, string Kind, string Text, string CreatedAt);
+
+/// <summary>Topshiriq DETALI — kartochka + qadamlar + izohlar + tarix (bitta so'rovda).</summary>
+public record WorkTaskDetailDto(
+    WorkTaskDto Task, List<WorkTaskStepDto> Steps, List<WorkTaskCommentDto> Comments,
+    List<WorkTaskEventDto> Events);
+
+/// <summary>Topshiriq yaratish/tahrirlash payload'i. <paramref name="ColumnId"/> bo'sh bo'lsa —
+/// doskaning BIRINCHI ustuni olinadi.</summary>
+public record WorkTaskInput(
+    string BoardId, string? ColumnId, string Title, string? Description, string? AssigneeId,
+    int Priority, string? DueDate, string? DueTime, List<string>? Tags, string? Repeat);
+
+/// <summary>Sudrab ko'chirish: maqsad ustun + ustun ichidagi yangi o'rin.</summary>
+public record WorkTaskMoveInput(string ColumnId, int Order);
+/// <summary>Qadam qo'shish/tahrirlash (Done berilmasa — faqat nomi o'zgaradi).</summary>
+public record WorkTaskStepInput(string? Title, bool? Done);
+/// <summary>Izoh yozish.</summary>
+public record WorkTaskCommentInput(string Text);
+/// <summary>Kunlik eslatma sozlamalari (CenterMeta.WorkTaskReminder*).</summary>
+public record WorkTaskSettingsDto(bool Enabled, int Hour, int Minute);
+
+/// <summary>Nazorat panelidagi bitta xodim qatori. <paramref name="Rate"/> — bajarilish foizi
+/// (bajarilgan / jami, 0-100); <paramref name="DoneOnTime"/> — muddatida yopilganlar.</summary>
+public record WorkTaskStatRowDto(
+    string UserId, string FullName, string Position, int Total, int Done, int Open,
+    int Overdue, int DueToday, int DoneOnTime, int DoneLate, int Rate);
+
+/// <summary>Kunlik dinamika nuqtasi (yaratilgan / bajarilgan).</summary>
+public record WorkTaskTrendPointDto(string Date, int Created, int Done);
+
+/// <summary>Nazorat paneli — umumiy raqamlar, xodimlar kesimi, dinamika va "e'tibor talab qiladi".</summary>
+public record WorkTaskDashboardDto(
+    int Total, int Done, int Open, int Overdue, int DueToday, int Rate,
+    List<WorkTaskStatRowDto> Rows, List<WorkTaskTrendPointDto> Trend, List<WorkTaskDto> Attention);

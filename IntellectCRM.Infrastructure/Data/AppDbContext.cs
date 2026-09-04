@@ -60,6 +60,14 @@ public class AppDbContext(DbContextOptions<AppDbContext> options)
     public DbSet<TelegramGroup> TelegramGroups => Set<TelegramGroup>();
     public DbSet<StaffTask> StaffTasks => Set<StaffTask>();
     public DbSet<StaffTaskLog> StaffTaskLogs => Set<StaffTaskLog>();
+
+    // Topshiriqlar moduli (Kanban) — StaffTask'dan ALOHIDA (loyihaviy topshiriqlar).
+    public DbSet<WorkTaskBoard> WorkTaskBoards => Set<WorkTaskBoard>();
+    public DbSet<WorkTaskColumn> WorkTaskColumns => Set<WorkTaskColumn>();
+    public DbSet<WorkTask> WorkTasks => Set<WorkTask>();
+    public DbSet<WorkTaskItem> WorkTaskItems => Set<WorkTaskItem>();
+    public DbSet<WorkTaskComment> WorkTaskComments => Set<WorkTaskComment>();
+    public DbSet<WorkTaskEvent> WorkTaskEvents => Set<WorkTaskEvent>();
     public DbSet<BotSupportMessage> BotSupportMessages => Set<BotSupportMessage>();
     public DbSet<UserSettings> UserSettings => Set<UserSettings>();
     public DbSet<DeviceToken> DeviceTokens => Set<DeviceToken>();
@@ -860,6 +868,27 @@ public class AppDbContext(DbContextOptions<AppDbContext> options)
             .HasOne<Room>().WithMany()
             .HasForeignKey(c => c.RoomId)
             .OnDelete(DeleteBehavior.SetNull);
+
+        // ---------- TOPSHIRIQLAR MODULI (Kanban) ----------
+        // Doska har ochilganda topshiriqlar (doska + ustun) kesimida o'qiladi; nazorat paneli va
+        // kunlik eslatma xizmati esa mas'ul va muddat bo'yicha filtrlaydi. Munosabatlar haqiqiy
+        // FK emas (oddiy `string` ustun — loyihadagi umumiy uslub), ya'ni EF avtomatik indeks
+        // YARATMAYDI. Indekslanadigan matn ustunlariga uzunlik beriladi (faylning boshidagi qoida).
+        b.Entity<WorkTask>().Property(t => t.BoardId).HasMaxLength(200);
+        b.Entity<WorkTask>().Property(t => t.ColumnId).HasMaxLength(200);
+        b.Entity<WorkTask>().Property(t => t.AssigneeId).HasMaxLength(200);
+        b.Entity<WorkTask>().Property(t => t.DueDate).HasMaxLength(32);
+        b.Entity<WorkTask>().HasIndex(t => new { t.BoardId, t.ColumnId });
+        b.Entity<WorkTask>().HasIndex(t => t.AssigneeId);
+        b.Entity<WorkTask>().HasIndex(t => t.DueDate);
+        b.Entity<WorkTaskColumn>().Property(c => c.BoardId).HasMaxLength(200);
+        b.Entity<WorkTaskColumn>().HasIndex(c => new { c.BoardId, c.Order });
+        b.Entity<WorkTaskItem>().Property(i => i.TaskId).HasMaxLength(200);
+        b.Entity<WorkTaskItem>().HasIndex(i => i.TaskId);
+        b.Entity<WorkTaskComment>().Property(c => c.TaskId).HasMaxLength(200);
+        b.Entity<WorkTaskComment>().HasIndex(c => c.TaskId);
+        b.Entity<WorkTaskEvent>().Property(e => e.TaskId).HasMaxLength(200);
+        b.Entity<WorkTaskEvent>().HasIndex(e => e.TaskId);
     }
 
     // ==================== Saqlashdan oldingi normalizatsiya ====================

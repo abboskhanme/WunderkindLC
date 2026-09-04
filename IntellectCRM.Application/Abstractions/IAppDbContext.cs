@@ -64,6 +64,14 @@ public interface IAppDbContext
     DbSet<TelegramGroup> TelegramGroups { get; }
     DbSet<StaffTask> StaffTasks { get; }
     DbSet<StaffTaskLog> StaffTaskLogs { get; }
+
+    // Topshiriqlar moduli (Kanban)
+    DbSet<WorkTaskBoard> WorkTaskBoards { get; }
+    DbSet<WorkTaskColumn> WorkTaskColumns { get; }
+    DbSet<WorkTask> WorkTasks { get; }
+    DbSet<WorkTaskItem> WorkTaskItems { get; }
+    DbSet<WorkTaskComment> WorkTaskComments { get; }
+    DbSet<WorkTaskEvent> WorkTaskEvents { get; }
     DbSet<BotSupportMessage> BotSupportMessages { get; }
     DbSet<UserSettings> UserSettings { get; }
     DbSet<DeviceToken> DeviceTokens { get; }

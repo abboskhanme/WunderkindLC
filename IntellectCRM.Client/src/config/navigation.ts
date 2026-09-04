@@ -19,6 +19,7 @@ import {
   Megaphone,
   PhoneCall,
   BarChart3,
+  ListChecks,
 } from 'lucide-react'
 import type { Role } from '@/types'
 import { navReports, reportPerms } from './reports'
@@ -191,6 +192,26 @@ export const navByRole: Record<Role, NavItem[]> = {
       ],
     },
     {
+      // TOPSHIRIQLAR — adminlarning qiladigan ishlarini biriktirish va NAZORAT qilish bo'limi
+      // (Kanban doskasi · ro'yxat · kalendar · nazorat paneli). "Boshqaruv" dan TEPADA turadi:
+      // bu kundalik ish oqimi, boshqaruv esa kamdan-kam ochiladigan sozlamalar.
+      //
+      // ⚠️ "Kunlik checklist" — eski "Adminga topshiriq" (Boshqaruv ichida edi). U shu bo'limga
+      // KO'CHDI (marshrut `/admin/topshiriqlar/kunlik`), eskisi esa redirect bo'lib qoldi.
+      // Ruxsati o'zgarmadi — avvalgidek FAQAT superadmin ko'radi.
+      label: 'Topshiriqlar',
+      to: '/admin/topshiriqlar',
+      icon: ListChecks,
+      perm: 'tasks',
+      children: [
+        { label: 'Doska', to: '/admin/topshiriqlar', end: true, perm: 'tasks.board' },
+        { label: "Ro'yxat", to: '/admin/topshiriqlar/royxat', perm: 'tasks.board' },
+        { label: 'Kalendar', to: '/admin/topshiriqlar/kalendar', perm: 'tasks.board' },
+        { label: 'Nazorat paneli', to: '/admin/topshiriqlar/nazorat', perm: 'tasks.dashboard' },
+        { label: 'Kunlik checklist', to: '/admin/topshiriqlar/kunlik', roles: ['superadmin'] },
+      ],
+    },
+    {
       label: 'Boshqaruv',
       to: '/admin/boshqaruv/staff',
       icon: Building2,
@@ -198,7 +219,6 @@ export const navByRole: Record<Role, NavItem[]> = {
         { label: 'Vakansiyalar', to: '/admin/boshqaruv/vacancies', perm: 'vacancies' },
         { label: 'Kameralar', to: '/admin/boshqaruv/cameras', perm: 'cameras' },
         { label: 'Filiallar', to: '/admin/boshqaruv/branches', roles: ['superadmin'] },
-        { label: 'Adminga topshiriq', to: '/admin/boshqaruv/staff-tasks', roles: ['superadmin'] },
         { label: 'Xodimlar va rollar', to: '/admin/boshqaruv/staff', perm: 'staff' },
         { label: 'Taklif va shikoyatlar', to: '/admin/boshqaruv/feedback', perm: 'feedback' },
       ],

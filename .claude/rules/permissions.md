@@ -150,6 +150,7 @@ turmaydi.
 | `app` | `.aiCheck` `.support` `.locations` `.parents` `.teachers` | `AiCheckController` · `SupportController` · `LocationsController` · `ParentsController` · `AppTeachersController` |
 | `finance` | `.main` `.bonus` | `FinanceController` · `RetentionBonusController` |
 | `calls` | `.cloud` `.local` | `CallsController` · `Cti/CtiController` |
+| `tasks` | `.board` `.dashboard` `.settings` | `WorkTasksController` (metod darajasida) |
 | `settings` | `.school` `.landing` `.districts` `.reasons` `.channels` `.backup` `.apk` `.azure-speech` `.gemini` `.check` `.turnstile` `.cameras` `.posthog` `.archive` | `SettingsController` (metod darajasida) · `LandingCmsController` · `DistrictsController` · `ActionReasonsController` · `LeadSourcesController` · `ArchiveController` |
 
 Sahifasiz bo'limlar (bittasi = bitta sahifa): `contacts` · `teacherReports` · `contracts` ·
