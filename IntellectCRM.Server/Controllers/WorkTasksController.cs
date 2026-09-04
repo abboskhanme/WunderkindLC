@@ -11,9 +11,8 @@ namespace IntellectCRM.Server.Controllers;
 
 /// <summary>
 /// "Topshiriqlar" bo'limi — xodimlarga beriladigan LOYIHAVIY topshiriqlar (Kanban doskasi,
-/// ro'yxat, kalendar va nazorat paneli). "Adminga topshiriq" (<see cref="StaffTasksController"/>)
-/// dan ALOHIDA: u yerda har kuni takrorlanadigan checklist, bu yerda esa muddat/mas'ul/muhimlik
-/// bilan bir martalik (yoki takroriy) topshiriqlar.
+/// ro'yxat, kalendar va nazorat paneli): muddat/mas'ul/muhimlik bilan bir martalik (yoki
+/// takroriy) topshiriqlar.
 ///
 /// <para><b>Ruxsat lineyasi</b> (<c>.claude/rules/permissions.md</c>): sinf darajasi
 /// <c>tasks</c> — o'qish (GET) odatdagidek ochiq; YOZISH esa sahifa kaliti bilan ajratilgan:

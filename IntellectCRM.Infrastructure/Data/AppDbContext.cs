@@ -58,10 +58,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options)
     public DbSet<LoginOtpCode> LoginOtpCodes => Set<LoginOtpCode>();
     public DbSet<BotUser> BotUsers => Set<BotUser>();
     public DbSet<TelegramGroup> TelegramGroups => Set<TelegramGroup>();
-    public DbSet<StaffTask> StaffTasks => Set<StaffTask>();
-    public DbSet<StaffTaskLog> StaffTaskLogs => Set<StaffTaskLog>();
 
-    // Topshiriqlar moduli (Kanban) — StaffTask'dan ALOHIDA (loyihaviy topshiriqlar).
+    // Topshiriqlar moduli (Kanban) — loyihaviy topshiriqlar.
     public DbSet<WorkTaskBoard> WorkTaskBoards => Set<WorkTaskBoard>();
     public DbSet<WorkTaskColumn> WorkTaskColumns => Set<WorkTaskColumn>();
     public DbSet<WorkTask> WorkTasks => Set<WorkTask>();

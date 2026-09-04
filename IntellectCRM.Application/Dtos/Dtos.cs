@@ -2051,22 +2051,6 @@ public record StaffDto(string Id, string FullName, string Position, string Login
 /// Ruxsat etilgan qiymatlar: <c>superadmin</c> | <c>admin</c> | <c>staff</c>.</summary>
 public record SetStaffRoleRequest(string Role);
 
-/* ---------- Adminga topshiriq (xodim checklist) ---------- */
-/// <summary>Chap ro'yxatdagi xodim (topshiriq biriktirish uchun). HasTelegram — bot orqali ro'yxatdan
-/// o'tganmi (kunlik checklist yuborilishi uchun kerak). TaskCount — biriktirilgan topshiriqlar soni.</summary>
-public record StaffTaskTargetDto(
-    string UserId, string FullName, string Role, string Position, string Phone, bool HasTelegram, int TaskCount);
-/// <summary>Bitta topshiriq (checklist bandi).</summary>
-public record StaffTaskDto(string Id, string StaffUserId, string Title, int Order);
-/// <summary>Topshiriq yaratish/tahrirlash payload'i.</summary>
-public record StaffTaskInput(string Title);
-/// <summary>Kunlik jo'natish sozlamalari.</summary>
-public record StaffTaskSettingsDto(bool Enabled, int Hour, int Minute);
-/// <summary>Tarix jadvalidagi bitta band: nomi + bajarildimi + qachon.</summary>
-public record StaffTaskHistoryItemDto(string Title, bool Done, string? DoneAt);
-/// <summary>Tarix jadvalidagi bitta xodim qatori (bir kun): jami/bajarilgan + bandlar.</summary>
-public record StaffTaskHistoryRowDto(
-    string UserId, string FullName, int Total, int Done, List<StaffTaskHistoryItemDto> Items);
 /// <summary>Xodim yaratish/tahrirlash so'rovi.
 /// <paramref name="Phone"/> — xodim telefoni (ixtiyoriy, max 32 belgi);
 /// PhoneUtil.Normalize() orqali standartlashtirilib saqlanadi (format: +998-XX-XXX-XX-XX).
@@ -3951,7 +3935,6 @@ public record StudentSearchResultDto(
 /* =====================================================================================
    TOPSHIRIQLAR (Kanban) — "Topshiriqlar" bo'limi
    =====================================================================================
-   "Adminga topshiriq" (StaffTask*) — HAR KUNI takrorlanadigan checklist; bu yerdagilar esa
    LOYIHAVIY topshiriqlar: doska → ustun → topshiriq, muddat/muhimlik/mas'ul bilan. */
 
 /// <summary>Doska (loyiha) — ustunlari va topshiriqlar soni bilan.</summary>

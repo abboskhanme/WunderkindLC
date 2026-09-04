@@ -202,9 +202,9 @@ const CROSS_INVALIDATION: Record<string, string[]> = {
 
   /* ─────────── ALOQA · XABAR ─────────── */
   // Talab o'quvchi profilining "Aloqa" tabida va xodim vazifalarida ko'rinadi (`contacts.md`).
-  '/admin/contacts': ['/admin/students', '/admin/staff-tasks'],
+  '/admin/contacts': ['/admin/students'],
   // O'qituvchi jurnaldan navbatga yuboradi — natija FAQAT admin modulida ko'rinadi (§3.7).
-  '/teacher/groups': ['/admin/contacts', '/admin/students', '/admin/classes', '/admin/staff-tasks'],
+  '/teacher/groups': ['/admin/contacts', '/admin/students', '/admin/classes'],
   // Qo'ng'iroqlar: `/cti` — o'sha yozuvlarga IKKINCHI eshik.
   '/admin/calls': ['/admin/students', '/admin/contacts'],
   '/cti': ['/admin/calls', '/admin/students', '/admin/contacts'],
@@ -244,7 +244,6 @@ const CROSS_INVALIDATION: Record<string, string[]> = {
   // Landing/vakansiya CMS — OMMAVIY sahifa va brend nomi (`/school`, `/public/brand`).
   '/admin/landing': ['/public', '/school'],
   '/admin/career': ['/public'],
-  '/admin/staff-tasks': [],
   // Topshiriqlar (Kanban) — doska/ustun/topshiriq/izoh hammasi shu miqyosda; boshqa bo'lim
   // ro'yxatlariga ta'sir qilmaydi, shuning uchun bog'liq miqyos yo'q.
   '/admin/work-tasks': [],

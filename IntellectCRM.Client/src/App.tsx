@@ -34,7 +34,6 @@ const RoomUtilizationPage = lazy(() => import('@/pages/admin/rooms/RoomUtilizati
 const TeacherReportsPage = lazy(() => import('@/pages/admin/teacher-reports/TeacherReportsPage').then((m) => ({ default: m.TeacherReportsPage })))
 const ContractsPage = lazy(() => import('@/pages/admin/contracts/ContractsPage').then((m) => ({ default: m.ContractsPage })))
 const BranchesPage = lazy(() => import('@/pages/admin/branches/BranchesPage').then((m) => ({ default: m.BranchesPage })))
-const StaffTasksPage = lazy(() => import('@/pages/admin/staff-tasks/StaffTasksPage').then((m) => ({ default: m.StaffTasksPage })))
 const TasksBoardPage = lazy(() => import('@/pages/admin/tasks/TasksBoardPage').then((m) => ({ default: m.TasksBoardPage })))
 const TasksListPage = lazy(() => import('@/pages/admin/tasks/TasksListPage').then((m) => ({ default: m.TasksListPage })))
 const TasksCalendarPage = lazy(() => import('@/pages/admin/tasks/TasksCalendarPage').then((m) => ({ default: m.TasksCalendarPage })))
@@ -328,8 +327,10 @@ export default function App() {
             <Route path="topshiriqlar/royxat" element={<RequirePerm perm="tasks.board"><TasksListPage /></RequirePerm>} />
             <Route path="topshiriqlar/kalendar" element={<RequirePerm perm="tasks.board"><TasksCalendarPage /></RequirePerm>} />
             <Route path="topshiriqlar/nazorat" element={<RequirePerm perm="tasks.dashboard"><TasksDashboardPage /></RequirePerm>} />
-            {/* Eski manzil (Boshqaruv → "Adminga topshiriq") — havolalar va xatcho'plar buzilmasin. */}
-            <Route path="boshqaruv/staff-tasks" element={<Navigate to="/admin/topshiriqlar/kunlik" replace />} />
+            {/* Eski manzillar (Boshqaruv → "Adminga topshiriq" va uning kunlik cheklisti) —
+                modul olib tashlandi, xatcho'plar esa Topshiriqlar doskasiga tushadi. */}
+            <Route path="boshqaruv/staff-tasks" element={<Navigate to="/admin/topshiriqlar" replace />} />
+            <Route path="topshiriqlar/kunlik" element={<Navigate to="/admin/topshiriqlar" replace />} />
 
             {/* Boshqaruv */}
             <Route path="boshqaruv/vacancies" element={<RequirePerm perm="vacancies"><VacanciesPage /></RequirePerm>} />
@@ -340,9 +341,6 @@ export default function App() {
             <Route path="boshqaruv/roles" element={<Navigate to="/admin/boshqaruv/staff" replace />} />
             <Route element={<ProtectedRoute role="superadmin" />}>
               <Route path="boshqaruv/branches" element={<BranchesPage />} />
-              {/* Kunlik checklist (eski "Adminga topshiriq") — endi Topshiriqlar bo'limida,
-                  lekin ruxsati O'ZGARMADI: faqat superadmin. */}
-              <Route path="topshiriqlar/kunlik" element={<StaffTasksPage />} />
             </Route>
           </Route>
         </Route>

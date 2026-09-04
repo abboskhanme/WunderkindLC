@@ -5,7 +5,7 @@ namespace IntellectCRM.Application.Services;
 /// <summary>
 /// "Topshiriqlar" modulining Telegram ko'rinishi — YAGONA joy: yangi topshiriq xabari ham,
 /// kunlik eslatma ham, bot callback javobi ham shu yerdagi matn/tugmalardan foydalanadi
-/// (<see cref="StaffTaskChecklist"/> bilan bir xil naqsh — tugmalar hech qachon ayrilib ketmasin).
+/// (tugmalar ikki joyda ayrilib ketmasin).
 /// </summary>
 public static class WorkTaskTelegram
 {

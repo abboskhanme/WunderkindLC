@@ -1,6 +1,5 @@
 import type { ReactNode } from 'react'
 import { Search, TriangleAlert } from 'lucide-react'
-import { useAuth } from '@/context/auth-context'
 import { usePerm } from '@/lib/permissions'
 import { avatarColor, initials } from '@/lib/avatar'
 import { taskTabs } from '@/config/sectionTabs'
@@ -32,12 +31,11 @@ export function TasksShell({
   children: ReactNode
 }) {
   const { can } = usePerm()
-  const { user } = useAuth()
   return (
     <div>
       <PageHeader title="Topshiriqlar" sub={sub} actions={actions} />
       <CardTabs
-        items={taskTabs((perm) => can(perm, 'view'), user?.role === 'superadmin')}
+        items={taskTabs((perm) => can(perm, 'view'))}
         className="mb-5"
       />
       {children}

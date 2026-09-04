@@ -4,8 +4,8 @@ import type { StageColor } from '@/types'
 /* =====================================================================================
  *  TOPSHIRIQLAR (Kanban) — "Topshiriqlar" bo'limi
  * =====================================================================================
- *  ⚠️ "Adminga topshiriq" (`staffTasks.ts`) — BOSHQA modul: u har kuni takrorlanadigan
- *  checklist. Bu yerdagilar esa doska/ustun/muddat/mas'ul bilan ishlaydigan topshiriqlar.
+ *  Doska/ustun/muddat/mas'ul bilan ishlaydigan topshiriqlar. Eski "Adminga topshiriq"
+ *  (kunlik cheklist) moduli olib tashlangan — takroriylik shu modulning O'ZIDA (`repeat`).
  */
 
 export interface WorkTaskColumn {

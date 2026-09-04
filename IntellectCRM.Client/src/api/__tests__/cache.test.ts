@@ -53,7 +53,10 @@ describe('keyInScope — bo\'lak darajasida moslik', () => {
 
   it('nomi o\'xshash BOSHQA resurs mos KELMAYDI (oddiy startsWith xatosi)', () => {
     expect(keyInScope('/admin/student-attendance?{}', '/admin/students')).toBe(false)
-    expect(keyInScope('/admin/staff-tasks?{}', '/admin/staff')).toBe(false)
+    // ⚠️ Prefiks SEGMENT chegarasida tugashi SHART — naive `startsWith` AYNAN shu yerda
+    // adashardi. Loyihada bunday juftlik hozir yo'q (`/admin/staff-tasks` — kunlik cheklist —
+    // olib tashlandi), lekin `/admin/<miqyos>-...` nomli endpoint qo'shilishi bilanoq kerak.
+    expect(keyInScope('/admin/staff-roles?{}', '/admin/staff')).toBe(false)
   })
 })
 

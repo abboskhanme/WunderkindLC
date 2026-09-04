@@ -62,8 +62,6 @@ public interface IAppDbContext
     DbSet<LoginOtpCode> LoginOtpCodes { get; }
     DbSet<BotUser> BotUsers { get; }
     DbSet<TelegramGroup> TelegramGroups { get; }
-    DbSet<StaffTask> StaffTasks { get; }
-    DbSet<StaffTaskLog> StaffTaskLogs { get; }
 
     // Topshiriqlar moduli (Kanban)
     DbSet<WorkTaskBoard> WorkTaskBoards { get; }

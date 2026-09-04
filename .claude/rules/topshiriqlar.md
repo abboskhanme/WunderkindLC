@@ -1,5 +1,5 @@
 ---
-description: "Topshiriqlar" bo'limi (Kanban) — doska/ustun/topshiriq modeli, holat va takroriylik qoidalari, Telegram oqimi, ruxsatlar va "Adminga topshiriq" (StaffTask) bilan farqi.
+description: "Topshiriqlar" bo'limi (Kanban) — doska/ustun/topshiriq modeli, holat va takroriylik qoidalari, Telegram oqimi va ruxsatlar. Eski "Adminga topshiriq" (kunlik cheklist) moduli olib tashlangan.
 paths:
   - "IntellectCRM.Domain/Entities.cs"
   - "IntellectCRM.Server/Controllers/WorkTasksController.cs"
@@ -17,20 +17,24 @@ paths:
 `/admin/topshiriqlar` — adminlarga/xodimlarga beriladigan **loyihaviy topshiriqlar** va ular
 bo'yicha nazorat. Menyuda "Boshqaruv" dan TEPADA (kundalik ish oqimi).
 
-## 1. IKKI MODUL — chalkashtirmang
+## 1. BITTA MODUL — eski "Adminga topshiriq" OLIB TASHLANDI
 
-| | "Adminga topshiriq" (eski) | "Topshiriqlar" (bu modul) |
-|---|---|---|
-| Entity | `StaffTask` · `StaffTaskLog` | `WorkTaskBoard` · `WorkTaskColumn` · `WorkTask` · `WorkTaskItem` · `WorkTaskComment` · `WorkTaskEvent` |
-| Mohiyati | HAR KUNI takrorlanadigan checklist | Muddat/mas'ul/muhimlik bilan bir martalik (yoki takroriy) topshiriq |
-| Controller | `StaffTasksController` (`[AdminPerm("staff")]`) | `WorkTasksController` (`[AdminPerm("tasks")]`) |
-| Sahifa | `/admin/topshiriqlar/kunlik` — **faqat superadmin** (rol bilan) | Doska · Ro'yxat · Kalendar · Nazorat paneli |
-| Telegram | ertalab checklist, `stask:` callback | topshiriq berilganda + kunlik eslatma, `wtdone:` callback |
+Ilgari yonma-yon IKKI topshiriq tizimi bor edi. Eskisi — "Adminga topshiriq" (HAR KUNI
+takrorlanadigan **kunlik cheklist**) — 2026-09-04 da **butunlay o'chirildi**: yangi modul
+o'sha ehtiyojni takroriy topshiriq (`Repeat = daily`) bilan qoplaydi, ikkita o'xshash tizimni
+parallel yuritishning ma'nosi qolmadi.
 
-⚠️ Kunlik checklist Boshqaruvdan shu bo'limga **KO'CHDI** (`/admin/boshqaruv/staff-tasks` →
-redirect). **Ruxsat lineyasi ATAYIN o'zgarmadi**: u avvalgidek superadmin roli bilan
-darvozalangan va serverda `staff` kalitida qolgan — aks holda mavjud xodimlarning ruxsati
-sezdirmasdan kengayib ketardi.
+Nima o'chdi: `StaffTask` · `StaffTaskLog` entitylari, `StaffTasksController`,
+`StaffTaskChecklist`, `StaffTaskDispatchService`, botdagi **`stask:`** callback'i,
+`CenterMeta.StaffTaskEnabled/Hour/Minute`, klientdagi `StaffTasksPage` va `staffTasks.ts`.
+Migratsiya — **`RemoveStaffTasks`** (jadvallarni ham tushiradi; `Down` faqat SXEMANI tiklaydi).
+
+⚠️ **Eski manzillar redirect bo'lib qoldi** — `/admin/boshqaruv/staff-tasks` va
+`/admin/topshiriqlar/kunlik` ikkalasi ham `/admin/topshiriqlar` ga tushiradi (xatcho'p va eski
+havolalar 404 bermasin).
+
+⚠️ **Yangi kod `staff` ruxsat kalitiga topshiriq mantig'ini OSMASIN** — endi bo'limning yagona
+kaliti `tasks*` (§5). Eski modul `staff` kalitida turgani faqat tarixiy sabab edi.
 
 ## 2. Model: doska → ustun → topshiriq
 
@@ -70,7 +74,7 @@ Har o'zgarish `WorkTaskEvent` ga yoziladi ("kim, qachon, nimani") — nazorat bo
 | Kunlik eslatma (`WorkTaskReminderService`) | bugungi + kechikkan topshiriqlar ro'yxati, har biriga tugma |
 | "✅ Bajardim" bosildi | topshiriq birinchi `IsDone` ustuniga ko'chadi, tarixga yozuv, takroriysi tug'iladi |
 
-- Matn/tugmalar — `WorkTaskTelegram` da (YAGONA joy, `StaffTaskChecklist` bilan bir xil naqsh).
+- Matn/tugmalar — `WorkTaskTelegram` da (YAGONA joy — tugmalar ikki joyda ayrilib ketmasin).
 - Callback: **`wtdone:{taskId}`**. Faqat topshiriq **MAS'ULI** o'z chatidan belgilay oladi.
 - Eslatma idempotent: `WorkTask.ReminderSentDate` — bir kunda bir marta. Bog'lanmagan xodim uchun
   ham belgilab qo'yiladi (aks holda u botga ulangan kuni bir yillik "qarz" yog'ilardi).

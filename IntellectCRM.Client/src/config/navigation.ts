@@ -195,10 +195,6 @@ export const navByRole: Record<Role, NavItem[]> = {
       // TOPSHIRIQLAR — adminlarning qiladigan ishlarini biriktirish va NAZORAT qilish bo'limi
       // (Kanban doskasi · ro'yxat · kalendar · nazorat paneli). "Boshqaruv" dan TEPADA turadi:
       // bu kundalik ish oqimi, boshqaruv esa kamdan-kam ochiladigan sozlamalar.
-      //
-      // ⚠️ "Kunlik checklist" — eski "Adminga topshiriq" (Boshqaruv ichida edi). U shu bo'limga
-      // KO'CHDI (marshrut `/admin/topshiriqlar/kunlik`), eskisi esa redirect bo'lib qoldi.
-      // Ruxsati o'zgarmadi — avvalgidek FAQAT superadmin ko'radi.
       label: 'Topshiriqlar',
       to: '/admin/topshiriqlar',
       icon: ListChecks,
@@ -208,7 +204,6 @@ export const navByRole: Record<Role, NavItem[]> = {
         { label: "Ro'yxat", to: '/admin/topshiriqlar/royxat', perm: 'tasks.board' },
         { label: 'Kalendar', to: '/admin/topshiriqlar/kalendar', perm: 'tasks.board' },
         { label: 'Nazorat paneli', to: '/admin/topshiriqlar/nazorat', perm: 'tasks.dashboard' },
-        { label: 'Kunlik checklist', to: '/admin/topshiriqlar/kunlik', roles: ['superadmin'] },
       ],
     },
     {

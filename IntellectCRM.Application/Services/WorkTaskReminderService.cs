@@ -13,8 +13,8 @@ namespace IntellectCRM.Application.Services;
 /// va MUDDATI O'TGAN ochiq topshiriqlarini "✅ Bajardim" tugmalari bilan yuboradi.
 ///
 /// <para>Idempotent: har topshiriqda <see cref="WorkTask.ReminderSentDate"/> turadi, ya'ni bir kunda
-/// bir marta eslatiladi va xizmat aynan o'sha daqiqada ishlamagan bo'lsa ham keyinroq o'zini tiklaydi
-/// (<see cref="StaffTaskDispatchService"/> bilan bir xil naqsh).</para>
+/// bir marta eslatiladi va xizmat aynan o'sha daqiqada ishlamagan bo'lsa ham keyinroq o'zini
+/// tiklaydi.</para>
 /// </summary>
 public class WorkTaskReminderService(
     IServiceProvider services,
