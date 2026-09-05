@@ -7,7 +7,7 @@ import {
   CalendarDays, Clock, MapPin, Wallet, Snowflake, CheckCircle2,
   ListChecks, ChevronRight, ChevronDown, Plus, Minus, Repeat, CalendarClock, Flag, TrendingUp, Trophy,
   ArrowLeftRight, RotateCcw, X, Pencil, ClipboardList, CalendarCheck, History,
-  UserPlus, MessageSquare, ArrowUpDown, Sparkles, EyeOff, PhoneCall,
+  MessageSquare, ArrowUpDown, Sparkles, EyeOff, PhoneCall,
 } from 'lucide-react'
 import type { AbsenceReason, MasteryLevel, Group, GroupMember } from '@/types'
 import {
@@ -22,7 +22,6 @@ import {
 import {
   activateMember, freezeMember, returnMemberToTrial, getClass, getGroupSmsRecipients, updateClass,
   getGroupMembers, removeGroupMember, type ClassPayload,
-  bulkFreezeMembers, bulkActivateMembers, bulkMembershipSummary,
 } from '@/api/services/classes'
 import { getGroupPayments, type GroupPaymentsReport } from '@/api/services/finance'
 import { GroupTestsPanel } from '../tests/GroupTestsPanel'
@@ -154,14 +153,11 @@ export function ClassDetailPage() {
   const [rosterTransferOpen, setRosterTransferOpen] = useState(false)
   const [rosterDate, setRosterDate] = useState('')
   const [rosterBusy, setRosterBusy] = useState(false)
-  /** Guruh "⋮" menyusidan OMMAVIY amal — qaysi amal uchun tasdiq modali ochiq (`null` = yopiq). */
-  const [groupBulk, setGroupBulk] = useState<'freeze' | 'yearFreeze' | 'activate' | null>(null)
-  /** Ommaviy amal so'rov jarayonida — takroriy bosishni bloklaydi. */
-  const [groupBulkBusy, setGroupBulkBusy] = useState(false)
   /** Guruh o'qituvchisi id'si — profilga link uchun (jurnal DTO'sida faqat teacherName bor). */
   const [teacherId, setTeacherId] = useState('')
   /** "Yangi o'quvchi" yaratish formasi ochiqmi — yaratilgach shu guruhga qo'shiladi. */
-  /** A'zo qo'shish modali (mavjud o'quvchini qidirish yoki yangi yaratish) ochiqmi. */
+  /** «Talabalarni boshqarish» oynasi (`ClassMembersModal`) ochiqmi — qo'shish/qidirish/yangi
+   *  o'quvchi + aktivlashtirish/muzlatish (bittadan ham, belgilab ommaviy ham). */
   const [membersOpen, setMembersOpen] = useState(false)
   /** Guruh obyekti (ClassMembersModal uchun) — getClasses'dan. */
   const [group, setGroup] = useState<Group | null>(null)
@@ -564,64 +560,6 @@ export function ClassDetailPage() {
     }
   }
 
-  /**
-   * "⋮" menyudagi OMMAVIY amal uchun mos a'zolar. Menyuda son ko'rinib turadi, ya'ni
-   * foydalanuvchi bosishdan OLDIN nechta odamga tegishini biladi — "hammasini muzlatish"
-   * jimgina 0 ta (yoki kutilmaganda 40 ta) odamga tegib ketmasin.
-   */
-  const bulkFreezeTargets = useMemo(
-    () => members.filter((m) => m.isActive && (m.status === 'active' || m.status === 'trial')),
-    [members],
-  )
-  const bulkActivateTargets = useMemo(
-    () => members.filter((m) => m.isActive && m.status !== 'active'),
-    [members],
-  )
-
-  /**
-   * Guruhning BARCHA mos a'zolarini bir paytda muzlatish/aktivlashtirish ("⋮" menyudan).
-   *
-   * Tanlab qilish kerak bo'lsa — "A'zolar" oynasida checkbox bor; bu yerdagi
-   * yo'l ATAYIN "hammasi" uchun, chunki menyuda tanlov ko'rinmaydi. Id'lar baribir OCHIQ
-   * yuboriladi (server "hammasi"ni o'zi qidirmaydi) — ya'ni ekranda ko'rilgan ro'yxat
-   * bilan amalga ketgan ro'yxat AYNAN bir xil bo'ladi.
-   */
-  const confirmGroupBulk = async (
-    reasonId: string | undefined,
-    date?: string,
-    retentionBonus?: boolean,
-  ) => {
-    if (!groupBulk || groupBulkBusy) return
-    const action = groupBulk
-    // «Aktiv muzlatish» — o'sha muzlatish, ya'ni mos a'zolar ro'yxati ham AYNAN o'sha.
-    const freezing = action === 'freeze' || action === 'yearFreeze'
-    const targets = freezing ? bulkFreezeTargets : bulkActivateTargets
-    const ids = targets.map((m) => m.studentId)
-    if (ids.length === 0) {
-      setGroupBulk(null)
-      return
-    }
-    const day = date || today
-    setGroupBulkBusy(true)
-    try {
-      const res = freezing
-        ? await bulkFreezeMembers(id, ids, day, reasonId, action === 'yearFreeze')
-        // Bonus ptichkasi ruxsatsiz bo'lsa umuman yuborilmaydi (server ham shu qoidani tekshiradi).
-        : await bulkActivateMembers(id, ids, day, canSetBonus ? retentionBonus : undefined)
-      setGroupBulk(null)
-      reloadMembers()
-      load(journal?.month)
-      alert(bulkMembershipSummary(res, freezing ? 'freeze' : 'activate'))
-    } catch (err) {
-      // Modal YOPILADI: uning ichki "submitting" bayrog'i faqat `open` o'zgarganda tiklanadi,
-      // ochiq qoldirsak tasdiq tugmasi abadiy o'chiq qolardi.
-      setGroupBulk(null)
-      alert(apiErrorMessage(err, 'Ommaviy amal bajarilmadi'))
-    } finally {
-      setGroupBulkBusy(false)
-    }
-  }
-
   const absentReasons = useMemo(() => reasons.filter((r) => !r.isLate), [reasons])
 
   // Mavzu yoyish/yig'ish (default — yopiq)
@@ -830,8 +768,8 @@ export function ClassDetailPage() {
                     {can('classes.list', 'create') && (
                       <button
                         type="button"
-                        title="A'zolar — qo'shish, aktivlashtirish, muzlatish"
-                        aria-label="A'zolar"
+                        title="Talabalarni boshqarish — qo'shish, aktivlashtirish, muzlatish"
+                        aria-label="Talabalarni boshqarish"
                         onClick={() => setMembersOpen(true)}
                         className="rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
                       >
@@ -840,33 +778,17 @@ export function ClassDetailPage() {
                     )}
                     <DropdownMenu
                       items={[
+                        // ⚠️ Bitta UNIVERSAL band: oyna ichida qo'shish ham, bittadan ham,
+                        // BELGILAB ommaviy muzlatish/aktivlashtirish ham bor — shuning uchun nomi
+                        // "Yangi talaba qo'shish" EMAS (u faqat bir amalni aytib, qolganini
+                        // yashirardi). Ilgari shu menyuda alohida "Hammasini muzlatish / aktiv
+                        // muzlatish / aktivlashtirish" bandlari ham bor edi — OLIB TASHLANDI:
+                        // ular oynadagi checkbox bilan bir xil ishni qilar, lekin TANLOVSIZ
+                        // ("hammasi") bo'lgani uchun xavfliroq va ikkinchi, boshqacha yo'l edi.
                         ...(can('classes.list', 'create')
                           ? [{
-                              label: 'Yangi talaba qo\'shish', icon: UserPlus,
+                              label: 'Talabalarni boshqarish', icon: Users,
                               onClick: () => setMembersOpen(true),
-                            }]
-                          : []),
-                        // OMMAVIY muzlatish/aktivlashtirish — guruhning HAMMA mos a'zosiga.
-                        // Bandi mos a'zo BO'LMASA umuman ko'rsatilmaydi: "0 ta" ni bosib,
-                        // hech narsa bo'lmagani chalg'itardi. Tanlab qilish — "A'zolar → Boshqarish".
-                        ...(can('classes.list', 'create') && bulkFreezeTargets.length > 0
-                          ? [{
-                              label: `Hammasini muzlatish (${bulkFreezeTargets.length})`, icon: Snowflake,
-                              onClick: () => setGroupBulk('freeze'),
-                            }]
-                          : []),
-                        // «Aktiv muzlatish» — FAQAT superadmin. `can()` bu yerda yaramaydi:
-                        // u oddiy admin uchun ham true qaytaradi, amal esa admin'ga yopiq.
-                        ...(user?.role === 'superadmin' && bulkFreezeTargets.length > 0
-                          ? [{
-                              label: `Hammasini aktiv muzlatish (${bulkFreezeTargets.length})`, icon: CalendarClock,
-                              onClick: () => setGroupBulk('yearFreeze'),
-                            }]
-                          : []),
-                        ...(can('classes.list', 'create') && bulkActivateTargets.length > 0
-                          ? [{
-                              label: `Hammasini aktivlashtirish (${bulkActivateTargets.length})`, icon: CheckCircle2,
-                              onClick: () => setGroupBulk('activate'),
                             }]
                           : []),
                         {
@@ -947,7 +869,7 @@ export function ClassDetailPage() {
                         <button
                           type="button"
                           onClick={() => setMembersOpen(true)}
-                          title="A'zolar — qo'shish, aktivlashtirish, muzlatish"
+                          title="Talabalarni boshqarish — qo'shish, aktivlashtirish, muzlatish"
                           className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-brand-200 bg-brand-50 px-2 py-1 text-xs font-medium text-brand-700 transition-colors hover:border-brand-300 hover:bg-brand-100"
                         >
                           <Users className="h-3.5 w-3.5" /> A'zolar
@@ -1849,42 +1771,10 @@ export function ClassDetailPage() {
         />
       )}
 
-      {/* "⋮" menyudan OMMAVIY muzlatish/aktivlashtirish — sana (va sabab) BIR marta tanlanadi.
-          Yakka a'zo modali (`rosterReason`) bilan aralashmasin deb ALOHIDA element. */}
-      <ReasonPromptModal
-        open={!!groupBulk}
-        category={groupBulk === 'activate' ? 'activate' : 'freeze'}
-        title={
-          groupBulk === 'freeze' ? 'Hammasini muzlatish'
-          : groupBulk === 'yearFreeze' ? 'Hammasini aktiv muzlatish'
-          : 'Hammasini aktivlashtirish'
-        }
-        message={
-          groupBulk === 'freeze'
-            ? `Guruhning ${bulkFreezeTargets.length} ta a'zosi shu sanadan muzlatiladi — oylik to'lov hisoblanmaydi.`
-            : groupBulk === 'yearFreeze'
-              ? `Guruhning ${bulkFreezeTargets.length} ta a'zosi shu sanadan muzlatiladi va «yangi o'quv yiliga o'tish» deb belgilanadi. Hisob-kitob oddiy muzlatish bilan bir xil.`
-              : `Guruhning ${bulkActivateTargets.length} ta a'zosi shu sanadan aktivlashtiriladi — qisman oylik hisoblanadi.`
-        }
-        confirmLabel={
-          groupBulk === 'freeze'
-            ? (groupBulkBusy ? 'Muzlatilyapti…' : 'Muzlatish')
-            : groupBulk === 'yearFreeze'
-              ? (groupBulkBusy ? 'Muzlatilyapti…' : 'Aktiv muzlatish')
-              : (groupBulkBusy ? 'Aktivlashtirilyapti…' : 'Aktivlashtirish')
-        }
-        tone={groupBulk === 'activate' ? 'brand' : 'sky'}
-        showDate
-        defaultDate={today}
-        showRetentionBonus={groupBulk === 'activate' && canSetBonus}
-        onConfirm={confirmGroupBulk}
-        onClose={() => {
-          if (!groupBulkBusy) setGroupBulk(null)
-        }}
-      />
-
-      {/* A'zo qo'shish: avval mavjud o'quvchilardan qidiriladi, topilmasa "Yangi o'quvchi" yaratiladi
-          (ClassMembersModal — a'zolarni to'liq boshqarish: qo'shish/qidirish/yaratish/holat). */}
+      {/* «Talabalarni boshqarish» — a'zolik bo'yicha YAGONA oyna: mavjud o'quvchini qidirib
+          qo'shish, "Yangi o'quvchi" yaratish va holatni o'zgartirish (Aktivlashtirish /
+          Muzlatish / «Aktiv muzlatish») — bittadan ham, checkbox bilan belgilab OMMAVIY ham.
+          "Guruhlar" ro'yxatidagi «odamcha» tugmasi AYNAN shu oynani ochadi. */}
       <ClassMembersModal
         group={membersOpen ? group : null}
         onClose={() => {
