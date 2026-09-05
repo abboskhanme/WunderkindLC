@@ -7,7 +7,7 @@ import {
   CalendarDays, Clock, MapPin, Wallet, Snowflake, CheckCircle2,
   ListChecks, ChevronRight, ChevronDown, Plus, Minus, Repeat, CalendarClock, Flag, TrendingUp, Trophy,
   ArrowLeftRight, RotateCcw, X, Pencil, ClipboardList, CalendarCheck, History,
-  UserPlus, MessageSquare, ArrowUpDown, Sparkles, EyeOff, PhoneCall, Settings2,
+  UserPlus, MessageSquare, ArrowUpDown, Sparkles, EyeOff, PhoneCall,
 } from 'lucide-react'
 import type { AbsenceReason, MasteryLevel, Group, GroupMember } from '@/types'
 import {
@@ -581,7 +581,7 @@ export function ClassDetailPage() {
   /**
    * Guruhning BARCHA mos a'zolarini bir paytda muzlatish/aktivlashtirish ("⋮" menyudan).
    *
-   * Tanlab qilish kerak bo'lsa — "A'zolar → Boshqarish" modalida checkbox bor; bu yerdagi
+   * Tanlab qilish kerak bo'lsa — "A'zolar" oynasida checkbox bor; bu yerdagi
    * yo'l ATAYIN "hammasi" uchun, chunki menyuda tanlov ko'rinmaydi. Id'lar baribir OCHIQ
    * yuboriladi (server "hammasi"ni o'zi qidirmaydi) — ya'ni ekranda ko'rilgan ro'yxat
    * bilan amalga ketgan ro'yxat AYNAN bir xil bo'ladi.
@@ -819,53 +819,73 @@ export function ClassDetailPage() {
                       )}
                     </p>
                   </div>
-                  <DropdownMenu
-                    items={[
-                      ...(can('classes.list', 'create')
-                        ? [{
-                            label: 'Yangi talaba qo\'shish', icon: UserPlus,
-                            onClick: () => setMembersOpen(true),
-                          }]
-                        : []),
-                      // OMMAVIY muzlatish/aktivlashtirish — guruhning HAMMA mos a'zosiga.
-                      // Bandi mos a'zo BO'LMASA umuman ko'rsatilmaydi: "0 ta" ni bosib,
-                      // hech narsa bo'lmagani chalg'itardi. Tanlab qilish — "A'zolar → Boshqarish".
-                      ...(can('classes.list', 'create') && bulkFreezeTargets.length > 0
-                        ? [{
-                            label: `Hammasini muzlatish (${bulkFreezeTargets.length})`, icon: Snowflake,
-                            onClick: () => setGroupBulk('freeze'),
-                          }]
-                        : []),
-                      // «Aktiv muzlatish» — FAQAT superadmin. `can()` bu yerda yaramaydi:
-                      // u oddiy admin uchun ham true qaytaradi, amal esa admin'ga yopiq.
-                      ...(user?.role === 'superadmin' && bulkFreezeTargets.length > 0
-                        ? [{
-                            label: `Hammasini aktiv muzlatish (${bulkFreezeTargets.length})`, icon: CalendarClock,
-                            onClick: () => setGroupBulk('yearFreeze'),
-                          }]
-                        : []),
-                      ...(can('classes.list', 'create') && bulkActivateTargets.length > 0
-                        ? [{
-                            label: `Hammasini aktivlashtirish (${bulkActivateTargets.length})`, icon: CheckCircle2,
-                            onClick: () => setGroupBulk('activate'),
-                          }]
-                        : []),
-                      {
-                        label: smsLoading ? 'Yuklanmoqda...' : 'SMS jo\'natish', icon: MessageSquare,
-                        onClick: openGroupSms,
-                      },
-                      ...(can('classes.list', 'edit')
-                        ? [{ label: 'Guruhni tahrirlash', icon: Pencil, onClick: () => setEditOpen(true) }]
-                        : []),
-                      // Tugatish/yopish — faqat FAOL guruhda (arxivdagi guruh allaqachon yopilgan).
-                      ...(user?.role === 'superadmin' && can('classes.list', 'delete') && !group?.isArchived
-                        ? [
-                            { label: 'Tugatish (sertifikat bilan)', icon: Trophy, onClick: openCompleteModal },
-                            { label: 'Guruhni yopish', icon: Archive, onClick: () => setShowCloseModal(true) },
-                          ]
-                        : []),
-                    ]}
-                  />
+                  <div className="flex shrink-0 items-center gap-0.5">
+                    {/* «Odamcha» tugmasi — "Guruhlar" ro'yxatidagi bilan AYNAN bir xil (u yerda ham
+                        AYNAN shu `ClassMembersModal` ochiladi): o'quvchi qidirib qo'shish, "Yangi
+                        o'quvchi" yaratish va a'zolik holati — Aktivlashtirish / Muzlatish /
+                        «Aktiv muzlatish» — bittadan ham, belgilab OMMAVIY ham.
+                        Ilgari bu oynaga faqat pastdagi kulrang "Boshqarish" (tishli g'ildirak)
+                        tugmasi va "⋮ → Yangi talaba qo'shish" orqali kirilardi — ya'ni guruh
+                        ichidagi yo'l ro'yxatdagi bilan bir xil ko'rinmasdi. */}
+                    {can('classes.list', 'create') && (
+                      <button
+                        type="button"
+                        title="A'zolar — qo'shish, aktivlashtirish, muzlatish"
+                        aria-label="A'zolar"
+                        onClick={() => setMembersOpen(true)}
+                        className="rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
+                      >
+                        <Users className="h-4 w-4" />
+                      </button>
+                    )}
+                    <DropdownMenu
+                      items={[
+                        ...(can('classes.list', 'create')
+                          ? [{
+                              label: 'Yangi talaba qo\'shish', icon: UserPlus,
+                              onClick: () => setMembersOpen(true),
+                            }]
+                          : []),
+                        // OMMAVIY muzlatish/aktivlashtirish — guruhning HAMMA mos a'zosiga.
+                        // Bandi mos a'zo BO'LMASA umuman ko'rsatilmaydi: "0 ta" ni bosib,
+                        // hech narsa bo'lmagani chalg'itardi. Tanlab qilish — "A'zolar → Boshqarish".
+                        ...(can('classes.list', 'create') && bulkFreezeTargets.length > 0
+                          ? [{
+                              label: `Hammasini muzlatish (${bulkFreezeTargets.length})`, icon: Snowflake,
+                              onClick: () => setGroupBulk('freeze'),
+                            }]
+                          : []),
+                        // «Aktiv muzlatish» — FAQAT superadmin. `can()` bu yerda yaramaydi:
+                        // u oddiy admin uchun ham true qaytaradi, amal esa admin'ga yopiq.
+                        ...(user?.role === 'superadmin' && bulkFreezeTargets.length > 0
+                          ? [{
+                              label: `Hammasini aktiv muzlatish (${bulkFreezeTargets.length})`, icon: CalendarClock,
+                              onClick: () => setGroupBulk('yearFreeze'),
+                            }]
+                          : []),
+                        ...(can('classes.list', 'create') && bulkActivateTargets.length > 0
+                          ? [{
+                              label: `Hammasini aktivlashtirish (${bulkActivateTargets.length})`, icon: CheckCircle2,
+                              onClick: () => setGroupBulk('activate'),
+                            }]
+                          : []),
+                        {
+                          label: smsLoading ? 'Yuklanmoqda...' : 'SMS jo\'natish', icon: MessageSquare,
+                          onClick: openGroupSms,
+                        },
+                        ...(can('classes.list', 'edit')
+                          ? [{ label: 'Guruhni tahrirlash', icon: Pencil, onClick: () => setEditOpen(true) }]
+                          : []),
+                        // Tugatish/yopish — faqat FAOL guruhda (arxivdagi guruh allaqachon yopilgan).
+                        ...(user?.role === 'superadmin' && can('classes.list', 'delete') && !group?.isArchived
+                          ? [
+                              { label: 'Tugatish (sertifikat bilan)', icon: Trophy, onClick: openCompleteModal },
+                              { label: 'Guruhni yopish', icon: Archive, onClick: () => setShowCloseModal(true) },
+                            ]
+                          : []),
+                      ]}
+                    />
+                  </div>
                 </div>
 
                 {/* Ma'lumot bloki — 2 ustunli grid */}
@@ -916,18 +936,21 @@ export function ClassDetailPage() {
                           <ArrowUpDown className="h-3.5 w-3.5" /> {membersSortAsc ? 'A-Z' : 'Z-A'}
                         </button>
                       )}
-                      {/* A'zolar modali — qo'shish/qidirish bilan bir qatorda OMMAVIY muzlatish va
-                          aktivlashtirish shu yerda. Ilgari modalga faqat "⋮ → Yangi talaba qo'shish"
-                          orqali kirilardi, ya'ni ommaviy amallar nomi aldaydigan menyu ostida
-                          ko'rinmay qolardi. */}
+                      {/* A'zolar oynasi — "Guruhlar" ro'yxatidagi «odamcha» tugmasi bilan AYNAN
+                          bir xil (bitta va o'sha `ClassMembersModal`): qidirib qo'shish, "Yangi
+                          o'quvchi", Aktivlashtirish / Muzlatish / «Aktiv muzlatish» — bittadan
+                          ham, belgilab OMMAVIY ham.
+                          ⚠️ Ikonka ATAYIN `Users` («odamcha»): ilgari bu yerda tishli g'ildirak
+                          (`Settings2`) va "Boshqarish" yozuvi turardi — ro'yxatdagi bilan bir xil
+                          ko'rinmagani uchun foydalanuvchi guruh ichida bu oynani TOPA olmasdi. */}
                       {can('classes.list', 'create') && (
                         <button
                           type="button"
                           onClick={() => setMembersOpen(true)}
-                          title="A'zolarni boshqarish: qo'shish, ommaviy muzlatish/aktivlashtirish"
-                          className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-slate-200 px-2 py-1 text-xs font-medium text-slate-500 transition-colors hover:border-brand-300 hover:text-brand-700"
+                          title="A'zolar — qo'shish, aktivlashtirish, muzlatish"
+                          className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-brand-200 bg-brand-50 px-2 py-1 text-xs font-medium text-brand-700 transition-colors hover:border-brand-300 hover:bg-brand-100"
                         >
-                          <Settings2 className="h-3.5 w-3.5" /> Boshqarish
+                          <Users className="h-3.5 w-3.5" /> A'zolar
                         </button>
                       )}
                     </div>
