@@ -29,6 +29,37 @@ public readonly record struct LifecycleTally(int Came, int Active, int Trial, in
 /// <summary>A'zoliklar ro'yxatidan <see cref="LifecycleTally"/> hisoblaydi.</summary>
 public static class MembershipLifecycle
 {
+    /// <summary>
+    /// A'zolik guruhning SIG'IMIDAN (<c>Group.Capacity</c>) bitta o'rinni BAND QILADIMI — YAGONA TA'RIF.
+    ///
+    /// <para>Qoida: <b>faol a'zolik</b> (<c>IsActive</c>) VA holati <b>muzlatilgan EMAS</b>.
+    /// Ya'ni o'rin band qiladiganlar — <c>active</c> va <c>trial</c> (sinov ham o'rin oladi:
+    /// u haqiqatan darsga kelib o'tiradi, faqat oyligi hisoblanmaydi).</para>
+    ///
+    /// <para>⚠️ <b>MUZLATILGAN o'quvchi o'rin BAND QILMAYDI.</b> Ilgari sig'im "guruhdagi hamma
+    /// a'zo" (<c>IsActive</c>) bo'yicha sanalardi — muzlatilganlar ham kirardi va guruh
+    /// haqiqatda bo'sh bo'lsa ham "to'lgan" ko'rinib, yangi o'quvchi qo'shib bo'lmasdi.</para>
+    ///
+    /// <para>⚠️ Bu FAQAT sig'im/o'rin savoli. Pul, davomat, maosh va analitika bunga TEGISHLI EMAS —
+    /// u yerda <see cref="BillableInMonth(Domain.StudentGroup, string)"/> va <see cref="Tally"/>
+    /// ishlatiladi (sinov o'rin oladi, lekin pullik EMAS — ikkisi boshqa savol).</para>
+    ///
+    /// <para>Noma'lum holat <c>active</c> deb qaraladi — <see cref="Tally"/> dagi bilan bir xil.</para>
+    /// </summary>
+    public static bool OccupiesSeat(string? status, bool isActive) =>
+        isActive && status != "frozen";
+
+    /// <inheritdoc cref="OccupiesSeat(string?, bool)"/>
+    public static bool OccupiesSeat(Domain.StudentGroup m) => OccupiesSeat(m.Status, m.IsActive);
+
+    /// <summary>
+    /// <see cref="OccupiesSeat(string?, bool)"/> ning SQL'ga tarjima qilinadigan ko'rinishi —
+    /// <c>CountAsync(...)</c> / <c>Where(...)</c> uchun. Qoida ikki joyda ayrilib ketmasin deb
+    /// shu yerda, sof funksiyaning yonida turadi.
+    /// </summary>
+    public static System.Linq.Expressions.Expression<Func<Domain.StudentGroup, bool>> OccupiesSeatExpr { get; } =
+        sg => sg.IsActive && sg.Status != "frozen";
+
     public static LifecycleTally Tally(IEnumerable<(string Status, bool IsActive, string? LeftAt)> memberships)
     {
         int came = 0, active = 0, trial = 0, frozen = 0, left = 0;

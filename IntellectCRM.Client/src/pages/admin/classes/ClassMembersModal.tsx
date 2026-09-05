@@ -89,8 +89,15 @@ export function ClassMembersModal({ group, onClose }: Props) {
   }, [group])
 
   const activeMembers = members.filter((m) => m.isActive)
+  // SIG'IM — faqat O'RIN BAND QILGANLAR: active + trial. Muzlatilgan a'zolik o'rin egallamaydi,
+  // shuning uchun u sig'imga KIRMAYDI (serverdagi MembershipLifecycle.OccupiesSeat bilan bir xil
+  // qoida — aks holda modal "to'lgan" deb ko'rsatib, server esa qo'shishga ruxsat berardi).
+  // ⚠️ `activeMembers` O'ZGARMAYDI: yuqoridagi jadval va ommaviy amallar (aktivlashtirish)
+  // muzlatilganlarni ham ko'rsatishi kerak.
+  const seatMembers = activeMembers.filter((m) => m.status !== 'frozen')
+  const frozenCount = activeMembers.length - seatMembers.length
   const capacity = group?.capacity ?? 0
-  const isFull = capacity > 0 && activeMembers.length >= capacity
+  const isFull = capacity > 0 && seatMembers.length >= capacity
 
   // Tanlov ro'yxat bilan KESISHTIRIB olinadi: ro'yxat yangilangach jadvalda endi YO'Q id na
   // sanoqqa, na so'rovga tushadi — aks holda "3 ta tanlandi" deb ko'rinib, amal 2 tasiga tegardi.
@@ -280,8 +287,12 @@ Kerak bo'lsa "Parolni tiklash" orqali yangi parol bering.`)
           <div className="flex items-center justify-between">
             <p className="text-sm text-slate-500">
               Faol a'zolar:{' '}
-              <span className="font-semibold text-slate-800">{activeMembers.length}</span>
+              <span className="font-semibold text-slate-800">{seatMembers.length}</span>
               {capacity > 0 && <span className="text-slate-400"> / {capacity}</span>}
+              {/* Muzlatilganlar ALOHIDA ko'rsatiladi — ular ro'yxatda turadi, lekin o'rin band qilmaydi. */}
+              {frozenCount > 0 && (
+                <span className="text-slate-400"> (+{frozenCount} muzlatilgan)</span>
+              )}
             </p>
             {isFull && (
               <span className="rounded-md bg-red-50 px-2 py-0.5 text-xs font-medium text-red-700">

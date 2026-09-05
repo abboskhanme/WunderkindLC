@@ -533,7 +533,11 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
 
         if (cls.Capacity > 0)
         {
-            var enrolled = await db.StudentGroups.CountAsync(sg => sg.GroupId == id && sg.IsActive);
+            // Sig'imni FAQAT o'rin band qilganlar to'ldiradi (active + trial) — MUZLATILGAN
+            // a'zolik o'rin egallamaydi (MembershipLifecycle.OccupiesSeat — yagona ta'rif).
+            var enrolled = await db.StudentGroups
+                .Where(sg => sg.GroupId == id)
+                .CountAsync(MembershipLifecycle.OccupiesSeatExpr);
             if (enrolled >= cls.Capacity)
                 return BadRequest(new { message = $"Guruh to'lgan ({cls.Capacity} o'rin)" });
         }
@@ -1130,7 +1134,10 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
 
         if (toGroup.Capacity > 0)
         {
-            var enrolled = await db.StudentGroups.CountAsync(x => x.GroupId == req.ToGroupId && x.IsActive);
+            // Sig'im — faqat o'rin band qilganlar (active + trial); muzlatilganlar SANALMAYDI.
+            var enrolled = await db.StudentGroups
+                .Where(x => x.GroupId == req.ToGroupId)
+                .CountAsync(MembershipLifecycle.OccupiesSeatExpr);
             if (enrolled >= toGroup.Capacity)
                 return BadRequest(new { message = $"Maqsad guruh to'lgan ({toGroup.Capacity} o'rin)" });
         }
@@ -1299,7 +1306,9 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
     {
         var groups = await db.Classes.Where(c => !c.IsArchived)
             .OrderBy(c => c.Grade).ThenBy(c => c.Name).ToListAsync();
-        var counts = (await db.StudentGroups.Where(sg => sg.IsActive)
+        // "Band o'rin" = active + trial (MembershipLifecycle.OccupiesSeat). Muzlatilgan a'zolik
+        // o'rin egallamaydi — aks holda hisobot bo'sh guruhni "to'lgan" deb ko'rsatardi.
+        var counts = (await db.StudentGroups.Where(MembershipLifecycle.OccupiesSeatExpr)
                 .GroupBy(sg => sg.GroupId)
                 .Select(g => new { GroupId = g.Key, Count = g.Count() }).ToListAsync())
             .ToDictionary(x => x.GroupId, x => x.Count);

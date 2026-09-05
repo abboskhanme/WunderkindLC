@@ -326,12 +326,15 @@ public class LeadsController(
         db.Students.Add(student);
 
         // Sig'im tekshiruvi — ClassesController.AddMember bilan bir xil qoida: Capacity>0 va
-        // faol a'zolar soni yetib borgan bo'lsa, guruhga QO'SHILMAYDI (lekin o'quvchi baribir yaratiladi).
+        // O'RIN BAND QILGANLAR soni (active + trial, MUZLATILGANLAR sanalmaydi —
+        // MembershipLifecycle.OccupiesSeat) yetib borgan bo'lsa, guruhga QO'SHILMAYDI
+        // (lekin o'quvchi baribir yaratiladi).
         var groupFull = false;
         if (group is not null)
         {
             if (group.Capacity > 0 &&
-                await db.StudentGroups.CountAsync(sg => sg.GroupId == group.Id && sg.IsActive) >= group.Capacity)
+                await db.StudentGroups.Where(sg => sg.GroupId == group.Id)
+                    .CountAsync(MembershipLifecycle.OccupiesSeatExpr) >= group.Capacity)
             {
                 groupFull = true;
             }
