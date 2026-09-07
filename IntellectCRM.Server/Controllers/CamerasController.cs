@@ -20,9 +20,17 @@ namespace IntellectCRM.Server.Controllers;
 public class CamerasController(AppDbContext db, CameraGateway gateway) : ControllerBase
 {
     private static CameraDto Dto(Camera c) =>
-        new(c.Id, c.Name, c.Location, c.RtspUrl, c.RtspSubUrl, c.RetentionDays, c.IsActive, c.Note);
+        new(c.Id, c.Name, c.Location, c.RtspUrl, c.RtspSubUrl, c.RetentionDays, c.IsActive, c.Note,
+            c.RecordEnabled);
 
-    private static int Retention(int days) => days < 0 ? 0 : days > 365 ? 365 : days;
+    /// <summary>Markazdagi YOZUV bosh kaliti. ⚠️ Sozlama yo'q bo'lsa — yozuv O'CHIQ
+    /// (fail-closed): "sozlanmagan" holat jimgina 24/7 yozuvni yoqib yubormasin.</summary>
+    private async Task<bool> RecordGloballyOnAsync() =>
+        (await db.CenterMeta.AsNoTracking().FirstOrDefaultAsync())?.CameraRecordEnabled ?? false;
+
+    /// <summary>Kamerani shlyuzga (qayta) yuboradi — yozuv bosh kalit bilan birga hal qilinadi.</summary>
+    private async Task SyncAsync(Camera c) =>
+        await gateway.EnsureAsync(c, CameraRules.ShouldRecord(await RecordGloballyOnAsync(), c));
 
     [HttpGet]
     public async Task<ActionResult<IEnumerable<CameraDto>>> List() =>
@@ -39,13 +47,14 @@ public class CamerasController(AppDbContext db, CameraGateway gateway) : Control
             Location = (req.Location ?? "").Trim(),
             RtspUrl = req.RtspUrl.Trim(),
             RtspSubUrl = (req.RtspSubUrl ?? "").Trim(),
-            RetentionDays = Retention(req.RetentionDays),
+            RetentionDays = CameraRules.ClampRetention(req.RetentionDays),
             IsActive = req.IsActive,
             Note = (req.Note ?? "").Trim(),
+            RecordEnabled = req.RecordEnabled,
         };
         db.Cameras.Add(c);
         await db.SaveChangesAsync();
-        await gateway.EnsureAsync(c);
+        await SyncAsync(c);
         return Dto(c);
     }
 
@@ -60,11 +69,12 @@ public class CamerasController(AppDbContext db, CameraGateway gateway) : Control
         c.Location = (req.Location ?? "").Trim();
         c.RtspUrl = req.RtspUrl.Trim();
         c.RtspSubUrl = (req.RtspSubUrl ?? "").Trim();
-        c.RetentionDays = Retention(req.RetentionDays);
+        c.RetentionDays = CameraRules.ClampRetention(req.RetentionDays);
         c.IsActive = req.IsActive;
         c.Note = (req.Note ?? "").Trim();
+        c.RecordEnabled = req.RecordEnabled;
         await db.SaveChangesAsync();
-        await gateway.EnsureAsync(c);
+        await SyncAsync(c);
         return Dto(c);
     }
 
@@ -85,7 +95,7 @@ public class CamerasController(AppDbContext db, CameraGateway gateway) : Control
     {
         var c = await db.Cameras.FindAsync(id);
         if (c is null) return NotFound();
-        await gateway.EnsureAsync(c);
+        await SyncAsync(c);
         return await ProxyAsync(await gateway.HlsAsync(id, "index.m3u8" + Request.QueryString.Value),
             "application/vnd.apple.mpegurl");
     }
@@ -109,6 +119,15 @@ public class CamerasController(AppDbContext db, CameraGateway gateway) : Control
         if (c is null) return NotFound();
         if (string.IsNullOrEmpty(start) || duration <= 0)
             return BadRequest(new { message = "start va duration kerak" });
+        // ⚠️ Yozuv o'chiq bo'lsa shlyuz shunchaki "topilmadi" derdi va foydalanuvchi buni
+        // NOSOZLIK deb o'ylardi. Sabab OCHIQ aytiladi (sozlama, xato emas).
+        if (!CameraRules.ShouldRecord(await RecordGloballyOnAsync(), c))
+            return BadRequest(new
+            {
+                message = "Bu kamera yozib borilmayapti — yozuv o'chirilgan. "
+                        + "Sozlamalar → Kamera integratsiya (yoki kamera kartasi) dan yoqing. "
+                        + "Yoqilgandan KEYINGI vaqtlargina yozuvda bo'ladi.",
+            });
         if (duration > 3600) duration = 3600; // himoya: maks 1 soat
 
         var resp = await gateway.PlaybackAsync(id, start, duration);

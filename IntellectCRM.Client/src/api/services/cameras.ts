@@ -12,6 +12,13 @@ export interface Camera {
   retentionDays: number
   isActive: boolean
   note: string
+  /**
+   * Shu kamera 24/7 diskka yozib borilsinmi. Jonli kuzatuvdan ALOHIDA — `false` bo'lsa ham
+   * kamera jonli ko'rinaveradi, faqat yozuv (playback / qirqib olish) bo'lmaydi.
+   * ⚠️ Haqiqiy yozuv markazdagi BOSH kalit bilan birga hal qilinadi
+   * (Sozlamalar -> Kamera integratsiya). Bosh kalit o'chiq bo'lsa bu bayroq ta'sir qilmaydi.
+   */
+  recordEnabled: boolean
 }
 
 export interface SaveCameraPayload {
@@ -22,6 +29,7 @@ export interface SaveCameraPayload {
   retentionDays: number
   isActive: boolean
   note?: string
+  recordEnabled: boolean
 }
 
 export async function getCameras(): Promise<Camera[]> {

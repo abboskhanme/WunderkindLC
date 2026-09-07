@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
 import Hls from 'hls.js'
-import { Video, Plus, Pencil, Trash2, ArrowLeft, Download, Play, VideoOff } from 'lucide-react'
+import { Video, Plus, Pencil, Trash2, ArrowLeft, Download, Play, VideoOff, Circle, CircleOff } from 'lucide-react'
 import {
   getCameras, createCamera, updateCamera, deleteCamera, getClipBlob, cameraLiveUrl,
   type Camera, type SaveCameraPayload,
 } from '@/api/services/cameras'
-import { cn } from '@/lib/utils'
+import { getCameraSettings } from '@/api/services/settings'
+import { cn, apiErrorMessage } from '@/lib/utils'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
@@ -53,13 +54,20 @@ function LivePlayer({ id, className }: { id: string; className?: string }) {
 export function CamerasPage() {
   const { can } = usePerm()
   const [cameras, setCameras] = useState<Camera[]>([])
+  // Markazdagi YOZUV bosh kaliti (Sozlamalar -> Kamera integratsiya). Kamera kartasidagi
+  // "yozilmoqda" belgisi FAQAT ikkalasi ham yoqilganda ko'rsatiladi — aks holda foydalanuvchi
+  // kamerada "yozuv yoqilgan" deb ko'rib, aslida hech narsa yozilmayotganini bilmasdi.
+  const [recordGloballyOn, setRecordGloballyOn] = useState(false)
   const [loading, setLoading] = useState(true)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState<Camera | null>(null)
 
   const load = () => getCameras().then(setCameras).finally(() => setLoading(false))
-  useEffect(() => { load() }, [])
+  useEffect(() => {
+    load()
+    getCameraSettings().then((c) => setRecordGloballyOn(c.recordEnabled)).catch(() => {})
+  }, [])
 
   const selected = cameras.find((c) => c.id === selectedId) ?? null
 
@@ -92,6 +100,8 @@ export function CamerasPage() {
       ) : selected ? (
         <SingleCamera
           camera={selected}
+          recording={recordGloballyOn && selected.isActive && selected.recordEnabled}
+          recordGloballyOn={recordGloballyOn}
           onBack={() => setSelectedId(null)}
           onEdit={() => { setEditing(selected); setModalOpen(true) }}
           onDelete={() => onDelete(selected)}
@@ -128,6 +138,11 @@ export function CamerasPage() {
                     ) : (
                       <Badge tone="default">O'chiq</Badge>
                     )}
+                    {recordGloballyOn && c.isActive && c.recordEnabled ? (
+                      <Badge tone="amber"><Circle className="h-3 w-3 fill-current" /> Yozilmoqda</Badge>
+                    ) : (
+                      <Badge tone="default"><CircleOff className="h-3 w-3" /> Yozuvsiz</Badge>
+                    )}
                   </div>
                   {c.location && <div className="truncate text-xs text-slate-400">{c.location}</div>}
                 </div>
@@ -161,11 +176,31 @@ export function CamerasPage() {
   )
 }
 
+/**
+ * Klip xatosining MATNI. ⚠️ So'rov `responseType: 'blob'` bilan ketgani uchun serverning JSON
+ * javobi ham Blob bo'lib keladi — uni o'qimasak foydalanuvchi umumiy "xatolik" ko'rardi va
+ * "yozuv o'chirilgan" degan ANIQ sababni bilmasdi.
+ */
+async function clipError(err: unknown): Promise<string> {
+  const data = (err as { response?: { data?: unknown } })?.response?.data
+  if (data instanceof Blob) {
+    try {
+      const parsed = JSON.parse(await data.text()) as { message?: string }
+      if (parsed.message) return parsed.message
+    } catch { /* JSON emas — pastdagi umumiy matn */ }
+  }
+  return apiErrorMessage(err, "Yozuv topilmadi (bu vaqt uchun yozuv yo'q bo'lishi mumkin)")
+}
+
 /** Bitta kamera: katta jonli ko'rinish + playback (orqaga qaytarish / qirqib yuklab olish). */
 function SingleCamera({
-  camera, onBack, onEdit, onDelete, canEdit, canDelete,
+  camera, recording, recordGloballyOn, onBack, onEdit, onDelete, canEdit, canDelete,
 }: {
   camera: Camera
+  /** Shu kamera HOZIR yozib borilyaptimi (bosh kalit + kamera bayroqlari). */
+  recording: boolean
+  /** Markazdagi bosh kalit — yozuv yo'qligining SABABINI aniq aytish uchun. */
+  recordGloballyOn: boolean
   onBack: () => void
   onEdit: () => void
   onDelete: () => void
@@ -188,8 +223,8 @@ function SingleCamera({
       const blob = await getClipBlob(camera.id, startIso(), durationMin * 60)
       if (clipUrl) URL.revokeObjectURL(clipUrl)
       setClipUrl(URL.createObjectURL(blob))
-    } catch {
-      alert('Yozuv topilmadi (bu vaqt uchun yozuv yo\'q bo\'lishi mumkin)')
+    } catch (err) {
+      alert(await clipError(err))
     } finally { setBusy(null) }
   }
 
@@ -204,8 +239,8 @@ function SingleCamera({
       a.download = `${camera.name}_${start.replace(/[:T]/g, '-')}_${durationMin}min.mp4`
       a.click()
       URL.revokeObjectURL(url)
-    } catch {
-      alert('Yozuv topilmadi')
+    } catch (err) {
+      alert(await clipError(err))
     } finally { setBusy(null) }
   }
 
@@ -228,18 +263,32 @@ function SingleCamera({
       </div>
 
       <Card className="overflow-hidden p-0">
-        <div className="flex items-center border-b border-slate-100 bg-slate-50 px-3 py-1.5">
+        <div className="flex items-center gap-2 border-b border-slate-100 bg-slate-50 px-3 py-1.5">
           <Badge tone="green" dot>Jonli</Badge>
+          {recording
+            ? <Badge tone="amber"><Circle className="h-3 w-3 fill-current" /> Yozilmoqda</Badge>
+            : <Badge tone="default"><CircleOff className="h-3 w-3" /> Yozuvsiz</Badge>}
         </div>
         <LivePlayer id={camera.id} className="aspect-video w-full" />
       </Card>
 
-      {/* Playback / qirqish */}
+      {/* Playback / qirqish — yozuv bo'lmasa MA'NOSIZ, shuning uchun sabab ochiq yoziladi. */}
       <Card>
         <h3 className="mb-1 font-semibold text-slate-800">Yozuvni ko'rish / qirqib yuklab olish</h3>
         <p className="mb-4 text-sm text-slate-400">
           Boshlanish vaqti va davomiyligini tanlang — yozuvdan shu bo'lak MP4 sifatida ko'riladi yoki yuklab olinadi.
         </p>
+
+        {!recording && (
+          <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs text-amber-900">
+            <b>Bu kamera yozib borilmayapti</b> — {!recordGloballyOn
+              ? <>markazda 24/7 yozuv o'chirilgan (Sozlamalar → Kamera integratsiya).</>
+              : !camera.isActive
+                ? <>kamera "Faol" emas.</>
+                : <>shu kamera uchun yozuv o'chirilgan ("Tahrirlash" → «Yozib borish»).</>}
+            {' '}Yoqilgandan keyingi vaqtlargina yozuvda bo'ladi — orqaga ishlamaydi.
+          </div>
+        )}
         <div className="flex flex-wrap items-end gap-3">
           <label className="flex flex-col gap-1 text-sm">
             <span className="font-medium text-slate-600">Boshlanish vaqti</span>
@@ -271,7 +320,8 @@ function SingleCamera({
 function CameraFormModal({
   open, camera, onClose, onSaved,
 }: { open: boolean; camera: Camera | null; onClose: () => void; onSaved: () => void }) {
-  const [form, setForm] = useState<SaveCameraPayload>({ name: '', rtspUrl: '', retentionDays: 7, isActive: true })
+  const [form, setForm] = useState<SaveCameraPayload>(
+    { name: '', rtspUrl: '', retentionDays: 7, isActive: true, recordEnabled: true })
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
@@ -279,8 +329,8 @@ function CameraFormModal({
     setForm(camera
       ? { name: camera.name, location: camera.location, rtspUrl: camera.rtspUrl,
           rtspSubUrl: camera.rtspSubUrl, retentionDays: camera.retentionDays,
-          isActive: camera.isActive, note: camera.note }
-      : { name: '', rtspUrl: '', retentionDays: 7, isActive: true })
+          isActive: camera.isActive, note: camera.note, recordEnabled: camera.recordEnabled }
+      : { name: '', rtspUrl: '', retentionDays: 7, isActive: true, recordEnabled: true })
   }, [open, camera])
 
   const set = <K extends keyof SaveCameraPayload>(k: K, v: SaveCameraPayload[K]) =>
@@ -323,13 +373,29 @@ function CameraFormModal({
         <Input label="Sub-oqim RTSP (ixtiyoriy — grid uchun past sifat)" placeholder="rtsp://.../Channels/102"
           value={form.rtspSubUrl ?? ''} onChange={(e) => set('rtspSubUrl', e.target.value)} autoComplete="off" />
       </div>
+      {/* Yozuv — alohida blok: yoqilmasa saqlash muddatining ma'nosi yo'q. */}
+      <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 px-3 py-3">
+        <label className="inline-flex cursor-pointer items-center gap-2 text-sm font-medium text-slate-700">
+          <input type="checkbox" checked={form.recordEnabled}
+            onChange={(e) => set('recordEnabled', e.target.checked)}
+            className="h-4 w-4 rounded border-slate-300 accent-brand-600" />
+          Yozib borish (24/7 diskka)
+        </label>
+        <p className="mt-1.5 text-[11px] text-slate-500">
+          O'chirilsa kamera baribir <b>jonli ko'rinaveradi</b> — faqat diskka yozilmaydi va
+          yozuvni orqaga qaytarib bo'lmaydi. Bitta 1080p kamera ≈ <b>20–43 GB/kun</b> joy oladi.
+          Markazdagi bosh kalit — Sozlamalar → Kamera integratsiya.
+        </p>
+      </div>
+
       <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <label className="flex flex-col gap-1 text-sm">
+        <label className={cn('flex flex-col gap-1 text-sm', !form.recordEnabled && 'opacity-50')}>
           <span className="font-medium text-slate-600">Yozuv saqlash muddati</span>
           <select
             value={form.retentionDays}
+            disabled={!form.recordEnabled}
             onChange={(e) => set('retentionDays', Number(e.target.value))}
-            className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-brand-400"
+            className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-brand-400 disabled:bg-slate-100"
           >
             <option value={3}>3 kun</option>
             <option value={7}>7 kun</option>

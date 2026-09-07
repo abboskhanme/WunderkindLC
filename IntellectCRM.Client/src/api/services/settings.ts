@@ -387,6 +387,10 @@ export async function saveTurnstileSettings(payload: SaveTurnstilePayload): Prom
 export interface CameraConfig {
   enabled: boolean
   cameraCount: number
+  /** 24/7 diskka yozib borish BOSH kaliti (jonli kuzatuvdan alohida). */
+  recordEnabled: boolean
+  /** Hozir haqiqatan yozib borilayotgan kameralar soni (bosh kalit + kamera bayroqlari). */
+  recordingCameraCount: number
 }
 
 export async function getCameraSettings(): Promise<CameraConfig> {
@@ -394,7 +398,9 @@ export async function getCameraSettings(): Promise<CameraConfig> {
   return data
 }
 
-export async function saveCameraSettings(payload: { enabled: boolean }): Promise<CameraConfig> {
+export async function saveCameraSettings(
+  payload: { enabled: boolean; recordEnabled: boolean },
+): Promise<CameraConfig> {
   const { data } = await api.put<CameraConfig>('/admin/settings/cameras', payload)
   return data
 }

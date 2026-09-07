@@ -21,8 +21,15 @@ public class CameraGateway(HttpClient http)
     /// <summary>MediaMTX yo'l (path) nomi — faqat harf/raqam (GUID'dagi chiziqchalar olib tashlanadi).</summary>
     public static string PathName(string cameraId) => "cam" + cameraId.Replace("-", "");
 
-    /// <summary>Kamerani shlyuzga ro'yxatdan o'tkazadi (yoki yangilaydi): RTSP manba + yozib borish.</summary>
-    public async Task EnsureAsync(Camera cam)
+    /// <summary>
+    /// Kamerani shlyuzga ro'yxatdan o'tkazadi (yoki yangilaydi): RTSP manba + yozib borish.
+    /// </summary>
+    /// <param name="cam">Kamera.</param>
+    /// <param name="record">Shu kamera YOZIB borilsinmi — <see cref="CameraRules.ShouldRecord"/>
+    /// natijasi. ⚠️ Chaqiruvchi bosh kalitni O'ZI hisoblab beradi (shlyuz bazani bilmaydi).
+    /// <c>false</c> bo'lsa kamera baribir ro'yxatdan o'tadi va JONLI ko'rinadi — lekin diskka
+    /// yozilmaydi va RTSP faqat kimdir qaraganda ochiladi.</param>
+    public async Task EnsureAsync(Camera cam, bool record)
     {
         var name = PathName(cam.Id);
         var src = !string.IsNullOrWhiteSpace(cam.RtspUrl) ? cam.RtspUrl : cam.RtspSubUrl;
@@ -30,11 +37,14 @@ public class CameraGateway(HttpClient http)
         var body = JsonSerializer.Serialize(new
         {
             source = src,
-            sourceOnDemand = false, // 24/7 yozib borish (playback uchun)
-            record = true,
+            // Yozuv bor -> 24/7 ulanib turadi (uzluksiz yozuv uchun).
+            // Yozuv yo'q -> faqat kimdir qarab turganda ulanadi: disk ham, markazning
+            // 24/7 internet trafigi ham sarflanmaydi.
+            sourceOnDemand = CameraRules.SourceOnDemand(record),
+            record,
             // Saqlash muddati: shu vaqtdan eski yozuv segmentlari shlyuz tomonidan AVTOMATIK o'chiriladi.
             // 0 kun = cheksiz ("0s" = o'chirish o'chirilgan).
-            recordDeleteAfter = cam.RetentionDays > 0 ? $"{cam.RetentionDays * 24}h" : "0s",
+            recordDeleteAfter = CameraRules.RecordDeleteAfter(cam.RetentionDays),
         });
 
         // Avval qo'shamiz; mavjud bo'lsa (400) — yangilaymiz (patch).

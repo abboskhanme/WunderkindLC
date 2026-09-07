@@ -862,6 +862,8 @@ using (var scope = app.Services.CreateScope())
         I("Turnstile:Port", v => meta.TurnstilePort = v);
         // Kamera
         B("Camera:Enabled", v => meta.CameraEnabled = v);
+        // 24/7 diskka yozib borish (jonli kuzatuvdan ALOHIDA) — default O'CHIQ
+        B("Camera:RecordEnabled", v => meta.CameraRecordEnabled = v);
         // Kunlik AI tahlil
         B("AiAnalysis:Enabled", v => meta.AiDailyAnalysisEnabled = v);
         I("AiAnalysis:Hour", v => meta.AiDailyAnalysisHour = v);

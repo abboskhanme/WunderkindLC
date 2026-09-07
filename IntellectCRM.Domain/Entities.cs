@@ -1548,6 +1548,11 @@ public class Camera
     public int RetentionDays { get; set; } = 7;
     public bool IsActive { get; set; } = true;
     public string Note { get; set; } = string.Empty;
+    /// <summary>Shu kamera 24/7 YOZIB borilsinmi. Jonli kuzatuvdan ALOHIDA: `false` bo'lsa kamera
+    /// baribir jonli ko'rinadi, faqat diskka yozilmaydi (playback/qirqib olish ishlamaydi).
+    /// Haqiqiy yozuv markazdagi BOSH kalit bilan birga hal qilinadi —
+    /// <see cref="CenterMeta.CameraRecordEnabled"/> (qarang: CameraRules.ShouldRecord).</summary>
+    public bool RecordEnabled { get; set; } = true;
 }
 
 /// <summary>Turniket/FaceID qurilmasidan kelgan bitta o'tish hodisasi (xom log).</summary>
@@ -1727,6 +1732,12 @@ public class CenterMeta
     // ---------- Kamera (videokuzatuv) integratsiyasi ----------
     /// <summary>Kamera kuzatuvi yoqilganmi.</summary>
     public bool CameraEnabled { get; set; }
+    /// <summary>24/7 diskka YOZIB borish yoqilganmi — BOSH kalit (default: FALSE).
+    /// ⚠️ Jonli kuzatuvdan ALOHIDA: o'chiq bo'lsa ham kameralar jonli ko'rinaveradi.
+    /// O'chiq bo'lganda shlyuz RTSP'ni faqat KIMDIR QARAB TURGANDA oladi (`sourceOnDemand`),
+    /// ya'ni disk ham, markazning 24/7 internet trafigi ham sarflanmaydi.
+    /// Batafsil: `.claude/rules/cameras.md`.</summary>
+    public bool CameraRecordEnabled { get; set; }
 
     // ---------- Telegram backup ----------
     /// <summary>Telegram admin chat ID — backup faylini yuborish uchun. Faqat raqam (masalan 123456789).

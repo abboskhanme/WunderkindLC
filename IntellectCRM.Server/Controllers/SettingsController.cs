@@ -17,7 +17,7 @@ namespace IntellectCRM.Server.Controllers;
 // xodim "Markaz ma'lumotlari"ni o'zgartira olmasin.
 [AdminPerm("settings")]
 [Route("api/admin/settings")]
-public class SettingsController(AppDbContext db, TelegramService telegram, IWebHostEnvironment env, IConfiguration config, EskizService eskiz, AuditService audit) : ControllerBase
+public class SettingsController(AppDbContext db, TelegramService telegram, IWebHostEnvironment env, IConfiguration config, EskizService eskiz, AuditService audit, CameraGateway cameraGateway) : ControllerBase
 {
     /// <summary>
     /// Sozlama o'zgarishini "O'zgarishlar tarixi"ga yozadi (bo'lim: <b>Sozlamalar</b>).
@@ -558,20 +558,40 @@ public class SettingsController(AppDbContext db, TelegramService telegram, IWebH
     [HttpGet("cameras")]
     public async Task<ActionResult<CameraSettingsDto>> GetCameras()
     {
-        var m = await db.CenterMeta.FirstOrDefaultAsync();
-        var count = await db.Cameras.CountAsync();
-        return new CameraSettingsDto(m?.CameraEnabled ?? false, count);
+        var m = await db.CenterMeta.AsNoTracking().FirstOrDefaultAsync();
+        var cams = await db.Cameras.AsNoTracking().ToListAsync();
+        var recordOn = m?.CameraRecordEnabled ?? false;
+        return new CameraSettingsDto(
+            m?.CameraEnabled ?? false,
+            cams.Count,
+            recordOn,
+            cams.Count(c => CameraRules.ShouldRecord(recordOn, c)));
     }
 
+    /// <summary>
+    /// Kamera integratsiyasi + 24/7 YOZUV bosh kaliti.
+    ///
+    /// <para>⚠️ Yozuv kaliti o'zgarganda BARCHA kameralar shlyuzga QAYTA yuboriladi. Aks holda
+    /// sozlama bazada o'zgarib, shlyuz esa eski holatda qolardi — ya'ni "yozuvni o'chirdim,
+    /// lekin disk baribir to'lyapti" holati. Yangi qiymat har kamera keyingi marta tahrirlanganda
+    /// yoki jonli ochilganda emas, AYNAN SHU YERDA qo'llanadi.</para>
+    /// </summary>
     [HttpPut("cameras")]
     [AdminPerm("settings.cameras")]
     public async Task<ActionResult<CameraSettingsDto>> SaveCameras(SaveCameraSettingsRequest req)
     {
         var m = await db.CenterMeta.FirstOrDefaultAsync();
         if (m is null) { m = new CenterMeta(); db.CenterMeta.Add(m); }
+        var recordChanged = m.CameraRecordEnabled != req.RecordEnabled;
         m.CameraEnabled = req.Enabled;
+        m.CameraRecordEnabled = req.RecordEnabled;
         LogSettings("Kamera integratsiyasi");
         await db.SaveChangesAsync();
+
+        if (recordChanged)
+            foreach (var c in await db.Cameras.AsNoTracking().ToListAsync())
+                await cameraGateway.EnsureAsync(c, CameraRules.ShouldRecord(req.RecordEnabled, c));
+
         return await GetCameras();
     }
 

@@ -140,6 +140,9 @@ services:
       PlayIntegrity__Package: "${PLAY_INTEGRITY_PACKAGE:-}"
       # Kamera / to'lov eslatmasi / kunlik AI tahlil / backup (yoqish-o'chirish + vaqt):
       Camera__Enabled: "${CAMERA_ENABLED:-}"
+      # 24/7 diskka YOZIB borish. Bo'sh -> bazadagi qiymat (default O'CHIQ).
+      # ⚠️ Yoqishdan oldin disk hisobini qiling: 1080p kamera ~20-43 GB/kun (.claude/rules/cameras.md).
+      Camera__RecordEnabled: "${CAMERA_RECORD_ENABLED:-}"
       PaymentReminders__Enabled: "${PAYMENT_REMINDERS_ENABLED:-}"
       AiAnalysis__Enabled: "${AI_ANALYSIS_ENABLED:-}"
       AiAnalysis__Hour: "${AI_ANALYSIS_HOUR:-}"

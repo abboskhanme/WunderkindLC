@@ -323,13 +323,16 @@ public record SetStudentDeviceRequest(string StudentId, string? DeviceUserId);
 // ---------- Kamera (videokuzatuv) ----------
 public record CameraDto(
     string Id, string Name, string Location, string RtspUrl, string RtspSubUrl,
-    int RetentionDays, bool IsActive, string Note);
+    int RetentionDays, bool IsActive, string Note, bool RecordEnabled);
 public record SaveCameraRequest(
     string Name, string? Location, string RtspUrl, string? RtspSubUrl,
-    int RetentionDays = 7, bool IsActive = true, string? Note = null);
-/// <summary>Kamera integratsiya sozlamasi.</summary>
-public record CameraSettingsDto(bool Enabled, int CameraCount);
-public record SaveCameraSettingsRequest(bool Enabled);
+    int RetentionDays = 7, bool IsActive = true, string? Note = null,
+    bool RecordEnabled = true);
+/// <summary>Kamera integratsiya sozlamasi. <paramref name="RecordEnabled"/> — 24/7 YOZUVNING
+/// bosh kaliti (jonli kuzatuvdan ALOHIDA: o'chirilganda kamera baribir ko'rinadi).
+/// <paramref name="RecordingCameraCount"/> — hozir haqiqatan yozib borilayotgan kameralar soni.</summary>
+public record CameraSettingsDto(bool Enabled, int CameraCount, bool RecordEnabled, int RecordingCameraCount);
+public record SaveCameraSettingsRequest(bool Enabled, bool RecordEnabled = false);
 
 /* ---------- Avto xabarlar (yagona SMS+Push+Telegram model) — Xabarlar → Avto xabarlar ---------- */
 
