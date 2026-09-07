@@ -339,6 +339,20 @@ export async function deleteSmsTemplate(id: string): Promise<void> {
 /** Lidga oid avto-xabar hodisalari (qolganlari o'quvchi/ota-ona konteksti). */
 const LEAD_TRIGGERS = new Set(['lead_new', 'trial_reminder', 'test_link', 'test_result'])
 
+/**
+ * "Tayyor matn" ro'yxatiga TUSHMAYDIGAN hodisalar — matnida QO'LDA to'ldirib bo'lmaydigan
+ * token bor.
+ *
+ * ⚠️ `test_link` andozasida `{link}` bor va u BIR MARTALIK havola: faqat "Daraja testi
+ * yuborish" bo'limi uni tug'dira oladi. Ro'yxatda turgani uchun operator uni tanlab oddiy
+ * "SMS yuborish" tugmasini bosgan va abonentga «...sizga {link} testi yuborildi» matni
+ * KETGAN (2026-09-07). Hech qanday xato ko'rinmagan — SMS muvaffaqiyatli yuborilgan edi.
+ *
+ * ⚠️ Bu faqat RO'YXAT filtri; matnni qo'lda ham yozish mumkin, shuning uchun haqiqiy
+ * darvoza SERVERDA (`MessageTokenCatalog.ForbiddenInManual`).
+ */
+const NOT_PICKABLE_TRIGGERS = new Set(['test_link'])
+
 /** Tanlash uchun tayyor matn (qo'lda shablon yoki "Xabar yaratish" avto qoidasi matni). */
 export interface PickableTemplate {
   name: string
@@ -363,6 +377,7 @@ export async function getPickableTemplates(context: 'student' | 'lead'): Promise
     .filter(
       (r) =>
         r.template.trim() !== '' &&
+        !NOT_PICKABLE_TRIGGERS.has(r.trigger) &&
         (context === 'lead' ? LEAD_TRIGGERS.has(r.trigger) : !LEAD_TRIGGERS.has(r.trigger)),
     )
     .map((r) => ({ name: r.name, text: r.template }))

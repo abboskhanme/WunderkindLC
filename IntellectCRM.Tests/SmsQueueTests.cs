@@ -25,7 +25,7 @@ public class SmsQueueTests
         var config = new ConfigurationBuilder().Build();
         var eskiz = new EskizService(config, http, NullLogger<EskizService>.Instance);
         var fcm = new FcmService(http, NullLogger<FcmService>.Instance);
-        var cti = new CtiSmsService(new CtiConnectionManager(), fcm);
+        var cti = new CtiSmsService(new CtiConnectionManager(), fcm, NullLogger<CtiSmsService>.Instance);
         return new SmsQueueService(
             new SingleServiceProvider(db), eskiz, cti, NullLogger<SmsQueueService>.Instance);
     }

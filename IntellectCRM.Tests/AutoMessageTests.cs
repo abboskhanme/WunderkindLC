@@ -62,7 +62,7 @@ internal sealed class MessagingStack
         Eskiz = new EskizService(config, http, NullLogger<EskizService>.Instance);
         Fcm = new FcmService(http, NullLogger<FcmService>.Instance);
         Telegram = new TelegramService(http, NullLogger<TelegramService>.Instance);
-        Cti = new CtiSmsService(new CtiConnectionManager(), Fcm);
+        Cti = new CtiSmsService(new CtiConnectionManager(), Fcm, NullLogger<CtiSmsService>.Instance);
         Auto = new AutoMessageService(Eskiz, Fcm, Telegram, Cti, NullLogger<AutoMessageService>.Instance);
     }
 }

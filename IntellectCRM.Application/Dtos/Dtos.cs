@@ -1888,9 +1888,14 @@ public record LeadBulkSmsResultDto(
 public record EskizCallbackDto(string? request_id, string? message_id, string? phone_number, string? status, string? status_date);
 /// <summary>SMS (Eskiz) sozlamasi holati. Login/parol .env dan (qiymat qaytmaydi) — faqat
 /// jo'natuvchi nomi (From) UI'dan o'zgartiriladi.</summary>
+/// <param name="Nicknames">Eskiz kabinetida TASDIQLANGAN jo'natuvchi nomlari. Bo'sh ro'yxat =
+/// hech biri tasdiqlanmagan, ya'ni SMS "4546" dan ketadi va markaz nomi ko'rinmaydi.</param>
+/// <param name="FromApproved">Hozirgi <paramref name="From"/> shu ro'yxatda bormi. "4546" —
+/// Eskiz'ning umumiy raqami, u har doim ishlaydi va tasdiq talab qilmaydi.</param>
 public record EskizSettingsDto(
     string Email, string From, bool Configured, decimal? Balance,
-    EnvSecretDto? Login = null, EnvSecretDto? Password = null);
+    EnvSecretDto? Login = null, EnvSecretDto? Password = null,
+    List<string>? Nicknames = null, bool FromApproved = true);
 /// <summary>SMS (Eskiz) login/parol/sender saqlash so'rovi (bo'sh qoldirilsa eski saqlanadi).</summary>
 public record SaveEskizRequest(string? Email, string? Password, string? From);
 /// <summary>Local SMS (CTI agent telefonidan) sozlamasi holati. DelaySeconds — massaviy yuborishda

@@ -67,4 +67,33 @@ public static class MessageTokenCatalog
         new("{dars_kunlari}", "Dars kunlari (Du, Chor...)", "event"),
         new("{baho}", "Qo'yilgan baho", "event"),
     };
+
+    /// <summary>
+    /// QO'LDA yuborishda ishlatib BO'LMAYDIGAN token — uni faqat o'z hodisasi to'ldira oladi.
+    /// </summary>
+    /// <remarks>
+    /// <para>Hozircha bitta: <c>{link}</c>. U <b>bir martalik</b> daraja-test havolasi va faqat
+    /// "Daraja testi yuborish" oqimida (<c>POST leads/{id}/send-test</c>) tug'iladi — boshqa
+    /// hech qayerda uni to'ldirishning iloji yo'q.</para>
+    ///
+    /// <para>⚠️ Haqiqiy hodisa (2026-09-07): lid oynasining "tayyor matn" ro'yxatida
+    /// <c>test_link</c> andozasi ham chiqardi. Operator uni tanlab, oddiy "SMS yuborish"
+    /// tugmasini bosdi — va abonentga <i>"Assalomu alaykum sizga {link} testi yuborildi"</i>
+    /// degan matn KETDI. Hech qanday xato ko'rinmadi: SMS muvaffaqiyatli yuborilgan edi.</para>
+    ///
+    /// <para>Qolgan "event" tokenlari bu ro'yxatga KIRMAYDI: masalan <c>{dars_vaqti}</c> ni
+    /// qo'lda yuborishda <see cref="MessageTokenizer"/> guruh jadvalidan to'ldira oladi.</para>
+    /// </remarks>
+    public static readonly string[] ManualForbidden = ["{link}"];
+
+    /// <summary>
+    /// Matnda qo'lda yuborib bo'lmaydigan token bormi — bo'lsa O'SHA tokenni qaytaradi.
+    /// </summary>
+    public static string? ForbiddenInManual(string? text)
+    {
+        if (string.IsNullOrEmpty(text)) return null;
+        foreach (var t in ManualForbidden)
+            if (text.Contains(t, StringComparison.OrdinalIgnoreCase)) return t;
+        return null;
+    }
 }

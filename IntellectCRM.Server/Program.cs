@@ -376,6 +376,16 @@ builder.Services.AddHttpClient();
 // bloklashdan boshqa hech narsa bermaydi (karta keyingi o'zgarishda baribir yangilanadi).
 // Long polling (`getUpdates`, 30 s kutadi) bu timeout'ga TUSHMAYDI — u o'z mijozini sozlaydi.
 builder.Services.AddHttpClient("telegram", c => c.Timeout = TimeSpan.FromSeconds(10));
+// ⚠️ "eskiz" NOMLI mijoz — `EskizService` shu nom bilan so'raydi. AYNAN SHU XATO telegram'da
+// bo'lgan va bu yerda TAKRORLANGAN edi: nom ro'yxatdan o'tmagani uchun default 100 SEKUND
+// timeout ishlardi.
+// Haqiqiy hodisa (2026-09-07, 16:51-16:56 Toshkent): Eskiz API'si ~5 daqiqa javob bermay
+// qoldi. Har "SMS yuborish" bosilishi 100 sekund osilib turdi (`TaskCanceledException:
+// ... HttpClient.Timeout of 100 seconds elapsing`), operator 7 marta bosdi — ya'ni admin
+// oynasi 12 daqiqa qotib turdi. Eskiz o'zi 0.5-1.5 sekundda javob beradi.
+// 25 sekund — sekin tarmoqqa ham yetarli, lekin osilishni foydalanuvchi kutadigan chegarada
+// ushlab qoladi.
+builder.Services.AddHttpClient("eskiz", c => c.Timeout = TimeSpan.FromSeconds(25));
 builder.Services.AddSingleton<TelegramService>();
 // Onlayn test (bot orqali ishlanadigan) oqimi — TelegramBotService shu servisga yo'naltiradi.
 builder.Services.AddSingleton<OnlineTestBotService>();

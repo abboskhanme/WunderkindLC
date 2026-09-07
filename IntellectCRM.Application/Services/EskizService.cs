@@ -34,10 +34,32 @@ public class EskizService(
     /// <summary>Login/parol .env'da berilganmi (parametr eski imzoni saqlash uchun — e'tiborsiz).</summary>
     public bool IsConfigured(CenterMeta? m = null) => AppSecrets.EskizConfigured;
 
+    /// <summary>
+    /// Jo'natuvchi nomi (sender). Tartib: CenterMeta → `.env` (`Eskiz:From`) → "4546".
+    /// </summary>
+    /// <remarks>
+    /// ⚠️ <b>To'ldirilmagan NAMUNA qiymat sender sifatida ishlatilmaydi</b> — u Eskiz tomonidan
+    /// tasdiqlanmagan va SMS'ni rad ettirishi mumkin. Prodda `EskizFrom` da aynan
+    /// "tasdiqlangan_nikname" (o'rniga ism yozilishi kerak bo'lgan namuna matn) turgani
+    /// topilgan: markaz nomi ko'rinmasdi va buni hech narsa ko'rsatmasdi. Endi bunday qiymat
+    /// "kiritilmagan" deb hisoblanadi va "4546" ga tushadi — SMS baribir ketaveradi.
+    /// Tasdiqlangan nomlar ro'yxati <see cref="GetNicknamesAsync"/> bilan olinadi va
+    /// Sozlamalar sahifasida ko'rsatiladi.
+    /// </remarks>
     public string SenderOf(CenterMeta? m) =>
-        !string.IsNullOrWhiteSpace(m?.EskizFrom) ? m!.EskizFrom.Trim()
-        : !string.IsNullOrWhiteSpace(config["Eskiz:From"]) ? config["Eskiz:From"]!.Trim()
-        : "4546";
+        Usable(m?.EskizFrom) ?? Usable(config["Eskiz:From"]) ?? "4546";
+
+    /// <summary>Namuna/bo'sh bo'lmagan haqiqiy qiymat, aks holda null.</summary>
+    private static string? Usable(string? from) =>
+        !string.IsNullOrWhiteSpace(from) && !IsPlaceholderSender(from) ? from.Trim() : null;
+
+    /// <summary>Hujjat/namuna matni sender sifatida yozib qo'yilganmi.</summary>
+    /// <remarks>Ro'yxat ATAYIN qisqa va ANIQ: haqiqiy nomni tasodifan rad etmasin.</remarks>
+    public static bool IsPlaceholderSender(string? from)
+    {
+        var v = (from ?? "").Trim().ToLowerInvariant();
+        return v is "tasdiqlangan_nikname" or "tasdiqlangan_nickname" or "nickname" or "nikname";
+    }
 
     /// <summary>Ko'rsatish uchun amaldagi email (.env dan).</summary>
     public string DisplayEmail(CenterMeta? m = null) => Email;
@@ -156,6 +178,13 @@ public class EskizService(
 
             if (!resp.IsSuccessStatusCode)
             {
+                // ⚠️ Ilgari HTTP xato javoblari (400/402 va h.k.) LOGGA UMUMAN tushmasdi — faqat
+                // SmsLogs.Status ga. Natijada "nega ketmadi" savoliga log'dan javob yo'q edi.
+                // Javob tanasi ham yoziladi (unda Eskiz'ning ANIQ sababi bo'ladi: balans,
+                // moderatsiyadan o'tmagan matn, tasdiqlanmagan sender...). Telefon RAQAMI
+                // yozilmaydi — log'da shaxsiy ma'lumot saqlamaymiz.
+                logger.LogWarning("Eskiz SMS rad etdi: HTTP {Status}, javob: {Body}",
+                    (int)resp.StatusCode, body.Length > 500 ? body[..500] : body);
                 var msg = TryGetMessage(body) ?? $"Eskiz xato ({(int)resp.StatusCode}).";
                 return (new SmsResult(false, "", "error", msg), false);
             }
@@ -168,10 +197,68 @@ public class EskizService(
                 return (new SmsResult(false, "", "error", TryGetMessage(body) ?? "Noma'lum javob."), false);
             return (new SmsResult(true, id, string.IsNullOrEmpty(status) ? "waiting" : status, null), false);
         }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            // Chaqiruvchi bekor qildi (masalan foydalanuvchi sahifani yopdi) — bu XATO emas.
+            throw;
+        }
+        catch (TaskCanceledException ex)
+        {
+            // ⚠️ TIMEOUT alohida ajratiladi: `TaskCanceledException` ni umumiy "Yuborishda
+            // xatolik" deb ko'rsatish operatorni chalg'itardi — u Eskiz RAD ETDI deb o'ylab,
+            // matnni yoki raqamni qayta-qayta o'zgartirib ko'rardi. Aslida javob KELMAGAN.
+            logger.LogWarning(ex, "Eskiz javob bermadi (timeout) — so'rov bekor qilindi");
+            return (new SmsResult(false, "", "error",
+                "Eskiz javob bermadi (vaqt tugadi). Bu rad etish EMAS — biroz kutib qayta urining."), false);
+        }
         catch (Exception ex)
         {
             logger.LogWarning(ex, "Eskiz SMS yuborish xatosi");
             return (new SmsResult(false, "", "error", "Yuborishda xatolik."), false);
+        }
+    }
+
+    /// <summary>
+    /// Eskiz kabinetida TASDIQLANGAN jo'natuvchi nomlari (nickname). Bo'sh ro'yxat = hech biri
+    /// tasdiqlanmagan (SMS "4546" dan ketadi, markaz nomi ko'rinmaydi).
+    /// </summary>
+    /// <remarks>
+    /// ⚠️ Sozlamalar sahifasi shu ro'yxatni ko'rsatadi. Ilgari "Jo'natuvchi nomi" ERKIN MATN
+    /// maydoni edi: admin istalgan narsani yozib qo'yardi (prodda "tasdiqlangan_nikname" namuna
+    /// matni turgan) va tasdiqlangani bor-yo'qligini bilishning UMUMAN yo'li yo'q edi.
+    /// </remarks>
+    public async Task<List<string>> GetNicknamesAsync(IAppDbContext? db = null, CancellationToken ct = default)
+    {
+        var (token, _) = await GetTokenAsync(db, false, ct);
+        if (token is null) return [];
+        try
+        {
+            using var req = new HttpRequestMessage(HttpMethod.Get, $"{BaseUrl}/api/nick/me");
+            req.Headers.Add("Authorization", $"Bearer {token}");
+            var resp = await Client().SendAsync(req, ct);
+            if (!resp.IsSuccessStatusCode) return [];
+            using var doc = JsonDocument.Parse(await resp.Content.ReadAsStringAsync(ct));
+            var root = doc.RootElement;
+            // Javob ikki ko'rinishda bo'lishi mumkin: to'g'ridan-to'g'ri massiv yoki {data:[...]}.
+            var arr = root.ValueKind == JsonValueKind.Array ? root
+                : root.TryGetProperty("data", out var d) && d.ValueKind == JsonValueKind.Array ? d
+                : default;
+            if (arr.ValueKind != JsonValueKind.Array) return [];
+
+            var names = new List<string>();
+            foreach (var item in arr.EnumerateArray())
+            {
+                var name = item.ValueKind == JsonValueKind.String ? item.GetString()
+                    : item.TryGetProperty("nickname", out var n) ? n.GetString()
+                    : item.TryGetProperty("name", out var n2) ? n2.GetString() : null;
+                if (!string.IsNullOrWhiteSpace(name)) names.Add(name!.Trim());
+            }
+            return names;
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Eskiz nickname ro'yxati olinmadi");
+            return [];
         }
     }
 

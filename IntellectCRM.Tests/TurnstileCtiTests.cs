@@ -944,7 +944,8 @@ public class TurnstileCtiTests
     }
 
     private static CtiSmsService Sms(CtiConnectionManager conn) =>
-        new(conn, new FcmService(new FakeHttpClientFactory(), NullLogger<FcmService>.Instance));
+        new(conn, new FcmService(new FakeHttpClientFactory(), NullLogger<FcmService>.Instance),
+            NullLogger<CtiSmsService>.Instance);
 
     /// <summary>Oflayn agent (WS yo'q, FCM token yo'q) — yuborish darhol "yetkazilmadi" bo'ladi,
     /// lekin NormalizePhone natijasi CtiCommandLog.Payload orqali ko'rinadi.</summary>

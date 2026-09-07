@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using IntellectCRM.Application.Abstractions;
 using IntellectCRM.Domain;
 
@@ -10,9 +11,25 @@ namespace IntellectCRM.Application.Services;
 /// operator paneli (<c>CtiController</c>) tomonidan ishlatiladi — bittasi yetkazish (WS/FCM+poll,
 /// <see cref="CtiCommandLog"/>) va SmsLog yozuvini markazlashtiradi, shu bilan Tarix bitta joyda qoladi.
 /// </summary>
-public class CtiSmsService(CtiConnectionManager conn, FcmService fcm)
+public class CtiSmsService(CtiConnectionManager conn, FcmService fcm, ILogger<CtiSmsService> log)
 {
     public record LocalSmsResult(bool Ok, string CommandId, string Status, string? Error);
+
+    /// <summary>
+    /// Agent shu muddatdan beri ko'rinmagan bo'lsa — uni "o'lik" deb hisoblaymiz va FCM bilan
+    /// uyg'otishga URINMAYMIZ.
+    /// </summary>
+    /// <remarks>
+    /// <para>⚠️ Nega kerak (2026-09-07 da topilgan): ikkala CTI agent ham <b>3 haftadan beri</b>
+    /// oflayn edi, lekin `SmsProvider='local'` bo'lgan avto-qoidalar har kuni ishlayverardi.
+    /// Har urinish: bitta bekor FCM push + <b>6 sekund</b> kutish (12 × 500 ms poll) + "yetkazilmadi"
+    /// yozuvi. Kuniga 20+ marta. Log'da esa HECH NARSA yo'q edi — faqat `SmsLogs.Status`.</para>
+    ///
+    /// <para>⚠️ Chegara ATAYIN uzoq (7 kun): FCM bilan uyg'otish yo'li aynan "ilova fonda"
+    /// holati uchun. Bir necha soat ko'rinmagan agent normal holat — uni o'tkazib yuborsak
+    /// ISHLAYOTGAN sozlamani buzardik. 7 kun esa "token eskirgan, ilova o'chirilgan".</para>
+    /// </remarks>
+    private static readonly TimeSpan StaleAgentAfter = TimeSpan.FromDays(7);
 
     /// <summary>
     /// Ketma-ket yuborishlar orasidagi minimal masofani ta'minlaydi (CenterMeta.LocalSmsDelaySeconds
@@ -95,6 +112,30 @@ public class CtiSmsService(CtiConnectionManager conn, FcmService fcm)
         }
 
         // 2) Oflayn — FCM bilan uyg'otamiz, so'ng WS ulanishini poll qilamiz.
+        //    ⚠️ Lekin agent UZOQ vaqtdan beri ko'rinmagan bo'lsa urinmaymiz: FCM tokeni
+        //    deyarli aniq eskirgan, natija esa har safar 6 sekund bekor kutish bo'lardi.
+        //    ⚠️ `LastSeenAt == null` (hech qachon ko'rinmagan) stale HISOBLANMAYDI: bu yangi
+        //    o'rnatilgan agentning birinchi uyg'otilishi bo'lishi mumkin. Stale = "ko'rgan edik,
+        //    lekin ANCHA oldin".
+        var lastSeen = agent.LastSeenAt;
+        if (lastSeen is not null && AppClock.Now - lastSeen.Value > StaleAgentAfter)
+        {
+            cmd.Status = "failed";
+            await db.SaveChangesAsync(ct);
+            // ⚠️ LOGGA yoziladi: ilgari bu holat butunlay jim edi va "SMS nega ketmayapti"
+            // savoliga faqat SmsLogs jadvalidan javob topish mumkin edi.
+            log.LogWarning(
+                "Local SMS yuborilmadi: agent \"{Agent}\" {Days} kundan beri ko'rinmagan "
+                + "(oxirgi: {LastSeen}). Telefondagi agent ilovasini qayta ulang.",
+                agent.DisplayName,
+                (int)(AppClock.Now - lastSeen.Value).TotalDays,
+                lastSeen.Value.ToString("yyyy-MM-dd HH:mm"));
+            return await FinishAsync(db, phone, message, recipientName, batchId, ownsBatch, false,
+                commandId, "yetkazilmadi",
+                $"Agent \"{agent.DisplayName}\" uzoq vaqtdan beri oflayn — telefondagi ilovani qayta ulang.",
+                resolvedAgentId, ct);
+        }
+
         if (agent.FcmToken.Length > 0)
         {
             var json = AppSecrets.FcmServiceAccountJson;

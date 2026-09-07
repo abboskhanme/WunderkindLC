@@ -359,10 +359,17 @@ public class SettingsController(AppDbContext db, TelegramService telegram, IWebH
         var m = await db.CenterMeta.FirstOrDefaultAsync();
         // Balans — sozlangan bo'lsa best-effort (tarmoq xatosi UI'ni buzmaydi).
         decimal? balance = eskiz.IsConfigured() ? await eskiz.GetBalanceAsync(db) : null;
+        // ⚠️ Tasdiqlangan nomlar ro'yxati — ilgari "Jo'natuvchi nomi" ERKIN MATN edi va
+        // tasdiqlangani bor-yo'qligini bilishning yo'li yo'q edi (prodda namuna matn turgan).
+        var nicknames = eskiz.IsConfigured() ? await eskiz.GetNicknamesAsync(db) : [];
+        var from = eskiz.SenderOf(m);
         return new EskizSettingsDto(
-            eskiz.DisplayEmail(), eskiz.SenderOf(m), eskiz.IsConfigured(), balance,
+            eskiz.DisplayEmail(), from, eskiz.IsConfigured(), balance,
             new EnvSecretDto(AppSecrets.EnvKeys.EskizEmail, AppSecrets.EskizEmail.Length > 0),
-            new EnvSecretDto(AppSecrets.EnvKeys.EskizPassword, AppSecrets.EskizPassword.Length > 0));
+            new EnvSecretDto(AppSecrets.EnvKeys.EskizPassword, AppSecrets.EskizPassword.Length > 0),
+            nicknames,
+            // "4546" — Eskiz'ning umumiy raqami: tasdiq talab qilmaydi, har doim ishlaydi.
+            from == "4546" || nicknames.Contains(from, StringComparer.OrdinalIgnoreCase));
     }
 
     [HttpPut("eskiz")]
@@ -374,7 +381,19 @@ public class SettingsController(AppDbContext db, TelegramService telegram, IWebH
 
         var m = await db.CenterMeta.FirstOrDefaultAsync();
         if (m is null) { m = new CenterMeta(); db.CenterMeta.Add(m); }
-        if (req.From is not null) m.EskizFrom = string.IsNullOrWhiteSpace(req.From) ? "4546" : req.From.Trim();
+        if (req.From is not null)
+        {
+            // ⚠️ Namuna matnni ("tasdiqlangan_nikname") saqlashga YO'L QO'YMAYMIZ: u Eskiz'da
+            // tasdiqlanmagan va prodda aynan shu qiymat yozib qo'yilgani topilgan — SMS "4546"
+            // dan ketardi, markaz nomi ko'rinmasdi va buni hech narsa ko'rsatmasdi.
+            if (EskizService.IsPlaceholderSender(req.From))
+                return BadRequest(new
+                {
+                    message = "Bu — namuna matn, jo'natuvchi nomi emas. Eskiz kabinetida "
+                            + "TASDIQLANGAN nomni tanlang yoki bo'sh qoldiring (u holda \"4546\" ishlatiladi).",
+                });
+            m.EskizFrom = string.IsNullOrWhiteSpace(req.From) ? "4546" : req.From.Trim();
+        }
         LogSettings("SMS (Eskiz)");
         await db.SaveChangesAsync();
         return await GetEskiz();

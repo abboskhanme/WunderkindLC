@@ -846,11 +846,28 @@ public class MessagesController(
     private static string LeadSmsNote(string text) =>
         "SMS yuborildi: " + (text.Length > 140 ? text[..140] + "…" : text);
 
+    /// <summary>
+    /// Qo'lda yuborib bo'lmaydigan token (hozircha <c>{link}</c>) bo'lsa — xato matni, aks holda null.
+    /// </summary>
+    /// <remarks>
+    /// ⚠️ Bu tekshiruv SERVERDA turishi SHART. Klientda "tayyor matn" ro'yxatidan
+    /// <c>test_link</c> olib tashlandi, lekin matnni QO'LDA ham yozish/nusxalash mumkin —
+    /// va o'shanda abonentga <c>{link}</c> so'zining O'ZI ketardi (hech qanday xato
+    /// ko'rinmasdan, chunki SMS muvaffaqiyatli yuborilgan bo'lardi).
+    /// </remarks>
+    private static string? ManualTokenError(string text) =>
+        MessageTokenCatalog.ForbiddenInManual(text) is { } token
+            ? $"«{token}» tokenini qo'lda yuborib bo'lmaydi — u BIR MARTALIK havola va faqat "
+              + "«Daraja testi yuborish» bo'limidan (test tanlab) yuboriladi. "
+              + "Matndan olib tashlang yoki o'sha bo'limdan yuboring."
+            : null;
+
     [HttpPost("sms/lead")]
     public async Task<ActionResult<SmsBatchDto>> SendLeadSms(SendLeadSmsRequest req)
     {
         var text = (req.Text ?? "").Trim();
         if (text.Length == 0) return BadRequest(new { message = "SMS matni kerak" });
+        if (ManualTokenError(text) is { } tokenErr) return BadRequest(new { message = tokenErr });
         var lead = await db.Leads.FirstOrDefaultAsync(l => l.Id == req.LeadId);
         if (lead is null) return NotFound();
         var meta = await db.CenterMeta.FirstOrDefaultAsync();
@@ -876,6 +893,7 @@ public class MessagesController(
     {
         var text = (req.Text ?? "").Trim();
         if (text.Length == 0) return BadRequest(new { message = "SMS matni kerak" });
+        if (ManualTokenError(text) is { } tokenErr) return BadRequest(new { message = tokenErr });
         var ids = (req.LeadIds ?? new List<string>())
             .Where(x => !string.IsNullOrWhiteSpace(x)).Distinct().ToList();
         if (ids.Count == 0) return BadRequest(new { message = "Kamida bitta lid tanlang" });

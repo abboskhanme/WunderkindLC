@@ -476,3 +476,89 @@ o'zgarishida o'z-o'zidan tuzaladi (matn o'zgargani uchun xesh mos kelmaydi).
 ⚠️ **YANGI lid endpointi qo'shsangiz — `SyncCardAsync` chaqiruvini ham qo'shing** (`SaveChanges`
 dan KEYIN). Aks holda karta jimgina eskirib qoladi: nosozlik xato bermaydi, shunchaki guruhdagi
 xabar haqiqatdan orqada qolib ketadi.
+
+## SMS OQIMI — 2026-09-07 prod hodisalaridan chiqqan QULFLAR
+
+Bir kunda to'rtta ayrim muammo topildi; ularning uchtasi **jimgina** ishlab turardi
+(hech qanday xato ko'rinmasdi). Qoida bitta: *"SMS ketmadi" ham, "noto'g'ri ketdi" ham
+LOGDA yoki EKRANDA sababi bilan ko'rinishi kerak.*
+
+### 1. NOMLI HttpClient — `AddHttpClient("eskiz")` (100 → 25 sekund)
+
+⚠️ `EskizService` `httpFactory.CreateClient("eskiz")` deb so'raydi, lekin bu nom
+`Program.cs` da **ro'yxatdan o'tmagan** edi → default `HttpClient.Timeout` = **100 sekund**.
+
+Hodisa: 16:51–16:56 da Eskiz API'si ~5 daqiqa javob bermay qoldi. Har "SMS yuborish"
+bosilishi 100 sekund osildi, operator 7 marta bosdi — admin oynasi 12 daqiqa qotdi.
+Eskiz o'zi odatda 0.5–1.5 sekundda javob beradi.
+
+⚠️ **AYNAN SHU XATO `"telegram"` mijozida ham bo'lgan va tuzatilgan edi** — ya'ni naqsh
+takrorlandi. **`CreateClient("nom")` yozsangiz, o'sha nomni `Program.cs` da ro'yxatdan
+o'tkazing.** Nomlanmagan konfiguratsiya jimgina 100 sekundga tushadi.
+
+### 2. Eskiz XATO javoblari LOGGA yoziladi
+
+Ilgari HTTP xato javoblari (400/401/402) faqat `SmsLogs.Status` ga tushardi — log'da
+hech narsa yo'q edi. Endi `TrySendAsync` status + javob tanasini `LogWarning` qiladi
+(Eskiz'ning ANIQ sababi o'sha yerda: balans, moderatsiya, tasdiqlanmagan sender).
+
+⚠️ **Telefon RAQAMI logga yozilmaydi** — log'da shaxsiy ma'lumot saqlanmaydi.
+
+⚠️ **TIMEOUT alohida ajratildi.** `TaskCanceledException` ni umumiy "Yuborishda xatolik"
+deb ko'rsatish operatorni chalg'itardi: u Eskiz **rad etdi** deb o'ylab matnni/raqamni
+qayta-qayta o'zgartirardi. Aslida javob **kelmagan**. Endi matn: *"Eskiz javob bermadi
+(vaqt tugadi). Bu rad etish EMAS."* Chaqiruvchi bekor qilgani (`ct`) esa xato emas — u
+qayta otiladi.
+
+### 3. `{link}` — QO'LDA yuborib bo'lmaydigan token
+
+`{link}` — daraja testining **bir martalik** havolasi; uni faqat "Daraja testi yuborish"
+oqimi (`POST leads/{id}/send-test`) tug'diradi.
+
+⚠️ Hodisa: lid oynasining "tayyor matn" ro'yxatida `test_link` andozasi ham chiqardi.
+Operator uni tanlab oddiy "SMS yuborish" bosdi — abonentga
+*«Assalomu alaykum sizga {link} testi yuborildi»* KETDI. Hech qanday xato ko'rinmadi:
+SMS muvaffaqiyatli yuborilgan edi.
+
+Ikki qatlam:
+- **Klient** — `NOT_PICKABLE_TRIGGERS` (`api/services/messages.ts`): `test_link` "tayyor
+  matn" ro'yxatiga tushmaydi.
+- **Server (haqiqiy darvoza)** — `MessageTokenCatalog.ForbiddenInManual`, `sms/lead` va
+  `sms/lead-bulk` da 400. ⚠️ Klient filtri YETARLI EMAS: matnni qo'lda yozish/nusxalash
+  mumkin.
+
+⚠️ Ro'yxat (`ManualForbidden`) ATAYIN faqat `{link}`. Qolgan `"event"` tokenlari
+bloklanmaydi — masalan `{dars_vaqti}` ni `MessageTokenizer` qo'lda yuborishda ham guruh
+jadvalidan to'ldira oladi.
+
+### 4. Jo'natuvchi nomi (sender) — NAMUNA matn sender bo'lib qolmasin
+
+⚠️ Prodda `CenterMeta.EskizFrom` da **"tasdiqlangan_nikname"** — o'rniga ism yozilishi
+kerak bo'lgan namuna matn turgan. SMS baribir ketardi (Eskiz `4546` dan yuboradi), lekin
+markaz nomi ko'rinmasdi va buni **hech narsa ko'rsatmasdi**: maydon sof erkin matn edi.
+
+- `EskizService.IsPlaceholderSender` — bunday qiymat "kiritilmagan" deb hisoblanadi
+  (`SenderOf` → `4546`), saqlashda esa 400 bilan rad etiladi.
+  ⚠️ Ro'yxat ATAYIN qisqa va aniq — haqiqiy markaz nomini tasodifan rad etmasin.
+- `EskizService.GetNicknamesAsync` (`GET /api/nick/me`) — kabinetda **TASDIQLANGAN**
+  nomlar. Sozlamalar sahifasi ularni tugma qilib ko'rsatadi; bittasi ham bo'lmasa
+  ogohlantiradi, hozirgi qiymat ro'yxatda bo'lmasa qizil yozadi.
+- `4546` — Eskiz'ning umumiy raqami: tasdiq talab qilmaydi, har doim ishlaydi, lekin
+  abonent markaz nomini ko'rmaydi.
+
+### 5. LOCAL (CTI agent) SMS — o'lik agentga urinmaymiz
+
+⚠️ Ikkala CTI agent ham **3 haftadan beri** oflayn edi, lekin `SmsProvider='local'`
+avto-qoidalar har kuni ishlayverardi. Har urinish: bekor FCM push + **6 sekund** kutish
+(12 × 500 ms poll) + "yetkazilmadi". Kuniga 20+ marta, log'da esa **hech narsa**.
+
+`CtiSmsService.StaleAgentAfter = 7 kun`: agent shu muddatdan beri ko'rinmagan bo'lsa FCM
+bilan uyg'otishga urinilmaydi — darhol sabab bilan qaytadi va **`LogWarning` yoziladi**.
+
+⚠️ Chegara ATAYIN uzoq: FCM yo'li aynan "ilova fonda" holati uchun. Bir necha soat
+ko'rinmagan agent — normal holat, uni o'tkazib yuborsak ISHLAYOTGAN sozlamani buzardik.
+
+⚠️ `LastSeenAt == null` stale HISOBLANMAYDI — bu yangi o'rnatilgan agentning birinchi
+uyg'otilishi bo'lishi mumkin. Stale = *"ko'rgan edik, lekin ancha oldin"*.
+
+Testlar: `IntellectCRM.Tests/SmsGuardTests.cs`.

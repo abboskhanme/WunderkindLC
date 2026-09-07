@@ -294,11 +294,18 @@ export interface EskizConfig {
   login?: EnvSecret
   /** Parol holati (.env: ESKIZ_PASSWORD) */
   password?: EnvSecret
+  /**
+   * Eskiz kabinetida TASDIQLANGAN jo'natuvchi nomlari. Bo'sh massiv = hech biri tasdiqlanmagan,
+   * ya'ni SMS "4546" dan ketadi va markaz nomi ko'rinmaydi.
+   */
+  nicknames?: string[]
+  /** Hozirgi `from` tasdiqlanganlar orasidami ("4546" har doim ishlaydi). */
+  fromApproved?: boolean
 }
 export async function getEskizSettings(): Promise<EskizConfig> {
   if (USE_MOCK) {
     await delay()
-    return { email: '', from: '4546', configured: false, balance: null }
+    return { email: '', from: '4546', configured: false, balance: null, nicknames: [], fromApproved: true }
   }
   const { data } = await api.get<EskizConfig>('/admin/settings/eskiz')
   return data
