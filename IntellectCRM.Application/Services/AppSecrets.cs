@@ -78,6 +78,11 @@ public static class AppSecrets
     public static string TurnstileUsername => Read("Turnstile:Username", EnvKeys.TurnstileUsername);
     public static string TurnstilePassword => Read("Turnstile:Password", EnvKeys.TurnstilePassword);
 
+    /* ---------- NVR (videoregistrator) arxivi ---------- */
+    // Turniket bilan bir xil naqsh: manzil/port bazada (UI'dan), login/parol FAQAT .env da.
+    public static string NvrUsername => Read("Nvr:Username", EnvKeys.NvrUsername);
+    public static string NvrPassword => Read("Nvr:Password", EnvKeys.NvrPassword);
+
     /* ---------- YUZ BILAN KIRISH: vektorlarni shifrlash kaliti ---------- */
 
     /// <summary>Yuz vektorlarini bazada shifrlash kaliti — <b>base64, AYNAN 32 bayt</b>
@@ -160,6 +165,8 @@ public static class AppSecrets
     public static bool AzureSpeechConfigured => AzureSpeechKey.Length > 0 && AzureSpeechRegion.Length > 0;
     public static bool EskizConfigured => EskizEmail.Length > 0 && EskizPassword.Length > 0;
     public static bool TurnstileCredentialsConfigured => TurnstileUsername.Length > 0 && TurnstilePassword.Length > 0;
+    /// <summary>NVR login/paroli berilganmi — arxivni olib kelish shusiz mumkin emas.</summary>
+    public static bool NvrCredentialsConfigured => NvrUsername.Length > 0 && NvrPassword.Length > 0;
     /// <summary>Yuz vektorlari kaliti bor VA yaroqli (32 bayt base64) — modul shu bilan yoqiladi.</summary>
     public static bool FaceVectorKeyConfigured => FaceVault.IsValidKey(FaceVectorKey);
     /// <summary>Instagram moduli uchun ikkala `.env` kaliti ham berilganmi. Ikkalasi HAM shart:
@@ -183,6 +190,8 @@ public static class AppSecrets
         public const string EskizPassword = "ESKIZ_PASSWORD";
         public const string TurnstileUsername = "TURNSTILE_USERNAME";
         public const string TurnstilePassword = "TURNSTILE_PASSWORD";
+        public const string NvrUsername = "NVR_USERNAME";
+        public const string NvrPassword = "NVR_PASSWORD";
         public const string FaceVectorKey = "FACE_VECTOR_KEY";
         public const string PlayIntegritySaJson = "PLAY_INTEGRITY_SA_JSON";
         public const string PlayIntegrityPackage = "PLAY_INTEGRITY_PACKAGE";

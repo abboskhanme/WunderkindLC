@@ -19,6 +19,14 @@ export interface Camera {
    * (Sozlamalar -> Kamera integratsiya). Bosh kalit o'chiq bo'lsa bu bayroq ta'sir qilmaydi.
    */
   recordEnabled: boolean
+  /** NVR (videoregistrator) dagi kanal raqami. 0 = kamera NVR'da yo'q. */
+  nvrChannel: number
+  /**
+   * Arxiv (orqaga qaytarish / klip) QAYERDAN olinadi — serverda hisoblanadi:
+   * `nvr` (NVR arxividan) | `local` (bizning yozuvimizdan) | `none` (arxiv yo'q).
+   * ⚠️ Klientda qayta hisoblamang: qoida serverda (`CameraRules.ArchiveSource`).
+   */
+  archiveSource: 'nvr' | 'local' | 'none'
 }
 
 export interface SaveCameraPayload {
@@ -30,6 +38,7 @@ export interface SaveCameraPayload {
   isActive: boolean
   note?: string
   recordEnabled: boolean
+  nvrChannel: number
 }
 
 export async function getCameras(): Promise<Camera[]> {
@@ -56,7 +65,31 @@ export function cameraLiveUrl(id: string): string {
   return `${API_BASE}/admin/cameras/${id}/index.m3u8`
 }
 
-/** Playback/clip — yozuvdan MP4 (blob). start "YYYY-MM-DDTHH:mm:ss", duration soniyada. */
+/** NVR arxividagi bitta uzluksiz bo'lak (markaz vaqtida). */
+export interface NvrSegment {
+  start: string
+  end: string
+}
+
+export interface NvrSearchResult {
+  ok: boolean
+  /** Bo'sh bo'lmasa — SABAB (manzil? port? login? kanal?). Sozlash aynan shu matn bilan qilinadi. */
+  error: string
+  segments: NvrSegment[]
+}
+
+/**
+ * NVR arxivida shu oraliqda yozuv bormi. `to` berilmasa `from` + 1 kun.
+ * ⚠️ Xato holatida ham 200 qaytadi — sababni `error` dan o'qing.
+ */
+export async function nvrSearch(id: string, from: string, to?: string): Promise<NvrSearchResult> {
+  const { data } = await api.get<NvrSearchResult>(`/admin/cameras/${id}/nvr-search`, {
+    params: { from, ...(to ? { to } : {}) },
+  })
+  return data
+}
+
+/** Playback/clip — arxivdan MP4 (blob). start "YYYY-MM-DDTHH:mm:ss", duration soniyada. */
 export async function getClipBlob(id: string, start: string, durationSec: number): Promise<Blob> {
   const { data } = await api.get(`/admin/cameras/${id}/clip`, {
     params: { start, duration: durationSec },

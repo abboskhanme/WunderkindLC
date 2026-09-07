@@ -1553,6 +1553,11 @@ public class Camera
     /// Haqiqiy yozuv markazdagi BOSH kalit bilan birga hal qilinadi —
     /// <see cref="CenterMeta.CameraRecordEnabled"/> (qarang: CameraRules.ShouldRecord).</summary>
     public bool RecordEnabled { get; set; } = true;
+    /// <summary>Shu kameraning NVR (videoregistrator) dagi KANAL raqami (1..N). 
+    /// <b>0 = kamera NVR'da yo'q</b> (yoki NVR ishlatilmaydi).
+    /// <para>Nolga teng bo'lmasa arxiv (orqaga qaytarish / klip) NVR'dan olinadi — bizning
+    /// serverda hech narsa yozilmaydi. Qarang: `.claude/rules/cameras.md` §8.</para></summary>
+    public int NvrChannel { get; set; }
 }
 
 /// <summary>Turniket/FaceID qurilmasidan kelgan bitta o'tish hodisasi (xom log).</summary>
@@ -1738,6 +1743,21 @@ public class CenterMeta
     /// ya'ni disk ham, markazning 24/7 internet trafigi ham sarflanmaydi.
     /// Batafsil: `.claude/rules/cameras.md`.</summary>
     public bool CameraRecordEnabled { get; set; }
+
+    // ---------- NVR (videoregistrator) arxivi ----------
+    /// <summary>Arxiv NVR'dan olinsinmi. Yoqilgan bo'lsa (va kameraning <see cref="Camera.NvrChannel"/>
+    /// i 0 dan katta bo'lsa) yozuvni BIZ yozmaymiz — NVR allaqachon o'z disklariga yozib turibdi,
+    /// biz faqat so'ralgan bo'lakni undan olib beramiz.</summary>
+    public bool NvrEnabled { get; set; }
+    /// <summary>NVR IP/host (serverdan ko'rinadigan manzil).</summary>
+    public string NvrHost { get; set; } = string.Empty;
+    /// <summary>NVR RTSP porti (odatda 554) — arxiv oqimini olish uchun.</summary>
+    public int NvrRtspPort { get; set; } = 554;
+    /// <summary>NVR ISAPI (HTTP) porti (odatda 80) — "qaysi vaqtlarda yozuv bor" qidiruvi uchun.</summary>
+    public int NvrIsapiPort { get; set; } = 80;
+    /// <summary>Rusum. Hozircha faqat "hikvision" (turniket bilan bir xil ISAPI oilasi).</summary>
+    public string NvrVendor { get; set; } = "hikvision";
+    // NVR login/paroli — .env: NVR_USERNAME / NVR_PASSWORD (AppSecrets). Bazada SAQLANMAYDI.
 
     // ---------- Telegram backup ----------
     /// <summary>Telegram admin chat ID — backup faylini yuborish uchun. Faqat raqam (masalan 123456789).

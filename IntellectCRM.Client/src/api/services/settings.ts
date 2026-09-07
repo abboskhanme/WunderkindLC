@@ -391,16 +391,30 @@ export interface CameraConfig {
   recordEnabled: boolean
   /** Hozir haqiqatan yozib borilayotgan kameralar soni (bosh kalit + kamera bayroqlari). */
   recordingCameraCount: number
+  /* ---- NVR (videoregistrator) arxivi ---- */
+  nvrEnabled: boolean
+  nvrHost: string
+  nvrRtspPort: number
+  nvrIsapiPort: number
+  nvrVendor: string
+  /** .env dagi NVR_USERNAME/NVR_PASSWORD berilganmi. ⚠️ Parolning O'ZI hech qachon qaytmaydi. */
+  nvrCredentialsSet: boolean
+  /** NVR kanali ko'rsatilgan kameralar soni. */
+  nvrCameraCount: number
 }
+
+/** Sozlamalar formasidan yuboriladigan maydonlar (login/parol YO'Q — ular faqat .env da). */
+export type SaveCameraSettingsPayload = Pick<
+  CameraConfig,
+  'enabled' | 'recordEnabled' | 'nvrEnabled' | 'nvrHost' | 'nvrRtspPort' | 'nvrIsapiPort' | 'nvrVendor'
+>
 
 export async function getCameraSettings(): Promise<CameraConfig> {
   const { data } = await api.get<CameraConfig>('/admin/settings/cameras')
   return data
 }
 
-export async function saveCameraSettings(
-  payload: { enabled: boolean; recordEnabled: boolean },
-): Promise<CameraConfig> {
+export async function saveCameraSettings(payload: SaveCameraSettingsPayload): Promise<CameraConfig> {
   const { data } = await api.put<CameraConfig>('/admin/settings/cameras', payload)
   return data
 }

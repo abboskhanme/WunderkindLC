@@ -499,6 +499,9 @@ builder.Services.AddScoped<IntellectCRM.Application.Services.ScheduleService>();
 
 // Kamera (videokuzatuv) media-shlyuzi (MediaMTX) bilan ishlash
 builder.Services.AddHttpClient<IntellectCRM.Application.Services.CameraGateway>();
+// NVR arxivi — o'z HttpClient'ini ichida yaratadi (Digest auth uchun NetworkCredential kerak,
+// turniketdagi naqsh bilan bir xil), shuning uchun oddiy singleton.
+builder.Services.AddSingleton<IntellectCRM.Application.Services.NvrArchiveService>();
 
 // Javoblarni siqish (Brotli + Gzip). Level.Fastest — TTFB ga ortiqcha CPU yuk qo'ymaydi.
 // Eslatma: Cloudflare orqasida bo'lsa, CF chetda allaqachon siqadi — bu origin uchun foydali.
@@ -864,6 +867,12 @@ using (var scope = app.Services.CreateScope())
         B("Camera:Enabled", v => meta.CameraEnabled = v);
         // 24/7 diskka yozib borish (jonli kuzatuvdan ALOHIDA) — default O'CHIQ
         B("Camera:RecordEnabled", v => meta.CameraRecordEnabled = v);
+        // NVR arxivi (login/parol .env da: NVR_USERNAME / NVR_PASSWORD)
+        B("Nvr:Enabled", v => meta.NvrEnabled = v);
+        S("Nvr:Host", v => meta.NvrHost = v);
+        I("Nvr:RtspPort", v => meta.NvrRtspPort = v);
+        I("Nvr:IsapiPort", v => meta.NvrIsapiPort = v);
+        S("Nvr:Vendor", v => meta.NvrVendor = v.ToLowerInvariant());
         // Kunlik AI tahlil
         B("AiAnalysis:Enabled", v => meta.AiDailyAnalysisEnabled = v);
         I("AiAnalysis:Hour", v => meta.AiDailyAnalysisHour = v);

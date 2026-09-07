@@ -323,16 +323,30 @@ public record SetStudentDeviceRequest(string StudentId, string? DeviceUserId);
 // ---------- Kamera (videokuzatuv) ----------
 public record CameraDto(
     string Id, string Name, string Location, string RtspUrl, string RtspSubUrl,
-    int RetentionDays, bool IsActive, string Note, bool RecordEnabled);
+    int RetentionDays, bool IsActive, string Note, bool RecordEnabled,
+    int NvrChannel, string ArchiveSource);
 public record SaveCameraRequest(
     string Name, string? Location, string RtspUrl, string? RtspSubUrl,
     int RetentionDays = 7, bool IsActive = true, string? Note = null,
-    bool RecordEnabled = true);
+    bool RecordEnabled = true, int NvrChannel = 0);
 /// <summary>Kamera integratsiya sozlamasi. <paramref name="RecordEnabled"/> — 24/7 YOZUVNING
 /// bosh kaliti (jonli kuzatuvdan ALOHIDA: o'chirilganda kamera baribir ko'rinadi).
-/// <paramref name="RecordingCameraCount"/> — hozir haqiqatan yozib borilayotgan kameralar soni.</summary>
-public record CameraSettingsDto(bool Enabled, int CameraCount, bool RecordEnabled, int RecordingCameraCount);
-public record SaveCameraSettingsRequest(bool Enabled, bool RecordEnabled = false);
+/// <paramref name="RecordingCameraCount"/> — hozir haqiqatan yozib borilayotgan kameralar soni.
+/// <paramref name="NvrCredentialsSet"/> — .env dagi NVR_USERNAME/NVR_PASSWORD berilganmi
+/// (parolning O'ZI hech qachon qaytmaydi).</summary>
+public record CameraSettingsDto(
+    bool Enabled, int CameraCount, bool RecordEnabled, int RecordingCameraCount,
+    bool NvrEnabled, string NvrHost, int NvrRtspPort, int NvrIsapiPort, string NvrVendor,
+    bool NvrCredentialsSet, int NvrCameraCount);
+public record SaveCameraSettingsRequest(
+    bool Enabled, bool RecordEnabled = false,
+    bool NvrEnabled = false, string? NvrHost = null,
+    int NvrRtspPort = 554, int NvrIsapiPort = 80, string? NvrVendor = null);
+/// <summary>NVR arxividagi bitta uzluksiz bo'lak (markaz vaqtida).</summary>
+public record NvrSegmentDto(string Start, string End);
+/// <summary>"NVR'ni sinash" / "shu kunda yozuv bormi" javobi. <paramref name="Error"/> bo'sh
+/// bo'lmasa — SABAB (jim bo'sh ro'yxat emas: sozlash shu matn bilan qilinadi).</summary>
+public record NvrSearchDto(bool Ok, string Error, List<NvrSegmentDto> Segments);
 
 /* ---------- Avto xabarlar (yagona SMS+Push+Telegram model) — Xabarlar → Avto xabarlar ---------- */
 

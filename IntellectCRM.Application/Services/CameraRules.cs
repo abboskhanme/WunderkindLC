@@ -40,4 +40,40 @@ public static class CameraRules
 
     /// <summary>Saqlash muddati chegarasi: 0 (cheksiz) .. 365 kun.</summary>
     public static int ClampRetention(int days) => days < 0 ? 0 : days > 365 ? 365 : days;
+
+    /* ---------- Arxiv (orqaga qaytarish / klip) QAYERDAN olinadi ---------- */
+
+    /// <summary>NVR arxividan.</summary>
+    public const string ArchiveNvr = "nvr";
+    /// <summary>Bizning shlyuz yozuvidan (server diski).</summary>
+    public const string ArchiveLocal = "local";
+    /// <summary>Arxiv yo'q — orqaga qaytarish mumkin emas (faqat jonli).</summary>
+    public const string ArchiveNone = "none";
+
+    /// <summary>
+    /// Shu kameraning arxivi qayerdan olinadi.
+    /// </summary>
+    /// <remarks>
+    /// ⚠️ <b>NVR LOKAL yozuvdan USTUN.</b> NVR allaqachon 24/7 o'z disklariga yozib turibdi;
+    /// bizning serverda ikkinchi nusxa saqlashning ma'nosi yo'q (disk + markazning kanali
+    /// bekorga sarflanardi). Shuning uchun NVR sozlangan kamerada lokal yozuv yoqilgan bo'lsa
+    /// ham arxiv NVR'dan olinadi.
+    /// </remarks>
+    public static string ArchiveSource(bool nvrEnabled, bool globalRecordEnabled, Camera cam)
+    {
+        if (nvrEnabled && cam.NvrChannel > 0) return ArchiveNvr;
+        if (ShouldRecord(globalRecordEnabled, cam)) return ArchiveLocal;
+        return ArchiveNone;
+    }
+
+    /// <summary>
+    /// NVR sozlangan kamerani BIZ yozishimiz kerakmi — <b>yo'q</b>. Takroriy nusxa.
+    /// </summary>
+    /// <remarks>
+    /// ⚠️ Bu <see cref="ShouldRecord"/> ustidan turadi: bosh kalit yoqilgan bo'lsa ham, NVR
+    /// kanali berilgan kamera shlyuzda YOZILMAYDI. Aks holda admin NVR'ni ulab, keyin
+    /// "nega disk to'lyapti" degan savolga tushardi.
+    /// </remarks>
+    public static bool ShouldRecordWithNvr(bool nvrEnabled, bool globalRecordEnabled, Camera cam) =>
+        ArchiveSource(nvrEnabled, globalRecordEnabled, cam) == ArchiveLocal;
 }

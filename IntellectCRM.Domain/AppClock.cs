@@ -41,6 +41,12 @@ public static class AppClock
     public static DateTime ToLocal(DateTime utc) =>
         TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(utc, DateTimeKind.Utc), Tz);
 
+    /// <summary>Markaz mintaqasidagi (UTC+5) vaqtni UTC ga o'tkazadi — <see cref="ToLocal"/> ning
+    /// teskarisi. Tashqi qurilmalar (masalan Hikvision NVR RTSP playback manzili) vaqtni UTC'da
+    /// talab qilganda kerak: foydalanuvchi ekranda MAHALLIY vaqtni tanlaydi.</summary>
+    public static DateTime ToUtc(DateTime local) =>
+        TimeZoneInfo.ConvertTimeToUtc(DateTime.SpecifyKind(local, DateTimeKind.Unspecified), Tz);
+
     /// <summary>"yyyy-MM-ddTHH:mm:ss" — saqlash/ko'rsatish uchun standart ISO satr (mintaqa: UTC+5).</summary>
     public static string Iso() => Now.ToString("yyyy-MM-ddTHH:mm:ss");
 }

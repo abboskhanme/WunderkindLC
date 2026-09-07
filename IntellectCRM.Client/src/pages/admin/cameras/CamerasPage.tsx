@@ -1,11 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import Hls from 'hls.js'
-import { Video, Plus, Pencil, Trash2, ArrowLeft, Download, Play, VideoOff, Circle, CircleOff } from 'lucide-react'
+import { Video, Plus, Pencil, Trash2, ArrowLeft, Download, Play, VideoOff, Circle, CircleOff, Server, Search } from 'lucide-react'
 import {
-  getCameras, createCamera, updateCamera, deleteCamera, getClipBlob, cameraLiveUrl,
-  type Camera, type SaveCameraPayload,
+  getCameras, createCamera, updateCamera, deleteCamera, getClipBlob, cameraLiveUrl, nvrSearch,
+  type Camera, type SaveCameraPayload, type NvrSegment,
 } from '@/api/services/cameras'
-import { getCameraSettings } from '@/api/services/settings'
 import { cn, apiErrorMessage } from '@/lib/utils'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
@@ -54,20 +53,13 @@ function LivePlayer({ id, className }: { id: string; className?: string }) {
 export function CamerasPage() {
   const { can } = usePerm()
   const [cameras, setCameras] = useState<Camera[]>([])
-  // Markazdagi YOZUV bosh kaliti (Sozlamalar -> Kamera integratsiya). Kamera kartasidagi
-  // "yozilmoqda" belgisi FAQAT ikkalasi ham yoqilganda ko'rsatiladi — aks holda foydalanuvchi
-  // kamerada "yozuv yoqilgan" deb ko'rib, aslida hech narsa yozilmayotganini bilmasdi.
-  const [recordGloballyOn, setRecordGloballyOn] = useState(false)
   const [loading, setLoading] = useState(true)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState<Camera | null>(null)
 
   const load = () => getCameras().then(setCameras).finally(() => setLoading(false))
-  useEffect(() => {
-    load()
-    getCameraSettings().then((c) => setRecordGloballyOn(c.recordEnabled)).catch(() => {})
-  }, [])
+  useEffect(() => { load() }, [])
 
   const selected = cameras.find((c) => c.id === selectedId) ?? null
 
@@ -100,8 +92,6 @@ export function CamerasPage() {
       ) : selected ? (
         <SingleCamera
           camera={selected}
-          recording={recordGloballyOn && selected.isActive && selected.recordEnabled}
-          recordGloballyOn={recordGloballyOn}
           onBack={() => setSelectedId(null)}
           onEdit={() => { setEditing(selected); setModalOpen(true) }}
           onDelete={() => onDelete(selected)}
@@ -138,11 +128,7 @@ export function CamerasPage() {
                     ) : (
                       <Badge tone="default">O'chiq</Badge>
                     )}
-                    {recordGloballyOn && c.isActive && c.recordEnabled ? (
-                      <Badge tone="amber"><Circle className="h-3 w-3 fill-current" /> Yozilmoqda</Badge>
-                    ) : (
-                      <Badge tone="default"><CircleOff className="h-3 w-3" /> Yozuvsiz</Badge>
-                    )}
+                    <ArchiveBadge source={c.archiveSource} />
                   </div>
                   {c.location && <div className="truncate text-xs text-slate-400">{c.location}</div>}
                 </div>
@@ -177,6 +163,20 @@ export function CamerasPage() {
 }
 
 /**
+ * Arxiv QAYERDAN olinishi — bitta belgi, uch holat. Manba serverda hisoblanadi
+ * (`CameraRules.ArchiveSource`), klientda qayta hisoblanmaydi: qoida ikki joyda ayri ketmasin.
+ */
+function ArchiveBadge({ source }: { source: Camera['archiveSource'] }) {
+  if (source === 'nvr') {
+    return <Badge tone="blue"><Server className="h-3 w-3" /> NVR arxivi</Badge>
+  }
+  if (source === 'local') {
+    return <Badge tone="amber"><Circle className="h-3 w-3 fill-current" /> Yozilmoqda</Badge>
+  }
+  return <Badge tone="default"><CircleOff className="h-3 w-3" /> Arxivsiz</Badge>
+}
+
+/**
  * Klip xatosining MATNI. ⚠️ So'rov `responseType: 'blob'` bilan ketgani uchun serverning JSON
  * javobi ham Blob bo'lib keladi — uni o'qimasak foydalanuvchi umumiy "xatolik" ko'rardi va
  * "yozuv o'chirilgan" degan ANIQ sababni bilmasdi.
@@ -194,13 +194,9 @@ async function clipError(err: unknown): Promise<string> {
 
 /** Bitta kamera: katta jonli ko'rinish + playback (orqaga qaytarish / qirqib yuklab olish). */
 function SingleCamera({
-  camera, recording, recordGloballyOn, onBack, onEdit, onDelete, canEdit, canDelete,
+  camera, onBack, onEdit, onDelete, canEdit, canDelete,
 }: {
   camera: Camera
-  /** Shu kamera HOZIR yozib borilyaptimi (bosh kalit + kamera bayroqlari). */
-  recording: boolean
-  /** Markazdagi bosh kalit — yozuv yo'qligining SABABINI aniq aytish uchun. */
-  recordGloballyOn: boolean
   onBack: () => void
   onEdit: () => void
   onDelete: () => void
@@ -210,7 +206,8 @@ function SingleCamera({
   const [start, setStart] = useState('')
   const [durationMin, setDurationMin] = useState(1)
   const [clipUrl, setClipUrl] = useState<string | null>(null)
-  const [busy, setBusy] = useState<'view' | 'download' | null>(null)
+  const [busy, setBusy] = useState<'view' | 'download' | 'nvr' | null>(null)
+  const [nvrCheck, setNvrCheck] = useState<{ error: string; segments: NvrSegment[] } | null>(null)
 
   useEffect(() => () => { if (clipUrl) URL.revokeObjectURL(clipUrl) }, [clipUrl])
 
@@ -225,6 +222,20 @@ function SingleCamera({
       setClipUrl(URL.createObjectURL(blob))
     } catch (err) {
       alert(await clipError(err))
+    } finally { setBusy(null) }
+  }
+
+  /** Tanlangan KUN bo'yicha NVR'da yozuv bor-yo'qligini tekshiradi (sozlash/diagnostika). */
+  const checkNvr = async () => {
+    if (!start) { alert('Avval vaqtni tanlang'); return }
+    setBusy('nvr')
+    try {
+      // Kun boshidan kun oxirigacha — "shu kunda umuman yozuv bormi" degan savolga javob.
+      const day = start.slice(0, 10)
+      const res = await nvrSearch(camera.id, `${day}T00:00:00`, `${day}T23:59:59`)
+      setNvrCheck({ error: res.error, segments: res.segments })
+    } catch (err) {
+      setNvrCheck({ error: apiErrorMessage(err, 'Tekshirib bo\'lmadi'), segments: [] })
     } finally { setBusy(null) }
   }
 
@@ -265,9 +276,7 @@ function SingleCamera({
       <Card className="overflow-hidden p-0">
         <div className="flex items-center gap-2 border-b border-slate-100 bg-slate-50 px-3 py-1.5">
           <Badge tone="green" dot>Jonli</Badge>
-          {recording
-            ? <Badge tone="amber"><Circle className="h-3 w-3 fill-current" /> Yozilmoqda</Badge>
-            : <Badge tone="default"><CircleOff className="h-3 w-3" /> Yozuvsiz</Badge>}
+          <ArchiveBadge source={camera.archiveSource} />
         </div>
         <LivePlayer id={camera.id} className="aspect-video w-full" />
       </Card>
@@ -279,14 +288,19 @@ function SingleCamera({
           Boshlanish vaqti va davomiyligini tanlang — yozuvdan shu bo'lak MP4 sifatida ko'riladi yoki yuklab olinadi.
         </p>
 
-        {!recording && (
+        {camera.archiveSource === 'none' && (
           <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs text-amber-900">
-            <b>Bu kamera yozib borilmayapti</b> — {!recordGloballyOn
-              ? <>markazda 24/7 yozuv o'chirilgan (Sozlamalar → Kamera integratsiya).</>
-              : !camera.isActive
-                ? <>kamera "Faol" emas.</>
-                : <>shu kamera uchun yozuv o'chirilgan ("Tahrirlash" → «Yozib borish»).</>}
-            {' '}Yoqilgandan keyingi vaqtlargina yozuvda bo'ladi — orqaga ishlamaydi.
+            <b>Bu kamera uchun arxiv yo'q.</b> Ikki yo'ldan biri kerak: NVR'ni ulash
+            (Sozlamalar → Kamera integratsiya, keyin bu kameraga <b>NVR kanali</b>ni ko'rsatish)
+            yoki 24/7 yozuvni yoqish. Lokal yozuv <b>faqat yoqilgandan keyingi</b> vaqt uchun
+            bo'ladi; NVR'da esa arxiv allaqachon bor.
+          </div>
+        )}
+
+        {camera.archiveSource === 'nvr' && (
+          <div className="mb-4 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2.5 text-xs text-sky-900">
+            Arxiv <b>NVR'dan</b> olinadi (kanal {camera.nvrChannel}) — serverda hech narsa
+            yozilmaydi. Arxivning chuqurligi NVR disklariga bog'liq.
           </div>
         )}
         <div className="flex flex-wrap items-end gap-3">
@@ -307,7 +321,37 @@ function SingleCamera({
           <Button onClick={download} disabled={busy !== null}>
             <Download className="h-4 w-4" /> {busy === 'download' ? 'Yuklanmoqda...' : 'Yuklab olish'}
           </Button>
+          {camera.archiveSource === 'nvr' && (
+            <Button variant="secondary" onClick={checkNvr} disabled={busy !== null}>
+              <Search className="h-4 w-4" /> {busy === 'nvr' ? 'Tekshirilmoqda...' : 'Yozuvni tekshirish'}
+            </Button>
+          )}
         </div>
+
+        {/* ⚠️ NVR bilan ishlashda eng ko'p savol "yozuv bormi yoki sozlama noto'g'rimi" —
+            shuning uchun tekshiruv natijasi SABAB bilan ochiq yoziladi. */}
+        {nvrCheck && (
+          <div className={cn('mt-4 rounded-lg border px-3 py-2.5 text-xs',
+            nvrCheck.error
+              ? 'border-red-200 bg-red-50 text-red-900'
+              : 'border-slate-200 bg-slate-50 text-slate-700')}>
+            {nvrCheck.error ? (
+              <><b>NVR javob bermadi:</b> {nvrCheck.error}</>
+            ) : nvrCheck.segments.length === 0 ? (
+              <>Bu kunda NVR'da yozuv <b>topilmadi</b>. Boshqa sanani yoki kanal raqamini tekshiring.</>
+            ) : (
+              <>
+                <div className="mb-1 font-medium">NVR'da yozuv bor ({nvrCheck.segments.length} bo'lak):</div>
+                <ul className="space-y-0.5">
+                  {nvrCheck.segments.slice(0, 10).map((seg) => (
+                    <li key={seg.start}>{seg.start.replace('T', ' ')} — {seg.end.replace('T', ' ')}</li>
+                  ))}
+                </ul>
+                {nvrCheck.segments.length > 10 && <div className="mt-1 text-slate-400">…va yana</div>}
+              </>
+            )}
+          </div>
+        )}
 
         {clipUrl && (
           <video src={clipUrl} controls autoPlay className="mt-4 aspect-video w-full rounded-lg bg-black" />
@@ -321,7 +365,7 @@ function CameraFormModal({
   open, camera, onClose, onSaved,
 }: { open: boolean; camera: Camera | null; onClose: () => void; onSaved: () => void }) {
   const [form, setForm] = useState<SaveCameraPayload>(
-    { name: '', rtspUrl: '', retentionDays: 7, isActive: true, recordEnabled: true })
+    { name: '', rtspUrl: '', retentionDays: 7, isActive: true, recordEnabled: true, nvrChannel: 0 })
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
@@ -329,8 +373,9 @@ function CameraFormModal({
     setForm(camera
       ? { name: camera.name, location: camera.location, rtspUrl: camera.rtspUrl,
           rtspSubUrl: camera.rtspSubUrl, retentionDays: camera.retentionDays,
-          isActive: camera.isActive, note: camera.note, recordEnabled: camera.recordEnabled }
-      : { name: '', rtspUrl: '', retentionDays: 7, isActive: true, recordEnabled: true })
+          isActive: camera.isActive, note: camera.note, recordEnabled: camera.recordEnabled,
+          nvrChannel: camera.nvrChannel }
+      : { name: '', rtspUrl: '', retentionDays: 7, isActive: true, recordEnabled: true, nvrChannel: 0 })
   }, [open, camera])
 
   const set = <K extends keyof SaveCameraPayload>(k: K, v: SaveCameraPayload[K]) =>
@@ -373,14 +418,33 @@ function CameraFormModal({
         <Input label="Sub-oqim RTSP (ixtiyoriy — grid uchun past sifat)" placeholder="rtsp://.../Channels/102"
           value={form.rtspSubUrl ?? ''} onChange={(e) => set('rtspSubUrl', e.target.value)} autoComplete="off" />
       </div>
-      {/* Yozuv — alohida blok: yoqilmasa saqlash muddatining ma'nosi yo'q. */}
-      <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 px-3 py-3">
+      {/* NVR kanali — YOZUVDAN oldin: kanal berilsa lokal yozuv umuman kerak emas. */}
+      <div className="mt-4">
+        <Input label="NVR kanali (0 = NVR'da yo'q)" type="number" min={0}
+          placeholder="1"
+          value={String(form.nvrChannel)}
+          onChange={(e) => set('nvrChannel', Math.max(0, Number(e.target.value) || 0))} />
+        <p className="mt-1.5 text-[11px] text-slate-500">
+          Kamera videoregistratordagi nechanchi kanal. Berilsa arxiv <b>NVR'dan</b> olinadi va
+          serverda hech narsa yozilmaydi. NVR'ning o'zi — Sozlamalar → Kamera integratsiya.
+        </p>
+      </div>
+
+      {/* Yozuv — alohida blok: yoqilmasa saqlash muddatining ma'nosi yo'q.
+          ⚠️ NVR kanali berilgan bo'lsa bu blok ma'nosini yo'qotadi (arxiv NVR'da). */}
+      <div className={cn('mt-4 rounded-lg border border-slate-200 bg-slate-50 px-3 py-3',
+        form.nvrChannel > 0 && 'opacity-50')}>
         <label className="inline-flex cursor-pointer items-center gap-2 text-sm font-medium text-slate-700">
-          <input type="checkbox" checked={form.recordEnabled}
+          <input type="checkbox" checked={form.recordEnabled} disabled={form.nvrChannel > 0}
             onChange={(e) => set('recordEnabled', e.target.checked)}
             className="h-4 w-4 rounded border-slate-300 accent-brand-600" />
           Yozib borish (24/7 diskka)
         </label>
+        {form.nvrChannel > 0 && (
+          <p className="mt-1.5 text-[11px] font-medium text-sky-700">
+            NVR kanali berilgan — arxiv NVR'dan olinadi, bu yerda yozish kerak emas.
+          </p>
+        )}
         <p className="mt-1.5 text-[11px] text-slate-500">
           O'chirilsa kamera baribir <b>jonli ko'rinaveradi</b> — faqat diskka yozilmaydi va
           yozuvni orqaga qaytarib bo'lmaydi. Bitta 1080p kamera ≈ <b>20–43 GB/kun</b> joy oladi.
@@ -389,11 +453,12 @@ function CameraFormModal({
       </div>
 
       <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <label className={cn('flex flex-col gap-1 text-sm', !form.recordEnabled && 'opacity-50')}>
+        <label className={cn('flex flex-col gap-1 text-sm',
+          (!form.recordEnabled || form.nvrChannel > 0) && 'opacity-50')}>
           <span className="font-medium text-slate-600">Yozuv saqlash muddati</span>
           <select
             value={form.retentionDays}
-            disabled={!form.recordEnabled}
+            disabled={!form.recordEnabled || form.nvrChannel > 0}
             onChange={(e) => set('retentionDays', Number(e.target.value))}
             className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-brand-400 disabled:bg-slate-100"
           >

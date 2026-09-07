@@ -143,6 +143,14 @@ services:
       # 24/7 diskka YOZIB borish. Bo'sh -> bazadagi qiymat (default O'CHIQ).
       # ⚠️ Yoqishdan oldin disk hisobini qiling: 1080p kamera ~20-43 GB/kun (.claude/rules/cameras.md).
       Camera__RecordEnabled: "${CAMERA_RECORD_ENABLED:-}"
+      # NVR (videoregistrator) arxivi — orqaga qaytarish NVR'dan olinadi, bizda yozilmaydi.
+      Nvr__Enabled: "${NVR_ENABLED:-}"
+      Nvr__Host: "${NVR_HOST:-}"
+      Nvr__RtspPort: "${NVR_RTSP_PORT:-}"
+      Nvr__IsapiPort: "${NVR_ISAPI_PORT:-}"
+      Nvr__Vendor: "${NVR_VENDOR:-}"
+      Nvr__Username: "${NVR_USERNAME:-}"
+      Nvr__Password: "${NVR_PASSWORD:-}"
       PaymentReminders__Enabled: "${PAYMENT_REMINDERS_ENABLED:-}"
       AiAnalysis__Enabled: "${AI_ANALYSIS_ENABLED:-}"
       AiAnalysis__Hour: "${AI_ANALYSIS_HOUR:-}"

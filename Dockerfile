@@ -55,8 +55,10 @@ ENV TZ=Asia/Tashkent
 # DIQQAT (1 GB RAM server): bitta konvertatsiya ~150-200 MB oladi, shuning uchun kod ularni
 # NAVBAT bilan bajaradi (DocxToPdfConverter). LibreOffice bo'lmasa tizim ishdan chiqmaydi —
 # sertifikat .docx sifatida saqlanadi va foydalanuvchiga ogohlantirish ko'rsatiladi.
+# FFMPEG: NVR arxividan klip olish uchun (RTSP -> MP4). Qayta kodlash YO'Q, faqat remux
+# (`-c copy`) — CPU/RAM deyarli sarflanmaydi. Busiz "Yozuvni ko'rish" NVR rejimida ishlamaydi.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        tzdata libreoffice-writer libreoffice-core fonts-dejavu fonts-liberation \
+        tzdata ffmpeg libreoffice-writer libreoffice-core fonts-dejavu fonts-liberation \
     && ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone \
     && rm -rf /var/lib/apt/lists/*
 # LibreOffice o'z profilini HOME ichida yaratadi; konteynerda HOME bo'lmasa xato beradi.

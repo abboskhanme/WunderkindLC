@@ -561,11 +561,20 @@ public class SettingsController(AppDbContext db, TelegramService telegram, IWebH
         var m = await db.CenterMeta.AsNoTracking().FirstOrDefaultAsync();
         var cams = await db.Cameras.AsNoTracking().ToListAsync();
         var recordOn = m?.CameraRecordEnabled ?? false;
+        var nvrOn = NvrArchiveService.IsConfigured(m);
         return new CameraSettingsDto(
             m?.CameraEnabled ?? false,
             cams.Count,
             recordOn,
-            cams.Count(c => CameraRules.ShouldRecord(recordOn, c)));
+            cams.Count(c => CameraRules.ShouldRecordWithNvr(nvrOn, recordOn, c)),
+            m?.NvrEnabled ?? false,
+            m?.NvrHost ?? "",
+            m?.NvrRtspPort is > 0 ? m.NvrRtspPort : 554,
+            m?.NvrIsapiPort is > 0 ? m.NvrIsapiPort : 80,
+            string.IsNullOrEmpty(m?.NvrVendor) ? "hikvision" : m.NvrVendor,
+            // ⚠️ Parolning O'ZI hech qachon qaytmaydi — faqat "berilganmi" bayrog'i.
+            AppSecrets.NvrCredentialsConfigured,
+            cams.Count(c => nvrOn && c.NvrChannel > 0));
     }
 
     /// <summary>
@@ -582,15 +591,28 @@ public class SettingsController(AppDbContext db, TelegramService telegram, IWebH
     {
         var m = await db.CenterMeta.FirstOrDefaultAsync();
         if (m is null) { m = new CenterMeta(); db.CenterMeta.Add(m); }
+        var wasNvrOn = NvrArchiveService.IsConfigured(m);
         var recordChanged = m.CameraRecordEnabled != req.RecordEnabled;
         m.CameraEnabled = req.Enabled;
         m.CameraRecordEnabled = req.RecordEnabled;
+        m.NvrEnabled = req.NvrEnabled;
+        m.NvrHost = (req.NvrHost ?? m.NvrHost).Trim();
+        m.NvrRtspPort = req.NvrRtspPort is > 0 and <= 65535 ? req.NvrRtspPort : 554;
+        m.NvrIsapiPort = req.NvrIsapiPort is > 0 and <= 65535 ? req.NvrIsapiPort : 80;
+        m.NvrVendor = string.IsNullOrWhiteSpace(req.NvrVendor)
+            ? (string.IsNullOrEmpty(m.NvrVendor) ? "hikvision" : m.NvrVendor)
+            : req.NvrVendor.Trim().ToLowerInvariant();
         LogSettings("Kamera integratsiyasi");
         await db.SaveChangesAsync();
 
-        if (recordChanged)
+        // ⚠️ NVR yoqilishi ham shlyuzga ta'sir qiladi: NVR'li kamera BIZDA yozilmaydi
+        // (takroriy nusxa). Shuning uchun yozuv kaliti bilan bir qatorda NVR holati ham
+        // kuzatiladi — aks holda NVR ulangandan keyin disk baribir to'lib turardi.
+        var nvrOn = NvrArchiveService.IsConfigured(m);
+        if (recordChanged || wasNvrOn != nvrOn)
             foreach (var c in await db.Cameras.AsNoTracking().ToListAsync())
-                await cameraGateway.EnsureAsync(c, CameraRules.ShouldRecord(req.RecordEnabled, c));
+                await cameraGateway.EnsureAsync(c,
+                    CameraRules.ShouldRecordWithNvr(nvrOn, req.RecordEnabled, c));
 
         return await GetCameras();
     }
