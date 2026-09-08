@@ -25,7 +25,10 @@ public static class StudentLedger
         // Joriy effektiv oylik (yangi oy uchun nima hisoblanadi) — chegirma ayirilgan.
         // Joriy effektiv oylik — chegirma faqat amal qilish davrida (DiscountStartMonth..EndMonth) qo'llanadi.
         // Guruh konteksti — asosiy (ClassName) guruh: chegirma boshqa guruhga biriktirilgan bo'lsa 0.
-        var fee = rawFee - TuitionService.DiscountForMonth(student, rawFee, TuitionService.CurrentMonth(), classNameGroup?.Id);
+        // Chegirma REGISTRDAN (`.claude/rules/discounts.md`): bitta o'quvchi — bitta yengil so'rov.
+        var discounts = (await DiscountBook.LoadForStudentAsync(db, student.Id)).For(student.Id);
+        var fee = rawFee - TuitionService.DiscountForMonth(
+            discounts, rawFee, TuitionService.CurrentMonth(), classNameGroup?.Id);
 
         // Per-guruh hisoblar — bir oyda bir nechta (har guruh) bo'lishi mumkin; oy bo'yicha aggregate qilamiz.
         var chargeRows = await db.MonthlyCharges.Where(c => c.StudentId == student.Id).ToListAsync();

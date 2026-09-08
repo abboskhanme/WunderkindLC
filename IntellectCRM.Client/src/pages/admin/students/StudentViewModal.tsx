@@ -8,6 +8,7 @@ import { getStudentCredentials, resetStudentPassword } from '@/api/services/stud
 import { getStudentGroups } from '@/api/services/classes'
 import { genderLabels } from '@/config/constants'
 import { formatDate, formatMoney, cn } from '@/lib/utils'
+import { studentDiscountLabel } from './discountLabel'
 
 interface Props {
   student: Student | null
@@ -85,18 +86,9 @@ export function StudentViewModal({ student, onClose }: Props) {
           <Row label="Ota-onasi" value={student.parentFullName} />
           <Row label="Ota-onasi raqami" value={student.parentPhone} mono />
           <Row label="Balans" value={formatMoney(student.balance)} mono />
-          {(student.discountPct > 0 || student.discountAmount > 0) && (
-            <Row
-              label="Chegirma"
-              value={
-                [
-                  student.discountPct > 0 ? `${student.discountPct}%` : null,
-                  student.discountAmount > 0 ? `${formatMoney(student.discountAmount)}` : null,
-                ]
-                  .filter(Boolean)
-                  .join(' + ') + (student.discountNote ? ` — ${student.discountNote}` : '')
-              }
-            />
+          {/* Chegirma HAR FAN uchun alohida bo'lishi mumkin — matn `discountCount` ni ham hisobga oladi. */}
+          {!!studentDiscountLabel(student) && (
+            <Row label="Chegirma" value={studentDiscountLabel(student)} />
           )}
           <CredentialsBox
             credentials={credentials}

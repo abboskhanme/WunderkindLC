@@ -23,17 +23,30 @@ public class FinanceLogicTests
     /// <summary>Joriy oydan <paramref name="delta"/> oy nariga/beriga ("yyyy-MM").</summary>
     private static string MonthOffset(int delta) => AppClock.Today.AddMonths(delta).ToString("yyyy-MM");
 
-    private static Student MakeStudent(
+    /// <summary>
+    /// Chegirma REGISTRINING bitta amaldagi qatori — ESKI ma'lumotdagi holat.
+    ///
+    /// <para>⚠️ ORQAGA MOSLIK QULFI: eski bazada har o'quvchida AYNAN bitta qator bor edi
+    /// (<c>GroupId</c> = eski <c>Student.DiscountGroupId</c>). Quyidagi <c>DiscountForMonth_*</c>
+    /// testlari o'sha holatni ifodalaydi va ularning KUTILGAN NATIJALARI chegirma registrga
+    /// ko'chirilgandan keyin ham O'ZGARMAGAN.</para>
+    /// </summary>
+    private static IReadOnlyList<StudentDiscount> Rows(
         int pct = 0, decimal amount = 0m,
-        string start = "", string end = "", string? groupId = null) => new()
-    {
-        FullName = "Test O'quvchi",
-        DiscountPct = pct,
-        DiscountAmount = amount,
-        DiscountStartMonth = start,
-        DiscountEndMonth = end,
-        DiscountGroupId = groupId,
-    };
+        string start = "", string end = "", string? groupId = null) =>
+    [
+        new StudentDiscount
+        {
+            StudentId = "s1",
+            Status = StudentDiscount.StatusActive,
+            Pct = pct,
+            Amount = amount,
+            StartMonth = start,
+            EndMonth = end,
+            GroupId = groupId,
+            CreatedAt = "2020-01-01T00:00:00",
+        },
+    ];
 
     // ==================== TuitionService.ChargeFor ====================
 
@@ -87,32 +100,28 @@ public class FinanceLogicTests
     [Fact]
     public void DiscountActiveForMonth_chegaralar_INKLYUZIV()
     {
-        var s = MakeStudent(start: "2026-03", end: "2026-05");
-        Assert.True(TuitionService.DiscountActiveForMonth(s, "2026-03"));   // boshlanish oyi kiradi
-        Assert.True(TuitionService.DiscountActiveForMonth(s, "2026-04"));
-        Assert.True(TuitionService.DiscountActiveForMonth(s, "2026-05"));   // tugash oyi ham kiradi
-        Assert.False(TuitionService.DiscountActiveForMonth(s, "2026-02"));
-        Assert.False(TuitionService.DiscountActiveForMonth(s, "2026-06"));
+        Assert.True(TuitionService.DiscountActiveForMonth("2026-03", "2026-05", "2026-03"));   // boshlanish oyi kiradi
+        Assert.True(TuitionService.DiscountActiveForMonth("2026-03", "2026-05", "2026-04"));
+        Assert.True(TuitionService.DiscountActiveForMonth("2026-03", "2026-05", "2026-05"));   // tugash oyi ham kiradi
+        Assert.False(TuitionService.DiscountActiveForMonth("2026-03", "2026-05", "2026-02"));
+        Assert.False(TuitionService.DiscountActiveForMonth("2026-03", "2026-05", "2026-06"));
     }
 
     [Fact]
     public void DiscountActiveForMonth_ikkalaChegaraBosh_hardoim_amalda()
     {
-        var s = MakeStudent();
-        Assert.True(TuitionService.DiscountActiveForMonth(s, "2020-01"));
-        Assert.True(TuitionService.DiscountActiveForMonth(s, "2099-12"));
+        Assert.True(TuitionService.DiscountActiveForMonth("", "", "2020-01"));
+        Assert.True(TuitionService.DiscountActiveForMonth("", "", "2099-12"));
     }
 
     [Fact]
     public void DiscountActiveForMonth_bittaChegara_birTomonlamaOchiq()
     {
-        var faqatBoshi = MakeStudent(start: "2026-03");
-        Assert.False(TuitionService.DiscountActiveForMonth(faqatBoshi, "2026-02"));
-        Assert.True(TuitionService.DiscountActiveForMonth(faqatBoshi, "2099-12"));
+        Assert.False(TuitionService.DiscountActiveForMonth("2026-03", "", "2026-02"));
+        Assert.True(TuitionService.DiscountActiveForMonth("2026-03", "", "2099-12"));
 
-        var faqatOxiri = MakeStudent(end: "2026-05");
-        Assert.True(TuitionService.DiscountActiveForMonth(faqatOxiri, "2000-01"));
-        Assert.False(TuitionService.DiscountActiveForMonth(faqatOxiri, "2026-06"));
+        Assert.True(TuitionService.DiscountActiveForMonth("", "2026-05", "2000-01"));
+        Assert.False(TuitionService.DiscountActiveForMonth("", "2026-05", "2026-06"));
     }
 
     // ==================== DiscountForMonth ====================
@@ -121,26 +130,35 @@ public class FinanceLogicTests
     public void DiscountForMonth_boshqaGuruhHisobiga_chegirmaBerilmaydi()
     {
         // Chegirma "g1" guruhiga biriktirilgan — "g2" hisobida o'quvchi to'liq to'laydi.
-        var s = MakeStudent(pct: 50, groupId: "g1");
-        Assert.Equal(200_000m, TuitionService.DiscountForMonth(s, 400_000m, MonthOffset(0), "g1"));
-        Assert.Equal(0m, TuitionService.DiscountForMonth(s, 400_000m, MonthOffset(0), "g2"));
-        Assert.Equal(0m, TuitionService.DiscountForMonth(s, 400_000m, MonthOffset(0), null));
+        var rows = Rows(pct: 50, groupId: "g1");
+        Assert.Equal(200_000m, TuitionService.DiscountForMonth(rows, 400_000m, MonthOffset(0), "g1"));
+        Assert.Equal(0m, TuitionService.DiscountForMonth(rows, 400_000m, MonthOffset(0), "g2"));
+        Assert.Equal(0m, TuitionService.DiscountForMonth(rows, 400_000m, MonthOffset(0), null));
     }
 
     [Fact]
     public void DiscountForMonth_guruhgaBiriktirilmagan_chegirma_hammaHisobga()
     {
-        var s = MakeStudent(pct: 25);
-        Assert.Equal(100_000m, TuitionService.DiscountForMonth(s, 400_000m, MonthOffset(0), "g1"));
-        Assert.Equal(100_000m, TuitionService.DiscountForMonth(s, 400_000m, MonthOffset(0), null));
+        var rows = Rows(pct: 25);
+        Assert.Equal(100_000m, TuitionService.DiscountForMonth(rows, 400_000m, MonthOffset(0), "g1"));
+        Assert.Equal(100_000m, TuitionService.DiscountForMonth(rows, 400_000m, MonthOffset(0), null));
     }
 
     [Fact]
     public void DiscountForMonth_davrTashqarisida_nol()
     {
-        var s = MakeStudent(pct: 50, start: MonthOffset(-1), end: MonthOffset(-1));
-        Assert.Equal(200_000m, TuitionService.DiscountForMonth(s, 400_000m, MonthOffset(-1), null));
-        Assert.Equal(0m, TuitionService.DiscountForMonth(s, 400_000m, MonthOffset(0), null));
+        var rows = Rows(pct: 50, start: MonthOffset(-1), end: MonthOffset(-1));
+        Assert.Equal(200_000m, TuitionService.DiscountForMonth(rows, 400_000m, MonthOffset(-1), null));
+        Assert.Equal(0m, TuitionService.DiscountForMonth(rows, 400_000m, MonthOffset(0), null));
+    }
+
+    [Fact]
+    public void DiscountForMonth_qator_YOQ_bolsa_nol()
+    {
+        // ⚠️ Kitob BO'SH bo'lgan har qanday yo'l (chegirmasiz o'quvchi) — chegirma 0, xato emas.
+        Assert.Equal(0m, TuitionService.DiscountForMonth([], 400_000m, MonthOffset(0), "g1"));
+        Assert.Equal(0m, TuitionService.DiscountForMonth(null!, 400_000m, MonthOffset(0), null));
+        Assert.Equal(0m, DiscountBook.Empty.DiscountFor("s1", 400_000m, MonthOffset(0), "g1"));
     }
 
     // ==================== NextMonth / MonthRange ====================

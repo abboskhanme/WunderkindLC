@@ -419,6 +419,9 @@ public class ContractsController(
         public Dictionary<string, List<string>> ActiveGroupsByStudent = new();
         /// <summary>StudentId → to'lovli ("active" status) a'zolik guruh id'lari.</summary>
         public Dictionary<string, List<string>> BillableGroupsByStudent = new();
+        /// <summary>Chegirma REGISTRI — shartnomadagi oylik to'lov AYNAN shundan hisoblanadi
+        /// (bir marta yuklanadi; ommaviy yuborishda o'quvchi boshiga so'rov qilinmasin).</summary>
+        public DiscountBook Discounts = DiscountBook.Empty;
     }
 
     private async Task<TokenCtx> LoadCtxAsync()
@@ -429,6 +432,7 @@ public class ContractsController(
             CourseNames = await db.Subjects.AsNoTracking().ToDictionaryAsync(s => s.Id, s => s.Name),
             TeacherNames = await db.Teachers.AsNoTracking().ToDictionaryAsync(t => t.Id, t => t.FullName),
             Groups = await db.Classes.AsNoTracking().ToDictionaryAsync(g => g.Id),
+            Discounts = await DiscountBook.LoadAllAsync(db),
         };
         var mems = await db.StudentGroups.AsNoTracking().Where(sg => sg.IsActive)
             .Select(sg => new { sg.StudentId, sg.GroupId, sg.Status }).ToListAsync();
@@ -460,15 +464,34 @@ public class ContractsController(
         var teachers = groups.Select(g => ctx.TeacherNames.GetValueOrDefault(g.TeacherId, ""))
             .Where(n => n.Length > 0).Distinct().ToList();
 
-        // Oylik to'lov — to'lovli ("active") a'zoliklar yig'indisi, chegirma qo'llangan holda.
-        var gross = (ctx.BillableGroupsByStudent.GetValueOrDefault(s.Id) ?? new List<string>())
-            .Select(id => ctx.Groups.GetValueOrDefault(id)).Where(g => g is not null).Sum(g => g!.MonthlyFee);
-        var net = gross;
-        if (s.DiscountPct > 0) net -= net * s.DiscountPct / 100m;
-        net -= s.DiscountAmount;
-        if (net < 0) net = 0;
-        var chegirma = s.DiscountPct > 0 ? $"{s.DiscountPct}%"
-            : s.DiscountAmount > 0 ? AuditService.Money(s.DiscountAmount) : "";
+        // OYLIK TO'LOV — to'lovli ("active") a'zoliklar bo'yicha, ⚠️ HAR GURUH UCHUN ALOHIDA:
+        //     net = Σ (guruh narxi − O'SHA guruhga tegishli chegirma).
+        //
+        // ⚠️ Ilgari narxlar avval QO'SHILAR, keyin ustiga BITTA chegirma qo'llanardi. Chegirma
+        // endi har fan uchun alohida bo'lishi mumkin, ya'ni eski usul matematika chegirmasini
+        // ingliz tili narxidan ham ayirib yuborardi (shartnomada YOLG'ON summa).
+        var month = TuitionService.CurrentMonth();
+        var rows = ctx.Discounts.For(s.Id);
+        var billable = (ctx.BillableGroupsByStudent.GetValueOrDefault(s.Id) ?? new List<string>())
+            .Select(id => ctx.Groups.GetValueOrDefault(id)).Where(g => g is not null).Select(g => g!)
+            .ToList();
+        var net = 0m;
+        foreach (var g in billable)
+        {
+            var fee = g.MonthlyFee;
+            var line = fee - TuitionService.DiscountForMonth(rows, fee, month, g.Id);
+            if (line > 0) net += line;
+        }
+
+        // @chegirma — bitta chegirma bo'lsa avvalgidek ("20%" / summa), bir nechta bo'lsa
+        // FAN nomlari bilan qisqa yorliq («Matematika 20%, Ingliz tili 15%»).
+        var inForce = rows.Where(d => DiscountRules.InForce(d, month)).ToList();
+        var chegirma = inForce.Count switch
+        {
+            0 => "",
+            1 => DiscountRules.ValueLabel(inForce[0].Pct, inForce[0].Amount),
+            _ => DiscountRules.ActiveLabel(inForce),
+        };
 
         var tokens = new Dictionary<string, string>
         {

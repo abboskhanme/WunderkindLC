@@ -231,11 +231,15 @@ public class PaymentReminderService(
         var groups = (await db.Classes.Where(g => groupIds.Contains(g.Id)).ToListAsync(ct))
             .ToDictionary(g => g.Id);
 
+        // Chegirma kitobi — o'quvchi uchun BIR MARTA (halqa ichida yuklansa har guruh uchun
+        // ortiqcha so'rov bo'lardi; qiymat bir xil).
+        var book = await DiscountBook.LoadForStudentAsync(db, s.Id);
+
         var hasGroupDebt = false;
         foreach (var m in memberships)
         {
             if (!groups.TryGetValue(m.GroupId, out var g)) continue;
-            var ledger = await StudentGroupLedger.BuildAsync(db, s, g, m);
+            var ledger = await StudentGroupLedger.BuildAsync(db, s, g, m, book);
             var owed = ledger.Months.Sum(x => x.Remaining);
             if (owed <= 0) continue;
             hasGroupDebt = true;

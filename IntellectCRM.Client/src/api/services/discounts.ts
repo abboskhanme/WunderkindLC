@@ -24,6 +24,8 @@ export interface StudentDiscountItem {
   teacherId: string | null
   /** SNAPSHOT — chegirma BERILGAN paytdagi guruh o'qituvchisi. */
   teacherName: string
+  /** SNAPSHOT — guruhning FANI (kursi). '' — barcha guruhlarga berilgan chegirmada. */
+  courseName: string
   /** Foiz (0..100). Avval foiz olib tashlanadi, keyin `amount` ayriladi. */
   pct: number
   /** Aniq summa (so'm). */
@@ -57,16 +59,41 @@ export interface StudentDiscountMonth {
   discount: number
 }
 
+/**
+ * Chegirma BERISH mumkin bo'lgan qamrov (scope) — o'quvchining har bir FANI (guruhi)
+ * va ustiga «Barcha guruhlar».
+ *
+ * ⚠️ Har qamrovda BIRDAN ORTIQ amaldagi chegirma bo'lmaydi: `hasActive` bo'lsa yangisini
+ * berish o'rniga mavjudini TAHRIRLASH kerak (server ham 409 qaytaradi).
+ */
+export interface DiscountScopeOption {
+  /** null — «Barcha guruhlar» (fan ko'rsatilmagan chegirma). */
+  groupId: string | null
+  groupName: string
+  /** Guruhning fani (kursi); «Barcha guruhlar» da ''. */
+  courseName: string
+  teacherName: string
+  /** Guruhning joriy oylik to'lovi — chegirma ta'sirini oldindan ko'rsatish uchun. */
+  monthlyFee: number
+  /** Shu qamrovda allaqachon amaldagi chegirma bormi. */
+  hasActive: boolean
+}
+
 export interface StudentDiscountsResponse {
-  /** Registr qatorlari — eng yangisi birinchi. */
+  /** Registr qatorlari — eng yangisi birinchi (TARIX ham shu ro'yxatda). */
   items: StudentDiscountItem[]
+  /**
+   * HOZIR amaldagi chegirmalar — HAR FAN (guruh) uchun bittadan, ustiga «Barcha guruhlar»
+   * qatori bo'lishi mumkin. Aynan shular tahrirlanadi va bekor qilinadi.
+   */
+  active: StudentDiscountItem[]
+  /** Chegirma berish mumkin bo'lgan qamrovlar (o'quvchining faol guruhlari + «Barcha guruhlar»). */
+  scopes: DiscountScopeOption[]
   /** Oylar bo'yicha HAQIQATAN qo'llangan chegirma (eng yangi oy birinchi). */
   applied: StudentDiscountMonth[]
   /** `applied` yig'indisi — "shu o'quvchiga jami qancha chegirma berilgan". */
   totalDiscount: number
-  /** Hozir amaldagi yozuv (yo'q bo'lsa null). */
-  current: StudentDiscountItem | null
-  /** Joriy oy uchun beriladigan chegirma summasi (so'm). */
+  /** Joriy oy uchun beriladigan chegirma summasi (so'm) — barcha fanlar bo'yicha JAMI. */
   currentMonthDiscount: number
 }
 
@@ -191,10 +218,13 @@ export interface DiscountReportStudent {
   months: number
   groupNames: string[]
   teacherNames: string[]
-  /** Hozirgi amaldagi chegirma (yo'q bo'lsa 0/''). */
-  pct: number
-  amount: number
-  reason: string
+  /** Hozir amaldagi chegirmalar SONI (har fan uchun alohida sanaladi). */
+  activeCount: number
+  /**
+   * Amaldagi chegirmalarning qisqa yorlig'i, serverda quriladi:
+   * «Matematika 20%, Ingliz tili 50 000 so'm» yoki «Barcha guruhlar 15%». '' — chegirma yo'q.
+   */
+  activeLabel: string
   hasActive: boolean
 }
 

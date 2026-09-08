@@ -3,9 +3,9 @@ import { Upload, X, FileText, Loader2, AlertTriangle, Camera } from 'lucide-reac
 import type { Student } from '@/types'
 import type { StudentPayload, PhoneMatch } from '@/api/services/students'
 import { uploadAdminFile, getStudentCredentials, checkStudentPhones } from '@/api/services/students'
-import { getClasses, getStudentGroups } from '@/api/services/classes'
+import { getClasses } from '@/api/services/classes'
 import { getTeachers } from '@/api/services/teachers'
-import type { StudentGroupMembership, Group, Teacher } from '@/types'
+import type { Group, Teacher } from '@/types'
 import { getDistricts } from '@/api/services/districts'
 import type { District } from '@/types'
 import { Modal } from '@/components/ui/Modal'
@@ -78,10 +78,6 @@ export function StudentFormModal({ open, onClose, onSubmit, initial }: Props) {
   const [uploading, setUploading] = useState<{ birth?: boolean }>({})
   /** Tahrirlanayotgan o'quvchining login (username)i — backend'dan olinadi, faqat ko'rsatish uchun. */
   const [login, setLogin] = useState('')
-  /** O'quvchining guruh a'zoliklari — chegirmani guruhga biriktirish tanlovi uchun. */
-  const [memberships, setMemberships] = useState<StudentGroupMembership[]>([])
-  /** Chegirmani muayyan guruhga biriktirish tanlovi — faqat FAOL a'zoliklar. */
-  const activeMemberships = useMemo(() => memberships.filter((m) => m.isActive), [memberships])
   /** Telefon dublikati tekshiruvi holati. */
   const [checking, setChecking] = useState(false)
   /** Topilgan dublikatlar (bo'lsa — tasdiq modali ochiladi). */
@@ -182,15 +178,6 @@ export function StudentFormModal({ open, onClose, onSubmit, initial }: Props) {
     } else {
       // eslint-disable-next-line react-hooks/set-state-in-effect -- yangi forma boshlash (maqsadli)
       setForm(empty)
-    }
-    // Faol a'zoliklar — bir nechta guruh bo'lsa chegirmani guruhga biriktirish tanlovi chiqadi.
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- modal ochilishida ro'yxatni tozalash (maqsadli)
-    setMemberships([])
-    if (initial?.id) {
-      // Hammasi olinadi, lekin chegirma tanlovida faqat FAOL a'zoliklar ko'rsatiladi.
-      getStudentGroups(initial.id)
-        .then((gs) => setMemberships(gs))
-        .catch(() => setMemberships([]))
     }
   }, [open, initial])
 
@@ -447,80 +434,13 @@ export function StudentFormModal({ open, onClose, onSubmit, initial }: Props) {
           </div>
         </Section>
 
-        {/* ---------- Chegirma ---------- */}
+        {/* ---------- Chegirma ----------
+            ⚠️ Maydonlar OLIB TASHLANDI: chegirma endi HAR FAN uchun alohida beriladi va
+            server `PUT /students/{id}` dagi chegirma maydonlarini E'TIBORGA OLMAYDI — forma
+            qoldirilsa u JIMGINA ishlamaydigan bo'lib qolardi. */}
         <Section title="Chegirma">
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-            <Input
-              label="Foiz (%)"
-              type="number"
-              min={0}
-              max={100}
-              value={form.discountPct ?? 0}
-              onChange={(e) =>
-                update('discountPct', Math.max(0, Math.min(100, Number(e.target.value) || 0)))
-              }
-            />
-            <Input
-              label="Aniq summa (so'm)"
-              type="number"
-              min={0}
-              step="any"
-              value={form.discountAmount ?? 0}
-              onChange={(e) =>
-                update('discountAmount', Math.max(0, Number(e.target.value) || 0))
-              }
-            />
-          </div>
-          <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
-            <Input
-              label="Amal qilish boshi (oy)"
-              type="month"
-              value={form.discountStartMonth ?? ''}
-              onChange={(e) => update('discountStartMonth', e.target.value)}
-            />
-            <Input
-              label="Amal qilish oxiri (oy)"
-              type="month"
-              value={form.discountEndMonth ?? ''}
-              onChange={(e) => update('discountEndMonth', e.target.value)}
-            />
-          </div>
-          {/* Bir nechta faol guruh — chegirma QAYSI guruhga tegishliligini tanlash
-              (yoki avval biriktirilgan bo'lsa, ko'rsatish/tozalash uchun). */}
-          {(activeMemberships.length > 1 || !!form.discountGroupId) && (
-            <div className="mt-3">
-              <Select
-                label="Chegirma qaysi guruhga"
-                value={form.discountGroupId ?? ''}
-                onChange={(e) => update('discountGroupId', e.target.value)}
-              >
-                <option value="">Barcha guruhlarga</option>
-                {activeMemberships.map((m) => (
-                  <option key={m.groupId} value={m.groupId}>
-                    {m.groupName}
-                    {m.courseName ? ` — ${m.courseName}` : ''}
-                    {` (${m.monthlyFee.toLocaleString()} so'm)`}
-                  </option>
-                ))}
-              </Select>
-              <p className="mt-1 text-xs text-slate-400">
-                Guruh tanlansa chegirma FAQAT o'sha guruh oyligiga qo'llanadi; qolgan guruhlar
-                to'liq hisoblanadi. "Barcha guruhlarga" — har bir guruh oyligiga alohida qo'llanadi.
-              </p>
-            </div>
-          )}
-          <div className="mt-3">
-            <Input
-              label="Izoh (sabab)"
-              placeholder="masalan: Aka-uka chegirmasi"
-              value={form.discountNote ?? ''}
-              onChange={(e) => update('discountNote', e.target.value)}
-            />
-          </div>
-          <p className="mt-1 text-xs text-slate-400">
-            Avval foiz ayriladi, keyin aniq summa. Oylik 0 dan past bo'lmaydi. Amal qilish oylari
-            kiritilsa (masalan iyun–avgust), chegirma faqat shu oylar uchun hisoblanadi; bo'sh
-            qoldirilsa — har doim.
+          <p className="text-sm text-slate-500">
+            Chegirma o'quvchi profilidagi «Chegirma» bo'limidan beriladi — har fan uchun alohida.
           </p>
         </Section>
 

@@ -774,6 +774,13 @@ export interface Student {
   discountEndMonth?: string
   /** Chegirma qaysi GURUHGA tegishli (guruh id). Bo'sh/null — barcha guruh hisoblariga. */
   discountGroupId?: string | null
+  /**
+   * HOZIR amaldagi chegirmalar SONI — o'quvchi bir NECHTA fanda chegirma olishi mumkin.
+   *
+   * ⚠️ Yuqoridagi `discount*` maydonlari faqat BITTASINI (asosiysini) ko'rsatadi; ro'yxatdagi
+   * belgi «+N ta fan» qismini aynan shu sanoqdan oladi. Eski javobda bo'lmasligi mumkin.
+   */
+  discountCount?: number
   /** O'quvchi USHLAB TURISH BONUSI tizimiga kiradimi (admin qo'lda belgilaydi). */
   retentionBonus?: boolean
   /** Bonus sanog'i qaysi oydan boshlanadi ("YYYY-MM"). Admin QO'LDA kiritadi; bo'sh = boshlanmagan. */

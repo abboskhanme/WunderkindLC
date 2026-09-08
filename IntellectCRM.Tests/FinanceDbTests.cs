@@ -24,9 +24,13 @@ public class FinanceDbTests
     /// <summary>Joriy oydan <paramref name="delta"/> oy nariga/beriga ("yyyy-MM").</summary>
     private static string M(int delta) => AppClock.Today.AddMonths(delta).ToString("yyyy-MM");
 
+    /// <param name="pct">Chegirma foizi. ⚠️ Endi u <b>REGISTRGA</b> yoziladi (pul manbai o'sha),
+    /// <c>Student.Discount*</c> esa faqat KO'ZGU — <c>StudentDiscountService.RefreshMirrorAsync</c>
+    /// bilan qo'yiladi. Kutilgan NATIJALAR o'zgarmagan (`.claude/rules/discounts.md` §1).</param>
+    /// <param name="discountGroupId">Chegirma QAMROVI: null — «barcha guruhlar».</param>
     private static Student AddStudent(
         AppDbContext ctx, string className = "", bool archived = false,
-        int pct = 0, decimal amount = 0m)
+        int pct = 0, decimal amount = 0m, string? discountGroupId = null)
     {
         var s = new Student
         {
@@ -34,10 +38,21 @@ public class FinanceDbTests
             ClassName = className,
             EnrollmentDate = $"{M(-6)}-01",
             IsArchived = archived,
-            DiscountPct = pct,
-            DiscountAmount = amount,
         };
         ctx.Students.Add(s);
+        if (pct > 0 || amount > 0m)
+        {
+            ctx.StudentDiscounts.Add(new StudentDiscount
+            {
+                StudentId = s.Id, StudentName = s.FullName, GroupId = discountGroupId,
+                Pct = pct, Amount = amount,
+                Status = StudentDiscount.StatusActive, CreatedAt = "2020-01-01T00:00:00",
+            });
+            // Ko'zgu — registr bilan bir xil bo'lishi kerak (invariant).
+            s.DiscountPct = pct;
+            s.DiscountAmount = amount;
+            s.DiscountGroupId = discountGroupId;
+        }
         return s;
     }
 
@@ -248,6 +263,62 @@ public class FinanceDbTests
         Assert.Equal(150_000m, row.Discount);      // chegirma ALOHIDA
         Assert.Equal(450_000m, natija.Total);
         Assert.Equal(-450_000m, s.Balance);        // balansdan faqat effektiv summa yechiladi
+    }
+
+    [Fact]
+    public async Task AccrueMonth_HAR_FAN_uchun_OZ_chegirmasi__qoshilmaydi()
+    {
+        // ⚠️ Ikki fan, ikki alohida chegirma. Ular QO'SHILMASLIGI kerak: har hisob qatoriga
+        // faqat O'ZINING chegirmasi tushadi (`.claude/rules/discounts.md` §1).
+        using var db = TestDb.Sqlite();
+        var ctx = db.Context;
+        var mat = AddGroup(ctx, 600_000m, "Matematika A");
+        var eng = AddGroup(ctx, 400_000m, "Ingliz A1");
+        var s = AddStudent(ctx);
+        AddMembership(ctx, s, mat, activatedAt: $"{M(-2)}-01");
+        AddMembership(ctx, s, eng, activatedAt: $"{M(-2)}-01");
+        ctx.StudentDiscounts.AddRange(
+            new StudentDiscount
+            {
+                StudentId = s.Id, GroupId = mat.Id, Pct = 25,
+                Status = StudentDiscount.StatusActive, CreatedAt = "2020-01-01T00:00:00",
+            },
+            new StudentDiscount
+            {
+                StudentId = s.Id, GroupId = eng.Id, Amount = 100_000m,
+                Status = StudentDiscount.StatusActive, CreatedAt = "2020-01-01T00:00:00",
+            });
+        await ctx.SaveChangesAsync();
+
+        await TuitionService.AccrueMonth(ctx, M(0));
+
+        var rows = await ctx.MonthlyCharges.ToListAsync();
+        Assert.Equal(2, rows.Count);
+        Assert.Equal(150_000m, rows.Single(r => r.GroupId == mat.Id).Discount);   // 600 000 ning 25%
+        Assert.Equal(100_000m, rows.Single(r => r.GroupId == eng.Id).Discount);   // aniq summa
+        // Balans: (600 000 − 150 000) + (400 000 − 100 000) = 750 000.
+        Assert.Equal(-750_000m, s.Balance);
+    }
+
+    [Fact]
+    public async Task AccrueMonth_chegirmasi_YOQ_oquvchida_hisob_TOLIQ_narxda()
+    {
+        // ⚠️ QULF: accrual yo'lida chegirma kitobi yuklanmasa 0 chegirma chiqardi — bu holat esa
+        // "chegirmasiz o'quvchi" bilan farq qilmasdi. Shu sabab yuqoridagi testlar bilan JUFT:
+        // biri "chegirma bor → qo'llanadi", bu esa "chegirma yo'q → to'liq narx".
+        using var db = TestDb.Sqlite();
+        var ctx = db.Context;
+        var g = AddGroup(ctx, 600_000m);
+        var s = AddStudent(ctx);
+        AddMembership(ctx, s, g, activatedAt: $"{M(-2)}-01");
+        await ctx.SaveChangesAsync();
+
+        await TuitionService.AccrueMonth(ctx, M(0));
+
+        var row = Assert.Single(ctx.MonthlyCharges);
+        Assert.Equal(600_000m, row.Amount);
+        Assert.Equal(0m, row.Discount);
+        Assert.Equal(-600_000m, s.Balance);
     }
 
     // ==================== EnsureChargeAsync (avans) ====================

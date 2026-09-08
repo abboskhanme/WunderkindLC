@@ -117,8 +117,19 @@ public class StudentsController(
             cdb => cdb.Schools.AsNoTracking().Select(s => new { s.Id, s.Name })
                 .ToDictionaryAsync(x => x.Id, x => x.Name));
 
+        // AMALDAGI CHEGIRMALAR SONI — bitta ommaviy so'rov (`MemberState` naqshi bilan bir xil).
+        // Chegirma endi HAR FAN uchun alohida bo'lgani sababli ro'yxatda "nechta" ko'rsatiladi;
+        // summa esa bu yerda hisoblanmaydi (u oylik hisobda).
+        var discountCounts = (await db.StudentDiscounts.AsNoTracking()
+                .Where(d => d.Status == StudentDiscount.StatusActive && ids.Contains(d.StudentId))
+                .Select(d => d.StudentId)
+                .ToListAsync())
+            .GroupBy(x => x)
+            .ToDictionary(g => g.Key, g => g.Count());
+
         foreach (var s in students)
         {
+            s.DiscountCount = discountCounts.GetValueOrDefault(s.Id, 0);
             s.Groups = byStudent.GetValueOrDefault(s.Id) ?? new List<string>();
             s.GroupStates = statesByStudent.GetValueOrDefault(s.Id) ?? new List<StudentGroupState>();
             s.Active = activeIds.Contains(s.Id);
@@ -478,6 +489,11 @@ public class StudentsController(
         var s = await db.Students.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id);
         if (s is null) return NotFound();
         RedactDocs([s]);
+        // AMALDAGI CHEGIRMALAR SONI — `MemberState` naqshi (bazada YO'Q, faqat javobda).
+        // Profil sahifasida "chegirma bormi va nechta fanda" savoliga javob beradi; batafsili
+        // «Chegirma» tabida (`GET {id}/discounts`).
+        s.DiscountCount = await db.StudentDiscounts.AsNoTracking()
+            .CountAsync(d => d.StudentId == id && d.Status == StudentDiscount.StatusActive);
         return s;
     }
 
@@ -573,12 +589,21 @@ public class StudentsController(
     {
         var cls = await db.Classes.FirstOrDefaultAsync(c => c.Name == p.ClassName);
         var student = AddStudent(p, cls);
-        // CHEGIRMA REGISTRI: o'quvchi chegirma bilan yaratilsa registrda ham qator ochiladi
-        // (invariant: bitta `active` qator = Student.Discount*). Yozish YAGONA joydan —
-        // StudentDiscountService (.claude/rules/discounts.md §2). Import yo'lida chegirma
-        // maydonlari umuman yuborilmaydi, shuning uchun u yerda chaqirilmaydi.
+        // CHEGIRMA REGISTRI: o'quvchi chegirma bilan YARATILSA registrda qator ochiladi —
+        // «BARCHA GURUHLAR» qamrovida (`groupId: null`). ⚠️ Bu ATAYIN qoldirilgan: import va eski
+        // API mijozlari o'quvchini chegirma bilan yaratadi va ular buzilmasligi kerak. TAHRIRLASH
+        // yo'lida (`PUT`) esa chegirma endi umuman qabul qilinmaydi — u profildagi «Chegirma»
+        // bo'limidan boshqariladi (`.claude/rules/discounts.md` §6).
+        //
+        // ⚠️ `ApplyAsync` ko'zguni (Student.Discount*) O'ZI qayta yozadi — `AddStudent` qo'ygan
+        // qiymatlar bilan bir xil chiqadi, ya'ni natija o'zgarmaydi.
         if (student.DiscountPct > 0 || student.DiscountAmount > 0)
-            await StudentDiscountService.ApplyAsync(db, student, DiscountSpec.From(student), Actor, ActorId);
+            await StudentDiscountService.ApplyAsync(
+                db, student,
+                new DiscountSpec(student.DiscountPct, student.DiscountAmount,
+                    student.DiscountStartMonth, student.DiscountEndMonth, student.DiscountNote,
+                    student.DiscountGroupId),
+                Actor, ActorId);
         await db.SaveChangesAsync();
 
         // Avto xabar — o'quvchi guruhga qo'shilganda ota-onaga ("O'quvchi guruhga qo'shilganda" hodisasi).
@@ -732,11 +757,15 @@ public class StudentsController(
     };
 
     /// <summary>
-    /// O'quvchini tahrirlash. Chegirma (foiz/summa) o'zgarsa va
-    /// <paramref name="applyDiscount"/> = true bo'lsa, yangi chegirma joriy oy MonthlyCharge'iga
-    /// ham qo'llanadi (oylik summa qayta hisoblanadi, balans deltaga moslab to'g'rilanadi).
-    /// false bo'lsa — joriy oy eski summada qoladi, yangi chegirma keyingi accrual'dan amal qiladi.
+    /// O'quvchini tahrirlash.
+    ///
+    /// <para>⚠️ <b>CHEGIRMA BU YERDAN YOZILMAYDI.</b> Tanadagi <c>Discount*</c> maydonlari va
+    /// <paramref name="applyDiscount"/> parametri E'TIBORGA OLINMAYDI — ikkalasi ham API shakli
+    /// buzilmasin deb qoldirilgan (mobil ilova/import mijozlari). Chegirma endi HAR FAN uchun
+    /// alohida va faqat profildagi «Chegirma» bo'limidan boshqariladi
+    /// (<see cref="StudentDiscountsController"/>, <c>.claude/rules/discounts.md</c> §6).</para>
     /// </summary>
+    /// <param name="applyDiscount">⚠️ ISHLATILMAYDI (orqaga moslik uchun qabul qilinadi).</param>
     [HttpPut("{id}")]
     public async Task<IActionResult> Update(string id, StudentPayload p, [FromQuery] bool applyDiscount = false)
     {
@@ -745,12 +774,6 @@ public class StudentsController(
 
         var beforeProfile = AuditService.StudentProfileSnapshot(student);
 
-        var oldPct = student.DiscountPct;
-        var oldAmount = student.DiscountAmount;
-        var oldNote = student.DiscountNote;
-        var oldStart = student.DiscountStartMonth;
-        var oldEnd = student.DiscountEndMonth;
-        var oldDiscountGroup = student.DiscountGroupId;
         var oldClassName = student.ClassName;
 
         // O'quvchi FISH — parts berilsa ulardan FullName yig'iladi.
@@ -798,15 +821,19 @@ public class StudentsController(
             student.EnrollmentDate = p.EnrollmentDate;
         }
 
-        // Chegirma — berilgan maydonlar yangilanadi (null = avvalgi saqlanadi).
-        if (p.DiscountPct.HasValue) student.DiscountPct = Math.Clamp(p.DiscountPct.Value, 0, 100);
-        if (p.DiscountAmount.HasValue) student.DiscountAmount = Math.Max(0m, p.DiscountAmount.Value);
-        if (p.DiscountNote is not null) student.DiscountNote = p.DiscountNote.Trim();
-        if (p.DiscountStartMonth is not null) student.DiscountStartMonth = p.DiscountStartMonth.Trim();
-        if (p.DiscountEndMonth is not null) student.DiscountEndMonth = p.DiscountEndMonth.Trim();
-        // Chegirma guruhi: null = tegilmaydi, "" = tozalanadi (barcha guruhlarga), id = shu guruhga.
-        if (p.DiscountGroupId is not null)
-            student.DiscountGroupId = string.IsNullOrWhiteSpace(p.DiscountGroupId) ? null : p.DiscountGroupId.Trim();
+        // ⚠️ CHEGIRMA BU YERDA YOZILMAYDI. `StudentPayload` dagi `Discount*` maydonlari
+        // (`DiscountPct`, `DiscountAmount`, `DiscountNote`, `DiscountStartMonth`,
+        // `DiscountEndMonth`, `DiscountGroupId`) va `?applyDiscount=` parametri bu yo'lda
+        // E'TIBORGA OLINMAYDI — DTO'dan olib tashlanmagan, chunki API shakli buzilmasligi kerak.
+        //
+        // Sabab: chegirma endi HAR FAN uchun alohida bo'lishi mumkin, ya'ni bitta "foiz + summa"
+        // juftligi butun holatni ifodalay olmaydi. Eski forma o'sha juftlikni yozsa, u
+        // o'quvchining BOSHQA fanlaridagi chegirmalarini jimgina o'chirib yuborardi.
+        // Chegirma FAQAT profildagi «Chegirma» bo'limidan boshqariladi
+        // (`StudentDiscountsController`, `.claude/rules/discounts.md` §6).
+        //
+        // `Student.Discount*` ko'zgusi esa faqat registrdan yangilanadi
+        // (`StudentDiscountService.RefreshMirrorAsync`).
 
         // Ushlab turish bonusi — ESKI maydonlar (yuqoridagi izohga qarang). O'quvchi formasi
         // ularni endi yubormaydi, ya'ni bu yerda null keladi va MAVJUD qiymat TEGILMAYDI —
@@ -831,19 +858,13 @@ public class StudentsController(
         }
         if (user is not null) user.FullName = student.FullName;
 
-        // Guruh yoki chegirma o'zgardimi?
+        // Guruh o'zgardimi? (Chegirma bu yo'lda umuman o'zgarmaydi — yuqoridagi izohga qarang.)
         var classChanged = !string.Equals(oldClassName, student.ClassName, StringComparison.Ordinal);
-        var discountChanged = oldPct != student.DiscountPct
-                              || oldAmount != student.DiscountAmount
-                              || oldNote != student.DiscountNote
-                              || oldStart != student.DiscountStartMonth
-                              || oldEnd != student.DiscountEndMonth
-                              || oldDiscountGroup != student.DiscountGroupId;
 
         // Joriy guruh narxiga ko'ra hisoblarni TO'G'RILAYMIZ/TO'LDIRAMIZ (ClassName MATNI o'zgarmagan
         // bo'lsa ham — masalan o'quvchi guruh hali yaratilmagan paytda qo'shilib, keyin guruh yaratilgan):
         //  • yetishmagan oylar (kelgan oyidan joriy oygacha) — yangi narxda yaratiladi, balans kamayadi;
-        //  • mavjud JORIY oy — guruh yoki (so'ralganda) chegirma o'zgarsa, yangi narxga moslanadi;
+        //  • mavjud JORIY oy — guruh o'zgarsa yangi narxga moslanadi;
         //  • o'tgan oylardagi mavjud hisoblar — tarixiy, tegilmaydi.
         var applied = false;
         // M2M a'zolik bo'lsa billing AccrueMonth/aktivlashtirish (a'zolik narxi) orqali yuritiladi —
@@ -883,17 +904,20 @@ public class StudentsController(
                 .Where(c => c.StudentId == student.Id && c.GroupId == null)
                 .ToDictionaryAsync(c => c.Month, c => c);
 
+            // Chegirma REGISTRDAN — halqadan OLDIN bir marta (`.claude/rules/discounts.md`).
+            var discountBook = await DiscountBook.LoadForStudentAsync(db, student.Id);
+
             foreach (var month in TuitionService.MonthRange(startMonth, current))
             {
-                // Chegirma faqat amal qilish davrida (DiscountStartMonth..EndMonth) qo'llanadi — har oy alohida.
-                // Guruhsiz (GroupId=null) hisob — guruhga biriktirilgan chegirma bunga tushmaydi.
-                var monthDiscount = TuitionService.DiscountForMonth(student, cls.MonthlyFee, month, null);
+                // Chegirma faqat amal qilish davrida qo'llanadi — har oy alohida. Guruhsiz
+                // (GroupId=null) hisobga faqat «barcha guruhlar» chegirmasi tushadi.
+                var monthDiscount = discountBook.DiscountFor(student.Id, cls.MonthlyFee, month, null);
                 var monthEffective = cls.MonthlyFee - monthDiscount;
                 if (existing.TryGetValue(month, out var charge))
                 {
                     if (charge.Locked) continue; // qo'lda tahrirlangan — tegmaymiz.
-                    // Faqat JORIY oyni va faqat guruh/chegirma o'zgarsa qayta hisoblaymiz (o'tgan oylar tarixiy).
-                    var recompute = month == current && (classChanged || (discountChanged && applyDiscount));
+                    // Faqat JORIY oyni va faqat GURUH o'zgarsa qayta hisoblaymiz (o'tgan oylar tarixiy).
+                    var recompute = month == current && classChanged;
                     if (recompute && (charge.Amount != cls.MonthlyFee || charge.Discount != monthDiscount))
                     {
                         var delta = monthEffective - (charge.Amount - charge.Discount);
@@ -921,46 +945,19 @@ public class StudentsController(
             }
         }
 
-        // M2M a'zolikli o'quvchi: chegirma o'zgarib "joriy oyga qo'llash" so'ralsa, shu oyning
-        // PER-GURUH hisoblarida chegirmani qayta hisoblaymiz (Amount — narx/prorate — tegilmaydi,
-        // faqat Discount yangilanadi; Locked qatorlar tegilmaydi). Guruhga biriktirilgan chegirmada
-        // DiscountForMonth o'zi faqat mos guruhga beradi, qolganlarida 0 ga tushiradi.
-        if (hasMembership && discountChanged && applyDiscount)
-        {
-            var current = TuitionService.CurrentMonth();
-            var monthCharges = await db.MonthlyCharges
-                .Where(c => c.StudentId == student.Id && c.Month == current && !c.Locked)
-                .ToListAsync();
-            foreach (var charge in monthCharges)
-            {
-                var newDiscount = TuitionService.DiscountForMonth(student, charge.Amount, current, charge.GroupId);
-                if (newDiscount == charge.Discount) continue;
-                // Effektiv farq: (Amount − yangiD) − (Amount − eskiD) = eskiD − yangiD.
-                student.Balance -= charge.Discount - newDiscount;
-                charge.Discount = newDiscount;
-                applied = true;
-            }
-        }
+        // ⚠️ Chegirmaning joriy oyga qayta qo'llanishi (`?applyDiscount=`) va registrni
+        // sinxronlash (`SyncFromStudentAsync`) BU YERDAN OLIB TASHLANDI: chegirma bu yo'ldan
+        // umuman o'zgarmaydi. Ikkalasi ham endi `StudentDiscountsController` da —
+        // `ReapplyCurrentMonthAsync` va `RefreshMirrorAsync`.
 
-        // CHEGIRMA REGISTRI — chegirma ESKI forma orqali o'zgargan bo'lsa registr eskirib
-        // qolmasin (profil "chegirma yo'q" deb ko'rsatib turardi). Servis Student maydonlariga
-        // TEGMAYDI, faqat registrni moslaydi: eskisini `replaced` qilib yangisini ochadi.
-        if (discountChanged)
-            await StudentDiscountService.SyncFromStudentAsync(db, student, Actor, ActorId);
-
-        // Audit — guruh va/yoki chegirma o'zgarishi.
-        if (classChanged || discountChanged)
+        // Audit — guruh o'zgarishi (chegirmaniki registr yo'lida yoziladi).
+        if (classChanged)
         {
-            var parts = new List<string>();
-            if (classChanged) parts.Add($"guruh: {oldClassName} → {student.ClassName}");
-            if (discountChanged)
-                parts.Add($"chegirma: {oldPct}%/{AuditService.Money(oldAmount)} → "
-                          + $"{student.DiscountPct}%/{AuditService.Money(student.DiscountAmount)} so'm");
-            var summary = "O'quvchi yangilandi (" + string.Join("; ", parts) + ")"
+            var summary = $"O'quvchi yangilandi (guruh: {oldClassName} → {student.ClassName})"
                 + (applied ? " — joriy oy hisobi yangi summaga to'g'rilandi" : " — keyingi oydan amal qiladi");
             audit.Record(AuditService.EntityStudentDiscount, student.Id, "update", $"{summary} ({student.FullName})",
-                before: new { Class = oldClassName, DiscountPct = oldPct, DiscountAmount = oldAmount, DiscountNote = oldNote },
-                after: new { Class = student.ClassName, student.DiscountPct, student.DiscountAmount, student.DiscountNote },
+                before: new { Class = oldClassName },
+                after: new { Class = student.ClassName },
                 studentId: student.Id);
         }
 

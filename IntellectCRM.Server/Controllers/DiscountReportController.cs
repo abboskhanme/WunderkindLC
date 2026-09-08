@@ -12,11 +12,15 @@ namespace IntellectCRM.Server.Controllers;
 /// «CHEGIRMALAR HISOBOTI» — markaz bo'yicha: chegirma qanchaga tushyapti, kimga, qaysi
 /// o'qituvchi/guruhda va NEGA berilgan.
 ///
-/// <para>⚠️ <b>PUL HAQIQATI <see cref="MonthlyCharge"/> DAN</b>, registrdan EMAS. Sabab:
-/// registr (<see cref="StudentDiscount"/>) — YANGI jadval, chegirmalarning haqiqiy tarixi esa
-/// oylik hisoblarda allaqachon to'liq turibdi. Ya'ni hisobot birinchi kundanoq rost raqam
-/// ko'rsatadi. Registr faqat "hozir kimda chegirma bor va qanday sabab bilan" qismini beradi
-/// (<c>byStudent.pct/amount/reason</c>, <c>byReason</c>, <c>active</c>).</para>
+/// <para>⚠️ <b>DAVR SUMMALARI <see cref="MonthlyCharge"/> DAN</b>, registrdan EMAS. Sabab:
+/// chegirmalarning HAQIQATAN qo'llangan tarixi oylik hisoblarda turibdi (registr esa faqat
+/// "hozir nima amalda" ni biladi — o'tgan oyda boshqacha bo'lgan bo'lishi mumkin). Registr
+/// "hozir kimda qanday chegirma bor" qismini beradi: <c>byStudent.activeCount/activeLabel</c>,
+/// <c>byReason</c>, <c>active</c>.</para>
+///
+/// <para>⚠️ Chegirma endi HAR FAN uchun alohida bo'lishi mumkin, shuning uchun o'quvchi
+/// kesimida "foiz/summa" o'rniga <b>SONI</b> va qisqa <b>YORLIG'I</b> qaytadi
+/// (<c>DiscountRules.ActiveLabel</c> — «Matematika 20%, Ingliz tili 50 000 so'm»).</para>
 ///
 /// <para>RUXSAT — <c>finance.main</c> va <c>ReadRequiresPerm = true</c>: javobda pul summalari
 /// bor, GET'ni odatdagidek har qanday xodimga ochib bo'lmaydi.</para>
@@ -84,14 +88,18 @@ public class DiscountReportController(AppDbContext db) : ControllerBase
         // Arxivlangan o'quvchining chegirmasi "hozir amalda" deb sanalmaydi — u o'qimayapti.
         var archivedIds = studentNames.Where(s => s.IsArchived).Select(s => s.Id).ToHashSet();
         activeRows = activeRows.Where(d => !archivedIds.Contains(d.StudentId)).ToList();
+        // ⚠️ O'quvchida bir NECHTA amaldagi chegirma bo'lishi mumkin (har fanga alohida) —
+        // shuning uchun bu yerda "eng yangisi" EMAS, HAMMASI yig'iladi.
         var activeByStudent = activeRows
             .GroupBy(d => d.StudentId)
-            .ToDictionary(g => g.Key, g => g.OrderByDescending(d => d.CreatedAt, StringComparer.Ordinal).First());
+            .ToDictionary(
+                g => g.Key,
+                g => g.OrderByDescending(d => d.CreatedAt, StringComparer.Ordinal).ToList());
 
         // ---------- (4) Jamlanma ----------
         var periodCharged = charges.Sum(c => c.Amount);
         var periodDiscount = charges.Sum(c => c.Discount);
-        var studentCount = activeByStudent.Count;
+        var studentCount = activeByStudent.Count;   // ODAMLAR soni (qatorlar soni — ActiveCount)
         var summary = new DiscountReportSummaryDto(
             ActiveCount: activeRows.Count,
             StudentCount: studentCount,
@@ -149,27 +157,32 @@ public class DiscountReportController(AppDbContext db) : ControllerBase
                 var infos = g.Where(c => c.GroupId is not null)
                     .Select(c => groupById.TryGetValue(c.GroupId!, out var gi) ? gi : null)
                     .Where(gi => gi is not null).Select(gi => gi!).ToList();
-                activeByStudent.TryGetValue(g.Key, out var reg);
+                var reg = activeByStudent.GetValueOrDefault(g.Key) ?? new List<StudentDiscount>();
                 return new DiscountReportStudentDto(
                     g.Key, studentById.TryGetValue(g.Key, out var name) ? name : "",
                     g.Sum(c => c.Amount), g.Sum(c => c.Discount),
                     g.Select(c => c.Month).Distinct().Count(),
                     infos.Select(i => i.Name).Distinct().OrderBy(x => x, StringComparer.Ordinal).ToList(),
                     infos.Select(i => i.TeacherName).Distinct().OrderBy(x => x, StringComparer.Ordinal).ToList(),
-                    reg?.Pct ?? 0, reg?.Amount ?? 0m, reg?.Reason ?? "", reg is not null);
+                    reg.Count, DiscountRules.ActiveLabel(reg), reg.Count > 0);
             })
             .OrderByDescending(s => s.Discount)
             .ToList();
 
         // ---------- (9) Sabab kesimi — REGISTRdagi amaldagi qatorlar bo'yicha ----------
         // Summa esa baribir PULdan: o'sha o'quvchilarning davrdagi chegirmasi.
+        // ⚠️ Summa o'quvchi bo'yicha olinadi, sabablar esa endi bir o'quvchida BIR NECHTA bo'lishi
+        // mumkin — shuning uchun bitta sabab ichida o'quvchi IKKI marta sanalmasin (`Distinct`),
+        // aks holda ikki fanga bir xil sabab bilan chegirma berilgan o'quvchining summasi
+        // ikkilanardi. `Count` esa QATORLAR soni (nechta chegirma shu sabab bilan berilgan).
         var discountByStudent = charges.GroupBy(c => c.StudentId)
             .ToDictionary(g => g.Key, g => g.Sum(c => c.Discount));
-        var byReason = activeByStudent.Values
+        var byReason = activeRows
             .GroupBy(d => (d.Reason ?? "").Trim())
             .Select(g => new DiscountReportReasonDto(
                 g.Key, g.Count(),
-                g.Sum(d => discountByStudent.TryGetValue(d.StudentId, out var v) ? v : 0m)))
+                g.Select(d => d.StudentId).Distinct()
+                    .Sum(sid => discountByStudent.TryGetValue(sid, out var v) ? v : 0m)))
             .OrderByDescending(r => r.Discount).ThenByDescending(r => r.Count)
             .ToList();
 

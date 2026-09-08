@@ -30,13 +30,6 @@ public static class TuitionService
         return decimal.Round(charge, 2);
     }
 
-    /// <summary>O'quvchining shu paytdagi haqiqiy oylik to'lovi (guruh narxi minus chegirma).
-    /// Guruh topilmasa yoki narx 0 bo'lsa — 0 qaytadi.</summary>
-    public static decimal ChargeFor(Student s, IDictionary<string, decimal> feeByClassName) =>
-        feeByClassName.TryGetValue(s.ClassName, out var fee)
-            ? ChargeFor(fee, s.DiscountPct, s.DiscountAmount)
-            : 0m;
-
     /// <summary>Berilgan oylik to'lovga qo'yiladigan chegirma summasi (fee − effective).
     /// Chegirma fee dan oshmaydi.</summary>
     public static decimal DiscountFor(decimal fee, int discountPct, decimal discountAmount)
@@ -46,17 +39,17 @@ public static class TuitionService
         return decimal.Round(fee - effective, 2);
     }
 
-    /// <summary>Chegirma berilgan OY ("yyyy-MM") uchun amal qiladimi. Davr
-    /// <see cref="Student.DiscountStartMonth"/>..<see cref="Student.DiscountEndMonth"/> (inklyuziv).
-    /// Ikkala chegara bo'sh bo'lsa — har doim (orqaga moslik); bittasi bo'sh — bir tomonlama ochiq.</summary>
-    public static bool DiscountActiveForMonth(Student s, string month) =>
-        DiscountActiveForMonth(s.DiscountStartMonth, s.DiscountEndMonth, month);
-
     /// <summary>
-    /// AYNAN o'sha qoidaning SOF (entity'siz) ko'rinishi — davr chegaralari to'g'ridan-to'g'ri
-    /// beriladi. Chegirma REGISTRI (<see cref="StudentDiscount"/>) shu funksiyani chaqiradi:
-    /// nusxa ko'chirilsa ikkisi vaqt o'tib ayrilib ketardi va registr "amalda" deb ko'rsatgan
-    /// chegirma hisobda qo'llanmay qolardi (yoki teskarisi).
+    /// Chegirma berilgan OY ("yyyy-MM") uchun amal qiladimi — davr chegaralari
+    /// (<see cref="StudentDiscount.StartMonth"/>..<see cref="StudentDiscount.EndMonth"/>, INKLYUZIV).
+    /// Ikkala chegara bo'sh bo'lsa — har doim; bittasi bo'sh — bir tomonlama ochiq.
+    ///
+    /// <para>⚠️ Bu SOF (entity'siz) funksiya: chegirma REGISTRI ham (<c>DiscountRules.InForce</c>),
+    /// pul hisobi ham AYNAN shuni chaqiradi — nusxa ko'chirilsa ikkisi vaqt o'tib ayrilib ketardi
+    /// va registr "amalda" deb ko'rsatgan chegirma hisobda qo'llanmay qolardi (yoki teskarisi).</para>
+    ///
+    /// <para>⚠️ Ilgari bu yerda <c>Student.Discount*</c> ni o'qiydigan overload ham bor edi — u
+    /// ATAYIN olib tashlangan: chegirma manbai endi registr.</para>
     /// </summary>
     public static bool DiscountActiveForMonth(string? startMonth, string? endMonth, string month)
     {
@@ -68,16 +61,25 @@ public static class TuitionService
         return true;
     }
 
-    /// <summary>Berilgan oy va GURUH hisobi uchun chegirma summasi. 0 qaytaradi agar:
-    /// chegirma davri tashqarisida BO'LSA, yoki chegirma muayyan guruhga biriktirilgan
-    /// (<see cref="Student.DiscountGroupId"/>) bo'lib bu BOSHQA guruh hisobi bo'lsa.
-    /// <paramref name="groupId"/> — hisob qatorining guruhi (MonthlyCharge.GroupId; guruhsiz hisobda null).</summary>
-    public static decimal DiscountForMonth(Student s, decimal fee, string month, string? groupId)
+    /// <summary>
+    /// Berilgan OY va GURUH hisobi uchun chegirma summasi — <b>chegirma REGISTRIDAN</b>.
+    ///
+    /// <para>Qaysi qator qo'llanishini <see cref="DiscountRules.Resolve"/> hal qiladi:
+    /// avval AYNAN shu guruhning chegirmasi, bo'lmasa «barcha guruhlar» chegirmasi, bo'lmasa 0.
+    /// Chegirmalar HECH QACHON QO'SHILMAYDI.</para>
+    ///
+    /// <para>⚠️ <b>IMZO ATAYIN O'ZGARGAN</b> (ilgari <c>Student</c> olardi): "qatorlarni
+    /// yuklashni unutish" xatosini KOMPILYATOR ushlashi kerak. Eski imzo qoldirilganda u
+    /// jimgina 0 chegirma berib, o'quvchilarga ortiqcha qarz yozilardi. Qatorlarni
+    /// <see cref="DiscountBook"/> orqali oling.</para>
+    /// </summary>
+    /// <param name="rows">O'quvchining chegirma qatorlari (<c>DiscountBook.For(studentId)</c>).</param>
+    /// <param name="groupId">Hisob qatorining guruhi (<c>MonthlyCharge.GroupId</c>; guruhsiz hisobda null).</param>
+    public static decimal DiscountForMonth(
+        IReadOnlyList<StudentDiscount> rows, decimal fee, string month, string? groupId)
     {
-        if (!DiscountActiveForMonth(s, month)) return 0m;
-        // Guruhga biriktirilgan chegirma — faqat o'sha guruh hisobiga (boshqa guruhlar to'liq to'laydi).
-        if (!string.IsNullOrEmpty(s.DiscountGroupId) && s.DiscountGroupId != groupId) return 0m;
-        return DiscountFor(fee, s.DiscountPct, s.DiscountAmount);
+        var win = DiscountRules.Resolve(rows, month, groupId);
+        return win is null ? 0m : DiscountFor(fee, win.Pct, win.Amount);
     }
 
     /// <summary>
@@ -103,8 +105,11 @@ public static class TuitionService
                 var sids = groupCharges.Select(c => c.StudentId).Distinct().ToList();
                 var byId = (await db.Students.Where(s => sids.Contains(s.Id)).ToListAsync())
                     .ToDictionary(s => s.Id);
+                // ⚠️ Chegirma kitobi BIR MARTA — o'quvchi boshiga so'rov qilinsa N+1 bo'lardi
+                // (guruhda 500 o'quvchi = 500 so'rov).
+                var book = await DiscountBook.LoadAsync(db, sids);
                 foreach (var charge in groupCharges)
-                    if (ApplyFeeToCharge(charge, byId.GetValueOrDefault(charge.StudentId), newFee)) applied++;
+                    if (ApplyFeeToCharge(charge, byId.GetValueOrDefault(charge.StudentId), newFee, book)) applied++;
             }
         }
 
@@ -118,8 +123,9 @@ public static class TuitionService
                 var nameCharges = await db.MonthlyCharges
                     .Where(c => c.GroupId == null && c.Month == month && ids.Contains(c.StudentId)).ToListAsync();
                 var byId = nameStudents.ToDictionary(s => s.Id);
+                var book = await DiscountBook.LoadAsync(db, ids);
                 foreach (var charge in nameCharges)
-                    if (ApplyFeeToCharge(charge, byId.GetValueOrDefault(charge.StudentId), newFee)) applied++;
+                    if (ApplyFeeToCharge(charge, byId.GetValueOrDefault(charge.StudentId), newFee, book)) applied++;
             }
         }
         return applied;
@@ -127,10 +133,10 @@ public static class TuitionService
 
     /// <summary>Bitta hisob qatorini yangi narxga moslaydi (balans farqqa to'g'rilanadi). <c>Locked</c>
     /// (qo'lda tahrirlangan) yoki o'zgarishsiz bo'lsa tegmaydi. Qaytaradi: qo'llandimi.</summary>
-    private static bool ApplyFeeToCharge(MonthlyCharge charge, Student? s, decimal newFee)
+    private static bool ApplyFeeToCharge(MonthlyCharge charge, Student? s, decimal newFee, DiscountBook book)
     {
         if (s is null || charge.Locked) return false;
-        var newDiscount = DiscountForMonth(s, newFee, charge.Month, charge.GroupId);
+        var newDiscount = book.DiscountFor(s.Id, newFee, charge.Month, charge.GroupId);
         var newEffective = newFee - newDiscount;
         var oldEffective = charge.Amount - charge.Discount;
         var delta = newEffective - oldEffective;
@@ -319,7 +325,10 @@ public static class TuitionService
         if (gross <= 0) return;
 
         var month = dateIso[..7];
-        var discount = DiscountForMonth(s, gross, month, cls.Id);
+        // Chegirma REGISTRDAN — shu o'quvchining qatorlari (aktivlashtirish bitta o'quvchi uchun,
+        // ya'ni bitta yengil so'rov; ommaviy amalda ham a'zolik boshiga bittadan).
+        var book = await DiscountBook.LoadForStudentAsync(db, s.Id);
+        var discount = book.DiscountFor(s.Id, gross, month, cls.Id);
         var effective = gross - discount;
 
         // Shu (o'quvchi, oy) uchun kerak bo'ladigan IKKALA qator ham BITTA so'rovda: aggregate
@@ -361,7 +370,7 @@ public static class TuitionService
                 // segment. Yangi segment (shu sanadan oy oxirigacha) USTIGA QO'SHILADI — gap (muzlatish↔qayta
                 // aktiv) hisoblanmaydi, studied portion yo'qolmaydi. Yig'indi to'liq oylikdan oshmaydi.
                 var newAmount = Math.Min(existing.Amount + gross, cls.MonthlyFee);
-                var newDiscount = DiscountForMonth(s, newAmount, month, cls.Id);
+                var newDiscount = book.DiscountFor(s.Id, newAmount, month, cls.Id);
                 existing.Amount = newAmount;
                 existing.Discount = newDiscount;
                 existing.Date = dateIso;
@@ -458,7 +467,9 @@ public static class TuitionService
             carry = Math.Max(0m, existing.Amount - projectedAtActivation);
         }
         var totalGross = Math.Min(carry + gross, cls.MonthlyFee);
-        var discount = totalGross > 0 ? DiscountForMonth(s, totalGross, month, cls.Id) : 0m;
+        // Chegirma REGISTRDAN (qarang: ChargeActivationProrateAsync).
+        var book = await DiscountBook.LoadForStudentAsync(db, s.Id);
+        var discount = totalGross > 0 ? book.DiscountFor(s.Id, totalGross, month, cls.Id) : 0m;
         var effective = totalGross - discount;
 
         if (existing is null)
@@ -502,6 +513,12 @@ public static class TuitionService
             .Select(x => (x.StudentId, x.GroupId)).ToHashSet();
         // Arxivlangan o'quvchilarga oylik hisoblanmaydi.
         var students = await db.Students.Where(s => !s.IsArchived).ToListAsync();
+        // ⚠️ CHEGIRMA KITOBI — BIR MARTA, BARCHA o'quvchilar uchun. Ikki sabab:
+        //  (1) N+1 bo'lmasin (bu yerda minglab o'quvchi × a'zolik aylanadi);
+        //  (2) `AccrueDue` har startupda va har 12 soatda BUTUN TARIXNI qayta skanerlaydi —
+        //      kitob bo'sh bo'lsa chegirma 0 bo'lib, ommaviy YOLG'ON QARZ yozilardi va
+        //      ota-onalarga avto-SMS to'lqini ketardi (`.claude/rules/membership-periods.md` §6).
+        var book = await DiscountBook.LoadAllAsync(db);
 
         var count = 0;
         decimal total = 0;
@@ -524,7 +541,7 @@ public static class TuitionService
                     if (already.Contains((s.Id, (string?)m.GroupId))) continue;
                     var gfee = feesById.TryGetValue(m.GroupId, out var f) ? f : 0m;
                     if (gfee <= 0) continue;
-                    var eff = AccrueOne(db, s, m.GroupId, month, gfee);
+                    var eff = AccrueOne(db, s, book.For(s.Id), m.GroupId, month, gfee);
                     total += eff;
                     count++;
                     created.Add((s.Id, eff));
@@ -540,7 +557,7 @@ public static class TuitionService
                 if (already.Contains((s.Id, (string?)null))) continue;
                 var nfee = feesByName.TryGetValue(s.ClassName, out var nf) ? nf : 0m;
                 if (nfee <= 0) continue;
-                var eff = AccrueOne(db, s, null, month, nfee);
+                var eff = AccrueOne(db, s, book.For(s.Id), null, month, nfee);
                 total += eff;
                 count++;
                 created.Add((s.Id, eff));
@@ -554,9 +571,11 @@ public static class TuitionService
     /// <summary>Bitta (o'quvchi, guruh, oy) hisob qatorini yozadi va balansni effektiv miqdorda kamaytiradi.
     /// Amount = to'liq narx; Discount = chegirma; effektiv = Amount − Discount. Effektiv qaytariladi.
     /// Effektiv 0 (100% chegirma) bo'lsa ham qator qoldiriladi — hisobotda ko'rinsin. SaveChanges — chaqiruvchida.</summary>
-    private static decimal AccrueOne(IAppDbContext db, Student s, string? groupId, string month, decimal fee)
+    private static decimal AccrueOne(
+        IAppDbContext db, Student s, IReadOnlyList<StudentDiscount> discounts,
+        string? groupId, string month, decimal fee)
     {
-        var discount = DiscountForMonth(s, fee, month, groupId);
+        var discount = DiscountForMonth(discounts, fee, month, groupId);
         var effective = fee - discount;
         db.MonthlyCharges.Add(new MonthlyCharge
         {
@@ -647,6 +666,9 @@ public static class TuitionService
                     if (MembershipLifecycle.AccruableInPeriod(period, m)) months.Add(m);
             }
 
+        // Chegirma qatorlari — BIR MARTA (halqa ichida emas): oralig'i bir necha oy bo'lishi mumkin.
+        var discounts = (await DiscountBook.LoadForStudentAsync(db, s.Id)).For(s.Id);
+
         var created = 0;
         foreach (var month in months)
         {
@@ -654,7 +676,7 @@ public static class TuitionService
             if (existing.Contains(month)) continue;
             // Eski aggregate (GroupId=null) qator bo'lsa — dublikat bo'lmasin.
             await PurgeAggregateRowAsync(db, s, month);
-            AccrueOne(db, s, cls.Id, month, cls.MonthlyFee); // to'liq oylik + chegirma
+            AccrueOne(db, s, discounts, cls.Id, month, cls.MonthlyFee); // to'liq oylik + chegirma
             created++;
         }
         return created;
@@ -678,7 +700,8 @@ public static class TuitionService
             fee = (await db.Classes.Where(c => c.Id == groupId).Select(c => c.MonthlyFee).FirstOrDefaultAsync());
         if (fee <= 0) return false;
 
-        AccrueOne(db, s, groupId, month, fee);
+        var discounts = (await DiscountBook.LoadForStudentAsync(db, s.Id)).For(s.Id);
+        AccrueOne(db, s, discounts, groupId, month, fee);
         return true;
     }
 

@@ -32,6 +32,7 @@ import {
 import { getTeachers } from '@/api/services/teachers'
 import { genderLabels } from '@/config/constants'
 import { formatDate, formatMoney, exportToCsv, cn, apiErrorMessage } from '@/lib/utils'
+import { studentDiscountLabel } from './discountLabel'
 import { useAuth } from '@/context/auth-context'
 import { usePerm } from '@/lib/permissions'
 import { Card } from '@/components/ui/Card'
@@ -241,16 +242,6 @@ export function StudentsPage() {
       setImporting(false)
     }
   }
-
-  // Chegirma o'zgarganda — yangi chegirmani joriy oyga qo'llashni so'rash
-  const [discountPrompt, setDiscountPrompt] = useState<{
-    id: string
-    values: StudentPayload
-    oldPct: number
-    oldAmount: number
-    newPct: number
-    newAmount: number
-  } | null>(null)
 
   useEffect(() => {
     setLoading(true)
@@ -540,48 +531,25 @@ export function StudentsPage() {
         s.parentFullName,
         s.parentPhone,
         formatMoney(s.balance),
-        s.discountPct > 0 || s.discountAmount > 0
-          ? [
-              s.discountPct > 0 ? `${s.discountPct}%` : null,
-              s.discountAmount > 0 ? formatMoney(s.discountAmount) : null,
-            ]
-              .filter(Boolean)
-              .join(' + ') + (s.discountNote ? ` — ${s.discountNote}` : '')
-          : '',
+        studentDiscountLabel(s),
       ]),
     )
   }
 
-  const applyUpdate = (id: string, values: StudentPayload, applyDiscount: boolean) => {
-    updateStudent(id, values, applyDiscount)
+  const applyUpdate = (id: string, values: StudentPayload) => {
+    updateStudent(id, values)
     // balansni saqlab qolib, qolgan maydonlarni yangilaymiz
     setStudents((prev) => prev.map((s) => (s.id === id ? { ...s, ...values } : s)))
   }
 
-  const resolveDiscountPrompt = (applyDiscount: boolean) => {
-    if (!discountPrompt) return
-    applyUpdate(discountPrompt.id, discountPrompt.values, applyDiscount)
-    setDiscountPrompt(null)
-  }
-
+  /**
+   * ⚠️ Chegirma bu formadan BOSHQARILMAYDI (o'quvchi profilidagi «Chegirma» bo'limidan, har fan
+   * uchun alohida). Shuning uchun "chegirmani joriy oyga qo'llaymizmi?" so'rovi ham OLIB
+   * TASHLANDI: server `PUT /students/{id}` dagi chegirma maydonlarini e'tiborga olmaydi.
+   */
   const handleFormSubmit = (values: StudentPayload) => {
     if (editing) {
-      const id = editing.id
-      const newPct = values.discountPct ?? 0
-      const newAmount = values.discountAmount ?? 0
-      const oldPct = editing.discountPct
-      const oldAmount = editing.discountAmount
-      // Guruh biriktirilishi o'zgarsa ham "joriy oyga qo'llash?" so'raladi — chegirma
-      // boshqa guruhga ko'chsa joriy oy hisoblari qayta taqsimlanishi kerak bo'lishi mumkin.
-      const newGroup = values.discountGroupId ?? ''
-      const oldGroup = editing.discountGroupId ?? ''
-      const discountChanged = newPct !== oldPct || newAmount !== oldAmount || newGroup !== oldGroup
-      if (discountChanged) {
-        // "Ha/Yo'q" tasdiq dialog'i — joriy oyga qo'llash yoki keyingi oydan?
-        setDiscountPrompt({ id, values, oldPct, oldAmount, newPct, newAmount })
-      } else {
-        applyUpdate(id, values, false)
-      }
+      applyUpdate(editing.id, values)
     } else {
       createStudent(values).then((created) => {
         setStudents((prev) => [created, ...prev])
@@ -1639,50 +1607,6 @@ export function StudentsPage() {
         onConfirm={handleArchiveSelected}
         onClose={() => setArchiveReasonModal(false)}
       />
-
-      <Modal
-        open={!!discountPrompt}
-        onClose={() => setDiscountPrompt(null)}
-        title="Chegirmani joriy oyga qo'llash"
-        size="sm"
-        footer={
-          <>
-            <Button variant="secondary" onClick={() => resolveDiscountPrompt(false)}>
-              Yo'q — keyingi oydan
-            </Button>
-            <Button onClick={() => resolveDiscountPrompt(true)}>Ha — joriy oydan</Button>
-          </>
-        }
-      >
-        {discountPrompt && (
-          <div className="space-y-3 text-sm text-slate-600">
-            <p>
-              <span className="font-medium text-slate-800">
-                {discountPrompt.values.fullName}
-              </span>{' '}
-              o'quvchisining chegirmasi{' '}
-              <span className="font-medium">
-                {discountPrompt.oldPct}% / {formatMoney(discountPrompt.oldAmount)}
-              </span>{' '}
-              →{' '}
-              <span className="font-medium">
-                {discountPrompt.newPct}% / {formatMoney(discountPrompt.newAmount)}
-              </span>{' '}
-              ga o'zgardi. Yangi chegirma qachondan qo'llansin?
-            </p>
-            <div className="rounded-lg bg-slate-50 px-3 py-2 text-slate-500">
-              <p>
-                <b className="text-slate-700">Ha</b> — joriy oy hisobi yangi chegirma bilan qayta
-                hisoblanadi (balans farqqa moslab to'g'rilanadi).
-              </p>
-              <p className="mt-1">
-                <b className="text-slate-700">Yo'q</b> — joriy oy eski hisobda qoladi, yangi
-                chegirma keyingi oydan amal qiladi.
-              </p>
-            </div>
-          </div>
-        )}
-      </Modal>
 
       {/* Tanlanganlarni arxivga ko'chirish — sabab bilan modali */}
       <ReasonPromptModal

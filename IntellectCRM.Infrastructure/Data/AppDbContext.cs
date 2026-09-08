@@ -379,9 +379,15 @@ public class AppDbContext(DbContextOptions<AppDbContext> options)
         b.Entity<StudentDiscount>().Property(d => d.StudentId).HasMaxLength(200);
         b.Entity<StudentDiscount>().Property(d => d.GroupId).HasMaxLength(200);
         b.Entity<StudentDiscount>().Property(d => d.TeacherId).HasMaxLength(200);
+        b.Entity<StudentDiscount>().Property(d => d.CourseId).HasMaxLength(200);
         b.Entity<StudentDiscount>().Property(d => d.Status).HasMaxLength(200);
         b.Entity<StudentDiscount>().Property(d => d.Amount).HasPrecision(18, 2);
+        // (StudentId, Status) — "shu o'quvchining amaldagi chegirmalari" (registr yuklash yo'li).
         b.Entity<StudentDiscount>().HasIndex(d => new { d.StudentId, d.Status });
+        // (StudentId, GroupId, Status) — QAMROV bo'yicha qidiruv: "shu fanda allaqachon chegirma
+        // bormi" (409 tekshiruvi). Unikal EMAS: tarixiy (`replaced`/`cancelled`) qatorlar bir
+        // qamrovda ko'p bo'ladi va noyoblik faqat `active` uchun ma'noli — uni servis qulflaydi.
+        b.Entity<StudentDiscount>().HasIndex(d => new { d.StudentId, d.GroupId, d.Status });
         b.Entity<StudentDiscount>().HasIndex(d => d.Status);
 
         b.Entity<AuditLog>().HasIndex(a => new { a.EntityType, a.EntityId });

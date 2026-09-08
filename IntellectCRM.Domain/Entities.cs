@@ -388,6 +388,13 @@ public class Student
     /// <summary>
     /// Oylik to'lov chegirmasi — foiz (0..100). Avval shu foiz olib tashlanadi, keyin
     /// <see cref="DiscountAmount"/> ayriladi. Hisoblangan oylik 0 dan past bo'lmaydi.
+    ///
+    /// <para>⚠️ <b>ENDI FAQAT KO'RSATISH UCHUN (denormalizatsiya).</b> Pul hisobi bu maydonni
+    /// BOSHQA O'QIMAYDI — chegirma manbai <see cref="StudentDiscount"/> registri
+    /// (<c>TuitionService.DiscountForMonth(rows, ...)</c>). Bu yerdagi qiymat registrning
+    /// ASOSIY qatorini aks ettiradi va <c>StudentDiscountService.RefreshMirrorAsync</c> da
+    /// BITTA joyda yangilanadi. Qo'lda yozmang — mobil ilovalar va eski API mijozlari uchun
+    /// qoldirilgan (<c>.claude/rules/discounts.md</c> §4).</para>
     /// </summary>
     public int DiscountPct { get; set; }
     /// <summary>Oylik to'lov chegirmasi — aniq summa (so'm). Foizdan keyin ayriladi.</summary>
@@ -399,10 +406,20 @@ public class Student
     /// <summary>Chegirma amal qilish tugash oyi ("yyyy-MM"). Bo'sh — cheklovsiz (oxirigacha).
     /// Ikkala chegara bo'sh bo'lsa chegirma har doim qo'llanadi (orqaga moslik).</summary>
     public string DiscountEndMonth { get; set; } = string.Empty;
-    /// <summary>Chegirma qaysi GURUHGA tegishli (Classes.Id). Null/bo'sh — BARCHA guruh hisoblariga
-    /// (eski xatti-harakat). To'ldirilgan bo'lsa — faqat o'sha guruh hisobiga qo'llanadi
-    /// (ko'p guruhli o'quvchida qaysi guruhga berilgani aniq bo'lishi uchun).</summary>
+    /// <summary>Chegirma qaysi GURUHGA tegishli (Classes.Id). Null/bo'sh — BARCHA guruh hisoblariga.
+    /// ⚠️ Denormalizatsiya (qarang: <see cref="DiscountPct"/>) — ASOSIY registr qatorining guruhi.</summary>
     public string? DiscountGroupId { get; set; }
+
+    /// <summary>
+    /// HOZIR amaldagi chegirmalar SONI (har fan/guruh uchun alohida sanaladi). Bazada YO'Q —
+    /// faqat javobda to'ldiriladi (<see cref="MemberState"/> naqshi bilan AYNAN bir xil):
+    /// o'quvchilar ro'yxati (<c>StudentsController.GetAll</c>) va o'quvchi profili.
+    ///
+    /// <para>⚠️ Boshqa endpointlarda <c>0</c> bo'lib qolishi NORMAL — bu ko'rsatkich, mantiq emas.
+    /// Chegirma summasi kerak bo'lsa <c>DiscountBook</c> dan oling.</para>
+    /// </summary>
+    [System.ComponentModel.DataAnnotations.Schema.NotMapped]
+    public int DiscountCount { get; set; }
     /// <summary>
     /// O'quvchi arxivga ko'chirilganmi (boshqa maktabga ketgan, o'qishdan chiqarilgan, ...).
     /// Arxivlangan o'quvchi faol ro'yxatdan yashirinadi, oylik to'lov hisoblanmaydi, login bloklanadi,
@@ -447,16 +464,19 @@ public class Student
 /// CHEGIRMA REGISTRI — o'quvchiga berilgan chegirmalarning TARIXI (kim, qachon, qancha, nega
 /// berdi va nega bekor qildi).
 ///
-/// <para>⚠️ <b>PUL MANTIG'I BU YERDA EMAS.</b> Oylik hisob avvalgidek <see cref="Student"/>
-/// maydonlariga (<see cref="Student.DiscountPct"/>, <see cref="Student.DiscountAmount"/>,
-/// <see cref="Student.DiscountStartMonth"/> …) tayanadi — <c>TuitionService.DiscountForMonth</c>
-/// bu jadvalni UMUMAN o'qimaydi. Registr faqat AKS ETTIRADI: har o'quvchida ko'pi bilan BITTA
-/// <see cref="StatusActive"/> qator bo'ladi va u AYNAN <c>Student.Discount*</c> ga mos keladi.
-/// Yozish yagona joydan — <c>StudentDiscountService</c> (aks holda ikki manba ayrilib ketardi).</para>
+/// <para>⚠️ <b>BU JADVAL — PUL MANBASI.</b> Oylik hisob AYNAN shu qatorlardan chegirma oladi
+/// (<c>TuitionService.DiscountForMonth(rows, ...)</c> → <c>DiscountRules.Resolve</c>).
+/// <c>Student.Discount*</c> maydonlari esa endi faqat DENORMALIZATSIYA (ko'rsatish) —
+/// ular registrning ASOSIY qatorini aks ettiradi.</para>
 ///
-/// <para>Nega alohida jadval: <c>Student</c> da bir vaqtda BITTA chegirma turadi va yangisi
-/// berilganda eskisi ustidan yoziladi — ya'ni "kimga qachon qanday chegirma berilgan edi" degan
-/// savolga javob yo'q edi. Endi eski qator o'chmaydi, <see cref="StatusReplaced"/> bo'lib qoladi.</para>
+/// <para><b>INVARIANT:</b> har <c>(StudentId, GroupId)</c> QAMROVIDA ko'pi bilan BITTA
+/// <see cref="StatusActive"/> qator (<c>GroupId == null</c> — «barcha guruhlar» qamrovi).
+/// Ya'ni 2–3 fanga qatnaydigan o'quvchida HAR FAN uchun alohida chegirma bo'ladi.
+/// Yozish yagona joydan — <c>StudentDiscountService</c>.</para>
+///
+/// <para>⚠️ Chegirmalar HECH QACHON QO'SHILMAYDI: bir hisob qatoriga faqat BITTA qator
+/// qo'llanadi — eng ANIQ moslik g'olib (avval shu guruhniki, keyin «barcha guruhlar»).
+/// Batafsil: <c>.claude/rules/discounts.md</c>.</para>
 ///
 /// <para>SNAPSHOT maydonlar (<see cref="StudentName"/>, <see cref="GroupName"/>,
 /// <see cref="TeacherName"/>, <see cref="CreatedBy"/>) ATAYIN takrorlangan: o'quvchi arxivlansa,
@@ -469,11 +489,19 @@ public class StudentDiscount
     public string StudentId { get; set; } = string.Empty;
     /// <summary>O'quvchi F.I.Sh — SNAPSHOT (arxivlansa/o'chirilsa ham tarix o'qiladi).</summary>
     public string StudentName { get; set; } = string.Empty;
-    /// <summary>Chegirma QAYSI GURUHGA (Classes.Id). <c>null</c> — BARCHA guruh hisoblariga
-    /// (<see cref="Student.DiscountGroupId"/> bilan AYNAN bir xil ma'no).</summary>
+    /// <summary>Chegirma QAYSI GURUHGA (Classes.Id) — ya'ni QAMROV (scope). <c>null</c> — BARCHA
+    /// guruh hisoblariga. Aynan shu maydon "har fan uchun alohida chegirma"ni ifodalaydi:
+    /// <c>(StudentId, GroupId)</c> juftligida bitta <see cref="StatusActive"/> qator bo'ladi.</summary>
     public string? GroupId { get; set; }
     /// <summary>Guruh nomi — SNAPSHOT. <c>""</c> — barcha guruhlar.</summary>
     public string GroupName { get; set; } = string.Empty;
+    /// <summary>Guruhning FANI (<see cref="Group.CourseId"/> → <c>Subject.Id</c>) — SNAPSHOT.
+    /// <c>null</c> — «barcha guruhlar» chegirmasi yoki kursi biriktirilmagan guruh.</summary>
+    public string? CourseId { get; set; }
+    /// <summary>Fan nomi — SNAPSHOT. Foydalanuvchi chegirmani "guruh" emas, <b>FAN</b> deb
+    /// o'ylaydi ("Matematikaga 20%"), shuning uchun UI birinchi navbatda shuni ko'rsatadi.
+    /// <c>""</c> — barcha guruhlar / kursi yo'q guruh.</summary>
+    public string CourseName { get; set; } = string.Empty;
     /// <summary>Chegirma BERILGAN paytdagi guruh o'qituvchisi (Teachers.Id) — SNAPSHOT.
     /// Guruh keyin boshqa o'qituvchiga o'tsa ham "kim berdirgan" savoli javobsiz qolmasin.</summary>
     public string? TeacherId { get; set; }
@@ -487,11 +515,12 @@ public class StudentDiscount
     public string StartMonth { get; set; } = string.Empty;
     /// <summary>Amal qilish tugash oyi ("yyyy-MM"). Bo'sh — cheklovsiz (oxirigacha).</summary>
     public string EndMonth { get; set; } = string.Empty;
-    /// <summary>Sabab/izoh — <see cref="Student.DiscountNote"/> bilan AYNAN bir xil matn.</summary>
+    /// <summary>Sabab/izoh — nega bu chegirma berilgan.</summary>
     public string Reason { get; set; } = string.Empty;
     /// <summary><see cref="StatusActive"/> | <see cref="StatusReplaced"/> | <see cref="StatusCancelled"/>.</summary>
     public string Status { get; set; } = StatusActive;
-    /// <summary>Hozir amaldagi YAGONA yozuv (o'quvchida ko'pi bilan bitta bo'ladi).</summary>
+    /// <summary>Hozir amaldagi yozuv. HAR QAMROVDA (<c>StudentId</c> + <c>GroupId</c>) ko'pi
+    /// bilan bitta bo'ladi — o'quvchida esa nechta fan bo'lsa shuncha bo'lishi mumkin.</summary>
     public const string StatusActive = "active";
     /// <summary>Yangi chegirma bilan almashtirilgan (o'chirilmaydi — tarix).</summary>
     public const string StatusReplaced = "replaced";

@@ -16,8 +16,12 @@ public static class StudentGroupLedger
     /// <summary>Avans uchun joriy oydan keyin ko'rsatiladigan oylar soni (kassir oldindan to'lay olishi uchun).</summary>
     private const int AdvanceMonths = 3;
 
+    /// <param name="book">Chegirma kitobi, OLDINDAN yuklangan bo'lsa. ⚠️ FAQAT tezlik uchun:
+    /// <c>null</c> bo'lsa AYNAN o'sha qatorlar shu yerda yakka so'rov bilan olinadi, ya'ni natija
+    /// bir xil. To'lov eslatmasi bitta o'quvchining HAR GURUHI uchun shu metodni chaqiradi —
+    /// u kitobni bir marta yuklab pastga uzatadi (naqsh <c>lessonFee</c> bilan bir xil).</param>
     public static async Task<GroupLedgerDto> BuildAsync(
-        IAppDbContext db, Student student, Group group, StudentGroup membership)
+        IAppDbContext db, Student student, Group group, StudentGroup membership, DiscountBook? book = null)
     {
         // Kurs nomi + bir dars yaxlit narxi (LessonPrice) — ikkalasi bitta so'rovda. LessonPrice qisman
         // oylar (aktivlashtirish/muzlatish) previewida TuitionService bilan BIR XIL formula uchun kerak.
@@ -31,6 +35,9 @@ public static class StudentGroupLedger
         // Sinov (trial) — to'lov hisoblanmaydi.
         if (membership.Status == "trial")
             return new GroupLedgerDto(group.Id, group.Name, courseName, months);
+
+        // Chegirma REGISTRDAN — halqadan OLDIN bir marta (`.claude/rules/discounts.md`).
+        var discounts = book ?? await DiscountBook.LoadForStudentAsync(db, student.Id);
 
         // To'lovlar va hisoblar oraliqni hisoblashdan OLDIN o'qiladi — oylar oralig'i pastda AYNAN
         // shular bilan kengaytiriladi (qarang: "TARIXIY OYLAR").
@@ -127,7 +134,7 @@ public static class StudentGroupLedger
                     gross = FreezeGross(group, lessonFee, membership.ActivatedAt, membership.LeftAt!);
                 else
                     gross = group.MonthlyFee;
-                discount = TuitionService.DiscountForMonth(student, gross, month, group.Id);
+                discount = discounts.DiscountFor(student.Id, gross, month, group.Id);
             }
             var effective = gross - discount;
             if (effective < 0) effective = 0;

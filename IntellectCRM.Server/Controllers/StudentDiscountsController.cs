@@ -13,10 +13,18 @@ namespace IntellectCRM.Server.Controllers;
 /// CHEGIRMA REGISTRI — o'quvchi profilidagi «Chegirma» tabi: barcha olgan chegirmalari,
 /// yangisini berish, amaldagisini tahrirlash va bekor qilish.
 ///
-/// <para>⚠️ <b>PUL MANTIG'I BU YERDA O'ZGARMAYDI.</b> Hisob-kitob avvalgidek
-/// <c>Student.Discount*</c> maydonlariga tayanadi (<c>TuitionService.DiscountForMonth</c>) —
-/// registr uni AKS ETTIRADI, almashtirmaydi. Yozish yagona joydan:
-/// <see cref="StudentDiscountService"/>. Batafsil: <c>.claude/rules/discounts.md</c>.</para>
+/// <para>⚠️ <b>CHEGIRMA HAR FAN (guruh) UCHUN ALOHIDA.</b> Har <c>(o'quvchi, guruh)</c>
+/// qamrovida ko'pi bilan BITTA amaldagi qator bo'ladi (<c>groupId: null</c> — «barcha guruhlar»
+/// qamrovi). Band qamrovga ikkinchi chegirma berishga urinish — <b>409</b>: jimgina
+/// almashtirilsa, admin "yangi berdim" deb o'ylab eskisini bilmasdan o'chirib yuborardi.</para>
+///
+/// <para>⚠️ <b>REGISTR — PUL MANBASI.</b> Oylik hisob chegirmani AYNAN shu jadvaldan oladi
+/// (<c>DiscountBook</c> → <c>TuitionService.DiscountForMonth</c>); <c>Student.Discount*</c> esa
+/// faqat KO'ZGU. Yozish yagona joydan: <see cref="StudentDiscountService"/>.
+/// Batafsil: <c>.claude/rules/discounts.md</c>.</para>
+///
+/// <para>⚠️ O'quvchi TAHRIRLASH formasi (<c>PUT /api/admin/students/{id}</c>) chegirmani ENDI
+/// YOZMAYDI — bu yagona yuza.</para>
 ///
 /// <para>RUXSAT — <c>students.list</c>: chegirma allaqachon o'quvchi formasidan shu kalit bilan
 /// tahrirlanardi, yangi kalit kiritish o'sha lineyani ikkiga bo'lardi. Yozish amallari odatdagi
@@ -64,6 +72,17 @@ public class StudentDiscountsController(AppDbContext db, AuditService audit) : C
         if (spec!.IsEmpty)
             return BadRequest(new { message = "Chegirma bo'sh: foiz yoki summa kiritilishi kerak" });
 
+        // ⚠️ BAND QAMROV — 409, jimgina ALMASHTIRILMAYDI. Aks holda admin ikkinchi chegirma
+        // "qo'shdim" deb o'ylab, aslida birinchisini bilmasdan yopib yuborardi.
+        var busy = await StudentDiscountService.ActiveInScopeAsync(db, studentId, spec.GroupId);
+        if (busy is not null)
+            return Conflict(new
+            {
+                message = $"«{DiscountRules.ScopeLabel(busy)}» uchun allaqachon chegirma bor "
+                          + $"({DiscountRules.ValueLabel(busy.Pct, busy.Amount)}) — uni tahrirlang yoki bekor qiling",
+                existingId = busy.Id,
+            });
+
         var before = Snapshot(student);
         var row = await StudentDiscountService.ApplyAsync(db, student, spec, Actor, ActorId);
         var applied = applyCurrentMonth && await StudentDiscountService.ReapplyCurrentMonthAsync(db, student);
@@ -99,6 +118,19 @@ public class StudentDiscountsController(AppDbContext db, AuditService audit) : C
         if (error is not null) return BadRequest(new { message = error });
         if (spec!.IsEmpty)
             return BadRequest(new { message = "Chegirma bo'sh: foiz yoki summa kiritilishi kerak" });
+
+        // Qamrov (fan) BOSHQASIGA ko'chirilayotgan bo'lsa — u yerda bo'sh joy bo'lishi shart.
+        if (!string.Equals(row.GroupId ?? "", spec.GroupId ?? "", StringComparison.Ordinal))
+        {
+            var busy = await StudentDiscountService.ActiveInScopeAsync(db, studentId, spec.GroupId);
+            if (busy is not null && busy.Id != row.Id)
+                return Conflict(new
+                {
+                    message = $"«{DiscountRules.ScopeLabel(busy)}» uchun allaqachon chegirma bor "
+                              + $"({DiscountRules.ValueLabel(busy.Pct, busy.Amount)}) — avval o'shani bekor qiling",
+                    existingId = busy.Id,
+                });
+        }
 
         var before = Snapshot(student);
         if (!await StudentDiscountService.UpdateAsync(db, student, row, spec, Actor))
@@ -165,10 +197,13 @@ public class StudentDiscountsController(AppDbContext db, AuditService audit) : C
     private static bool IsMonth(string v) =>
         v.Length == 0 || (v.Length == 7 && v[4] == '-' && DateOnly.TryParse($"{v}-01", out _));
 
-    /// <summary>Audit uchun o'zbekcha, TO'LIQ tavsif: "20% / 50 000 so'm — «Ko'p bolali oila» (2026-09 dan)".</summary>
+    /// <summary>Audit uchun o'zbekcha, TO'LIQ tavsif:
+    /// "Matematika: 20% / 50 000 so'm — «Ko'p bolali oila» (2026-09 dan) [guruh: A guruh]".
+    /// ⚠️ QAMROV (fan) boshida turadi — o'quvchida bir nechta chegirma bo'lishi mumkin, ya'ni
+    /// tarixda "qaysi fanniki" birinchi savol.</summary>
     private static string Describe(StudentDiscount d)
     {
-        var text = $"{d.Pct}% / {AuditService.Money(d.Amount)} so'm";
+        var text = $"{DiscountRules.ScopeLabel(d)}: {d.Pct}% / {AuditService.Money(d.Amount)} so'm";
         if (!string.IsNullOrWhiteSpace(d.Reason)) text += $" — \"{d.Reason}\"";
         var period = (d.StartMonth.Length, d.EndMonth.Length) switch
         {
@@ -186,8 +221,9 @@ public class StudentDiscountsController(AppDbContext db, AuditService audit) : C
     private static string AppliedSuffix(bool applied) =>
         applied ? " — joriy oy hisobi to'g'rilandi" : " — keyingi oydan amal qiladi";
 
-    /// <summary>Audit Before/After uchun chegirma snapshot'i (<c>Student.Discount*</c> — pul
-    /// haqiqati aynan shu maydonlarda).</summary>
+    /// <summary>Audit Before/After uchun chegirma KO'ZGUSINING snapshot'i.
+    /// ⚠️ Bu maydonlar endi pul manbai EMAS (registr manba) — snapshot faqat "asosiy chegirma
+    /// qanday o'zgardi" ni ko'rsatadi; qaysi FAN o'zgargani <c>summary</c> matnida.</summary>
     private static object Snapshot(Student s) => new
     {
         s.DiscountPct,

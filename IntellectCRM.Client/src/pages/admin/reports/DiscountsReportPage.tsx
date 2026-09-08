@@ -88,7 +88,7 @@ const money = (n: number) => (n ? formatMoney(n) : '—')
 const share = (discount: number, charged: number) => (charged > 0 ? (discount / charged) * 100 : 0)
 
 type Tab = 'teachers' | 'groups' | 'students' | 'reasons' | 'active'
-type StudentSort = 'name' | 'charged' | 'discount' | 'months'
+type StudentSort = 'name' | 'charged' | 'discount' | 'months' | 'active'
 
 const TABS: Array<[Tab, string]> = [
   ['teachers', "O'qituvchilar kesimi"],
@@ -171,7 +171,8 @@ export function DiscountsReportPage() {
       if (!q) return true
       return (
         s.studentName.toLowerCase().includes(q) ||
-        s.reason.toLowerCase().includes(q) ||
+        // Amaldagi chegirmalar yorlig'i — FAN nomi va o'lchami shu matnda ("Matematika 20%").
+        s.activeLabel.toLowerCase().includes(q) ||
         s.groupNames.some((g) => g.toLowerCase().includes(q)) ||
         s.teacherNames.some((t) => t.toLowerCase().includes(q))
       )
@@ -181,6 +182,9 @@ export function DiscountsReportPage() {
         case 'name': return a.studentName.localeCompare(b.studentName)
         case 'charged': return a.charged - b.charged
         case 'months': return a.months - b.months
+        // Chegirma o'lchami (foiz) endi o'quvchi darajasida YO'Q — har fan alohida.
+        // Shuning uchun "hozirgi chegirma" ustuni amaldagi yozuvlar SONI bo'yicha saralanadi.
+        case 'active': return a.activeCount - b.activeCount
         default: return a.discount - b.discount
       }
     }
@@ -275,7 +279,7 @@ export function DiscountsReportPage() {
               label="Amaldagi chegirmalar"
               value={s.activeCount}
               icon={BadgePercent}
-              hint="Hozir kuchda turgan yozuvlar soni"
+              hint="Har FAN uchun alohida sanaladi — o'quvchilar sonidan ko'p bo'lishi mumkin"
             />
             <StatCard
               label="Chegirmali o'quvchilar"
@@ -466,7 +470,7 @@ export function DiscountsReportPage() {
               {tab === 'students' && (
                 <Card
                   title="O'quvchilar"
-                  sub="«Hozirgi chegirma» — bugun kuchda turgan yozuv; davrda chegirma olgan, lekin hozir chegirmasi yo'q o'quvchida «—»."
+                  sub="«Hozirgi chegirma» — bugun kuchda turgan yozuvlar, HAR FAN uchun alohida; davrda chegirma olgan, lekin hozir chegirmasi yo'q o'quvchida «—»."
                   tight
                 >
                   <div className="border-b border-slate-100 p-[18px]">
@@ -475,7 +479,7 @@ export function DiscountsReportPage() {
                       <input
                         value={search}
                         onChange={(e) => setSearch(e.target.value)}
-                        placeholder="O'quvchi, guruh, o'qituvchi yoki sabab..."
+                        placeholder="O'quvchi, fan, guruh yoki o'qituvchi..."
                         className={searchInput}
                       />
                     </div>
@@ -497,7 +501,7 @@ export function DiscountsReportPage() {
                               <SortTh col="months" label="Oylar" sort={sort} desc={desc} onSort={toggleSort} />
                               <SortTh col="charged" label="Hisoblangan" sort={sort} desc={desc} onSort={toggleSort} />
                               <SortTh col="discount" label="Jami chegirma" sort={sort} desc={desc} onSort={toggleSort} />
-                              <th className="num">Hozirgi chegirma</th>
+                              <SortTh col="active" label="Hozirgi chegirma" sort={sort} desc={desc} onSort={toggleSort} />
                             </tr>
                           </thead>
                           <tbody>
@@ -518,8 +522,13 @@ export function DiscountsReportPage() {
                                 <td className="num font-semibold text-sky-600">{money(st.discount)}</td>
                                 <td className="num">
                                   {st.hasActive ? (
-                                    <span title={st.reason || undefined}>
-                                      {sizeLabel(st.pct, st.amount)}
+                                    <span className="inline-flex flex-wrap items-center justify-end gap-1.5">
+                                      <span>{st.activeLabel || '—'}</span>
+                                      {st.activeCount > 1 && (
+                                        <span className="rounded-full bg-sky-50 px-1.5 py-0.5 text-[11px] font-medium text-sky-700">
+                                          {st.activeCount} ta fan
+                                        </span>
+                                      )}
                                     </span>
                                   ) : (
                                     <span className="text-slate-300">—</span>
@@ -580,7 +589,7 @@ export function DiscountsReportPage() {
               {tab === 'active' && (
                 <Card
                   title="Hozir amaldagi chegirmalar"
-                  sub="Registrdagi kuchda turgan yozuvlar — davrga BOG'LIQ EMAS, joriy holat."
+                  sub="Registrdagi kuchda turgan yozuvlar — HAR FAN uchun alohida, davrga BOG'LIQ EMAS (joriy holat)."
                   tight
                 >
                   {data.active.length === 0 ? (
@@ -595,6 +604,7 @@ export function DiscountsReportPage() {
                             <th>O'quvchi</th>
                             <th className="num">Chegirma</th>
                             <th>Davr</th>
+                            <th>Fan</th>
                             <th>Guruh</th>
                             <th>Sabab</th>
                             <th>Kim bergan</th>
@@ -616,6 +626,9 @@ export function DiscountsReportPage() {
                               </td>
                               <td className="whitespace-nowrap text-slate-500">
                                 {periodLabel(a.startMonth, a.endMonth)}
+                              </td>
+                              <td className="font-medium text-slate-700">
+                                {a.courseName || <span className="font-normal text-slate-400">Barcha guruhlar</span>}
                               </td>
                               <td className="text-slate-500">
                                 {a.groupName || <span className="text-slate-400">Barcha guruhlar</span>}

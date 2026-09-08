@@ -90,6 +90,7 @@ import { AiAnalysisModal } from './AiAnalysisModal'
 import { AiAnalysisView } from './AiAnalysisView'
 import { StudentFormModal } from './StudentFormModal'
 import { DiscountSection } from './DiscountSection'
+import { studentDiscountLabel } from './discountLabel'
 import { SmsModal } from './SmsModal'
 import { CallPickerModal, type CallOption } from '@/components/CallPickerModal'
 import { ReasonPromptModal } from '@/components/ui/ReasonPromptModal'
@@ -282,14 +283,6 @@ export function StudentDetailPage() {
   const [smsTarget, setSmsTarget] = useState<Student | null>(null)
   /** "To'lov qilish" bosilganda — PaymentModal uchun to'liq o'quvchi obyekti. */
   const [paymentTarget, setPaymentTarget] = useState<Student | null>(null)
-  /** Chegirma o'zgarganda — yangi chegirmani joriy oyga qo'llashni so'rash (StudentsPage'dagi kabi). */
-  const [discountPrompt, setDiscountPrompt] = useState<{
-    values: StudentPayload
-    oldPct: number
-    oldAmount: number
-    newPct: number
-    newAmount: number
-  } | null>(null)
   /** Saqlangandan keyin sahifa ma'lumotini qayta yuklash uchun (o'zgarsa — pastdagi useEffect qayta ishga tushadi). */
   const [reloadKey, setReloadKey] = useState(0)
   /** Ushlab turish bonusi holati — «Bonus» tabi BIRINCHI ochilganda bir marta yuklanadi. */
@@ -724,33 +717,21 @@ export function StudentDetailPage() {
     }
   }
 
-  const applyEdit = (values: StudentPayload, applyDiscount: boolean) => {
+  const applyEdit = (values: StudentPayload) => {
     if (!id) return
-    updateStudent(id, values, applyDiscount)
+    updateStudent(id, values)
       .then(() => setReloadKey((k) => k + 1))
       .catch((e) => alert(e?.response?.data?.message ?? 'Saqlab bo\'lmadi'))
   }
 
-  const resolveDiscountPrompt = (applyDiscount: boolean) => {
-    if (!discountPrompt) return
-    applyEdit(discountPrompt.values, applyDiscount)
-    setDiscountPrompt(null)
-  }
-
+  /**
+   * ⚠️ Chegirma bu formadan BOSHQARILMAYDI — «Chegirma» tabidan, HAR FAN uchun alohida
+   * beriladi. Shuning uchun "chegirmani joriy oyga qo'llaymizmi?" so'rovi OLIB TASHLANDI:
+   * server `PUT /students/{id}` dagi chegirma maydonlarini e'tiborga olmaydi.
+   */
   const handleEditSubmit = (values: StudentPayload) => {
     if (!editing) return
-    const newPct = values.discountPct ?? 0
-    const newAmount = values.discountAmount ?? 0
-    const oldPct = editing.discountPct
-    const oldAmount = editing.discountAmount
-    const newGroup = values.discountGroupId ?? ''
-    const oldGroup = editing.discountGroupId ?? ''
-    const discountChanged = newPct !== oldPct || newAmount !== oldAmount || newGroup !== oldGroup
-    if (discountChanged) {
-      setDiscountPrompt({ values, oldPct, oldAmount, newPct, newAmount })
-    } else {
-      applyEdit(values, false)
-    }
+    applyEdit(values)
     setEditing(null)
   }
 
@@ -992,19 +973,11 @@ export function StudentDetailPage() {
                 <InfoRow icon={GraduationCap} label="Guruh rahbari" value={data.homeroomTeacher || '—'} />
                 <InfoRow icon={User} label="Ota-ona" value={data.parentFullName || '—'} />
                 <InfoRow icon={Phone} label="Ota-ona telefoni" value={data.parentPhone || '—'} />
+                {/* Chegirma HAR FAN uchun alohida bo'lishi mumkin — batafsili «Chegirma» tabida. */}
                 <InfoRow
                   icon={Percent}
                   label="Chegirma"
-                  value={
-                    data.discountPct > 0 || data.discountAmount > 0
-                      ? [
-                          data.discountPct > 0 ? `${data.discountPct}%` : null,
-                          data.discountAmount > 0 ? formatMoney(data.discountAmount) : null,
-                        ]
-                          .filter(Boolean)
-                          .join(' + ') + (data.discountNote ? ` — ${data.discountNote}` : '')
-                      : 'Yo\'q'
-                  }
+                  value={studentDiscountLabel(data) || 'Yo\'q'}
                 />
               </div>
               {(data.photoUrl || data.parentPassportUrl) && (
@@ -1086,7 +1059,6 @@ export function StudentDetailPage() {
               loading={discountLoading}
               error={discountError}
               canEdit={canEditDiscount}
-              groups={groups}
               onChanged={(res) => {
                 setDiscounts(res)
                 setReloadKey((k) => k + 1)
@@ -1981,47 +1953,6 @@ export function StudentDetailPage() {
         onClose={() => setSmsTarget(null)}
         recipients={smsTarget ? [smsTarget] : []}
       />
-
-      <Modal
-        open={!!discountPrompt}
-        onClose={() => setDiscountPrompt(null)}
-        title="Chegirmani joriy oyga qo'llash"
-        size="sm"
-        footer={
-          <>
-            <Button variant="secondary" onClick={() => resolveDiscountPrompt(false)}>
-              Yo'q — keyingi oydan
-            </Button>
-            <Button onClick={() => resolveDiscountPrompt(true)}>Ha — joriy oydan</Button>
-          </>
-        }
-      >
-        {discountPrompt && (
-          <div className="space-y-3 text-sm text-slate-600">
-            <p>
-              Chegirma{' '}
-              <span className="font-medium">
-                {discountPrompt.oldPct}% / {formatMoney(discountPrompt.oldAmount)}
-              </span>{' '}
-              →{' '}
-              <span className="font-medium">
-                {discountPrompt.newPct}% / {formatMoney(discountPrompt.newAmount)}
-              </span>{' '}
-              ga o'zgardi. Yangi chegirma qachondan qo'llansin?
-            </p>
-            <div className="rounded-lg bg-slate-50 px-3 py-2 text-slate-500">
-              <p>
-                <b className="text-slate-700">Ha</b> — joriy oy hisobi yangi chegirma bilan qayta
-                hisoblanadi (balans farqqa moslab to'g'rilanadi).
-              </p>
-              <p className="mt-1">
-                <b className="text-slate-700">Yo'q</b> — joriy oy eski hisobda qoladi, yangi
-                chegirma keyingi oydan amal qiladi.
-              </p>
-            </div>
-          </div>
-        )}
-      </Modal>
 
       {/* Muzlatish / aktivlashtirish / sinovga qaytarish / chiqarish — sabab (va sana) tanlash modali */}
       <ReasonPromptModal
