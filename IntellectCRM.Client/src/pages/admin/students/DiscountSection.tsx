@@ -69,6 +69,13 @@ const scopeTitle = (courseName: string) => (courseName ? courseName : 'Barcha gu
 const scopeKey = (groupId: string | null | undefined) => groupId ?? ''
 
 /**
+ * «Hali tanlanmagan» qamrov. ⚠️ `''` DAN FARQ QILADI — `''` bu «Barcha guruhlar» degan
+ * HAQIQIY tanlov. Ikkalasi bir xil bo'lsa, hech narsa tanlamagan admin bilmasdan barcha
+ * fanlarga chegirma berib yuborardi.
+ */
+const SCOPE_NONE = '__none__'
+
+/**
  * Chegirmadan keyingi oylik: AVVAL foiz, KEYIN summa; 0 dan past tushmaydi.
  * ⚠️ Serverdagi `TuitionService.DiscountForMonth` bilan bir xil tartib — teskarisi
  * boshqa raqam berardi.
@@ -458,10 +465,26 @@ function DiscountFormModal({
   const [amount, setAmount] = useState(initial ? String(initial.amount) : '')
   const [startMonth, setStartMonth] = useState(initial?.startMonth ?? '')
   const [endMonth, setEndMonth] = useState(initial?.endMonth ?? '')
-  /** Tanlangan qamrov kaliti ('' — «Barcha guruhlar»). Tahrirlashda O'ZGARMAYDI. */
-  const [groupKey, setGroupKey] = useState(() =>
-    initial ? scopeKey(initial.groupId) : scopeKey(freeScopes[0]?.groupId),
-  )
+  /**
+   * Tanlangan qamrov kaliti ('' — «Barcha guruhlar»). Tahrirlashda O'ZGARMAYDI.
+   *
+   * ⚠️ STANDART TANLOV «Barcha guruhlar» EMAS — chegirma FANGA beriladi:
+   *   • bitta bo'sh FAN bo'lsa   → o'sha fan oldindan tanlanadi;
+   *   • bir nechta fan bo'lsa    → HECH NARSA tanlanmaydi (`SCOPE_NONE`), admin o'zi tanlaydi;
+   *   • fani umuman yo'q bo'lsa  → «Barcha guruhlar».
+   *
+   * Sabab — xatolarning zarari TENG EMAS: «barcha guruhlar» tanlab qo'yilsa, o'quvchi keyin
+   * YANGI guruhga qo'shilganda chegirma o'sha fanga ham JIMGINA tushadi va buni hech kim
+   * sezmaydi. Aniq fan tanlangan bo'lsa, yangi fanga chegirma tushmaydi — admin ko'radi va
+   * kerak bo'lsa qo'shadi.
+   */
+  const [groupKey, setGroupKey] = useState(() => {
+    if (initial) return scopeKey(initial.groupId)
+    const freeGroups = freeScopes.filter((s) => s.groupId)
+    if (freeGroups.length === 1) return scopeKey(freeGroups[0].groupId)
+    if (freeGroups.length === 0) return scopeKey(freeScopes[0]?.groupId)
+    return SCOPE_NONE
+  })
   const [reason, setReason] = useState(initial?.reason ?? '')
   /** Joriy oy hisobiga DARHOL qo'llansinmi (default — HA). */
   const [applyNow, setApplyNow] = useState(true)
@@ -479,7 +502,10 @@ function DiscountFormModal({
   /** Yangi chegirmada band qamrov tanlab bo'lmaydi (variantning o'zi ham `disabled`). */
   const scopeTaken = !initial && !!scope?.hasActive
   const noFreeScope = !initial && freeScopes.length === 0
-  const canSave = !pctInvalid && !bothZero && amountNum >= 0 && !scopeTaken && !noFreeScope && !saving
+  /** Qamrov tanlanmagan — saqlash BLOKLANADI (§ yuqoridagi izoh: jimgina "barcha fanga" ketmasin). */
+  const scopeMissing = !initial && groupKey === SCOPE_NONE
+  const canSave =
+    !pctInvalid && !bothZero && amountNum >= 0 && !scopeTaken && !noFreeScope && !scopeMissing && !saving
 
   /** Oylik to'lov — tahrirlashda qamrov `scopes` da bo'lmasligi mumkin (a'zolik yopilgan). */
   const fee = scope?.monthlyFee ?? 0
@@ -549,6 +575,7 @@ function DiscountFormModal({
               onChange={(e) => setGroupKey(e.target.value)}
             >
               {scopes.length === 0 && <option value="">Barcha guruhlar</option>}
+              {groupKey === SCOPE_NONE && <option value={SCOPE_NONE}>— fanni tanlang —</option>}
               {scopes.map((s) => (
                 <option
                   key={scopeKey(s.groupId)}
@@ -564,8 +591,14 @@ function DiscountFormModal({
             </Select>
             <p className="mt-1 text-xs text-slate-400">
               Har fanga ALOHIDA chegirma beriladi. Chegirmasi bor fan ro'yxatda o'chiq turadi —
-              bu fanda allaqachon chegirma bor, uni tahrirlang.
+              bu fanda allaqachon chegirma bor, uni tahrirlang. «Barcha guruhlar» tanlansa,
+              o'quvchi KEYIN qo'shiladigan fanlarga ham shu chegirma qo'llanadi.
             </p>
+            {scopeMissing && (
+              <p className="mt-1.5 text-sm text-amber-600">
+                Chegirma qaysi fanga berilishini tanlang.
+              </p>
+            )}
             {noFreeScope && (
               <p className="mt-1.5 text-sm text-amber-600">
                 Barcha fanlarda allaqachon chegirma bor — yangisini berib bo'lmaydi. Mavjudini

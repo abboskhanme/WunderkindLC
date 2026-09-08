@@ -167,6 +167,25 @@ Har `(StudentId, GroupId)` juftligida ko'pi bilan bitta `active` qator; `GroupId
 - ⚠️ **Tarixiy qator TAHRIRLANMAYDI va BEKOR QILINMAYDI** (server 400). O'tgan oylarning hisobi
   allaqachon `MonthlyCharge` da yozilgan.
 
+### Standart tanlov — FAN, «barcha guruhlar» EMAS
+
+Chegirma berish oynasida qamrov shunday oldindan tanlanadi:
+
+| O'quvchining bo'sh fanlari | Standart tanlov |
+|---|---|
+| bitta | **o'sha fan** |
+| bir nechta | **hech narsa** — admin o'zi tanlaydi, tanlamaguncha saqlash o'chiq |
+| umuman yo'q (guruhsiz) | «Barcha guruhlar» |
+
+⚠️ Sabab — ikki xatoning zarari **TENG EMAS**. «Barcha guruhlar» tanlab qo'yilsa, o'quvchi
+KEYIN yangi guruhga qo'shilganda chegirma o'sha fanga ham **jimgina** tushadi va buni hech kim
+sezmaydi (pul yo'qoladi). Aniq fan tanlangan bo'lsa esa yangi fanga chegirma tushmaydi — admin
+buni KO'RADI va kerak bo'lsa qo'shadi.
+
+⚠️ Klientda «tanlanmagan» holat `SCOPE_NONE` bilan ifodalanadi va `''` DAN FARQ QILADI: `''` —
+«Barcha guruhlar» degan HAQIQIY tanlov. Ikkalasi bir xil bo'lsa, hech narsa tanlamagan admin
+bilmasdan barcha fanlarga chegirma berib yuborardi.
+
 ⚠️ **MA'LUM CHEKLOV:** «barcha guruhlar» chegirmasidan BITTA fanni **chiqarib tashlash**
 (istisno) hozircha YO'Q. Buning o'rniga har fanga alohida qator beriladi. Kerak bo'lsa bu
 ALOHIDA ish sifatida ko'rib chiqilsin (bu qoidaga tayanadi, uni almashtirmaydi).
