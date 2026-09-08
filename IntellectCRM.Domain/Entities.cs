@@ -1,4 +1,4 @@
-namespace IntellectCRM.Domain;
+﻿namespace IntellectCRM.Domain;
 
 // Frontend (IntellectCRM.Client/src/types/index.ts) dagi tiplarga mos keluvchi
 // EF Core entity'lari. ID'lar string (frontend uid() — UUID ishlatadi),
@@ -441,6 +441,73 @@ public class Student
     /// <see cref="RetentionBonus"/> yoqilgan, lekin bu bo'sh bo'lsa — o'quvchi ro'yxatda
     /// "boshlanish oyi kiritilmagan" holatida turadi.</summary>
     public string RetentionBonusStartMonth { get; set; } = string.Empty;
+}
+
+/// <summary>
+/// CHEGIRMA REGISTRI — o'quvchiga berilgan chegirmalarning TARIXI (kim, qachon, qancha, nega
+/// berdi va nega bekor qildi).
+///
+/// <para>⚠️ <b>PUL MANTIG'I BU YERDA EMAS.</b> Oylik hisob avvalgidek <see cref="Student"/>
+/// maydonlariga (<see cref="Student.DiscountPct"/>, <see cref="Student.DiscountAmount"/>,
+/// <see cref="Student.DiscountStartMonth"/> …) tayanadi — <c>TuitionService.DiscountForMonth</c>
+/// bu jadvalni UMUMAN o'qimaydi. Registr faqat AKS ETTIRADI: har o'quvchida ko'pi bilan BITTA
+/// <see cref="StatusActive"/> qator bo'ladi va u AYNAN <c>Student.Discount*</c> ga mos keladi.
+/// Yozish yagona joydan — <c>StudentDiscountService</c> (aks holda ikki manba ayrilib ketardi).</para>
+///
+/// <para>Nega alohida jadval: <c>Student</c> da bir vaqtda BITTA chegirma turadi va yangisi
+/// berilganda eskisi ustidan yoziladi — ya'ni "kimga qachon qanday chegirma berilgan edi" degan
+/// savolga javob yo'q edi. Endi eski qator o'chmaydi, <see cref="StatusReplaced"/> bo'lib qoladi.</para>
+///
+/// <para>SNAPSHOT maydonlar (<see cref="StudentName"/>, <see cref="GroupName"/>,
+/// <see cref="TeacherName"/>, <see cref="CreatedBy"/>) ATAYIN takrorlangan: o'quvchi arxivlansa,
+/// guruh o'chirilsa yoki xodim ishdan bo'shasa ham tarix o'qilishi kerak
+/// (<c>ContactRequest</c> dagi bilan bir xil naqsh).</para>
+/// </summary>
+public class StudentDiscount
+{
+    public string Id { get; set; } = Guid.NewGuid().ToString();
+    public string StudentId { get; set; } = string.Empty;
+    /// <summary>O'quvchi F.I.Sh — SNAPSHOT (arxivlansa/o'chirilsa ham tarix o'qiladi).</summary>
+    public string StudentName { get; set; } = string.Empty;
+    /// <summary>Chegirma QAYSI GURUHGA (Classes.Id). <c>null</c> — BARCHA guruh hisoblariga
+    /// (<see cref="Student.DiscountGroupId"/> bilan AYNAN bir xil ma'no).</summary>
+    public string? GroupId { get; set; }
+    /// <summary>Guruh nomi — SNAPSHOT. <c>""</c> — barcha guruhlar.</summary>
+    public string GroupName { get; set; } = string.Empty;
+    /// <summary>Chegirma BERILGAN paytdagi guruh o'qituvchisi (Teachers.Id) — SNAPSHOT.
+    /// Guruh keyin boshqa o'qituvchiga o'tsa ham "kim berdirgan" savoli javobsiz qolmasin.</summary>
+    public string? TeacherId { get; set; }
+    /// <summary>O'qituvchi F.I.Sh — SNAPSHOT.</summary>
+    public string TeacherName { get; set; } = string.Empty;
+    /// <summary>Foiz (0..100). Avval foiz olib tashlanadi, keyin <see cref="Amount"/> ayriladi.</summary>
+    public int Pct { get; set; }
+    /// <summary>Aniq summa (so'm) — foizdan keyin ayriladi.</summary>
+    public decimal Amount { get; set; }
+    /// <summary>Amal qilish boshlanish oyi ("yyyy-MM"). Bo'sh — cheklovsiz (boshidan).</summary>
+    public string StartMonth { get; set; } = string.Empty;
+    /// <summary>Amal qilish tugash oyi ("yyyy-MM"). Bo'sh — cheklovsiz (oxirigacha).</summary>
+    public string EndMonth { get; set; } = string.Empty;
+    /// <summary>Sabab/izoh — <see cref="Student.DiscountNote"/> bilan AYNAN bir xil matn.</summary>
+    public string Reason { get; set; } = string.Empty;
+    /// <summary><see cref="StatusActive"/> | <see cref="StatusReplaced"/> | <see cref="StatusCancelled"/>.</summary>
+    public string Status { get; set; } = StatusActive;
+    /// <summary>Hozir amaldagi YAGONA yozuv (o'quvchida ko'pi bilan bitta bo'ladi).</summary>
+    public const string StatusActive = "active";
+    /// <summary>Yangi chegirma bilan almashtirilgan (o'chirilmaydi — tarix).</summary>
+    public const string StatusReplaced = "replaced";
+    /// <summary>Bekor qilingan — o'quvchidan chegirma OLINGAN.</summary>
+    public const string StatusCancelled = "cancelled";
+    /// <summary>Yaratilgan vaqt (ISO "yyyy-MM-ddTHH:mm:ss") — tarix shu bo'yicha tartiblanadi.</summary>
+    public string CreatedAt { get; set; } = string.Empty;
+    /// <summary>Kim berdi — F.I.Sh (SNAPSHOT).</summary>
+    public string CreatedBy { get; set; } = string.Empty;
+    public string? CreatedById { get; set; }
+    /// <summary>Yopilgan/bekor qilingan vaqt (ISO). <c>""</c> — hali amalda.</summary>
+    public string EndedAt { get; set; } = string.Empty;
+    /// <summary>Kim yopdi/bekor qildi — F.I.Sh (SNAPSHOT).</summary>
+    public string EndedBy { get; set; } = string.Empty;
+    /// <summary>Bekor qilish sababi (<see cref="StatusCancelled"/> bo'lsa).</summary>
+    public string CancelReason { get; set; } = string.Empty;
 }
 
 /// <summary>

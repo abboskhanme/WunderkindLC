@@ -21,6 +21,10 @@ public class StudentsController(
     private const int MinPasswordLength = 8;
     private const string WeakPasswordMessage = "Parol kamida 8 belgidan iborat bo'lsin";
 
+    /// <summary>Amalni bajargan xodim — SNAPSHOT (chegirma registri va audit uchun).</summary>
+    private string Actor => User.FindFirst(System.Security.Claims.ClaimTypes.Name)?.Value ?? "Admin";
+    private string? ActorId => User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+
     /// <summary>
     /// Faol (arxivlanmagan) o'quvchilar ro'yxati. <paramref name="includeArchived"/>=true bo'lsa
     /// arxivlangan o'quvchilar ham qaytadi.
@@ -569,6 +573,12 @@ public class StudentsController(
     {
         var cls = await db.Classes.FirstOrDefaultAsync(c => c.Name == p.ClassName);
         var student = AddStudent(p, cls);
+        // CHEGIRMA REGISTRI: o'quvchi chegirma bilan yaratilsa registrda ham qator ochiladi
+        // (invariant: bitta `active` qator = Student.Discount*). Yozish YAGONA joydan —
+        // StudentDiscountService (.claude/rules/discounts.md §2). Import yo'lida chegirma
+        // maydonlari umuman yuborilmaydi, shuning uchun u yerda chaqirilmaydi.
+        if (student.DiscountPct > 0 || student.DiscountAmount > 0)
+            await StudentDiscountService.ApplyAsync(db, student, DiscountSpec.From(student), Actor, ActorId);
         await db.SaveChangesAsync();
 
         // Avto xabar — o'quvchi guruhga qo'shilganda ota-onaga ("O'quvchi guruhga qo'shilganda" hodisasi).
@@ -931,6 +941,12 @@ public class StudentsController(
                 applied = true;
             }
         }
+
+        // CHEGIRMA REGISTRI — chegirma ESKI forma orqali o'zgargan bo'lsa registr eskirib
+        // qolmasin (profil "chegirma yo'q" deb ko'rsatib turardi). Servis Student maydonlariga
+        // TEGMAYDI, faqat registrni moslaydi: eskisini `replaced` qilib yangisini ochadi.
+        if (discountChanged)
+            await StudentDiscountService.SyncFromStudentAsync(db, student, Actor, ActorId);
 
         // Audit — guruh va/yoki chegirma o'zgarishi.
         if (classChanged || discountChanged)

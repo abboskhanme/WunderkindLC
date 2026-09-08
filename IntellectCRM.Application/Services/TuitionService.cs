@@ -49,10 +49,19 @@ public static class TuitionService
     /// <summary>Chegirma berilgan OY ("yyyy-MM") uchun amal qiladimi. Davr
     /// <see cref="Student.DiscountStartMonth"/>..<see cref="Student.DiscountEndMonth"/> (inklyuziv).
     /// Ikkala chegara bo'sh bo'lsa — har doim (orqaga moslik); bittasi bo'sh — bir tomonlama ochiq.</summary>
-    public static bool DiscountActiveForMonth(Student s, string month)
+    public static bool DiscountActiveForMonth(Student s, string month) =>
+        DiscountActiveForMonth(s.DiscountStartMonth, s.DiscountEndMonth, month);
+
+    /// <summary>
+    /// AYNAN o'sha qoidaning SOF (entity'siz) ko'rinishi — davr chegaralari to'g'ridan-to'g'ri
+    /// beriladi. Chegirma REGISTRI (<see cref="StudentDiscount"/>) shu funksiyani chaqiradi:
+    /// nusxa ko'chirilsa ikkisi vaqt o'tib ayrilib ketardi va registr "amalda" deb ko'rsatgan
+    /// chegirma hisobda qo'llanmay qolardi (yoki teskarisi).
+    /// </summary>
+    public static bool DiscountActiveForMonth(string? startMonth, string? endMonth, string month)
     {
-        var start = s.DiscountStartMonth ?? "";
-        var end = s.DiscountEndMonth ?? "";
+        var start = startMonth ?? "";
+        var end = endMonth ?? "";
         if (start.Length == 0 && end.Length == 0) return true;
         if (start.Length > 0 && string.CompareOrdinal(month, start) < 0) return false;
         if (end.Length > 0 && string.CompareOrdinal(month, end) > 0) return false;

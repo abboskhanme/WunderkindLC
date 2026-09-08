@@ -18,6 +18,7 @@ const LocalCallPage = lazy(() => import('@/pages/admin/calls/local/LocalCallPage
 const LeadsPage = lazy(() => import('@/pages/admin/leads/LeadsPage').then((m) => ({ default: m.LeadsPage })))
 const CrmStatsPage = lazy(() => import('@/pages/admin/leads/CrmStatsPage').then((m) => ({ default: m.CrmStatsPage })))
 const ReportsPage = lazy(() => import('@/pages/admin/reports/ReportsPage').then((m) => ({ default: m.ReportsPage })))
+const DiscountsReportPage = lazy(() => import('@/pages/admin/reports/DiscountsReportPage').then((m) => ({ default: m.DiscountsReportPage })))
 const SchedulePage = lazy(() => import('@/pages/admin/schedule/SchedulePage').then((m) => ({ default: m.SchedulePage })))
 const StudentsPage = lazy(() => import('@/pages/admin/students/StudentsPage').then((m) => ({ default: m.StudentsPage })))
 const RetentionBonusPage = lazy(() => import('@/pages/admin/students/RetentionBonusPage').then((m) => ({ default: m.RetentionBonusPage })))
@@ -243,6 +244,10 @@ export default function App() {
                 qo'ysak, hisobotlarning ARALASH ruxsatlari (leads/finance/audit ...) bilan
                 mos kelmasdi. Menyuda esa bo'lim `permAny` bilan darvozalangan. */}
             <Route path="hisobotlar" element={<ReportsPage />} />
+            {/* Chegirmalar hisoboti — SOF hisobot (yozuvchi amal yo'q), shuning uchun
+                "Hisobotlar" bo'limining O'Z marshruti ostida. Chegirma BERISH avvalgidek
+                o'quvchi profilida qoladi. */}
+            <Route path="hisobotlar/chegirmalar" element={<RequirePerm perm="finance.main"><DiscountsReportPage /></RequirePerm>} />
             <Route path="crm-stats" element={<RequirePerm perm="leads.stats"><CrmStatsPage /></RequirePerm>} />
             <Route path="students" element={<RequirePerm perm="students.list"><StudentsPage /></RequirePerm>} />
             {/* Bog'lanish kerak — O'quvchilar bo'limi ICHIDA, lekin ruxsati alohida (`contacts`). */}

@@ -1,4 +1,4 @@
-using Microsoft.EntityFrameworkCore;
+﻿using Microsoft.EntityFrameworkCore;
 using IntellectCRM.Application.Abstractions;
 using IntellectCRM.Application.Services;
 using IntellectCRM.Domain;
@@ -28,6 +28,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options)
     public DbSet<RetentionBonusTrack> RetentionBonusTracks => Set<RetentionBonusTrack>();
     public DbSet<StudentGroup> StudentGroups => Set<StudentGroup>();
     public DbSet<StudentNote> StudentNotes => Set<StudentNote>();
+    public DbSet<StudentDiscount> StudentDiscounts => Set<StudentDiscount>();
     public DbSet<Lead> Leads => Set<Lead>();
     public DbSet<LeadStage> LeadStages => Set<LeadStage>();
     public DbSet<LeadEvent> LeadEvents => Set<LeadEvent>();
@@ -371,6 +372,17 @@ public class AppDbContext(DbContextOptions<AppDbContext> options)
         b.Entity<StudentBallAdjustment>().Property(a => a.StudentId).HasMaxLength(200);
         b.Entity<StudentBallAdjustment>().Property(a => a.GroupId).HasMaxLength(200);
         b.Entity<StudentBallAdjustment>().HasIndex(a => new { a.StudentId, a.GroupId });
+
+        // CHEGIRMA REGISTRI: o'quvchi profilida "shu o'quvchining barcha chegirmalari" va
+        // hisobotda "hozir kimda amalda" — ya'ni ikkala so'rov ham (StudentId, Status) yoki
+        // yalang Status bo'yicha ketadi. Indeksdagi matn ustunlariga uzunlik beriladi.
+        b.Entity<StudentDiscount>().Property(d => d.StudentId).HasMaxLength(200);
+        b.Entity<StudentDiscount>().Property(d => d.GroupId).HasMaxLength(200);
+        b.Entity<StudentDiscount>().Property(d => d.TeacherId).HasMaxLength(200);
+        b.Entity<StudentDiscount>().Property(d => d.Status).HasMaxLength(200);
+        b.Entity<StudentDiscount>().Property(d => d.Amount).HasPrecision(18, 2);
+        b.Entity<StudentDiscount>().HasIndex(d => new { d.StudentId, d.Status });
+        b.Entity<StudentDiscount>().HasIndex(d => d.Status);
 
         b.Entity<AuditLog>().HasIndex(a => new { a.EntityType, a.EntityId });
         // Bog'lanish kerak: navbat "holat + muddat" bo'yicha o'qiladi, hisobot esa KUN bo'yicha

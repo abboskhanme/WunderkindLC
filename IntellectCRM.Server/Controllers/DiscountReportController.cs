@@ -1,0 +1,193 @@
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using IntellectCRM.Application.Dtos;
+using IntellectCRM.Application.Services;
+using IntellectCRM.Domain;
+using IntellectCRM.Infrastructure.Data;
+
+namespace IntellectCRM.Server.Controllers;
+
+/// <summary>
+/// «CHEGIRMALAR HISOBOTI» — markaz bo'yicha: chegirma qanchaga tushyapti, kimga, qaysi
+/// o'qituvchi/guruhda va NEGA berilgan.
+///
+/// <para>⚠️ <b>PUL HAQIQATI <see cref="MonthlyCharge"/> DAN</b>, registrdan EMAS. Sabab:
+/// registr (<see cref="StudentDiscount"/>) — YANGI jadval, chegirmalarning haqiqiy tarixi esa
+/// oylik hisoblarda allaqachon to'liq turibdi. Ya'ni hisobot birinchi kundanoq rost raqam
+/// ko'rsatadi. Registr faqat "hozir kimda chegirma bor va qanday sabab bilan" qismini beradi
+/// (<c>byStudent.pct/amount/reason</c>, <c>byReason</c>, <c>active</c>).</para>
+///
+/// <para>RUXSAT — <c>finance.main</c> va <c>ReadRequiresPerm = true</c>: javobda pul summalari
+/// bor, GET'ni odatdagidek har qanday xodimga ochib bo'lmaydi.</para>
+///
+/// <para>Batafsil: <c>.claude/rules/discounts.md</c>.</para>
+/// </summary>
+[ApiController]
+[Authorize]
+[AdminPerm("finance.main", ReadRequiresPerm = true)]
+[Route("api/admin/reports/discounts")]
+public class DiscountReportController(AppDbContext db) : ControllerBase
+{
+    /// <summary>Guruhsiz (<c>MonthlyCharge.GroupId == null</c>) hisoblar — ALOHIDA qatorda,
+    /// jimgina yo'qolmasin.</summary>
+    private const string NoGroupLabel = "Guruhsiz";
+
+    /// <summary>O'qituvchisi biriktirilmagan guruhlar — ALOHIDA qatorda.</summary>
+    private const string NoTeacherLabel = "Biriktirilmagan";
+
+    /// <summary>
+    /// Hisobot. <paramref name="from"/>/<paramref name="to"/> — "yyyy-MM" (inklyuziv). Bo'sh
+    /// bo'lsa: <c>to</c> = joriy oy, <c>from</c> = undan 11 oy oldin (oxirgi 12 oy).
+    /// </summary>
+    [HttpGet]
+    public async Task<ActionResult<DiscountReportDto>> Get(
+        [FromQuery] string? from = null, [FromQuery] string? to = null)
+    {
+        var current = TuitionService.CurrentMonth();
+        var toMonth = IsMonth(to) ? to! : current;
+        var fromMonth = IsMonth(from) ? from! : AppClock.Today.AddMonths(-11).ToString("yyyy-MM");
+        if (string.CompareOrdinal(fromMonth, toMonth) > 0) fromMonth = toMonth;
+
+        // ---------- (1) PUL: davrdagi barcha oylik hisoblar ----------
+        // Chegirmalilar EMAS, HAMMASI: "chegirma ulushi" ko'rsatkichi maxrajsiz ma'nosiz bo'lardi.
+        var charges = await db.MonthlyCharges.AsNoTracking()
+            .Where(c => string.Compare(c.Month, fromMonth) >= 0 && string.Compare(c.Month, toMonth) <= 0)
+            .Select(c => new { c.StudentId, c.GroupId, c.Month, c.Amount, c.Discount })
+            .ToListAsync();
+
+        // ---------- (2) Nomlar: guruh → o'qituvchi/kurs (N+1 emas — ommaviy) ----------
+        var groups = await db.Classes.AsNoTracking()
+            .Select(g => new { g.Id, g.Name, g.TeacherId, g.CourseId })
+            .ToListAsync();
+        var teacherNames = await db.Teachers.AsNoTracking()
+            .Select(t => new { t.Id, t.FullName }).ToListAsync();
+        var courseNames = await db.Subjects.AsNoTracking()
+            .Select(s => new { s.Id, s.Name }).ToListAsync();
+        var teacherById = teacherNames.ToDictionary(t => t.Id, t => t.FullName);
+        var courseById = courseNames.ToDictionary(s => s.Id, s => s.Name);
+        var groupById = groups.ToDictionary(g => g.Id, g => new GroupInfo(
+            g.Name,
+            string.IsNullOrEmpty(g.TeacherId) ? "" : g.TeacherId,
+            string.IsNullOrEmpty(g.TeacherId) || !teacherById.TryGetValue(g.TeacherId, out var tn) ? NoTeacherLabel : tn,
+            string.IsNullOrEmpty(g.CourseId) || !courseById.TryGetValue(g.CourseId, out var cn) ? "" : cn));
+
+        var studentNames = await db.Students.AsNoTracking()
+            .Select(s => new { s.Id, s.FullName, s.IsArchived }).ToListAsync();
+        var studentById = studentNames.ToDictionary(s => s.Id, s => s.FullName);
+        var totalStudents = studentNames.Count(s => !s.IsArchived);
+
+        // ---------- (3) REGISTR: hozir amaldagi chegirmalar ----------
+        var activeRows = await db.StudentDiscounts.AsNoTracking()
+            .Where(d => d.Status == StudentDiscount.StatusActive)
+            .ToListAsync();
+        // Arxivlangan o'quvchining chegirmasi "hozir amalda" deb sanalmaydi — u o'qimayapti.
+        var archivedIds = studentNames.Where(s => s.IsArchived).Select(s => s.Id).ToHashSet();
+        activeRows = activeRows.Where(d => !archivedIds.Contains(d.StudentId)).ToList();
+        var activeByStudent = activeRows
+            .GroupBy(d => d.StudentId)
+            .ToDictionary(g => g.Key, g => g.OrderByDescending(d => d.CreatedAt, StringComparer.Ordinal).First());
+
+        // ---------- (4) Jamlanma ----------
+        var periodCharged = charges.Sum(c => c.Amount);
+        var periodDiscount = charges.Sum(c => c.Discount);
+        var studentCount = activeByStudent.Count;
+        var summary = new DiscountReportSummaryDto(
+            ActiveCount: activeRows.Count,
+            StudentCount: studentCount,
+            TotalStudents: totalStudents,
+            StudentSharePct: Share(studentCount, totalStudents),
+            PeriodCharged: periodCharged,
+            PeriodDiscount: periodDiscount,
+            SharePct: Share(periodDiscount, periodCharged),
+            CurrentMonthDiscount: charges.Where(c => c.Month == current).Sum(c => c.Discount));
+
+        // ---------- (5) Oy kesimi — davrdagi HAR oy (chegirmasizi ham 0 bilan) ----------
+        var byMonthRaw = charges.GroupBy(c => c.Month).ToDictionary(g => g.Key, g => g.ToList());
+        var months = TuitionService.MonthRange(fromMonth, toMonth)
+            .Select(m => byMonthRaw.TryGetValue(m, out var rows)
+                ? new DiscountReportMonthDto(m, rows.Sum(r => r.Amount), rows.Sum(r => r.Discount),
+                    rows.Where(r => r.Discount != 0m).Select(r => r.StudentId).Distinct().Count())
+                : new DiscountReportMonthDto(m, 0m, 0m, 0))
+            .ToList();
+
+        // ---------- (6) O'qituvchi kesimi ----------
+        var byTeacher = charges
+            .GroupBy(c => c.GroupId is not null && groupById.TryGetValue(c.GroupId, out var g)
+                ? (g.TeacherId, g.TeacherName)
+                : ("", NoGroupLabel))
+            .Select(g => new DiscountReportTeacherDto(
+                g.Key.Item1, g.Key.Item2,
+                g.Sum(c => c.Amount), g.Sum(c => c.Discount),
+                g.Where(c => c.Discount != 0m).Select(c => c.StudentId).Distinct().Count(),
+                g.Where(c => c.GroupId is not null).Select(c => c.GroupId!).Distinct().Count()))
+            .OrderByDescending(t => t.Discount)
+            .ToList();
+
+        // ---------- (7) Guruh kesimi ----------
+        var byGroup = charges
+            .GroupBy(c => c.GroupId ?? "")
+            .Select(g =>
+            {
+                var info = g.Key.Length > 0 && groupById.TryGetValue(g.Key, out var gi)
+                    ? gi
+                    : new GroupInfo(g.Key.Length == 0 ? NoGroupLabel : "(o'chirilgan guruh)", "", NoTeacherLabel, "");
+                return new DiscountReportGroupDto(
+                    g.Key, info.Name, info.TeacherName, info.CourseName,
+                    g.Sum(c => c.Amount), g.Sum(c => c.Discount),
+                    g.Where(c => c.Discount != 0m).Select(c => c.StudentId).Distinct().Count());
+            })
+            .OrderByDescending(g => g.Discount)
+            .ToList();
+
+        // ---------- (8) O'quvchi kesimi — chegirma bo'yicha KAMAYISH tartibida ----------
+        var byStudent = charges
+            .Where(c => c.Discount != 0m)
+            .GroupBy(c => c.StudentId)
+            .Select(g =>
+            {
+                var infos = g.Where(c => c.GroupId is not null)
+                    .Select(c => groupById.TryGetValue(c.GroupId!, out var gi) ? gi : null)
+                    .Where(gi => gi is not null).Select(gi => gi!).ToList();
+                activeByStudent.TryGetValue(g.Key, out var reg);
+                return new DiscountReportStudentDto(
+                    g.Key, studentById.TryGetValue(g.Key, out var name) ? name : "",
+                    g.Sum(c => c.Amount), g.Sum(c => c.Discount),
+                    g.Select(c => c.Month).Distinct().Count(),
+                    infos.Select(i => i.Name).Distinct().OrderBy(x => x, StringComparer.Ordinal).ToList(),
+                    infos.Select(i => i.TeacherName).Distinct().OrderBy(x => x, StringComparer.Ordinal).ToList(),
+                    reg?.Pct ?? 0, reg?.Amount ?? 0m, reg?.Reason ?? "", reg is not null);
+            })
+            .OrderByDescending(s => s.Discount)
+            .ToList();
+
+        // ---------- (9) Sabab kesimi — REGISTRdagi amaldagi qatorlar bo'yicha ----------
+        // Summa esa baribir PULdan: o'sha o'quvchilarning davrdagi chegirmasi.
+        var discountByStudent = charges.GroupBy(c => c.StudentId)
+            .ToDictionary(g => g.Key, g => g.Sum(c => c.Discount));
+        var byReason = activeByStudent.Values
+            .GroupBy(d => (d.Reason ?? "").Trim())
+            .Select(g => new DiscountReportReasonDto(
+                g.Key, g.Count(),
+                g.Sum(d => discountByStudent.TryGetValue(d.StudentId, out var v) ? v : 0m)))
+            .OrderByDescending(r => r.Discount).ThenByDescending(r => r.Count)
+            .ToList();
+
+        var active = activeRows
+            .OrderByDescending(d => d.CreatedAt, StringComparer.Ordinal)
+            .Select(d => StudentDiscountService.ToDto(d, current))
+            .ToList();
+
+        return new DiscountReportDto(fromMonth, toMonth, summary, months, byTeacher, byGroup, byStudent, byReason, active);
+    }
+
+    /// <summary>Guruh haqidagi hisobotga kerak bo'ladigan nomlar (bir marta hisoblanadi).</summary>
+    private record GroupInfo(string Name, string TeacherId, string TeacherName, string CourseName);
+
+    /// <summary>Ulush (%), maxraj 0 bo'lsa 0 — bo'linish xatosi hisobotni yiqitmasin.</summary>
+    private static decimal Share(decimal part, decimal total) =>
+        total <= 0m ? 0m : decimal.Round(part * 100m / total, 1);
+
+    private static bool IsMonth(string? v) =>
+        !string.IsNullOrWhiteSpace(v) && v.Length == 7 && v[4] == '-' && DateOnly.TryParse($"{v}-01", out _);
+}

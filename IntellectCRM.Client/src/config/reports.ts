@@ -216,6 +216,15 @@ export const reportGroups: ReportGroup[] = [
         perm: 'finance.main',
         description: "O'qituvchilarga hisoblangan ushlab turish bonuslari",
       },
+      {
+        // SOF hisobot: sahifada hech qanday yozuvchi amal yo'q (chegirma BERISH avvalgidek
+        // o'quvchi profilida), shuning uchun yon menyudagi "Hisobotlar" guruhiga ham tushadi.
+        label: 'Chegirmalar hisoboti',
+        to: '/admin/hisobotlar/chegirmalar',
+        perm: 'finance.main',
+        description: "Kimga qancha chegirma berilgan — o'quvchi, guruh va o'qituvchi kesimida",
+        inNav: true,
+      },
     ],
   },
   {

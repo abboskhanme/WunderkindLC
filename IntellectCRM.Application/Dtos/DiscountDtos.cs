@@ -1,0 +1,103 @@
+namespace IntellectCRM.Application.Dtos;
+
+/* ---------- CHEGIRMALAR: o'quvchi REGISTRI va markaz bo'yicha HISOBOT ----------
+ *
+ * ⚠️ DIQQAT: bu DTO'lar pul MANTIG'INI ifodalamaydi. Oylik hisob avvalgidek
+ * `Student.Discount*` maydonlariga tayanadi (`TuitionService.DiscountForMonth`), TARIXI esa
+ * `MonthlyCharge.Discount` da. Registr (`StudentDiscount`) faqat "kim, qachon, qancha, nega
+ * berdi/bekor qildi" savoliga javob beradi. Batafsil: `.claude/rules/discounts.md`.
+ *
+ * ⚠️ Shakl KLIENT SHARTNOMASI bilan aynan bir xil bo'lishi SHART:
+ * `IntellectCRM.Client/src/api/services/discounts.ts`. Maydon qo'shish/olib tashlash ikkala
+ * tomonda BIRGA qilinadi.
+ */
+
+/// <summary>Bitta registr qatori (o'quvchiga berilgan chegirma).</summary>
+/// <param name="GroupId">null — BARCHA guruh hisoblariga; id — faqat o'sha guruhga.</param>
+/// <param name="StatusLabel">Holatning o'zbekcha yorlig'i (<c>DiscountRules.StatusLabel</c>).</param>
+/// <param name="InForce">Hozir HAQIQATAN amalda: <c>active</c> VA joriy oy davr ichida.</param>
+public record StudentDiscountItemDto(
+    string Id, string StudentId, string StudentName,
+    string? GroupId, string GroupName,
+    string? TeacherId, string TeacherName,
+    int Pct, decimal Amount,
+    string StartMonth, string EndMonth,
+    string Reason,
+    string Status, string StatusLabel, bool InForce,
+    string CreatedAt, string CreatedBy,
+    string EndedAt, string EndedBy, string CancelReason);
+
+/// <summary>
+/// Oyda HAQIQATAN qo'llangan chegirma — <see cref="IntellectCRM.Domain.MonthlyCharge"/> dan
+/// (pul haqiqati registrdan EMAS, hisob qatorlaridan olinadi).
+/// </summary>
+public record StudentDiscountMonthDto(
+    string Month, string? GroupId, string GroupName, string TeacherName,
+    decimal Charged, decimal Discount);
+
+/// <summary>O'quvchining chegirma registri + qo'llangan chegirmalar tarixi (bitta javobda).</summary>
+/// <param name="Items">Registr qatorlari — eng yangisi birinchi.</param>
+/// <param name="Applied">Oylar bo'yicha qo'llangan chegirma — eng yangi oy birinchi.</param>
+/// <param name="TotalDiscount"><paramref name="Applied"/> yig'indisi.</param>
+/// <param name="Current">Hozir amaldagi yozuv (yo'q bo'lsa null).</param>
+/// <param name="CurrentMonthDiscount">Joriy oy hisoblarida beriladigan chegirma summasi.</param>
+public record StudentDiscountsResponseDto(
+    List<StudentDiscountItemDto> Items,
+    List<StudentDiscountMonthDto> Applied,
+    decimal TotalDiscount,
+    StudentDiscountItemDto? Current,
+    decimal CurrentMonthDiscount);
+
+/// <summary>Chegirma yaratish/tahrirlash tanasi.</summary>
+public record StudentDiscountPayloadDto(
+    int Pct, decimal Amount,
+    string? StartMonth, string? EndMonth, string? Reason, string? GroupId);
+
+/// <summary>Chegirmani bekor qilish tanasi.</summary>
+public record StudentDiscountCancelDto(string? Reason);
+
+/* ══════════════════════ HISOBOT ══════════════════════ */
+
+/// <summary>Hisobot sarlavhasi — "markazda chegirma qanchaga tushyapti".</summary>
+/// <param name="ActiveCount">Hozir amaldagi registr qatorlari soni.</param>
+/// <param name="StudentCount">Chegirmasi bor (arxivlanmagan) o'quvchilar soni.</param>
+/// <param name="TotalStudents">Arxivlanmagan o'quvchilar soni — ulush uchun maxraj.</param>
+/// <param name="PeriodCharged">Davrdagi BARCHA hisoblar yig'indisi (chegirmalilar emas).</param>
+public record DiscountReportSummaryDto(
+    int ActiveCount, int StudentCount, int TotalStudents, decimal StudentSharePct,
+    decimal PeriodCharged, decimal PeriodDiscount, decimal SharePct,
+    decimal CurrentMonthDiscount);
+
+/// <summary>Oy kesimi. Chegirmasiz oy ham 0 bilan qaytadi — grafik uzilmasin.</summary>
+public record DiscountReportMonthDto(string Month, decimal Charged, decimal Discount, int Students);
+
+/// <summary>O'qituvchi kesimi (hisob QAYSI guruhda yozilganiga qarab).</summary>
+public record DiscountReportTeacherDto(
+    string TeacherId, string TeacherName, decimal Charged, decimal Discount, int Students, int Groups);
+
+/// <summary>Guruh kesimi.</summary>
+public record DiscountReportGroupDto(
+    string GroupId, string GroupName, string TeacherName, string CourseName,
+    decimal Charged, decimal Discount, int Students);
+
+/// <summary>O'quvchi kesimi. <c>Pct</c>/<c>Amount</c>/<c>Reason</c> — registrdagi JORIY
+/// (<c>active</c>) qatordan; qator yo'q bo'lsa 0/"" va <c>HasActive = false</c>.</summary>
+public record DiscountReportStudentDto(
+    string StudentId, string StudentName,
+    decimal Charged, decimal Discount, int Months,
+    List<string> GroupNames, List<string> TeacherNames,
+    int Pct, decimal Amount, string Reason, bool HasActive);
+
+/// <summary>Sabab kesimi (registrdagi amaldagi qatorlar bo'yicha). <c>""</c> — sababsiz.</summary>
+public record DiscountReportReasonDto(string Reason, int Count, decimal Discount);
+
+/// <summary>Markaz bo'yicha chegirmalar hisoboti. <c>From</c>/<c>To</c> — "yyyy-MM" (inklyuziv).</summary>
+public record DiscountReportDto(
+    string From, string To,
+    DiscountReportSummaryDto Summary,
+    List<DiscountReportMonthDto> Months,
+    List<DiscountReportTeacherDto> ByTeacher,
+    List<DiscountReportGroupDto> ByGroup,
+    List<DiscountReportStudentDto> ByStudent,
+    List<DiscountReportReasonDto> ByReason,
+    List<StudentDiscountItemDto> Active);

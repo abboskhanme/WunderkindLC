@@ -27,6 +27,7 @@ public interface IAppDbContext
     DbSet<RetentionBonusTrack> RetentionBonusTracks { get; }
     DbSet<StudentGroup> StudentGroups { get; }
     DbSet<StudentNote> StudentNotes { get; }
+    DbSet<StudentDiscount> StudentDiscounts { get; }
     DbSet<Lead> Leads { get; }
     DbSet<LeadStage> LeadStages { get; }
     DbSet<LeadEvent> LeadEvents { get; }

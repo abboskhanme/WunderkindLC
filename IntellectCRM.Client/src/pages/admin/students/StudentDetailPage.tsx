@@ -7,7 +7,7 @@ import {
   CalendarClock, Award, Download, LifeBuoy, Sparkles, Pencil, MessageSquare,
   PhoneIncoming, PhoneOutgoing, PhoneMissed, PhoneCall, MessageSquareText,
   Snowflake, CheckCircle2, RotateCcw, ArrowLeftRight, Plus, NotebookText, X,
-  StickyNote, Gift, Camera,
+  StickyNote, Gift, Camera, BadgePercent,
   DoorOpen, LogIn, LogOut, RefreshCw, Wifi, WifiOff,
 } from 'lucide-react'
 import { genderLabels } from '@/config/constants'
@@ -16,6 +16,7 @@ import {
   ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts'
 import { getStudentNotebook, type StudentNotebook } from '@/api/services/studentNotebook'
+import { getStudentDiscounts, type StudentDiscountsResponse } from '@/api/services/discounts'
 import {
   getStudentCertificates,
   downloadStudentCertificate,
@@ -88,6 +89,7 @@ import { PaymentModal } from './PaymentModal'
 import { AiAnalysisModal } from './AiAnalysisModal'
 import { AiAnalysisView } from './AiAnalysisView'
 import { StudentFormModal } from './StudentFormModal'
+import { DiscountSection } from './DiscountSection'
 import { SmsModal } from './SmsModal'
 import { CallPickerModal, type CallOption } from '@/components/CallPickerModal'
 import { ReasonPromptModal } from '@/components/ui/ReasonPromptModal'
@@ -135,6 +137,7 @@ const tooltipStyle = { borderRadius: 12, border: '1px solid #e2e8f0' }
 type Tab =
   | 'guruhlar'
   | 'tolov'
+  | 'chegirma'
   | 'dastur'
   | 'baholar'
   | 'fikr'
@@ -160,6 +163,9 @@ export function StudentDetailPage() {
   const canWriteTeacherReviews = isBonusAllowed
   // RASM — o'quvchini tahrirlash huquqi bilan bir xil (dumaloq avatarni bosib almashtiriladi).
   const canEditPhoto = can('students.list', 'edit')
+  // CHEGIRMA — berish/tahrirlash/bekor qilish o'quvchini tahrirlash huquqi bilan bir xil.
+  // Ko'rish uchun alohida darvoza YO'Q: sahifaning O'ZI allaqachon `students.list` ostida.
+  const canEditDiscount = can('students.list', 'edit')
   // "Bog'lanish kerak" — ALOHIDA ruxsat (`contacts`), o'quvchi tahririga bog'liq emas.
   const canContact = can('contacts', 'create')
   const [contactOpen, setContactOpen] = useState(false)
@@ -309,6 +315,17 @@ export function StudentDetailPage() {
    */
   const [tabLoadedFor, setTabLoadedFor] = useState<Partial<Record<Tab, string>>>({})
 
+  /** «Chegirma» tabi — o'quvchining chegirma registri (server TO'LIQ javob qaytaradi). */
+  const [discounts, setDiscounts] = useState<StudentDiscountsResponse | null>(null)
+  const [discountError, setDiscountError] = useState('')
+  /**
+   * «Yuklanmoqda» ALOHIDA holat emas, KELTIRIB CHIQARILADI: javob ham, xato ham yo'q ekan —
+   * demak so'rov ketmoqda. Sabab: alohida `setLoading(true)` effekt TANASIDA chaqirilishi
+   * kerak bo'lardi, bu esa `react-hooks/set-state-in-effect` ni buzadi (registr yuklashda
+   * yagona sinxron o'zgarish shu edi).
+   */
+  const discountLoading = discounts === null && discountError === ''
+
   // Bonus — faqat tab ochilganda va faqat admin/superadmin uchun so'raladi (aks holda 403 keladi).
   useEffect(() => {
     if (tab !== 'bonus' || !isBonusAllowed || !id || bonusLoadedFor === id) return
@@ -349,6 +366,28 @@ export function StudentDetailPage() {
     getStudentGradingSummary(id)
       .then(setGradingSummary)
       .catch(() => {})
+  }, [tab, id, tabLoadedFor])
+
+  // Chegirma registri — faqat «Chegirma» tabi ochilganda (qolgan tablar bilan AYNAN bir xil
+  // `tabLoadedFor` naqshi: effekt ichida setState QILINMAYDI, javob kelgach chaqiriladi).
+  useEffect(() => {
+    if (tab !== 'chegirma' || !id || tabLoadedFor.chegirma === id) return
+    let alive = true
+    getStudentDiscounts(id)
+      .then((r) => {
+        if (!alive) return
+        setDiscounts(r)
+        setTabLoadedFor((p) => ({ ...p, chegirma: id }))
+      })
+      .catch((e) => {
+        if (!alive) return
+        setDiscountError(apiErrorMessage(e, "Chegirma ma'lumotini yuklab bo'lmadi"))
+        // Bayroq XATODA ham qo'yiladi — aks holda effekt cheksiz qayta urinardi.
+        setTabLoadedFor((p) => ({ ...p, chegirma: id }))
+      })
+    return () => {
+      alive = false
+    }
   }, [tab, id, tabLoadedFor])
 
   // Test natijalari — faqat «Testlar» tabi ochilganda.
@@ -508,6 +547,8 @@ export function StudentDetailPage() {
     // Tab ma'lumotlari ham tozalanadi — aks holda yangi o'quvchining tabi ochilganda javob
     // kelguncha ESKI o'quvchining ro'yxati ko'rinib turardi. (`tabLoadedFor` tozalanmaydi —
     // u studentId saqlaydi va o'zi eskiradi, qarang: yuqoridagi izoh.)
+    setDiscounts(null)
+    setDiscountError('')
     setCoverageLog([])
     setGradingSummary([])
     setTestResults([])
@@ -993,6 +1034,10 @@ export function StudentDetailPage() {
             <button type="button" className={cn('tab', tab === 'tolov' && 'active')} onClick={() => setTab('tolov')}>
               <History className="mr-1 inline h-3.5 w-3.5" /> To'lov tarixi
             </button>
+            {/* Chegirma — pul bilan bog'liq bo'limlar yonma-yon tursin. */}
+            <button type="button" className={cn('tab', tab === 'chegirma' && 'active')} onClick={() => setTab('chegirma')}>
+              <BadgePercent className="mr-1 inline h-3.5 w-3.5" /> Chegirma
+            </button>
             <button type="button" className={cn('tab', tab === 'dastur' && 'active')} onClick={() => setTab('dastur')}>
               <ListChecks className="mr-1 inline h-3.5 w-3.5" /> O'quv dasturi
             </button>
@@ -1030,6 +1075,24 @@ export function StudentDetailPage() {
               <Sparkles className="mr-1 inline h-3.5 w-3.5" /> AI Tahlil
             </button>
           </div>
+
+          {/* CHEGIRMA — registr, tarix va oylar bo'yicha haqiqatan qo'llangan summa.
+              ⚠️ Har amaldan keyin `reloadKey` oshiriladi: chegirma BALANSGA tegadi, aks holda
+              chap ustundagi eski balans ekranda qolib ketardi. */}
+          {tab === 'chegirma' && (
+            <DiscountSection
+              studentId={data.id}
+              data={discounts}
+              loading={discountLoading}
+              error={discountError}
+              canEdit={canEditDiscount}
+              groups={groups}
+              onChanged={(res) => {
+                setDiscounts(res)
+                setReloadKey((k) => k + 1)
+              }}
+            />
+          )}
 
           {/* Bonus — o'quvchini ushlab turish bonusi holati (faqat o'qish uchun) */}
           {tab === 'bonus' && isBonusAllowed && (
