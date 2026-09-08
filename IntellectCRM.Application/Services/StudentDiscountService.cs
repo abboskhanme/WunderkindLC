@@ -517,7 +517,7 @@ public static class StudentDiscountService
         var groupIds = charges.Where(c => c.GroupId != null).Select(c => c.GroupId!).Distinct().ToList();
         var groups = await db.Classes.AsNoTracking()
             .Where(g => groupIds.Contains(g.Id))
-            .Select(g => new { g.Id, g.Name, g.TeacherId })
+            .Select(g => new { g.Id, g.Name, g.TeacherId, g.CourseId })
             .ToListAsync();
         var teacherIds = groups.Where(g => !string.IsNullOrEmpty(g.TeacherId)).Select(g => g.TeacherId).Distinct().ToList();
         var teachers = await db.Teachers.AsNoTracking()
@@ -525,18 +525,28 @@ public static class StudentDiscountService
             .Select(t => new { t.Id, t.FullName })
             .ToListAsync();
         var teacherById = teachers.ToDictionary(t => t.Id, t => t.FullName);
+        // FAN nomi — ⚠️ ARXIVLANGAN guruh ham kerak (o'quvchi chiqib ketgan guruhning eski oylari
+        // aynan shu jadvalda ko'rinadi), shuning uchun filtr faqat id bo'yicha.
+        var courseIds = groups.Where(g => !string.IsNullOrEmpty(g.CourseId)).Select(g => g.CourseId).Distinct().ToList();
+        var courseById = (await db.Subjects.AsNoTracking()
+                .Where(x => courseIds.Contains(x.Id))
+                .Select(x => new { x.Id, x.Name })
+                .ToListAsync())
+            .ToDictionary(x => x.Id, x => x.Name);
         var groupById = groups.ToDictionary(
             g => g.Id,
-            g => (g.Name, Teacher: teacherById.TryGetValue(g.TeacherId, out var tn) ? tn : ""));
+            g => (g.Name,
+                  Course: courseById.TryGetValue(g.CourseId ?? "", out var cn) ? cn : "",
+                  Teacher: teacherById.TryGetValue(g.TeacherId, out var tn) ? tn : ""));
 
         var applied = charges
             .OrderByDescending(c => c.Month, StringComparer.Ordinal)
             .Select(c =>
             {
-                var (gname, tname) = c.GroupId is not null && groupById.TryGetValue(c.GroupId, out var g)
-                    ? (g.Name, g.Teacher)
-                    : ("", "");
-                return new StudentDiscountMonthDto(c.Month, c.GroupId, gname, tname, c.Amount, c.Discount);
+                var (gname, cname, tname) = c.GroupId is not null && groupById.TryGetValue(c.GroupId, out var g)
+                    ? (g.Name, g.Course, g.Teacher)
+                    : ("", "", "");
+                return new StudentDiscountMonthDto(c.Month, c.GroupId, gname, cname, tname, c.Amount, c.Discount);
             })
             .ToList();
 

@@ -33,8 +33,10 @@ public record StudentDiscountItemDto(
 /// Oyda HAQIQATAN qo'llangan chegirma — <see cref="IntellectCRM.Domain.MonthlyCharge"/> dan
 /// (pul haqiqati registrdan EMAS, hisob qatorlaridan olinadi).
 /// </summary>
+/// <param name="CourseName">Guruhning FANI. ⚠️ Server beradi — klient guruh id bo'yicha topa
+/// OLMAYDI: o'quvchi chiqib ketgan guruhning oylari na faol a'zoliklarda, na registrda bo'ladi.</param>
 public record StudentDiscountMonthDto(
-    string Month, string? GroupId, string GroupName, string TeacherName,
+    string Month, string? GroupId, string GroupName, string CourseName, string TeacherName,
     decimal Charged, decimal Discount);
 
 /// <summary>

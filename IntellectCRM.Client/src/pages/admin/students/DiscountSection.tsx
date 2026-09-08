@@ -153,20 +153,6 @@ export function DiscountSection({
   /** Tarix = amalda BO'LMAGAN qatorlar (almashtirilgan/bekor qilingan). */
   const history = items.filter((it) => it.status !== 'active')
 
-  /**
-   * guruh id → FAN nomi. «Oylar bo'yicha» jadvalidagi fan ustuni shundan to'ldiriladi:
-   * `StudentDiscountMonth` da fan nomi yo'q, lekin `scopes` da bor.
-   */
-  const courseByGroup = (() => {
-    const map = new Map<string, string>()
-    scopes.forEach((s) => { if (s.groupId && s.courseName) map.set(s.groupId, s.courseName) })
-    // Registrdagi SNAPSHOT nomlar — guruh scope'lardan chiqib ketgan bo'lsa ham fan ko'rinsin.
-    items.forEach((it) => {
-      if (it.groupId && it.courseName && !map.has(it.groupId)) map.set(it.groupId, it.courseName)
-    })
-    return map
-  })()
-
   /** Yangi chegirma berish mumkin bo'lgan qamrov qolganmi (hammasida bo'lsa — faqat tahrirlash). */
   const freeScopes = scopes.filter((s) => !s.hasActive)
 
@@ -374,9 +360,7 @@ export function DiscountSection({
                 {applied.map((m, i) => (
                   <tr key={`${m.month}:${m.groupId ?? ''}:${i}`} className="hover:bg-slate-50/60">
                     <td className="px-3 py-2 font-medium text-slate-700">{monthLabel(m.month)}</td>
-                    <td className="px-3 py-2 text-slate-500">
-                      {(m.groupId && courseByGroup.get(m.groupId)) || '—'}
-                    </td>
+                    <td className="px-3 py-2 text-slate-500">{m.courseName || '—'}</td>
                     <td className="px-3 py-2 text-slate-500">{groupLabel(m.groupName)}</td>
                     <td className="px-3 py-2 text-slate-500">{m.teacherName || '—'}</td>
                     <td className="px-3 py-2 text-right font-mono text-slate-600">

@@ -52,6 +52,12 @@ export interface StudentDiscountMonth {
   month: string
   groupId: string | null
   groupName: string
+  /**
+   * Guruhning FANI. ⚠️ SERVERDAN keladi — klientda guruh id bo'yicha topib bo'lmaydi:
+   * o'quvchi guruhdan chiqib ketgan ESKI oylarda o'sha guruh na faol a'zoliklarda,
+   * na registrda bo'ladi va ustun aynan tarixiy qatorlarda bo'sh qolardi.
+   */
+  courseName: string
   teacherName: string
   /** Oy uchun hisoblangan to'liq summa. */
   charged: number
