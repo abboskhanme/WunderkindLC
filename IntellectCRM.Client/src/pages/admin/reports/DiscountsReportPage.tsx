@@ -335,7 +335,7 @@ export function DiscountsReportPage() {
                     />
                     <Tooltip
                       contentStyle={tooltipStyle}
-                      formatter={(v: number) => [formatMoney(v), 'Chegirma']}
+                      formatter={(v) => [formatMoney(Number(v)), 'Chegirma']}
                     />
                     <Bar dataKey="discount" name="Chegirma" fill={C_DISCOUNT} radius={[4, 4, 0, 0]} maxBarSize={26} />
                   </BarChart>
