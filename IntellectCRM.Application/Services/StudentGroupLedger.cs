@@ -26,7 +26,7 @@ public static class StudentGroupLedger
         // Kurs nomi + bir dars yaxlit narxi (LessonPrice) — ikkalasi bitta so'rovda. LessonPrice qisman
         // oylar (aktivlashtirish/muzlatish) previewida TuitionService bilan BIR XIL formula uchun kerak.
         var course = string.IsNullOrEmpty(group.CourseId) ? null
-            : await db.Subjects.Where(s => s.Id == group.CourseId)
+            : await db.Subjects.AsNoTracking().Where(s => s.Id == group.CourseId)
                 .Select(s => new { s.Name, s.LessonPrice }).FirstOrDefaultAsync();
         var courseName = course?.Name ?? group.Name;
         var lessonFee = course?.LessonPrice ?? 0m;
@@ -50,7 +50,7 @@ public static class StudentGroupLedger
         // yig'a olmasdi, to'lov eslatmasi SMS'i ham uni tashlab ketardi — holbuki profilda
         // qarz (manfiy balans) ko'rinib turardi. `GroupBalanceService` allaqachon shunday
         // ayiradi; endi ikkala ekran bitta raqamni ko'rsatadi.
-        var paidByMonth = (await db.FinanceTransactions
+        var paidByMonth = (await db.FinanceTransactions.AsNoTracking()
                 .Where(t => t.StudentId == student.Id && t.GroupId == group.Id && t.Month != null
                             && ((t.Direction == "income" && t.Category == "tuition")
                                 || (t.Direction == "expense" && t.Category == "refund")))
@@ -60,7 +60,10 @@ public static class StudentGroupLedger
             .ToDictionary(g => g.Key, g => g.Sum(x => x.Direction == "expense" ? -x.Amount : x.Amount));
 
         // Mavjud per-guruh hisoblar — HAQIQAT MANBAI (super-admin qo'lda tahrir/Locked shu yerda).
-        var chargeByMonth = (await db.MonthlyCharges
+        // ⚠️ AsNoTracking: ledger faqat O'QIYDI (hech bir chaqiruvchi shu yerdan olingan qatorni
+        // o'zgartirmaydi), qatorlar esa ko'p bo'lishi mumkin — ChangeTracker'ni bekorga to'ldirmaymiz.
+        // Qarzdorlik eslatmasi buni HAR GURUH uchun chaqiradi, ya'ni farq bir sikl ichida yig'iladi.
+        var chargeByMonth = (await db.MonthlyCharges.AsNoTracking()
                 .Where(c => c.StudentId == student.Id && c.GroupId == group.Id)
                 .ToListAsync())
             .GroupBy(c => c.Month).ToDictionary(g => g.Key, g => g.First());

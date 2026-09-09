@@ -1004,7 +1004,10 @@ public class AutoMessageTests
 
         var n = Assert.Single(ctx.UserNotifications);
         Assert.Equal("To'lov eslatmasi", n.Title);
-        Assert.Contains("Jami:", n.Body);           // tizim tuzgan batafsil matn
+        // Tizim tuzgan matn. "Jami:" ATAYIN yo'q — xabar endi HAR FAN uchun alohida ketadi
+        // (bu o'quvchida a'zolik yo'q, ya'ni zaxira yo'l: bitta umumiy xabar).
+        Assert.Contains("qarzdorlik: 500 000 so'm", n.Body);
+        Assert.DoesNotContain("Jami", n.Body);
         Assert.Equal("payment_debt", n.Type);
     }
 
@@ -1110,6 +1113,146 @@ public class AutoMessageTests
         Assert.True(Sends(29));
         Assert.True(Sends(31));
         Assert.True(Sends(1));   // keyingi oy boshi — 31 dan keyin darhol
+    }
+
+    /// <summary>Qarzdor o'quvchining BITTA fandagi a'zoligi: kurs + guruh + shu oyga hisob (qarz).
+    /// <para>⚠️ <c>Group.MonthlyFee = 0</c> ATAYIN: qarz FAQAT yozilgan <see cref="MonthlyCharge"/>
+    /// dan kelsin — aks holda ledger avans oylarini ham (joriy + 3) qarz deb qo'shib yuborardi va
+    /// test kutgan summa suzib ketardi.</para></summary>
+    private static Group DebtSubject(
+        Infrastructure.Data.AppDbContext ctx, Student s, string courseName, decimal owed)
+    {
+        var month = AppClock.Today.ToString("yyyy-MM");
+        var subject = new Subject { Name = courseName };
+        var g = new Group { Name = $"{courseName} A", CourseId = subject.Id, MonthlyFee = 0m };
+        ctx.Subjects.Add(subject);
+        ctx.Classes.Add(g);
+        ctx.StudentGroups.Add(new StudentGroup
+        {
+            StudentId = s.Id, GroupId = g.Id, IsActive = true, Status = "active",
+            JoinedAt = $"{month}-01", ActivatedAt = $"{month}-01",
+        });
+        if (owed > 0)
+            ctx.MonthlyCharges.Add(new MonthlyCharge
+            {
+                StudentId = s.Id, GroupId = g.Id, Month = month, Amount = owed, Date = $"{month}-01",
+            });
+        return g;
+    }
+
+    [Fact]
+    public void Qarzdorlik_HAR_FAN_uchun_ALOHIDA_xabar_yuboriladi()
+    {
+        // Markaz egasining talabi: "2ta fanda o'qisa shu ikki fan uchun alohida alohida borishi
+        // kerak". Ya'ni bitta "jami" xabar EMAS — har fan o'z xabari bilan.
+        using var db = TestDb.Sqlite();
+        var ctx = db.Context;
+        var s = NewStudent();
+        s.Balance = -500000m;
+        ctx.Students.Add(s);
+        DebtSubject(ctx, s, "Ingliz tili", 200000m);
+        DebtSubject(ctx, s, "Matematika", 300000m);
+        ctx.AutoMessageRules.Add(DebtRule());
+        ctx.SaveChanges();
+
+        Reflect.RunAsyncMethod(Payment(ctx, new MessagingStack()), "RunDailyAsync", OddDay(), CancellationToken.None);
+
+        var bodies = ctx.UserNotifications.Select(n => n.Body).ToList();
+        Assert.Equal(2, bodies.Count);
+        var eng = Assert.Single(bodies, b => b.Contains("Ingliz tili"));
+        var mat = Assert.Single(bodies, b => b.Contains("Matematika"));
+        // Har xabarda FAQAT o'z fanining summasi turadi.
+        Assert.Contains("200 000 so'm", eng);
+        Assert.DoesNotContain("300 000", eng);
+        Assert.Contains("300 000 so'm", mat);
+        Assert.DoesNotContain("200 000", mat);
+        // "Jami" fanlarni aralashtirardi — endi umuman yozilmaydi.
+        Assert.All(bodies, b => Assert.DoesNotContain("Jami", b));
+    }
+
+    [Fact]
+    public void Qarzdorlik_bitta_fanda_BITTA_xabar()
+    {
+        using var db = TestDb.Sqlite();
+        var ctx = db.Context;
+        var s = NewStudent();
+        s.Balance = -200000m;
+        ctx.Students.Add(s);
+        DebtSubject(ctx, s, "Ingliz tili", 200000m);
+        ctx.AutoMessageRules.Add(DebtRule());
+        ctx.SaveChanges();
+
+        Reflect.RunAsyncMethod(Payment(ctx, new MessagingStack()), "RunDailyAsync", OddDay(), CancellationToken.None);
+
+        var n = Assert.Single(ctx.UserNotifications);
+        Assert.Contains("Ingliz tili", n.Body);
+        Assert.Contains("200 000 so'm", n.Body);
+    }
+
+    [Fact]
+    public void Qarzdorlik_qarzi_YOQ_fan_uchun_xabar_tuzilmaydi()
+    {
+        using var db = TestDb.Sqlite();
+        var ctx = db.Context;
+        var s = NewStudent();
+        s.Balance = -200000m;
+        ctx.Students.Add(s);
+        DebtSubject(ctx, s, "Ingliz tili", 200000m);
+        DebtSubject(ctx, s, "Matematika", 0m);      // hisobi yo'q — qarz ham yo'q
+        ctx.AutoMessageRules.Add(DebtRule());
+        ctx.SaveChanges();
+
+        Reflect.RunAsyncMethod(Payment(ctx, new MessagingStack()), "RunDailyAsync", OddDay(), CancellationToken.None);
+
+        var n = Assert.Single(ctx.UserNotifications);
+        Assert.Contains("Ingliz tili", n.Body);
+        Assert.DoesNotContain("Matematika", n.Body);
+    }
+
+    [Fact]
+    public void Qarzdorlik_azoligi_YOQ_oquvchiga_avvalgidek_BITTA_xabar()
+    {
+        // ZAXIRA YO'L (eski ClassName modeli): fan kesimi ma'lum emas — qarz umumiy balansdan
+        // olinadi va BITTA xabar ketadi. Bu yo'l o'zgarmasligi kerak.
+        using var db = TestDb.Sqlite();
+        var ctx = db.Context;
+        var s = NewStudent();
+        s.Balance = -450000m;
+        s.ClassName = "Eski guruh";
+        ctx.Students.Add(s);
+        ctx.AutoMessageRules.Add(DebtRule());
+        ctx.SaveChanges();
+
+        Reflect.RunAsyncMethod(Payment(ctx, new MessagingStack()), "RunDailyAsync", OddDay(), CancellationToken.None);
+
+        var n = Assert.Single(ctx.UserNotifications);
+        Assert.Contains("Eski guruh", n.Body);
+        Assert.Contains("450 000 so'm", n.Body);
+    }
+
+    [Fact]
+    public void Qarzdorlik_qoida_matnida_tokenlar_HAR_FAN_boyicha_toladi()
+    {
+        // {qarzdorlik} — jami emas, SHU fanning qarzi; {kurs}/{guruh} — shu xabarning guruhi
+        // (ilgari ikkalasi ham eskirgan `Student.ClassName` dan olinardi).
+        using var db = TestDb.Sqlite();
+        var ctx = db.Context;
+        var s = NewStudent();
+        s.Balance = -500000m;
+        s.ClassName = "Eski guruh";   // ataylab ESKIRGAN yorliq — u endi ishlatilmasligi kerak
+        ctx.Students.Add(s);
+        DebtSubject(ctx, s, "Ingliz tili", 200000m);
+        DebtSubject(ctx, s, "Matematika", 300000m);
+        ctx.AutoMessageRules.Add(DebtRule("{kurs} ({guruh}) — {qarzdorlik}"));
+        ctx.SaveChanges();
+
+        Reflect.RunAsyncMethod(Payment(ctx, new MessagingStack()), "RunDailyAsync", OddDay(), CancellationToken.None);
+
+        var bodies = ctx.UserNotifications.Select(n => n.Body).ToList();
+        Assert.Equal(2, bodies.Count);
+        Assert.Contains("Ingliz tili (Ingliz tili A) — 200 000 so'm", bodies);
+        Assert.Contains("Matematika (Matematika A) — 300 000 so'm", bodies);
+        Assert.All(bodies, b => Assert.DoesNotContain("Eski guruh", b));
     }
 
     // ===================== 8) Erkin (jadvalli) eslatma =====================

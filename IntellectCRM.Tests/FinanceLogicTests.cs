@@ -932,4 +932,49 @@ public class FinanceLogicTests
         MembershipLifecycle.TruncatePastPeriodsAfter(bosh, "2026-03-01");
         Assert.Empty(bosh.PastPeriods);
     }
+
+    /* =========================================================================================
+     *  O'QUVCHI YARATISHDA a'zolik AKTIVLASHISH SANASI (ActivationStartForCreate)
+     *
+     *  ⚠️ Nima uchun bu qoida bor: o'quvchi yaratish/IMPORT yo'li qisman oylik YOZMAYDI, ya'ni
+     *  orqaga sanalgan qabul sanasi qoldirilsa `AccrueDue` ning 12 soatlik skaneri o'sha oylarga
+     *  qarz yozar va ota-onalarga to'lov eslatmasi SMS'i ketardi. Ommaviy importda bu yuzlab
+     *  yolg'on qarz degani (`.claude/rules/membership-periods.md` §6, §9).
+     * ====================================================================================== */
+
+    private static readonly DateOnly Bugun = new(2026, 9, 9);
+
+    [Fact]
+    public void ActivationStart_ORQAGA_sanalgan_qabul_sanasi_JORIY_OY_boshiga_qirqiladi()
+    {
+        // O'tgan yilgi qabul sanasi bilan import — qarz o'tmishga yozilib ketmasin.
+        Assert.Equal("2026-09-01", MembershipLifecycle.ActivationStartForCreate("2024-01-15", Bugun));
+        // Bir oy oldingi sana ham qirqiladi.
+        Assert.Equal("2026-09-01", MembershipLifecycle.ActivationStartForCreate("2026-08-31", Bugun));
+    }
+
+    [Fact]
+    public void ActivationStart_JORIY_OY_ichidagi_sana_TEGILMAYDI()
+    {
+        // Oy boshi — chegaraning O'ZI, qirqilmaydi.
+        Assert.Equal("2026-09-01", MembershipLifecycle.ActivationStartForCreate("2026-09-01", Bugun));
+        Assert.Equal("2026-09-09", MembershipLifecycle.ActivationStartForCreate("2026-09-09", Bugun));
+    }
+
+    [Fact]
+    public void ActivationStart_KELAJAKDAGI_sana_TEGILMAYDI()
+    {
+        // Oldinga sanash xavfli emas: u paytgacha a'zolik pullik bo'lmaydi.
+        Assert.Equal("2026-12-01", MembershipLifecycle.ActivationStartForCreate("2026-12-01", Bugun));
+    }
+
+    [Fact]
+    public void ActivationStart_BUZUQ_yoki_BOSH_sana_ham_OY_BOSHIGA_tushadi()
+    {
+        // ⚠️ Eng muhim holat: ilgari aynan SANASIZ qator "boshidan beri pullik" bo'lib o'qilar,
+        // teglanmagan to'lovni chiqib ketilgan guruhga ham bo'lib berardi.
+        Assert.Equal("2026-09-01", MembershipLifecycle.ActivationStartForCreate("", Bugun));
+        Assert.Equal("2026-09-01", MembershipLifecycle.ActivationStartForCreate(null, Bugun));
+        Assert.Equal("2026-09-01", MembershipLifecycle.ActivationStartForCreate("2026-13-99", Bugun));
+    }
 }

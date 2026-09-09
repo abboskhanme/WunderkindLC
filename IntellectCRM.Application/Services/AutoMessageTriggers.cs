@@ -84,8 +84,8 @@ public static class AutoMessageTriggers
 
         new(PaymentDebt,
             "Qarzdorlik eslatmasi",
-            "Balansi manfiy o'quvchilarga har oyning 1-sanasida, keyin har 2 kunda eslatma. Matn IXTIYORIY: yozsangiz — o'sha matn ({qarzdorlik} = jami qarz) yuboriladi; BO'SH qoldirsangiz — tizim har kurs bo'yicha batafsil qarz ro'yxatini o'zi tuzadi.",
-            new[] { "{ism}", "{fish}", "{qarzdorlik}", "{guruh}", "{telefon}", "{markaz}" },
+            "Balansi manfiy o'quvchilarga har oyning 1-sanasida, keyin har 2 kunda eslatma. ⚠️ Xabar HAR FAN (kurs) uchun ALOHIDA yuboriladi: o'quvchi ikki fanda o'qisa ikkita alohida xabar (va ikkita SMS) ketadi — {qarzdorlik}, {kurs}, {guruh} va {oqituvchi} har birida SHU fanning qiymati bo'ladi. Matn IXTIYORIY: bo'sh qoldirsangiz tizim matnni o'zi tuzadi (\"F.I.Sh — Kurs bo'yicha qarzdorlik: summa\").",
+            new[] { "{ism}", "{fish}", "{qarzdorlik}", "{kurs}", "{guruh}", "{oqituvchi}", "{telefon}", "{markaz}" },
             Sms: true, Push: true, Telegram: true,
             SupportsSchedule: false, SupportsSendScope: false,
             Audiences: new[] { "parents", "students", "teachers" }, DefaultAudience: "parents",

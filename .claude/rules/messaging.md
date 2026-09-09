@@ -85,6 +85,9 @@ paths:
   (`DispatchAttendanceAbsentAsync(..., group)`) ham guruhni UZATADI; berilmasa o'quvchining asosiy
   (ClassName) guruhi olinadi. `PaymentReminderService`/`CustomReminderService` ommaviy sikllarda
   guruh+o'qituvchi lug'ati BIR MARTA yuklanadi (ilgari bu ikkisida {dars_*} bo'sh chiqardi).
+  ⚠️ `PaymentReminderService` da guruh konteksti endi HAR XABARNING O'Z guruhidan olinadi
+  (pastdagi «QARZDORLIK ESLATMASI — HAR FAN ALOHIDA»), `ClassName` yorlig'i esa faqat a'zoligi
+  BO'LMAGAN o'quvchining zaxira yo'lida ishlatiladi.
   **TOZALANGAN (migratsiya `MessagingCleanup`):** `ReminderRule` entity+DbSet, `RemindersController`
   (`api/admin/reminders`), `ReminderTriggers`, `SmsTemplate.Trigger/IsAuto` ustunlari, Program.cs bir
   martalik seed bloki — hammasi O'CHIRILGAN (avto-xabar to'liq AutoMessageRule'da). `SmsTemplate` faqat
@@ -562,3 +565,30 @@ ko'rinmagan agent — normal holat, uni o'tkazib yuborsak ISHLAYOTGAN sozlamani 
 uyg'otilishi bo'lishi mumkin. Stale = *"ko'rgan edik, lekin ancha oldin"*.
 
 Testlar: `IntellectCRM.Tests/SmsGuardTests.cs`.
+
+## QARZDORLIK ESLATMASI — HAR FAN UCHUN ALOHIDA XABAR (2026-09-09)
+
+`PaymentReminderService` (trigger `payment_debt`) o'quvchiga BITTA xabar yubormaydi: **har fan
+(kurs/guruh) uchun ALOHIDA xabar** tuziladi va u BARCHA kanallarga (ilova tarixi, Telegram, push,
+SMS) alohida ketadi. Ikki fanda o'qiydigan o'quvchining ota-onasi ikkita eslatma oladi.
+
+⚠️ **NARX — ONGLI kelishuv:** N fan = N SMS (markaz egasining aniq talabi). Shuning uchun tizim
+matni QISQARTIRILGAN («F.I.Sh — Kurs bo'yicha qarzdorlik: summa» + bitta iltimos qatori) va
+«Jami» qatori butunlay OLIB TASHLANDI — u fanlarni aralashtirib, xabarni yolg'on qilardi.
+
+⚠️ **Token konteksti PER-GURUH:** `{qarzdorlik}` — SHU fanning qarzi (jami EMAS), `{kurs}`,
+`{guruh}`, `{oqituvchi}`, `{dars_*}` — SHU xabarning guruhidan. Ilgari hammasi eskirgan
+`Student.ClassName` dan olinardi (u faqat BIRINCHI guruhda yoziladi va yangilanmaydi —
+`StudentMembershipView` izohi), ya'ni guruh almashtirgan o'quvchida yolg'on ma'lumot chiqardi.
+
+⚠️ **ZAXIRA YO'L o'zgarmagan:** a'zoligi yo'q (eski `ClassName` modeli) qarzdorga avvalgidek
+BITTA xabar — qarz `Student.Balance` dan. U yerda fan kesimi umuman ma'lum emas.
+
+⚠️ Qarzi YO'Q fan uchun xabar TUZILMAYDI; bitta guruhda bir nechta a'zolik qatori bo'lsa ham
+xabar BITTA (`MembershipLifecycle.PrimaryMembership`).
+
+⚠️ Yuborish yo'lida SMS **dedupe YO'Q** (`SmsLog` faqat jurnal, `AutoMessageSmsSender` har
+chaqiruvda yangi `SmsBatch` yozadi) — bir raqamga ketma-ket ikki SMS yutilmaydi. Matnlar ham fan
+nomi bilan har xil. Log qatori qarzdor sonini va XABAR sonini ALOHIDA yozadi.
+
+Testlar: `IntellectCRM.Tests/AutoMessageTests.cs` (§7 «Qarzdorlik eslatmasi»).

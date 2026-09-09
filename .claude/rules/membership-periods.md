@@ -157,12 +157,18 @@ biriktirish) ilgari `active`/`frozen` a'zolikni yaratar, lekin `ActivatedAt`/`Fr
 Endi ikkalasi ham to'g'rilandi: `ActivatedAt = enrollment` (yoki `FrozenAt = enrollment`), va
 `BillableInMonth` haqiqiy sanani TALAB qiladi.
 
-⚠️ **QABUL QILINGAN xatti-harakat o'zgarishi:** shu yo'l bilan yaratilgan `active` a'zolik endi
-`AccrueMonth` tomonidan **`enrollment` dan boshlab** hisoblanadi. Mavjud qatorlar TEGILMAGAN
-(backfill YO'Q), ya'ni deploy paytida bironta ham yangi hisob paydo bo'lmaydi. Lekin **orqaga
-sanalgan `enrollment` bilan ommaviy IMPORT qilinsa** — 12 soat ichida o'sha oylar uchun qarz
-yoziladi va §6 dagi "ota-onalarga avto-SMS to'lqini" xavfi aynan shu yerda yuzaga keladi.
+⚠️ **ORQAGA SANALGAN QABUL SANASI QIRQILADI** — `MembershipLifecycle.ActivationStartForCreate`:
+`ActivatedAt` = qabul sanasi, lekin **joriy oy boshidan orqaga o'tmaydi** (buzuq/bo'sh sana ham
+oy boshiga tushadi).
 
-**Import qilishdan oldin:** `enrollment` sanalarini tekshiring; tarixiy o'quvchilarni
-`trial` holatida yuklab, keyin «Aktivlashtirish» bilan kerakli sanadan aktivlashtirish
-xavfsizroq (u qisman oylikni ham to'g'ri yozadi).
+Sabab: bu yo'l qisman oylik (prorate) YOZMAYDI va bo'shliqlarni ongli to'ldirmaydi — u shunchaki
+"shu o'quvchi shu guruhda" deb qayd qiladi. Orqaga sanalgan qiymat qolsa, `AccrueDue` ning 12
+soatlik skaneri o'sha oylarni pullik deb topib qarz yozar va to'lov eslatmasi SMS'i ota-onalarga
+ketardi — **ommaviy importda bu bir zumda yuzlab yolg'on qarz** degani. §6 aynan shu xavfdan
+qo'riqlaydi.
+
+⚠️ Haqiqatan o'tmishdagi sanadan aktivlashtirish kerak bo'lsa — **«Aktivlashtirish» oynasi**:
+u qisman oylikni to'g'ri yozadi va catch-up ni ONGLI chaqiradi (`AccrueCatchUpAsync`).
+
+Mavjud qatorlar TEGILMAGAN (backfill YO'Q) — deploy paytida bironta ham yangi hisob paydo
+bo'lmaydi. Testlar: `FinanceLogicTests` → `ActivationStart_*` (4 ta).

@@ -221,6 +221,33 @@ public static class MembershipLifecycle
         return string.CompareOrdinal(month, left[..7]) <= 0;
     }
 
+    /// <summary>
+    /// O'quvchi YARATISH yo'lida (forma · CSV import · <c>Update</c> orqali guruh biriktirish)
+    /// a'zolikka qo'yiladigan <c>ActivatedAt</c>: qabul sanasi, lekin <paramref name="today"/>
+    /// oyining boshidan ORQAGA o'tmaydi.
+    ///
+    /// <para>⚠️ NEGA QIRQILADI: bu yo'l qisman oylik (prorate) YOZMAYDI va bo'shliqlarni ongli
+    /// to'ldirmaydi — u shunchaki "shu o'quvchi shu guruhda" deb qayd qiladi. Orqaga sanalgan
+    /// qiymat qoldirilsa, <c>AccrueDue</c> ning 12 soatlik skaneri o'sha oylarni PULLIK deb
+    /// topib qarz yozardi va to'lov eslatmasi SMS'i ota-onalarga ketardi — OMMAVIY importda bu
+    /// bir zumda yuzlab yolg'on qarzga aylanadi. <c>.claude/rules/membership-periods.md</c>
+    /// §6 aynan shu "kutilmagan qarz + avto-SMS to'lqini" xavfidan qo'riqlaydi.</para>
+    ///
+    /// <para>Haqiqatan o'tmishdagi sanadan aktivlashtirish kerak bo'lsa — «Aktivlashtirish»
+    /// oynasi ishlatiladi: u qisman oylikni to'g'ri yozadi va catch-up ni ONGLI chaqiradi.</para>
+    ///
+    /// <para>⚠️ Buzuq yoki bo'sh sana ham oy boshiga tushadi — "active", lekin SANASIZ qator
+    /// qolib ketmasin (aynan shu qator ilgari "boshidan beri pullik" bo'lib o'qilardi).</para>
+    /// </summary>
+    public static string ActivationStartForCreate(string? enrollment, DateOnly today)
+    {
+        var monthStart = today.ToString("yyyy-MM") + "-01";
+        var value = enrollment ?? string.Empty;
+        if (!IsDate(value)) return monthStart;
+        // ISO sanalar leksikografik solishtiriladi (loyihadagi boshqa sana taqqoslashlari kabi).
+        return string.CompareOrdinal(value, monthStart) < 0 ? monthStart : value;
+    }
+
     /// <inheritdoc cref="BillableInMonth(string,string,string,string)"/>
     /// <remarks>Entity varianti YOPILGAN davrlarni ham, <see cref="NotLeftBeforeMonth"/> chegarasini
     /// ham qo'llaydi — chaqiruvchilar a'zoliklarni FILTRLAMASDAN uzatadi

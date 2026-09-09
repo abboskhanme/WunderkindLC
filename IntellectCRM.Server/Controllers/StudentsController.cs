@@ -696,7 +696,18 @@ public class StudentsController(
                 // Endi sana = qabul sanasi: "active" tanlansa hisob shu sanadan yuritiladi
                 // (qabul oyining O'ZI qisman hisobsiz qoladi — u faqat «Aktivlashtirish»
                 // oynasida yoziladi), "frozen" tanlansa esa a'zolik boshidanoq to'xtatilgan.
-                ActivatedAt = memberStatus == "active" ? enrollment : string.Empty,
+                //
+                // ⚠️ ORQAGA SANALGAN QABUL SANASI QIRQILADI (`MembershipLifecycle.ActivationStartForCreate`). Sabab:
+                // `AccrueDue` har 12 soatda butun tarixni skanerlaydi, ya'ni eski `enrollment`
+                // bilan OMMAVIY IMPORT qilinsa bir necha oylik qarz JIMGINA yozilib, ota-onalarga
+                // avto-SMS to'lqini ketardi (`.claude/rules/membership-periods.md` §6 aynan shu
+                // xavfdan qo'riqlaydi). Bu yo'l qisman oylik ham YOZMAYDI, ya'ni orqaga sanashning
+                // to'g'ri natijasi baribir chiqmasdi. Haqiqatan o'tmishdan aktivlashtirish kerak
+                // bo'lsa — «Aktivlashtirish» oynasi: u qisman oylikni yozadi va bo'shliqlarni
+                // ONGLI ravishda (`AccrueCatchUpAsync`) to'ldiradi.
+                ActivatedAt = memberStatus == "active"
+                    ? MembershipLifecycle.ActivationStartForCreate(enrollment, AppClock.Today)
+                    : string.Empty,
                 FrozenAt = memberStatus == "frozen" ? enrollment : string.Empty,
                 // RecordedAt — HAQIQIY bugungi sana (enrollment ORQAGA sanalgan bo'lishi mumkin).
                 // Jurnalda undan OLDINGI, allaqachon davomati olingan darslar avto-"keldi" ✓
