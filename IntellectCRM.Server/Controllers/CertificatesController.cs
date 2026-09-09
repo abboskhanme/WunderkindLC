@@ -94,11 +94,19 @@ public class CertificatesController(AppDbContext db, CertificateService certServ
             from sg in db.StudentGroups
             join g in db.Classes on sg.GroupId equals g.Id
             where sg.StudentId == studentId && courseIds.Contains(g.CourseId)
-            select new { g.CourseId, g.Name })
+            select new { g.CourseId, g.Name, sg.IsActive, sg.Status, sg.JoinedAt })
             .ToListAsync();
+        // Bir kursda bir nechta guruh bo'lsa — TIRIK a'zolik, so'ng holat (faol → sinov →
+        // muzlatilgan), so'ng eng yangi qo'shilgani. ⚠️ Ilgari yalang `grp.First()` edi: tartib
+        // yo'q, tirik/chiqib ketgan ajratilmasdi — sertifikatda TASODIFIY (ko'pincha eski,
+        // muzlatilgan) guruh nomi chiqardi.
         var groupByCourse = groupNamesByCourse
             .GroupBy(x => x.CourseId)
-            .ToDictionary(grp => grp.Key, grp => grp.First().Name);
+            .ToDictionary(grp => grp.Key, grp => grp
+                .OrderByDescending(x => x.IsActive)
+                .ThenBy(x => MembershipLifecycle.StateRank(x.Status))
+                .ThenByDescending(x => x.JoinedAt ?? string.Empty, StringComparer.Ordinal)
+                .First().Name);
 
         return certs.Select(c => new StudentCompletedCourseDto(
             CertificateId: c.Id,
@@ -279,7 +287,13 @@ public class CertificatesController(AppDbContext db, CertificateService certServ
             ExpiresAt: cert?.ExpiresAt?.ToString("yyyy-MM-dd") ?? "",
             Status: cert?.Status ?? "not_found",
             HashMatched: verification.HashMatched,
-            Metadata: cert?.Metadata ?? "",
+            // ⚠️ `Metadata` BERILMAYDI. Bu endpoint `[AllowAnonymous]` — sertifikatdagi QR kodni
+            // skanerlagan HAR KIM ochadi. `Metadata` esa ADMIN yozgan erkin matn (sertifikat
+            // yaratishdagi `Notes`, guruh yopishdagi `CompletionNotes` — u BUTUN bitiruvchi
+            // guruhga birdek yoziladi), ya'ni "to'lovni to'lamadi, sertifikat ijtimoiy sabab
+            // bilan berildi" kabi ichki izoh o'quvchining ismi yonida ommaga chiqib ketardi.
+            // Tekshiruvga kerak bo'lgani — ISM, KURS, SANA va HOLAT; izoh emas.
+            Metadata: "",
             ErrorMessage: verification.IsValid ? "" : "Sertifikat yaroqsiz yoki topilmadi"));
     }
 
@@ -294,12 +308,22 @@ public class CertificatesController(AppDbContext db, CertificateService certServ
         {
             var user = await db.Users.FindAsync(uid);
             if (user is null) return null;
-            var phone = new string(user.Email.Where(char.IsDigit).ToArray());
-            return (await db.Students.Where(s => !s.IsArchived).ToListAsync())
-                .FirstOrDefault(s =>
-                    new string(s.ParentPhone.Where(char.IsDigit).ToArray()) == phone ||
-                    new string(s.FatherPhone.Where(char.IsDigit).ToArray()) == phone ||
-                    new string(s.MotherPhone.Where(char.IsDigit).ToArray()) == phone);
+
+            // ⚠️ BO'SH RAQAM — BOSHQA ODAMNING FARZANDI. `ParentPhone`/`FatherPhone`/`MotherPhone`
+            // ning uchalasi ham `""` bilan boshlanadi (`Entities.cs`), ya'ni raqamsiz login
+            // (`Email` da bironta ham raqam yo'q) bo'sh satrni bo'sh satrga tenglashtirib,
+            // ota-onasi telefoni to'ldirilmagan BIRINCHI o'quvchini qaytarardi — va u ota-ona
+            // begona bolaning sertifikatini yuklab olardi. `StudentPortalController` da
+            // bu qo'riqchi BOR edi, bu yerda esa tushib qolgan.
+            var norm = PhoneUtil.Normalize(user.Email);
+            if (string.IsNullOrEmpty(norm)) return null;
+
+            // Telefonlar bazaga har doim `PhoneUtil.Normalize` bilan kanonik ko'rinishda
+            // yoziladi, shuning uchun solishtirish SERVERDA (butun jadvalni xotiraga
+            // tortmasdan) — `StudentPortalController.MyStudentAsync` bilan AYNAN bir xil.
+            return await db.Students.AsNoTracking()
+                .FirstOrDefaultAsync(s => !s.IsArchived
+                    && (s.ParentPhone == norm || s.FatherPhone == norm || s.MotherPhone == norm));
         }
 
         return await db.Students.FirstOrDefaultAsync(s => s.UserId == uid);

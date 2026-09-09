@@ -253,12 +253,23 @@ public static class StudentJournalBuilder
         return (memberships, groups, courseNames, teacherNames);
     }
 
-    /// <summary>Guruh tanlovi ro'yxati: avval FAOL a'zoliklar, keyin nom bo'yicha.</summary>
+    /// <summary>
+    /// Guruh tanlovi ro'yxati: avval TIRIK a'zoliklar, ular ichida HOLAT bo'yicha
+    /// (faol → sinov → muzlatilgan), keyin nom bo'yicha.
+    ///
+    /// <para>⚠️ Birinchi band STANDART tanlanadi. Ilgari saralash faqat <c>IsActive</c> ga
+    /// qarardi — muzlatish esa <c>IsActive</c> ni O'ZGARTIRMAYDI, ya'ni muzlatilgan va aktiv
+    /// a'zolik teng chiqib, tartib ALIFBOGA tushardi: o'quvchi eski guruhida muzlatilib
+    /// yangisida o'qiyotgan bo'lsa, jurnal ESKI guruh bilan ochilardi.</para>
+    /// </summary>
     private static List<StudentJournalGroupDto> OptionsOf(
         List<Group> groups, List<StudentGroup> memberships,
         Dictionary<string, string> courseNames, Dictionary<string, string> teacherNames) =>
         groups
             .OrderByDescending(g => memberships.Any(m => m.GroupId == g.Id && m.IsActive))
+            .ThenBy(g => memberships.Where(m => m.GroupId == g.Id && m.IsActive)
+                .Select(m => MembershipLifecycle.StateRank(m.Status))
+                .DefaultIfEmpty(int.MaxValue).Min())
             .ThenBy(g => g.Name, StringComparer.OrdinalIgnoreCase)
             .Select(g => new StudentJournalGroupDto(
                 g.Id, g.Name,

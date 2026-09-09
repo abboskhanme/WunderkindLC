@@ -321,12 +321,22 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
                           "Avval o'quvchilarni chiqaring yoki arxivlang.",
             });
 
+        // ⚠️ HAMMASI BITTA TRANZAKSIYADA. `ExecuteDeleteAsync`/`ExecuteUpdateAsync` o'z SQL'ini
+        // DARHOL yuboradi va `SaveChangesAsync` ni KUTMAYDI — ya'ni oldingi kodda (izohida
+        // "atomic" deb yozilgan bo'lsa ham) o'chirishlar allaqachon bajarilib, keyingi
+        // `SaveChangesAsync` yiqilsa BALANS TUZATISHLARI yo'qolardi va o'quvchilarda
+        // tushuntirib bo'lmaydigan qarz qolib ketardi. Endi atomiklik HAQIQATAN ta'minlanadi.
+        await using var trx = await db.Database.BeginTransactionAsync();
+
         // Bog'liq qatorlar orphan qolmasin: a'zoliklar (o'tganlar ham), jurnal yozuvlari, dars eslatmalari,
         // shu guruhga tegishli per-guruh oylik hisoblar (aks holda ledger yo'q guruhni hisoblardi).
-        // ATOMIC bulk delete at DB level (race-condition safe, crash-safe).
-        var chargesDeleted = await db.MonthlyCharges
-            .Where(c => c.GroupId == id)
-            .ExecuteDeleteAsync();
+        //
+        // ⚠️ HISOBLAR SHUNCHAKI O'CHIRILMAYDI — avval BALANSGA QAYTARILADI. Har hisob yaratilganda
+        // `Student.Balance` effektiv miqdorda kamaygan (`TuitionService.AccrueOne`); qatorni
+        // balansga tegmasdan o'chirish o'quvchida MANGU soxta qarz qoldirardi (sabab va batafsil
+        // izoh: `MembershipBilling.CreditAndDropGroupChargesAsync`).
+        var credit = await MembershipBilling.CreditAndDropGroupChargesAsync(db, id);
+        var chargesDeleted = credit.Rows;
 
         var sgDeleted = await db.StudentGroups
             .Where(sg => sg.GroupId == id)
@@ -341,7 +351,7 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
             .ExecuteDeleteAsync();
 
         // Moliya tarixi SAQLANADI, lekin yo'q guruhga ishora qilmasin — GroupId tozalanadi (to'lov qoladi).
-        await db.FinanceTransactions.Where(t => t.GroupId == id)
+        var untagged = await db.FinanceTransactions.Where(t => t.GroupId == id)
             .ExecuteUpdateAsync(s => s.SetProperty(t => t.GroupId, (string?)null));
 
         db.Classes.Remove(cls);
@@ -352,7 +362,15 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
             reason.Length > 0 ? reason : null, actor);
         audit.Record("Group", id, "delete",
             $"Guruh o'chirildi ({cls.Name})" + (reason.Length > 0 ? $" — sabab: {reason}" : ""));
+        // PUL HARAKATI TARIXDA QOLSIN: nechta hisob bekor qilindi, kimlarga qancha qaytarildi va
+        // nechta to'lov guruh tegisiz qoldi. Usiz "balansim nega o'zgardi" savoli javobsiz qolardi.
+        if (credit.Rows > 0 || untagged > 0)
+            audit.Record(AuditService.EntityClassFee, id, "delete",
+                $"Guruh o'chirildi ({cls.Name}) — {credit.Rows} ta oylik hisob bekor qilindi, " +
+                $"{credit.Students} ta o'quvchi balansiga {AuditService.Money(credit.Credited)} so'm qaytarildi" +
+                (untagged > 0 ? $"; {untagged} ta to'lov guruh tegisiz qoldi" : ""));
         await db.SaveChangesAsync();
+        await trx.CommitAsync();
         return NoContent();
     }
 
@@ -372,7 +390,22 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
         cls.IsArchived = true;
         cls.ArchivedAt = today;
 
-        var students = await db.Students.Where(s => s.ClassName == cls.Name && !s.IsArchived).ToListAsync();
+        // KIM ARXIVLANADI — a'zolik bo'yicha: shu guruhda TIRIK a'zoligi bor va BOSHQA (arxivlanmagan)
+        // guruhda tirik a'zoligi YO'Q o'quvchilar.
+        //
+        // ⚠️ Ilgari tanlov `Student.ClassName == cls.Name` edi. Bu yorliq BIRINCHI qo'shilgan
+        // guruhda qotib qoladi (`AddMember`: faqat bo'sh bo'lsa yoziladi) va guruh nomlari UNIKAL
+        // emas — natijada allaqachon BOSHQA guruhga o'tib ketgan o'quvchi ham arxivlanardi
+        // (arxivlangan o'quvchiga esa oylik hisoblanmaydi — ya'ni u jimgina to'lovdan chiqib
+        // ketardi), shu guruhda haqiqatan o'qiyotgani esa (yorlig'i boshqacha bo'lsa) qolib ketardi.
+        var archiveIds = await StudentMembershipView.ArchivableWithGroupAsync(db, cls.Id);
+        var students = await db.Students
+            .Where(s => !s.IsArchived
+                        && (archiveIds.Contains(s.Id)
+                            // ORQAGA MOSLIK: a'zolik yozuvi UMUMAN bo'lmagan eski o'quvchilar
+                            // avvalgidek yorliq bo'yicha topiladi.
+                            || (s.ClassName == cls.Name && !db.StudentGroups.Any(m => m.StudentId == s.Id))))
+            .ToListAsync();
         foreach (var s in students)
         {
             s.IsArchived = true;
@@ -404,8 +437,13 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
         // (a'zoliklar muzlatilganicha qoladi — kerak bo'lsa qo'lda aktivlashtiriladi).
         if (cls.Status == "archived") cls.Status = "active";
 
+        // Qaytariladiganlar — shu guruh bilan arxivlanganlar (`ArchivedWithClass`): a'zoligi shu
+        // guruhda bo'lganlar YOKI (eski yozuvlar) yorlig'i shu guruh nomi bo'lganlar.
+        var memberIds = await db.StudentGroups.Where(m => m.GroupId == cls.Id)
+            .Select(m => m.StudentId).Distinct().ToListAsync();
         var students = await db.Students
-            .Where(s => s.ClassName == cls.Name && s.IsArchived && s.ArchivedWithClass).ToListAsync();
+            .Where(s => s.IsArchived && s.ArchivedWithClass
+                        && (memberIds.Contains(s.Id) || s.ClassName == cls.Name)).ToListAsync();
         foreach (var s in students)
         {
             s.IsArchived = false;

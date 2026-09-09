@@ -20,15 +20,38 @@ public static class StudentLedger
 
     public static async Task<StudentLedgerDto> BuildAsync(IAppDbContext db, Student student)
     {
+        // JORIY EFFEKTIV OYLIK ("keyingi oy nima hisoblanadi") — o'quvchining BARCHA AKTIV guruh
+        // a'zoliklari narxlari YIG'INDISI, chegirma HAR GURUH uchun alohida ayrilgan
+        // (`TuitionService.AccrueMonth` bilan AYNAN bir xil qoida: sinov va muzlatilgan
+        // a'zoliklarga oylik hisoblanmaydi).
+        //
+        // ⚠️ Ilgari bu yerda faqat `Student.ClassName` guruhining narxi olinardi. U BIRINCHI
+        // qo'shilgan guruhda qotib qoladi, ya'ni: ikki kursda o'qiyotgan o'quvchi "oylik 500 000"
+        // ko'rardi (jadvalda esa 900 000 hisoblangan), eski guruhida muzlatilgan o'quvchiga esa
+        // hamon o'sha guruh narxi ko'rsatilardi. ⚠️ FAQAT KO'RSATISH — hisob/balans bu yerda
+        // O'ZGARMAYDI (`StudentLedgerDto.MonthlyFee` boshqa hech qayerda ishlatilmaydi).
         var classNameGroup = await db.Classes.FirstOrDefaultAsync(c => c.Name == student.ClassName);
-        var rawFee = classNameGroup?.MonthlyFee ?? 0m;
-        // Joriy effektiv oylik (yangi oy uchun nima hisoblanadi) — chegirma ayirilgan.
-        // Joriy effektiv oylik — chegirma faqat amal qilish davrida (DiscountStartMonth..EndMonth) qo'llanadi.
-        // Guruh konteksti — asosiy (ClassName) guruh: chegirma boshqa guruhga biriktirilgan bo'lsa 0.
-        // Chegirma REGISTRDAN (`.claude/rules/discounts.md`): bitta o'quvchi — bitta yengil so'rov.
         var discounts = (await DiscountBook.LoadForStudentAsync(db, student.Id)).For(student.Id);
-        var fee = rawFee - TuitionService.DiscountForMonth(
-            discounts, rawFee, TuitionService.CurrentMonth(), classNameGroup?.Id);
+        var currentMonth = TuitionService.CurrentMonth();
+        var liveMemberships = await StudentMembershipView.LiveMembershipsAsync(db, student.Id);
+        var billableGroupIds = liveMemberships
+            .Where(m => m.Status == "active").Select(m => m.GroupId).Distinct().ToList();
+        var billableGroups = billableGroupIds.Count == 0
+            ? new List<Group>()
+            : await db.Classes.Where(c => billableGroupIds.Contains(c.Id)).ToListAsync();
+        decimal fee;
+        if (billableGroups.Count > 0)
+        {
+            fee = billableGroups.Sum(g =>
+                g.MonthlyFee - TuitionService.DiscountForMonth(discounts, g.MonthlyFee, currentMonth, g.Id));
+        }
+        else
+        {
+            // ORQAGA MOSLIK: aktiv a'zolik yo'q (yoki umuman a'zolik yo'q) — eski ClassName narxi.
+            var rawFee = classNameGroup?.MonthlyFee ?? 0m;
+            fee = rawFee - TuitionService.DiscountForMonth(
+                discounts, rawFee, currentMonth, classNameGroup?.Id);
+        }
 
         // Per-guruh hisoblar — bir oyda bir nechta (har guruh) bo'lishi mumkin; oy bo'yicha aggregate qilamiz.
         var chargeRows = await db.MonthlyCharges.Where(c => c.StudentId == student.Id).ToListAsync();
@@ -75,9 +98,20 @@ public static class StudentLedger
             .Where(t => t.StudentId == student.Id && t.Direction == "income" && t.Category == "tuition")
             .OrderByDescending(t => t.Date).ToListAsync();
 
+        // VOZVRATLAR (`expense + refund`) — ALOHIDA ro'yxat.
+        // ⚠️ Ilgari ular umuman o'qilmasdi: `FinanceController.Refund` pulni `Student.Balance` dan
+        // AYIRADI, lekin ledger faqat kirimni sanagani uchun oy hamon "to'langan" (yashil) bo'lib
+        // ko'rinardi — profilning tepasida manfiy balans, ostida esa yashil oy turardi. Vozvrat
+        // qatorlari to'lovlar RO'YXATIDA ko'rsatilmaydi (u "amalga oshirilgan to'lovlar" ro'yxati,
+        // Moliya → "Vozvratlar" tabi alohida), lekin JAMI va oylarga taqsimlashda AYRILADI —
+        // `GroupBalanceService`/`SalaryLedger` bilan bitta konvensiya.
+        var refunds = await db.FinanceTransactions
+            .Where(t => t.StudentId == student.Id && t.Direction == "expense" && t.Category == "refund")
+            .Select(t => new { t.Month, t.Amount }).ToListAsync();
+
         var totalCharged = charges.Sum(c => c.Amount);          // to'liq narx
         var totalDiscount = charges.Sum(c => c.Discount);       // jami chegirma
-        var totalPaidActual = payments.Sum(p => p.Amount);      // haqiqiy naqd
+        var totalPaidActual = payments.Sum(p => p.Amount) - refunds.Sum(r => r.Amount); // sof naqd
 
         // To'lovni oylarga taqsimlash (allokatsiya):
         //   1) Aniq oyga biriktirilgan to'lov o'sha oyning EFFEKTIV summasidan oshmagan holda yoziladi;
@@ -87,7 +121,26 @@ public static class StudentLedger
             .Where(p => !string.IsNullOrEmpty(p.Month))
             .GroupBy(p => p.Month!)
             .ToDictionary(g => g.Key, g => g.Sum(x => x.Amount));
-        var pool = payments.Where(p => string.IsNullOrEmpty(p.Month)).Sum(p => p.Amount);
+        foreach (var r in refunds.Where(r => !string.IsNullOrEmpty(r.Month)))
+            paidByMonth[r.Month!] = paidByMonth.GetValueOrDefault(r.Month!, 0m) - r.Amount;
+        var pool = payments.Where(p => string.IsNullOrEmpty(p.Month)).Sum(p => p.Amount)
+                   - refunds.Where(r => string.IsNullOrEmpty(r.Month)).Sum(r => r.Amount);
+
+        // ── OYGA TEGLANGAN, LEKIN HISOB QATORI YO'Q TO'LOV — HOVUZGA ──
+        // ⚠️ Halqa faqat HISOB qatorlari bo'yicha aylanadi, ya'ni `paidByMonth` dagi kalitning
+        // mos hisob oyi bo'lmasa o'sha pul HECH QAYERDA ishlatilmasdi: tepada "jami to'langan"
+        // ko'rinardi, oylar ro'yxatida esa hech bir qator uni ko'rsatmasdi va eski oylar hamon
+        // "to'lanmagan" bo'lib turardi. Bunday yetim teg ikki yo'l bilan paydo bo'ladi:
+        //   (1) `TuitionService.EnsureChargeAsync` narx 0 bo'lsa hisob YARATMAYDI, `PaymentIntake`
+        //       esa oyni baribir yozadi;
+        //   (2) ORQAGA sanalgan muzlatish `PurgeChargesAfterMonthAsync` bilan hisobni o'chiradi,
+        //       to'lovning oy tegi esa joyida qoladi (guruh almashtirishdan farqli — u yerda
+        //       `CarryGroupAdvanceAsync` pulni qayta teglaydi).
+        // Yechim: yetim teglangan pul UMUMIY HOVUZGA qo'shiladi va FIFO bilan eng eski qarzdan
+        // yopiladi — ya'ni pul KO'RINADI va ISHLAYDI. Jami raqamlar o'zgarmaydi.
+        var chargeMonths = charges.Select(c => c.Month).ToHashSet(StringComparer.Ordinal);
+        foreach (var kv in paidByMonth)
+            if (!chargeMonths.Contains(kv.Key)) pool += kv.Value;
 
         var alloc = new decimal[charges.Count];
         for (var i = 0; i < charges.Count; i++)
@@ -95,7 +148,9 @@ public static class StudentLedger
             var effective = charges[i].Amount - charges[i].Discount;
             if (effective < 0) effective = 0;
             if (!paidByMonth.TryGetValue(charges[i].Month, out var explicitPaid)) continue;
-            var applied = Math.Min(explicitPaid, effective);
+            // Vozvrat tufayli oy neti MANFIY bo'lishi mumkin — "to'langan" manfiy chizilmasin
+            // (farq hovuzga o'tadi, ya'ni jami pul yo'qolmaydi).
+            var applied = Math.Max(0m, Math.Min(explicitPaid, effective));
             alloc[i] = applied;
             pool += explicitPaid - applied; // oy summasidan ortgani umumiy hovuzga qo'shiladi
         }
@@ -162,14 +217,21 @@ public static class StudentLedger
                 t.ReceiptNo, t.PaidTime, t.CardLast4);
         }).ToList();
 
+        // Sarlavhadagi guruh nomi ham TIRIK a'zoliklardan (`ClassName` faqat zaxira) — aks holda
+        // "A guruh · oylik 900 000" kabi ZID sarlavha chiqardi (nomi bir guruhniki, summa esa
+        // ikkala guruhniki).
+        var groupLabel = string.Join(", ", await StudentMembershipView.DisplayGroupNamesAsync(db, student));
+
         return new StudentLedgerDto(
-            Map(student), student.Balance, fee,
+            Map(student, groupLabel), student.Balance, fee,
             totalCharged, totalDiscount, totalPaidActual,
             months, paymentDtos);
     }
 
-    private static StudentDto Map(Student s) => new(
+    private static StudentDto Map(Student s, string? groupLabel = null) => new(
         s.Id, s.FullName, s.BirthDate, s.Address, s.Gender,
-        s.ParentFullName, s.ParentPhone, s.ClassName, s.EnrollmentDate, s.Balance,
+        s.ParentFullName, s.ParentPhone,
+        string.IsNullOrEmpty(groupLabel) ? s.ClassName : groupLabel,
+        s.EnrollmentDate, s.Balance,
         s.DiscountPct, s.DiscountAmount, s.DiscountNote);
 }

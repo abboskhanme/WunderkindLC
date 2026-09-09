@@ -361,10 +361,17 @@ export function StudentDetailPage() {
       .catch(() => {})
   }, [tab, id, tabLoadedFor])
 
-  // Chegirma registri — faqat «Chegirma» tabi ochilganda (qolgan tablar bilan AYNAN bir xil
-  // `tabLoadedFor` naqshi: effekt ichida setState QILINMAYDI, javob kelgach chaqiriladi).
+  /**
+   * Chegirma registri — TAB emas, O'QUVCHI bo'yicha yuklanadi.
+   *
+   * ⚠️ Boshqa tablardan FARQI ATAYIN: chap ustundagi «Chegirma» qatori HAR DOIM ko'rinadi va
+   * uning "nechta fanda chegirma bor" sanog'i AYNAN shu registrdan olinadi (`StudentNotebook`
+   * da bunday maydon YO'Q). Lazy yuklansa, info qatori "1 ta chegirma" deb turar, o'sha
+   * sahifaning «Chegirma» tabi esa "Amaldagi chegirmalar: 3 ta" deb ko'rsatardi.
+   * (`tabLoadedFor` naqshi saqlanadi: effekt ichida setState QILINMAYDI.)
+   */
   useEffect(() => {
-    if (tab !== 'chegirma' || !id || tabLoadedFor.chegirma === id) return
+    if (!id || tabLoadedFor.chegirma === id) return
     let alive = true
     getStudentDiscounts(id)
       .then((r) => {
@@ -381,7 +388,7 @@ export function StudentDetailPage() {
     return () => {
       alive = false
     }
-  }, [tab, id, tabLoadedFor])
+  }, [id, tabLoadedFor])
 
   // Test natijalari — faqat «Testlar» tabi ochilganda.
   useEffect(() => {
@@ -591,13 +598,17 @@ export function StudentDetailPage() {
       .catch(() => alert("O'quvchi ma'lumotini yuklab bo'lmadi"))
   }
 
-  /** "To'lov qilish" bosilganda — PaymentModal uchun TO'LIQ Student kerak (balans/guruhlar). */
+  /**
+   * "To'lov qilish" bosilganda — PaymentModal uchun TO'LIQ Student kerak (balans/guruhlar).
+   *
+   * ⚠️ KESHDAN OLINMAYDI. Ilgari `callTarget` (qo'ng'iroq uchun bir marta olingan yozuv)
+   * qayta ishlatilardi: bitta sessiyada IKKINCHI to'lov kiritilganda oyna to'lovdan OLDINGI
+   * «Joriy balans» ni ko'rsatar va «To'lovdan keyingi balans» ham o'shandan hisoblanardi
+   * (`handlePayment` faqat `reloadKey` ni oshiradi, keshni emas). Balans — PUL, shuning
+   * uchun har ochilishda yangisi so'raladi.
+   */
   const openPayment = () => {
     if (!id) return
-    if (callTarget) {
-      setPaymentTarget(callTarget)
-      return
-    }
     getStudent(id)
       .then((s) => {
         setCallTarget(s)
@@ -620,6 +631,8 @@ export function StudentDetailPage() {
     // + "Baribir saqlash", boshqa xatolarda oddiy xabar). Bu yerda alert qilinmaydi.
     const txId = await addPayment(id, amount, month, groupId, comment, method, date, extra)
     setPaymentTarget(null)
+    // Kesh ham eskirdi (balans o'zgardi) — keyingi "To'lov qilish"/"Qo'ng'iroq" yangisini oladi.
+    setCallTarget(null)
     setReloadKey((k) => k + 1)
     // CHEK: to'lov saqlangach kvitansiya ochiladi (Kassa bo'limidagi bilan bir xil).
     if (txId) {
@@ -973,11 +986,17 @@ export function StudentDetailPage() {
                 <InfoRow icon={GraduationCap} label="Guruh rahbari" value={data.homeroomTeacher || '—'} />
                 <InfoRow icon={User} label="Ota-ona" value={data.parentFullName || '—'} />
                 <InfoRow icon={Phone} label="Ota-ona telefoni" value={data.parentPhone || '—'} />
-                {/* Chegirma HAR FAN uchun alohida bo'lishi mumkin — batafsili «Chegirma» tabida. */}
+                {/* Chegirma HAR FAN uchun alohida bo'lishi mumkin — batafsili «Chegirma» tabida.
+                    ⚠️ SANOQ registrdan (`discounts.active`) olinadi: `StudentNotebook` da
+                    `discountCount` YO'Q, ya'ni usiz «+N ta fan» qismi HECH QACHON chiqmasdi va
+                    bu qator o'sha sahifaning «Chegirma» tabi bilan ZID bo'lardi. */}
                 <InfoRow
                   icon={Percent}
                   label="Chegirma"
-                  value={studentDiscountLabel(data) || 'Yo\'q'}
+                  value={
+                    studentDiscountLabel({ ...data, discountCount: discounts?.active.length }) ||
+                    'Yo\'q'
+                  }
                 />
               </div>
               {(data.photoUrl || data.parentPassportUrl) && (
@@ -1915,6 +1934,9 @@ export function StudentDetailPage() {
         onGenerated={(rec) =>
           setAiRecords((prev) => [rec, ...prev.filter((r) => r.id !== rec.id && r.date !== rec.date)])
         }
+        /* Oyna "⋮" menyusidan ochilganda ro'yxatni O'ZI yuklaydi — sahifadagi «AI Tahlil»
+           tabi ham o'sha ma'lumot bilan yangilansin (ikki xil holat qolmasin). */
+        onLoaded={(recs) => setAiRecords(recs)}
       />
 
       <StudentFormModal

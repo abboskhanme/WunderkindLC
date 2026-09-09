@@ -22,6 +22,7 @@ import { Loader } from '@/components/ui/Loader'
 import { Modal } from '@/components/ui/Modal'
 import { Input, Textarea, Select } from '@/components/ui/Input'
 import { cn, formatDateTime } from '@/lib/utils'
+import { groupsText, statesToGroups } from '@/lib/studentGroups'
 
 /* ============================================================
    Local Call — lokal CTI moduli: Android agent-telefonlar qo'ng'iroqlar
@@ -235,7 +236,10 @@ function DialTab({ agents, onError }: { agents: CtiAgent[]; onError: (msg: strin
                       <div className="truncate text-sm font-medium text-slate-800">{s.fullName}</div>
                       <div className="truncate text-xs text-slate-400">
                         {phone || 'Telefon kiritilmagan'}
-                        {s.className ? ` · ${s.className}` : ''}
+                        {/* Guruh — TIRIK a'zoliklardan (`className` faqat zaxira). */}
+                        {groupsText(statesToGroups(s.groupStates), s.className)
+                          ? ` · ${groupsText(statesToGroups(s.groupStates), s.className)}`
+                          : ''}
                       </div>
                     </div>
                     <Button

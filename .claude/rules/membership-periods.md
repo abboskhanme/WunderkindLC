@@ -142,3 +142,27 @@ Oqim grafiklaridagi **"muzlatildi"** va **"ketdi"** sanoqlari (`GroupSnapshotBui
 Yopilgan davrning TUGASHI muzlatishmi, chiqishmi yoki sinovga qaytarishmi — qatordan bilib
 bo'lmaydi, shuning uchun ularni sanoqqa qo'shish taxminga aylanardi. Kerak bo'lsa davr qatoriga
 sabab qo'shilsin (bu qoidaga tayanadi, uni almashtirmaydi).
+
+## 9. `AddStudent` a'zoligi endi SANA bilan yoziladi (2026-09-09)
+
+⚠️ `StudentsController.AddStudent` (o'quvchi yaratish · CSV import · `Update` orqali guruh
+biriktirish) ilgari `active`/`frozen` a'zolikni yaratar, lekin `ActivatedAt`/`FrozenAt` ni
+**bo'sh** qoldirardi. Oqibati ikki tomonlama edi:
+
+- `BillableInMonth` bo'sh `ActivatedAt` ni "boshidan beri pullik" deb o'qir edi → maosh va
+  guruh balansi shu a'zolikka ULUSH ajratardi;
+- `AccruableMonth` esa haqiqiy sana talab qilgani uchun **hisob umuman yozilmasdi** — ya'ni
+  o'quvchi "aktiv" bo'lib turib hech qachon oylik olmasdi.
+
+Endi ikkalasi ham to'g'rilandi: `ActivatedAt = enrollment` (yoki `FrozenAt = enrollment`), va
+`BillableInMonth` haqiqiy sanani TALAB qiladi.
+
+⚠️ **QABUL QILINGAN xatti-harakat o'zgarishi:** shu yo'l bilan yaratilgan `active` a'zolik endi
+`AccrueMonth` tomonidan **`enrollment` dan boshlab** hisoblanadi. Mavjud qatorlar TEGILMAGAN
+(backfill YO'Q), ya'ni deploy paytida bironta ham yangi hisob paydo bo'lmaydi. Lekin **orqaga
+sanalgan `enrollment` bilan ommaviy IMPORT qilinsa** — 12 soat ichida o'sha oylar uchun qarz
+yoziladi va §6 dagi "ota-onalarga avto-SMS to'lqini" xavfi aynan shu yerda yuzaga keladi.
+
+**Import qilishdan oldin:** `enrollment` sanalarini tekshiring; tarixiy o'quvchilarni
+`trial` holatida yuklab, keyin «Aktivlashtirish» bilan kerakli sanadan aktivlashtirish
+xavfsizroq (u qisman oylikni ham to'g'ri yozadi).

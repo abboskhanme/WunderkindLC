@@ -17,6 +17,7 @@ import { Button } from '@/components/ui/Button'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { Loader } from '@/components/ui/Loader'
 import { cn } from '@/lib/utils'
+import { groupsText, statesToGroups } from '@/lib/studentGroups'
 import { usePerm } from '@/lib/permissions'
 
 /* ============================================================
@@ -268,7 +269,10 @@ export function CallCenterPage() {
                           <div className="truncate text-sm font-medium text-slate-800">{s.fullName}</div>
                           <div className="truncate text-xs text-slate-400">
                             {phone || 'Telefon kiritilmagan'}
-                            {s.className ? ` · ${s.className}` : ''}
+                            {/* Guruh — TIRIK a'zoliklardan (`className` faqat zaxira). */}
+                            {groupsText(statesToGroups(s.groupStates), s.className)
+                              ? ` · ${groupsText(statesToGroups(s.groupStates), s.className)}`
+                              : ''}
                           </div>
                         </div>
                         {canCall && (

@@ -41,13 +41,23 @@ public static class StudentGroupLedger
 
         // To'lovlar va hisoblar oraliqni hisoblashdan OLDIN o'qiladi — oylar oralig'i pastda AYNAN
         // shular bilan kengaytiriladi (qarang: "TARIXIY OYLAR").
-        // Shu guruhga TEGLANGAN tuition to'lovlari — oy bo'yicha.
+        // Shu guruhga TEGLANGAN tuition to'lovlari — oy bo'yicha, VOZVRAT (refund) AYRILGAN holda.
+        //
+        // ⚠️ Ilgari faqat `income + tuition` yig'ilardi. `FinanceController.Refund` esa vozvratni
+        // ALOHIDA `expense + refund` qatori bilan yozadi (o'sha StudentId/GroupId/Month bilan) va
+        // `Student.Balance` dan pulni AYIRADI. Natijada pulini qaytarib olgan o'quvchining oyi
+        // to'lov oynasida hamon "to'langan" (yashil) bo'lib turardi: kassir o'sha oyni QAYTA
+        // yig'a olmasdi, to'lov eslatmasi SMS'i ham uni tashlab ketardi — holbuki profilda
+        // qarz (manfiy balans) ko'rinib turardi. `GroupBalanceService` allaqachon shunday
+        // ayiradi; endi ikkala ekran bitta raqamni ko'rsatadi.
         var paidByMonth = (await db.FinanceTransactions
-                .Where(t => t.StudentId == student.Id && t.GroupId == group.Id
-                            && t.Direction == "income" && t.Category == "tuition" && t.Month != null)
+                .Where(t => t.StudentId == student.Id && t.GroupId == group.Id && t.Month != null
+                            && ((t.Direction == "income" && t.Category == "tuition")
+                                || (t.Direction == "expense" && t.Category == "refund")))
+                .Select(t => new { t.Month, t.Direction, t.Amount })
                 .ToListAsync())
             .GroupBy(t => t.Month!)
-            .ToDictionary(g => g.Key, g => g.Sum(x => x.Amount));
+            .ToDictionary(g => g.Key, g => g.Sum(x => x.Direction == "expense" ? -x.Amount : x.Amount));
 
         // Mavjud per-guruh hisoblar — HAQIQAT MANBAI (super-admin qo'lda tahrir/Locked shu yerda).
         var chargeByMonth = (await db.MonthlyCharges
@@ -140,6 +150,9 @@ public static class StudentGroupLedger
             if (effective < 0) effective = 0;
 
             var paid = paidByMonth.GetValueOrDefault(month, 0m);
+            // Vozvrat o'sha oyga to'langanidan KO'P bo'lsa (masalan boshqa oyning pulidan
+            // qaytarilgan) "to'langan" manfiy chiqmasin — qolgan qarz oylikdan oshib ketardi.
+            if (paid < 0) paid = 0m;
             var remaining = effective - paid;
             if (remaining < 0) remaining = 0;
             var status = effective <= 0 || remaining <= 0 ? "paid" : paid > 0 ? "partial" : "unpaid";

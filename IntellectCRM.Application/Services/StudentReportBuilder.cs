@@ -17,8 +17,8 @@ public static class StudentReportBuilder
         // O'quvchining FAOL guruh(lar)i (M2M) bo'yicha — yo'q bo'lsa ClassName bo'yicha (orqaga moslik).
         // Faqat-o'qish hisobot generatori — barcha ro'yxatlar AsNoTracking (tracking overhead va
         // lug'atlarni (Subjects/AbsenceReasons) har chaqiruvda identity-map'ga yig'ishni oldini oladi).
-        var memberGroupIds = await db.StudentGroups.AsNoTracking()
-            .Where(sg => sg.StudentId == st.Id && sg.IsActive).Select(sg => sg.GroupId).ToListAsync();
+        var memberships = await StudentMembershipView.LiveMembershipsAsync(db, st.Id);
+        var memberGroupIds = memberships.Select(sg => sg.GroupId).Distinct().ToList();
         List<Group> groups;
         if (memberGroupIds.Count > 0)
             groups = await db.Classes.AsNoTracking().Where(c => memberGroupIds.Contains(c.Id)).ToListAsync();
@@ -67,13 +67,24 @@ public static class StudentReportBuilder
             PerQDays(e => !IsLate(e)), PerQDays(IsIll),
             PerQ(e => !IsLate(e)), PerQ(IsIll), PerQ(IsLate));
 
-        // Guruh rahbari = asosiy guruh (ClassName mos kelgani, bo'lmasa birinchisi) o'qituvchisi.
-        var primary = groups.FirstOrDefault(g => g.Name == st.ClassName) ?? groups.FirstOrDefault();
+        // ASOSIY GURUH = A'ZOLIK bo'yicha tanlanadi (faol → sinov → muzlatilgan, keyin eng yangi
+        // qo'shilgani) — `MembershipLifecycle.PrimaryMembership`.
+        // ⚠️ Ilgari bu yerda `groups.FirstOrDefault(g => g.Name == st.ClassName)` turardi, ya'ni
+        // BIRINCHI qo'shilgan guruh ("asosiy guruh" yorlig'i) g'olib chiqardi: o'quvchi eski
+        // guruhida MUZLATILIB yangisida o'qiyotgan bo'lsa, hisobotda eski guruh nomi va eski
+        // guruh RAHBARI ko'rinardi. `ClassName` endi faqat a'zolik UMUMAN bo'lmagan (juda eski)
+        // yozuvlar uchun zaxira.
+        var primaryMembership = MembershipLifecycle.PrimaryMembership(memberships);
+        var primary = (primaryMembership is null
+                          ? null
+                          : groups.FirstOrDefault(g => g.Id == primaryMembership.GroupId))
+                      ?? groups.FirstOrDefault();
         var homeroom = primary is null || string.IsNullOrEmpty(primary.TeacherId)
             ? ""
             : (await db.Teachers.FindAsync(primary.TeacherId))?.FullName ?? "";
 
         return new StudentReportDto(
-            st.Id, st.FullName, st.ClassName, homeroom, st.ParentFullName, subjects, grades, attendance);
+            st.Id, st.FullName, primary?.Name ?? st.ClassName, homeroom,
+            st.ParentFullName, subjects, grades, attendance);
     }
 }

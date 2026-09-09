@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Wallet, AlertTriangle } from 'lucide-react'
 import type { MonthStatus, Student, StudentGroupMembership } from '@/types'
 import { getStudentLedger, getGroupLedger, receiptDuplicateOf, type DuplicateReceipt } from '@/api/services/students'
@@ -84,14 +84,40 @@ export function PaymentModal({ student, onClose, onSubmit }: Props) {
   /** To'lov haqiqatan sodir bo'lgan sana — bugun to'lagan, lekin tizimga keyinroq kiritilayotgan
    * to'lov uchun eski sana tanlash imkoni. */
   const [paidDate, setPaidDate] = useState<string>(today())
+  const [submitting, setSubmitting] = useState(false)
+  /** Kvitansiya raqami BAND — server 409 qaytardi; shu to'lov ma'lumoti kartochka bo'lib chiqadi. */
+  const [duplicate, setDuplicate] = useState<DuplicateReceipt | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
   const [loading, setLoading] = useState(false) // boshlang'ich (guruhlar) yuklash
   const [loadingMonths, setLoadingMonths] = useState(false) // tanlangan guruh oylari
+  /**
+   * Guruhlar ro'yxati YUKLANMADI (tarmoq/server xatosi). ⚠️ Bo'sh ro'yxatdan FARQ QILADI:
+   * bo'sh ro'yxat — "o'quvchi haqiqatan guruhsiz" (eski `className` bo'yicha jami hisob),
+   * xato esa — "bilmaymiz". Ikkalasi bir xil bo'lsa, to'lov `groupId` siz yozilib PULNI
+   * NOTO'G'RI guruhga (yoki umuman guruhsiz hisobga) tushirib yuborardi.
+   */
+  const [groupsError, setGroupsError] = useState<string | null>(null)
+  /** Oylik hisob (ledger) yuklanmadi — oy ro'yxatiga ISHONIB bo'lmaydi, saqlash bloklanadi. */
+  const [monthsError, setMonthsError] = useState<string | null>(null)
+  /**
+   * SO'ROV RAQAMI — kechikib kelgan javob YANGISINI bosib ketmasin.
+   * ⚠️ Kassir A o'quvchisini yopib B ni ochsa, A ning guruh hisobiga ketgan so'rov keyinroq
+   * qaytib B ning oylar ro'yxatini ALMASHTIRIB yuborardi (server mavjud bo'lmagan a'zolikka
+   * ham 200 + bo'sh `months` qaytaradi): B ning uch oylik qarzi ko'rinmay, kassir summani
+   * NOTO'G'RI oyga qo'lda yozardi.
+   */
+  const reqRef = useRef(0)
+  const studentId = student?.id ?? ''
 
-  // Modal ochilganda: guruhlarni yukla. Guruh bo'lmasa — aggregate hisobni ko'rsat.
+  // O'quvchi ALMASHGANDA yoki modal YOPILGANDA — barcha holat tozalanadi, so'ng guruhlar
+  // yuklanadi. ⚠️ Tozalash `student == null` da ham bajariladi: aks holda keyingi ochilishda
+  // ESKI o'quvchining guruhi/oyi bir commit'ga qolib, o'sha guruh bo'yicha so'rov ketardi.
   useEffect(() => {
-    if (!student) return
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- modal ochilganda holatni yuklash (maqsadli)
-    setLoading(true)
+    const req = ++reqRef.current
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- modal ochilganda/yopilganda holatni tozalash va yuklash (maqsadli)
+    setLoading(!!studentId)
+    setLoadingMonths(false)
     setRows([])
     setGroups([])
     setGroupId('')
@@ -105,16 +131,21 @@ export function PaymentModal({ student, onClose, onSubmit }: Props) {
     setCardLast4('')
     setDuplicate(null)
     setError(null)
-    getStudentGroups(student.id)
+    setGroupsError(null)
+    setMonthsError(null)
+    if (!studentId) return
+    getStudentGroups(studentId)
       .then(async (allGroups) => {
         // To'lov qilish mumkin bo'lgan a'zoliklar: SINOVDAN boshqa hammasi — MUZLATILGAN va guruhi
         // YOPILGAN (arxivdagi) a'zoliklar ham. Ular bo'yicha qarz muzlatish sanasigacha hisoblangan
         // bo'lishi mumkin — kassir keyin ham to'lovni qabul qila olishi kerak.
         const billable = allGroups.filter((g) => g.status !== 'trial')
+        if (reqRef.current !== req) return
         setGroups(billable)
         if (billable.length === 0) {
           // Guruhsiz (eski ClassName) o'quvchi — aggregate hisob.
-          const ledger = await getStudentLedger(student.id)
+          const ledger = await getStudentLedger(studentId)
+          if (reqRef.current !== req) return
           const r: Row[] = ledger.months.map((m) => ({
             month: m.month,
             remaining: m.remaining,
@@ -133,17 +164,28 @@ export function PaymentModal({ student, onClose, onSubmit }: Props) {
           // Aks holda — foydalanuvchi tanlaguncha kutamiz.
         }
       })
-      .finally(() => setLoading(false))
-  }, [student])
+      .catch((err) => {
+        // ⚠️ JIMGINA bo'sh ro'yxatga TUSHIRILMAYDI — pul noto'g'ri hisobga yozilardi.
+        if (reqRef.current !== req) return
+        setGroupsError(apiErrorMessage(err, "Guruhlar ro'yxatini yuklab bo'lmadi"))
+      })
+      .finally(() => {
+        if (reqRef.current === req) setLoading(false)
+      })
+  }, [studentId])
 
   // Guruh tanlanganda (yoki avtomatik bitta guruh) — shu guruh oylik hisobini yukla.
   useEffect(() => {
-    if (!student || !groupId) return
+    if (!studentId || !groupId) return
+    const req = ++reqRef.current
     // eslint-disable-next-line react-hooks/set-state-in-effect -- guruh tanlanganda oylarni yuklash (maqsadli)
     setLoadingMonths(true)
     setRows([])
-    getGroupLedger(student.id, groupId)
+    setMonthsError(null)
+    getGroupLedger(studentId, groupId)
       .then((ledger) => {
+        // Eski (boshqa o'quvchi/guruh) javobi kelsa — TASHLANADI.
+        if (reqRef.current !== req) return
         const r: Row[] = ledger.months.map((m) => ({
           month: m.month,
           remaining: m.remaining,
@@ -154,13 +196,25 @@ export function PaymentModal({ student, onClose, onSubmit }: Props) {
         setMonth(d.month)
         setAmount(d.amount)
       })
-      .finally(() => setLoadingMonths(false))
-  }, [student, groupId])
+      .catch((err) => {
+        if (reqRef.current !== req) return
+        setMonthsError(apiErrorMessage(err, "Oylik hisobni yuklab bo'lmadi"))
+      })
+      .finally(() => {
+        if (reqRef.current === req) setLoadingMonths(false)
+      })
+  }, [studentId, groupId])
 
   // Bir nechta guruh bo'lsa — guruh tanlanishi SHART.
   const needGroup = groups.length > 1
-  // Oylarni ko'rsatish: guruhsiz (aggregate) yoki guruh tanlangan bo'lsa.
-  const showMonths = groups.length === 0 || !!groupId
+  /**
+   * Oylarni ko'rsatish: guruh tanlangan bo'lsa, YOKI o'quvchi HAQIQATAN guruhsiz bo'lsa
+   * (aggregate hisob). ⚠️ Guruhlar so'rovi YIQILGANDA ko'rsatilmaydi: u holda "guruhsiz"
+   * ekaniga ishonch yo'q va to'lov `groupId` siz ketib qolardi.
+   */
+  const showMonths = (groups.length === 0 && !groupsError) || !!groupId
+  /** Ma'lumot ishonchsiz — saqlash BLOKLANADI (pul noto'g'ri hisobga tushmasin). */
+  const blocked = !!groupsError || !!monthsError
 
   const handleMonthChange = (value: string) => {
     setMonth(value)
@@ -168,15 +222,11 @@ export function PaymentModal({ student, onClose, onSubmit }: Props) {
     setAmount(r && r.remaining > 0 ? r.remaining : 0)
   }
 
-  const [submitting, setSubmitting] = useState(false)
-  /** Kvitansiya raqami BAND — server 409 qaytardi; shu to'lov ma'lumoti kartochka bo'lib chiqadi. */
-  const [duplicate, setDuplicate] = useState<DuplicateReceipt | null>(null)
-  const [error, setError] = useState<string | null>(null)
-
   /** To'lovni saqlash. `force=true` — kvitansiya band bo'lsa ham ("Baribir saqlash"). */
   const save = async (force: boolean) => {
     // Ikki marta bosishdan himoya (dublikat to'lov yaratilmasin).
-    if (submitting || amount <= 0 || !month || (needGroup && !groupId)) return
+    // ⚠️ `blocked` — guruhlar yoki oylik hisob YUKLANMAGAN: qaysi guruh/oy ekani noaniq.
+    if (submitting || blocked || amount <= 0 || !month || (needGroup && !groupId)) return
     setSubmitting(true)
     setError(null)
     try {
@@ -232,7 +282,9 @@ export function PaymentModal({ student, onClose, onSubmit }: Props) {
             <Button
               type="submit"
               form="payment-form"
-              disabled={amount <= 0 || !month || (needGroup && !groupId) || loading || loadingMonths || submitting}
+              disabled={
+                amount <= 0 || !month || (needGroup && !groupId) || loading || loadingMonths || submitting || blocked
+              }
             >
               <Wallet className="h-4 w-4" /> {submitting ? 'Saqlanmoqda...' : 'Saqlash'}
             </Button>
@@ -305,6 +357,30 @@ export function PaymentModal({ student, onClose, onSubmit }: Props) {
               <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>
             )}
 
+            {/* ⚠️ GURUHLAR YUKLANMADI — "guruhsiz o'quvchi" bilan ARALASHTIRMASLIK uchun ochiq
+                yoziladi va saqlash o'chiriladi: aks holda to'lov guruhsiz hisobga tushib,
+                pul noto'g'ri joyga yozilardi. */}
+            {groupsError && (
+              <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                <p className="font-semibold">Guruhlar ro'yxati yuklanmadi</p>
+                <p className="mt-0.5 text-red-600">{groupsError}</p>
+                <p className="mt-1 text-xs text-red-500">
+                  To'lov qaysi guruhga tushishi noma'lum — oynani yopib qayta oching.
+                </p>
+              </div>
+            )}
+
+            {monthsError && (
+              <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                <p className="font-semibold">Oylik hisob yuklanmadi</p>
+                <p className="mt-0.5 text-red-600">{monthsError}</p>
+                <p className="mt-1 text-xs text-red-500">
+                  Qaysi oyda qancha qarz borligi noma'lum — guruhni qayta tanlang yoki oynani
+                  yopib qayta oching.
+                </p>
+              </div>
+            )}
+
             <div className="rounded-lg bg-slate-50 px-3 py-2 text-sm">
               <p className="text-slate-500">{student.fullName}</p>
               <p className="mt-1 text-slate-500">
@@ -349,7 +425,11 @@ export function PaymentModal({ student, onClose, onSubmit }: Props) {
             )}
 
             {/* Oy + summa — faqat guruh tanlangach (yoki guruhsiz aggregate) ko'rinadi */}
-            {!showMonths ? (
+            {groupsError ? (
+              /* Sabab yuqorida qizil kartochkada aytilgan — bu yerda "guruhni tanlang" deyish
+                 CHALG'ITARDI (tanlash uchun ro'yxatning o'zi yo'q). */
+              null
+            ) : !showMonths ? (
               <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700">
                 O'quvchi bir nechta guruhda o'qiydi — avval to'lov qaysi guruh uchun ekanini tanlang.
               </p>

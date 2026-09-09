@@ -73,7 +73,8 @@ public class FinanceDbTests
 
     private static StudentGroup AddMembership(
         AppDbContext ctx, Student s, Group g, string status = "active",
-        string? activatedAt = null, string frozenAt = "", bool isActive = true)
+        string? activatedAt = null, string frozenAt = "", bool isActive = true,
+        string? leftAt = null)
     {
         var m = new StudentGroup
         {
@@ -84,6 +85,7 @@ public class FinanceDbTests
             JoinedAt = $"{M(-6)}-01",
             ActivatedAt = activatedAt ?? $"{M(-6)}-01",
             FrozenAt = frozenAt,
+            LeftAt = leftAt,
         };
         ctx.StudentGroups.Add(m);
         return m;
@@ -646,6 +648,165 @@ public class FinanceDbTests
         Assert.Equal(M(0), b2[s.Id].OldestDebtMonth);
     }
 
+    /// <summary>
+    /// A4 — GURUHDAN CHIQARILGAN a'zolik teglanmagan to'lovni endi TORTMAYDI.
+    ///
+    /// <para>Ssenariy: o'quvchi martda G1 dan chiqarilgan, hozir faqat G2 da o'qiydi. Sentyabrda
+    /// teglanmagan 500 000 to'laydi. Ilgari "billable guruhlar" ro'yxatiga G1 ham tushar
+    /// (<c>Status</c> "active" bo'lib qolgan, <c>FrozenAt</c> bo'sh) va pulning YARMI eski
+    /// guruhga yozilardi — o'sha guruh o'qituvchisining foizli maoshiga ham, per-guruh
+    /// balansga ham.</para>
+    /// </summary>
+    [Fact]
+    public async Task GroupBalance_CHIQARILGAN_guruh_teglanmagan_tolovdan_ULUSH_OLMAYDI()
+    {
+        using var db = TestDb.Sqlite();
+        var ctx = db.Context;
+        var g1 = AddGroup(ctx, 500_000m, "Ingliz A");     // chiqarilgan guruh
+        var g2 = AddGroup(ctx, 500_000m, "Matematika B"); // hozirgi guruh
+        var s = AddStudent(ctx);
+        AddMembership(ctx, s, g1, activatedAt: $"{M(-9)}-01", isActive: false, leftAt: $"{M(-6)}-20");
+        AddMembership(ctx, s, g2, activatedAt: $"{M(-9)}-01");
+        AddPayment(ctx, s, null, M(0), 500_000m);          // teglanmagan to'lov
+        await ctx.SaveChangesAsync();
+
+        var b1 = await GroupBalanceService.ForGroupAsync(ctx, g1.Id, new[] { s.Id });
+        var b2 = await GroupBalanceService.ForGroupAsync(ctx, g2.Id, new[] { s.Id });
+
+        Assert.Equal(0m, b1[s.Id]);          // ⚠️ ilgari 250 000 edi
+        Assert.Equal(500_000m, b2[s.Id]);    // hamma pul HOZIRGI guruhga
+    }
+
+    /// <summary>A4 — chiqish OYINING O'ZI hamon pullik (o'sha oyda o'qigan).</summary>
+    [Fact]
+    public async Task GroupBalance_CHIQISH_oyida_ulush_hamon_olinadi()
+    {
+        using var db = TestDb.Sqlite();
+        var ctx = db.Context;
+        var g1 = AddGroup(ctx, 500_000m, "Ingliz A");
+        var g2 = AddGroup(ctx, 500_000m, "Matematika B");
+        var s = AddStudent(ctx);
+        AddMembership(ctx, s, g1, activatedAt: $"{M(-9)}-01", isActive: false, leftAt: $"{M(0)}-20");
+        AddMembership(ctx, s, g2, activatedAt: $"{M(-9)}-01");
+        AddPayment(ctx, s, null, M(0), 500_000m);
+        await ctx.SaveChangesAsync();
+
+        var b1 = await GroupBalanceService.ForGroupAsync(ctx, g1.Id, new[] { s.Id });
+        Assert.Equal(250_000m, b1[s.Id]);
+    }
+
+    /// <summary>
+    /// A4 xavfsizligi (`.claude/rules/membership-periods.md` §6): sanasi BO'SH a'zolikka
+    /// RETROAKTIV hisob YOZILMAYDI — narrowing hech qanday yangi qarz keltirmaydi.
+    /// </summary>
+    [Fact]
+    public async Task AccrueMonth_bosh_ActivatedAt_da_hisob_YOZILMAYDI()
+    {
+        using var db = TestDb.Sqlite();
+        var ctx = db.Context;
+        var g = AddGroup(ctx, 600_000m);
+        var s = AddStudent(ctx);
+        AddMembership(ctx, s, g, activatedAt: "");   // eski (sanasiz) "active" qator
+        await ctx.SaveChangesAsync();
+
+        var (count, _, _) = await TuitionService.AccrueMonth(ctx, M(0));
+
+        Assert.Equal(0, count);
+        Assert.Empty(ctx.MonthlyCharges);
+        Assert.Equal(0m, s.Balance);
+        // Ayni qoida `BillableInMonth` da ham: hisob yozilmaydigan a'zolik "pullik" ham emas.
+        var m = ctx.StudentGroups.Single();
+        Assert.False(MembershipLifecycle.BillableInMonth(m, M(0)));
+    }
+
+    // ==================== GURUHNI O'CHIRISH (A1) ====================
+
+    /// <summary>
+    /// A1 — guruh o'chirilganda hisob qatorlari balansga QAYTARILADI.
+    ///
+    /// <para>Ilgari <c>ClassesController.Delete</c> <c>MonthlyCharges</c> ni
+    /// <c>ExecuteDeleteAsync</c> bilan olib tashlar, <c>Student.Balance</c> ga esa TEGMASDI:
+    /// hisob yaratilganda balans effektiv miqdorda kamaygan bo'lgani uchun o'quvchida MANGU
+    /// soxta qarz qolib ketardi (uni tushuntiradigan birorta qator ham qolmasdi).</para>
+    /// </summary>
+    [Fact]
+    public async Task GuruhOchirilganda_hisoblar_BALANSGA_qaytariladi()
+    {
+        using var db = TestDb.Sqlite();
+        var ctx = db.Context;
+        var g = AddGroup(ctx, 600_000m);
+        var s = AddStudent(ctx);
+        AddCharge(ctx, s, g.Id, M(-1), 180_000m);                       // qisman (yopilish) oyi
+        AddCharge(ctx, s, g.Id, M(0), 600_000m, discount: 100_000m);    // chegirmali to'liq oy
+        s.Balance = -680_000m;                                          // 180 000 + 500 000
+        await ctx.SaveChangesAsync();
+
+        var res = await MembershipBilling.CreditAndDropGroupChargesAsync(ctx, g.Id);
+        await ctx.SaveChangesAsync();
+
+        Assert.Equal(2, res.Rows);
+        Assert.Equal(1, res.Students);
+        Assert.Equal(680_000m, res.Credited);      // EFFEKTIV (chegirma ayrilgan) summa
+        Assert.Equal(0m, s.Balance);               // qarz izsiz qolmaydi
+        Assert.Empty(ctx.MonthlyCharges);
+    }
+
+    /// <summary>A1 — BOSHQA guruhning hisobi va o'quvchining boshqa qarzi TEGILMAYDI.</summary>
+    [Fact]
+    public async Task GuruhOchirilganda_BOSHQA_guruh_hisobi_tegilmaydi()
+    {
+        using var db = TestDb.Sqlite();
+        var ctx = db.Context;
+        var g1 = AddGroup(ctx, 600_000m, "Ingliz A");
+        var g2 = AddGroup(ctx, 400_000m, "Matematika B");
+        var s = AddStudent(ctx);
+        AddCharge(ctx, s, g1.Id, M(0), 600_000m);
+        AddCharge(ctx, s, g2.Id, M(0), 400_000m);
+        s.Balance = -1_000_000m;
+        await ctx.SaveChangesAsync();
+
+        var res = await MembershipBilling.CreditAndDropGroupChargesAsync(ctx, g1.Id);
+        await ctx.SaveChangesAsync();
+
+        Assert.Equal(1, res.Rows);
+        Assert.Equal(-400_000m, s.Balance);        // faqat g2 qarzi qoldi
+        var left = Assert.Single(ctx.MonthlyCharges);
+        Assert.Equal(g2.Id, left.GroupId);
+    }
+
+    // ==================== YETIM TEGLANGAN TO'LOV (A5) ====================
+
+    /// <summary>
+    /// A5 — oyga TEGLANGAN, lekin o'sha oyda HISOB qatori bo'lmagan to'lov yo'qolmasligi kerak.
+    ///
+    /// <para>FIFO hovuzi faqat oysiz to'lovlarni olar, halqa esa hisob qatorlari bo'yicha
+    /// aylanardi — natijada bunday to'lov HECH QAYERDA ishlatilmasdi: tepada "jami to'langan"
+    /// ko'rinar, oylar esa "to'lanmagan" bo'lib qolardi. Manba: narxi 0 bo'lgan guruhda
+    /// <c>EnsureChargeAsync</c> hisob yaratmaydi; orqaga sanalgan muzlatish esa hisobni
+    /// o'chiradi, to'lovning oy tegi joyida qoladi.</para>
+    /// </summary>
+    [Fact]
+    public async Task StudentLedger_hisobsiz_oyga_teglangan_tolov_ESKI_qarzni_yopadi()
+    {
+        using var db = TestDb.Sqlite();
+        var ctx = db.Context;
+        var g = AddGroup(ctx, 600_000m);
+        var s = AddStudent(ctx);
+        AddMembership(ctx, s, g);
+        AddCharge(ctx, s, g.Id, M(-1), 600_000m);    // to'lanmagan eski oy
+        AddPayment(ctx, s, g.Id, M(0), 600_000m);    // M(0) ga teglangan, lekin M(0) HISOBI YO'Q
+        await ctx.SaveChangesAsync();
+
+        var dto = await StudentLedger.BuildAsync(ctx, s);
+
+        var oy = Assert.Single(dto.Months);
+        Assert.Equal(M(-1), oy.Month);
+        Assert.Equal(600_000m, oy.Paid);             // ⚠️ ilgari 0 edi
+        Assert.Equal(0m, oy.Remaining);
+        Assert.Equal("paid", oy.Status);
+        Assert.Equal(600_000m, dto.TotalPaid);
+    }
+
     // ==================== TASDIQLANGAN XATOLAR (Skip) ====================
 
     [Fact(Skip = "XATO (TuitionService.ApplyFeeToCharge:121-133): qisman (prorate) qator to'liq narxga aylanadi")]
@@ -673,13 +834,13 @@ public class FinanceDbTests
         Assert.Equal(-200_000m, s.Balance);
     }
 
-    [Fact(Skip = "XATO (StudentLedger.cs:71-77): vozvrat (refund) hisobga olinmaydi")]
+    [Fact]
     public async Task StudentLedger_VOZVRAT_qilingan_tolov_paid_dan_ayrilishi_kerak()
     {
-        // XATO: ledger faqat `income + tuition` yozuvlarini yig'adi; `expense + refund` (pul qaytarish)
-        // umuman hisobga olinmaydi. Natijada pulini qaytarib olgan o'quvchining oyi "paid" bo'lib
-        // ko'rinadi va qarzi ko'rinmaydi (GroupBalanceService esa vozvratni AYIRADI — ikki ekranda
-        // ikki xil raqam).
+        // TUZATILDI: ledger faqat `income + tuition` yozuvlarini yig'ardi; `expense + refund`
+        // (pul qaytarish) umuman hisobga olinmasdi. Natijada pulini qaytarib olgan o'quvchining oyi
+        // "paid" bo'lib ko'rinardi va qarzi ko'rinmasdi (GroupBalanceService esa vozvratni AYIRADI —
+        // ikki ekranda ikki xil raqam).
         // KUTILGAN: to'langan = kirim − vozvrat.
         using var db = TestDb.Sqlite();
         var ctx = db.Context;
@@ -700,11 +861,12 @@ public class FinanceDbTests
         Assert.Equal(0m, dto.TotalPaid);
     }
 
-    [Fact(Skip = "XATO (StudentGroupLedger.cs:60-65): vozvrat (refund) hisobga olinmaydi")]
+    [Fact]
     public async Task StudentGroupLedger_VOZVRAT_qilingan_tolov_paid_dan_ayrilishi_kerak()
     {
-        // XATO: guruh ledgeri ham faqat `income + tuition` ni yig'adi (StudentLedger bilan bir xil
-        // kamchilik) — vozvratdan keyin to'lov oynasida oy "to'langan" bo'lib turadi.
+        // TUZATILDI: guruh ledgeri ham faqat `income + tuition` ni yig'ardi (StudentLedger bilan
+        // bir xil kamchilik) — vozvratdan keyin to'lov oynasida oy "to'langan" bo'lib turardi va
+        // kassir o'sha oyni QAYTA yig'a olmasdi.
         // KUTILGAN: shu guruhga to'langan = kirim − vozvrat.
         using var db = TestDb.Sqlite();
         var ctx = db.Context;

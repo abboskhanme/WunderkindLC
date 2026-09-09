@@ -64,45 +64,13 @@ public class StudentsController(
         var students = await q.OrderBy(s => s.FullName).ToListAsync();
         RedactDocs(students);
 
-        // Har o'quvchiga a'zoliklarini biriktiramiz. O'QITUVCHI ham olinadi: filtr guruh NOMI
-        // bo'yicha emas, `TeacherId` bo'yicha ishlashi kerak (bir xil nomli guruhlar bo'lishi mumkin).
+        // A'ZOLIK KESIMI (guruhlar, holat, "aktiv") — YAGONA manbadan
+        // (<see cref="StudentMembershipView.EnrichAsync"/>). Ilgari jamlama AYNAN shu yerda,
+        // faqat RO'YXAT uchun hisoblanardi: bitta o'quvchi qaytaradigan yo'llar (profil, arxiv,
+        // yangi yaratilgan) uni to'ldirmasdi va klientda "Aktiv emas" + eski (ClassName) guruh
+        // ko'rinardi.
         var ids = students.Select(s => s.Id).ToList();
-        var memberships = await (from sg in db.StudentGroups
-                                 join c in db.Classes on sg.GroupId equals c.Id
-                                 where sg.IsActive && ids.Contains(sg.StudentId)
-                                 select new { sg.StudentId, c.Id, c.Name, c.TeacherId, sg.Status, sg.YearFreeze })
-            .ToListAsync();
-
-        var statesByStudent = memberships.GroupBy(m => m.StudentId)
-            .ToDictionary(g => g.Key, g => g
-                .OrderBy(x => x.Name, StringComparer.OrdinalIgnoreCase)
-                .Select(x => new StudentGroupState
-                {
-                    GroupId = x.Id, Name = x.Name, TeacherId = x.TeacherId ?? "", Status = x.Status ?? "",
-                    YearFreeze = x.YearFreeze,
-                }).ToList());
-
-        // Ro'yxat ustunidagi NOMLAR — MUZLATILGANLARSIZ. O'quvchi eski guruhida muzlatilib,
-        // yangisida aktiv bo'lsa ikkala guruh ko'rinib, go'yo eski o'qituvchida ham o'qiyotgandek
-        // bo'lardi. Sinov a'zoliklar qoladi — ular haqiqatan qatnaydi.
-        var byStudent = memberships.Where(m => m.Status != "frozen")
-            .GroupBy(m => m.StudentId)
-            .ToDictionary(g => g.Key, g => g.Select(x => x.Name).Distinct()
-                .OrderBy(n => n, StringComparer.OrdinalIgnoreCase).ToList());
-        // Kursda aktiv = kamida bitta a'zoligi Status=="active" (sinov/muzlatilgan emas).
-        var activeIds = memberships.Where(m => m.Status == "active").Select(m => m.StudentId).ToHashSet();
-        // A'zolik holati yorlig'i: active > trial > frozen (guruhsiz — bo'sh). Muzlatilgan o'quvchi
-        // ro'yxat/qidiruvda "Aktiv emas" emas, aynan "Muzlatilgan" deb ko'rinishi uchun.
-        var trialIds = memberships.Where(m => m.Status == "trial").Select(m => m.StudentId).ToHashSet();
-        var frozenIds = memberships.Where(m => m.Status == "frozen").Select(m => m.StudentId).ToHashSet();
-        // «AKTIV MUZLATISH» (yangi o'quv yiliga o'tish) — a'zolik holati baribir "frozen", shuning
-        // uchun bu ALOHIDA bayroqdan olinadi. Yorliq oddiy "frozen" dan OLDIN tekshiriladi: ikkala
-        // xil muzlatishi bor o'quvchi ro'yxatda aynan "aktiv muzlatilgan" bo'lib ko'rinsin
-        // (savol — "yangi yilga nechta o'quvchi bilan o'tyapmiz").
-        // ⚠️ Yuqoridagi `byStudent` (guruh NOMLARI) va `activeIds` bunga TEGILMAYDI: hisob-kitobda
-        // ham, "kursda aktiv" belgisida ham oddiy muzlatishdan farqi YO'Q.
-        var yearFrozenIds = memberships.Where(m => m.Status == "frozen" && m.YearFreeze)
-            .Select(m => m.StudentId).ToHashSet();
+        await StudentMembershipView.EnrichAsync(db, students);
 
         // Tuman + maktab nomlarini biriktiramiz (DB'ga yozilmaydi — faqat ko'rsatish uchun).
         // Bu lug'atlar deyarli o'zgarmaydi, ro'yxat esa tez-tez ochiladi — DataCache orqali:
@@ -130,13 +98,6 @@ public class StudentsController(
         foreach (var s in students)
         {
             s.DiscountCount = discountCounts.GetValueOrDefault(s.Id, 0);
-            s.Groups = byStudent.GetValueOrDefault(s.Id) ?? new List<string>();
-            s.GroupStates = statesByStudent.GetValueOrDefault(s.Id) ?? new List<StudentGroupState>();
-            s.Active = activeIds.Contains(s.Id);
-            s.MemberState = activeIds.Contains(s.Id) ? "active"
-                : trialIds.Contains(s.Id) ? "trial"
-                : yearFrozenIds.Contains(s.Id) ? "yearFrozen"
-                : frozenIds.Contains(s.Id) ? "frozen" : "";
             if (!string.IsNullOrEmpty(s.DistrictId))
                 s.DistrictName = districtNames.GetValueOrDefault(s.DistrictId, "");
             if (!string.IsNullOrEmpty(s.SchoolId))
@@ -478,6 +439,10 @@ public class StudentsController(
         var students = await db.Students.AsNoTracking().Where(s => s.IsArchived)
             .OrderByDescending(s => s.ArchivedAt).ThenBy(s => s.FullName).ToListAsync();
         RedactDocs(students);
+        // A'ZOLIK KESIMI — ro'yxat bilan BIR XIL (arxiv tabi ham o'sha ustunlarni chizadi).
+        // Ilgari to'ldirilmasdi: arxivdagi HAR o'quvchi "Aktiv emas" bo'lib va guruh sifatida
+        // eski `ClassName` yorlig'i bilan ko'rinardi.
+        await StudentMembershipView.EnrichAsync(db, students);
         return students;
     }
 
@@ -489,6 +454,12 @@ public class StudentsController(
         var s = await db.Students.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id);
         if (s is null) return NotFound();
         RedactDocs([s]);
+        // A'ZOLIK KESIMI (guruhlar, holat, "aktiv") — RO'YXAT bilan AYNAN bir xil manbadan.
+        // ⚠️ Ilgari bu YO'Q edi: javobda `Active=false`, `MemberState=""`, `Groups=[]` kelardi va
+        // profil/tahrir/SMS/kassa oynalari o'quvchini "Aktiv emas" deb, guruh sifatida esa eski
+        // `ClassName` (BIRINCHI qo'shilgan guruh) yorlig'ini ko'rsatardi — eski guruhida
+        // muzlatilib yangisida o'qiyotgan o'quvchi aynan shunday "yo'qolib" ketardi.
+        await StudentMembershipView.EnrichAsync(db, [s]);
         // AMALDAGI CHEGIRMALAR SONI — `MemberState` naqshi (bazada YO'Q, faqat javobda).
         // Profil sahifasida "chegirma bormi va nechta fanda" savoliga javob beradi; batafsili
         // «Chegirma» tabida (`GET {id}/discounts`).
@@ -610,6 +581,9 @@ public class StudentsController(
         if (cls is not null)
             await autoMsg.DispatchStudentAsync(db, AutoMessageTriggers.StudentAdded, student,
                 new Dictionary<string, string> { ["{guruh}"] = cls.Name }, group: cls);
+        // A'ZOLIK KESIMI — javob RO'YXATdagi qator bilan bir xil bo'lsin: klient yangi o'quvchini
+        // ro'yxatga qayta so'rovsiz qo'shadi va usiz qator "Aktiv emas" + guruhsiz ko'rinardi.
+        await StudentMembershipView.EnrichAsync(db, [student]);
         return student;
     }
 
@@ -713,6 +687,17 @@ public class StudentsController(
                 JoinedAt = enrollment,
                 IsActive = memberStatus != "frozen", // frozen — IsActive = false
                 Status = memberStatus,
+                // ⚠️ HOLAT SANASIZ QOLMASIN. Ilgari bu yerda `ActivatedAt`/`FrozenAt` UMUMAN
+                // yozilmasdi va qator ZID chiqardi: "active" (ya'ni pullik), lekin qachondan
+                // ekani noma'lum. `TuitionService.AccruableMonth` haqiqiy sana talab qilgani
+                // uchun bunday a'zolikka oylik HECH QACHON hisoblanmasdi, teglanmagan to'lov
+                // taqsimoti (maosh, per-guruh balans, kurs moliyasi) esa uni "pullik" deb
+                // olardi — bir guruhning puli ikkinchisining o'qituvchisiga bo'linib ketardi.
+                // Endi sana = qabul sanasi: "active" tanlansa hisob shu sanadan yuritiladi
+                // (qabul oyining O'ZI qisman hisobsiz qoladi — u faqat «Aktivlashtirish»
+                // oynasida yoziladi), "frozen" tanlansa esa a'zolik boshidanoq to'xtatilgan.
+                ActivatedAt = memberStatus == "active" ? enrollment : string.Empty,
+                FrozenAt = memberStatus == "frozen" ? enrollment : string.Empty,
                 // RecordedAt — HAQIQIY bugungi sana (enrollment ORQAGA sanalgan bo'lishi mumkin).
                 // Jurnalda undan OLDINGI, allaqachon davomati olingan darslar avto-"keldi" ✓
                 // bo'lib to'lib qolmasin (ClassesController.AddMember bilan bir xil qoida).
@@ -810,7 +795,18 @@ public class StudentsController(
         student.ParentPhone = DerivePrimary(student.FatherPhone, student.MotherPhone, PhoneUtil.Normalize(p.ParentPhone ?? ""));
         if (p.ParentPassportUrl is not null)
             student.ParentPassportUrl = string.IsNullOrWhiteSpace(p.ParentPassportUrl) ? null : p.ParentPassportUrl;
-        student.ClassName = p.ClassName;
+        // «ASOSIY GURUH» YORLIG'I (`ClassName`) — o'quvchida TIRIK a'zolik bo'lsa BU YO'LDAN
+        // O'ZGARTIRILMAYDI.
+        //
+        // ⚠️ Sabab: bu endpoint a'zolikni KO'CHIRA olmaydi (pastda a'zolik faqat "umuman a'zoligi
+        // yo'q" holatda yaratiladi) — ya'ni yorliqni yozish "guruhi o'zgardi" degan YOLG'ON holat
+        // yasardi: o'quvchi guruhda qolaverar, lekin yorliqqa qaraydigan joylar (eski hisobotlar,
+        // ilova, chat, guruh arxivlash) uni boshqa guruhda ko'rsatardi. Guruh a'zoligi
+        // `ClassesController` orqali boshqariladi (qo'shish/aktivlashtirish/muzlatish/ko'chirish),
+        // o'quvchi formasida esa bunday o'quvchiga guruh tanlagichi umuman ko'rsatilmaydi.
+        var hasLiveMembership = await db.StudentGroups
+            .AnyAsync(sg => sg.StudentId == student.Id && sg.IsActive);
+        if (!hasLiveMembership) student.ClassName = p.ClassName;
         if (p.DistrictId is not null) student.DistrictId = p.DistrictId.Trim();
         if (p.SchoolId is not null) student.SchoolId = p.SchoolId.Trim();
         if (!string.IsNullOrWhiteSpace(p.EnrollmentDate))
@@ -1696,20 +1692,25 @@ public class StudentsController(
             .FirstOrDefaultAsync(c => c.StudentId == id && c.GroupId == gid && c.Month == month);
         if (charge is null) return NotFound(new { message = "Bu oy uchun hisob topilmadi" });
 
-        var newAmount = Math.Max(0m, req.Amount);
-        // Chegirma yangi summadan oshib ketmasin (effektiv manfiy bo'lmasin).
-        if (charge.Discount > newAmount) charge.Discount = newAmount;
+        // ⚠️ REJA AVVAL TUZILADI (sof funksiya), qator KEYIN o'zgartiriladi. Ilgari chegirma
+        // `charge` ustida DARHOL qirqilar, "eski effektiv" esa ALLAQACHON O'ZGARGAN chegirma bilan
+        // hisoblanardi — natijada balansga hech qachon to'lanmagan pul qaytarilardi
+        // (misol `TuitionService.PlanChargeEdit` izohida).
+        var plan = TuitionService.PlanChargeEdit(charge.Amount, charge.Discount, req.Amount);
 
-        var oldAmount = charge.Amount;
-        var oldEffective = Math.Max(0m, oldAmount - charge.Discount);
-        var newEffective = Math.Max(0m, newAmount - charge.Discount);
         // Hisob balansni EFFEKTIV miqdorda kamaytirgan edi — farqni balansga qaytaramiz.
-        student.Balance += oldEffective - newEffective;
-        charge.Amount = newAmount;
+        student.Balance += plan.BalanceDelta;
+        charge.Amount = plan.NewAmount;
+        charge.Discount = plan.NewDiscount;
         charge.Locked = true; // qo'lda tahrirlandi — avtomatik qayta hisob endi bu yozuvni o'zgartirmaydi.
 
+        // Chegirma yangi summaga sig'may qirqilgan bo'lsa — buni ham AYTAMIZ: tarixda faqat
+        // "summa o'zgardi" turgan bo'lsa, keyin "chegirmam qayerga ketdi" savoli javobsiz qolardi.
+        var discountNote = plan.DiscountClamped
+            ? $"; chegirma {AuditService.Money(plan.OldDiscount)} → {AuditService.Money(plan.NewDiscount)} so'm (yangi summaga qirqildi)"
+            : "";
         audit.Record(AuditService.EntityStudentDiscount, student.Id, "update",
-            $"Oylik hisob qo'lda tahrirlandi ({month}): {AuditService.Money(oldAmount)} → {AuditService.Money(newAmount)} so'm — {student.FullName}",
+            $"Oylik hisob qo'lda tahrirlandi ({month}): {AuditService.Money(plan.OldAmount)} → {AuditService.Money(plan.NewAmount)} so'm{discountNote} — {student.FullName}",
             studentId: student.Id);
 
         await db.SaveChangesAsync();

@@ -902,6 +902,46 @@ public static class TuitionService
     /// Idempotent + o'z-o'zini tuzatuvchi (har AccrueDue siklida ishlaydi, mavjud prod ma'lumotini ham tozalaydi).</summary>
     /// <summary>Bitta (o'quvchi, oy) uchun aggregate (GroupId=null) hisob qatorini o'chiradi va effektivni
     /// balansga qaytaradi. Per-guruh qator yozishdan oldin chaqiriladi (dublikat oldini olish). SaveChanges — chaqiruvchida.</summary>
+    // ==================== QO'LDA TAHRIRLASH (super-admin) ====================
+
+    /// <summary>Oylik hisobni QO'LDA tahrirlashning REJASI — sof (bazasiz) hisob.
+    /// <see cref="PlanChargeEdit"/> qaytaradi, <c>StudentsController.EditCharge</c> qo'llaydi.</summary>
+    /// <param name="OldAmount">Tahrirdan OLDINGI to'liq narx.</param>
+    /// <param name="OldDiscount">Tahrirdan OLDINGI chegirma (balans aynan shunga qarab yechilgan edi).</param>
+    /// <param name="NewAmount">Yangi to'liq narx (manfiy bo'lmaydi).</param>
+    /// <param name="NewDiscount">Yangi chegirma — yangi summadan oshmasligi uchun qirqilgan bo'lishi mumkin.</param>
+    public readonly record struct ChargeEditPlan(
+        decimal OldAmount, decimal OldDiscount, decimal NewAmount, decimal NewDiscount)
+    {
+        /// <summary>Tahrirdan OLDIN balansdan yechilgan effektiv summa (ESKI chegirma bilan).</summary>
+        public decimal OldEffective => Math.Max(0m, OldAmount - OldDiscount);
+        /// <summary>Tahrirdan KEYIN yechilishi kerak bo'lgan effektiv summa.</summary>
+        public decimal NewEffective => Math.Max(0m, NewAmount - NewDiscount);
+        /// <summary>Balansga qo'shiladigan farq (<c>Balance += ...</c>).</summary>
+        public decimal BalanceDelta => OldEffective - NewEffective;
+        /// <summary>Chegirma yangi summaga sig'magani uchun KAMAYTIRILDIMI (auditda aytiladi).</summary>
+        public bool DiscountClamped => NewDiscount < OldDiscount;
+    }
+
+    /// <summary>
+    /// Hisob qatorini qo'lda tahrirlash rejasini tuzadi — <b>chegirmani qirqishdan OLDIN</b> eski
+    /// effektiv summani "muzlatib" qo'yish uchun.
+    ///
+    /// <para>⚠️ <b>NEGA SOF FUNKSIYA:</b> ilgari controller chegirmani AVVAL qirqar
+    /// (<c>charge.Discount = newAmount</c>), keyin "eski effektiv"ni ALLAQACHON O'ZGARGAN chegirma
+    /// bilan hisoblardi. Misol: Amount=500 000, Discount=200 000 (balansdan 300 000 yechilgan);
+    /// admin summani 150 000 ga tushiradi → chegirma 150 000 ga qirqiladi → "eski effektiv"
+    /// 500 000 − 150 000 = 350 000 bo'lib chiqadi va balansga 350 000 qaytariladi. Ya'ni o'quvchiga
+    /// hech qachon to'lanmagan 50 000 SOVG'A qilinardi. Eski chegirma SNAPSHOT qilinishi shart.</para>
+    /// </summary>
+    public static ChargeEditPlan PlanChargeEdit(decimal oldAmount, decimal oldDiscount, decimal requestedAmount)
+    {
+        var newAmount = Math.Max(0m, requestedAmount);
+        // Chegirma yangi summadan oshib ketmasin (effektiv manfiy bo'lmasin).
+        var newDiscount = Math.Min(Math.Max(0m, oldDiscount), newAmount);
+        return new ChargeEditPlan(oldAmount, oldDiscount, newAmount, newDiscount);
+    }
+
     private static async Task PurgeAggregateRowAsync(IAppDbContext db, Student s, string month)
     {
         var nullRow = await db.MonthlyCharges

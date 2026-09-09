@@ -14,20 +14,35 @@ public static class StudentProfileBuilder
 {
     public static async Task<StudentNotebookDto> BuildAsync(IAppDbContext db, Student st)
     {
-        var cls = await db.Classes.AsNoTracking().FirstOrDefaultAsync(c => c.Name == st.ClassName);
-        // O'quvchining FAOL guruh(lar)i (M2M) — yo'q bo'lsa ClassName (StudentReportBuilder bilan bir xil mantiq).
-        var memberships = await db.StudentGroups.AsNoTracking()
-            .Where(sg => sg.StudentId == st.Id && sg.IsActive).ToListAsync();
+        // O'quvchining TIRIK guruh a'zoliklari (M2M) — a'zolik umuman bo'lmasa ClassName zaxirasi
+        // (StudentReportBuilder bilan bir xil mantiq).
+        var live = await StudentMembershipView.LiveMembershipsAsync(db, st.Id);
+        // ⚠️ Tirik a'zolik qolmagan (hamma guruhdan chiqib ketgan) o'quvchida O'TGAN a'zoliklar
+        // olinadi — ular bilan CHEGARA (`LeftAt`) ham keladi. Ilgari bunday holatda ClassName
+        // guruhiga tushilar va a'zolik oynasi UMUMAN bo'lmasdi: o'quvchi ketgandan KEYINGI barcha
+        // darslar ham uning "o'tilgan darslari" bo'lib sanalib, davomat foizi cheksiz pasayardi.
+        var memberships = live.Count > 0
+            ? live
+            : await db.StudentGroups.AsNoTracking().Where(sg => sg.StudentId == st.Id).ToListAsync();
+        var cls = memberships.Count > 0
+            ? null
+            : await db.Classes.AsNoTracking().FirstOrDefaultAsync(c => c.Name == st.ClassName);
         var classIds = memberships.Count > 0
             ? memberships.Select(m => m.GroupId).ToHashSet()
             : (cls is null ? new HashSet<string>() : new HashSet<string> { cls.Id });
         // Har guruh uchun a'zolik oynasi (memberStart..frozenAt) — jurnal (JournalService.GroupMonthAsync)
         // va o'quvchi portali (StudentAttendanceController) bilan BIR XIL chegara: guruhga qo'shilishidan
         // oldingi va muzlatilgandan keyingi o'tilgan darslar bu o'quvchiga "davomat" hisobiga kirmaydi.
+        // (Bir o'quvchiga bir guruhda IKKINCHI a'zolik qatori BO'LMAYDI — bazada unikal indeks
+        // (StudentId, GroupId); qayta qo'shilganda mavjud qator tiklanadi. Shu sabab bu yerda
+        // guruh bo'yicha to'g'ridan-to'g'ri lug'at tuzish xavfsiz.)
         var boundsByClass = memberships.ToDictionary(
             m => m.GroupId,
             m => (Start: JournalService.MemberStart(m),
-                  End: m.Status == "frozen" && m.FrozenAt is { Length: >= 10 } ? m.FrozenAt[..10] : null));
+                  End: m.Status == "frozen" && m.FrozenAt is { Length: >= 10 } ? m.FrozenAt[..10]
+                       // Guruhdan CHIQIB KETGAN a'zolikda chegara — chiqqan sana.
+                       : !m.IsActive && m.LeftAt is { Length: >= 10 } ? m.LeftAt[..10]
+                       : null));
         bool InMemberWindow(string classId, string date)
         {
             if (!boundsByClass.TryGetValue(classId, out var b)) return true;
@@ -116,8 +131,11 @@ public static class StudentProfileBuilder
         var allGradeVals = gradesByMonth.Values.SelectMany(d => d.Values).ToList();
         var avgGrade = allGradeVals.Count > 0 ? Math.Round(allGradeVals.Average(), 1) : 0;
 
+        // Guruh nomi — `report.ClassName` (TIRIK a'zolikdan tanlangan asosiy guruh), `st.ClassName`
+        // EMAS: eski yorliq birinchi qo'shilgan (masalan muzlatilgan) guruhda qotib qolgan bo'lishi
+        // mumkin. Zaxira tarmog'i `StudentReportBuilder` ichida.
         return new StudentNotebookDto(
-            st.Id, st.FullName, st.ClassName, report.HomeroomTeacher,
+            st.Id, st.FullName, report.ClassName, report.HomeroomTeacher,
             st.ParentFullName, st.ParentPhone, st.Gender, st.BirthDate,
             st.EnrollmentDate, st.Balance, st.BirthCertificateUrl,
             st.Address, st.DiscountPct, st.DiscountAmount, st.DiscountNote,

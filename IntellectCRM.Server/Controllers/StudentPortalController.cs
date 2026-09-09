@@ -77,9 +77,21 @@ public class StudentPortalController(
         return uid is null ? null : await db.Students.FirstOrDefaultAsync(s => s.UserId == uid);
     }
 
-    /// <summary>O'quvchining guruh id'sini (nomidan) topadi.</summary>
-    private async Task<string?> ClassIdOf(Student s) =>
-        (await db.Classes.FirstOrDefaultAsync(c => c.Name == s.ClassName))?.Id;
+    /// <summary>
+    /// O'quvchining ASOSIY guruhi — bitta guruh ko'rsatilishi SHART bo'lgan joylar uchun
+    /// (bugungi darslar, davomat, o'quv dasturi, chat kanali).
+    ///
+    /// <para>⚠️ Tanlov A'ZOLIK bo'yicha: faol → sinov → muzlatilgan, keyin eng yangi qo'shilgani
+    /// (<see cref="MembershipLifecycle.PrimaryMembership"/>). Ilgari bu yerda
+    /// <c>Classes.FirstOrDefault(c =&gt; c.Name == s.ClassName)</c> turardi, ya'ni HAR DOIM
+    /// BIRINCHI qo'shilgan guruh: o'quvchi eski guruhida muzlatilib yangisida o'qiyotgan bo'lsa,
+    /// ilovada ESKI guruhning darslari/davomati ko'rinardi (yoki guruh arxivlangan bo'lsa —
+    /// bo'sh ekran). <c>ClassName</c> endi faqat a'zolik UMUMAN bo'lmaganda zaxira.</para>
+    /// </summary>
+    private Task<Group?> PrimaryGroupAsync(Student s) => StudentMembershipView.PrimaryGroupAsync(db, s);
+
+    /// <summary>O'quvchining ASOSIY guruh id'si (<see cref="PrimaryGroupAsync"/>).</summary>
+    private async Task<string?> ClassIdOf(Student s) => (await PrimaryGroupAsync(s))?.Id;
 
     /// <summary>
     /// BILDIRISHNOMA IDENTIFIKATORI — ota-ona ham, o'quvchi ham BITTA ilovadan foydalanadi,
@@ -182,8 +194,10 @@ public class StudentPortalController(
         if (User.IsInRole("admin") && string.IsNullOrWhiteSpace(studentId)) return NeedStudentId();
         var s = await TargetAsync(studentId);
         if (s is null) return NotFound();
+        // Guruh nomi — ASOSIY (tirik) a'zolikdan; `ClassName` faqat zaxira (qarang: PrimaryGroupAsync).
+        var primary = await PrimaryGroupAsync(s);
         return new StudentProfileDto(
-            s.Id, s.FullName, s.ClassName, s.BirthDate, s.Gender,
+            s.Id, s.FullName, primary?.Name ?? s.ClassName, s.BirthDate, s.Gender,
             s.ParentFullName, s.ParentPhone, s.EnrollmentDate,
             s.BirthCertificateUrl, s.ParentPassportUrl);
     }
@@ -429,7 +443,7 @@ public class StudentPortalController(
         if (User.IsInRole("admin") && string.IsNullOrWhiteSpace(studentId)) return NeedStudentId();
         var s = await TargetAsync(studentId);
         if (s is null) return NotFound();
-        var cls = await db.Classes.FirstOrDefaultAsync(c => c.Name == s.ClassName);
+        var cls = await PrimaryGroupAsync(s);
         if (cls is null) return new StudentAttendanceFullDto(
             new StudentAttendanceDto(new(), new(), new(), new(), new()),
             new List<StudentAbsenceRowDto>());
@@ -472,13 +486,13 @@ public class StudentPortalController(
         var s = await TargetAsync(studentId);
         if (s is null) return NotFound();
 
+        // Bugungi darslar/baholar va oylik — ASOSIY GURUH bo'yicha (qarang: PrimaryGroupAsync).
+        var cls = await PrimaryGroupAsync(s);
         var profile = new StudentProfileDto(
-            s.Id, s.FullName, s.ClassName, s.BirthDate, s.Gender,
+            s.Id, s.FullName, cls?.Name ?? s.ClassName, s.BirthDate, s.Gender,
             s.ParentFullName, s.ParentPhone, s.EnrollmentDate,
             s.BirthCertificateUrl, s.ParentPassportUrl);
         var meta = await refCache.MetaAsync();
-
-        var cls = await db.Classes.FirstOrDefaultAsync(c => c.Name == s.ClassName);
 
         // Bugungi darslar — jadval tizimi olib tashlangan; bugun yozilgan darslar (LessonNote) bo'yicha.
         var today = AppClock.Today.ToString("yyyy-MM-dd");
@@ -834,8 +848,11 @@ public class StudentPortalController(
         if (User.IsInRole("admin") && string.IsNullOrWhiteSpace(studentId)) return NeedStudentId();
         var s = await TargetAsync(studentId);
         if (s is null) return NotFound();
-        if (string.IsNullOrEmpty(s.ClassName)) return new List<ChatMessageDto>();
-        return await chat.GetMessagesAsync(s.ClassName, ChatService.ParseSince(since));
+        // Chat kanali — ASOSIY guruh (qarang: PrimaryGroupAsync). Ilgari `ClassName` ishlatilardi,
+        // ya'ni o'quvchi ESKI (muzlatilgan) guruhining chatini ochardi.
+        var channel = (await PrimaryGroupAsync(s))?.Name ?? s.ClassName;
+        if (string.IsNullOrEmpty(channel)) return new List<ChatMessageDto>();
+        return await chat.GetMessagesAsync(channel, ChatService.ParseSince(since));
     }
 
     /// <summary>Chatga xabar yuborish — faqat student rolida (admin o'zining /api/admin/messages
@@ -846,9 +863,10 @@ public class StudentPortalController(
     {
         var s = await MeAsync();
         if (s is null) return NotFound();
-        if (string.IsNullOrEmpty(s.ClassName)) return BadRequest(new { message = "Guruh biriktirilmagan" });
+        var channel = (await PrimaryGroupAsync(s))?.Name ?? s.ClassName;
+        if (string.IsNullOrEmpty(channel)) return BadRequest(new { message = "Guruh biriktirilmagan" });
         var uid = User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? "";
-        var dto = await chat.PostAsync(s.ClassName, uid, req.Text);
+        var dto = await chat.PostAsync(channel, uid, req.Text);
         return dto is null ? BadRequest(new { message = "Xabar bo'sh" }) : dto;
     }
 
@@ -1071,7 +1089,7 @@ public class StudentPortalController(
         var s = await TargetAsync(studentId);
         if (s is null) return NotFound();
         var q = quarter ?? 1;
-        var cls = await db.Classes.FirstOrDefaultAsync(c => c.Name == s.ClassName);
+        var cls = await PrimaryGroupAsync(s);
         if (cls is null) return new StudentSubjectsProgressDto(q, 0, 0, 0, new());
         return await SubjectProgressService.ForStudentAsync(db, cls.Id, q);
     }
@@ -1084,7 +1102,7 @@ public class StudentPortalController(
         if (User.IsInRole("admin") && string.IsNullOrWhiteSpace(studentId)) return NeedStudentId();
         var s = await TargetAsync(studentId);
         if (s is null) return NotFound();
-        var cls = await db.Classes.FirstOrDefaultAsync(c => c.Name == s.ClassName);
+        var cls = await PrimaryGroupAsync(s);
         if (cls is null) return NotFound();
         var dto = await SubjectProgressService.ForStudentSubjectAsync(
             db, cls.Id, quarter ?? 1, subjectId);

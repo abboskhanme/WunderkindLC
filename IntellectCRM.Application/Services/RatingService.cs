@@ -35,10 +35,15 @@ public static class RatingService
         var classById = classes.ToDictionary(c => c.Id);
         var lateIds = (await db.AbsenceReasons.Where(r => r.IsLate).Select(r => r.Id).ToListAsync()).ToHashSet();
 
-        // Faol a'zoliklar (M2M) — har o'quvchining guruhlari.
+        // Faol a'zoliklar (M2M) — har o'quvchining guruhlari. Tartib USTUNLIK bo'yicha
+        // (faol → sinov → muzlatilgan, keyin eng yangi qo'shilgani): birinchi element "vakil guruh"
+        // sifatida ishlatiladi, ya'ni u muzlatilgan (eski) guruh bo'lib qolmasin.
         var groupsByStudent = (await db.StudentGroups.Where(m => m.IsActive).ToListAsync())
             .GroupBy(m => m.StudentId)
-            .ToDictionary(g => g.Key, g => g.Select(m => m.GroupId).Distinct().ToList());
+            .ToDictionary(g => g.Key, g => g
+                .OrderBy(m => MembershipLifecycle.StateRank(m.Status))
+                .ThenByDescending(m => m.JoinedAt ?? string.Empty, StringComparer.Ordinal)
+                .Select(m => m.GroupId).Distinct().ToList());
 
         // Jurnal yozuvlari va o'tilgan darslar — bir marta yuklab, guruh bo'yicha guruhlaymiz.
         var entriesByClass = (await db.JournalEntries.ToListAsync())
@@ -76,9 +81,11 @@ public static class RatingService
             var average = grades.Count > 0 ? Math.Round(grades.Average(), 1) : 0;
             double? attendance = conducted > 0 ? Math.Round((double)(conducted - absent) / conducted * 100) : null;
 
-            // Vakil guruh: o'quvchi ClassName yorlig'i (bor bo'lsa), aks holda birinchi guruh nomi.
+            // VAKIL GURUH — a'zolik bo'yicha birinchisi (yuqorida ustunlik tartibida saralangan).
+            // ⚠️ Ilgari `ClassName` (BIRINCHI qo'shilgan guruh yorlig'i) ustun edi: eski guruhida
+            // muzlatilib yangisida o'qiyotgan o'quvchi reytingda ESKI guruh nomi bilan chiqardi.
             var firstCls = classById.TryGetValue(groupIds[0], out var c0) ? c0 : null;
-            var className = !string.IsNullOrEmpty(st.ClassName) ? st.ClassName : (firstCls?.Name ?? "");
+            var className = firstCls?.Name ?? st.ClassName;
             var gradeLevel = firstCls?.Grade ?? 0;
 
             var b = balls.GetValueOrDefault(st.Id);

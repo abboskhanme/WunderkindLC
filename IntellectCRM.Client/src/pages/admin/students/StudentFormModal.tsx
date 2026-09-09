@@ -12,6 +12,7 @@ import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Input, Select } from '@/components/ui/Input'
 import { PhoneInput } from '@/components/ui/PhoneInput'
+import { Badge } from '@/components/ui/Badge'
 import { genderOptions } from '@/config/constants'
 import { randomPassword, cn, apiErrorMessage } from '@/lib/utils'
 import { StudentPhotoDialog } from './StudentPhotoDialog'
@@ -85,29 +86,55 @@ export function StudentFormModal({ open, onClose, onSubmit, initial }: Props) {
   /** Dublikat tasdig'ini kutayotgan payload ("Baribir saqlash" uchun). */
   const [pending, setPending] = useState<StudentPayload | null>(null)
 
+  /**
+   * Guruh/o'qituvchi ro'yxati YUKLANMADI. ⚠️ Bo'sh ro'yxatdan FARQ QILADI: bo'sh — "markazda
+   * guruh yo'q", xato esa — "bilmaymiz". Ilgari ikkalasi bir xil ko'rinardi (o'qituvchi
+   * tanlovida faqat «— guruhsiz —», guruh tanlovi esa abadiy o'chiq) va foydalanuvchi buni
+   * NOSOZLIK deb emas, "guruh yo'q ekan" deb tushunardi.
+   */
+  const [refError, setRefError] = useState('')
+  /** "Qayta urinish" — ro'yxatlarni qaytadan so'rash uchun hisoblagich. */
+  const [refTick, setRefTick] = useState(0)
+
   useEffect(() => {
     if (!open) return
+    let alive = true
     Promise.all([getClasses(), getTeachers()])
       .then(([gs, ts]) => {
+        if (!alive) return
         setGroups(gs.filter((g) => !g.isArchived))
         setTeachers(ts.filter((t) => !t.isArchived))
+        setRefError('')
       })
-      .catch(() => {
+      .catch((e) => {
+        if (!alive) return
         setGroups([])
         setTeachers([])
+        setRefError(apiErrorMessage(e, "Guruhlar va o'qituvchilar ro'yxati yuklanmadi"))
       })
-  }, [open])
+    return () => {
+      alive = false
+    }
+  }, [open, refTick])
 
-  // Tahrirda: joriy guruh nomiga mos o'qituvchini avtomatik tanlab qo'yamiz (kaskad ochilsin).
+  /**
+   * O'quvchining GURUH A'ZOLIGI (M2M) bormi. Bor bo'lsa forma guruh tanlovini KO'RSATMAYDI —
+   * pastdagi izohga qarang: bu forma a'zolikni ko'chira olmaydi, faqat eski `className`
+   * yorlig'ini yozib qo'yardi.
+   */
+  const hasMemberships = (initial?.groupStates?.length ?? 0) > 0
+
+  // Tahrirda (a'zoligi YO'Q eski yozuvlar uchun): joriy guruh nomiga mos o'qituvchini avtomatik
+  // tanlab qo'yamiz — kaskad ochilsin.
   useEffect(() => {
     if (!open) return
-    if (!initial?.className) {
+    if (hasMemberships || !initial?.className) {
       setTeacherId('')
       return
     }
     const g = groups.find((x) => x.name === initial.className)
     setTeacherId(g?.teacherId ?? '')
-  }, [open, initial, groups])
+  }, [open, initial, groups, hasMemberships])
 
   // Faqat guruhi bor o'qituvchilar tanlov ro'yxatida ko'rinadi.
   const teacherOptions = useMemo(
@@ -361,37 +388,82 @@ export function StudentFormModal({ open, onClose, onSubmit, initial }: Props) {
             value={form.address}
             onChange={(e) => update('address', e.target.value)}
           />
-          <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
-            <Select
-              label="O'qituvchi"
-              value={teacherId}
-              onChange={(e) => {
-                // O'qituvchi o'zgarsa, oldingi guruh tanlovi tozalanadi (boshqa o'qituvchiga tegishli edi).
-                setTeacherId(e.target.value)
-                update('className', '')
-              }}
-            >
-              <option value="">— guruhsiz —</option>
-              {teacherOptions.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.fullName}
-                </option>
-              ))}
-            </Select>
-            <Select
-              label="Guruhga biriktirish"
-              value={form.className}
-              disabled={!teacherId}
-              onChange={(e) => update('className', e.target.value)}
-            >
-              <option value="">{teacherId ? '— guruh tanlang —' : '— avval o\'qituvchini tanlang —'}</option>
-              {groupsForTeacher.map((g) => (
-                <option key={g.id} value={g.name}>
-                  {g.name}
-                </option>
-              ))}
-            </Select>
-          </div>
+          {/*
+            GURUH — bu forma FAQAT o'quvchi hali hech qaysi guruhga qo'shilmaganda "biriktirish"
+            vositasi bo'la oladi.
+
+            ⚠️ A'zoligi BOR o'quvchida bu maydonlar KO'RSATILMAYDI. Sabab: server
+            (`StudentsController.Update`) a'zolik bor bo'lsa yangi a'zolik YARATMAYDI va hech
+            kimni ko'chirmaydi — u faqat `Student.ClassName` YORLIG'INI ustidan yozadi. Ya'ni
+            admin bu yerdan "guruhni o'zgartirsa" hech narsa ko'chmas, lekin butun tizim
+            ishonadigan yorliq YOLG'ON qiymatga o'tib ketardi (hisobotlar, ilova, chat va
+            arxivlash o'sha yorliqqa qarardi). Guruh a'zoligi profil sahifasidagi «Guruhlar»
+            tabidan boshqariladi (qo'shish / aktivlashtirish / muzlatish / ko'chirish).
+          */}
+          {hasMemberships ? (
+            <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5">
+              <span className="block text-sm text-slate-400">Guruhlar</span>
+              <div className="mt-1.5 flex flex-wrap gap-1.5">
+                {(initial?.groupStates ?? []).map((g) => (
+                  <Badge key={g.groupId} tone={g.status === 'active' ? 'green' : g.status === 'trial' ? 'violet' : 'blue'}>
+                    {g.name} · {g.status === 'active' ? 'aktiv' : g.status === 'trial' ? 'sinov'
+                      : g.yearFreeze ? 'aktiv muzlatilgan' : 'muzlatilgan'}
+                  </Badge>
+                ))}
+              </div>
+              <p className="mt-2 text-xs text-slate-500">
+                Guruh a'zoligi bu formadan o'zgartirilmaydi — profil sahifasidagi «Guruhlar» tabidan
+                (qo'shish, aktivlashtirish, muzlatish, boshqa guruhga ko'chirish).
+              </p>
+            </div>
+          ) : (
+            <div className="mt-3">
+              {/* ⚠️ RO'YXAT YUKLANMADI — jimgina "guruh yo'q" bo'lib ko'rinmasin. */}
+              {refError && (
+                <div className="mb-2 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
+                  <span>{refError} — guruhga biriktirish hozir ishlamaydi.</span>
+                  <button
+                    type="button"
+                    onClick={() => setRefTick((t) => t + 1)}
+                    className="rounded-md px-2 py-1 text-xs font-semibold text-amber-800 hover:bg-amber-100"
+                  >
+                    Qayta urinish
+                  </button>
+                </div>
+              )}
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+              <Select
+                label="O'qituvchi"
+                value={teacherId}
+                onChange={(e) => {
+                  // O'qituvchi o'zgarsa, oldingi guruh tanlovi tozalanadi (boshqa o'qituvchiga tegishli edi).
+                  setTeacherId(e.target.value)
+                  update('className', '')
+                }}
+              >
+                <option value="">— guruhsiz —</option>
+                {teacherOptions.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.fullName}
+                  </option>
+                ))}
+              </Select>
+              <Select
+                label="Guruhga biriktirish"
+                value={form.className}
+                disabled={!teacherId}
+                onChange={(e) => update('className', e.target.value)}
+              >
+                <option value="">{teacherId ? '— guruh tanlang —' : '— avval o\'qituvchini tanlang —'}</option>
+                {groupsForTeacher.map((g) => (
+                  <option key={g.id} value={g.name}>
+                    {g.name}
+                  </option>
+                ))}
+              </Select>
+              </div>
+            </div>
+          )}
           <div className="mt-3">
             <Input
               label="Markazga kelgan sana"

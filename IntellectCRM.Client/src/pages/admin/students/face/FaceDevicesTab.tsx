@@ -12,6 +12,7 @@ import { Loader } from '@/components/ui/Loader'
 import { Modal } from '@/components/ui/Modal'
 import { TablePagination, usePagination } from '@/components/ui/TablePagination'
 import { apiErrorMessage, cn, formatDateTime } from '@/lib/utils'
+import { groupsText } from '@/lib/studentGroups'
 import { faceSourceLabel, platformLabel } from './faceLabels'
 
 interface Props {
@@ -299,7 +300,8 @@ function ClearEtalonCard({ onPick }: { onPick: (t: EtalonTarget) => void }) {
               >
                 <span className="min-w-0 truncate font-medium text-slate-700">{s.fullName}</span>
                 <span className="shrink-0 text-xs text-slate-400">
-                  {s.isArchived ? 'arxiv' : s.groups[0]?.name || ''}
+                  {/* Guruh — a'zoliklardan (muzlatilgani yashiriladi), `groups[0]` EMAS. */}
+                  {s.isArchived ? 'arxiv' : groupsText(s.groups)}
                 </span>
               </button>
             ))}

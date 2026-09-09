@@ -348,16 +348,110 @@ public class FinanceLogicTests
         Assert.False(MembershipLifecycle.BillableInMonth(aktiv, "2026-06"));
     }
 
-    [Fact(Skip = "XATO (MembershipLifecycle.cs:65 ↔ TuitionService.cs:438): bo'sh ActivatedAt da ikki xil ta'rif")]
+    [Fact]
     public void BillableInMonth_boshActivatedAt_AccrueMonth_bilan_mos_bolishiKerak()
     {
-        // XATO: TuitionService.cs:438 `m.ActivatedAt.Length >= 7 && month > ActivatedAt[..7]` talab qiladi —
+        // TUZATILDI. Ilgari: TuitionService `m.ActivatedAt.Length >= 7 && month > ActivatedAt[..7]` talab qiladi —
         // ya'ni ActivatedAt BO'SH bo'lsa a'zolikka oylik HECH QACHON hisoblanmaydi. Ayni paytda
         // MembershipLifecycle.cs:65 `activatedAt.Length < 7` ni "har doim pullik" deb oladi.
         // Natija: teglanmagan to'lov taqsimoti (SalaryLedger/GroupBalanceService) va bonus mantig'i
         // o'sha oyni "pullik" deb hisoblaydi, hisob (AccrueMonth) esa umuman yozmaydi — raqamlar mos kelmaydi.
         // KUTILGAN: ikkala joyda BITTA ta'rif — ActivatedAt bo'sh bo'lsa a'zolik pullik EMAS.
         Assert.False(MembershipLifecycle.BillableInMonth("active", "", "", MonthOffset(0)));
+    }
+
+    /// <summary>
+    /// A4 — GURUHDAN CHIQARILGAN a'zolik chiqish oyidan KEYIN pullik BO'LMASLIGI kerak.
+    ///
+    /// <para>Ilgari <c>ClassesController.RemoveMember</c> faqat <c>IsActive=false</c> + <c>LeftAt</c>
+    /// yozgani uchun (<c>Status</c> "active", <c>FrozenAt</c> bo'sh) bunday a'zolik ABADIY pullik
+    /// bo'lib turardi va teglanmagan to'lovning ulushini ESKI guruh o'qituvchisiga olib berardi.</para>
+    /// </summary>
+    [Fact]
+    public void BillableInMonth_CHIQARILGAN_azolik_chiqish_oyidan_KEYIN_pullik_EMAS()
+    {
+        var m = new StudentGroup
+        {
+            Status = "active",           // ⚠️ chiqarishda holat "active" bo'lib QOLADI
+            ActivatedAt = "2026-01-10",
+            FrozenAt = "",               // ⚠️ va muzlatilmagan
+            IsActive = false,
+            LeftAt = "2026-03-20",
+        };
+
+        Assert.True(MembershipLifecycle.BillableInMonth(m, "2026-02"));   // a'zo bo'lgan oy
+        Assert.True(MembershipLifecycle.BillableInMonth(m, "2026-03"));   // chiqish oyi — KIRADI
+        Assert.False(MembershipLifecycle.BillableInMonth(m, "2026-04"));  // keyin — YO'Q
+        Assert.False(MembershipLifecycle.BillableInMonth(m, "2026-09"));
+    }
+
+    [Fact]
+    public void BillableInMonth_SERTIFIKAT_bilan_yakunlangan_SINOV_azoligi_hech_qachon_pullik_EMAS()
+    {
+        // `CompleteAndTransfer` SINOVDAGI a'zolikni ham "completed" qilib yopadi, sanalar esa
+        // BO'SH qoladi. "completed" — "trial" emas, ya'ni eski qoida bo'yicha u MAVJUD BO'LGAN
+        // HAR BIR OYDA pullik bo'lib chiqardi.
+        var m = new StudentGroup
+        {
+            Status = "completed", ActivatedAt = "", FrozenAt = "",
+            IsActive = false, LeftAt = "2026-06-01",
+        };
+
+        foreach (var month in new[] { "2025-01", "2026-05", "2026-06", "2026-07" })
+            Assert.False(MembershipLifecycle.BillableInMonth(m, month));
+    }
+
+    [Fact]
+    public void NotLeftBeforeMonth_chiqish_sanasi_YOQ_bolsa_chegara_qoyilmaydi()
+    {
+        // Eski/qo'lda tuzatilgan qatorda `LeftAt` bo'sh bo'lishi mumkin — qaysi oyda tugaganini
+        // bilmasdan butun tarixni kesib tashlash mavjud hisobotlarni jimgina o'zgartirib yuborardi.
+        Assert.True(MembershipLifecycle.NotLeftBeforeMonth(null, "2026-09"));
+        Assert.True(MembershipLifecycle.NotLeftBeforeMonth("", "2026-09"));
+        Assert.True(MembershipLifecycle.NotLeftBeforeMonth("buzuq", "2026-09"));  // <7 belgi
+        Assert.False(MembershipLifecycle.NotLeftBeforeMonth("2026-03-20", "2026-04"));
+    }
+
+    // ==================== TuitionService.PlanChargeEdit (qo'lda tahrir) ====================
+
+    /// <summary>
+    /// A2 — hisobni qo'lda tahrirlashda ESKI chegirma SNAPSHOT qilinishi shart.
+    /// Ilgari chegirma AVVAL qirqilar, "eski effektiv" esa ALLAQACHON O'ZGARGAN chegirma bilan
+    /// hisoblanardi — balansga hech qachon to'lanmagan pul qaytarilardi.
+    /// </summary>
+    [Fact]
+    public void PlanChargeEdit_chegirma_QIRQILSA_ham_eski_effektiv_ESKI_chegirma_bilan_olinadi()
+    {
+        // Amount=500 000, Discount=200 000 → balansdan 300 000 yechilgan edi.
+        // Admin summani 150 000 ga tushiradi → chegirma 150 000 ga qirqiladi.
+        var plan = TuitionService.PlanChargeEdit(500_000m, 200_000m, 150_000m);
+
+        Assert.Equal(300_000m, plan.OldEffective);   // ⚠️ 350 000 EMAS
+        Assert.Equal(150_000m, plan.NewDiscount);
+        Assert.Equal(0m, plan.NewEffective);
+        Assert.Equal(300_000m, plan.BalanceDelta);   // balansga aynan yechilgani qaytadi
+        Assert.True(plan.DiscountClamped);
+    }
+
+    [Fact]
+    public void PlanChargeEdit_chegirma_SIGSA_tegilmaydi()
+    {
+        var plan = TuitionService.PlanChargeEdit(500_000m, 200_000m, 400_000m);
+
+        Assert.Equal(200_000m, plan.NewDiscount);
+        Assert.False(plan.DiscountClamped);
+        Assert.Equal(300_000m, plan.OldEffective);
+        Assert.Equal(200_000m, plan.NewEffective);
+        Assert.Equal(100_000m, plan.BalanceDelta);
+    }
+
+    [Fact]
+    public void PlanChargeEdit_MANFIY_sorov_nolga_tushadi()
+    {
+        var plan = TuitionService.PlanChargeEdit(500_000m, 200_000m, -1m);
+        Assert.Equal(0m, plan.NewAmount);
+        Assert.Equal(0m, plan.NewDiscount);
+        Assert.Equal(300_000m, plan.BalanceDelta);   // butun effektiv qaytadi
     }
 
     // ==================== MembershipLifecycle.Tally ====================

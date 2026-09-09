@@ -60,6 +60,76 @@ public static class MembershipLifecycle
     public static System.Linq.Expressions.Expression<Func<Domain.StudentGroup, bool>> OccupiesSeatExpr { get; } =
         sg => sg.IsActive && sg.Status != "frozen";
 
+    // ==================== O'QUVCHI DARAJASIDAGI HOLAT (JAMLAMA) ====================
+
+    /// <summary>
+    /// <b>INVARIANT:</b> o'quvchining UMUMIY holati — uning BARCHA tirik (<c>IsActive</c>)
+    /// a'zoliklari ustidan JAMLAMA, ustunlik tartibi
+    /// <c>active &gt; trial &gt; yearFrozen &gt; frozen &gt; ""</c>.
+    ///
+    /// <para>⚠️ <b>Hech bir joy buni BITTA a'zolikdan (birinchi, oxirgi yoki tasodifiy) olmasin.</b>
+    /// O'quvchi eski guruhida MUZLATILIB yangisida o'qiyotgan bo'lishi odatiy hol; bitta a'zolikka
+    /// qaragan kod uni "aktiv emas" deb ko'rsatadi va eski guruhini "asosiy" deb yozadi. Aynan shu
+    /// xato bo'lgan: profil endpointi jamlamani umuman to'ldirmasdi va UI zaxira sifatida
+    /// <see cref="Domain.Student.ClassName"/> (BIRINCHI qo'shilgan guruh) ni chizardi.</para>
+    ///
+    /// <para>"yearFrozen" — <see cref="Domain.StudentGroup.YearFreeze"/> bayrog'i («aktiv muzlatish»,
+    /// yangi o'quv yiliga o'tish). Status baribir "frozen" bo'lib qoladi, ya'ni bu FAQAT ko'rsatuv
+    /// (`.claude/rules/year-freeze.md` §1) — hisob-kitobga TEGMAYDI.</para>
+    /// </summary>
+    public static string MemberState(IEnumerable<Domain.StudentGroup> memberships)
+    {
+        bool active = false, trial = false, frozen = false, yearFrozen = false;
+        foreach (var m in memberships)
+        {
+            if (!m.IsActive) continue; // chiqib ketgan/tugatgan a'zolik holatga ta'sir qilmaydi
+            switch (m.Status)
+            {
+                case "active": active = true; break;
+                case "trial": trial = true; break;
+                case "frozen":
+                    frozen = true;
+                    if (m.YearFreeze) yearFrozen = true;
+                    break;
+                // "completed" (sertifikat bilan tugatgan) va noma'lum holat — holat bermaydi
+                // (ro'yxatdagi eski xatti-harakat bilan AYNAN bir xil: `StudentSearch.MemberState`).
+            }
+        }
+        return active ? "active"
+            : trial ? "trial"
+            : yearFrozen ? "yearFrozen"
+            : frozen ? "frozen" : "";
+    }
+
+    /// <summary>O'quvchi markazda FAOLmi — kamida BITTA tirik a'zoligi <c>Status=="active"</c>.
+    /// <see cref="MemberState"/> bilan bitta manbadan (sinov/muzlatilgan — faol EMAS).</summary>
+    public static bool IsActiveOverall(IEnumerable<Domain.StudentGroup> memberships) =>
+        MemberState(memberships) == "active";
+
+    /// <summary>Ko'rsatish tartibi: faol → sinov → muzlatilgan → qolgani. "Bitta guruh ko'rsatish
+    /// SHART" bo'lgan joylarda tanlov shu tartibda qilinadi (hech qachon "birinchi qo'shilgani").</summary>
+    public static int StateRank(string? status) => status switch
+    {
+        "trial" => 1,
+        "frozen" => 2,
+        "completed" => 3,
+        _ => 0, // "active" yoki noma'lum
+    };
+
+    /// <summary>
+    /// "ASOSIY GURUH" — faqat BITTA guruh ko'rsatilishi shart bo'lgan joylar uchun (masalan
+    /// o'quvchi ilovasidagi bugungi darslar). Tanlov ANIQ (deterministik): avval TIRIK a'zoliklar,
+    /// ular ichida <see cref="StateRank"/> (faol → sinov → muzlatilgan), teng bo'lsa eng YANGI
+    /// qo'shilgani, oxirida guruh id — ya'ni "birinchi qo'shilgan guruh" HECH QACHON g'olib emas.
+    /// </summary>
+    public static Domain.StudentGroup? PrimaryMembership(IEnumerable<Domain.StudentGroup> memberships) =>
+        memberships
+            .Where(m => m.IsActive)
+            .OrderBy(m => StateRank(m.Status))
+            .ThenByDescending(m => m.JoinedAt ?? string.Empty, StringComparer.Ordinal)
+            .ThenBy(m => m.GroupId, StringComparer.Ordinal)
+            .FirstOrDefault();
+
     public static LifecycleTally Tally(IEnumerable<(string Status, bool IsActive, string? LeftAt)> memberships)
     {
         int came = 0, active = 0, trial = 0, frozen = 0, left = 0;
@@ -88,6 +158,16 @@ public static class MembershipLifecycle
     ///
     /// <para>Qoida: sinov (trial) — hisoblanmaydi; aktivlashtirilgan oydan boshlab; muzlatish
     /// oyigacha (muzlatish oyining O'ZI kiradi — billing konvensiyasi).</para>
+    ///
+    /// <para>⚠️ <b>AKTIVLASHTIRISH SANASI BO'SH BO'LSA — PULLIK EMAS.</b> Ilgari bo'sh
+    /// <c>ActivatedAt</c> "har doim pullik" deb olinardi, <c>TuitionService.AccruableMonth</c> esa
+    /// aksincha HAQIQIY sana talab qiladi — ya'ni hisob (<c>MonthlyCharge</c>) hech qachon
+    /// yozilmaydigan a'zolik teglanmagan to'lov taqsimotida (<c>SalaryLedger</c>,
+    /// <c>GroupBalanceService</c>, <c>CourseFinanceReport</c>) va bonusda "pullik" bo'lib turardi.
+    /// Buning eng og'ir ko'rinishi: <c>CompleteAndTransfer</c> SINOVDAGI a'zolikni
+    /// <c>Status="completed"</c> qilib yopadi (sanalar bo'sh qoladi) — "completed" esa "trial" emas,
+    /// demak u <b>MAVJUD BO'LGAN HAR BIR OYDA</b> pullik bo'lib chiqardi va o'sha guruh
+    /// o'qituvchisiga begona pulning ulushini olib berardi. Endi ikkala joyda BITTA ta'rif.</para>
     /// </summary>
     /// <param name="month">"YYYY-MM"</param>
     public static bool BillableInMonth(string status, string activatedAt, string frozenAt, string month) =>
@@ -104,14 +184,51 @@ public static class MembershipLifecycle
             foreach (var p in pastPeriods)
                 if (MonthInPeriod(p, month)) return true;
         if (status == "trial") return false;
-        var actOk = activatedAt.Length < 7 || string.CompareOrdinal(month, activatedAt[..7]) >= 0;
+        // ⚠️ Sana BO'SH bo'lsa a'zolik hech qachon aktivlashtirilmagan — pullik ham emas
+        // (`TuitionService.AccruableMonth` bilan AYNAN bir xil talab; qarang: yuqoridagi izoh).
+        var actOk = activatedAt.Length >= 7 && string.CompareOrdinal(month, activatedAt[..7]) >= 0;
         var frzOk = frozenAt.Length < 7 || string.CompareOrdinal(month, frozenAt[..7]) <= 0;
         return actOk && frzOk;
     }
 
+    /// <summary>
+    /// A'zolik SHU OYDA hali TUGAMAGANmi — guruhdan CHIQARILGAN (yoki sertifikat bilan yakunlangan)
+    /// a'zolik chiqish oyidan KEYIN pullik EMAS.
+    ///
+    /// <para>⚠️ <b>NEGA ALOHIDA CHEGARA KERAK:</b> <c>ClassesController.RemoveMember</c> chiqarishda
+    /// FAQAT <c>IsActive=false</c> + <c>LeftAt</c> yozadi — <c>Status</c> "active" bo'lib qoladi,
+    /// <c>FrozenAt</c> esa bo'sh. Ya'ni faqat holat/sanalarga qaraydigan kod uchun bunday a'zolik
+    /// <b>abadiy pullik</b> bo'lib turardi: martda chiqarilgan o'quvchi sentyabrda teglanmagan to'lov
+    /// qilsa, pulning yarmi ESKI guruh o'qituvchisining foizli maoshiga ketardi (va hozirgi
+    /// o'qituvchining maoshi ikki barobar kamayardi). Xuddi shu buzilish
+    /// <c>GroupBalanceService</c> (per-guruh qizil/yashil), <c>CourseFinanceReport</c> va ushlab
+    /// turish bonusida ham bor edi.</para>
+    ///
+    /// <para>Chegara <c>LeftAt</c> bo'yicha qo'yiladi — bu `.claude/rules/membership-periods.md` §3
+    /// dagi konvensiyaning o'zi: chiqarishda YOPILGAN DAVR qatori yozilmaydi, chunki joriy davr
+    /// <c>ActivatedAt</c> + <c>FrozenAt</c>/<c>LeftAt</c> juftligidan O'QILADI. <c>StudentGroupLedger</c>
+    /// allaqachon shunday o'qiydi (oylar chiqish oyida to'xtaydi) — endi billing ham.</para>
+    ///
+    /// <para>⚠️ Chiqish SANASI bo'lmasa (eski/qo'lda tuzatilgan qator, <c>IsActive=false</c> lekin
+    /// <c>LeftAt</c> bo'sh) chegara qo'yilmaydi: qaysi oyda tugaganini bilmasdan butun tarixni
+    /// "pullik emas" deb kesib tashlash mavjud hisobotlarni jimgina o'zgartirib yuborardi. Bunday
+    /// qator baribir <c>ActivatedAt</c>/<c>FrozenAt</c> oynasi bilan chegaralangan.</para>
+    /// </summary>
+    public static bool NotLeftBeforeMonth(string? leftAt, string month)
+    {
+        var left = leftAt ?? string.Empty;
+        if (left.Length < 7) return true;
+        return string.CompareOrdinal(month, left[..7]) <= 0;
+    }
+
     /// <inheritdoc cref="BillableInMonth(string,string,string,string)"/>
+    /// <remarks>Entity varianti YOPILGAN davrlarni ham, <see cref="NotLeftBeforeMonth"/> chegarasini
+    /// ham qo'llaydi — chaqiruvchilar a'zoliklarni FILTRLAMASDAN uzatadi
+    /// (<c>SalaryLedger</c>, <c>GroupBalanceService</c>, <c>CourseFinanceReport</c>,
+    /// <c>RetentionBonusService</c>), ya'ni "tugagan a'zolik" ni aynan shu yer to'sishi shart.</remarks>
     public static bool BillableInMonth(Domain.StudentGroup m, string month) =>
-        BillableInMonth(m.Status, m.ActivatedAt, m.FrozenAt, month, m.PastPeriods);
+        NotLeftBeforeMonth(m.LeftAt, month)
+        && BillableInMonth(m.Status, m.ActivatedAt, m.FrozenAt, month, m.PastPeriods);
 
     // ==================== YOPILGAN FAOL DAVRLAR (StudentGroup.PastPeriods) ====================
 

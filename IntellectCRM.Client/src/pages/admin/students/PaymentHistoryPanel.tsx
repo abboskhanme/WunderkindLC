@@ -1,5 +1,5 @@
-﻿import { useEffect, useState } from 'react'
-import { Check, Pencil, Users, Wallet, X } from 'lucide-react'
+﻿import { useEffect, useRef, useState } from 'react'
+import { AlertCircle, Check, Pencil, RefreshCw, Users, Wallet, X } from 'lucide-react'
 import type { MonthStatus, Student, StudentLedger } from '@/types'
 import { getStudentLedger, editStudentCharge, getStudent, addPayment } from '@/api/services/students'
 import { useAuth } from '@/context/auth-context'
@@ -10,6 +10,7 @@ import { AuditHistoryList } from '@/components/audit/AuditHistoryList'
 import { PaymentModal } from './PaymentModal'
 import { ReceiptModal } from '@/components/finance/ReceiptModal'
 import { formatDate, formatMoney, cn, apiErrorMessage } from '@/lib/utils'
+import { groupsText, statesToGroups } from '@/lib/studentGroups'
 import { formatMonth, monthStatusLabels, paymentMethodLabel } from '@/config/constants'
 
 interface Props {
@@ -33,6 +34,16 @@ export function PaymentHistoryPanel({ studentId, onPaid }: Props) {
   const isSuper = user?.role === 'superadmin'
   const [ledger, setLedger] = useState<StudentLedger | null>(null)
   const [loading, setLoading] = useState(false)
+  /**
+   * YUKLASH XATOSI — ALOHIDA holat. ⚠️ Ilgari `.catch` umuman yo'q edi va shart
+   * `loading || !ledger` bo'lgani uchun har qanday nosozlik MANGU "Yuklanmoqda..." bo'lib
+   * qolardi: foydalanuvchi na sababni ko'rar, na qayta urina olardi.
+   */
+  const [error, setError] = useState('')
+  /** "Qayta urinish" — hisobni qaytadan so'rash uchun hisoblagich. */
+  const [tick, setTick] = useState(0)
+  /** Kechikib kelgan javob yangisini bosib ketmasin (o'quvchi almashganda). */
+  const reqRef = useRef(0)
   /** Hisoblangan summani qo'lda tahrirlash (faqat super admin) — har (oy, guruh) bo'yicha alohida.
    *  Kalit: `${month}|${groupId ?? ''}` — ko'p guruhli o'quvchida har guruh ulushi alohida tahrirlanadi. */
   const [editKey, setEditKey] = useState<string | null>(null)
@@ -48,14 +59,23 @@ export function PaymentHistoryPanel({ studentId, onPaid }: Props) {
 
   useEffect(() => {
     if (!studentId) return
+    const req = ++reqRef.current
     // eslint-disable-next-line react-hooks/set-state-in-effect -- o'quvchi almashganda tarixni yuklash (maqsadli)
     setLoading(true)
     setLedger(null)
+    setError('')
     setEditKey(null)
     getStudentLedger(studentId)
-      .then(setLedger)
-      .finally(() => setLoading(false))
-  }, [studentId])
+      .then((l) => {
+        if (reqRef.current === req) setLedger(l)
+      })
+      .catch((e) => {
+        if (reqRef.current === req) setError(apiErrorMessage(e, "To'lov tarixini yuklab bo'lmadi"))
+      })
+      .finally(() => {
+        if (reqRef.current === req) setLoading(false)
+      })
+  }, [studentId, tick])
 
   const saveEdit = async (month: string, groupId?: string | null) => {
     if (!studentId) return
@@ -99,10 +119,18 @@ export function PaymentHistoryPanel({ studentId, onPaid }: Props) {
     // Xato QAYTA OTILADI — PaymentModal o'zi ko'rsatadi (kvitansiya band bo'lsa kartochka
     // + "Baribir saqlash"). Shu sabab bu yerda catch/alert yo'q.
     const txId = await addPayment(studentId, amount, month, groupId, comment, method, date, extra)
-    const fresh = await getStudentLedger(studentId)
-    setLedger(fresh)
+    // ⚠️ TO'LOV SAQLANDI — avval modal YOPILADI, keyin ro'yxat yangilanadi.
+    // Ilgari yangilash `await` bilan shu yerda turardi va u yiqilsa xato PaymentModal ning
+    // catch'iga borib "To'lovni saqlab bo'lmadi" deb ko'rinardi — kassir to'lovni QAYTA
+    // kiritib, DUBLIKAT tranzaksiya yasardi. Yangilash xatosi endi to'lovga TA'SIR QILMAYDI.
     setPayTarget(null)
     onPaid?.()
+    try {
+      const fresh = await getStudentLedger(studentId)
+      setLedger(fresh)
+    } catch (e) {
+      setError(apiErrorMessage(e, "To'lov saqlandi, lekin ro'yxatni yangilab bo'lmadi"))
+    }
     // CHEK: to'lov saqlangach kvitansiya ochiladi (Kassa bo'limidagi bilan bir xil).
     if (txId) {
       setReceiptAuto(true)
@@ -110,17 +138,54 @@ export function PaymentHistoryPanel({ studentId, onPaid }: Props) {
     }
   }
 
-  if (loading || !ledger) return <Loader label="Yuklanmoqda..." />
+  // UCHTA ALOHIDA holat: yuklanmoqda · xato (sabab + qayta urinish) · ma'lumot yo'q.
+  if (loading) return <Loader label="Yuklanmoqda..." />
+
+  if (error && !ledger)
+    return (
+      <div className="flex flex-col items-center gap-3 rounded-xl border border-red-100 bg-red-50 px-4 py-8 text-center">
+        <AlertCircle className="h-6 w-6 text-red-500" />
+        <p className="text-sm font-semibold text-red-700">To'lov tarixi yuklanmadi</p>
+        <p className="max-w-md text-sm text-red-600">{error}</p>
+        <Button variant="secondary" onClick={() => setTick((t) => t + 1)}>
+          <RefreshCw className="h-4 w-4" /> Qayta urinish
+        </Button>
+      </div>
+    )
+
+  if (!ledger)
+    return <p className="py-8 text-center text-sm text-slate-400">To'lov ma'lumoti topilmadi</p>
 
   return (
     <>
       <div className="space-y-5">
+        {/* Ma'lumot BOR, lekin oxirgi yangilash yiqildi — jimgina eskirib qolmasin. */}
+        {error && (
+          <div className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
+            <AlertCircle className="h-4 w-4 shrink-0" />
+            <span className="flex-1">{error}</span>
+            <button
+              type="button"
+              onClick={() => setTick((t) => t + 1)}
+              className="shrink-0 rounded-md px-2 py-1 text-xs font-semibold text-amber-800 hover:bg-amber-100"
+            >
+              Qayta urinish
+            </button>
+          </div>
+        )}
+
         {/* Sarlavha */}
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-slate-50 px-4 py-3">
           <div>
             <p className="font-semibold text-slate-800">{ledger.student.fullName}</p>
+            {/* ⚠️ GURUH NOMI a'zoliklardan (`groupStates`), eski `className` faqat ZAXIRA —
+                o'quvchi bir NECHTA guruhda bo'lishi mumkin (`lib/studentGroups.ts`).
+                «Oylik» ham BARCHA faol guruhlar yig'indisi (server shunday hisoblaydi), shuning
+                uchun yorliq "jami oylik" — aks holda sarlavha pastdagi «Hisoblangan» ustuni
+                bilan ZID bo'lib ko'rinardi (bitta guruh narxi kabi o'qilardi). */}
             <p className="text-sm text-slate-500">
-              {ledger.student.className} · oylik <span className="font-mono">{formatMoney(ledger.monthlyFee)}</span>
+              {groupsText(statesToGroups(ledger.student.groupStates), ledger.student.className, '—')} · jami oylik{' '}
+              <span className="font-mono">{formatMoney(ledger.monthlyFee)}</span>
             </p>
           </div>
           <div className="flex items-center gap-4">

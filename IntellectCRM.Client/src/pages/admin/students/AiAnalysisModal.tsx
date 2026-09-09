@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Sparkles, RefreshCw, FileDown, AlertCircle, Info } from 'lucide-react'
 import {
   generateStudentAiAnalysis,
+  getStudentAiAnalyses,
   type StudentAiAnalysisRecord,
 } from '@/api/services/students'
 import { Modal } from '@/components/ui/Modal'
@@ -14,10 +15,18 @@ interface Props {
   onClose: () => void
   studentId: string
   studentName: string
-  /** Sahifadagi saqlangan tahlillar (eng yangisi birinchi). */
+  /**
+   * Sahifada ALLAQACHON yuklangan tahlillar (eng yangisi birinchi) — BOSHLANG'ICH qiymat.
+   *
+   * ⚠️ Ro'yxat bo'sh bo'lishi "tahlil yo'q" degani EMAS: sahifa uni faqat «AI Tahlil» TABI
+   * ochilganda yuklaydi, oyna esa profil "⋮" menyusidan ham ochiladi. Shuning uchun oyna
+   * ochilganda O'ZI ham so'rov yuboradi (§ pastdagi effekt).
+   */
   records: StudentAiAnalysisRecord[]
   /** Yangi tahlil yaratilganda sahifa ro'yxatini yangilash uchun. */
   onGenerated: (rec: StudentAiAnalysisRecord) => void
+  /** Oyna o'zi yuklab olgan ro'yxat — sahifa ham shu bilan yangilansin (ixtiyoriy). */
+  onLoaded?: (recs: StudentAiAnalysisRecord[]) => void
 }
 
 function buildPrintHtml(rec: StudentAiAnalysisRecord, studentName: string): string {
@@ -57,27 +66,58 @@ function buildPrintHtml(rec: StudentAiAnalysisRecord, studentName: string): stri
 </body></html>`
 }
 
-export function AiAnalysisModal({ open, onClose, studentId, studentName, records, onGenerated }: Props) {
+export function AiAnalysisModal({
+  open, onClose, studentId, studentName, records, onGenerated, onLoaded,
+}: Props) {
   const todayTk = useMemo(
     () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Tashkent' }),
     [],
   )
-  const latest = records[0] ?? null
-  const hasToday = latest?.date === todayTk
 
+  /**
+   * OYNANING O'Z ro'yxati. ⚠️ Prop faqat BOSHLANG'ICH qiymat: oyna profil "⋮" menyusidan
+   * ochilganda sahifa tahlillarni hali yuklamagan bo'ladi va oyna «Bu o'quvchi hali tahlil
+   * qilinmagan» deb YOLG'ON ko'rsatardi — foydalanuvchi "Tahlil qilish"ni bosib, mavjud
+   * hisobot o'rniga "bugun allaqachon tahlil qilingan" xabarini olardi.
+   */
+  const [list, setList] = useState<StudentAiAnalysisRecord[]>(records)
   const [shown, setShown] = useState<StudentAiAnalysisRecord | null>(null)
   const [loading, setLoading] = useState(false)
+  /** Saqlangan tahlillar ro'yxati YUKLANMOQDA — "tahlil yo'q" holatidan ALOHIDA. */
+  const [listLoading, setListLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [info, setInfo] = useState<string | null>(null)
+  /** Kechikib kelgan javob (boshqa o'quvchiniki) yangisini bosib ketmasin. */
+  const reqRef = useRef(0)
 
+  const latest = list[0] ?? null
+  const hasToday = latest?.date === todayTk
+
+  // Oyna OCHILGANDA — ro'yxat qayerdan ochilganidan QAT'I NAZAR qaytadan so'raladi.
   useEffect(() => {
-    if (open) {
-      setShown(latest)
-      setError(null)
-      setInfo(null)
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open])
+    if (!open || !studentId) return
+    const req = ++reqRef.current
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- oyna ochilganda holatni tiklash va yuklash (maqsadli)
+    setError(null)
+    setInfo(null)
+    setListLoading(true)
+    getStudentAiAnalyses(studentId)
+      .then((recs) => {
+        if (reqRef.current !== req) return
+        setList(recs)
+        setShown(recs[0] ?? null)
+        onLoaded?.(recs)
+      })
+      .catch(() => {
+        // Ro'yxat kelmadi — sahifadagi (bo'lsa) ro'yxatga qaytamiz, "yo'q" deb ko'rsatmaymiz.
+        if (reqRef.current !== req) return
+        setShown((prev) => prev ?? records[0] ?? null)
+      })
+      .finally(() => {
+        if (reqRef.current === req) setListLoading(false)
+      })
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- faqat oyna OCHILGANDA (records/onLoaded o'zgarishi qayta so'ramasin)
+  }, [open, studentId])
 
   const generate = () => {
     setLoading(true)
@@ -86,8 +126,10 @@ export function AiAnalysisModal({ open, onClose, studentId, studentName, records
     generateStudentAiAnalysis(studentId)
       .then((r) => {
         if (r.ok && r.record) {
-          setShown(r.record)
-          onGenerated(r.record)
+          const rec = r.record
+          setShown(rec)
+          setList((prev) => [rec, ...prev.filter((x) => x.id !== rec.id && x.date !== rec.date)])
+          onGenerated(rec)
           if (r.alreadyToday)
             setInfo("Bugun allaqachon tahlil qilingan. Keyingi tahlilni ertaga qilish mumkin.")
         } else {
@@ -126,7 +168,9 @@ export function AiAnalysisModal({ open, onClose, studentId, studentName, records
       title="AI Tahlil"
       footer={
         <>
-          <Button variant="secondary" onClick={generate} disabled={loading || blockedToday}>
+          {/* ⚠️ Ro'yxat yuklanmaguncha o'chiq: aks holda "bugun tahlil qilingan" cheklovi
+              hali NOMA'LUM bo'lib, foydalanuvchi mavjud hisobot o'rniga rad javobini olardi. */}
+          <Button variant="secondary" onClick={generate} disabled={loading || listLoading || blockedToday}>
             <RefreshCw className={loading ? 'h-4 w-4 animate-spin' : 'h-4 w-4'} />
             {shown ? 'Yangi tahlil' : 'Tahlil qilish'}
           </Button>
@@ -175,9 +219,17 @@ export function AiAnalysisModal({ open, onClose, studentId, studentName, records
         </div>
       )}
 
+      {/* Saqlangan tahlillar ro'yxati yuklanmoqda — "tahlil yo'q" bilan ARALASHTIRILMAYDI. */}
+      {!loading && !error && !shown && listLoading && (
+        <div className="flex flex-col items-center justify-center gap-3 py-14 text-slate-400">
+          <RefreshCw className="h-6 w-6 animate-spin text-brand-400" />
+          <p className="text-sm">Saqlangan tahlillar yuklanmoqda...</p>
+        </div>
+      )}
+
       {!loading && !error && shown && <AiAnalysisView record={shown} />}
 
-      {!loading && !error && !shown && (
+      {!loading && !error && !shown && !listLoading && (
         <div className="flex flex-col items-center justify-center gap-3 py-12 text-center text-slate-400">
           <Sparkles className="h-9 w-9 text-brand-300" />
           <p className="max-w-sm text-sm">

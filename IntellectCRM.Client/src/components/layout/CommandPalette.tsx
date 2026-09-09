@@ -11,6 +11,7 @@ import { searchStudents } from '@/api/services/students'
 import { studentStateBadge } from '@/config/constants'
 import { can as hasPerm } from '@/lib/permissions'
 import { cn } from '@/lib/utils'
+import { groupsText } from '@/lib/studentGroups'
 
 interface Cmd {
   label: string
@@ -188,7 +189,9 @@ export function CommandPalette() {
             id: s.id,
             fullName: s.fullName,
             phone: s.phone || s.parentPhone || undefined,
-            className: s.groups[0]?.name || undefined,
+            // GURUH — a'zoliklardan (muzlatilgani yashiriladi). ⚠️ Ilgari `s.groups[0]` edi:
+            // ro'yxat ALIFBO bo'yicha kelgani uchun eski (muzlatilgan) guruh chiqib qolardi.
+            className: groupsText(s.groups) || undefined,
             archived: s.isArchived,
             memberState: s.memberState,
           })),

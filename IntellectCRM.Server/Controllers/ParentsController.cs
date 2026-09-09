@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using IntellectCRM.Application.Services;
 using IntellectCRM.Infrastructure.Data;
 using IntellectCRM.Application.Dtos;
 
@@ -27,6 +28,18 @@ public class ParentsController(AppDbContext db) : ControllerBase
             .Where(s => !s.IsArchived)
             .ToListAsync();
 
+        // GURUH USTUNI — TIRIK a'zoliklardan (muzlatilganlar yashiriladi; hammasi muzlatilgan
+        // bo'lsa o'shalar ko'rinadi). ⚠️ Ilgari `Student.ClassName` chiqarilardi — u BIRINCHI
+        // qo'shilgan guruhda qotib qoladi, ya'ni eski guruhida muzlatilgan o'quvchi ota-onalar
+        // ro'yxatida hamon o'sha guruhda ko'rinardi.
+        var childIds = students.Select(s => s.Id).ToList();
+        var liveMemberships = await db.StudentGroups.AsNoTracking()
+            .Where(m => m.IsActive && childIds.Contains(m.StudentId)).ToListAsync();
+        var groupNames = await db.Classes.AsNoTracking().ToDictionaryAsync(c => c.Id, c => c.Name);
+        var groupsByStudent = liveMemberships.GroupBy(m => m.StudentId)
+            .ToDictionary(g => g.Key,
+                g => string.Join(", ", StudentMembershipView.DisplayGroupNames(g, groupNames)));
+
         var userIds = students.Where(s => s.UserId != null).Select(s => s.UserId!).Distinct().ToList();
         var users = await db.Users.Where(u => userIds.Contains(u.Id))
             .ToDictionaryAsync(u => u.Id, u => u);
@@ -50,7 +63,10 @@ public class ParentsController(AppDbContext db) : ControllerBase
             {
                 devName = d.DeviceName; platform = d.Platform; appId = d.AppId;
             }
-            return new ParentChildDto(s.Id, s.FullName, s.ClassName, firstLogin, lastLogin, devName, platform, appId);
+            var groups = groupsByStudent.GetValueOrDefault(s.Id, "");
+            return new ParentChildDto(
+                s.Id, s.FullName, groups.Length > 0 ? groups : s.ClassName,
+                firstLogin, lastLogin, devName, platform, appId);
         }
 
         // Guruhlash kaliti: telefon (raqamlar normallashtirilgan) yoki nom (telefon bo'sh bo'lsa).

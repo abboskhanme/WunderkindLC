@@ -81,16 +81,33 @@ public class MessagesController(
                 .ToListAsync())
             .ToDictionary(x => x.Name, x => x.Last);
 
-        var studentClass = students
-            .Where(s => !string.IsNullOrEmpty(s.ClassName))
-            .ToLookup(s => s.Id, s => s.ClassName);
-        var studentCountByClass = students
-            .Where(s => !string.IsNullOrEmpty(s.ClassName))
-            .GroupBy(s => s.ClassName).ToDictionary(g => g.Key, g => g.Count());
+        // O'QUVCHI → GURUH NOMLARI: TIRIK a'zoliklardan (bir o'quvchi bir nechta guruhda bo'lishi
+        // mumkin), a'zoligi yo'q eski yozuvlarda — `ClassName` zaxirasi.
+        // ⚠️ Ilgari o'quvchi FAQAT `ClassName` guruhiga tegishli deb sanalardi va Telegram chatlar
+        // sanog'ida yalang `.First()` turardi: ikkinchi guruhda o'qiyotgan o'quvchi u guruhning
+        // sanog'iga umuman kirmasdi (eski, muzlatilgan guruhga esa kirib turardi).
+        var groupNameById = classes.ToDictionary(c => c.Id, c => c.Name);
+        var liveMemberships = await db.StudentGroups.AsNoTracking().Where(m => m.IsActive)
+            .Select(m => new { m.StudentId, m.GroupId }).ToListAsync();
+        var namesByStudent = liveMemberships
+            .Where(m => groupNameById.ContainsKey(m.GroupId))
+            .GroupBy(m => m.StudentId)
+            .ToDictionary(g => g.Key, g => g.Select(m => groupNameById[m.GroupId]).Distinct().ToList());
+        foreach (var s2 in students)
+        {
+            if (namesByStudent.ContainsKey(s2.Id) || string.IsNullOrEmpty(s2.ClassName)) continue;
+            namesByStudent[s2.Id] = new List<string> { s2.ClassName };
+        }
+
+        var studentCountByClass = namesByStudent.SelectMany(kv => kv.Value)
+            .GroupBy(n => n).ToDictionary(g => g.Key, g => g.Count());
         // Har guruh bo'yicha alohida (distinct) Telegram chatlar soni — e'lon oluvchilar.
+        // (O'quvchi ikki guruhda bo'lsa uning chati IKKALASIDA ham sanaladi — u ikkalasidan ham
+        // e'lon oladi.)
         var parentChatsByClass = regs
-            .Where(r => studentClass.Contains(r.StudentId))
-            .GroupBy(r => studentClass[r.StudentId].First())
+            .Where(r => namesByStudent.ContainsKey(r.StudentId))
+            .SelectMany(r => namesByStudent[r.StudentId].Select(n => new { Name = n, r.ChatId }))
+            .GroupBy(x => x.Name)
             .ToDictionary(g => g.Key, g => g.Select(x => x.ChatId).Distinct().Count());
 
         return classes.Select(c => new ChatClassDto(

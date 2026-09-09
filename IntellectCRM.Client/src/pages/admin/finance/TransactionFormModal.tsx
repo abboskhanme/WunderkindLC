@@ -66,8 +66,25 @@ export function TransactionFormModal({ open, onClose, onSubmit, initial }: Props
   // Tanlanmagan bo'lsa — zaxira sifatida sana oyi ishlatiladi (eski xatti-harakat).
   const month = form.month || form.date?.slice(0, 7)
 
+  /**
+   * Tanlangan GURUHDAGI o'quvchilar — TIRIK a'zolik bo'yicha (`classId` — guruh NOMI).
+   *
+   * ⚠️ Ilgari `s.className === classId` edi, ya'ni eski "asosiy guruh" yorlig'i. U BIRINCHI
+   * qo'shilgan guruhda qotib qoladi: o'quvchi yangi guruhga o'tgan bo'lsa, kassir o'sha guruhni
+   * tanlaganda ro'yxatda umuman ko'rinmasdi (eski guruhida esa ko'rinib turardi).
+   * MUZLATILGAN a'zolik ham qoladi — u guruhga to'lov qilinishi mumkin (qarzini yopish).
+   */
   const studentsInClass = useMemo(
-    () => (classId ? students.filter((s) => s.className === classId && !s.isArchived) : []),
+    () =>
+      classId
+        ? students.filter(
+            (s) =>
+              !s.isArchived &&
+              ((s.groupStates?.length ?? 0) > 0
+                ? s.groupStates!.some((g) => g.name === classId)
+                : s.className === classId),
+          )
+        : [],
     [students, classId],
   )
   // Faqat guruhi bor o'qituvchilar tanlov ro'yxatida; guruhlar tanlangan o'qituvchiniki.

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Loader2, MessageSquareQuote, Trash2, Lock, Users } from 'lucide-react'
 import type { StudentTeacherReviewGroup } from '@/types'
 import {
@@ -34,21 +34,38 @@ export function TeacherReviewsSection({ studentId }: { studentId: string }) {
   const [savingGroup, setSavingGroup] = useState<string | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
 
+  /** Kechikib kelgan javob yangisini bosib ketmasin (o'quvchi almashsa yoki qayta so'ralsa). */
+  const reqRef = useRef(0)
+
+  /** Qayta yuklash ("Qayta urinish" tugmasi). ⚠️ ESKI xato TOZALANADI — aks holda muvaffaqiyatli
+   *  yangilashdan keyin ham qizil kartochka ekranda qolib ketardi. */
   const load = () => {
+    const req = ++reqRef.current
     setLoading(true)
+    setError('')
     getStudentTeacherReviews(studentId)
-      .then(setBlocks)
-      .catch((e) => setError(apiErrorMessage(e, "Fikrlarni yuklab bo'lmadi")))
-      .finally(() => setLoading(false))
+      .then((b) => {
+        if (reqRef.current === req) setBlocks(b)
+      })
+      .catch((e) => {
+        if (reqRef.current === req) setError(apiErrorMessage(e, "Fikrlarni yuklab bo'lmadi"))
+      })
+      .finally(() => {
+        if (reqRef.current === req) setLoading(false)
+      })
   }
 
   useEffect(() => {
+    const req = ++reqRef.current
     let alive = true
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- o'quvchi almashganda ro'yxatni yuklash (maqsadli)
     setLoading(true)
+    setError('')
+    setBlocks([])
     getStudentTeacherReviews(studentId)
-      .then((b) => alive && setBlocks(b))
-      .catch((e) => alive && setError(apiErrorMessage(e, "Fikrlarni yuklab bo'lmadi")))
-      .finally(() => alive && setLoading(false))
+      .then((b) => alive && reqRef.current === req && setBlocks(b))
+      .catch((e) => alive && reqRef.current === req && setError(apiErrorMessage(e, "Fikrlarni yuklab bo'lmadi")))
+      .finally(() => alive && reqRef.current === req && setLoading(false))
     return () => {
       alive = false
     }
@@ -109,9 +126,19 @@ export function TeacherReviewsSection({ studentId }: { studentId: string }) {
         </p>
       </div>
 
-      {error && <Card className="py-2.5 text-center text-sm text-red-500">{error}</Card>}
+      {error && (
+        <Card className="flex flex-wrap items-center justify-center gap-3 py-2.5 text-center text-sm text-red-500">
+          <span>{error}</span>
+          <Button variant="secondary" onClick={load} disabled={loading}>
+            Qayta urinish
+          </Button>
+        </Card>
+      )}
 
-      {blocks.length === 0 ? (
+      {/* ⚠️ XATO va BO'SHLIK — BOSHQA-BOSHQA holat: ilgari ikkalasi BIRGA chizilar va
+          "yuklanmadi" ustiga "o'quvchi hech bir guruhda emas" degan YOLG'ON xulosa qo'shilardi.
+          Ro'yxat kelmagan bo'lsa, u haqda hech narsa deyilmaydi. */}
+      {error && blocks.length === 0 ? null : blocks.length === 0 ? (
         <Card className="py-10 text-center text-sm text-slate-400">
           O'quvchi hech bir guruhda emas yoki guruhlariga o'qituvchi biriktirilmagan — fikr yozib
           bo'lmaydi.

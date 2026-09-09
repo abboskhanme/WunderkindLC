@@ -334,6 +334,15 @@ public class FinanceController(AppDbContext db, AuditService audit, AutoMessageS
             .GroupBy(t => t.StudentId!)
             .ToDictionary(g => g.Key, g => g.Sum(x => x.Direction == "expense" ? -x.Amount : x.Amount));
 
+        // GURUH USTUNI — TIRIK a'zoliklardan (pul raqamlariga TEGMAYDI, faqat ko'rsatish).
+        // ⚠️ Ilgari `Student.ClassName` chiqarilardi: eski guruhida muzlatilib yangisida
+        // o'qiyotgan o'quvchi moliya hisobotida ESKI guruh nomi bilan turardi.
+        var liveMemberships = await db.StudentGroups.AsNoTracking().Where(m => m.IsActive).ToListAsync();
+        var groupNames = await db.Classes.AsNoTracking().ToDictionaryAsync(c => c.Id, c => c.Name);
+        var groupsByStudent = liveMemberships.GroupBy(m => m.StudentId)
+            .ToDictionary(g => g.Key,
+                g => string.Join(", ", StudentMembershipView.DisplayGroupNames(g, groupNames)));
+
         return students.Select(s =>
         {
             var charged = chargedByStudent.GetValueOrDefault(s.Id, 0m);
@@ -341,8 +350,10 @@ public class FinanceController(AppDbContext db, AuditService audit, AutoMessageS
             var paid = paidByStudent.GetValueOrDefault(s.Id, 0m);
             var debt = s.Balance < 0 ? -s.Balance : 0m;
             var advance = s.Balance > 0 ? s.Balance : 0m;
+            var groups = groupsByStudent.GetValueOrDefault(s.Id, "");
             return new StudentFinanceRowDto(
-                s.Id, s.FullName, s.ClassName, charged, discount, paid, debt, advance,
+                s.Id, s.FullName, groups.Length > 0 ? groups : s.ClassName,
+                charged, discount, paid, debt, advance,
                 s.DiscountPct, s.DiscountAmount);
         }).OrderByDescending(r => r.Debt).ThenBy(r => r.FullName).ToList();
     }

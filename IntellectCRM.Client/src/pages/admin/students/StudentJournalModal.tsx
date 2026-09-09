@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { ChevronLeft, ChevronRight, CalendarCheck, CheckCircle2, XCircle, Clock, GraduationCap } from 'lucide-react'
 import { getStudentJournal, type StudentJournal, type StudentJournalCell } from '@/api/services/studentAttendance'
 import type { MasteryLevel } from '@/types'
@@ -60,15 +60,30 @@ export function StudentJournalModal({ studentId, onClose }: StudentJournalModalP
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
+  /**
+   * SO'ROV RAQAMI — kechikib kelgan javob YANGISINI bosib ketmasin.
+   * ⚠️ Bu yerda so'rov uch joydan ketadi (modal ochilishi · guruh tugmasi · oy strelkasi), ya'ni
+   * javoblar TARTIBI kafolatlanmaydi: A o'quvchisining javobi B ning kataklari ustiga tushib,
+   * ekranda "B ning tanlangan guruhi + A ning davomati" ko'rinishi mumkin edi.
+   */
+  const reqRef = useRef(0)
+
   const load = useCallback(
     (groupId?: string, month?: string) => {
       if (!studentId) return
+      const req = ++reqRef.current
       setLoading(true)
       setError('')
       getStudentJournal(studentId, groupId, month)
-        .then(setJournal)
-        .catch((err) => setError(apiErrorMessage(err, "Jurnalni yuklab bo'lmadi")))
-        .finally(() => setLoading(false))
+        .then((j) => {
+          if (reqRef.current === req) setJournal(j)
+        })
+        .catch((err) => {
+          if (reqRef.current === req) setError(apiErrorMessage(err, "Jurnalni yuklab bo'lmadi"))
+        })
+        .finally(() => {
+          if (reqRef.current === req) setLoading(false)
+        })
     },
     [studentId],
   )
@@ -96,12 +111,37 @@ export function StudentJournalModal({ studentId, onClose }: StudentJournalModalP
     >
       {loading && !journal ? (
         <Loader label="Yuklanmoqda..." />
-      ) : error ? (
-        <p className="py-8 text-center text-sm text-red-500">{error}</p>
+      ) : error && !journal ? (
+        /* Hech narsa yuklanmagan — sabab + qayta urinish (bo'sh ekran qoldirilmaydi). */
+        <div className="flex flex-col items-center gap-3 py-8 text-center">
+          <p className="text-sm text-red-500">{error}</p>
+          <button
+            type="button"
+            onClick={() => load()}
+            className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50"
+          >
+            Qayta urinish
+          </button>
+        </div>
       ) : !journal || journal.groups.length === 0 ? (
         <p className="py-8 text-center text-sm text-slate-400">O'quvchi hech qaysi guruhda emas</p>
       ) : (
         <div className="space-y-5">
+          {/* ⚠️ XATO BUTUN TANANI ALMASHTIRMAYDI: ilgari guruh tugmalari va oy strelkalari ham
+              yo'qolib ketar, ya'ni foydalanuvchi boshqa oyni/guruhni ochib qayta urina olmasdi
+              (oynani yopib qaytadan ochishdan boshqa yo'l qolmasdi). */}
+          {error && (
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+              <span>{error}</span>
+              <button
+                type="button"
+                onClick={() => load(journal.groupId, journal.month)}
+                className="rounded-md px-2 py-1 text-xs font-semibold text-red-800 hover:bg-red-100"
+              >
+                Qayta urinish
+              </button>
+            </div>
+          )}
           {/* Guruh tanlovi */}
           {journal.groups.length > 1 && (
             <div className="flex flex-wrap gap-2">

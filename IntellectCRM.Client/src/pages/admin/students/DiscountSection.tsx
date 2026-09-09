@@ -20,6 +20,7 @@ import { Modal } from '@/components/ui/Modal'
 import { Input, Select, Textarea } from '@/components/ui/Input'
 import { StatCard } from '@/components/ui/StatCard'
 import { apiErrorMessage, formatDateTime, formatMoney } from '@/lib/utils'
+import { SCOPE_NONE, appliedGroupLabel, defaultScopeKey, periodInvalid, scopeKey } from './discountScope'
 
 /* ─────────────────────────── kichik yordamchilar ─────────────────────────── */
 
@@ -62,18 +63,6 @@ const groupLabel = (name: string) => (name ? name : 'Barcha guruhlar')
  */
 const scopeTitle = (courseName: string) => (courseName ? courseName : 'Barcha guruhlar')
 
-/**
- * `null`/`''` guruh id — «Barcha guruhlar» qamrovi. Select `value` si va xarita kaliti
- * sifatida BIR XIL ko'rinishga keltiriladi (aks holda `null` va `''` ikki xil kalit bo'lardi).
- */
-const scopeKey = (groupId: string | null | undefined) => groupId ?? ''
-
-/**
- * «Hali tanlanmagan» qamrov. ⚠️ `''` DAN FARQ QILADI — `''` bu «Barcha guruhlar» degan
- * HAQIQIY tanlov. Ikkalasi bir xil bo'lsa, hech narsa tanlamagan admin bilmasdan barcha
- * fanlarga chegirma berib yuborardi.
- */
-const SCOPE_NONE = '__none__'
 
 /**
  * Chegirmadan keyingi oylik: AVVAL foiz, KEYIN summa; 0 dan past tushmaydi.
@@ -368,7 +357,9 @@ export function DiscountSection({
                   <tr key={`${m.month}:${m.groupId ?? ''}:${i}`} className="hover:bg-slate-50/60">
                     <td className="px-3 py-2 font-medium text-slate-700">{monthLabel(m.month)}</td>
                     <td className="px-3 py-2 text-slate-500">{m.courseName || '—'}</td>
-                    <td className="px-3 py-2 text-slate-500">{groupLabel(m.groupName)}</td>
+                    {/* ⚠️ `groupLabel` EMAS: bo'sh nom "guruhsiz hisob" ham, "guruh o'chirilgan"
+                        ham bo'lishi mumkin — `appliedGroupLabel` ikkisini ajratadi. */}
+                    <td className="px-3 py-2 text-slate-500">{appliedGroupLabel(m.groupId, m.groupName)}</td>
                     <td className="px-3 py-2 text-slate-500">{m.teacherName || '—'}</td>
                     <td className="px-3 py-2 text-right font-mono text-slate-600">
                       {formatMoney(m.charged)}
@@ -478,13 +469,9 @@ function DiscountFormModal({
    * sezmaydi. Aniq fan tanlangan bo'lsa, yangi fanga chegirma tushmaydi — admin ko'radi va
    * kerak bo'lsa qo'shadi.
    */
-  const [groupKey, setGroupKey] = useState(() => {
-    if (initial) return scopeKey(initial.groupId)
-    const freeGroups = freeScopes.filter((s) => s.groupId)
-    if (freeGroups.length === 1) return scopeKey(freeGroups[0].groupId)
-    if (freeGroups.length === 0) return scopeKey(freeScopes[0]?.groupId)
-    return SCOPE_NONE
-  })
+  const [groupKey, setGroupKey] = useState(() =>
+    initial ? scopeKey(initial.groupId) : defaultScopeKey(scopes),
+  )
   const [reason, setReason] = useState(initial?.reason ?? '')
   /** Joriy oy hisobiga DARHOL qo'llansinmi (default — HA). */
   const [applyNow, setApplyNow] = useState(true)
@@ -504,8 +491,11 @@ function DiscountFormModal({
   const noFreeScope = !initial && freeScopes.length === 0
   /** Qamrov tanlanmagan — saqlash BLOKLANADI (§ yuqoridagi izoh: jimgina "barcha fanga" ketmasin). */
   const scopeMissing = !initial && groupKey === SCOPE_NONE
+  /** Davr teskari ("2026-09" → "2026-06") — saqlansa chegirma HECH QACHON qo'llanmasdi. */
+  const badPeriod = periodInvalid(startMonth, endMonth)
   const canSave =
-    !pctInvalid && !bothZero && amountNum >= 0 && !scopeTaken && !noFreeScope && !scopeMissing && !saving
+    !pctInvalid && !bothZero && amountNum >= 0 && !scopeTaken && !noFreeScope && !scopeMissing &&
+    !badPeriod && !saving
 
   /** Oylik to'lov — tahrirlashda qamrov `scopes` da bo'lmasligi mumkin (a'zolik yopilgan). */
   const fee = scope?.monthlyFee ?? 0
@@ -594,14 +584,14 @@ function DiscountFormModal({
               bu fanda allaqachon chegirma bor, uni tahrirlang. «Barcha guruhlar» tanlansa,
               o'quvchi KEYIN qo'shiladigan fanlarga ham shu chegirma qo'llanadi.
             </p>
-            {scopeMissing && (
+            {scopeMissing && !noFreeScope && (
               <p className="mt-1.5 text-sm text-amber-600">
                 Chegirma qaysi fanga berilishini tanlang.
               </p>
             )}
             {noFreeScope && (
               <p className="mt-1.5 text-sm text-amber-600">
-                Barcha fanlarda allaqachon chegirma bor — yangisini berib bo'lmaydi. Mavjudini
+                Barcha qamrovlarda allaqachon chegirma bor — yangisini berib bo'lmaydi. Mavjudini
                 tahrirlang yoki bekor qiling.
               </p>
             )}
@@ -670,6 +660,14 @@ function DiscountFormModal({
         <p className="text-xs text-slate-400">
           Bo'sh qoldirilsa — chegirma cheklovsiz (muddatsiz) amal qiladi.
         </p>
+        {/* ⚠️ Teskari davr JIMGINA saqlanardi: qator `active` bo'lar, lekin darhol
+            «Davri boshlanmagan yoki tugagan» bo'lib qolardi va oylik o'zgarmasdi. */}
+        {badPeriod && (
+          <p className="text-sm text-red-600">
+            Boshlanish oyi tugash oyidan keyin — chegirma hech qachon qo'llanmaydi. Oylarni
+            to'g'rilang.
+          </p>
+        )}
 
         <Textarea
           label="Sabab"

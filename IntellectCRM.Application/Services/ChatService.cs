@@ -30,7 +30,7 @@ public class ChatService(IAppDbContext db, IHubContext<ChatHub> hub)
 
     /// <summary>
     /// Foydalanuvchi a'zo bo'lgan chat kanallari (nomlari). admin/superadmin = barcha guruhlar + xodimlar;
-    /// o'qituvchi = guruh rahbarligi + dars beradigan guruhlar + xodimlar; o'quvchi = faqat o'z guruhi.
+    /// o'qituvchi = guruh rahbarligi + dars beradigan guruhlar + xodimlar; o'quvchi = O'Z GURUHLARI (a'zolik bo'yicha, bittadan ko'p bo'lishi mumkin).
     /// "Xodimlar" (<see cref="StaffChannel"/>) — barcha o'qituvchi va adminlar uchun umumiy kanal.
     /// </summary>
     public async Task<List<string>> ClassNamesForUserAsync(string userId, string role)
@@ -49,9 +49,15 @@ public class ChatService(IAppDbContext db, IHubContext<ChatHub> hub)
 
             case "student":
                 {
+                    // O'quvchi — O'ZI A'ZO bo'lgan BARCHA guruhlar (bir necha guruhda o'qish odatiy hol).
+                    // ⚠️ Ilgari faqat `Student.ClassName` (BIRINCHI qo'shilgan guruh) qaytarilardi:
+                    // o'quvchi eski guruhida muzlatilib yangisida o'qiyotgan bo'lsa, YANGI guruh
+                    // chatiga umuman kira olmasdi (`CanAccessAsync` shu ro'yxatga qaraydi).
+                    // `ClassName` — faqat a'zolik umuman bo'lmagan (juda eski) yozuvlar uchun zaxira.
                     var s = await db.Students.FirstOrDefaultAsync(x => x.UserId == userId);
-                    return s is null || string.IsNullOrEmpty(s.ClassName)
-                        ? new List<string>() : new List<string> { s.ClassName };
+                    if (s is null) return new List<string>();
+                    var names = await StudentMembershipView.DisplayGroupNamesAsync(db, s);
+                    return names;
                 }
 
             case "teacher":

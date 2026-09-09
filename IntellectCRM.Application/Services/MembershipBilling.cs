@@ -1,4 +1,5 @@
-﻿using IntellectCRM.Application.Abstractions;
+﻿using Microsoft.EntityFrameworkCore;
+using IntellectCRM.Application.Abstractions;
 using IntellectCRM.Domain;
 
 namespace IntellectCRM.Application.Services;
@@ -73,5 +74,58 @@ public static class MembershipBilling
             db, student, group.Id, freezeDate, inclusive: frozenBeforeActive);
 
         return new FreezeSettlement(!frozenBeforeActive, restored, purged);
+    }
+
+    /// <summary>Guruh o'chirilishidan oldin uning hisoblari balansga qaytarilishi natijasi.</summary>
+    /// <param name="Rows">O'chirilgan hisob qatorlari soni.</param>
+    /// <param name="Students">Balansi tuzatilgan o'quvchilar soni.</param>
+    /// <param name="Credited">Balanslarga QAYTARILGAN jami effektiv summa.</param>
+    public readonly record struct GroupChargeCredit(int Rows, int Students, decimal Credited);
+
+    /// <summary>
+    /// GURUH BUTUNLAY O'CHIRILAYOTGANDA uning barcha <c>MonthlyCharge</c> qatorlarini o'chiradi va
+    /// har bir o'quvchining balansiga effektiv summani QAYTARADI.
+    ///
+    /// <para>⚠️ <b>NEGA KERAK — DOIMIY SOXTA QARZ.</b> Har hisob yaratilganda balans effektiv
+    /// miqdorda KAMAYADI (<c>TuitionService.AccrueOne</c>), ya'ni qator va balans juftlik. Guruhni
+    /// o'chirish esa qatorlarni <c>ExecuteDeleteAsync</c> bilan olib tashlar, balansga esa
+    /// TEGMASDI. Natija: sertifikat bilan yopilgan guruhning har bir o'quvchisi (ular
+    /// <c>IsActive=false</c>, ya'ni "faol a'zo bor" himoyasi ham o'tkazib yuboradi) balansida
+    /// masalan −180 000 bilan qolar va uni TUSHUNTIRADIGAN birorta qator qolmasdi: hisobotda ham,
+    /// to'lov oynasida ham "qarz bor, lekin qaysi oy uchun ekani noma'lum".</para>
+    ///
+    /// <para>⚠️ <c>Locked</c> (qo'lda tahrirlangan) qatorlar ham o'chiriladi — guruhning O'ZI
+    /// yo'qolyapti, ya'ni ularni qoldirib bo'lmaydi (yetim qator). Muzlatishdagi
+    /// <c>TuitionService.PurgeChargesAfterMonthAsync</c> dan farqi shu va u ATAYIN: u yerda guruh
+    /// qoladi, bu yerda esa yo'q.</para>
+    ///
+    /// <para>SaveChanges QILINMAYDI — chaqiruvchi (tranzaksiya ichida) saqlaydi.</para>
+    /// </summary>
+    public static async Task<GroupChargeCredit> CreditAndDropGroupChargesAsync(
+        IAppDbContext db, string groupId)
+    {
+        var rows = await db.MonthlyCharges.Where(c => c.GroupId == groupId).ToListAsync();
+        if (rows.Count == 0) return new GroupChargeCredit(0, 0, 0m);
+
+        var studentIds = rows.Select(r => r.StudentId).Distinct().ToList();
+        var students = (await db.Students.Where(s => studentIds.Contains(s.Id)).ToListAsync())
+            .ToDictionary(s => s.Id);
+
+        var credited = 0m;
+        var touched = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var row in rows)
+        {
+            // O'quvchining o'zi allaqachon o'chirilgan bo'lsa (yetim hisob) — qaytaradigan balans
+            // yo'q, lekin qator baribir o'chadi.
+            if (students.TryGetValue(row.StudentId, out var s))
+            {
+                var effective = Math.Max(0m, row.Amount - row.Discount);
+                s.Balance += effective;
+                credited += effective;
+                touched.Add(s.Id);
+            }
+            db.MonthlyCharges.Remove(row);
+        }
+        return new GroupChargeCredit(rows.Count, touched.Count, credited);
     }
 }
