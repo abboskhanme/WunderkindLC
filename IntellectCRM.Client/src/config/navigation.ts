@@ -211,6 +211,12 @@ export const navByRole: Record<Role, NavItem[]> = {
       to: '/admin/boshqaruv/staff',
       icon: Building2,
       children: [
+        // KPI — xodimlar samaradorligi va oyligi. Bo'lim ichida 5 sahifa (Bugun · Oy ·
+        // Tiketlar · Yopish · Qoidalar), ular orasida sahifa tepasidagi cardlar orqali
+        // o'tiladi. Menyuda BITTA band: `perm: 'kpi'` — `can()` bo'lim uchun "ko'rish"ni
+        // istalgan `kpi.*` sahifa ruxsatidan ham beradi, ya'ni faqat "Bugun" berilgan
+        // xodim ham bandni ko'radi (kirish nuqtasi uni o'ziga OCHIQ sahifaga tashlaydi).
+        { label: 'KPI', to: '/admin/boshqaruv/kpi', perm: 'kpi' },
         { label: 'Vakansiyalar', to: '/admin/boshqaruv/vacancies', perm: 'vacancies' },
         { label: 'Kameralar', to: '/admin/boshqaruv/cameras', perm: 'cameras' },
         { label: 'Filiallar', to: '/admin/boshqaruv/branches', roles: ['superadmin'] },

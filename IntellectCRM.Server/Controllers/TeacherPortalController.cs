@@ -1,4 +1,4 @@
-using Microsoft.AspNetCore.Authorization;
+﻿using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using IntellectCRM.Infrastructure.Data;
@@ -1112,7 +1112,9 @@ public class TeacherPortalController(
         await db.ActionReasons
             .Where(r => r.Category == ContactService.ReasonCategory)
             .OrderBy(r => r.Order)
-            .Select(r => new ActionReasonDto(r.Id, r.Category, r.Label, r.Order))
+            // ⚠️ `OutOfControl` ATAYIN OSHKORA berilgan: EF ifoda daraxti (expression tree)
+            // ixtiyoriy argumentli chaqiruvni qabul qilmaydi (CS0854).
+            .Select(r => new ActionReasonDto(r.Id, r.Category, r.Label, r.Order, r.OutOfControl))
             .ToListAsync();
 
     /// <summary>

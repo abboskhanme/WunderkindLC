@@ -1274,6 +1274,20 @@ public class Lead
     /// o'z savollariga ega (bo'sh = qo'shimcha savol berilmagan).</para>
     /// </summary>
     public string AnswersJson { get; set; } = string.Empty;
+
+    // ---- KPI (xodimlar samaradorligi) uchun MA'LUMOT YIG'ISH ----
+    // KPI moduli lid yaratmaydi va bosqichlarga aralashmaydi — u faqat "kim ishladi" va "kim
+    // yopdi" savoliga javob beradigan uchta maydonni O'QIYDI. Ular bo'sh bo'lsa lid biriktirilmagan
+    // hisoblanadi (hisobotda alohida `unassigned` soni bilan) — eski lidlar buzilmaydi.
+
+    /// <summary>Lidni ISHLAGAN operator (<see cref="AppUser"/>.Id). KPI: "leads" ko'rsatkichi.</summary>
+    public string? AssigneeUserId { get; set; }
+    /// <summary>Shartnomani YOPGAN admin (<see cref="AppUser"/>.Id). KPI: "contracts" ko'rsatkichi —
+    /// bonus AYNAN shu xodimga yoziladi (lidni ochgan boshqa odam bo'lishi mumkin).</summary>
+    public string? ClosedByUserId { get; set; }
+    /// <summary>Shartnoma yopilgan sana "yyyy-MM-dd" — oylik hisob shu ustun bo'yicha guruhlanadi
+    /// (<see cref="CreatedAt"/> emas: o'tgan oyning lidi bu oyda yopilishi mumkin).</summary>
+    public string? ClosedAt { get; set; }
 }
 
 /// <summary>
@@ -1369,8 +1383,18 @@ public class TrialLesson
     public string GroupId { get; set; } = string.Empty;
     /// <summary>Sinov darsi vaqti (ISO "yyyy-MM-ddTHH:mm").</summary>
     public string ScheduledAt { get; set; } = string.Empty;
-    /// <summary>Natija: pending (kutilmoqda) | stayed (qoldi) | left (ketdi).</summary>
+    /// <summary>Natija: pending (kutilmoqda) | came (sinovga KELDI) | no_show (kelmadi) |
+    /// stayed (qoldi) | left (ketdi).
+    ///
+    /// <para>⚠️ "came" va "no_show" — KPI uchun QO'SHILGAN qiymatlar: kiruvchi adminning asosiy
+    /// ko'rsatkichi "lid → sinovga KELISH" konversiyasi, ya'ni "keldi" bilan "qoldi/ketdi" ni
+    /// ajratish shart. Eski yozuvlar tegilmaydi (default "pending" o'sha-o'sha) —
+    /// "stayed"/"left" ham KELGAN hisoblanadi.</para></summary>
     public string Result { get; set; } = "pending";
+    /// <summary>Sinovga HAQIQATDA kelgan sana "yyyy-MM-dd" (null = kelmagan yoki hali belgilanmagan).
+    /// KPI: "trialCame" ko'rsatkichi shu sana bo'yicha oyga tushadi — sinov darsi bir oyda
+    /// rejalashtirilib, keyingi oyda bo'lishi mumkin.</summary>
+    public string? AttendedAt { get; set; }
     public string CreatedAt { get; set; } = string.Empty;
 }
 
@@ -2456,6 +2480,17 @@ public class ActionReason
     public string Category { get; set; } = string.Empty;
     public string Label { get; set; } = string.Empty;
     public int Order { get; set; }
+
+    /// <summary>
+    /// "NAZORATDAN TASHQARI" sabab (ko'chib ketdi, sog'lig'i, oilaviy holat) — KPI uchun
+    /// ma'lumot yig'ish maydoni.
+    ///
+    /// <para>Chiquvchi adminning ketish foizi shunday sabablarni HISOBGA OLMAYDI: xodim
+    /// boshqa shaharga ko'chib ketgan o'quvchini ushlab qola olmaydi, ya'ni buning uchun
+    /// bonusini kesish o'lchovni yolg'on qilardi. Default <c>false</c> — mavjud sabablar
+    /// avvalgidek NAZORATDAGI hisoblanadi (bayroq faqat ATAYIN yoqiladi).</para>
+    /// </summary>
+    public bool OutOfControl { get; set; }
 }
 
 /// <summary>
@@ -5212,4 +5247,312 @@ public class WorkTaskEvent
     /// <summary>Tayyor o'zbekcha matn ("«Rejada» → «Jarayonda»") — klient uni shundayligicha ko'rsatadi.</summary>
     public string Text { get; set; } = string.Empty;
     public DateTime CreatedAt { get; set; } = AppClock.Now;
+}
+
+// =====================================================================================
+//  KPI (xodimlar samaradorligi) — "Boshqaruv → KPI" bo'limi
+// =====================================================================================
+//
+//  Modul operatsion ma'lumot YARATMAYDI: lid — Lidlarda, to'lov — Kassada, davomat — Jurnalda
+//  qoladi. KPI ularni faqat O'QIYDI va o'ziga tegishli BESH narsani yozadi:
+//    cheklist belgisi (ChecklistEntry) · tiket (KpiTicket) · oy boshi snapshoti
+//    (KpiMonthSnapshot) · tasdiqlangan oylik natija (KpiMonthResult) · uzaytirish hodisasi
+//    (StudentExtension).
+//
+//  VERSIYALASH — moduldagi eng muhim g'oya. Oklad ham (KpiProfileSalary), qoidalar ham
+//  (KpiRuleSet) TARIX sifatida saqlanadi: har yozuvda `EffectiveFrom` ("yyyy-MM") bor va
+//  bir oy uchun `EffectiveFrom <= oy` bo'lgan ENG SO'NGGI versiya olinadi. Aks holda
+//  qoidani bugun o'zgartirish O'TGAN oylarning tasdiqlangan hisobini ham qayta yozib
+//  yuborardi — ya'ni xodimga aytilgan summa keyin "o'zgarib" qolardi.
+//
+//  ⚠️ Pul maydonlari `decimal` (`OnModelCreating` da `HasPrecision(18, 2)`), koeffitsientlar
+//  esa `double` — hisob `KpiCalculator` da, entity'da HECH QANDAY mantiq yo'q.
+
+/// <summary>
+/// Xodimning KPI ROLI va kafolat muddati. Bitta xodim — bitta faol profil; rol kodi
+/// (intake_admin | retention_admin | call_operator) qaysi formula bilan hisoblanishini
+/// belgilaydi.
+///
+/// <para>KAFOLAT (<see cref="GuaranteeUntilMonth"/>) — yangi xodim uchun: birinchi oylarda
+/// natija hali chiqmaganda ham qo'lga tegadigan eng kam summa. Sana emas, OY ("yyyy-MM"):
+/// hisob oy kesimida yuritiladi, kun aniqligi bu yerda ma'nosiz.</para>
+/// </summary>
+public class KpiProfile
+{
+    public string Id { get; set; } = Guid.NewGuid().ToString();
+    /// <summary>Xodim — <see cref="AppUser"/>.Id.</summary>
+    public string UserId { get; set; } = string.Empty;
+    /// <summary>Rol kodi: intake_admin | retention_admin | call_operator (`KpiConst`).</summary>
+    public string RoleCode { get; set; } = string.Empty;
+    /// <summary>KPI shu oydan boshlab hisoblanadi ("yyyy-MM").</summary>
+    public string StartMonth { get; set; } = string.Empty;
+    /// <summary>Kafolat AMAL QILADIGAN oxirgi oy ("yyyy-MM"). Bo'sh/null = kafolat YO'Q.</summary>
+    public string? GuaranteeUntilMonth { get; set; }
+    /// <summary>Faol emas — xodim ro'yxatda qoladi, lekin oylik hisobga kirmaydi (yozuv
+    /// o'chirilmaydi: tasdiqlangan natijalar tarixi shu profilga tayanadi).</summary>
+    public bool IsActive { get; set; } = true;
+    public string? Note { get; set; }
+    /// <summary>Yaratilgan vaqt ISO ("yyyy-MM-ddTHH:mm:ss", Toshkent).</summary>
+    public string CreatedAt { get; set; } = AppClock.Iso();
+}
+
+/// <summary>
+/// Shaxsiy OKLAD versiyasi. Har oshirish — YANGI qator (eski ustidan yozilmaydi), chunki
+/// oktyabr oyi hisobi oktyabrdagi oklad bilan qilinishi kerak, hozirgisi bilan emas.
+/// Bir oy uchun <c>KpiVersioning.SalaryFor</c> `EffectiveFrom &lt;= oy` bo'lgan eng so'nggi
+/// qatorni tanlaydi.
+/// </summary>
+public class KpiProfileSalary
+{
+    public string Id { get; set; } = Guid.NewGuid().ToString();
+    /// <summary>Xodim — <see cref="AppUser"/>.Id (<see cref="KpiProfile.UserId"/> bilan bir xil).</summary>
+    public string UserId { get; set; } = string.Empty;
+    /// <summary>Shu OYDAN boshlab kuchga kiradi ("yyyy-MM").</summary>
+    public string EffectiveFrom { get; set; } = string.Empty;
+    /// <summary>Oylik oklad (so'm) — bonus va jarimalardan OLDINGI qism.</summary>
+    public decimal BaseSalary { get; set; }
+    public string? Note { get; set; }
+    /// <summary>Kim o'zgartirgan (foydalanuvchi ismi) — hisob "kim qaror qildi" savoliga javob bersin.</summary>
+    public string? CreatedBy { get; set; }
+    public string CreatedAt { get; set; } = AppClock.Iso();
+}
+
+/// <summary>
+/// Rol QOIDALARI versiyasi — konstantalar (bonus birligi, jarima, kafolat, cap) va pog'ona
+/// jadvallari (konversiya, ushlab qolish, uzaytirish, samaradorlik) bitta JSON'da
+/// (<c>KpiRuleSetJson</c>).
+///
+/// <para>NEGA JSON, o'nlab ustun EMAS: pog'ona jadvallari — o'zgaruvchan uzunlikdagi ro'yxat
+/// (chegara, koeffitsient, izoh), ya'ni ularni ustunlarga yoyish mumkin emas. Ustiga qoidalar
+/// «Qoidalar» sahifasidan TAHRIRLANADI: yangi konstanta qo'shilishi migratsiya talab qilmasin.</para>
+/// </summary>
+public class KpiRuleSet
+{
+    public string Id { get; set; } = Guid.NewGuid().ToString();
+    /// <summary>Rol kodi: intake_admin | retention_admin | call_operator.</summary>
+    public string RoleCode { get; set; } = string.Empty;
+    /// <summary>Shu OYDAN boshlab kuchga kiradi ("yyyy-MM").</summary>
+    public string EffectiveFrom { get; set; } = string.Empty;
+    /// <summary><c>KpiRuleSetJson</c> serializatsiyasi (barcha konstantalar + pog'ona jadvallari).</summary>
+    public string Json { get; set; } = string.Empty;
+    public string? Note { get; set; }
+    public string? CreatedBy { get; set; }
+    public string CreatedAt { get; set; } = AppClock.Iso();
+}
+
+/// <summary>
+/// SIFAT NAZORATI TIKETI — xodimning aniq bir xatosi (yashirin mijoz auditi yoki
+/// qo'ng'iroqni tinglash natijasi). Har tasdiqlangan tiket oylikdan jarima ushlaydi va
+/// yetarlicha to'planganda bonus koeffitsientini ham pasaytiradi.
+///
+/// <para>⚠️ Tiketni AI yoki tizim O'ZI tasdiqlamaydi — u faqat "proposed" holatida tug'iladi,
+/// keyin rahbar tasdiqlaydi. Xodim esa "disputed" bilan e'tiroz bildira oladi
+/// (<see cref="DisputeNote"/>): pul ushlanadigan qarorda bir tomonlama yo'l bo'lmasligi kerak.</para>
+/// </summary>
+public class KpiTicket
+{
+    public string Id { get; set; } = Guid.NewGuid().ToString();
+    /// <summary>Tiket QO'YILGAN xodim — <see cref="AppUser"/>.Id.</summary>
+    public string UserId { get; set; } = string.Empty;
+    /// <summary>Xodim ismi SNAPSHOT sifatida — xodim o'chirilsa/nomi o'zgarsa ham tarix buzilmasin.</summary>
+    public string UserName { get; set; } = string.Empty;
+    /// <summary>Hodisa sanasi "yyyy-MM-dd" — oylik hisob AYNAN shu ustun bo'yicha guruhlanadi.</summary>
+    public string Date { get; set; } = string.Empty;
+    /// <summary>Sabab kaliti (`KpiTicketCatalog` — KODDA, <see cref="ActionReason"/> jadvalida EMAS).</summary>
+    public string ReasonCode { get; set; } = string.Empty;
+    /// <summary>Yashirin mijoz auditining 13 mezonidan biri (1..13). null = mezonga bog'liq emas.</summary>
+    public int? CriterionNo { get; set; }
+    /// <summary>Dalil bo'lgan qo'ng'iroq (<see cref="Call"/>.Id) — bo'sh bo'lishi mumkin.</summary>
+    public string? CallId { get; set; }
+    public string? Note { get; set; }
+    /// <summary>proposed | confirmed | disputed | cancelled (`KpiConst`). Oylikka FAQAT
+    /// "confirmed" ta'sir qiladi.</summary>
+    public string Status { get; set; } = "proposed";
+    /// <summary>Tiketni qo'ygan (foydalanuvchi ismi).</summary>
+    public string? IssuedBy { get; set; }
+    public string IssuedAt { get; set; } = AppClock.Iso();
+    /// <summary>Xodimning e'tirozi (nima uchun rozi emas).</summary>
+    public string? DisputeNote { get; set; }
+    /// <summary>E'tirozni ko'rib chiqqan rahbar.</summary>
+    public string? ResolvedBy { get; set; }
+    public string? ResolvedAt { get; set; }
+}
+
+/// <summary>
+/// KUNLIK CHEKLIST SHABLONI — rol bo'yicha "kun qanday o'tishi kerak" ro'yxati. Rolda odatda
+/// bitta faol shablon bo'ladi; eskisi o'chirilmaydi (<see cref="IsActive"/> = false), chunki
+/// o'tgan kunlarning belgilari (<see cref="ChecklistEntry"/>) uning bandlariga bog'langan.
+/// </summary>
+public class ChecklistTemplate
+{
+    public string Id { get; set; } = Guid.NewGuid().ToString();
+    /// <summary>Rol kodi: intake_admin | retention_admin | call_operator.</summary>
+    public string RoleCode { get; set; } = string.Empty;
+    public string Name { get; set; } = string.Empty;
+    public bool IsActive { get; set; } = true;
+    public string CreatedAt { get; set; } = AppClock.Iso();
+}
+
+/// <summary>
+/// Cheklistning BITTA BANDI — "nima qilinadi", "normasi qancha" va (agar bor bo'lsa) qaysi
+/// KPI ko'rsatkichiga/audit mezoniga tegishli.
+///
+/// <para><see cref="AutoCheckKey"/> — bandni AVTOMATIK belgilash kaliti (`ChecklistAutoCheck`).
+/// Birinchi versiyada kalitlarning HAMMASI qo'llanmagan: xaritada yo'q kalit JIMGINA
+/// e'tiborsiz qoldiriladi va band oddiy QO'LDA belgilanadi. Bu ATAYIN — seed to'liq yoziladi,
+/// avtomatlashtirish esa bosqichma-bosqich qo'shiladi.</para>
+/// </summary>
+public class ChecklistTemplateItem
+{
+    public string Id { get; set; } = Guid.NewGuid().ToString();
+    public string TemplateId { get; set; } = string.Empty;
+    /// <summary>Band raqami (ekranda ko'rinadigan tartib raqami).</summary>
+    public int No { get; set; }
+    /// <summary>Vaqt bloki sarlavhasi ("09:45 – 11:30  FAOL OBZVON #1") — bandlar shu bo'yicha guruhlanadi.</summary>
+    public string TimeBlock { get; set; } = string.Empty;
+    public string Text { get; set; } = string.Empty;
+    /// <summary>Norma matni ("15 daqiqa", "100%", "0 ta") — o'lchanadigan qiymat emas, KO'RSATMA.</summary>
+    public string Norm { get; set; } = string.Empty;
+    /// <summary>Chiquvchi admin uchun KPI tegi: U (uzaytirish) | K (ketish) | Q (qarz) | T (texnik).</summary>
+    public string? KpiTag { get; set; }
+    /// <summary>Yashirin mijoz auditining mezoni (1..13), agar band shunga bog'langan bo'lsa.</summary>
+    public int? CriterionNo { get; set; }
+    /// <summary>Avtomatik belgilash kaliti ("auto:calls.missed_returned"). null = faqat qo'lda.</summary>
+    public string? AutoCheckKey { get; set; }
+    /// <summary>Shablon ICHIDAGI tartib.</summary>
+    public int Order { get; set; }
+}
+
+/// <summary>
+/// Xodimning BIR KUNDAGI belgisi (bitta cheklist bandi uchun). Har (xodim, kun, band) uchun
+/// AYNAN bitta qator — unikal indeks bilan qulflangan: aks holda tez-tez bosishda yoki
+/// avtomatik tekshiruv qo'lda belgilash bilan to'qnashganda ikkita qarama-qarshi belgi
+/// paydo bo'lardi.
+/// </summary>
+public class ChecklistEntry
+{
+    public string Id { get; set; } = Guid.NewGuid().ToString();
+    public string UserId { get; set; } = string.Empty;
+    /// <summary>Kun "yyyy-MM-dd".</summary>
+    public string Date { get; set; } = string.Empty;
+    /// <summary><see cref="ChecklistTemplateItem"/>.Id.</summary>
+    public string ItemId { get; set; } = string.Empty;
+    /// <summary>done ("✓") | failed ("✗") | na ("–") — `KpiConst`.</summary>
+    public string State { get; set; } = string.Empty;
+    /// <summary>manual (xodim o'zi bosdi) | auto (tizim hisobladi) — `KpiConst`.</summary>
+    public string Source { get; set; } = "manual";
+    public string? Note { get; set; }
+    public string UpdatedAt { get; set; } = AppClock.Iso();
+    /// <summary>Oxirgi marta kim belgilagan (foydalanuvchi ismi); "auto" manbada bo'sh.</summary>
+    public string? UpdatedBy { get; set; }
+}
+
+/// <summary>
+/// OY BOSHIDAGI MUZLATILGAN RAQAMLAR. Ba'zi qiymatlarni ("oy boshida nechta faol o'quvchi
+/// bor edi", "qarz qoldig'i qancha edi") keyin ORQAGA TIKLAB bo'lmaydi: o'quvchi ketadi,
+/// qarz to'lanadi, a'zolik muzlaydi — jonli hisob har kuni boshqa son beradi.
+///
+/// <para>Shuning uchun oy boshida bir marta surat olinadi va oylik hisob AYNAN shu songa
+/// tayanadi. Snapshot yo'q oy uchun jonli hisob ishlatiladi, lekin DTO'da
+/// <c>estimated: true</c> bayrog'i qaytadi — UI "taxminiy" deb ogohlantiradi.</para>
+/// </summary>
+public class KpiMonthSnapshot
+{
+    public string Id { get; set; } = Guid.NewGuid().ToString();
+    /// <summary>Qaysi oy uchun ("yyyy-MM").</summary>
+    public string Month { get; set; } = string.Empty;
+    /// <summary>Rol kodi (raqamlar to'plami rolga qarab farq qiladi).</summary>
+    public string RoleCode { get; set; } = string.Empty;
+    /// <summary>Xodim — <see cref="AppUser"/>.Id. BO'SH = markaz bo'yicha umumiy surat
+    /// (chiquvchi admin butun bazaga javob beradi, ya'ni raqam xodimga bog'liq emas).
+    /// ⚠️ null EMAS, bo'sh satr: unikal indeks (Month, RoleCode, UserId) da NULL dublikatni
+    /// o'tkazib yuborardi.</summary>
+    public string UserId { get; set; } = string.Empty;
+    /// <summary>Raqamlar JSON'da: <c>{"activeCount":320,"debtTotal":18000000}</c>. Yangi ko'rsatkich
+    /// qo'shilganda migratsiya kerak bo'lmasin (eski suratlarda u shunchaki bo'lmaydi).</summary>
+    public string Json { get; set; } = string.Empty;
+    public string TakenAt { get; set; } = AppClock.Iso();
+}
+
+/// <summary>
+/// TASDIQLANGAN OYLIK NATIJA — "Yopish" sahifasida muzlatiladigan yakuniy hisob. Tasdiqlangandan
+/// keyin raqamlar QAYTA HISOBLANMAYDI: kirish qiymatlari (<see cref="InputsJson"/>),
+/// koeffitsientlar (<see cref="CoefsJson"/>) va qaysi qoidalar/oklad versiyasi ishlatilgani
+/// (<see cref="RuleSetId"/>, <see cref="SalaryVersionId"/>) shu qatorda saqlanadi.
+///
+/// <para>NEGA: xodimga aytilgan summa keyin o'zgarib qolmasligi kerak. Lid o'chirilsa,
+/// to'lov tuzatilsa yoki qoida tahrirlansa — jonli hisob boshqa son berardi, tasdiqlangan
+/// qator esa o'sha-o'sha qoladi va "nega bunday chiqqan" savoliga JSON'lar javob beradi.</para>
+///
+/// <para>⚠️ <see cref="SalaryLedger"/> ga ULANMAYDI — KPI summani AYTADI, to'lovning o'zi
+/// mavjud maosh yo'li bilan qilinadi.</para>
+/// </summary>
+public class KpiMonthResult
+{
+    public string Id { get; set; } = Guid.NewGuid().ToString();
+    public string UserId { get; set; } = string.Empty;
+    /// <summary>Xodim ismi SNAPSHOT sifatida (tarix xodim yozuvidan mustaqil bo'lsin).</summary>
+    public string UserName { get; set; } = string.Empty;
+    /// <summary>Hisob oyi ("yyyy-MM").</summary>
+    public string Month { get; set; } = string.Empty;
+    public string RoleCode { get; set; } = string.Empty;
+    /// <summary>Kirish raqamlari JSON (lid, sinovga kelgan, shartnoma, ketgan, uzaytirgan ...).</summary>
+    public string InputsJson { get; set; } = string.Empty;
+    /// <summary>Tanlangan koeffitsientlar va pog'onalar JSON ("nima uchun shunday chiqdi").</summary>
+    public string CoefsJson { get; set; } = string.Empty;
+    public decimal BaseSalary { get; set; }
+    public decimal BonusTotal { get; set; }
+    public decimal FineTotal { get; set; }
+    /// <summary>YAKUNIY summa (kafolat qo'llangandan keyin), so'mgacha yaxlitlangan.</summary>
+    public decimal Salary { get; set; }
+    /// <summary>Kafolat ishladimi (hisoblangan summa kafolatdan past edi).</summary>
+    public bool GuaranteeApplied { get; set; }
+    /// <summary>Oylik shift (cap) dan oshib ketdimi. ⚠️ Summa KESILMAYDI — bu faqat rahbar
+    /// uchun BAYROQ (qaror odamniki).</summary>
+    public bool CapExceeded { get; set; }
+    /// <summary>Hisobda ishlatilgan <see cref="KpiRuleSet"/>.Id (versiya izi).</summary>
+    public string? RuleSetId { get; set; }
+    /// <summary>Hisobda ishlatilgan <see cref="KpiProfileSalary"/>.Id (versiya izi).</summary>
+    public string? SalaryVersionId { get; set; }
+    /// <summary>draft | confirmed (`KpiConst`). "confirmed" — muzlatilgan.</summary>
+    public string Status { get; set; } = "draft";
+    public string? Note { get; set; }
+    public string? ConfirmedBy { get; set; }
+    public string? ConfirmedAt { get; set; }
+    public string CreatedAt { get; set; } = AppClock.Iso();
+}
+
+/// <summary>
+/// UZAYTIRISH HODISASI — o'quvchi kursni tugatib KEYINGI bosqichga o'tdi. Chiquvchi adminning
+/// "Bonus B" manbai va uzaytirish foizining maxraji.
+///
+/// <para>NEGA ALOHIDA JADVAL, guruh almashtirish yozuvidan hisoblab olish EMAS: guruh
+/// almashtirish o'nlab sababdan bo'ladi (jadval mos kelmadi, o'qituvchi o'zgardi, daraja
+/// noto'g'ri tanlangan edi) — ularning hech biri "uzaytirish" emas. Uzaytirish — admin ATAYIN
+/// belgilaydigan hodisa, ya'ni bonus to'lanadigan fakt qo'lda tasdiqlanadi.</para>
+///
+/// <para>Guruh va o'quvchi nomlari SNAPSHOT sifatida saqlanadi: guruh arxivlansa yoki o'quvchi
+/// o'chirilsa ham o'tgan oyning tasdiqlangan hisobi "noma'lum guruh" bo'lib qolmasin.</para>
+/// </summary>
+public class StudentExtension
+{
+    public string Id { get; set; } = Guid.NewGuid().ToString();
+    public string StudentId { get; set; } = string.Empty;
+    public string StudentName { get; set; } = string.Empty;
+    /// <summary>Tugatilgan guruh (<see cref="Group"/>.Id).</summary>
+    public string FromGroupId { get; set; } = string.Empty;
+    public string FromGroupName { get; set; } = string.Empty;
+    /// <summary>O'tilgan yangi guruh (<see cref="Group"/>.Id). Bo'sh = guruh hali tanlanmagan.</summary>
+    public string ToGroupId { get; set; } = string.Empty;
+    public string ToGroupName { get; set; } = string.Empty;
+    /// <summary>Kurs/fan — <see cref="Group.CourseId"/> (ya'ni <see cref="Subject"/>.Id); kurs
+    /// kesimidagi hisobot uchun.</summary>
+    public string CourseId { get; set; } = string.Empty;
+    /// <summary>Uzaytirish sanasi "yyyy-MM-dd" — oylik hisob AYNAN shu ustun bo'yicha guruhlanadi.</summary>
+    public string Date { get; set; } = string.Empty;
+    /// <summary>Kim belgilagan — <see cref="AppUser"/>.Id (bonus SHU xodimga yoziladi).</summary>
+    public string ByUserId { get; set; } = string.Empty;
+    public string ByUserName { get; set; } = string.Empty;
+    public string? Note { get; set; }
+    public string CreatedAt { get; set; } = AppClock.Iso();
 }

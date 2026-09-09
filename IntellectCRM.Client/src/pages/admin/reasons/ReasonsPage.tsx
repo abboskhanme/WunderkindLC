@@ -6,6 +6,7 @@ import { getSettings, saveAbsenceReasons } from '@/api/services/settings'
 import {
   getActionReasons,
   getActionReasonCategories,
+  getOutOfControlCategories,
   createActionReason,
   updateActionReason,
   deleteActionReason,
@@ -59,6 +60,11 @@ export function ReasonsPage() {
   const [sources, setSources] = useState<LeadSource[]>([])
   /** Serverdagi kategoriya kalitlari — kartochkalar shundan quriladi. */
   const [serverCategories, setServerCategories] = useState<string[]>([])
+  /**
+   * KETISHGA oid kategoriyalar — faqat shu kartochkalarda «nazoratdan tashqari» belgisi
+   * ko'rsatiladi. Ro'yxat SERVERDAN: qoida ikki joyda ayri ketmasin.
+   */
+  const [leaveCategories, setLeaveCategories] = useState<string[]>([])
 
   /**
    * Ko'rsatiladigan kategoriyalar: server bergan HAR BIR kalit uchun kartochka. Yorlig'i
@@ -91,6 +97,10 @@ export function ReasonsPage() {
     getActionReasonCategories()
       .then(setServerCategories)
       .catch(() => setServerCategories([]))
+    // Eski serverda bu endpoint yo'q — u holda checkbox umuman ko'rsatilmaydi (sahifa ishlaydi).
+    getOutOfControlCategories()
+      .then(setLeaveCategories)
+      .catch(() => setLeaveCategories([]))
   }, [])
 
   // ---- Davomat (kelmaganlik) sabablari ----
@@ -180,6 +190,7 @@ export function ReasonsPage() {
             cat={cat}
             items={reasons.filter((r) => r.category === cat.key)}
             onChange={setReasons}
+            showOutOfControl={leaveCategories.includes(cat.key)}
           />
         ))}
       </div>
@@ -285,10 +296,13 @@ function CategoryCard({
   cat,
   items,
   onChange,
+  showOutOfControl,
 }: {
   cat: { key: string; title: string; sub: string; icon: LucideIcon }
   items: ActionReason[]
   onChange: React.Dispatch<React.SetStateAction<ActionReason[]>>
+  /** «Nazoratdan tashqari» belgisi shu kategoriyada ma'noli (ketishga oid kategoriyalar) */
+  showOutOfControl?: boolean
 }) {
   const [adding, setAdding] = useState('')
   const [busy, setBusy] = useState(false)
@@ -312,6 +326,18 @@ function CategoryCard({
     await updateActionReason(id, trimmed)
     onChange((prev) => prev.map((r) => (r.id === id ? { ...r, label: trimmed } : r)))
   }
+  /** Belgini almashtirish — nom TEGILMAYDI (serverga o'sha nom bilan birga yuboriladi). */
+  const toggleOutOfControl = async (r: ActionReason) => {
+    const next = !r.outOfControl
+    // Optimistik: checkbox darhol javob bersin; xato bo'lsa orqaga qaytariladi.
+    onChange((prev) => prev.map((x) => (x.id === r.id ? { ...x, outOfControl: next } : x)))
+    try {
+      await updateActionReason(r.id, r.label, next)
+    } catch (err) {
+      onChange((prev) => prev.map((x) => (x.id === r.id ? { ...x, outOfControl: !next } : x)))
+      alert(apiErrorMessage(err, "Saqlab bo'lmadi"))
+    }
+  }
   const remove = async (id: string) => {
     await deleteActionReason(id)
     onChange((prev) => prev.filter((r) => r.id !== id))
@@ -330,12 +356,26 @@ function CategoryCard({
     >
       <div className="space-y-2">
         {sorted.map((r) => (
-          <div key={r.id} className="flex items-center gap-2">
+          <div key={r.id} className="flex flex-wrap items-center gap-2">
             <input
               defaultValue={r.label}
               onBlur={(e) => e.target.value.trim() !== r.label && save(r.id, e.target.value)}
-              className={cn(control, 'flex-1')}
+              className={cn(control, 'min-w-[140px] flex-1')}
             />
+            {showOutOfControl && (
+              <label
+                className="inline-flex cursor-pointer items-center gap-1.5 whitespace-nowrap text-xs text-slate-600"
+                title="Nazoratdan tashqari — chiquvchi adminning ketish foizidan CHIQARILADI (ko'chib ketish, sog'liq, oilaviy sharoit)"
+              >
+                <input
+                  type="checkbox"
+                  checked={!!r.outOfControl}
+                  onChange={() => toggleOutOfControl(r)}
+                  className="h-4 w-4 rounded border-slate-300 accent-brand-600"
+                />
+                Nazoratdan tashqari
+              </label>
+            )}
             <button
               type="button"
               onClick={() => remove(r.id)}
@@ -346,6 +386,12 @@ function CategoryCard({
           </div>
         ))}
         {sorted.length === 0 && <p className="text-xs text-slate-400">Sabab yo'q — quyida qo'shing.</p>}
+        {showOutOfControl && sorted.length > 0 && (
+          <p className="text-xs text-slate-400">
+            «Nazoratdan tashqari» — xodim ta'sir qila olmaydigan sabab (ko'chib ketish, sog'liq,
+            oilaviy sharoit). Bunday ketishlar chiquvchi adminning ketish foiziga KIRMAYDI.
+          </p>
+        )}
 
         <div className="flex items-center gap-2 pt-1">
           <input

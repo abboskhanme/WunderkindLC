@@ -277,6 +277,35 @@ export async function transferMember(
 }
 
 /**
+ * UZAYTIRISH hodisasini QO'LDA yozish — o'quvchi `fromGroupId` da kursning bir bosqichini
+ * TUGATIB, `toGroupId` da keyingisini boshladi (chiquvchi adminning "Bonus B" manbai).
+ *
+ * ⚠️ A'zolikni KO'CHIRMAYDI — bu faqat HODISA qaydi (ko'chirish uchun `transferMember`).
+ * Guruhni "Tugatish (sertifikat bilan)" yo'li bu hodisani O'ZI yozadi; bu funksiya esa
+ * tizimdan tashqarida bo'lgan yoki o'tmishdagi o'tishlar uchun.
+ *
+ * ⚠️ Ayni (o'quvchi, eski guruh, yangi guruh, sana) uchun ikkinchi yozuv OCHILMAYDI (400) —
+ * tugmani ikki marta bosish bonusni ikki marta yozmasin.
+ */
+export async function addMemberExtension(
+  fromGroupId: string,
+  studentId: string,
+  toGroupId: string,
+  date?: string,
+  note?: string,
+): Promise<void> {
+  if (USE_MOCK) {
+    await delay(150)
+    return
+  }
+  await api.post(`/admin/classes/${fromGroupId}/members/${studentId}/extension`, {
+    toGroupId,
+    date,
+    note,
+  })
+}
+
+/**
  * OMMAVIY (bir paytda ko'p o'quvchi) muzlatish/aktivlashtirish natijasi.
  * Amal BITTA xato tufayli TO'XTAMAYDI — shuning uchun javob "nima bo'ldi" ni to'liq ochib beradi.
  */

@@ -39,6 +39,13 @@ const TasksBoardPage = lazy(() => import('@/pages/admin/tasks/TasksBoardPage').t
 const TasksListPage = lazy(() => import('@/pages/admin/tasks/TasksListPage').then((m) => ({ default: m.TasksListPage })))
 const TasksCalendarPage = lazy(() => import('@/pages/admin/tasks/TasksCalendarPage').then((m) => ({ default: m.TasksCalendarPage })))
 const TasksDashboardPage = lazy(() => import('@/pages/admin/tasks/TasksDashboardPage').then((m) => ({ default: m.TasksDashboardPage })))
+// KPI — xodimlar samaradorligi va oyligi (Boshqaruv → KPI)
+const KpiEntry = lazy(() => import('@/pages/admin/kpi/KpiEntry').then((m) => ({ default: m.KpiEntry })))
+const KpiTodayPage = lazy(() => import('@/pages/admin/kpi/KpiTodayPage').then((m) => ({ default: m.KpiTodayPage })))
+const KpiMonthPage = lazy(() => import('@/pages/admin/kpi/KpiMonthPage').then((m) => ({ default: m.KpiMonthPage })))
+const KpiTicketsPage = lazy(() => import('@/pages/admin/kpi/KpiTicketsPage').then((m) => ({ default: m.KpiTicketsPage })))
+const KpiClosePage = lazy(() => import('@/pages/admin/kpi/KpiClosePage').then((m) => ({ default: m.KpiClosePage })))
+const KpiRulesPage = lazy(() => import('@/pages/admin/kpi/KpiRulesPage').then((m) => ({ default: m.KpiRulesPage })))
 const StaffPage = lazy(() => import('@/pages/admin/staff/StaffPage').then((m) => ({ default: m.StaffPage })))
 const FeedbackPage = lazy(() => import('@/pages/admin/feedback/FeedbackPage').then((m) => ({ default: m.FeedbackPage })))
 const SubjectsPage = lazy(() => import('@/pages/admin/subjects/SubjectsPage').then((m) => ({ default: m.SubjectsPage })))
@@ -247,7 +254,7 @@ export default function App() {
             {/* Chegirmalar hisoboti — SOF hisobot (yozuvchi amal yo'q), shuning uchun
                 "Hisobotlar" bo'limining O'Z marshruti ostida. Chegirma BERISH avvalgidek
                 o'quvchi profilida qoladi. */}
-            <Route path="hisobotlar/chegirmalar" element={<RequirePerm perm="finance.main"><DiscountsReportPage /></RequirePerm>} />
+            <Route path="hisobotlar/chegirmalar" element={<RequirePerm perm="finance.discounts"><DiscountsReportPage /></RequirePerm>} />
             <Route path="crm-stats" element={<RequirePerm perm="leads.stats"><CrmStatsPage /></RequirePerm>} />
             <Route path="students" element={<RequirePerm perm="students.list"><StudentsPage /></RequirePerm>} />
             {/* Bog'lanish kerak — O'quvchilar bo'limi ICHIDA, lekin ruxsati alohida (`contacts`). */}
@@ -338,6 +345,16 @@ export default function App() {
             <Route path="topshiriqlar/kunlik" element={<Navigate to="/admin/topshiriqlar" replace />} />
 
             {/* Boshqaruv */}
+            {/* KPI — bo'lim menyuda BITTA band, ichida beshta alohida beriladigan sahifa.
+                Kirish nuqtasi (`KpiEntry`) foydalanuvchini O'ZIGA ochiq birinchi sahifaga
+                tashlaydi — `RequirePerm` bo'lsa faqat bitta sahifasi bor xodim "ruxsat yo'q"
+                kartasiga tushib qolardi (`TeachersEntry` bilan bir xil naqsh). */}
+            <Route path="boshqaruv/kpi" element={<KpiEntry />} />
+            <Route path="boshqaruv/kpi/bugun" element={<RequirePerm perm="kpi.today"><KpiTodayPage /></RequirePerm>} />
+            <Route path="boshqaruv/kpi/oy" element={<RequirePerm perm="kpi.month"><KpiMonthPage /></RequirePerm>} />
+            <Route path="boshqaruv/kpi/tiketlar" element={<RequirePerm perm="kpi.tickets"><KpiTicketsPage /></RequirePerm>} />
+            <Route path="boshqaruv/kpi/yopish" element={<RequirePerm perm="kpi.close"><KpiClosePage /></RequirePerm>} />
+            <Route path="boshqaruv/kpi/qoidalar" element={<RequirePerm perm="kpi.rules"><KpiRulesPage /></RequirePerm>} />
             <Route path="boshqaruv/vacancies" element={<RequirePerm perm="vacancies"><VacanciesPage /></RequirePerm>} />
             <Route path="boshqaruv/cameras" element={<RequirePerm perm="cameras"><CamerasPage /></RequirePerm>} />
             <Route path="boshqaruv/staff" element={<RequirePerm perm="staff"><StaffPage /></RequirePerm>} />

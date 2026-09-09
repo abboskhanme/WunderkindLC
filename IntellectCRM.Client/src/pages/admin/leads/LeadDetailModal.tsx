@@ -90,14 +90,24 @@ const eventTypeColors: Record<LeadEventType, string> = {
   created: 'bg-slate-100 text-slate-500',
 }
 
+/**
+ * ⚠️ IKKI BOSHQA savol: «Keldi/Kelmadi» — lid sinovga TASHRIF BUYURDIMI; «Qoldi/Ketdi» —
+ * tashrifdan keyin markazda QOLDIMI. Ilgari faqat ikkinchisi bor edi, ya'ni "keldi, lekin
+ * ketdi" bilan "umuman kelmadi" bir xil ko'rinardi — holbuki kiruvchi adminning asosiy
+ * ko'rsatkichi aynan "lid → sinovga KELISH" konversiyasi.
+ */
 const trialResultLabels: Record<TrialLesson['result'], string> = {
   pending: 'Kutilmoqda',
+  came: 'Keldi',
+  no_show: 'Kelmadi',
   stayed: 'Qoldi',
   left: 'Ketdi',
 }
 
 const trialResultColors: Record<TrialLesson['result'], string> = {
   pending: 'bg-amber-50 text-amber-600',
+  came: 'bg-sky-50 text-sky-600',
+  no_show: 'bg-slate-100 text-slate-500',
   stayed: 'bg-emerald-50 text-emerald-600',
   left: 'bg-rose-50 text-rose-600',
 }
@@ -324,9 +334,11 @@ export function LeadDetailModal({
   const trialHasSchedule = !!(selectedTrialGroup?.days?.length && selectedTrialGroup?.startTime)
   const trialDates = trialHasSchedule ? nextLessonDates(selectedTrialGroup!.days!, 8) : []
 
-  const handleTrialResult = async (trialId: string, result: 'stayed' | 'left') => {
+  const handleTrialResult = async (trialId: string, result: TrialLesson['result']) => {
     if (!leadId) return
     await setTrialResult(trialId, result)
+    // Ro'yxat ham yangilanadi: natija va "kelgan sana" darhol ko'rinsin.
+    getLeadTrials(leadId).then(setTrials).catch(() => {})
     refreshTimeline(leadId)
   }
 
@@ -619,6 +631,9 @@ export function LeadDetailModal({
                     <div className="min-w-0">
                       <p className="text-sm font-medium text-slate-800">{t.groupName}</p>
                       <p className="font-mono text-xs text-slate-400">{formatDateTime(t.scheduledAt)}</p>
+                      {t.attendedAt && (
+                        <p className="text-xs text-sky-600">Sinovga keldi: {formatDate(t.attendedAt)}</p>
+                      )}
                     </div>
                     <div className="flex items-center gap-2">
                       <span
@@ -634,7 +649,29 @@ export function LeadDetailModal({
                       >
                         <Receipt className="h-4 w-4" />
                       </button>
+                      {/* 1-QADAM — TASHRIF: "Keldi/Kelmadi" faqat natija hali belgilanmaganda.
+                          Kelgan sana shu tugmadan yoziladi va KPI konversiyasi shundan hisoblanadi. */}
                       {t.result === 'pending' && (
+                        <>
+                          <Button
+                            variant="secondary"
+                            className="px-2.5 py-1 text-xs"
+                            onClick={() => handleTrialResult(t.id, 'came')}
+                          >
+                            Keldi
+                          </Button>
+                          <Button
+                            variant="secondary"
+                            className="px-2.5 py-1 text-xs"
+                            onClick={() => handleTrialResult(t.id, 'no_show')}
+                          >
+                            Kelmadi
+                          </Button>
+                        </>
+                      )}
+                      {/* 2-QADAM — NATIJA: "Qoldi/Ketdi" avvalgidek ishlaydi. Sinovga kelgani
+                          belgilangandan keyin ham ko'rinadi (tashrifdan keyingi qaror). */}
+                      {(t.result === 'pending' || t.result === 'came') && (
                         <>
                           <Button
                             variant="secondary"

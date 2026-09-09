@@ -103,6 +103,7 @@ Ikkitasi bir nechta mustaqil sahifaga xizmat qiladi, shuning uchun **sinf daraja
 |---|---|---|
 | `SettingsController` | `settings` | `settings.school` · `settings.channels` · `settings.backup` · `settings.apk` · `settings.azure-speech` · `settings.gemini` · `settings.check` · `settings.turnstile` · `settings.cameras` · `settings.reasons` |
 | `InstagramController` | `marketing` (RRP) | `marketing.settings` · `marketing.inbox` · `marketing.rules` · `marketing.knowledge` |
+| `KpiController` | `kpi` (RRP) | `kpi.today` · `kpi.month` · `kpi.tickets` · `kpi.close` · `kpi.rules` |
 
 Ya'ni "Zaxira nusxa" berilgan xodim "Markaz ma'lumotlari"ni o'zgartira olmaydi.
 
@@ -148,9 +149,10 @@ turmaydi.
 | `classes` | `.list` `.rooms` `.testResults` | `ClassesController` · `JournalController` · `RoomsController` · `TestResultsController` |
 | `messages` | `.broadcast` `.chat` `.support` | `MessagesController` (+ `chat` metodi) · `AutoMessagesController` · `BotSupportController` |
 | `app` | `.aiCheck` `.support` `.locations` `.parents` `.teachers` | `AiCheckController` · `SupportController` · `LocationsController` · `ParentsController` · `AppTeachersController` |
-| `finance` | `.main` `.bonus` | `FinanceController` · `RetentionBonusController` |
+| `finance` | `.main` `.bonus` `.discounts` | `FinanceController` · `RetentionBonusController` · `DiscountReportController` |
 | `calls` | `.cloud` `.local` | `CallsController` · `Cti/CtiController` |
 | `tasks` | `.board` `.dashboard` `.settings` | `WorkTasksController` (metod darajasida) |
+| `kpi` | `.today` `.month` `.tickets` `.close` `.rules` | `KpiController` (metod darajasida) |
 | `settings` | `.school` `.landing` `.districts` `.reasons` `.channels` `.backup` `.apk` `.azure-speech` `.gemini` `.check` `.turnstile` `.cameras` `.posthog` `.archive` | `SettingsController` (metod darajasida) · `LandingCmsController` · `DistrictsController` · `ActionReasonsController` · `LeadSourcesController` · `ArchiveController` |
 
 Sahifasiz bo'limlar (bittasi = bitta sahifa): `contacts` · `teacherReports` · `contracts` ·
@@ -189,3 +191,31 @@ guruhida).
 `students` ruxsatli xodimlar bonus bera oladigan bo'lib qolardi (ruxsat KENGAYIB ketardi).
 
 Qolgan hamma joyda eski tokenlar AYNAN eskicha ishlaydi.
+
+## 10. Yangi SAHIFA — ruxsat kaliti UNUTILGAN holat (2026-09-09)
+
+⚠️ **Alohida MARSHRUTI bo'lgan sahifa o'z kalitini olishi SHART.** Aks holda u "Xodimlar va
+rollar" matritsasida umuman qator bo'lib chiqmaydi va uni alohida berib bo'lmaydi — matritsa
+`adminPermissions` katalogidan quriladi (`PermMatrix`), ya'ni **katalogda yo'q sahifa = mavjud
+bo'lmagan sahifa**.
+
+Shu tarzda tushib qolgan va endi tuzatilgan sahifa:
+
+| Sahifa | Ilgari | Endi |
+|---|---|---|
+| «Chegirmalar hisoboti» (`/admin/hisobotlar/chegirmalar`) | `finance.main` dan foydalanardi | **`finance.discounts`** |
+
+- ⚠️ ATAYIN `students.discounts` deb nomlanmadi: bo'limdan sahifaga meros tufayli u holda
+  BARCHA `students` ruxsatli xodim chegirma SUMMALARINI ko'rardi — §9 dagi «Bonus hisoboti»
+  bilan AYNAN bir xil sabab.
+- ⚠️ Ruxsat lineyasi o'zgardi: yalang `finance` (bo'lim) merosi bilan HAMMASINI oladi, lekin
+  faqat `finance.main` berilgan xodim bu sahifani endi KO'RMAYDI. Kerak bo'lsa unga
+  `finance.discounts` alohida beriladi.
+
+**FARQLASH QOIDASI** — sahifami yoki tabmi:
+
+- Sahifaning O'Z marshruti bor (`/admin/...`) → **O'Z kaliti** bo'lsin
+  (`leads.stats`, `schedule.analytics`, `marketing.quality`, `finance.bonus`, `finance.discounts`).
+- Mavjud sahifa ICHIDAGI tab (`?tab=...`) → **egasining kaliti** bilan qoladi
+  (Moliya tablari — `finance.main`, Kitoblar tablari — `books`). Bu ATAYIN: tabni alohida
+  berish sahifani yarim ochiq qoldirardi (`.claude/rules/reports.md` §4).

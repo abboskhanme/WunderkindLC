@@ -75,6 +75,12 @@ public static class AuditSections
         ["Membership"] = "classes",
         // "ClassFee" — guruh oyligi, guruh yaratish/tahrir/arxiv.
         ["ClassFee"] = "classes",
+        // "StudentExtension" — UZAYTIRISH hodisasi: o'quvchi kursning bir bosqichini tugatib
+        // KEYINGI bosqichga o'tdi (guruhni "Tugatish (sertifikat bilan)" yo'lida avtomatik yoki
+        // qo'lda belgilanadi). "Guruhlar" bo'limida, chunki amal AYNAN guruh a'zoligining
+        // ko'chishi; `EntityId` — `Membership` naqshidagidek "{fromGroupId}:{studentId}", ya'ni
+        // yozuv TUGATILGAN guruhning "Tarix" tabida ko'rinadi (`EntityId.StartsWith(groupId + ":")`).
+        ["StudentExtension"] = "classes",
 
         // --- Kurslar ---
         ["Course"] = "schedule",
@@ -110,6 +116,17 @@ public static class AuditSections
         ["Vacancy"] = "vacancies",
         ["JobApplication"] = "vacancies",
         ["Staff"] = "staff",
+        // --- KPI (xodimlar samaradorligi) ---
+        // ⚠️ ALOHIDA "kpi" bo'limi ATAYIN OCHILMADI: `All` ro'yxatiga yangi chip qo'shish
+        // "O'zgarishlar tarixi" filtrini kengaytiradi, KPI yozuvlari esa mazmunan XODIM
+        // haqidagi qarorlar (rol, oklad, jarima, tasdiqlangan oylik) — ya'ni «Xodimlar»
+        // bo'limining o'zi. Kerak bo'lsa keyinchalik alohida bo'lim qo'shiladi; yozuvlar
+        // hozir ham topiladi, "Boshqa" ga tushib qolmaydi.
+        ["KpiProfile"] = "staff",           // rol biriktirish + OKLAD versiyalari
+        ["KpiRuleSet"] = "staff",           // qoidalar versiyasi, seed, oy boshi snapshoti
+        ["KpiTicket"] = "staff",            // sifat nazorati tiketi (pul ushlanmasi)
+        ["KpiMonthResult"] = "staff",       // oyni tasdiqlash / qayta ochish
+        ["ChecklistTemplateItem"] = "staff",// kunlik cheklist bandini tahrirlash
         ["CenterMeta"] = "settings",
         ["CertificateTemplate"] = "settings",
     };

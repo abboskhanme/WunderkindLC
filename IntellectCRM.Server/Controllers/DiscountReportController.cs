@@ -29,7 +29,7 @@ namespace IntellectCRM.Server.Controllers;
 /// </summary>
 [ApiController]
 [Authorize]
-[AdminPerm("finance.main", ReadRequiresPerm = true)]
+[AdminPerm("finance.discounts", ReadRequiresPerm = true)]
 [Route("api/admin/reports/discounts")]
 public class DiscountReportController(AppDbContext db) : ControllerBase
 {

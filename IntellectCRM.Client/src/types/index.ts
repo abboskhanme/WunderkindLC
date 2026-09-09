@@ -589,6 +589,18 @@ export interface Lead {
   repeatCount?: number
   /** Oxirgi takroriy murojaat vaqti (ISO) — belgining tooltip'ida ko'rsatiladi */
   lastRepeatAt?: string
+  /**
+   * Lidni ISHLAYOTGAN xodim (AppUser id). Bo'sh/null = biriktirilmagan: lid bot yoki ommaviy
+   * forma orqali kelgan va hali hech kim tegmagan. Qo'lda kiritganda — kiritgan odam;
+   * kanbanda birinchi ko'chirganda — ko'chirgan odam (mavjud mas'ul USTIDAN yozilmaydi).
+   */
+  assigneeUserId?: string | null
+  /** Mas'ul xodimning JORIY ismi (kanban kartasida chiqadi) */
+  assigneeName?: string | null
+  /** Shartnomani yopgan (lidni o'quvchiga aylantirgan) xodim id'si */
+  closedByUserId?: string | null
+  /** Shartnoma imzolangan sana "yyyy-MM-dd" */
+  closedAt?: string | null
 }
 
 /**
@@ -623,8 +635,14 @@ export interface LeadEvent {
   createdAt: string
 }
 
-/** Sinov darsi natijasi */
-export type TrialResult = 'pending' | 'stayed' | 'left'
+/**
+ * Sinov darsi natijasi.
+ *
+ * ⚠️ IKKI BOSHQA savol: `came`/`no_show` — lid sinovga TASHRIF BUYURDIMI; `stayed`/`left` —
+ * tashrifdan keyin markazda QOLDIMI. Ilgari faqat ikkinchisi bor edi, ya'ni "keldi, lekin
+ * ketdi" bilan "umuman kelmadi" bir xil ko'rinardi.
+ */
+export type TrialResult = 'pending' | 'came' | 'no_show' | 'stayed' | 'left'
 
 /** Lidga belgilangan sinov darsi */
 export interface TrialLesson {
@@ -635,6 +653,8 @@ export interface TrialLesson {
   scheduledAt: string
   result: TrialResult
   createdAt: string
+  /** Sinovga HAQIQATDA kelgan sana "yyyy-MM-dd" (bo'sh = kelmagan yoki hali belgilanmagan) */
+  attendedAt?: string | null
 }
 
 /** CRM statistikasi */
@@ -2023,6 +2043,12 @@ export interface ActionReason {
   category: string
   label: string
   order: number
+  /**
+   * "Nazoratdan tashqari" sabab (ko'chib ketish, sog'liq, oilaviy sharoit) — chiquvchi
+   * adminning KETISH FOIZIDAN chiqariladi. Maydon har kategoriyada bor, lekin ma'nosi faqat
+   * ketishga oid kategoriyalarda (server `GET action-reasons/out-of-control-categories`).
+   */
+  outOfControl?: boolean
 }
 
 // ===================== Daraja testi (placement test) =====================

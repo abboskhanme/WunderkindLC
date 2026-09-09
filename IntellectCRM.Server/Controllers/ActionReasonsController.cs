@@ -43,11 +43,26 @@ public class ActionReasonsController(AppDbContext db) : ControllerBase
     [HttpGet("categories")]
     public ActionResult<IEnumerable<string>> GetCategories() => Categories.ToList();
 
+    /// <summary>
+    /// KETISHGA oid kategoriyalar — FAQAT shu yerda "nazoratdan tashqari" bayrog'ining ma'nosi bor
+    /// (chiquvchi adminning ketish foizi shu uch amaldan hisoblanadi).
+    ///
+    /// <para>⚠️ Bu ro'yxat MA'LUMOT QATLAMIGA ta'sir qilmaydi: <c>ActionReason.OutOfControl</c>
+    /// HAR kategoriyada bor va shu holicha saqlanadi/qaytariladi. Ro'yxat faqat UI uchun —
+    /// checkbox ma'nosiz joyda ko'rinmasin. Aks holda "faqat shu kategoriyalarda saqlanadi"
+    /// degan istisno CRUD ichiga kirib, keyin kategoriya qo'shilganda jimgina eskirardi.</para>
+    /// </summary>
+    private static readonly string[] LeaveCategories = { "archive_student", "remove_active", "freeze" };
+
+    /// <summary>Qaysi kategoriyalarda «nazoratdan tashqari» belgisi ko'rsatiladi (UI uchun).</summary>
+    [HttpGet("out-of-control-categories")]
+    public ActionResult<IEnumerable<string>> GetLeaveCategories() => LeaveCategories.ToList();
+
     [HttpGet]
     public async Task<ActionResult<IEnumerable<ActionReasonDto>>> GetAll() =>
         await db.ActionReasons
             .OrderBy(r => r.Category).ThenBy(r => r.Order)
-            .Select(r => new ActionReasonDto(r.Id, r.Category, r.Label, r.Order))
+            .Select(r => new ActionReasonDto(r.Id, r.Category, r.Label, r.Order, r.OutOfControl))
             .ToListAsync();
 
     [HttpPost]
@@ -57,10 +72,16 @@ public class ActionReasonsController(AppDbContext db) : ControllerBase
         if (!Categories.Contains(category)) return BadRequest(new { message = "Noma'lum kategoriya" });
         if (string.IsNullOrWhiteSpace(p.Label)) return BadRequest(new { message = "Sabab nomini kiriting" });
         var order = (await db.ActionReasons.Where(r => r.Category == category).MaxAsync(r => (int?)r.Order) ?? -1) + 1;
-        var reason = new ActionReason { Category = category, Label = p.Label.Trim(), Order = order };
+        var reason = new ActionReason
+        {
+            Category = category, Label = p.Label.Trim(), Order = order,
+            // "Nazoratdan tashqari" — KPI uchun ma'lumot yig'ish bayrog'i (ketish foizidan
+            // chiqariladi). Berilmasa `false`: mavjud xatti-harakat o'zgarmaydi.
+            OutOfControl = p.OutOfControl,
+        };
         db.ActionReasons.Add(reason);
         await db.SaveChangesAsync();
-        return new ActionReasonDto(reason.Id, reason.Category, reason.Label, reason.Order);
+        return new ActionReasonDto(reason.Id, reason.Category, reason.Label, reason.Order, reason.OutOfControl);
     }
 
     [HttpPut("{id}")]
@@ -70,6 +91,9 @@ public class ActionReasonsController(AppDbContext db) : ControllerBase
         if (reason is null) return NotFound();
         if (string.IsNullOrWhiteSpace(p.Label)) return BadRequest(new { message = "Sabab nomini kiriting" });
         reason.Label = p.Label.Trim();
+        // ⚠️ null = "tegilmadi": faqat nomni yuboradigan eski chaqiruvchi bayroqni jimgina
+        // o'chirib yubormasin (bayroq bir marta qo'yilib, keyin nom tahrirlanganda yo'qolardi).
+        if (p.OutOfControl is { } flag) reason.OutOfControl = flag;
         await db.SaveChangesAsync();
         return NoContent();
     }

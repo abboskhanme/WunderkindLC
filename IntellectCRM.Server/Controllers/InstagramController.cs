@@ -783,6 +783,19 @@ public partial class InstagramController(
         if (string.IsNullOrEmpty(leadId))
             return BadRequest(new { message = "Lid yaratilmadi — keyinroq qaytadan urinib ko'ring." });
 
+        // MAS'UL XODIM — «Lidga aylantirish» tugmasini bosgan OPERATOR. Bu Instagram oqimidagi
+        // YAGONA odam qaroriga bog'liq nuqta: AI/webhook yaratgan lid biriktirilmagan (null)
+        // qoladi (bot ishini xodim hisobiga yozib bo'lmaydi), operator qo'li tekkani esa
+        // uniki. ⚠️ Mavjud mas'ul USTIDAN YOZILMAYDI — suhbat mavjud lidga bog'langan bo'lsa
+        // lid allaqachon boshqa xodimning ishi bo'lishi mumkin.
+        var actorId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (!string.IsNullOrWhiteSpace(actorId))
+        {
+            var owned = await db.Leads.FirstOrDefaultAsync(l => l.Id == leadId, ct);
+            if (owned is not null && string.IsNullOrWhiteSpace(owned.AssigneeUserId))
+                owned.AssigneeUserId = actorId;
+        }
+
         audit.Record(AuditEntity, c.Id, "update",
             isNew
                 ? $"Instagram suhbati lidga aylantirildi (@{c.Username}, manba: {source})"

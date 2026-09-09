@@ -1,6 +1,6 @@
 import { useDraggable } from '@dnd-kit/core'
 import { CSS } from '@dnd-kit/utilities'
-import { Phone, Clock, Repeat2 } from 'lucide-react'
+import { Phone, Clock, Repeat2, UserRound } from 'lucide-react'
 import type { Lead } from '@/types'
 import { genderLabels } from '@/config/constants'
 import { Badge } from '@/components/ui/Badge'
@@ -149,6 +149,18 @@ export function LeadCardContent({
             Bunda lidning bosqichi ATAYIN o'zgarmaydi (birinchi teginish saqlanadi), shuning
             uchun "yo'qotilgan" ustunidagi karta ham shu belgi bilan ko'zga tashlanadi —
             aks holda qayta murojaat faqat izohda qolib ketardi. */}
+        {/* MAS'UL XODIM — lidni kim ishlayapti. Bo'sh bo'lsa chip UMUMAN chizilmaydi:
+            "biriktirilmagan" degan qo'shimcha belgi har bir bot lidida takrorlanib, kartani
+            shovqinga to'ldirardi (bunday lidlar ko'pchilikni tashkil qiladi). */}
+        {!!lead.assigneeName && (
+          <div
+            title={`Mas'ul: ${lead.assigneeName}`}
+            className="inline-flex max-w-[140px] items-center gap-1 rounded-full bg-indigo-50 px-2 py-1 text-[10px] font-medium text-indigo-700"
+          >
+            <UserRound className="h-3 w-3 shrink-0" />
+            <span className="truncate">{lead.assigneeName}</span>
+          </div>
+        )}
         {!!lead.repeatCount && lead.repeatCount > 0 && (
           <div
             title={

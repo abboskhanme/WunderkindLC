@@ -61,6 +61,9 @@ namespace IntellectCRM.Infrastructure.Migrations
                     b.Property<int>("Order")
                         .HasColumnType("integer");
 
+                    b.Property<bool>("OutOfControl")
+                        .HasColumnType("boolean");
+
                     b.HasKey("Id");
 
                     b.HasIndex("Category", "Order");
@@ -1548,6 +1551,124 @@ namespace IntellectCRM.Infrastructure.Migrations
                     b.HasIndex("ClassName", "CreatedAt");
 
                     b.ToTable("ChatMessages");
+                });
+
+            modelBuilder.Entity("IntellectCRM.Domain.ChecklistEntry", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Date")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("ItemId")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("Note")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("State")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("UpdatedAt")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasColumnType("text");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId", "Date", "ItemId")
+                        .IsUnique();
+
+                    b.ToTable("ChecklistEntries");
+                });
+
+            modelBuilder.Entity("IntellectCRM.Domain.ChecklistTemplate", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasColumnType("text");
+
+                    b.Property<string>("CreatedAt")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("RoleCode")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("RoleCode");
+
+                    b.ToTable("ChecklistTemplates");
+                });
+
+            modelBuilder.Entity("IntellectCRM.Domain.ChecklistTemplateItem", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasColumnType("text");
+
+                    b.Property<string>("AutoCheckKey")
+                        .HasColumnType("text");
+
+                    b.Property<int?>("CriterionNo")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("KpiTag")
+                        .HasColumnType("text");
+
+                    b.Property<int>("No")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Norm")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int>("Order")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("TemplateId")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("Text")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("TimeBlock")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TemplateId", "Order");
+
+                    b.ToTable("ChecklistTemplateItems");
                 });
 
             modelBuilder.Entity("IntellectCRM.Domain.ContactAiAnalysis", b =>
@@ -4085,6 +4206,298 @@ namespace IntellectCRM.Infrastructure.Migrations
                     b.ToTable("JournalEntries");
                 });
 
+            modelBuilder.Entity("IntellectCRM.Domain.KpiMonthResult", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasColumnType("text");
+
+                    b.Property<decimal>("BaseSalary")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<decimal>("BonusTotal")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<bool>("CapExceeded")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("CoefsJson")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("ConfirmedAt")
+                        .HasColumnType("text");
+
+                    b.Property<string>("ConfirmedBy")
+                        .HasColumnType("text");
+
+                    b.Property<string>("CreatedAt")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<decimal>("FineTotal")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<bool>("GuaranteeApplied")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("InputsJson")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Month")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("Note")
+                        .HasColumnType("text");
+
+                    b.Property<string>("RoleCode")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("RuleSetId")
+                        .HasColumnType("text");
+
+                    b.Property<decimal>("Salary")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<string>("SalaryVersionId")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("UserName")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId", "Month")
+                        .IsUnique();
+
+                    b.ToTable("KpiMonthResults");
+                });
+
+            modelBuilder.Entity("IntellectCRM.Domain.KpiMonthSnapshot", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Json")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Month")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("RoleCode")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("TakenAt")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Month", "RoleCode", "UserId")
+                        .IsUnique();
+
+                    b.ToTable("KpiMonthSnapshots");
+                });
+
+            modelBuilder.Entity("IntellectCRM.Domain.KpiProfile", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasColumnType("text");
+
+                    b.Property<string>("CreatedAt")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("GuaranteeUntilMonth")
+                        .HasColumnType("text");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Note")
+                        .HasColumnType("text");
+
+                    b.Property<string>("RoleCode")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("StartMonth")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("KpiProfiles");
+                });
+
+            modelBuilder.Entity("IntellectCRM.Domain.KpiProfileSalary", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasColumnType("text");
+
+                    b.Property<decimal>("BaseSalary")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<string>("CreatedAt")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("text");
+
+                    b.Property<string>("EffectiveFrom")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("Note")
+                        .HasColumnType("text");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId", "EffectiveFrom");
+
+                    b.ToTable("KpiProfileSalaries");
+                });
+
+            modelBuilder.Entity("IntellectCRM.Domain.KpiRuleSet", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasColumnType("text");
+
+                    b.Property<string>("CreatedAt")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("text");
+
+                    b.Property<string>("EffectiveFrom")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("Json")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Note")
+                        .HasColumnType("text");
+
+                    b.Property<string>("RoleCode")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("RoleCode", "EffectiveFrom");
+
+                    b.ToTable("KpiRuleSets");
+                });
+
+            modelBuilder.Entity("IntellectCRM.Domain.KpiTicket", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasColumnType("text");
+
+                    b.Property<string>("CallId")
+                        .HasColumnType("text");
+
+                    b.Property<int?>("CriterionNo")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Date")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("DisputeNote")
+                        .HasColumnType("text");
+
+                    b.Property<string>("IssuedAt")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("IssuedBy")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Note")
+                        .HasColumnType("text");
+
+                    b.Property<string>("ReasonCode")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("ResolvedAt")
+                        .HasColumnType("text");
+
+                    b.Property<string>("ResolvedBy")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("UserName")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Status");
+
+                    b.HasIndex("UserId", "Date");
+
+                    b.ToTable("KpiTickets");
+                });
+
             modelBuilder.Entity("IntellectCRM.Domain.LandingCertificate", b =>
                 {
                     b.Property<string>("Id")
@@ -4269,8 +4682,17 @@ namespace IntellectCRM.Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<string>("AssigneeUserId")
+                        .HasColumnType("text");
+
                     b.Property<string>("BirthDate")
                         .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("ClosedAt")
+                        .HasColumnType("text");
+
+                    b.Property<string>("ClosedByUserId")
                         .HasColumnType("text");
 
                     b.Property<string>("ConvertedStudentId")
@@ -6064,6 +6486,69 @@ namespace IntellectCRM.Infrastructure.Migrations
                     b.ToTable("StudentDiscounts");
                 });
 
+            modelBuilder.Entity("IntellectCRM.Domain.StudentExtension", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasColumnType("text");
+
+                    b.Property<string>("ByUserId")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("ByUserName")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("CourseId")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("CreatedAt")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Date")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("FromGroupId")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("FromGroupName")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Note")
+                        .HasColumnType("text");
+
+                    b.Property<string>("StudentId")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("StudentName")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("ToGroupId")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("ToGroupName")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Date");
+
+                    b.HasIndex("StudentId");
+
+                    b.ToTable("StudentExtensions");
+                });
+
             modelBuilder.Entity("IntellectCRM.Domain.StudentFaceProfile", b =>
                 {
                     b.Property<string>("Id")
@@ -6937,6 +7422,9 @@ namespace IntellectCRM.Infrastructure.Migrations
             modelBuilder.Entity("IntellectCRM.Domain.TrialLesson", b =>
                 {
                     b.Property<string>("Id")
+                        .HasColumnType("text");
+
+                    b.Property<string>("AttendedAt")
                         .HasColumnType("text");
 
                     b.Property<string>("CreatedAt")

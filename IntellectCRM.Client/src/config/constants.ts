@@ -200,6 +200,12 @@ export const adminPermissions: AdminPermSection[] = [
     pages: [
       { key: 'finance.main', label: 'Moliya (kirim/chiqim, hisobotlar, maosh)' },
       { key: 'finance.bonus', label: 'Bonus hisoboti' },
+      // Chegirmalar hisoboti — ALOHIDA sahifa (`/admin/hisobotlar/chegirmalar`), Moliya
+      // ichidagi tab EMAS. Shuning uchun o'z kaliti bor: uni "Moliya"ni to'liq ochmasdan
+      // berish mumkin. ⚠️ ATAYIN `students.discounts` deb NOMLANMADI — bo'limdan sahifaga
+      // meros tufayli u holda BARCHA `students` ruxsatli xodim chegirma SUMMALARINI ko'rardi
+      // («Bonus hisoboti» bilan bir xil sabab, `.claude/rules/permissions.md` §9).
+      { key: 'finance.discounts', label: 'Chegirmalar hisoboti' },
     ],
   },
   {
@@ -251,6 +257,23 @@ export const adminPermissions: AdminPermSection[] = [
       { key: 'tasks.board', label: "Doska va ro'yxat" },
       { key: 'tasks.dashboard', label: 'Nazorat paneli' },
       { key: 'tasks.settings', label: 'Doska va ustun sozlamalari' },
+    ],
+  },
+  // KPI — xodimlarning (kiruvchi/chiquvchi admin, call operator) SAMARADORLIGI va oyligi.
+  // Bo'lim faqat O'QIYDI: lid Lidlarda, to'lov Kassada, davomat Jurnalda qoladi — KPI ularni
+  // yig'ib, kunlik cheklist, tiket, oylik kalkulyator va oyni yopish bo'lib ko'rsatadi.
+  // ⚠️ Javobda xodim OKLADI va oylik summasi bor — shuning uchun serverda ham
+  // `ReadRequiresPerm = true` (o'qish ham ruxsat talab qiladi, odatdagi "xodimga GET ochiq"
+  // qoidasi bu yerda ISHLAMAYDI).
+  {
+    key: 'kpi',
+    label: 'KPI (xodimlar samaradorligi)',
+    pages: [
+      { key: 'kpi.today', label: 'Bugun (kunlik norma va cheklist)' },
+      { key: 'kpi.month', label: 'Oy (kalkulyator)' },
+      { key: 'kpi.tickets', label: 'Tiketlar (sifat nazorati)' },
+      { key: 'kpi.close', label: 'Oyni yopish' },
+      { key: 'kpi.rules', label: 'Qoidalar va oklad' },
     ],
   },
   { key: 'staff', label: 'Xodimlar' },

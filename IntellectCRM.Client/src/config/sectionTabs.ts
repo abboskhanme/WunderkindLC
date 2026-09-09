@@ -76,3 +76,23 @@ export function taskTabs(canSee: (perm: string) => boolean): CardTabItem[] {
     { label: 'Nazorat paneli', to: '/admin/topshiriqlar/nazorat', hidden: !canSee('tasks.dashboard') },
   ]
 }
+
+/**
+ * KPI bo'limi: **Bugun · Oy · Tiketlar · Yopish · Qoidalar**.
+ *
+ * ⚠️ Har card — ALOHIDA beriladigan sahifa (`kpi.today`, `kpi.month`, `kpi.tickets`,
+ * `kpi.close`, `kpi.rules`), shuning uchun ko'rinishi ham har biri uchun alohida
+ * tekshiriladi. Sabab bu yerda odatdagidan ham muhim: sahifalar RUXSAT jihatidan
+ * teng emas — "Bugun" o'z cheklistini belgilaydigan XODIMGA beriladi, "Yopish" esa
+ * oylikni MUZLATADI (rahbar amali). Ruxsati yo'q cardni ko'rsatsak, xodim bosib
+ * "ruxsatingiz yo'q" kartasiga tushib qolardi.
+ */
+export function kpiTabs(canSee: (perm: string) => boolean): CardTabItem[] {
+  return [
+    { label: 'Bugun', to: '/admin/boshqaruv/kpi/bugun', hidden: !canSee('kpi.today') },
+    { label: 'Oy', to: '/admin/boshqaruv/kpi/oy', hidden: !canSee('kpi.month') },
+    { label: 'Tiketlar', to: '/admin/boshqaruv/kpi/tiketlar', hidden: !canSee('kpi.tickets') },
+    { label: 'Yopish', to: '/admin/boshqaruv/kpi/yopish', hidden: !canSee('kpi.close') },
+    { label: 'Qoidalar', to: '/admin/boshqaruv/kpi/qoidalar', hidden: !canSee('kpi.rules') },
+  ]
+}

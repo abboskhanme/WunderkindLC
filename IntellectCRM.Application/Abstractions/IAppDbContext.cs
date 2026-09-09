@@ -225,6 +225,18 @@ public interface IAppDbContext
     DbSet<IgScheduledPost> IgScheduledPosts { get; }
     DbSet<IgCapiEvent> IgCapiEvents { get; }
 
+    // KPI (xodimlar samaradorligi)
+    DbSet<KpiProfile> KpiProfiles { get; }
+    DbSet<KpiProfileSalary> KpiProfileSalaries { get; }
+    DbSet<KpiRuleSet> KpiRuleSets { get; }
+    DbSet<KpiTicket> KpiTickets { get; }
+    DbSet<ChecklistTemplate> ChecklistTemplates { get; }
+    DbSet<ChecklistTemplateItem> ChecklistTemplateItems { get; }
+    DbSet<ChecklistEntry> ChecklistEntries { get; }
+    DbSet<KpiMonthSnapshot> KpiMonthSnapshots { get; }
+    DbSet<KpiMonthResult> KpiMonthResults { get; }
+    DbSet<StudentExtension> StudentExtensions { get; }
+
     int SaveChanges();
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
 }

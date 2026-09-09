@@ -33,6 +33,20 @@ public class LeadsController(
             .Distinct().ToList();
         var attendanceByStudent = await ComputeFirstLessonAttendanceAsync(studentIds);
 
+        // MAS'UL XODIM ismi — JORIY ro'yxatdan (voronka analitikasidagi bilan bir xil naqsh:
+        // hodisadagi/snapshotdagi eskirgan ism emas, bugungi ism ko'rsatiladi). Bitta so'rov,
+        // lidlar soniga bog'liq emas.
+        var assigneeIds = leads
+            .Where(l => !string.IsNullOrWhiteSpace(l.AssigneeUserId))
+            .Select(l => l.AssigneeUserId!)
+            .Distinct().ToList();
+        var assigneeNames = assigneeIds.Count == 0
+            ? new Dictionary<string, string>(StringComparer.Ordinal)
+            : (await db.Users.AsNoTracking()
+                    .Where(u => assigneeIds.Contains(u.Id))
+                    .Select(u => new { u.Id, u.FullName }).ToListAsync())
+                .ToDictionary(u => u.Id, u => u.FullName ?? "", StringComparer.Ordinal);
+
         return leads.Select(lead => new LeadWithAttendanceDto(
             lead.Id, lead.FullName, lead.Gender, lead.BirthDate, lead.Phone,
             lead.FatherFullName, lead.FatherPhone, lead.MotherFullName,
@@ -42,7 +56,11 @@ public class LeadsController(
                 ? "no-lesson"
                 : attendanceByStudent.GetValueOrDefault(lead.ConvertedStudentId, "no-lesson"),
             lead.DistrictId, lead.SchoolId,
-            lead.RepeatCount, lead.LastRepeatAt
+            lead.RepeatCount, lead.LastRepeatAt,
+            lead.AssigneeUserId,
+            string.IsNullOrWhiteSpace(lead.AssigneeUserId)
+                ? null : assigneeNames.GetValueOrDefault(lead.AssigneeUserId!),
+            lead.ClosedByUserId, lead.ClosedAt
         )).ToList();
     }
 
@@ -75,6 +93,11 @@ public class LeadsController(
             DistrictId = p.DistrictId ?? "",
             SchoolId = p.SchoolId ?? "",
             CreatedAt = Now(),
+            // MAS'UL XODIM — lidni QO'LDA kiritgan odam. ⚠️ Bu FAQAT shu endpointda: ommaviy
+            // forma, daraja testi, landing va Instagram/Meta webhook'lari orqali tug'ilgan lid
+            // BIRIKTIRILMAGAN (null) qoladi — KPI'da "biriktirilmagan" alohida sanaladi va
+            // botning ishini xodimning hisobiga yozib qo'yish o'lchovni yolg'on qilardi.
+            AssigneeUserId = UserId(),
         };
         // ⚠️ Tekshiruv `db.Leads.Add` dan OLDIN: rad etilgan lid kontekstda osilib qolmasin.
         // Yaratishda javoblar lug'ati BO'SH bo'lsa ham uzatiladi (null EMAS) — ya'ni majburiy
@@ -167,6 +190,12 @@ public class LeadsController(
         // Eski bosqich YANGILASHDAN OLDIN o'qib olinadi — voronkaga "qayerdan qayerga" yoziladi.
         var oldStage = lead.Stage;
         lead.Stage = req.Stage;
+        // MAS'UL XODIM — lidni BIRINCHI marta qo'zg'atgan odam. Bot/ommaviy forma yaratgan lid
+        // biriktirilmagan (null) keladi; uni kanbanda birinchi bo'lib ko'chirgan xodim — aynan
+        // shu lid ustida ishlayotgan odam.
+        // ⚠️ MAVJUD mas'ul HECH QACHON ustidan yozilmaydi: aks holda boshqa xodimning bitta
+        // sudrab qo'yishi lidni (va u bilan birga KPI raqamini) o'ziga o'tkazib olardi.
+        if (string.IsNullOrWhiteSpace(lead.AssigneeUserId)) lead.AssigneeUserId = UserId();
         AddEvent(id, "stage", $"Bosqich: {stage?.Title ?? req.Stage}",
             fromStage: oldStage, toStage: req.Stage);
         await db.SaveChangesAsync();
@@ -228,7 +257,7 @@ public class LeadsController(
                join c in db.Classes on t.GroupId equals c.Id into gj
                from c in gj.DefaultIfEmpty()
                orderby t.ScheduledAt descending
-               select new TrialLessonDto(t.Id, t.LeadId, t.GroupId, c != null ? c.Name : "", t.ScheduledAt, t.Result, t.CreatedAt))
+               select new TrialLessonDto(t.Id, t.LeadId, t.GroupId, c != null ? c.Name : "", t.ScheduledAt, t.Result, t.CreatedAt, t.AttendedAt))
               .ToListAsync();
 
     /// <summary>Lid uchun sinov darsi belgilash (guruh + vaqt).</summary>
@@ -280,18 +309,51 @@ public class LeadsController(
             meta?.CheckSettings ?? "", Subtitle: "Sinov darsiga yozildi");
     }
 
-    /// <summary>Sinov darsi natijasi: stayed (qoldi) | left (ketdi).</summary>
+    /// <summary>
+    /// Sinov darsi natijasi: <c>came</c> (keldi) | <c>no_show</c> (kelmadi) | <c>stayed</c> (qoldi) |
+    /// <c>left</c> (ketdi).
+    ///
+    /// <para>⚠️ "keldi/kelmadi" va "qoldi/ketdi" — IKKI BOSHQA savol: birinchisi lid sinovga
+    /// TASHRIF BUYURDIMI, ikkinchisi tashrifdan keyin markazda QOLDIMI. Ilgari faqat ikkinchisi
+    /// bor edi, ya'ni "keldi, lekin ketdi" bilan "umuman kelmadi" bir xil ko'rinardi.</para>
+    ///
+    /// <para>Eski chaqiruvchilar (faqat "stayed"/"left" yuboradiganlar) avvalgidek ishlaydi.</para>
+    /// </summary>
     [HttpPatch("trials/{trialId}")]
     public async Task<IActionResult> SetTrialResult(string trialId, TrialResultRequest req)
     {
         var trial = await db.TrialLessons.FindAsync(trialId);
         if (trial is null) return NotFound();
-        trial.Result = req.Result;
-        AddEvent(trial.LeadId, "trial", $"Sinov darsi natijasi: {(req.Result == "stayed" ? "qoldi" : "ketdi")}");
+        var result = (req.Result ?? "").Trim();
+        if (!TrialResults.Contains(result))
+            return BadRequest(new { message = "Noma'lum natija" });
+        trial.Result = result;
+
+        // ⚠️ KPI konversiyasi "sinovga YOZILDI" emas, "sinovga KELDI" bo'yicha o'lchanadi
+        // (kiruvchi adminning asosiy ko'rsatkichi — `KPI-SPEC.md` §8, `trialCame`). Shuning
+        // uchun KELGANLIK fakti alohida SANA bilan yoziladi: sinov bir oyda belgilanib,
+        // keyingi oyda bo'lishi mumkin — natija esa qaysi OYda kelgani bo'yicha sanaladi.
+        // "stayed"/"left" ham KELGAN hisoblanadi: ular tashrifdan KEYINGI qaror.
+        if ((result is "came" or "stayed" or "left") && string.IsNullOrWhiteSpace(trial.AttendedAt))
+            trial.AttendedAt = AppClock.Today.ToString("yyyy-MM-dd");
+
+        AddEvent(trial.LeadId, "trial", $"Sinov darsi natijasi: {TrialResultLabel(result)}");
         await db.SaveChangesAsync();
         await LeadNotifier.SyncCardAsync(db, telegram, trial.LeadId, logger: logger);
         return Ok(new { ok = true });
     }
+
+    /// <summary>Ruxsat etilgan sinov natijalari (`TrialLesson.Result`).</summary>
+    private static readonly string[] TrialResults = { "pending", "came", "no_show", "stayed", "left" };
+
+    private static string TrialResultLabel(string result) => result switch
+    {
+        "came" => "keldi",
+        "no_show" => "kelmadi",
+        "stayed" => "qoldi",
+        "left" => "ketdi",
+        _ => "kutilmoqda",
+    };
 
     // ---------- Konversiya (lid -> o'quvchi) ----------
 
@@ -361,6 +423,15 @@ public class LeadsController(
             return BadRequest(new { message = "Lid allaqachon o'quvchiga aylantirilgan" });
 
         lead.ConvertedStudentId = student.Id;
+        // SHARTNOMA IMZOLANDI. Lidni o'quvchiga aylantirish — kiruvchi admin uchun "shartnoma"
+        // hodisasining YAGONA manbai (`KPI-SPEC.md` §8, `contracts`): boshqa hech qayerda
+        // "shartnoma tuzildi" fakti yozilmaydi. Sana ATAYIN "yyyy-MM-dd" — KPI oy bo'yicha
+        // guruhlaydi, soat/daqiqa kerak emas.
+        lead.ClosedByUserId = UserId();
+        lead.ClosedAt = today;
+        // Mas'ul biriktirilmagan bo'lsa (bot yaratgan va hech kim ko'chirmagan lid) — shartnomani
+        // yopgan odam ayni paytda uni ishlagan odam hisoblanadi.
+        if (string.IsNullOrWhiteSpace(lead.AssigneeUserId)) lead.AssigneeUserId = UserId();
         AddEvent(id, "convert", $"O'quvchiga aylantirildi ({lead.FullName})" + (group is not null
             ? (groupFull ? $" — guruh to'lgan, qo'shilmadi: {group.Name}" : $" — guruh: {group.Name}")
             : ""));

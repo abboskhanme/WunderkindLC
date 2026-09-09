@@ -221,7 +221,7 @@ export const reportGroups: ReportGroup[] = [
         // o'quvchi profilida), shuning uchun yon menyudagi "Hisobotlar" guruhiga ham tushadi.
         label: 'Chegirmalar hisoboti',
         to: '/admin/hisobotlar/chegirmalar',
-        perm: 'finance.main',
+        perm: 'finance.discounts',
         description: "Kimga qancha chegirma berilgan — o'quvchi, guruh va o'qituvchi kesimida",
         inNav: true,
       },

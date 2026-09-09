@@ -364,6 +364,8 @@ builder.Services.AddHostedService<IntellectCRM.Application.Services.BackupSchedu
 builder.Services.AddHostedService<IntellectCRM.Application.Services.WorkTaskReminderService>();
 // Kunlik markaz AI tahlili (ertalab ~8:00 Toshkent; Gemini kaliti + AiDailyAnalysisEnabled bo'lsa).
 builder.Services.AddHostedService<IntellectCRM.Application.Services.CenterAiSchedulerService>();
+// KPI: oy BOSHIDAGI surat (faol o'quvchilar soni, qarz qoldig'i) — 1-kuni yarim tundan keyin.
+builder.Services.AddHostedService<IntellectCRM.Application.Services.Kpi.KpiSnapshotService>();
 
 // Telegram bot (e'lon yuborish + ota-onalarni kontakt orqali ro'yxatga olish).
 // Token appsettings "Telegram:BotToken" da; bo'sh bo'lsa bot ishga tushmaydi.
@@ -755,6 +757,25 @@ using (var scope = app.Services.CreateScope())
         db.SaveChanges();
         app.Logger.LogInformation("[seed] Bog'lanish taxtasining {Count} ta tizim ustuni yaratildi", added);
     }
+}
+
+// KPI: rol QOIDALARI (Excel konstantalari) va kunlik CHEKLIST shablonlari.
+// IDEMPOTENT — mavjud versiya/shablon HECH QACHON qayta yozilmaydi, faqat yo'q bo'lgani
+// qo'shiladi (rahbarning «Qoidalar» sahifasidagi tahriri restartda yo'qolmasin).
+// TRY-CATCH: jadval yo'q bo'lsa (migratsiya qo'llanmagan) logga yozib o'tadi.
+try
+{
+    var (kpiRules, kpiTemplates, kpiItems) =
+        await IntellectCRM.Application.Services.Kpi.KpiSeedService.EnsureAsync(db, "Tizim");
+    if (kpiRules + kpiTemplates + kpiItems > 0)
+        app.Logger.LogInformation(
+            "[seed] KPI: {Rules} qoidalar to'plami, {Templates} cheklist shabloni, {Items} band qo'shildi",
+            kpiRules, kpiTemplates, kpiItems);
+}
+catch (Exception ex)
+{
+    app.Logger.LogWarning(ex,
+        "[seed] KPI seed failed (migratsiya qo'llanmagan bo'lsa normal) — keyingi restartda qayta urinadi");
 }
 
 // YETIM LIDLARNI TUZATISH: bosqichi mavjud bo'lmagan (eski bo'sh "" yoki o'chirilgan ustunga

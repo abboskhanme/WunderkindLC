@@ -562,6 +562,17 @@ public record MembershipStatusRequest(
 /// </summary>
 public record TransferMemberRequest(string ToGroupId, string? FreezeDate, string? ActivateDate, string? ReasonId = null);
 /// <summary>
+/// UZAYTIRISH hodisasini QO'LDA yozish (<c>POST classes/{id}/members/{studentId}/extension</c>).
+///
+/// <para>"Uzaytirish" = o'quvchi kursning bir bosqichini tugatib KEYINGI bosqichga o'tdi. Guruhni
+/// "Tugatish (sertifikat bilan)" yo'li buni O'ZI yozadi; bu so'rov esa QO'LDA (o'tmishdagi yoki
+/// tizimdan tashqari bajarilgan o'tish uchun) kerak.</para>
+///
+/// <para><paramref name="Date"/> bo'sh bo'lsa — bugun. <paramref name="ToGroupId"/> — o'quvchi
+/// O'TGAN yangi guruh (majburiy: uzaytirish "qayerga" degan savolsiz ma'nosiz).</para>
+/// </summary>
+public record MemberExtensionRequest(string ToGroupId, string? Date = null, string? Note = null);
+/// <summary>
 /// OMMAVIY (bir paytda ko'p o'quvchi) muzlatish/aktivlashtirish so'rovi.
 /// <para><paramref name="StudentIds"/> — TANLANGAN o'quvchilar; BO'SH bo'lishi mumkin emas
 /// ("hammasi" ni server o'zi qidirmaydi — tanlov har doim UI'da ko'rinib turadi va tasodifiy
@@ -821,12 +832,18 @@ public record LeadEventDto(string Id, string Type, string Text, string ActorName
 public record AddLeadEventRequest(string Type, string Text);
 /// <summary>Lidni o'quvchiga aylantirish. EnrollmentDate berilmasa — bugun; GroupId berilsa o'quvchi shu guruhga qo'shiladi.</summary>
 public record ConvertLeadRequest(string? EnrollmentDate, string? GroupId);
-/// <summary>Sinov darsi.</summary>
+/// <summary>Sinov darsi.
+/// <para><paramref name="AttendedAt"/> — sinovga HAQIQATDA kelgan sana "yyyy-MM-dd" (bo'sh/null =
+/// hali kelmagan yoki belgilanmagan). KPI'da "sinovga KELDI" konversiyasi AYNAN shu sana bo'yicha
+/// oyga tushadi — dars bir oyda belgilanib, keyingi oyda bo'lishi mumkin.</para></summary>
 public record TrialLessonDto(
-    string Id, string LeadId, string GroupId, string GroupName, string ScheduledAt, string Result, string CreatedAt);
+    string Id, string LeadId, string GroupId, string GroupName, string ScheduledAt, string Result, string CreatedAt,
+    string? AttendedAt = null);
 /// <summary>Sinov darsini belgilash.</summary>
 public record ScheduleTrialRequest(string GroupId, string ScheduledAt);
-/// <summary>Sinov darsi natijasi: stayed (qoldi) | left (ketdi).</summary>
+/// <summary>Sinov darsi natijasi: came (keldi) | no_show (kelmadi) | stayed (qoldi) | left (ketdi).
+/// <para>⚠️ "came"/"no_show" — KPI uchun QO'SHILGAN qiymatlar; eski chaqiruvchilar avvalgidek
+/// faqat "stayed"/"left" yuborsa ham hech narsa buzilmaydi (ular ham KELGAN hisoblanadi).</para></summary>
 public record TrialResultRequest(string Result);
 
 /// <summary>Lid + birinchi dars davomat holati: "attended" | "absent" | "no-lesson".
@@ -840,7 +857,17 @@ public record LeadWithAttendanceDto(
     string? Note, string Stage, string Source, string InterestSubject, string? CreatedAt,
     string? ConvertedStudentId, string? FirstLessonAttendance,
     string DistrictId, string SchoolId,
-    int RepeatCount, string LastRepeatAt);
+    int RepeatCount, string LastRepeatAt,
+    /// <summary>Lidni ISHLAYOTGAN xodim (<c>AppUser</c>.Id). Null = biriktirilmagan (bot/ommaviy
+    /// forma orqali kelgan va hali hech kim tegmagan lid) — KPI'da "biriktirilmagan" alohida sanaladi.</summary>
+    string? AssigneeUserId = null,
+    /// <summary>Mas'ul xodimning JORIY ismi (kanban kartasida ko'rsatiladi). Snapshot EMAS:
+    /// ism o'zgarsa kartada ham yangisi chiqsin.</summary>
+    string? AssigneeName = null,
+    /// <summary>Shartnomani YOPGAN xodim (<c>AppUser</c>.Id) — "convert" amalini bajargan odam.</summary>
+    string? ClosedByUserId = null,
+    /// <summary>Shartnoma imzolangan sana "yyyy-MM-dd" (KPI "contracts" ko'rsatkichining yagona manbai).</summary>
+    string? ClosedAt = null);
 
 /// <summary>Lid manbasi (ma'lumotnoma) — "O'quv bo'limi → Sabablar" sahifasida boshqariladi.</summary>
 public record LeadSourceDto(string Id, string Name, int Order);
@@ -2178,14 +2205,21 @@ public record TeacherProgressDto(
 
 // ============================ AMAL SABABLARI (action reasons) ============================
 
-/// <summary>Bitta amal sababi.</summary>
-public record ActionReasonDto(string Id, string Category, string Label, int Order);
+/// <summary>Bitta amal sababi.
+/// <para><paramref name="OutOfControl"/> — "nazoratdan tashqari" sabab (ko'chib ketdi, sog'lig'i,
+/// oilaviy sharoit): chiquvchi adminning KETISH FOIZIDAN chiqariladi. Maydon HAR kategoriyada
+/// bor (ma'lumot qatlamida istisno yasalmasin), lekin ma'nosi faqat ketishga oid
+/// kategoriyalarda — UI checkbox'ni faqat o'sha yerda ko'rsatadi.</para></summary>
+public record ActionReasonDto(string Id, string Category, string Label, int Order, bool OutOfControl = false);
 
-/// <summary>Sabab yaratish so'rovi.</summary>
-public record ActionReasonCreate(string Category, string Label);
+/// <summary>Sabab yaratish so'rovi. <paramref name="OutOfControl"/> berilmasa — <c>false</c>
+/// (eski chaqiruvchilar avvalgidek ishlaydi).</summary>
+public record ActionReasonCreate(string Category, string Label, bool OutOfControl = false);
 
-/// <summary>Sabab yangilash so'rovi.</summary>
-public record ActionReasonUpdate(string Label);
+/// <summary>Sabab yangilash so'rovi.
+/// <para>⚠️ <paramref name="OutOfControl"/> <c>null</c> bo'lsa bayroq TEGILMAYDI — faqat nomni
+/// yuboradigan eski chaqiruvchi belgini jimgina o'chirib yubormasin.</para></summary>
+public record ActionReasonUpdate(string Label, bool? OutOfControl = null);
 
 // ============================ DARAJA TESTI (placement test) ============================
 

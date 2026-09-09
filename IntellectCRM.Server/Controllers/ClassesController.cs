@@ -16,6 +16,11 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
 {
     private string Actor => User.FindFirst(System.Security.Claims.ClaimTypes.Name)?.Value ?? "Admin";
 
+    /// <summary>Joriy foydalanuvchi id'si (<see cref="AppUser"/>.Id) — UZAYTIRISH hodisasi KIMGA
+    /// yozilishini belgilaydi (chiquvchi adminning "Bonus B" manbai). Claim bo'lmasa bo'sh satr:
+    /// hodisa baribir yoziladi (fakt yo'qolmasin), lekin hech kimning hisobiga tushmaydi.</summary>
+    private string ActorId => User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? "";
+
     /// <summary>Aktivlashtirishdagi «Bonus hisoblansin» ptichkasi uchun ruxsat kaliti
     /// ("Xodimlar va rollar" da ko'rinadi). Klientdagi `adminPermissions` bilan bir xil bo'lishi shart.</summary>
     private const string RetentionBonusPerm = "retentionBonus";
@@ -1231,6 +1236,75 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
     }
 
     /// <summary>
+    /// UZAYTIRISH HODISASINI QO'LDA yozish — o'quvchi <c>{id}</c> guruhida kursning bir bosqichini
+    /// TUGATIB, <c>ToGroupId</c> guruhida keyingisini boshladi.
+    ///
+    /// <para>Guruhni "Tugatish (sertifikat bilan)" yo'li bu hodisani O'ZI yozadi; bu endpoint esa
+    /// tizimdan TASHQARIDA bo'lgan (yoki o'tmishdagi) o'tishlar uchun. Ikkalasi ham AYNAN bitta
+    /// jadvalga yozadi — chiquvchi adminning "Bonus B" manbai bo'linib ketmasin.</para>
+    ///
+    /// <para>⚠️ TAKROR HIMOYASI: ayni <c>(o'quvchi, eski guruh, yangi guruh, sana)</c> uchun ikkinchi
+    /// yozuv OCHILMAYDI (400). Aks holda tugmani ikki marta bosish bonusni ikki marta yozardi.</para>
+    ///
+    /// <para>⚠️ Guruh a'zoligi TEKSHIRILMAYDI va O'ZGARTIRILMAYDI: bu faqat HODISA qaydi
+    /// (a'zolikni ko'chirish — alohida amal, <c>transfer</c>). Ya'ni orqaga sanalgan, allaqachon
+    /// yopilgan guruh uchun ham yozish mumkin.</para>
+    /// </summary>
+    [HttpPost("{id}/members/{studentId}/extension")]
+    public async Task<IActionResult> AddExtension(string id, string studentId, MemberExtensionRequest req)
+    {
+        if (string.IsNullOrWhiteSpace(req.ToGroupId))
+            return BadRequest(new { message = "Yangi guruh tanlanmagan" });
+        if (req.ToGroupId == id)
+            return BadRequest(new { message = "Yangi guruh joriy guruh bilan bir xil bo'lishi mumkin emas" });
+
+        var fromGroup = await db.Classes.FindAsync(id);
+        if (fromGroup is null) return NotFound(new { message = "Joriy guruh topilmadi" });
+        var toGroup = await db.Classes.FindAsync(req.ToGroupId);
+        if (toGroup is null) return NotFound(new { message = "Yangi guruh topilmadi" });
+        var student = await db.Students.FindAsync(studentId);
+        if (student is null) return NotFound(new { message = "O'quvchi topilmadi" });
+
+        var date = string.IsNullOrWhiteSpace(req.Date)
+            ? AppClock.Today.ToString("yyyy-MM-dd") : req.Date!.Trim();
+        if (date.Length < 10 || !DateOnly.TryParse(date, out _))
+            return BadRequest(new { message = "Sana noto'g'ri (YYYY-MM-DD)" });
+
+        var duplicate = await db.StudentExtensions.AnyAsync(x =>
+            x.StudentId == studentId && x.FromGroupId == id && x.ToGroupId == req.ToGroupId && x.Date == date);
+        if (duplicate)
+            return BadRequest(new { message = "Bu uzaytirish allaqachon yozilgan (o'sha o'quvchi, guruhlar va sana)" });
+
+        // Nomlar SNAPSHOT (`ContactRequest` naqshi): guruh arxivlansa/nomi o'zgarsa ham hisobot buzilmasin.
+        db.StudentExtensions.Add(new StudentExtension
+        {
+            StudentId = studentId,
+            StudentName = student.FullName,
+            FromGroupId = id,
+            FromGroupName = fromGroup.Name,
+            ToGroupId = toGroup.Id,
+            ToGroupName = toGroup.Name,
+            // Kurs — YANGI guruhning kursi (o'quvchi endi o'sha kursda o'qiydi).
+            CourseId = toGroup.CourseId ?? "",
+            Date = date,
+            ByUserId = ActorId,
+            ByUserName = Actor,
+            Note = string.IsNullOrWhiteSpace(req.Note) ? "Qo'lda belgilandi" : req.Note!.Trim(),
+            CreatedAt = AppClock.Iso(),
+        });
+
+        // `EntityId` — `Membership` naqshida "{groupId}:{studentId}", ya'ni yozuv guruh sahifasining
+        // "Tarix" tabida ham, o'quvchi tarixida ham ko'rinadi (`.claude/rules/audit.md` §2).
+        audit.Record("StudentExtension", $"{id}:{studentId}", "create",
+            $"Uzaytirish belgilandi: {student.FullName} — «{fromGroup.Name}» → «{toGroup.Name}», sana {date}"
+            + (string.IsNullOrWhiteSpace(req.Note) ? "" : $" — izoh: {req.Note!.Trim()}"),
+            studentId: studentId);
+
+        await db.SaveChangesAsync();
+        return Ok(new { ok = true });
+    }
+
+    /// <summary>
     /// GURUH AI TAHLILI — deterministik ko'rsatkichlar (AI'siz ham ko'rinadi): a'zolik oqimi
     /// (kelgan/muzlatilgan/ketgan) va ketish sabablari, davomat, jurnal intizomi, o'zlashtirish,
     /// imtihonlar, to'lovlar, dastur qamrovi, o'quvchilar kesimi. Guruh sahifasidagi "AI tahlil" tabi.
@@ -1517,6 +1591,7 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
         //    Yoqilmagan bo'lsa — yangi guruhga "sinov" statusida qo'shiladi (to'lov hisoblanmaydi).
         var enrolledCount = 0;
         var activatedInNew = 0;
+        var extensionCount = 0;
         var movedAdvance = 0m;
         var recordedAt = AppClock.Today.ToString("yyyy-MM-dd");
         if (req.AutoEnrollNewGroup)
@@ -1559,6 +1634,52 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
             foreach (var sid in transferIds)
                 if (students.TryGetValue(sid, out var s)) s.ClassName = newGroupName;
 
+            // UZAYTIRISH HODISALARI (`StudentExtension`) — chiquvchi adminning "Bonus B" manbai.
+            //
+            // ⚠️ SHART: maqsad kurs ESKI kursdan BOSHQA bo'lishi kerak. "Uzaytirish" = o'quvchi
+            // kursning bir bosqichini TUGATIB keyingisini boshladi. AYNI kurs ichida guruh
+            // almashtirish (jadval mos kelmadi, o'qituvchi o'zgardi, guruh bo'lindi) uzaytirish
+            // EMAS — uni sanasak bonus har guruh yopilishida to'lanib, ko'rsatkich ma'nosini
+            // yo'qotardi.
+            //
+            // ⚠️ Faqat HAQIQATDA ko'chgan VA yangi guruhda AKTIVLASHTIRILGAN o'quvchi sanaladi:
+            // "sinov" statusida qo'shilgan odam hali keyingi bosqichni boshlagani yo'q.
+            //
+            // Nomlar SNAPSHOT sifatida yoziladi (`ContactRequest` naqshi — `.claude/rules/contacts.md`
+            // §3): guruh keyin arxivlansa yoki qayta nomlansa ham o'tgan oyning tasdiqlangan
+            // hisoboti "noma'lum guruh" bo'lib qolmasin.
+            if (req.ActivateInNewGroup && !string.IsNullOrEmpty(targetCourseId)
+                && !string.Equals(targetCourseId, oldCourseId, StringComparison.Ordinal))
+            {
+                foreach (var sid in transferIds)
+                {
+                    if (!students.TryGetValue(sid, out var st)) continue;
+                    db.StudentExtensions.Add(new StudentExtension
+                    {
+                        StudentId = sid,
+                        StudentName = st.FullName,
+                        FromGroupId = id,
+                        FromGroupName = group.Name,
+                        ToGroupId = newGroup.Id,
+                        ToGroupName = newGroupName,
+                        CourseId = targetCourseId,
+                        Date = activateDate,
+                        ByUserId = ActorId,
+                        ByUserName = Actor,
+                        Note = "Guruhni tugatib keyingi bosqichga o'tkazish",
+                        CreatedAt = AppClock.Iso(),
+                    });
+                    extensionCount++;
+                }
+                if (extensionCount > 0)
+                    // ⚠️ `EntityId` — `Membership` naqshida "{groupId}:{studentId}"; bu yerda BITTA
+                    // yig'ma yozuv, shuning uchun guruhning o'zi (tugatilgan guruh sahifasidagi
+                    // "Tarix" tabida ko'rinadi).
+                    audit.Record("StudentExtension", id, "create",
+                        $"Uzaytirish (kurs bosqichi tugadi): {extensionCount} o'quvchi " +
+                        $"«{group.Name}» → «{newGroupName}», yangi kurs: {targetCourse?.Name ?? targetCourseId}, sana {activateDate}");
+            }
+
             await db.SaveChangesAsync();
         }
 
@@ -1572,6 +1693,7 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
             $". Yangi guruh: {newGroup.Id} ({newGroupName}), kurs: {targetCourseName}, enrolled={enrolledCount}" +
             (activatedInNew > 0 ? $", {activateDate} sanasidan aktivlashtirildi={activatedInNew}" : "") +
             (skippedNotActive > 0 ? $", ko'chirilmadi (aktiv emas)={skippedNotActive}" : "") +
+            (extensionCount > 0 ? $", uzaytirish yozildi={extensionCount}" : "") +
             (movedAdvance > 0 ? $", avans ko'chirildi: {AuditService.Money(movedAdvance)} so'm" : ""));
 
         return Ok(new CompleteAndTransferResultDto(

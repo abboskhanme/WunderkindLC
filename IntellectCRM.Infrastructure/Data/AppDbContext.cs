@@ -223,6 +223,18 @@ public class AppDbContext(DbContextOptions<AppDbContext> options)
     public DbSet<IgScheduledPost> IgScheduledPosts => Set<IgScheduledPost>();
     public DbSet<IgCapiEvent> IgCapiEvents => Set<IgCapiEvent>();
 
+    // KPI (xodimlar samaradorligi)
+    public DbSet<KpiProfile> KpiProfiles => Set<KpiProfile>();
+    public DbSet<KpiProfileSalary> KpiProfileSalaries => Set<KpiProfileSalary>();
+    public DbSet<KpiRuleSet> KpiRuleSets => Set<KpiRuleSet>();
+    public DbSet<KpiTicket> KpiTickets => Set<KpiTicket>();
+    public DbSet<ChecklistTemplate> ChecklistTemplates => Set<ChecklistTemplate>();
+    public DbSet<ChecklistTemplateItem> ChecklistTemplateItems => Set<ChecklistTemplateItem>();
+    public DbSet<ChecklistEntry> ChecklistEntries => Set<ChecklistEntry>();
+    public DbSet<KpiMonthSnapshot> KpiMonthSnapshots => Set<KpiMonthSnapshot>();
+    public DbSet<KpiMonthResult> KpiMonthResults => Set<KpiMonthResult>();
+    public DbSet<StudentExtension> StudentExtensions => Set<StudentExtension>();
+
     protected override void OnModelCreating(ModelBuilder b)
     {
         // SQL Server: indeksda qatnashadigan string ustunlar default `nvarchar(max)` bo'lib
@@ -905,6 +917,71 @@ public class AppDbContext(DbContextOptions<AppDbContext> options)
         b.Entity<WorkTaskComment>().HasIndex(c => c.TaskId);
         b.Entity<WorkTaskEvent>().Property(e => e.TaskId).HasMaxLength(200);
         b.Entity<WorkTaskEvent>().HasIndex(e => e.TaskId);
+
+        // ---------- KPI (xodimlar samaradorligi) ----------
+        // Pul — decimal(18,2) (loyihadagi umumiy qoida). Munosabatlar haqiqiy FK emas (oddiy
+        // `string` ustun), ya'ni EF avtomatik indeks YARATMAYDI — indekslanadigan matn
+        // ustunlariga uzunlik ham beriladi (faylning boshidagi qoida).
+        b.Entity<KpiProfileSalary>().Property(x => x.BaseSalary).HasPrecision(18, 2);
+        b.Entity<KpiMonthResult>().Property(x => x.BaseSalary).HasPrecision(18, 2);
+        b.Entity<KpiMonthResult>().Property(x => x.BonusTotal).HasPrecision(18, 2);
+        b.Entity<KpiMonthResult>().Property(x => x.FineTotal).HasPrecision(18, 2);
+        b.Entity<KpiMonthResult>().Property(x => x.Salary).HasPrecision(18, 2);
+
+        // Profil va OKLAD TARIXI — "shu oyda kim qaysi rolda va qancha oklad bilan edi".
+        // Oklad (UserId, EffectiveFrom) bo'yicha o'qiladi: `KpiVersioning.SalaryFor` shu xodimning
+        // `EffectiveFrom <= oy` bo'lgan ENG SO'NGGI versiyasini oladi.
+        b.Entity<KpiProfile>().Property(x => x.UserId).HasMaxLength(200);
+        b.Entity<KpiProfile>().HasIndex(x => x.UserId);
+        b.Entity<KpiProfileSalary>().Property(x => x.UserId).HasMaxLength(200);
+        b.Entity<KpiProfileSalary>().Property(x => x.EffectiveFrom).HasMaxLength(32);
+        b.Entity<KpiProfileSalary>().HasIndex(x => new { x.UserId, x.EffectiveFrom });
+
+        // QOIDALAR TARIXI — rol bo'yicha versiyalar (`KpiVersioning.RuleFor` bilan bir xil kesim).
+        b.Entity<KpiRuleSet>().Property(x => x.RoleCode).HasMaxLength(200);
+        b.Entity<KpiRuleSet>().Property(x => x.EffectiveFrom).HasMaxLength(32);
+        b.Entity<KpiRuleSet>().HasIndex(x => new { x.RoleCode, x.EffectiveFrom });
+
+        // TIKETLAR — oylik hisob (xodim × sana oralig'i) va "Tiketlar" sahifasidagi holat filtri.
+        b.Entity<KpiTicket>().Property(x => x.UserId).HasMaxLength(200);
+        b.Entity<KpiTicket>().Property(x => x.Date).HasMaxLength(32);
+        b.Entity<KpiTicket>().Property(x => x.Status).HasMaxLength(200);
+        b.Entity<KpiTicket>().HasIndex(x => new { x.UserId, x.Date });
+        b.Entity<KpiTicket>().HasIndex(x => x.Status);
+
+        // CHEKLIST — shablon rol bo'yicha topiladi, bandlar shablon ichidagi tartibda o'qiladi.
+        b.Entity<ChecklistTemplate>().Property(x => x.RoleCode).HasMaxLength(200);
+        b.Entity<ChecklistTemplate>().HasIndex(x => x.RoleCode);
+        b.Entity<ChecklistTemplateItem>().Property(x => x.TemplateId).HasMaxLength(200);
+        b.Entity<ChecklistTemplateItem>().HasIndex(x => new { x.TemplateId, x.Order });
+
+        // ⚠️ UNIKAL: har (xodim, kun, band) uchun BITTA belgi. Tez-tez bosish yoki avtomatik
+        // tekshiruvning qo'lda belgilash bilan to'qnashuvi ikkita qarama-qarshi qator
+        // qoldirmasin (qaysi biri "haqiqiy" ekani keyin bilinmasdi).
+        b.Entity<ChecklistEntry>().Property(x => x.UserId).HasMaxLength(200);
+        b.Entity<ChecklistEntry>().Property(x => x.Date).HasMaxLength(32);
+        b.Entity<ChecklistEntry>().Property(x => x.ItemId).HasMaxLength(200);
+        b.Entity<ChecklistEntry>().HasIndex(x => new { x.UserId, x.Date, x.ItemId }).IsUnique();
+
+        // ⚠️ UNIKAL: bir oy uchun bitta surat (rol × xodim kesimida; markaz bo'yicha suratda
+        // UserId BO'SH satr — null emas, aks holda Postgres dublikatni o'tkazib yuborardi).
+        b.Entity<KpiMonthSnapshot>().Property(x => x.Month).HasMaxLength(32);
+        b.Entity<KpiMonthSnapshot>().Property(x => x.RoleCode).HasMaxLength(200);
+        b.Entity<KpiMonthSnapshot>().Property(x => x.UserId).HasMaxLength(200);
+        b.Entity<KpiMonthSnapshot>().HasIndex(x => new { x.Month, x.RoleCode, x.UserId }).IsUnique();
+
+        // ⚠️ UNIKAL: bir xodimning bir oyi uchun BITTA natija — "Yopish" sahifasi qatorni
+        // qayta hisoblab ustidan yozadi, ikkinchi qator paydo bo'lsa qaysi biri tasdiqlangani
+        // noaniq bo'lib qolardi.
+        b.Entity<KpiMonthResult>().Property(x => x.UserId).HasMaxLength(200);
+        b.Entity<KpiMonthResult>().Property(x => x.Month).HasMaxLength(32);
+        b.Entity<KpiMonthResult>().HasIndex(x => new { x.UserId, x.Month }).IsUnique();
+
+        // UZAYTIRISH — o'quvchi profilida (StudentId) va oylik hisobda (Date oralig'i) o'qiladi.
+        b.Entity<StudentExtension>().Property(x => x.StudentId).HasMaxLength(200);
+        b.Entity<StudentExtension>().Property(x => x.Date).HasMaxLength(32);
+        b.Entity<StudentExtension>().HasIndex(x => x.StudentId);
+        b.Entity<StudentExtension>().HasIndex(x => x.Date);
     }
 
     // ==================== Saqlashdan oldingi normalizatsiya ====================

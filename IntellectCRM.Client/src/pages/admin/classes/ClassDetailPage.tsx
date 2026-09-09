@@ -6,7 +6,7 @@ import {
   ArrowLeft, Users, BookOpen, User, Archive,
   CalendarDays, Clock, MapPin, Wallet, Snowflake, CheckCircle2,
   ListChecks, ChevronRight, ChevronDown, Plus, Minus, Repeat, CalendarClock, Flag, TrendingUp, Trophy,
-  ArrowLeftRight, RotateCcw, X, Pencil, ClipboardList, CalendarCheck, History,
+  ArrowLeftRight, GraduationCap, RotateCcw, X, Pencil, ClipboardList, CalendarCheck, History,
   MessageSquare, ArrowUpDown, Sparkles, EyeOff, PhoneCall,
 } from 'lucide-react'
 import type { AbsenceReason, MasteryLevel, Group, GroupMember } from '@/types'
@@ -46,6 +46,7 @@ import { ReasonPromptModal } from '@/components/ui/ReasonPromptModal'
 import { JournalCellModal } from '../journal/JournalCellModal'
 import { CompleteAndTransferModal } from './CompleteAndTransferModal'
 import { CloseGroupModal } from './CloseGroupModal'
+import { ExtensionModal } from './ExtensionModal'
 import { TransferGroupModal } from './TransferGroupModal'
 import { ClassMembersModal } from './ClassMembersModal'
 import { GroupAiPanel } from './GroupAiPanel'
@@ -151,6 +152,7 @@ export function ClassDetailPage() {
   /** `yearFreeze` — «Aktiv muzlatish»: o'sha muzlatishning O'ZI, faqat yangi o'quv yili belgisi bilan. */
   const [rosterReason, setRosterReason] = useState<'freeze' | 'yearFreeze' | 'return' | 'remove' | 'activate' | null>(null)
   const [rosterTransferOpen, setRosterTransferOpen] = useState(false)
+  const [rosterExtensionOpen, setRosterExtensionOpen] = useState(false)
   const [rosterDate, setRosterDate] = useState('')
   const [rosterBusy, setRosterBusy] = useState(false)
   /** Guruh o'qituvchisi id'si — profilga link uchun (jurnal DTO'sida faqat teacherName bor). */
@@ -917,6 +919,7 @@ export function ClassDetailPage() {
                               onYearFreeze={() => { openRoster(m); setRosterReason('yearFreeze') }}
                               onReturn={() => { openRoster(m); setRosterReason('return') }}
                               onTransfer={() => { openRoster(m); setRosterTransferOpen(true) }}
+                              onExtension={() => { openRoster(m); setRosterExtensionOpen(true) }}
                               onRemove={() => { openRoster(m); setRosterReason('remove') }}
                             />
                           ))}
@@ -939,6 +942,7 @@ export function ClassDetailPage() {
                                   onYearFreeze={() => { openRoster(m); setRosterReason('yearFreeze') }}
                                   onReturn={() => { openRoster(m); setRosterReason('return') }}
                                   onTransfer={() => { openRoster(m); setRosterTransferOpen(true) }}
+                              onExtension={() => { openRoster(m); setRosterExtensionOpen(true) }}
                                   onRemove={() => { openRoster(m); setRosterReason('remove') }}
                                 />
                               ))}
@@ -1753,6 +1757,22 @@ export function ClassDetailPage() {
         onClose={() => setRosterReason(null)}
       />
 
+      {/* A'zolar ro'yxati "⋮" — uzaytirish qaydi (KPI «Bonus B» hodisasi) */}
+      {rosterTarget && (
+        <ExtensionModal
+          open={rosterExtensionOpen}
+          onClose={() => setRosterExtensionOpen(false)}
+          studentId={rosterTarget.studentId}
+          studentName={rosterTarget.fullName}
+          fromGroupId={id}
+          fromGroupName={g?.name ?? ''}
+          onDone={() => {
+            setRosterExtensionOpen(false)
+            setRosterTarget(null)
+          }}
+        />
+      )}
+
       {/* A'zolar ro'yxati "⋮" — boshqa guruhga o'tkazish */}
       {rosterTarget && (
         <TransferGroupModal
@@ -1888,7 +1908,7 @@ function Info({
 
 /** Chap ustundagi bitta a'zolik qatori — bosilsa profilga o'tadi, "⋮" menyu faqat FAOL a'zolarda. */
 function MemberRow({
-  m, back, canManage, canYearFreeze, onActivate, onFreeze, onYearFreeze, onReturn, onTransfer, onRemove,
+  m, back, canManage, canYearFreeze, onActivate, onFreeze, onYearFreeze, onReturn, onTransfer, onExtension, onRemove,
 }: {
   m: GroupMember
   /** Profilga o'tilganda "Orqaga" shu guruhga qaytarsin. */
@@ -1901,6 +1921,8 @@ function MemberRow({
   onYearFreeze: () => void
   onReturn: () => void
   onTransfer: () => void
+  /** «Uzaytirish qaydi» — kurs bosqichi tugab keyingisi boshlangani (KPI «Bonus B»). */
+  onExtension: () => void
   onRemove: () => void
 }) {
   // Rang ustuvorligi: chiqqan (line-through) → qarzdor (qizil) → sinov (sariq) → to'lagan (yashil).
@@ -1959,6 +1981,8 @@ function MemberRow({
                 ? [{ label: 'Sinov darsiga qaytarish', icon: RotateCcw, onClick: onReturn }]
                 : []),
               { label: "Boshqa guruhga o'tkazish", icon: ArrowLeftRight, onClick: onTransfer },
+              // Uzaytirish — a'zolikni KO'CHIRMAYDI, faqat hodisani yozadi (`.claude/rules/kpi.md` §1).
+              { label: 'Uzaytirish qaydi', icon: GraduationCap, onClick: onExtension },
               { label: 'Guruhdan chiqarish', icon: X, danger: true, onClick: onRemove },
             ]}
           />

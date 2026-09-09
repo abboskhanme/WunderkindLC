@@ -19,13 +19,38 @@ export async function getActionReasonCategories(): Promise<string[]> {
   return data
 }
 
-export async function createActionReason(category: string, label: string): Promise<ActionReason> {
-  const { data } = await api.post<ActionReason>('/admin/action-reasons', { category, label })
+/**
+ * Qaysi kategoriyalarda «nazoratdan tashqari» belgisi ma'noli (server aytadi — ro'yxat ikki
+ * joyda ayri ketmasin). Endpoint bo'lmasa bo'sh ro'yxat: checkbox umuman ko'rsatilmaydi.
+ */
+export async function getOutOfControlCategories(): Promise<string[]> {
+  const { data } = await api.get<string[]>('/admin/action-reasons/out-of-control-categories')
   return data
 }
 
-export async function updateActionReason(id: string, label: string): Promise<void> {
-  await api.put(`/admin/action-reasons/${id}`, { label })
+export async function createActionReason(
+  category: string,
+  label: string,
+  outOfControl = false,
+): Promise<ActionReason> {
+  const { data } = await api.post<ActionReason>('/admin/action-reasons', {
+    category,
+    label,
+    outOfControl,
+  })
+  return data
+}
+
+/**
+ * ⚠️ `outOfControl` berilmasa server bayroqni TEGMAYDI (null = "o'zgarmadi") — nomni
+ * tahrirlash belgini jimgina o'chirib yubormasin.
+ */
+export async function updateActionReason(
+  id: string,
+  label: string,
+  outOfControl?: boolean,
+): Promise<void> {
+  await api.put(`/admin/action-reasons/${id}`, { label, outOfControl })
 }
 
 export async function deleteActionReason(id: string): Promise<void> {
