@@ -370,6 +370,22 @@ export function StudentDetailPage() {
    * sahifaning «Chegirma» tabi esa "Amaldagi chegirmalar: 3 ta" deb ko'rsatardi.
    * (`tabLoadedFor` naqshi saqlanadi: effekt ichida setState QILINMAYDI.)
    */
+  /**
+   * Chegirma registrini QAYTA yuklashga majbur qilish: bayroq olib tashlanadi va yuqoridagi
+   * effekt o'zi ishga tushadi (so'rov effekt ICHIDA qoladi — `react-hooks/set-state-in-effect`
+   * naqshi buzilmasin). Xato bayrog'i ham tozalanadi, aks holda oldingi xato matni yangi
+   * javob kelgunicha ekranda turib qolardi.
+   */
+  const reloadDiscounts = useCallback(() => {
+    setDiscountError('')
+    setTabLoadedFor((p) => {
+      if (p.chegirma === undefined) return p
+      const next = { ...p }
+      delete next.chegirma
+      return next
+    })
+  }, [])
+
   useEffect(() => {
     if (!id || tabLoadedFor.chegirma === id) return
     let alive = true
@@ -1304,7 +1320,14 @@ export function StudentDetailPage() {
           </Section>
         )}
         <Card>
-          <PaymentHistoryPanel studentId={data.id} onPaid={() => setReloadKey((k) => k + 1)} />
+          {/* ⚠️ `onChargeEdited` — oylik QO'LDA tahrirlangach chegirma keshi bekor qilinadi:
+              server yangi summadan chegirmani qayta hisoblaydi (`discounts.md` §8.5), ya'ni
+              «Chegirma» tabidagi jadval aks holda eski raqam bilan qolib ketardi. */}
+          <PaymentHistoryPanel
+            studentId={data.id}
+            onPaid={() => setReloadKey((k) => k + 1)}
+            onChargeEdited={reloadDiscounts}
+          />
         </Card>
       </>
       )}

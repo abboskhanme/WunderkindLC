@@ -1,4 +1,4 @@
-using Microsoft.EntityFrameworkCore;
+﻿using Microsoft.EntityFrameworkCore;
 using IntellectCRM.Application.Abstractions;
 using IntellectCRM.Domain;
 
@@ -83,33 +83,6 @@ public static class StudentMembershipView
         var list = DisplayGroupNames(memberships, names);
         if (list.Count == 0 && !string.IsNullOrWhiteSpace(s.ClassName)) list.Add(s.ClassName);
         return list;
-    }
-
-    /// <summary>
-    /// GURUH ARXIVLANGANDA — u bilan birga arxivlanadigan o'quvchilar id'si: shu guruhda TIRIK
-    /// a'zoligi bor, lekin BOSHQA (arxivlanmagan) guruhda tirik a'zoligi YO'Q o'quvchilar.
-    ///
-    /// <para>⚠️ Ilgari tanlov <c>Student.ClassName == guruh nomi</c> edi. Bu yorliq BIRINCHI
-    /// qo'shilgan guruhda qotib qoladi va guruh nomlari unikal ham emas — natijada allaqachon
-    /// boshqa guruhga o'tgan o'quvchi ham arxivlanib ketardi (arxivlangan o'quvchiga oylik
-    /// hisoblanmaydi — ya'ni u jimgina to'lovdan chiqib qolardi).</para>
-    ///
-    /// <para>A'zolik yozuvi UMUMAN bo'lmagan eski o'quvchilar bu ro'yxatga kirmaydi — ular
-    /// chaqiruvchida avvalgidek <c>ClassName</c> bo'yicha qo'shiladi.</para>
-    /// </summary>
-    public static async Task<List<string>> ArchivableWithGroupAsync(
-        IAppDbContext db, string groupId, CancellationToken ct = default)
-    {
-        var memberIds = await db.StudentGroups.AsNoTracking()
-            .Where(m => m.GroupId == groupId && m.IsActive)
-            .Select(m => m.StudentId).Distinct().ToListAsync(ct);
-        if (memberIds.Count == 0) return new List<string>();
-        var studyElsewhere = (await (from m in db.StudentGroups.AsNoTracking()
-                                     join g in db.Classes.AsNoTracking() on m.GroupId equals g.Id
-                                     where m.IsActive && m.GroupId != groupId && !g.IsArchived
-                                           && memberIds.Contains(m.StudentId)
-                                     select m.StudentId).Distinct().ToListAsync(ct)).ToHashSet();
-        return memberIds.Where(id => !studyElsewhere.Contains(id)).ToList();
     }
 
     /// <summary>

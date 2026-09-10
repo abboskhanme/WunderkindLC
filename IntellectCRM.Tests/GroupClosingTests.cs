@@ -341,4 +341,146 @@ public class GroupClosingTests
         var tx = Assert.Single(ctx.FinanceTransactions.Where(t => t.Category == "tuition").ToList());
         Assert.Equal(eski.Id, tx.GroupId);   // teglanmagan (null) bo'lib qolmaydi
     }
+
+    // ==================== GURUHNI ARXIVLASH — O'QUVCHI ARXIVLANMAYDI ====================
+
+    /// <summary>Repo ildizi (<c>IntellectCRM.slnx</c> yonidagi papka).</summary>
+    private static string RepoRoot
+    {
+        get
+        {
+            var dir = new DirectoryInfo(AppContext.BaseDirectory);
+            while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "IntellectCRM.slnx")))
+                dir = dir.Parent;
+            Assert.True(dir is not null, "Repo ildizi (IntellectCRM.slnx) topilmadi");
+            return dir!.FullName;
+        }
+    }
+
+    /// <summary><c>ClassesController.Archive</c> METODINING tanasi (keyingi metodgacha).
+    /// Test loyihasi <c>IntellectCRM.Server</c> ga bog'lanmagan (csproj'da ProjectReference yo'q),
+    /// shuning uchun endpoint MANBA matni bo'yicha qulflanadi.</summary>
+    private static string ArchiveMethodSource()
+    {
+        var src = File.ReadAllText(Path.Combine(
+            RepoRoot, "IntellectCRM.Server", "Controllers", "ClassesController.cs"));
+        var start = src.IndexOf("public async Task<IActionResult> Archive(string id)", StringComparison.Ordinal);
+        Assert.True(start > 0, "ClassesController.Archive topilmadi");
+        // Chegara — metodning O'Z yopuvchi qavsi (qavslarni sanaymiz): keyingi metodning IZOHI
+        // tanaga tushsa, u yerdagi «ArchivedWithClass» so'zi tekshiruvni yolg'on yiqitardi.
+        var open = src.IndexOf('{', start);
+        Assert.True(open > start, "Archive tanasi topilmadi");
+        var depth = 0;
+        var end = open;
+        for (var i = open; i < src.Length; i++)
+        {
+            if (src[i] == '{') depth++;
+            else if (src[i] == '}' && --depth == 0) { end = i + 1; break; }
+        }
+        Assert.True(end > open, "Archive tanasining oxiri topilmadi");
+        return src[start..end];
+    }
+
+    /// <summary>
+    /// ⚠️ Guruh arxivlanganda O'QUVCHI <b>arxivga tushmaydi</b> — u shunchaki «Aktiv emas»
+    /// bo'lib ro'yxatda qoladi. Ilgari <c>Archive</c> o'quvchilarni <c>IsArchived=true</c>
+    /// qilar va ular ro'yxatdan butunlay yo'qolib, faqat «Arxiv» tabida qolardi.
+    /// </summary>
+    [Fact]
+    public void Archive_endpointi_OQUVCHINI_arxivlamaydi()
+    {
+        var body = ArchiveMethodSource();
+
+        // O'quvchi arxiv maydonlariga TEGILMAYDI (bular faqat Unarchive/StudentsController ishi).
+        Assert.DoesNotContain("ArchivedWithClass", body);
+        Assert.DoesNotContain("ArchiveReason", body);
+        Assert.DoesNotContain("db.Students", body);
+        // Javob shakli saqlangan, lekin arxivlangan o'quvchilar soni HAR DOIM 0.
+        Assert.Contains("archivedStudents = 0", body);
+    }
+
+    /// <summary>
+    /// A'zolikni muzlatish yadrosi «Guruhni yopish» bilan AYNAN BITTA —
+    /// <c>CloseMembersAsync</c>. Nusxa ko'chirilsa ikkisi jimgina ayri ketardi
+    /// (masalan qisman to'lov bir yo'lda yozilib, ikkinchisida yo'q bo'lardi).
+    /// </summary>
+    [Fact]
+    public void Archive_azoliklarni_YOPISH_bilan_BITTA_yadroda_muzlatadi()
+    {
+        var body = ArchiveMethodSource();
+        Assert.Contains("CloseMembersAsync(cls", body);
+        Assert.Contains("frozenMembers", body);
+    }
+
+    /// <summary>
+    /// ⚠️ A'ZOLIKNI MUZLATISH SHART — faqat "o'quvchini arxivlamaslik" YETMAYDI:
+    /// <c>AccrueMonth</c> guruhning <c>IsArchived</c> bayrog'iga QARAMAYDI, ya'ni a'zolik
+    /// <c>active</c> bo'lib qolsa o'quvchiga har oy YOLG'ON QARZ yozilib, ota-onalarga to'lov
+    /// eslatmasi SMS'i ketaverardi (`.claude/rules/membership-periods.md` §6).
+    ///
+    /// <para>Bu yerda arxivlash NATIJASI qulflanadi: o'quvchi arxivda EMAS, a'zolik
+    /// <c>frozen</c>, jamlama holat "aktiv" EMAS va keyingi oyga hisob YOZILMAYDI.</para>
+    /// </summary>
+    [Fact]
+    public async Task Guruh_ARXIVLANGANDA_oquvchi_ARXIVLANMAYDI_azolik_MUZLATILADI()
+    {
+        using var db = TestDb.Sqlite();
+        var ctx = db.Context;
+        var g = AddGroup(ctx);
+        var s = AddStudent(ctx, balance: -600_000m);
+        var m = AddMembership(ctx, s, g, $"{M(-3)}-01");
+        AddCharge(ctx, s, g.Id, M(0), 600_000m);
+        await ctx.SaveChangesAsync();
+
+        // `Archive` → `CloseMembersAsync` yadrosi: guruh arxivga, a'zolik muzlatiladi.
+        var today = AppClock.Today.ToString("yyyy-MM-dd");
+        g.IsArchived = true;
+        g.ArchivedAt = today;
+        var activatedAt = m.ActivatedAt;
+        m.Status = "frozen";
+        m.FrozenAt = today;
+        await MembershipBilling.SettleFreezeAsync(ctx, s, g, activatedAt, today, membership: m);
+        await ctx.SaveChangesAsync();
+
+        // 1) O'quvchi ARXIVDA EMAS — ro'yxatdan yo'qolmaydi.
+        Assert.False(s.IsArchived);
+        Assert.False(s.ArchivedWithClass);
+        Assert.Null(s.ArchivedAt);
+
+        // 2) A'zolik MUZLATILGAN — o'quvchi o'z-o'zidan "Aktiv emas" bo'lib qoladi.
+        Assert.Equal("frozen", m.Status);
+        Assert.True(m.IsActive);   // ⚠️ to'lov qabul qilish uchun a'zolik TIRIK qoladi
+        Assert.Equal("frozen", MembershipLifecycle.MemberState(new[] { m }));
+        Assert.NotEqual("active", MembershipLifecycle.MemberState(new[] { m }));
+        Assert.False(MembershipLifecycle.IsActiveOverall(new[] { m }));
+
+        // 3) Keyingi oyga YOLG'ON QARZ yozilmaydi.
+        Assert.Equal(0, (await TuitionService.AccrueMonth(ctx, M(1))).Count);
+        Assert.DoesNotContain(M(1), ctx.MonthlyCharges.Select(c => c.Month).ToList());
+    }
+
+    /// <summary>Boshqa guruhda o'qiyotgan o'quvchi guruh arxivlangandan keyin ham AKTIV
+    /// qoladi — jamlama holat BARCHA tirik a'zoliklar ustidan olinadi.</summary>
+    [Fact]
+    public async Task Guruh_ARXIVLANGANDA_boshqa_guruhdagi_azolik_AKTIV_qoladi()
+    {
+        using var db = TestDb.Sqlite();
+        var ctx = db.Context;
+        var arxiv = AddGroup(ctx, name: "A guruh");
+        var boshqa = AddGroup(ctx, name: "B guruh");
+        var s = AddStudent(ctx);
+        var mA = AddMembership(ctx, s, arxiv, $"{M(-3)}-01");
+        var mB = AddMembership(ctx, s, boshqa, $"{M(-3)}-01");
+        await ctx.SaveChangesAsync();
+
+        var today = AppClock.Today.ToString("yyyy-MM-dd");
+        arxiv.IsArchived = true;
+        mA.Status = "frozen";
+        mA.FrozenAt = today;
+        await ctx.SaveChangesAsync();
+
+        Assert.False(s.IsArchived);
+        Assert.Equal("active", MembershipLifecycle.MemberState(new[] { mA, mB }));
+        Assert.True(MembershipLifecycle.IsActiveOverall(new[] { mA, mB }));
+    }
 }

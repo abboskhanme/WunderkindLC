@@ -252,6 +252,28 @@ paths:
   a'zoliklarni ko'rsatadi, `StudentGroupLedger` esa muzlatilgan/chiqarilgan a'zolikda oylarni
   muzlatish (yoki chiqish) oyida to'xtatadi va avans oylarini ko'rsatmaydi.
 
+- **GURUHNI ARXIVLASH** (`POST /api/admin/classes/{id}/archive`, guruhlar ro'yxatidagi "Arxivlash"):
+  **YOPISH bilan AYNAN bir xil yadro** (`ClassesController.CloseMembersAsync`), sana — BUGUN, sabab
+  so'ralmaydi. Ya'ni a'zoliklar muzlatiladi + qisman to'lov + keyingi oylar hisobi bekor qilinadi.
+
+  ⚠️ **O'QUVCHILAR ARXIVLANMAYDI (2026-09-10 dan).** Ilgari arxivlash shu guruhdagi (va boshqa
+  arxivlanmagan guruhda o'qimaydigan) o'quvchilarni `Student.IsArchived = true` qilardi — ular
+  o'quvchilar ro'yxatidan butunlay yo'qolib, faqat «Arxiv» tabida qolardi. Foydalanuvchi talabi:
+  o'quvchi arxivga TUSHMASIN, shunchaki **«Aktiv emas»** ro'yxatida qolsin.
+
+  ⚠️ **Faqat arxivlashni olib tashlash YETMASDI** — a'zolikni muzlatish SHART: `AccrueMonth`
+  guruhning `IsArchived` bayrog'iga **qaramaydi** (`db.Classes.ToListAsync()`, filtr yo'q), ya'ni
+  a'zolik `active` bo'lib qolsa o'quvchiga har oy yolg'on qarz yozilib, ota-onalarga to'lov
+  eslatmasi SMS'i ketaverardi (`.claude/rules/membership-periods.md` §6).
+
+  ⚠️ `StudentMembershipView.ArchivableWithGroupAsync` **O'CHIRILDI** — endi hech kim o'quvchini
+  guruh bilan birga arxivlamaydi. `Unarchive` dagi `ArchivedWithClass` tiklash tarmog'i esa
+  QOLDIRILDI: u eski ma'lumotdagi (bu o'zgarishdan OLDIN arxivlangan) o'quvchilarni qaytaradi.
+
+  ⚠️ Arxivdan chiqarilganda a'zoliklar **muzlatilganicha qoladi** (yopishdagi bilan bir xil) —
+  avtomatik aktivlashtirish qisman oylikni ikki marta yozib yuborardi; kerak bo'lsa qo'lda
+  aktivlashtiriladi.
+
 - **PER-GURUH BALANS (qizil/yashil):** guruh kontekstidagi ro'yxatlar (jurnal qatorlari, guruh a'zolari —
   admin ham, o'qituvchi ilovasi ham) `Student.Balance` (UMUMIY) emas, `GroupBalanceService.ForGroupAsync`
   hisoblagan **shu guruh** balansini ko'rsatadi: `to'langan(shu guruh) − hisoblangan(shu guruh)`,

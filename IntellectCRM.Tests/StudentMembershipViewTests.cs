@@ -1,4 +1,4 @@
-using IntellectCRM.Application.Services;
+﻿using IntellectCRM.Application.Services;
 using IntellectCRM.Domain;
 using IntellectCRM.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
@@ -348,21 +348,6 @@ public class StudentMembershipViewTests
         Assert.Equal(b.Id, journal!.Groups[0].GroupId);
     }
 
-    [Fact]
-    public async Task Guruh_ARXIVLANGANDA_boshqa_guruhda_oqiyotgan_oquvchi_ARXIVLANMAYDI()
-    {
-        // ⚠️ Ilgari tanlov `Student.ClassName == guruh nomi` edi: A arxivlanganda, B guruhida
-        // o'qiyotgan o'quvchi ham arxivga tushardi (va unga oylik hisoblanmay qolardi).
-        using var db = TestDb.Sqlite();
-        var (s, a, _) = FrozenInAActiveInB(db.Context);
-        var onlyA = AddStudent(db.Context, className: a.Name);
-        AddMembership(db.Context, onlyA, a, "active");
-        db.Context.SaveChanges();
-
-        var ids = await StudentMembershipView.ArchivableWithGroupAsync(db.Context, a.Id);
-
-        Assert.Equal(new[] { onlyA.Id }, ids);
-    }
 }
 
 /// <summary>SignalR hub'ining bo'sh o'rnini bosuvchi — <see cref="ChatService"/> a'zolik

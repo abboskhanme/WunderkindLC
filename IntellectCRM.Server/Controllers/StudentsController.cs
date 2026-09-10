@@ -1703,11 +1703,26 @@ public class StudentsController(
             .FirstOrDefaultAsync(c => c.StudentId == id && c.GroupId == gid && c.Month == month);
         if (charge is null) return NotFound(new { message = "Bu oy uchun hisob topilmadi" });
 
+        // ⚠️ CHEGIRMA YANGI SUMMADAN QAYTA HISOBLANADI. `MonthlyCharge.Discount` — birinchi
+        // hisoblashda ESKI summadan chiqarilgan MUTLAQ so'm. Uni shundayligicha ko'chirsak,
+        // FOIZLI chegirma summa tahrirlanganda jimgina boshqa foizga aylanardi:
+        // 1 000 000 (30% = 300 000) → 600 000 da chegirma 300 000 bo'lib qolib, aslida 50%
+        // bo'lardi. Chegirmaning SPETSIFIKATSIYASI (foiz + summa) registrda — pul manbai
+        // aynan shu (`.claude/rules/discounts.md` §2), shuning uchun bazani registrdan olamiz.
+        var book = await DiscountBook.LoadForStudentAsync(db, student.Id);
+        var rows = book.For(student.Id);
+        // Amaldagi qator YO'Q bo'lsa (tarixiy oy yoki bekor qilingan chegirma) — `null` uzatamiz
+        // va eski chegirma saqlanadi: qayta hisoblansa u JIMGINA 0 ga tushib, o'quvchiga
+        // to'satdan qarz yozilardi.
+        decimal? specDiscount = DiscountRules.Resolve(rows, month, gid) is null
+            ? null
+            : TuitionService.DiscountForMonth(rows, Math.Max(0m, req.Amount), month, gid);
+
         // ⚠️ REJA AVVAL TUZILADI (sof funksiya), qator KEYIN o'zgartiriladi. Ilgari chegirma
         // `charge` ustida DARHOL qirqilar, "eski effektiv" esa ALLAQACHON O'ZGARGAN chegirma bilan
         // hisoblanardi — natijada balansga hech qachon to'lanmagan pul qaytarilardi
         // (misol `TuitionService.PlanChargeEdit` izohida).
-        var plan = TuitionService.PlanChargeEdit(charge.Amount, charge.Discount, req.Amount);
+        var plan = TuitionService.PlanChargeEdit(charge.Amount, charge.Discount, req.Amount, specDiscount);
 
         // Hisob balansni EFFEKTIV miqdorda kamaytirgan edi — farqni balansga qaytaramiz.
         student.Balance += plan.BalanceDelta;
@@ -1715,10 +1730,14 @@ public class StudentsController(
         charge.Discount = plan.NewDiscount;
         charge.Locked = true; // qo'lda tahrirlandi — avtomatik qayta hisob endi bu yozuvni o'zgartirmaydi.
 
-        // Chegirma yangi summaga sig'may qirqilgan bo'lsa — buni ham AYTAMIZ: tarixda faqat
-        // "summa o'zgardi" turgan bo'lsa, keyin "chegirmam qayerga ketdi" savoli javobsiz qolardi.
-        var discountNote = plan.DiscountClamped
-            ? $"; chegirma {AuditService.Money(plan.OldDiscount)} → {AuditService.Money(plan.NewDiscount)} so'm (yangi summaga qirqildi)"
+        // Chegirma o'zgargan bo'lsa (qayta hisoblangan yoki qirqilgan) — buni ham AYTAMIZ va
+        // SABABINI yozamiz: tarixda faqat "summa o'zgardi" tursa, keyin "chegirmam qayerga
+        // ketdi" savoli javobsiz qolardi.
+        var discountWhy = plan.DiscountRecomputed ? " (yangi summadan qayta hisoblandi)"
+            : plan.DiscountClamped ? " (yangi summaga qirqildi)"
+            : "";
+        var discountNote = plan.DiscountChanged
+            ? $"; chegirma {AuditService.Money(plan.OldDiscount)} → {AuditService.Money(plan.NewDiscount)} so'm{discountWhy}"
             : "";
         audit.Record(AuditService.EntityStudentDiscount, student.Id, "update",
             $"Oylik hisob qo'lda tahrirlandi ({month}): {AuditService.Money(plan.OldAmount)} → {AuditService.Money(plan.NewAmount)} so'm{discountNote} — {student.FullName}",

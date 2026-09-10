@@ -137,13 +137,40 @@ export async function getArchivedClasses(): Promise<Group[]> {
   return data
 }
 
-/** Guruhni arxivlash — o'quvchilari ham arxivlanadi. */
-export async function archiveClass(id: string): Promise<{ archivedStudents: number }> {
-  const { data } = await api.post<{ archivedStudents: number }>(`/admin/classes/${id}/archive`)
+/**
+ * Guruhni arxivlash javobi.
+ *
+ * ⚠️ `archivedStudents` ENDI DOIM 0 — arxivlash o'quvchini ARXIVLAMAYDI. Server guruhning faol
+ * a'zoliklarini MUZLATADI (`frozenMembers`) va sinovdagilarni guruhdan chiqaradi (`trialClosed`);
+ * maydon faqat javob shakli buzilmasin uchun qoldirilgan. Haqiqiy natija — `frozenMembers`.
+ */
+export type ArchiveClassResult = {
+  /** @deprecated Doim 0 — o'quvchilar arxivlanmaydi. */
+  archivedStudents: number
+  /** Muzlatilgan a'zoliklar soni. */
+  frozenMembers: number
+  /** Allaqachon muzlatilgan bo'lgani uchun tegilmaganlar. */
+  alreadyFrozen: number
+  /** Guruhdan chiqarilgan sinovdagi a'zoliklar. */
+  trialClosed: number
+  /** Bekor qilingan (keyingi oylar) hisob qatorlari. */
+  restoredCharges: number
+}
+
+/**
+ * Guruhni arxivlash — o'quvchilar ARXIVLANMAYDI, ularning shu guruhdagi faol a'zoligi
+ * muzlatiladi (sinovdagilar guruhdan chiqariladi).
+ */
+export async function archiveClass(id: string): Promise<ArchiveClassResult> {
+  const { data } = await api.post<ArchiveClassResult>(`/admin/classes/${id}/archive`)
   return data
 }
 
-/** Guruhni arxivdan chiqarish — guruh bilan arxivlangan o'quvchilar ham qaytariladi. */
+/**
+ * Guruhni arxivdan chiqarish — a'zoliklar MUZLATILGANICHA qoladi (avtomatik
+ * aktivlashtirilmaydi). `restoredStudents` faqat ESKI yozuvlar uchun: guruh bilan birga
+ * arxivlangan o'quvchilar qaytariladi; yangi arxivlashda bu 0 bo'ladi.
+ */
 export async function unarchiveClass(id: string): Promise<{ restoredStudents: number }> {
   const { data } = await api.post<{ restoredStudents: number }>(`/admin/classes/${id}/unarchive`)
   return data

@@ -268,26 +268,54 @@ export function ClassesPage() {
       .catch((e) => alert(e?.response?.data?.message ?? "Guruhni o'chirib bo'lmadi"))
   }
 
+  /**
+   * Guruhni arxivlash. ⚠️ O'QUVCHILAR ARXIVLANMAYDI (2026-09 dan): server faol a'zoliklarni
+   * MUZLATADI («Guruhni yopish» dagi bilan bir xil yadro — qisman to'lov qayta hisoblanadi,
+   * keyingi oylar hisobi bekor qilinadi), sinovdagilarni esa guruhdan chiqaradi.
+   * Shuning uchun matnlar aynan shuni aytadi — eski "o'quvchilar ham arxivlanadi" YOLG'ON edi.
+   */
   const handleArchive = (c: Group) => {
-    if (!confirm(`"${c.name}" guruhini arxivlaysizmi?\nGuruhdagi barcha o'quvchilar ham arxivlanadi (login bloklanadi).`))
+    if (
+      !confirm(
+        `"${c.name}" guruhini arxivlaysizmi?\n\n` +
+          `• O'quvchilar ARXIVLANMAYDI — ular o'quvchilar ro'yxatida qolaveradi.\n` +
+          `• Shu guruhdagi faol a'zoliklar MUZLATILADI: oylik hisoblanmaydi va o'quvchi «Aktiv emas» bo'lib ko'rinadi.\n` +
+          `• Sinovdagi a'zoliklar guruhdan chiqariladi.`,
+      )
+    )
       return
     archiveClass(c.id)
       .then((r) => {
         setClasses((prev) => prev.filter((x) => x.id !== c.id))
         setArchived((prev) => [{ ...c, isArchived: true }, ...prev])
-        alert(`"${c.name}" arxivlandi — ${r.archivedStudents} ta o'quvchi ham arxivlandi.`)
+        const extra = r.trialClosed > 0 ? `, ${r.trialClosed} ta sinovdagi a'zolik guruhdan chiqarildi` : ''
+        alert(`"${c.name}" arxivlandi — ${r.frozenMembers} ta a'zolik muzlatildi${extra}. O'quvchilar arxivlanmadi.`)
       })
       .catch((e) => alert(e?.response?.data?.message ?? 'Arxivlashda xatolik'))
   }
 
+  /**
+   * Arxivdan chiqarish. ⚠️ A'zoliklar MUZLATILGANICHA qoladi — avtomatik aktivlashtirilmaydi
+   * (aks holda oylik hisobi o'z-o'zidan qayta boshlanib ketardi). `restoredStudents` faqat ESKI
+   * yozuvlar uchun: o'sha paytda guruh bilan birga arxivlangan o'quvchilar.
+   */
   const handleUnarchive = (c: Group) => {
-    if (!confirm(`"${c.name}" guruhini arxivdan chiqarasizmi?\nGuruh bilan arxivlangan o'quvchilar ham qaytariladi.`))
+    if (
+      !confirm(
+        `"${c.name}" guruhini arxivdan chiqarasizmi?\n\n` +
+          `A'zoliklar MUZLATILGANICHA qoladi — ular avtomatik aktivlashtirilmaydi. ` +
+          `O'quvchini yana o'qishga qaytarish uchun uning a'zoligini qo'lda aktivlashtiring.`,
+      )
+    )
       return
     unarchiveClass(c.id)
       .then((r) => {
         setArchived((prev) => prev.filter((x) => x.id !== c.id))
         setClasses((prev) => [...prev, { ...c, isArchived: false }])
-        alert(`"${c.name}" arxivdan chiqarildi — ${r.restoredStudents} ta o'quvchi ham qaytarildi.`)
+        const extra = r.restoredStudents > 0 ? ` ${r.restoredStudents} ta o'quvchi arxivdan qaytarildi.` : ''
+        alert(
+          `"${c.name}" arxivdan chiqarildi.${extra} A'zoliklar muzlatilganicha qoldi — kerak bo'lsa qo'lda aktivlashtiring.`,
+        )
       })
       .catch((e) => alert(e?.response?.data?.message ?? 'Arxivdan chiqarishda xatolik'))
   }
@@ -630,7 +658,11 @@ export function ClassesPage() {
                               />
                             ))}
                           {can('classes.list', 'delete') && (
-                            <IconBtn icon={Archive} title="Arxivlash" onClick={() => handleArchive(c)} />
+                            <IconBtn
+                              icon={Archive}
+                              title="Arxivlash (a'zoliklar muzlatiladi)"
+                              onClick={() => handleArchive(c)}
+                            />
                           )}
                           {can('classes.list', 'delete') && (
                             <IconBtn icon={Trash2} title="O'chirish" danger onClick={() => handleDelete(c)} />
@@ -817,7 +849,7 @@ export function ClassesPage() {
                   {can('classes.list', 'delete') && (
                     <Button
                       variant="secondary"
-                      title="Arxivlash (o'quvchilari bilan)"
+                      title="Arxivlash (a'zoliklar muzlatiladi)"
                       aria-label="Arxivlash"
                       onClick={() => handleArchive(c)}
                     >

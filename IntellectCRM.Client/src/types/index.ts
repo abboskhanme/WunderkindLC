@@ -991,7 +991,7 @@ export interface Group {
   room?: string
   /** Xona FK (Room.Id). Yangi guruhlarda shu ishlatiladi. */
   roomId?: string
-  /** Guruh arxivlangan (arxivlanganda o'quvchilari ham arxivlanadi) */
+  /** Guruh arxivlangan (arxivlanganda o'quvchilar ARXIVLANMAYDI — a'zoliklari muzlatiladi) */
   isArchived?: boolean
   /** Arxivga olingan sana (ISO) */
   archivedAt?: string | null

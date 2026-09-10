@@ -910,8 +910,12 @@ public static class TuitionService
     /// <param name="OldDiscount">Tahrirdan OLDINGI chegirma (balans aynan shunga qarab yechilgan edi).</param>
     /// <param name="NewAmount">Yangi to'liq narx (manfiy bo'lmaydi).</param>
     /// <param name="NewDiscount">Yangi chegirma — yangi summadan oshmasligi uchun qirqilgan bo'lishi mumkin.</param>
+    /// <param name="DiscountRecomputed">Chegirma registr spetsifikatsiyasidan (foiz/summa) YANGI
+    /// summa bo'yicha QAYTA HISOBLANDIMI (auditda aytiladi).</param>
+    /// <param name="DiscountClamped">Chegirma yangi summaga sig'magani uchun KAMAYTIRILDIMI.</param>
     public readonly record struct ChargeEditPlan(
-        decimal OldAmount, decimal OldDiscount, decimal NewAmount, decimal NewDiscount)
+        decimal OldAmount, decimal OldDiscount, decimal NewAmount, decimal NewDiscount,
+        bool DiscountRecomputed = false, bool DiscountClamped = false)
     {
         /// <summary>Tahrirdan OLDIN balansdan yechilgan effektiv summa (ESKI chegirma bilan).</summary>
         public decimal OldEffective => Math.Max(0m, OldAmount - OldDiscount);
@@ -919,8 +923,8 @@ public static class TuitionService
         public decimal NewEffective => Math.Max(0m, NewAmount - NewDiscount);
         /// <summary>Balansga qo'shiladigan farq (<c>Balance += ...</c>).</summary>
         public decimal BalanceDelta => OldEffective - NewEffective;
-        /// <summary>Chegirma yangi summaga sig'magani uchun KAMAYTIRILDIMI (auditda aytiladi).</summary>
-        public bool DiscountClamped => NewDiscount < OldDiscount;
+        /// <summary>Chegirma umuman o'zgardimi (auditda izoh yozish uchun).</summary>
+        public bool DiscountChanged => NewDiscount != OldDiscount;
     }
 
     /// <summary>
@@ -934,12 +938,28 @@ public static class TuitionService
     /// 500 000 − 150 000 = 350 000 bo'lib chiqadi va balansga 350 000 qaytariladi. Ya'ni o'quvchiga
     /// hech qachon to'lanmagan 50 000 SOVG'A qilinardi. Eski chegirma SNAPSHOT qilinishi shart.</para>
     /// </summary>
-    public static ChargeEditPlan PlanChargeEdit(decimal oldAmount, decimal oldDiscount, decimal requestedAmount)
+    /// <param name="specDiscount">Chegirma registridan (<c>DiscountBook</c>) <b>YANGI summa
+    /// bo'yicha</b> qayta hisoblangan chegirma, yoki <c>null</c> — bu oyda/qamrovda amaldagi
+    /// chegirma qatori yo'q (tarixiy yoki bekor qilingan).
+    ///
+    /// <para>⚠️ <b>NEGA KERAK:</b> <c>MonthlyCharge.Discount</c> — birinchi hisoblashda ESKI
+    /// summadan chiqarilgan MUTLAQ so'm. Uni ko'chirib qo'ysak, foizli chegirma summa
+    /// tahrirlanganda jimgina boshqa foizga aylanardi: 1 000 000 (30% = 300 000) → 600 000 da
+    /// chegirma 300 000 bo'lib qolib, aslida <b>50%</b> bo'lardi. Foiz YANGI summadan
+    /// hisoblanishi SHART (<c>.claude/rules/discounts.md</c> §2).</para></param>
+    public static ChargeEditPlan PlanChargeEdit(
+        decimal oldAmount, decimal oldDiscount, decimal requestedAmount, decimal? specDiscount = null)
     {
         var newAmount = Math.Max(0m, requestedAmount);
+        // Registr qatori bo'lsa — chegirma YANGI summadan qayta hisoblanadi; bo'lmasa (tarixiy
+        // yoki bekor qilingan chegirma) eskisi saqlanadi — jimgina 0 ga tushirib yubormaymiz.
+        var recomputed = specDiscount.HasValue;
+        var baseDiscount = Math.Max(0m, specDiscount ?? oldDiscount);
         // Chegirma yangi summadan oshib ketmasin (effektiv manfiy bo'lmasin).
-        var newDiscount = Math.Min(Math.Max(0m, oldDiscount), newAmount);
-        return new ChargeEditPlan(oldAmount, oldDiscount, newAmount, newDiscount);
+        var newDiscount = Math.Min(baseDiscount, newAmount);
+        return new ChargeEditPlan(
+            oldAmount, oldDiscount, newAmount, newDiscount,
+            DiscountRecomputed: recomputed, DiscountClamped: newDiscount < baseDiscount);
     }
 
     private static async Task PurgeAggregateRowAsync(IAppDbContext db, Student s, string month)

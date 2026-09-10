@@ -17,6 +17,15 @@ interface Props {
   studentId: string
   /** To'lov shu panel ichidan kiritilgach — chaqiruvchi o'z holatini (balans/ro'yxat) yangilashi uchun. */
   onPaid?: () => void
+  /**
+   * Oylik hisob QO'LDA tahrirlangach chaqiriladi.
+   *
+   * ⚠️ `onPaid` DAN ALOHIDA prop kerak edi: u faqat TO'LOVDA chaqiriladi, tahrirda esa boshqa
+   * narsa eskiradi. Server yangi summadan **chegirmani QAYTA HISOBLAYDI**
+   * (`.claude/rules/discounts.md` §8.5), ya'ni tahrirdan keyin «Chegirma» tabidagi jadval
+   * eskirib qoladi — u sahifada bir marta yuklanadi va o'zi qayta so'ramaydi.
+   */
+  onChargeEdited?: () => void
 }
 
 const statusStyles: Record<MonthStatus, string> = {
@@ -27,7 +36,7 @@ const statusStyles: Record<MonthStatus, string> = {
 
 /** O'quvchining to'lov tarixi — oylar bo'yicha holat, kassa yozuvlari, o'zgarishlar tarixi.
  *  `PaymentHistoryModal` (modal ichida) va `StudentDetailPage`ning "To'lov tarixi" tabida (inline) ishlatiladi. */
-export function PaymentHistoryPanel({ studentId, onPaid }: Props) {
+export function PaymentHistoryPanel({ studentId, onPaid, onChargeEdited }: Props) {
   const { user } = useAuth()
   // O'zgarishlar tarixi — alohida `audit` ruxsati (admin/superadmin uchun har doim true).
   const canSeeAudit = usePerm().can('audit', 'view')
@@ -92,6 +101,9 @@ export function PaymentHistoryPanel({ studentId, onPaid }: Props) {
       const fresh = await getStudentLedger(studentId)
       setLedger(fresh)
       setEditKey(null)
+      // Chegirma YANGI summadan qayta hisoblandi — chaqiruvchi o'zidagi chegirma ko'rinishini
+      // yangilaydi (bu panel faqat O'Z ledger'ini biladi).
+      onChargeEdited?.()
     } catch (err) {
       alert(apiErrorMessage(err, "Tahrirlab bo'lmadi"))
     } finally {

@@ -1135,4 +1135,86 @@ public class FinanceDbTests
         Assert.Equal(2, created); // M(-1), M(0) — kelajak oy yozilmaydi
         Assert.DoesNotContain(M(1), ctx.MonthlyCharges.Select(c => c.Month).ToList());
     }
+
+    // ==================== QO'LDA TAHRIR + CHEGIRMA REGISTRI (integratsiya) ====================
+
+    /// <summary>
+    /// <c>StudentsController.EditCharge</c> ning CHEGIRMA yo'li — AYNAN o'sha ketma-ketlik
+    /// (registrdan kitob → amaldagi qator → yangi summa bo'yicha chegirma → <c>PlanChargeEdit</c>).
+    /// Test project'i <c>IntellectCRM.Server</c> ga bog'lanmagani uchun controller o'zi
+    /// chaqirilmaydi; qulflanadigan narsa — SHU zanjirning natijasi.
+    /// </summary>
+    private static async Task<TuitionService.ChargeEditPlan> PlanEditAsync(
+        AppDbContext ctx, Student s, MonthlyCharge charge, decimal requestedAmount)
+    {
+        var book = await DiscountBook.LoadForStudentAsync(ctx, s.Id);
+        var rows = book.For(s.Id);
+        decimal? specDiscount = DiscountRules.Resolve(rows, charge.Month, charge.GroupId) is null
+            ? null
+            : TuitionService.DiscountForMonth(rows, Math.Max(0m, requestedAmount), charge.Month, charge.GroupId);
+
+        var plan = TuitionService.PlanChargeEdit(charge.Amount, charge.Discount, requestedAmount, specDiscount);
+        s.Balance += plan.BalanceDelta;
+        charge.Amount = plan.NewAmount;
+        charge.Discount = plan.NewDiscount;
+        charge.Locked = true;
+        await ctx.SaveChangesAsync();
+        return plan;
+    }
+
+    /// <summary>
+    /// ⚠️ Registrda 30% chegirmasi bor o'quvchining oylik hisobi QO'LDA tahrirlansa — chegirma
+    /// YANGI summadan qayta hisoblanadi. Ilgari <c>MonthlyCharge.Discount</c> (mutlaq so'm)
+    /// ko'chirilar va 1 000 000 dan olingan 300 000 so'm 600 000 lik hisobda jimgina <b>50%</b>
+    /// bo'lib qolardi (`.claude/rules/discounts.md` §2).
+    /// </summary>
+    [Fact]
+    public async Task EditCharge_registrdagi_FOIZLI_chegirma_YANGI_summadan_qayta_hisoblanadi()
+    {
+        using var db = TestDb.Sqlite();
+        var ctx = db.Context;
+        var g = AddGroup(ctx, 1_000_000m);
+        var s = AddStudent(ctx, className: "A guruh", pct: 30);   // registrda 30% (barcha guruhlar)
+        AddMembership(ctx, s, g, activatedAt: $"{M(-3)}-01");
+        // Hisob 1 000 000 − 300 000 = 700 000 bo'lib balansdan yechilgan edi.
+        var charge = AddCharge(ctx, s, g.Id, M(0), 1_000_000m, discount: 300_000m);
+        s.Balance = -700_000m;
+        await ctx.SaveChangesAsync();
+
+        var plan = await PlanEditAsync(ctx, s, charge, 600_000m);
+
+        Assert.True(plan.DiscountRecomputed);
+        Assert.False(plan.DiscountClamped);
+        Assert.Equal(600_000m, charge.Amount);
+        Assert.Equal(180_000m, charge.Discount);          // ⚠️ 30% YANGI summadan, 300 000 EMAS
+        Assert.True(charge.Locked);                       // qo'lda tahrir — avto qayta hisob tegmaydi
+        Assert.Equal(-420_000m, s.Balance);               // 600 000 − 180 000 yechilgan holatga keldi
+    }
+
+    /// <summary>Chegirma BEKOR QILINGAN bo'lsa (registrda amaldagi qator yo'q) — eski chegirma
+    /// SAQLANADI: qayta hisoblansa u 0 ga tushib, o'quvchiga to'satdan qarz yozilardi.</summary>
+    [Fact]
+    public async Task EditCharge_registr_qatori_BEKOR_qilingan_bolsa_eski_chegirma_SAQLANADI()
+    {
+        using var db = TestDb.Sqlite();
+        var ctx = db.Context;
+        var g = AddGroup(ctx, 1_000_000m);
+        var s = AddStudent(ctx, className: "A guruh", pct: 30);
+        AddMembership(ctx, s, g, activatedAt: $"{M(-3)}-01");
+        var charge = AddCharge(ctx, s, g.Id, M(0), 1_000_000m, discount: 300_000m);
+        s.Balance = -700_000m;
+        await ctx.SaveChangesAsync();
+
+        // Chegirma bekor qilindi — kitob faqat `active` qatorlarni oladi.
+        foreach (var d in ctx.StudentDiscounts.Where(d => d.StudentId == s.Id).ToList())
+            d.Status = StudentDiscount.StatusCancelled;
+        await ctx.SaveChangesAsync();
+
+        var plan = await PlanEditAsync(ctx, s, charge, 800_000m);
+
+        Assert.False(plan.DiscountRecomputed);
+        Assert.Equal(300_000m, charge.Discount);          // ⚠️ 0 EMAS
+        Assert.Equal(800_000m, charge.Amount);
+        Assert.Equal(-500_000m, s.Balance);               // 800 000 − 300 000
+    }
 }

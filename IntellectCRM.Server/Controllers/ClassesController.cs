@@ -375,9 +375,24 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
     }
 
     /// <summary>
-    /// Guruhni arxivlash — <c>IsArchived=true</c>. Unga bog'langan FAOL o'quvchilar ham arxivlanadi
-    /// (login bloklanadi, lekin parol saqlanadi — chiqarganda tiklanadi) va <c>ArchivedWithClass=true</c>
-    /// bilan belgilanadi. Avval alohida arxivlangan o'quvchilar tegilmaydi.
+    /// Guruhni arxivlash — <c>IsArchived=true</c>. A'zoliklar muzlatiladi (qisman to'lov + keyingi
+    /// oylar hisobini bekor qilish bilan), guruh faol ro'yxatlardan chiqadi.
+    ///
+    /// <para>⚠️ <b>O'QUVCHILAR ARXIVLANMAYDI.</b> Ilgari shu guruhdagi o'quvchilar
+    /// <c>IsArchived=true</c> qilinardi — ular o'quvchilar ro'yxatidan butunlay yo'qolib, faqat
+    /// «Arxiv» tabida qolardi. Foydalanuvchi talabi: o'quvchi arxivga TUSHMASIN, shunchaki
+    /// <b>«Aktiv emas»</b> ro'yxatida qolsin. Buni a'zolikni muzlatish o'zi beradi:
+    /// <c>MemberState</c> "frozen" bo'ladi (<c>Active=false</c>) va oylik ham hisoblanmaydi
+    /// (<c>TuitionService.AccrueMonth</c> faqat <c>active</c> a'zolikni oladi).</para>
+    ///
+    /// <para>⚠️ <b>A'ZOLIKNI MUZLATISH SHART</b> — faqat "arxivlashni olib tashlash" YETMAYDI:
+    /// <c>AccrueMonth</c> guruhning <c>IsArchived</c> bayrog'iga QARAMAYDI, ya'ni a'zolik
+    /// <c>active</c> bo'lib qolsa o'quvchiga har oy YOLG'ON QARZ yozilib, ota-onalarga to'lov
+    /// eslatmasi SMS'i ketaverardi (<c>.claude/rules/membership-periods.md</c> §6).</para>
+    ///
+    /// <para>Amal «Guruhni yopish» (<see cref="Close"/>) bilan AYNAN bir xil yadroda —
+    /// <c>CloseMembersAsync</c>; farqi: yopishda sana va sabab so'raladi, arxivlashda bugungi
+    /// sana olinadi.</para>
     /// </summary>
     [HttpPost("{id}/archive")]
     public async Task<IActionResult> Archive(string id)
@@ -387,37 +402,32 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
         if (cls.IsArchived) return BadRequest(new { message = "Guruh allaqachon arxivda" });
 
         var today = AppClock.Today.ToString("yyyy-MM-dd");
+
+        // ⚠️ TARTIB: avval a'zoliklar yopiladi, KEYIN guruh arxivga olinadi — «Guruhni yopish»
+        // dagi bilan aynan bir xil (pul hisobi guruhning arxiv bayrog'iga bog'liq bo'lib
+        // qolmasin).
+        var (frozen, alreadyFrozen, trialClosed, restored) =
+            await CloseMembersAsync(cls, today, "Guruh arxivlandi");
+
         cls.IsArchived = true;
         cls.ArchivedAt = today;
 
-        // KIM ARXIVLANADI — a'zolik bo'yicha: shu guruhda TIRIK a'zoligi bor va BOSHQA (arxivlanmagan)
-        // guruhda tirik a'zoligi YO'Q o'quvchilar.
-        //
-        // ⚠️ Ilgari tanlov `Student.ClassName == cls.Name` edi. Bu yorliq BIRINCHI qo'shilgan
-        // guruhda qotib qoladi (`AddMember`: faqat bo'sh bo'lsa yoziladi) va guruh nomlari UNIKAL
-        // emas — natijada allaqachon BOSHQA guruhga o'tib ketgan o'quvchi ham arxivlanardi
-        // (arxivlangan o'quvchiga esa oylik hisoblanmaydi — ya'ni u jimgina to'lovdan chiqib
-        // ketardi), shu guruhda haqiqatan o'qiyotgani esa (yorlig'i boshqacha bo'lsa) qolib ketardi.
-        var archiveIds = await StudentMembershipView.ArchivableWithGroupAsync(db, cls.Id);
-        var students = await db.Students
-            .Where(s => !s.IsArchived
-                        && (archiveIds.Contains(s.Id)
-                            // ORQAGA MOSLIK: a'zolik yozuvi UMUMAN bo'lmagan eski o'quvchilar
-                            // avvalgidek yorliq bo'yicha topiladi.
-                            || (s.ClassName == cls.Name && !db.StudentGroups.Any(m => m.StudentId == s.Id))))
-            .ToListAsync();
-        foreach (var s in students)
-        {
-            s.IsArchived = true;
-            s.ArchivedAt = today;
-            s.ArchiveReason = $"Guruh arxivlandi ({cls.Name})";
-            s.ArchivedWithClass = true;
-        }
-
         audit.Record(AuditService.EntityClassFee, cls.Id, "update",
-            $"Guruh arxivlandi ({cls.Name}) — {students.Count} ta o'quvchi bilan");
+            $"Guruh arxivlandi ({cls.Name}) — {frozen} a'zolik muzlatildi"
+            + (trialClosed > 0 ? $", {trialClosed} sinovdagi a'zolik yakunlandi" : "")
+            + "; o'quvchilar arxivlanmadi");
         await db.SaveChangesAsync();
-        return Ok(new { archivedStudents = students.Count });
+
+        // ⚠️ `archivedStudents` ATAYIN 0 bo'lib qoldi (eski mijozlar javob shaklini kutadi) —
+        // haqiqiy natija `frozenMembers` da.
+        return Ok(new
+        {
+            archivedStudents = 0,
+            frozenMembers = frozen,
+            alreadyFrozen,
+            trialClosed,
+            restoredCharges = restored,
+        });
     }
 
     /// <summary>
@@ -1767,21 +1777,29 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
     /// A'zoliklar (IsActive) saqlanadi — muzlatilgan a'zolikka KEYIN ham to'lov qilish mumkin
     /// (to'lov oynasi muzlatilgan/arxiv guruhlarni ham ko'rsatadi).
     /// </summary>
-    [HttpPost("{id}/close")]
-    [Authorize]
-    public async Task<ActionResult<CloseGroupResultDto>> Close(string id, CloseGroupRequest req)
+    /// <summary>
+    /// GURUH A'ZOLIKLARINI YOPISH — «Guruhni yopish» va «Arxivlash» uchun YAGONA joy.
+    ///
+    /// <para>Har FAOL a'zolik <c>frozen</c> qilinadi va qisman to'lov + keyingi oylar hisobini
+    /// bekor qilish <see cref="MembershipBilling.SettleFreezeAsync"/> ga topshiriladi (muzlatish
+    /// bilan AYNAN bir xil). SINOVDAGI a'zolik esa guruhdan chiqariladi: unda hisob umuman
+    /// ochilmagan, muzlatilsa hisob-kitobda soxta "qarz" bo'lib ko'rinardi.</para>
+    ///
+    /// <para>⚠️ <b>O'QUVCHI ARXIVLANMAYDI.</b> Guruh yopilgani/arxivlangani o'quvchining o'zini
+    /// arxivga tiqish uchun sabab emas — u boshqa fanga yozilishi mumkin va tarixi ochiq qolishi
+    /// kerak. A'zolik muzlatilgani uchun o'quvchi o'z-o'zidan "Aktiv emas" bo'lib qoladi
+    /// (<see cref="MembershipLifecycle.MemberState"/>) va oylik ham hisoblanmaydi
+    /// (<c>TuitionService.AccrueMonth</c> faqat <c>active</c> a'zolikni oladi).</para>
+    ///
+    /// <para>⚠️ <c>IsActive</c> SAQLANADI — muzlatilgan a'zolikka KEYIN ham to'lov qilish mumkin
+    /// (to'lov oynasi muzlatilgan/arxiv guruhlarni ham ko'rsatadi).</para>
+    /// </summary>
+    /// <param name="what">Audit matnining boshi: «Guruh yopildi» yoki «Guruh arxivlandi».</param>
+    private async Task<(int Frozen, int AlreadyFrozen, int TrialClosed, decimal Restored)> CloseMembersAsync(
+        Group group, string date, string what)
     {
-        var group = await db.Classes.FindAsync(id);
-        if (group is null) return NotFound(new { message = "Guruh topilmadi" });
-        if (group.IsArchived) return BadRequest(new { message = "Guruh allaqachon arxivda" });
-
-        var date = string.IsNullOrWhiteSpace(req.Date)
-            ? AppClock.Today.ToString("yyyy-MM-dd") : req.Date!.Trim();
-        if (date.Length < 10 || !DateOnly.TryParse(date, out _))
-            return BadRequest(new { message = "Sana noto'g'ri (YYYY-MM-DD)" });
-
         var members = await db.StudentGroups
-            .Where(sg => sg.GroupId == id && sg.IsActive)
+            .Where(sg => sg.GroupId == group.Id && sg.IsActive)
             .ToListAsync();
         var studentIds = members.Select(m => m.StudentId).Distinct().ToList();
         var students = (await db.Students.Where(s => studentIds.Contains(s.Id)).ToListAsync())
@@ -1803,8 +1821,8 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
                 m.IsActive = false;
                 m.LeftAt = date;
                 trialClosed++;
-                audit.Record("Membership", $"{id}:{m.StudentId}", "update",
-                    $"Guruh yopildi — sinovdagi a'zolik yakunlandi ({date}, guruh: {group.Name})",
+                audit.Record("Membership", $"{group.Id}:{m.StudentId}", "update",
+                    $"{what} — sinovdagi a'zolik yakunlandi ({date}, guruh: {group.Name})",
                     studentId: m.StudentId);
                 continue;
             }
@@ -1820,10 +1838,29 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
                     db, s, group, activatedAt, date, membership: m)).Restored;
 
             frozen++;
-            audit.Record("Membership", $"{id}:{m.StudentId}", "update",
-                $"Guruh yopildi — muzlatildi ({date}, guruh: {group.Name})",
+            audit.Record("Membership", $"{group.Id}:{m.StudentId}", "update",
+                $"{what} — muzlatildi ({date}, guruh: {group.Name})",
                 studentId: m.StudentId);
         }
+
+        return (frozen, alreadyFrozen, trialClosed, restored);
+    }
+
+    [HttpPost("{id}/close")]
+    [Authorize]
+    public async Task<ActionResult<CloseGroupResultDto>> Close(string id, CloseGroupRequest req)
+    {
+        var group = await db.Classes.FindAsync(id);
+        if (group is null) return NotFound(new { message = "Guruh topilmadi" });
+        if (group.IsArchived) return BadRequest(new { message = "Guruh allaqachon arxivda" });
+
+        var date = string.IsNullOrWhiteSpace(req.Date)
+            ? AppClock.Today.ToString("yyyy-MM-dd") : req.Date!.Trim();
+        if (date.Length < 10 || !DateOnly.TryParse(date, out _))
+            return BadRequest(new { message = "Sana noto'g'ri (YYYY-MM-DD)" });
+
+        var (frozen, alreadyFrozen, trialClosed, restored) =
+            await CloseMembersAsync(group, date, "Guruh yopildi");
 
         // Guruhni arxivga (NotActive) olamiz — o'quvchilar ARXIVLANMAYDI.
         group.IsArchived = true;

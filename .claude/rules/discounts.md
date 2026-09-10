@@ -235,6 +235,39 @@ o'zgarmaydi — faqat `Discount`. O'TGAN oylar ham tegilmaydi: ular tarix.
 ⚠️ Chegirma o'zgarishi **balansni** o'zgartiradi — klient amaldan keyin o'quvchi ma'lumotini
 qayta yuklaydi.
 
+## 8.5. QO'LDA OYLIK TAHRIRI — chegirma YANGI summadan qayta hisoblanadi
+
+`PUT /api/admin/students/{id}/charges/{month}?groupId=` (`StudentsController.EditCharge`,
+faqat superadmin UI'da) hisob qatorining `Amount` ini qo'lda o'zgartiradi.
+
+⚠️ **`MonthlyCharge.Discount` — MUTLAQ so'm, foiz EMAS.** U birinchi hisoblashda O'SHA
+paytdagi summadan chiqarilgan. Ilgari tahrirda u shundayligicha ko'chirilar (faqat yangi
+summadan oshsa qirqilardi), natijada **foizli chegirma jimgina boshqa foizga aylanardi**:
+
+| | Amount | Discount | Aslida |
+|---|---|---|---|
+| Hisoblangan | 1 000 000 | 300 000 | 30% |
+| 600 000 ga tahrirlangandan keyin (ESKI xatti-harakat) | 600 000 | 300 000 | **50%** ❌ |
+| Endi | 600 000 | 180 000 | 30% ✅ |
+
+Endi baza **registrdan** olinadi (§2): `DiscountRules.Resolve(rows, month, groupId)` g'olib
+qatorni topadi va `TuitionService.DiscountForMonth(rows, YANGI summa, month, groupId)` chegirmani
+qayta hisoblaydi. Qaror `TuitionService.PlanChargeEdit(..., specDiscount)` da — sof funksiya.
+
+⚠️ **Amaldagi qator YO'Q bo'lsa (`specDiscount = null`) — eski chegirma SAQLANADI**, 0 ga
+tushirilmaydi. Tarixiy oyni yoki bekor qilingan chegirmali qatorni tahrirlashda qayta hisob
+chegirmani yo'q qilib, o'quvchiga **to'satdan qarz** yozardi.
+
+⚠️ Chegirma o'zgargani auditda SABABI bilan yoziladi: «(yangi summadan qayta hisoblandi)» yoki
+«(yangi summaga qirqildi)». `ChargeEditPlan.DiscountRecomputed` / `DiscountClamped` /
+`DiscountChanged`.
+
+⚠️ Tahrirdan keyin qator `Locked = true` bo'ladi, ya'ni `ReapplyCurrentMonthAsync` (§8) unga
+**boshqa tegmaydi** — bu ATAYIN (qo'lda kiritilgan summa avtomatik hisobda yo'qolmasin). Demak
+tahrirdan KEYIN chegirma o'zgartirilsa, o'sha qator qo'lda qayta tahrirlanishi kerak.
+
+Testlar: `FinanceLogicTests` → `PlanChargeEdit_*`.
+
 ## 9. HISOBOT — davr summalari `MonthlyCharge` dan
 
 `GET /api/admin/reports/discounts?from=yyyy-MM&to=yyyy-MM`.

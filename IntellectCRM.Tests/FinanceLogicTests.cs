@@ -431,6 +431,10 @@ public class FinanceLogicTests
         Assert.Equal(0m, plan.NewEffective);
         Assert.Equal(300_000m, plan.BalanceDelta);   // balansga aynan yechilgani qaytadi
         Assert.True(plan.DiscountClamped);
+        // `specDiscount` berilmagan (registrda amaldagi qator yo'q) — chegirma QAYTA HISOBLANMAYDI,
+        // faqat yangi summaga qirqiladi.
+        Assert.False(plan.DiscountRecomputed);
+        Assert.True(plan.DiscountChanged);
     }
 
     [Fact]
@@ -440,6 +444,8 @@ public class FinanceLogicTests
 
         Assert.Equal(200_000m, plan.NewDiscount);
         Assert.False(plan.DiscountClamped);
+        Assert.False(plan.DiscountRecomputed);
+        Assert.False(plan.DiscountChanged);       // chegirma umuman tegilmadi
         Assert.Equal(300_000m, plan.OldEffective);
         Assert.Equal(200_000m, plan.NewEffective);
         Assert.Equal(100_000m, plan.BalanceDelta);
@@ -451,7 +457,67 @@ public class FinanceLogicTests
         var plan = TuitionService.PlanChargeEdit(500_000m, 200_000m, -1m);
         Assert.Equal(0m, plan.NewAmount);
         Assert.Equal(0m, plan.NewDiscount);
+        Assert.Equal(0m, plan.NewEffective);
         Assert.Equal(300_000m, plan.BalanceDelta);   // butun effektiv qaytadi
+        Assert.True(plan.DiscountClamped);
+    }
+
+    /// <summary>
+    /// ⚠️ FOIZLI chegirma summa tahrirlanganda YANGI summadan QAYTA HISOBLANADI.
+    /// <c>MonthlyCharge.Discount</c> — birinchi hisoblashdagi MUTLAQ so'm; uni ko'chirib qo'ysak
+    /// 1 000 000 (30% = 300 000) → 600 000 da chegirma 300 000 bo'lib qolib, aslida <b>50%</b>
+    /// bo'lardi. Registrda amaldagi qator bor bo'lsa (<c>specDiscount</c>) baza AYNAN o'sha.
+    /// </summary>
+    [Fact]
+    public void PlanChargeEdit_FOIZLI_chegirma_YANGI_summadan_qayta_hisoblanadi()
+    {
+        // Amount=1 000 000, chegirma 30% = 300 000 → balansdan 700 000 yechilgan edi.
+        // Admin summani 600 000 ga tushiradi; registr 30% ni YANGI summadan beradi = 180 000.
+        var plan = TuitionService.PlanChargeEdit(
+            1_000_000m, 300_000m, 600_000m, specDiscount: 180_000m);
+
+        Assert.Equal(180_000m, plan.NewDiscount);    // ⚠️ 300 000 EMAS (u 50% bo'lib qolardi)
+        Assert.Equal(420_000m, plan.NewEffective);   // 600 000 − 180 000
+        Assert.Equal(700_000m, plan.OldEffective);   // eski chegirma SNAPSHOT
+        Assert.Equal(280_000m, plan.BalanceDelta);   // 700 000 − 420 000
+        Assert.True(plan.DiscountRecomputed);
+        Assert.False(plan.DiscountClamped);          // 180 000 yangi summaga bemalol sig'adi
+        Assert.True(plan.DiscountChanged);
+    }
+
+    /// <summary>
+    /// Registrda amaldagi qator YO'Q (tarixiy oy yoki bekor qilingan chegirma) — eski chegirma
+    /// SAQLANADI. Aks holda u jimgina 0 ga tushib, o'quvchiga to'satdan qarz yozilardi.
+    /// </summary>
+    [Fact]
+    public void PlanChargeEdit_registr_qatori_YOQ_bolsa_eski_chegirma_SAQLANADI()
+    {
+        var plan = TuitionService.PlanChargeEdit(
+            1_000_000m, 300_000m, 800_000m, specDiscount: null);
+
+        Assert.Equal(300_000m, plan.NewDiscount);    // ⚠️ 0 EMAS
+        Assert.False(plan.DiscountRecomputed);
+        Assert.False(plan.DiscountClamped);
+        Assert.False(plan.DiscountChanged);
+        Assert.Equal(500_000m, plan.NewEffective);
+        Assert.Equal(700_000m, plan.OldEffective);
+        Assert.Equal(200_000m, plan.BalanceDelta);
+    }
+
+    /// <summary>Qayta hisoblangan chegirma ham yangi summadan OSHMAYDI — effektiv manfiy
+    /// bo'lib, balansga "sovg'a" qaytarilmasin.</summary>
+    [Fact]
+    public void PlanChargeEdit_qayta_hisoblangan_chegirma_ham_yangi_summaga_QIRQILADI()
+    {
+        // Registr 180 000 so'mlik chegirma beradi, lekin yangi summa atigi 100 000.
+        var plan = TuitionService.PlanChargeEdit(
+            1_000_000m, 300_000m, 100_000m, specDiscount: 180_000m);
+
+        Assert.Equal(100_000m, plan.NewDiscount);    // summagacha qirqildi
+        Assert.Equal(0m, plan.NewEffective);         // manfiy EMAS
+        Assert.True(plan.DiscountRecomputed);
+        Assert.True(plan.DiscountClamped);
+        Assert.Equal(700_000m, plan.BalanceDelta);   // aynan yechilgani qaytadi
     }
 
     // ==================== MembershipLifecycle.Tally ====================
