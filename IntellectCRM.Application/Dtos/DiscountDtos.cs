@@ -46,9 +46,20 @@ public record StudentDiscountMonthDto(
 /// <param name="GroupId">null — «Barcha guruhlar».</param>
 /// <param name="MonthlyFee">Guruhning joriy oyligi — chegirma ta'sirini oldindan ko'rsatish uchun.</param>
 /// <param name="HasActive">Shu qamrovda ALLAQACHON amaldagi chegirma bormi (server 409 qaytaradi).</param>
+/// <param name="CurrentCharge">
+/// JORIY oydagi HAQIQIY hisob summasi (<see cref="IntellectCRM.Domain.MonthlyCharge"/>.Amount,
+/// chegirmagacha); qator hali yozilmagan bo'lsa — null.
+///
+/// <para>⚠️ Chegirma AYNAN shu summa ustida hisoblanadi, guruhning joriy narxi ustida EMAS.
+/// Ikkisi farq qilishi mumkin: qisman (prorate) oy — aktivlashtirish/muzlatish oyi — va
+/// superadmin qo'lda tahrirlagan (<c>Locked</c>) qator. Modal <see cref="MonthlyFee"/> ni baza
+/// qilib ko'rsatsa, admin oynada bir raqamni, to'lov tarixida boshqasini ko'rardi.</para>
+///
+/// <para>«Barcha guruhlar» qamrovida bitta summa YO'Q (bir nechta guruh) — u yerda null.</para>
+/// </param>
 public record DiscountScopeOptionDto(
     string? GroupId, string GroupName, string CourseName, string TeacherName,
-    decimal MonthlyFee, bool HasActive);
+    decimal MonthlyFee, bool HasActive, decimal? CurrentCharge);
 
 /// <summary>O'quvchining chegirma registri + qo'llangan chegirmalar tarixi (bitta javobda).</summary>
 /// <param name="Items">Registr qatorlari — eng yangisi birinchi (TARIX ham shu ro'yxatda).</param>

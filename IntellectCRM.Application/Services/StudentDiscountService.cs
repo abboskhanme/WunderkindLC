@@ -492,10 +492,25 @@ public static class StudentDiscountService
             .ToDictionary(x => x.Id, x => x.FullName);
         var activeScopes = activeRows.Select(d => d.GroupId ?? "").ToHashSet(StringComparer.Ordinal);
 
+        // JORIY oyning HAQIQIY hisob summalari — modal chegirmani AYNAN shulardan ko'rsatadi
+        // (guruh narxidan farq qilishi mumkin: qisman oy yoki qo'lda tahrirlangan `Locked` qator).
+        // ⚠️ BITTA so'rov, keyin lug'at — qamrovlar bir nechta guruh uchun quriladi, halqa
+        // ichida so'rov yozilsa N+1 chiqardi (`.claude/rules/discounts.md` §2).
+        // ⚠️ `GroupBy` + `Sum`: `ToDictionary` bir (guruh, oy) uchun ikkita qator qolib ketgan
+        // buzuq ma'lumotda ISTISNO tashlab, butun tabni ochilmas qilib qo'yardi.
+        var currentCharges = (await db.MonthlyCharges.AsNoTracking()
+                .Where(c => c.StudentId == studentId && c.Month == month && c.GroupId != null)
+                .Select(c => new { c.GroupId, c.Amount })
+                .ToListAsync())
+            .GroupBy(c => c.GroupId!, StringComparer.Ordinal)
+            .ToDictionary(g => g.Key, g => g.Sum(x => x.Amount), StringComparer.Ordinal);
+
         var scopes = new List<DiscountScopeOptionDto>
         {
             // «Barcha guruhlar» — RO'YXAT BOSHIDA: eng keng qamrov, standart tanlov.
-            new(null, DiscountRules.AllGroupsLabel, "", "", 0m, activeScopes.Contains("")),
+            // ⚠️ Bu yerda joriy oy hisobi `null`: qamrov bir NECHTA guruhni o'z ichiga oladi,
+            // ya'ni "bir oylik hisob" degan yagona summa yo'q.
+            new(null, DiscountRules.AllGroupsLabel, "", "", 0m, activeScopes.Contains(""), null),
         };
         scopes.AddRange(memberships
             .DistinctBy(m => m.Id)
@@ -505,7 +520,8 @@ public static class StudentDiscountService
                 string.IsNullOrEmpty(m.CourseId) ? "" : scopeCourses.GetValueOrDefault(m.CourseId, ""),
                 string.IsNullOrEmpty(m.TeacherId) ? "" : scopeTeachers.GetValueOrDefault(m.TeacherId, ""),
                 m.MonthlyFee,
-                activeScopes.Contains(m.Id))));
+                activeScopes.Contains(m.Id),
+                currentCharges.TryGetValue(m.Id, out var chg) ? chg : null)));
 
         // ---------- QO'LLANGAN: pul haqiqati (MonthlyCharge) ----------
         // Faqat chegirma QO'LLANGAN hisoblar (Discount != 0) — qolgani lentani suyultirardi.

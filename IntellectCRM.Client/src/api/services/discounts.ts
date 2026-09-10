@@ -83,6 +83,14 @@ export interface DiscountScopeOption {
   monthlyFee: number
   /** Shu qamrovda allaqachon amaldagi chegirma bormi. */
   hasActive: boolean
+  /**
+   * JORIY oydagi HAQIQIY hisob summasi (chegirmagacha); qator hali yozilmagan bo'lsa — null.
+   * «Barcha guruhlar» qamrovida ham null (bir nechta guruh — yagona summa yo'q).
+   *
+   * ⚠️ Oldindan ko'rsatish BAZASI aynan shu: pul `MonthlyCharge` ustida hisoblanadi va u
+   * guruh narxidan farq qilishi mumkin (qisman oy yoki qo'lda tahrirlangan qator).
+   */
+  currentCharge: number | null
 }
 
 export interface StudentDiscountsResponse {

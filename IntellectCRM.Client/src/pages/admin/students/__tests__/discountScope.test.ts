@@ -10,6 +10,7 @@ const scope = (groupId: string | null, hasActive = false): DiscountScopeOption =
   teacherName: '',
   monthlyFee: 500_000,
   hasActive,
+  currentCharge: null,
 })
 
 /** Server ro'yxatni HAR DOIM «Barcha guruhlar» dan boshlaydi (`DiscountRules` tartibi). */

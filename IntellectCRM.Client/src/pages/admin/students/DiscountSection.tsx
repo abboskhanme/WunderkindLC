@@ -66,14 +66,36 @@ const scopeTitle = (courseName: string) => (courseName ? courseName : 'Barcha gu
 
 /**
  * Chegirmadan keyingi oylik: AVVAL foiz, KEYIN summa; 0 dan past tushmaydi.
- * ⚠️ Serverdagi `TuitionService.DiscountForMonth` bilan bir xil tartib — teskarisi
- * boshqa raqam berardi.
+ *
+ * ⚠️ Amallar tartibi SERVER bilan AYNAN bir xil (`TuitionService.ChargeFor`):
+ * `fee * (100 - pct) / 100`, keyin summa ayriladi. Ilgari bu yerda `fee - fee * pct / 100`
+ * turardi — matematik jihatdan teng, lekin suzuvchi nuqtada boshqa xato beradi, ya'ni ekranda
+ * ko'rsatilgan raqam serverdagi hisobdan bir so'mga farq qilib turishi mumkin edi.
+ *
+ * ⚠️ `off` AYNAN YAXLITLANGAN `final` dan hisoblanadi — aks holda ekranda `final + off ≠ fee`
+ * bo'lib, "chegirma noto'g'ri" degan shubha tug'dirardi.
  */
 function previewFee(fee: number, pct: number, amount: number): { final: number; off: number } {
   if (fee <= 0) return { final: 0, off: 0 }
-  const afterPct = fee - (fee * pct) / 100
-  const final = Math.max(0, afterPct - amount)
-  return { final: Math.round(final), off: Math.round(fee - final) }
+  const afterPct = (fee * (100 - pct)) / 100
+  const final = Math.round(Math.max(0, afterPct - amount))
+  return { final, off: fee - final }
+}
+
+/**
+ * Raqam maydonini o'qish: **bo'sh matn → 0**, **buzuq qiymat → `null`** (ya'ni 0 DAN farq
+ * qiladi), vergul esa nuqtaga almashtiriladi — "12,5" o'zbek/rus klaviaturasida odatiy yozuv.
+ *
+ * ⚠️ Ilgari `Number(pct) || 0` edi va bu JIMGINA xato berardi: buzuq (yoki vergulli) qiymat
+ * `NaN` bo'lib, `|| 0` uni **0** ga aylantirardi. Admin "foiz kiritdim" deb o'ylab, aslida
+ * chegirmasiz qator saqlab yuborardi — "foiz kiritsam chegirma noto'g'ri" shikoyatining
+ * klient tomonidagi sababi aynan shu edi.
+ */
+function parseNum(v: string): number | null {
+  const s = v.trim().replace(',', '.')
+  if (s === '') return 0
+  const n = Number(s)
+  return Number.isFinite(n) ? n : null
 }
 
 /** Bo'lim sarlavhasi — o'quvchi profilidagi qolgan tablar bilan AYNAN bir xil ko'rinish. */
@@ -481,9 +503,35 @@ function DiscountFormModal({
   /** Tanlangan qamrov (oylik to'lovni va nomni ko'rsatish uchun). */
   const scope = scopes.find((s) => scopeKey(s.groupId) === groupKey) ?? null
 
-  const pctNum = Number(pct) || 0
-  const amountNum = Number(amount) || 0
-  const pctInvalid = pctNum < 0 || pctNum > 100
+  /** `null` — kiritilgan matn umuman raqam emas (bo'sh matn esa 0 deb olinadi). */
+  const pctRaw = parseNum(pct)
+  const amountRaw = parseNum(amount)
+  const pctNum = pctRaw ?? 0
+  const amountNum = amountRaw ?? 0
+
+  /**
+   * Foiz xatosi — SABABI bilan. ⚠️ "Butun son" sharti serverning shakliga bog'liq:
+   * `StudentDiscountPayloadDto.Pct` — **`int`**, ya'ni `12.5` yuborilsa JSON deserializatsiya
+   * 400 qaytaradi va foydalanuvchi umumiy "Chegirmani saqlab bo'lmadi" ni ko'rardi (sababsiz).
+   * Shuning uchun kasr SHU YERDA, aniq matn bilan to'xtatiladi.
+   */
+  const pctError =
+    pctRaw === null
+      ? "Raqam noto'g'ri kiritilgan. Faqat raqam yozing (masalan: 20)."
+      : !Number.isInteger(pctRaw)
+        ? 'Foiz butun son bo\'lishi kerak (masalan 12, 13 — "12,5" qabul qilinmaydi).'
+        : pctRaw < 0 || pctRaw > 100
+          ? 'Foiz 0 dan 100 gacha bo\'lishi kerak.'
+          : ''
+  /** Summa `decimal` — KASR MUMKIN, faqat buzuq yoki manfiy qiymat rad etiladi. */
+  const amountError =
+    amountRaw === null
+      ? "Raqam noto'g'ri kiritilgan. Faqat raqam yozing (masalan: 50000)."
+      : amountRaw < 0
+        ? "Summa manfiy bo'lishi mumkin emas."
+        : ''
+  const pctInvalid = pctError !== ''
+  const amountInvalid = amountError !== ''
   // Nolga tushirish uchun ALOHIDA amal bor («Bekor qilish»), shuning uchun "0 + 0" saqlanmaydi.
   const bothZero = pctNum === 0 && amountNum === 0
   /** Yangi chegirmada band qamrov tanlab bo'lmaydi (variantning o'zi ham `disabled`). */
@@ -494,11 +542,23 @@ function DiscountFormModal({
   /** Davr teskari ("2026-09" → "2026-06") — saqlansa chegirma HECH QACHON qo'llanmasdi. */
   const badPeriod = periodInvalid(startMonth, endMonth)
   const canSave =
-    !pctInvalid && !bothZero && amountNum >= 0 && !scopeTaken && !noFreeScope && !scopeMissing &&
+    !pctInvalid && !amountInvalid && !bothZero && !scopeTaken && !noFreeScope && !scopeMissing &&
     !badPeriod && !saving
 
-  /** Oylik to'lov — tahrirlashda qamrov `scopes` da bo'lmasligi mumkin (a'zolik yopilgan). */
-  const fee = scope?.monthlyFee ?? 0
+  /**
+   * Oldindan ko'rsatish BAZASI — joriy oyning HAQIQIY hisobi (`currentCharge`), qator hali
+   * yozilmagan bo'lsa guruh narxi (`monthlyFee`).
+   *
+   * ⚠️ Ilgari bu yerda faqat `monthlyFee` turardi va oyna YOLG'ON raqam ko'rsatardi: pul
+   * `MonthlyCharge.Amount` ustida hisoblanadi, u esa guruh narxidan farq qilishi mumkin —
+   * qisman (prorate) oy (aktivlashtirish/muzlatish) yoki superadmin qo'lda tahrirlagan
+   * (`Locked`) qator. Admin oynada bir raqamni, to'lov tarixida boshqasini ko'rardi.
+   *
+   * Tahrirlashda qamrov `scopes` da umuman bo'lmasligi mumkin (a'zolik yopilgan) — 0.
+   */
+  const fee = scope?.currentCharge ?? scope?.monthlyFee ?? 0
+  /** Baza guruh narxidan FARQ QILADIMI — foydalanuvchiga jimgina boshqa raqam ko'rsatilmasin. */
+  const feeDiffers = !!scope && scope.currentCharge !== null && scope.currentCharge !== scope.monthlyFee
   const preview = previewFee(fee, pctNum, amountNum)
 
   const submit = async () => {
@@ -609,6 +669,8 @@ function DiscountFormModal({
             type="number"
             min={0}
             max={100}
+            /* ⚠️ Server `Pct` ni `int` kutadi — brauzer o'qi/validatsiyasi ham butun songa qulflanadi. */
+            step={1}
             value={pct}
             onChange={(e) => setPct(e.target.value)}
             placeholder="0"
@@ -627,7 +689,7 @@ function DiscountFormModal({
         </p>
 
         {/* Natijani OLDINDAN ko'rsatish — "20% qancha bo'ladi" savoli kalkulyatorsiz yopilsin. */}
-        {fee > 0 && !bothZero && !pctInvalid && (
+        {fee > 0 && !bothZero && !pctInvalid && !amountInvalid && (
           <div className="rounded-lg border border-brand-100 bg-brand-50/60 p-3 text-sm">
             <span className="font-mono text-slate-500 line-through">{formatMoney(fee)}</span>
             <span className="mx-2 text-slate-400">→</span>
@@ -640,6 +702,14 @@ function DiscountFormModal({
             <span className="mt-0.5 block text-xs text-slate-400">
               Bir oylik hisob — {scope ? scopeTitle(scope.courseName) : 'tanlangan fan'}.
             </span>
+            {/* ⚠️ Baza guruh narxidan farq qilsa — buni OCHIQ ayting. Jimgina boshqa raqamni
+                ko'rsatib qo'yish "chegirma noto'g'ri hisoblanyapti" degan shubhani qaytarardi. */}
+            {feeDiffers && (
+              <span className="mt-1 block text-xs text-amber-600">
+                Joriy oy hisobi guruh narxidan ({formatMoney(scope!.monthlyFee)}) farq qiladi —
+                qisman oy yoki qo'lda tahrirlangan. Chegirma AYNAN shu summadan hisoblanadi.
+              </span>
+            )}
           </div>
         )}
 
@@ -693,7 +763,9 @@ function DiscountFormModal({
           </span>
         </label>
 
-        {pctInvalid && <p className="text-sm text-red-600">Foiz 0 dan 100 gacha bo'lishi kerak.</p>}
+        {/* ⚠️ ANIQ sabab: "0 dan 100 gacha" umumiy matni buzuq/kasr qiymatda ADASHTIRARDI. */}
+        {pctError && <p className="text-sm text-red-600">Foiz: {pctError}</p>}
+        {amountError && <p className="text-sm text-red-600">Summa: {amountError}</p>}
         {bothZero && (
           <p className="text-sm text-amber-600">
             Foiz ham, summa ham 0 — saqlash mumkin emas. Chegirmani olib tashlash uchun
