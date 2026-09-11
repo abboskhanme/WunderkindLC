@@ -1,12 +1,12 @@
 ---
 description: Marketing — Instagram AI sotuv agenti (webhook, OAuth, avtojavob, lidga aylantirish, inbox) va REKLAMA LIDLARI (Meta Lead Ads).
 paths:
-  - "IntellectCRM.Application/Services/Instagram*.cs"
-  - "IntellectCRM.Application/Services/Meta*.cs"
-  - "IntellectCRM.Server/Controllers/InstagramController.cs"
-  - "IntellectCRM.Server/Controllers/InstagramWebhookController.cs"
-  - "IntellectCRM.Client/src/pages/admin/marketing/**"
-  - "IntellectCRM.Client/src/api/services/instagram.ts"
+  - "WunderkindLC.Application/Services/Instagram*.cs"
+  - "WunderkindLC.Application/Services/Meta*.cs"
+  - "WunderkindLC.Server/Controllers/InstagramController.cs"
+  - "WunderkindLC.Server/Controllers/InstagramWebhookController.cs"
+  - "WunderkindLC.Client/src/pages/admin/marketing/**"
+  - "WunderkindLC.Client/src/api/services/instagram.ts"
   - "instagram/*.md"
 ---
 
@@ -599,7 +599,7 @@ boshqaning ma'lumotini so'rab olishi mumkin bo'lardi.
 
 ## 15. Testlar
 
-`IntellectCRM.Tests/Instagram*Tests.cs`:
+`WunderkindLC.Tests/Instagram*Tests.cs`:
 
 | Test | Nimani qulflaydi |
 |---|---|
@@ -746,7 +746,7 @@ Har kelgan lid auditga yozilmaydi — u `IgAdLead` ro'yxatida va `LeadEvent` da 
 
 ### 16.9. Testlar
 
-`IntellectCRM.Tests/MetaLeadgenTests.cs`:
+`WunderkindLC.Tests/MetaLeadgenTests.cs`:
 
 | Test sinfi | Nimani qulflaydi |
 |---|---|

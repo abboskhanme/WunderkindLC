@@ -1,16 +1,16 @@
 ---
-description: Karyera (Intellect Career) — ishga qabul moduli: ALOHIDA Telegram bot + `/vakansiya` Mini App (statik HTML/Bootstrap), vakansiyalar va nomzod arizalari.
+description: Karyera (Wunderkind Career) — ishga qabul moduli: ALOHIDA Telegram bot + `/vakansiya` Mini App (statik HTML/Bootstrap), vakansiyalar va nomzod arizalari.
 paths:
-  - "IntellectCRM.Application/Services/CareerService.cs"
-  - "IntellectCRM.Application/Services/CareerBotService.cs"
-  - "IntellectCRM.Application/Services/CareerTelegramService.cs"
-  - "IntellectCRM.Application/Services/TelegramInitData.cs"
-  - "IntellectCRM.Application/Dtos/CareerDtos.cs"
-  - "IntellectCRM.Server/Controllers/CareerController.cs"
-  - "IntellectCRM.Server/Controllers/PublicCareerController.cs"
-  - "IntellectCRM.Server/wwwroot/vakansiya.*"
-  - "IntellectCRM.Client/src/pages/admin/vacancies/**"
-  - "IntellectCRM.Client/src/api/services/career.ts"
+  - "WunderkindLC.Application/Services/CareerService.cs"
+  - "WunderkindLC.Application/Services/CareerBotService.cs"
+  - "WunderkindLC.Application/Services/CareerTelegramService.cs"
+  - "WunderkindLC.Application/Services/TelegramInitData.cs"
+  - "WunderkindLC.Application/Dtos/CareerDtos.cs"
+  - "WunderkindLC.Server/Controllers/CareerController.cs"
+  - "WunderkindLC.Server/Controllers/PublicCareerController.cs"
+  - "WunderkindLC.Server/wwwroot/vakansiya.*"
+  - "WunderkindLC.Client/src/pages/admin/vacancies/**"
+  - "WunderkindLC.Client/src/api/services/career.ts"
 ---
 
 # Karyera (ishga qabul) qoidalari
@@ -35,7 +35,7 @@ va uning **Mini App**ida.
 
 ## 2. MINI APP — `/vakansiya` (React EMAS)
 
-- `IntellectCRM.Server/wwwroot/vakansiya.html` + `vakansiya.css` + `vakansiya.js`, Bootstrap 5
+- `WunderkindLC.Server/wwwroot/vakansiya.html` + `vakansiya.css` + `vakansiya.js`, Bootstrap 5
   **o'z serverimizdan** (`wwwroot/vendor/bootstrap.min.css`, `bootstrap.bundle.min.js`).
   **CDN ISHLATILMAYDI:** prod CSP `default-src 'self'` tashqi manbani bloklaydi. Shu sababdan
   skript ham inline emas, alohida faylda (`landing.js` bilan bir xil sabab).

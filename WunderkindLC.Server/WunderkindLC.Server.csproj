@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <SpaRoot>..\WunderkindLC.Client</SpaRoot>
+    <SpaProxyLaunchCommand>npm run dev</SpaProxyLaunchCommand>
+    <SpaProxyServerUrl>https://localhost:58472</SpaProxyServerUrl>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="8.*" />
+    <PackageReference Include="Microsoft.AspNetCore.SpaProxy">
+      <Version>8.*-*</Version>
+    </PackageReference>
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="8.*">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\WunderkindLC.Application\WunderkindLC.Application.csproj" />
+    <ProjectReference Include="..\WunderkindLC.Domain\WunderkindLC.Domain.csproj" />
+    <ProjectReference Include="..\WunderkindLC.Infrastructure\WunderkindLC.Infrastructure.csproj" />
+  </ItemGroup>
+
+  <!-- Dev/VS'da SPA proxy uchun klient loyihasiga bog'lanadi. Docker'da klient alohida
+       (node) bosqichda quriladi, shuning uchun -p:BuildSpa=false bilan bu havola o'chiriladi
+       (dotnet SDK obrazida npm yo'q). -->
+  <ItemGroup Condition="'$(BuildSpa)' != 'false'">
+    <ProjectReference Include="..\WunderkindLC.Client\WunderkindLC.Client.esproj">
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+    </ProjectReference>
+  </ItemGroup>
+
+</Project>

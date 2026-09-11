@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sertifikat</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Times New Roman', Times, serif;
+            background: #fff;
+            padding: 0;
+            margin: 0;
+        }
+
+        .certificate {
+            width: 297mm;
+            height: 210mm;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            align-items: center;
+            background: linear-gradient(135deg, #1a3a5e 0%, #1f4a7a 50%, #0d2240 100%);
+            position: relative;
+            overflow: hidden;
+            page-break-after: always;
+            color: #fff;
+            padding: 36px 50px 28px;
+        }
+
+        .corner-tl {
+            position: absolute; top: 0; left: 0;
+            width: 0; height: 0;
+            border-left: 75px solid #FDB913;
+            border-bottom: 75px solid transparent;
+            opacity: 0.35;
+        }
+        .corner-tr {
+            position: absolute; top: 0; right: 0;
+            width: 0; height: 0;
+            border-right: 75px solid #FDB913;
+            border-bottom: 75px solid transparent;
+            opacity: 0.35;
+        }
+        .corner-bl {
+            position: absolute; bottom: 0; left: 0;
+            width: 0; height: 0;
+            border-left: 75px solid #FDB913;
+            border-top: 75px solid transparent;
+            opacity: 0.35;
+        }
+        .corner-br {
+            position: absolute; bottom: 0; right: 0;
+            width: 0; height: 0;
+            border-right: 75px solid #FDB913;
+            border-top: 75px solid transparent;
+            opacity: 0.35;
+        }
+
+        .ribbon-top {
+            position: absolute;
+            top: 0; left: 50%;
+            transform: translateX(-50%);
+            width: 88%;
+            height: 90px;
+            background: linear-gradient(to bottom, #FDB913 0%, #F0AD4E 100%);
+            clip-path: polygon(0 0, 100% 0, 86% 100%, 14% 100%);
+            z-index: 1;
+        }
+
+        .content {
+            position: relative; z-index: 2;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            width: 100%;
+            height: 100%;
+        }
+
+        .medal-area {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin-top: 10px;
+            margin-bottom: 6px;
+        }
+
+        .medal-ribbons {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 2px;
+        }
+
+        .ribbon-strip {
+            width: 14px;
+            height: 30px;
+            background: linear-gradient(to bottom, #FDB913, #F0AD4E);
+            clip-path: polygon(0 0, 100% 0, 80% 100%, 20% 100%);
+        }
+
+        .medal-circle {
+            width: 56px; height: 56px;
+            border-radius: 50%;
+            background: radial-gradient(circle at 35% 35%, #FFD700, #FDB913);
+            border: 3px solid #F0AD4E;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+        }
+
+        .medal-inner {
+            width: 28px; height: 28px;
+            border-radius: 50%;
+            background: radial-gradient(circle at 40% 40%, #FFED4E, #FDB913);
+        }
+
+        .title {
+            font-size: 62px;
+            font-weight: 700;
+            letter-spacing: 10px;
+            text-transform: uppercase;
+            color: #fff;
+            text-shadow: 2px 2px 6px rgba(0,0,0,0.4);
+            margin-bottom: 6px;
+            font-family: 'Times New Roman', Times, serif;
+            line-height: 1;
+        }
+
+        .awarded-text {
+            font-size: 13px;
+            letter-spacing: 2px;
+            color: #B0B8C1;
+            margin-bottom: 10px;
+            font-style: italic;
+        }
+
+        .student-name-row {
+            display: flex;
+            align-items: center;
+            gap: 18px;
+            margin-bottom: 10px;
+        }
+
+        .name-line {
+            width: 110px;
+            height: 1px;
+            background: #FDB913;
+        }
+
+        .student-name {
+            font-size: 40px;
+            font-style: italic;
+            color: #FDB913;
+            font-weight: 700;
+            font-family: 'Times New Roman', Times, serif;
+            white-space: nowrap;
+        }
+
+        .course-description {
+            font-size: 15px;
+            color: #fff;
+            margin-bottom: 18px;
+            font-style: italic;
+        }
+
+        .center-name {
+            font-size: 11px;
+            color: #B0B8C1;
+            letter-spacing: 1.5px;
+            margin-bottom: 14px;
+        }
+
+        .signature-section {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            width: 100%;
+            max-width: 780px;
+            gap: 40px;
+        }
+
+        .signature-line {
+            text-align: center;
+            flex: 1;
+        }
+
+        .sig-value {
+            font-size: 10px;
+            color: #fff;
+            margin-bottom: 5px;
+            min-height: 16px;
+        }
+
+        .sig-border {
+            border-top: 1px solid #FDB913;
+            padding-top: 6px;
+        }
+
+        .sig-label {
+            font-size: 9px;
+            color: #B0B8C1;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .bottom-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            width: 100%;
+            margin-top: 8px;
+        }
+
+        .cert-info {
+            font-size: 8px;
+            color: #8A94A0;
+            font-family: 'Courier New', Courier, monospace;
+            line-height: 1.5;
+        }
+
+        .qr-code {
+            width: 65px; height: 65px;
+            background: #fff;
+            padding: 3px;
+            border-radius: 3px;
+        }
+
+        .qr-code img { width: 100%; height: 100%; }
+
+        .decor-line-top {
+            position: absolute;
+            top: 90px;
+            left: 50px;
+            right: 50px;
+            height: 1px;
+            background: #FDB913;
+            opacity: 0.6;
+            z-index: 2;
+        }
+
+        @media print {
+            body { margin: 0; padding: 0; }
+            .certificate { width: 297mm; height: 210mm; margin: 0; box-shadow: none; }
+        }
+
+        @page { size: A4 landscape; margin: 0; }
+    </style>
+</head>
+<body>
+    <div class="certificate">
+        <div class="corner-tl"></div>
+        <div class="corner-tr"></div>
+        <div class="corner-bl"></div>
+        <div class="corner-br"></div>
+        <div class="ribbon-top"></div>
+        <div class="decor-line-top"></div>
+
+        <div class="content">
+            <div class="medal-area">
+                <div class="medal-ribbons">
+                    <div class="ribbon-strip"></div>
+                    <div class="ribbon-strip"></div>
+                </div>
+                <div class="medal-circle"><div class="medal-inner"></div></div>
+            </div>
+
+            <div class="title">SERTIFIKAT</div>
+            <div class="center-name">Wunderkind o'quv markazi</div>
+            <div class="awarded-text">Faxriyat bilan taqdim etilmoqda:</div>
+
+            <div class="student-name-row">
+                <div class="name-line"></div>
+                <div class="student-name">{{student_name}}</div>
+                <div class="name-line"></div>
+            </div>
+
+            <div class="course-description">{{course_name}} kursini muvaffaqiyatli yakunladi.</div>
+
+            <div class="signature-section">
+                <div class="signature-line">
+                    <div class="sig-value">________________________</div>
+                    <div class="sig-border">
+                        <div class="sig-label">Markazboshining imzosi / Manager</div>
+                    </div>
+                </div>
+
+                <div class="signature-line">
+                    <div class="sig-value">{{teacher_name}}</div>
+                    <div class="sig-border">
+                        <div class="sig-label">O'qituvchi</div>
+                    </div>
+                </div>
+
+                <div class="signature-line">
+                    <div class="sig-value">{{issue_date}}</div>
+                    <div class="sig-border">
+                        <div class="sig-label">Tugatilgan sana</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="bottom-bar">
+                <div class="cert-info">
+                    Sertifikat raqami: {{certificate_number}}<br>
+                    Tekshirish: lc.wunderkindedu.uz/verify-certificate
+                </div>
+                <div class="qr-code">
+                    [QR_CODE_IMAGE]
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

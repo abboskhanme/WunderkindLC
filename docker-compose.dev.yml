@@ -1,5 +1,5 @@
 # ============================================================================
-#  IntellectCRM — LOKAL RIVOJLANISH (hot reload). Prod config'ni O'ZGARTIRMAYDI.
+#  WunderkindLC — LOKAL RIVOJLANISH (hot reload). Prod config'ni O'ZGARTIRMAYDI.
 #
 #  Ishga tushirish (bitta buyruq):   ./dev.sh up
 #      • Backend  → http://localhost:8080   (.cs o'zgarsa `dotnet watch` o'zi qayta yig'adi)
@@ -17,13 +17,13 @@
 
 # Alohida loyiha nomi — dev konteyner/volume'lari prod (yoki lokal prod-test)
 # konteynerlarini BOSIB KETMAYDI, ikkalasi yonma-yon tura oladi.
-name: intellectcrm-dev
+name: wunderkindlc-dev
 
 services:
   postgres:
     # Nom prod faylidagidan FARQLI bo'lishi shart — aks holda lokal prod-test konteyneri
-    # (`intellectcrm-postgres`) bilan to'qnashadi va `up` "name is already in use" deb yiqiladi.
-    container_name: intellectcrm-dev-postgres
+    # (`wunderkindlc-postgres`) bilan to'qnashadi va `up` "name is already in use" deb yiqiladi.
+    container_name: wunderkindlc-dev-postgres
     ports:
       - "5432:5432"          # lokal DB kirish (psql / DBeaver)
 
@@ -32,7 +32,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.dev
-    container_name: intellectcrm-dev-app
+    container_name: wunderkindlc-dev-app
     environment:
       ASPNETCORE_ENVIRONMENT: "Development"
       # Dev'da ham to'g'ri ishlaydi: karyera Mini App'ining havolasi lokal manzilga qarasin.
@@ -72,16 +72,16 @@ services:
       - ./:/src
       # bin/obj HOST'nikidan ajratiladi: host'da macOS uchun, konteynerda Linux uchun
       # yig'iladi — aralashsa ikkala tomon ham buziladi (anonim volume ularni "yopadi").
-      - /src/IntellectCRM.Domain/bin
-      - /src/IntellectCRM.Domain/obj
-      - /src/IntellectCRM.Application/bin
-      - /src/IntellectCRM.Application/obj
-      - /src/IntellectCRM.Infrastructure/bin
-      - /src/IntellectCRM.Infrastructure/obj
-      - /src/IntellectCRM.Server/bin
-      - /src/IntellectCRM.Server/obj
+      - /src/WunderkindLC.Domain/bin
+      - /src/WunderkindLC.Domain/obj
+      - /src/WunderkindLC.Application/bin
+      - /src/WunderkindLC.Application/obj
+      - /src/WunderkindLC.Infrastructure/bin
+      - /src/WunderkindLC.Infrastructure/obj
+      - /src/WunderkindLC.Server/bin
+      - /src/WunderkindLC.Server/obj
       # Frontend node_modules backendga umuman kerak emas (va juda sekin mount bo'ladi).
-      - /src/IntellectCRM.Client/node_modules
+      - /src/WunderkindLC.Client/node_modules
       # NuGet keshi — konteyner qayta yaratilsa ham paketlar qaytadan yuklanmasin.
       - nuget-cache:/root/.nuget/packages
     ports:
@@ -91,7 +91,7 @@ services:
   # ---------------------------------------------------------------- Frontend (Vite HMR)
   client:
     image: node:20-slim
-    container_name: intellectcrm-dev-client
+    container_name: wunderkindlc-dev-client
     working_dir: /client
     environment:
       # Vite proxy'sining nishoni (vite.config.ts shu o'zgaruvchini o'qiydi).
@@ -104,7 +104,7 @@ services:
       VITE_ROOT_DOMAIN: "${ROOT_DOMAIN:-localhost}"
       VITE_USE_MOCK: "false"
     volumes:
-      - ./IntellectCRM.Client:/client
+      - ./WunderkindLC.Client:/client
       # node_modules KONTEYNERNIKI bo'lsin (host'dagi macOS binarylari Linux'da ishlamaydi).
       - client-node-modules:/client/node_modules
     ports:

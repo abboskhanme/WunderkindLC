@@ -37,7 +37,7 @@ sudo mkswap /swapfile && sudo swapon /swapfile
 echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
 
 # Repo
-git clone <repo-url> ~/IntellectCRM && cd ~/IntellectCRM
+git clone <repo-url> ~/WunderkindLC && cd ~/WunderkindLC
 ```
 
 Bo'sh joyni tekshiring: `df -h` — eski serverdagi `docker system df` hajmidan ko'p bo'lsin.
@@ -47,7 +47,7 @@ Bo'sh joyni tekshiring: `df -h` — eski serverdagi `docker system df` hajmidan 
 ## 1. ESKI serverda — chiqarish
 
 ```bash
-cd ~/IntellectCRM
+cd ~/WunderkindLC
 bash migrate-export.sh
 # kamera yozuvlari ham kerak bo'lsa:
 # WITH_CAMERA=1 bash migrate-export.sh
@@ -63,7 +63,7 @@ Skript: `app`/`cloudflared`/`mediamtx` ni to'xtatadi (baza dump paytida o'zgarma
 Lokal kompyuterdan (yoki to'g'ridan-to'g'ri server→server, kalit sozlangan bo'lsa):
 
 ```bash
-rsync -avz --progress <user>@<eski>:~/IntellectCRM/migration-*/ ~/migration/
+rsync -avz --progress <user>@<eski>:~/WunderkindLC/migration-*/ ~/migration/
 rsync -avz --progress ~/migration/ <user>@<yangi>:~/migration/
 ```
 
@@ -88,7 +88,7 @@ tasodifiy serverga tushadi. Yangisini ko'tarishdan OLDIN eskisini to'xtating.
 ## 4. YANGI serverda — tiklash
 
 ```bash
-cd ~/IntellectCRM
+cd ~/WunderkindLC
 bash migrate-import.sh ~/migration
 ```
 
@@ -102,10 +102,10 @@ qiladi → volume'larni tiklaydi → `docker compose up -d --build` → log va t
 | # | Nima | Qanday |
 |---|---|---|
 | 1 | Tunnel ulandimi | Cloudflare panel → Tunnels → yangi konnektor ko'rinsin |
-| 2 | CRM ochiladimi | `https://crm.intellectschool.uz` → login |
+| 2 | CRM ochiladimi | `https://lc.wunderkindedu.uz` → login |
 | 3 | **RASMLAR** | o'quvchi surati, logotip, kitob muqovasi ochiladimi |
-| 4 | Landing | `curl -sI https://intellectschool.uz/sertifikatlar.js \| head -1` → `200` |
-| 5 | Eski kod qolmaganmi | `curl -s https://intellectschool.uz/landing.js \| grep -c "kamida bitta"` → `0` |
+| 4 | Landing | `curl -sI https://wunderkindedu.uz/sertifikatlar.js \| head -1` → `200` |
+| 5 | Eski kod qolmaganmi | `curl -s https://wunderkindedu.uz/landing.js \| grep -c "kamida bitta"` → `0` |
 | 6 | Telegram bot | `/start` → klaviatura chiqsin |
 | 7 | Yuz bilan kirish | bitta o'quvchida sinang (`FACE_VECTOR_KEY` to'g'ri kelganini isbotlaydi) |
 | 8 | Backup | `docker compose logs backup \| tail -5` → jadval qatori |

@@ -1,5 +1,5 @@
 # ============================================================================
-#  IntellectCRM — DEV obrazi (faqat lokal ishlash uchun, prod'ga TUSHMAYDI).
+#  WunderkindLC — DEV obrazi (faqat lokal ishlash uchun, prod'ga TUSHMAYDI).
 #
 #  Prod `Dockerfile`dan farqi: bu yerda .NET SDK qoladi va ilova `dotnet watch`
 #  ostida ishlaydi — kod bind-mount orqali ichkaridan ko'rinadi, .cs fayl
@@ -31,14 +31,14 @@ ENV DOTNET_CLI_TELEMETRY_OPTOUT=1 \
     BuildSpa=false
 
 # Paketlarni oldindan tiklaymiz — birinchi `up` sezilarli tez bo'ladi (keyin nuget-cache volume'i keshlaydi).
-COPY IntellectCRM.Domain/IntellectCRM.Domain.csproj IntellectCRM.Domain/
-COPY IntellectCRM.Application/IntellectCRM.Application.csproj IntellectCRM.Application/
-COPY IntellectCRM.Infrastructure/IntellectCRM.Infrastructure.csproj IntellectCRM.Infrastructure/
-COPY IntellectCRM.Server/IntellectCRM.Server.csproj IntellectCRM.Server/
-RUN dotnet restore IntellectCRM.Server/IntellectCRM.Server.csproj
+COPY WunderkindLC.Domain/WunderkindLC.Domain.csproj WunderkindLC.Domain/
+COPY WunderkindLC.Application/WunderkindLC.Application.csproj WunderkindLC.Application/
+COPY WunderkindLC.Infrastructure/WunderkindLC.Infrastructure.csproj WunderkindLC.Infrastructure/
+COPY WunderkindLC.Server/WunderkindLC.Server.csproj WunderkindLC.Server/
+RUN dotnet restore WunderkindLC.Server/WunderkindLC.Server.csproj
 
 EXPOSE 8080
 
 # `--non-interactive` — konteynerda terminal savoliga javob beradigan odam yo'q.
-CMD ["dotnet", "watch", "--project", "IntellectCRM.Server/IntellectCRM.Server.csproj", \
+CMD ["dotnet", "watch", "--project", "WunderkindLC.Server/WunderkindLC.Server.csproj", \
      "--non-interactive", "run", "--no-launch-profile"]

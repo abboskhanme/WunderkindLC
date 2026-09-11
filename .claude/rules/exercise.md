@@ -1,10 +1,10 @@
 ---
 description: O'quv dasturidagi INTERAKTIV MASHQ (topshiriq konstruktori) — 8 kategoriya, 25 tur, tahrirlovchi + jonli foydalanuvchi ko'rinishi, o'quvchi portalida ishlashi.
 paths:
-  - "IntellectCRM.Client/src/components/exercise/**"
-  - "IntellectCRM.Client/src/pages/admin/curricula/**"
-  - "IntellectCRM.Server/Controllers/CurriculumController.cs"
-  - "IntellectCRM.Client/src/pages/student/Lesson.tsx"
+  - "WunderkindLC.Client/src/components/exercise/**"
+  - "WunderkindLC.Client/src/pages/admin/curricula/**"
+  - "WunderkindLC.Server/Controllers/CurriculumController.cs"
+  - "WunderkindLC.Client/src/pages/student/Lesson.tsx"
 ---
 
 # Topshiriq konstruktori (interaktiv mashqlar) qoidalari

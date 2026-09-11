@@ -1,17 +1,17 @@
 ---
 description: Test natijalari (oflayn — ball qo'lda), ONLAYN TEST (Telegram bot orqali PDF + avtomatik baholash) va TEST SERTIFIKATI (Word andoza → PDF).
 paths:
-  - "IntellectCRM.Application/Services/TestResultService.cs"
-  - "IntellectCRM.Application/Services/TestCertificateService.cs"
-  - "IntellectCRM.Application/Services/DocxToPdfConverter.cs"
-  - "IntellectCRM.Application/Services/DocxTemplate.cs"
-  - "IntellectCRM.Application/Services/OnlineTestBotService.cs"
-  - "IntellectCRM.Application/Services/LevelTestService.cs"
-  - "IntellectCRM.Server/Controllers/TestResultsController.cs"
-  - "IntellectCRM.Server/Controllers/LevelTestsController.cs"
-  - "IntellectCRM.Server/Controllers/PublicTestController.cs"
-  - "IntellectCRM.Client/src/pages/admin/tests/**"
-  - "IntellectCRM.Client/src/pages/admin/level-tests/**"
+  - "WunderkindLC.Application/Services/TestResultService.cs"
+  - "WunderkindLC.Application/Services/TestCertificateService.cs"
+  - "WunderkindLC.Application/Services/DocxToPdfConverter.cs"
+  - "WunderkindLC.Application/Services/DocxTemplate.cs"
+  - "WunderkindLC.Application/Services/OnlineTestBotService.cs"
+  - "WunderkindLC.Application/Services/LevelTestService.cs"
+  - "WunderkindLC.Server/Controllers/TestResultsController.cs"
+  - "WunderkindLC.Server/Controllers/LevelTestsController.cs"
+  - "WunderkindLC.Server/Controllers/PublicTestController.cs"
+  - "WunderkindLC.Client/src/pages/admin/tests/**"
+  - "WunderkindLC.Client/src/pages/admin/level-tests/**"
 ---
 
 # Test natijalari qoidalari

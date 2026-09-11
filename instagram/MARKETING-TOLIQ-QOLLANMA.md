@@ -1,4 +1,4 @@
-# IntellectCRM — **Marketing bo'limi**: to'liq qo'llanma
+# WunderkindLC — **Marketing bo'limi**: to'liq qo'llanma
 
 > **Kimga:** markaz rahbari, marketing/SMM mas'uli va texnik mas'ul uchun.
 > **Nima uchun:** Marketing bo'limidagi **hamma funksiya** Meta (Instagram + Facebook) API'lari
@@ -321,7 +321,7 @@ Ular SPA'da ochiq marshrut sifatida turadi va hech qanday CRM ma'lumotini ko'rsa
                         └─────────────┬──────────────┘
                                       │
                        ┌──────────────┴───────────────┐
-                       │   IntellectCRM → Marketing   │
+                       │   WunderkindLC → Marketing   │
                        │   → Sozlamalar → kartochkalar│
                        └──────────────────────────────┘
 
@@ -416,7 +416,7 @@ tayyorlangan bo'lsa ham **Standard Access**da qolib ketadi.
 
 **A) Yaratish (bir marta):**
 `business.facebook.com` → **Business settings → Users → System users** → **Add** →
-nom bering (masalan `IntellectCRM`) → rol: **Admin**.
+nom bering (masalan `WunderkindLC`) → rol: **Admin**.
 
 ℹ️ Bitta System User **uchala modul uchun** ham yetadi.
 

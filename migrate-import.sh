@@ -2,7 +2,7 @@
 # ============================================================================
 #  YANGI SERVERDA ishga tushiring — bazani va barcha fayllarni tiklaydi.
 #
-#      cd ~/IntellectCRM && bash migrate-import.sh ~/migration-YYYYMMDD_HHMM
+#      cd ~/WunderkindLC && bash migrate-import.sh ~/migration-YYYYMMDD_HHMM
 #
 #  Oldindan: Docker o'rnatilgan, repo klon qilingan, ESKI serverdagi cloudflared TO'XTATILGAN.
 # ============================================================================
@@ -43,8 +43,8 @@ docker compose exec -T postgres pg_isready >/dev/null 2>&1 || { echo "XATO: post
 
 # --- 3) Baza tiklash ---
 echo "==> 3/6 baza tiklanmoqda..."
-PGUSER_V=$(grep -E '^POSTGRES_USER=' .env | cut -d= -f2- | tr -d '"' ); PGUSER_V=${PGUSER_V:-intellectcrm}
-PGDB_V=$(grep -E '^POSTGRES_DB=' .env | cut -d= -f2- | tr -d '"' );   PGDB_V=${PGDB_V:-intellectcrm}
+PGUSER_V=$(grep -E '^POSTGRES_USER=' .env | cut -d= -f2- | tr -d '"' ); PGUSER_V=${PGUSER_V:-wunderkindlc}
+PGDB_V=$(grep -E '^POSTGRES_DB=' .env | cut -d= -f2- | tr -d '"' );   PGDB_V=${PGDB_V:-wunderkindlc}
 # Toza baza: eski (bo'sh) sxema qolib ketmasin.
 docker compose exec -T postgres psql -U "$PGUSER_V" -d postgres \
   -c "DROP DATABASE IF EXISTS \"$PGDB_V\";" -c "CREATE DATABASE \"$PGDB_V\" OWNER \"$PGUSER_V\";"
@@ -56,7 +56,7 @@ echo "    jadvallar: $(docker compose exec -T postgres psql -U "$PGUSER_V" -d "$
 echo "==> 4/6 fayllar tiklanmoqda..."
 # Volume'lar hali yaratilmagan — nomi compose LOYIHA nomidan yasaladi. Uni taxmin qilmaymiz:
 # ishlab turgan postgres konteynerining compose yorlig'idan ANIQ olamiz.
-PROJ=$(docker inspect intellectcrm-postgres -f '{{index .Config.Labels "com.docker.compose.project"}}')
+PROJ=$(docker inspect wunderkindlc-postgres -f '{{index .Config.Labels "com.docker.compose.project"}}')
 [ -n "$PROJ" ] || { echo "XATO: compose loyiha nomi aniqlanmadi"; exit 1; }
 echo "    compose loyihasi: $PROJ"
 untarvol() { # untarvol <volume-suffix> <arxiv>

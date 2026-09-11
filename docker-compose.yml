@@ -1,4 +1,4 @@
-# IntellectCRM — prod: app (API + SPA) + PostgreSQL + nginx (TLS) + kunlik backup.
+# WunderkindLC — prod: app (API + SPA) + PostgreSQL + nginx (TLS) + kunlik backup.
 # Bitta o'quv markazi (multi-tenant YO'Q). Sozlamalar .env faylidan keladi (.env.example dan nusxa oling).
 # Diqqat: app porti TASHQARIGA OCHILMAGAN — unga faqat nginx (ichki tarmoq) kiradi.
 # Public IP'ga o'tish rejasi: PUBLIC-IP-OTISH.md (nginx + Cloudflare Origin Cert + ufw firewall).
@@ -7,7 +7,7 @@
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: intellectcrm-postgres
+    container_name: wunderkindlc-postgres
     # Sozlamalar PROD SERVER (Contabo, 4 yadro / 7.8 GB RAM, 2026-08 ko'chirilgan) uchun:
     #   shared_buffers 1GB        — RAM'ning ~12%; app + boshqa konteynerlar bilan bo'lishiladi
     #   effective_cache_size 3GB  — rejalashtiruvchiga OS fayl keshi haqida maslahat (xotira band qilmaydi);
@@ -36,13 +36,13 @@ services:
     # Parallel so'rovlar /dev/shm dan foydalanadi — docker default 64MB tor edi.
     shm_size: 512mb
     environment:
-      POSTGRES_USER: "${POSTGRES_USER:-intellectcrm}"
+      POSTGRES_USER: "${POSTGRES_USER:-wunderkindlc}"
       POSTGRES_PASSWORD: "${POSTGRES_PASSWORD}"
-      POSTGRES_DB: "${POSTGRES_DB:-intellectcrm}"
+      POSTGRES_DB: "${POSTGRES_DB:-wunderkindlc}"
     volumes:
       - postgres-data:/var/lib/postgresql/data   # baza shu volume'da (deploylar oralig'ida saqlanadi)
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-intellectcrm} -d ${POSTGRES_DB:-intellectcrm}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-wunderkindlc} -d ${POSTGRES_DB:-wunderkindlc}"]
       interval: 5s
       timeout: 10s
       retries: 30
@@ -60,9 +60,9 @@ services:
       args:
         VITE_ROOT_DOMAIN: "${ROOT_DOMAIN}"   # frontend domenni shu qiymatga nisbatan aniqlaydi
         VITE_USE_MOCK: "false"
-        VITE_POSTHOG_KEY: "${VITE_POSTHOG_KEY:-phc_rF4d6snTYcGoaTKfd5GjjfUyVNLNNNTZNBGbH8BhEzHd}"
-        VITE_POSTHOG_HOST: "${VITE_POSTHOG_HOST:-https://us.i.posthog.com}"
-    container_name: intellectcrm-app
+        VITE_POSTHOG_KEY: "${VITE_POSTHOG_KEY:-}"
+        VITE_POSTHOG_HOST: "${VITE_POSTHOG_HOST:-}"
+    container_name: wunderkindlc-app
     environment:
       ASPNETCORE_ENVIRONMENT: "Production"
       ASPNETCORE_URLS: "http://+:8080"
@@ -73,7 +73,7 @@ services:
       # Minimum Pool Size=2 — tanaffusdan keyingi birinchi so'rov sovuq ulanish (TCP+SCRAM auth)
       # ochmasin. SSL Mode=Disable — postgres konteynerida `ssl=off` (tekshirilgan), ya'ni
       # standart "Prefer" har ulanishda SSL so'rab, rad javobini bekorga kutardi.
-      ConnectionStrings__Default: "Host=postgres;Port=5432;Database=${POSTGRES_DB:-intellectcrm};Username=${POSTGRES_USER:-intellectcrm};Password=${POSTGRES_PASSWORD};Maximum Pool Size=30;Minimum Pool Size=2;SSL Mode=Disable"
+      ConnectionStrings__Default: "Host=postgres;Port=5432;Database=${POSTGRES_DB:-wunderkindlc};Username=${POSTGRES_USER:-wunderkindlc};Password=${POSTGRES_PASSWORD};Maximum Pool Size=30;Minimum Pool Size=2;SSL Mode=Disable"
       Tenancy__RootDomain: "${ROOT_DOMAIN}"
       App__Host: "${APP_HOST}"             # FAQAT shu host ilovani (SPA) ochadi; qolganlari -> landing
       Jwt__Key: "${JWT_KEY}"               # >=32 belgi; prod'da MAJBURIY
@@ -90,7 +90,7 @@ services:
       Telegram__BotName: "${TELEGRAM_BOT_NAME:-}"
       Telegram__Channel: "${TELEGRAM_CHANNEL:-}"
       Telegram__AdminChatId: "${TELEGRAM_ADMIN_CHAT_ID:-}"
-      # Karyera boti (Intellect Career — ishga qabul; ALOHIDA bot, token MAXFIY).
+      # Karyera boti (Wunderkind Career — ishga qabul; ALOHIDA bot, token MAXFIY).
       # MiniAppUrl bo'sh bo'lsa APP_HOST'dan yasaladi: https://<APP_HOST>/vakansiya
       Career__BotToken: "${CAREER_BOT_TOKEN:-}"
       Career__MiniAppUrl: "${CAREER_MINIAPP_URL:-}"
@@ -191,7 +191,7 @@ services:
   # Kamera media-shlyuzi: IP kameralar RTSP oqimini brauzer ko'radigan HLS ga o'giradi.
   mediamtx:
     image: bluenviron/mediamtx:latest
-    container_name: intellectcrm-mediamtx
+    container_name: wunderkindlc-mediamtx
     environment:
       MTX_API: "yes"
       MTX_HLS: "yes"
@@ -217,7 +217,7 @@ services:
   # tushirilgandan KEYIN oching — u portlarni FAQAT Cloudflare IP'lariga cheklaydi.
   nginx:
     image: nginx:1.27-alpine
-    container_name: intellectcrm-nginx
+    container_name: wunderkindlc-nginx
     ports:
       - "80:80"          # 80 bo'sh (xray faqat 443 da) — Cloudflare http so'rovlari uchun
       - "8443:443"       # host 8443 -> konteyner 443 (host 443 = xray)
@@ -241,19 +241,19 @@ services:
   # yo'qoladi. Off-site (3-2-1 qoidasi) va shifrlashni yoqing — batafsil DEPLOY.md.
   backup:
     image: postgres:16-alpine
-    container_name: intellectcrm-backup
+    container_name: wunderkindlc-backup
     environment:
       PGHOST: postgres
-      PGUSER: "${POSTGRES_USER:-intellectcrm}"
+      PGUSER: "${POSTGRES_USER:-wunderkindlc}"
       PGPASSWORD: "${POSTGRES_PASSWORD}"
-      PGDATABASE: "${POSTGRES_DB:-intellectcrm}"
+      PGDATABASE: "${POSTGRES_DB:-wunderkindlc}"
       BACKUP_HOUR: "${BACKUP_HOUR:-21}"        # Soat (UTC). 21 = 02:00 Toshkent (kechasi). .env'dan o'zgartiriladi.
       BACKUP_MINUTE: "${BACKUP_MINUTE:-0}"     # Daqiqa (UTC). Masalan 30 -> 21:30 UTC. .env'dan o'zgartiriladi.
       BACKUP_RETENTION_DAYS: "${BACKUP_RETENTION_DAYS:-7}"     # kundan eski LOKAL nusxalar o'chiriladi
       # Ixtiyoriy — SHIFRLASH: bo'sh bo'lmasa har nusxa gpg (AES-256) bilan shifrlanadi (.gpg).
       # Tiklashda shu parol kerak — uni XAVFSIZ (parol menejeri) saqlang, serverda EMAS!
       BACKUP_ENCRYPT_PASSPHRASE: "${BACKUP_ENCRYPT_PASSPHRASE:-}"
-      # Ixtiyoriy — OFF-SITE: rclone remote (masalan "r2:intellectcrm-backups"). Bo'sh -> off-site yo'q.
+      # Ixtiyoriy — OFF-SITE: rclone remote (masalan "r2:wunderkindlc-backups"). Bo'sh -> off-site yo'q.
       RCLONE_REMOTE: "${RCLONE_REMOTE:-}"
       RCLONE_CONFIG: "/config/rclone.conf"
     volumes:
@@ -288,7 +288,7 @@ services:
           target=$$(( 10#$${BACKUP_HOUR:-21} * 60 + 10#$${BACKUP_MINUTE:-0} ))
           if [ "$$last" != "$$D" ] && [ "$$now" -ge "$$target" ] && [ "$$now" -lt "$$(( target + 10 ))" ]; then
             last="$$D"; ts=$$(date -u +%Y%m%d_%H%M)
-            db="/backups/intellectcrm_$${ts}.sql.gz"; files="/backups/intellectcrm_$${ts}_files.tar.gz"
+            db="/backups/wunderkindlc_$${ts}.sql.gz"; files="/backups/wunderkindlc_$${ts}_files.tar.gz"
             echo "[backup] $$ts — baza dump..."
             pg_dump | gzip > "$$db" || { echo "[backup] XATO: pg_dump"; rm -f "$$db"; }
             echo "[backup] $$ts — fayllar (uploads + cti audio, uploads/face TASHQARIDA)..."
@@ -307,13 +307,13 @@ services:
             fi
             # Off-site nusxa (rclone remote berilgan bo'lsa).
             if [ -n "$$REMOTE" ]; then
-              if rclone copy /backups "$$REMOTE" --include "intellectcrm_$${ts}*" --transfers 2 2>&1; then
+              if rclone copy /backups "$$REMOTE" --include "wunderkindlc_$${ts}*" --transfers 2 2>&1; then
                 echo "[backup] off-site OK -> $$REMOTE"
               else
                 echo "[backup] XATO: off-site nusxa ($$REMOTE)"
               fi
             fi
-            find /backups -name 'intellectcrm_*' -type f -mtime +$$RET -delete
+            find /backups -name 'wunderkindlc_*' -type f -mtime +$$RET -delete
             echo "[backup] $$ts tugadi."
           fi
           sleep 60

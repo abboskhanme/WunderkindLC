@@ -1,17 +1,17 @@
 ---
 description: Jurnal tahrirlash siyosati (JournalPolicy) va BALL / reyting hisobi.
 paths:
-  - "IntellectCRM.Application/Services/Journal*.cs"
-  - "IntellectCRM.Application/Services/StudentBallService.cs"
-  - "IntellectCRM.Application/Services/RatingService.cs"
-  - "IntellectCRM.Application/Services/GradingService.cs"
-  - "IntellectCRM.Server/Controllers/JournalController.cs"
-  - "IntellectCRM.Server/Controllers/ClassAnalyticsController.cs"
-  - "IntellectCRM.Server/Controllers/TeacherPortalController.cs"
-  - "IntellectCRM.Server/Controllers/StudentAttendanceController.cs"
-  - "IntellectCRM.Client/src/pages/admin/journal/**"
-  - "IntellectCRM.Client/src/pages/admin/classes/**"
-  - "IntellectCRM.Client/src/pages/admin/grading/**"
+  - "WunderkindLC.Application/Services/Journal*.cs"
+  - "WunderkindLC.Application/Services/StudentBallService.cs"
+  - "WunderkindLC.Application/Services/RatingService.cs"
+  - "WunderkindLC.Application/Services/GradingService.cs"
+  - "WunderkindLC.Server/Controllers/JournalController.cs"
+  - "WunderkindLC.Server/Controllers/ClassAnalyticsController.cs"
+  - "WunderkindLC.Server/Controllers/TeacherPortalController.cs"
+  - "WunderkindLC.Server/Controllers/StudentAttendanceController.cs"
+  - "WunderkindLC.Client/src/pages/admin/journal/**"
+  - "WunderkindLC.Client/src/pages/admin/classes/**"
+  - "WunderkindLC.Client/src/pages/admin/grading/**"
 ---
 
 # Jurnal va reyting qoidalari

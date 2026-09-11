@@ -1,20 +1,20 @@
 # ============================================================================
-#  IntellectCRM — bitta o'quv markazi uchun yagona obraz (API + SPA)
+#  WunderkindLC — bitta o'quv markazi uchun yagona obraz (API + SPA)
 #  3 bosqich: (1) SPA build (node) -> (2) API publish (.NET 8) -> (3) runtime
 # ============================================================================
 
 # ---------- 1) Frontend (Vite) build ----------
 FROM node:20-alpine AS client
 WORKDIR /client
-COPY IntellectCRM.Client/package*.json ./
+COPY WunderkindLC.Client/package*.json ./
 RUN npm ci
-COPY IntellectCRM.Client/ ./
+COPY WunderkindLC.Client/ ./
 # Build-time env: frontend real domenni tanishi va REAL API'ga (mock emas) ulanishi uchun.
-ARG VITE_ROOT_DOMAIN=intellectcrm.uz
+ARG VITE_ROOT_DOMAIN=wunderkindlc.uz
 ARG VITE_USE_MOCK=false
 # PostHog (frontend analytics) — kalit OMMAVIY (brauzer bundle'ida ko'rinadi), maxfiy emas.
-ARG VITE_POSTHOG_KEY=phc_rF4d6snTYcGoaTKfd5GjjfUyVNLNNNTZNBGbH8BhEzHd
-ARG VITE_POSTHOG_HOST=https://us.i.posthog.com
+ARG VITE_POSTHOG_KEY=
+ARG VITE_POSTHOG_HOST=
 ENV VITE_ROOT_DOMAIN=$VITE_ROOT_DOMAIN VITE_USE_MOCK=$VITE_USE_MOCK \
     VITE_POSTHOG_KEY=$VITE_POSTHOG_KEY VITE_POSTHOG_HOST=$VITE_POSTHOG_HOST
 # Node HEAP chegarasi: konteynerda Node o'zi ~512 MB "old space" tanlab oladi va loyiha
@@ -28,16 +28,16 @@ RUN npm run build        # natija: /client/dist
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
 WORKDIR /src
 # Avval faqat csproj'lar — qatlam keshini saqlash uchun. Klient (esproj) Docker'da qurilmaydi.
-COPY IntellectCRM.Domain/IntellectCRM.Domain.csproj IntellectCRM.Domain/
-COPY IntellectCRM.Application/IntellectCRM.Application.csproj IntellectCRM.Application/
-COPY IntellectCRM.Infrastructure/IntellectCRM.Infrastructure.csproj IntellectCRM.Infrastructure/
-COPY IntellectCRM.Server/IntellectCRM.Server.csproj IntellectCRM.Server/
-RUN dotnet restore IntellectCRM.Server/IntellectCRM.Server.csproj -p:BuildSpa=false
-COPY IntellectCRM.Domain/ IntellectCRM.Domain/
-COPY IntellectCRM.Application/ IntellectCRM.Application/
-COPY IntellectCRM.Infrastructure/ IntellectCRM.Infrastructure/
-COPY IntellectCRM.Server/ IntellectCRM.Server/
-RUN dotnet publish IntellectCRM.Server/IntellectCRM.Server.csproj -c Release -o /app/publish \
+COPY WunderkindLC.Domain/WunderkindLC.Domain.csproj WunderkindLC.Domain/
+COPY WunderkindLC.Application/WunderkindLC.Application.csproj WunderkindLC.Application/
+COPY WunderkindLC.Infrastructure/WunderkindLC.Infrastructure.csproj WunderkindLC.Infrastructure/
+COPY WunderkindLC.Server/WunderkindLC.Server.csproj WunderkindLC.Server/
+RUN dotnet restore WunderkindLC.Server/WunderkindLC.Server.csproj -p:BuildSpa=false
+COPY WunderkindLC.Domain/ WunderkindLC.Domain/
+COPY WunderkindLC.Application/ WunderkindLC.Application/
+COPY WunderkindLC.Infrastructure/ WunderkindLC.Infrastructure/
+COPY WunderkindLC.Server/ WunderkindLC.Server/
+RUN dotnet publish WunderkindLC.Server/WunderkindLC.Server.csproj -c Release -o /app/publish \
     -p:BuildSpa=false --no-restore
 
 # ---------- 3) Runtime ----------
@@ -69,4 +69,4 @@ COPY --from=client /client/dist ./wwwroot
 ENV ASPNETCORE_ENVIRONMENT=Production \
     ASPNETCORE_URLS=http://+:8080
 EXPOSE 8080
-ENTRYPOINT ["dotnet", "IntellectCRM.Server.dll"]
+ENTRYPOINT ["dotnet", "WunderkindLC.Server.dll"]

@@ -1,11 +1,11 @@
 ---
 description: CRM — lidlar, lid manbasi ma'lumotnomasi, lidda tashqi maktab, sinov darsi va konversiya.
 paths:
-  - "IntellectCRM.Server/Controllers/Lead*.cs"
-  - "IntellectCRM.Application/Services/LeadNotifier.cs"
-  - "IntellectCRM.Application/Services/TrialReminderService.cs"
-  - "IntellectCRM.Client/src/pages/admin/leads/**"
-  - "IntellectCRM.Client/src/pages/admin/marketing/**"
+  - "WunderkindLC.Server/Controllers/Lead*.cs"
+  - "WunderkindLC.Application/Services/LeadNotifier.cs"
+  - "WunderkindLC.Application/Services/TrialReminderService.cs"
+  - "WunderkindLC.Client/src/pages/admin/leads/**"
+  - "WunderkindLC.Client/src/pages/admin/marketing/**"
 ---
 
 # CRM / lidlar qoidalari

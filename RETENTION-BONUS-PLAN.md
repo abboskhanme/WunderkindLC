@@ -62,7 +62,7 @@ tizimi tegishli ekanini o'zi hal qiladi.
 Kerakli ma'lumotlarning deyarli hammasi allaqachon bazada bor — yangi "kuzatuv" mexanizmi kerak emas.
 
 ### 3.1. O'quvchi a'zoligi tarixi — BOR va yetarli
-`IntellectCRM.Domain/Entities.cs:503` — `StudentGroup`:
+`WunderkindLC.Domain/Entities.cs:503` — `StudentGroup`:
 `StudentId, GroupId, JoinedAt, LeftAt?, IsActive, Status ("trial"|"active"|"frozen"), ActivatedAt, FrozenAt, RecordedAt`
 
 Bu bilan **istalgan oy uchun** o'quvchi qaysi guruh(lar)da pullik a'zo bo'lganini aniq tiklash mumkin.

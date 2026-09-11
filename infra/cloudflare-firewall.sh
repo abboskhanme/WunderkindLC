@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ============================================================================
-# IntellectCRM — firewall: 22 hammaga, 80/8443 FAQAT Cloudflare IP oralig'lariga.
+# WunderkindLC — firewall: 22 hammaga, 80/8443 FAQAT Cloudflare IP oralig'lariga.
 #
 # ⚠️ 443-PORTGA UMUMAN TEGILMAYDI — u serverdagi xray (shaxsiy VPN)niki: skript unga
 #    qoida QO'SHMAYDI ham, O'CHIRMAYDI ham. Nginx hostda 8443 da (konteyner ichida 443),
@@ -24,7 +24,7 @@
 # ⚠️ REBOOT: DOCKER-USER qoidalari qayta yuklashda YO'QOLADI. Skript oxirida
 #    o'zini @reboot cron'ga yozib qo'yadi (allaqachon bo'lsa — tegmaydi).
 #
-# Ishlatish (serverda, root):  bash /root/IntellectCRM/infra/cloudflare-firewall.sh
+# Ishlatish (serverda, root):  bash /root/WunderkindLC/infra/cloudflare-firewall.sh
 # ============================================================================
 set -euo pipefail
 

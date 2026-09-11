@@ -1,13 +1,13 @@
 ---
 description: Chegirmalar — HAR FAN (guruh) uchun alohida chegirma registri (pul manbai), tarix, tahrirlash, bekor qilish va markaz bo'yicha chegirmalar hisoboti.
 paths:
-  - "IntellectCRM.Application/Services/StudentDiscountService.cs"
-  - "IntellectCRM.Application/Services/TuitionService.cs"
-  - "IntellectCRM.Server/Controllers/StudentDiscountsController.cs"
-  - "IntellectCRM.Server/Controllers/DiscountReportController.cs"
-  - "IntellectCRM.Client/src/api/services/discounts.ts"
-  - "IntellectCRM.Client/src/pages/admin/students/DiscountSection.tsx"
-  - "IntellectCRM.Client/src/pages/admin/reports/DiscountsReportPage.tsx"
+  - "WunderkindLC.Application/Services/StudentDiscountService.cs"
+  - "WunderkindLC.Application/Services/TuitionService.cs"
+  - "WunderkindLC.Server/Controllers/StudentDiscountsController.cs"
+  - "WunderkindLC.Server/Controllers/DiscountReportController.cs"
+  - "WunderkindLC.Client/src/api/services/discounts.ts"
+  - "WunderkindLC.Client/src/pages/admin/students/DiscountSection.tsx"
+  - "WunderkindLC.Client/src/pages/admin/reports/DiscountsReportPage.tsx"
 ---
 
 # Chegirmalar qoidalari
@@ -320,5 +320,5 @@ emas; "qaysi fan o'zgardi" faqat `summary` matnida ko'rinadi.
 - Ommaviy yo'l yozsangiz — kitobni **halqadan tashqarida** yuklang (§2).
 - `Resolve` ga qo'shimcha qamrov (masalan "kurs bo'yicha chegirma") qo'shsangiz — **QO'SHISH
   emas, USTUNLIK** darajasi sifatida qo'shing va §1 dagi jadvalni yangilang.
-- Javob shakli o'zgarsa — `IntellectCRM.Client/src/api/services/discounts.ts` bilan
+- Javob shakli o'zgarsa — `WunderkindLC.Client/src/api/services/discounts.ts` bilan
   MAYDONMA-MAYDON mos bo'lishi SHART (ikkala tomon BIRGA o'zgaradi).

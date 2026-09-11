@@ -1,8 +1,8 @@
-# IntellectCRM — API hujjati
+# WunderkindLC — API hujjati
 
-> Bu hujjat **IntellectCRM** (bitta o'quv markazi CRM) backend REST API'sining to'liq ma'lumotnomasi.
+> Bu hujjat **WunderkindLC** (bitta o'quv markazi CRM) backend REST API'sining to'liq ma'lumotnomasi.
 > Har bir controller, uning bazaviy yo'li, ruxsat talabi va endpointlari (metod · yo'l · vazifasi) keltirilgan.
-> Manba: `IntellectCRM.Server/Controllers/*`. Real route'lar kodidan olingan.
+> Manba: `WunderkindLC.Server/Controllers/*`. Real route'lar kodidan olingan.
 
 - **Backend:** ASP.NET Core 8 (C#), Clean Architecture
 - **Auth:** JWT (Bearer token) — `POST /api/auth/login` orqali olinadi

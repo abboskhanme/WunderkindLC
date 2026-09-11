@@ -22,17 +22,19 @@ node_modules/
 dist/
 
 # Uploads (runtime data)
-IntellectCRM.Server/uploads/
+WunderkindLC.Server/uploads/
+# Qo'ng'iroq audiolari (CTI) — HAQIQIY ovoz yozuvlari, git'ga hech qachon tushmasin
+WunderkindLC.Server/recordings/
 
 # Local secrets
 appsettings.*.local.json
 
 # Server statik (Docker build dist'dan yaratadi)
-IntellectCRM.Server/wwwroot/
+WunderkindLC.Server/wwwroot/
 # Andozalar (server-side HTML shablonlar) - gitda saqlanadi
-!IntellectCRM.Server/wwwroot/
-!IntellectCRM.Server/wwwroot/templates/
-!IntellectCRM.Server/wwwroot/templates/**
+!WunderkindLC.Server/wwwroot/
+!WunderkindLC.Server/wwwroot/templates/
+!WunderkindLC.Server/wwwroot/templates/**
 
 # Dev artefaktlari (kurriкulum import manbasi + dizayn maketi) — serverga kerak emas
 english.xlsx
@@ -55,7 +57,7 @@ docker-compose.override.yml
 CLAUDE.md
 WORKLOG.md
 DEPLOY.md
-IntellectCRM_TZ.md
+WunderkindLC_TZ.md
 
 # Claude Code lokal sozlamalari (mashinaga xos ruxsat qoidalari) — .claude/skills, .claude/agents git'da qoladi
 .claude/settings.local.json
@@ -74,7 +76,7 @@ backup-config/
 # Baza backuplari (haqiqiy foydalanuvchi maʼlumotlari) — commit qilinmasin
 backups/
 # Telegram bot yuboradigan JSON backup (haqiqiy o'quvchi/parol-hash ma'lumotlari)
-intellectcrm_backup_*.json
+wunderkindlc_backup_*.json
 # pg_dump nusxalari (prod bazadan olingan — haqiqiy ma'lumot)
 *.dump
 *.sql.gz

@@ -1,35 +1,35 @@
 ---
 name: test
-description: IntellectCRM testlari — unit testlarni ishga tushirish, yangi test yozish va butun loyihani tester sifatida audit qilish (xato/kamchilik izlash). Test yozish, "testlarni ishga tushir", "xatolarni top", regressiya tekshiruvi kerak bo'lganda ishlating.
+description: WunderkindLC testlari — unit testlarni ishga tushirish, yangi test yozish va butun loyihani tester sifatida audit qilish (xato/kamchilik izlash). Test yozish, "testlarni ishga tushir", "xatolarni top", regressiya tekshiruvi kerak bo'lganda ishlating.
 ---
 
-# Testlar (IntellectCRM)
+# Testlar (WunderkindLC)
 
 ## 1. Ishga tushirish
 
 ```bash
-dotnet test IntellectCRM.Tests/IntellectCRM.Tests.csproj          # hammasi
-dotnet test IntellectCRM.Tests/IntellectCRM.Tests.csproj \
+dotnet test WunderkindLC.Tests/WunderkindLC.Tests.csproj          # hammasi
+dotnet test WunderkindLC.Tests/WunderkindLC.Tests.csproj \
   --filter "FullyQualifiedName~PhoneUtil"                          # bitta guruh
-dotnet test IntellectCRM.Tests/IntellectCRM.Tests.csproj \
+dotnet test WunderkindLC.Tests/WunderkindLC.Tests.csproj \
   --collect:"XPlat Code Coverage"                                  # qamrov (coverlet)
 ```
 
 > Backendni alohida qurish kerak bo'lsa DOIM `-p:BuildSpa=false` bilan:
-> `dotnet build IntellectCRM.Server/IntellectCRM.Server.csproj -p:BuildSpa=false`
+> `dotnet build WunderkindLC.Server/WunderkindLC.Server.csproj -p:BuildSpa=false`
 > (aks holda `npm`/esproj talab qilinadi). Test loyihasi Server'ga havola QILMAYDI —
 > shuning uchun `dotnet test` uchun bu bayroq kerak emas.
 
 ## 2. Test loyihasi
 
-`IntellectCRM.Tests/` — xUnit **v2**, `net8.0`. Havolalar: Domain · Application · Infrastructure
+`WunderkindLC.Tests/` — xUnit **v2**, `net8.0`. Havolalar: Domain · Application · Infrastructure
 (**Server ATAYIN yo'q** — u esproj/SPA ga bog'lanib test qurishni buzadi; controller darajasidagi
 test kerak bo'lsa `WebApplicationFactory` bilan alohida loyiha ochiladi).
 
 **Konvensiyalar:**
 - Sof `Assert.*` — **FluentAssertions ISHLATILMAYDI** (yangi versiyalari tijorat litsenziyasi talab qiladi).
 - Kod izohlari va test nomlari mazmuni — **o'zbek tilida** (repo uslubi).
-- Baza kerak bo'lsa `TestDb` (`IntellectCRM.Tests/TestDb.cs`):
+- Baza kerak bo'lsa `TestDb` (`WunderkindLC.Tests/TestDb.cs`):
   ```csharp
   using var db = TestDb.Sqlite();      // ASOSIY: haqiqiy relyatsion baza (unique indeks/FK ishlaydi)
   db.Context.Students.Add(...);
@@ -81,7 +81,7 @@ Test yozuvchi agentlarga har biriga ALOHIDA test fayllari beriladi (parallel kon
 
 ## 5. Frontend testlari (Vitest)
 
-Bu mashinada `node`/`npm` PATH da **yo'q** — hammasi Docker orqali (`IntellectCRM.Client` ichidan):
+Bu mashinada `node`/`npm` PATH da **yo'q** — hammasi Docker orqali (`WunderkindLC.Client` ichidan):
 ```bash
 docker run --rm -v "$PWD":/w -w /w node:24-slim npx vitest run     # testlar
 docker run --rm -v "$PWD":/w -w /w node:24-slim npm run build      # tsc -b + vite build
@@ -100,5 +100,5 @@ implementatsiya qilmaydi — `vi.spyOn` yiqiladi, stub'ni qo'lda o'rnatib keyin 
 
 ## 6. Flutter ilovalari
 
-O'qituvchi/o'quvchi ilovalari **alohida repolarda** (`Intellect-Teacher-app-new`,
-`Intellect-Student-app-new`) — bu skill ularni qamrab olmaydi. U yerda `flutter test`.
+O'qituvchi/o'quvchi mobil ilovalari **alohida repolarda** (bu repoda yo'q) — bu skill
+ularni qamrab olmaydi. U yerda `flutter test`.

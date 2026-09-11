@@ -1,11 +1,11 @@
 ---
 description: O'quvchi izohlari (profildagi erkin eslatmalar) va ular yig'iladigan "Izohlarga javoblar" sahifasi.
 paths:
-  - "IntellectCRM.Application/Services/StudentNoteService.cs"
-  - "IntellectCRM.Client/src/components/students/StudentNotesThread.tsx"
-  - "IntellectCRM.Client/src/components/ui/MonthDayStrip.tsx"
-  - "IntellectCRM.Client/src/lib/month.ts"
-  - "IntellectCRM.Client/src/pages/admin/students/notes/**"
+  - "WunderkindLC.Application/Services/StudentNoteService.cs"
+  - "WunderkindLC.Client/src/components/students/StudentNotesThread.tsx"
+  - "WunderkindLC.Client/src/components/ui/MonthDayStrip.tsx"
+  - "WunderkindLC.Client/src/lib/month.ts"
+  - "WunderkindLC.Client/src/pages/admin/students/notes/**"
 ---
 
 # O'quvchi izohlari va "Izohlarga javoblar"

@@ -1,12 +1,12 @@
 ---
 description: Lid kiritish formasi — qo'lda lid kiritishda qaysi maydon so'raladi, qaysisi MAJBURIY, va markazning o'z qo'shimcha savollari.
 paths:
-  - "IntellectCRM.Application/Services/LeadEntryRules.cs"
-  - "IntellectCRM.Application/Services/LeadEntryFormService.cs"
-  - "IntellectCRM.Server/Controllers/LeadEntryFormController.cs"
-  - "IntellectCRM.Client/src/pages/admin/forms/LeadEntryFormPage.tsx"
-  - "IntellectCRM.Client/src/pages/admin/leads/LeadFormModal.tsx"
-  - "IntellectCRM.Client/src/api/services/leadEntryForm.ts"
+  - "WunderkindLC.Application/Services/LeadEntryRules.cs"
+  - "WunderkindLC.Application/Services/LeadEntryFormService.cs"
+  - "WunderkindLC.Server/Controllers/LeadEntryFormController.cs"
+  - "WunderkindLC.Client/src/pages/admin/forms/LeadEntryFormPage.tsx"
+  - "WunderkindLC.Client/src/pages/admin/leads/LeadFormModal.tsx"
+  - "WunderkindLC.Client/src/api/services/leadEntryForm.ts"
 ---
 
 # «Lid kiritish formasi» qoidalari
@@ -172,7 +172,7 @@ o'zgartirmadi).
 
 ## 12. Testlar
 
-`IntellectCRM.Tests/LeadEntryFormTests.cs` — 21 test: bo'sh sozlamada standart xatti-harakat,
+`WunderkindLC.Tests/LeadEntryFormTests.cs` — 21 test: bo'sh sozlamada standart xatti-harakat,
 majburiy maydon rad etishi, `hidden`+`required` normalizatsiyasi, F.I.SH qulfi, tuman→maktab
 kaskadi, majburiy qo'shimcha savol, javobning savol MATNI bilan saqlanishi, begona variantning
 rad etilishi, bitta/ko'p tanlov, variantsiz `select` ning matnga tushishi, to'liq almashtirish,

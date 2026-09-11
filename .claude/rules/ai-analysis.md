@@ -1,20 +1,20 @@
 ---
 description: AI tahlil (Gemini) — markaz kunlik tahlili, o'quvchi, O'QITUVCHI, GURUH, VORONKA (lid formalari · daraja testlari) va BOG'LANISH KERAK (follow-up navbati) tahlili — oqim, ketish sabablari, davomat, jurnal intizomi, imtihon, to'lov, kanallar, sotuv konversiyasi va qo'ng'iroq javoblari.
 paths:
-  - "IntellectCRM.Application/Services/*Ai*.cs"
-  - "IntellectCRM.Application/Services/GeminiService.cs"
-  - "IntellectCRM.Application/Services/TeacherSnapshotBuilder.cs"
-  - "IntellectCRM.Application/Services/GroupSnapshotBuilder.cs"
-  - "IntellectCRM.Application/Services/StudentProfileBuilder.cs"
-  - "IntellectCRM.Server/Controllers/AiAnalysisController.cs"
-  - "IntellectCRM.Client/src/pages/admin/students/AiAnalysis*.tsx"
-  - "IntellectCRM.Client/src/pages/admin/teachers/TeacherAiPanel.tsx"
-  - "IntellectCRM.Client/src/pages/admin/classes/GroupAiPanel.tsx"
-  - "IntellectCRM.Client/src/components/ai/**"
-  - "IntellectCRM.Client/src/lib/ai.ts"
-  - "IntellectCRM.Client/src/components/dashboard/CenterAiAnalysisCard.tsx"
-  - "IntellectCRM.Client/src/api/services/aiAnalysis.ts"
-  - "IntellectCRM.Client/src/api/services/funnelAi.ts"
+  - "WunderkindLC.Application/Services/*Ai*.cs"
+  - "WunderkindLC.Application/Services/GeminiService.cs"
+  - "WunderkindLC.Application/Services/TeacherSnapshotBuilder.cs"
+  - "WunderkindLC.Application/Services/GroupSnapshotBuilder.cs"
+  - "WunderkindLC.Application/Services/StudentProfileBuilder.cs"
+  - "WunderkindLC.Server/Controllers/AiAnalysisController.cs"
+  - "WunderkindLC.Client/src/pages/admin/students/AiAnalysis*.tsx"
+  - "WunderkindLC.Client/src/pages/admin/teachers/TeacherAiPanel.tsx"
+  - "WunderkindLC.Client/src/pages/admin/classes/GroupAiPanel.tsx"
+  - "WunderkindLC.Client/src/components/ai/**"
+  - "WunderkindLC.Client/src/lib/ai.ts"
+  - "WunderkindLC.Client/src/components/dashboard/CenterAiAnalysisCard.tsx"
+  - "WunderkindLC.Client/src/api/services/aiAnalysis.ts"
+  - "WunderkindLC.Client/src/api/services/funnelAi.ts"
 ---
 
 # AI tahlil qoidalari (Gemini)
@@ -114,7 +114,7 @@ paths:
     nima muhimligini aytadi. Ichida: ScoreRing + radar/baholar, trend chipi, narrativ bloklari,
     kuchli/zaif/xavflar/tavsiyalar, **eng samarali kanallar** (to'lov bo'yicha; to'lov bo'lmasa
     hajm bo'yicha), tahlillar **TARIXI** (qator bosilsa o'shanisi ochiladi) va PDF chop etish.
-  - **Testlar:** `IntellectCRM.Tests/FunnelAiTests.cs` (9 ta) — bugungi yozuvda kalitsiz ham
+  - **Testlar:** `WunderkindLC.Tests/FunnelAiTests.cs` (9 ta) — bugungi yozuvda kalitsiz ham
     `AlreadyToday`, turlarning ajratilishi, noto'g'ri `kind`, kalitsizlikda tushunarli xato va
     yozuvning SAQLANMASLIGI, takrorsiz lid, ikki formadagi bir odam, `Views=0` da foiz 0, testda
     `Views` = yuborilgan havolalar, kanallar chegarasi, tarix tartibi.

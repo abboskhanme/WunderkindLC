@@ -1,6 +1,6 @@
 #!/usr/bin/env sh
 # ============================================================================
-#  IntellectCRM — lokal rivojlanish (hot reload) uchun qisqartma.
+#  WunderkindLC — lokal rivojlanish (hot reload) uchun qisqartma.
 #
 #  `docker compose -f docker-compose.yml -f docker-compose.dev.yml ...` ni har safar
 #  yozib o'tirmaslik uchun. Barcha argumentlar to'g'ridan-to'g'ri compose'ga ketadi.
@@ -22,6 +22,12 @@ cd "$(dirname "$0")"
 if [ ! -f .env ]; then
   echo "XATO: .env fayli yo'q. Namunadan nusxa oling:  cp .env.example .env" >&2
   exit 1
+fi
+
+# Lokal override (portlar, nginx o'chirish) — bor bo'lsa qo'shiladi. Fayl .gitignore'da,
+# ya'ni serverga tushmaydi va boshqa mashinada bo'lmasa hech narsa o'zgarmaydi.
+if [ -f docker-compose.override.yml ]; then
+  exec docker compose -f docker-compose.yml -f docker-compose.dev.yml -f docker-compose.override.yml "$@"
 fi
 
 exec docker compose -f docker-compose.yml -f docker-compose.dev.yml "$@"

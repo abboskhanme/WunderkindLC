@@ -62,7 +62,7 @@ InstagramWorkerService (BackgroundService)  → InstagramPipeline.ProcessAsync
 
 ## 3. Fayllar qayerda
 
-### Backend — `IntellectCRM.Application/Services/`
+### Backend — `WunderkindLC.Application/Services/`
 
 | Fayl | Vazifasi |
 |---|---|
@@ -75,7 +75,7 @@ InstagramWorkerService (BackgroundService)  → InstagramPipeline.ProcessAsync
 | `InstagramLeadBridge.cs` | Suhbatdan **Lead** yaratish/yangilash (first-touch qoidasi) |
 | `InstagramWorkerService.cs` | `BackgroundService`: navbat · token yangilash · eski hodisalarni tozalash |
 
-### Backend — controllerlar (`IntellectCRM.Server/Controllers/`)
+### Backend — controllerlar (`WunderkindLC.Server/Controllers/`)
 
 | Fayl | Yo'l | Kirish |
 |---|---|---|
@@ -84,12 +84,12 @@ InstagramWorkerService (BackgroundService)  → InstagramPipeline.ProcessAsync
 
 ### Domen va baza
 
-`IntellectCRM.Domain/Entities.cs` → `// ═══ MARKETING — INSTAGRAM AI AGENTI ═══` bo'limi:
+`WunderkindLC.Domain/Entities.cs` → `// ═══ MARKETING — INSTAGRAM AI AGENTI ═══` bo'limi:
 `IgAccount` · `IgWebhookEvent` · `IgConversation` · `IgMessage` · `IgAutoRule` ·
 `IgKnowledge` · `IgOAuthState`, hamda `CenterMeta` ga qo'shilgan `Instagram*` sozlamalari.
 Migratsiya: **`AddInstagramAgent`**.
 
-### Frontend — `IntellectCRM.Client/src/pages/admin/marketing/`
+### Frontend — `WunderkindLC.Client/src/pages/admin/marketing/`
 
 | Sahifa | Yo'l |
 |---|---|

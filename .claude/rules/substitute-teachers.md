@@ -1,11 +1,11 @@
 ---
 description: O'rinbosar o'qituvchilar — vaqtincha tayinlov, nol yig'indili pul modeli, o'rinbosarning guruhga kirish huquqi (sana bo'yicha) va audit.
 paths:
-  - "IntellectCRM.Application/Services/SubstituteTeacherService.cs"
-  - "IntellectCRM.Application/Services/SalaryLedger.cs"
-  - "IntellectCRM.Application/Services/SalaryJournalStats.cs"
-  - "IntellectCRM.Server/Controllers/SubstituteTeachersController.cs"
-  - "IntellectCRM.Server/Controllers/TeacherPortalController.cs"
+  - "WunderkindLC.Application/Services/SubstituteTeacherService.cs"
+  - "WunderkindLC.Application/Services/SalaryLedger.cs"
+  - "WunderkindLC.Application/Services/SalaryJournalStats.cs"
+  - "WunderkindLC.Server/Controllers/SubstituteTeachersController.cs"
+  - "WunderkindLC.Server/Controllers/TeacherPortalController.cs"
 ---
 
 # O'rinbosar o'qituvchilar qoidalari

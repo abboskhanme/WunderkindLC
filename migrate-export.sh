@@ -2,9 +2,9 @@
 # ============================================================================
 #  ESKI SERVERDA ishga tushiring — bazani va BARCHA fayllarni bitta papkaga yig'adi.
 #
-#      cd ~/IntellectCRM && bash migrate-export.sh
+#      cd ~/WunderkindLC && bash migrate-export.sh
 #      # kameralar yozuvi ham kerak bo'lsa (juda katta bo'lishi mumkin):
-#      cd ~/IntellectCRM && WITH_CAMERA=1 bash migrate-export.sh
+#      cd ~/WunderkindLC && WITH_CAMERA=1 bash migrate-export.sh
 #
 #  Natija: ./migration-YYYYMMDD_HHMM/ papkasi (uni scp bilan yangi serverga ko'chirasiz).
 #
@@ -22,10 +22,10 @@ echo "==> Natija papkasi: $OUT"
 vol() { # vol <container> <mount-destination>
   docker inspect "$1" -f '{{range .Mounts}}{{if eq .Destination "'"$2"'"}}{{.Name}}{{end}}{{end}}' 2>/dev/null
 }
-V_UPLOADS=$(vol intellectcrm-app /app/uploads)
-V_KEYS=$(vol intellectcrm-app /app/keys)
-V_CTI=$(vol intellectcrm-app /app/recordings)
-V_CAM=$(vol intellectcrm-mediamtx /recordings)
+V_UPLOADS=$(vol wunderkindlc-app /app/uploads)
+V_KEYS=$(vol wunderkindlc-app /app/keys)
+V_CTI=$(vol wunderkindlc-app /app/recordings)
+V_CAM=$(vol wunderkindlc-mediamtx /recordings)
 
 [ -n "$V_UPLOADS" ] || { echo "XATO: uploads volume topilmadi (app konteyneri ishlayaptimi?)"; exit 1; }
 echo "    uploads=$V_UPLOADS  keys=$V_KEYS  cti=$V_CTI  cam=${V_CAM:-YOQ}"
@@ -36,10 +36,10 @@ docker compose stop app cloudflared mediamtx || true
 
 # --- 2) Baza dump (custom format — tiklashda tezroq va ishonchli) ---
 echo "==> 2/5 PostgreSQL dump..."
-PGUSER_V=$(docker inspect intellectcrm-postgres -f '{{range .Config.Env}}{{println .}}{{end}}' | sed -n 's/^POSTGRES_USER=//p')
-PGDB_V=$(docker inspect intellectcrm-postgres -f '{{range .Config.Env}}{{println .}}{{end}}' | sed -n 's/^POSTGRES_DB=//p')
-PGUSER_V=${PGUSER_V:-intellectcrm}; PGDB_V=${PGDB_V:-intellectcrm}
-docker exec intellectcrm-postgres pg_dump -U "$PGUSER_V" -d "$PGDB_V" -Fc > "$OUT/db.dump"
+PGUSER_V=$(docker inspect wunderkindlc-postgres -f '{{range .Config.Env}}{{println .}}{{end}}' | sed -n 's/^POSTGRES_USER=//p')
+PGDB_V=$(docker inspect wunderkindlc-postgres -f '{{range .Config.Env}}{{println .}}{{end}}' | sed -n 's/^POSTGRES_DB=//p')
+PGUSER_V=${PGUSER_V:-wunderkindlc}; PGDB_V=${PGDB_V:-wunderkindlc}
+docker exec wunderkindlc-postgres pg_dump -U "$PGUSER_V" -d "$PGDB_V" -Fc > "$OUT/db.dump"
 echo "    baza: $(du -h "$OUT/db.dump" | cut -f1)  (user=$PGUSER_V db=$PGDB_V)"
 
 # --- 3) Fayl volume'lari (TO'LIQ, hech narsa istisno qilinmaydi) ---

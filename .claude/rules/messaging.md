@@ -1,22 +1,22 @@
 ---
 description: Xabar tizimi — yagona AVTO-XABAR (AutoMessageRule + 13 trigger), Local SMS provider, Telegram bot (majburiy obuna, guruhga lid yuborish), xabarlar frontendi.
 paths:
-  - "IntellectCRM.Application/Services/AutoMessage*.cs"
-  - "IntellectCRM.Application/Services/Message*.cs"
-  - "IntellectCRM.Application/Services/Telegram*.cs"
-  - "IntellectCRM.Application/Services/Eskiz*.cs"
-  - "IntellectCRM.Application/Services/Cti*.cs"
-  - "IntellectCRM.Application/Services/Fcm*.cs"
-  - "IntellectCRM.Application/Services/*Reminder*.cs"
-  - "IntellectCRM.Application/Services/BirthdaySmsService.cs"
-  - "IntellectCRM.Application/Services/LeadNotifier.cs"
-  - "IntellectCRM.Application/Services/NotificationStore.cs"
-  - "IntellectCRM.Server/Controllers/MessagesController.cs"
-  - "IntellectCRM.Server/Controllers/AutoMessagesController.cs"
-  - "IntellectCRM.Server/Controllers/NotificationsController.cs"
-  - "IntellectCRM.Server/Controllers/SmsCallbackController.cs"
-  - "IntellectCRM.Client/src/pages/admin/messages/**"
-  - "IntellectCRM.Client/src/components/messaging/**"
+  - "WunderkindLC.Application/Services/AutoMessage*.cs"
+  - "WunderkindLC.Application/Services/Message*.cs"
+  - "WunderkindLC.Application/Services/Telegram*.cs"
+  - "WunderkindLC.Application/Services/Eskiz*.cs"
+  - "WunderkindLC.Application/Services/Cti*.cs"
+  - "WunderkindLC.Application/Services/Fcm*.cs"
+  - "WunderkindLC.Application/Services/*Reminder*.cs"
+  - "WunderkindLC.Application/Services/BirthdaySmsService.cs"
+  - "WunderkindLC.Application/Services/LeadNotifier.cs"
+  - "WunderkindLC.Application/Services/NotificationStore.cs"
+  - "WunderkindLC.Server/Controllers/MessagesController.cs"
+  - "WunderkindLC.Server/Controllers/AutoMessagesController.cs"
+  - "WunderkindLC.Server/Controllers/NotificationsController.cs"
+  - "WunderkindLC.Server/Controllers/SmsCallbackController.cs"
+  - "WunderkindLC.Client/src/pages/admin/messages/**"
+  - "WunderkindLC.Client/src/components/messaging/**"
 ---
 
 # Xabar tizimi qoidalari
@@ -161,7 +161,7 @@ paths:
     tushgan) bazadagi `SmsLog` sonidan tiklanadi. Frontendda `watchSmsProgress` (har 2 s) — modal
     "Yuborilmoqda: 12/300" deb ko'rsatadi va oyna yopilsa ham yuborish davom etadi;
   • lid tarixi (`LeadEvent`) ham navbatda yoziladi — `Job.LeadNote` + `Target.LeadId`.
-  Testlar: `IntellectCRM.Tests/SmsQueueTests.cs`.
+  Testlar: `WunderkindLC.Tests/SmsQueueTests.cs`.
 
 - **To'lov eslatmasi:** mavjud `MessagesController` broadcast `OnlyDebtors=true` (Telegram +
   `{qarzdorlik}` tokenlari). Avtomatik (hisob yaratilganda) trigger — hali yo'q (kelajak).
@@ -189,7 +189,7 @@ Migratsiyalar: `AddLeadTelegramMessages` (jadval) + `AddLeadTelegramMessageFk` (
 Entity — `LeadTelegramMessage` (LeadId · ChatId · MessageId · TextHash · IsDead), unikal indeks
 **(LeadId, ChatId)**. Kod: `LeadNotifier.SyncCardAsync` / `MarkDeletedAsync` / `NotifyNewLeadAsync`,
 `TelegramService.EditMessageTextOutcomeAsync` + `ClassifyEditError`.
-Testlar: `IntellectCRM.Tests/LeadsTests.cs` (§5).
+Testlar: `WunderkindLC.Tests/LeadsTests.cs` (§5).
 
 Lid xabari — **KARTA**: u lidning **JORIY holatini** ko'rsatadi (bosqich, sinov darsi, takroriy
 murojaat, izohlar, «O'quvchi bo'ldi», oxirgi test natijasi) va lid har o'zgarganda o'sha xabar
@@ -564,7 +564,7 @@ ko'rinmagan agent — normal holat, uni o'tkazib yuborsak ISHLAYOTGAN sozlamani 
 ⚠️ `LastSeenAt == null` stale HISOBLANMAYDI — bu yangi o'rnatilgan agentning birinchi
 uyg'otilishi bo'lishi mumkin. Stale = *"ko'rgan edik, lekin ancha oldin"*.
 
-Testlar: `IntellectCRM.Tests/SmsGuardTests.cs`.
+Testlar: `WunderkindLC.Tests/SmsGuardTests.cs`.
 
 ## QARZDORLIK ESLATMASI — HAR FAN UCHUN ALOHIDA XABAR (2026-09-09)
 
@@ -591,4 +591,4 @@ xabar BITTA (`MembershipLifecycle.PrimaryMembership`).
 chaqiruvda yangi `SmsBatch` yozadi) — bir raqamga ketma-ket ikki SMS yutilmaydi. Matnlar ham fan
 nomi bilan har xil. Log qatori qarzdor sonini va XABAR sonini ALOHIDA yozadi.
 
-Testlar: `IntellectCRM.Tests/AutoMessageTests.cs` (§7 «Qarzdorlik eslatmasi»).
+Testlar: `WunderkindLC.Tests/AutoMessageTests.cs` (§7 «Qarzdorlik eslatmasi»).

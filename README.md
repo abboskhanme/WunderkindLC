@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🎓 IntellectCRM
+# 🎓 WunderkindLC
 
 ### Bitta o'quv markazi uchun zamonaviy CRM platformasi
 
@@ -18,7 +18,7 @@ Lidlar (CRM) · O'quvchilar · Guruhlar · Moliya · Jurnal · O'quv dasturi · 
 
 ## ✨ Umumiy ma'lumot
 
-**IntellectCRM** — o'quv markazlari uchun mo'ljallangan, lidlardan tortib to'lovlargacha bo'lgan
+**WunderkindLC** — o'quv markazlari uchun mo'ljallangan, lidlardan tortib to'lovlargacha bo'lgan
 butun jarayonni boshqaradigan CRM tizimi. Bitta backend uch xil foydalanuvchiga xizmat qiladi:
 
 | Portal | Foydalanuvchi | Dizayn | Holati |
@@ -26,7 +26,7 @@ butun jarayonni boshqaradigan CRM tizimi. Bitta backend uch xil foydalanuvchiga 
 | 🟣 **Admin panel** | Markaz ma'muriyati | Violet · Desktop | To'liq |
 | 🟢 **O'qituvchi ilovasi** | O'qituvchilar | Teal · Mobil (WebView) | To'liq |
 | 🔵 **O'quvchi ilovasi** | O'quvchi / ota-ona | Blue · Mobil (WebView) | To'liq |
-| 💼 **Intellect Career** | Ishga kirmoqchi nomzodlar | Telegram Mini App (`/vakansiya`) | To'liq |
+| 💼 **Wunderkind Career** | Ishga kirmoqchi nomzodlar | Telegram Mini App (`/vakansiya`) | To'liq |
 
 > Bitta Flutter WebView ilovadan o'qituvchi ham, o'quvchi ham kira oladi — rolga qarab tegishli portal ochiladi.
 
@@ -54,12 +54,12 @@ butun jarayonni boshqaradigan CRM tizimi. Bitta backend uch xil foydalanuvchiga 
 ## 🏛 Solution tuzilishi
 
 ```
-IntellectCRM.slnx
-├── IntellectCRM.Domain          # Entitylar, Rollar (sof biznes modeli)
-├── IntellectCRM.Application      # Servislar, DTO'lar, Abstraksiyalar, SignalR Hub'lar
-├── IntellectCRM.Infrastructure   # AppDbContext, EF migratsiyalar
-├── IntellectCRM.Server           # Controllers, Program.cs, appsettings
-└── IntellectCRM.Client           # React SPA (admin + teacher + student portallari)
+WunderkindLC.slnx
+├── WunderkindLC.Domain          # Entitylar, Rollar (sof biznes modeli)
+├── WunderkindLC.Application      # Servislar, DTO'lar, Abstraksiyalar, SignalR Hub'lar
+├── WunderkindLC.Infrastructure   # AppDbContext, EF migratsiyalar
+├── WunderkindLC.Server           # Controllers, Program.cs, appsettings
+└── WunderkindLC.Client           # React SPA (admin + teacher + student portallari)
 ```
 
 ---
@@ -82,7 +82,7 @@ IntellectCRM.slnx
 - **Shartnomalar** — Word/matnli andoza (`@`-o'rinbosarlar) → har bir oluvchi uchun .docx hosil bo'ladi
   va saqlanadi; superadmin uni yakunlab **tayyor PDF nusxasini yuklaydi** — shundan keyin shartnoma
   oluvchining (o'qituvchi/o'quvchi) ilovasidagi "Shartnoma" bo'limida ko'rinadi va yuklab olinadi
-- **Vakansiyalar (Intellect Career)** — bo'sh ish o'rinlari e'loni + nomzod arizalari (bosqichma-bosqich);
+- **Vakansiyalar (Wunderkind Career)** — bo'sh ish o'rinlari e'loni + nomzod arizalari (bosqichma-bosqich);
   nomzod tomoni **alohida Telegram bot** va uning Mini App'ida (`crm.<domen>/vakansiya`)
 - **AI check · Kameralar · Arxiv**
 
@@ -163,19 +163,19 @@ cp .env.example .env      # (bir marta) kalitlarni to'ldiring
 > **alohida test boti** oching va `.env` ga qo'shing: `DEV_TELEGRAM_BOT_TOKEN` / `DEV_CAREER_BOT_TOKEN`.
 
 Dev muhiti prod konfiguratsiyasidan **meros** oladi (kalitlar ikki joyda takrorlanmaydi) va
-alohida compose loyihasida (`intellectcrm-dev`) ishlaydi — prod konteynerlarini bosib ketmaydi.
+alohida compose loyihasida (`wunderkindlc-dev`) ishlaydi — prod konteynerlarini bosib ketmaydi.
 
 ### Lokal (Docker'siz)
 ```bash
 # PostgreSQL (Docker bilan eng oson)
-docker run -d -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=intellectcrm \
+docker run -d -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=wunderkindlc \
   -p 5432:5432 postgres:16-alpine
 
-# Backend (API + avtomatik migratsiya, baza: intellectcrm)
-dotnet run --project IntellectCRM.Server
+# Backend (API + avtomatik migratsiya, baza: wunderkindlc)
+dotnet run --project WunderkindLC.Server
 
 # Frontend (ixtiyoriy dev server)
-cd IntellectCRM.Client
+cd WunderkindLC.Client
 npm install
 npm run dev
 ```
@@ -183,10 +183,10 @@ npm run dev
 ### Build
 ```bash
 # Backend (SPA'siz — tez)
-dotnet build IntellectCRM.Server/IntellectCRM.Server.csproj -p:BuildSpa=false
+dotnet build WunderkindLC.Server/WunderkindLC.Server.csproj -p:BuildSpa=false
 
 # Frontend
-cd IntellectCRM.Client && npx tsc -b && npm run build
+cd WunderkindLC.Client && npx tsc -b && npm run build
 ```
 
 ### Docker (production)
@@ -204,9 +204,9 @@ To'liq ro'yxat — [`.env.example`](.env.example), qadamlar — [`DEPLOY.md`](DE
 Sxema o'zgarganda **inkremental** migratsiya qo'shiladi (baza buzilmaydi, ma'lumot saqlanadi):
 
 ```bash
-dotnet build IntellectCRM.Server/IntellectCRM.Server.csproj -p:BuildSpa=false
-dotnet ef migrations add <Nom> --project IntellectCRM.Infrastructure \
-  --startup-project IntellectCRM.Server --no-build
+dotnet build WunderkindLC.Server/WunderkindLC.Server.csproj -p:BuildSpa=false
+dotnet ef migrations add <Nom> --project WunderkindLC.Infrastructure \
+  --startup-project WunderkindLC.Server --no-build
 ```
 App ishga tushganda `Migrate()` mavjud bazaga `ALTER` qo'llaydi.
 
@@ -252,6 +252,6 @@ App ishga tushganda `Migrate()` mavjud bazaga `ALTER` qo'llaydi.
 
 <div align="center">
 
-**IntellectCRM** · ASP.NET Core 8 + React · Private repository
+**WunderkindLC** · ASP.NET Core 8 + React · Private repository
 
 </div>

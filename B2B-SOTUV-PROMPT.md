@@ -1,13 +1,13 @@
 # B2B SOTUV MODULI + AI SALES COPILOT — Claude Code uchun to'liq topshiriq
 
 > Bu fayl — **Claude Code'ga beriladigan prompt**. Uni to'liq nusxalab yuboring.
-> Loyiha: `IntellectCRM` (ASP.NET Core 8 + EF Core + PostgreSQL 16 · React 19 + TS + Vite + Tailwind).
+> Loyiha: `WunderkindLC` (ASP.NET Core 8 + EF Core + PostgreSQL 16 · React 19 + TS + Vite + Tailwind).
 
 ---
 
 ## 0. VAZIFA (bir jumlada)
 
-IntellectCRM ichida **yangi mustaqil bo'lim** yarat: **«B2B sotuv»** — xususiy maktablar, litseylar
+WunderkindLC ichida **yangi mustaqil bo'lim** yarat: **«B2B sotuv»** — xususiy maktablar, litseylar
 va korporativ mijozlarga IELTS / Multilevel / Milliy sertifikat xizmatlarini (autsorsing,
 diagnostika, korporativ paketlar) sotish jarayonini lidni saralashdan shartnoma imzolashgacha
 boshqaradigan kanban + har bir bitim uchun **AI Sales Copilot** (Gemini) — menejerga bosqich,
@@ -32,19 +32,19 @@ Bu loyihada har modulning yozilmagan qoidalari `.claude/rules/` da. Quyidagilarn
 
 Kod namunalari (uslub va tuzilmani AYNAN shulardan ol, nusxa ko'chirma — qayta ishlat):
 
-- `IntellectCRM.Application/Services/ContactAiAnalysisService.cs` — AI servis skeleti
+- `WunderkindLC.Application/Services/ContactAiAnalysisService.cs` — AI servis skeleti
   (kesh tekshiruvi → bo'sh ma'lumot tekshiruvi → kalit tekshiruvi → prompt → `ParseNarrative` →
   `Sanitize` → saqlash);
-- `IntellectCRM.Application/Services/ContactService.cs` — **sof statik katalog** (bosqich/natija
+- `WunderkindLC.Application/Services/ContactService.cs` — **sof statik katalog** (bosqich/natija
   kalitlari yagona manbada);
-- `IntellectCRM.Application/Services/ContactReport.cs` — deterministik hisob-kitob;
-- `IntellectCRM.Application/Services/GeminiService.cs` — `GenerateAsync(..., jsonMode: true)`;
-- `IntellectCRM.Server/Controllers/ContactsController.cs` — `ai-analyses` / `ai-analysis` endpointlari;
-- `IntellectCRM.Server/Controllers/CallsController.cs` (`{id}/transcribe`, `{id}/analyze`) —
+- `WunderkindLC.Application/Services/ContactReport.cs` — deterministik hisob-kitob;
+- `WunderkindLC.Application/Services/GeminiService.cs` — `GenerateAsync(..., jsonMode: true)`;
+- `WunderkindLC.Server/Controllers/ContactsController.cs` — `ai-analyses` / `ai-analysis` endpointlari;
+- `WunderkindLC.Server/Controllers/CallsController.cs` (`{id}/transcribe`, `{id}/analyze`) —
   transkript va suhbat tahlili allaqachon bor, **qayta yozilmaydi**;
-- `IntellectCRM.Client/src/components/ai/ContactAiPanel.tsx` + `components/ai/AiParts.tsx` +
+- `WunderkindLC.Client/src/components/ai/ContactAiPanel.tsx` + `components/ai/AiParts.tsx` +
   `lib/ai.ts` — AI panelining UI qismlari;
-- `IntellectCRM.Client/src/pages/admin/leads/` (`LeadsPage`, `LeadColumn`, `LeadCard`,
+- `WunderkindLC.Client/src/pages/admin/leads/` (`LeadsPage`, `LeadColumn`, `LeadCard`,
   `LeadDetailModal`) — kanban naqshi.
 
 ---
@@ -73,7 +73,7 @@ pul keltirdi» savoliga javob bor, lekin CRM raqamlari aralashmaydi.
 
 ---
 
-## 3. DOMAIN — entitylar (`IntellectCRM.Domain/Entities.cs`, oxiriga yangi bo'lim izohi bilan)
+## 3. DOMAIN — entitylar (`WunderkindLC.Domain/Entities.cs`, oxiriga yangi bo'lim izohi bilan)
 
 Loyiha konvensiyasi: `Id` — `Guid.NewGuid().ToString()`, sanalar **satr** (`"yyyy-MM-dd"` yoki
 ISO `"yyyy-MM-ddTHH:mm:ss"`, `AppClock` orqali, Toshkent vaqti), `decimal` — pul.
@@ -150,7 +150,7 @@ uchun menejerlar kesimi faqat 2026-08 dan keyingi tarixni ko'rsatadi. Bu xato ta
 > aniqlashtirishni tavsiya qil» ko'rsatmasi qo'shiladi.
 
 ### Migratsiya
-`dotnet ef migrations add AddB2BSales -p IntellectCRM.Infrastructure -s IntellectCRM.Server`
+`dotnet ef migrations add AddB2BSales -p WunderkindLC.Infrastructure -s WunderkindLC.Server`
 Indekslar: `B2BDeal(Stage)`, `B2BDeal(Status, StageChangedAt)`, `B2BEvent(DealId, Date)`,
 `B2BContact(PhoneKey)`, `B2BAiAnalysis(DealId, Date)`, `B2BDealStudent(DealId, StudentId)` unikal.
 `IAppDbContext` ga ham, `AppDbContext` ga ham `DbSet`lar qo'shiladi (Application qatlami
@@ -160,7 +160,7 @@ Indekslar: `B2BDeal(Stage)`, `B2BDeal(Status, StageChangedAt)`, `B2BEvent(DealId
 
 ## 4. BOSQICHLAR VA KATALOGLAR — `B2BSalesService` (sof statik, YAGONA manba)
 
-`IntellectCRM.Application/Services/B2BSalesService.cs` — `ContactService.cs` naqshida:
+`WunderkindLC.Application/Services/B2BSalesService.cs` — `ContactService.cs` naqshida:
 sof funksiyalar, bazaga tegmaydi, to'liq testlangan.
 
 ### 4.1 Bosqichlar (kalitlar **O'ZGARMAS** — AI kontrakti ham shularni qaytaradi)
@@ -457,7 +457,7 @@ o'zi tekshiradi, qo'lda hech narsa qo'shish shart emas.
 
 ---
 
-## 10. FRONTEND (`IntellectCRM.Client/src`)
+## 10. FRONTEND (`WunderkindLC.Client/src`)
 
 ### 10.1 Fayllar
 ```
@@ -505,7 +505,7 @@ config/b2bLabels.ts       // faqat ZAXIRA yorliqlar
 
 ---
 
-## 11. TESTLAR (`IntellectCRM.Tests`)
+## 11. TESTLAR (`WunderkindLC.Tests`)
 
 ⚠️ Testlarda `AppSecrets.Init` chaqirilmaydi → Gemini kaliti bo'sh → **tashqi tarmoq so'rovi
 hech qanday holatda ketmaydi** (`ContactReportTests` dagi izoh bilan bir xil).
@@ -540,11 +540,11 @@ hech qanday holatda ketmaydi** (`ContactReportTests` dagi izoh bilan bir xil).
 
 Ishga tushirish:
 ```bash
-dotnet test IntellectCRM.Tests/IntellectCRM.Tests.csproj
+dotnet test WunderkindLC.Tests/WunderkindLC.Tests.csproj
 ```
 Server build (SPA'siz — bu mashinada `npm` yo'q):
 ```bash
-dotnet build IntellectCRM.Server/IntellectCRM.Server.csproj -p:BuildSpa=false
+dotnet build WunderkindLC.Server/WunderkindLC.Server.csproj -p:BuildSpa=false
 ```
 
 ---

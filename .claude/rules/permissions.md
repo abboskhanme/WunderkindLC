@@ -1,12 +1,12 @@
 ---
 description: Xodim (staff) ruxsatlari — BO'LIM va SAHIFA (page) kalitlari, meros qoidasi, matritsa UI va yangi sahifa qo'shish tartibi.
 paths:
-  - "IntellectCRM.Application/Services/PermissionRules.cs"
-  - "IntellectCRM.Server/Controllers/AdminPermAttribute.cs"
-  - "IntellectCRM.Client/src/lib/permissions.ts"
-  - "IntellectCRM.Client/src/config/constants.ts"
-  - "IntellectCRM.Client/src/config/navigation.ts"
-  - "IntellectCRM.Client/src/components/staff/PermMatrix.tsx"
+  - "WunderkindLC.Application/Services/PermissionRules.cs"
+  - "WunderkindLC.Server/Controllers/AdminPermAttribute.cs"
+  - "WunderkindLC.Client/src/lib/permissions.ts"
+  - "WunderkindLC.Client/src/config/constants.ts"
+  - "WunderkindLC.Client/src/config/navigation.ts"
+  - "WunderkindLC.Client/src/components/staff/PermMatrix.tsx"
 ---
 
 # Ruxsatlar (rollar) qoidalari

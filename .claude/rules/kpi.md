@@ -1,10 +1,10 @@
 ---
 description: Xodimlar KPI tizimi — kalkulyator, kunlik cheklist, tiketlar, oyni yopish va qoidalarni versiyalash.
 paths:
-  - "IntellectCRM.Application/Services/Kpi/*.cs"
-  - "IntellectCRM.Server/Controllers/KpiController.cs"
-  - "IntellectCRM.Client/src/pages/admin/kpi/*"
-  - "IntellectCRM.Client/src/api/services/kpi.ts"
+  - "WunderkindLC.Application/Services/Kpi/*.cs"
+  - "WunderkindLC.Server/Controllers/KpiController.cs"
+  - "WunderkindLC.Client/src/pages/admin/kpi/*"
+  - "WunderkindLC.Client/src/api/services/kpi.ts"
 ---
 
 # KPI (xodimlar samaradorligi) qoidalari

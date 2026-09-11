@@ -1,8 +1,8 @@
-# INTELLECTCRM — MARKETING BO'LIMINI KENGAYTIRISH PROMPTI
+# WUNDERKINDLC — MARKETING BO'LIMINI KENGAYTIRISH PROMPTI
 
 > **Bu hujjat nima?**
 > AI koding agentiga (Claude Code / Cursor) beriladigan **master prompt**.
-> IntellectCRM'da **allaqachon mavjud** Marketing moduli (Instagram AI agenti + Meta Lead Ads)
+> WunderkindLC'da **allaqachon mavjud** Marketing moduli (Instagram AI agenti + Meta Lead Ads)
 > ustiga **yetishmayotgan qismlarni** qurish uchun.
 >
 > **⚠️ MUHIM:** bu noldan qurish emas. Mavjud kod, konventsiyalar va qoidalar **buzilmasligi shart**.
@@ -15,7 +15,7 @@
 
 ## 0. AGENTGA TOPSHIRIQ
 
-Sen — IntellectCRM loyihasida ishlaydigan **.NET 8 + React 19** dasturchisisan.
+Sen — WunderkindLC loyihasida ishlaydigan **.NET 8 + React 19** dasturchisisan.
 
 **Vazifang:** `/admin/marketing` bo'limini kengaytirish. Hozir u faqat Instagram izoh/DM
 AI agenti va Lead Ads lidlarini qamrab oladi. Qo'shilishi kerak: **reklama statistikasi
@@ -50,7 +50,7 @@ AI agenti va Lead Ads lidlarini qamrab oladi. Qo'shilishi kerak: **reklama stati
 | Endpoint | `/api/public/instagram/webhook` | `/api/public/instagram/leadgen` |
 | Klient | `InstagramApi` | `MetaAdsApi` |
 
-### 1.2 Mavjud entity'lar (`IntellectCRM.Domain/Entities.cs`)
+### 1.2 Mavjud entity'lar (`WunderkindLC.Domain/Entities.cs`)
 
 ```
 // ═══ MARKETING — INSTAGRAM AI AGENTI ═══  (3720+)
@@ -59,7 +59,7 @@ IgAccount · IgWebhookEvent · IgConversation · IgMessage · IgAutoRule · IgKn
 IgAdPage · IgAdLead
 ```
 
-### 1.3 Mavjud servislar (`IntellectCRM.Application/Services/`)
+### 1.3 Mavjud servislar (`WunderkindLC.Application/Services/`)
 
 ```
 InstagramContract.cs      (361)  IgConst + sof funksiyalar
@@ -76,7 +76,7 @@ MetaLeadgenService.cs     (173)
 MetaLeadBridge.cs         (123)
 ```
 
-### 1.4 Mavjud frontend (`IntellectCRM.Client/src/pages/admin/marketing/`)
+### 1.4 Mavjud frontend (`WunderkindLC.Client/src/pages/admin/marketing/`)
 
 ```
 InstagramDashboard.tsx  /admin/marketing                      marketing.dashboard
@@ -181,8 +181,8 @@ public class InstagramController : ControllerBase
 }
 ```
 Yangi sahifa kaliti qo'shilsa **uch joyda**:
-1. `IntellectCRM.Client/src/config/constants.ts` → `adminPermissions` → `marketing.pages`
-2. `IntellectCRM.Client/src/config/navigation.ts` → Marketing guruhi
+1. `WunderkindLC.Client/src/config/constants.ts` → `adminPermissions` → `marketing.pages`
+2. `WunderkindLC.Client/src/config/navigation.ts` → Marketing guruhi
 3. Route: `src/App.tsx` → `<RequirePerm perm="...">`
 `PermissionCatalogTests` buni tekshiradi — mos kelmasa test yiqiladi.
 
@@ -234,7 +234,7 @@ Kanal tasnifi — `LeadOrigins` (`ads` → `instagram` tartibida tekshiriladi).
 
 ### 2.10 Testlar
 
-`IntellectCRM.Tests/<Subject>Tests.cs`, xUnit, `TestDb.cs` yordamchisi (SQLite/InMemory).
+`WunderkindLC.Tests/<Subject>Tests.cs`, xUnit, `TestDb.cs` yordamchisi (SQLite/InMemory).
 Sof funksiyalar test qilinadi, HTTP/DB emas.
 
 ---
@@ -304,7 +304,7 @@ Hozir `v23.0`. Joriy — **v26.0** (2026-07-29). v23.0 hali ishlaydi, lekin:
 tushdi, ulardan P tasi o'quvchi bo'ldi, R so'm daromad keltirdi."
 
 Bu — CRM'ning **eng katta ustunligi**: Ads Manager lid *sonini* biladi, lekin
-**qaysi lid pul to'laganini bilmaydi**. IntellectCRM biladi.
+**qaysi lid pul to'laganini bilmaydi**. WunderkindLC biladi.
 
 ### 4.1 Entity'lar → `Entities.cs`, `REKLAMA LIDLARI` bloki ostiga
 
@@ -924,7 +924,7 @@ POST {FbGraphBase}/{DATASET_ID}/events?access_token={TOKEN}
       "lead_id": 1234567890123456,
       "ph": ["<sha256(998901234567)>"]
     },
-    "custom_data": { "lead_event_source": "IntellectCRM", "event_source": "crm" }
+    "custom_data": { "lead_event_source": "WunderkindLC", "event_source": "crm" }
   }] }
 ```
 
@@ -1128,17 +1128,17 @@ Loyiha uslubiga ko'ra har modul o'z hujjatiga ega:
 **Boshlash tartibi:**
 1. `.claude/rules/marketing-instagram.md` — **to'liq o'qi**.
 2. `instagram/TEXNIK.md` va `instagram/REKLAMA-LIDLARI.md` — o'qi.
-3. `IntellectCRM.Application/Services/MetaAdsApi.cs` va `MetaLeadgenService.cs` — **naqsh sifatida** o'qi
+3. `WunderkindLC.Application/Services/MetaAdsApi.cs` va `MetaLeadgenService.cs` — **naqsh sifatida** o'qi
    (yangi kod xuddi shu uslubda bo'ladi).
-4. `IntellectCRM.Server/Controllers/InstagramController.cs` — `ads/*` endpointlari qanday
+4. `WunderkindLC.Server/Controllers/InstagramController.cs` — `ads/*` endpointlari qanday
    yozilganini ko'r.
-5. `IntellectCRM.Client/src/pages/admin/marketing/InstagramAdLeads.tsx` — yangi sahifa
+5. `WunderkindLC.Client/src/pages/admin/marketing/InstagramAdLeads.tsx` — yangi sahifa
    shu naqshda bo'ladi.
 6. **B1 bosqichidan** boshla.
 
 **Har bosqich oxirida:**
 - `dotnet build && dotnet test` — o'tsin.
-- `cd IntellectCRM.Client && npm run build` — o'tsin.
-- Yangi migratsiya bo'lsa: `dotnet ef migrations add <Nom> -p IntellectCRM.Infrastructure -s IntellectCRM.Server`
+- `cd WunderkindLC.Client && npm run build` — o'tsin.
+- Yangi migratsiya bo'lsa: `dotnet ef migrations add <Nom> -p WunderkindLC.Infrastructure -s WunderkindLC.Server`
 - Qisqacha hisobot: nima qilindi · qanday qaror qabul qilindi · nima qoldi.
 - Meta API fakti bu hujjatdagi bilan mos kelmasa — **to'xta va ayt**, taxmin qilma.

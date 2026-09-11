@@ -397,7 +397,7 @@ Business Manager'dan **qo'lda** olinadi va CRM sozlamalariga kiritiladi. Sabab �
 ### A.1. Sistema foydalanuvchisini yaratish (bir marta)
 
 1. `business.facebook.com` → **Business settings → Users → System users** → **Add**;
-2. Nom bering (masalan `IntellectCRM`), rolni **Admin** qiling.
+2. Nom bering (masalan `WunderkindLC`), rolni **Admin** qiling.
 
 ⚠️ Bitta sistema foydalanuvchisi **uchala modul uchun** ham yetadi — har biriga alohida
 yaratish shart emas.

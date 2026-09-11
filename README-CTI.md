@@ -18,7 +18,7 @@ ko'radi, audioni eshitadi va **click-to-call** qiladi (server WebSocket orqali t
 
 ## Android ilovani ulash
 
-Ilovadagi `BaseUrl` ni serverga moslang: `https://crm.intellectschool.uz` — mobil API prefiksi
+Ilovadagi `BaseUrl` ni serverga moslang: `https://lc.wunderkindedu.uz` — mobil API prefiksi
 `/api/mobile` (login: `POST /api/mobile/auth/login` → `{ token, agentId, wsUrl }`;
 `wsUrl` = `wss://host/ws`, ulanish `?token=<JWT>` bilan).
 
@@ -53,5 +53,5 @@ ko'ra oladigan xodim Local Call'ni ham ko'radi.
 - **Tarix RAQAM bo'yicha guruhlangan:** `GET /api/cti/calls/grouped` — har raqam bitta qator
   (qo'ng'iroqlar soni + oxirgisi); raqam bosilganda `GET /api/cti/calls?number=` bilan o'sha
   raqamning barcha qo'ng'iroqlari ochiladi.
-- **Frontend:** `IntellectCRM.Client/src/pages/admin/calls/local/`; nav "Call Center" → bolalari
+- **Frontend:** `WunderkindLC.Client/src/pages/admin/calls/local/`; nav "Call Center" → bolalari
   ("Bulut (MoiZvonki)" + "Local Call").

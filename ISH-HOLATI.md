@@ -156,22 +156,22 @@ SELECT "RetentionMonthsRequired", "RetentionMaxGapMonths" FROM "CenterMeta";
 Bu mashinada **`dotnet` ham, `node` ham o'rnatilmagan** — hamma narsa Docker orqali:
 
 ```bash
-cd /Users/me/Documents/git/IntellectCRM
+cd /Users/me/Documents/git/WunderkindLC
 
 # Backend build (BuildSpa=false SHART — aks holda klient esproj build'i xato beradi)
 docker run --rm -v "$PWD":/src -w /src -e DOTNET_CLI_TELEMETRY_OPTOUT=1 -e HOME=/tmp \
   -e BuildSpa=false mcr.microsoft.com/dotnet/sdk:8.0 \
-  bash -c "dotnet build IntellectCRM.Server -v q --nologo"
+  bash -c "dotnet build WunderkindLC.Server -v q --nologo"
 
 # Migratsiya yaratish
 docker run --rm -v "$PWD":/src -w /src -e DOTNET_CLI_TELEMETRY_OPTOUT=1 -e HOME=/tmp \
   -e BuildSpa=false mcr.microsoft.com/dotnet/sdk:8.0 bash -c \
   "dotnet tool install --global dotnet-ef --version 8.* >/dev/null 2>&1; \
    export PATH=\$PATH:/tmp/.dotnet/tools; dotnet ef migrations add <Nom> \
-   --project IntellectCRM.Infrastructure --startup-project IntellectCRM.Server"
+   --project WunderkindLC.Infrastructure --startup-project WunderkindLC.Server"
 
 # Frontend (node_modules o'rnatilgan)
-docker run --rm -v "$PWD/IntellectCRM.Client":/app -w /app node:20-alpine \
+docker run --rm -v "$PWD/WunderkindLC.Client":/app -w /app node:20-alpine \
   sh -c "./node_modules/.bin/tsc -b --noEmit --force && ./node_modules/.bin/vite build"
 ```
 
@@ -185,7 +185,7 @@ docker run -d --name t-api -p 5090:5090 -v "$PWD":/src -w /src \
   -e Jwt__Key="test-jwt-key-32-belgidan-kam-bolmasin" \
   -e Seed__OwnerLogin="owner" -e Seed__OwnerPassword="Owner12345" \
   -e ASPNETCORE_URLS="http://0.0.0.0:5090" \
-  mcr.microsoft.com/dotnet/sdk:8.0 bash -c "dotnet run --project IntellectCRM.Server --no-launch-profile"
+  mcr.microsoft.com/dotnet/sdk:8.0 bash -c "dotnet run --project WunderkindLC.Server --no-launch-profile"
 ```
 Login: `POST /api/auth/login` `{"email":"owner","password":"Owner12345"}` → `token`.
 Migratsiyalar startupda avtomatik qo'llanadi. Oxirida: `docker rm -f t-api t-pg`.

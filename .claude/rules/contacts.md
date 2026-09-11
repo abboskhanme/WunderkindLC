@@ -472,7 +472,7 @@ qoladi — "kim qanday ishlayapti" tahlilning maqsadli qismi va bu ichki ma'lumo
   kalit esa sozlama muammosi.
 - Yaratish — `contacts:create` (POST), o'qish — bo'lim ruxsati (sinf darajasida
   `ReadRequiresPerm = true`). Auditga YOZILMAYDI (tahlil ma'lumotni o'zgartirmaydi).
-- Testlar: `IntellectCRM.Tests/ContactReportTests.cs`.
+- Testlar: `WunderkindLC.Tests/ContactReportTests.cs`.
 
 ## 7.6. O'QUVCHI PROFILIDA
 

@@ -1,17 +1,17 @@
 ---
 description: Moliya — a'zolik holati (trial/active/frozen), per-guruh hisob va balans, o'qituvchi maoshi va maoshning jurnalga bog'lanishi.
 paths:
-  - "IntellectCRM.Application/Services/Tuition*.cs"
-  - "IntellectCRM.Application/Services/Salary*.cs"
-  - "IntellectCRM.Application/Services/TeacherSalaryCalc.cs"
-  - "IntellectCRM.Application/Services/GroupBalanceService.cs"
-  - "IntellectCRM.Application/Services/StudentGroupLedger.cs"
-  - "IntellectCRM.Application/Services/StudentLedger.cs"
-  - "IntellectCRM.Application/Services/CourseFinanceReport.cs"
-  - "IntellectCRM.Application/Services/MembershipLifecycle.cs"
-  - "IntellectCRM.Server/Controllers/FinanceController.cs"
-  - "IntellectCRM.Server/Controllers/TeachersController.cs"
-  - "IntellectCRM.Client/src/pages/admin/finance/**"
+  - "WunderkindLC.Application/Services/Tuition*.cs"
+  - "WunderkindLC.Application/Services/Salary*.cs"
+  - "WunderkindLC.Application/Services/TeacherSalaryCalc.cs"
+  - "WunderkindLC.Application/Services/GroupBalanceService.cs"
+  - "WunderkindLC.Application/Services/StudentGroupLedger.cs"
+  - "WunderkindLC.Application/Services/StudentLedger.cs"
+  - "WunderkindLC.Application/Services/CourseFinanceReport.cs"
+  - "WunderkindLC.Application/Services/MembershipLifecycle.cs"
+  - "WunderkindLC.Server/Controllers/FinanceController.cs"
+  - "WunderkindLC.Server/Controllers/TeachersController.cs"
+  - "WunderkindLC.Client/src/pages/admin/finance/**"
 ---
 
 # Moliya / billing qoidalari

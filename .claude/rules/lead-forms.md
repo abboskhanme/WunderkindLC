@@ -1,14 +1,14 @@
 ---
 description: Lid formalari — har bir ijtimoiy tarmoq uchun alohida ommaviy forma, ariza → lid, kanal kesimidagi voronka statistikasi.
 paths:
-  - "IntellectCRM.Application/Services/LeadFormService.cs"
-  - "IntellectCRM.Application/Services/LeadOutcome.cs"
-  - "IntellectCRM.Application/Services/LeadIntake.cs"
-  - "IntellectCRM.Server/Controllers/LeadFormsController.cs"
-  - "IntellectCRM.Server/Controllers/PublicLeadFormController.cs"
-  - "IntellectCRM.Client/src/pages/admin/forms/**"
-  - "IntellectCRM.Client/src/pages/public/PublicLeadFormPage.tsx"
-  - "IntellectCRM.Client/src/api/services/leadForms.ts"
+  - "WunderkindLC.Application/Services/LeadFormService.cs"
+  - "WunderkindLC.Application/Services/LeadOutcome.cs"
+  - "WunderkindLC.Application/Services/LeadIntake.cs"
+  - "WunderkindLC.Server/Controllers/LeadFormsController.cs"
+  - "WunderkindLC.Server/Controllers/PublicLeadFormController.cs"
+  - "WunderkindLC.Client/src/pages/admin/forms/**"
+  - "WunderkindLC.Client/src/pages/public/PublicLeadFormPage.tsx"
+  - "WunderkindLC.Client/src/api/services/leadForms.ts"
 ---
 
 # Lid formalari qoidalari
@@ -438,18 +438,18 @@ tahrir, nusxa va o'chirish "O'zgarishlar tarixi"da ko'rinadi. Batafsil: `.claude
 
 ## 9. Testlar
 
-`IntellectCRM.Tests/LeadFormsTests.cs` — takroriy murojaat belgisi (`RepeatCount`), telefon
+`WunderkindLC.Tests/LeadFormsTests.cs` — takroriy murojaat belgisi (`RepeatCount`), telefon
 kalitining avtomatik yozilishi/yangilanishi va chala raqamda begona lidga biriktirilmasligi,
 manba formadan olinishi, dublikat lid ochilmasligi,
 first-touch manba, majburiy savol, begona variant, faol bo'lmagan forma, `?ref=` tozalanishi,
 takrorsiz-lid konversiyasi va **kurs qoidalari** (formaning o'z variantlaridan olinishi, ro'yxatda
 yo'q kursning rad etilishi, variantsiz savolning ko'rsatilmasligi, variantlar tozalanishi).
 
-`IntellectCRM.Tests/FunnelAiTests.cs` — **AI tahlil** (§6.7), 9 ta test: ikkala turning ajratilishi,
+`WunderkindLC.Tests/FunnelAiTests.cs` — **AI tahlil** (§6.7), 9 ta test: ikkala turning ajratilishi,
 kuniga bir marta cheklovi (kalitsiz ham), noto'g'ri `kind`, kalitsizlikda yozuv saqlanmasligi,
 takrorsiz lid maxraji va kanallar chegarasi.
 
-`IntellectCRM.Tests/LevelTestStatsTests.cs` — **test statistikasi voronkasi** (§6.6), 10 ta test:
+`WunderkindLC.Tests/LevelTestStatsTests.cs` — **test statistikasi voronkasi** (§6.6), 10 ta test:
 takrorsiz lid bo'yicha umumiy voronka, har testning O'Z voronkasi, topshiruvi yo'q testning
 ro'yxatda qolishi, bosqichlar takrorsiz lid bo'yicha sanalishi, o'chirilgan ustundagi lidning
 `ByStage` ga kirmasligi, qatorlarda bosqich va to'lovning to'g'ri chiqishi, kunlik oqimning DOIM

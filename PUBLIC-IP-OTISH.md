@@ -39,10 +39,10 @@ Nega Origin Cert (Let's Encrypt emas): firewall 80/443'ni faqat Cloudflare IP'la
 ACME (Let's Encrypt) tekshiruvi esa boshqa IP'lardan keladi — murakkablashadi. Origin Cert
 15 yilga beriladi, yangilash avtomatikasi kerak emas; Cloudflare unga to'liq ishonadi.
 
-1. Cloudflare dashboard → domen `intellectschool.uz` → **SSL/TLS → Origin Server →
+1. Cloudflare dashboard → domen `wunderkindedu.uz` → **SSL/TLS → Origin Server →
    Create Certificate**:
    - "Generate private key and CSR with Cloudflare" (RSA 2048) — default qoladi;
-   - Hostnames: `intellectschool.uz` va `*.intellectschool.uz` (ikkalasi — crm subdomeni
+   - Hostnames: `wunderkindedu.uz` va `*.wunderkindedu.uz` (ikkalasi — crm subdomeni
      wildcard'ga kiradi);
    - Validity: 15 years.
 2. Ochilgan sahifadagi ikkala blokni serverga saqlang (**sahifani yopmasdan** — private key
@@ -73,7 +73,7 @@ etmaslik mumkin.
 
 ```bash
 # serverda:
-cd /root/IntellectCRM
+cd /root/WunderkindLC
 git pull
 
 # 1) AVVAL firewall (80/8443 faqat Cloudflare'ga; 22 ochiq, 443/xray'ga tegilmaydi):
@@ -88,9 +88,9 @@ docker compose up -d nginx
 docker compose ps                      # nginx: Up bo'lsin (restart-loop EMAS)
 docker compose logs --tail=30 nginx    # xato yo'qligini ko'ring
 # serverning O'ZIDAN (firewall ichkaridan bo'g'moqda yo'q; nginx hostda 8443 da!):
-curl -k --resolve crm.intellectschool.uz:8443:127.0.0.1 https://crm.intellectschool.uz:8443/api/health
+curl -k --resolve lc.wunderkindedu.uz:8443:127.0.0.1 https://lc.wunderkindedu.uz:8443/api/health
 # javob: 200 (health OK)
-curl -k --resolve intellectschool.uz:8443:127.0.0.1 https://intellectschool.uz:8443/ | head -5
+curl -k --resolve wunderkindedu.uz:8443:127.0.0.1 https://wunderkindedu.uz:8443/ | head -5
 # javob: landing.html boshlanishi
 # 443 hamon xray'niki ekanini ham tekshirib qo'ying (nginx uni EGALLAMAGANI):
 ss -tlnp | grep -E ':(80|443|8443) '
@@ -118,11 +118,11 @@ iptables -I DOCKER-USER 1 -s MENING_IP -p tcp -m conntrack --ctorigdstport 8443 
 Lokal mashinada `/etc/hosts` ga qo'shing (sudo bilan):
 
 ```
-169.58.207.222 intellectschool.uz www.intellectschool.uz crm.intellectschool.uz
+169.58.207.222 wunderkindedu.uz www.wunderkindedu.uz lc.wunderkindedu.uz
 ```
 
 ⚠️ Brauzerda manzilni **`:8443` porti bilan** oching (nginx shu portda; `:8443`siz 443 ga —
-xray'ga tushasiz): `https://crm.intellectschool.uz:8443`. Brauzer **"sertifikat ishonchsiz"**
+xray'ga tushasiz): `https://lc.wunderkindedu.uz:8443`. Brauzer **"sertifikat ishonchsiz"**
 deb ogohlantiradi — bu KUTILGAN holat: Origin Cert'ga faqat Cloudflare ishonadi, siz esa hozir
 Cloudflare'ni chetlab to'g'ridan-to'g'ri kiryapsiz. "Advanced → Proceed" bilan davom eting
 (faqat shu sinovda!). DNS almashtirilgach foydalanuvchilar odatdagi `https://...` (portsiz)
@@ -130,14 +130,14 @@ manzildan kiradi va Cloudflare'ning oddiy (ishonchli) sertifikatini ko'radi.
 
 **Tekshirish ro'yxati:**
 
-- [ ] `https://crm.intellectschool.uz:8443` — login qilish (cookie/CSRF ishlashi = `X-Forwarded-Proto` to'g'ri);
+- [ ] `https://lc.wunderkindedu.uz:8443` — login qilish (cookie/CSRF ishlashi = `X-Forwarded-Proto` to'g'ri);
 - [ ] rasmlar ochiladi (`/uploads` — o'quvchi surati, logotip);
 - [ ] chat ishlaydi (SignalR `/hubs/chat` — xabar real vaqtda kelsin; brauzer DevTools →
       Network → WS da `101 Switching Protocols` ko'rinsin);
 - [ ] jonli yangilanishlar (`/hubs/live`);
 - [ ] kamera ko'rinishi (Kameralar sahifasi — HLS app orqali proksilanadi);
 - [ ] katta fayl yuklash (masalan Marketing → kontent video) — 413 xatosi chiqmasin;
-- [ ] `https://intellectschool.uz:8443` — landing ochiladi (xarita iframe'i bilan).
+- [ ] `https://wunderkindedu.uz:8443` — landing ochiladi (xarita iframe'i bilan).
 - Telegram Mini App'ni bu usulda tekshirib bo'lmaydi (Telegram real DNS ishlatadi) — u
   5-qadamdan keyin tekshiriladi.
 
@@ -163,15 +163,15 @@ DNS almashganda trafik to'g'ridan-to'g'ri 8443 ga (nginx'ga) boradi. Qoida tunne
 qaragan DNS'ga TA'SIR QILMAYDI (tunnel trafigi origin portidan yurmaydi) — shuning uchun
 uni xotirjam oldindan yoqib qo'yish mumkin.
 
-Cloudflare dashboard → domen `intellectschool.uz` → **Rules → Origin Rules → Create rule**:
+Cloudflare dashboard → domen `wunderkindedu.uz` → **Rules → Origin Rules → Create rule**:
 
 - **Rule name:** `nginx 8443`
 - **If** (Custom filter expression):
-  `(http.host eq "intellectschool.uz") or (http.host eq "www.intellectschool.uz") or (http.host eq "crm.intellectschool.uz")`
+  `(http.host eq "wunderkindedu.uz") or (http.host eq "www.wunderkindedu.uz") or (http.host eq "lc.wunderkindedu.uz")`
 - **Then → Destination Port → Rewrite to:** `8443`
 - **Deploy**.
 
-Tashrifchi uchun HECH NARSA o'zgarmaydi: u odatdagidek `https://crm.intellectschool.uz`
+Tashrifchi uchun HECH NARSA o'zgarmaydi: u odatdagidek `https://lc.wunderkindedu.uz`
 (443) ga kiradi, portni Cloudflare o'zi server tomonda 8443 ga almashtiradi.
 
 **Rollback:** qoidani o'chirish/pauza qilish — hozircha trafik baribir tunnelda, hech narsa
@@ -187,8 +187,8 @@ Cloudflare dashboard → **DNS → Records**. Hozir uchta yozuv tunnelga qaraydi
 | Nomi | Eski (CNAME) | Yangi |
 |---|---|---|
 | `crm` | `80531fd7-....cfargotunnel.com` | **A** `169.58.207.222`, Proxy: **Proxied (to'q sariq)** |
-| `intellectschool.uz` (@) | o'sha tunnel | **A** `169.58.207.222`, Proxied |
-| `www` | o'sha tunnel (bo'lsa) | **A** `169.58.207.222` (yoki CNAME → `intellectschool.uz`), Proxied |
+| `wunderkindedu.uz` (@) | o'sha tunnel | **A** `169.58.207.222`, Proxied |
+| `www` | o'sha tunnel (bo'lsa) | **A** `169.58.207.222` (yoki CNAME → `wunderkindedu.uz`), Proxied |
 
 Tavsiya etilgan tartib: avval **`crm`** (o'zingiz darhol tekshira olasiz), 10-15 daqiqa
 kuzatib keyin apex + www.
@@ -198,8 +198,8 @@ kuzatib keyin apex + www.
 Almashtirilgach tekshiring (lokal mashinada, `/etc/hosts` TOZA holda):
 
 ```bash
-dig +short crm.intellectschool.uz        # Cloudflare IP'lari chiqadi (104.x/172.x...), 169.58.207.222 EMAS — bu TO'G'RI
-curl -s https://crm.intellectschool.uz/api/health
+dig +short lc.wunderkindedu.uz        # Cloudflare IP'lari chiqadi (104.x/172.x...), 169.58.207.222 EMAS — bu TO'G'RI
+curl -s https://lc.wunderkindedu.uz/api/health
 ```
 
 Brauzerda (endi ODDIY, portsiz manzilda) login, chat, rasm, kamera — 3-qadamdagi ro'yxat +
@@ -241,7 +241,7 @@ docker stats --no-stream                    # nginx resurs yemayaptimi
 2. Serverda:
 
    ```bash
-   cd /root/IntellectCRM
+   cd /root/WunderkindLC
    git pull
    docker compose up -d --remove-orphans     # cloudflared konteyneri olib tashlanadi
    ```

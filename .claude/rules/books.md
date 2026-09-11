@@ -1,11 +1,11 @@
 ﻿---
 description: Kitoblar sotuvi — ombor (qoldiq/kirim tarixi), Telegram bot orqali buyurtma, admin tasdiqlash va analitika.
 paths:
-  - "IntellectCRM.Application/Services/BookSalesService.cs"
-  - "IntellectCRM.Application/Services/BookShopBotService.cs"
-  - "IntellectCRM.Server/Controllers/BooksController.cs"
-  - "IntellectCRM.Client/src/pages/admin/books/**"
-  - "IntellectCRM.Client/src/api/services/books.ts"
+  - "WunderkindLC.Application/Services/BookSalesService.cs"
+  - "WunderkindLC.Application/Services/BookShopBotService.cs"
+  - "WunderkindLC.Server/Controllers/BooksController.cs"
+  - "WunderkindLC.Client/src/pages/admin/books/**"
+  - "WunderkindLC.Client/src/api/services/books.ts"
 ---
 
 # Kitoblar sotuvi qoidalari

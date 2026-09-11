@@ -1,15 +1,15 @@
 ---
 description: "Topshiriqlar" bo'limi (Kanban) — doska/ustun/topshiriq modeli, holat va takroriylik qoidalari, Telegram oqimi va ruxsatlar. Eski "Adminga topshiriq" (kunlik cheklist) moduli olib tashlangan.
 paths:
-  - "IntellectCRM.Domain/Entities.cs"
-  - "IntellectCRM.Server/Controllers/WorkTasksController.cs"
-  - "IntellectCRM.Server/Controllers/WorkTasksController.Helpers.cs"
-  - "IntellectCRM.Server/Controllers/WorkTasksController.Dashboard.cs"
-  - "IntellectCRM.Application/Services/WorkTaskFlow.cs"
-  - "IntellectCRM.Application/Services/WorkTaskTelegram.cs"
-  - "IntellectCRM.Application/Services/WorkTaskReminderService.cs"
-  - "IntellectCRM.Client/src/pages/admin/tasks/*"
-  - "IntellectCRM.Client/src/api/services/workTasks.ts"
+  - "WunderkindLC.Domain/Entities.cs"
+  - "WunderkindLC.Server/Controllers/WorkTasksController.cs"
+  - "WunderkindLC.Server/Controllers/WorkTasksController.Helpers.cs"
+  - "WunderkindLC.Server/Controllers/WorkTasksController.Dashboard.cs"
+  - "WunderkindLC.Application/Services/WorkTaskFlow.cs"
+  - "WunderkindLC.Application/Services/WorkTaskTelegram.cs"
+  - "WunderkindLC.Application/Services/WorkTaskReminderService.cs"
+  - "WunderkindLC.Client/src/pages/admin/tasks/*"
+  - "WunderkindLC.Client/src/api/services/workTasks.ts"
 ---
 
 # Topshiriqlar (Kanban) qoidalari
