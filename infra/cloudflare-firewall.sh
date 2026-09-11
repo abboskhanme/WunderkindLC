@@ -24,9 +24,21 @@
 # ⚠️ REBOOT: DOCKER-USER qoidalari qayta yuklashda YO'QOLADI. Skript oxirida
 #    o'zini @reboot cron'ga yozib qo'yadi (allaqachon bo'lsa — tegmaydi).
 #
+# ⚠️ PORTLAR SOZLANADI — `CF_PORTS`. Standart "80 8443" (eski server: 443 ni xray
+#    band qilgani uchun nginx 8443 da edi). Nginx TO'G'RIDAN-TO'G'RI 443 da turgan
+#    serverda 443 ni ham yozing, aks holda u BUTUN INTERNETGA OCHIQ qoladi va
+#    Cloudflare'ni chetlab o'tib to'g'ridan-to'g'ri origin'ga kirish mumkin bo'ladi:
+#        CF_PORTS="80 443" bash infra/cloudflare-firewall.sh
+#    @reboot cron ham AYNAN shu qiymat bilan yoziladi.
+#
 # Ishlatish (serverda, root):  bash /root/WunderkindLC/infra/cloudflare-firewall.sh
 # ============================================================================
 set -euo pipefail
+
+# Cloudflare'ga ochiladigan portlar (bo'sh joy bilan ajratilgan).
+CF_PORTS="${CF_PORTS:-80 8443}"
+CF_PORTS_CSV="$(echo "$CF_PORTS" | tr ' ' ',')"
+echo "==> Himoyalanadigan portlar: $CF_PORTS (faqat Cloudflare IP'lariga ochiladi)"
 
 if [ "$(id -u)" -ne 0 ]; then
   echo "XATO: root sifatida ishga tushiring (sudo bash $0)" >&2
@@ -68,12 +80,12 @@ check_cidrs "$CF_V6" '^[0-9A-Fa-f:]+/[0-9]{1,3}$'               "ips-v6"
 echo "==> 1) SSH (22) HAMMAGA ochiladi (birinchi — o'zimizni qulflamaslik uchun)"
 ufw allow 22/tcp comment 'SSH' >/dev/null
 
-echo "==> 2) ufw: 80/8443 faqat Cloudflare IP'lariga (hostning o'zi uchun; 443 = xray, TEGILMAYDI)"
+echo "==> 2) ufw: $CF_PORTS faqat Cloudflare IP'lariga (hostning o'zi uchun)"
 while IFS= read -r cidr; do
-  [ -n "$cidr" ] && ufw allow from "$cidr" to any port 80,8443 proto tcp comment 'Cloudflare' >/dev/null
+  [ -n "$cidr" ] && ufw allow from "$cidr" to any port "$CF_PORTS_CSV" proto tcp comment 'Cloudflare' >/dev/null
 done <<< "$CF_V4"
 while IFS= read -r cidr; do
-  [ -n "$cidr" ] && ufw allow from "$cidr" to any port 80,8443 proto tcp comment 'Cloudflare' >/dev/null
+  [ -n "$cidr" ] && ufw allow from "$cidr" to any port "$CF_PORTS_CSV" proto tcp comment 'Cloudflare' >/dev/null
 done <<< "$CF_V6"
 
 echo "==> 3) ufw default: kiruvchi DENY, chiquvchi ALLOW; yoqish"
@@ -90,7 +102,7 @@ ufw --force enable >/dev/null
 # ---------------------------------------------------------------------------
 EXT_IF="$(ip route show default | awk '/default/ {print $5; exit}')"
 [ -n "$EXT_IF" ] || { echo "XATO: tashqi interfeys topilmadi (ip route show default)" >&2; exit 1; }
-echo "==> 4) DOCKER-USER: 80/8443 konteyner trafigi faqat Cloudflare'dan (interfeys: $EXT_IF)"
+echo "==> 4) DOCKER-USER: $CF_PORTS konteyner trafigi faqat Cloudflare'dan (interfeys: $EXT_IF)"
 
 build_docker_user() { # $1 = iptables|ip6tables, $2 = CIDR ro'yxati
   local ipt="$1" list="$2" cidr port
@@ -98,13 +110,13 @@ build_docker_user() { # $1 = iptables|ip6tables, $2 = CIDR ro'yxati
   "$ipt" -F DOCKER-USER
   while IFS= read -r cidr; do
     [ -z "$cidr" ] && continue
-    for port in 80 8443; do
+    for port in $CF_PORTS; do
       "$ipt" -A DOCKER-USER -i "$EXT_IF" -s "$cidr" -p tcp \
              -m conntrack --ctorigdstport "$port" --ctdir ORIGINAL -j ACCEPT
     done
   done <<< "$list"
-  # Cloudflare bo'lmagan hamma 80/8443 -> DROP
-  for port in 80 8443; do
+  # Cloudflare bo'lmagan hamma $CF_PORTS -> DROP
+  for port in $CF_PORTS; do
     "$ipt" -A DOCKER-USER -i "$EXT_IF" -p tcp \
            -m conntrack --ctorigdstport "$port" --ctdir ORIGINAL -j DROP
   done
@@ -122,7 +134,7 @@ fi
 # (sleep 60 — docker va tarmoq ko'tarilishini kutish uchun.)
 # ---------------------------------------------------------------------------
 SCRIPT_PATH="$(readlink -f "$0")"
-CRON_LINE="@reboot sleep 60 && /usr/bin/env bash $SCRIPT_PATH >> /var/log/cloudflare-firewall.log 2>&1"
+CRON_LINE="@reboot sleep 60 && CF_PORTS=\"$CF_PORTS\" /usr/bin/env bash $SCRIPT_PATH >> /var/log/cloudflare-firewall.log 2>&1"
 if ! crontab -l 2>/dev/null | grep -Fq "$SCRIPT_PATH"; then
   ( crontab -l 2>/dev/null; echo "$CRON_LINE" ) | crontab -
   echo "==> 5) @reboot cron qo'shildi ($SCRIPT_PATH)"
