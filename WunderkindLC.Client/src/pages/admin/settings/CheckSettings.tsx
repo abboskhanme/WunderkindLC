@@ -20,6 +20,7 @@ import {
   type CheckFieldFlags,
 } from '@/config/checkSettings'
 import { receiptHtml, receiptCss, type ReceiptData } from '@/lib/receipt'
+import { useAuth } from '@/context/auth-context'
 
 type Tab = 'payment' | 'trial'
 
@@ -29,7 +30,6 @@ const samplePayment = {
   dateTime: '2026-06-30 15:00',
   studentName: "Azamjon Qo'chqorov",
   teacherName: 'Odilov Azizbek',
-  responsibleName: 'Vohidjonov Abduhalil',
   groupName: 'A100',
   method: 'cash',
   comment: "Oylik to'lov",
@@ -42,7 +42,6 @@ const sampleTrial = {
   dateTime: '2026-07-02 11:20',
   studentName: "Azamjon Qo'chqorov",
   teacherName: 'Odilov Azizbek',
-  responsibleName: 'Vohidjonov Abduhalil',
   groupName: 'A100',
   method: '',
   comment: '',
@@ -79,6 +78,7 @@ function Toggle({
  * O'ng tomonda tanlangan tur uchun jonli namuna. Saqlanadi: CenterMeta.CheckSettings (JSON).
  */
 export function CheckSettings() {
+  const { user } = useAuth()
   const [s, setS] = useState<CheckSettingsModel | null>(null)
   const [school, setSchool] = useState<SchoolInfo | null>(null)
   const [loading, setLoading] = useState(true)
@@ -131,9 +131,12 @@ export function CheckSettings() {
     centerAddress: school?.address || 'Toshkent sh.',
     logoUrl: school?.logoUrl || '',
   }
+  // "Mas'ul" — chekda to'lovni KIRITGAN xodim ismi chiqadi, shuning uchun namunada ham
+  // joriy foydalanuvchi ko'rsatiladi (ilgari bu yerda o'ylab topilgan ism turardi).
+  const responsibleName = user?.fullName || "Mas'ul xodim"
   const preview: ReceiptData = isTrial
-    ? { ...sampleTrial, ...center }
-    : { ...samplePayment, ...center }
+    ? { ...sampleTrial, ...center, responsibleName }
+    : { ...samplePayment, ...center, responsibleName }
 
   return (
     <Card
