@@ -110,3 +110,19 @@ the groups they actually teach. Applied to dev and to production.
 that price into `Classes.MonthlyFee` for every group of the course — optionally into the current
 month's charges as well (`SubjectsController.Update` → `TuitionService.ApplyGroupFeeToCurrentMonthAsync`).
 So the missing group fees (open issue #1) are filled by entering five prices, not 45.
+
+## Closed by the client (2026-09-19)
+
+- **The employee export is not short after all.** edutizim's roles screen counts people who have
+  left; the 38 rows in `Xodimlar.xlsx` are the current staff. Nothing is missing.
+- **Three "teacher" rows were duplicates of a moderator account.** The export lists Zuhra(xon)
+  Islomova, Muhabbatxon Yusupova and Munojat Shermatova twice — once as `moderator` with a real
+  phone, once as `teacher` with a placeholder (`+998999999999`, `+998995555555`, `+998996666666`)
+  and no groups. The teacher rows are archived (reason recorded on the row); the staff accounts
+  stay. Active teachers: 27 → **24**.
+  Muzaffar Abdubannoyev and Nurhayotbegim Abduvaqqosova are also in both lists, but with two
+  different real phones — they really are both, so both rows were kept.
+- **One phone on two students is normal**, not a collision: siblings without their own phone share
+  a parent's number. Nothing to fix, and more such pairs are expected.
+- Still parked, to be decided later: splitting the two "Avazxon Teacher | Elementary" groups, and
+  what to do with the 443 non-archived students who have no active membership.
