@@ -83,3 +83,6 @@ wunderkindlc_backup_*.json
 
 # edutizim UI reference screenshots (contain real PII)
 docs/edutizim/screens/
+
+# edutizimdan eksport qilingan Excel fayllar (HAQIQIY o'quvchi/ota-ona ma'lumoti)
+docs/excels/
