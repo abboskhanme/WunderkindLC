@@ -64,3 +64,27 @@ student's own balance is correct.
    no SMS go out — deliberately.
 
 Backup of the database as it was before the wipe: `/root/pre-import-2026-09-18-1518.sql.gz`.
+
+## Second batch (2026-09-19): employees and branches
+
+Source: `Xodimlar.xlsx` (38 rows) plus the branch and role screens the client sent.
+
+| Loaded | Result |
+|---|---|
+| Teachers | 27 — the 17 created from the groups file were **updated** (phone, gender, subject), 10 **added** |
+| Staff accounts | 11 moderators got a login + generated password (role `staff`, "Administrator" permission set) |
+| Branches | 4 — Yaypan, Furqat, WET Baza, Yakkatut |
+
+The passwords are visible in the panel: **Boshqaruv → Rollar → "Login/parollar"** (they disappear
+from there once the person logs in for the first time).
+
+⚠️ **The employee export is partial.** edutizim's roles screen shows 59 people (41 O'qituvchi,
+6 Bosh Menejer, 6 Administrator, 5 CEO, 1 Akademik Direktor), but `Xodimlar.xlsx` contains 38
+(27 teacher + 11 moderator) and every row says branch "Yaypan" — so the export looks filtered to
+one branch. The remaining ~21 people are missing.
+
+⚠️ Four teacher rows are duplicates of a moderator account (same person, placeholder phones
+`+998999999999`, `+998995555555`, `+998996666666`) — they were loaded as teachers too; archive
+them if they are not really teachers.
+
+⚠️ Our data model has no employee↔branch link, so the branch column was not stored anywhere.
