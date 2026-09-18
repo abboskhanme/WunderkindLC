@@ -345,19 +345,27 @@ builder.Services.AddRateLimiter(options =>
 builder.Services.AddSignalR();
 builder.Services.AddScoped<ChatService>();
 
-// Oylik to'lovlarni avtomatik hisoblovchi fon xizmati
-builder.Services.AddHostedService<WunderkindLC.Application.Services.TuitionAccrualService>();
+// IMPORT REJIMI — boshqa tizimdan ma'lumot ko'chirilayotgan bo'lsa (IMPORT_MODE=1), o'z-o'zidan
+// yoziladigan/yuboriladigan hamma narsa O'CHIRILADI (`ImportMode` — sababi o'sha faylda).
+WunderkindLC.Application.Services.ImportMode.Configure(builder.Configuration);
+
 builder.Services.AddHostedService<WunderkindLC.Application.Services.TurnstileLiveService>();
-// Avtomatik to'lov eslatmasi (qarzdorlarga Telegram + push, 09:00 Toshkent).
-builder.Services.AddHostedService<WunderkindLC.Application.Services.PaymentReminderService>();
-// O'qituvchiga davomat kiritish eslatmasi (dars boshlanishidan N daqiqa keyin, push + Telegram).
-builder.Services.AddHostedService<WunderkindLC.Application.Services.LessonAttendanceReminderService>();
-// Erkin eslatma (admin belgilagan matn+auditoriya+jadval, push + Telegram).
-builder.Services.AddHostedService<WunderkindLC.Application.Services.CustomReminderService>();
-// Tug'ilgan kun avto-SMS (09:00 Toshkent; "birthday" hodisasiga andoza bo'lsa).
-builder.Services.AddHostedService<WunderkindLC.Application.Services.BirthdaySmsService>();
-// Sinov darsi eslatmasi (09:00 Toshkent; ertaga bo'ladigan sinovlar; "trial_reminder" andoza bo'lsa).
-builder.Services.AddHostedService<WunderkindLC.Application.Services.TrialReminderService>();
+
+if (!WunderkindLC.Application.Services.ImportMode.Enabled)
+{
+    // Oylik to'lovlarni avtomatik hisoblovchi fon xizmati
+    builder.Services.AddHostedService<WunderkindLC.Application.Services.TuitionAccrualService>();
+    // Avtomatik to'lov eslatmasi (qarzdorlarga Telegram + push, 09:00 Toshkent).
+    builder.Services.AddHostedService<WunderkindLC.Application.Services.PaymentReminderService>();
+    // O'qituvchiga davomat kiritish eslatmasi (dars boshlanishidan N daqiqa keyin, push + Telegram).
+    builder.Services.AddHostedService<WunderkindLC.Application.Services.LessonAttendanceReminderService>();
+    // Erkin eslatma (admin belgilagan matn+auditoriya+jadval, push + Telegram).
+    builder.Services.AddHostedService<WunderkindLC.Application.Services.CustomReminderService>();
+    // Tug'ilgan kun avto-SMS (09:00 Toshkent; "birthday" hodisasiga andoza bo'lsa).
+    builder.Services.AddHostedService<WunderkindLC.Application.Services.BirthdaySmsService>();
+    // Sinov darsi eslatmasi (09:00 Toshkent; ertaga bo'ladigan sinovlar; "trial_reminder" andoza bo'lsa).
+    builder.Services.AddHostedService<WunderkindLC.Application.Services.TrialReminderService>();
+}
 // Kunlik avtomatik backup — markaz ma'lumotlarini JSON qilib Telegram orqali adminga (jadval CenterMeta'da).
 builder.Services.AddHostedService<WunderkindLC.Application.Services.BackupSchedulerService>();
 // "Topshiriqlar" (Kanban) kunlik eslatmasi — bugungi va kechikkan topshiriqlar mas'uliga botda.
@@ -545,6 +553,13 @@ builder.Services.AddHsts(o =>
 });
 
 var app = builder.Build();
+
+// ⚠️ IMPORT REJIMI yoqilgan bo'lsa buni LOGDA baland aytamiz: uni o'chirish esdan chiqsa,
+// oylik hisob umuman yozilmay qoladi va hech kim sababini bilmasdi.
+if (WunderkindLC.Application.Services.ImportMode.Enabled)
+    app.Logger.LogWarning(
+        "[import] IMPORT REJIMI YOQILGAN — oylik hisob, eslatmalar va SMS O'CHIRILGAN. "
+        + "Ko'chirish tugagach IMPORT_MODE ni o'chirib, konteynerni qayta ishga tushiring.");
 
 // ---------- Bazani yaratish va seed ----------
 using (var scope = app.Services.CreateScope())

@@ -13,9 +13,16 @@ import type { FinanceTransactionPayload } from '@/api/services/finance'
 import { getTeachers, getSalaryMonth } from '@/api/services/teachers'
 import { getClasses } from '@/api/services/classes'
 import { getStudents, getStudentLedger } from '@/api/services/students'
-import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
-import { Input, Select, Textarea } from '@/components/ui/Input'
+import {
+  RightDrawer,
+  DrawerActions,
+  DrawerChoice,
+  DrawerField,
+  DrawerInput,
+  DrawerSelect,
+  DrawerTextarea,
+} from '@/components/ui/RightDrawer'
 import { categoriesByDirection, financeDirectionLabels, formatMonth, monthStatusLabels, paymentMethods } from '@/config/constants'
 import { formatMoney, cn } from '@/lib/utils'
 
@@ -24,6 +31,14 @@ interface Props {
   onClose: () => void
   onSubmit: (values: FinanceTransactionPayload) => void
   initial?: FinanceTransaction | null
+  /**
+   * YANGI amal uchun oldindan tanlangan qiymatlar (Kassalar → "Chiqim", Oylik chiqarish → maosh).
+   * `direction` berilsa "Yo'nalish" tanlovi YASHIRILADI (panel faqat shu yo'nalish uchun),
+   * toifa esa edutizimdagidek "Tranzaksiya" deb nomlanadi. Tahrirda (`initial`) e'tiborsiz.
+   */
+  preset?: { direction: FinanceDirection; category?: string; teacherId?: string; month?: string }
+  /** Panel sarlavhasi (standart — "Yangi moliyaviy amal" / "Amalni tahrirlash"). */
+  title?: string
 }
 
 const today = () => new Date().toISOString().slice(0, 10)
@@ -41,7 +56,7 @@ const emptyFor = (direction: FinanceDirection): FinanceTransactionPayload => ({
   method: direction === 'income' ? 'cash' : undefined,
 })
 
-export function TransactionFormModal({ open, onClose, onSubmit, initial }: Props) {
+export function TransactionFormModal({ open, onClose, onSubmit, initial, preset, title }: Props) {
   const [form, setForm] = useState<FinanceTransactionPayload>(emptyFor('income'))
   const [teachers, setTeachers] = useState<Teacher[]>([])
   const [monthInfo, setMonthInfo] = useState<MonthSalary | null>(null)
@@ -144,8 +159,22 @@ export function TransactionFormModal({ open, onClose, onSubmit, initial }: Props
                 : undefined),
             method: initial.method,
           }
-        : emptyFor('income'),
+        : preset
+          ? {
+              ...emptyFor(preset.direction),
+              ...(preset.category ? { category: preset.category } : {}),
+              teacherId: preset.teacherId,
+              // Maosh chiqimida "qaysi oy uchun" bo'sh qolmasin (standart — sana oyi).
+              month:
+                preset.month ??
+                (isSalaryCat(preset.direction, preset.category ?? categoriesByDirection[preset.direction][0].value)
+                  ? today().slice(0, 7)
+                  : undefined),
+            }
+          : emptyFor('income'),
     )
+    // `preset` — ochilish paytidagi qiymat; har renderda yangi obyekt bo'lgani uchun kuzatilmaydi.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, initial])
 
   // O'qituvchilar (maosh) + guruh/o'quvchilar (o'quvchi to'lovi) ro'yxatlarini API'dan olamiz
@@ -293,109 +322,111 @@ export function TransactionFormModal({ open, onClose, onSubmit, initial }: Props
     })
   }
 
+  const saveDisabled =
+    form.amount <= 0 || (isSalaryExpense && !form.teacherId) || (showTuition && !form.studentId)
+  // Yo'nalish oldindan berilgan (Kassalar → Chiqim) — panel faqat shu yo'nalish uchun.
+  const lockedDirection = !initial && !!preset
+
   return (
-    <Modal
+    <RightDrawer
       open={open}
       onClose={onClose}
-      title={initial ? 'Amalni tahrirlash' : 'Yangi moliyaviy amal'}
+      title={title ?? (initial ? 'Amalni tahrirlash' : 'Yangi moliyaviy amal')}
       footer={
-        <>
-          <Button variant="secondary" onClick={onClose}>
-            Bekor qilish
-          </Button>
-          <Button
-            type="submit"
-            form="finance-form"
-            disabled={
-              form.amount <= 0 || (isSalaryExpense && !form.teacherId) || (showTuition && !form.studentId)
-            }
-          >
+        <DrawerActions onBack={onClose}>
+          <Button type="submit" form="finance-form" disabled={saveDisabled}>
             Saqlash
           </Button>
-        </>
+        </DrawerActions>
       }
     >
       <form id="finance-form" onSubmit={handleSubmit} className="space-y-4">
-        <div className="grid grid-cols-2 gap-4">
-          <Select
-            label="Yo'nalish"
-            value={form.direction}
-            onChange={(e) => changeDirection(e.target.value as FinanceDirection)}
-          >
-            <option value="income">{financeDirectionLabels.income}</option>
-            <option value="expense">{financeDirectionLabels.expense}</option>
-          </Select>
-          <Select
-            label="Toifa"
-            value={form.category}
-            onChange={(e) => changeCategory(e.target.value)}
-          >
+        {!lockedDirection && (
+          <DrawerField label="Yo'nalish">
+            <DrawerSelect
+              value={form.direction}
+              onChange={(e) => changeDirection(e.target.value as FinanceDirection)}
+            >
+              <option value="income">{financeDirectionLabels.income}</option>
+              <option value="expense">{financeDirectionLabels.expense}</option>
+            </DrawerSelect>
+          </DrawerField>
+        )}
+        <DrawerField label={lockedDirection ? 'Tranzaksiya' : 'Toifa'}>
+          <DrawerSelect value={form.category} onChange={(e) => changeCategory(e.target.value)}>
             {categoriesByDirection[form.direction].map((c) => (
               <option key={c.value} value={c.value}>
                 {c.label}
               </option>
             ))}
-          </Select>
-        </div>
+          </DrawerSelect>
+        </DrawerField>
 
         {/* Oylik maosh: o'qituvchi tanlash + shu oy holati */}
         {isSalaryExpense && (
-          <div className="space-y-3 rounded-lg border border-slate-200 bg-slate-50/60 p-3">
-            <Select
-              label="O'qituvchi"
-              value={form.teacherId ?? ''}
-              onChange={(e) => update('teacherId', e.target.value || undefined)}
-            >
-              <option value="">— tanlang —</option>
-              {teachers.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.fullName}
-                </option>
-              ))}
-            </Select>
+          <>
+            <DrawerField label="O'qituvchini tanlang" required>
+              <DrawerSelect
+                value={form.teacherId ?? ''}
+                onChange={(e) => update('teacherId', e.target.value || undefined)}
+              >
+                <option value="">— tanlang —</option>
+                {teachers.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.fullName}
+                  </option>
+                ))}
+              </DrawerSelect>
+            </DrawerField>
 
             {/* QAYSI OY UCHUN — pul berilgan sanadan MUSTAQIL (iyul maoshi avgustda berilishi mumkin) */}
-            <div>
-              <Input
-                label="Qaysi oy uchun"
+            <DrawerField
+              label="Oyni tanlang"
+              required
+              hint={
+                <>
+                  Maosh qaysi oyga tegishli. Pastdagi <b>Sana</b> — pul berilgan kun; masalan iyul
+                  maoshini 5-avgustda berish mumkin.
+                </>
+              }
+            >
+              <DrawerInput
                 type="month"
                 value={form.month ?? ''}
                 onChange={(e) => update('month', e.target.value || undefined)}
               />
-              <p className="mt-1 text-xs text-slate-400">
-                Maosh qaysi oyga tegishli. Pastdagi <b>Sana</b> — pul berilgan kun; masalan iyul
-                maoshini 5-avgustda berish mumkin.
-              </p>
-            </div>
+            </DrawerField>
 
             {form.teacherId && monthInfo && (monthInfo.substituteFee ?? 0) > 0 && (
-              <div>
-                <label className="mb-1 block text-sm font-medium text-slate-600">Maosh turi</label>
-                <select
+              <DrawerField
+                label="Maosh turi"
+                hint={
+                  // Chegara JIMGINA qo'llanmaydi — kassir summa nega kamayganini bilsin.
+                  salaryType === 'substitute' &&
+                  (monthInfo.substituteFee ?? 0) > Math.max(0, monthInfo.remaining) ? (
+                    <span className="font-medium text-amber-600">
+                      O'rinbosarlik haqi {formatMoney(monthInfo.substituteFee ?? 0)}, lekin bu oyda
+                      qoldiq {formatMoney(Math.max(0, monthInfo.remaining))} — summa qoldiq bilan
+                      cheklandi (ortiqcha to'lov bo'lmasin).
+                    </span>
+                  ) : undefined
+                }
+              >
+                <DrawerSelect
                   value={salaryType}
                   onChange={(e) => handleSalaryTypeChange(e.target.value as 'all' | 'main' | 'substitute')}
-                  className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-brand-400"
                 >
                   <option value="all">Umumiy (Asosiy + O'rinbosarlik)</option>
                   <option value="main">Asosiy maosh</option>
                   <option value="substitute">
                     O'rinbosarlik haqi (+{formatMoney(monthInfo.substituteFee ?? 0)})
                   </option>
-                </select>
-                {/* Chegara JIMGINA qo'llanmaydi — kassir summa nega kamayganini bilsin. */}
-                {salaryType === 'substitute' &&
-                  (monthInfo.substituteFee ?? 0) > Math.max(0, monthInfo.remaining) && (
-                    <p className="mt-1 text-xs font-medium text-amber-600">
-                      O'rinbosarlik haqi {formatMoney(monthInfo.substituteFee ?? 0)}, lekin bu oyda
-                      qoldiq {formatMoney(Math.max(0, monthInfo.remaining))} — summa qoldiq bilan
-                      cheklandi (ortiqcha to'lov bo'lmasin).
-                    </p>
-                  )}
-              </div>
+                </DrawerSelect>
+              </DrawerField>
             )}
 
             {form.teacherId && monthInfo && (
-              <div className="grid grid-cols-3 gap-2 text-center text-sm">
+              <div className="grid grid-cols-3 gap-2 rounded-lg border border-[#dbe0e6] bg-[#f0f2f2] p-2 text-center text-sm">
                 <InfoCell label={`${formatMonth(monthInfo.month)} belgilangan`} value={formatMoney(monthInfo.expected)} />
                 <InfoCell
                   label="Berilgan"
@@ -418,32 +449,32 @@ export function TransactionFormModal({ open, onClose, onSubmit, initial }: Props
                 Bu oy uchun maosh to'liq berilgan — qo'shimcha summa ortiqcha hisoblanadi.
               </p>
             )}
-          </div>
+          </>
         )}
 
-        {/* O'quvchi to'lovi: guruh → o'quvchi → qaysi oy (o'quvchilar bo'limidagi to'lovdek) */}
+        {/* O'quvchi to'lovi: o'qituvchi → guruh → o'quvchi → qaysi oy (o'quvchilar bo'limidagi to'lovdek) */}
         {showTuition && (
-          <div className="space-y-3 rounded-lg border border-slate-200 bg-slate-50/60 p-3">
-            <Select
-              label="O'qituvchi"
-              value={tuitionTeacherId}
-              onChange={(e) => {
-                // O'qituvchi o'zgarsa — guruh va o'quvchi tanlovi tozalanadi.
-                setTuitionTeacherId(e.target.value)
-                setClassId('')
-                onStudentChange('')
-              }}
-            >
-              <option value="">— o'qituvchi —</option>
-              {tuitionTeacherOptions.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.fullName}
-                </option>
-              ))}
-            </Select>
-            <div className="grid grid-cols-2 gap-3">
-              <Select
-                label="Guruh"
+          <>
+            <DrawerField label="O'qituvchini tanlang">
+              <DrawerSelect
+                value={tuitionTeacherId}
+                onChange={(e) => {
+                  // O'qituvchi o'zgarsa — guruh va o'quvchi tanlovi tozalanadi.
+                  setTuitionTeacherId(e.target.value)
+                  setClassId('')
+                  onStudentChange('')
+                }}
+              >
+                <option value="">— o'qituvchi —</option>
+                {tuitionTeacherOptions.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.fullName}
+                  </option>
+                ))}
+              </DrawerSelect>
+            </DrawerField>
+            <DrawerField label="Guruh">
+              <DrawerSelect
                 value={classId}
                 disabled={!tuitionTeacherId}
                 onChange={(e) => {
@@ -457,9 +488,10 @@ export function TransactionFormModal({ open, onClose, onSubmit, initial }: Props
                     {c.name}
                   </option>
                 ))}
-              </Select>
-              <Select
-                label="O'quvchi"
+              </DrawerSelect>
+            </DrawerField>
+            <DrawerField label="O'quvchini tanlang" required>
+              <DrawerSelect
                 value={form.studentId ?? ''}
                 onChange={(e) => onStudentChange(e.target.value)}
                 disabled={!classId}
@@ -470,17 +502,12 @@ export function TransactionFormModal({ open, onClose, onSubmit, initial }: Props
                     {s.fullName}
                   </option>
                 ))}
-              </Select>
-            </div>
+              </DrawerSelect>
+            </DrawerField>
 
             {form.studentId && (
-              <div>
-                <label className="mb-1 block text-sm font-medium text-slate-600">Qaysi oy uchun</label>
-                <select
-                  value={form.month ?? ''}
-                  onChange={(e) => onMonthChange(e.target.value)}
-                  className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-brand-400"
-                >
+              <DrawerField label="Qaysi oy uchun">
+                <DrawerSelect value={form.month ?? ''} onChange={(e) => onMonthChange(e.target.value)}>
                   {(ledgerMonths.length ? ledgerMonths.map((m) => m.month) : [form.date?.slice(0, 7) ?? '']).map(
                     (mo) => {
                       const m = ledgerMonths.find((x) => x.month === mo)
@@ -497,15 +524,14 @@ export function TransactionFormModal({ open, onClose, onSubmit, initial }: Props
                       )
                     },
                   )}
-                </select>
-              </div>
+                </DrawerSelect>
+              </DrawerField>
             )}
-          </div>
+          </>
         )}
 
-        <div className="grid grid-cols-2 gap-4">
-          <Input
-            label="Summa (so'm)"
+        <DrawerField label="Qiymat (so'm)" required>
+          <DrawerInput
             type="number"
             min={0}
             step="any"
@@ -513,50 +539,34 @@ export function TransactionFormModal({ open, onClose, onSubmit, initial }: Props
             value={form.amount}
             onChange={(e) => update('amount', Number(e.target.value))}
           />
-          <div>
-            <Input
-              label={isSalaryExpense ? 'Sana (berilgan kun)' : 'Sana'}
-              type="date"
-              required
-              value={form.date}
-              onChange={(e) => update('date', e.target.value)}
-            />
-            {isSalaryExpense && (
-              <p className="mt-1 text-xs text-slate-400">Pul haqiqatda berilgan kun.</p>
-            )}
-          </div>
-        </div>
+        </DrawerField>
         {form.direction === 'income' && (
-          <div>
-            <label className="mb-1 block text-sm font-medium text-slate-600">To'lov usuli</label>
-            <div className="grid grid-cols-3 gap-2">
-              {paymentMethods.map((m) => (
-                <button
-                  key={m.value}
-                  type="button"
-                  onClick={() => update('method', m.value)}
-                  className={cn(
-                    'rounded-lg border px-3 py-2 text-sm font-medium transition-colors',
-                    (form.method ?? 'cash') === m.value
-                      ? 'border-brand-400 bg-brand-50 text-brand-700'
-                      : 'border-slate-200 text-slate-600 hover:bg-slate-50',
-                  )}
-                >
-                  {m.label}
-                </button>
-              ))}
-            </div>
-          </div>
+          <DrawerField label="To'lov turi" group>
+            <DrawerChoice
+              options={paymentMethods}
+              value={form.method ?? 'cash'}
+              onChange={(v) => update('method', v)}
+            />
+          </DrawerField>
         )}
+        <DrawerField
+          label={isSalaryExpense ? 'Sanani tanlang (berilgan kun)' : 'Sanani tanlang'}
+          required
+          hint={isSalaryExpense ? 'Pul haqiqatda berilgan kun.' : undefined}
+        >
+          <DrawerInput
+            type="date"
+            required
+            value={form.date}
+            onChange={(e) => update('date', e.target.value)}
+          />
+        </DrawerField>
 
-        <Textarea
-          label="Izoh"
-          rows={2}
-          value={form.note}
-          onChange={(e) => update('note', e.target.value)}
-        />
+        <DrawerField label="Izoh">
+          <DrawerTextarea rows={2} value={form.note} onChange={(e) => update('note', e.target.value)} />
+        </DrawerField>
       </form>
-    </Modal>
+    </RightDrawer>
   )
 }
 

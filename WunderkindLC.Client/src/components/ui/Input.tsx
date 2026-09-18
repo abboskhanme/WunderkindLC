@@ -1,8 +1,9 @@
 import type { InputHTMLAttributes, SelectHTMLAttributes, TextareaHTMLAttributes, ReactNode } from 'react'
 import { cn } from '@/lib/utils'
 
+// edutizim (MUI outlined): 34px, radius 8, kulrang ramka, fokusda ko'k
 const base =
-  'w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-800 outline-none transition-colors focus:border-brand-400 focus:ring-2 focus:ring-brand-100'
+  'w-full min-h-[34px] rounded-lg border border-black/25 bg-white px-3 py-1.5 text-[13px] text-black outline-none transition-colors hover:border-black/60 focus:border-brand-600 focus:ring-1 focus:ring-brand-600'
 
 interface FieldWrap {
   label?: string
@@ -13,7 +14,7 @@ function Label({ label, required, children }: FieldWrap & { children: ReactNode 
   return (
     <label className="block">
       {label && (
-        <span className="mb-1 block text-sm font-medium text-slate-600">
+        <span className="mb-1 block text-[13px] font-semibold text-[#333]">
           {label}
           {required && <span className="text-red-500"> *</span>}
         </span>

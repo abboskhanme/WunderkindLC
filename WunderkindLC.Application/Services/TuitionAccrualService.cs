@@ -15,6 +15,14 @@ public class TuitionAccrualService(IServiceProvider services, ILogger<TuitionAcc
         {
             try
             {
+                // ⚠️ Import rejimida oylik hisob YOZILMAYDI: yarim ko'chirilgan a'zoliklar ustida
+                // hisob yozilsa, ota-onalarga yolg'on qarz xabari ketardi (`ImportMode`).
+                if (ImportMode.Enabled)
+                {
+                    logger.LogWarning("Import rejimi — oylik to'lov hisobi o'tkazib yuborildi");
+                    await Task.Delay(TimeSpan.FromMinutes(5), stoppingToken);
+                    continue;
+                }
                 using var scope = services.CreateScope();
                 var db = scope.ServiceProvider.GetRequiredService<IAppDbContext>();
                 var (accrued, created) = await TuitionService.AccrueDue(db);

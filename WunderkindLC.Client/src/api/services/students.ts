@@ -123,13 +123,46 @@ export type StudentPayload = Omit<Student, 'id' | 'balance' | 'parentFullName' |
   parentPhone?: string
 }
 
-export async function getStudents(): Promise<Student[]> {
+export async function getStudents(state?: 'trial' | 'active'): Promise<Student[]> {
   if (USE_MOCK) {
     await delay()
     return studentsMock
   }
-  const { data } = await api.get<Student[]>('/admin/students')
+  // `state` — edutizimdagi "Yangi o'quvchilar" (sinov) va "Aktiv o'quvchilar" ro'yxatlari.
+  // Qoida SERVERDA (`StudentListView.MatchesState`) — bosh sahifa kartochkalari bilan bitta ta'rif.
+  const { data } = await api.get<Student[]>('/admin/students', { params: state ? { state } : undefined })
   return data
+}
+
+/** "Joriy oyda obunasi tugaydiganlar" — puli joriy oy darslarini qoplamaydigan o'quvchilar. */
+export async function getSubscriptionRisk(): Promise<SubscriptionRiskReport> {
+  if (USE_MOCK) {
+    await delay()
+    return { month: '', totalLessons: 0, totalBalance: 0, totalExpected: 0, items: [] }
+  }
+  const { data } = await api.get<SubscriptionRiskReport>('/admin/students/subscription-risk')
+  return data
+}
+
+export interface SubscriptionRiskRow {
+  studentId: string
+  fullName: string
+  phone: string
+  parentPhone: string
+  /** JAMI DARSLAR NARXI — joriy oy o'quv to'lovi (chegirma ayrilgan). */
+  lessonsTotal: number
+  balance: number
+  /** KUTILAYOTGAN BALANS — oyning butun hisobi yozilgandan keyin. Manfiy = qoplamaydi. */
+  expected: number
+  memberState: string
+}
+
+export interface SubscriptionRiskReport {
+  month: string
+  totalLessons: number
+  totalBalance: number
+  totalExpected: number
+  items: SubscriptionRiskRow[]
 }
 
 /** Bitta o'quvchi (profil sahifasida tahrirlash uchun to'liq obyekt). */

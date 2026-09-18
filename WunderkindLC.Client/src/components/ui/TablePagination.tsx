@@ -1,5 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
-import { ChevronLeft, ChevronRight } from 'lucide-react'
+import {
+  IconChevronLeft,
+  IconChevronRight,
+  IconChevronsLeft,
+  IconChevronsRight,
+  IconMenu2,
+} from '@tabler/icons-react'
 import { cn } from '@/lib/utils'
 
 /**
@@ -29,7 +35,10 @@ export interface Pagination<T> {
  * Ro'yxatni sahifalarga bo'ladi. Filtr o'zgarib ro'yxat qisqarsa yoki sahifa hajmi almashsa —
  * birinchi sahifaga qaytadi (bo'sh sahifada "hech narsa yo'q" ko'rinib qolmasin).
  */
-export function usePagination<T>(items: T[], initialSize: number = PAGE_SIZES[0]): Pagination<T> {
+/** Standart hajm — edutizimdagidek 50 qator. */
+export const DEFAULT_PAGE_SIZE = 50
+
+export function usePagination<T>(items: T[], initialSize: number = DEFAULT_PAGE_SIZE): Pagination<T> {
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState<number>(initialSize)
 
@@ -73,9 +82,10 @@ function pageWindow(page: number, totalPages: number): (number | '…')[] {
 }
 
 /**
- * Sahifalash paneli (jadval ostida). `usePagination` qaytargan holatni to'g'ridan-to'g'ri beriladi:
- * `<TablePagination {...pg} />`. Bitta sahifa bo'lsa ham hajm tanlovi ko'rinadi (foydalanuvchi
- * ro'yxatni kengaytira olsin), lekin ro'yxat bo'm-bo'sh bo'lsa umuman chizilmaydi.
+ * Sahifalash paneli (jadval ostida) — edutizim ko'rinishida: pastki O'NG burchakda "≡ 50 qator"
+ * tanlovi va ramkali tugmalar (birinchi · oldingi · raqamlar · keyingi · oxirgi).
+ * `usePagination` qaytargan holat to'g'ridan-to'g'ri beriladi: `<TablePagination {...pg} />`.
+ * Ro'yxat bo'm-bo'sh bo'lsa umuman chizilmaydi.
  */
 export function TablePagination<T>({
   page, setPage, pageSize, setPageSize, totalPages, total, rangeFrom, rangeTo,
@@ -84,37 +94,38 @@ export function TablePagination<T>({
 
   return (
     <div className="pagination flex-wrap gap-3">
-      <div className="flex items-center gap-2">
-        <span>Sahifada:</span>
+      <span className="mr-auto text-[12px] text-[#6b7280]">
+        {rangeFrom}–{rangeTo} / {total}
+      </span>
+
+      {/* "≡ 50 qator" — ramkali tugma ko'rinishidagi tanlov */}
+      <label className="relative inline-flex h-8 items-center gap-1.5 rounded-lg border border-black/25 bg-white pl-2.5 pr-3 text-[13px] font-medium text-[#333]">
+        <IconMenu2 className="h-4 w-4" />
+        <span>{pageSize} qator</span>
         <select
           value={pageSize}
           onChange={(e) => setPageSize(Number(e.target.value))}
-          className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-600 outline-none focus:border-brand-400"
+          className="absolute inset-0 cursor-pointer opacity-0"
+          aria-label="Qatorlar soni"
         >
           {PAGE_SIZES.map((n) => (
             <option key={n} value={n}>
-              {n} ta
+              {n} qator
             </option>
           ))}
         </select>
-        <span className="font-mono text-slate-400">
-          {rangeFrom}–{rangeTo} / {total}
-        </span>
-      </div>
+      </label>
 
       <div className="pages items-center">
-        <button
-          type="button"
-          className="pg-btn"
-          disabled={page <= 1}
-          onClick={() => setPage(page - 1)}
-          title="Oldingi sahifa"
-        >
-          <ChevronLeft className="h-3.5 w-3.5" />
+        <button type="button" className="pg-btn" disabled={page <= 1} onClick={() => setPage(1)} title="Birinchi sahifa">
+          <IconChevronsLeft className="h-4 w-4" />
+        </button>
+        <button type="button" className="pg-btn" disabled={page <= 1} onClick={() => setPage(page - 1)} title="Oldingi sahifa">
+          <IconChevronLeft className="h-4 w-4" />
         </button>
         {pageWindow(page, totalPages).map((p, i) =>
           p === '…' ? (
-            <span key={`gap-${i}`} className="px-1 text-slate-300">
+            <span key={`gap-${i}`} className="px-1 text-slate-400">
               …
             </span>
           ) : (
@@ -128,14 +139,11 @@ export function TablePagination<T>({
             </button>
           ),
         )}
-        <button
-          type="button"
-          className="pg-btn"
-          disabled={page >= totalPages}
-          onClick={() => setPage(page + 1)}
-          title="Keyingi sahifa"
-        >
-          <ChevronRight className="h-3.5 w-3.5" />
+        <button type="button" className="pg-btn" disabled={page >= totalPages} onClick={() => setPage(page + 1)} title="Keyingi sahifa">
+          <IconChevronRight className="h-4 w-4" />
+        </button>
+        <button type="button" className="pg-btn" disabled={page >= totalPages} onClick={() => setPage(totalPages)} title="Oxirgi sahifa">
+          <IconChevronsRight className="h-4 w-4" />
         </button>
       </div>
     </div>

@@ -42,6 +42,15 @@ paths:
   to'ldirdi). Bosqich ATAYIN o'zgarmaydi, belgisi kanban kartasida «Takroriy ×N» chipi va lid
   oynasida alohida qator bo'lib chiqadi. Batafsil: `.claude/rules/lead-forms.md` §4.
 
+- **«Birinchi darsga yozilganlar»** (`/admin/leads/birinchi-dars`, `GET /api/admin/leads/first-lesson`,
+  ruxsat `leads.list`): ochiq lid + natijasi `pending` sinov darsi — bosh sahifadagi "Birinchi darsga
+  keladiganlar" bilan BITTA ta'rif (`LeadFirstLesson` ↔ `DashboardSummary.FirstLessonLeads`;
+  `LeadFirstLessonTests` "kartochka soni == qizil bo'lmagan qatorlar" ni qulflaydi). Sanasi o'tgan,
+  belgilanmagan sinov ro'yxatda QOLADI (qizil `#FFCACA`). Ikkinchi ta'rif YARATMANG.
+
+- **Lid bosilsa — lid SAHIFASI** `/admin/leads/:id` (edutizim `/orders/info/:id`); eski `?lead=<id>`
+  havolalari shu sahifaga yo'naltiriladi. `/admin/leads` standart ko'rinishi — jadval, `?view=kanban` — taxta.
+
 - **Lid manbasi ma'lumotnoma** (migratsiya `AddLeadSources`): `LeadSource`(Id,Name,Order) entity +
   `LeadSourcesController` (`api/admin/lead-sources`, AdminPerm "settings" — GET barcha xodimga ochiq).
   Boshqariladi: "O'quv bo'limi → Sabablar" sahifasi (`ReasonsPage` uchinchi karta). `Lead.Source` — manba

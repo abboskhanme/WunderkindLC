@@ -47,11 +47,37 @@ public class LeadsController(
                     .Select(u => new { u.Id, u.FullName }).ToListAsync())
                 .ToDictionary(u => u.Id, u => u.FullName ?? "", StringComparer.Ordinal);
 
-        return leads.Select(lead => new LeadWithAttendanceDto(
+        // Jadval ustunlari (edutizim "Buyurtmalar ro'yxati"): O'QITUVCHI/GURUH — sinov darsidan,
+        // KURS DARAJASI — daraja testidan. Hammasi TO'PLAMLI (lidlar soniga bog'liq bo'lmagan)
+        // bir necha so'rovda — kanban/jadval har ochilganda N ta so'rov ketmasin.
+        var today = AppClock.Today.ToString("yyyy-MM-dd");
+        var ctx = await LoadTrialContextAsync(pendingOnly: false);
+
+        // MANBA — eski/import yozuvlarda `Lead.Source` da manba ID'si turishi mumkin (forma esa
+        // NOM saqlaydi). Ro'yxatda GUID ko'rinib qolmasin — kurs ustunidagi bilan bir xil qoida.
+        var sourceNames = (await db.LeadSources.AsNoTracking()
+                .Select(x => new { x.Id, x.Name }).ToListAsync())
+            .ToDictionary(x => x.Id, x => x.Name ?? "", StringComparer.Ordinal);
+
+        return leads.Select(lead =>
+        {
+            var trials = ctx.TrialsByLead[lead.Id].ToList();
+            var shown = LeadFirstLesson.Display(trials, today);
+            var group = shown is { } s ? ctx.Groups.GetValueOrDefault(s.GroupId) : null;
+            // Kutilayotgan birinchi dars — FAQAT ochiq lidda (bosh sahifa kartochkasi bilan bitta ta'rif).
+            var first = string.IsNullOrWhiteSpace(lead.ConvertedStudentId) ? LeadFirstLesson.Pick(trials, today) : null;
+            return new LeadWithAttendanceDto(
             lead.Id, lead.FullName, lead.Gender, lead.BirthDate, lead.Phone,
             lead.FatherFullName, lead.FatherPhone, lead.MotherFullName,
-            lead.MotherPhone, lead.Note, lead.Stage, lead.Source,
-            lead.InterestSubject, lead.CreatedAt, lead.ConvertedStudentId,
+            lead.MotherPhone, lead.Note, lead.Stage,
+            sourceNames.TryGetValue(lead.Source ?? "", out var srcName) && srcName.Length > 0
+                ? srcName
+                : lead.Source,
+            // KURS — «Birinchi darsga yozilganlar» dagi bilan AYNAN bir xil qoida: eski
+            // yozuvlarda `InterestSubject` da kurs ID'si turishi mumkin, ro'yxatda GUID
+            // ko'rinib qolmasin (bo'sh bo'lsa sinov guruhining kursi olinadi).
+            CourseLabel(lead.InterestSubject, group?.CourseId, ctx.CourseNames),
+            lead.CreatedAt, lead.ConvertedStudentId,
             string.IsNullOrWhiteSpace(lead.ConvertedStudentId)
                 ? "no-lesson"
                 : attendanceByStudent.GetValueOrDefault(lead.ConvertedStudentId, "no-lesson"),
@@ -60,8 +86,151 @@ public class LeadsController(
             lead.AssigneeUserId,
             string.IsNullOrWhiteSpace(lead.AssigneeUserId)
                 ? null : assigneeNames.GetValueOrDefault(lead.AssigneeUserId!),
-            lead.ClosedByUserId, lead.ClosedAt
-        )).ToList();
+            lead.ClosedByUserId, lead.ClosedAt,
+            FirstLessonAt: first?.ScheduledAt,
+            GroupId: group is null ? null : shown!.Value.GroupId,
+            GroupName: group?.Name,
+            TeacherId: string.IsNullOrWhiteSpace(group?.TeacherId) ? null : group!.TeacherId,
+            TeacherName: string.IsNullOrWhiteSpace(group?.TeacherId) ? null : ctx.TeacherNames.GetValueOrDefault(group!.TeacherId),
+            Level: ctx.LevelByLead.GetValueOrDefault(lead.Id));
+        }).ToList();
+    }
+
+    /// <summary>
+    /// «BIRINCHI DARSGA YOZILGANLAR» (edutizim: Lidlar → Birinchi darsga yozilganlar): ochiq lid +
+    /// natijasi belgilanmagan sinov darsi. Tanlov va filtrlar — <see cref="LeadFirstLesson"/>
+    /// (sof funksiyalar); ta'rif bosh sahifadagi "Birinchi darsga keladiganlar" kartochkasi bilan
+    /// BITTA (<see cref="DashboardSummary.FirstLessonLeads"/>), farqi — o'tib ketgan sana ham
+    /// ro'yxatda qoladi (<c>IsPast</c>, qizil qator).
+    ///
+    /// <para>Ruxsat — sinf darajasidagi <c>leads.list</c> (lidlar ro'yxati bilan AYNAN bir xil):
+    /// bu o'sha lidlarning boshqa kesimi, yangi ma'lumot ochmaydi.</para>
+    /// </summary>
+    [HttpGet("first-lesson")]
+    public async Task<ActionResult<IEnumerable<FirstLessonLeadDto>>> FirstLesson(
+        [FromQuery] string? date = null, [FromQuery] string? from = null, [FromQuery] string? to = null,
+        [FromQuery] string? course = null, [FromQuery] string? level = null,
+        [FromQuery] int? weekday = null, [FromQuery] string? parity = null,
+        [FromQuery] string? assignee = null, [FromQuery] string? teacher = null,
+        [FromQuery] string? color = null, [FromQuery] string? q = null)
+    {
+        var today = AppClock.Today.ToString("yyyy-MM-dd");
+        var leads = await db.Leads.AsNoTracking()
+            .Where(l => l.ConvertedStudentId == null)
+            .Select(l => new
+            {
+                l.Id, l.FullName, l.Phone, l.FatherPhone, l.MotherPhone, l.FatherFullName,
+                l.MotherFullName, l.Note, l.CreatedAt, l.InterestSubject, l.AssigneeUserId, l.Stage,
+            })
+            .ToListAsync();
+        var ctx = await LoadTrialContextAsync(pendingOnly: true);
+
+        var picked = LeadFirstLesson.Select(
+            leads.Select(l => new DashboardSummary.LeadRow(l.Id, false)),
+            ctx.TrialsByLead.SelectMany(g => g), today);
+        var byId = leads.Where(l => picked.ContainsKey(l.Id)).ToDictionary(l => l.Id, StringComparer.Ordinal);
+
+        var rows = byId.Values.Select(l =>
+        {
+            var t = picked[l.Id];
+            var g = ctx.Groups.GetValueOrDefault(t.GroupId);
+            return new LeadFirstLesson.Row(
+                l.Id, l.FullName ?? "",
+                new[] { l.Phone ?? "", l.FatherPhone ?? "", l.MotherPhone ?? "" },
+                $"{l.FatherFullName} {l.MotherFullName} {l.Note} {g?.Name}",
+                t.ScheduledAt ?? "", LeadFirstLesson.IsPast(t.ScheduledAt, today),
+                CourseLabel(l.InterestSubject, g?.CourseId, ctx.CourseNames),
+                ctx.LevelByLead.GetValueOrDefault(l.Id, ""),
+                g?.TeacherId ?? "", l.AssigneeUserId ?? "",
+                g?.Days ?? new List<int>());
+        });
+        var filtered = LeadFirstLesson.Apply(rows, new LeadFirstLesson.Filter(
+            date, from, to, course, level, weekday, parity, assignee, teacher, color, q));
+
+        var assigneeIds = filtered.Select(r => r.AssigneeUserId).Where(id => id.Length > 0).Distinct().ToList();
+        var assigneeNames = assigneeIds.Count == 0
+            ? new Dictionary<string, string>(StringComparer.Ordinal)
+            : (await db.Users.AsNoTracking()
+                    .Where(u => assigneeIds.Contains(u.Id))
+                    .Select(u => new { u.Id, u.FullName }).ToListAsync())
+                .ToDictionary(u => u.Id, u => u.FullName ?? "", StringComparer.Ordinal);
+
+        return filtered.Select(r =>
+        {
+            var l = byId[r.LeadId];
+            var t = picked[r.LeadId];
+            var g = ctx.Groups.GetValueOrDefault(t.GroupId);
+            return new FirstLessonLeadDto(
+                l.Id, l.FullName ?? "", l.Phone ?? "", l.FatherPhone ?? "", l.MotherPhone ?? "",
+                l.CreatedAt, r.FirstLessonAt, r.IsPast, t.Id,
+                t.GroupId, g?.Name ?? "", r.TeacherId, ctx.TeacherNames.GetValueOrDefault(r.TeacherId, ""),
+                r.Course, r.Level,
+                r.AssigneeUserId.Length == 0 ? null : r.AssigneeUserId,
+                r.AssigneeUserId.Length == 0 ? null : assigneeNames.GetValueOrDefault(r.AssigneeUserId),
+                l.Note, l.Stage ?? "");
+        }).ToList();
+    }
+
+    /// <summary>Guruh — lidlar jadvali uchun kerakli qismi.</summary>
+    private sealed record TrialGroup(string Name, string TeacherId, string CourseId, List<int> Days);
+
+    /// <summary>Sinovlar (lid bo'yicha), guruhlar, o'qituvchi/kurs nomlari va lid darajasi.</summary>
+    private sealed record TrialContext(
+        ILookup<string, LeadFirstLesson.TrialRow> TrialsByLead,
+        Dictionary<string, TrialGroup> Groups,
+        Dictionary<string, string> TeacherNames,
+        Dictionary<string, string> CourseNames,
+        Dictionary<string, string> LevelByLead);
+
+    /// <summary>
+    /// Lidlar jadvali va «Birinchi darsga yozilganlar» uchun UMUMIY yuklash — bir necha to'plamli
+    /// so'rov. <paramref name="pendingOnly"/> — faqat natijasi belgilanmagan sinovlar.
+    /// Arxivlangan guruhlar ham olinadi: sinov o'sha guruhga yozilgan bo'lsa nomi yo'qolmasin.
+    /// </summary>
+    private async Task<TrialContext> LoadTrialContextAsync(bool pendingOnly)
+    {
+        var trialQuery = db.TrialLessons.AsNoTracking();
+        if (pendingOnly) trialQuery = trialQuery.Where(t => t.Result == DashboardSummary.TrialPending);
+        var trials = (await trialQuery
+                .Select(t => new { t.Id, t.LeadId, t.GroupId, t.Result, t.ScheduledAt }).ToListAsync())
+            .Select(t => new LeadFirstLesson.TrialRow(t.Id, t.LeadId, t.GroupId ?? "", t.Result ?? "", t.ScheduledAt ?? ""))
+            .ToLookup(t => t.LeadId, StringComparer.Ordinal);
+
+        var groups = (await db.Classes.AsNoTracking()
+                .Select(g => new { g.Id, g.Name, g.TeacherId, g.CourseId, g.Days }).ToListAsync())
+            .ToDictionary(g => g.Id,
+                g => new TrialGroup(g.Name ?? "", g.TeacherId ?? "", g.CourseId ?? "", g.Days ?? new List<int>()),
+                StringComparer.Ordinal);
+        var teacherNames = (await db.Teachers.AsNoTracking()
+                .Select(t => new { t.Id, t.FullName }).ToListAsync())
+            .ToDictionary(t => t.Id, t => t.FullName ?? "", StringComparer.Ordinal);
+        var courseNames = (await db.Subjects.AsNoTracking()
+                .Select(s => new { s.Id, s.Name }).ToListAsync())
+            .ToDictionary(s => s.Id, s => s.Name ?? "", StringComparer.Ordinal);
+
+        // KURS DARAJASI — lidning ENG SO'NGGI daraja testi natijasi (bo'sh daraja hisobga olinmaydi).
+        var levelByLead = (await db.LevelTestSubmissions.AsNoTracking()
+                .Where(s => s.LeadId != "" && s.Level != "")
+                .Select(s => new { s.LeadId, s.Level, s.CreatedAt }).ToListAsync())
+            .GroupBy(s => s.LeadId, StringComparer.Ordinal)
+            .ToDictionary(g => g.Key,
+                g => g.OrderByDescending(s => s.CreatedAt ?? "", StringComparer.Ordinal).First().Level ?? "",
+                StringComparer.Ordinal);
+
+        return new TrialContext(trials, groups, teacherNames, courseNames, levelByLead);
+    }
+
+    /// <summary>
+    /// KURS ustuni: lidning kursi (<c>InterestSubject</c> — odatda kurs NOMI; eski yozuvlarda kurs
+    /// id'si bo'lsa nomiga aylantiriladi, `Stats` dagi bilan bir xil konvensiya), bo'sh bo'lsa —
+    /// sinov guruhining kursi.
+    /// </summary>
+    private static string CourseLabel(string? interest, string? groupCourseId, Dictionary<string, string> courseNames)
+    {
+        var v = (interest ?? "").Trim();
+        if (v.Length > 0)
+            return courseNames.TryGetValue(v, out var byId) && !string.IsNullOrWhiteSpace(byId) ? byId.Trim() : v;
+        return !string.IsNullOrWhiteSpace(groupCourseId) && courseNames.TryGetValue(groupCourseId, out var n) ? n.Trim() : "";
     }
 
     /// <summary>

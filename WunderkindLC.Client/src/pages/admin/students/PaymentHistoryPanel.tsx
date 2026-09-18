@@ -1,6 +1,6 @@
 ﻿import { useEffect, useRef, useState } from 'react'
 import { AlertCircle, Check, Pencil, RefreshCw, Users, Wallet, X } from 'lucide-react'
-import type { MonthStatus, Student, StudentLedger } from '@/types'
+import type { MonthLedger, MonthStatus, Student, StudentLedger } from '@/types'
 import { getStudentLedger, editStudentCharge, getStudent, addPayment } from '@/api/services/students'
 import { useAuth } from '@/context/auth-context'
 import { usePerm } from '@/lib/permissions'
@@ -12,6 +12,9 @@ import { ReceiptModal } from '@/components/finance/ReceiptModal'
 import { formatDate, formatMoney, cn, apiErrorMessage } from '@/lib/utils'
 import { groupsText, statesToGroups } from '@/lib/studentGroups'
 import { formatMonth, monthStatusLabels, paymentMethodLabel } from '@/config/constants'
+import { DataTable } from '@/components/ui/list/DataTable'
+import { TotalPill } from '@/components/ui/list/TotalPill'
+import { joinDateTimeBar } from './profile/model'
 
 interface Props {
   studentId: string
@@ -26,6 +29,17 @@ interface Props {
    * eskirib qoladi — u sahifada bir marta yuklanadi va o'zi qayta so'ramaydi.
    */
   onChargeEdited?: () => void
+  /**
+   * `profile` — o'quvchi profilidagi «Tranzaksiyalar tarixi» tabi: edutizim (DataGrid) jadvallari,
+   * o'zgarishlar tarixi (audit) CHIZILMAYDI — u profilning «Harakatlar tarixi» tabida.
+   * Standart (`panel`) — avvalgi ko'rinish (`PaymentHistoryModal`).
+   */
+  variant?: 'panel' | 'profile'
+  /**
+   * O'zgarsa hisob QAYTA so'raladi. Profil tablari yashirin holda TIRIK turadi (qayta ochilganda
+   * so'ralmaydi), shuning uchun panel TASHQARIDAN kiritilgan to'lov/chegirmani shu orqali biladi.
+   */
+  refreshKey?: number
 }
 
 const statusStyles: Record<MonthStatus, string> = {
@@ -36,7 +50,7 @@ const statusStyles: Record<MonthStatus, string> = {
 
 /** O'quvchining to'lov tarixi — oylar bo'yicha holat, kassa yozuvlari, o'zgarishlar tarixi.
  *  `PaymentHistoryModal` (modal ichida) va `StudentDetailPage`ning "To'lov tarixi" tabida (inline) ishlatiladi. */
-export function PaymentHistoryPanel({ studentId, onPaid, onChargeEdited }: Props) {
+export function PaymentHistoryPanel({ studentId, onPaid, onChargeEdited, variant = 'panel', refreshKey = 0 }: Props) {
   const { user } = useAuth()
   // O'zgarishlar tarixi — alohida `audit` ruxsati (admin/superadmin uchun har doim true).
   const canSeeAudit = usePerm().can('audit', 'view')
@@ -84,7 +98,7 @@ export function PaymentHistoryPanel({ studentId, onPaid, onChargeEdited }: Props
       .finally(() => {
         if (reqRef.current === req) setLoading(false)
       })
-  }, [studentId, tick])
+  }, [studentId, tick, refreshKey])
 
   const saveEdit = async (month: string, groupId?: string | null) => {
     if (!studentId) return
@@ -150,6 +164,87 @@ export function PaymentHistoryPanel({ studentId, onPaid, onChargeEdited }: Props
     }
   }
 
+  /**
+   * Oy ichidagi GURUH ulushlari (+ super admin uchun qo'lda tahrir). Ikkala ko'rinish (`panel` va
+   * `profile`) ham AYNAN shuni chizadi — tahrir oqimi bitta joyda.
+   */
+  const renderCourses = (m: MonthLedger) =>
+    m.courses.length > 0 && (
+      <div className="mt-1 space-y-1">
+        {m.courses.map((co, i) => {
+          const k = keyOf(m.month, co.groupId)
+          const editing = isSuper && editKey === k
+          return (
+            <div
+              key={i}
+              className="flex items-center gap-1.5 text-xs font-normal text-slate-400"
+            >
+              <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-brand-300" />
+              {/* GURUH nomi asosiy, yonida — kursi (bir xil bo'lsa takrorlanmaydi). */}
+              <span className="truncate text-slate-500">
+                {co.groupName || co.courseName}
+                {co.groupName && co.courseName && co.courseName !== co.groupName
+                  ? ` — ${co.courseName}`
+                  : ''}
+              </span>
+              <span className="text-slate-300">·</span>
+              {editing ? (
+                <span className="inline-flex items-center gap-1">
+                  <input
+                    type="number"
+                    autoFocus
+                    value={editVal}
+                    disabled={saving}
+                    onChange={(e) => setEditVal(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') saveEdit(m.month, co.groupId)
+                      if (e.key === 'Escape') setEditKey(null)
+                    }}
+                    className="w-24 rounded-md border border-slate-200 px-2 py-0.5 text-right font-mono text-xs outline-none focus:border-brand-400 disabled:opacity-50"
+                  />
+                  <button
+                    type="button"
+                    title="Saqlash"
+                    disabled={saving}
+                    onClick={() => saveEdit(m.month, co.groupId)}
+                    className="rounded p-0.5 text-emerald-600 hover:bg-emerald-50 disabled:opacity-50"
+                  >
+                    <Check className="h-3.5 w-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    title="Bekor"
+                    disabled={saving}
+                    onClick={() => setEditKey(null)}
+                    className="rounded p-0.5 text-slate-400 hover:bg-slate-100 disabled:opacity-50"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </span>
+              ) : (
+                <>
+                  <span className="font-mono text-slate-500">{formatMoney(co.fee)}</span>
+                  {isSuper && (
+                    <button
+                      type="button"
+                      title="Bu guruh hisobini tahrirlash"
+                      onClick={() => {
+                        setEditKey(k)
+                        setEditVal(String(co.fee))
+                      }}
+                      className="rounded p-0.5 text-slate-300 transition-colors hover:bg-slate-100 hover:text-brand-600"
+                    >
+                      <Pencil className="h-3 w-3" />
+                    </button>
+                  )}
+                </>
+              )}
+            </div>
+          )
+        })}
+      </div>
+    )
+
   // UCHTA ALOHIDA holat: yuklanmoqda · xato (sabab + qayta urinish) · ma'lumot yo'q.
   if (loading) return <Loader label="Yuklanmoqda..." />
 
@@ -168,23 +263,157 @@ export function PaymentHistoryPanel({ studentId, onPaid, onChargeEdited }: Props
   if (!ledger)
     return <p className="py-8 text-center text-sm text-slate-400">To'lov ma'lumoti topilmadi</p>
 
+  /** Ma'lumot BOR, lekin oxirgi yangilash yiqildi — ikkala ko'rinishda ham bir xil ogohlantirish. */
+  const staleBanner = error && (
+    <div className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
+      <AlertCircle className="h-4 w-4 shrink-0" />
+      <span className="flex-1">{error}</span>
+      <button
+        type="button"
+        onClick={() => setTick((t) => t + 1)}
+        className="shrink-0 rounded-md px-2 py-1 text-xs font-semibold text-amber-800 hover:bg-amber-100"
+      >
+        Qayta urinish
+      </button>
+    </div>
+  )
+
+  /** Balans rangi/belgisi — sarlavhada ham, profil jadvali tepasida ham bir xil. */
+  const balanceCls =
+    ledger.balance < 0 ? 'text-red-600' : ledger.balance > 0 ? 'text-emerald-600' : 'text-slate-600'
+  const balanceText = ledger.balance > 0 ? `+${formatMoney(ledger.balance)}` : formatMoney(ledger.balance)
+
+  // PROFIL ko'rinishi — edutizim «Tranzaksiyalar tarixi»: avval to'lovlar (SANA "dd.mm.yyyy | HH:mm"),
+  // keyin oylar bo'yicha hisob. Raqamlar AYNAN o'sha `ledger` dan — faqat chizilishi boshqa.
+  const profileBody = variant === 'profile' && (
+    <div className="space-y-4">
+      {staleBanner}
+
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-[13px] text-[#333]">
+          <span className="text-black/60">Joriy balans:</span>{' '}
+          <b className={cn('font-bold', balanceCls)}>{balanceText}</b>
+          <span className="mx-2 text-[#dbe0e6]">|</span>
+          <span className="text-black/60">Jami oylik:</span>{' '}
+          <b className="font-bold">{formatMoney(ledger.monthlyFee)}</b>
+        </p>
+        <div className="flex items-center gap-2">
+          <TotalPill total={ledger.payments.length} />
+          <Button onClick={openPay} className="mb-2">
+            <Wallet className="h-4 w-4" /> To'lov qilish
+          </Button>
+        </div>
+      </div>
+
+      <DataTable
+        rows={ledger.payments.map((p, i) => ({ ...p, _key: `${p.date}-${i}` }))}
+        rowKey={(p) => p._key}
+        numbered
+        columns={[
+          { key: 'date', header: 'Sana', width: 150, render: (p) => joinDateTimeBar(p.date, p.paidTime) },
+          {
+            key: 'amount',
+            header: 'Miqdori',
+            align: 'right',
+            render: (p) => <span className="font-semibold text-emerald-600">+{formatMoney(p.amount)}</span>,
+          },
+          { key: 'month', header: 'Oy', render: (p) => (p.month ? formatMonth(p.month) : '—') },
+          {
+            key: 'group',
+            header: 'Guruh',
+            render: (p) =>
+              p.groupName
+                ? `${p.groupName}${p.courseName && p.courseName !== p.groupName ? ` — ${p.courseName}` : ''}`
+                : '—',
+          },
+          { key: 'method', header: "To'lov turi", render: (p) => (p.method ? paymentMethodLabel(p.method) : '—') },
+          {
+            key: 'ref',
+            header: 'Kvitansiya / karta',
+            render: (p) =>
+              p.receiptNo ? (
+                <span className="font-mono">{p.receiptNo}</span>
+              ) : p.cardLast4 ? (
+                <span className="font-mono">•••• {p.cardLast4}</span>
+              ) : (
+                '—'
+              ),
+          },
+          { key: 'comment', header: 'Izoh', render: (p) => p.comment || '—' },
+        ]}
+      />
+
+      <h3 className="flex items-center gap-2 pt-2 text-[15px] font-semibold text-black">
+        <span className="h-5 w-[3px] rounded-full bg-brand-600" /> Oylar bo'yicha
+      </h3>
+      <DataTable
+        rows={ledger.months}
+        rowKey={(m) => m.month}
+        columns={[
+          {
+            key: 'month',
+            header: 'Oy',
+            render: (m) => (
+              <div className="py-2">
+                {formatMonth(m.month)}
+                {renderCourses(m)}
+              </div>
+            ),
+          },
+          { key: 'charged', header: 'Hisoblangan', align: 'right', render: (m) => formatMoney(m.charged) },
+          {
+            key: 'discount',
+            header: 'Chegirma',
+            align: 'right',
+            render: (m) =>
+              m.discount > 0 ? <span className="text-amber-600">−{formatMoney(m.discount)}</span> : '—',
+          },
+          {
+            key: 'paid',
+            header: "To'langan",
+            align: 'right',
+            render: (m) => <span className="text-emerald-600">{formatMoney(m.paid)}</span>,
+          },
+          {
+            key: 'remaining',
+            header: 'Qoldiq',
+            align: 'right',
+            render: (m) => (
+              <span className={m.remaining > 0 ? 'text-red-600' : 'text-slate-400'}>{formatMoney(m.remaining)}</span>
+            ),
+          },
+          {
+            key: 'status',
+            header: 'Holat',
+            align: 'center',
+            render: (m) => (
+              <span className={cn('rounded-md px-2 py-0.5 text-xs font-medium', statusStyles[m.status])}>
+                {monthStatusLabels[m.status]}
+              </span>
+            ),
+          },
+        ]}
+        footer={
+          <div className="flex flex-wrap justify-end gap-x-6 gap-y-1 border-t border-[#e0e0e0] px-2.5 py-3 text-[13px] font-semibold">
+            <span>
+              Jami hisoblangan: <span className="font-bold">{formatMoney(ledger.totalCharged)}</span>
+            </span>
+            <span className="text-amber-700">
+              Chegirma: {ledger.totalDiscount > 0 ? `−${formatMoney(ledger.totalDiscount)}` : '—'}
+            </span>
+            <span className="text-emerald-700">To'langan: {formatMoney(ledger.totalPaid)}</span>
+          </div>
+        }
+      />
+    </div>
+  )
+
   return (
     <>
+      {profileBody || (
       <div className="space-y-5">
         {/* Ma'lumot BOR, lekin oxirgi yangilash yiqildi — jimgina eskirib qolmasin. */}
-        {error && (
-          <div className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
-            <AlertCircle className="h-4 w-4 shrink-0" />
-            <span className="flex-1">{error}</span>
-            <button
-              type="button"
-              onClick={() => setTick((t) => t + 1)}
-              className="shrink-0 rounded-md px-2 py-1 text-xs font-semibold text-amber-800 hover:bg-amber-100"
-            >
-              Qayta urinish
-            </button>
-          </div>
-        )}
+        {staleBanner}
 
         {/* Sarlavha */}
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-slate-50 px-4 py-3">
@@ -203,18 +432,7 @@ export function PaymentHistoryPanel({ studentId, onPaid, onChargeEdited }: Props
           <div className="flex items-center gap-4">
             <div className="text-right">
               <p className="text-xs text-slate-400">Joriy balans</p>
-              <p
-                className={cn(
-                  'font-mono text-lg font-semibold',
-                  ledger.balance < 0
-                    ? 'text-red-600'
-                    : ledger.balance > 0
-                      ? 'text-emerald-600'
-                      : 'text-slate-600',
-                )}
-              >
-                {ledger.balance > 0 ? `+${formatMoney(ledger.balance)}` : formatMoney(ledger.balance)}
-              </p>
+              <p className={cn('font-mono text-lg font-semibold', balanceCls)}>{balanceText}</p>
             </div>
             <Button onClick={openPay}>
               <Wallet className="h-4 w-4" /> To'lov qilish
@@ -242,81 +460,7 @@ export function PaymentHistoryPanel({ studentId, onPaid, onChargeEdited }: Props
                   <tr key={m.month} className="hover:bg-slate-50/60">
                     <td className="px-4 py-2.5 align-top font-medium text-slate-700">
                       {formatMonth(m.month)}
-                      {m.courses.length > 0 && (
-                        <div className="mt-1 space-y-1">
-                          {m.courses.map((co, i) => {
-                            const k = keyOf(m.month, co.groupId)
-                            const editing = isSuper && editKey === k
-                            return (
-                              <div
-                                key={i}
-                                className="flex items-center gap-1.5 text-xs font-normal text-slate-400"
-                              >
-                                <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-brand-300" />
-                                {/* GURUH nomi asosiy, yonida — kursi (bir xil bo'lsa takrorlanmaydi). */}
-                                <span className="truncate text-slate-500">
-                                  {co.groupName || co.courseName}
-                                  {co.groupName && co.courseName && co.courseName !== co.groupName
-                                    ? ` — ${co.courseName}`
-                                    : ''}
-                                </span>
-                                <span className="text-slate-300">·</span>
-                                {editing ? (
-                                  <span className="inline-flex items-center gap-1">
-                                    <input
-                                      type="number"
-                                      autoFocus
-                                      value={editVal}
-                                      disabled={saving}
-                                      onChange={(e) => setEditVal(e.target.value)}
-                                      onKeyDown={(e) => {
-                                        if (e.key === 'Enter') saveEdit(m.month, co.groupId)
-                                        if (e.key === 'Escape') setEditKey(null)
-                                      }}
-                                      className="w-24 rounded-md border border-slate-200 px-2 py-0.5 text-right font-mono text-xs outline-none focus:border-brand-400 disabled:opacity-50"
-                                    />
-                                    <button
-                                      type="button"
-                                      title="Saqlash"
-                                      disabled={saving}
-                                      onClick={() => saveEdit(m.month, co.groupId)}
-                                      className="rounded p-0.5 text-emerald-600 hover:bg-emerald-50 disabled:opacity-50"
-                                    >
-                                      <Check className="h-3.5 w-3.5" />
-                                    </button>
-                                    <button
-                                      type="button"
-                                      title="Bekor"
-                                      disabled={saving}
-                                      onClick={() => setEditKey(null)}
-                                      className="rounded p-0.5 text-slate-400 hover:bg-slate-100 disabled:opacity-50"
-                                    >
-                                      <X className="h-3.5 w-3.5" />
-                                    </button>
-                                  </span>
-                                ) : (
-                                  <>
-                                    <span className="font-mono text-slate-500">{formatMoney(co.fee)}</span>
-                                    {isSuper && (
-                                      <button
-                                        type="button"
-                                        title="Bu guruh hisobini tahrirlash"
-                                        onClick={() => {
-                                          setEditKey(k)
-                                          setEditVal(String(co.fee))
-                                        }}
-                                        className="rounded p-0.5 text-slate-300 transition-colors hover:bg-slate-100 hover:text-brand-600"
-                                      >
-                                        <Pencil className="h-3 w-3" />
-                                      </button>
-                                    )}
-                                  </>
-                                )}
-                              </div>
-                            )
-                          })}
-                        </div>
-                      )}
+                      {renderCourses(m)}
                     </td>
                     <td className="px-4 py-2.5 text-right align-top font-mono text-slate-600">
                       {formatMoney(m.charged)}
@@ -460,6 +604,7 @@ export function PaymentHistoryPanel({ studentId, onPaid, onChargeEdited }: Props
           </div>
         )}
       </div>
+      )}
 
       <PaymentModal student={payTarget} onClose={() => setPayTarget(null)} onSubmit={handlePayment} />
 

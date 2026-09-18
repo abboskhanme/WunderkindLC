@@ -9,7 +9,7 @@ import {
   visibleReportGroups,
 } from '../reports'
 import { permLabel } from '../constants'
-import { navByRole, activeNavTo } from '../navigation'
+import { navByRole, activeNavTo, edutizimReportRoutes, edutizimDuplicateRoutes } from '../navigation'
 
 /**
  * HISOBOTLAR KATALOGI — `config/reports.ts` yagona manba bo'lgani uchun undagi xato
@@ -61,24 +61,79 @@ describe('hisobotlar katalogi', () => {
     expect(navReports.length).toBe(allReports.filter((r) => r.inNav).length)
   })
 
-  it("yon menyudagi 'Hisobotlar' guruhi katalog bilan bir xil", () => {
-    // Guruh menyuda QO'LDA yozilmasin — aks holda katalogga qo'shilgan hisobot menyuda
-    // paydo bo'lmay, "yo'qolgan" bo'lib ko'rinardi.
-    const group = navByRole.admin.find((i) => i.label === 'Hisobotlar')
-    expect(group).toBeDefined()
-    const childRoutes = (group!.children ?? []).map((c) => c.to)
-    expect(childRoutes[0]).toBe('/admin/hisobotlar') // "Barcha hisobotlar" — birinchi
-    for (const r of navReports) expect(childRoutes).toContain(r.to)
+  it("katalogdagi har bir menyu hisoboti yon menyuda AYNAN BIR MARTA bor", () => {
+    // Menyu edutizim tartibida (docs/EDUTIZIM-PARITY.md): hisobot yo edutizimning "Hisobotlar"
+    // guruhida, yo "Future → Hisobotlar" da turadi — lekin HECH QACHON yo'qolmaydi va ikki
+    // joyda turmaydi. Guruh menyuda QO'LDA yozilmasin: katalogga qo'shilgan hisobot o'zi chiqadi.
+    const leaves = leafRoutes(navByRole.admin)
+    for (const r of navReports) {
+      const n = leaves.filter((to) => to === r.to).length
+      expect(n, `${r.label} menyuda bor`).toBeGreaterThan(0)
+      if (!edutizimDuplicateRoutes.has(r.to)) expect(n, `${r.label} menyuda bir marta`).toBe(1)
+    }
   })
 
-  it("ko'chirilgan hisobotlar ESKI menyu guruhlarida qolmagan", () => {
-    // "Olib kirish" chala bo'lsa band ikki joyda turardi.
-    const otherRoutes = navByRole.admin
-      .filter((i) => i.label !== 'Hisobotlar')
-      .flatMap((i) => [i.to, ...(i.children ?? []).map((c) => c.to)])
-    for (const r of navReports) {
-      expect(otherRoutes, `${r.label} eski menyuda qolib ketgan`).not.toContain(r.to)
+  it("Future → Hisobotlar hub'dan boshlanadi va edutizim hisobotlarini takrorlamaydi", () => {
+    const future = navByRole.admin.find((i) => i.label === 'Future')!
+    const reports = future.children!.find((c) => c.label === 'Hisobotlar')!
+    const routes = reports.children!.map((c) => c.to)
+    expect(routes[0]).toBe('/admin/hisobotlar') // "Barcha hisobotlar" — birinchi
+    for (const to of edutizimReportRoutes) expect(routes).not.toContain(to)
+  })
+})
+
+/** Menyuning barcha BARG manzillari (guruh kalitlarisiz). */
+function leafRoutes(items: { to: string; children?: { to: string; children?: unknown[] }[] }[]): string[] {
+  return items.flatMap((i) =>
+    i.children ? leafRoutes(i.children as { to: string; children?: { to: string }[] }[]) : [i.to],
+  )
+}
+
+/**
+ * EDUTIZIM MENYUSI — admin paneli edutizim.uz bilan bir xil bo'lishi kerak (xodimlar o'sha
+ * tizimga o'rgangan). Bu testlar tartib va nomlarni QULFLAYDI: guruh jimgina qayta nomlansa
+ * yoki joyi almashsa, xodim uni "yo'qolgan" deb qidirib yurardi.
+ */
+describe('edutizim menyusi', () => {
+  it("guruhlar edutizimdagi TARTIBDA, eng pastda 'Future'", () => {
+    expect(navByRole.admin.map((i) => i.label)).toEqual([
+      'Topshiriqlar',
+      'Lidlar',
+      'Guruh',
+      "O'quvchilar",
+      "O'quv bo'limi",
+      'Moliya',
+      'Nazorat',
+      'Boshqaruv',
+      'Sotuv va marketing',
+      'Hisobotlar',
+      'Sozlamalar',
+      'Future',
+    ])
+  })
+
+  it("guruh bandining `to` si sahifa EMAS — '#' kalit (guruh bosilganda sahifa ochilmaydi)", () => {
+    for (const i of navByRole.admin.filter((x) => x.children)) expect(i.to.startsWith('#')).toBe(true)
+  })
+
+  it('menyudagi har bir sahifa App.tsx da HAQIQATAN bor', () => {
+    // `settings/:section` kabi parametrli marshrut ham hisoblanadi.
+    const appPath = fileURLToPath(new URL('../../App.tsx', import.meta.url))
+    const app = readFileSync(appPath, 'utf8')
+    const patterns = [...app.matchAll(/path="([^"]+)"/g)]
+      .map((m) => m[1])
+      .filter((p) => p !== '*') // "topilmadi" marshruti hamma narsaga mos kelardi
+      .map((p) => new RegExp('^' + p.replace(/:[^/]+/g, '[^/]+') + '$'))
+    for (const to of leafRoutes(navByRole.admin)) {
+      const path = to.split('?')[0].replace(/^\/admin\//, '')
+      expect(patterns.some((re) => re.test(path)), to).toBe(true)
     }
+  })
+
+  it("bitta sahifa menyuda ikki marta turmaydi (edutizimning O'Z takrorlaridan tashqari)", () => {
+    const leaves = leafRoutes(navByRole.admin)
+    const dup = leaves.filter((to, i) => leaves.indexOf(to) !== i)
+    expect(dup.every((to) => edutizimDuplicateRoutes.has(to))).toBe(true)
   })
 })
 
@@ -136,25 +191,29 @@ describe('activeNavTo — qaysi menyu bandi faol', () => {
   const find = (label: string) => admin.find((i) => i.label === label)!.to
 
   it.each([
-    ['/admin/subjects/analitika', 'Hisobotlar'],
+    // edutizimning "Hisobotlar" guruhidagi sahifalar
     ['/admin/rooms/utilization', 'Hisobotlar'],
-    ['/admin/forms/statistika', 'Hisobotlar'],
-    ['/admin/marketing/analytics', 'Hisobotlar'],
-    ['/admin/settings/history', 'Hisobotlar'],
     ['/admin/crm-stats', 'Hisobotlar'],
-    ['/admin/hisobotlar', 'Hisobotlar'],
+    // edutizimda yo'q hisobotlar — "Future" ichida. Eng ANIQ moslik g'olib:
+    // `/admin/subjects/analitika` ESKI "O'quv bo'limi"ni (u yerda `/admin/subjects`) ochmaydi.
+    ['/admin/subjects/analitika', 'Future'],
+    ['/admin/forms/statistika', 'Future'],
+    ['/admin/marketing/analytics', 'Future'],
+    ['/admin/settings/history', 'Future'],
+    ['/admin/hisobotlar', 'Future'],
   ])('%s → «%s»', (path, label) => {
     expect(activeNavTo(admin, path)).toBe(find(label))
   })
 
   it.each([
-    // Eski bo'limlar O'Z sahifalarida avvalgidek faol qoladi.
     ['/admin/subjects', "O'quv bo'limi"],
-    ['/admin/rooms', "O'quv bo'limi"],
-    ['/admin/marketing/inbox', 'Marketing'],
+    ['/admin/rooms', 'Guruh'],
+    ['/admin/classes/abc', 'Guruh'],
+    ['/admin/students/123', "O'quvchilar"],
+    ['/admin/teachers/7', 'Boshqaruv'],
+    ['/admin/marketing/inbox', 'Future'],
     ['/admin/settings/school', 'Sozlamalar'],
-    ['/admin/students/davomat', "O'quvchilar"],
-    // Moliya "Hisobotlar"ga KO'CHIRILMAGAN (ichida amal bor) — o'z bandida qoladi.
+    ['/admin/students/davomat', 'Nazorat'],
     ['/admin/finance', 'Moliya'],
   ])('%s → «%s»', (path, label) => {
     expect(activeNavTo(admin, path)).toBe(find(label))

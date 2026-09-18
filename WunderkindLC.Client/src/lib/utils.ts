@@ -91,6 +91,17 @@ export function maskPhone(raw: string): string {
 }
 
 /**
+ * edutizim jadvallaridagi QISQA telefon ko'rinishi: "93 854 70 83" (+998 siz). O'zbek raqami
+ * bo'lmasa (9 xonali qism chiqmasa) — kelganicha qaytaradi.
+ */
+export function formatPhoneShort(raw: string): string {
+  let d = (raw || '').replace(/\D/g, '')
+  if (d.length === 12 && d.startsWith('998')) d = d.slice(3)
+  if (d.length !== 9) return raw || ''
+  return `${d.slice(0, 2)} ${d.slice(2, 5)} ${d.slice(5, 7)} ${d.slice(7)}`
+}
+
+/**
  * Formatlanmish telefon raqamidan (+998 bilan faqat raqamlarni ol.
  * Input: "(998) 90-123-45-67"
  * Output: "998901234567" (backend'ga yuborish uchun)

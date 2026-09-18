@@ -549,6 +549,24 @@ export interface Stage {
   color: StageColor
 }
 
+/**
+ * RO'YXAT USTUNLARI (edutizim: MANBA · MODERATOR · TO'LOV SANASI · ILOVA · SHARTNOMA).
+ * Serverda `StudentListView.EnrichExtrasAsync` faqat RO'YXAT javoblarida to'ldiradi — boshqa
+ * endpointlarda (profil, yangi yaratilgan o'quvchi) bo'sh bo'lishi NORMAL.
+ */
+export interface StudentListExtras {
+  /** Qaysi manbadan kelgan (lid manbasi). */
+  leadSource?: string
+  /** Mas'ul xodim (edutizim "Moderator"). */
+  moderator?: string
+  /** Oxirgi o'quv to'lovi sanasi "yyyy-MM-dd". */
+  lastPaymentDate?: string
+  /** Ilovaga birinchi kirgan vaqt. Bo'sh = hali kirmagan. */
+  appFirstLoginAt?: string
+  /** Ota-onaga yuborilgan oxirgi shartnoma raqami. */
+  contractNumber?: number | null
+}
+
 export interface Lead {
   id: string
   /** Familiya Ism Sharif */
@@ -601,6 +619,18 @@ export interface Lead {
   closedByUserId?: string | null
   /** Shartnoma imzolangan sana "yyyy-MM-dd" */
   closedAt?: string | null
+  /**
+   * Kutilayotgan birinchi (sinov) dars vaqti "yyyy-MM-ddTHH:mm" — natijasi belgilanmagan sinov,
+   * faqat ochiq lidda (serverda `LeadFirstLesson.Pick`, bosh sahifa kartochkasi bilan bitta ta'rif).
+   */
+  firstLessonAt?: string | null
+  /** Jadvaldagi GURUH / O'QITUVCHI — lidning sinov darsidan (serverda `LeadFirstLesson.Display`). */
+  groupId?: string | null
+  groupName?: string | null
+  teacherId?: string | null
+  teacherName?: string | null
+  /** KURS DARAJASI — eng so'nggi daraja testi natijasi. */
+  level?: string | null
 }
 
 /**
@@ -694,7 +724,7 @@ export interface StudentGroupState {
   yearFreeze: boolean
 }
 
-export interface Student {
+export interface Student extends StudentListExtras {
   id: string
   /** Familiya Ism Sharif — parts'dan join qilinadi (saqlash + qidiruv uchun) */
   fullName: string
@@ -1088,6 +1118,8 @@ export interface GroupFillRow {
   enrolled: number
   freeSeats: number
   status: 'active' | 'full' | 'archived'
+  /** Joriy MUZLATILGAN a'zoliklar (o'rin egallamaydi, `enrolled` ga kirmaydi). Eski javoblarda yo'q. */
+  frozen?: number
 }
 
 /** Bitta guruh bo'yicha oylik hisob (to'lov oynasi uchun — aggregate emas) */

@@ -164,7 +164,9 @@ o'zgartirmadi).
 ## 11. Yangi ko'rsatkich/maydon qo'shsangiz
 
 1. Standart maydon — `LeadEntryRules.Standard` katalogiga **va** `ValueOf` ga qo'shing
-   (test ikkovini qulflaydi), keyin klientda `LeadFormModal` da `show()/req()` bilan o'rang.
+   (test ikkovini qulflaydi), keyin klientda `LeadFormModal` da **va** lid sahifasining chap
+   panelida (`LeadDetailPage`) `show()/req()` bilan o'rang. Holat/tekshiruv ikkalasida BITTA
+   hookdan — `pages/admin/leads/useLeadEntryForm.ts` (qoidani faqat shu yerda o'zgartiring).
 2. `Lead.AnswersJson` ni hisob-kitobga (statistika, AI, hisobot) **QO'SHMANG** — u erkin matn,
    ko'rinish qatlamining ma'lumoti (`year-freeze.md` §1 va `contacts.md` §3.66 dagi bilan bir
    xil printsip).

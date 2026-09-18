@@ -1,17 +1,19 @@
 import { useEffect, useState } from 'react'
-import { Plus, Pencil, Trash2, Building2, MapPin } from 'lucide-react'
+import { Building2, MapPin } from 'lucide-react'
+import { IconPencil, IconSearch, IconTrash } from '@tabler/icons-react'
 import type { Room } from '@/types'
 import type { CreateRoomPayload } from '@/api/services/rooms'
 import { getRooms, createRoom, updateRoom, deleteRoom } from '@/api/services/rooms'
-import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
-import { PageHeader } from '@/components/ui/PageHeader'
 import { CardTabs } from '@/components/ui/CardTabs'
+import { DataTable } from '@/components/ui/list/DataTable'
+import { ListToolbar } from '@/components/ui/list/ListToolbar'
+import { TintedIconButton } from '@/components/ui/list/TintedIconButton'
+import { TotalPill } from '@/components/ui/list/TotalPill'
 import { roomTabs } from '@/config/sectionTabs'
 import { Loader } from '@/components/ui/Loader'
 import { Modal } from '@/components/ui/Modal'
 import { Input } from '@/components/ui/Input'
-import { cn } from '@/lib/utils'
 
 const emptyForm: CreateRoomPayload = {
   name: '',
@@ -28,6 +30,7 @@ export function RoomsPage() {
   const [form, setForm] = useState<CreateRoomPayload>(emptyForm)
   const [saving, setSaving] = useState(false)
   const [deleteConfirm, setDeleteConfirm] = useState<Room | null>(null)
+  const [query, setQuery] = useState('')
 
   useEffect(() => {
     getRooms()
@@ -98,44 +101,94 @@ export function RoomsPage() {
     )
 
   const activeRooms = rooms.filter((r) => r.isActive)
+  // Qidiruv — nom, bino va joylashuv bo'yicha (edutizim ro'yxatidagi "Qidirish").
+  // ⚠️ `useMemo` ISHLATILMAYDI: bu yer yuqoridagi `if (loading) return ...` dan KEYIN turadi,
+  // ya'ni hook shartli chaqirilardi (React qoidasi buziladi — sahifa oq bo'lib qolardi).
+  const q = query.trim().toLowerCase()
+  const shown = q
+    ? activeRooms.filter((r) =>
+        [r.name, r.building, r.location].filter(Boolean).join(' ').toLowerCase().includes(q),
+      )
+    : activeRooms
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-2.5">
       <CardTabs items={roomTabs} />
-      <PageHeader
-        title="Xonalar"
-        sub={`Jami ${activeRooms.length} ta faol xona`}
-        actions={
-          <Button onClick={openCreate}>
-            <Plus className="h-4 w-4" />
-            Yangi xona
-          </Button>
+
+      <ListToolbar
+        addLabel="Xona qo'shish"
+        onAdd={openCreate}
+        left={
+          <div className="relative w-full max-w-[260px]">
+            <IconSearch className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#6b7280]" />
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Qidirish"
+              className="h-[34px] w-full rounded-lg border border-black/25 bg-white pl-8 pr-3 text-[13px] outline-none focus:border-brand-600"
+            />
+          </div>
         }
       />
 
-      {activeRooms.length === 0 ? (
-        <Card>
-          <div className="flex flex-col items-center gap-3 py-16 text-center">
-            <Building2 className="h-12 w-12 text-slate-300" />
-            <p className="text-sm text-slate-500">Hali xona qo'shilmagan</p>
-            <Button onClick={openCreate} className="text-xs">
-              <Plus className="h-3.5 w-3.5" />
-              Birinchi xonani qo'shish
-            </Button>
-          </div>
-        </Card>
-      ) : (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {activeRooms.map((room) => (
-            <RoomCard
-              key={room.id}
-              room={room}
-              onEdit={() => openEdit(room)}
-              onDelete={() => setDeleteConfirm(room)}
-            />
-          ))}
-        </div>
-      )}
+      <div className="flex justify-end">
+        <TotalPill total={shown.length} />
+      </div>
+
+      <DataTable
+        rows={shown}
+        rowKey={(r) => r.id}
+        numbered
+        columns={[
+          { key: 'name', header: 'Sarlavha', render: (r) => <span className="font-medium">{r.name}</span> },
+          { key: 'capacity', header: "O'quvchi sig'imi", align: 'right', render: (r) => r.capacity },
+          {
+            key: 'building',
+            header: 'Bino / qavat',
+            render: (r) =>
+              r.building ? (
+                <span className="inline-flex items-center gap-1.5 text-[#333]">
+                  <Building2 className="h-4 w-4 text-[#9ca3af]" />
+                  {r.building}
+                </span>
+              ) : (
+                <span className="text-[#9ca3af]">—</span>
+              ),
+          },
+          {
+            key: 'location',
+            header: 'Joylashuv',
+            render: (r) =>
+              r.location ? (
+                <span className="inline-flex items-center gap-1.5 text-[#333]">
+                  <MapPin className="h-4 w-4 text-[#9ca3af]" />
+                  {r.location}
+                </span>
+              ) : (
+                <span className="text-[#9ca3af]">—</span>
+              ),
+          },
+          {
+            key: 'actions',
+            header: '',
+            align: 'right',
+            render: (r) => (
+              <div className="flex justify-end gap-1.5">
+                <TintedIconButton label="Tahrirlash" onClick={() => openEdit(r)}>
+                  <IconPencil className="h-4 w-4" />
+                </TintedIconButton>
+                <TintedIconButton
+                  label="O'chirish"
+                  className="border-[#e34a29]/20 bg-[#e34a29]/10 text-[#e34a29] hover:bg-[#e34a29]/15"
+                  onClick={() => setDeleteConfirm(r)}
+                >
+                  <IconTrash className="h-4 w-4" />
+                </TintedIconButton>
+              </div>
+            ),
+          },
+        ]}
+      />
 
       {/* Yaratish / tahrirlash modali */}
       <Modal
@@ -215,64 +268,3 @@ export function RoomsPage() {
   )
 }
 
-interface RoomCardProps {
-  room: Room
-  onEdit: () => void
-  onDelete: () => void
-}
-
-function RoomCard({ room, onEdit, onDelete }: RoomCardProps) {
-  const capacityColor =
-    room.capacity >= 30
-      ? 'text-emerald-600 bg-emerald-50'
-      : room.capacity >= 15
-        ? 'text-amber-600 bg-amber-50'
-        : 'text-slate-600 bg-slate-100'
-
-  return (
-    <div className="entity-card group relative flex flex-col gap-3 p-5">
-      <div className="flex items-start justify-between gap-2">
-        <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-brand-50 text-brand-600">
-          <Building2 className="h-5 w-5" />
-        </div>
-        <div className="flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
-          <button
-            onClick={onEdit}
-            className="flex h-7 w-7 items-center justify-center rounded-lg border border-slate-200 text-slate-400 hover:bg-slate-50 hover:text-slate-700"
-          >
-            <Pencil className="h-3.5 w-3.5" />
-          </button>
-          <button
-            onClick={onDelete}
-            className="flex h-7 w-7 items-center justify-center rounded-lg border border-red-100 text-red-400 hover:bg-red-50 hover:text-red-600"
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-          </button>
-        </div>
-      </div>
-
-      <div>
-        <h3 className="text-base font-semibold text-slate-800">{room.name}</h3>
-        {room.building && (
-          <p className="mt-0.5 flex items-center gap-1 text-xs text-slate-400">
-            <Building2 className="h-3 w-3" />
-            {room.building}
-          </p>
-        )}
-        {room.location && (
-          <p className="mt-0.5 flex items-center gap-1 text-xs text-slate-400">
-            <MapPin className="h-3 w-3" />
-            {room.location}
-          </p>
-        )}
-      </div>
-
-      <div className="mt-auto flex items-center justify-between border-t border-slate-100 pt-3">
-        <span className="text-xs text-slate-500">Sig'im</span>
-        <span className={cn('rounded-full px-2.5 py-0.5 text-sm font-semibold', capacityColor)}>
-          {room.capacity} kishi
-        </span>
-      </div>
-    </div>
-  )
-}

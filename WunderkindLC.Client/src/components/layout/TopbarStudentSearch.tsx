@@ -140,13 +140,11 @@ export function TopbarStudentSearch() {
   const showDropdown = open && query.trim().length >= 2
 
   return (
-    // Kengroq: natijada har o'quvchining BARCHA guruhlari tagma-tag chiqadi, tor oynada
-    // nomlar qirqilib ketardi. 712px = `max-w-2xl` (672px) + ikkala tarafga 20px dan.
-    // Topbar'dagi o'ram `justify-center` bo'lgani uchun qo'shimcha kenglik CHAP va O'NGGA
-    // teng bo'linadi — aks holda faqat o'ngga o'sardi.
-    <div ref={boxRef} className="relative w-full max-w-[712px]">
-      <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 transition-colors focus-within:border-brand-400 focus-within:bg-white">
-        <Search className="h-[16px] w-[16px] shrink-0 text-slate-400" />
+    // Maydon edutizimdagidek IXCHAM (340px), natijalar ro'yxati esa KENG (600px): natijada har
+    // o'quvchining BARCHA guruhlari tagma-tag chiqadi, tor oynada nomlar qirqilib ketardi.
+    <div ref={boxRef} className="relative w-full max-w-[340px]">
+      <div className="flex h-9 items-center gap-2 rounded-lg border border-[#dbe0e6] bg-white px-3 transition-colors focus-within:border-brand-400">
+        <Search className="h-[18px] w-[18px] shrink-0 text-[#98a2b3]" />
         <input
           ref={inputRef}
           value={query}
@@ -156,8 +154,9 @@ export function TopbarStudentSearch() {
           }}
           onFocus={() => setOpen(true)}
           onKeyDown={onKeyDown}
-          placeholder="Ism, familiya yoki telefon bo'yicha qidirish..."
-          className="w-full bg-transparent text-sm text-slate-800 outline-none placeholder:text-slate-400"
+          placeholder="Qidirish..."
+          title="Ism, familiya yoki telefon bo'yicha qidirish"
+          className="w-full bg-transparent text-sm text-[#333] outline-none placeholder:text-[#98a2b3]"
         />
         {query && (
           <button
@@ -173,10 +172,15 @@ export function TopbarStudentSearch() {
             <X className="h-4 w-4" />
           </button>
         )}
+        {!query && (
+          <kbd className="shrink-0 rounded border border-[#dbe0e6] px-1.5 text-[10px] leading-4 text-[#98a2b3]">
+            ⌘K
+          </kbd>
+        )}
       </div>
 
       {showDropdown && (
-        <div className="absolute left-0 right-0 top-full z-40 mt-2 max-h-96 overflow-y-auto rounded-xl border border-slate-200 bg-white p-2 shadow-lg">
+        <div className="absolute left-0 top-full z-40 mt-2 max-h-96 w-[600px] max-w-[calc(100vw-32px)] overflow-y-auto rounded-xl border border-slate-200 bg-white p-2 shadow-lg">
           {hits.length === 0 ? (
             <p className="py-6 text-center text-sm text-slate-400">
               {searching

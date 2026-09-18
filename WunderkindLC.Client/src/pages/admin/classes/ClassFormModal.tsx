@@ -6,7 +6,8 @@ import { getTeachers } from '@/api/services/teachers'
 import { getRooms } from '@/api/services/rooms'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
-import { Input, Select, Textarea } from '@/components/ui/Input'
+import { EduFormModal, EduField } from '@/components/ui/list/EduFormModal'
+import { eduInputCls, eduTextareaCls } from '@/components/ui/list/eduStyles'
 import { languageOptions } from '@/config/constants'
 import { cn } from '@/lib/utils'
 
@@ -173,111 +174,80 @@ export function ClassFormModal({ open, onClose, onSubmit, initial }: Props) {
         </div>
       </Modal>
     )}
-    <Modal
+    {/* edutizim ko'rinishi: "Yangi guruh qo'shish" / "Guruhni tahrirlash" — yorliq tepada, kulrang
+        to'ldirilgan maydonlar, "Orqaga" / "Saqlash". Maydonlar va tekshiruv AVVALGIDEK (bizning
+        guruh modeli), xona/o'qituvchi to'qnashuvi ogohlantirishi chaqiruvchida (onSubmit). */}
+    <EduFormModal
       open={open}
       onClose={onClose}
-      title={initial ? 'Guruhni tahrirlash' : 'Yangi guruh'}
-      size="md"
-      footer={
-        <>
-          <Button variant="secondary" onClick={onClose}>
-            Bekor qilish
-          </Button>
-          <Button type="submit" form="class-form">
-            Saqlash
-          </Button>
-        </>
-      }
+      title={initial ? 'Guruhni tahrirlash' : "Yangi guruh qo'shish"}
+      formId="class-form"
     >
-      <form id="class-form" onSubmit={handleSubmit} className="space-y-4">
-        <Input
-          label="Guruh nomi"
-          required
-          placeholder="Masalan: Ingliz tili — ertalabki"
-          value={form.name}
-          onChange={(e) => update('name', e.target.value)}
-        />
-
-        <div className="grid grid-cols-2 gap-4">
-          <Select
-            label="Kurs"
-            value={form.courseId ?? ''}
-            onChange={(e) => onCourseChange(e.target.value)}
-          >
-            <option value="">Tanlang...</option>
-            {subjects.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name}
-              </option>
-            ))}
-          </Select>
-          <Input
-            label="Oylik narx (so'm)"
-            type="number"
-            min={0}
-            step="any"
-            value={form.monthlyFee}
-            onChange={(e) => update('monthlyFee', Number(e.target.value))}
+      <form id="class-form" onSubmit={handleSubmit}>
+        <EduField label="Guruh nomi" required>
+          <input
+            className={eduInputCls}
+            required
+            placeholder="Masalan: Ingliz tili — ertalabki"
+            value={form.name}
+            onChange={(e) => update('name', e.target.value)}
           />
+        </EduField>
+
+        <EduField label="Guruh holati" required>
+          <select
+            className={eduInputCls}
+            value={form.status ?? 'active'}
+            onChange={(e) => update('status', e.target.value as Group['status'])}
+          >
+            <option value="active">Faol</option>
+            <option value="full">To'lgan</option>
+            <option value="archived">Arxiv</option>
+          </select>
+        </EduField>
+
+        <div className="grid grid-cols-2 gap-3">
+          <EduField label="Kurs">
+            <select className={eduInputCls} value={form.courseId ?? ''} onChange={(e) => onCourseChange(e.target.value)}>
+              <option value="">Tanlang</option>
+              {subjects.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                </option>
+              ))}
+            </select>
+          </EduField>
+          <EduField label="Oylik narx (so'm)">
+            <input
+              className={eduInputCls}
+              type="number"
+              min={0}
+              step="any"
+              value={form.monthlyFee}
+              onChange={(e) => update('monthlyFee', Number(e.target.value))}
+            />
+          </EduField>
         </div>
 
-        <div className="grid grid-cols-2 gap-4">
-          <Select
-            label="O'qituvchi *"
-            value={form.teacherId ?? ''}
-            onChange={(e) => update('teacherId', e.target.value)}
-          >
-            <option value="">Tanlang...</option>
-            {teachers.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.fullName}
-              </option>
-            ))}
-          </Select>
-          <Select
-            label="Xona"
-            value={form.roomId ?? ''}
-            onChange={(e) => {
-              const selectedRoom = rooms.find((r) => r.id === e.target.value)
-              setForm((f) => ({
-                ...f,
-                roomId: e.target.value,
-                room: selectedRoom?.name ?? '',
-              }))
-            }}
-          >
-            <option value="">Tanlang...</option>
-            {rooms.map((r) => (
-              <option key={r.id} value={r.id}>
-                {r.name}{r.building ? ` (${r.building})` : ''} — {r.capacity} o'rin
-              </option>
-            ))}
-          </Select>
-        </div>
-
-        <div className="grid grid-cols-2 gap-4">
-          <Select
-            label="Til"
-            value={form.language}
-            onChange={(e) => update('language', e.target.value as ClassPayload['language'])}
-          >
-            {languageOptions.map((l) => (
-              <option key={l.value} value={l.value}>
-                {l.label}
-              </option>
-            ))}
-          </Select>
-          <Input
-            label="Tashkil topgan sana"
-            type="date"
-            value={form.startDate ?? ''}
-            onChange={(e) => update('startDate', e.target.value)}
-          />
-        </div>
-
-        <div>
-          <span className="mb-1 block text-sm font-medium text-slate-600">Hafta kunlari</span>
+        <div className="mb-3">
+          <span className="mb-1 block text-[15px] font-medium text-black">Dars kunini tanlang</span>
           <div className="flex flex-wrap gap-1.5">
+            {/* Tez tanlov — edutizimdagi "Toq kunlar" / "Juft kunlar" (Du/Cho/Ju · Se/Pay/Sha). */}
+            <button
+              type="button"
+              onClick={() => update('days', [0, 2, 4])}
+              className="h-8 rounded-lg bg-[#f0f2f2] px-3 text-[13px] font-medium text-[#333] transition-colors hover:bg-[#e6eaea]"
+            >
+              Toq kunlar
+            </button>
+            <button
+              type="button"
+              onClick={() => update('days', [1, 3, 5])}
+              className="h-8 rounded-lg bg-[#f0f2f2] px-3 text-[13px] font-medium text-[#333] transition-colors hover:bg-[#e6eaea]"
+            >
+              Juft kunlar
+            </button>
+            <span className="mx-1 w-px self-stretch bg-[#dbe0e6]" />
             {dayLabels.map((d) => {
               const active = (form.days ?? []).includes(d.value)
               return (
@@ -286,10 +256,8 @@ export function ClassFormModal({ open, onClose, onSubmit, initial }: Props) {
                   type="button"
                   onClick={() => toggleDay(d.value)}
                   className={cn(
-                    'rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors',
-                    active
-                      ? 'border-brand-400 bg-brand-50 text-brand-700'
-                      : 'border-slate-200 text-slate-500 hover:bg-slate-50',
+                    'h-8 min-w-10 rounded-lg px-2.5 text-[13px] font-medium transition-colors',
+                    active ? 'bg-brand-600 text-white' : 'bg-[#f0f2f2] text-[#333] hover:bg-[#e6eaea]',
                   )}
                 >
                   {d.label}
@@ -299,49 +267,104 @@ export function ClassFormModal({ open, onClose, onSubmit, initial }: Props) {
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-4">
-          <Input
-            label="Boshlanish vaqti"
-            type="time"
-            value={form.startTime ?? ''}
-            onChange={(e) => update('startTime', e.target.value)}
-          />
-          <Input
-            label="Tugash vaqti"
-            type="time"
-            value={form.endTime ?? ''}
-            onChange={(e) => update('endTime', e.target.value)}
-          />
+        <div className="grid grid-cols-2 gap-3">
+          <EduField label="Boshlanish vaqti">
+            <input
+              className={eduInputCls}
+              type="time"
+              value={form.startTime ?? ''}
+              onChange={(e) => update('startTime', e.target.value)}
+            />
+          </EduField>
+          <EduField label="Tugash vaqti">
+            <input
+              className={eduInputCls}
+              type="time"
+              value={form.endTime ?? ''}
+              onChange={(e) => update('endTime', e.target.value)}
+            />
+          </EduField>
         </div>
 
-        <div className="grid grid-cols-2 gap-4">
-          <Select
-            label="Holat"
-            value={form.status ?? 'active'}
-            onChange={(e) => update('status', e.target.value as Group['status'])}
-          >
-            <option value="active">Faol</option>
-            <option value="full">To'lgan</option>
-            <option value="archived">Arxiv</option>
-          </Select>
-          <Input
-            label="Sig'im (0 = cheksiz)"
-            type="number"
-            min={0}
-            value={form.capacity ?? 0}
-            onChange={(e) => update('capacity', Number(e.target.value))}
-          />
+        <EduField label="O'qituvchi" required>
+          <select className={eduInputCls} value={form.teacherId ?? ''} onChange={(e) => update('teacherId', e.target.value)}>
+            <option value="">Tanlang</option>
+            {teachers.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.fullName}
+              </option>
+            ))}
+          </select>
+        </EduField>
+
+        <div className="grid grid-cols-2 gap-3">
+          <EduField label="Xona">
+            <select
+              className={eduInputCls}
+              value={form.roomId ?? ''}
+              onChange={(e) => {
+                const selectedRoom = rooms.find((r) => r.id === e.target.value)
+                setForm((f) => ({
+                  ...f,
+                  roomId: e.target.value,
+                  room: selectedRoom?.name ?? '',
+                }))
+              }}
+            >
+              <option value="">Tanlang</option>
+              {rooms.map((r) => (
+                <option key={r.id} value={r.id}>
+                  {r.name}{r.building ? ` (${r.building})` : ''} — {r.capacity} o'rin
+                </option>
+              ))}
+            </select>
+          </EduField>
+          <EduField label="Til">
+            <select
+              className={eduInputCls}
+              value={form.language}
+              onChange={(e) => update('language', e.target.value as ClassPayload['language'])}
+            >
+              {languageOptions.map((l) => (
+                <option key={l.value} value={l.value}>
+                  {l.label}
+                </option>
+              ))}
+            </select>
+          </EduField>
         </div>
 
-        <Textarea
-          label="Izoh"
-          rows={2}
-          placeholder="Qo'shimcha ma'lumot"
-          value={form.note ?? ''}
-          onChange={(e) => update('note', e.target.value)}
-        />
+        <div className="grid grid-cols-2 gap-3">
+          <EduField label="Boshlanish sanasi">
+            <input
+              className={eduInputCls}
+              type="date"
+              value={form.startDate ?? ''}
+              onChange={(e) => update('startDate', e.target.value)}
+            />
+          </EduField>
+          <EduField label="Sig'im (0 = cheksiz)">
+            <input
+              className={eduInputCls}
+              type="number"
+              min={0}
+              value={form.capacity ?? 0}
+              onChange={(e) => update('capacity', Number(e.target.value))}
+            />
+          </EduField>
+        </div>
+
+        <EduField label="Izoh">
+          <textarea
+            className={eduTextareaCls}
+            rows={2}
+            placeholder="Qo'shimcha ma'lumot"
+            value={form.note ?? ''}
+            onChange={(e) => update('note', e.target.value)}
+          />
+        </EduField>
       </form>
-    </Modal>
+    </EduFormModal>
     </>
   )
 }

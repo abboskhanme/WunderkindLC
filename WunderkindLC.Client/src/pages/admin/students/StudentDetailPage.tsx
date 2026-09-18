@@ -7,7 +7,7 @@ import {
   CalendarClock, Award, Download, LifeBuoy, Sparkles, Pencil, MessageSquare,
   PhoneIncoming, PhoneOutgoing, PhoneMissed, PhoneCall, MessageSquareText,
   Snowflake, CheckCircle2, RotateCcw, ArrowLeftRight, Plus, NotebookText, X,
-  StickyNote, Gift, Camera, BadgePercent,
+  StickyNote, Gift, BadgePercent,
   DoorOpen, LogIn, LogOut, RefreshCw, Wifi, WifiOff,
 } from 'lucide-react'
 import { genderLabels } from '@/config/constants'
@@ -91,6 +91,7 @@ import { AiAnalysisView } from './AiAnalysisView'
 import { StudentFormModal } from './StudentFormModal'
 import { DiscountSection } from './DiscountSection'
 import { studentDiscountLabel } from './discountLabel'
+import { ProfileCard } from './profile/ProfileCard'
 import { SmsModal } from './SmsModal'
 import { CallPickerModal, type CallOption } from '@/components/CallPickerModal'
 import { ReasonPromptModal } from '@/components/ui/ReasonPromptModal'
@@ -786,9 +787,6 @@ export function StudentDetailPage() {
   // Sarlavhadagi guruh/o'qituvchi — data.className/data.homeroomTeacher (Student.ClassName) o'quvchi
   // guruhdan chiqarilganda yoki boshqasiga o'tkazilganda YANGILANMAYDI (legacy maydon, faqat jurnal/
   // chat/hisobot uchun saqlanadi — CLAUDE.md). Shu sabab sarlavhani FAOL M2M a'zoliklardan hisoblaymiz.
-  const activeGroups = useMemo(() => groups.filter((g) => g.isActive), [groups])
-  const headerGroupNames = activeGroups.map((g) => g.groupName).join(', ')
-  const headerTeacherNames = [...new Set(activeGroups.map((g) => g.teacherName).filter(Boolean))].join(', ')
 
   // O'quvchi o'qiydigan ALOHIDA kurslar — faqat FAOL a'zolikdagi guruhlardan, groupId→courseId orqali.
   const studentCourses = useMemo(() => {
@@ -890,103 +888,28 @@ export function StudentDetailPage() {
         {/* CHAP USTUN — o'quvchi profili + shaxsiy ma'lumotlar (bitta karta), 40% */}
         <div className="lg:sticky lg:top-4 lg:self-start">
           <Card className="relative space-y-5">
-            {/* Amallar — bitta "⋮" menyu (AI Tahlil, To'lov qilish, Qo'ng'iroq, SMS, Tahrirlash) */}
-            <div className="absolute right-4 top-4">
-              <DropdownMenu
-                items={[
-                  { label: 'AI Tahlil', icon: Sparkles, onClick: () => setShowAi(true) },
-                  { label: "To'lov qilish", icon: Wallet, onClick: openPayment },
-                  { label: "Qo'ng'iroq qilish", icon: Phone, onClick: openCall },
-                  ...(canContact
-                    ? [{ label: "Bog'lanish kerak", icon: PhoneCall, onClick: () => setContactOpen(true) }]
-                    : []),
-                  { label: 'SMS yuborish', icon: MessageSquare, onClick: openSms },
-                  ...(can('students.list', 'edit')
-                    ? [{ label: 'Tahrirlash', icon: Pencil, onClick: openEdit }]
-                    : []),
-                ]}
-              />
-            </div>
-
-            {/* Profil sarlavhasi — DUMALOQ rasm. Rasm bo'lmasa bosilganda darhol KAMERA
-                ochiladi; rasm bo'lsa pastida "Rasmni almashtirish" turadi. */}
-            <div className="flex flex-col items-center gap-3 text-center">
-              <button
-                type="button"
-                onClick={() => canEditPhoto && setPhotoOpen(true)}
-                disabled={!canEditPhoto}
-                title={canEditPhoto ? (data.photoUrl ? 'Rasmni almashtirish' : 'Rasm qo\'shish') : undefined}
-                className={cn(
-                  // Rasm oynani ochmasdan ham bemalol ko'rinishi uchun katta o'lcham
-                  // (mobilda 128px, kengroq ekranda 176px).
-                  'group relative flex h-32 w-32 shrink-0 items-center justify-center overflow-hidden rounded-full bg-brand-50 text-4xl font-semibold text-brand-600 ring-1 ring-slate-200 sm:h-44 sm:w-44 sm:text-5xl',
-                  canEditPhoto && 'cursor-pointer ring-offset-2 transition hover:ring-2 hover:ring-brand-300',
-                )}
-              >
-                {data.photoUrl ? (
-                  <img src={data.photoUrl} alt={data.fullName} className="h-full w-full object-cover" />
-                ) : (
-                  initials(data.fullName)
-                )}
-                {canEditPhoto && (
-                  <span
-                    className={cn(
-                      'absolute inset-0 flex items-center justify-center bg-slate-900/45 text-white transition-opacity',
-                      data.photoUrl ? 'opacity-0 group-hover:opacity-100' : 'opacity-0 group-hover:opacity-100',
-                    )}
-                  >
-                    <Camera className="h-7 w-7" />
-                  </span>
-                )}
-              </button>
-              {canEditPhoto && data.photoUrl && (
-                <button
-                  type="button"
-                  onClick={() => setPhotoOpen(true)}
-                  className="-mt-1 text-xs font-medium text-brand-600 hover:underline"
-                >
-                  Rasmni almashtirish
-                </button>
-              )}
-              <div className="min-w-0">
-                <h1 className="text-xl font-semibold text-slate-800">{data.fullName}</h1>
-                <div className="mt-1.5 flex flex-col items-center gap-1 text-sm text-slate-500">
-                  <span className="inline-flex items-center gap-1.5">
-                    <GraduationCap className="h-4 w-4 text-slate-400" /> {headerGroupNames || data.className || '—'}
-                  </span>
-                  {(headerTeacherNames || data.homeroomTeacher) && (
-                    <span className="inline-flex items-center gap-1.5">
-                      <User className="h-4 w-4 text-slate-400" /> {headerTeacherNames || data.homeroomTeacher}
-                    </span>
-                  )}
-                  {data.parentFullName && (
-                    <span className="inline-flex items-center gap-1.5">
-                      <User className="h-4 w-4 text-slate-400" /> Ota-ona: {data.parentFullName}
-                    </span>
-                  )}
-                  {data.parentPhone && (
-                    <span className="inline-flex items-center gap-1.5">
-                      <Phone className="h-4 w-4 text-slate-400" /> {data.parentPhone}
-                    </span>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* Balans */}
-            <div
-              className={cn(
-                'rounded-xl px-4 py-3 text-center',
-                data.balance < 0 ? 'bg-red-50' : 'bg-emerald-50',
-              )}
-            >
-              <p className="flex items-center justify-center gap-1 text-xs text-slate-500">
-                <Wallet className="h-3.5 w-3.5" /> Balans
-              </p>
-              <p className={cn('font-mono text-xl font-semibold', data.balance < 0 ? 'text-red-600' : 'text-emerald-700')}>
-                {formatMoney(data.balance)}
-              </p>
-            </div>
+            {/* edutizim profil kartasi: rasm · ism · telefon + nusxa · uch amal tugmasi ·
+                ko'rsatkichlar ("To'lash kerak", "Balans", chegirma). Amallar AYNAN eski
+                oynalarni ochadi — qoidalar o'zgarmagan. */}
+            <ProfileCard
+              data={data}
+              student={editing}
+              discountLabel={studentDiscountLabel({ ...data, discountCount: discounts?.active.length })}
+              canEditPhoto={canEditPhoto}
+              onPhoto={() => setPhotoOpen(true)}
+              onSms={openSms}
+              onPay={openPayment}
+              onCall={openCall}
+              menuItems={[
+                { label: 'AI Tahlil', icon: Sparkles, onClick: () => setShowAi(true) },
+                ...(canContact
+                  ? [{ label: "Bog'lanish kerak", icon: PhoneCall, onClick: () => setContactOpen(true) }]
+                  : []),
+                ...(can('students.list', 'edit')
+                  ? [{ label: 'Tahrirlash', icon: Pencil, onClick: openEdit }]
+                  : []),
+              ]}
+            />
 
             {/* Shaxsiy ma'lumotlar */}
             <div className="border-t border-slate-100 pt-4">
@@ -3364,11 +3287,6 @@ function monthRangeList(from: string, to: string): string[] {
     }
   }
   return out
-}
-
-function initials(name: string): string {
-  const parts = name.trim().split(/\s+/)
-  return ((parts[0]?.[0] ?? '') + (parts[1]?.[0] ?? '')).toUpperCase() || '?'
 }
 
 /** Bo'sh raqamlarni tashlab, bir xil raqamni faqat birinchi label bilan qoldiradi (CallPickerModal uchun). */

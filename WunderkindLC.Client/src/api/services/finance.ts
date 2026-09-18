@@ -222,6 +222,98 @@ export async function deleteTransaction(id: string, reasonId?: string): Promise<
   await api.delete(`/admin/finance/transactions/${id}`, { params: reasonId ? { reasonId } : undefined })
 }
 
+/** Yillik jadval qatori: kategoriya + 12 oylik summa (yanvar → dekabr). */
+export interface FinanceYearLine {
+  category: string
+  months: number[]
+}
+
+/** «Moliya hisobotlari (P&L)» va «Pul oqimi» sahifalarining YAGONA manbasi. */
+export interface FinanceYearReport {
+  year: number
+  /** Har oyning boshlang'ich balansi (o'tgan yildan ko'chgan sof bilan). */
+  opening: number[]
+  incomeTotal: number[]
+  expenseTotal: number[]
+  net: number[]
+  income: FinanceYearLine[]
+  expense: FinanceYearLine[]
+}
+
+export async function getFinanceYearReport(year: number): Promise<FinanceYearReport> {
+  if (USE_MOCK) {
+    await delay()
+    const z = () => Array.from({ length: 12 }, () => 0)
+    return { year, opening: z(), incomeTotal: z(), expenseTotal: z(), net: z(), income: [], expense: [] }
+  }
+  const { data } = await api.get<FinanceYearReport>('/admin/finance/year-report', { params: { year } })
+  return data
+}
+
+/** «Tushum rejasi» jadvalining bitta qatori. `students` yo'q — "o'quvchi soni" bo'sh chiqadi. */
+export interface IncomePlanRow {
+  label: string
+  students: number | null
+  amount: number
+}
+
+export interface IncomePlanReport {
+  month: string
+  rows: IncomePlanRow[]
+}
+
+/** Moliya → «Tushum rejasi» (joriy oyda kutilayotgan tushum). */
+export async function getIncomePlan(month?: string): Promise<IncomePlanReport> {
+  if (USE_MOCK) {
+    await delay()
+    return { month: month ?? '', rows: [] }
+  }
+  const { data } = await api.get<IncomePlanReport>('/admin/finance/income-plan', {
+    params: month ? { month } : undefined,
+  })
+  return data
+}
+
+/** Rejalashtirilgan xarajat (Moliya → «Rejalashtirilgan xarajatlar»). REJA — pul harakati EMAS. */
+export interface PlannedExpense {
+  id: string
+  name: string
+  amount: number
+  category: string
+  startDate: string
+  endDate: string
+  /** "planned" | "paid" | "canceled" */
+  status: string
+  note?: string | null
+  createdAt: string
+  createdBy?: string | null
+}
+
+export type PlannedExpensePayload = Omit<PlannedExpense, 'id' | 'createdAt' | 'createdBy'>
+
+export async function getPlannedExpenses(): Promise<PlannedExpense[]> {
+  if (USE_MOCK) {
+    await delay()
+    return []
+  }
+  const { data } = await api.get<PlannedExpense[]>('/admin/finance/planned-expenses')
+  return data
+}
+
+export async function createPlannedExpense(payload: PlannedExpensePayload): Promise<PlannedExpense> {
+  const { data } = await api.post<PlannedExpense>('/admin/finance/planned-expenses', payload)
+  return data
+}
+
+export async function updatePlannedExpense(id: string, payload: PlannedExpensePayload): Promise<PlannedExpense> {
+  const { data } = await api.put<PlannedExpense>(`/admin/finance/planned-expenses/${id}`, payload)
+  return data
+}
+
+export async function deletePlannedExpense(id: string): Promise<void> {
+  await api.delete(`/admin/finance/planned-expenses/${id}`)
+}
+
 export async function getFinanceSummary(from?: string, to?: string): Promise<FinanceSummary> {
   if (USE_MOCK) {
     await delay()

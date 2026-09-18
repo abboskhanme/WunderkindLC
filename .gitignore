@@ -80,3 +80,6 @@ wunderkindlc_backup_*.json
 # pg_dump nusxalari (prod bazadan olingan — haqiqiy ma'lumot)
 *.dump
 *.sql.gz
+
+# edutizim UI reference screenshots (contain real PII)
+docs/edutizim/screens/

@@ -16,25 +16,29 @@ export function AppLayout() {
   )
   // DESKTOP: yon menyu yig'ilganmi. Mobil drawer'dan ALOHIDA holat — ikkalasi bir o'zgaruvchida
   // bo'lsa, oynani kichraytirib-kattalashtirganda holat chalkashib ketardi.
-  const [collapsed, setCollapsed] = useState(
-    () => typeof window !== 'undefined' && localStorage.getItem(COLLAPSE_KEY) === '1',
-  )
+  const [collapsed, setCollapsed] = useState(() => {
+    try {
+      return typeof window !== 'undefined' && localStorage.getItem(COLLAPSE_KEY) === '1'
+    } catch {
+      return false
+    }
+  })
 
   const closeOnMobile = () => {
     if (window.innerWidth < 1024) setOpen(false)
   }
 
-  /** Hamburger: desktopda yon menyuni yig'adi/ochadi, mobilda drawer'ni ochadi/yopadi. */
-  const toggleMenu = () => {
-    if (window.innerWidth >= 1024) {
-      setCollapsed((c) => {
-        const next = !c
+  /** Desktop: yon menyuni yig'ish/ochish (tugma yon menyuning o'zida, edutizimdagidek). */
+  const toggleCollapse = () => {
+    setCollapsed((c) => {
+      const next = !c
+      try {
         localStorage.setItem(COLLAPSE_KEY, next ? '1' : '0')
-        return next
-      })
-    } else {
-      setOpen((o) => !o)
-    }
+      } catch {
+        /* brauzer xotirasi yopiq — holat faqat shu sessiyada */
+      }
+      return next
+    })
   }
 
   // Breakpoint (lg=1024px) KESIB O'TILGANDA holatni moslaymiz: desktopga o'tilsa drawer ochiq
@@ -50,20 +54,27 @@ export function AppLayout() {
   return (
     <UnreadProvider>
       <CommandPalette />
-      <div className="flex h-screen overflow-hidden">
-        {/* Mobil uchun fon (orqa qoplama) */}
-        {open && (
-          <div
-            onClick={() => setOpen(false)}
-            className="fixed inset-0 z-30 bg-slate-900/40 lg:hidden"
+      {/* edutizim tartibi: yuqori panel BUTUN eni bo'ylab, uning ostida yon menyu + kontent */}
+      <div className="flex h-screen flex-col overflow-hidden">
+        <Topbar onMenuClick={() => setOpen((o) => !o)} collapsed={collapsed} />
+
+        <div className="relative flex flex-1 overflow-hidden">
+          {/* Mobil uchun fon (orqa qoplama) */}
+          {open && (
+            <div
+              onClick={() => setOpen(false)}
+              className="fixed inset-0 z-30 bg-slate-900/40 lg:hidden"
+            />
+          )}
+
+          <Sidebar
+            open={open}
+            collapsed={collapsed}
+            onToggleCollapse={toggleCollapse}
+            onNavigate={closeOnMobile}
           />
-        )}
 
-        <Sidebar open={open} collapsed={collapsed} onNavigate={closeOnMobile} />
-
-        <div className="flex flex-1 flex-col overflow-hidden">
-          <Topbar onMenuClick={toggleMenu} />
-          <main className="flex-1 overflow-y-auto p-6">
+          <main className="flex-1 overflow-y-auto bg-[var(--bg)] px-3 py-2.5 sm:px-[15px]">
             {/* Suspense LAYOUT ICHIDA — lazy sahifa chunk'i yuklanayotganda faqat kontent
                 maydoni almashadi; Sidebar/Topbar joyida qoladi (qayta mount bo'lmaydi,
                 SignalR/unread ulanishlari uzilmaydi). */}

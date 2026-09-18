@@ -566,6 +566,112 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
             .ToList();
     }
 
+    /// <summary>
+    /// Guruh sahifasi → "O'quvchilar" tabi (edutizim jadvali): a'zolar ro'yxati (faol + o'tgan) +
+    /// telefon, kurslar soni, shu oy narxi va oxirgi izoh.
+    /// <para>Balans — <see cref="Members"/> dagi bilan AYNAN bir manbadan (SHU GURUH bo'yicha).</para>
+    /// <para>⚠️ NOZIK maydonlar javobning O'ZIDA darvozalanadi (GET bu controllerda har xodimga
+    /// ochiq): narx (chegirma summasini ochadi) — faqat moliya ruxsatiga, oxirgi izoh — faqat
+    /// o'quvchilar ro'yxati/izohlar ruxsatiga (<c>StudentsController.RedactDocs</c> naqshi).</para>
+    /// </summary>
+    [HttpGet("{id}/roster")]
+    public async Task<ActionResult<IEnumerable<GroupRosterRowDto>>> Roster(string id)
+    {
+        var group = await db.Classes.AsNoTracking().FirstOrDefaultAsync(c => c.Id == id);
+        if (group is null) return NotFound();
+
+        var rows = await (from sg in db.StudentGroups.AsNoTracking()
+                          join s in db.Students.AsNoTracking() on sg.StudentId equals s.Id
+                          where sg.GroupId == id
+                          orderby sg.IsActive descending, s.FullName
+                          select new
+                          {
+                              s.Id, s.FullName, s.Phone, sg.JoinedAt, sg.LeftAt, sg.IsActive,
+                              sg.Status, sg.ActivatedAt, sg.FrozenAt, sg.YearFreeze,
+                          })
+                         .ToListAsync();
+        var ids = rows.Select(r => r.Id).Distinct().ToList();
+        var balances = await GroupBalanceService.ForGroupAsync(db, id, ids);
+
+        // "N ta Kurs" — hozir o'qiyotgan (joriy, muzlatilmagan) a'zoliklardagi TURLI kurslar.
+        // Kurssiz guruh o'z-o'zicha bitta "kurs" deb sanaladi (aks holda chip yo'qolib qolardi).
+        var memberCourses = await (from sg in db.StudentGroups.AsNoTracking()
+                                   join g in db.Classes.AsNoTracking() on sg.GroupId equals g.Id
+                                   where ids.Contains(sg.StudentId) && sg.IsActive && sg.Status != "frozen"
+                                   select new { sg.StudentId, sg.GroupId, g.CourseId })
+                                  .ToListAsync();
+        var courseCount = memberCourses
+            .GroupBy(x => x.StudentId)
+            .ToDictionary(
+                g => g.Key,
+                g => g.Select(x => string.IsNullOrEmpty(x.CourseId) ? "group:" + x.GroupId : x.CourseId)
+                    .Distinct().Count());
+
+        var lastNotes = new Dictionary<string, (string Text, string At)>();
+        if (AdminPermAttribute.HasSectionAccess(User, "students.list")
+            || AdminPermAttribute.HasSectionAccess(User, "students.notes"))
+        {
+            var notes = await db.StudentNotes.AsNoTracking()
+                .Where(n => ids.Contains(n.StudentId))
+                .Select(n => new { n.StudentId, n.Text, n.CreatedAt })
+                .ToListAsync();
+            foreach (var g in notes.GroupBy(n => n.StudentId))
+            {
+                var last = g.OrderByDescending(n => n.CreatedAt, StringComparer.Ordinal).First();
+                var text = last.Text.Length > 200 ? last.Text[..200] + "…" : last.Text;
+                lastNotes[g.Key] = (text, last.CreatedAt);
+            }
+        }
+
+        var book = CanSeeFinance() ? await DiscountBook.LoadAsync(db, ids) : null;
+        var month = TuitionService.CurrentMonth();
+
+        return rows.Select(r =>
+        {
+            decimal? price = book is null
+                ? null
+                : group.MonthlyFee - book.DiscountFor(r.Id, group.MonthlyFee, month, id);
+            var note = lastNotes.TryGetValue(r.Id, out var n) ? n : ("", "");
+            return new GroupRosterRowDto(
+                r.Id, r.FullName, r.JoinedAt, r.LeftAt, r.IsActive,
+                r.Status, r.ActivatedAt, r.FrozenAt, balances.GetValueOrDefault(r.Id, 0m), r.YearFreeze,
+                r.Phone, courseCount.GetValueOrDefault(r.Id, 0), price, note.Item1, note.Item2);
+        }).ToList();
+    }
+
+    /// <summary>
+    /// "Guruh → Guruh o'quvchilari" (edutizim <c>/group/group-students</c>): BARCHA guruhlardagi JORIY
+    /// a'zoliklar, filtr va SERVERDA sahifalash bilan (ro'yxat 2–3 ming qator bo'lishi mumkin).
+    /// <para>Filtr qoidasi — <see cref="GroupStudentsList"/> (sof, testlangan); bu yerda faqat qatorlar
+    /// yig'iladi. Ruxsat — sinf darajasidagi <c>classes.list</c> (guruhlar ro'yxati bilan bir xil).</para>
+    /// <para>⚠️ Marshrut <c>{id}</c> dan OLDIN mos keladi (literal segment parametrdan ustun).</para>
+    /// </summary>
+    [HttpGet("memberships")]
+    public async Task<ActionResult<GroupStudentsList.Result>> Memberships(
+        [FromQuery] bool frozen = false,
+        [FromQuery] string? teacherId = null,
+        [FromQuery] string? groupState = null,
+        [FromQuery] string? from = null,
+        [FromQuery] string? to = null,
+        [FromQuery] string? q = null,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = GroupStudentsList.DefaultPageSize)
+    {
+        var rows = await (from sg in db.StudentGroups.AsNoTracking()
+                          where sg.IsActive
+                          join s in db.Students.AsNoTracking() on sg.StudentId equals s.Id
+                          join g in db.Classes.AsNoTracking() on sg.GroupId equals g.Id
+                          join t in db.Teachers.AsNoTracking() on g.TeacherId equals t.Id into tj
+                          from t in tj.DefaultIfEmpty()
+                          select new GroupStudentsList.Row(
+                              sg.Id, s.Id, s.FullName, g.Id, g.Name, g.IsArchived,
+                              g.TeacherId, t != null ? t.FullName : "",
+                              sg.Status, sg.YearFreeze, sg.JoinedAt, sg.IsActive))
+                         .ToListAsync();
+        return GroupStudentsList.Apply(rows,
+            new GroupStudentsList.Query(frozen, teacherId, groupState, from, to, q, page, pageSize));
+    }
+
     /// <summary>O'quvchini guruhga qo'shish (M2M). Sig'im to'lgan bo'lsa rad etadi. Avval guruhsiz
     /// o'quvchining asosiy ClassName'i shu guruh nomiga o'rnatiladi (eski ko'rinishlar uchun).
     /// ARXIVDAGI o'quvchi qo'shilsa — avtomatik ARXIVDAN CHIQARILADI (o'qishga qaytdi degani);
@@ -1434,11 +1540,18 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
                 .GroupBy(sg => sg.GroupId)
                 .Select(g => new { GroupId = g.Key, Count = g.Count() }).ToListAsync())
             .ToDictionary(x => x.GroupId, x => x.Count);
+        // Joriy MUZLATILGAN a'zoliklar — o'rin egallamaydi, lekin Guruhlar ro'yxatidagi
+        // "Muzlatilgan o'quvchilar soni" uchun alohida sanaladi.
+        var frozen = (await db.StudentGroups.Where(sg => sg.IsActive && sg.Status == "frozen")
+                .GroupBy(sg => sg.GroupId)
+                .Select(g => new { GroupId = g.Key, Count = g.Count() }).ToListAsync())
+            .ToDictionary(x => x.GroupId, x => x.Count);
         return groups.Select(c =>
         {
             var enrolled = counts.GetValueOrDefault(c.Id, 0);
             var free = c.Capacity > 0 ? Math.Max(0, c.Capacity - enrolled) : 0;
-            return new GroupFillRowDto(c.Id, c.Name, c.Grade, c.Capacity, enrolled, free, c.Status);
+            return new GroupFillRowDto(c.Id, c.Name, c.Grade, c.Capacity, enrolled, free, c.Status,
+                frozen.GetValueOrDefault(c.Id, 0));
         }).ToList();
     }
 

@@ -402,7 +402,13 @@ export function KassaPage() {
         </>
       )}
 
-      <PaymentModal student={payStudent} onClose={() => setPayStudent(null)} onSubmit={handlePayment} />
+      {/* Telefon portali — markaziy oyna QOLADI (admin panelidagi o'ng panel bu yerda emas). */}
+      <PaymentModal
+        student={payStudent}
+        presentation="modal"
+        onClose={() => setPayStudent(null)}
+        onSubmit={handlePayment}
+      />
 
       <ReceiptModal
         txId={receiptTx}

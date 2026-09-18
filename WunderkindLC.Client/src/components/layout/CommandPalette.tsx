@@ -1,10 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Search, User } from 'lucide-react'
-import type { LucideIcon } from 'lucide-react'
 import type { Role } from '@/types'
 import { useAuth } from '@/context/auth-context'
-import { navByRole } from '@/config/navigation'
+import { navByRole, type NavIcon } from '@/config/navigation'
 import { teacherTabs, roomTabs, formTabs } from '@/config/sectionTabs'
 import type { CardTabItem } from '@/components/ui/CardTabs'
 import { searchStudents } from '@/api/services/students'
@@ -18,7 +17,7 @@ interface Cmd {
   /** Ota guruh nomi (masalan "Boshqaruv") — bor bo'lsa ko'rsatamiz */
   group?: string
   to: string
-  icon: LucideIcon
+  icon: NavIcon
 }
 
 /** Qidiruv natijasidagi o'quvchi (arxivdagilar ham — `archived` bilan belgilanadi). */
@@ -106,8 +105,16 @@ export function CommandPalette() {
     for (const item of navByRole[role]) {
       if (!canSee(item)) continue
       if (item.children) {
+        // 3-darajali guruh ("Future" → "Aloqa" → ...) — ichki guruh nomi `group` bo'lib chiqadi.
         for (const c of item.children) {
-          if (canSee(c)) out.push({ label: c.label, group: item.label, to: c.to, icon: item.icon })
+          if (!canSee(c)) continue
+          if (c.children) {
+            for (const g of c.children) {
+              if (canSee(g)) out.push({ label: g.label, group: `${item.label} · ${c.label}`, to: g.to, icon: item.icon })
+            }
+          } else {
+            out.push({ label: c.label, group: item.label, to: c.to, icon: item.icon })
+          }
         }
       } else {
         out.push({ label: item.label, to: item.to, icon: item.icon })
@@ -119,7 +126,7 @@ export function CommandPalette() {
     // birlashtirish qidiruvni yo'qotib qo'yardi ("O'qituvchilar davomati" ni yozib topib
     // bo'lmasdi). Manba `sectionTabs` — cardlar bilan bir xil ro'yxat, ikki joyda takrorlanmaydi.
     const seen = new Set(out.map((c) => c.to))
-    const addTabs = (tabs: CardTabItem[], group: string, icon: LucideIcon) => {
+    const addTabs = (tabs: CardTabItem[], group: string, icon: NavIcon) => {
       for (const t of tabs) {
         // `hidden` — ruxsati yo'q (masalan «Hisoboti»); `seen` — menyuda allaqachon bor sahifa.
         if (t.hidden || seen.has(t.to)) continue
@@ -131,7 +138,11 @@ export function CommandPalette() {
     // menyudan meros bo'lib qoladi, alohida tekshiruv yozilmaydi.
     // Bo'lim boshi (yoki uni o'z ichiga olgan guruh) — ikonkani o'shandan olamiz.
     const ownerOf = (to: string) =>
-      navByRole[role].find((i) => i.to === to || i.children?.some((c) => c.to === to))
+      navByRole[role].find(
+        (i) =>
+          i.to === to ||
+          i.children?.some((c) => c.to === to || c.children?.some((g) => g.to === to)),
+      )
 
     const teachers = ownerOf('/admin/teachers')
     if (teachers && seen.has('/admin/teachers'))

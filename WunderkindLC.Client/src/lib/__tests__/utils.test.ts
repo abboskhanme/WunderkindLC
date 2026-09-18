@@ -8,6 +8,7 @@
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
+  formatPhoneShort,
   apiErrorMessage,
   balanceDotCls,
   balanceTextCls,
@@ -459,5 +460,19 @@ describe('cn', () => {
     expect(cn('a', false, null, undefined, 'b')).toBe('a b')
     expect(cn()).toBe('')
     expect(cn(false, null)).toBe('')
+  })
+})
+
+describe('formatPhoneShort — edutizim jadvalidagi telefon', () => {
+  it('+998 li raqamni "XX XXX XX XX" qiladi', () => {
+    expect(formatPhoneShort('+998938547083')).toBe('93 854 70 83')
+    expect(formatPhoneShort('998901234567')).toBe('90 123 45 67')
+  })
+  it('9 xonali mahalliy raqam ham', () => {
+    expect(formatPhoneShort('901234567')).toBe('90 123 45 67')
+  })
+  it("O'zbek raqami bo'lmasa o'zgartirmaydi", () => {
+    expect(formatPhoneShort('+7 999 123')).toBe('+7 999 123')
+    expect(formatPhoneShort('')).toBe('')
   })
 })

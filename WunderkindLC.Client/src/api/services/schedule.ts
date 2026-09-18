@@ -96,3 +96,91 @@ export async function getScheduleGaps(
   })
   return data
 }
+
+/* ---------- BOSH SAHIFA jadval to'ri ---------- */
+
+/** Guruh holati to'r filtri uchun: `blocked` — vaqtincha bloklangan guruh. */
+export type ScheduleGroupStatus = 'active' | 'full' | 'blocked'
+
+/** To'rdagi bitta GURUH — barcha dars kunlari bilan (server: `ScheduleGridGroupDto`). */
+export interface ScheduleGridGroup {
+  groupId: string
+  groupName: string
+  courseId: string
+  courseName: string
+  teacherId: string
+  teacherName: string
+  /** Xona FK; bo'sh bo'lsa `roomName` — eski matnli nom (ustun kaliti: `roomKey`). */
+  roomId: string
+  roomName: string
+  /** 0=Dushanba … 6=Yakshanba (server konvensiyasi). */
+  days: number[]
+  /** "HH:mm" — serverda `ScheduleRules.MakeSlot` dan o'tgan, ya'ni buzuq emas. */
+  start: string
+  end: string
+  minutes: number
+  /** O'rin band qilgan a'zolar (faol + sinov, muzlatilgan emas). */
+  members: number
+  /** Sig'im; 0 = cheksiz. */
+  capacity: number
+  status: ScheduleGroupStatus | string
+  /** "yyyy-MM-dd" yoki bo'sh. */
+  startDate: string
+  endDate: string
+  /** O'tilgan darslar (jurnalda "dars o'tildi"). */
+  lessonsDone: number
+  /** Rejadagi jami darslar; 0 = noma'lum (boshlanish/tugash sanasi kiritilmagan). */
+  lessonsTotal: number
+}
+
+export interface ScheduleGrid {
+  groups: ScheduleGridGroup[]
+  /** BARCHA faol xonalar (darssizlari ham) + darsi bor yopilgan/eski nomli xonalar. */
+  rooms: ScheduleOwner[]
+  /** BARCHA arxivlanmagan o'qituvchilar. */
+  teachers: ScheduleOwner[]
+  /** Vaqti/kunlari buzuq guruhlar soni — to'rga kirmaydi. */
+  skippedGroups: number
+}
+
+/** Bosh sahifa jadval to'ri — bitta so'rovda butun hafta (kun/filtr klientda). */
+export async function getScheduleGrid(): Promise<ScheduleGrid> {
+  const { data } = await api.get<ScheduleGrid>('/admin/schedule/grid')
+  return data
+}
+
+/** Eksport parametrlari. `day` — SERVER konvensiyasi (0=Dushanba … 6=Yakshanba). */
+export interface ScheduleExportParams {
+  day: number
+  groupBy: 'room' | 'teacher'
+  fromHour: string
+  toHour: string
+  teacherId?: string
+  groupId?: string
+  roomId?: string
+  courseId?: string
+  status?: string
+}
+
+/** Tanlangan kunning jadvalini Excel (.xlsx) qilib yuklab beradi ("Jadval" + "Ro'yxat" varaqlari). */
+export async function exportScheduleDay(params: ScheduleExportParams): Promise<void> {
+  const res = await api.get('/admin/schedule/export', {
+    params: {
+      ...params,
+      teacherId: params.teacherId || undefined,
+      groupId: params.groupId || undefined,
+      roomId: params.roomId || undefined,
+      courseId: params.courseId || undefined,
+      status: params.status || undefined,
+    },
+    responseType: 'blob',
+  })
+  const cd = String(res.headers['content-disposition'] ?? '')
+  const match = /filename\*?=(?:UTF-8'')?"?([^";]+)"?/i.exec(cd)
+  const href = URL.createObjectURL(res.data as Blob)
+  const a = document.createElement('a')
+  a.href = href
+  a.download = match?.[1] ?? 'dars_jadvali.xlsx'
+  a.click()
+  URL.revokeObjectURL(href)
+}

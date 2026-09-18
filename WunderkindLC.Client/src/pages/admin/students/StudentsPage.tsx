@@ -1216,6 +1216,11 @@ export function StudentsPage() {
                     Ball
                   </th>
                   <th className="num">Balans</th>
+                  {/* edutizim "O'quvchilar ro'yxati" ustunlari (serverda `StudentListView.EnrichExtrasAsync`) */}
+                  <th>To'lov sanasi</th>
+                  <th>Yaratilgan sanasi</th>
+                  <th>Manba</th>
+                  <th>Moderator</th>
                   {tab === 'archived' && <th>Arxiv sanasi</th>}
                   {tab === 'archived' && <th>Sabab</th>}
                   <th className="text-right">Amallar</th>
@@ -1337,6 +1342,18 @@ export function StudentsPage() {
                       )}
                     >
                       {s.balance > 0 ? `+${formatMoney(s.balance)}` : formatMoney(s.balance)}
+                    </td>
+                    <td className="whitespace-nowrap text-slate-600">
+                      {s.lastPaymentDate ? formatDate(s.lastPaymentDate) : '—'}
+                    </td>
+                    <td className="whitespace-nowrap text-slate-600">
+                      {s.createdAt || s.enrollmentDate ? formatDate(s.createdAt || s.enrollmentDate) : '—'}
+                    </td>
+                    <td className="max-w-[12rem] truncate text-slate-600" title={s.leadSource ?? ''}>
+                      {s.leadSource || '—'}
+                    </td>
+                    <td className="max-w-[12rem] truncate text-slate-600" title={s.moderator ?? ''}>
+                      {s.moderator || '—'}
                     </td>
                     {tab === 'archived' && (
                       <td className="font-mono text-slate-600">{s.archivedAt ? formatDate(s.archivedAt) : '—'}</td>

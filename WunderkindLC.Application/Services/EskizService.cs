@@ -132,6 +132,9 @@ public class EskizService(
     public async Task<SmsResult> SendSmsAsync(
         IAppDbContext db, string phone, string message, string? callbackUrl = null, CancellationToken ct = default)
     {
+        // ⚠️ IMPORT REJIMI — ko'chirish paytida HECH QANDAY SMS ketmaydi (`ImportMode`).
+        if (ImportMode.Enabled)
+            return new SmsResult(false, "", "error", "Import rejimi yoqilgan — SMS yuborilmadi.");
         if (!AppSecrets.EskizConfigured)
             return new SmsResult(false, "", "error", "Eskiz sozlanmagan (.env: ESKIZ_EMAIL / ESKIZ_PASSWORD).");
         var meta = await db.CenterMeta.FirstOrDefaultAsync(ct);

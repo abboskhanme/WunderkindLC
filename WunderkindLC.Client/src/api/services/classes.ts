@@ -205,6 +205,79 @@ export async function getGroupMembers(id: string): Promise<GroupMember[]> {
 }
 
 /**
+ * Guruh sahifasi → "O'quvchilar" tabi qatori: `GroupMember` dagi hamma maydon + jadval uchun
+ * telefon, kurslar soni, narx va oxirgi izoh (server: `GroupRosterRowDto`).
+ *
+ * ⚠️ `price` faqat moliya ruxsati borga keladi (chegirma summasi nozik) — `null` bo'lsa guruh
+ * narxi ko'rsatiladi. `lastNote` faqat o'quvchilar ro'yxati/izohlar ruxsati borga — aks holda bo'sh.
+ */
+export interface GroupRosterRow extends GroupMember {
+  phone: string
+  /** Hozir o'qiyotgan (muzlatilmagan) turli kurslar soni — 2+ bo'lsa "N ta Kurs" chipi. */
+  courseCount: number
+  price: number | null
+  lastNote: string
+  lastNoteAt: string
+}
+
+export async function getGroupRoster(id: string): Promise<GroupRosterRow[]> {
+  if (USE_MOCK) {
+    await delay()
+    return []
+  }
+  const { data } = await api.get<GroupRosterRow[]>(`/admin/classes/${id}/roster`)
+  return data
+}
+
+/** "Guruh o'quvchilari" ro'yxatining bitta a'zolik qatori (server: `GroupStudentsList.Row`). */
+export interface GroupStudentRow {
+  membershipId: string
+  studentId: string
+  fullName: string
+  groupId: string
+  groupName: string
+  groupArchived: boolean
+  teacherId: string
+  teacherName: string
+  status: string
+  yearFreeze: boolean
+  joinedAt: string
+  isActive: boolean
+}
+
+export interface GroupStudentsQuery {
+  /** true — faqat muzlatilganlar; false — muzlatilganlarsiz. */
+  frozen?: boolean
+  teacherId?: string
+  /** 'active' | 'archived' | '' */
+  groupState?: string
+  from?: string
+  to?: string
+  q?: string
+  page?: number
+  pageSize?: number
+}
+
+export interface GroupStudentsPage {
+  total: number
+  page: number
+  pageSize: number
+  items: GroupStudentRow[]
+}
+
+/** "Guruh → Guruh o'quvchilari": barcha guruhlardagi joriy a'zoliklar, SERVERDA sahifalangan. */
+export async function getGroupStudents(query: GroupStudentsQuery): Promise<GroupStudentsPage> {
+  if (USE_MOCK) {
+    await delay()
+    return { total: 0, page: 1, pageSize: query.pageSize ?? 50, items: [] }
+  }
+  const params: Record<string, unknown> = {}
+  for (const [k, v] of Object.entries(query)) if (v !== undefined && v !== '' && v !== false) params[k] = v
+  const { data } = await api.get<GroupStudentsPage>('/admin/classes/memberships', { params })
+  return data
+}
+
+/**
  * Guruhga o'quvchi qo'shish. To'lgan/allaqachon a'zo bo'lsa server 409/400 qaytaradi.
  * Arxivdagi o'quvchi qo'shilsa — server uni ARXIVDAN CHIQARADI va `restored: true` qaytaradi.
  */

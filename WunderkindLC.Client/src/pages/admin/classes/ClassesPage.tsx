@@ -1,29 +1,28 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+import {
+  IconArchive,
+  IconArchiveOff,
+  IconBook2,
+  IconEye,
+  IconFileExport,
+  IconFilterOff,
+  IconLayoutGrid,
+  IconLock,
+  IconLockOpen,
+  IconPencil,
+  IconPlus,
+  IconTrash,
+  IconUsers,
+} from '@tabler/icons-react'
+import { Lock } from 'lucide-react'
 import { usePersistentState } from '@/hooks/usePersistentState'
 import { usePerm } from '@/lib/permissions'
-import {
-  Plus,
-  Pencil,
-  Trash2,
-  Users,
-  Archive,
-  ArchiveRestore,
-  LayoutGrid,
-  List,
-  ArrowDown,
-  CalendarDays,
-  Clock,
-  User,
-  BookOpenCheck,
-  X,
-  Eye,
-  Lock,
-  Unlock,
-} from 'lucide-react'
-import type { Group, GroupFillRow, Teacher, Subject } from '@/types'
+import type { Group, GroupFillRow, Room, Teacher, Subject } from '@/types'
 import type { ClassPayload } from '@/api/services/classes'
 import { getSubjects } from '@/api/services/subjects'
+import { getRooms } from '@/api/services/rooms'
+import { getTodayLessons } from '@/api/services/dashboard'
 import {
   getClasses,
   createClass,
@@ -38,45 +37,42 @@ import {
 } from '@/api/services/classes'
 import { getClassesStats, type ClassStats, getAllGroupsGradingStats, type GradingGroupStats } from '@/api/services/classPerformance'
 import { getTeachers } from '@/api/services/teachers'
-import { languageLabels } from '@/config/constants'
-import { formatMoney, formatDate, cn, gradeTextCls } from '@/lib/utils'
-import { Card } from '@/components/ui/Card'
+import { formatMoney, formatDate, cn, gradeTextCls, exportToCsv } from '@/lib/utils'
+import {
+  WEEKDAYS,
+  dayKind,
+  formatGroupDays,
+  formatGroupPeriod,
+  formatLessonTime,
+  lessonCovers,
+  notAttendedGroupIds,
+} from '@/lib/groupDisplay'
 import { Button } from '@/components/ui/Button'
-import { Badge } from '@/components/ui/Badge'
-import { PageHeader } from '@/components/ui/PageHeader'
-import { Loader } from '@/components/ui/Loader'
 import { Modal } from '@/components/ui/Modal'
 import { Textarea } from '@/components/ui/Input'
 import { ReasonPromptModal } from '@/components/ui/ReasonPromptModal'
+import { DataTable, type DataColumn } from '@/components/ui/list/DataTable'
+import { ListToolbar } from '@/components/ui/list/ListToolbar'
+import { FilterGrid, FilterInput, FilterSelect } from '@/components/ui/list/FilterGrid'
+import { TotalPill } from '@/components/ui/list/TotalPill'
+import { MoreMenu } from '@/components/ui/list/MoreMenu'
+import { RowActionBar } from '@/components/ui/list/RowActionBar'
+import { TablePagination, usePagination } from '@/components/ui/TablePagination'
 import { ClassFormModal } from './ClassFormModal'
 import { ClassMembersModal } from './ClassMembersModal'
 import { JournalPolicyModal } from './JournalPolicyModal'
 
-// Avatar uchun ism harflari va barqaror rang (faqat ko'rinish uchun)
-const initialsOf = (name: string) =>
-  name
-    .split(/[\s-]+/)
-    .filter(Boolean)
-    .slice(0, 3)
-    .map((s) => s[0]?.toUpperCase())
-    .join('')
+type SortKey = '' | 'name' | 'students' | 'avg' | 'att'
 
-const AVATAR_COLORS = [
-  '#7c3aed',
-  '#0ea5e9',
-  '#10b981',
-  '#f59e0b',
-  '#ef4444',
-  '#6366f1',
-  '#ec4899',
-  '#14b8a6',
-]
-const avatarColor = (name: string) => {
-  let h = 0
-  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0
-  return AVATAR_COLORS[h % AVATAR_COLORS.length]
-}
-
+/**
+ * Guruh → Guruh (edutizim `/group/groups`): sahifa SARLAVHASIZ — birinchi qator asboblar
+ * (chapda "Qo'shish", o'ngda filtr voronkasi va "⋮"), ostida doim ochiq filtr to'ri, kulrang
+ * jamlanma qatori va DataGrid ko'rinishidagi jadval.
+ *
+ * ⚠️ Bu RE-LAYOUT: barcha amallar (yaratish/tahrirlash + xona konflikti + narx so'rovi, a'zolar
+ * oynasi, vaqtincha bloklash, arxivlash/arxivdan chiqarish, o'chirish, jurnal boshqaruvi, guruh
+ * to'ldirish, reyting bo'yicha saralash) avvalgi endpointlar orqali ishlaydi.
+ */
 export function ClassesPage() {
   const navigate = useNavigate()
   const { can } = usePerm()
@@ -84,6 +80,7 @@ export function ClassesPage() {
   const [stats, setStats] = useState<Record<string, ClassStats>>({})
   const [gradingStats, setGradingStats] = useState<Record<string, GradingGroupStats>>({})
   const [teachers, setTeachers] = useState<Teacher[]>([])
+  const [rooms, setRooms] = useState<Room[]>([])
   const [loading, setLoading] = useState(true)
   const [formOpen, setFormOpen] = useState(false)
   const [editing, setEditing] = useState<Group | null>(null)
@@ -102,65 +99,49 @@ export function ClassesPage() {
     list: string
   } | null>(null)
   const [savingConflict, setSavingConflict] = useState(false)
-  /** Arxivlangan guruhlar ro'yxati + arxiv ko'rinishi yoqilganmi */
+  /** Arxivlangan guruhlar ro'yxati (holat filtri "Arxiv" bo'lganda ko'rsatiladi) */
   const [archived, setArchived] = useState<Group[]>([])
-  const [showArchived, setShowArchived] = usePersistentState('classes.showArchived', false)
   /** A'zolarni boshqarish modali uchun tanlangan guruh */
   const [membersOf, setMembersOf] = useState<Group | null>(null)
   const [deletingGroup, setDeletingGroup] = useState<Group | null>(null)
-  /** Guruh to'ldirish ko'rinishi */
+  /** Guruh to'ldirish (sig'im/bo'sh o'rin + muzlatilganlar soni) — jamlanma qatori ham shundan. */
   const [fill, setFill] = useState<GroupFillRow[]>([])
   const [showFill, setShowFill] = useState(false)
-  /** Saralash (reyting): tartib bo'yicha | o'rtacha baho | davomat. Baho/davomat — yuqoridan pastga. */
-  const [sort, setSort] = usePersistentState<'order' | 'grade' | 'attendance'>('classes.sort', 'order')
-  /** Ko'rinish: kartalar yoki jadval */
-  const [view, setView] = usePersistentState<'card' | 'table'>('classes.view', 'table')
-  /** O'qituvchi filteri — faqat shu o'qituvchining guruhlari ko'rsatiladi */
-  const [teacherFilter, setTeacherFilter] = usePersistentState('classes.teacherFilter', 'all')
-  /** Kurs filteri — faqat shu kursga biriktirilgan guruhlar */
-  const [courseFilter, setCourseFilter] = usePersistentState('classes.courseFilter', 'all')
-  /** Kun filteri: barcha | toq kunlar (Du/Cho/Ju) | juft kunlar (Se/Pay/Sha) */
-  const [dayFilter, setDayFilter] = usePersistentState<'all' | 'odd' | 'even'>('classes.dayFilter', 'all')
-  /** Kurslar ro'yxati (filtr uchun) */
-  const [subjects, setSubjects] = useState<Subject[]>([])
   /** "Jurnal boshqaruvi" oynasi — jurnal tahrirlash siyosati (barcha guruhlar uchun) */
   const [policyOpen, setPolicyOpen] = useState(false)
   /** "Vaqtincha bloklash" oynasi — guruh o'qituvchida ko'rinmay qoladi (izoh ixtiyoriy) */
   const [blockTarget, setBlockTarget] = useState<Group | null>(null)
   const [blockNote, setBlockNote] = useState('')
+  const [subjects, setSubjects] = useState<Subject[]>([])
+  /** Bugun darsi bor, davomati olinmagan guruhlar — sariq qator (edutizim `#FFFF04`). */
+  const [notAttended, setNotAttended] = useState<Set<string>>(new Set())
 
-  // Filtrlar standart holatdan farq qiladimi — "Tozalash" tugmasi shunda ko'rinadi.
-  const filtersActive = teacherFilter !== 'all' || courseFilter !== 'all' || dayFilter !== 'all'
-  const clearFilters = () => {
-    setTeacherFilter('all')
-    setCourseFilter('all')
-    setDayFilter('all')
-  }
+  // ---- Filtrlar (edutizimdagidek DOIM ochiq; tanlov sessiyada saqlanadi) ----
+  const [filtersOpen, setFiltersOpen] = usePersistentState('classes.filtersOpen', true)
+  const [q, setQ] = usePersistentState('classes.f.q', '')
+  const [state, setState] = usePersistentState<'active' | 'archived'>('classes.f.state', 'active')
+  const [teacherFilter, setTeacherFilter] = usePersistentState('classes.f.teacher', '')
+  const [courseFilter, setCourseFilter] = usePersistentState('classes.f.course', '')
+  const [levelFilter, setLevelFilter] = usePersistentState('classes.f.level', '')
+  const [roomFilter, setRoomFilter] = usePersistentState('classes.f.room', '')
+  const [weekdayFilter, setWeekdayFilter] = usePersistentState('classes.f.weekday', '')
+  const [dayFilter, setDayFilter] = usePersistentState<'' | 'odd' | 'even'>('classes.f.dayKind', '')
+  const [timeFilter, setTimeFilter] = usePersistentState('classes.f.time', '')
+  /** Reyting bo'yicha saralash (ilgari "Saralash: Tartib / O'rtacha baho / Davomat" chiplari). */
+  const [sortKey, setSortKey] = usePersistentState<SortKey>('classes.sortKey', '')
+  const [sortDir, setSortDir] = usePersistentState<'asc' | 'desc'>('classes.sortDir', 'desc')
 
-  const filteredClasses = useMemo(() => {
-    return classes.filter((c) => {
-      if (teacherFilter !== 'all' && c.teacherId !== teacherFilter) return false
-      if (courseFilter !== 'all' && c.courseId !== courseFilter) return false
-      if (dayFilter !== 'all' && dayGroup(c.days) !== dayFilter) return false
-      return true
-    })
-  }, [classes, teacherFilter, courseFilter, dayFilter])
-
-  const sortedClasses = useMemo(() => {
-    if (sort === 'order') return filteredClasses
-    return [...filteredClasses].sort((a, b) => {
-      const sa = stats[a.id]
-      const sb = stats[b.id]
-      if (sort === 'grade') return (sb?.averageGrade ?? -1) - (sa?.averageGrade ?? -1)
-      return (sb?.attendance ?? -1) - (sa?.attendance ?? -1)
-    })
-  }, [filteredClasses, stats, sort])
-
-  const teacherName = (id?: string) =>
-    id ? (teachers.find((t) => t.id === id)?.fullName ?? '—') : '—'
+  const showArchived = state === 'archived'
 
   useEffect(() => {
-    Promise.all([getClasses(), getClassesStats(), getArchivedClasses(), getTeachers(), getAllGroupsGradingStats(), getSubjects()])
+    Promise.all([
+      getClasses(),
+      getClassesStats(),
+      getArchivedClasses(),
+      getTeachers(),
+      getAllGroupsGradingStats(),
+      getSubjects(),
+    ])
       .then(([cl, st, ar, te, gs, su]) => {
         setClasses(cl)
         setStats(st)
@@ -170,7 +151,106 @@ export function ClassesPage() {
         setSubjects(su)
       })
       .finally(() => setLoading(false))
+    // Ikkinchi darajali ma'lumotlar — xato bo'lsa ro'yxat baribir ishlaydi.
+    getGroupFill().then(setFill).catch(() => {})
+    getRooms().then(setRooms).catch(() => {})
+    getTodayLessons()
+      .then((t) => setNotAttended(notAttendedGroupIds(t.lessons)))
+      .catch(() => {})
   }, [])
+
+  const teacherById = useMemo(() => new Map(teachers.map((t) => [t.id, t])), [teachers])
+  const subjectById = useMemo(() => new Map(subjects.map((s) => [s.id, s])), [subjects])
+  const fillById = useMemo(() => new Map(fill.map((f) => [f.groupId, f])), [fill])
+  const teacherName = (id?: string) => (id ? (teacherById.get(id)?.fullName ?? '—') : '—')
+  const courseName = (id?: string) => (id ? (subjectById.get(id)?.name ?? '') : '')
+
+  const source = showArchived ? archived : classes
+  const hasLevels = useMemo(() => classes.some((c) => c.grade > 0), [classes])
+
+  const filtered = useMemo(() => {
+    const s = q.trim().toLowerCase()
+    return source.filter((c) => {
+      if (teacherFilter && c.teacherId !== teacherFilter) return false
+      if (courseFilter && c.courseId !== courseFilter) return false
+      if (levelFilter && String(c.grade) !== levelFilter) return false
+      if (roomFilter && (c.roomId || `name:${c.room ?? ''}`) !== roomFilter) return false
+      if (weekdayFilter && !(c.days ?? []).includes(Number(weekdayFilter))) return false
+      if (dayFilter && dayKind(c.days) !== dayFilter) return false
+      if (timeFilter && !lessonCovers(c.startTime, c.endTime, timeFilter)) return false
+      if (s) {
+        const hay = `${c.name} ${teacherName(c.teacherId)} ${courseName(c.courseId)} ${c.room ?? ''}`.toLowerCase()
+        if (!hay.includes(s)) return false
+      }
+      return true
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- nom yordamchilari xaritalardan
+  }, [source, q, teacherFilter, courseFilter, levelFilter, roomFilter, weekdayFilter, dayFilter, timeFilter, teacherById, subjectById])
+
+  const sorted = useMemo(() => {
+    if (!sortKey) return filtered
+    const dir = sortDir === 'asc' ? 1 : -1
+    const val = (c: Group): number | string => {
+      const st = stats[c.id]
+      switch (sortKey) {
+        case 'name':
+          return c.name.toLowerCase()
+        case 'students':
+          return st?.studentsCount ?? -1
+        case 'avg':
+          return st?.averageGrade ?? -1
+        case 'att':
+          return st?.attendance ?? -1
+      }
+    }
+    return [...filtered].sort((a, b) => {
+      const va = val(a)
+      const vb = val(b)
+      if (typeof va === 'string' && typeof vb === 'string') return va.localeCompare(vb, 'uz') * dir
+      return ((va as number) - (vb as number)) * dir
+    })
+  }, [filtered, sortKey, sortDir, stats])
+
+  const pg = usePagination(sorted)
+
+  const onSort = (key: string) => {
+    const k = key as SortKey
+    if (sortKey === k) {
+      // Uchinchi bosishda saralash bekor — server tartibi (daraja, nom) qaytadi.
+      if (sortDir === 'desc') setSortDir('asc')
+      else {
+        setSortKey('')
+        setSortDir('desc')
+      }
+    } else {
+      setSortKey(k)
+      setSortDir(k === 'name' ? 'asc' : 'desc')
+    }
+  }
+
+  // Jamlanma: O'QUVCHILAR ustuni yig'indisi va ulardan muzlatilganlar (faqat faol guruhlarda).
+  const totals = useMemo(() => {
+    let students = 0
+    let frozen = 0
+    for (const c of filtered) {
+      students += stats[c.id]?.studentsCount ?? 0
+      frozen += fillById.get(c.id)?.frozen ?? 0
+    }
+    return { students, frozen }
+  }, [filtered, stats, fillById])
+
+  const filtersActive =
+    !!q || !!teacherFilter || !!courseFilter || !!levelFilter || !!roomFilter || !!weekdayFilter || !!dayFilter || !!timeFilter
+  const clearFilters = () => {
+    setQ('')
+    setTeacherFilter('')
+    setCourseFilter('')
+    setLevelFilter('')
+    setRoomFilter('')
+    setWeekdayFilter('')
+    setDayFilter('')
+    setTimeFilter('')
+  }
 
   /** Konflikt ro'yxatini o'qiladigan satrga aylantiradi. */
   const conflictList = (raw: unknown): string =>
@@ -253,8 +333,6 @@ export function ClassesPage() {
     applyUpdate(feePrompt.id, feePrompt.values, applyFee)
     setFeePrompt(null)
   }
-
-  const handleDelete = (c: Group) => setDeletingGroup(c)
 
   const doDeleteGroup = (reasonId: string | undefined) => {
     const c = deletingGroup
@@ -351,585 +429,408 @@ export function ClassesPage() {
       .catch((e) => alert(e?.response?.data?.message ?? 'Blokdan chiqarishda xatolik'))
   }
 
+  /** Joriy (filtrlangan) ro'yxatni CSV'ga — ustunlar jadvaldagidek. */
+  const exportList = () => {
+    const today = new Date().toISOString().slice(0, 10)
+    exportToCsv(
+      `guruhlar-${showArchived ? 'arxiv-' : ''}${today}.csv`,
+      ['№', 'Guruh nomi', 'Kurs', 'Darajasi', 'Kun', 'Dars vaqti', 'Guruh vaqti', "O'quvchilar", "O'qituvchi", 'Xona'],
+      sorted.map((c, i) => [
+        String(i + 1),
+        c.name,
+        courseName(c.courseId),
+        c.grade > 0 ? String(c.grade) : '',
+        formatGroupDays(c.days),
+        formatLessonTime(c.startTime, c.endTime),
+        formatGroupPeriod(c.startDate, c.endDate),
+        String(stats[c.id]?.studentsCount ?? ''),
+        teacherName(c.teacherId),
+        c.room ?? '',
+      ]),
+    )
+  }
+
+  const canCreate = can('classes.list', 'create')
+  const canEdit = can('classes.list', 'edit')
+  const canDelete = can('classes.list', 'delete')
+
+  const columns: DataColumn<Group>[] = [
+    {
+      key: 'name',
+      header: 'Guruh nomi',
+      sortable: true,
+      width: 240,
+      render: (c) => (
+        <span className="inline-flex max-w-[260px] items-center gap-1.5">
+          <Link
+            to={`/admin/classes/${c.id}`}
+            className="truncate text-black no-underline hover:text-brand-600 hover:underline"
+            title={c.name}
+          >
+            {c.name}
+          </Link>
+          {c.isBlocked && (
+            <span
+              className="inline-flex shrink-0 items-center gap-0.5 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700"
+              title={c.blockNote || "Vaqtincha bloklangan — o'qituvchida ko'rinmaydi"}
+            >
+              <Lock className="h-3 w-3" /> Bloklangan
+            </span>
+          )}
+        </span>
+      ),
+    },
+    { key: 'course', header: 'Kurs', render: (c) => courseName(c.courseId) || '—' },
+    { key: 'level', header: 'Darajasi', render: (c) => (c.grade > 0 ? c.grade : '') },
+    { key: 'days', header: 'Kun', render: (c) => <span className="whitespace-nowrap">{formatGroupDays(c.days)}</span> },
+    {
+      key: 'time',
+      header: 'Dars vaqti',
+      render: (c) => <span className="whitespace-nowrap">{formatLessonTime(c.startTime, c.endTime)}</span>,
+    },
+    {
+      key: 'period',
+      header: 'Guruh vaqti',
+      render: (c) => {
+        const p = formatGroupPeriod(c.startDate, c.endDate)
+        return p ? (
+          <span className="whitespace-nowrap rounded-full bg-[#ebebeb] px-2.5 py-1 text-[12px] font-medium">{p}</span>
+        ) : (
+          '—'
+        )
+      },
+    },
+    {
+      key: 'students',
+      header: "O'quvchilar",
+      sortable: true,
+      render: (c) => stats[c.id]?.studentsCount ?? '—',
+    },
+    {
+      key: 'teacher',
+      header: "O'qituvchi",
+      render: (c) =>
+        c.teacherId ? (
+          <Link
+            to={`/admin/teachers/${c.teacherId}`}
+            className="whitespace-nowrap text-black no-underline hover:text-brand-600 hover:underline"
+          >
+            {teacherName(c.teacherId)}
+          </Link>
+        ) : (
+          '—'
+        ),
+    },
+    { key: 'room', header: 'Xona', render: (c) => <span className="whitespace-nowrap">{c.room || '—'}</span> },
+    // ---- Bizning qo'shimcha ustunlar (edutizimda yo'q) — edutizim ustunlaridan KEYIN ----
+    ...(showArchived
+      ? [
+          {
+            key: 'archivedAt',
+            header: 'Arxiv sanasi',
+            render: (c: Group) => (c.archivedAt ? formatDate(c.archivedAt) : '—'),
+          },
+        ]
+      : [
+          {
+            key: 'avg',
+            header: "O'rtacha",
+            sortable: true,
+            align: 'right' as const,
+            render: (c: Group) => {
+              const st = stats[c.id]
+              return <span className={cn('font-semibold', st && gradeTextCls(st.averageGrade))}>{st ? st.averageGrade.toFixed(1) : '—'}</span>
+            },
+          },
+          {
+            key: 'att',
+            header: 'Davomat',
+            sortable: true,
+            align: 'right' as const,
+            render: (c: Group) => {
+              const st = stats[c.id]
+              return st && st.attendance != null ? (
+                <span className={cn('font-semibold', attColor(st.attendance))}>{st.attendance}%</span>
+              ) : (
+                '—'
+              )
+            },
+          },
+          {
+            key: 'grading',
+            header: 'Baholash',
+            align: 'right' as const,
+            render: (c: Group) => gradingStats[c.id]?.totalGrades ?? '—',
+          },
+          {
+            key: 'fee',
+            header: "Oylik to'lov",
+            align: 'right' as const,
+            render: (c: Group) => <span className="whitespace-nowrap">{formatMoney(c.monthlyFee)}</span>,
+          },
+        ]),
+    {
+      key: 'actions',
+      header: '',
+      width: 48,
+      align: 'center',
+      render: (c) => (
+        <RowActionBar
+          actions={
+            showArchived
+              ? [
+                  { label: "Ko'rish", icon: IconEye, onClick: () => navigate(`/admin/classes/${c.id}`) },
+                  {
+                    label: 'Arxivdan chiqarish',
+                    icon: IconArchiveOff,
+                    hidden: !canDelete,
+                    onClick: () => handleUnarchive(c),
+                  },
+                  { label: "O'chirish", icon: IconTrash, danger: true, hidden: !canDelete, onClick: () => setDeletingGroup(c) },
+                ]
+              : [
+                  { label: "A'zolar", icon: IconUsers, onClick: () => setMembersOf(c) },
+                  {
+                    label: 'Tahrirlash',
+                    icon: IconPencil,
+                    hidden: !canEdit,
+                    onClick: () => {
+                      setEditing(c)
+                      setFormOpen(true)
+                    },
+                  },
+                  // Vaqtincha bloklash — guruh o'qituvchi ilovasida ko'rinmay qoladi
+                  // (arxivlash EMAS: o'quvchi/a'zolik/hisob tegilmaydi).
+                  c.isBlocked
+                    ? {
+                        label: "Blokdan chiqarish (o'qituvchida yana ko'rinadi)",
+                        icon: IconLockOpen,
+                        hidden: !canEdit,
+                        onClick: () => handleUnblock(c),
+                      }
+                    : {
+                        label: "Vaqtincha bloklash (o'qituvchida ko'rinmaydi)",
+                        icon: IconLock,
+                        hidden: !canEdit,
+                        onClick: () => {
+                          setBlockNote('')
+                          setBlockTarget(c)
+                        },
+                      },
+                  {
+                    label: "Arxivlash (a'zoliklar muzlatiladi)",
+                    icon: IconArchive,
+                    hidden: !canDelete,
+                    onClick: () => handleArchive(c),
+                  },
+                  { label: "O'chirish", icon: IconTrash, danger: true, hidden: !canDelete, onClick: () => setDeletingGroup(c) },
+                ]
+          }
+        />
+      ),
+    },
+  ]
+
+  const teacherOptions = useMemo(
+    () =>
+      teachers
+        .filter((t) => source.some((c) => c.teacherId === t.id))
+        .sort((a, b) => a.fullName.localeCompare(b.fullName)),
+    [teachers, source],
+  )
+  const courseOptions = useMemo(
+    () =>
+      subjects
+        .filter((s) => source.some((c) => c.courseId === s.id))
+        .sort((a, b) => a.name.localeCompare(b.name)),
+    [subjects, source],
+  )
+  const levelOptions = useMemo(
+    () => [...new Set(source.map((c) => c.grade).filter((g) => g > 0))].sort((a, b) => a - b),
+    [source],
+  )
+  /** Xona: FK bo'yicha (roomId), eski matnli `room` — nomi bo'yicha zaxira kalit. */
+  const roomOptions = useMemo(() => {
+    const map = new Map<string, string>()
+    for (const r of rooms) if (source.some((c) => c.roomId === r.id)) map.set(r.id, r.name)
+    for (const c of source) if (!c.roomId && c.room) map.set(`name:${c.room}`, c.room)
+    return [...map.entries()].sort((a, b) => a[1].localeCompare(b[1], 'uz'))
+  }, [rooms, source])
+
   return (
     <div>
-      <PageHeader
-        title={showArchived ? 'Arxivlangan guruhlar' : 'Guruhlar'}
-        sub={
-          showArchived
-            ? `${archived.length} ta arxivlangan guruh`
-            : `Jami ${classes.length} ta guruh`
-        }
-        actions={
-          <>
-            {!showArchived && (
-              <Button
-                variant="secondary"
-                onClick={() => {
-                  setShowFill((v) => {
-                    const next = !v
-                    if (next && fill.length === 0) getGroupFill().then(setFill).catch(() => {})
-                    return next
-                  })
-                }}
-              >
-                <LayoutGrid className="h-4 w-4" /> {showFill ? 'Jadvalni yopish' : "Guruh to'ldirish"}
-              </Button>
-            )}
-            <Button variant="secondary" onClick={() => setShowArchived((v) => !v)}>
-              {showArchived ? (
-                <>
-                  <Users className="h-4 w-4" /> Faol guruhlar
-                </>
-              ) : (
-                <>
-                  <Archive className="h-4 w-4" /> Arxiv ({archived.length})
-                </>
-              )}
+      <ListToolbar
+        left={
+          !showArchived && canCreate ? (
+            <Button
+              onClick={() => {
+                setEditing(null)
+                setFormOpen(true)
+              }}
+            >
+              <IconPlus className="h-5 w-5" /> Qo'shish
             </Button>
-            {!showArchived && (
-              <Button variant="secondary" onClick={() => setPolicyOpen(true)}>
-                <BookOpenCheck className="h-4 w-4" /> Jurnal boshqaruvi
-              </Button>
-            )}
-            {!showArchived && can('classes.list', 'create') && (
-              <Button
-                onClick={() => {
-                  setEditing(null)
-                  setFormOpen(true)
-                }}
-              >
-                <Plus className="h-4 w-4" /> Yangi guruh
-              </Button>
-            )}
-          </>
+          ) : null
+        }
+        filtersOpen={filtersOpen}
+        onToggleFilters={() => setFiltersOpen((v) => !v)}
+        extra={
+          <MoreMenu
+            items={[
+              {
+                label: showFill ? "Guruh to'ldirishni yopish" : "Guruh to'ldirish",
+                icon: IconLayoutGrid,
+                hidden: showArchived,
+                onClick: () => setShowFill((v) => !v),
+              },
+              { label: 'Jurnal boshqaruvi', icon: IconBook2, onClick: () => setPolicyOpen(true) },
+              { label: 'Export (CSV)', icon: IconFileExport, onClick: exportList },
+              ...(filtersActive ? [{ label: 'Filtrni tozalash', icon: IconFilterOff, onClick: clearFilters }] : []),
+            ]}
+          />
         }
       />
 
-      {/* Saralash (reyting) toolbar — faqat faol guruhlar uchun */}
-      {!showArchived && !loading && classes.length > 0 && (
-        <div className="toolbar">
-          <div className="left">
-            <select
-              value={teacherFilter}
-              onChange={(e) => setTeacherFilter(e.target.value)}
-              className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 outline-none transition-colors focus:border-brand-400 focus:ring-2 focus:ring-brand-100"
-            >
-              <option value="all">Barcha o'qituvchilar</option>
-              {teachers
-                .filter((t) => classes.some((c) => c.teacherId === t.id))
-                .sort((a, b) => a.fullName.localeCompare(b.fullName))
-                .map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.fullName}
-                  </option>
-                ))}
-            </select>
-
-            {/* Kurs filtri */}
-            <select
-              value={courseFilter}
-              onChange={(e) => setCourseFilter(e.target.value)}
-              className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 outline-none transition-colors focus:border-brand-400 focus:ring-2 focus:ring-brand-100"
-            >
-              <option value="all">Barcha kurslar</option>
-              {subjects
-                .filter((s) => classes.some((c) => c.courseId === s.id))
-                .sort((a, b) => a.name.localeCompare(b.name))
-                .map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name}
-                  </option>
-                ))}
-            </select>
-
-            {/* Kun filtri: toq / juft */}
-            <select
-              value={dayFilter}
-              onChange={(e) => setDayFilter(e.target.value as 'all' | 'odd' | 'even')}
-              className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 outline-none transition-colors focus:border-brand-400 focus:ring-2 focus:ring-brand-100"
-            >
-              <option value="all">Barcha kunlar</option>
-              <option value="odd">Toq kunlar (Du/Cho/Ju)</option>
-              <option value="even">Juft kunlar (Se/Pay/Sha)</option>
-            </select>
-
-            {filtersActive && (
-              <button
-                type="button"
-                onClick={clearFilters}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-700"
-                title="Barcha filtrlarni tozalash"
-              >
-                <X className="h-4 w-4" /> Filtrni tozalash
-              </button>
-            )}
-
-            <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">
-              Saralash:
-            </span>
-            <SortChip
-              label="Tartib"
-              active={sort === 'order'}
-              onClick={() => setSort('order')}
-            />
-            <SortChip
-              label="O'rtacha baho"
-              active={sort === 'grade'}
-              onClick={() => setSort('grade')}
-            />
-            <SortChip
-              label="Davomat"
-              active={sort === 'attendance'}
-              onClick={() => setSort('attendance')}
-            />
-          </div>
-
-          {/* Ko'rinishni tanlash: kartalar | jadval */}
-          <div className="right">
-            <div className="tabs" role="tablist">
-              <button
-                type="button"
-                role="tab"
-                onClick={() => setView('card')}
-                className={cn('tab inline-flex items-center gap-1.5', view === 'card' && 'active')}
-              >
-                <LayoutGrid className="h-3.5 w-3.5" /> Kartalar
-              </button>
-              <button
-                type="button"
-                role="tab"
-                onClick={() => setView('table')}
-                className={cn('tab inline-flex items-center gap-1.5', view === 'table' && 'active')}
-              >
-                <List className="h-3.5 w-3.5" /> Jadval
-              </button>
-            </div>
-          </div>
-        </div>
+      {filtersOpen && (
+        <FilterGrid>
+          <FilterInput search placeholder="Qidiruv" value={q} onChange={(e) => setQ(e.target.value)} />
+          <FilterSelect
+            placeholder="Holati"
+            value={state}
+            onChange={(e) => setState((e.target.value || 'active') as 'active' | 'archived')}
+          >
+            <option value="active">Aktiv</option>
+            <option value="archived">Arxiv ({archived.length})</option>
+          </FilterSelect>
+          <FilterSelect placeholder="O'qituvchi" value={teacherFilter} onChange={(e) => setTeacherFilter(e.target.value)}>
+            {teacherOptions.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.fullName}
+              </option>
+            ))}
+          </FilterSelect>
+          <FilterSelect placeholder="Kurs" value={courseFilter} onChange={(e) => setCourseFilter(e.target.value)}>
+            {courseOptions.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name}
+              </option>
+            ))}
+          </FilterSelect>
+          {hasLevels && (
+            <FilterSelect placeholder="Daraja" value={levelFilter} onChange={(e) => setLevelFilter(e.target.value)}>
+              {levelOptions.map((g) => (
+                <option key={g} value={String(g)}>
+                  {g}
+                </option>
+              ))}
+            </FilterSelect>
+          )}
+          <FilterSelect placeholder="Xona" value={roomFilter} onChange={(e) => setRoomFilter(e.target.value)}>
+            {roomOptions.map(([k, name]) => (
+              <option key={k} value={k}>
+                {name}
+              </option>
+            ))}
+          </FilterSelect>
+          <FilterSelect placeholder="Kun" value={weekdayFilter} onChange={(e) => setWeekdayFilter(e.target.value)}>
+            {WEEKDAYS.map((d, i) => (
+              <option key={d} value={String(i)}>
+                {d}
+              </option>
+            ))}
+          </FilterSelect>
+          <FilterSelect
+            placeholder="Juft/toq kunlar"
+            value={dayFilter}
+            onChange={(e) => setDayFilter(e.target.value as '' | 'odd' | 'even')}
+          >
+            <option value="odd">Toq kunlar</option>
+            <option value="even">Juft kunlar</option>
+          </FilterSelect>
+          <FilterInput
+            type="time"
+            aria-label="Dars vaqti"
+            title="Dars vaqti — shu paytda darsi bo'lgan guruhlar"
+            value={timeFilter}
+            onChange={(e) => setTimeFilter(e.target.value)}
+          />
+        </FilterGrid>
       )}
 
-      {loading ? (
-        <Card>
-          <Loader label="Yuklanmoqda..." />
-        </Card>
-      ) : showArchived ? (
-        <Card tight>
-          <ArchivedTable
-            items={archived}
-            onUnarchive={handleUnarchive}
-            onDelete={handleDelete}
-            canDelete={can('classes.list', 'delete')}
-          />
-        </Card>
-      ) : classes.length === 0 ? (
-        <Card>
-          <div className="state">
-            <h4>Guruhlar yo'q</h4>
-            <p>Yangi guruh qo'shing.</p>
-          </div>
-        </Card>
-      ) : view === 'table' ? (
-        /* ---- Faol guruhlar — jadval ko'rinishi ---- */
-        <Card tight>
-          <div className="table-wrap">
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>Guruh</th>
-                  <th>Til</th>
-                  <th>O'qituvchi</th>
-                  <th>Kunlar</th>
-                  <th>Vaqt</th>
-                  <th className="num">O'quvchilar</th>
-                  <th className="num">O'rtacha</th>
-                  <th className="num">Davomat</th>
-                  <th className="num">Baholash</th>
-                  <th className="num">Oylik to'lov</th>
-                  <th className="text-right">Amallar</th>
-                </tr>
-              </thead>
-              <tbody>
-                {sortedClasses.map((c) => {
-                  const st = stats[c.id]
-                  const gs = gradingStats[c.id]
-                  return (
-                    <tr
-                      key={c.id}
-                      className="cursor-pointer"
-                      onClick={() => navigate(`/admin/classes/${c.id}`)}
-                    >
-                      <td>
-                        <div className="cell-user">
-                          <div className="avatar" style={{ background: avatarColor(c.name) }}>
-                            {initialsOf(c.name)}
-                          </div>
-                          <div className="meta">
-                            <strong className="flex items-center gap-1.5">
-                              <Link
-                                to={`/admin/classes/${c.id}`}
-                                onClick={(e) => e.stopPropagation()}
-                                className="text-inherit no-underline hover:underline"
-                              >
-                                {c.name}
-                              </Link>
-                              {c.isBlocked && (
-                                <Badge tone="amber">
-                                  <Lock className="h-3 w-3" /> Bloklangan
-                                </Badge>
-                              )}
-                            </strong>
-                            <span>
-                              {c.isBlocked
-                                ? "O'qituvchida ko'rinmaydi"
-                                : c.room || '—'}
-                            </span>
-                          </div>
-                        </div>
-                      </td>
-                      <td>
-                        <Badge tone={c.language === 'uz' ? 'blue' : 'amber'}>
-                          {languageLabels[c.language]}
-                        </Badge>
-                      </td>
-                      <td className="text-slate-600">
-                        {c.teacherId ? (
-                          <Link
-                            to={`/admin/teachers/${c.teacherId}`}
-                            onClick={(e) => e.stopPropagation()}
-                            className="text-inherit hover:text-brand-600 hover:underline"
-                          >
-                            {teacherName(c.teacherId)}
-                          </Link>
-                        ) : (
-                          teacherName(c.teacherId)
-                        )}
-                      </td>
-                      <td className="text-slate-600">{formatDays(c.days)}</td>
-                      <td className="num text-slate-600">{formatTime(c.startTime, c.endTime)}</td>
-                      <td className="num">{st ? st.studentsCount : '—'}</td>
-                      <td className={cn('num font-semibold', st && gradeTextCls(st.averageGrade))}>
-                        {st ? st.averageGrade.toFixed(1) : '—'}
-                      </td>
-                      <td
-                        className={cn(
-                          'num font-semibold',
-                          st && st.attendance != null && attColor(st.attendance),
-                        )}
-                      >
-                        {st && st.attendance != null ? `${st.attendance}%` : '—'}
-                      </td>
-                      <td className="num text-slate-700 font-mono">
-                        {gs ? `${gs.totalGrades}` : '—'}
-                      </td>
-                      <td className="num font-semibold text-slate-800">
-                        {formatMoney(c.monthlyFee)}
-                      </td>
-                      <td onClick={(e) => e.stopPropagation()}>
-                        <div className="flex items-center justify-end gap-0.5">
-                          <IconBtn icon={Users} title="A'zolar" onClick={() => setMembersOf(c)} />
-                          {can('classes.list', 'edit') && (
-                            <IconBtn
-                              icon={Pencil}
-                              title="Tahrirlash"
-                              onClick={() => {
-                                setEditing(c)
-                                setFormOpen(true)
-                              }}
-                            />
-                          )}
-                          {/* Vaqtincha bloklash — guruh o'qituvchi ilovasida ko'rinmay qoladi
-                              (arxivlash EMAS: o'quvchi/a'zolik/hisob tegilmaydi). */}
-                          {can('classes.list', 'edit') &&
-                            (c.isBlocked ? (
-                              <IconBtn
-                                icon={Unlock}
-                                title="Blokdan chiqarish (o'qituvchida yana ko'rinadi)"
-                                onClick={() => handleUnblock(c)}
-                              />
-                            ) : (
-                              <IconBtn
-                                icon={Lock}
-                                title="Vaqtincha bloklash (o'qituvchida ko'rinmaydi)"
-                                onClick={() => {
-                                  setBlockNote('')
-                                  setBlockTarget(c)
-                                }}
-                              />
-                            ))}
-                          {can('classes.list', 'delete') && (
-                            <IconBtn
-                              icon={Archive}
-                              title="Arxivlash (a'zoliklar muzlatiladi)"
-                              onClick={() => handleArchive(c)}
-                            />
-                          )}
-                          {can('classes.list', 'delete') && (
-                            <IconBtn icon={Trash2} title="O'chirish" danger onClick={() => handleDelete(c)} />
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
-        </Card>
-      ) : (
-        /* ---- Faol guruhlar — kartalar (kattaroq) ---- */
-        <div className="grid gap-4 [grid-template-columns:repeat(auto-fill,minmax(340px,1fr))]">
-          {sortedClasses.map((c) => {
-            const st = stats[c.id]
-            const gs = gradingStats[c.id]
-            return (
-              <div
-                key={c.id}
-                className="entity-card cursor-pointer"
-                style={{ padding: '18px 20px' }}
-                onClick={() => navigate(`/admin/classes/${c.id}`)}
-              >
-                <div className="ec-head">
-                  <div
-                    className="avatar h-12 w-12 text-[15px]"
-                    style={{ background: avatarColor(c.name) }}
-                  >
-                    {initialsOf(c.name)}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="ec-name truncate">
-                      <Link
-                        to={`/admin/classes/${c.id}`}
-                        onClick={(e) => e.stopPropagation()}
-                        className="text-inherit no-underline hover:underline"
-                      >
-                        {c.name}
-                      </Link>
-                    </div>
-                    <div className="ec-meta truncate">
-                      {languageLabels[c.language]}
-                      {st && st.studentsCount > 0 && (
-                        <span className="ml-2 text-slate-500">
-                          • {st.studentsCount} o'quvchi
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                  {c.isBlocked ? (
-                    <Badge tone="amber">
-                      <Lock className="h-3 w-3" /> Bloklangan
-                    </Badge>
-                  ) : (
-                    <Badge tone={c.language === 'uz' ? 'blue' : 'amber'}>
-                      {languageLabels[c.language]}
-                    </Badge>
-                  )}
-                </div>
+      <div className="mb-2 flex flex-wrap items-end justify-between gap-2">
+        {!showArchived ? (
+          <p className="text-[13px] text-[#6b7280]">
+            Jami o'quvchilar soni: <b className="font-bold text-[#333]">{totals.students}</b>
+            <span className="ml-3">
+              Muzlatilgan o'quvchilar soni : <b className="font-bold text-[#333]">{totals.frozen}</b>
+            </span>
+          </p>
+        ) : (
+          <p className="text-[13px] text-[#6b7280]">Arxivlangan guruhlar — faqat ko'rish, arxivdan chiqarish va o'chirish.</p>
+        )}
+        <TotalPill total={filtered.length} />
+      </div>
 
-                {/* O'qituvchi · kunlar · vaqt · xona */}
-                <div className="flex flex-col gap-1.5 text-[12.5px]">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="inline-flex items-center gap-1.5 text-slate-400">
-                      <User className="h-3.5 w-3.5" /> O'qituvchi
-                    </span>
-                    <span className="truncate font-medium text-slate-700">
-                      {c.teacherId ? (
-                        <Link
-                          to={`/admin/teachers/${c.teacherId}`}
-                          onClick={(e) => e.stopPropagation()}
-                          className="text-inherit hover:text-brand-600 hover:underline"
-                        >
-                          {teacherName(c.teacherId)}
-                        </Link>
-                      ) : (
-                        teacherName(c.teacherId)
-                      )}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="inline-flex items-center gap-1.5 text-slate-400">
-                      <CalendarDays className="h-3.5 w-3.5" /> Kunlar
-                    </span>
-                    <span className="text-slate-600">{formatDays(c.days)}</span>
-                  </div>
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="inline-flex items-center gap-1.5 text-slate-400">
-                      <Clock className="h-3.5 w-3.5" /> Vaqt
-                    </span>
-                    <span className="font-mono text-slate-600">
-                      {formatTime(c.startTime, c.endTime)}
-                    </span>
-                  </div>
-                </div>
-
-                {/* Statistika bloki: o'quvchilar · o'rtacha baho · davomat · baholash */}
-                <div className="ec-stats">
-                  <div>
-                    <div className="ec-stat-label">O'quvchilar</div>
-                    <div className="ec-stat-value font-semibold">
-                      {st?.studentsCount ?? '—'}
-                    </div>
-                  </div>
-                  <div>
-                    <div className="ec-stat-label">O'rtacha</div>
-                    <div className={cn('ec-stat-value', st && gradeTextCls(st.averageGrade))}>
-                      {st ? st.averageGrade.toFixed(1) : '—'}
-                    </div>
-                  </div>
-                  <div>
-                    <div className="ec-stat-label">Davomat</div>
-                    <div
-                      className={cn(
-                        'ec-stat-value',
-                        st && st.attendance != null && attColor(st.attendance),
-                      )}
-                    >
-                      {st && st.attendance != null ? `${st.attendance}%` : '—'}
-                    </div>
-                  </div>
-                  <div>
-                    <div className="ec-stat-label">Baholash</div>
-                    <div className="ec-stat-value font-mono font-semibold text-blue-600">
-                      {gs ? `📊 ${gs.averageScore.toFixed(1)}` : '—'}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Oylik to'lov + xona */}
-                <div className="flex items-center justify-between text-[12.5px]">
-                  <span className="text-slate-400">Oylik to'lov</span>
-                  <span className="font-mono font-semibold text-slate-800">
-                    {formatMoney(c.monthlyFee)}
-                  </span>
-                </div>
-
-                <div className="ec-foot" onClick={(e) => e.stopPropagation()}>
-                  <Button
-                    variant="secondary"
-                    className="flex-1"
-                    onClick={() => setMembersOf(c)}
-                  >
-                    <Users className="h-4 w-4" /> A'zolar
-                  </Button>
-                  {can('classes.list', 'edit') && (
-                    <Button
-                      variant="secondary"
-                      className="flex-1"
-                      onClick={() => {
-                        setEditing(c)
-                        setFormOpen(true)
-                      }}
-                    >
-                      <Pencil className="h-4 w-4" /> Tahrirlash
-                    </Button>
-                  )}
-                  {can('classes.list', 'edit') &&
-                    (c.isBlocked ? (
-                      <Button
-                        variant="secondary"
-                        title="Blokdan chiqarish (o'qituvchida yana ko'rinadi)"
-                        aria-label="Blokdan chiqarish"
-                        onClick={() => handleUnblock(c)}
-                      >
-                        <Unlock className="h-4 w-4 text-amber-600" />
-                      </Button>
-                    ) : (
-                      <Button
-                        variant="secondary"
-                        title="Vaqtincha bloklash (o'qituvchida ko'rinmaydi)"
-                        aria-label="Vaqtincha bloklash"
-                        onClick={() => {
-                          setBlockNote('')
-                          setBlockTarget(c)
-                        }}
-                      >
-                        <Lock className="h-4 w-4" />
-                      </Button>
-                    ))}
-                  {can('classes.list', 'delete') && (
-                    <Button
-                      variant="secondary"
-                      title="Arxivlash (a'zoliklar muzlatiladi)"
-                      aria-label="Arxivlash"
-                      onClick={() => handleArchive(c)}
-                    >
-                      <Archive className="h-4 w-4" />
-                    </Button>
-                  )}
-                  {can('classes.list', 'delete') && (
-                    <Button
-                      variant="secondary"
-                      title="O'chirish"
-                      aria-label="O'chirish"
-                      onClick={() => handleDelete(c)}
-                    >
-                      <Trash2 className="h-4 w-4 text-red-500" />
-                    </Button>
-                  )}
-                </div>
-              </div>
-            )
-          })}
-        </div>
+      <DataTable
+        rows={pg.paged}
+        columns={columns}
+        rowKey={(c) => c.id}
+        loading={loading}
+        numbered
+        offset={(pg.page - 1) * pg.pageSize}
+        sortKey={sortKey || undefined}
+        sortDir={sortDir}
+        onSort={onSort}
+        // Bugun darsi bor, davomati olinmagan guruh — edutizimdagidek sariq (hover ham o'zgartirmaydi).
+        rowClassName={(c) => (!showArchived && notAttended.has(c.id) ? '!bg-[#ffff04]' : undefined)}
+        footer={<TablePagination {...pg} />}
+      />
+      {!showArchived && notAttended.size > 0 && (
+        <p className="mt-2 flex items-center gap-1.5 text-[12px] text-[#6b7280]">
+          <span className="inline-block h-3 w-3 rounded-sm border border-black/10 bg-[#ffff04]" />
+          Bugun darsi bor, lekin davomat hali qilinmagan guruhlar
+        </p>
       )}
 
       {showFill && !showArchived && (
-        <Card tight className="mt-5">
-          <div className="border-b border-slate-100 px-4 py-3">
-            <h2 className="text-sm font-semibold text-slate-700">Guruh to'ldirish</h2>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
-              <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-400">
-                <tr>
-                  <th className="px-4 py-3">Guruh</th>
-                  <th className="px-4 py-3">Daraja</th>
-                  <th className="px-4 py-3">O'quvchilar</th>
-                  <th className="px-4 py-3">Sig'im</th>
-                  <th className="px-4 py-3">Bo'sh o'rin</th>
-                  <th className="px-4 py-3">Holat</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {fill.map((r) => (
-                  <tr key={r.groupId} className="hover:bg-slate-50/60">
-                    <td className="px-4 py-3 font-medium text-slate-800">{r.name}</td>
-                    <td className="px-4 py-3 text-slate-600">{r.grade}</td>
-                    <td className="px-4 py-3 text-slate-600">{r.enrolled}</td>
-                    <td className="px-4 py-3 text-slate-600">{r.capacity === 0 ? 'cheksiz' : r.capacity}</td>
-                    <td className="px-4 py-3">
-                      <span
-                        className={cn(
-                          'font-medium',
-                          r.capacity > 0 && r.freeSeats === 0 ? 'text-red-600' : 'text-emerald-600',
-                        )}
-                      >
-                        {r.capacity === 0 ? '—' : r.freeSeats}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <span
-                        className={cn(
-                          'rounded-md px-2 py-0.5 text-xs font-medium',
-                          statusBadge(r.status),
-                        )}
-                      >
-                        {statusLabel(r.status)}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-                {fill.length === 0 && (
-                  <tr>
-                    <td colSpan={6} className="px-4 py-12 text-center text-slate-400">
-                      Ma'lumot yo'q
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </Card>
+        <div className="mt-5">
+          <h2 className="mb-2 text-[16px] font-semibold text-black">Guruh to'ldirish</h2>
+          <DataTable
+            rows={fill}
+            rowKey={(r) => r.groupId}
+            numbered
+            columns={[
+              { key: 'name', header: 'Guruh', render: (r) => r.name },
+              { key: 'grade', header: 'Daraja', render: (r) => (r.grade > 0 ? r.grade : '') },
+              { key: 'enrolled', header: "O'quvchilar", render: (r) => r.enrolled },
+              { key: 'frozen', header: 'Muzlatilgan', render: (r) => r.frozen ?? 0 },
+              { key: 'cap', header: "Sig'im", render: (r) => (r.capacity === 0 ? 'cheksiz' : r.capacity) },
+              {
+                key: 'free',
+                header: "Bo'sh o'rin",
+                render: (r) => (
+                  <span
+                    className={cn(
+                      'font-semibold',
+                      r.capacity > 0 && r.freeSeats === 0 ? 'text-red-600' : 'text-emerald-600',
+                    )}
+                  >
+                    {r.capacity === 0 ? '—' : r.freeSeats}
+                  </span>
+                ),
+              },
+              {
+                key: 'status',
+                header: 'Holat',
+                render: (r) => (
+                  <span className={cn('rounded-md px-2 py-0.5 text-xs font-medium', fillStatusBadge(r.status))}>
+                    {fillStatusLabel(r.status)}
+                  </span>
+                ),
+              },
+            ]}
+          />
+        </div>
       )}
 
       <ClassFormModal
@@ -1072,160 +973,14 @@ function attColor(a: number): string {
   return 'text-red-600'
 }
 
-// Toq kunlar = Dushanba(0)/Chorshanba(2)/Juma(4); juft kunlar = Seshanba(1)/Payshanba(3)/Shanba(5).
-// Guruh KUNLARI shu naqshga to'liq mos kelsa "odd"/"even", aralash/har kuni bo'lsa "other".
-const ODD_DAYS = [0, 2, 4]
-const EVEN_DAYS = [1, 3, 5]
-function dayGroup(days?: number[]): 'odd' | 'even' | 'other' {
-  if (!days || days.length === 0) return 'other'
-  if (days.every((d) => ODD_DAYS.includes(d))) return 'odd'
-  if (days.every((d) => EVEN_DAYS.includes(d))) return 'even'
-  return 'other'
-}
-
-const DAY_SHORT = ['Du', 'Se', 'Cho', 'Pay', 'Ju', 'Sha', 'Yak']
-function formatDays(days?: number[]): string {
-  if (!days || days.length === 0) return '—'
-  return [...days].sort((a, b) => a - b).map((d) => DAY_SHORT[d] ?? '?').join(', ')
-}
-function formatTime(start?: string, end?: string): string {
-  if (start && end) return `${start}–${end}`
-  return start || end || '—'
-}
-
-/** Saralash chipi (reyting uchun — bosilganda yuqoridan pastga saralaydi). */
-function SortChip({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      title="Reyting bo'yicha saralash"
-      className={cn('filter-chip', active && 'active')}
-    >
-      {label}
-      {active && label !== 'Tartib' && <ArrowDown className="h-3 w-3" />}
-    </button>
-  )
-}
-
-function statusLabel(s: GroupFillRow['status']): string {
+function fillStatusLabel(s: GroupFillRow['status']): string {
   return s === 'full' ? "To'lgan" : s === 'archived' ? 'Arxiv' : 'Faol'
 }
 
-function statusBadge(s: GroupFillRow['status']): string {
+function fillStatusBadge(s: GroupFillRow['status']): string {
   return s === 'full'
     ? 'bg-red-50 text-red-700'
     : s === 'archived'
       ? 'bg-slate-100 text-slate-500'
       : 'bg-emerald-50 text-emerald-700'
-}
-
-function ArchivedTable({
-  items,
-  onUnarchive,
-  onDelete,
-  canDelete,
-}: {
-  items: Group[]
-  onUnarchive: (c: Group) => void
-  onDelete: (c: Group) => void
-  canDelete: boolean
-}) {
-  return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-left text-sm">
-        <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-400">
-          <tr>
-            <th className="w-10 px-4 py-3">#</th>
-            <th className="px-4 py-3">Guruh nomi</th>
-            <th className="px-4 py-3">Til</th>
-            <th className="px-4 py-3">Xona</th>
-            <th className="px-4 py-3">Arxiv sanasi</th>
-            <th className="px-4 py-3 text-right">Amallar</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-slate-100">
-          {items.map((c, i) => (
-            <tr key={c.id} className="hover:bg-slate-50/60">
-              <td className="px-4 py-3 text-slate-400">{i + 1}</td>
-              {/* Arxivdagi guruh ham ochiladi — jurnal/a'zolar/tarixi faqat ko'rish uchun qoladi. */}
-              <td className="px-4 py-3 font-medium text-slate-800">
-                <Link
-                  to={`/admin/classes/${c.id}`}
-                  className="text-inherit no-underline hover:text-brand-600 hover:underline"
-                >
-                  {c.name}
-                </Link>
-              </td>
-              <td className="px-4 py-3">
-                <span
-                  className={cn(
-                    'rounded-md px-2 py-0.5 text-xs font-medium',
-                    c.language === 'uz' ? 'bg-blue-50 text-blue-700' : 'bg-amber-50 text-amber-700',
-                  )}
-                >
-                  {languageLabels[c.language]}
-                </span>
-              </td>
-              <td className="px-4 py-3 text-slate-600">{c.room || '—'}</td>
-              <td className="px-4 py-3 text-slate-500">{c.archivedAt ? formatDate(c.archivedAt) : '—'}</td>
-              <td className="px-4 py-3">
-                <div className="flex items-center justify-end gap-1">
-                  {/* Arxivdagi guruh ma'lumotlari (jurnal, a'zolar, baholash, tarix) — faqat ko'rish. */}
-                  <Link
-                    to={`/admin/classes/${c.id}`}
-                    className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-600 transition-colors hover:border-brand-300 hover:bg-brand-50 hover:text-brand-700"
-                  >
-                    <Eye className="h-3.5 w-3.5" /> Ko'rish
-                  </Link>
-                  {canDelete && (
-                    <IconBtn
-                      icon={ArchiveRestore}
-                      title="Arxivdan chiqarish (o'quvchilari bilan)"
-                      onClick={() => onUnarchive(c)}
-                    />
-                  )}
-                  {canDelete && (
-                    <IconBtn icon={Trash2} title="O'chirish" danger onClick={() => onDelete(c)} />
-                  )}
-                </div>
-              </td>
-            </tr>
-          ))}
-          {items.length === 0 && (
-            <tr>
-              <td colSpan={6} className="px-4 py-12 text-center text-slate-400">
-                Arxivlangan guruh yo'q
-              </td>
-            </tr>
-          )}
-        </tbody>
-      </table>
-    </div>
-  )
-}
-
-interface IconBtnProps {
-  icon: typeof Pencil
-  title: string
-  onClick: () => void
-  danger?: boolean
-}
-
-function IconBtn({ icon: Icon, title, onClick, danger }: IconBtnProps) {
-  return (
-    <button
-      type="button"
-      title={title}
-      onClick={onClick}
-      className={cn(
-        'rounded-lg p-1.5 transition-colors',
-        danger
-          ? 'text-slate-400 hover:bg-red-50 hover:text-red-600'
-          : 'text-slate-400 hover:bg-slate-100 hover:text-slate-700',
-      )}
-    >
-      <Icon className="h-4 w-4" />
-    </button>
-  )
 }

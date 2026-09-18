@@ -650,9 +650,38 @@ public record ScheduleBoardDto(
     List<SchedulePeakDto> Peak,
     int SkippedGroups);
 
-/// <summary>Guruh to'ldirish hisoboti qatori: sig'im vs ro'yxatdagilar.</summary>
+/// <summary>Bosh sahifa jadval to'ri uchun bitta GURUH (barcha dars kunlari bilan).</summary>
+/// <param name="Days">Vaqti TO'G'RI bo'lgan dars kunlari (0=Dushanba … 6=Yakshanba).</param>
+/// <param name="Start">"HH:mm" — <c>ScheduleRules.MakeSlot</c> dan o'tgan, ya'ni buzuq emas.</param>
+/// <param name="Members">Guruhda o'rin band qilgan a'zolar (faol + sinov, muzlatilgan EMAS).</param>
+/// <param name="Capacity">Guruh sig'imi (0 = cheksiz).</param>
+/// <param name="Status">"active" | "full" | "blocked" (vaqtincha bloklangan guruh).</param>
+/// <param name="StartDate">Guruh (kurs) boshlanish sanasi "yyyy-MM-dd"; bo'sh — kiritilmagan.</param>
+/// <param name="LessonsDone">O'TILGAN darslar (jurnalda "dars o'tildi" belgilangan kun × para).</param>
+/// <param name="LessonsTotal">Rejadagi JAMI darslar: boshlanish–tugash sanalari orasidagi dars
+/// kunlari. 0 — noma'lum (sanalardan biri kiritilmagan).</param>
+public record ScheduleGridGroupDto(
+    string GroupId, string GroupName, string CourseId, string CourseName,
+    string TeacherId, string TeacherName, string RoomId, string RoomName,
+    List<int> Days, string Start, string End, int Minutes, int Members, int Capacity,
+    string Status = "active", string StartDate = "", string EndDate = "",
+    int LessonsDone = 0, int LessonsTotal = 0);
+
+/// <summary>Bosh sahifa jadval to'ri: guruhlar + BARCHA faol xonalar va o'qituvchilar (darsi
+/// yo'qlari ham ustun bo'lib chiqsin — bo'sh xona/o'qituvchi ko'rinishi kerak).
+/// <paramref name="SkippedGroups"/> — vaqti buzuq/kunsiz guruhlar soni.</summary>
+public record ScheduleGridDto(
+    List<ScheduleGridGroupDto> Groups,
+    List<ScheduleOwnerDto> Rooms,
+    List<ScheduleOwnerDto> Teachers,
+    int SkippedGroups);
+
+/// <summary>Guruh to'ldirish hisoboti qatori: sig'im vs ro'yxatdagilar.
+/// <c>Frozen</c> — shu guruhdagi joriy MUZLATILGAN a'zoliklar (o'rin egallamaydi, <c>Enrolled</c> ga
+/// kirmaydi); Guruhlar ro'yxatidagi "Muzlatilgan o'quvchilar soni" shundan yig'iladi.</summary>
 public record GroupFillRowDto(
-    string GroupId, string Name, int Grade, int Capacity, int Enrolled, int FreeSeats, string Status);
+    string GroupId, string Name, int Grade, int Capacity, int Enrolled, int FreeSeats, string Status,
+    int Frozen = 0);
 
 /* ---------- Test natijalari ---------- */
 /// <summary>Guruh kartasi (Testlar natijalari bosh sahifasi) — guruh + yaratilgan testlar soni.</summary>
@@ -867,7 +896,29 @@ public record LeadWithAttendanceDto(
     /// <summary>Shartnomani YOPGAN xodim (<c>AppUser</c>.Id) — "convert" amalini bajargan odam.</summary>
     string? ClosedByUserId = null,
     /// <summary>Shartnoma imzolangan sana "yyyy-MM-dd" (KPI "contracts" ko'rsatkichining yagona manbai).</summary>
-    string? ClosedAt = null);
+    string? ClosedAt = null,
+    /// <summary>Kutilayotgan birinchi (sinov) dars vaqti "yyyy-MM-ddTHH:mm" — <c>LeadFirstLesson.Pick</c>
+    /// (bosh sahifadagi "Birinchi darsga keladiganlar" bilan bitta ta'rif). Null = kutilayotgan sinov yo'q.</summary>
+    string? FirstLessonAt = null,
+    /// <summary>Jadvaldagi O'QITUVCHI/GURUH — <c>LeadFirstLesson.Display</c> tanlagan sinovning guruhidan.</summary>
+    string? GroupId = null,
+    string? GroupName = null,
+    string? TeacherId = null,
+    string? TeacherName = null,
+    /// <summary>KURS DARAJASI — lidning eng so'nggi daraja testi natijasi (<c>LevelTestSubmission.Level</c>).</summary>
+    string? Level = null);
+
+/// <summary>
+/// «Birinchi darsga yozilganlar» qatori (<c>GET api/admin/leads/first-lesson</c>). Tanlov qoidasi —
+/// <c>LeadFirstLesson</c> (bosh sahifa kartochkasi bilan bitta ta'rif). <c>IsPast</c> — sana o'tib
+/// ketgan, natija belgilanmagan (edutizimdagi qizil qator).
+/// </summary>
+public record FirstLessonLeadDto(
+    string Id, string FullName, string Phone, string FatherPhone, string MotherPhone,
+    string? CreatedAt, string FirstLessonAt, bool IsPast, string TrialId,
+    string GroupId, string GroupName, string TeacherId, string TeacherName,
+    string Course, string Level, string? AssigneeUserId, string? AssigneeName,
+    string? Note, string Stage);
 
 /// <summary>Lid manbasi (ma'lumotnoma) — "O'quv bo'limi → Sabablar" sahifasida boshqariladi.</summary>
 public record LeadSourceDto(string Id, string Name, int Order);
@@ -1126,6 +1177,27 @@ public record AdminDashboardDto(
     AdminStatsDto Stats, List<ClassPerformanceItemDto> ClassPerformance, List<TopClassDto> TopClasses,
     StudentBreakdownDto StudentBreakdown, int TotalGradesCount, DashboardHeaderStatsDto Header);
 
+/// <summary>
+/// Bosh sahifadagi 12 ta kartochka ("Dars jadvali" sahifasi tepasi). Hisob — <c>DashboardSummary</c>
+/// (sof funksiyalar, testlangan). "Oy" — joriy oy (<paramref name="Month"/>, "yyyy-MM").
+/// </summary>
+/// <param name="Orders">Buyurtmalar — ochiq (o'quvchiga aylantirilmagan) lidlar.</param>
+/// <param name="FirstLesson">Birinchi darsga keladiganlar — bugun yoki keyin rejalashtirilgan,
+/// natijasi hali belgilanmagan sinov darsi bor ochiq lidlar.</param>
+/// <param name="NewStudents">Yangi o'quvchilar — hozir sinovdagi (trial) a'zoligi bor o'quvchilar.</param>
+/// <param name="ActiveStudents">Aktiv o'quvchilar — hozir faol (active) a'zoligi bor o'quvchilar.</param>
+/// <param name="OrdersLeft">Buyurtmadan ketganlar — shu oyda o'chirilgan (arxivga tushgan) lidlar.</param>
+/// <param name="NewLeft">Yangi o'quvchidan ketganlar — shu oyda kursdan ketgan, aktivlashmagan o'quvchilar.</param>
+/// <param name="ActiveLeft">Aktiv o'quvchidan ketganlar — shu oyda kursdan ketgan, aktivlashgan o'quvchilar.</param>
+/// <param name="FirstPayments">Birinchi to'lovni qilganlar — BIRINCHI o'quv to'lovi shu oyda bo'lganlar.</param>
+/// <param name="Frozen">Muzlatilgan — FAQAT muzlatilgan a'zoliklari qolgan o'quvchilar.</param>
+/// <param name="Archived">Arxivlar — arxivlangan o'quvchilar.</param>
+public record DashboardSummaryDto(
+    string Month,
+    int Orders, int FirstLesson, int NewStudents, int ActiveStudents,
+    int OrdersLeft, int NewLeft, int ActiveLeft,
+    int Debtors, int Groups, int FirstPayments, int Frozen, int Archived);
+
 /// <summary>Bosh sahifa "Bugungi darslar" monitoringi: bugun dars kuni bo'lgan har bir guruh uchun
 /// o'qituvchi davomat qildimi (bugungi Conducted LessonNote) va baho qo'ydimi (bugungi jurnal
 /// bahosi yoki mezon belgisi).</summary>
@@ -1233,11 +1305,15 @@ public record StudentLocationRowDto(
     string StudentId, string FullName, string ClassName,
     double Latitude, double Longitude, string? Address, string? UpdatedAt);
 
-/// <summary>Ota-ona bo'limidagi bitta farzand (qisqacha) + qurilma ma'lumoti.</summary>
+/// <summary>Ota-ona bo'limidagi bitta farzand (qisqacha) + qurilma ma'lumoti.
+/// <para>Otasi/onasi va balans — edutizim "Ota-ona" jadvali ustunlari (o'quvchi kesimida).</para></summary>
 public record ParentChildDto(
     string StudentId, string FullName, string ClassName,
     string? FirstLoginAt, string? LastLoginAt,
-    string DeviceName = "", string Platform = "", string AppId = "");
+    string DeviceName = "", string Platform = "", string AppId = "",
+    string FatherFullName = "", string FatherPhone = "",
+    string MotherFullName = "", string MotherPhone = "",
+    decimal Balance = 0m);
 
 /// <summary>
 /// Admin "Ota-onalar" bo'limidagi bir ota-ona qatori — telefon bo'yicha guruhlangan.
@@ -4063,3 +4139,8 @@ public record WorkTaskTrendPointDto(string Date, int Created, int Done);
 public record WorkTaskDashboardDto(
     int Total, int Done, int Open, int Overdue, int DueToday, int Rate,
     List<WorkTaskStatRowDto> Rows, List<WorkTaskTrendPointDto> Trend, List<WorkTaskDto> Attention);
+
+/// <summary>Rejalashtirilgan xarajat formasi (Moliya → «Rejalashtirilgan xarajatlar»).</summary>
+public record PlannedExpensePayload(
+    string Name, decimal Amount, string? Category, string? StartDate, string? EndDate,
+    string? Status, string? Note);

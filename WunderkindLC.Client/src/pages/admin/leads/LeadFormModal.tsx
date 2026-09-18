@@ -1,22 +1,15 @@
-import { Children, useEffect, useState, type ReactNode } from 'react'
-import type { District, Lead } from '@/types'
+import { Children, type ReactNode } from 'react'
+import type { Lead } from '@/types'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Input, Select, Textarea } from '@/components/ui/Input'
 import { PhoneInput } from '@/components/ui/PhoneInput'
-import { genderOptions, leadSourceOptions } from '@/config/constants'
-import { getLeadSources } from '@/api/services/leadSources'
-import { getLeadCourses, type LeadAnswersPayload } from '@/api/services/leads'
-import { getDistricts } from '@/api/services/districts'
-import {
-  getLeadAnswers,
-  getLeadEntryForm,
-  type LeadEntryField,
-  type LeadEntryForm,
-  type LeadEntryState,
-} from '@/api/services/leadEntryForm'
+import { genderOptions } from '@/config/constants'
+import type { LeadAnswersPayload } from '@/api/services/leads'
+import { LeadCustomAnswer } from './LeadCustomAnswer'
+import { leadErrorText, useLeadEntryForm, type LeadFormValues } from './useLeadEntryForm'
 
-export type LeadFormValues = Omit<Lead, 'id' | 'stage'>
+export type { LeadFormValues } from './useLeadEntryForm'
 
 interface Props {
   open: boolean
@@ -29,49 +22,6 @@ interface Props {
   onSubmit: (values: LeadFormValues, answers: LeadAnswersPayload) => Promise<void>
   /** Tahrirlash uchun mavjud lid, qo'shish uchun null */
   initial?: Lead | null
-}
-
-const empty: LeadFormValues = {
-  fullName: '',
-  gender: 'male',
-  birthDate: '',
-  phone: '',
-  fatherFullName: '',
-  fatherPhone: '',
-  motherFullName: '',
-  motherPhone: '',
-  note: '',
-  source: '',
-  interestSubject: '',
-  districtId: '',
-  schoolId: '',
-}
-
-/** Standart maydon yorliqlari — XATO MATNI uchun ("«Otasi raqami» to'ldirilmagan"). */
-const standardLabels: Record<string, string> = {
-  fullName: 'F.I.SH',
-  gender: 'Jinsi',
-  birthDate: "Tug'ilgan kun",
-  phone: "O'z telefon raqami",
-  fatherFullName: 'Otasi F.I.SH',
-  fatherPhone: 'Otasi raqami',
-  motherFullName: 'Onasi F.I.SH',
-  motherPhone: 'Onasi raqami',
-  source: 'Manba',
-  interestSubject: 'Qiziqqan fani (kurs)',
-  districtId: 'Tuman',
-  schoolId: 'Maktab',
-  note: 'Izoh',
-}
-
-/** Serverdagi xato matni (axios), bo'lmasa umumiy matn. */
-function errorText(err: unknown): string {
-  const data = (err as { response?: { data?: unknown } })?.response?.data
-  const msg =
-    typeof data === 'string' ? data : (data as { message?: string } | undefined)?.message
-  return typeof msg === 'string' && msg.trim()
-    ? msg
-    : "Saqlab bo'lmadi. Qayta urinib ko'ring."
 }
 
 /**
@@ -91,260 +41,13 @@ function Pair({ children }: { children: ReactNode }) {
   )
 }
 
-/** Qo'shimcha savol — turiga qarab matn / raqam / select / radio / checkbox. */
-function CustomAnswer({
-  field,
-  value,
-  onSet,
-  onToggle,
-}: {
-  field: LeadEntryField
-  value: string[]
-  onSet: (vals: string[]) => void
-  onToggle: (val: string) => void
-}) {
-  const single = value[0] ?? ''
-
-  if (field.kind === 'textarea')
-    return (
-      <Textarea
-        label={field.label}
-        required={field.required}
-        rows={3}
-        placeholder={field.placeholder}
-        value={single}
-        onChange={(e) => onSet(e.target.value ? [e.target.value] : [])}
-      />
-    )
-
-  if (field.kind === 'number')
-    return (
-      <Input
-        label={field.label}
-        required={field.required}
-        type="number"
-        placeholder={field.placeholder}
-        value={single}
-        onChange={(e) => onSet(e.target.value ? [e.target.value] : [])}
-      />
-    )
-
-  if (field.kind === 'select')
-    return (
-      <Select
-        label={field.label}
-        required={field.required}
-        value={single}
-        onChange={(e) => onSet(e.target.value ? [e.target.value] : [])}
-      >
-        <option value="">— tanlanmagan —</option>
-        {field.options.map((o) => (
-          <option key={o} value={o}>
-            {o}
-          </option>
-        ))}
-      </Select>
-    )
-
-  if (field.kind === 'radio' || field.kind === 'checkbox') {
-    // checkbox — bir nechta javob, radio — bittasi (ommaviy formadagi bilan bir xil ko'rinish).
-    const multiple = field.kind === 'checkbox'
-    return (
-      <div>
-        <span className="mb-1 block text-sm font-medium text-slate-600">
-          {field.label}
-          {field.required && <span className="text-red-500"> *</span>}
-        </span>
-        <div className="space-y-2">
-          {field.options.map((o) => {
-            const selected = value.includes(o)
-            return (
-              <button
-                key={o}
-                type="button"
-                onClick={() => (multiple ? onToggle(o) : onSet(selected ? [] : [o]))}
-                className={
-                  'flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-left text-sm transition-colors ' +
-                  (selected
-                    ? 'border-brand-400 bg-brand-50 text-brand-800'
-                    : 'border-slate-200 text-slate-700 hover:border-brand-300 hover:bg-slate-50')
-                }
-              >
-                <span
-                  className={
-                    'h-4 w-4 shrink-0 border-2 ' +
-                    (multiple ? 'rounded ' : 'rounded-full ') +
-                    (selected ? 'border-brand-500 bg-brand-500' : 'border-slate-300')
-                  }
-                />
-                <span className="flex-1">{o}</span>
-              </button>
-            )
-          })}
-        </div>
-      </div>
-    )
-  }
-
-  return (
-    <Input
-      label={field.label}
-      required={field.required}
-      placeholder={field.placeholder}
-      value={single}
-      onChange={(e) => onSet(e.target.value ? [e.target.value] : [])}
-    />
-  )
-}
-
 export function LeadFormModal({ open, onClose, onSubmit, initial }: Props) {
-  const [form, setForm] = useState<LeadFormValues>(empty)
-  // Manba ro'yxati serverdan ("O'quv bo'limi → Sabablar" → "Lid manbalari"); xato/bo'sh bo'lsa fallback.
-  const [sourceOptions, setSourceOptions] = useState<string[]>(leadSourceOptions)
-  // Tashqi maktab ma'lumotnomasi (tuman → maktablar) — o'quvchi formasidagi bilan bir xil.
-  const [districts, setDistricts] = useState<District[]>([])
-  // "Qiziqqan fani" ro'yxati — markazdagi kurslar (Subject nomlari).
-  const [courseOptions, setCourseOptions] = useState<string[]>([])
-
-  /**
-   * «Lid kiritish formasi» sozlamasi (`/admin/forms/lid-kiritish`): qaysi standart maydon
-   * ko'rinadi/majburiy va markaz qanday QO'SHIMCHA savol qo'shgan.
-   *
-   * ⚠️ ZAXIRA — sozlama yuklanmasa (tarmoq/server xatosi) `states` BO'SH qoladi: barcha standart
-   * maydonlar ko'rinadi va faqat F.I.SH majburiy bo'ladi, ya'ni oyna avvalgidek ishlaydi.
-   * Sozlama tushmagani uchun lid kiritish TO'XTAB qolmasin.
-   */
-  const [states, setStates] = useState<Record<string, LeadEntryState>>({})
-  const [fields, setFields] = useState<LeadEntryField[]>([])
-  // Qo'shimcha savollarga javoblar: { savolId: [javob...] }
-  const [answers, setAnswers] = useState<LeadAnswersPayload>({})
-
-  const [saving, setSaving] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    if (!open) return
-    getDistricts()
-      .then(setDistricts)
-      .catch(() => setDistricts([]))
-    getLeadCourses()
-      .then(setCourseOptions)
-      .catch(() => setCourseOptions([]))
-    getLeadSources()
-      .then((list) => {
-        const names = list.map((s) => s.name)
-        setSourceOptions(names.length > 0 ? names : leadSourceOptions)
-      })
-      .catch(() => setSourceOptions(leadSourceOptions))
-  }, [open])
-
-  /**
-   * Sozlama + (tahrirlashda) lidning eski javoblari BIRGA yuklanadi: javoblar server tomonda
-   * savol MATNI bilan saqlanadi (snapshot), demak ularni `id` ga aylantirish uchun aynan shu
-   * so'rovda kelgan savollar ro'yxati kerak. Mos savol topilmasa (savol o'chirilgan yoki
-   * nomi o'zgargan) javob JIM o'tkazib yuboriladi.
-   */
-  useEffect(() => {
-    if (!open) return
-    let cancelled = false
-    const load = async () => {
-      let cfg: LeadEntryForm
-      try {
-        cfg = await getLeadEntryForm()
-      } catch {
-        cfg = { standard: [], fields: [] }
-      }
-      if (cancelled) return
-      const map: Record<string, LeadEntryState> = {}
-      for (const s of cfg.standard) map[s.key] = s.state
-      setStates(map)
-      setFields(cfg.fields)
-
-      if (!initial) {
-        setAnswers({})
-        return
-      }
-      try {
-        const saved = await getLeadAnswers(initial.id)
-        if (cancelled) return
-        const next: LeadAnswersPayload = {}
-        for (const a of saved) {
-          const f = cfg.fields.find((x) => x.label === a.question)
-          if (f) next[f.id] = a.answers
-        }
-        setAnswers(next)
-      } catch {
-        if (!cancelled) setAnswers({})
-      }
-    }
-    void load()
-    return () => {
-      cancelled = true
-    }
-  }, [open, initial])
-
-  useEffect(() => {
-    if (!open) return
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- modal ochilganda xato va formani initial bilan sinxronlash (maqsadli)
-    setError(null)
-    // ⚠️ Forma HAR DOIM `initial` dan TO'LIQ to'ldiriladi — sozlamada yashirilgan maydon ham.
-    // Uning qiymati keyin serverga o'sha holicha yuboriladi: menejer KO'RMAGAN ma'lumot
-    // (masalan onasi raqami) tahrirlash paytida jimgina o'chib ketmasin.
-    setForm(
-      initial
-        ? {
-            fullName: initial.fullName,
-            gender: initial.gender,
-            birthDate: initial.birthDate,
-            phone: initial.phone,
-            fatherFullName: initial.fatherFullName,
-            fatherPhone: initial.fatherPhone,
-            motherFullName: initial.motherFullName,
-            motherPhone: initial.motherPhone,
-            note: initial.note ?? '',
-            source: initial.source ?? '',
-            interestSubject: initial.interestSubject ?? '',
-            districtId: initial.districtId ?? '',
-            schoolId: initial.schoolId ?? '',
-          }
-        : empty,
-    )
-  }, [open, initial])
-
-  const update = <K extends keyof LeadFormValues>(key: K, value: LeadFormValues[K]) =>
-    setForm((f) => ({ ...f, [key]: value }))
-
-  /** Maydon holati. F.I.SH — DOIM majburiy; sozlamada topilmagan maydon ko'rinadi (ixtiyoriy). */
-  const stateOf = (key: string): LeadEntryState =>
-    key === 'fullName' ? 'required' : (states[key] ?? 'optional')
-  const show = (key: string) => stateOf(key) !== 'hidden'
-  const req = (key: string) => stateOf(key) === 'required'
-
-  const setAnswer = (id: string, vals: string[]) => setAnswers((a) => ({ ...a, [id]: vals }))
-  const toggleAnswer = (id: string, val: string) =>
-    setAnswers((a) => {
-      const cur = a[id] ?? []
-      return { ...a, [id]: cur.includes(val) ? cur.filter((v) => v !== val) : [...cur, val] }
-    })
-
-  /**
-   * Klientdagi oldindan tekshiruv — server baribir tekshiradi, bu faqat TEZKOR javob
-   * (bekorga so'rov yubormasdan). Faqat KO'RINADIGAN majburiy maydonlar tekshiriladi:
-   * yashirilgani menejerga ko'rsatilmagan, undan to'ldirishni talab qilib bo'lmaydi.
-   */
-  const validate = (): string | null => {
-    for (const key of Object.keys(standardLabels)) {
-      if (!show(key) || !req(key)) continue
-      if (!String(form[key as keyof LeadFormValues] ?? '').trim())
-        return `«${standardLabels[key]}» to'ldirilmagan.`
-    }
-    for (const f of fields) {
-      if (!f.required) continue
-      const vals = (answers[f.id] ?? []).filter((v) => v.trim())
-      if (vals.length === 0) return `«${f.label}» to'ldirilmagan.`
-    }
-    return null
-  }
+  // Holat, sozlama («Lid kiritish formasi») va tekshiruv — `useLeadEntryForm` da: lid sahifasining
+  // chap paneli ham AYNAN shundan foydalanadi (qoidalar ikki joyda ayri ketmasin).
+  const {
+    form, setForm, update, sourceOptions, districts, courseOptions, fields, answers,
+    setAnswer, toggleAnswer, show, req, validate, saving, setSaving, error, setError,
+  } = useLeadEntryForm(open, initial)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -361,7 +64,7 @@ export function LeadFormModal({ open, onClose, onSubmit, initial }: Props) {
       onClose()
     } catch (err) {
       // Modal OCHIQ qoladi — kiritilgan ma'lumot yo'qolmasin, xato esa tepada ko'rinadi.
-      setError(errorText(err))
+      setError(leadErrorText(err))
     } finally {
       setSaving(false)
     }
@@ -562,7 +265,7 @@ export function LeadFormModal({ open, onClose, onSubmit, initial }: Props) {
         {fields.length > 0 && (
           <div className="space-y-4 border-t border-slate-100 pt-4">
             {fields.map((f) => (
-              <CustomAnswer
+              <LeadCustomAnswer
                 key={f.id}
                 field={f}
                 value={answers[f.id] ?? []}

@@ -289,3 +289,63 @@ export async function getLeadCourses(): Promise<string[]> {
   const { data } = await api.get<string[]>('/admin/leads/courses')
   return data
 }
+
+/* ---------- «Birinchi darsga yozilganlar» ---------- */
+
+/**
+ * «Birinchi darsga yozilganlar» qatori — ochiq lid + natijasi belgilanmagan sinov darsi
+ * (serverda `LeadFirstLesson`; bosh sahifadagi "Birinchi darsga keladiganlar" bilan bitta ta'rif).
+ * `isPast` — sana o'tib ketgan (edutizimdagi qizil qator).
+ */
+export interface FirstLessonLead {
+  id: string
+  fullName: string
+  phone: string
+  fatherPhone: string
+  motherPhone: string
+  createdAt?: string | null
+  /** "yyyy-MM-ddTHH:mm" */
+  firstLessonAt: string
+  isPast: boolean
+  trialId: string
+  groupId: string
+  groupName: string
+  teacherId: string
+  teacherName: string
+  course: string
+  level: string
+  assigneeUserId?: string | null
+  assigneeName?: string | null
+  note?: string | null
+  stage: string
+}
+
+/** Server tomondagi filtrlar (`LeadFirstLesson.Filter`) — bo'sh qiymatlar yuborilmaydi. */
+export interface FirstLessonFilter {
+  date?: string
+  from?: string
+  to?: string
+  course?: string
+  level?: string
+  /** 0=Dushanba … 6=Yakshanba (birinchi dars sanasining hafta kuni) */
+  weekday?: string
+  /** `odd` (Du/Chor/Ju) | `even` (Se/Pay/Sha) — guruh jadvali */
+  parity?: string
+  /** Moderator (AppUser id) yoki `__none__` — biriktirilmagan */
+  assignee?: string
+  teacher?: string
+  /** `past` | `upcoming` */
+  color?: string
+  q?: string
+}
+
+export async function getFirstLessonLeads(filter: FirstLessonFilter = {}): Promise<FirstLessonLead[]> {
+  if (USE_MOCK) {
+    await delay()
+    return []
+  }
+  const params: Record<string, string> = {}
+  for (const [k, v] of Object.entries(filter)) if (v != null && String(v).trim() !== '') params[k] = String(v).trim()
+  const { data } = await api.get<FirstLessonLead[]>('/admin/leads/first-lesson', { params })
+  return data
+}

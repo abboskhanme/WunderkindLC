@@ -1,9 +1,10 @@
 ﻿import { useEffect, useState } from 'react'
 import { ChevronDown, Clock } from 'lucide-react'
-import type { AuditAction, AuditLog } from '@/types'
+import type { AuditLog } from '@/types'
 import { getAuditLogs, type AuditFilters } from '@/api/services/audit'
 import { Loader } from '@/components/ui/Loader'
-import { formatDateTime, formatMoney, cn } from '@/lib/utils'
+import { formatDateTime, cn } from '@/lib/utils'
+import { auditActionConfig as actionConfig, snapshotFields } from './auditFields'
 
 interface Props {
   filters: AuditFilters
@@ -18,121 +19,29 @@ interface Props {
   onLoaded?: (count: number) => void
 }
 
-const actionConfig: Record<AuditAction, { label: string; cls: string }> = {
-  create: { label: "Qo'shildi", cls: 'bg-emerald-50 text-emerald-700' },
-  update: { label: 'Tahrirlandi', cls: 'bg-amber-50 text-amber-700' },
-  delete: { label: "O'chirildi", cls: 'bg-red-50 text-red-700' },
-}
-
-const moneyKeys = new Set(['amount', 'salary', 'monthlyFee', 'discountAmount'])
-/** Ha/Yo'q ko'rinishida chiziladigan bayroqlar. */
-const boolKeys = new Set(['isSupport'])
-const fieldLabels: Record<string, string> = {
-  amount: 'Summa',
-  date: 'Sana',
-  category: 'Toifa',
-  direction: "Yo'nalish",
-  note: 'Izoh',
-  month: 'Oy',
-  salary: 'Oylik',
-  monthlyFee: "Oylik to'lov",
-  name: 'Guruh',
-  discountPct: 'Chegirma foizi',
-  discountAmount: 'Chegirma summasi',
-  discountNote: 'Chegirma izohi',
-  fullName: 'F.I.SH',
-  phone: 'Telefon',
-  birthDate: "Tug'ilgan sana",
-  gender: 'Jins',
-  address: 'Manzil',
-  parentFullName: "Ota-ona F.I.SH",
-  parentPhone: "Ota-ona telefoni",
-  fatherFullName: "Otasi F.I.SH",
-  fatherPhone: "Otasi telefoni",
-  motherFullName: "Onasi F.I.SH",
-  motherPhone: "Onasi telefoni",
-  className: 'Guruh',
-  enrollmentDate: 'Qabul sanasi',
-  grade: 'Daraja',
-  language: 'Til',
-  room: 'Xona',
-  status: 'Holat',
-  startTime: 'Boshlanish vaqti',
-  endTime: 'Tugash vaqti',
-  // O'qituvchi snapshot'i (AuditService.TeacherSnapshot) maydonlari.
-  salaryMode: 'Maosh rejimi',
-  salaryPercent: 'Maosh foizi',
-  bonusPct: 'Ustama',
-  salaryStartDate: 'Maosh boshlanish sanasi',
-  salaryStartMonth: 'Maosh boshlanish oyi',
-  homeroomClass: 'Biriktirilgan guruh',
-  isSupport: "Support o'qituvchi",
-}
-/** Foiz qiymatlari uchun (raqamga "%" qo'shadi). */
-const pctKeys = new Set(['discountPct', 'salaryPercent', 'bonusPct'])
-const hiddenKeys = new Set(['studentId', 'teacherId'])
-
-function parse(json?: string): Record<string, unknown> | null {
-  if (!json) return null
-  try {
-    return JSON.parse(json) as Record<string, unknown>
-  } catch {
-    return null
-  }
-}
-
-function fmtValue(key: string, value: unknown): string {
-  if (value === null || value === undefined || value === '') return '—'
-  if (moneyKeys.has(key) && typeof value === 'number') return formatMoney(value)
-  if (pctKeys.has(key) && typeof value === 'number') return `${value}%`
-  if (boolKeys.has(key)) return value ? 'Ha' : "Yo'q"
-  if (key === 'salaryMode') return value === 'percent' ? 'Foizli' : "Qat'iy"
-  if (key === 'direction') return value === 'income' ? 'Kirim' : 'Chiqim'
-  if (key === 'gender') return value === 'female' ? 'Ayol' : 'Erkak'
-  if (key === 'language') return value === 'ru' ? 'Rus' : "O'zbek"
-  if (key === 'status') {
-    const map: Record<string, string> = { active: 'Aktiv', frozen: 'Muzlatilgan', full: "To'lgan", archived: 'Arxiv', trial: 'Sinov' }
-    return map[String(value)] ?? String(value)
-  }
-  return String(value)
-}
-
-/** before/after snapshotlarini o'qiladigan tafsilotga aylantiradi */
+/** before/after snapshotlarini o'qiladigan tafsilotga aylantiradi (yorliq/format — `auditFields.ts`). */
 function SnapshotDetail({ before, after }: { before?: string; after?: string }) {
-  const b = parse(before)
-  const a = parse(after)
-  const keys = [...new Set([...Object.keys(b ?? {}), ...Object.keys(a ?? {})])].filter(
-    (k) => !hiddenKeys.has(k) && (k in fieldLabels),
-  )
-  if (keys.length === 0) return null
+  const fields = snapshotFields(before, after)
+  if (fields.length === 0) return null
 
   return (
     <dl className="mt-2 space-y-1 rounded-lg bg-slate-50 px-3 py-2 text-xs">
-      {keys.map((k) => {
-        const ov = b?.[k]
-        const nv = a?.[k]
-        const changed = b && a && JSON.stringify(ov) !== JSON.stringify(nv)
-        return (
-          <div key={k} className="flex justify-between gap-3">
-            <dt className="text-slate-400">{fieldLabels[k]}</dt>
-            <dd className="text-right text-slate-600">
-              {b && a ? (
-                changed ? (
-                  <>
-                    <span className="text-slate-400 line-through">{fmtValue(k, ov)}</span>
-                    {' → '}
-                    <span className="font-medium text-slate-700">{fmtValue(k, nv)}</span>
-                  </>
-                ) : (
-                  fmtValue(k, nv)
-                )
-              ) : (
-                fmtValue(k, a ? nv : ov)
-              )}
-            </dd>
-          </div>
-        )
-      })}
+      {fields.map((f) => (
+        <div key={f.key} className="flex justify-between gap-3">
+          <dt className="text-slate-400">{f.label}</dt>
+          <dd className="text-right text-slate-600">
+            {f.changed ? (
+              <>
+                <span className="text-slate-400 line-through">{f.before}</span>
+                {' → '}
+                <span className="font-medium text-slate-700">{f.after}</span>
+              </>
+            ) : (
+              f.after
+            )}
+          </dd>
+        </div>
+      ))}
     </dl>
   )
 }

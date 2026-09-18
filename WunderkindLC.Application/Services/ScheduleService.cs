@@ -24,7 +24,8 @@ public class ScheduleService(IAppDbContext db)
     /// <summary>Jadvalga tushadigan bitta dars (guruh + kun).</summary>
     private sealed record Lesson(
         string GroupId, string GroupName, string TeacherId, string TeacherName,
-        string RoomId, string RoomName, string CourseName, Slot Slot);
+        string RoomId, string RoomName, string CourseName, Slot Slot,
+        string CourseId = "");
 
     /// <summary>Haftalik jadval + tig'izlik. Bitta so'rovda sahifaning hamma ma'lumoti.</summary>
     public async Task<ScheduleBoardDto> GetBoardAsync()
@@ -57,6 +58,98 @@ public class ScheduleService(IAppDbContext db)
             Teachers: teachers,
             Peak: peak,
             SkippedGroups: skipped);
+    }
+
+    /// <summary>
+    /// BOSH SAHIFA jadval to'ri: har GURUH bitta qator (barcha dars kunlari bilan), BARCHA faol
+    /// xonalar (dars yo'q xona ham ustun bo'lib chiqsin — bo'sh xona ko'rinishi kerak) va
+    /// o'qituvchilar. Vaqti buzuq guruhlar <see cref="LoadLessonsAsync"/> dagi kabi tashlanadi,
+    /// lekin SONI qaytariladi.
+    /// </summary>
+    public async Task<ScheduleGridDto> GetGridAsync()
+    {
+        var (lessons, skipped) = await LoadLessonsAsync();
+        var groupIds = lessons.Select(l => l.GroupId).Distinct().ToList();
+
+        // A'zolar — sig'im bilan BIR XIL ta'rif: o'rin band qilganlar (faol + sinov, muzlatilgan emas).
+        var members = await db.StudentGroups
+            .Where(MembershipLifecycle.OccupiesSeatExpr)
+            .Where(sg => groupIds.Contains(sg.GroupId))
+            .GroupBy(sg => sg.GroupId)
+            .Select(g => new { g.Key, N = g.Count() })
+            .ToDictionaryAsync(x => x.Key, x => x.N);
+
+        var info = await db.Classes
+            .Where(g => groupIds.Contains(g.Id))
+            .Select(g => new { g.Id, g.Capacity, g.Status, g.IsBlocked, g.StartDate, g.EndDate })
+            .ToDictionaryAsync(g => g.Id);
+
+        // O'TILGAN darslar — jurnalda "dars o'tildi" belgilangan (kun, para) juftliklari.
+        var done = (await db.LessonNotes
+                .Where(n => n.Conducted && groupIds.Contains(n.ClassId))
+                .Select(n => new { n.ClassId, n.Date, n.Period })
+                .Distinct()
+                .ToListAsync())
+            .GroupBy(n => n.ClassId)
+            .ToDictionary(g => g.Key, g => g.Count());
+
+        var groups = lessons
+            .GroupBy(l => l.GroupId)
+            .Select(g =>
+            {
+                var l = g.First();
+                var days = g.Select(x => x.Slot.Day).Distinct().Order().ToList();
+                var i = info.GetValueOrDefault(l.GroupId);
+                return new ScheduleGridGroupDto(
+                    l.GroupId, l.GroupName, l.CourseId, l.CourseName,
+                    l.TeacherId, l.TeacherName, l.RoomId, l.RoomName,
+                    days,
+                    ScheduleRules.FormatTime(l.Slot.StartMin), ScheduleRules.FormatTime(l.Slot.EndMin),
+                    l.Slot.EndMin - l.Slot.StartMin,
+                    members.GetValueOrDefault(l.GroupId), i?.Capacity ?? 0,
+                    Status: i is null ? "active" : i.IsBlocked ? "blocked" : (i.Status ?? "active"),
+                    StartDate: i?.StartDate ?? "",
+                    EndDate: i?.EndDate ?? "",
+                    LessonsDone: done.GetValueOrDefault(l.GroupId),
+                    LessonsTotal: ScheduleGridExport.PlannedLessons(days, i?.StartDate, i?.EndDate));
+            })
+            .OrderBy(g => g.Start).ThenBy(g => g.GroupName)
+            .ToList();
+
+        var groupsByRoom = groups
+            .GroupBy(g => ScheduleGridExport.RoomKey(g.RoomId, g.RoomName))
+            .ToDictionary(g => g.Key, g => g.Count());
+        var rooms = (await db.Rooms.Where(r => r.IsActive).Select(r => new { r.Id, r.Name }).ToListAsync())
+            .Select(r => new ScheduleOwnerDto(r.Id, r.Name, groupsByRoom.GetValueOrDefault(r.Id)))
+            .ToList();
+        // Faol ro'yxatda yo'q, lekin darsi bor xonalar (o'chirilgan xona yoki eski matnli nom) ham
+        // ustun bo'lsin — aks holda o'sha darslar to'rda JIMGINA yo'qolardi.
+        var known = rooms.Select(r => r.Id).ToHashSet();
+        foreach (var g in groups)
+        {
+            var key = ScheduleGridExport.RoomKey(g.RoomId, g.RoomName);
+            if (key.Length == 0 || !known.Add(key)) continue;
+            rooms.Add(new ScheduleOwnerDto(key, g.RoomName.Length > 0 ? g.RoomName : key, groupsByRoom[key]));
+        }
+
+        // O'qituvchilar — BARCHA arxivlanmaganlar (o'qituvchi rejimida darsi yo'q o'qituvchi ham
+        // ustun: kim bo'sh ekani ko'rinsin) + darsi bor, lekin arxivlangan o'qituvchi (darsi yo'qolmasin).
+        var groupsByTeacher = groups
+            .Where(g => g.TeacherId.Length > 0)
+            .GroupBy(g => g.TeacherId)
+            .ToDictionary(g => g.Key, g => (Name: g.First().TeacherName, Count: g.Count()));
+        var teachers = (await db.Teachers.Where(t => !t.IsArchived).Select(t => new { t.Id, t.FullName }).ToListAsync())
+            .Select(t => new ScheduleOwnerDto(t.Id, t.FullName, groupsByTeacher.GetValueOrDefault(t.Id).Count))
+            .ToList();
+        var knownTeachers = teachers.Select(t => t.Id).ToHashSet();
+        foreach (var (id, v) in groupsByTeacher)
+            if (knownTeachers.Add(id)) teachers.Add(new ScheduleOwnerDto(id, v.Name, v.Count));
+
+        return new ScheduleGridDto(
+            groups,
+            rooms.OrderBy(r => r.Name, ScheduleGridExport.NaturalComparer).ToList(),
+            teachers.OrderBy(t => t.Name, ScheduleGridExport.NaturalComparer).ToList(),
+            skipped);
     }
 
     /// <summary>
@@ -263,7 +356,8 @@ public class ScheduleService(IAppDbContext db)
                     g.TeacherId ?? "", teacherNames.GetValueOrDefault(g.TeacherId ?? "", ""),
                     roomId, roomName,
                     courseNames.GetValueOrDefault(g.CourseId ?? "", ""),
-                    slot.Value));
+                    slot.Value,
+                    g.CourseId ?? ""));
             }
             if (!any) skipped++;
         }

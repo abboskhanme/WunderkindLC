@@ -47,8 +47,8 @@ export function Card({
     return (
       <div
         className={cn(
-          'rounded-2xl border border-slate-200/80 bg-white shadow-sm',
-          !overridesPadding(className) && 'p-5',
+          'rounded-xl border border-[#dbe0e6] bg-white shadow-[0_1px_2px_rgba(0,0,0,0.05)]',
+          !overridesPadding(className) && 'p-4',
           className,
         )}
       >
@@ -60,22 +60,22 @@ export function Card({
   return (
     <div
       className={cn(
-        'rounded-2xl border border-slate-200/80 bg-white shadow-sm',
+        'rounded-xl border border-[#dbe0e6] bg-white shadow-[0_1px_2px_rgba(0,0,0,0.05)]',
         className,
       )}
     >
       {hasHeader && (
-        <div className="flex items-center justify-between border-b border-slate-100 px-[18px] py-4">
+        <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
           <div className="min-w-0">
             {title != null && (
-              <h3 className="text-sm font-semibold text-slate-800">{title}</h3>
+              <h3 className="text-[15px] font-semibold text-black">{title}</h3>
             )}
             {sub != null && <p className="mt-0.5 text-xs font-medium text-slate-400">{sub}</p>}
           </div>
           {actions != null && <div className="flex items-center gap-2">{actions}</div>}
         </div>
       )}
-      {tight ? children : <div className={cn('p-[18px]', bodyClassName)}>{children}</div>}
+      {tight ? children : <div className={cn('p-4', bodyClassName)}>{children}</div>}
     </div>
   )
 }

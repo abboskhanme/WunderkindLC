@@ -420,6 +420,26 @@ public class Student
     /// </summary>
     [System.ComponentModel.DataAnnotations.Schema.NotMapped]
     public int DiscountCount { get; set; }
+
+    // ---- RO'YXAT USTUNLARI (edutizim: MANBA · MODERATOR · TO'LOV SANASI · ILOVA · SHARTNOMA) ----
+    // Bazada YO'Q — faqat o'quvchilar ro'yxati/arxiv javobida `StudentListView.EnrichExtrasAsync`
+    // to'ldiradi (`DiscountCount` naqshi). Boshqa endpointlarda bo'sh bo'lishi NORMAL.
+
+    /// <summary>Qaysi manbadan kelgan — o'quvchiga aylantirilgan LIDning <see cref="Lead.Source"/>. Bo'sh = lidsiz.</summary>
+    [System.ComponentModel.DataAnnotations.Schema.NotMapped]
+    public string LeadSource { get; set; } = string.Empty;
+    /// <summary>Mas'ul xodim (edutizim "Moderator") — lidni yopgan, bo'lmasa ishlagan xodim ismi.</summary>
+    [System.ComponentModel.DataAnnotations.Schema.NotMapped]
+    public string Moderator { get; set; } = string.Empty;
+    /// <summary>Oxirgi o'quv to'lovi (kirim/tuition) sanasi "yyyy-MM-dd". Bo'sh = to'lov yo'q.</summary>
+    [System.ComponentModel.DataAnnotations.Schema.NotMapped]
+    public string LastPaymentDate { get; set; } = string.Empty;
+    /// <summary>Ilovaga BIRINCHI kirgan vaqt (akkaunt <see cref="AppUser.FirstLoginAt"/>). Bo'sh = hali kirmagan.</summary>
+    [System.ComponentModel.DataAnnotations.Schema.NotMapped]
+    public string AppFirstLoginAt { get; set; } = string.Empty;
+    /// <summary>Ota-onaga yuborilgan eng oxirgi shartnoma raqami (<see cref="Contract.Number"/>). null = yo'q.</summary>
+    [System.ComponentModel.DataAnnotations.Schema.NotMapped]
+    public int? ContractNumber { get; set; }
     /// <summary>
     /// O'quvchi arxivga ko'chirilganmi (boshqa maktabga ketgan, o'qishdan chiqarilgan, ...).
     /// Arxivlangan o'quvchi faol ro'yxatdan yashirinadi, oylik to'lov hisoblanmaydi, login bloklanadi,
@@ -1575,6 +1595,34 @@ public class MonthlyCharge
 }
 
 /// <summary>Moliyaviy amal — kirim yoki chiqim.</summary>
+/// <summary>
+/// REJALASHTIRILGAN XARAJAT (Moliya → «Rejalashtirilgan xarajatlar», edutizim
+/// <c>/finance/planned-expense</c>): kutilayotgan to'lov — ijara, oylik, soliq va h.k.
+///
+/// <para>⚠️ Bu FAKT emas, REJA: <see cref="FinanceTransaction"/> ga TEGMAYDI va hech qanday
+/// balans/hisobotga qo'shilmaydi. Haqiqiy pul chiqqanda odatdagidek chiqim tranzaksiyasi
+/// kiritiladi; reja qatori esa "to'landi" deb belgilanadi (<see cref="Status"/>).</para>
+/// </summary>
+public class PlannedExpense
+{
+    public string Id { get; set; } = Guid.NewGuid().ToString();
+    /// <summary>Nomi ("Ijara — sentabr").</summary>
+    public string Name { get; set; } = string.Empty;
+    public decimal Amount { get; set; }
+    /// <summary>Chiqim toifasi (<c>expenseCategories</c> kodi: rent, salary, utilities ...).</summary>
+    public string Category { get; set; } = "other";
+    /// <summary>Boshlanish sanasi "yyyy-MM-dd".</summary>
+    public string StartDate { get; set; } = string.Empty;
+    /// <summary>Tugash sanasi "yyyy-MM-dd" (bir martalik xarajatda boshlanish bilan bir xil).</summary>
+    public string EndDate { get; set; } = string.Empty;
+    /// <summary>"planned" | "paid" | "canceled".</summary>
+    public string Status { get; set; } = "planned";
+    public string? Note { get; set; }
+    public string CreatedAt { get; set; } = DateTime.UtcNow.ToString("o");
+    /// <summary>Kim kiritgan (ko'rsatish uchun ism).</summary>
+    public string? CreatedBy { get; set; }
+}
+
 public class FinanceTransaction
 {
     public string Id { get; set; } = Guid.NewGuid().ToString();

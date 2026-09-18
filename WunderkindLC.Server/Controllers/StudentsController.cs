@@ -54,9 +54,15 @@ public class StudentsController(
         }
     }
 
+    /// <param name="state">Ixtiyoriy HOLAT filtri (<see cref="StudentListView.MatchesState"/>):
+    /// <c>trial</c> — "Yangi o'quvchilar" (tirik sinov a'zoligi bor), <c>active</c> — "Aktiv
+    /// o'quvchilar". Bo'sh — hammasi (eski xatti-harakat). Noma'lum qiymat — 400.</param>
     [HttpGet]
-    public async Task<ActionResult<IEnumerable<Student>>> GetAll([FromQuery] bool includeArchived = false)
+    public async Task<ActionResult<IEnumerable<Student>>> GetAll(
+        [FromQuery] bool includeArchived = false, [FromQuery] string? state = null)
     {
+        if (!StudentListView.IsKnownState(state))
+            return BadRequest(new { message = $"Noma'lum holat: {state}" });
         // AsNoTracking: quyida obyektlar KO'RSATISH uchun o'zgartiriladi (guruh nomlari, tuman,
         // hujjat manzillarini tozalash) — ular tasodifan bazaga yozilib qolmasin.
         var q = db.Students.AsNoTracking().AsQueryable();
@@ -69,8 +75,13 @@ public class StudentsController(
         // faqat RO'YXAT uchun hisoblanardi: bitta o'quvchi qaytaradigan yo'llar (profil, arxiv,
         // yangi yaratilgan) uni to'ldirmasdi va klientda "Aktiv emas" + eski (ClassName) guruh
         // ko'rinardi.
-        var ids = students.Select(s => s.Id).ToList();
         await StudentMembershipView.EnrichAsync(db, students);
+        // HOLAT FILTRI — jamlama to'ldirilgandan KEYIN (qoida bitta joyda: `StudentListView`).
+        if (!string.IsNullOrEmpty(state))
+            students = students.Where(s => StudentListView.MatchesState(s, state)).ToList();
+        var ids = students.Select(s => s.Id).ToList();
+        // Ro'yxat ustunlari: manba, moderator, to'lov sanasi, ilova, shartnoma.
+        await StudentListView.EnrichExtrasAsync(db, students);
 
         // Tuman + maktab nomlarini biriktiramiz (DB'ga yozilmaydi — faqat ko'rsatish uchun).
         // Bu lug'atlar deyarli o'zgarmaydi, ro'yxat esa tez-tez ochiladi — DataCache orqali:
@@ -443,8 +454,21 @@ public class StudentsController(
         // Ilgari to'ldirilmasdi: arxivdagi HAR o'quvchi "Aktiv emas" bo'lib va guruh sifatida
         // eski `ClassName` yorlig'i bilan ko'rinardi.
         await StudentMembershipView.EnrichAsync(db, students);
+        // "Arxiv o'quvchilar" ro'yxati ustunlari (moderator va h.k.) — faol ro'yxat bilan bir xil manba.
+        await StudentListView.EnrichExtrasAsync(db, students);
         return students;
     }
+
+    /// <summary>
+    /// "JORIY OYDA OBUNASI TUGAYDIGANLAR" — puli joriy oy darslarini qoplamaydigan o'quvchilar
+    /// (<see cref="SubscriptionRisk"/>: mavjud hisob qatorlari + accrual qoidasi, qayta hisob yo'q).
+    /// Ruxsat — sinf darajasidagi <c>students.list</c> darvozasi (o'quvchilar ro'yxati bilan
+    /// bir xil; javobda fayl manzili yo'q). Metodga alohida kalit QO'YILMAYDI — u sinfdagisini
+    /// bekor qilardi (permissions.md §4).
+    /// </summary>
+    [HttpGet("subscription-risk")]
+    public async Task<ActionResult<SubscriptionRiskReportDto>> SubscriptionRiskReport() =>
+        await SubscriptionRisk.BuildAsync(db, TuitionService.CurrentMonth());
 
     /// <summary>Bitta o'quvchi (profil sahifasidan tahrirlash formasi uchun to'liq obyekt).</summary>
     [HttpGet("{id}")]

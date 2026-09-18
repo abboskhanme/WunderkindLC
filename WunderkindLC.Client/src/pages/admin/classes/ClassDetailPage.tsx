@@ -21,7 +21,7 @@ import {
 } from '@/api/services/curriculum'
 import {
   activateMember, freezeMember, returnMemberToTrial, getClass, getGroupSmsRecipients, updateClass,
-  getGroupMembers, removeGroupMember, type ClassPayload,
+  getGroupMembers, getGroupRoster, removeGroupMember, type ClassPayload, type GroupRosterRow,
 } from '@/api/services/classes'
 import { getGroupPayments, type GroupPaymentsReport } from '@/api/services/finance'
 import { GroupTestsPanel } from '../tests/GroupTestsPanel'
@@ -49,6 +49,7 @@ import { CloseGroupModal } from './CloseGroupModal'
 import { ExtensionModal } from './ExtensionModal'
 import { TransferGroupModal } from './TransferGroupModal'
 import { ClassMembersModal } from './ClassMembersModal'
+import { GroupStudentsTab, type MemberActionKind } from './detail/GroupStudentsTab'
 import { GroupAiPanel } from './GroupAiPanel'
 import { ClassFormModal } from './ClassFormModal'
 import { SmsModal, type SmsRecipient } from '../students/SmsModal'
@@ -113,7 +114,8 @@ function masteryDisplay(m: MasteryLevel | undefined): { label: string; cls: stri
   }
 }
 
-type Tab = 'jurnal' | 'davomat' | 'baholash' | 'reyting' | 'imtihonlar' | 'dastur' | 'aloqa' | 'tarix' | 'tolovlar' | 'ai'
+// ⚠️ Tartib edutizimdagidek: birinchi tab — "O'quvchilar" (docs/EDUTIZIM-PARITY.md).
+type Tab = 'oquvchilar' | 'jurnal' | 'davomat' | 'baholash' | 'reyting' | 'imtihonlar' | 'dastur' | 'aloqa' | 'tarix' | 'tolovlar' | 'ai'
 
 export function ClassDetailPage() {
   const { id = '' } = useParams()
@@ -145,6 +147,10 @@ export function ClassDetailPage() {
   const [rError, setRError] = useState<string | null>(null)
   /** CHAP ustundagi a'zolar ro'yxati (TO'LIQ tarix — chiqqan/muzlatilgan/sinov/aktiv). */
   const [members, setMembers] = useState<GroupMember[]>([])
+  // "O'quvchilar" tabi (edutizim jadvali) — telefon, kurslar soni, narx va oxirgi izoh bilan.
+  // A'zolar ro'yxati (`members`) TEGILMAYDI: chap ustun va oynalar avvalgidek shundan ishlaydi.
+  const [roster, setRoster] = useState<GroupRosterRow[]>([])
+  const [rosterLoading, setRosterLoading] = useState(false)
   /** A'zolar ro'yxatini ism bo'yicha alfavit tartibida saralash (A-Z / Z-A). */
   const [membersSortAsc, setMembersSortAsc] = useState(true)
   /** Ro'yxatdagi "⋮" menyudan tanlangan a'zo + amal. */
@@ -171,7 +177,7 @@ export function ClassDetailPage() {
   const [smsLoading, setSmsLoading] = useState(false)
 
   // ---- O'ng ustundagi faol bo'lim (tab) ----
-  const [tab, setTab] = useState<Tab>('jurnal')
+  const [tab, setTab] = useState<Tab>('oquvchilar')
   /**
    * Qaysi tab uchun ma'lumot ALLAQACHON so'ralgan: tab kaliti → guruh id'si.
    *
@@ -651,6 +657,20 @@ export function ClassDetailPage() {
 
   // Bu sahifadan o'quvchi profiliga o'tilganda "Orqaga" havolasi o'quvchilar ro'yxatiga emas,
   // SHU GURUHGA qaytarsin — havolalarga `state` sifatida uzatiladi (qarang `lib/nav.ts`).
+  /** "O'quvchilar" tabi jadvalini yuklash (tab ochilganda va har o'zgarishdan keyin). */
+  const loadRoster = useCallback(() => {
+    if (!id) return
+    setRosterLoading(true)
+    getGroupRoster(id)
+      .then(setRoster)
+      .catch(() => setRoster([]))
+      .finally(() => setRosterLoading(false))
+  }, [id])
+
+  useEffect(() => {
+    if (tab === 'oquvchilar') loadRoster()
+  }, [tab, loadRoster, members])
+
   const memberBack = useMemo<BackState>(
     () => backState(`/admin/classes/${id}`, journal?.group?.name ?? group?.name ?? 'Guruhga qaytish'),
     [id, journal?.group?.name, group?.name],
@@ -959,6 +979,9 @@ export function ClassDetailPage() {
             {/* O'NG USTUN — bo'limlar (tab) */}
             <div className="min-w-0 space-y-6">
               <div className="tabs flex-wrap" role="tablist">
+                <button type="button" className={cn('tab', tab === 'oquvchilar' && 'active')} onClick={() => setTab('oquvchilar')}>
+                  <Users className="mr-1 inline h-3.5 w-3.5" /> O'quvchilar
+                </button>
                 <button type="button" className={cn('tab', tab === 'jurnal' && 'active')} onClick={() => { setTab('jurnal'); load(journal?.month) }}>
                   <BookOpen className="mr-1 inline h-3.5 w-3.5" /> Jurnal
                 </button>
@@ -999,6 +1022,32 @@ export function ClassDetailPage() {
               </div>
 
           {/* Oylik jurnal */}
+          {/* O'QUVCHILAR (edutizim jadvali) — amallar chap ustundagi a'zolar ro'yxati bilan AYNAN
+              bir xil oynalarni ochadi (`openRoster`), ya'ni qoidalar ikki joyda ayrilmaydi. */}
+          {tab === 'oquvchilar' && (
+            <GroupStudentsTab
+              groupId={id}
+              groupName={journal?.group?.name ?? group?.name ?? ''}
+              groupFee={group?.monthlyFee ?? 0}
+              roster={roster}
+              loading={rosterLoading}
+              back={memberBack}
+              canManage={can('classes.list', 'create')}
+              canYearFreeze={user?.role === 'superadmin'}
+              canSetBonus={canSetBonus}
+              canSeeAudit={canSeeAudit}
+              onAdd={() => setMembersOpen(true)}
+              onChanged={() => { loadRoster(); reloadMembers() }}
+              menu={[]}
+              onMemberAction={(kind: MemberActionKind, m: GroupRosterRow) => {
+                openRoster(m)
+                if (kind === 'transfer') setRosterTransferOpen(true)
+                else if (kind === 'extension') setRosterExtensionOpen(true)
+                else setRosterReason(kind)
+              }}
+            />
+          )}
+
           {tab === 'jurnal' && (
           <Card className="p-0">
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-4 py-3">

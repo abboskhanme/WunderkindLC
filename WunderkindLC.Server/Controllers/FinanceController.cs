@@ -629,6 +629,125 @@ public class FinanceController(AppDbContext db, AuditService audit, AutoMessageS
         return NoContent();
     }
 
+    // ──────────────── REJALASHTIRILGAN XARAJATLAR (edutizim: Moliya → shu nomdagi sahifa) ────────────────
+    // ⚠️ REJA — pul HARAKATI EMAS: balans, kassa va hisobotlarga KIRMAYDI. Haqiqiy to'lov odatdagidek
+    // chiqim tranzaksiyasi bilan kiritiladi, reja qatori esa "to'landi" deb belgilanadi.
+
+    /// <summary>Rejalashtirilgan xarajatlar ro'yxati (yangisidan eskisiga).</summary>
+    [HttpGet("planned-expenses")]
+    public async Task<ActionResult<IEnumerable<PlannedExpense>>> PlannedExpenses() =>
+        await db.PlannedExpenses.AsNoTracking()
+            .OrderByDescending(p => p.StartDate).ThenByDescending(p => p.CreatedAt)
+            .ToListAsync();
+
+    /// <summary>Yangi reja qatori.</summary>
+    [HttpPost("planned-expenses")]
+    public async Task<ActionResult<PlannedExpense>> CreatePlannedExpense(PlannedExpensePayload p)
+    {
+        if (string.IsNullOrWhiteSpace(p.Name)) return BadRequest(new { message = "Nomi majburiy" });
+        if (p.Amount <= 0) return BadRequest(new { message = "Miqdori 0 dan katta bo'lishi kerak" });
+
+        var row = new PlannedExpense
+        {
+            Name = p.Name.Trim(),
+            Amount = p.Amount,
+            Category = string.IsNullOrWhiteSpace(p.Category) ? "other" : p.Category,
+            StartDate = p.StartDate ?? "",
+            EndDate = string.IsNullOrWhiteSpace(p.EndDate) ? (p.StartDate ?? "") : p.EndDate,
+            Status = string.IsNullOrWhiteSpace(p.Status) ? "planned" : p.Status,
+            Note = p.Note,
+            CreatedBy = User.Identity?.Name,
+        };
+        db.PlannedExpenses.Add(row);
+        audit.Record(AuditService.EntityPlannedExpense, row.Id, "create",
+            $"Rejalashtirilgan xarajat qo'shildi: {row.Name} — {AuditService.Money(row.Amount)} so'm");
+        await db.SaveChangesAsync();
+        return row;
+    }
+
+    /// <summary>Reja qatorini tahrirlash (holatni "to'landi" ga o'tkazish ham shu yerda).</summary>
+    [HttpPut("planned-expenses/{id}")]
+    public async Task<ActionResult<PlannedExpense>> UpdatePlannedExpense(string id, PlannedExpensePayload p)
+    {
+        var row = await db.PlannedExpenses.FirstOrDefaultAsync(x => x.Id == id);
+        if (row is null) return NotFound();
+
+        if (!string.IsNullOrWhiteSpace(p.Name)) row.Name = p.Name.Trim();
+        if (p.Amount > 0) row.Amount = p.Amount;
+        if (!string.IsNullOrWhiteSpace(p.Category)) row.Category = p.Category;
+        if (p.StartDate is not null) row.StartDate = p.StartDate;
+        if (p.EndDate is not null) row.EndDate = p.EndDate;
+        if (!string.IsNullOrWhiteSpace(p.Status)) row.Status = p.Status;
+        row.Note = p.Note;
+
+        audit.Record(AuditService.EntityPlannedExpense, row.Id, "update",
+            $"Rejalashtirilgan xarajat tahrirlandi: {row.Name} — {AuditService.Money(row.Amount)} so'm ({row.Status})");
+        await db.SaveChangesAsync();
+        return row;
+    }
+
+    /// <summary>Reja qatorini o'chirish.</summary>
+    [HttpDelete("planned-expenses/{id}")]
+    public async Task<IActionResult> DeletePlannedExpense(string id)
+    {
+        var row = await db.PlannedExpenses.FirstOrDefaultAsync(x => x.Id == id);
+        if (row is null) return NotFound();
+        audit.Record(AuditService.EntityPlannedExpense, row.Id, "delete",
+            $"Rejalashtirilgan xarajat o'chirildi: {row.Name} — {AuditService.Money(row.Amount)} so'm");
+        db.PlannedExpenses.Remove(row);
+        await db.SaveChangesAsync();
+        return NoContent();
+    }
+
+    /// <summary>
+    /// «TUSHUM REJASI» (edutizim <c>/analytics/income-plan</c>) — joriy oyda kutilayotgan tushum.
+    /// Hisob — <see cref="IncomePlan"/> (sof funksiya, testlangan); reja <see cref="SubscriptionRisk"/>
+    /// bilan BITTA manbadan.
+    /// <para>Ruxsat — sinf darajasidagi <c>finance.main</c>.</para>
+    /// </summary>
+    [HttpGet("income-plan")]
+    public async Task<ActionResult<IncomePlan.Result>> IncomePlanReport([FromQuery] string? month = null)
+    {
+        var m = string.IsNullOrWhiteSpace(month) ? TuitionService.CurrentMonth() : month;
+        // Reja qatorining yorlig'i — edutizimdagidek TANLANGAN KUN (bugun yoki oyning 1-kuni).
+        var today = AppClock.Today;
+        var label = today.ToString("yyyy-MM") == m
+            ? today.ToString("dd/MM/yyyy")
+            : $"01/{m[5..]}/{m[..4]}";
+        return await IncomePlan.BuildAsync(db, m, label);
+    }
+
+    /// <summary>
+    /// YILLIK jadval — edutizimdagi «Moliya hisobotlari (P&amp;L)» va «Pul oqimi hisoboti»
+    /// sahifalari uchun bitta manba (kategoriya × oy). Hisob — <see cref="FinanceYearReport"/>
+    /// (sof funksiya, testlangan); bu yerda faqat qatorlar yig'iladi.
+    /// <para>"Boshlang'ich balans" uchun shu yilgacha to'plangan sof ham qo'shiladi.</para>
+    /// <para>Ruxsat — sinf darajasidagi <c>finance.main</c> (boshqa moliya GET'lari bilan bir xil).</para>
+    /// </summary>
+    [HttpGet("year-report")]
+    public async Task<ActionResult<FinanceYearReport.Result>> YearReport([FromQuery] int? year = null)
+    {
+        var y = year ?? AppClock.Today.Year;
+        var from = $"{y:0000}-01-01";
+        var to = $"{y:0000}-12-31";
+
+        var rows = await db.FinanceTransactions.AsNoTracking()
+            .Where(t => t.Date.CompareTo(from) >= 0 && t.Date.CompareTo(to) <= 0)
+            .Select(t => new { t.Date, t.Direction, t.Category, t.Amount })
+            .ToListAsync();
+
+        // Shu yil BOSHIGACHA bo'lgan sof — "Boshlang'ich balans" qatori nolga tushib qolmasin.
+        var earlier = await db.FinanceTransactions.AsNoTracking()
+            .Where(t => t.Date.CompareTo(from) < 0)
+            .Select(t => new { t.Direction, t.Amount })
+            .ToListAsync();
+        var carry = earlier.Sum(t => t.Direction == "expense" ? -t.Amount : t.Amount);
+
+        return FinanceYearReport.Build(
+            rows.Select(t => new FinanceYearReport.Row(t.Date ?? "", t.Direction ?? "income", t.Category ?? "other", t.Amount)),
+            y, carry);
+    }
+
     /// <summary>Tanlangan davr bo'yicha umumiy moliyaviy xulosa.</summary>
     [HttpGet("summary")]
     public async Task<ActionResult<FinanceSummaryDto>> Summary([FromQuery] string? from, [FromQuery] string? to)

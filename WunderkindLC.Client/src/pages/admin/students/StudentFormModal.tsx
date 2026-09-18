@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Upload, X, FileText, Loader2, AlertTriangle, Camera } from 'lucide-react'
+import { Upload, X, FileText, Loader2, Camera } from 'lucide-react'
 import type { Student } from '@/types'
 import type { StudentPayload, PhoneMatch } from '@/api/services/students'
-import { uploadAdminFile, getStudentCredentials, checkStudentPhones } from '@/api/services/students'
+import { uploadAdminFile, getStudentCredentials } from '@/api/services/students'
 import { getClasses } from '@/api/services/classes'
 import { getTeachers } from '@/api/services/teachers'
 import type { Group, Teacher } from '@/types'
@@ -16,6 +16,8 @@ import { Badge } from '@/components/ui/Badge'
 import { genderOptions } from '@/config/constants'
 import { randomPassword, cn, apiErrorMessage } from '@/lib/utils'
 import { StudentPhotoDialog } from './StudentPhotoDialog'
+import { PhoneDupeModal } from './PhoneDupeModal'
+import { findPhoneDupes, joinName, payloadFromStudent } from './studentFormModel'
 
 interface Props {
   open: boolean
@@ -49,23 +51,6 @@ const empty: StudentPayload = {
   discountStartMonth: '',
   discountEndMonth: '',
   discountGroupId: '',
-}
-
-/** "Familiya Ism Sharifi" stringidan parts. Eski yozuvlarni tahrirda taqsimlaymiz. */
-function splitFullName(full: string): { last: string; first: string; middle: string } {
-  const parts = (full ?? '').trim().split(/\s+/).filter(Boolean)
-  return {
-    last: parts[0] ?? '',
-    first: parts[1] ?? '',
-    middle: parts.slice(2).join(' '),
-  }
-}
-
-function joinName(last?: string, first?: string, middle?: string): string {
-  return [last, first, middle]
-    .map((p) => (p ?? '').trim())
-    .filter((p) => p !== '')
-    .join(' ')
 }
 
 export function StudentFormModal({ open, onClose, onSubmit, initial }: Props) {
@@ -172,36 +157,10 @@ export function StudentFormModal({ open, onClose, onSubmit, initial }: Props) {
     setPending(null)
     setChecking(false)
     if (initial) {
-      // Tahrirda: agar parts saqlanmagan bo'lsa, FullName'dan parse qilamiz (eski o'quvchilar).
-      const sParts = initial.lastName || initial.firstName || initial.middleName
-        ? { last: initial.lastName ?? '', first: initial.firstName ?? '', middle: initial.middleName ?? '' }
-        : splitFullName(initial.fullName)
+      // Tahrirda: agar parts saqlanmagan bo'lsa, FullName'dan parse qilinadi (eski o'quvchilar) —
+      // mapping `studentFormModel.payloadFromStudent` da (profil «Tahrirlash» tabi bilan bitta).
       // eslint-disable-next-line react-hooks/set-state-in-effect -- modal ochilganda formani initial bilan sinxronlash (maqsadli)
-      setForm({
-        fullName: initial.fullName,
-        lastName: sParts.last,
-        firstName: sParts.first,
-        middleName: sParts.middle,
-        birthDate: initial.birthDate,
-        birthCertificateUrl: initial.birthCertificateUrl ?? null,
-        address: initial.address,
-        gender: initial.gender,
-        phone: initial.phone ?? '',
-        fatherFullName: initial.fatherFullName ?? '',
-        fatherPhone: initial.fatherPhone ?? '',
-        motherFullName: initial.motherFullName ?? '',
-        motherPhone: initial.motherPhone ?? '',
-        className: initial.className,
-        districtId: initial.districtId ?? '',
-        schoolId: initial.schoolId ?? '',
-        enrollmentDate: initial.enrollmentDate,
-        discountPct: initial.discountPct,
-        discountAmount: initial.discountAmount,
-        discountNote: initial.discountNote,
-        discountStartMonth: initial.discountStartMonth ?? '',
-        discountEndMonth: initial.discountEndMonth ?? '',
-        discountGroupId: initial.discountGroupId ?? '',
-      })
+      setForm(payloadFromStudent(initial))
     } else {
       // eslint-disable-next-line react-hooks/set-state-in-effect -- yangi forma boshlash (maqsadli)
       setForm(empty)
@@ -245,15 +204,8 @@ export function StudentFormModal({ open, onClose, onSubmit, initial }: Props) {
     // Telefon dublikatini tekshiramiz (o'quvchi/ota/ona raqami — arxivdagilar ham).
     setChecking(true)
     try {
-      const found = await checkStudentPhones({
-        phone: form.phone ?? undefined,
-        fatherPhone: form.fatherPhone ?? undefined,
-        motherPhone: form.motherPhone ?? undefined,
-        excludeId: initial?.id,
-      })
-      // Tahrirlashda o'quvchining O'ZI dublikat sifatida chiqmasligi kafolatlanadi
-      // (backend excludeId'dan tashqari mijoz tarafida ham filtrlaymiz).
-      const matches = initial?.id ? found.filter((m) => m.studentId !== initial.id) : found
+      // Tahrirlashda o'quvchining O'ZI dublikat sifatida chiqmaydi (`findPhoneDupes`).
+      const matches = await findPhoneDupes(form, initial?.id)
       if (matches.length > 0) {
         setPending(payload)
         setDupes(matches)
@@ -565,69 +517,19 @@ export function StudentFormModal({ open, onClose, onSubmit, initial }: Props) {
     />
 
     {/* Telefon dublikati ogohlantirishi — "Baribir saqlash" / "Bekor qilish" */}
-    <Modal
-      open={dupes.length > 0}
-      onClose={() => {
+    <PhoneDupeModal
+      dupes={dupes}
+      onCancel={() => {
         setDupes([])
         setPending(null)
       }}
-      size="md"
-      title="Bunday raqam allaqachon mavjud"
-      footer={
-        <>
-          <Button
-            variant="secondary"
-            onClick={() => {
-              setDupes([])
-              setPending(null)
-            }}
-          >
-            Bekor qilish
-          </Button>
-          <Button
-            variant="danger"
-            onClick={() => {
-              const p = pending
-              setDupes([])
-              setPending(null)
-              if (p) onSubmit(p)
-            }}
-          >
-            Baribir saqlash
-          </Button>
-        </>
-      }
-    >
-      <div className="space-y-3">
-        <div className="flex items-start gap-2.5 rounded-lg bg-amber-50 px-3 py-2.5 text-sm text-amber-700">
-          <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0" />
-          <p>
-            Kiritilgan raqam(lar) allaqachon quyidagi o'quvchi(lar)da ishlatilgan. Baribir saqlashni
-            xohlaysizmi?
-          </p>
-        </div>
-        <ul className="divide-y divide-slate-100 rounded-lg border border-slate-200">
-          {dupes.map((d, i) => (
-            <li key={`${d.studentId}-${i}`} className="flex items-center gap-3 px-3 py-2.5">
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium text-slate-800">
-                  {d.fullName}
-                  {d.isArchived && (
-                    <span className="ml-2 rounded bg-slate-100 px-1.5 py-0.5 text-[11px] font-semibold text-slate-500">
-                      arxivda
-                    </span>
-                  )}
-                </p>
-                <p className="truncate text-xs text-slate-400">
-                  {d.className || 'guruhsiz'} · {d.role} raqami
-                </p>
-              </div>
-              <span className="font-mono text-sm text-slate-600">{d.phone}</span>
-            </li>
-          ))}
-        </ul>
-      </div>
-    </Modal>
+      onConfirm={() => {
+        const p = pending
+        setDupes([])
+        setPending(null)
+        if (p) onSubmit(p)
+      }}
+    />
     </>
   )
 }

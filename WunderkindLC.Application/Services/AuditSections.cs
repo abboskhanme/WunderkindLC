@@ -96,6 +96,7 @@ public static class AuditSections
 
         // --- Moliya ---
         ["FinanceTransaction"] = "finance",
+        ["PlannedExpense"] = "finance",
 
         // --- Qolgan bo'limlar ---
         ["Lead"] = "leads",

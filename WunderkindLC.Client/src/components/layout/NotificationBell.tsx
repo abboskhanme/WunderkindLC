@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import { Bell, BellOff } from 'lucide-react'
+import { BellOff } from 'lucide-react'
+import { IconBell } from '@tabler/icons-react'
 import {
   getNotifications,
   markNotificationsRead,
@@ -109,11 +110,14 @@ export function NotificationBell() {
         title="Bildirishnomalar"
         aria-haspopup="menu"
         aria-expanded={open}
-        className="relative flex h-[34px] w-[34px] items-center justify-center rounded-lg border border-slate-200 text-slate-500 transition-colors hover:border-slate-300 hover:bg-slate-50"
+        className="relative flex h-8 w-8 items-center justify-center rounded-lg text-brand-600 transition-colors hover:bg-brand-50"
       >
-        <Bell className="h-[18px] w-[18px]" />
+        <IconBell className="h-5 w-5" />
+        {/* edutizimdagidek qizil son ("99+") */}
         {unread > 0 && (
-          <span className="absolute right-1.5 top-1.5 h-[7px] w-[7px] rounded-full border-2 border-white bg-red-500" />
+          <span className="absolute -right-1.5 -top-1 flex h-5 min-w-5 items-center justify-center rounded-[10px] bg-[#d32f2f] px-1.5 text-[12px] font-medium leading-none text-white">
+            {unread > 99 ? '99+' : unread}
+          </span>
         )}
       </button>
 

@@ -1,10 +1,9 @@
 import type { ReactNode } from 'react'
 import { useDraggable } from '@dnd-kit/core'
 import { CSS } from '@dnd-kit/utilities'
-import { Phone, Cake, GraduationCap, Repeat2, UserRound } from 'lucide-react'
+import { IconPhone, IconRepeat } from '@tabler/icons-react'
 import type { Lead } from '@/types'
-import { genderLabels } from '@/config/constants'
-import { formatDate, cn } from '@/lib/utils'
+import { formatDate, formatDateTime, cn } from '@/lib/utils'
 
 /** Lid yaratilganidan beri o'tgan kun (createdAt "yyyy-MM-ddTHH:mm:ss"). */
 function leadAgeDays(createdAt?: string): number | null {
@@ -16,53 +15,64 @@ function leadAgeDays(createdAt?: string): number | null {
 }
 
 /**
- * Lidning "yoshi" — qancha uzoq lidlar bo'limida qolib ketgan bo'lsa shuncha qizaradi
- * (yangi → kulrang, qolib ketgan → qizil), aylantirilgan bo'lsa yashil.
- *
- * ⚠️ KO'RINISH QOIDASI: kartaning O'ZI har doim OQ qoladi (LMS dizayn uslubi — taxta
- * tinti ustunda, karta esa toza oq). Yosh FAQAT o'ng yuqoridagi chip bilan beriladi;
- * chap chekkadagi ingichka rangli chiziq esa faqat E'TIBOR KERAK bo'lgan kartalarda
- * (7 kundan oshgan yoki aylantirilgan) chiziladi. Ilgari butun karta bo'yalar edi —
+ * Lidning "yoshi" — chap chekkadagi ingichka chiziq FAQAT e'tibor kerak bo'lgan kartada:
+ * 7+ kun qolib ketgan (to'q sariq), 14+ kun (qizil). Karta o'zi doim OQ (edutizim uslubi);
  * o'nlab rangli karta yonma-yon turganda "shoshilinch" belgisi ma'nosini yo'qotardi.
  */
-function leadAging(lead: Lead): {
-  /** Chap chekka chizig'i (faqat e'tibor kerak bo'lganda) */
-  accent: string | null
-  chip: string
-  days: number | null
-  converted: boolean
-} {
-  const converted = !!lead.convertedStudentId
+function agingAccent(lead: Lead): string | null {
+  if (lead.convertedStudentId) return null
   const days = leadAgeDays(lead.createdAt)
-  if (converted) return { accent: '#10b981', chip: 'bg-emerald-50 text-emerald-600', days, converted }
-  if (days == null) return { accent: null, chip: 'bg-slate-100 text-slate-500', days, converted }
-  if (days >= 14) return { accent: '#dc2626', chip: 'bg-red-50 text-red-600', days, converted }
-  if (days >= 7) return { accent: '#ea580c', chip: 'bg-orange-50 text-orange-600', days, converted }
-  if (days >= 3) return { accent: null, chip: 'bg-amber-50 text-amber-700', days, converted }
-  return { accent: null, chip: 'bg-slate-100 text-slate-500', days, converted }
+  if (days == null) return null
+  if (days >= 14) return '#dc2626'
+  if (days >= 7) return '#ea580c'
+  return null
 }
 
-function ageLabel(days: number): string {
-  if (days <= 0) return 'Bugun'
-  return `${days} kun`
+/** "18.09 15:30" — kartadagi qisqa sinov vaqti. */
+function shortAt(iso: string): string {
+  const m = /^\d{4}-(\d{2})-(\d{2})T(\d{2}:\d{2})/.exec(iso)
+  return m ? `${m[2]}.${m[1]} ${m[3]}` : formatDate(iso)
 }
 
-/** Kichik rangli chip (manba, mas'ul, takroriy, davomat) */
-function Chip({ className, title, children }: { className: string; title?: string; children: ReactNode }) {
+/** Bugungi sana "yyyy-MM-dd" (mahalliy). */
+function todayIso(): string {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+/**
+ * Karta pastidagi o'ng "ishora" (edutizimdagi to'q sariq «Topshiriq yo'q» o'rnida) — bizda lid
+ * uchun keyingi qadam SINOV DARSI:
+ * - o'quvchiga aylangan → yashil «O'quvchi»;
+ * - kutilayotgan sinov bor → «Sinov: 18.09 15:30» (sanasi o'tib ketgan bo'lsa qizil);
+ * - yo'q → to'q sariq «Sinov yo'q».
+ */
+function footHint(lead: Lead): { text: string; color: string } {
+  if (lead.convertedStudentId) return { text: "O'quvchi", color: '#00A35C' }
+  if (lead.firstLessonAt) {
+    const past = lead.firstLessonAt.slice(0, 10) < todayIso()
+    return { text: `Sinov: ${shortAt(lead.firstLessonAt)}`, color: past ? '#DE4141' : '#3D68FF' }
+  }
+  return { text: "Sinov yo'q", color: '#ED6C02' }
+}
+
+/** Kichik belgi (takroriy murojaat, birinchi dars davomati). */
+function Tag({ className, title, children }: { className: string; title?: string; children: ReactNode }) {
   return (
     <span
       title={title}
-      className={cn(
-        'inline-flex max-w-full items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-medium',
-        className,
-      )}
+      className={cn('inline-flex items-center gap-1 rounded px-1.5 py-px text-[10.5px] font-semibold', className)}
     >
       {children}
     </span>
   )
 }
 
-/** Faqat ko'rinish (drag overlay uchun ham ishlatiladi) */
+/**
+ * Faqat ko'rinish (drag overlay uchun ham ishlatiladi). edutizim kanban kartasi: oq, radius 8,
+ * kichik soya; 1-qator "Ism , Kurs" (kurs kulrang), 2-qator mas'ul (moderator), chiziq, pastda
+ * sana va o'ngda ishora.
+ */
 export function LeadCardContent({
   lead,
   dragging,
@@ -70,111 +80,77 @@ export function LeadCardContent({
 }: {
   lead: Lead
   dragging?: boolean
-  /** Berilsa telefon raqami bosiladigan bo'ladi (drag overlay'da berilmaydi) */
+  /** Berilsa telefon ikonkasi chiqadi — qo'ng'iroq oynasi (drag overlay'da berilmaydi) */
   onCall?: (lead: Lead) => void
 }) {
   const phone = lead.phone || lead.fatherPhone || lead.motherPhone || ''
-  const parent = lead.fatherFullName || lead.motherFullName || ''
-  const aging = leadAging(lead)
-  const ageTitle = aging.converted
-    ? "O'quvchiga aylantirilgan"
-    : aging.days != null
-      ? `Lidlar bo'limida ${ageLabel(aging.days)} (${lead.createdAt ? formatDate(lead.createdAt) : '—'})`
-      : undefined
-
+  const accent = agingAccent(lead)
+  const hint = footHint(lead)
   const attendance =
     lead.firstLessonAttendance === 'attended'
-      ? { text: '✓ Keldi', cls: 'bg-emerald-50 text-emerald-600' }
+      ? { text: '✓ Keldi', cls: 'bg-emerald-50 text-emerald-700' }
       : lead.firstLessonAttendance === 'absent'
-        ? { text: '✗ Kelmadi', cls: 'bg-rose-50 text-rose-600' }
+        ? { text: '✗ Kelmadi', cls: 'bg-rose-50 text-rose-700' }
         : null
 
   return (
     <div
-      className={cn('lead-card', dragging && 'dragging')}
-      style={
-        aging.accent
-          ? { borderLeft: `3px solid ${aging.accent}` }
-          : undefined
-      }
+      className={cn(
+        'cursor-pointer rounded-lg bg-white px-2.5 pb-1.5 pt-2 shadow-[0_1px_3px_rgba(0,0,0,0.12)] transition-shadow hover:shadow-[0_2px_6px_rgba(0,0,0,0.16)]',
+        dragging && 'rotate-1 shadow-lg',
+      )}
+      style={accent ? { borderLeft: `3px solid ${accent}` } : undefined}
     >
-      <div className="lead-top">
-        <p className="lead-name min-w-0">{lead.fullName}</p>
-        <span
-          title={ageTitle}
-          className={cn(
-            'shrink-0 rounded-md px-1.5 py-0.5 text-[11px] font-medium',
-            aging.chip,
+      <div className="flex items-start gap-1.5">
+        <p className="min-w-0 flex-1 text-[12.5px] font-semibold leading-snug text-black">
+          {lead.fullName || '—'}
+          {lead.interestSubject && (
+            <span className="font-normal text-[#757575]"> , {lead.interestSubject}</span>
           )}
-        >
-          {aging.converted ? "O'quvchi" : aging.days != null ? ageLabel(aging.days) : '—'}
-        </span>
-      </div>
-
-      <div className="lead-rows">
-        <p>
-          <GraduationCap className="h-3.5 w-3.5 shrink-0" />
-          <span className="truncate">
-            {genderLabels[lead.gender]}
-            {lead.interestSubject ? ` · ${lead.interestSubject}` : ''}
-          </span>
         </p>
-        {lead.birthDate && (
-          <p>
-            <Cake className="h-3.5 w-3.5 shrink-0" />
-            <span className="truncate">{formatDate(lead.birthDate)}</span>
-          </p>
-        )}
-        {onCall && phone ? (
+        {onCall && phone && (
           <button
             type="button"
-            title="Qo'ng'iroq qilish"
+            title={`Qo'ng'iroq qilish: ${phone}`}
             onClick={(e) => {
               e.stopPropagation()
               onCall(lead)
             }}
             onPointerDown={(e) => e.stopPropagation()}
-            className="-mx-1 rounded-md px-1 text-emerald-600 transition-colors hover:bg-emerald-50"
+            className="-mr-1 -mt-0.5 shrink-0 rounded p-0.5 text-[#9e9e9e] transition-colors hover:bg-emerald-50 hover:text-emerald-600"
           >
-            <Phone className="h-3.5 w-3.5 shrink-0" />
-            <span className="truncate">{phone}</span>
+            <IconPhone className="h-3.5 w-3.5" />
           </button>
-        ) : (
-          <p>
-            <Phone className="h-3.5 w-3.5 shrink-0" />
-            <span className="truncate">{phone || '—'}</span>
-          </p>
         )}
-        {parent && <p className="truncate text-slate-400">{parent}</p>}
       </div>
+      <p className="mt-0.5 truncate text-[12px] text-[#333]" title={lead.assigneeName ? `Mas'ul: ${lead.assigneeName}` : undefined}>
+        {lead.assigneeName || ' '}
+      </p>
 
-      {/* Qo'shimcha belgilar — FAQAT bor bo'lganda chiziladi. Bo'sh holatda karta LMS
-          namunasidagidek toza qoladi (bot orqali kelgan lidlarda ko'pchilik maydon bo'sh). */}
-      {(lead.source || attendance || lead.assigneeName || !!lead.repeatCount) && (
-        <div className="lead-tags">
-          {lead.source && <Chip className="bg-brand-50 text-brand-700">{lead.source}</Chip>}
-          {attendance && <Chip className={attendance.cls}>{attendance.text}</Chip>}
-          {/* MAS'UL XODIM — bo'sh bo'lsa chip UMUMAN chizilmaydi: "biriktirilmagan" belgisi
-              har bir bot lidida takrorlanib, kartani shovqinga to'ldirardi. */}
-          {!!lead.assigneeName && (
-            <Chip className="bg-indigo-50 text-indigo-700" title={`Mas'ul: ${lead.assigneeName}`}>
-              <UserRound className="h-3 w-3 shrink-0" />
-              <span className="truncate">{lead.assigneeName}</span>
-            </Chip>
-          )}
-          {/* TAKRORIY MUROJAAT — odam ommaviy forma yoki daraja testi orqali YANA yozilgan.
-              Bunda lidning bosqichi ATAYIN o'zgarmaydi (birinchi teginish saqlanadi), shuning
-              uchun "yo'qotilgan" ustunidagi karta ham shu belgi bilan ko'zga tashlanadi. */}
+      {/* TAKRORIY MUROJAAT — odam ommaviy forma yoki daraja testi orqali YANA yozilgan. Bosqich
+          ATAYIN o'zgarmaydi (birinchi teginish saqlanadi), shuning uchun "yo'qotilgan" ustunidagi
+          karta ham shu belgi bilan ko'zga tashlanadi (`crm-leads.md`). */}
+      {(attendance || (!!lead.repeatCount && lead.repeatCount > 0)) && (
+        <div className="mt-1 flex flex-wrap gap-1">
           {!!lead.repeatCount && lead.repeatCount > 0 && (
-            <Chip className="bg-fuchsia-50 text-fuchsia-700" title="Yana murojaat qildi">
-              <Repeat2 className="h-3 w-3 shrink-0" /> Takroriy
-              {lead.repeatCount > 1 && ` ×${lead.repeatCount}`}
-            </Chip>
+            <Tag
+              className="bg-fuchsia-50 text-fuchsia-700"
+              title={lead.lastRepeatAt ? `Yana murojaat qildi: ${formatDateTime(lead.lastRepeatAt)}` : 'Yana murojaat qildi'}
+            >
+              <IconRepeat className="h-3 w-3" /> Takroriy{lead.repeatCount > 1 && ` ×${lead.repeatCount}`}
+            </Tag>
           )}
+          {attendance && <Tag className={attendance.cls}>{attendance.text}</Tag>}
         </div>
       )}
 
-      {lead.note && <p className="lead-note line-clamp-2">{lead.note}</p>}
+      <div className="mt-1.5 flex items-center justify-between gap-2 border-t border-[#eeeeee] pt-1">
+        <span className="text-[11px] text-[#757575]">{lead.createdAt ? formatDateTime(lead.createdAt) : '—'}</span>
+        <span className="inline-flex items-center gap-1 text-[11px] font-medium" style={{ color: hint.color }}>
+          {hint.text}
+          <span className="h-1.5 w-1.5 rounded-full" style={{ background: hint.color }} />
+        </span>
+      </div>
     </div>
   )
 }
@@ -187,7 +163,7 @@ export function LeadCard({
 }: {
   lead: Lead
   onClick?: () => void
-  /** Telefon raqami bosilganda qo'ng'iroq oynasini ochish */
+  /** Telefon ikonkasi bosilganda qo'ng'iroq oynasini ochish */
   onCall?: (lead: Lead) => void
 }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({

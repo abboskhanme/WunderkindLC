@@ -31,6 +31,30 @@ public class DashboardController(DataCache dataCache) : ControllerBase
             TimeSpan.FromMinutes(10),
             ComputeAsync);
 
+    /// <summary>
+    /// Bosh sahifaning 12 ta kartochkasi (buyurtmalar, yangi/aktiv o'quvchilar, shu oyda ketganlar,
+    /// qarzdorlar, guruhlar, birinchi to'lov, muzlatilgan, arxiv). Hisob — <see cref="DashboardSummary"/>.
+    /// <para>Ruxsat — sinf darajasidagi rol darvozasi (eski dashboard endpointi bilan bir xil): javobda
+    /// faqat JAMLANGAN sonlar, ism/telefon/summa yo'q. Qaysi kartochka ko'rinishi klientda bo'lim
+    /// ruxsati bo'yicha filtrlanadi.</para>
+    /// </summary>
+    [HttpGet("summary")]
+    public async Task<ActionResult<DashboardSummaryDto>> Summary()
+    {
+        // Kalitda SANA: "shu oy" va "bugundan keyingi sinov" kunga bog'liq. Bog'liq jadval o'zgarsa
+        // interceptor versiyani oshiradi — kesh darhol yangilanadi, TTL faqat zaxira.
+        var today = AppClock.Today;
+        return await dataCache.GetOrCreateAsync(
+            $"dashboard:summary:{today:yyyy-MM-dd}",
+            new[]
+            {
+                nameof(Lead), nameof(TrialLesson), nameof(ArchivedRecord), nameof(Student),
+                nameof(StudentGroup), nameof(Group), nameof(FinanceTransaction),
+            },
+            TimeSpan.FromMinutes(10),
+            db => DashboardSummary.BuildAsync(db, today));
+    }
+
     /// <summary>Darslar monitoringi: tanlangan sanada (default — bugun) guruh Days bo'yicha dars
     /// kuni bo'lgan guruhlar, har biri uchun davomat qilinganmi va baho qo'yilganmi.</summary>
     [HttpGet("today-lessons")]

@@ -66,7 +66,10 @@ public class ParentsController(AppDbContext db) : ControllerBase
             var groups = groupsByStudent.GetValueOrDefault(s.Id, "");
             return new ParentChildDto(
                 s.Id, s.FullName, groups.Length > 0 ? groups : s.ClassName,
-                firstLogin, lastLogin, devName, platform, appId);
+                firstLogin, lastLogin, devName, platform, appId,
+                s.FatherFullName ?? "", s.FatherPhone ?? "",
+                s.MotherFullName ?? "", s.MotherPhone ?? "",
+                s.Balance);
         }
 
         // Guruhlash kaliti: telefon (raqamlar normallashtirilgan) yoki nom (telefon bo'sh bo'lsa).

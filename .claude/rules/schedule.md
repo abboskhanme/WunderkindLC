@@ -1,6 +1,11 @@
 # Dars jadvali qoidalari
 
-"O'quv bo'limi → Dars jadvali" (`/admin/jadval`, ruxsat `schedule.timetable`).
+"Future → Jadval: bo'sh oraliqlar" (`/admin/jadval/bosh-oraliqlar`, ruxsat `schedule.timetable`).
+
+> ⚠️ 2026-09-18 dan `/admin/jadval` (menyuda **Guruh → Dars jadvali**) — edutizimdagidek bosh
+> sahifaning jadval to'ri (`AdminDashboard scheduleOnly`, `GET /api/admin/schedule/grid`).
+> Quyidagi bo'sh oraliq/tavsiya tahlili edutizimda YO'Q, shuning uchun "Future" ga ko'chdi
+> (`docs/EDUTIZIM-PARITY.md`). Qoidalar o'zgarmadi.
 Migratsiya KERAK EMAS — modul mavjud `Group` maydonlaridan hisoblanadi.
 
 ## 1. MODEL — qat'iy "soat/para" YO'Q

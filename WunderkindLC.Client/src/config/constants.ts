@@ -162,6 +162,7 @@ export const adminPermissions: AdminPermSection[] = [
       { key: 'classes.list', label: 'Guruhlar va jurnal' },
       { key: 'classes.rooms', label: 'Xonalar' },
       { key: 'classes.testResults', label: 'Testlar natijalari' },
+      { key: 'classes.notAttended', label: 'Davomat qilinmagan guruhlar' },
     ],
   },
   {
@@ -343,6 +344,8 @@ export const expenseCategories: CategoryOption[] = [
   { value: 'supplies', label: 'Jihoz/materiallar' },
   { value: 'rent', label: 'Ijara' },
   { value: 'repair', label: "Ta'mirlash" },
+  // Jarima — xodimdan ushlangan summa (Moliya → «Jarima» sahifasi shu toifa bo'yicha filtrlanadi).
+  { value: 'penalty', label: 'Jarima' },
   { value: 'other', label: 'Boshqa chiqim' },
 ]
 
@@ -351,12 +354,20 @@ export const categoriesByDirection: Record<FinanceDirection, CategoryOption[]> =
   expense: expenseCategories,
 }
 
-/** Toifa kodini o'qiladigan nomga aylantirish */
-export function financeCategoryLabel(category: string): string {
+/**
+ * Toifa kodini o'qiladigan nomga aylantirish.
+ *
+ * ⚠️ `direction` BERILSA o'sha yo'nalishning ro'yxatidan izlanadi. Sabab: bir xil kod ikkala
+ * ro'yxatda ham bor (`other` — "Boshqa kirim" va "Boshqa chiqim"), yo'nalishsiz esa har doim
+ * BIRINCHISI (kirim) topilar va chiqim jadvalida "Boshqa kirim" deb chiqib qolardi.
+ */
+export function financeCategoryLabel(category: string, direction?: FinanceDirection): string {
   // Vozvrat — qo'lda kiritilmaydi (faqat to'lovdan qaytariladi), shuning uchun kategoriya ro'yxatida yo'q.
   if (category === 'refund') return 'Vozvrat'
-  const all = [...incomeCategories, ...expenseCategories]
-  return all.find((c) => c.value === category)?.label ?? category
+  const list = direction
+    ? [...categoriesByDirection[direction], ...(direction === 'income' ? expenseCategories : incomeCategories)]
+    : [...incomeCategories, ...expenseCategories]
+  return list.find((c) => c.value === category)?.label ?? category
 }
 
 /** To'lov usullari (kirim/to'lov uchun): kod -> yorliq. */

@@ -15,7 +15,25 @@ const LoginPage = lazy(() => import('@/pages/LoginPage').then((m) => ({ default:
 const AdminDashboard = lazy(() => import('@/pages/admin/AdminDashboard').then((m) => ({ default: m.AdminDashboard })))
 const CallCenterPage = lazy(() => import('@/pages/admin/calls/CallCenterPage').then((m) => ({ default: m.CallCenterPage })))
 const LocalCallPage = lazy(() => import('@/pages/admin/calls/local/LocalCallPage').then((m) => ({ default: m.LocalCallPage })))
+const GroupStudentsListPage = lazy(() => import('@/pages/admin/classes/GroupStudentsPage').then((m) => ({ default: m.GroupStudentsPage })))
+const TransactionTypesPage = lazy(() => import('@/pages/admin/finance/TransactionTypesPage').then((m) => ({ default: m.TransactionTypesPage })))
+const PlannedExpensePage = lazy(() => import('@/pages/admin/finance/PlannedExpensePage').then((m) => ({ default: m.PlannedExpensePage })))
+const FinanceAnalyticsPage = lazy(() => import('@/pages/admin/finance/FinanceAnalyticsPage').then((m) => ({ default: m.FinanceAnalyticsPage })))
+const PenaltyPage = lazy(() => import('@/pages/admin/finance/PenaltyPage').then((m) => ({ default: m.PenaltyPage })))
+const IncomePlanPage = lazy(() => import('@/pages/admin/finance/IncomePlanPage').then((m) => ({ default: m.IncomePlanPage })))
+const FinanceReportsPage = lazy(() => import('@/pages/admin/finance/FinanceReportsPage').then((m) => ({ default: m.FinanceReportsPage })))
+const PnlPage = lazy(() => import('@/pages/admin/finance/PnlPage').then((m) => ({ default: m.PnlPage })))
+const CashflowPage = lazy(() => import('@/pages/admin/finance/CashflowPage').then((m) => ({ default: m.CashflowPage })))
+const IncomeExpensePage = lazy(() => import('@/pages/admin/finance/IncomeExpensePage').then((m) => ({ default: m.IncomeExpensePage })))
+const ParentsListPage = lazy(() => import('@/pages/admin/students/lists/ParentsListPage').then((m) => ({ default: m.ParentsListPage })))
+const NewStudentsPage = lazy(() => import('@/pages/admin/students/lists/NewStudentsPage').then((m) => ({ default: m.NewStudentsPage })))
+const ActiveStudentsPage = lazy(() => import('@/pages/admin/students/lists/ActiveStudentsPage').then((m) => ({ default: m.ActiveStudentsPage })))
+const ArchivedStudentsPage = lazy(() => import('@/pages/admin/students/lists/ArchivedStudentsPage').then((m) => ({ default: m.ArchivedStudentsPage })))
+const SubscriptionRiskPage = lazy(() => import('@/pages/admin/students/lists/SubscriptionRiskPage').then((m) => ({ default: m.SubscriptionRiskPage })))
+const NotAttendedGroupsPage = lazy(() => import('@/pages/admin/nazorat/NotAttendedGroupsPage').then((m) => ({ default: m.NotAttendedGroupsPage })))
 const LeadsPage = lazy(() => import('@/pages/admin/leads/LeadsPage').then((m) => ({ default: m.LeadsPage })))
+const LeadDetailPage = lazy(() => import('@/pages/admin/leads/LeadDetailPage').then((m) => ({ default: m.LeadDetailPage })))
+const FirstLessonLeadsPage = lazy(() => import('@/pages/admin/leads/FirstLessonLeadsPage').then((m) => ({ default: m.FirstLessonLeadsPage })))
 const CrmStatsPage = lazy(() => import('@/pages/admin/leads/CrmStatsPage').then((m) => ({ default: m.CrmStatsPage })))
 const ReportsPage = lazy(() => import('@/pages/admin/reports/ReportsPage').then((m) => ({ default: m.ReportsPage })))
 const DiscountsReportPage = lazy(() => import('@/pages/admin/reports/DiscountsReportPage').then((m) => ({ default: m.DiscountsReportPage })))
@@ -243,6 +261,9 @@ export default function App() {
             <Route path="marketing/javob-sifati" element={<RequirePerm perm="marketing.quality"><InstagramQuality /></RequirePerm>} />
             <Route path="marketing/settings" element={<RequirePerm perm="marketing.settings"><InstagramSettings /></RequirePerm>} />
             <Route path="leads" element={<RequirePerm perm="leads.list"><LeadsPage /></RequirePerm>} />
+            {/* edutizim: "Birinchi darsga yozilganlar" va lid sahifasi (`/orders/info/:id`). */}
+            <Route path="leads/birinchi-dars" element={<RequirePerm perm="leads.list"><FirstLessonLeadsPage /></RequirePerm>} />
+            <Route path="leads/:id" element={<RequirePerm perm="leads.list"><LeadDetailPage /></RequirePerm>} />
             <Route path="calls" element={<RequirePerm perm="calls.cloud"><CallCenterPage /></RequirePerm>} />
             <Route path="calls/local" element={<RequirePerm perm="calls.local"><LocalCallPage /></RequirePerm>} />
             {/* HISOBOTLAR hub — barcha analitika/hisobotlar ro'yxati (`config/reports.ts`).
@@ -266,16 +287,28 @@ export default function App() {
             {/* Yuz bilan kirish — `students/:id` dan OLDIN turishi shart emas (statik yo'l dinamikdan
                 ustun), lekin qolgan o'quvchi sahifalari bilan bir joyda tursin. */}
             <Route path="students/yuz" element={<RequirePerm perm="students.face"><FaceLoginPage /></RequirePerm>} />
+            {/* edutizim "O'quvchilar" ro'yxatlari — `students/:id` dan OLDIN e'lon qilinadi,
+                aks holda "yangi"/"aktiv" o'quvchi ID'si deb o'qilardi. */}
+            <Route path="students/ota-ona" element={<RequirePerm perm="students.list"><ParentsListPage /></RequirePerm>} />
+            <Route path="students/yangi" element={<RequirePerm perm="students.list"><NewStudentsPage /></RequirePerm>} />
+            <Route path="students/aktiv" element={<RequirePerm perm="students.list"><ActiveStudentsPage /></RequirePerm>} />
+            <Route path="students/arxiv" element={<RequirePerm perm="students.list"><ArchivedStudentsPage /></RequirePerm>} />
+            <Route path="students/obuna-tugaydi" element={<RequirePerm perm="students.list"><SubscriptionRiskPage /></RequirePerm>} />
             <Route path="students/:id" element={<RequirePerm perm="students.list"><StudentDetailPage /></RequirePerm>} />
             <Route path="teachers" element={<TeachersEntry />} />
             <Route path="teachers/substitutions" element={<RequirePerm perm="teachers.substitutions"><SubstituteTeachersPage /></RequirePerm>} />
             <Route path="teachers/:id" element={<RequirePerm perm="teachers.list"><TeacherDetailPage /></RequirePerm>} />
             <Route path="teachers/attendance" element={<RequirePerm perm="teachers.attendance"><TeacherAttendancePage /></RequirePerm>} />
             <Route path="classes" element={<RequirePerm perm="classes.list"><ClassesPage /></RequirePerm>} />
+            {/* «Guruh o'quvchilari» — `classes/:id` dan OLDIN (aks holda guruh id'si deb o'qilardi). */}
+            <Route path="classes/oquvchilar" element={<RequirePerm perm="classes.list"><GroupStudentsListPage /></RequirePerm>} />
             <Route path="classes/:id" element={<RequirePerm perm="classes.list"><ClassDetailPage /></RequirePerm>} />
             <Route path="rooms" element={<RequirePerm perm="classes.rooms"><RoomsPage /></RequirePerm>} />
             <Route path="rooms/utilization" element={<RequirePerm perm="classes.rooms"><RoomUtilizationPage /></RequirePerm>} />
-            <Route path="jadval" element={<RequirePerm perm="schedule.timetable"><SchedulePage /></RequirePerm>} />
+            {/* Guruh → «Dars jadvali» — edutizimdagidek bosh sahifa jadvali (kartochkalarsiz).
+                Bizning bo'sh oraliqlar/tavsiyalar tahlili (edutizimda yo'q) — "Future" da. */}
+            <Route path="jadval" element={<RequirePerm perm="schedule.timetable"><AdminDashboard scheduleOnly /></RequirePerm>} />
+            <Route path="jadval/bosh-oraliqlar" element={<RequirePerm perm="schedule.timetable"><SchedulePage /></RequirePerm>} />
             <Route path="subjects" element={<RequirePerm perm="schedule.courses"><SubjectsPage /></RequirePerm>} />
             {/* Kurslar analitikasi — O'quv bo'limi ichida, "Kurslar" ruxsati (`schedule`) bilan. */}
             <Route path="subjects/analitika" element={<RequirePerm perm="schedule.analytics"><CourseAnalyticsPage /></RequirePerm>} />
@@ -320,6 +353,17 @@ export default function App() {
             <Route path="parents" element={<RequirePerm perm="app.parents"><ParentsPage /></RequirePerm>} />
             <Route path="app/teachers" element={<RequirePerm perm="app.teachers"><TeacherAppPage /></RequirePerm>} />
             <Route path="kassa" element={<RequirePerm perm="kassa"><KassaPage /></RequirePerm>} />
+            {/* Moliya → «Kirim chiqim» (edutizim `/analytics/finance`): toifalar aylanasi.
+                Ruxsat — moliya sahifasi bilan BIR XIL kalit. */}
+            <Route path="moliya/tranzaksiya-turi" element={<RequirePerm perm="finance.main"><TransactionTypesPage /></RequirePerm>} />
+            <Route path="moliya/rejalashtirilgan-xarajatlar" element={<RequirePerm perm="finance.main"><PlannedExpensePage /></RequirePerm>} />
+            <Route path="moliya/analitika" element={<RequirePerm perm="finance.main"><FinanceAnalyticsPage /></RequirePerm>} />
+            <Route path="moliya/jarima" element={<RequirePerm perm="finance.main"><PenaltyPage /></RequirePerm>} />
+            <Route path="moliya/tushum-rejasi" element={<RequirePerm perm="finance.main"><IncomePlanPage /></RequirePerm>} />
+            <Route path="moliya/hisobotlar" element={<RequirePerm perm="finance.main"><FinanceReportsPage /></RequirePerm>} />
+            <Route path="moliya/pnl" element={<RequirePerm perm="finance.main"><PnlPage /></RequirePerm>} />
+            <Route path="moliya/pul-oqimi" element={<RequirePerm perm="finance.main"><CashflowPage /></RequirePerm>} />
+            <Route path="moliya/kirim-chiqim" element={<RequirePerm perm="finance.main"><IncomeExpensePage /></RequirePerm>} />
             <Route path="finance" element={<RequirePerm perm="finance.main"><FinancePage /></RequirePerm>} />
             {/* Bitta kassir qabul qilgan to'lovlar — alohida sahifa (Moliya → Kassirlar qatoridan). */}
             <Route path="finance/cashiers/:key" element={<RequirePerm perm="finance.main"><CashierPaymentsPage /></RequirePerm>} />
@@ -335,6 +379,7 @@ export default function App() {
             {/* TOPSHIRIQLAR — Kanban doskasi, ro'yxat, kalendar va nazorat paneli.
                 Uchala ko'rinish AYNI ma'lumot ustida ishlaydi, shuning uchun ruxsati ham
                 bitta (`tasks.board`); nazorat paneli alohida (`tasks.dashboard`). */}
+            <Route path="nazorat/davomat-qilinmagan" element={<RequirePerm perm="classes.notAttended"><NotAttendedGroupsPage /></RequirePerm>} />
             <Route path="topshiriqlar" element={<RequirePerm perm="tasks.board"><TasksBoardPage /></RequirePerm>} />
             <Route path="topshiriqlar/royxat" element={<RequirePerm perm="tasks.board"><TasksListPage /></RequirePerm>} />
             <Route path="topshiriqlar/kalendar" element={<RequirePerm perm="tasks.board"><TasksCalendarPage /></RequirePerm>} />

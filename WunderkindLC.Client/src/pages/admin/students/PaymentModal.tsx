@@ -1,11 +1,20 @@
 import { useEffect, useRef, useState } from 'react'
+import type { ReactNode } from 'react'
 import { Wallet, AlertTriangle } from 'lucide-react'
 import type { MonthStatus, Student, StudentGroupMembership } from '@/types'
 import { getStudentLedger, getGroupLedger, receiptDuplicateOf, type DuplicateReceipt } from '@/api/services/students'
 import { getStudentGroups } from '@/api/services/classes'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
-import { Input } from '@/components/ui/Input'
+import {
+  RightDrawer,
+  DrawerActions,
+  DrawerChoice,
+  DrawerField,
+  DrawerInput,
+  DrawerSelect,
+  DrawerTextarea,
+} from '@/components/ui/RightDrawer'
 import { Loader } from '@/components/ui/Loader'
 import { formatMoney, formatDate, formatDateTime, apiErrorMessage, cn } from '@/lib/utils'
 import { formatMonth, monthStatusLabels, paymentMethods, paymentMethodLabel } from '@/config/constants'
@@ -13,6 +22,20 @@ import posthog from '@/lib/posthog'
 
 interface Props {
   student: Student | null
+  /**
+   * Oyna ochiqmi. Berilmasa — `student` tanlangan bo'lsa ochiq (eski xatti-harakat). Kassalar
+   * sahifasi uni o'quvchi HALI tanlanmagan holda ochadi (tepada `headerSlot` — o'quvchi tanlash).
+   */
+  open?: boolean
+  /** Sarlavha (standart "To'lov kiritish"; Kassalar — "Kirim"). */
+  title?: string
+  /** Forma TEPASIDAGI qo'shimcha blok (masalan o'quvchi tanlash) — ixtiyoriy. */
+  headerSlot?: ReactNode
+  /**
+   * Ko'rinish: `drawer` (standart, edutizim — o'ngdan chiqadigan panel) yoki `modal` (markazdagi
+   * oyna). Telefondagi kassa portali (`/kassa`) o'zgarmasligi uchun `modal` ni tanlaydi.
+   */
+  presentation?: 'drawer' | 'modal'
   onClose: () => void
   onSubmit: (
     amount: number,
@@ -66,7 +89,15 @@ const membershipNote = (g: StudentGroupMembership): string =>
       ? ' — chiqarilgan'
       : ''
 
-export function PaymentModal({ student, onClose, onSubmit }: Props) {
+export function PaymentModal({
+  student,
+  open,
+  title = "To'lov kiritish",
+  headerSlot,
+  presentation = 'drawer',
+  onClose,
+  onSubmit,
+}: Props) {
   const [amount, setAmount] = useState<number>(0)
   const [month, setMonth] = useState<string>(currentMonth())
   const [rows, setRows] = useState<Row[]>([])
@@ -261,37 +292,24 @@ export function PaymentModal({ student, onClose, onSubmit }: Props) {
   const selected = rows.find((r) => r.month === month)
   const newBalance = student ? student.balance + amount : 0
   const monthOptions = rows.length > 0 ? rows.map((r) => r.month) : [currentMonth()]
+  const isOpen = open ?? !!student
+  const saveDisabled =
+    !student || amount <= 0 || !month || (needGroup && !groupId) || loading || loadingMonths || submitting || blocked
 
-  return (
-    <Modal
-      open={!!student}
-      onClose={onClose}
-      size="sm"
-      title="To'lov kiritish"
-      footer={
-        <>
-          <Button variant="secondary" onClick={onClose}>
-            Bekor qilish
-          </Button>
-          {duplicate ? (
-            // Kvitansiya band — kassir ataylab davom etishi mumkin (haqiqatan takroriy blank bo'lsa).
-            <Button variant="danger" disabled={submitting} onClick={() => void save(true)}>
-              <Wallet className="h-4 w-4" /> {submitting ? 'Saqlanmoqda...' : 'Baribir saqlash'}
-            </Button>
-          ) : (
-            <Button
-              type="submit"
-              form="payment-form"
-              disabled={
-                amount <= 0 || !month || (needGroup && !groupId) || loading || loadingMonths || submitting || blocked
-              }
-            >
-              <Wallet className="h-4 w-4" /> {submitting ? 'Saqlanmoqda...' : 'Saqlash'}
-            </Button>
-          )}
-        </>
-      }
-    >
+  const primaryAction = duplicate ? (
+    // Kvitansiya band — kassir ataylab davom etishi mumkin (haqiqatan takroriy blank bo'lsa).
+    <Button variant="danger" disabled={submitting} onClick={() => void save(true)}>
+      <Wallet className="h-4 w-4" /> {submitting ? 'Saqlanmoqda...' : 'Baribir saqlash'}
+    </Button>
+  ) : (
+    <Button type="submit" form="payment-form" disabled={saveDisabled}>
+      <Wallet className="h-4 w-4" /> {submitting ? 'Saqlanmoqda...' : 'Saqlash'}
+    </Button>
+  )
+
+  const body = (
+    <div className="space-y-4">
+      {headerSlot}
       {student &&
         (loading ? (
           <Loader label="Yuklanmoqda..." />
@@ -381,9 +399,9 @@ export function PaymentModal({ student, onClose, onSubmit }: Props) {
               </div>
             )}
 
-            <div className="rounded-lg bg-slate-50 px-3 py-2 text-sm">
-              <p className="text-slate-500">{student.fullName}</p>
-              <p className="mt-1 text-slate-500">
+            <div className="rounded-lg border border-[#dbe0e6] bg-[#f0f2f2] px-3 py-2 text-sm">
+              <p className="font-semibold text-black">{student.fullName}</p>
+              <p className="mt-0.5 text-[#6b7280]">
                 Joriy balans:{' '}
                 <span className={cn('font-mono font-semibold', student.balance < 0 ? 'text-red-600' : 'text-emerald-600')}>
                   {formatMoney(student.balance)}
@@ -392,24 +410,18 @@ export function PaymentModal({ student, onClose, onSubmit }: Props) {
             </div>
 
             {/* Qaysi guruh uchun to'lov — o'quvchi bir nechta guruhda o'qisa tanlanadi */}
-            {groups.length > 0 && (
-              <div>
-                <label className="mb-1 block text-sm font-medium text-slate-600">
-                  Qaysi guruh uchun
-                  {needGroup && <span className="ml-1 text-red-500">*</span>}
-                </label>
-                {groups.length === 1 ? (
-                  <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+            {groups.length > 0 &&
+              (groups.length === 1 ? (
+                <DrawerField label="Qaysi guruh uchun" group>
+                  <div className="flex min-h-9 items-center rounded-lg border border-[#dbe0e6] bg-[#f0f2f2] px-3 py-1.5 text-[14px] text-black">
                     {groups[0].groupName}
                     {groups[0].courseName ? ` — ${groups[0].courseName}` : ''}
                     {membershipNote(groups[0])}
                   </div>
-                ) : (
-                  <select
-                    value={groupId}
-                    onChange={(e) => setGroupId(e.target.value)}
-                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-brand-400"
-                  >
+                </DrawerField>
+              ) : (
+                <DrawerField label="Qaysi guruh uchun" required={needGroup}>
+                  <DrawerSelect value={groupId} onChange={(e) => setGroupId(e.target.value)}>
                     <option value="">— Guruhni tanlang —</option>
                     {groups.map((g) => (
                       <option key={g.groupId} value={g.groupId}>
@@ -419,10 +431,9 @@ export function PaymentModal({ student, onClose, onSubmit }: Props) {
                         {membershipNote(g)}
                       </option>
                     ))}
-                  </select>
-                )}
-              </div>
-            )}
+                  </DrawerSelect>
+                </DrawerField>
+              ))}
 
             {/* Oy + summa — faqat guruh tanlangach (yoki guruhsiz aggregate) ko'rinadi */}
             {groupsError ? (
@@ -437,13 +448,19 @@ export function PaymentModal({ student, onClose, onSubmit }: Props) {
               <Loader label="Oylar yuklanmoqda..." />
             ) : (
               <>
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-slate-600">Qaysi oy uchun</label>
-                  <select
-                    value={month}
-                    onChange={(e) => handleMonthChange(e.target.value)}
-                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-brand-400"
-                  >
+                <DrawerField
+                  label="Qaysi oy uchun"
+                  hint={
+                    selected && month > currentMonth() ? (
+                      <span className="text-amber-600">Kelajak oy — to'lov avans sifatida hisobga olinadi.</span>
+                    ) : selected && selected.remaining <= 0 ? (
+                      <span className="text-amber-600">
+                        Bu oy allaqachon to'langan — to'lov avans sifatida hisobga olinadi.
+                      </span>
+                    ) : undefined
+                  }
+                >
+                  <DrawerSelect value={month} onChange={(e) => handleMonthChange(e.target.value)}>
                     {monthOptions.map((mo) => {
                       const r = rows.find((x) => x.month === mo)
                       const future = mo > currentMonth()
@@ -461,160 +478,150 @@ export function PaymentModal({ student, onClose, onSubmit }: Props) {
                         </option>
                       )
                     })}
-                  </select>
-                  {selected && month > currentMonth() ? (
-                    <p className="mt-1 text-xs text-amber-600">
-                      Kelajak oy — to'lov avans sifatida hisobga olinadi.
-                    </p>
-                  ) : selected && selected.remaining <= 0 ? (
-                    <p className="mt-1 text-xs text-amber-600">
-                      Bu oy allaqachon to'langan — to'lov avans sifatida hisobga olinadi.
-                    </p>
-                  ) : null}
-                </div>
+                  </DrawerSelect>
+                </DrawerField>
 
-                <Input
-                  label="To'lov summasi (so'm)"
-                  type="number"
-                  min={0}
-                  step="any"
-                  autoFocus
-                  value={amount}
-                  onChange={(e) => setAmount(Number(e.target.value))}
-                />
-
-                <div>
-                  <Input
-                    label="To'lov sanasi"
-                    type="date"
-                    max={today()}
-                    value={paidDate}
-                    onChange={(e) => setPaidDate(e.target.value)}
+                <DrawerField
+                  label="Qiymat (so'm)"
+                  hint={
+                    amount > 0 ? (
+                      <>
+                        To'lovdan keyingi balans:{' '}
+                        <span className={cn('font-mono font-semibold', newBalance < 0 ? 'text-red-600' : 'text-emerald-600')}>
+                          {formatMoney(newBalance)}
+                        </span>
+                      </>
+                    ) : undefined
+                  }
+                >
+                  <DrawerInput
+                    type="number"
+                    min={0}
+                    step="any"
+                    autoFocus
+                    value={amount}
+                    onChange={(e) => setAmount(Number(e.target.value))}
                   />
-                  <p className="mt-1 text-xs text-slate-400">
-                    Masalan mijoz bugun to'lagan, lekin tizimga ertaga kiritilayotgan bo'lsa — shu
-                    yerda haqiqiy to'lov sanasini tanlang.
-                  </p>
-                </div>
-                {amount > 0 && (
-                  <p className="text-sm text-slate-500">
-                    To'lovdan keyingi balans:{' '}
-                    <span className={cn('font-mono font-semibold', newBalance < 0 ? 'text-red-600' : 'text-emerald-600')}>
-                      {formatMoney(newBalance)}
-                    </span>
-                  </p>
+                </DrawerField>
+
+                <DrawerField label="To'lov turi" group>
+                  <DrawerChoice options={paymentMethods} value={method} onChange={setMethod} />
+                </DrawerField>
+
+                {/* NAQD — qog'oz kvitansiya raqami: seriya "KV" (o'zgarmas) + raqam. */}
+                {method === 'cash' && (
+                  <DrawerField
+                    label="Kvitansiya raqami"
+                    hint="Qog'oz kvitansiyadagi raqam — Moliya bo'limida ko'rinadi va qidiriladi (ixtiyoriy)."
+                  >
+                    <div className="flex items-stretch">
+                      <span className="flex select-none items-center rounded-l-lg border border-r-0 border-[#dbe0e6] bg-[#e6eaea] px-3 text-sm font-semibold tracking-wide text-[#6b7280]">
+                        {RECEIPT_SERIES}
+                      </span>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        value={receiptNo}
+                        onChange={(e) => {
+                          setReceiptNo(e.target.value.replace(/\s+/g, ''))
+                          // Raqam o'zgardi — eski "band" ogohlantirishi endi tegishli emas.
+                          setDuplicate(null)
+                        }}
+                        placeholder="000123"
+                        maxLength={20}
+                        className="h-9 w-full rounded-r-lg border border-[#dbe0e6] bg-[#f0f2f2] px-3 font-mono text-[14px] text-black outline-none placeholder:text-[#9ca3af] focus:border-brand-600 focus:bg-white focus:ring-1 focus:ring-brand-600"
+                      />
+                    </div>
+                  </DrawerField>
                 )}
 
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-slate-600">To'lov usuli</label>
-                  <div className="grid grid-cols-3 gap-2">
-                    {paymentMethods.map((m) => (
-                      <button
-                        key={m.value}
-                        type="button"
-                        onClick={() => setMethod(m.value)}
-                        className={cn(
-                          'rounded-lg border px-3 py-2 text-sm font-medium transition-colors',
-                          method === m.value
-                            ? 'border-brand-400 bg-brand-50 text-brand-700'
-                            : 'border-slate-200 text-slate-600 hover:bg-slate-50',
-                        )}
-                      >
-                        {m.label}
-                      </button>
-                    ))}
-                  </div>
-
-                  {/* NAQD — qog'oz kvitansiya raqami: seriya "KV" (o'zgarmas) + raqam. */}
-                  {method === 'cash' && (
-                    <div className="mt-3">
-                      <label className="mb-1 block text-sm font-medium text-slate-600">
-                        Kvitansiya raqami
-                      </label>
+                {/* KARTA — avval karta raqamining oxirgi 4 raqami, so'ng pul o'tkazilgan vaqt
+                    (ikkalasi ham bank ko'chirmasi bilan solishtirish uchun). */}
+                {method === 'card' && (
+                  <>
+                    <DrawerField
+                      label="Karta raqami (oxirgi 4 raqam)"
+                      hint={'Faqat oxirgi 4 raqam saqlanadi. Moliya → To\'lovlar jadvalida "Kvitansiya" ustunida ko\'rinadi (ixtiyoriy).'}
+                    >
                       <div className="flex items-stretch">
-                        <span className="flex select-none items-center rounded-l-lg border border-r-0 border-slate-200 bg-slate-50 px-3 text-sm font-semibold tracking-wide text-slate-500">
-                          {RECEIPT_SERIES}
+                        <span className="flex select-none items-center rounded-l-lg border border-r-0 border-[#dbe0e6] bg-[#e6eaea] px-3 font-mono text-sm tracking-widest text-[#6b7280]">
+                          ••••
                         </span>
                         <input
                           type="text"
                           inputMode="numeric"
-                          value={receiptNo}
-                          onChange={(e) => {
-                            setReceiptNo(e.target.value.replace(/\s+/g, ''))
-                            // Raqam o'zgardi — eski "band" ogohlantirishi endi tegishli emas.
-                            setDuplicate(null)
-                          }}
-                          placeholder="000123"
-                          maxLength={20}
-                          className="w-full rounded-r-lg border border-slate-200 bg-white px-3 py-2 font-mono text-sm text-slate-700 outline-none focus:border-brand-400"
+                          value={cardLast4}
+                          // Faqat raqam; kassir to'liq raqam kiritsa ham OXIRGI 4 tasi qoladi
+                          // (to'liq karta raqami saqlanmaydi).
+                          onChange={(e) => setCardLast4(e.target.value.replace(/\D/g, '').slice(-4))}
+                          placeholder="1234"
+                          maxLength={4}
+                          className="h-9 w-full rounded-r-lg border border-[#dbe0e6] bg-[#f0f2f2] px-3 font-mono text-[14px] tracking-widest text-black outline-none placeholder:text-[#9ca3af] focus:border-brand-600 focus:bg-white focus:ring-1 focus:ring-brand-600"
                         />
                       </div>
-                      <p className="mt-1 text-xs text-slate-400">
-                        Qog'oz kvitansiyadagi raqam — Moliya bo'limida ko'rinadi va qidiriladi
-                        (ixtiyoriy).
-                      </p>
-                    </div>
-                  )}
+                    </DrawerField>
 
-                  {/* KARTA — avval karta raqamining oxirgi 4 raqami, so'ng pul o'tkazilgan vaqt
-                      (ikkalasi ham bank ko'chirmasi bilan solishtirish uchun). */}
-                  {method === 'card' && (
-                    <>
-                      <div className="mt-3">
-                        <label className="mb-1 block text-sm font-medium text-slate-600">
-                          Karta raqami (oxirgi 4 raqam)
-                        </label>
-                        <div className="flex items-stretch">
-                          <span className="flex select-none items-center rounded-l-lg border border-r-0 border-slate-200 bg-slate-50 px-3 font-mono text-sm tracking-widest text-slate-400">
-                            ••••
-                          </span>
-                          <input
-                            type="text"
-                            inputMode="numeric"
-                            value={cardLast4}
-                            // Faqat raqam; kassir to'liq raqam kiritsa ham OXIRGI 4 tasi qoladi
-                            // (to'liq karta raqami saqlanmaydi).
-                            onChange={(e) => setCardLast4(e.target.value.replace(/\D/g, '').slice(-4))}
-                            placeholder="1234"
-                            maxLength={4}
-                            className="w-full rounded-r-lg border border-slate-200 bg-white px-3 py-2 font-mono text-sm tracking-widest text-slate-700 outline-none focus:border-brand-400"
-                          />
-                        </div>
-                        <p className="mt-1 text-xs text-slate-400">
-                          Faqat oxirgi 4 raqam saqlanadi. Moliya → To'lovlar jadvalida "Kvitansiya"
-                          ustunida ko'rinadi (ixtiyoriy).
-                        </p>
-                      </div>
+                    <DrawerField
+                      label="To'lov vaqti"
+                      hint="Karta orqali pul o'tkazilgan vaqt (bank cheki bilan solishtirish uchun)."
+                    >
+                      <DrawerInput type="time" value={paidTime} onChange={(e) => setPaidTime(e.target.value)} />
+                    </DrawerField>
+                  </>
+                )}
 
-                      <div className="mt-3">
-                        <Input
-                          label="To'lov vaqti"
-                          type="time"
-                          value={paidTime}
-                          onChange={(e) => setPaidTime(e.target.value)}
-                        />
-                        <p className="mt-1 text-xs text-slate-400">
-                          Karta orqali pul o'tkazilgan vaqt (bank cheki bilan solishtirish uchun).
-                        </p>
-                      </div>
-                    </>
-                  )}
-                </div>
+                <DrawerField
+                  label="Sanani tanlang"
+                  hint="Masalan mijoz bugun to'lagan, lekin tizimga ertaga kiritilayotgan bo'lsa — shu yerda haqiqiy to'lov sanasini tanlang."
+                >
+                  <DrawerInput type="date" max={today()} value={paidDate} onChange={(e) => setPaidDate(e.target.value)} />
+                </DrawerField>
 
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-slate-600">Izoh (ixtiyoriy)</label>
-                  <textarea
+                <DrawerField label="Izoh">
+                  <DrawerTextarea
                     rows={2}
                     value={comment}
                     onChange={(e) => setComment(e.target.value)}
                     placeholder="To'lov haqida izoh (ixtiyoriy)..."
-                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-brand-400"
                   />
-                </div>
+                </DrawerField>
               </>
             )}
           </form>
         ))}
-    </Modal>
+    </div>
+  )
+
+  // Telefondagi kassa portali — avvalgi markaziy oyna (portal o'zgarmaydi).
+  if (presentation === 'modal') {
+    return (
+      <Modal
+        open={isOpen}
+        onClose={onClose}
+        size="sm"
+        title={title}
+        footer={
+          <>
+            <Button variant="secondary" onClick={onClose}>
+              Bekor qilish
+            </Button>
+            {primaryAction}
+          </>
+        }
+      >
+        {body}
+      </Modal>
+    )
+  }
+
+  return (
+    <RightDrawer
+      open={isOpen}
+      onClose={onClose}
+      title={title}
+      footer={<DrawerActions onBack={onClose}>{primaryAction}</DrawerActions>}
+    >
+      {body}
+    </RightDrawer>
   )
 }
