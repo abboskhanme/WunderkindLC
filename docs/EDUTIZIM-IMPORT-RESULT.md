@@ -88,3 +88,25 @@ one branch. The remaining ~21 people are missing.
 them if they are not really teachers.
 
 ⚠️ Our data model has no employee↔branch link, so the branch column was not stored anywhere.
+
+## Third batch (2026-09-19): the course catalogue
+
+The client teaches four subjects, so the level-based course list built from the groups export
+(`Ingliz tili — Elementary`, `… — Pre-Intermediate`, …, 10 entries) was replaced by five entries:
+
+| Course | Groups |
+|---|---|
+| Ingliz tili 1 | 38 |
+| Ingliz tili 2 | 0 — a price tier, waiting for the client to say which groups belong here |
+| Koreys tili | 2 |
+| Matematika | 2 |
+| SAT | 3 |
+
+Every group now has a course (the one group missing from the export, "Dilnoza teacher | Cefr
+Intensive", was attached to Ingliz tili 1), and each teacher's subject list was recomputed from
+the groups they actually teach. Applied to dev and to production.
+
+⚠️ **The course IS the abonement.** `Subjects.Price` is the monthly price, and changing it writes
+that price into `Classes.MonthlyFee` for every group of the course — optionally into the current
+month's charges as well (`SubjectsController.Update` → `TuitionService.ApplyGroupFeeToCurrentMonthAsync`).
+So the missing group fees (open issue #1) are filled by entering five prices, not 45.
