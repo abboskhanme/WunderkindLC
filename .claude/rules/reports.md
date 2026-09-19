@@ -59,8 +59,10 @@ komponent qayta yaratilmaydi, faqat manzil o'zgaradi — initializer esa bir mar
 sahifa birinchi ko'rinishda qotib qolardi. Yuqoridagi "tarixga yozuv qo'shilmasin" mulohazasi
 bu yerda kuchsiz: navigatsiyaning O'ZI menyudan kelyapti, ya'ni tarix baribir yoziladi.
 
-⚠️ Shu sabab Moliyaning HAR BIR `?tab=` ko'rinishi menyuda bo'lishi SHART — aks holda u
-foydalanuvchi uchun butunlay yo'qoladi. `reports.test.ts` buni qulflaydi.
+⚠️ Menyuda faqat edutizimda BOR bandlar turadi (Kassalar · Bonus · Oylik chiqarish ·
+Tranzakisyalar). Bizdagi qo'shimcha ko'rinishlar — `overview`, `groups`, `refunds` — menyuga
+QO'SHILMAYDI (foydalanuvchi talabi: Moliya menyusi edutizimdagidek qolsin); ular «Hisobotlar»
+hub'idan ochiladi (`config/reports.ts`).
 
 ## 5. RUXSAT
 

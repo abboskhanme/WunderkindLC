@@ -158,17 +158,12 @@ export const navByRole: Record<Role, NavItem[]> = {
             { label: 'Bonus', to: '/admin/finance?tab=bonuses', perm: 'finance.main' },
             { label: 'Jarima', to: '/admin/moliya/jarima', perm: 'finance.main' },
             { label: 'Oylik chiqarish', to: '/admin/finance?tab=teachers', perm: 'finance.main' },
-            // ⚠️ Sahifa ichidagi tab qatori olib tashlangani uchun (FinancePage) bu ko'rinishlar
-            // FAQAT shu menyudan ochiladi — aks holda ular yo'qolib qolardi.
-            { label: 'Vozvratlar', to: '/admin/finance?tab=refunds', perm: 'finance.main' },
           ],
         },
         {
           label: 'Hisobotlar',
           to: '#moliya-hisobotlar',
           children: [
-            { label: 'Umumiy', to: '/admin/finance', end: true, perm: 'finance.main' },
-            { label: 'Guruhlar bo\'yicha', to: '/admin/finance?tab=groups', perm: 'finance.main' },
             { label: 'Kirim chiqim', to: '/admin/moliya/kirim-chiqim', perm: 'finance.main' },
             { label: 'Tushum rejasi', to: '/admin/moliya/tushum-rejasi', perm: 'finance.main' },
             { label: 'Moliya analitikasi', to: '/admin/moliya/analitika', perm: 'finance.main' },

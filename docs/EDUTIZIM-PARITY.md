@@ -125,8 +125,10 @@ extra Sozlamalar (Landing, Tumanlar, Kanallar, Zaxira, Azure, Gemini, Turniket, 
    (`NavItem.columns`, only Moliya). Fourteen entries in one column was an unreadable list.
 2. **The page has no tab row.** `FinancePage` used to carry Umumiy · Guruhlar · O'qituvchilar ·
    To'lovlar · Vozvratlar · Kassirlar · Bonus above the content; edutizim has no such row, so it
-   was removed and the three views the menu did not cover (Umumiy, Guruhlar, Vozvratlar) were
-   added to the menu instead.
+   was removed.
+   ⚠️ The three views the Moliya menu does not cover (Umumiy, Guruhlar, Vozvratlar) were **not**
+   added to that menu — the client wants it to stay exactly as edutizim's. They are reached from
+   the Hisobotlar hub, which already lists all seven finance views (`config/reports.ts`).
    ⚠️ The view is therefore read from the URL on every render (`tabFromUrl(..., location.search)`),
    not held in state: clicking another menu entry only changes `?tab=`, it does not remount the
    page, so a `useState` initializer would have frozen the first view. A test locks that every

@@ -130,24 +130,6 @@ describe('edutizim menyusi', () => {
     }
   })
 
-  it("Moliyaning HAR BIR ko'rinishi menyuda bor (sahifada tab qatori yo'q)", () => {
-    // ⚠️ `FinancePage` dagi tab qatori OLIB TASHLANGAN — ko'rinish faqat yon menyudan
-    // tanlanadi. Demak `?tab=` qiymatlaridan bittasi menyuga qo'shilmay qolsa, u sahifa
-    // foydalanuvchi uchun BUTUNLAY yo'qoladi (manzilni qo'lda yozishdan boshqa yo'l yo'q).
-    const moliya = navByRole.admin.find((i) => i.label === 'Moliya')!
-    const routes = new Set(leafRoutes([moliya]))
-    const views = [
-      '', // Umumiy (parametrsiz)
-      '?tab=groups',
-      '?tab=teachers',
-      '?tab=payments',
-      '?tab=refunds',
-      '?tab=cashiers',
-      '?tab=bonuses',
-    ]
-    for (const v of views) expect(routes, `Moliya ${v || '(umumiy)'}`).toContain(`/admin/finance${v}`)
-  })
-
   it("bitta sahifa menyuda ikki marta turmaydi (edutizimning O'Z takrorlaridan tashqari)", () => {
     const leaves = leafRoutes(navByRole.admin)
     const dup = leaves.filter((to, i) => leaves.indexOf(to) !== i)
