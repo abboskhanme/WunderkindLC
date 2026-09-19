@@ -25,7 +25,7 @@ import {
 } from '@/components/ui/RightDrawer'
 import { categoriesByDirection, financeDirectionLabels, formatMonth, monthStatusLabels, paymentMethods } from '@/config/constants'
 import { getTransactionTypes, type TransactionType } from '@/api/services/finance'
-import { formatMoney, cn } from '@/lib/utils'
+import { balanceTextCls, formatMoney, cn } from '@/lib/utils'
 
 interface Props {
   open: boolean
@@ -68,6 +68,10 @@ export function TransactionFormModal({ open, onClose, onSubmit, initial, preset,
   // Tuition to'lovi: avval o'qituvchi, keyin uning guruhi (kaskad)
   const [tuitionTeacherId, setTuitionTeacherId] = useState('')
   const [ledgerMonths, setLedgerMonths] = useState<MonthLedger[]>([])
+  // Tanlangan o'quvchining BALANSI (manfiy = qarz, musbat = haqdorlik). null = hali yuklanmagan.
+  const [studentBalance, setStudentBalance] = useState<number | null>(null)
+  // O'quvchini QIDIRISH — kaskad (o'qituvchi → guruh) o'rniga to'g'ridan-to'g'ri ism/telefon bo'yicha.
+  const [studentQuery, setStudentQuery] = useState('')
   // Maosh izohi avtomatik to'ldiriladi — foydalanuvchi qo'lda yozganini bosib ketmaslik uchun
   // oxirgi avto izohni eslab turamiz.
   const autoNoteRef = useRef('')
@@ -78,6 +82,9 @@ export function TransactionFormModal({ open, onClose, onSubmit, initial, preset,
   const [txTypes, setTxTypes] = useState<TransactionType[]>([])
 
   const typeOptions = txTypes.filter((t) => t.direction === form.direction)
+  /** Tanlanmagan holatda ko'rsatiladigan tur — joriy toifaga mos birinchisi. */
+  const fallbackType =
+    typeOptions.find((t) => t.baseCategory === form.category) ?? typeOptions[0]
 
   const isSalaryExpense = isSalaryCat(form.direction, form.category)
   const isTuitionIncome = form.direction === 'income' && form.category === 'tuition'
@@ -120,13 +127,49 @@ export function TransactionFormModal({ open, onClose, onSubmit, initial, preset,
     [classes, tuitionTeacherId],
   )
 
+  /**
+   * Qidiruv natijalari — BARCHA arxivlanmagan o'quvchilar bo'yicha (guruhdan qat'i nazar).
+   * Ism ham, telefon ham qidiriladi: raqamlar solishtirilganda format ("+998 90 ...") tashlab
+   * yuboriladi, ya'ni "901234567" ham topadi.
+   */
+  const studentMatches = useMemo(() => {
+    const q = studentQuery.trim().toLowerCase()
+    if (q.length < 2) return []
+    const digits = q.replace(/\D/g, '')
+    return students
+      .filter((s) => !s.isArchived)
+      .filter((s) => {
+        if (s.fullName?.toLowerCase().includes(q)) return true
+        if (digits.length < 4) return false
+        const phones = [s.phone, s.parentPhone].filter(Boolean).join(' ').replace(/\D/g, '')
+        return phones.includes(digits)
+      })
+      .slice(0, 8)
+  }, [students, studentQuery])
+
+  /**
+   * Qidiruvdan o'quvchi tanlash: guruh va o'qituvchi ham AVTOMATIK to'ldiriladi (o'quvchining
+   * faol guruhidan), ya'ni kaskadni qo'lda bosib chiqish shart emas. Guruhi topilmasa
+   * to'lov baribir yoziladi — guruh tegi bo'sh qoladi (eski/arxiv guruh holati).
+   */
+  const pickStudent = (s: Student) => {
+    const name = s.groupStates?.[0]?.name ?? s.className ?? ''
+    const cls = classes.find((c) => c.name === name)
+    setTuitionTeacherId(cls?.teacherId ?? '')
+    setClassId(cls?.name ?? '')
+    setStudentQuery('')
+    onStudentChange(s.id)
+  }
+
   // O'quvchi tanlanganda — uning oylar holatini yuklab, eng eski qarzdor oyni standart qilamiz.
   const onStudentChange = (id: string) => {
     setForm((f) => ({ ...f, studentId: id || undefined, month: undefined }))
     setLedgerMonths([])
+    setStudentBalance(null)
     if (!id) return
     getStudentLedger(id).then((l) => {
       setLedgerMonths(l.months)
+      setStudentBalance(l.balance)
       const due = l.months.find((m) => m.remaining > 0)
       const target = due ?? l.months[l.months.length - 1]
       setForm((f) => ({
@@ -192,6 +235,8 @@ export function TransactionFormModal({ open, onClose, onSubmit, initial, preset,
     setTuitionTeacherId('')
     setClassId('')
     setLedgerMonths([])
+    setStudentBalance(null)
+    setStudentQuery('')
     // ⚠️ Maosh TURI ham tozalanadi: ilgari u yopilganda qolib ketardi va keyingi
     // o'qituvchida "O'rinbosarlik haqi" tanlovi kuchda bo'lardi. Uning `substituteFee`si 0
     // bo'lsa "Maosh turi" select'i UMUMAN ko'rinmaydi, ya'ni summa jimgina 0 ga tushar va
@@ -302,6 +347,8 @@ export function TransactionFormModal({ open, onClose, onSubmit, initial, preset,
     setTuitionTeacherId('')
     setClassId('')
     setLedgerMonths([])
+    setStudentBalance(null)
+    setStudentQuery('')
     autoNoteRef.current = ''
   }
 
@@ -333,6 +380,8 @@ export function TransactionFormModal({ open, onClose, onSubmit, initial, preset,
       setTuitionTeacherId('')
       setClassId('')
       setLedgerMonths([])
+      setStudentBalance(null)
+      setStudentQuery('')
     }
     autoNoteRef.current = ''
   }
@@ -344,6 +393,9 @@ export function TransactionFormModal({ open, onClose, onSubmit, initial, preset,
     if (showTuition && !form.studentId) return
     onSubmit({
       ...form,
+      // Tur EKRANDA ko'ringani bilan yoziladi: foydalanuvchi tegmagan bo'lsa ham zaxira tur
+      // saqlanadi, aks holda jadvalda nom bo'sh chiqardi (`fallbackType` izohiga qarang).
+      typeId: form.typeId ?? fallbackType?.id,
       note: form.note?.trim() || undefined,
       // teacherId faqat oylik maosh chiqimida; studentId faqat o'quvchi to'lovida saqlanadi
       teacherId: isSalaryExpense ? form.teacherId : undefined,
@@ -393,13 +445,16 @@ export function TransactionFormModal({ open, onClose, onSubmit, initial, preset,
             ya'ni hisob-kitob avvalgidek tizim kodi bo'yicha ishlaydi.
             ⚠️ Katalog bo'sh bo'lsa (eski baza) avvalgi toifalar ro'yxati ko'rsatiladi —
             forma hech qachon bo'sh select bilan qolmaydi.
+            ⚠️ Tanlov ham bo'sh qolmaydi: `typeId` hali yo'q bo'lsa joriy TOIFAGA mos birinchi
+            tur ko'rsatiladi (`fallbackType`) va saqlashda AYNAN o'sha yoziladi — forma
+            "Turini tanlang" da qotib turmasin.
           */}
           {typeOptions.length > 0 ? (
             <DrawerSelect
-              value={form.typeId ?? ''}
+              value={form.typeId ?? fallbackType?.id ?? ''}
               onChange={(e) => changeType(e.target.value)}
             >
-              {form.typeId === undefined && <option value="">Turini tanlang</option>}
+              {!form.typeId && !fallbackType && <option value="">Turini tanlang</option>}
               {typeOptions.map((t) => (
                 <option key={t.id} value={t.id}>
                   {t.name}
@@ -507,9 +562,47 @@ export function TransactionFormModal({ open, onClose, onSubmit, initial, preset,
           </>
         )}
 
-        {/* O'quvchi to'lovi: o'qituvchi → guruh → o'quvchi → qaysi oy (o'quvchilar bo'limidagi to'lovdek) */}
+        {/* O'quvchi to'lovi: QIDIRUV (tez yo'l) yoki o'qituvchi → guruh → o'quvchi kaskadi */}
         {showTuition && (
           <>
+            <DrawerField label="O'quvchini qidirish">
+              <DrawerInput
+                type="search"
+                placeholder="Ism yoki telefon..."
+                value={studentQuery}
+                onChange={(e) => setStudentQuery(e.target.value)}
+              />
+              {/*
+                Natijalar — maydon ostida. Bosilganda o'quvchi, guruhi va o'qituvchisi BIRGA
+                to'ldiriladi (`pickStudent`), ya'ni kaskadni qo'lda bosib chiqish shart emas.
+              */}
+              {studentMatches.length > 0 && (
+                <ul className="mt-1 max-h-48 overflow-y-auto rounded-lg border border-[#dbe0e6] bg-white">
+                  {studentMatches.map((s) => (
+                    <li key={s.id}>
+                      <button
+                        type="button"
+                        onClick={() => pickStudent(s)}
+                        className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-[13px] hover:bg-[#f0f2f2]"
+                      >
+                        <span className="min-w-0">
+                          <span className="block truncate font-medium text-[#333]">{s.fullName}</span>
+                          <span className="block truncate text-[12px] text-[#6b7280]">
+                            {s.groupStates?.[0]?.name || s.className || "— guruhsiz —"}
+                          </span>
+                        </span>
+                        <span className={cn('whitespace-nowrap text-[12px] font-semibold', balanceTextCls(s.balance))}>
+                          {formatMoney(s.balance)}
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {studentQuery.trim().length >= 2 && studentMatches.length === 0 && (
+                <p className="mt-1 text-[12px] text-[#6b7280]">Topilmadi.</p>
+              )}
+            </DrawerField>
             <DrawerField label="O'qituvchini tanlang">
               <DrawerSelect
                 value={tuitionTeacherId}
@@ -559,6 +652,22 @@ export function TransactionFormModal({ open, onClose, onSubmit, initial, preset,
                 ))}
               </DrawerSelect>
             </DrawerField>
+
+            {/*
+              BALANS — kassir to'lovni kiritishdan OLDIN "qarzi bormi yoki haqdormi" ni ko'rishi
+              kerak. Manfiy = qarz (qizil), musbat = haqdorlik/avans (yashil).
+              Ranglar yagona joydan — `lib/utils.ts` (jurnal va guruh ro'yxati bilan bir xil).
+            */}
+            {form.studentId && studentBalance !== null && (
+              <DrawerField label="Balansi">
+                <p className={cn('text-[15px] font-semibold', balanceTextCls(studentBalance))}>
+                  {formatMoney(studentBalance)}
+                  <span className="ml-2 text-[12px] font-normal text-[#6b7280]">
+                    {studentBalance < 0 ? 'qarz' : studentBalance > 0 ? 'haqdor (avans)' : "qarzi yo'q"}
+                  </span>
+                </p>
+              </DrawerField>
+            )}
 
             {form.studentId && (
               <DrawerField label="Qaysi oy uchun">
