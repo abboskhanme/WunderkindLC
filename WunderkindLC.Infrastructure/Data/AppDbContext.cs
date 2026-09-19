@@ -49,6 +49,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options)
     public DbSet<CriterionGrade> CriterionGrades => Set<CriterionGrade>();
     public DbSet<StudentBallAdjustment> StudentBallAdjustments => Set<StudentBallAdjustment>();
     public DbSet<FinanceTransaction> FinanceTransactions => Set<FinanceTransaction>();
+    public DbSet<TransactionType> TransactionTypes => Set<TransactionType>();
     public DbSet<PlannedExpense> PlannedExpenses => Set<PlannedExpense>();
     public DbSet<MonthlyCharge> MonthlyCharges => Set<MonthlyCharge>();
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();

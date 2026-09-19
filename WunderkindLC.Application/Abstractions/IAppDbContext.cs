@@ -53,6 +53,7 @@ public interface IAppDbContext
     /// <summary>Ballni qo'lda tuzatish yozuvlari (per-guruh, faqat admin/superadmin).</summary>
     DbSet<StudentBallAdjustment> StudentBallAdjustments { get; }
     DbSet<FinanceTransaction> FinanceTransactions { get; }
+    DbSet<TransactionType> TransactionTypes { get; }
     DbSet<PlannedExpense> PlannedExpenses { get; }
     DbSet<MonthlyCharge> MonthlyCharges { get; }
     DbSet<AuditLog> AuditLogs { get; }

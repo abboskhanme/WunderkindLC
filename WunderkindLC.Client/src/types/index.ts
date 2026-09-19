@@ -1256,6 +1256,11 @@ export interface FinanceTransaction {
   createdBy?: string | null
   /** Kiritgan xodimning akkaunt id'si (eski yozuvlarda yo'q) — "Kiritgan" filtri shunga tayanadi */
   createdById?: string | null
+  /**
+   * Markaz katalogidagi TUR nomi ("Arenda", "Kanstovar") — jadvalda toifa yorlig'i o'rniga shu
+   * ko'rsatiladi. null/bo'sh = turi tanlanmagan yoki eski yozuv (avvalgidek toifa chiqadi).
+   */
+  typeName?: string | null
   /** Bu to'lovdan jami qancha VOZVRAT (pul qaytarish) qilingani (>0 = qisman/to'liq qaytarilgan) */
   refunded?: number
   /** Bu yozuvning O'ZI vozvrat bo'lsa — qaysi asl to'lov uchun (id) */

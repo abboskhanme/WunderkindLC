@@ -28,7 +28,9 @@ public class FinanceController(AppDbContext db, AuditService audit, AutoMessageS
         IReadOnlyDictionary<string, string> students,
         IReadOnlyDictionary<string, string> teachers,
         IReadOnlyDictionary<string, string>? groups = null,
-        IReadOnlyDictionary<string, decimal>? refunded = null) =>
+        IReadOnlyDictionary<string, decimal>? refunded = null,
+        // Markaz katalogidagi tur nomlari — berilmasa jadvalda avvalgidek toifa yorlig'i chiqadi.
+        IReadOnlyDictionary<string, string>? typeNames = null) =>
         new(t.Id, t.Date, t.Direction, t.Category, t.Amount, t.Note,
             t.StudentId, t.StudentId is not null && students.TryGetValue(t.StudentId, out var s) ? s : null,
             t.TeacherId, t.TeacherId is not null && teachers.TryGetValue(t.TeacherId, out var te) ? te : null,
@@ -38,7 +40,8 @@ public class FinanceController(AppDbContext db, AuditService audit, AutoMessageS
             t.CreatedAt == default ? null : AppClock.ToLocal(t.CreatedAt).ToString("yyyy-MM-ddTHH:mm:ss"),
             refunded is not null && refunded.TryGetValue(t.Id, out var rf) ? rf : 0m,
             t.RefundOfId,
-            t.ReceiptNo, t.PaidTime, t.CardLast4, t.CreatedBy, t.CreatedById);
+            t.ReceiptNo, t.PaidTime, t.CardLast4, t.CreatedBy, t.CreatedById,
+            t.TypeId is not null && typeNames is not null && typeNames.TryGetValue(t.TypeId, out var tn) ? tn : null);
 
     [HttpGet("transactions")]
     public async Task<ActionResult<IEnumerable<FinanceTransactionDto>>> GetTransactions(
@@ -56,7 +59,8 @@ public class FinanceController(AppDbContext db, AuditService audit, AutoMessageS
         var teachers = await TeacherNames();
         var groups = await GroupNames();
         var refunded = await RefundedByPaymentAsync();
-        return list.Select(t => ToDto(t, students, teachers, groups, refunded)).ToList();
+        var typeNames = await TypeNames();
+        return list.Select(t => ToDto(t, students, teachers, groups, refunded, typeNames)).ToList();
     }
 
     /// <summary>Har asl to'lov (paymentId) uchun jami qaytarilgan summa (vozvrat yozuvlaridan).</summary>
@@ -103,6 +107,10 @@ public class FinanceController(AppDbContext db, AuditService audit, AutoMessageS
         return ((long)(uint)hash % 1_000_000_000).ToString("D9");
     }
 
+    /// <summary>Tranzaksiya turlari: Id → nom (jadvalda toifa o'rniga markazning O'Z nomi).</summary>
+    private async Task<Dictionary<string, string>> TypeNames() =>
+        await db.TransactionTypes.AsNoTracking().ToDictionaryAsync(x => x.Id, x => x.Name);
+
     [HttpPost("transactions")]
     public async Task<ActionResult<FinanceTransactionDto>> Create(FinanceTransactionPayload p)
     {
@@ -140,7 +148,7 @@ public class FinanceController(AppDbContext db, AuditService audit, AutoMessageS
             && DateTime.UtcNow.Subtract(recentDuplicate.CreatedAt).TotalSeconds < 5)
         {
             // Idempotent: oxirgi 5s ichida bir xil qiymatli tranzaksiya — qaytaramiz.
-            return ToDto(recentDuplicate, await StudentNames(), await TeacherNames());
+            return ToDto(recentDuplicate, await StudentNames(), await TeacherNames(), typeNames: await TypeNames());
         }
 
         var tx = new FinanceTransaction
@@ -148,6 +156,8 @@ public class FinanceController(AppDbContext db, AuditService audit, AutoMessageS
             Date = p.Date,
             Direction = p.Direction,
             Category = p.Category,
+            // Tur — faqat ko'rsatish uchun; hisob-kitob `Category` da qoladi.
+            TypeId = string.IsNullOrWhiteSpace(p.TypeId) ? null : p.TypeId,
             Amount = p.Amount,
             Note = p.Note,
             StudentId = p.StudentId,
@@ -211,7 +221,7 @@ public class FinanceController(AppDbContext db, AuditService audit, AutoMessageS
             }
         }
 
-        return ToDto(tx, await StudentNames(), await TeacherNames());
+        return ToDto(tx, await StudentNames(), await TeacherNames(), typeNames: await TypeNames());
     }
 
     [HttpPut("transactions/{id}")]
@@ -247,6 +257,7 @@ public class FinanceController(AppDbContext db, AuditService audit, AutoMessageS
         tx.Date = p.Date;
         tx.Direction = p.Direction;
         tx.Category = p.Category;
+        tx.TypeId = string.IsNullOrWhiteSpace(p.TypeId) ? null : p.TypeId;
         tx.Amount = p.Amount;
         tx.Note = p.Note;
         tx.StudentId = p.StudentId;
@@ -280,7 +291,7 @@ public class FinanceController(AppDbContext db, AuditService audit, AutoMessageS
             studentId: tx.StudentId, teacherId: tx.TeacherId);
 
         await db.SaveChangesAsync();
-        return ToDto(tx, await StudentNames(), await TeacherNames());
+        return ToDto(tx, await StudentNames(), await TeacherNames(), typeNames: await TypeNames());
     }
 
     /// <summary>O'qituvchilarga berilgan maoshlar hisoboti (davr bo'yicha): oylik, kerakli
@@ -489,7 +500,7 @@ public class FinanceController(AppDbContext db, AuditService audit, AutoMessageS
             before: before, after: AuditService.Snapshot(tx), studentId: tx.StudentId);
 
         await db.SaveChangesAsync();
-        return ToDto(tx, await StudentNames(), await TeacherNames());
+        return ToDto(tx, await StudentNames(), await TeacherNames(), typeNames: await TypeNames());
     }
 
     /// <summary>
@@ -569,7 +580,7 @@ public class FinanceController(AppDbContext db, AuditService audit, AutoMessageS
         var students = await StudentNames();
         var teachers = await TeacherNames();
         var groups = await GroupNames();
-        return ToDto(refund, students, teachers, groups);
+        return ToDto(refund, students, teachers, groups, typeNames: await TypeNames());
     }
 
     /// <summary>VOZVRATLAR TARIXI — qaytarilgan pullar (Direction=expense, Category=refund), asl to'lov ma'lumoti bilan.</summary>

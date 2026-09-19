@@ -102,3 +102,12 @@
 - [2026-09-18] Jarima → stored as an ordinary expense transaction with category "penalty" (no new table) → it then flows into kassa, kirim-chiqim and P&L like any other expense.
 - [2026-09-18] O'quvchilar → Ota-ona → a student list with father/mother name+phone+balance; our app-parent accounts page moved to Future → that is what edutizim's page shows; our old page is about the parent MOBILE APP (device, last login), a different question.
 - [2026-09-18] Students list keeps our columns and gains edutizim's missing ones (To'lov sanasi, Yaratilgan sanasi, Manba, Moderator) instead of dropping Guruh/Holat/Jinsi → staff use those daily and edutizim simply lacks them.
+- [2026-09-19] edutizimdagi "Tranzaksiya turi" erkin tahrirlanadi, bizda esa toifa KODI butun
+  moliya mantig'ini boshqaradi (tuition/salary/penalty) → har tur `BaseCategory` orqali mavjud
+  kodga bog'landi (`ContactStage.BaseStatus` naqshi) → erkin nom ham bo'ladi, hisob-kitob ham
+  buzilmaydi
+- [2026-09-19] Tur bo'yicha pul yo'nalishi ALOHIDA so'ralmaydi (bo'limdan kelib chiqadi:
+  vaucher→kirim, jarima→chiqim) → aks holda "chiqim bo'limidagi kirim turi" kabi zid yozuv
+  paydo bo'lardi
+- [2026-09-19] Turlar seed'i FAQAT jadval bo'sh bo'lganda yoziladi (tizim ustunlaridan farqli)
+  → foydalanuvchi o'chirgan tur har restartda qayta tug'ilmasin

@@ -1634,6 +1634,33 @@ public class PlannedExpense
     public string? CreatedBy { get; set; }
 }
 
+/// <summary>
+/// TRANZAKSIYA TURI — Moliya → «Tranzaksiya turi» ma'lumotnomasi (edutizim `/finance/payment-type`).
+/// Markaz o'z nomlarini kiritadi: "Arenda", "Kanstovar", "SAT oylik to'lovlari" ...
+///
+/// <para>⚠️ <b>ENG MUHIM QOIDA — tur HISOB-KITOBNI o'zgartirmaydi.</b> Butun moliya mantig'i
+/// <see cref="FinanceTransaction.Category"/> (tizim kodi: <c>tuition</c>, <c>salary</c>,
+/// <c>penalty</c> ...) bo'yicha ishlaydi: maosh foizi, oylik hisobi, kassir hisoboti, P&amp;L,
+/// «Jarima» sahifasi. Erkin nomlar bu kodlarni ALMASHTIRMAYDI — har tur
+/// <see cref="BaseCategory"/> orqali mavjud kodga BOG'LANADI
+/// (<c>.claude/rules/contacts.md</c> §3.66 dagi <c>ContactStage.BaseStatus</c> naqshi bilan
+/// AYNAN bir xil sabab). Yangi ko'rsatkich yozsangiz — <see cref="Id"/> ga QARAMANG.</para>
+/// </summary>
+public class TransactionType
+{
+    public string Id { get; set; } = Guid.NewGuid().ToString();
+    /// <summary>Foydalanuvchi ko'radigan nom ("O'quvchi to'ladi", "Arenda").</summary>
+    public string Name { get; set; } = string.Empty;
+    /// <summary>Qaysi bo'limda turadi — edutizimdagi 4 tab: kirim | chiqim | vaucher | jarima.</summary>
+    public string Kind { get; set; } = "kirim";
+    /// <summary>Pul yo'nalishi: income (kirim) | expense (chiqim). Vaucher — kirim, jarima — chiqim.</summary>
+    public string Direction { get; set; } = "income";
+    /// <summary>TIZIM toifasi (<see cref="FinanceTransaction.Category"/>) — hisob-kitob AYNAN shunga qaraydi.</summary>
+    public string BaseCategory { get; set; } = "other";
+    /// <summary>Ro'yxatdagi tartib (kichikdan kattaga).</summary>
+    public int Order { get; set; }
+}
+
 public class FinanceTransaction
 {
     public string Id { get; set; } = Guid.NewGuid().ToString();
@@ -1643,6 +1670,10 @@ public class FinanceTransaction
     public string Direction { get; set; } = "income";
     /// <summary>Toifa: tuition, salary, utilities, supplies, rent, donation, other ...</summary>
     public string Category { get; set; } = "other";
+    /// <summary>Markaz katalogidagi TUR (<see cref="TransactionType"/>.Id) — faqat KO'RSATISH uchun:
+    /// jadvalda toifa kodi o'rniga markazning o'z nomi chiqadi. null = eski yozuv yoki turi
+    /// tanlanmagan amal. ⚠️ Hisob-kitob bunga QARAMAYDI — u <see cref="Category"/> da.</summary>
+    public string? TypeId { get; set; }
     /// <summary>Summa (har doim musbat; yo'nalish belgini aniqlaydi).</summary>
     public decimal Amount { get; set; }
     public string? Note { get; set; }

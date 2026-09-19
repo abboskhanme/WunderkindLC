@@ -774,6 +774,26 @@ using (var scope = app.Services.CreateScope())
     }
 }
 
+// TRANZAKSIYA TURLARI — markazning o'z ro'yxati (edutizimdan ko'chirilgan).
+// ⚠️ FAQAT jadval BO'SH bo'lganda (ContactStages naqshidan farqli): bu foydalanuvchi
+// boshqaradigan katalog, ya'ni o'chirilgan tur har restartda QAYTA tug'ilmasligi kerak.
+{
+    try
+    {
+        if (!db.TransactionTypes.Any())
+        {
+            db.TransactionTypes.AddRange(TransactionTypeCatalog.SeedRows());
+            db.SaveChanges();
+            app.Logger.LogInformation("[seed] {Count} ta tranzaksiya turi yaratildi",
+                TransactionTypeCatalog.Seed.Length);
+        }
+    }
+    catch (Exception ex)
+    {
+        app.Logger.LogWarning(ex, "[seed] tranzaksiya turlari seed qilinmadi");
+    }
+}
+
 // KPI: rol QOIDALARI (Excel konstantalari) va kunlik CHEKLIST shablonlari.
 // IDEMPOTENT — mavjud versiya/shablon HECH QACHON qayta yozilmaydi, faqat yo'q bo'lgani
 // qo'shiladi (rahbarning «Qoidalar» sahifasidagi tahriri restartda yo'qolmasin).

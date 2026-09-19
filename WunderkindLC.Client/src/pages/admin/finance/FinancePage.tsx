@@ -292,7 +292,7 @@ export function FinancePage() {
       visibleTx.map((t) => [
         formatDate(t.date),
         financeDirectionLabels[t.direction],
-        financeCategoryLabel(t.category),
+        t.typeName || financeCategoryLabel(t.category, t.direction),
         t.direction === 'income' && t.method ? paymentMethodLabel(t.method) : '',
         t.note ?? '',
         String(t.amount),
@@ -685,7 +685,7 @@ export function FinancePage() {
                               {financeDirectionLabels[t.direction]}
                             </Badge>
                           </td>
-                          <td className="text-slate-600">{financeCategoryLabel(t.category)}</td>
+                          <td className="text-slate-600">{t.typeName || financeCategoryLabel(t.category, t.direction)}</td>
                           <td>
                             {t.direction === 'income' && t.method ? (
                               <Badge tone="blue">{paymentMethodLabel(t.method)}</Badge>

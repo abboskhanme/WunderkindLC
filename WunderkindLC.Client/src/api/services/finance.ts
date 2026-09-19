@@ -31,6 +31,11 @@ export interface FinanceTransactionPayload {
   date: string
   direction: FinanceDirection
   category: string
+  /**
+   * Markaz katalogidagi TUR (`TransactionType.id`) — faqat KO'RSATISH uchun: jadvalda toifa
+   * kodi o'rniga markazning o'z nomi chiqadi. Hisob-kitob avvalgidek `category` ga qaraydi.
+   */
+  typeId?: string
   amount: number
   note?: string
   studentId?: string
@@ -687,4 +692,49 @@ function cleanParams(params: object): Record<string, unknown> {
   return Object.fromEntries(
     Object.entries(params).filter(([, v]) => v !== undefined && v !== null && v !== ''),
   )
+}
+
+/**
+ * TRANZAKSIYA TURLARI — Moliya → «Tranzaksiya turi» ma'lumotnomasi.
+ *
+ * ⚠️ `baseCategory` — TIZIM toifasi (`tuition`, `salary`, `penalty` ...). Hisob-kitob AYNAN
+ * shunga qaraydi, erkin `name` esa faqat ko'rsatish uchun (server tomondagi izohga qarang).
+ */
+export interface TransactionType {
+  id: string
+  name: string
+  /** kirim | chiqim | vaucher | jarima */
+  kind: string
+  /** income | expense — `kind` dan kelib chiqadi, serverda hisoblanadi */
+  direction: FinanceDirection
+  baseCategory: string
+  order: number
+}
+
+export interface TransactionTypePayload {
+  name: string
+  kind: string
+  baseCategory: string
+}
+
+export async function getTransactionTypes(): Promise<TransactionType[]> {
+  const { data } = await api.get<TransactionType[]>('/admin/transaction-types')
+  return data
+}
+
+export async function createTransactionType(payload: TransactionTypePayload): Promise<TransactionType> {
+  const { data } = await api.post<TransactionType>('/admin/transaction-types', payload)
+  return data
+}
+
+export async function updateTransactionType(
+  id: string,
+  payload: TransactionTypePayload,
+): Promise<TransactionType> {
+  const { data } = await api.put<TransactionType>(`/admin/transaction-types/${id}`, payload)
+  return data
+}
+
+export async function deleteTransactionType(id: string): Promise<void> {
+  await api.delete(`/admin/transaction-types/${id}`)
 }

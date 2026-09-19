@@ -202,7 +202,7 @@ export function DailyReportCard({ initialMonth }: { initialMonth: string }) {
                             {t.direction === 'income' ? 'Kirim' : 'Chiqim'}
                           </Badge>
                         </td>
-                        <td className="text-slate-600">{financeCategoryLabel(t.category)}</td>
+                        <td className="text-slate-600">{t.typeName || financeCategoryLabel(t.category, t.direction)}</td>
                         <td>
                           {t.direction === 'income' && t.method ? (
                             <Badge tone="blue">{paymentMethodLabel(t.method)}</Badge>

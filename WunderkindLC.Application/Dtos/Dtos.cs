@@ -1592,7 +1592,10 @@ public record FinanceTransactionDto(
     string? CreatedBy = null,
     // Kiritgan xodimning AKKAUNT id'si (eski yozuvlarda null) — "Kiritgan" filtri ism emas,
     // aynan akkaunt bo'yicha ajratishi uchun (bir xil ismli ikki xodim aralashmasin).
-    string? CreatedById = null);
+    string? CreatedById = null,
+    // Markaz katalogidagi TUR nomi ("Arenda", "Kanstovar") — jadvalda toifa kodi o'rniga shu
+    // ko'rinadi. null = turi tanlanmagan/eski yozuv, u holda avvalgidek toifa yorlig'i chiqadi.
+    string? TypeName = null);
 
 /// <summary>
 /// "Kiritgan" filtri uchun bitta variant — TO'LOV KIRITA OLADIGAN xodim/admin. Ro'yxatga
@@ -1640,7 +1643,10 @@ public record FinanceTransactionPayload(
     string Date, string Direction, string Category, decimal Amount, string? Note,
     string? StudentId, string? TeacherId, string? Month = null, string? GroupId = null, string? Comment = null,
     string? Method = null, string? ReceiptNo = null, string? PaidTime = null, bool ForceReceipt = false,
-    string? CardLast4 = null);
+    string? CardLast4 = null,
+    // Markaz katalogidagi tur (TransactionType.Id) — FAQAT ko'rsatish uchun; hisob-kitob
+    // avvalgidek `Category` ga qaraydi (TransactionType izohiga qarang).
+    string? TypeId = null);
 public record CategoryAmountDto(string Category, decimal Amount);
 public record FinanceSummaryDto(
     decimal TotalIncome, decimal TotalExpense, decimal Net,

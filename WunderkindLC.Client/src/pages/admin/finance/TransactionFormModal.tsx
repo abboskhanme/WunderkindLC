@@ -24,6 +24,7 @@ import {
   DrawerTextarea,
 } from '@/components/ui/RightDrawer'
 import { categoriesByDirection, financeDirectionLabels, formatMonth, monthStatusLabels, paymentMethods } from '@/config/constants'
+import { getTransactionTypes, type TransactionType } from '@/api/services/finance'
 import { formatMoney, cn } from '@/lib/utils'
 
 interface Props {
@@ -73,6 +74,10 @@ export function TransactionFormModal({ open, onClose, onSubmit, initial, preset,
   // ⚠️ E'LON QILISH JOYI MUHIM: bu holat quyidagi `[open]` effektidan OLDIN turishi shart,
   // aks holda modal yopilganda tozalab bo'lmaydi (JS'da `useState` hoisting qilinmaydi).
   const [salaryType, setSalaryType] = useState<'all' | 'main' | 'substitute'>('all')
+  // Markazning tranzaksiya turlari (Moliya → «Tranzaksiya turi»). Bir marta yuklanadi.
+  const [txTypes, setTxTypes] = useState<TransactionType[]>([])
+
+  const typeOptions = txTypes.filter((t) => t.direction === form.direction)
 
   const isSalaryExpense = isSalaryCat(form.direction, form.category)
   const isTuitionIncome = form.direction === 'income' && form.category === 'tuition'
@@ -257,6 +262,23 @@ export function TransactionFormModal({ open, onClose, onSubmit, initial, preset,
     // eslint-disable-next-line react-hooks/exhaustive-deps -- teachers nomini faqat prefill uchun ishlatamiz
   }, [open, isSalaryExpense, form.teacherId, month, initial, salaryType])
 
+  // ⚠️ setState EFFEKT ICHIDA to'g'ridan-to'g'ri chaqirilmaydi: so'rov effektda bajariladi,
+  // holat esa javob kelgach yangilanadi (`react-hooks/set-state-in-effect`).
+  useEffect(() => {
+    if (!open) return
+    let active = true
+    getTransactionTypes()
+      .then((list) => {
+        if (active) setTxTypes(list)
+      })
+      .catch(() => {
+        // Katalog yuklanmasa forma eski toifalar bilan ishlayveradi (pastdagi fallback).
+      })
+    return () => {
+      active = false
+    }
+  }, [open])
+
   const update = <K extends keyof FinanceTransactionPayload>(
     key: K,
     value: FinanceTransactionPayload[K],
@@ -281,6 +303,18 @@ export function TransactionFormModal({ open, onClose, onSubmit, initial, preset,
     setClassId('')
     setLedgerMonths([])
     autoNoteRef.current = ''
+  }
+
+  /**
+   * Markaz turini tanlash: `typeId` saqlanadi (jadvalda nomi chiqishi uchun), `category` esa
+   * turning tizim toifasidan olinadi — qolgan mantiq (maosh oyi, o'quvchi tanlash) avvalgidek
+   * AYNAN toifa bo'yicha ishlaydi.
+   */
+  const changeType = (typeId: string) => {
+    const t = typeOptions.find((x) => x.id === typeId)
+    if (!t) return
+    setForm((f) => ({ ...f, typeId }))
+    changeCategory(t.baseCategory)
   }
 
   const changeCategory = (category: string) => {
@@ -352,14 +386,35 @@ export function TransactionFormModal({ open, onClose, onSubmit, initial, preset,
             </DrawerSelect>
           </DrawerField>
         )}
-        <DrawerField label={lockedDirection ? 'Tranzaksiya' : 'Toifa'}>
-          <DrawerSelect value={form.category} onChange={(e) => changeCategory(e.target.value)}>
-            {categoriesByDirection[form.direction].map((c) => (
-              <option key={c.value} value={c.value}>
-                {c.label}
-              </option>
-            ))}
-          </DrawerSelect>
+        <DrawerField label={lockedDirection ? 'Tranzaksiya' : 'Turi'}>
+          {/*
+            Markazning O'Z turlari («Arenda», «Kanstovar») — Moliya → «Tranzaksiya turi»
+            katalogidan. Tanlanganda toifa (`category`) turning `baseCategory` sidan olinadi,
+            ya'ni hisob-kitob avvalgidek tizim kodi bo'yicha ishlaydi.
+            ⚠️ Katalog bo'sh bo'lsa (eski baza) avvalgi toifalar ro'yxati ko'rsatiladi —
+            forma hech qachon bo'sh select bilan qolmaydi.
+          */}
+          {typeOptions.length > 0 ? (
+            <DrawerSelect
+              value={form.typeId ?? ''}
+              onChange={(e) => changeType(e.target.value)}
+            >
+              {form.typeId === undefined && <option value="">Turini tanlang</option>}
+              {typeOptions.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name}
+                </option>
+              ))}
+            </DrawerSelect>
+          ) : (
+            <DrawerSelect value={form.category} onChange={(e) => changeCategory(e.target.value)}>
+              {categoriesByDirection[form.direction].map((c) => (
+                <option key={c.value} value={c.value}>
+                  {c.label}
+                </option>
+              ))}
+            </DrawerSelect>
+          )}
         </DrawerField>
 
         {/* Oylik maosh: o'qituvchi tanlash + shu oy holati */}
