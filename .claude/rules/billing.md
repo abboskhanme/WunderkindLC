@@ -383,3 +383,25 @@ paths:
   `SalaryReportRowDto` `Deduction/MissedLessons`. **Sabab ko'rinadi:** Moliya → O'qituvchilar jadvalida
   "Ushlanma" ustuni, `TeacherSalaryDetailModal`da oy qatorini bosib guruh+sanalar, o'qituvchining
   `SalaryPage`ida ham xuddi shunday.
+
+## TRANZAKSIYA TURLARI — markaz katalogi (migratsiya `AddTransactionTypes`)
+
+Moliya → «Tranzaksiya turi»: markaz o'z nomlarini kiritadi («Arenda», «Kanstovar», «SAT oylik
+to'lovlari»), to'rt bo'limda — **kirim · chiqim · vaucher · jarima**. Qo'shish/tahrirlash/
+o'chirish — `tasks`dagi kabi oddiy CRUD (`TransactionTypesController`, ruxsat `finance.main`).
+
+⚠️ **ENG MUHIM — TUR HISOB-KITOBNI O'ZGARTIRMAYDI.** Butun moliya mantig'i avvalgidek
+`FinanceTransaction.Category` (tizim kodi: `tuition`, `salary`, `penalty`, `rent` ...) bo'yicha
+ishlaydi: maosh foizi (`SalaryLedger`), oylik hisobi, kassir hisoboti, P&L, «Jarima» sahifasi.
+Har tur `TransactionType.BaseCategory` orqali AYNAN shu kodlardan biriga bog'lanadi —
+`.claude/rules/contacts.md` §3.66 dagi `ContactStage.BaseStatus` bilan bir xil sabab.
+**Yangi ko'rsatkich yozsangiz `TypeId` ga QARAMANG.**
+
+- `FinanceTransaction.TypeId` — FAQAT ko'rsatish uchun (jadvalda toifa yorlig'i o'rniga markazning
+  o'z nomi). null = eski yozuv, u holda avvalgidek `financeCategoryLabel(Category)` chiqadi.
+- Yo'nalish (`income`/`expense`) ALOHIDA so'ralmaydi — bo'limdan kelib chiqadi
+  (`TransactionTypeCatalog.DirectionOf`: vaucher → kirim, jarima → chiqim).
+- Seed FAQAT jadval BO'SH bo'lganda yoziladi (`Program.cs`) — foydalanuvchi o'chirgan tur har
+  restartda qayta tug'ilmasin. Tizim ustunlaridagi "yo'q bo'lgani qo'shiladi" naqshi BU YERDA EMAS.
+- ISHLATILGAN tur o'chirilmaydi (400 + nechta amalda ekani) — eski qatorlar nomsiz qolmasin.
+- Testlar: `TransactionTypeCatalogTests` (har turning toifasi HAQIQATAN mavjudligini qulflaydi).

@@ -51,6 +51,17 @@ Ba'zi hisobot alohida sahifa emas, tab (Moliya → "Bonus", Kitoblar → "Analit
 Hozir qo'llab-quvvatlaydiganlar: `FinancePage` · `BookSalesPage` · `ContactQueuePage`.
 Yangi tab-hisobotga havola bersangiz — o'sha sahifaga ham `tabFromUrl` qo'shing.
 
+⚠️ **ISTISNO — `FinancePage` (2026-09-19 dan):** u yerda sahifa ichidagi tab qatori UMUMAN
+yo'q, ko'rinish faqat yon menyudan tanlanadi (Moliya guruhi har `?tab=` ga alohida band
+beradi). Shuning uchun u tabni `useState` initializer'ida emas, HAR RENDERDA o'qiydi —
+`tabFromUrl(FINANCE_TABS, 'overview', location.search)`. Sabab: menyu bandi bosilganda
+komponent qayta yaratilmaydi, faqat manzil o'zgaradi — initializer esa bir marta ishlaydi va
+sahifa birinchi ko'rinishda qotib qolardi. Yuqoridagi "tarixga yozuv qo'shilmasin" mulohazasi
+bu yerda kuchsiz: navigatsiyaning O'ZI menyudan kelyapti, ya'ni tarix baribir yoziladi.
+
+⚠️ Shu sabab Moliyaning HAR BIR `?tab=` ko'rinishi menyuda bo'lishi SHART — aks holda u
+foydalanuvchi uchun butunlay yo'qoladi. `reports.test.ts` buni qulflaydi.
+
 ## 5. RUXSAT
 
 Hisobotlarning ruxsatlari ARALASH (`leads.stats`, `finance.main`, `audit`, `contacts` ...),
