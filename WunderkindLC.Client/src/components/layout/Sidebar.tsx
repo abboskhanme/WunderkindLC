@@ -193,10 +193,15 @@ export function Sidebar({ open, collapsed = false, onToggleCollapse, onNavigate 
           <Flyout
             anchor={anchor}
             title={collapsed ? flyoutItem.label : undefined}
+            wide={flyoutItem.columns}
             onMouseEnter={cancelClose}
             onMouseLeave={scheduleClose}
           >
-            <FlyoutLinks items={flyoutItem.children!} onNavigate={onNavigate} />
+            {flyoutItem.columns ? (
+              <FlyoutColumns items={flyoutItem.children!} onNavigate={onNavigate} />
+            ) : (
+              <FlyoutLinks items={flyoutItem.children!} onNavigate={onNavigate} />
+            )}
           </Flyout>,
           document.body,
         )}
@@ -260,6 +265,36 @@ function FlyoutLinks({ items, onNavigate }: { items: NavChild[]; onNavigate: () 
 }
 
 /**
+ * Kichik guruhlar YONMA-YON ustun bo'lib (edutizimdagi "Moliya" ro'yxati). Faqat
+ * `NavItem.columns` bo'lganda ishlatiladi; qolgan guruhlar avvalgidek ustma-ust chiziladi.
+ *
+ * ⚠️ Ruxsat filtri allaqachon `filterNav` da bajarilgan — bo'sh qolgan ustun bu yerga
+ * umuman kelmaydi, shuning uchun qo'shimcha tekshiruv YO'Q.
+ */
+function FlyoutColumns({ items, onNavigate }: { items: NavChild[]; onNavigate: () => void }) {
+  return (
+    <div className="flex items-stretch">
+      {items.map((col, i) => (
+        <div
+          key={col.to}
+          // ⚠️ `w-max` + `whitespace-nowrap`: band nomi ikki qatorga SINMASIN
+          // ("Rejalashtirilgan xarajatlar") — ustun mazmuniga qarab kengayadi.
+          className={cn(
+            'w-max min-w-[188px] px-2 [&_a]:whitespace-nowrap',
+            i > 0 && 'border-l border-[#eceff2]',
+          )}
+        >
+          <p className="px-2.5 pb-1.5 pt-1 text-[11px] font-bold uppercase tracking-wide text-[#949494]">
+            {col.label}
+          </p>
+          <FlyoutLinks items={col.children ?? []} onNavigate={onNavigate} />
+        </div>
+      ))}
+    </div>
+  )
+}
+
+/**
  * Yon ro'yxat (flyout) — `position: fixed`, guruh bandining o'ng tomonida. Pastga sig'masa
  * pastki cheti band bilan tekislanadi (edutizimda "Sozlamalar" ro'yxati shunday yuqoriga ochiladi).
  */
@@ -267,12 +302,15 @@ function Flyout({
   anchor,
   title,
   children,
+  wide,
   onMouseEnter,
   onMouseLeave,
 }: {
   anchor: DOMRect
   title?: string
   children: React.ReactNode
+  /** Ustunli ro'yxat — kengligi mazmunga qarab o'sadi (`NavItem.columns`). */
+  wide?: boolean
   onMouseEnter: () => void
   onMouseLeave: () => void
 }) {
@@ -293,7 +331,10 @@ function Flyout({
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
       style={{ top, left: anchor.right + 10 }}
-      className="fixed z-50 w-[220px] rounded-xl border border-[#dbe0e6] bg-white shadow-[0_6px_20px_-4px_rgba(24,39,75,0.08),0_12px_48px_-4px_rgba(24,39,75,0.10)]"
+      className={cn(
+        'fixed z-50 rounded-xl border border-[#dbe0e6] bg-white shadow-[0_6px_20px_-4px_rgba(24,39,75,0.08),0_12px_48px_-4px_rgba(24,39,75,0.10)]',
+        wide ? 'w-auto' : 'w-[220px]',
+      )}
     >
       {/* Band tomonga qaragan kichik strelka (edutizimdagi popover belgisi) */}
       <span

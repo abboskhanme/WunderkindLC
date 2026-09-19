@@ -74,6 +74,11 @@ export interface NavItem {
   permAny?: string[]
   /** Faqat shu rollarga ko'rinadi (yo'q = barcha rollarga) */
   roles?: Role[]
+  /**
+   * Yon ro'yxat (flyout) ichidagi kichik guruhlar YONMA-YON ustun bo'lib chizilsin
+   * (edutizimdagi "Moliya"). Yo'q bo'lsa — avvalgidek ustma-ust.
+   */
+  columns?: boolean
 }
 
 /** Har bir rol uchun yon menyu (sidebar) elementlari */
@@ -138,24 +143,45 @@ export const navByRole: Record<Role, NavItem[]> = {
       label: 'Moliya',
       to: '#moliya',
       icon: IconWallet,
+      // ⚠️ USTUNLARGA BO'LINGAN (edutizim): 14 ta band bitta ustunda juda uzun ro'yxat bo'lardi.
+      // `columns: true` — flyout guruhlarni YONMA-YON chizadi (Sidebar → FlyoutColumns).
+      columns: true,
       children: [
-        // edutizimdagi "Kassalar" — kassa QOLDIQLARI/kesimi. Bizdagi eng yaqin sahifa —
-        // Moliya → "Kassirlar" tabi. To'lov QABUL QILISH oynamiz ("Kassa") edutizimda alohida
-        // band emas (u yerda Kirim paneli), shuning uchun u "Future" da.
-        { label: 'Kassalar', to: '/admin/finance?tab=cashiers', perm: 'finance.main' },
-        { label: 'Bonus', to: '/admin/finance?tab=bonuses', perm: 'finance.main' },
-        { label: 'Jarima', to: '/admin/moliya/jarima', perm: 'finance.main' },
-        { label: 'Oylik chiqarish', to: '/admin/finance?tab=teachers', perm: 'finance.main' },
-        { label: 'Kirim chiqim', to: '/admin/moliya/kirim-chiqim', perm: 'finance.main' },
-        { label: 'Tushum rejasi', to: '/admin/moliya/tushum-rejasi', perm: 'finance.main' },
-        { label: 'Moliya analitikasi', to: '/admin/moliya/analitika', perm: 'finance.main' },
-        { label: 'Moliya hisobotlari', to: '/admin/moliya/hisobotlar', perm: 'finance.main' },
-        { label: "Moliya hisobotlari (P&L)", to: '/admin/moliya/pnl', perm: 'finance.main' },
-        { label: 'Pul oqimi', to: '/admin/moliya/pul-oqimi', perm: 'finance.main' },
-        { label: 'Tranzaksiya turi', to: '/admin/moliya/tranzaksiya-turi', perm: 'finance.main' },
-        { label: 'Tranzakisyalar', to: '/admin/finance?tab=payments', perm: 'finance.main' },
-        { label: 'Rejalashtirilgan xarajatlar', to: '/admin/moliya/rejalashtirilgan-xarajatlar', perm: 'finance.main' },
-        { label: 'Shartnoma', to: '/admin/contracts', perm: 'contracts' },
+        {
+          label: 'Amallar',
+          to: '#moliya-amallar',
+          children: [
+            // edutizimdagi "Kassalar" — kassa QOLDIQLARI/kesimi. Bizdagi eng yaqin sahifa —
+            // Moliya → "Kassirlar" tabi. To'lov QABUL QILISH oynamiz ("Kassa") edutizimda alohida
+            // band emas (u yerda Kirim paneli), shuning uchun u "Future" da.
+            { label: 'Kassalar', to: '/admin/finance?tab=cashiers', perm: 'finance.main' },
+            { label: 'Bonus', to: '/admin/finance?tab=bonuses', perm: 'finance.main' },
+            { label: 'Jarima', to: '/admin/moliya/jarima', perm: 'finance.main' },
+            { label: 'Oylik chiqarish', to: '/admin/finance?tab=teachers', perm: 'finance.main' },
+          ],
+        },
+        {
+          label: 'Hisobotlar',
+          to: '#moliya-hisobotlar',
+          children: [
+            { label: 'Kirim chiqim', to: '/admin/moliya/kirim-chiqim', perm: 'finance.main' },
+            { label: 'Tushum rejasi', to: '/admin/moliya/tushum-rejasi', perm: 'finance.main' },
+            { label: 'Moliya analitikasi', to: '/admin/moliya/analitika', perm: 'finance.main' },
+            { label: 'Moliya hisobotlari', to: '/admin/moliya/hisobotlar', perm: 'finance.main' },
+            { label: "Moliya hisobotlari (P&L)", to: '/admin/moliya/pnl', perm: 'finance.main' },
+            { label: 'Pul oqimi', to: '/admin/moliya/pul-oqimi', perm: 'finance.main' },
+          ],
+        },
+        {
+          label: "Ma'lumotlar",
+          to: '#moliya-malumotlar',
+          children: [
+            { label: 'Tranzaksiya turi', to: '/admin/moliya/tranzaksiya-turi', perm: 'finance.main' },
+            { label: 'Tranzakisyalar', to: '/admin/finance?tab=payments', perm: 'finance.main' },
+            { label: 'Rejalashtirilgan xarajatlar', to: '/admin/moliya/rejalashtirilgan-xarajatlar', perm: 'finance.main' },
+            { label: 'Shartnoma', to: '/admin/contracts', perm: 'contracts' },
+          ],
+        },
       ],
     },
     {
