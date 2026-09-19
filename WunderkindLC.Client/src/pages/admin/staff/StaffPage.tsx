@@ -315,11 +315,22 @@ export function StaffPage() {
                             : 'Superadmin qilish'}
                       </Button>
                     )}
-                    {isStaffRow && (
+                    {/*
+                      ⚠️ «Login/parol» SUPERADMIN qilingan xodimda ham ko'rinadi (faqat
+                      superadminga) — aks holda rol berilishi bilan akkauntning parolini
+                      ko'rish ham, tiklash ham imkonsiz bo'lib qolardi. Tahrir/o'chirish esa
+                      faqat oddiy xodimda: superadminning bo'lim ruxsatlari umuman
+                      tekshirilmaydi, o'chirish esa avval rolni qaytarishni talab qiladi.
+                    */}
+                    {(isStaffRow || (canManageRoles && !isMe)) && (
                       <div className="flex items-center gap-0.5">
                         <IconBtn icon={Eye} title="Login/parol" onClick={() => showCredentials(s)} />
-                        <IconBtn icon={Pencil} title="Tahrirlash" onClick={() => openEdit(s)} />
-                        <IconBtn icon={Trash2} title="O'chirish" danger onClick={() => handleDelete(s)} />
+                        {isStaffRow && (
+                          <>
+                            <IconBtn icon={Pencil} title="Tahrirlash" onClick={() => openEdit(s)} />
+                            <IconBtn icon={Trash2} title="O'chirish" danger onClick={() => handleDelete(s)} />
+                          </>
+                        )}
                       </div>
                     )}
                   </div>

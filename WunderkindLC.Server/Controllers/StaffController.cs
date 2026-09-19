@@ -164,13 +164,19 @@ public class StaffController(AppDbContext db, AuditService audit) : ControllerBa
     /// <para>GET odatda xodim uchun ochiq bo'lsa-da (bo'limlararo o'qish uchun), bu endpoint
     /// AKKAUNT MA'LUMOTINI (login va dastlabki parol) qaytargani uchun MAXSUS tekshiriladi —
     /// faqat superadmin/admin yoki "Xodimlar" bo'limiga TO'LIQ ruxsati bor xodim. Aks holda
-    /// bo'lim ruxsati yo'q istalgan xodim boshqalarning parolini o'qib olardi.</para></summary>
+    /// bo'lim ruxsati yo'q istalgan xodim boshqalarning parolini o'qib olardi.</para>
+    /// <para>⚠️ Xodim SUPERADMIN (yoki admin) qilingan bo'lsa ham login/parol ko'rinishi kerak —
+    /// aks holda rol berilishi bilan akkaunt boshqarib bo'lmas holga tushardi. Lekin bunday
+    /// akkauntni FAQAT superadminning O'ZI ocha oladi (<see cref="CanManageRoles"/>): "Xodimlar"
+    /// bo'limiga to'liq ruxsatli oddiy xodim superadminning parolini o'qib, uning nomidan kirib
+    /// olardi — huquq oshirish.</para></summary>
     [HttpGet("{id}/credentials")]
     public async Task<ActionResult<CredentialsDto>> Credentials(string id)
     {
         if (!AdminPermAttribute.HasFullAccess(User, "staff")) return Forbid();
         var user = await db.Users.FindAsync(id);
-        if (user is null || user.Role != Roles.Staff) return NotFound();
+        if (user is null || !PanelRoles.Contains(user.Role)) return NotFound();
+        if (user.Role != Roles.Staff && !CanManageRoles) return Forbid();
         return new CredentialsDto(user.Email, user.InitialPassword ?? "", user.Role);
     }
 
@@ -180,7 +186,10 @@ public class StaffController(AppDbContext db, AuditService audit) : ControllerBa
     public async Task<ActionResult<CredentialsDto>> ResetPassword(string id)
     {
         var user = await db.Users.FindAsync(id);
-        if (user is null || user.Role != Roles.Staff) return NotFound();
+        // Superadmin/admin qilingan akkauntning ham parolini tiklash mumkin, lekin faqat
+        // superadmin (sabab — `Credentials` izohi: huquq oshirish yo'li ochilmasin).
+        if (user is null || !PanelRoles.Contains(user.Role)) return NotFound();
+        if (user.Role != Roles.Staff && !CanManageRoles) return Forbid();
         var pwd = AccountFactory.GeneratePassword();
         // Parolning O'ZI hech qachon tarixga yozilmaydi — faqat "almashtirildi" faktI.
         audit.Record("Staff", user.Id, "update", $"Xodim paroli qayta yaratildi: {user.FullName}");
