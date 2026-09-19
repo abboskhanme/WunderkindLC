@@ -1256,6 +1256,17 @@ public class Lead
     public string Source { get; set; } = string.Empty;
     /// <summary>Qiziqqan fani/yo'nalishi (matn yoki Subject id).</summary>
     public string InterestSubject { get; set; } = string.Empty;
+    /// <summary>
+    /// KURS DARAJASI (edutizim "Kurs darajasi": Beginner, Elementary ...) — TASHQARIDAN kelgan
+    /// qiymat: ko'chirilgan ma'lumot yoki qo'lda belgilangan daraja.
+    ///
+    /// <para>⚠️ Odatda daraja lidning DARAJA TESTI natijasidan olinadi
+    /// (<see cref="LevelTestSubmission"/>). Bu maydon shu qoidani ALMASHTIRMAYDI — u faqat
+    /// USTUNLIK qiladi: to'ldirilgan bo'lsa ro'yxatda shu ko'rinadi, bo'sh bo'lsa avvalgidek
+    /// test natijasi olinadi. Test topshirmagan (edutizimdan ko'chirilgan) lid darajasiz
+    /// qolmasin degani.</para>
+    /// </summary>
+    public string Level { get; set; } = string.Empty;
     /// <summary>Lid o'qiydigan TASHQI maktab tumani (<see cref="District"/> id). Bo'sh = tanlanmagan.</summary>
     public string DistrictId { get; set; } = string.Empty;
     /// <summary>Lid o'qiydigan TASHQI maktab (<see cref="School"/> id). Bo'sh = tanlanmagan.

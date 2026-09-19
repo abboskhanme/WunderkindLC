@@ -92,7 +92,11 @@ public class LeadsController(
             GroupName: group?.Name,
             TeacherId: string.IsNullOrWhiteSpace(group?.TeacherId) ? null : group!.TeacherId,
             TeacherName: string.IsNullOrWhiteSpace(group?.TeacherId) ? null : ctx.TeacherNames.GetValueOrDefault(group!.TeacherId),
-            Level: ctx.LevelByLead.GetValueOrDefault(lead.Id));
+            // KURS DARAJASI — lidda saqlangan qiymat USTUN (ko'chirilgan/qo'lda belgilangan),
+            // bo'sh bo'lsa avvalgidek daraja testi natijasi (`Lead.Level` izohiga qarang).
+            Level: string.IsNullOrWhiteSpace(lead.Level)
+                ? ctx.LevelByLead.GetValueOrDefault(lead.Id)
+                : lead.Level);
         }).ToList();
     }
 
@@ -121,6 +125,7 @@ public class LeadsController(
             {
                 l.Id, l.FullName, l.Phone, l.FatherPhone, l.MotherPhone, l.FatherFullName,
                 l.MotherFullName, l.Note, l.CreatedAt, l.InterestSubject, l.AssigneeUserId, l.Stage,
+                l.Level,
             })
             .ToListAsync();
         var ctx = await LoadTrialContextAsync(pendingOnly: true);
@@ -140,7 +145,7 @@ public class LeadsController(
                 $"{l.FatherFullName} {l.MotherFullName} {l.Note} {g?.Name}",
                 t.ScheduledAt ?? "", LeadFirstLesson.IsPast(t.ScheduledAt, today),
                 CourseLabel(l.InterestSubject, g?.CourseId, ctx.CourseNames),
-                ctx.LevelByLead.GetValueOrDefault(l.Id, ""),
+                string.IsNullOrWhiteSpace(l.Level) ? ctx.LevelByLead.GetValueOrDefault(l.Id, "") : l.Level,
                 g?.TeacherId ?? "", l.AssigneeUserId ?? "",
                 g?.Days ?? new List<int>());
         });
