@@ -1,7 +1,6 @@
 ﻿import { useCallback, useEffect, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
-import type { LucideIcon } from 'lucide-react'
-import { Plus, Pencil, Trash2, Download, TrendingUp, TrendingDown, Wallet, AlertCircle, Calculator, History, Inbox, Percent, Search, Receipt, Undo2, Banknote, Users, Award } from 'lucide-react'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
+import { Plus, Pencil, Trash2, Download, TrendingUp, TrendingDown, Wallet, AlertCircle, Calculator, History, Inbox, Percent, Search, Receipt, Undo2, Banknote, Users } from 'lucide-react'
 import type {
   FinanceDirection,
   FinanceMonthly,
@@ -78,7 +77,6 @@ type MethodFilter = 'all' | 'cash' | 'card' | 'bank'
 type ReceiptFilter = 'all' | 'with' | 'without'
 /** To'lovlar ro'yxatining saralanishi — sana yoki kvitansiya raqami bo'yicha. */
 type PaySort = 'date-desc' | 'date-asc' | 'receipt-asc' | 'receipt-desc'
-type Tab = 'overview' | 'groups' | 'teachers' | 'payments' | 'refunds' | 'cashiers' | 'bonuses'
 const FINANCE_TABS = ['overview', 'groups', 'teachers', 'payments', 'refunds', 'cashiers', 'bonuses'] as const
 
 const paySortOptions: { value: PaySort; label: string }[] = [
@@ -104,18 +102,6 @@ function receiptNum(receiptNo: string | null | undefined): number | null {
   return digits.length > 0 ? Number(digits) : null
 }
 
-const tabs: { value: Tab; label: string; icon?: LucideIcon }[] = [
-  { value: 'overview', label: 'Umumiy' },
-  { value: 'groups', label: 'Guruhlar' },
-  { value: 'teachers', label: "O'qituvchilar" },
-  { value: 'payments', label: "To'lovlar" },
-  { value: 'refunds', label: 'Vozvratlar' },
-  // Kassirlar — kim qancha pul qabul qilgan (kassa bo'limidan va moliyadan kiritilgan to'lovlar).
-  { value: 'cashiers', label: 'Kassirlar' },
-  // Bonus — o'quvchini ushlab turish bonuslarining HISOBOTI (faqat o'qish; berish "O'quvchilar"da).
-  { value: 'bonuses', label: 'Bonus', icon: Award },
-]
-
 /** Qoldiq/qarz summasini belgisiga qarab ranglash */
 function balanceClass(v: number): string {
   return v > 0 ? 'text-red-600' : v < 0 ? 'text-emerald-600' : 'text-slate-400'
@@ -129,9 +115,11 @@ export function FinancePage() {
   // O'zgarishlar tarixi — alohida `audit` ruxsati (admin/superadmin uchun har doim true).
   const canSeeAudit = can('audit', 'view')
   const navigate = useNavigate()
-  // Boshlang'ich tab manzildan ham kelishi mumkin (`?tab=bonuses`) — "Hisobotlar" bo'limi
-  // to'g'ridan-to'g'ri kerakli hisobot tabiga havola beradi.
-  const [tab, setTab] = useState<Tab>(() => tabFromUrl(FINANCE_TABS, 'overview'))
+  // ⚠️ KO'RINISH MANZILDAN o'qiladi (holatda saqlanmaydi): Moliyada sahifa ichidagi tab qatori
+  // yo'q, ko'rinish YON MENYUDAN tanlanadi (`?tab=`). Menyu bandi bosilganda komponent qayta
+  // yaratilmaydi — faqat manzil o'zgaradi, shuning uchun qiymat har renderda qayta hisoblanadi.
+  const location = useLocation()
+  const tab = tabFromUrl(FINANCE_TABS, 'overview', location.search)
   const [from, setFrom] = useState(`${yearOf(todayStr)}-01-01`)
   const [to, setTo] = useState(todayStr)
   const [dirFilter, setDirFilter] = useState<DirFilter>('all')
@@ -516,20 +504,12 @@ export function FinancePage() {
         }
       />
 
-      {/* Bo'limlar (sub-tablar) */}
-      <div className="subnav">
-        {tabs.map((t) => (
-          <button
-            key={t.value}
-            onClick={() => setTab(t.value)}
-            className={cn('subnav-tab', tab === t.value && 'active')}
-          >
-            {t.icon && <t.icon className="mr-1 h-3.5 w-3.5" />}
-            {t.label}
-          </button>
-        ))}
-      </div>
-
+      {/*
+        ⚠️ SAHIFA ICHIDAGI TAB QATORI OLIB TASHLANDI (edutizim bilan moslik): Moliyaning barcha
+        ko'rinishlari YON MENYUDAN ochiladi (`config/navigation.ts` → Moliya). Ko'rinishning
+        o'zi avvalgidek `?tab=` bilan tanlanadi, ya'ni eski havolalar va xatcho'plar ishlayveradi
+        — faqat ikkita navigatsiya (menyu + tab qatori) bir vaqtda turmaydi.
+      */}
       {/* Davr tanlash (barcha bo'limlar uchun). "Bonus" bo'limi ATAYIN chetda — u OY bo'yicha
           ishlaydi va o'z davr tanlovi bor (ikkita davr bir vaqtda ko'rinmasin). */}
       {tab !== 'bonuses' && (
