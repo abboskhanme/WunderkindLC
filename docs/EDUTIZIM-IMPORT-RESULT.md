@@ -126,3 +126,24 @@ So the missing group fees (open issue #1) are filled by entering five prices, no
   a parent's number. Nothing to fix, and more such pairs are expected.
 - Still parked, to be decided later: splitting the two "Avazxon Teacher | Elementary" groups, and
   what to do with the 443 non-archived students who have no active membership.
+
+## Fourth batch (2026-09-19): the leads table's empty columns
+
+«Buyurtmalar ro'yxati» showed KURS DARAJASI and MODERATOR empty, with both values dumped into
+the comment ("daraja: Beginner · moderator: …"). Fixed for all 45 leads:
+
+| Column | Where it comes from now |
+|---|---|
+| **Moderator** | `Lead.AssigneeUserId` — the export's moderator name matched to the staff account (42 of 45; 3 rows say "undefined undefined" in the export) |
+| **Kurs darajasi** | new `Lead.Level` field (migration `AddLeadLevel`, column only) — 29 leads are "Beginner", the rest have no level in the export |
+| **Izoh** | now only what the export really had: "Kurs kuni: Toq kunlar" etc., 11 rows; no comments exist in the export |
+
+⚠️ `Lead.Level` does not replace the level test: it only wins when filled. A lead that takes the
+test still gets its level from `LevelTestSubmission`, exactly as before.
+
+⚠️ **O'QITUVCHI stays empty, and that is correct** — in our model that column is the teacher of
+the trial lesson's group, and the leads export carries no teacher at all.
+
+On production the column and the data were applied ahead of the deploy (the migration is recorded
+in `__EFMigrationsHistory`, so the next deploy skips it). The moderator shows immediately; the
+level appears once the new build is deployed.
