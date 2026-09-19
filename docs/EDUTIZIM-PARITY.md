@@ -73,7 +73,7 @@ data, only the page is missing) · `—` out of scope (rule 3).
 | Moliya → Moliya hisobotlari | `/admin/moliya/hisobotlar` | ✅ |
 | Moliya → Moliya hisobotlari (P&L) | `/admin/moliya/pnl` | ✅ |
 | Moliya → Pul oqimi | `/admin/moliya/pul-oqimi` (operating section only) | ✅ |
-| Moliya → Tranzaksiya turi | `/admin/moliya/tranzaksiya-turi` (read-only catalog) | ✅ |
+| Moliya → Tranzaksiya turi | `/admin/moliya/tranzaksiya-turi` (editable catalog: Kirim · Chiqim · Vaucher · Jarima) | ✅ |
 | Moliya → Rejalashtirilgan xarajatlar | `/admin/moliya/rejalashtirilgan-xarajatlar` (new table `PlannedExpenses`) | ✅ |
 | Moliya → Shartnoma | `/admin/contracts` | ✅ |
 | **Nazorat** → Davomat | `/admin/students/davomat` | 🟡 |
@@ -118,3 +118,21 @@ extra Sozlamalar (Landing, Tumanlar, Kanallar, Zaxira, Azure, Gemini, Turniket, 
    profile), Moliya (Kassalar, Kirim chiqim, Tranzaksiyalar, Oylik chiqarish, Bonus, payment
    modals).
 5. Nothing else is planned (rule 5).
+
+## Moliya: two things that differ from the rest of the app (2026-09-19)
+
+1. **The menu flyout is split into three columns** — Amallar · Hisobotlar · Ma'lumotlar
+   (`NavItem.columns`, only Moliya). Fourteen entries in one column was an unreadable list.
+2. **The page has no tab row.** `FinancePage` used to carry Umumiy · Guruhlar · O'qituvchilar ·
+   To'lovlar · Vozvratlar · Kassirlar · Bonus above the content; edutizim has no such row, so it
+   was removed and the three views the menu did not cover (Umumiy, Guruhlar, Vozvratlar) were
+   added to the menu instead.
+   ⚠️ The view is therefore read from the URL on every render (`tabFromUrl(..., location.search)`),
+   not held in state: clicking another menu entry only changes `?tab=`, it does not remount the
+   page, so a `useState` initializer would have frozen the first view. A test locks that every
+   `?tab=` view is present in the menu — otherwise a view would silently disappear.
+
+**Transaction types are real data now** (`TransactionType`, migration `AddTransactionTypes`):
+the centre adds, edits and deletes its own names. Each one is anchored to a system category
+(`BaseCategory`), because the money logic — salary percentage, the Jarima page, P&L — keys off
+those codes and must not follow free text. Same pattern as `ContactStage.BaseStatus`.
