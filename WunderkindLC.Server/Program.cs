@@ -774,6 +774,32 @@ using (var scope = app.Services.CreateScope())
     }
 }
 
+// DAVOMAT SABABLARI — jurnalda "kelmadi" ni belgilash uchun KAMIDA BITTA sabab kerak.
+// ⚠️ Bu jadval ilgari hech qayerda seed qilinmasdi: bo'sh markazda katak oynasida faqat
+// "Keldi" bo'lar va "Sabablar yo'q" deb yozilardi — ya'ni davomat QO'YIB BO'LMASDI
+// (ko'chirilgan markazda aynan shu holat bo'ldi). Endi bo'sh bo'lsa standart to'plam yoziladi.
+// ⚠️ FAQAT jadval BO'SH bo'lganda — foydalanuvchi o'chirgan sabab restartda qayta tug'ilmasin
+// (tranzaksiya turlaridagi bilan bir xil qoida).
+{
+    try
+    {
+        if (!db.AbsenceReasons.Any())
+        {
+            db.AbsenceReasons.AddRange(
+                new AbsenceReason { Name = "Sababsiz", Short = "S" },
+                new AbsenceReason { Name = "Kasal", Short = "K" },
+                new AbsenceReason { Name = "Sababli", Short = "SB" },
+                new AbsenceReason { Name = "Kech keldi", Short = "KK", IsLate = true });
+            db.SaveChanges();
+            app.Logger.LogInformation("[seed] 4 ta davomat sababi yaratildi");
+        }
+    }
+    catch (Exception ex)
+    {
+        app.Logger.LogWarning(ex, "[seed] davomat sabablari seed qilinmadi");
+    }
+}
+
 // TRANZAKSIYA TURLARI — markazning o'z ro'yxati (edutizimdan ko'chirilgan).
 // ⚠️ FAQAT jadval BO'SH bo'lganda (ContactStages naqshidan farqli): bu foydalanuvchi
 // boshqaradigan katalog, ya'ni o'chirilgan tur har restartda QAYTA tug'ilmasligi kerak.

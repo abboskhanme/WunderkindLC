@@ -364,8 +364,24 @@ export function LeadDetailPage() {
               <FieldRow label="O'qituvchi">
                 <ReadValue>{lead.teacherName}</ReadValue>
               </FieldRow>
+              {/*
+                ⚠️ GURUH/BIRINCHI DARS — bu yerda TAHRIRLANMAYDI: ular lidning SINOV DARSIDAN
+                kelib chiqadi. Foydalanuvchi esa aynan shu qatorni bosib "olib o'tmoqchi"
+                bo'ladi, shuning uchun bo'sh bo'lsa shu yerda sinov oynasini ochadigan
+                havola turadi (⋮ menyudagi band bilan BITTA amal).
+              */}
               <FieldRow label="Guruh">
-                <ReadValue>{lead.groupName}</ReadValue>
+                {lead.groupName ? (
+                  <ReadValue>{lead.groupName}</ReadValue>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setModal('trial')}
+                    className="text-[13px] font-semibold text-brand-600 hover:underline"
+                  >
+                    Sinov darsiga yozish
+                  </button>
+                )}
               </FieldRow>
               <FieldRow label="Kurs darajasi">
                 <ReadValue>{lead.level}</ReadValue>

@@ -78,7 +78,18 @@ public class JournalController(AppDbContext db, FcmService fcm, AutoMessageServi
         var deny = await JournalPolicy.CheckAsync(db, req.ClassId, req.SubjectId, req.Date, req.Period,
             isAdmin: true, skipConducted: true);
         if (deny is not null) return BadRequest(new { message = deny });
-        var newAbsence = await JournalService.SetEntryAsync(db, req, fcm, autoMsg);
+        // ⚠️ SetEntryAsync SABABNI matn bilan tashlaydi ("Sana guruh yaratilishidan oldin" va h.k.).
+        // Ushlanmasa 500 bo'lib chiqar va foydalanuvchi "server xatosi" ko'rardi — nima
+        // noto'g'ri ekani esa yo'qolardi. `Reschedule` da bu allaqachon shunday qilingan.
+        bool newAbsence;
+        try
+        {
+            newAbsence = await JournalService.SetEntryAsync(db, req, fcm, autoMsg);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
         if (newAbsence)
             await DispatchAbsencesAsync(req.ClassId, req.Date, req.ReasonId, new[] { req.StudentId });
         return NoContent();
@@ -92,7 +103,16 @@ public class JournalController(AppDbContext db, FcmService fcm, AutoMessageServi
         var deny = await JournalPolicy.CheckAsync(db, req.ClassId, req.SubjectId, req.Date, req.Period,
             isAdmin: true, skipConducted: true);
         if (deny is not null) return BadRequest(new { message = deny });
-        var absentReasonId = await JournalService.BulkAttendanceAsync(db, req);
+        // SABAB matn bilan qaytsin (yuqoridagi `SetEntry` bilan bir xil sabab).
+        string? absentReasonId;
+        try
+        {
+            absentReasonId = await JournalService.BulkAttendanceAsync(db, req);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
         if (absentReasonId is not null)
             await DispatchAbsencesAsync(req.ClassId, req.Date, absentReasonId, req.StudentIds);
         return NoContent();

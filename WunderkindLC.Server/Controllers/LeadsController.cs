@@ -439,14 +439,22 @@ public class LeadsController(
     public async Task<IActionResult> ScheduleTrial(string id, ScheduleTrialRequest req)
     {
         if (await db.Leads.FindAsync(id) is null) return NotFound();
+        // ⚠️ GURUH va SANA tekshiriladi: ilgari tekshiruv umuman yo'q edi va mavjud bo'lmagan
+        // guruh id'si ham, buzuq sana ham JIMGINA yozilib ketardi — sinov darsi ro'yxatda
+        // guruhsiz/vaqtsiz bo'lib chiqar, sababi esa hech qayerda ko'rinmasdi.
         var group = await db.Classes.FindAsync(req.GroupId);
+        if (group is null)
+            return BadRequest(new { message = "Guruh topilmadi — sinov darsi uchun guruhni tanlang." });
+        if (string.IsNullOrWhiteSpace(req.ScheduledAt) || !DateTime.TryParse(req.ScheduledAt, out _))
+            return BadRequest(new { message = "Sinov darsi sanasi noto'g'ri." });
+
         var trial = new TrialLesson
         {
             LeadId = id, GroupId = req.GroupId, ScheduledAt = req.ScheduledAt,
             Result = "pending", CreatedAt = Now(),
         };
         db.TrialLessons.Add(trial);
-        AddEvent(id, "trial", $"Sinov darsi belgilandi: {group?.Name ?? req.GroupId} — {req.ScheduledAt}");
+        AddEvent(id, "trial", $"Sinov darsi belgilandi: {group.Name} — {req.ScheduledAt}");
         await db.SaveChangesAsync();
         // Birinchi (sinov) dars sanasi kartaga chiqadi.
         await LeadNotifier.SyncCardAsync(db, telegram, id, logger: logger);

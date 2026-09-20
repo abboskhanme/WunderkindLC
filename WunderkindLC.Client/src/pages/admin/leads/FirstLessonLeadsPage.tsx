@@ -294,6 +294,10 @@ export function FirstLessonLeadsPage() {
         offset={(pg.page - 1) * pg.pageSize}
         // edutizim: birinchi dars sanasi o'tib ketgan qator — och-qizil (`custom-table-row-past`).
         rowClassName={(r) => (r.isPast ? 'bg-[#FFCACA] hover:bg-[#F8B9B9]!' : undefined)}
+        // ⚠️ Bu sahifada "qo'shish" tugmasi ATAYIN yo'q (edutizimdagidek) — shuning uchun
+        // bo'sh ro'yxatda qayerdan yozilishini AYTIB qo'yamiz, aks holda "olib o'tib
+        // bo'lmayapti" degan tushunmovchilik chiqadi.
+        emptyHint="Lid sahifasidagi «⋮» menyudan «Sinov darsiga yozish» orqali qo'shiladi."
         footer={<TablePagination {...pg} />}
       />
 

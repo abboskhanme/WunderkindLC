@@ -64,7 +64,11 @@ public static class JournalService
                 return new GroupJournalStudentDto(
                     m.StudentId, st.FullName, m.Status ?? "trial", m.ActivatedAt ?? "",
                     bal.Balance,
-                    MemberStart(m) ?? "", m.RecordedAt ?? "", m.FrozenAt ?? "", bal.DebtMonths,
+                    // ⚠️ `RecordedAt` KUN sifatida solishtiriladi (klientda `autoPresent`), shuning
+                    // uchun 10 belgigacha qirqiladi: ko'chirilgan ma'lumotda u to'liq ISO vaqt
+                    // ("2026-09-18T17:39:16Z") bo'lib tushgan va "2026-09-18" >= o'sha satr FALSE
+                    // chiqib, o'sha kungi dars hech qachon avtomatik "keldi" bo'lmasdi.
+                    MemberStart(m) ?? "", DayOnly(m.RecordedAt), m.FrozenAt ?? "", bal.DebtMonths,
                     payHidden, payReason, st.BirthCertificateUrl ?? "");
             })
             .OrderBy(s => s.FullName, StringComparer.OrdinalIgnoreCase)
@@ -124,6 +128,9 @@ public static class JournalService
     /// <summary>O'quvchining guruhdagi a'zoligi boshlangan sana ("yyyy-MM-dd"): aktivlashtirilgan bo'lsa
     /// ActivatedAt, aks holda JoinedAt. Noma'lum/formatsiz bo'lsa null (cheklov qo'llanmaydi). Undan
     /// oldingi darslarga davomat/baho (jurnal ham, baholash mezonlari ham) kiritib bo'lmaydi.</summary>
+    /// <summary>ISO sana/vaqtdan faqat KUN ("yyyy-MM-dd"). Bo'sh/qisqa bo'lsa o'zgarmaydi.</summary>
+    private static string DayOnly(string? iso) => iso is { Length: >= 10 } ? iso[..10] : iso ?? "";
+
     public static string? MemberStart(StudentGroup? m)
     {
         if (m is null) return null;

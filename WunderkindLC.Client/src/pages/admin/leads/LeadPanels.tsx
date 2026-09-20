@@ -8,7 +8,7 @@ import { convertLead, scheduleTrial } from '@/api/services/leads'
 import { MessageEditor, type TokenDef } from '@/components/messaging/MessageEditor'
 import { Button } from '@/components/ui/Button'
 import { Input, Select } from '@/components/ui/Input'
-import { formatDate, formatDateTime } from '@/lib/utils'
+import { apiErrorMessage, formatDate, formatDateTime } from '@/lib/utils'
 import {
   WD_SHORT,
   isoDate,
@@ -251,6 +251,7 @@ export function LeadTrialForm({
   const [groupId, setGroupId] = useState('')
   const [at, setAt] = useState('')
   const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const teacherGroups = useMemo(() => groups.filter((g) => g.teacherId === teacherId), [groups, teacherId])
 
   // Tanlangan guruh + uning dars kunlari/vaqti + keyingi dars sanalari.
@@ -262,11 +263,17 @@ export function LeadTrialForm({
     e.preventDefault()
     if (!groupId || !at) return
     setSaving(true)
+    setError(null)
     try {
       const tid = await scheduleTrial(leadId, groupId, at)
       setGroupId('')
       setAt('')
       onScheduled(tid)
+    } catch (err) {
+      // ⚠️ Ilgari `catch` YO'Q edi: so'rov yiqilsa (403, 400, tarmoq) oyna JIMGINA ochiq qolar,
+      // foydalanuvchi esa "sinov darsiga yozib bo'lmayapti" deb ko'rardi — sababi faqat
+      // DevTools → Network da ko'rinardi.
+      setError(apiErrorMessage(err, "Sinov darsini belgilab bo'lmadi"))
     } finally {
       setSaving(false)
     }
@@ -365,6 +372,12 @@ export function LeadTrialForm({
         </div>
       ) : (
         <Input label="Sana va vaqt" type="datetime-local" value={at} onChange={(e) => setAt(e.target.value)} />
+      )}
+
+      {error && (
+        <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[13px] text-red-700">
+          {error}
+        </p>
       )}
 
       <Button type="submit" disabled={saving || !groupId || !at}>

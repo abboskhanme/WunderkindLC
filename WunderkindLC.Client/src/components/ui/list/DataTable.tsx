@@ -31,6 +31,8 @@ export interface DataTableProps<T> {
   onSort?: (key: string) => void
   /** Jadval ostidagi panel (odatda `<TablePagination />`). */
   footer?: ReactNode
+  /** Ro'yxat BO'SH bo'lganda ko'rsatiladigan yo'naltiruvchi matn ("qayerdan qo'shiladi"). */
+  emptyHint?: ReactNode
   className?: string
 }
 
@@ -53,6 +55,7 @@ export function DataTable<T>({
   sortDir,
   onSort,
   footer,
+  emptyHint,
   className,
 }: DataTableProps<T>) {
   const cols: DataColumn<T>[] = numbered
@@ -140,7 +143,10 @@ export function DataTable<T>({
           <div className="flex flex-col items-center justify-center gap-1 py-14 text-center">
             <IconInbox className="h-10 w-10 text-[#bdbdbd]" stroke={1.5} />
             <p className="text-sm font-semibold text-[#333]">Ma'lumotlar topilmadi</p>
-            <p className="text-xs text-[#9e9e9e]">Ma'lumotlar topilmadi. Filterni o'zgartirib ko'ring.</p>
+            {/* `emptyHint` — sahifaga xos yo'nalish ("qayerdan qo'shiladi"); berilmasa umumiy matn. */}
+            <p className="max-w-md text-xs text-[#9e9e9e]">
+              {emptyHint ?? "Ma'lumotlar topilmadi. Filterni o'zgartirib ko'ring."}
+            </p>
           </div>
         )}
       </div>
