@@ -4,7 +4,7 @@ import { getBotThreads, getBotMessages, replyBotThread } from '@/api/services/bo
 import type { BotThread, BotSupportMsg } from '@/api/services/botSupport'
 import { Card } from '@/components/ui/Card'
 import { Loader } from '@/components/ui/Loader'
-import { cn, formatTime } from '@/lib/utils'
+import { apiErrorMessage, cn, formatTime } from '@/lib/utils'
 
 export function SupportPanel() {
   const [threads, setThreads] = useState<BotThread[]>([])
@@ -16,6 +16,9 @@ export function SupportPanel() {
   const [loadingMsgs, setLoadingMsgs] = useState(false)
   const [text, setText] = useState('')
   const [sending, setSending] = useState(false)
+  /** Yuborish xatosi — ilgari so'rov yiqilsa matn maydonda qolar, lekin hech narsa
+   *  o'zgarmasdi: operator javob ketdi deb o'ylab, mijoz javobsiz qolardi. */
+  const [sendError, setSendError] = useState('')
 
   const bottomRef = useRef<HTMLDivElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -78,6 +81,7 @@ export function SupportPanel() {
     const t = text.trim()
     if (!t || sending) return
     setSending(true)
+    setSendError('')
     try {
       await replyBotThread(selected.chatId, t)
       setText('')
@@ -85,6 +89,9 @@ export function SupportPanel() {
       nearBottomRef.current = true
       const fresh = await getBotMessages(selected.chatId)
       setMsgs(fresh)
+    } catch (err) {
+      // Matn maydonda QOLADI (yuqoridagi `setText('')` ga yetib borilmaydi) — qayta urinish oson.
+      setSendError(apiErrorMessage(err, "Javobni yuborib bo'lmadi"))
     } finally {
       setSending(false)
     }
@@ -127,7 +134,10 @@ export function SupportPanel() {
                 <button
                   key={th.chatId}
                   type="button"
-                  onClick={() => setSelected(th)}
+                  onClick={() => {
+                    setSelected(th)
+                    setSendError('') // boshqa yozishmaning xatosi bu yerda osilib qolmasin
+                  }}
                   className={cn(
                     'flex w-full items-start gap-2 rounded-lg px-3 py-2.5 text-left text-sm transition-colors',
                     selected?.chatId === th.chatId
@@ -218,6 +228,11 @@ export function SupportPanel() {
           </div>
 
           {/* Yuborish */}
+          {sendError && (
+            <p className="border-t border-slate-100 bg-red-50 px-4 py-2 text-sm font-medium text-red-600">
+              {sendError}
+            </p>
+          )}
           <form onSubmit={handleSend} className="flex items-center gap-2 border-t border-slate-100 p-3">
             <textarea
               rows={1}

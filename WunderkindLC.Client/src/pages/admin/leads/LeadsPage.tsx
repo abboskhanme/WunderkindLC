@@ -39,6 +39,7 @@ import { TotalPill } from '@/components/ui/list/TotalPill'
 import { ViewToggle } from '@/components/ui/list/ViewToggle'
 import { TablePagination, usePagination } from '@/components/ui/TablePagination'
 import { Loader } from '@/components/ui/Loader'
+import { apiErrorMessage } from '@/lib/utils'
 import { usePerm } from '@/lib/permissions'
 import { LeadColumn } from './LeadColumn'
 import { LeadCardContent } from './LeadCard'
@@ -173,10 +174,19 @@ export function LeadsPage() {
   const handleStageSubmit = (values: StagePayload) => {
     if (editingStage) {
       const id = editingStage.id
+      const before = editingStage
       setStages((prev) => prev.map((s) => (s.id === id ? { ...s, ...values } : s)))
-      updateStage(id, values)
+      // Ekran OPTIMISTIK yangilanadi: so'rov yiqilsa yangi nom/rang ekranda qolib, foydalanuvchi
+      // saqlandi deb o'ylardi — shuning uchun eski holat qaytariladi va sabab ko'rsatiladi.
+      updateStage(id, values).catch((err) => {
+        setStages((prev) => prev.map((s) => (s.id === id ? before : s)))
+        alert(apiErrorMessage(err, "Ustunni saqlab bo'lmadi"))
+      })
     } else {
-      createStage(values).then((stage) => setStages((prev) => [...prev, stage]))
+      // Xato jimgina yutilardi: ustun qo'shilmagani ham, sababi ham ko'rinmasdi.
+      createStage(values)
+        .then((stage) => setStages((prev) => [...prev, stage]))
+        .catch((err) => alert(apiErrorMessage(err, "Ustun qo'shib bo'lmadi")))
     }
     setStageFormOpen(false)
     setEditingStage(null)
@@ -193,18 +203,26 @@ export function LeadsPage() {
       return
     }
     if (!confirm(`"${stage.title}" ustunini o'chirasizmi?`)) return
-    deleteStage(stage.id).then(() => setStages((prev) => prev.filter((s) => s.id !== stage.id)))
+    // Server rad etsa (masalan ustun band) sabab ko'rinsin — ilgari ustun shunchaki o'chmay qolardi.
+    deleteStage(stage.id)
+      .then(() => setStages((prev) => prev.filter((s) => s.id !== stage.id)))
+      .catch((err) => alert(apiErrorMessage(err, "Ustunni o'chirib bo'lmadi")))
   }
 
   const handleStageMove = (id: string, dir: -1 | 1) => {
-    setStages((prev) => {
-      const idx = prev.findIndex((s) => s.id === id)
-      const j = idx + dir
-      if (idx < 0 || j < 0 || j >= prev.length) return prev
-      const next = [...prev]
-      ;[next[idx], next[j]] = [next[j], next[idx]]
-      reorderStages(next.map((s) => s.id))
-      return next
+    const idx = stages.findIndex((s) => s.id === id)
+    const j = idx + dir
+    if (idx < 0 || j < 0 || j >= stages.length) return
+    const before = stages
+    const next = [...stages]
+    ;[next[idx], next[j]] = [next[j], next[idx]]
+    setStages(next)
+    // ⚠️ So'rov `setStages` updater'i ICHIDAN CHIQARILDI: StrictMode updater'ni ikki marta
+    // chaqiradi, ya'ni tartib serverga ikki marta ketardi. Xatoda eski tartib qaytariladi —
+    // ekranda yolg'on natija qolmasin.
+    reorderStages(next.map((s) => s.id)).catch((err) => {
+      setStages(before)
+      alert(apiErrorMessage(err, "Tartibni saqlab bo'lmadi"))
     })
   }
 

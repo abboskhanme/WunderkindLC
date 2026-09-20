@@ -10,7 +10,7 @@ import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Loader } from '@/components/ui/Loader'
-import { cn } from '@/lib/utils'
+import { apiErrorMessage, cn } from '@/lib/utils'
 import {
   parseCheckSettings,
   resolveCheckSettings,
@@ -83,6 +83,9 @@ export function CheckSettings() {
   const [school, setSchool] = useState<SchoolInfo | null>(null)
   const [loading, setLoading] = useState(true)
   const [status, setStatus] = useState<'idle' | 'saving' | 'saved'>('idle')
+  /** Saqlash xatosi — ilgari xato JIM yutilar, tugma yana "Saqlash" bo'lib qolar va
+   *  foydalanuvchi chek shabloni saqlangan deb o'ylardi. */
+  const [error, setError] = useState('')
   const [tab, setTab] = useState<Tab>('payment')
 
   useEffect(() => {
@@ -97,11 +100,13 @@ export function CheckSettings() {
   const save = async () => {
     if (!s) return
     setStatus('saving')
+    setError('')
     try {
       await saveCheckSettings(JSON.stringify(s))
       setStatus('saved')
       setTimeout(() => setStatus('idle'), 2000)
-    } catch {
+    } catch (err) {
+      setError(apiErrorMessage(err, "Saqlab bo'lmadi"))
       setStatus('idle')
     }
   }
@@ -256,6 +261,7 @@ export function CheckSettings() {
                 <Check className="h-4 w-4" /> Saqlandi
               </span>
             )}
+            {error && <span className="text-sm font-medium text-red-600">{error}</span>}
           </div>
         </div>
 

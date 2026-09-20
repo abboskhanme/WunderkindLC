@@ -241,6 +241,9 @@ export function LeadDetailPage() {
       await addLeadEvent(lead.id, 'note' as LeadEventType, noteText.trim())
       setNoteText('')
       activity.refresh()
+    } catch (err) {
+      // Xato ko'rinmasa izoh tarixga tushmagani bilinmasdi. Matn maydonda QOLADI (qayta yuborish uchun).
+      alert(leadErrorText(err))
     } finally {
       setSavingNote(false)
     }

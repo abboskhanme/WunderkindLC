@@ -88,6 +88,10 @@ export function ChatPanel({ className, fetchMessages, sendMessage, title, subtit
   const [sending, setSending] = useState(false)
   const [reconnecting, setReconnecting] = useState(false)
   const [connectionError, setConnectionError] = useState<string | null>(null)
+  /** Yuborish xatosi — ilgari so'rov yiqilsa xabar ro'yxatga qo'shilmas, lekin hech qanday
+   *  belgi ham chiqmasdi: foydalanuvchi xabar ketdi deb o'ylardi. `connectionError` dan
+   *  ALOHIDA — u SignalR ulanish holatiga tegishli va qayta ulanganda tozalanadi. */
+  const [sendError, setSendError] = useState('')
   const bottomRef = useRef<HTMLDivElement>(null)
   const classRef = useRef(className)
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
@@ -161,10 +165,14 @@ export function ChatPanel({ className, fetchMessages, sendMessage, title, subtit
     const t = text.trim()
     if (!t || sending) return
     setSending(true)
+    setSendError('')
     try {
       const m = await sendMessage(className, t)
       setText('')
       setMessages((prev) => (prev.some((x) => x.id === m.id) ? prev : [...prev, m]))
+    } catch (err) {
+      // Matn maydonda QOLADI (`setText('')` ga yetib borilmaydi) — qayta yuborish oson.
+      setSendError(apiErrorMessage(err, "Xabarni yuborib bo'lmadi"))
     } finally {
       setSending(false)
     }
@@ -271,6 +279,13 @@ export function ChatPanel({ className, fetchMessages, sendMessage, title, subtit
         )}
         <div ref={bottomRef} />
       </div>
+
+      {sendError && (
+        <div className="flex items-center gap-2 border-t border-slate-100 bg-red-50 px-4 py-2 text-sm text-red-700">
+          <AlertCircle className="h-4 w-4 flex-shrink-0" />
+          <span>{sendError}</span>
+        </div>
+      )}
 
       <form onSubmit={handleSend} className="flex items-center gap-2 border-t border-slate-100 p-3">
         <input

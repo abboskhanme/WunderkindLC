@@ -527,7 +527,13 @@ export function StudentDetailPage() {
     }
   }
 
-  /** Qurilma ID'ni biriktirish/olib tashlash (bo'sh qiymat — biriktirishni bekor qiladi). */
+  /**
+   * Qurilma ID'ni biriktirish/olib tashlash (bo'sh qiymat — biriktirishni bekor qiladi).
+   *
+   * ⚠️ Xato ATAYIN tutilmaydi — u chaqiruvchiga (`TurnstileSection.save`) otiladi va o'sha yerda
+   * `apiErrorMessage` bilan maydon ostidagi qizil satrda ko'rsatiladi. Bu yerda tutilsa, so'rov
+   * jim yiqilib, ekranda kiritilgan ID "saqlangandek" turib qolardi.
+   */
   const saveTurnstileDevice = async (value: string) => {
     if (!id) return
     await setStudentDevice(id, value.trim())
@@ -2072,6 +2078,8 @@ function CourseCurriculum({
   const [done, setDone] = useState<Set<string>>(new Set())
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
+  /** Belgilashni SAQLASHDAGI xato (yuklash xatosidan alohida: panel chizilgancha qoladi). */
+  const [saveError, setSaveError] = useState('')
 
   useEffect(() => {
     let alive = true
@@ -2096,19 +2104,23 @@ function CourseCurriculum({
 
   // Optimistik toggle — xatoda asl holatga qaytaramiz.
   const toggle = (itemId: string, next: boolean) => {
+    setSaveError('')
     setDone((prev) => {
       const copy = new Set(prev)
       if (next) copy.add(itemId)
       else copy.delete(itemId)
       return copy
     })
-    setProgress(studentId, itemId, next).catch(() => {
+    setProgress(studentId, itemId, next).catch((e) => {
       setDone((prev) => {
         const copy = new Set(prev)
         if (next) copy.delete(itemId)
         else copy.add(itemId)
         return copy
       })
+      // Ilgari belgi JIMGINA orqaga qaytardi: foydalanuvchi "bosilmadi" deb o'ylab qayta
+      // bosaverardi, sabab (masalan ruxsat yo'q) esa hech qayerda ko'rinmasdi.
+      setSaveError(apiErrorMessage(e, "Belgini saqlab bo'lmadi"))
     })
   }
 
@@ -2167,6 +2179,7 @@ function CourseCurriculum({
           style={{ width: `${pct}%` }}
         />
       </div>
+      {saveError && <p className="mt-2 text-xs font-medium text-red-500">{saveError}</p>}
       <div className="mt-3 space-y-2">
         {curriculum!.modules.map((module) => (
           <ModuleBlock key={module.id} module={module} done={done} onToggle={toggle} />

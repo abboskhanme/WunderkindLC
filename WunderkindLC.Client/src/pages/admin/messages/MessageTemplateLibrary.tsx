@@ -18,7 +18,7 @@ import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
 import { Modal } from '@/components/ui/Modal'
 import { Input } from '@/components/ui/Input'
-import { cn } from '@/lib/utils'
+import { apiErrorMessage, cn } from '@/lib/utils'
 
 type LibraryItem =
   | { kind: 'manual'; id: string; name: string; text: string; raw: SmsTemplate }
@@ -51,6 +51,10 @@ export function MessageTemplateLibrary({
   const [text, setText] = useState('')
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState('')
+  /** O'chirish xatosi — ALOHIDA holat: `err` faqat modal ICHIDA chiziladi, o'chirish esa
+   *  modalsiz bajariladi. Ilgari xato umuman ushlanmasdi — matn ro'yxatda qolar, lekin
+   *  foydalanuvchi o'chirildi deb o'ylardi. */
+  const [removeErr, setRemoveErr] = useState('')
   const [tokens, setTokens] = useState<TokenDef[]>([])
 
   useEffect(() => {
@@ -124,8 +128,13 @@ export function MessageTemplateLibrary({
 
   const remove = async (t: SmsTemplate) => {
     if (!window.confirm(`"${t.name}" matnini o'chirasizmi?`)) return
-    await deleteSmsTemplate(t.id)
-    reload()
+    setRemoveErr('')
+    try {
+      await deleteSmsTemplate(t.id)
+      reload()
+    } catch (e) {
+      setRemoveErr(apiErrorMessage(e, "Matnni o'chirib bo'lmadi"))
+    }
   }
 
   return (
@@ -139,6 +148,7 @@ export function MessageTemplateLibrary({
       }
       bodyClassName="space-y-1.5"
     >
+      {removeErr && <p className="text-sm font-medium text-red-600">{removeErr}</p>}
       {loading ? (
         <p className="py-6 text-center text-sm text-slate-400">Yuklanmoqda...</p>
       ) : items.length === 0 ? (

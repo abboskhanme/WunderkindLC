@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/Input'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { Loader } from '@/components/ui/Loader'
-import { cn } from '@/lib/utils'
+import { apiErrorMessage, cn } from '@/lib/utils'
 
 /**
  * Kamera integratsiya sozlamasi. IP kameralar RTSP oqimi media-shlyuz (MediaMTX) orqali brauzerda
@@ -24,6 +24,9 @@ export function CameraSettings() {
   const [cfg, setCfg] = useState<CameraConfig | null>(null)
   const [loading, setLoading] = useState(true)
   const [status, setStatus] = useState<'idle' | 'saving' | 'saved'>('idle')
+  /** Saqlash xatosi — ilgari `try` umuman yo'q edi: so'rov yiqilsa holat abadiy 'saving' da
+   *  qolib, tugma o'chiq bo'lib qolardi (sahifani yangilashdan boshqa chora yo'q edi). */
+  const [error, setError] = useState('')
 
   useEffect(() => {
     getCameraSettings().then(setCfg).finally(() => setLoading(false))
@@ -33,14 +36,20 @@ export function CameraSettings() {
     e.preventDefault()
     if (!cfg) return
     setStatus('saving')
-    const saved = await saveCameraSettings({
-      enabled: cfg.enabled, recordEnabled: cfg.recordEnabled,
-      nvrEnabled: cfg.nvrEnabled, nvrHost: cfg.nvrHost,
-      nvrRtspPort: cfg.nvrRtspPort, nvrIsapiPort: cfg.nvrIsapiPort, nvrVendor: cfg.nvrVendor,
-    })
-    setCfg(saved)
-    setStatus('saved')
-    setTimeout(() => setStatus('idle'), 2000)
+    setError('')
+    try {
+      const saved = await saveCameraSettings({
+        enabled: cfg.enabled, recordEnabled: cfg.recordEnabled,
+        nvrEnabled: cfg.nvrEnabled, nvrHost: cfg.nvrHost,
+        nvrRtspPort: cfg.nvrRtspPort, nvrIsapiPort: cfg.nvrIsapiPort, nvrVendor: cfg.nvrVendor,
+      })
+      setCfg(saved)
+      setStatus('saved')
+      setTimeout(() => setStatus('idle'), 2000)
+    } catch (err) {
+      setError(apiErrorMessage(err, "Saqlab bo'lmadi"))
+      setStatus('idle')
+    }
   }
 
   if (loading || !cfg) return <Loader label="Yuklanmoqda..." />
@@ -224,6 +233,7 @@ export function CameraSettings() {
             <Check className="h-4 w-4" /> Saqlandi
           </span>
         )}
+        {error && <span className="text-sm font-medium text-red-600">{error}</span>}
       </div>
     </form>
   )

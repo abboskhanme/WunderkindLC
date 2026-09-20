@@ -25,6 +25,9 @@ export function CurriculumItemEditorPage() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
+  /** Saqlash xatosi — busiz so'rov yiqilganda "Saqlandi" ham chiqmas, xabar ham bo'lmas edi:
+   *  foydalanuvchi mazmun saqlandi deb o'ylab sahifadan chiqib, butun mehnatini yo'qotardi. */
+  const [saveError, setSaveError] = useState('')
   const [notFound, setNotFound] = useState(false)
 
   const [text, setText] = useState('')
@@ -86,6 +89,7 @@ export function CurriculumItemEditorPage() {
     if (saving) return
     setSaving(true)
     setSaved(false)
+    setSaveError('')
     try {
       const payload: SaveItemContent = {
         text: text.trim() || 'Topshiriq',
@@ -101,6 +105,8 @@ export function CurriculumItemEditorPage() {
       await saveItemContent(itemId, payload)
       setSaved(true)
       setTimeout(() => setSaved(false), 2500)
+    } catch (err) {
+      setSaveError(apiErrorMessage(err, "Topshiriqni saqlab bo'lmadi"))
     } finally {
       setSaving(false)
     }
@@ -222,6 +228,11 @@ export function CurriculumItemEditorPage() {
         {type === 'test' && <TestBuilder questions={questions} onChange={setQuestions} />}
 
         <div className="flex items-center justify-end gap-3">
+          {saveError && (
+            <p className="flex items-center gap-1.5 text-xs font-medium text-red-600">
+              <AlertTriangle className="h-3.5 w-3.5 shrink-0" /> {saveError}
+            </p>
+          )}
           {saved && (
             <span className="inline-flex items-center gap-1 text-sm font-medium text-emerald-600">
               <Check className="h-4 w-4" /> Saqlandi
@@ -250,16 +261,22 @@ interface MediaEditorProps {
 function MediaEditor({ kind, url, onUrl, meta, onMeta }: MediaEditorProps) {
   const fileRef = useRef<HTMLInputElement>(null)
   const [uploading, setUploading] = useState(false)
+  /** Yuklash xatosi — busiz fayl yuklanmay qolsa maydon jimgina bo'sh qolardi
+   *  (foydalanuvchi sababni bilmasdi). Quyidagi PdfEditor'dagi bilan bir xil naqsh. */
+  const [error, setError] = useState('')
   const isVideo = kind === 'video'
 
   const onFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     e.target.value = ''
     if (!file) return
+    setError('')
     setUploading(true)
     try {
       const res = await uploadAdminFile(file)
       onUrl(res.url)
+    } catch (err) {
+      setError(apiErrorMessage(err, 'Yuklashda xato yuz berdi'))
     } finally {
       setUploading(false)
     }
@@ -291,6 +308,11 @@ function MediaEditor({ kind, url, onUrl, meta, onMeta }: MediaEditorProps) {
           </Button>
         </div>
         {url && <p className="mt-1 truncate text-xs text-slate-400">{url}</p>}
+        {error && (
+          <p className="mt-2 flex items-center gap-1.5 text-xs font-medium text-red-600">
+            <AlertTriangle className="h-3.5 w-3.5" /> {error}
+          </p>
+        )}
       </div>
 
       <div>

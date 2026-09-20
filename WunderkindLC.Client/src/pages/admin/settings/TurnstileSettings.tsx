@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/Button'
 import { Input, Select, Time24Input } from '@/components/ui/Input'
 import { Loader } from '@/components/ui/Loader'
 import { EnvSecretField } from '@/components/settings/EnvSecretField'
+import { apiErrorMessage } from '@/lib/utils'
 
 const control =
   'rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none transition-colors focus:border-brand-400 focus:ring-2 focus:ring-brand-100'
@@ -27,6 +28,8 @@ export function TurnstileSettings() {
   const [cfg, setCfg] = useState<TurnstileConfig | null>(null)
   const [loading, setLoading] = useState(true)
   const [status, setStatus] = useState<'idle' | 'saving' | 'saved'>('idle')
+  /** Saqlash xatosi — "Saqlandi" bilan bir joyda ko'rinadi (ilgari xato JIM yutilardi). */
+  const [error, setError] = useState('')
 
   useEffect(() => {
     getTurnstileSettings()
@@ -48,6 +51,7 @@ export function TurnstileSettings() {
     e.preventDefault()
     if (!cfg) return
     setStatus('saving')
+    setError('')
     try {
       const saved = await saveTurnstileSettings({
         enabled: cfg.enabled,
@@ -61,7 +65,10 @@ export function TurnstileSettings() {
       setCfg(saved)
       setStatus('saved')
       setTimeout(() => setStatus('idle'), 2000)
-    } catch {
+    } catch (err) {
+      // Busiz holat jimgina 'idle' ga qaytar va tugma yana "Saqlash" bo'lardi — foydalanuvchi
+      // sozlama saqlangan deb o'ylardi.
+      setError(apiErrorMessage(err, "Saqlab bo'lmadi"))
       setStatus('idle')
     }
   }
@@ -208,6 +215,7 @@ export function TurnstileSettings() {
             <Check className="h-4 w-4" /> Saqlandi
           </span>
         )}
+        {error && <span className="text-sm font-medium text-red-600">{error}</span>}
       </div>
     </form>
   )

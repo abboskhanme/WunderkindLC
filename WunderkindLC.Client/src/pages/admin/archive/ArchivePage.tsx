@@ -12,7 +12,7 @@ import { Button } from '@/components/ui/Button'
 import { Loader } from '@/components/ui/Loader'
 import { Badge } from '@/components/ui/Badge'
 import { PageHeader } from '@/components/ui/PageHeader'
-import { formatDate, cn } from '@/lib/utils'
+import { formatDate, cn, apiErrorMessage } from '@/lib/utils'
 
 /** Arxiv turlari (Uzbek yorliqlar bilan). */
 const TABS: { key: string; label: string }[] = [
@@ -65,6 +65,9 @@ export function ArchivePage() {
     try {
       await restoreArchive(id)
       await refresh()
+    } catch (err) {
+      // Tiklash yiqilsa ro'yxat shunchaki o'zgarmasdi — foydalanuvchi tiklandi deb o'ylardi.
+      alert(apiErrorMessage(err, "Tiklab bo'lmadi"))
     } finally {
       setBusyId(null)
     }
@@ -76,6 +79,9 @@ export function ArchivePage() {
     try {
       await deleteArchive(id)
       await refresh()
+    } catch (err) {
+      // Butunlay o'chirish yiqilsa yozuv joyida qolardi, sababi esa ko'rinmasdi.
+      alert(apiErrorMessage(err, "O'chirib bo'lmadi"))
     } finally {
       setBusyId(null)
     }

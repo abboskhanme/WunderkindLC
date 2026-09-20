@@ -185,6 +185,9 @@ export function ContractsPage() {
       const tpl = await createTemplate(target, f.name, up.url, f.name)
       setTemplates((prev) => [tpl, ...prev])
       setSelectedTpl(tpl.id)
+    } catch (err) {
+      // Yuklash yoki andoza yaratish yiqilsa ro'yxat jimgina o'zgarmay qolardi — sabab ko'rinsin.
+      alert(apiErrorMessage(err, "Andozani yuklab bo'lmadi"))
     } finally {
       setUploading(false)
       e.target.value = ''
@@ -199,7 +202,13 @@ export function ContractsPage() {
 
   const handleDeleteTpl = async (id: string) => {
     if (!confirm('Andozani o\'chirasizmi?')) return
-    await deleteTemplate(id)
+    try {
+      await deleteTemplate(id)
+    } catch (err) {
+      // Server rad etsa (ruxsat yo'q, andoza band) andoza ro'yxatda qolardi, sababsiz.
+      alert(apiErrorMessage(err, "Andozani o'chirib bo'lmadi"))
+      return
+    }
     setTemplates((prev) => prev.filter((t) => t.id !== id))
     if (selectedTpl === id) setSelectedTpl('')
   }
@@ -244,6 +253,10 @@ export function ContractsPage() {
       setResults(res)
       setChecked(new Set())
       await refreshRecipients()
+    } catch (e) {
+      // ENG MUHIMI: yuborish yiqilsa natija paneli bo'sh qolar va foydalanuvchi shartnoma
+      // ketgan deb o'ylardi. Tanlov ATAYIN tozalanmaydi — qayta yuborish mumkin bo'lsin.
+      alert(apiErrorMessage(e, "Shartnomalarni yuborib bo'lmadi"))
     } finally {
       setSending(false)
     }

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Check, Copy, KeyRound, RefreshCw } from 'lucide-react'
 import type { Credentials } from '@/types'
-import { copyText } from '@/lib/utils'
+import { apiErrorMessage, copyText } from '@/lib/utils'
 
 interface Props {
   credentials: Credentials | null
@@ -19,12 +19,20 @@ interface Props {
  */
 export function CredentialsBox({ credentials, loading, onReset }: Props) {
   const [resetting, setResetting] = useState(false)
+  /** Parol yaratishdagi xato. Ilgari so'rov JIM yiqilardi: tugma aylanib to'xtar, yangi parol
+   *  esa chiqmasdi — foydalanuvchi "tizim ishlamayapti" deb qayta-qayta bosaverardi.
+   *  Xato SHU YERDA ko'rsatiladi, chunki komponent uchta sahifada ishlatiladi
+   *  (`StaffPage`, `TeacherDetailPage`, `TeacherViewModal`) — bitta joy uchalasini yopadi. */
+  const [error, setError] = useState('')
 
   const handleReset = async () => {
     if (!onReset || resetting) return
     setResetting(true)
+    setError('')
     try {
       await onReset()
+    } catch (e) {
+      setError(apiErrorMessage(e, "Yangi parol yaratib bo'lmadi"))
     } finally {
       setResetting(false)
     }
@@ -49,15 +57,18 @@ export function CredentialsBox({ credentials, loading, onReset }: Props) {
             </p>
           )}
           {onReset && (
-            <button
-              type="button"
-              onClick={handleReset}
-              disabled={resetting}
-              className="mt-1 inline-flex items-center gap-2 rounded-lg border border-brand-200 bg-white px-3 py-2 text-sm font-medium text-brand-700 transition-colors hover:bg-brand-50 disabled:opacity-60"
-            >
-              <RefreshCw className={`h-4 w-4 ${resetting ? 'animate-spin' : ''}`} />
-              {resetting ? 'Yaratilmoqda...' : 'Yangi parol yaratish'}
-            </button>
+            <>
+              <button
+                type="button"
+                onClick={handleReset}
+                disabled={resetting}
+                className="mt-1 inline-flex items-center gap-2 rounded-lg border border-brand-200 bg-white px-3 py-2 text-sm font-medium text-brand-700 transition-colors hover:bg-brand-50 disabled:opacity-60"
+              >
+                <RefreshCw className={`h-4 w-4 ${resetting ? 'animate-spin' : ''}`} />
+                {resetting ? 'Yaratilmoqda...' : 'Yangi parol yaratish'}
+              </button>
+              {error && <p className="px-1 text-xs font-medium text-red-500">{error}</p>}
+            </>
           )}
         </div>
       )}

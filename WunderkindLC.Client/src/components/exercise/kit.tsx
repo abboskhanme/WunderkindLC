@@ -6,6 +6,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
 import { uploadAdminFile } from '@/api/services/students'
+import { apiErrorMessage } from '@/lib/utils'
 import { UI, display, sans, Icon } from './catalog'
 
 // ============================ Umumiy stillar ============================
@@ -446,16 +447,22 @@ export function AudioPicker({
   onChange: (url: string, name: string) => void
 }) {
   const [busy, setBusy] = useState(false)
+  /** Yuklash xatosi — busiz fayl yuklanmay qolsa tugma o'z holiga qaytar, lekin audio
+   *  qo'shilmas edi: foydalanuvchi sababni bilmay qayta-qayta urinardi. */
+  const [err, setErr] = useState('')
   const ref = useRef<HTMLInputElement>(null)
 
   const pick = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     e.target.value = ''
     if (!file) return
+    setErr('')
     setBusy(true)
     try {
       const res = await uploadAdminFile(file)
       onChange(res.url, file.name)
+    } catch (ex) {
+      setErr(apiErrorMessage(ex, "Audioni yuklab bo'lmadi"))
     } finally {
       setBusy(false)
     }
@@ -486,6 +493,7 @@ export function AudioPicker({
           <RemoveBtn onClick={() => onChange('', '')} size={15} />
         </div>
       )}
+      {err && <span style={{ ...sans, fontSize: 12, fontWeight: 600, color: UI.danger }}>{err}</span>}
     </div>
   )
 }
@@ -501,15 +509,21 @@ export function ImagePicker({
   label?: string
 }) {
   const [busy, setBusy] = useState(false)
+  /** Yuklash xatosi — busiz rasm yuklanmay qolsa katak bo'sh qolar, sabab esa
+   *  hech qayerda ko'rinmasdi. */
+  const [err, setErr] = useState('')
 
   const pick = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     e.target.value = ''
     if (!file) return
+    setErr('')
     setBusy(true)
     try {
       const res = await uploadAdminFile(file)
       onChange(res.url)
+    } catch (ex) {
+      setErr(apiErrorMessage(ex, "Rasmni yuklab bo'lmadi"))
     } finally {
       setBusy(false)
     }
@@ -549,6 +563,11 @@ export function ImagePicker({
         >
           ×
         </button>
+      )}
+      {err && (
+        <p style={{ ...sans, margin: '4px 0 0', maxWidth: 160, fontSize: 11.5, fontWeight: 600, lineHeight: 1.35, color: UI.danger }}>
+          {err}
+        </p>
       )}
     </div>
   )

@@ -8,6 +8,7 @@
  */
 import { useMemo, useState } from 'react'
 import type { ReactElement } from 'react'
+import { apiErrorMessage } from '@/lib/utils'
 // Konstruktor CSS'i (`.dc-*`) shu yerda — main.tsx'da EMAS: faqat mashq ekranlari bilan yuklanadi
 import '@/styles/exercise.css'
 import { UI, kindInfo, kindTheme, sans } from './catalog'
@@ -68,6 +69,9 @@ export function ExerciseWorkspace({ itemName, initialKind, initialJson, onSave, 
   const [dirty, setDirty] = useState(false)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
+  /** Saqlash xatosi — busiz so'rov yiqilganda "Saqlandi" toasti ham chiqmas, sabab ham
+   *  ko'rinmasdi: foydalanuvchi saqlandi deb o'ylab chiqib ketar va mashq yo'qolardi. */
+  const [saveError, setSaveError] = useState('')
   const [confirm, setConfirm] = useState(false)
   const { toast, setToast } = useToast()
 
@@ -95,12 +99,16 @@ export function ExerciseWorkspace({ itemName, initialKind, initialJson, onSave, 
   const save = async () => {
     if (!data || saving) return
     setSaving(true)
+    setSaveError('')
     try {
       await onSave(data.kind, JSON.stringify(data))
       setDirty(false)
       setSaved(true)
       setToast('Mashq saqlandi')
       setTimeout(() => setSaved(false), 2000)
+    } catch (err) {
+      // Xato bo'lsa `dirty` TEGILMAYDI — chiqishda tasdiq oynasi baribir chiqsin.
+      setSaveError(apiErrorMessage(err, "Mashqni saqlab bo'lmadi"))
     } finally {
       setSaving(false)
     }
@@ -151,6 +159,17 @@ export function ExerciseWorkspace({ itemName, initialKind, initialJson, onSave, 
       {picker}
 
       <ConstructorHeader subtitle={itemName || 'Yangi mashq'} accent={theme.accent} saving={saving} saved={saved} onCancel={exit} onSave={save} />
+
+      {saveError && (
+        <div
+          style={{
+            ...sans, display: 'flex', alignItems: 'center', gap: 8, padding: '10px 22px',
+            background: '#fdecec', color: UI.danger, fontSize: 13.5, fontWeight: 600, borderBottom: `1px solid ${UI.line}`,
+          }}
+        >
+          {saveError}
+        </div>
+      )}
 
       <TypeBanner
         accent={theme.accent}

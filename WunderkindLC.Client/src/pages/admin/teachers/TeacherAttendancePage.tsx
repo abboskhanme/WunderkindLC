@@ -12,7 +12,7 @@ import {
   type AttendanceDashboard,
 } from '@/api/services/teacherAttendance'
 import { connectLiveTopic } from '@/api/services/live'
-import { cn, formatDateTime } from '@/lib/utils'
+import { cn, formatDateTime, apiErrorMessage } from '@/lib/utils'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { PageHeader } from '@/components/ui/PageHeader'
@@ -119,7 +119,12 @@ function DashboardSection() {
         ? { ...prev, rows: prev.rows.map((r) => (r.teacherId === teacherId ? { ...r, status: next, source: 'manual' } : r)) }
         : prev,
     )
-    setTeacherAttendance(teacherId, date, next || null).catch(() => load(date))
+    // Ilgari xatoda ro'yxat JIMGINA qayta yuklanardi: ekrandagi belgi eskisiga qaytar,
+    // foydalanuvchi esa nima uchun saqlanmaganini bilmasdi.
+    setTeacherAttendance(teacherId, date, next || null).catch((e) => {
+      load(date)
+      alert(apiErrorMessage(e, 'Davomatni saqlashda xatolik'))
+    })
   }
 
   const s = dash?.summary
@@ -373,7 +378,12 @@ function MonthlyGrid() {
           : rest,
       }
     })
-    setTeacherAttendanceDay(date, makePresent ? 'present' : null).catch(() => load(month))
+    // Ilgari xatoda taxta JIMGINA qayta yuklanardi — butun kun belgisi "o'z-o'zidan" qaytib,
+    // sabab ko'rinmasdi (yuqoridagi `cycle` dagi bilan bir xil naqsh).
+    setTeacherAttendanceDay(date, makePresent ? 'present' : null).catch((e) => {
+      load(month)
+      alert(apiErrorMessage(e, 'Kun davomatini saqlashda xatolik'))
+    })
   }
 
   const counts = (teacherId: string) => {

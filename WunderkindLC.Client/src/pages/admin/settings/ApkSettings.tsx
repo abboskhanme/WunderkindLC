@@ -10,6 +10,7 @@ import {
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Loader } from '@/components/ui/Loader'
+import { apiErrorMessage } from '@/lib/utils'
 
 function fmtSize(bytes: number): string {
   if (!bytes) return ''
@@ -51,9 +52,14 @@ export function ApkSettings() {
   }
 
   const onDelete = async (role: 'student' | 'teacher') => {
+    // Yondagi `onUpload` dagi naqsh: xato bo'lsa sababi shu yerda ko'rinadi. Busiz fayl
+    // o'chmay qolar, ro'yxat esa o'zgarmasdan turar va foydalanuvchi buni nosozlik deb o'ylardi.
+    setErr('')
     setBusy(role)
     try {
       setCfg(await deleteAppApk(role))
+    } catch (e) {
+      setErr(apiErrorMessage(e, "APK faylni o'chirib bo'lmadi"))
     } finally {
       setBusy(null)
     }

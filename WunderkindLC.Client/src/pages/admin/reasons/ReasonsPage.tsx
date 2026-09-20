@@ -111,9 +111,15 @@ export function ReasonsPage() {
   const removeAbsence = (i: number) => setAbsence((a) => a.filter((_, x) => x !== i))
   const saveAbsence = async () => {
     setAbsStatus('saving')
-    await saveAbsenceReasons(absence.filter((r) => r.name.trim()))
-    setAbsStatus('saved')
-    setTimeout(() => setAbsStatus('idle'), 1500)
+    try {
+      await saveAbsenceReasons(absence.filter((r) => r.name.trim()))
+      setAbsStatus('saved')
+      setTimeout(() => setAbsStatus('idle'), 1500)
+    } catch (err) {
+      // `try` umuman yo'q edi: xatoda tugma abadiy "Saqlanmoqda..." holatida qotib qolardi.
+      setAbsStatus('idle')
+      alert(apiErrorMessage(err, "Sabablarni saqlab bo'lmadi"))
+    }
   }
 
   if (loading) return <Loader label="Yuklanmoqda..." />
@@ -316,6 +322,9 @@ function CategoryCard({
       const created = await createActionReason(cat.key, label)
       onChange((prev) => [...prev, created])
       setAdding('')
+    } catch (err) {
+      // `LeadSourcesCard.add` dagi bilan bir xil: sabab qo'shilmasa, NEGA qo'shilmagani ko'rinsin.
+      alert(apiErrorMessage(err, "Saqlab bo'lmadi"))
     } finally {
       setBusy(false)
     }
@@ -323,7 +332,13 @@ function CategoryCard({
   const save = async (id: string, label: string) => {
     const trimmed = label.trim()
     if (!trimmed) return
-    await updateActionReason(id, trimmed)
+    try {
+      await updateActionReason(id, trimmed)
+    } catch (err) {
+      // `onBlur` da chaqiriladi — xato ko'rsatilmasa yangi nom ekranda qolib, saqlangandek tuyulardi.
+      alert(apiErrorMessage(err, "Saqlab bo'lmadi"))
+      return
+    }
     onChange((prev) => prev.map((r) => (r.id === id ? { ...r, label: trimmed } : r)))
   }
   /** Belgini almashtirish — nom TEGILMAYDI (serverga o'sha nom bilan birga yuboriladi). */
@@ -339,7 +354,13 @@ function CategoryCard({
     }
   }
   const remove = async (id: string) => {
-    await deleteActionReason(id)
+    try {
+      await deleteActionReason(id)
+    } catch (err) {
+      // Server rad etsa (sabab ishlatilgan bo'lishi mumkin) qator ro'yxatda sababsiz qolardi.
+      alert(apiErrorMessage(err, "O'chirib bo'lmadi"))
+      return
+    }
     onChange((prev) => prev.filter((r) => r.id !== id))
   }
 

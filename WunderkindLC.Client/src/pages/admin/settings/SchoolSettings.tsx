@@ -12,6 +12,7 @@ import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Loader } from '@/components/ui/Loader'
+import { apiErrorMessage } from '@/lib/utils'
 
 const empty: SchoolInfo = {
   name: '',
@@ -30,6 +31,11 @@ export function SchoolSettings() {
   const [loading, setLoading] = useState(true)
   const [status, setStatus] = useState<'idle' | 'saving' | 'saved'>('idle')
   const [logoBusy, setLogoBusy] = useState(false)
+  /** Xato matni — ilgari so'rov yiqilsa holat jimgina 'idle' ga qaytar va foydalanuvchi
+   *  "Saqlandi" ni ko'rmay, sababini ham bilmay qolardi. Logo xatosi ALOHIDA: u sahifaning
+   *  tepasida bo'lgani uchun xabar ham o'sha yerda, amal bosilgan joyda ko'rinishi kerak. */
+  const [error, setError] = useState('')
+  const [logoError, setLogoError] = useState('')
   const fileRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -44,13 +50,15 @@ export function SchoolSettings() {
   const onSubmit = async (e: FormEvent) => {
     e.preventDefault()
     setStatus('saving')
+    setError('')
     try {
       await saveSchoolInfo({ ...form, name: (form.name ?? '').trim() })
       // Yon menyudagi markaz nomini darrov yangilash uchun.
       window.dispatchEvent(new Event('school:updated'))
       setStatus('saved')
       setTimeout(() => setStatus('idle'), 2000)
-    } catch {
+    } catch (err) {
+      setError(apiErrorMessage(err, "Saqlab bo'lmadi"))
       setStatus('idle')
     }
   }
@@ -60,10 +68,13 @@ export function SchoolSettings() {
     e.target.value = '' // bir xil faylni qayta tanlash imkonini beradi
     if (!file) return
     setLogoBusy(true)
+    setLogoError('')
     try {
       const updated = await uploadLogo(file)
       setForm((f) => ({ ...f, logoUrl: updated.logoUrl }))
       window.dispatchEvent(new Event('school:updated'))
+    } catch (err) {
+      setLogoError(apiErrorMessage(err, "Logoni yuklab bo'lmadi"))
     } finally {
       setLogoBusy(false)
     }
@@ -71,10 +82,13 @@ export function SchoolSettings() {
 
   const onRemoveLogo = async () => {
     setLogoBusy(true)
+    setLogoError('')
     try {
       const updated = await deleteLogo()
       setForm((f) => ({ ...f, logoUrl: updated.logoUrl }))
       window.dispatchEvent(new Event('school:updated'))
+    } catch (e) {
+      setLogoError(apiErrorMessage(e, "Logoni o'chirib bo'lmadi"))
     } finally {
       setLogoBusy(false)
     }
@@ -121,6 +135,7 @@ export function SchoolSettings() {
             )}
           </div>
         </div>
+        {logoError && <p className="mt-2 text-sm font-medium text-red-600">{logoError}</p>}
       </div>
 
       <form onSubmit={onSubmit} className="max-w-2xl space-y-4">
@@ -160,6 +175,7 @@ export function SchoolSettings() {
               <Check className="h-4 w-4" /> Saqlandi
             </span>
           )}
+          {error && <span className="text-sm font-medium text-red-600">{error}</span>}
         </div>
       </form>
     </Card>

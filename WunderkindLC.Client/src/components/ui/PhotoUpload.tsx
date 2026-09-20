@@ -2,7 +2,7 @@ import { useRef, useState } from 'react'
 import { Upload, X, Loader2 } from 'lucide-react'
 import { uploadAdminFile } from '@/api/services/students'
 import { Button } from './Button'
-import { cn } from '@/lib/utils'
+import { apiErrorMessage, cn } from '@/lib/utils'
 
 interface Props {
   label: string
@@ -15,14 +15,18 @@ interface Props {
 export function PhotoUpload({ label, value, onChange }: Props) {
   const ref = useRef<HTMLInputElement | null>(null)
   const [uploading, setUploading] = useState(false)
+  /** Yuklash xatosi — ilgari `catch` BO'SH edi: rasm yuklanmay qolsa maydon jimgina
+   *  bo'sh qolar va foydalanuvchi sababini bilmasdi (PhotoDialog'dagi naqsh). */
+  const [error, setError] = useState('')
 
   const onFile = async (file: File) => {
     setUploading(true)
+    setError('')
     try {
       const res = await uploadAdminFile(file)
       onChange(res.url)
-    } catch {
-      // tarmoq/mock xatosi — sukut bilan o'tkazamiz
+    } catch (e) {
+      setError(apiErrorMessage(e, "Rasmni yuklab bo'lmadi"))
     } finally {
       setUploading(false)
     }
@@ -73,6 +77,9 @@ export function PhotoUpload({ label, value, onChange }: Props) {
               </Button>
             )}
           </div>
+          {error && (
+            <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{error}</p>
+          )}
         </div>
       </div>
     </div>

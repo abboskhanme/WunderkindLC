@@ -512,6 +512,9 @@ export function StudentsPage() {
     setExportingSelected(true)
     try {
       await downloadSelectedStudents(selectedStudents.map((s) => s.id))
+    } catch (e) {
+      // Ilgari yuklash JIM yiqilardi: tugma "aylanib" to'xtar, fayl esa kelmasdi.
+      alert(apiErrorMessage(e, "Excel'ga yuklab bo'lmadi"))
     } finally {
       setExportingSelected(false)
     }
@@ -536,10 +539,20 @@ export function StudentsPage() {
     )
   }
 
-  const applyUpdate = (id: string, values: StudentPayload) => {
-    updateStudent(id, values)
-    // balansni saqlab qolib, qolgan maydonlarni yangilaymiz
-    setStudents((prev) => prev.map((s) => (s.id === id ? { ...s, ...values } : s)))
+  /** Saqlaydi va MUVAFFAQIYATLI bo'lsa `true` qaytaradi (forma faqat shunda yopiladi). */
+  const applyUpdate = async (id: string, values: StudentPayload): Promise<boolean> => {
+    // Ilgari so'rov "fire-and-forget" edi va ro'yxat OPTIMISTIK yangilanardi: server rad etsa ham
+    // (400/403/500) ekranda yangi qiymat turaverar, foydalanuvchi "saqlandi" deb ishonardi.
+    // Endi lokal yamoq faqat MUVAFFAQIYATDAN keyin qo'llanadi, xato esa aytiladi.
+    try {
+      await updateStudent(id, values)
+      // balansni saqlab qolib, qolgan maydonlarni yangilaymiz
+      setStudents((prev) => prev.map((s) => (s.id === id ? { ...s, ...values } : s)))
+      return true
+    } catch (e) {
+      alert(apiErrorMessage(e, "O'quvchini saqlab bo'lmadi"))
+      return false
+    }
   }
 
   /**
@@ -547,15 +560,22 @@ export function StudentsPage() {
    * uchun alohida). Shuning uchun "chegirmani joriy oyga qo'llaymizmi?" so'rovi ham OLIB
    * TASHLANDI: server `PUT /students/{id}` dagi chegirma maydonlarini e'tiborga olmaydi.
    */
-  const handleFormSubmit = (values: StudentPayload) => {
+  // ⚠️ Forma faqat SAQLANGANDAN KEYIN yopiladi (to'lov modalidagi bilan bir xil qoida, pastga
+  // qarang): xatoda kiritilgan ma'lumot yo'qolmasin va foydalanuvchi hammasini qaytadan
+  // yozmasin (qaytadan yozish — dublikat yaratishning eng keng tarqalgan yo'li).
+  const handleFormSubmit = async (values: StudentPayload) => {
     if (editing) {
-      applyUpdate(editing.id, values)
+      if (!(await applyUpdate(editing.id, values))) return
     } else {
-      createStudent(values).then((created) => {
+      try {
+        const created = await createStudent(values)
         setStudents((prev) => [created, ...prev])
         // Yangi o'quvchining login/parolini darrov ko'rsatamiz.
         setViewing(created)
-      })
+      } catch (e) {
+        alert(apiErrorMessage(e, "O'quvchini qo'shib bo'lmadi"))
+        return
+      }
     }
     setFormOpen(false)
     setEditing(null)
@@ -744,11 +764,14 @@ export function StudentsPage() {
   /** Arxivdan qaytarish. */
   const handleRestore = (s: Student) => {
     if (!confirm(`"${s.fullName}" o'quvchini arxivdan qaytarish? Login bloklangicha qoladi — keyin parol generatsiya qiling.`)) return
-    restoreStudent(s.id).then(() => {
-      const updated: Student = { ...s, isArchived: false, archivedAt: null, archiveReason: null }
-      setArchived((prev) => prev.filter((x) => x.id !== s.id))
-      setStudents((prev) => [updated, ...prev])
-    })
+    restoreStudent(s.id)
+      .then(() => {
+        const updated: Student = { ...s, isArchived: false, archivedAt: null, archiveReason: null }
+        setArchived((prev) => prev.filter((x) => x.id !== s.id))
+        setStudents((prev) => [updated, ...prev])
+      })
+      // Ilgari so'rov JIM yiqilardi: o'quvchi arxivda qolar, sababi aytilmasdi.
+      .catch((e) => alert(apiErrorMessage(e, "Arxivdan qaytarib bo'lmadi")))
   }
 
   return (

@@ -39,6 +39,8 @@ export function SubjectsPage() {
   // Kursni o'chirishni tasdiqlash (brauzer confirm o'rniga)
   const [deleting, setDeleting] = useState<Subject | null>(null)
   const [deleteBusy, setDeleteBusy] = useState(false)
+  // O'chirish rad etilganda sabab (masalan "kursning guruhlari bor") AYNAN oynada ko'rinsin
+  const [deleteError, setDeleteError] = useState<string | null>(null)
 
   useEffect(() => {
     getSubjects()
@@ -47,9 +49,11 @@ export function SubjectsPage() {
   }, [])
 
   const applyUpdate = (id: string, values: SubjectPayload, applyFee?: boolean) =>
-    updateSubject(id, values, applyFee).then((u) =>
-      setSubjects((prev) => prev.map((s) => (s.id === u.id ? u : s))),
-    )
+    updateSubject(id, values, applyFee)
+      .then((u) => setSubjects((prev) => prev.map((s) => (s.id === u.id ? u : s))))
+      // KURS NARXI ham shu yo'ldan saqlanadi: xato yutilsa oyna yopilar, ro'yxatda eski narx
+      // turar va foydalanuvchi yangisi saqlangan deb o'ylardi.
+      .catch((err) => alert(apiErrorMessage(err, "Kursni saqlab bo'lmadi")))
 
   const handleSubmit = (values: SubjectPayload) => {
     if (editing) {
@@ -62,7 +66,10 @@ export function SubjectsPage() {
       }
       applyUpdate(editing.id, values)
     } else {
-      createSubject(values).then((c) => setSubjects((prev) => [...prev, c]))
+      // Xato jimgina yutilardi: kurs ro'yxatda paydo bo'lmasdi va sababi ko'rinmasdi.
+      createSubject(values)
+        .then((c) => setSubjects((prev) => [...prev, c]))
+        .catch((err) => alert(apiErrorMessage(err, "Kurs qo'shib bo'lmadi")))
     }
     setFormOpen(false)
     setEditing(null)
@@ -74,15 +81,23 @@ export function SubjectsPage() {
     setFeePrompt(null)
   }
 
-  const handleDelete = (s: Subject) => setDeleting(s)
+  const handleDelete = (s: Subject) => {
+    setDeleteError(null)
+    setDeleting(s)
+  }
 
   const confirmDelete = async () => {
     if (!deleting || deleteBusy) return
     setDeleteBusy(true)
+    setDeleteError(null)
     try {
       await deleteSubject(deleting.id)
       setSubjects((prev) => prev.filter((x) => x.id !== deleting.id))
       setDeleting(null)
+    } catch (err) {
+      // Server 400 bilan "kursning guruhlari bor" deydi — ilgari bu matn yo'qolar, oyna esa
+      // jimgina ochiq qolardi (foydalanuvchi nega o'chmaganini bilmasdi).
+      setDeleteError(apiErrorMessage(err, "Kursni o'chirib bo'lmadi"))
     } finally {
       setDeleteBusy(false)
     }
@@ -228,7 +243,10 @@ export function SubjectsPage() {
       {/* Kursni o'chirishni tasdiqlash */}
       <Modal
         open={!!deleting}
-        onClose={() => setDeleting(null)}
+        onClose={() => {
+          setDeleting(null)
+          setDeleteError(null)
+        }}
         size="sm"
         title="Kursni o'chirish"
         footer={
@@ -253,6 +271,12 @@ export function SubjectsPage() {
             bo'lmaydi.
           </p>
         </div>
+        {/* Serverning rad etish sababi (masalan "kursning guruhlari bor") shu yerda ko'rinadi */}
+        {deleteError && (
+          <div className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+            {deleteError}
+          </div>
+        )}
       </Modal>
 
       {/* Kursga biriktirilgan o'quv dasturlarini boshqarish */}

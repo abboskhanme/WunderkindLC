@@ -13,6 +13,7 @@ import { Input, Select } from '@/components/ui/Input'
 import { Loader } from '@/components/ui/Loader'
 import { EnvSecretField } from '@/components/settings/EnvSecretField'
 import type { EnvSecret } from '@/api/services/settings'
+import { apiErrorMessage } from '@/lib/utils'
 
 /**
  * Telegram bot sozlamasi (ota-onalarga e'lon yuborish uchun).
@@ -29,6 +30,9 @@ export function TelegramSettings() {
   const [configured, setConfigured] = useState(false)
   const [loading, setLoading] = useState(true)
   const [status, setStatus] = useState<'idle' | 'saving' | 'saved'>('idle')
+  /** Saqlash xatosi — ilgari faqat `console.error` yozilar, ekranda esa hech narsa
+   *  o'zgarmasdi: foydalanuvchi bot sozlamasi saqlangan deb o'ylardi. */
+  const [error, setError] = useState('')
   // Majburiy obuna tekshiruvi haqiqatan ishlayaptimi (serverdan diagnostika)
   const [channelStatus, setChannelStatus] = useState('')
   const [channelMessage, setChannelMessage] = useState('')
@@ -52,6 +56,7 @@ export function TelegramSettings() {
   const onSubmit = async (e: FormEvent) => {
     e.preventDefault()
     setStatus('saving')
+    setError('')
     try {
       const saved = await saveTelegramSettings({
         botUsername: (username ?? '').trim(),
@@ -65,6 +70,7 @@ export function TelegramSettings() {
       setTimeout(() => setStatus('idle'), 2000)
     } catch (err) {
       console.error('Telegram sozlamalarini saqlashda xato:', err)
+      setError(apiErrorMessage(err, "Saqlab bo'lmadi"))
       setStatus('idle')
     }
   }
@@ -190,6 +196,7 @@ export function TelegramSettings() {
               <Check className="h-4 w-4" /> Saqlandi
             </span>
           )}
+          {error && <span className="text-sm font-medium text-red-600">{error}</span>}
         </div>
       </form>
     </Card>

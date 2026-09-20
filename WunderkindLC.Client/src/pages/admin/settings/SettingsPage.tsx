@@ -6,7 +6,7 @@ import {
   getSettings,
   saveAbsenceReasons,
 } from '@/api/services/settings'
-import { cn, uid } from '@/lib/utils'
+import { apiErrorMessage, cn, uid } from '@/lib/utils'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Loader } from '@/components/ui/Loader'
@@ -58,6 +58,9 @@ export function SettingsPage() {
   const [reasons, setReasons] = useState<AbsenceReason[]>([])
   const [loading, setLoading] = useState(true)
   const [rStatus, setRStatus] = useState<Status>('idle')
+  /** Sabablarni saqlash xatosi — ilgari xato JIM yutilar, tugma yana "Saqlash" bo'lar va
+   *  foydalanuvchi ro'yxat saqlangan deb o'ylardi. */
+  const [rError, setRError] = useState('')
 
   useEffect(() => {
     getSettings()
@@ -81,11 +84,13 @@ export function SettingsPage() {
 
   const onSaveReasons = async () => {
     setRStatus('saving')
+    setRError('')
     try {
       await saveAbsenceReasons(reasons.filter((r) => (r.name ?? '').trim()))
       setRStatus('saved')
       setTimeout(() => setRStatus('idle'), 2000)
-    } catch {
+    } catch (err) {
+      setRError(apiErrorMessage(err, "Saqlab bo'lmadi"))
       setRStatus('idle')
     }
   }
@@ -110,6 +115,7 @@ export function SettingsPage() {
             sub="Davomatda ishlatiladigan sabablar ro'yxati."
             actions={<SaveButton status={rStatus} onClick={onSaveReasons} />}
           >
+            {rError && <p className="mb-3 text-sm font-medium text-red-600">{rError}</p>}
             <div className="space-y-2">
               {reasons.map((r, i) => (
                 <div key={r.id} className="flex flex-wrap items-center gap-2">

@@ -37,7 +37,7 @@ import { usePerm } from '@/lib/permissions'
 import { getSubjects } from '@/api/services/subjects'
 import { getClasses } from '@/api/services/classes'
 import { genderLabels } from '@/config/constants'
-import { formatDate, cn } from '@/lib/utils'
+import { formatDate, cn, apiErrorMessage } from '@/lib/utils'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
@@ -163,16 +163,22 @@ export function TeachersPage() {
   const activeGroups = classes.filter((c) => !c.isArchived)
   const assignedTeachers = new Set(activeGroups.map((c) => c.teacherId).filter(Boolean)).size
 
-  const handleSubmit = (values: TeacherPayload) => {
-    if (editing) {
-      updateTeacher(editing.id, values).then((u) =>
-        setTeachers((prev) => prev.map((t) => (t.id === u.id ? u : t))),
-      )
-    } else {
-      createTeacher(values).then((c) => {
+  // ⚠️ Forma faqat SAQLANGANDAN KEYIN yopiladi: xatoda kiritilgan ma'lumot yo'qolmasin
+  // (o'quvchilar ro'yxatidagi bilan bir xil qoida — `.claude/rules/error-visibility.md`).
+  const handleSubmit = async (values: TeacherPayload) => {
+    try {
+      if (editing) {
+        const u = await updateTeacher(editing.id, values)
+        setTeachers((prev) => prev.map((t) => (t.id === u.id ? u : t)))
+      } else {
+        const c = await createTeacher(values)
         setTeachers((prev) => [c, ...prev])
         setViewing(c)
-      })
+      }
+    } catch (e) {
+      // Ilgari so'rov JIM yiqilardi: oyna yopilar, o'zgarish esa saqlanmagan bo'lardi.
+      alert(apiErrorMessage(e, editing ? "O'qituvchini saqlab bo'lmadi" : "O'qituvchini qo'shib bo'lmadi"))
+      return
     }
     setFormOpen(false)
     setEditing(null)
@@ -182,27 +188,33 @@ export function TeachersPage() {
     if (!archiveTarget) return
     const t = archiveTarget
     const today = new Date().toISOString().slice(0, 10)
-    archiveTeacher(t.id, reason.trim()).then(() => {
-      setTeachers((prev) => prev.filter((x) => x.id !== t.id))
-      setArchived((prev) => [
-        { ...t, isArchived: true, archivedAt: today, archiveReason: reason.trim() },
-        ...prev,
-      ])
-    })
+    archiveTeacher(t.id, reason.trim())
+      .then(() => {
+        setTeachers((prev) => prev.filter((x) => x.id !== t.id))
+        setArchived((prev) => [
+          { ...t, isArchived: true, archivedAt: today, archiveReason: reason.trim() },
+          ...prev,
+        ])
+      })
+      // Ilgari so'rov JIM yiqilardi: o'qituvchi ro'yxatda qolar, sabab ko'rinmasdi.
+      .catch((e) => alert(apiErrorMessage(e, "O'qituvchini arxivlab bo'lmadi")))
     setArchiveTarget(null)
     setReason('')
   }
 
   const handleRestore = (t: Teacher) => {
     if (!confirm(`"${t.fullName}" o'qituvchini arxivdan qaytarasizmi?`)) return
-    restoreTeacher(t.id).then(() => {
-      setArchived((prev) => prev.filter((x) => x.id !== t.id))
-      setTeachers((prev) =>
-        [{ ...t, isArchived: false, archivedAt: null, archiveReason: null }, ...prev].sort((a, b) =>
-          a.fullName.localeCompare(b.fullName),
-        ),
-      )
-    })
+    restoreTeacher(t.id)
+      .then(() => {
+        setArchived((prev) => prev.filter((x) => x.id !== t.id))
+        setTeachers((prev) =>
+          [{ ...t, isArchived: false, archivedAt: null, archiveReason: null }, ...prev].sort(
+            (a, b) => a.fullName.localeCompare(b.fullName),
+          ),
+        )
+      })
+      // Ilgari so'rov JIM yiqilardi: o'qituvchi arxivda qolar, sababi aytilmasdi.
+      .catch((e) => alert(apiErrorMessage(e, "Arxivdan qaytarib bo'lmadi")))
   }
 
   /** Vaqtincha faolsizlantirish — login yopiladi, paroli va butun tarixi joyida qoladi. */
