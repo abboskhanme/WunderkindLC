@@ -147,3 +147,43 @@ the trial lesson's group, and the leads export carries no teacher at all.
 On production the column and the data were applied ahead of the deploy (the migration is recorded
 in `__EFMigrationsHistory`, so the next deploy skips it). The moderator shows immediately; the
 level appears once the new build is deployed.
+
+## Fifth batch (2026-09-20): the opening balance became real ledger rows
+
+**The bug the client hit:** a student showed two different balances — one in the list and the
+profile header, another (always 0) inside the group, in the journal and at the cash desk; and a
+payment looked as if it changed nothing.
+
+**Cause, not a code defect:** the import wrote the balance only into `Students.Balance`. That
+field is the stored running balance, but everything else — "To'lash kerak", the per-group balance
+(`GroupBalanceService`), the month list in the payment modal, the cash desk — is **computed** from
+`MonthlyCharges` + `FinanceTransactions`, and those tables were empty (2 rows in the whole
+database). So the computed side was 0 for all 2 211 students.
+
+**Fix — the difference was materialised, per student:**
+
+```
+delta = Balance − (payments_net − charges_effective)
+delta < 0  →  MonthlyCharge  (debt),  Locked = true
+delta > 0  →  FinanceTransaction income/tuition (advance)
+```
+
+| | Rows | Total |
+|---|---|---|
+| Debt (`MonthlyCharges`) | 833 | 141 779 872 |
+| Advance (`FinanceTransactions`) | 612 | 134 813 230 |
+
+- **`Students.Balance` was not touched** — it was already right; `delta` subtracts what is already
+  recorded, so the two test payments made through the UI are not counted twice.
+- Month **2026-08**, date **2026-08-31** — the period *before* September, so September reports stay
+  clean and `AccrueDue` never touches it (memberships are activated 2026-09-01). `Locked = true`
+  keeps the fee-recalculation and the freeze purge away from these rows as well.
+- Each row is **tagged with the student's group** (split by fee when there are several), because a
+  tagged row lands 100 % on that group in the per-group balance. The 704 students with no active
+  group get `GroupId = NULL`.
+
+**Verified:** stored balance = computed balance for **2 211 of 2 211** students, on dev and on
+production. Total unchanged.
+
+To undo: `DELETE FROM "MonthlyCharges" WHERE "Month"='2026-08';` and
+`DELETE FROM "FinanceTransactions" WHERE "Month"='2026-08' AND "CreatedBy"='Import';`
