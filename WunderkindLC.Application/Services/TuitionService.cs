@@ -219,25 +219,28 @@ public static class TuitionService
         return feesByName.TryGetValue(s.ClassName, out var fee) ? fee : 0m;
     }
 
-    /// <summary>To'liq oy chegarasi: shu sondan ko'p (yoki teng) dars bo'lsa — to'liq oylik narx olinadi.</summary>
-    public const int FullMonthLessonThreshold = 12;
-
     /// <summary>
     /// Qisman-oy to'lovini hisoblaydi (aktivlashtirish/muzlatish uchun yagona formula):
     ///   - <paramref name="lessons"/> = shu segmentdagi billable dars soni (qolgan yoki qatnashilgan);
-    ///   - dars soni <paramref name="totalInMonth"/> ga teng (oyning BIRINCHI darsidan / to'liq oy)
-    ///     YOKI <see cref="FullMonthLessonThreshold"/> (12) dan katta/teng bo'lsa → TO'LIQ oylik narx;
-    ///   - aks holda (12 tadan kam) → dars soni × <paramref name="lessonFee"/> (kursning bir dars yaxlit narxi);
+    ///   - dars soni <paramref name="totalInMonth"/> ga TENG (oyning birinchi darsidan boshlagan /
+    ///     butun oy o'qigan) → TO'LIQ oylik narx;
+    ///   - aks holda → dars soni × <paramref name="lessonFee"/> (kursning bir dars yaxlit narxi);
     ///   - <paramref name="lessonFee"/> 0 (kursda kiritilmagan) bo'lsa → eski pro-rata (oylik × dars ÷ jami);
     ///   - har holatda to'liq oylik narxdan OSHMAYDI (qisman oy to'liqdan qimmat bo'lib qolmasin).
+    ///
+    /// <para>⚠️ **«12 dars» CHEGARASI OLIB TASHLANDI (2026-09-20, foydalanuvchi qarori).** Ilgari
+    /// 12 va undan ko'p dars qolgan bo'lsa to'liq oylik olinardi. Endi oy o'rtasida qo'shilgan
+    /// o'quvchiga HAR DOIM "qolgan dars × dars narxi" yoziladi: markazning modeli — oylik abonement,
+    /// dars soni esa FAQAT haqiqatan kam dars o'tgan holatda ahamiyatli. Yuqoridagi CHEGARA
+    /// (to'liq oylikdan oshmaslik) bu yerda muhim: dars narxi to'g'ri qo'yilgan bo'lsa to'liq oy
+    /// baribir to'liq oylikka teng chiqadi.</para>
     /// </summary>
     public static decimal ProratedLessonCharge(decimal monthlyFee, decimal lessonFee, int lessons, int totalInMonth)
     {
         if (monthlyFee <= 0 || lessons <= 0 || totalInMonth <= 0) return 0m;
-        // To'liq oy: birinchi darsdan (lessons == totalInMonth) yoki 12+ dars.
-        if (lessons >= totalInMonth || lessons >= FullMonthLessonThreshold)
-            return decimal.Round(monthlyFee, 2);
-        // 12 tadan kam: har bir dars uchun yaxlit summa; kursda yo'q bo'lsa eski pro-rata.
+        // To'liq oy: birinchi darsdan boshlagan (lessons == totalInMonth).
+        if (lessons >= totalInMonth) return decimal.Round(monthlyFee, 2);
+        // Qisman: har bir dars uchun yaxlit summa; kursda narx yo'q bo'lsa eski pro-rata.
         var partial = lessonFee > 0
             ? lessonFee * lessons
             : monthlyFee * lessons / totalInMonth;
@@ -294,9 +297,9 @@ public static class TuitionService
 
     /// <summary>Aktivlashtirilgan oyning QISMAN to'lovini hisoblab o'quvchiga yozadi (balans kamayadi,
     /// shu oy MonthlyCharge'iga qo'shiladi yoki yaratiladi). Formula (<see cref="ProratedLessonCharge"/>):
-    /// oyning BIRINCHI darsidan aktivlashtirilgan (qolgan == jami) yoki 12+ dars qolgan → TO'LIQ oylik narx;
-    /// 12 tadan kam qolgan → qolgan dars × kursning bir dars yaxlit narxi (LessonPrice; kiritilmagan bo'lsa
-    /// eski pro-rata). To'liq oylikdan oshmaydi. Chegirma qo'llanadi. SaveChanges — chaqiruvchida.</summary>
+    /// oyning BIRINCHI darsidan aktivlashtirilgan (qolgan == jami) → TO'LIQ oylik narx; aks holda
+    /// qolgan dars × kursning bir dars yaxlit narxi (LessonPrice; kiritilmagan bo'lsa eski
+    /// pro-rata). To'liq oylikdan oshmaydi. Chegirma qo'llanadi. SaveChanges — chaqiruvchida.</summary>
     /// <param name="addSegment">true bo'lsa (shu OYDA muzlatilgandan keyin QAYTA aktivlashtirish) — yangi
     /// studied segment mavjud (muzlatishgacha studied) hisobga QO'SHILADI, almashtirilmaydi. Aks holda
     /// (birinchi aktivlashtirish / ikki marta bosish) idempotent ALMASHTIRADI.</param>

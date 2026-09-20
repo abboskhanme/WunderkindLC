@@ -47,6 +47,26 @@ paths:
   umuman yozilmasdi — latent bug); `TeacherFormModal` bu maydonlarni round-trip qiladi (profil tahrirda
   reset bo'lmaydi).
 
+## OYLIK MODEL — ABONEMENT (2026-09-20, foydalanuvchi bilan aniqlashtirilgan)
+
+Markazning modeli: kurs narxi — **oylik abonement**. Har oyning boshida faol o'quvchiga
+**to'liq oylik** qarz yoziladi (`TuitionAccrualService` → `AccrueDue`, startupda va har 12 soatda;
+`AccruableMonth` aktivlashtirilgan oydan KEYINGI oylarni oladi), to'lov esa shu qarzdan ayiriladi.
+O'quvchida **bitta balans** — `Students.Balance`.
+
+⚠️ **DARS SONI ODATDA AHAMIYATSIZ.** U faqat IKKI joyda ishlatiladi va ikkalasi ham "haqiqatan
+kam dars o'tilgan" holat: oy o'rtasida **aktivlashtirish** (qolgan darslar) va oy o'rtasida
+**muzlatish/chiqish** (o'qilgan darslar). Ikkalasi ham bitta funksiya —
+`TuitionService.ProratedLessonCharge`.
+
+⚠️ **«12 DARS» CHEGARASI OLIB TASHLANDI.** Ilgari 12 va undan ko'p dars bo'lsa to'liq oylik
+olinardi; endi qisman oy HAR DOIM "dars soni × kursning bir dars narxi" (`Subject.LessonPrice`;
+kiritilmagan bo'lsa eski pro-rata). Faqat dars soni oydagi JAMI darsga teng bo'lsa — to'liq oylik.
+Natija to'liq oylikdan hech qachon oshmaydi.
+
+⚠️ Ya'ni **`Subject.LessonPrice` endi muhim**: u kiritilmagan kursda oy o'rtasida qo'shilgan
+o'quvchi kunlar nisbatida hisoblanadi (dars kunlari bo'yicha emas).
+
 - **Billing + a'zolik holati:** `StudentGroup.Status` = "trial" (sinov — to'lov YO'Q) | "active" | "frozen".
   Guruhga qo'shilganda "trial". **Aktivlashtirish** (`/members/{sid}/activate` {date}): birinchi (qisman)
   oy = (guruh `MonthlyFee` ÷ SHU OYDAGI jami dars) × shu sanadan oy oxirigacha qolgan darslar

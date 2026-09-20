@@ -27,8 +27,7 @@ public class TuitionActivationFeeBatchTests
     private static string M(int delta) => AppClock.Today.AddMonths(delta).ToString("yyyy-MM");
 
     /// <summary>Joriy oyda AYNAN 10 ta dars qoladigan sana (oy oxiridan 9 kun orqaga).
-    /// Har kuni dars bo'lgani uchun "qolgan dars" = qolgan kunlar soni. 10 — ham
-    /// <see cref="TuitionService.FullMonthLessonThreshold"/> (12) dan kam, ham oydagi jami darsdan
+    /// Har kuni dars bo'lgani uchun "qolgan dars" = qolgan kunlar soni. 10 — oydagi JAMI darsdan
     /// kam, ya'ni LessonPrice formulasi ISHLAYDI va natija oy uzunligiga bog'liq bo'lmaydi.</summary>
     private static string TenLessonsLeftDate()
     {

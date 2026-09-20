@@ -191,13 +191,15 @@ public class GroupClosingTests
         Assert.Equal(M(-1), eskiRow.Month);
         Assert.Equal(decimal.Round(600_000m * 10 / DaysIn(-1), 2), eskiRow.Amount);
 
-        // YANGI guruh o'z sanasidan hisoblanadi (eski guruh narxi bilan aralashmaydi). 11-sanadan
-        // oy oxirigacha 18+ dars qolgani uchun aktivlashtirish oyi TO'LIQ oylik
-        // (TuitionService.FullMonthLessonThreshold = 12), oradagi oy ham to'liq.
+        // YANGI guruh o'z sanasidan hisoblanadi (eski guruh narxi bilan aralashmaydi).
+        // ⚠️ «12 dars» chegarasi OLIB TASHLANGAN (2026-09-20): aktivlashtirish oyi endi HAR DOIM
+        // qolgan darslar bo'yicha yoziladi (kursda dars narxi yo'q → eski pro-rata), keyingi oy
+        // esa to'liq oylik.
         var yangiOylar = ctx.MonthlyCharges.Where(c => c.GroupId == yangi.Id)
             .OrderBy(c => c.Month).ToList();
         Assert.Equal(new[] { M(-1), M(0) }, yangiOylar.Select(c => c.Month).ToArray());
-        Assert.All(yangiOylar, r => Assert.Equal(800_000m, r.Amount));
+        Assert.Equal(decimal.Round(800_000m * (DaysIn(-1) - 10) / DaysIn(-1), 2), yangiOylar[0].Amount);
+        Assert.Equal(800_000m, yangiOylar[1].Amount);
     }
 
     // ==================== "Tugatish" — KIM yangi guruhga ko'chadi ====================
