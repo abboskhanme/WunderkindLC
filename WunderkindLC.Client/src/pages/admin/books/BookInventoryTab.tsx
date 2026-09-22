@@ -139,8 +139,8 @@ export function BookInventoryTab({ canCreate, canEdit, canDelete }: Props) {
                   <p className="truncate text-[15px] font-bold tracking-tight text-slate-800">{b.title}</p>
                   {b.author && <p className="truncate text-xs text-slate-400">{b.author}</p>}
                   <p className="mt-1 text-sm">
-                    <span className="font-mono font-semibold text-slate-700">{formatMoney(b.price)}</span>{' '}
-                    <span className="text-slate-400">so'm</span>
+                    {/* ⚠️ `formatMoney` O'ZI "so'm" qo'shadi — yoniga yana yozilsa takror bo'ladi. */}
+                    <span className="font-mono font-semibold text-slate-700">{formatMoney(b.price)}</span>
                   </p>
                 </div>
               </div>

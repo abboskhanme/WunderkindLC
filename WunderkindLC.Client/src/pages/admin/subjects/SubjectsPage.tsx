@@ -154,11 +154,11 @@ export function SubjectsPage() {
                   </p>
                   <p className="mt-0.5 text-sm text-slate-500">
                     <span className="font-mono font-medium text-slate-700">{formatMoney(s.price)}</span>{' '}
-                    so'm / oy
+                    / oy
                   </p>
                   {(s.lessonPrice ?? 0) > 0 && (
                     <p className="mt-0.5 text-xs text-slate-400">
-                      <span className="font-mono">{formatMoney(s.lessonPrice ?? 0)}</span> so'm / dars
+                      <span className="font-mono">{formatMoney(s.lessonPrice ?? 0)}</span> / dars
                     </p>
                   )}
                 </div>
@@ -222,7 +222,7 @@ export function SubjectsPage() {
               <span className="font-medium text-slate-800">{feePrompt.values.name}</span> kursining
               oylik narxi{' '}
               <span className="font-medium">{formatMoney(feePrompt.oldPrice)}</span> →{' '}
-              <span className="font-medium">{formatMoney(feePrompt.values.price)}</span> so'mga
+              <span className="font-medium">{formatMoney(feePrompt.values.price)}</span> ga
               o'zgardi. Yangi narx shu kursga bog'langan guruhlardagi o'quvchilarga qachondan
               qo'llansin?
             </p>
