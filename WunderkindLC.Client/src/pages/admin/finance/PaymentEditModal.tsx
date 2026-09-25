@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import { AlertTriangle } from 'lucide-react'
 import type { FinanceTransaction, MonthLedger, StudentGroupMembership } from '@/types'
@@ -11,6 +11,7 @@ import { Input, Select, Textarea } from '@/components/ui/Input'
 import { Loader } from '@/components/ui/Loader'
 import { formatMonth, monthStatusLabels, paymentMethods } from '@/config/constants'
 import { apiErrorMessage, formatDate, formatMoney, cn } from '@/lib/utils'
+import { toast } from '@/lib/toast'
 
 interface Props {
   /** Tahrirlanadigan o'quvchi to'lovi (income + tuition) */
@@ -32,6 +33,8 @@ export function PaymentEditModal({ payment, onClose, onSaved }: Props) {
   const [groups, setGroups] = useState<StudentGroupMembership[]>([])
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
+  /** SINXRON qulf — "Saqlash" tez-tez bosilsa ham so'rov BITTA ketadi (`saving` keyingi renderda yangilanadi). */
+  const inFlightRef = useRef(false)
   const [error, setError] = useState<string | null>(null)
   /** Kvitansiya raqami BOSHQA to'lovda band — server 409 bilan qaytargan yozuv. */
   const [duplicate, setDuplicate] = useState<DuplicateReceipt | null>(null)
@@ -73,7 +76,8 @@ export function PaymentEditModal({ payment, onClose, onSaved }: Props) {
 
   /** Saqlash. `force=true` — kvitansiya raqami boshqa to'lovda band bo'lsa ham ("Baribir saqlash"). */
   const save = async (force: boolean) => {
-    if (!payment || !form || form.amount <= 0 || !form.date || !form.month) return
+    if (inFlightRef.current || !payment || !form || form.amount <= 0 || !form.date || !form.month) return
+    inFlightRef.current = true
     setSaving(true)
     setError(null)
     try {
@@ -88,6 +92,7 @@ export function PaymentEditModal({ payment, onClose, onSaved }: Props) {
         forceReceipt: force,
       })
       setDuplicate(null)
+      toast.success("To'lov o'zgartirildi", formatMoney(form.amount))
       onSaved()
       onClose()
     } catch (err) {
@@ -96,6 +101,7 @@ export function PaymentEditModal({ payment, onClose, onSaved }: Props) {
       if (dup) setDuplicate(dup)
       else setError(apiErrorMessage(err, "To'lovni saqlab bo'lmadi"))
     } finally {
+      inFlightRef.current = false
       setSaving(false)
     }
   }

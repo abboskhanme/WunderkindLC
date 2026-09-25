@@ -453,7 +453,7 @@ export async function addPayment(
   /** Naqd to'lovda — qog'oz kvitansiya raqami ("KV..."); kartada — to'lov vaqti "HH:mm" va
    *  karta raqamining oxirgi 4 raqami.
    *  `forceReceipt` — kvitansiya raqami band bo'lsa ham saqlash ("Baribir saqlash"). */
-  extra?: { receiptNo?: string; paidTime?: string; cardLast4?: string; forceReceipt?: boolean },
+  extra?: { receiptNo?: string; paidTime?: string; cardLast4?: string; forceReceipt?: boolean; requestId?: string },
 ): Promise<string | null> {
   if (USE_MOCK) {
     await delay(250)
@@ -470,6 +470,8 @@ export async function addPayment(
     paidTime: extra?.paidTime,
     cardLast4: extra?.cardLast4,
     forceReceipt: extra?.forceReceipt ?? false,
+    // Oyna ochilishining kaliti — qayta bosilgan/yuborilgan so'rov IKKINCHI to'lov yozmaydi.
+    requestId: extra?.requestId,
   })
   return data?.id ?? null
 }

@@ -126,7 +126,9 @@ export function TeacherSalaryPage() {
             const remaining = cur ? cur.remaining : ledger.remaining
             const modeSub =
               ledger.salaryMode === 'percent'
-                ? `Yig'ilgan to'lovga asoslangan (${ledger.salaryPercent}%)`
+                ? cur?.chargedBase
+                  ? `Hisoblangan oylikdan (${ledger.salaryPercent}%)`
+                  : `Yig'ilgan to'lovga asoslangan (${ledger.salaryPercent}%)`
                 : "Qat'iy oylik"
             return (
               <div className="rounded-[20px] border border-line bg-white p-4 shadow-[var(--shadow-card)]">
@@ -163,11 +165,15 @@ export function TeacherSalaryPage() {
                   </div>
                 </div>
 
-                {/* FOIZLI maoshda: hisob qayerdan chiqqani — yig'ilgan × foiz. */}
-                {isPercent && cur && (cur.collected ?? 0) > 0 && (
+                {/* FOIZLI maoshda: hisob qayerdan chiqqani — baza × foiz. ⚠️ Baza oyga qarab:
+                    hisoblangan to'liq oylik (chargedBase) yoki yig'ilgan pul — boshqasini
+                    ko'rsatsak arifmetika noto'g'ri chiqardi (1 000 000 × 40% = 1 600 000). */}
+                {isPercent && cur && (cur.chargedBase ? (cur.salaryBase ?? 0) : (cur.collected ?? 0)) > 0 && (
                   <p className="mt-3 rounded-[14px] bg-slate-50 px-3.5 py-2.5 text-[12px] leading-relaxed text-mute">
-                    Yig'ilgan:{' '}
-                    <span className="font-mono font-bold text-ink">{formatMoney(cur.collected ?? 0)}</span>
+                    {cur.chargedBase ? 'Hisoblangan oylik (chegirmasiz)' : "Yig'ilgan"}:{' '}
+                    <span className="font-mono font-bold text-ink">
+                      {formatMoney(cur.chargedBase ? (cur.salaryBase ?? 0) : (cur.collected ?? 0))}
+                    </span>
                     {' × '}
                     <span className="font-bold text-ink">{percentLabel(ledger)}</span>
                     {' = '}
@@ -245,8 +251,14 @@ export function TeacherSalaryPage() {
                         {' · '}Berildi:{' '}
                         <span className="font-mono text-teal-700">{formatMoney(m.paid)}</span>
                       </p>
-                      {/* Foizli maoshda: shu OY UCHUN yig'ilgan to'lov — hisob shundan chiqadi. */}
-                      {isPercent && (m.collected ?? 0) > 0 && (
+                      {/* Foizli maoshda: shu oy bazasi — hisob shundan chiqadi. */}
+                      {isPercent && m.chargedBase && (m.salaryBase ?? 0) > 0 && (
+                        <p className="text-[11px] text-faint">
+                          Shu oy uchun hisoblangan:{' '}
+                          <span className="font-mono text-mute">{formatMoney(m.salaryBase ?? 0)}</span>
+                        </p>
+                      )}
+                      {isPercent && !m.chargedBase && (m.collected ?? 0) > 0 && (
                         <p className="text-[11px] text-faint">
                           Shu oy uchun yig'ilgan:{' '}
                           <span className="font-mono text-mute">{formatMoney(m.collected ?? 0)}</span>

@@ -127,6 +127,18 @@ public class FinanceController(AppDbContext db, AuditService audit, AutoMessageS
         if (dupReceipt is not null)
             return Conflict(new { message = $"{newReceiptNo} kvitansiya raqami allaqachon kiritilgan", duplicate = dupReceipt });
 
+        // ⚠️ QULF + SO'ROV KALITI (PaymentIdempotency): tekshiruv va yozish ketma-ket bo'lsin — aks
+        // holda bir zumda bosilgan ikki "Saqlash" ikkalasi ham quyidagi tekshiruvdan o'tib IKKI
+        // tranzaksiya (va o'quvchi to'lovida IKKI BARAVAR balans) yozardi.
+        // O'quvchiga tegishli amal — o'quvchi qulfi (to'lov/vozvrat/o'chirish bilan BIR navbatda).
+        var scope = p.StudentId is not null ? "student:" + p.StudentId : "finance:" + (p.TeacherId ?? p.Category);
+        using var gate = await PaymentIdempotency.LockAsync(scope);
+        var reqKey = PaymentIdempotency.Key(scope, p.RequestId);
+        var knownTxId = PaymentIdempotency.Find(reqKey, DateTime.UtcNow);
+        var knownTx = knownTxId is null ? null : await db.FinanceTransactions.FirstOrDefaultAsync(t => t.Id == knownTxId);
+        if (knownTx is not null)
+            return ToDto(knownTx, await StudentNames(), await TeacherNames(), typeNames: await TypeNames());
+
         // IDEMPOTENCY CHECK: oxirgi 5 soniyada bir xil tranzaksiya bo'lsa — dublikat qo'shmasdan
         // mavjudni qaytaramiz (admin double-click yoki network retry uchun).
         // Shartlar: bir xil StudentId, Amount, Direction, Category, Type (tuition/salary/other),
@@ -148,6 +160,7 @@ public class FinanceController(AppDbContext db, AuditService audit, AutoMessageS
             && DateTime.UtcNow.Subtract(recentDuplicate.CreatedAt).TotalSeconds < 5)
         {
             // Idempotent: oxirgi 5s ichida bir xil qiymatli tranzaksiya — qaytaramiz.
+            PaymentIdempotency.Remember(reqKey, recentDuplicate.Id, DateTime.UtcNow);
             return ToDto(recentDuplicate, await StudentNames(), await TeacherNames(), typeNames: await TypeNames());
         }
 
@@ -195,6 +208,8 @@ public class FinanceController(AppDbContext db, AuditService audit, AutoMessageS
             summary, after: AuditService.Snapshot(tx), studentId: tx.StudentId, teacherId: tx.TeacherId);
 
         await db.SaveChangesAsync();
+        PaymentIdempotency.Remember(reqKey, tx.Id, DateTime.UtcNow);
+        gate.Dispose(); // avto-xabar sekin bo'lishi mumkin — keyingi amal uni kutmasin
 
         // Avto xabar — o'quvchi tuition to'lovi qabul qilinganda ("To'lov qabul qilinganda" hodisasi):
         // yoqilgan qoidalar bo'yicha SMS + push + telegram. {sana} = to'lovning HAQIQIY sanasi
@@ -227,6 +242,13 @@ public class FinanceController(AppDbContext db, AuditService audit, AutoMessageS
     [HttpPut("transactions/{id}")]
     public async Task<ActionResult<FinanceTransactionDto>> Update(string id, FinanceTransactionPayload p)
     {
+        // QULF (o'quvchi bo'yicha) — balans delta'si parallel to'lov/vozvrat/o'chirish bilan
+        // ustma-ust tushib, biri ikkinchisining ta'sirini jimgina yo'qotmasin (PaymentIdempotency).
+        var owner = await db.FinanceTransactions.AsNoTracking()
+            .Where(t => t.Id == id).Select(t => t.StudentId).FirstOrDefaultAsync();
+        using var gate = await PaymentIdempotency.LockAsync(
+            owner is not null ? "student:" + owner : "finance:tx:" + id);
+
         var tx = await db.FinanceTransactions.FindAsync(id);
         if (tx is null) return NotFound();
 
@@ -408,6 +430,13 @@ public class FinanceController(AppDbContext db, AuditService audit, AutoMessageS
     [HttpPut("payments/{id}")]
     public async Task<ActionResult<FinanceTransactionDto>> UpdatePayment(string id, PaymentEditPayload p)
     {
+        // QULF (o'quvchi bo'yicha) — balans delta'si parallel to'lov/vozvrat/o'chirish bilan
+        // ustma-ust tushib, biri ikkinchisining ta'sirini jimgina yo'qotmasin (PaymentIdempotency).
+        var owner = await db.FinanceTransactions.AsNoTracking()
+            .Where(t => t.Id == id).Select(t => t.StudentId).FirstOrDefaultAsync();
+        using var gate = await PaymentIdempotency.LockAsync(
+            owner is not null ? "student:" + owner : "finance:tx:" + id);
+
         var tx = await db.FinanceTransactions.FindAsync(id);
         if (tx is null) return NotFound();
         if (tx.Direction != "income" || tx.Category != "tuition" || string.IsNullOrEmpty(tx.StudentId))
@@ -510,8 +539,9 @@ public class FinanceController(AppDbContext db, AuditService audit, AutoMessageS
     /// Muzlatish bilan bog'liqlik: o'quvchi oy o'rtasida MUZLATILGANDA shu oy hisobi qatnashilgan darslarga
     /// qayta hisoblanadi (<see cref="TuitionService.ChargeFreezeProrateAsync"/>) va o'quvchida AVANS (ortiqcha
     /// to'lov) paydo bo'ladi. Shu avans aynan qaytariladigan summa — vozvrat balansni SHU miqdorda kamaytiradi,
-    /// natijada balans 0 ga tushadi. O'qituvchining foizli maoshi net (to'langan − vozvrat) dan hisoblanadi
-    /// (<see cref="SalaryLedger"/>, <see cref="CourseFinanceReport"/> vozvratni ayiradi — avtomatik).
+    /// natijada balans 0 ga tushadi. O'qituvchi foizi: <c>CenterMeta.SalaryChargedBaseFrom</c> dan OLDINGI
+    /// oylarda net (to'langan − vozvrat) dan; undan keyin HISOBLANGAN oylikdan — vozvrat ta'sir qilmaydi,
+    /// muzlatishda esa oylikning O'ZI qisqaradi (<see cref="SalaryLedger"/>, <c>billing.md</c>).
     ///
     /// Vozvrat alohida yozuv sifatida saqlanadi (Direction="expense", Category="refund", RefundOfId=asl to'lov),
     /// shuning uchun kassa chiqimi (Summary/Monthly) va "Vozvratlar tarixi"da ko'rinadi. Bir to'lovni bir necha
@@ -520,8 +550,16 @@ public class FinanceController(AppDbContext db, AuditService audit, AutoMessageS
     [HttpPost("payments/{id}/refund")]
     public async Task<ActionResult<FinanceTransactionDto>> Refund(string id, RefundPayload p)
     {
+        // ⚠️ QULF: "qancha qaytarilgan" tekshiruvi va yozish ketma-ket bo'lsin. Qulfsiz ikki bir
+        // zumdagi so'rov ikkalasi ham eski qoldiqni ko'rib, to'lovdan KO'P pul qaytarar va balansni
+        // ikki marta kamaytirardi. Qulf o'quvchi bo'yicha — to'lov/o'chirish bilan bir navbatda.
+        var owner = await db.FinanceTransactions.AsNoTracking()
+            .Where(t => t.Id == id).Select(t => t.StudentId).FirstOrDefaultAsync();
+        var scope = "student:" + (owner ?? "-");
+        using var gate = await PaymentIdempotency.LockAsync(scope);
+
         var tx = await db.FinanceTransactions.FindAsync(id);
-        if (tx is null) return NotFound();
+        if (tx is null) return NotFound(new { message = "To'lov topilmadi (o'chirilgan bo'lishi mumkin)" });
         if (tx.Direction != "income" || tx.Category != "tuition" || string.IsNullOrEmpty(tx.StudentId))
             return BadRequest(new { message = "Vozvrat faqat o'quvchi to'lovi (tuition) uchun qilinadi" });
         if (tx.RefundOfId != null)
@@ -531,6 +569,13 @@ public class FinanceController(AppDbContext db, AuditService audit, AutoMessageS
         if (student is null) return BadRequest(new { message = "O'quvchi topilmadi" });
 
         if (p.Amount <= 0) return BadRequest(new { message = "Vozvrat summasi musbat bo'lishi kerak" });
+
+        // Qayta bosilgan "Qaytarish" (o'sha oyna kaliti bilan) — ikkinchi vozvrat EMAS, avvalgisi.
+        var reqKey = PaymentIdempotency.Key(scope + ":refund:" + id, p.RequestId);
+        var knownId = PaymentIdempotency.Find(reqKey, DateTime.UtcNow);
+        var known = knownId is null ? null : await db.FinanceTransactions.FirstOrDefaultAsync(r => r.Id == knownId);
+        if (known is not null)
+            return ToDto(known, await StudentNames(), await TeacherNames(), await GroupNames(), typeNames: await TypeNames());
 
         // Shu to'lovdan avval qancha qaytarilgan — jami asl summadan oshmasin.
         var already = await db.FinanceTransactions
@@ -568,6 +613,7 @@ public class FinanceController(AppDbContext db, AuditService audit, AutoMessageS
         db.FinanceTransactions.Add(refund);
 
         // Balans: vozvrat to'lovga TESKARI — muzlatishdan hosil bo'lgan avansni qaytaradi (balans kamayadi).
+        // (`student` qulf ICHIDA yuklangan — balans eskirgan emas.)
         student.Balance -= p.Amount;
 
         audit.Record(AuditService.EntityFinanceTransaction, refund.Id, "create",
@@ -576,6 +622,8 @@ public class FinanceController(AppDbContext db, AuditService audit, AutoMessageS
             after: AuditService.Snapshot(refund), studentId: tx.StudentId);
 
         await db.SaveChangesAsync();
+        PaymentIdempotency.Remember(reqKey, refund.Id, DateTime.UtcNow);
+        gate.Dispose();
 
         var students = await StudentNames();
         var teachers = await TeacherNames();
@@ -617,8 +665,23 @@ public class FinanceController(AppDbContext db, AuditService audit, AutoMessageS
     [HttpDelete("transactions/{id}")]
     public async Task<IActionResult> Delete(string id, [FromQuery] string? reasonId = null)
     {
+        // ⚠️ QULF (o'quvchi bo'yicha): ikki marta bosilgan "O'chirish" ikkinchi marta balansni
+        // qaytarmasin, va parallel to'lov/vozvrat balansi ustidan yozilmasin.
+        var owner = await db.FinanceTransactions.AsNoTracking()
+            .Where(t => t.Id == id).Select(t => t.StudentId).FirstOrDefaultAsync();
+        using var gate = await PaymentIdempotency.LockAsync(
+            owner is not null ? "student:" + owner : "finance:tx:" + id);
+
         var tx = await db.FinanceTransactions.FindAsync(id);
-        if (tx is null) return NotFound();
+        if (tx is null) return NotFound(new { message = "Bu amal allaqachon o'chirilgan" });
+
+        // ⚠️ VOZVRATI BOR to'lov o'chirilmaydi. O'chirilsa to'lov summasi balansdan to'liq ayriladi,
+        // vozvrat qatori esa qolib, qaytarilgan pul balansdan IKKINCHI marta ayrilgan bo'lardi
+        // (o'quvchiga hech qachon bo'lmagan qarz yoziladi). Avval vozvratlar o'chiriladi.
+        var refundCount = await db.FinanceTransactions
+            .CountAsync(r => r.RefundOfId == id && r.Direction == "expense" && r.Category == "refund");
+        if (refundCount > 0)
+            return BadRequest(new { message = $"Bu to'lovdan {refundCount} ta vozvrat qilingan — avval vozvrat(lar)ni o'chiring" });
 
         var reason = string.IsNullOrWhiteSpace(reasonId) ? "" : (await db.ActionReasons.Where(r => r.Id == reasonId).Select(r => r.Label).FirstOrDefaultAsync() ?? "");
         var dir = tx.Direction == "income" ? "Kirim" : "Chiqim";

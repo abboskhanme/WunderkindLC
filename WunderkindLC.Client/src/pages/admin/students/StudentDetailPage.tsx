@@ -647,7 +647,7 @@ export function StudentDetailPage() {
     comment?: string,
     method?: string,
     date?: string,
-    extra?: { receiptNo?: string; paidTime?: string; cardLast4?: string; forceReceipt?: boolean },
+    extra?: { receiptNo?: string; paidTime?: string; cardLast4?: string; forceReceipt?: boolean; requestId?: string },
   ) => {
     if (!id) return
     // Xato QAYTA OTILADI — PaymentModal uni o'zi ko'rsatadi (kvitansiya band bo'lsa kartochka

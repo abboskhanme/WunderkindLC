@@ -173,17 +173,31 @@ public static class KpiMetricsService
         // tortib yuborardi — ular hisobga kirmaydi.
         var groups = await db.Classes.AsNoTracking()
             .Where(g => !g.IsArchived && g.Status == "active")
-            .Select(g => new { g.MonthlyFee, g.TeacherSalaryPercent })
+            .Select(g => new { g.MonthlyFee, g.TeacherSalaryMode, g.TeacherSalaryPercent, g.TeacherId })
             .ToListAsync(ct);
+        // AMALDAGI foiz: guruhning o'zi "percent" bo'lsa — o'zi; "Umumiy" ("") bo'lsa va o'qituvchi
+        // foizli bo'lsa — o'qituvchining umumiy foizi (SalaryLedger.EffMode bilan bir xil qoida).
+        // ⚠️ Ilgari faqat `Group.TeacherSalaryPercent` o'qilardi — "Umumiy" rejim standart bo'lgach
+        // (2026-09-25) bunday guruhlar tushib qolib, ulush jimgina konstantaga qaytardi.
+        var teacherIds = groups.Select(g => g.TeacherId).Where(id => !string.IsNullOrEmpty(id)).Distinct().ToList();
+        var teacherPct = await db.Teachers.AsNoTracking()
+            .Where(t => teacherIds.Contains(t.Id) && t.SalaryMode == "percent")
+            .ToDictionaryAsync(t => t.Id, t => t.SalaryPercent, ct);
+        decimal EffPercent(string mode, decimal groupPct, string teacherId) =>
+            mode == "percent" ? groupPct
+            : mode == "fixed" ? 0m
+            : teacherPct.GetValueOrDefault(teacherId, 0m);
 
         var priced = groups.Where(g => g.MonthlyFee > 0).ToList();
         var coursePrice = priced.Count > 0
             ? KpiCalculator.Som(priced.Average(g => g.MonthlyFee))
             : rules.UnitCoursePrice;
 
-        var shared = groups.Where(g => g.TeacherSalaryPercent > 0).ToList();
+        var shared = groups
+            .Select(g => EffPercent(g.TeacherSalaryMode, g.TeacherSalaryPercent, g.TeacherId))
+            .Where(p => p > 0).ToList();
         var teacherShare = shared.Count > 0
-            ? (double)shared.Average(g => g.TeacherSalaryPercent) / 100.0
+            ? (double)shared.Average() / 100.0
             : rules.UnitTeacherShare;
         // Foiz 0..1 oralig'idan chiqib ketsa (qo'lda 155 kiritilgan) marja MANFIY bo'lib,
         // butun indikator ma'nosini yo'qotardi.

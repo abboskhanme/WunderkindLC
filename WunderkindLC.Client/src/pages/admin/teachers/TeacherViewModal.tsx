@@ -122,7 +122,7 @@ export function TeacherViewModal({ teacher, subjects, groups = [], onClose }: Pr
             mono
             value={
               teacher.salaryMode === 'percent'
-                ? `Foiz — guruh to'lovining ${teacher.salaryPercent ?? 0}%i`
+                ? `Foiz — hisoblangan oylikning ${teacher.salaryPercent ?? 0}%i`
                 : `Qat'iy summa — ${formatMoney(teacher.salary)}`
             }
           />

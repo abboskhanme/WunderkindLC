@@ -30,7 +30,8 @@ import {
 import { addPayment } from '@/api/services/students'
 import type { CashierSummary } from '@/api/services/kassa'
 import { financeCategoryLabel, financeDirectionLabels, formatMonth, paymentMethodLabel } from '@/config/constants'
-import { formatDate, formatTime, formatDateTime, formatMoney, exportToCsv, cn } from '@/lib/utils'
+import { formatDate, formatTime, formatDateTime, formatMoney, exportToCsv, cn, apiErrorMessage } from '@/lib/utils'
+import { toast } from '@/lib/toast'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
@@ -226,12 +227,16 @@ export function FinancePage() {
     // mexanizmi orqali (o'quvchilar bo'limidagi to'lov kabi), oddiy xom yozuv emas.
     let newTxId: string | null = null
     if (!editing && values.direction === 'income' && values.category === 'tuition' && values.studentId) {
-      newTxId = await addPayment(values.studentId, values.amount, values.month, undefined, undefined, values.method)
+      newTxId = await addPayment(values.studentId, values.amount, values.month, undefined, undefined, values.method,
+        undefined, { requestId: values.requestId })
+      toast.success("To'lov qabul qilindi", formatMoney(values.amount))
     } else if (editing) {
       await updateTransaction(editing.id, values)
+      toast.success('Saqlandi')
     } else {
       const tx = await createTransaction(values)
       if (values.direction === 'income') newTxId = tx.id
+      toast.success(values.direction === 'income' ? 'Kirim saqlandi' : 'Chiqim saqlandi', formatMoney(values.amount))
     }
     setFormOpen(false)
     setEditing(null)
@@ -251,15 +256,18 @@ export function FinancePage() {
 
   const handleDelete = (t: FinanceTransaction) => setDeleting(t)
 
+  // Promise QAYTARADI — `ReasonPromptModal` tugmani so'rov tugaguncha qulflab turadi, xatodan
+  // keyin esa qayta yoqadi (ilgari xatodan keyin tugma abadiy o'chiq qolardi).
   const doDelete = (reasonId?: string) => {
     const t = deleting
     if (!t) return
-    deleteTransaction(t.id, reasonId)
+    return deleteTransaction(t.id, reasonId)
       .then(() => {
         setDeleting(null)
+        toast.success("O'chirildi", formatMoney(t.amount))
         load()
       })
-      .catch((e) => alert(e?.response?.data?.message ?? "O'chirib bo'lmadi"))
+      .catch((e) => alert(apiErrorMessage(e, "O'chirib bo'lmadi")))
   }
 
   const handleAccrue = async () => {
@@ -851,7 +859,7 @@ export function FinancePage() {
                           </td>
                           <td className="num text-slate-600">
                             {r.salaryMode === 'percent'
-                              ? `${r.salaryPercent ?? 0}% (guruh to'lovidan)`
+                              ? `${r.salaryPercent ?? 0}% (hisoblangan oylikdan)`
                               : formatMoney(r.salary)}
                           </td>
                           {anyDeduction && (

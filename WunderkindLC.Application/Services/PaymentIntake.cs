@@ -86,6 +86,23 @@ public static class PaymentIntake
         else
             groupId = null; // guruhsiz (eski ClassName) o'quvchi
 
+        // ⚠️ QULF: tekshiruv (kalit + oxirgi soniyalar) va yozish KETMA-KET bo'lishi shart. Qulfsiz
+        // bir zumda kelgan ikki so'rov ikkalasi ham "dublikat yo'q" deb ko'rib, IKKI to'lov yozardi
+        // (tez-tez bosilgan "Saqlash"). Batafsil: PaymentIdempotency.
+        using var gate = await PaymentIdempotency.LockAsync("student:" + student.Id);
+
+        // ⚠️ Balans QULF ICHIDA qayta o'qiladi: `student` controllerda qulfdan OLDIN yuklangan. Shu
+        // o'quvchiga parallel boshqa pul amali (to'lov, vozvrat, o'chirish) saqlangan bo'lsa, eski
+        // qiymat ustidan yozib uning ta'sirini JIMGINA yo'qotardi.
+        student.Balance = await db.Students.AsNoTracking()
+            .Where(x => x.Id == student.Id).Select(x => x.Balance).FirstOrDefaultAsync();
+
+        // So'rov kaliti — shu oynadan allaqachon yozilgan to'lov bo'lsa, o'shani qaytaramiz.
+        var reqKey = PaymentIdempotency.Key("student:" + student.Id, req.RequestId);
+        var knownTx = PaymentIdempotency.Find(reqKey, DateTime.UtcNow);
+        if (knownTx is not null && await db.FinanceTransactions.AnyAsync(t => t.Id == knownTx))
+            return PaymentIntakeResult.Saved(knownTx, idempotent: true);
+
         // IDEMPOTENTLIK: oxirgi ~6 soniyada AYNAN shu to'lov (o'quvchi, guruh, oy, summa) yozilgan bo'lsa —
         // dublikat qo'shmaymiz (admin double-click / tarmoq retry). Balansni ikki marta oshirmaslik uchun
         // EnsureCharge/balans o'zgarishidan OLDIN tekshiramiz (FinanceController.Create bilan bir xil mantiq).
@@ -97,7 +114,10 @@ public static class PaymentIntake
             .OrderByDescending(t => t.CreatedAt)
             .FirstOrDefaultAsync();
         if (recentDup is not null)
+        {
+            PaymentIdempotency.Remember(reqKey, recentDup.Id, DateTime.UtcNow);
             return PaymentIntakeResult.Saved(recentDup.Id, idempotent: true);
+        }
 
         // AVANS: to'lov tushadigan (guruh, oy) hisobi hali yo'q bo'lsa — shu zahoti ochamiz
         // (kelajak oyga oldindan to'lov; balans hisob miqdorida kamayadi, to'lov esa oshiradi).
@@ -146,6 +166,10 @@ public static class PaymentIntake
             after: AuditService.Snapshot(tx), studentId: student.Id);
 
         await db.SaveChangesAsync();
+        PaymentIdempotency.Remember(reqKey, tx.Id, DateTime.UtcNow);
+        // Qulf SAQLASHDAN KEYIN darhol bo'shatiladi — avto-xabar (SMS/Telegram) sekin bo'lishi mumkin,
+        // keyingi to'lov uni kutmasin. `Dispose` ikki marta chaqirilsa zarar yo'q.
+        gate.Dispose();
 
         // Avto xabar — o'quvchi tuition to'lovi qabul qilinganda ("To'lov qabul qilinganda" hodisasi).
         // Moliya bo'limidagi to'lov bilan bir xil xulq (FinanceController). {summa} = faqat raqam,

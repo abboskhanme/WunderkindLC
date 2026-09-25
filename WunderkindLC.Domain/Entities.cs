@@ -59,6 +59,12 @@ public class AppUser
     /// admin/superadmin uchun bo'sh (ular hamma narsani ko'radi). EF Core 8 primitive collection (JSON).
     /// </summary>
     public List<string> Permissions { get; set; } = new();
+    /// <summary>
+    /// Xodimning ROLI (<see cref="StaffRoleTemplate.Id"/>). Bo'sh emas bo'lsa <see cref="Permissions"/>
+    /// shu roldan olinadi va rol ruxsatlari o'zgarganda QAYTA YOZILADI (jonli bog'lanish —
+    /// <c>StaffRoles.SyncMembersAsync</c>). Bo'sh = "individual ruxsatlar" (eski xodimlar; backfill YO'Q).
+    /// </summary>
+    public string? RoleTemplateId { get; set; }
 }
 
 /// <summary>
@@ -1844,6 +1850,11 @@ public class CenterMeta
     /// <summary>Jurnalni to'ldirishga beriladigan muhlat (kun). Dars sanasi shu kundan yosh bo'lsa hali
     /// "o'tkazib yuborilgan" hisoblanmaydi (o'qituvchi keyinroq belgilashi mumkin). 0-30.</summary>
     public int SalaryGraceDays { get; set; }
+    /// <summary>"yyyy-MM" — shu oydan boshlab FOIZLI maosh bazasi HISOBLANGAN to'liq oylik
+    /// (<see cref="MonthlyCharge.Amount"/>, chegirma ayrilmaydi), undan oldin — YIG'ILGAN pul.
+    /// Bo'sh = hech qachon (faqat yig'ilgan pul, eski qoida). Migratsiya <c>AddStaffRoleLink</c>
+    /// prod'da "2026-09" qo'yadi (foydalanuvchi qarori: joriy oydan, o'tgan oylar o'zgarmaydi).</summary>
+    public string SalaryChargedBaseFrom { get; set; } = "";
 
     /* ---------- O'quvchini ushlab turish bonusi (retention) ---------- */
 

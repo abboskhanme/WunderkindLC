@@ -19,6 +19,8 @@ import { Loader } from '@/components/ui/Loader'
 import { formatMoney, formatDate, formatDateTime, apiErrorMessage, cn } from '@/lib/utils'
 import { formatMonth, monthStatusLabels, paymentMethods, paymentMethodLabel } from '@/config/constants'
 import posthog from '@/lib/posthog'
+import { toast } from '@/lib/toast'
+import { newRequestId } from '@/lib/requestId'
 
 interface Props {
   student: Student | null
@@ -47,7 +49,7 @@ interface Props {
     /** Naqd — qog'oz kvitansiya raqami ("KV..."); karta — to'lov vaqti "HH:mm" va karta
      *  raqamining oxirgi 4 raqami.
      *  `forceReceipt` — kvitansiya band bo'lsa ham saqlash ("Baribir saqlash"). */
-    extra?: { receiptNo?: string; paidTime?: string; cardLast4?: string; forceReceipt?: boolean },
+    extra?: { receiptNo?: string; paidTime?: string; cardLast4?: string; forceReceipt?: boolean; requestId?: string },
   ) => void | Promise<void>
 }
 
@@ -139,6 +141,18 @@ export function PaymentModal({
    * NOTO'G'RI oyga qo'lda yozardi.
    */
   const reqRef = useRef(0)
+  /**
+   * SINXRON qulf — "Saqlash" bir necha marta tez bosilsa ham so'rov BITTA ketadi.
+   * ⚠️ `submitting` holati yetmaydi: u keyingi renderda yangilanadi, ya'ni o'sha orada kelgan
+   * bosish (yoki Enter) eski `false` qiymatni ko'rib ikkinchi to'lovni yuborardi.
+   */
+  const inFlightRef = useRef(false)
+  /**
+   * Oyna ochilishining SO'ROV KALITI — shu oynadagi har urinishda BIR XIL. Server shu kalit bilan
+   * kelgan takroriy so'rovga yangi to'lov yozmaydi, avvalgisini qaytaradi (tarmoq sekin bo'lib
+   * javob kelmay qolsa ham). Yangi oyna — yangi kalit.
+   */
+  const requestIdRef = useRef(newRequestId())
   const studentId = student?.id ?? ''
 
   // O'quvchi ALMASHGANDA yoki modal YOPILGANDA — barcha holat tozalanadi, so'ng guruhlar
@@ -146,6 +160,8 @@ export function PaymentModal({
   // ESKI o'quvchining guruhi/oyi bir commit'ga qolib, o'sha guruh bo'yicha so'rov ketardi.
   useEffect(() => {
     const req = ++reqRef.current
+    requestIdRef.current = newRequestId()
+    inFlightRef.current = false
     // eslint-disable-next-line react-hooks/set-state-in-effect -- modal ochilganda/yopilganda holatni tozalash va yuklash (maqsadli)
     setLoading(!!studentId)
     setLoadingMonths(false)
@@ -257,9 +273,13 @@ export function PaymentModal({
   const save = async (force: boolean) => {
     // Ikki marta bosishdan himoya (dublikat to'lov yaratilmasin).
     // ⚠️ `blocked` — guruhlar yoki oylik hisob YUKLANMAGAN: qaysi guruh/oy ekani noaniq.
-    if (submitting || blocked || amount <= 0 || !month || (needGroup && !groupId)) return
+    if (inFlightRef.current || submitting || blocked || amount <= 0 || !month || (needGroup && !groupId)) return
+    inFlightRef.current = true
     setSubmitting(true)
     setError(null)
+    // Oyna yopilgach ham to'g'ri matn chiqsin — qiymatlar hozir olinadi.
+    const paidAmount = amount
+    const payerName = student?.fullName ?? ''
     try {
       await onSubmit(amount, month, groupId || undefined, comment.trim() || undefined, method, paidDate || undefined, {
         // Kvitansiya faqat NAQD to'lovda, vaqt faqat KARTA to'lovida yuboriladi.
@@ -267,8 +287,12 @@ export function PaymentModal({
         paidTime: method === 'card' && paidTime ? paidTime : undefined,
         cardLast4: method === 'card' && cardLast4 ? cardLast4 : undefined,
         forceReceipt: force,
+        requestId: requestIdRef.current,
       })
       setDuplicate(null)
+      // Keyingi to'lov (oyna yopilmay qolsa ham) — YANGI to'lov, yangi kalit.
+      requestIdRef.current = newRequestId()
+      toast.success("To'lov qabul qilindi", `${payerName} — ${formatMoney(paidAmount)}`)
       posthog.capture('student_payment_recorded', {
         payment_method: method,
         has_group: Boolean(groupId),
@@ -280,6 +304,7 @@ export function PaymentModal({
       if (dup) setDuplicate(dup)
       else setError(apiErrorMessage(err, "To'lovni saqlab bo'lmadi"))
     } finally {
+      inFlightRef.current = false
       setSubmitting(false)
     }
   }

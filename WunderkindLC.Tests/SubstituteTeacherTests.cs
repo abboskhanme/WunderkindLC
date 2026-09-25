@@ -660,7 +660,7 @@ public class SubstituteTeacherTests
     /// qo'shilgan summaga teng</b> (markaz uchun neytral).
     /// </summary>
     private static async Task NolYigindiliTekshir(
-        string nom, Action<Group, Teacher> sozla, decimal collected)
+        string nom, Action<Group, Teacher> sozla, decimal collected, decimal charged = 0m)
     {
         using var db = TestDb.Sqlite();
         var ctx = db.Context;
@@ -675,6 +675,18 @@ public class SubstituteTeacherTests
         AddStudents(ctx, g, 4);
         await ctx.SaveChangesAsync();
         if (collected > 0) AddCollected(ctx, g, "2026-08", collected);
+        if (charged > 0)
+        {
+            // HISOBLANGAN baza (CenterMeta.SalaryChargedBaseFrom): pul KELMAGAN, faqat oylik yozilgan.
+            ctx.CenterMeta.Add(new CenterMeta { SalaryChargedBaseFrom = "2026-08" });
+            var members = ctx.StudentGroups.Local.Where(x => x.GroupId == g.Id).ToList();
+            foreach (var m in members)
+                ctx.MonthlyCharges.Add(new MonthlyCharge
+                {
+                    StudentId = m.StudentId, GroupId = g.Id, Month = "2026-08",
+                    Amount = charged / members.Count, Date = "2026-08-01",
+                });
+        }
         await ctx.SaveChangesAsync();
 
         // ---------- (a) O'RINBOSARSIZ ----------
@@ -729,6 +741,19 @@ public class SubstituteTeacherTests
         NolYigindiliTekshir("legacy-foiz",
             (g, t) => { g.TeacherSalaryMode = ""; t.SalaryMode = "percent"; t.SalaryPercent = 50m; },
             collected: 2_600_000m);
+
+    /// <summary>Hisoblangan bazada (2026-09-25 dan) ham o'rinbosar AYNAN asosiydan ayrilgan summani oladi.</summary>
+    [Fact]
+    public Task Nol_yigindili_PER_GURUH_foizli_HISOBLANGAN_bazada() =>
+        NolYigindiliTekshir("per-foiz-hisob",
+            (g, t) => { g.TeacherSalaryMode = "percent"; g.TeacherSalaryPercent = 50m; },
+            collected: 0m, charged: 2_600_000m);
+
+    [Fact]
+    public Task Nol_yigindili_UMUMIY_foiz_HISOBLANGAN_bazada() =>
+        NolYigindiliTekshir("umumiy-hisob",
+            (g, t) => { g.TeacherSalaryMode = ""; t.SalaryMode = "percent"; t.SalaryPercent = 40m; },
+            collected: 0m, charged: 2_600_000m);
 
     [Fact]
     public Task Nol_yigindili_LEGACY_qatiy() =>

@@ -11,9 +11,10 @@ paths:
 
 # Ruxsatlar (rollar) qoidalari
 
-"Xodimlar va rollar" (`/admin/boshqaruv/staff`) da superadmin har bir xodimga **bo'lim** yoki
-**alohida SAHIFA** beradi. Migratsiya KERAK EMAS — ruxsatlar `AppUser.Permissions` (text[]) da
-oddiy satrlar, format kengaytirildi xolos.
+"Boshqaruv → Rollar" (`/admin/boshqaruv/rollar`) da har ROLGA **bo'lim** yoki **alohida SAHIFA**
+beriladi; xodim rolga bog'lanadi va ruxsatlarini undan oladi (2026-09-25 dan —
+`.claude/rules/staff-roles.md`). Ruxsatlarning O'ZI avvalgidek `AppUser.Permissions` (text[]) da
+oddiy satrlar — tekshiruv qoidalari (quyida) o'zgarmagan.
 
 ## 1. Uchta token turi
 

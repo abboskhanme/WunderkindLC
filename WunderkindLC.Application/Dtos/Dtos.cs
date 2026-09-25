@@ -103,7 +103,11 @@ public record PaymentRequest(decimal Amount, string? Month, string? GroupId = nu
     /// haqiqatan takroriy blank ishlatilgan holatlar uchun. Auditda alohida qayd etiladi.</summary>
     bool ForceReceipt = false,
     /// <summary>KARTA to'lovida — karta raqamining oxirgi 4 raqami (faqat shu qismi saqlanadi).</summary>
-    string? CardLast4 = null);
+    string? CardLast4 = null,
+    /// <summary>Klient kaliti — bitta to'lov oynasining BARCHA urinishlarida bir xil. Qayta
+    /// bosilgan/qayta yuborilgan so'rov yangi to'lov emas, o'sha to'lovni qaytaradi
+    /// (<see cref="Services.PaymentIdempotency"/>). Bo'sh bo'lsa — eski xatti-harakat.</summary>
+    string? RequestId = null);
 
 /// <summary>
 /// ALLAQACHON kiritilgan kvitansiya raqami haqidagi ma'lumot — bitta qog'oz blank ikki marta
@@ -252,7 +256,10 @@ public record MonthSalaryDto(
     List<SalaryLessonStatDto>? Lessons = null, decimal Collected = 0,
     decimal Charged = 0, decimal PotentialExpected = 0,
     decimal TuitionCharged = 0, decimal TuitionCollected = 0,
-    decimal SubstituteFee = 0, decimal SubstituteDeduction = 0);
+    decimal SubstituteFee = 0, decimal SubstituteDeduction = 0,
+    /// <summary>FOIZ QO'LLANGAN baza (foizli guruhlar bo'yicha): <paramref name="ChargedBase"/> bo'lsa
+    /// hisoblangan TO'LIQ oylik, aks holda yig'ilgan pul. Ekranda "baza × foiz = maosh" shundan.</summary>
+    decimal SalaryBase = 0, bool ChargedBase = false);
 /// <summary>
 /// Maosh hisobida bitta guruhning ulushi (davr bo'yicha): qaysi rejim (foiz/qat'iy), qiymati,
 /// shu davrda guruhdan yig'ilgan to'lov bazasi va shu guruh keltirgan hisoblangan maosh.
@@ -1606,8 +1613,11 @@ public record FinanceTransactionDto(
 public record PaymentAuthorDto(string Key, string? Id, string Name, string Position, bool CanEnter);
 
 /// <summary>O'quvchi to'lovini (income+tuition) qisman/to'liq VOZVRAT qilish — FAQAT superadmin.
-/// Muzlatishdan hosil bo'lgan avans shu orqali qaytariladi (balans 0 ga tushadi), o'qituvchi foizi net'dan.</summary>
-public record RefundPayload(decimal Amount, string? Date = null, string? Reason = null);
+/// Muzlatishdan hosil bo'lgan avans shu orqali qaytariladi (balans 0 ga tushadi). O'qituvchi foizi —
+/// eski oylarda net'dan, <c>SalaryChargedBaseFrom</c> dan boshlab hisoblangan oylikdan (vozvrat ta'sirsiz).</summary>
+public record RefundPayload(decimal Amount, string? Date = null, string? Reason = null,
+    /// <summary>Oyna ochilishining kaliti — qayta bosilgan "Qaytarish" ikkinchi vozvrat yozmaydi.</summary>
+    string? RequestId = null);
 
 /// <summary>Bitta vozvrat yozuvi (tarix uchun) — asl to'lov ma'lumoti bilan.</summary>
 public record RefundDto(
@@ -1646,7 +1656,9 @@ public record FinanceTransactionPayload(
     string? CardLast4 = null,
     // Markaz katalogidagi tur (TransactionType.Id) — FAQAT ko'rsatish uchun; hisob-kitob
     // avvalgidek `Category` ga qaraydi (TransactionType izohiga qarang).
-    string? TypeId = null);
+    string? TypeId = null,
+    // Klient kaliti — bitta oyna ochilishining barcha urinishlarida bir xil (PaymentIdempotency).
+    string? RequestId = null);
 public record CategoryAmountDto(string Category, decimal Amount);
 public record FinanceSummaryDto(
     decimal TotalIncome, decimal TotalExpense, decimal Net,
@@ -2176,7 +2188,9 @@ public record BranchPayload(
 /// "Xodimlar va rollar" ro'yxatida faqat xodimlar emas, admin/superadmin akkauntlar ham ko'rinadi —
 /// aks holda superadminlikka ko'tarilgan odam ro'yxatdan yo'qolib, orqaga qaytarib bo'lmasdi.</para></summary>
 public record StaffDto(string Id, string FullName, string Position, string Login, List<string> Permissions,
-    string Phone = "", string Role = "staff");
+    string Phone = "", string Role = "staff",
+    /// <summary>Xodimning roli (Boshqaruv → Rollar). Bo'sh = individual ruxsatlar.</summary>
+    string? RoleTemplateId = null, string? RoleName = null);
 
 /// <summary>Panel akkauntining ROLINI o'zgartirish — "ikkinchi superadmin" tayinlash yoki qaytarish.
 /// Ruxsat etilgan qiymatlar: <c>superadmin</c> | <c>admin</c> | <c>staff</c>.</summary>
@@ -2192,12 +2206,20 @@ public record StaffPayload(string FullName, string Position, string? NewPassword
 public record SetStaffPermissionsRequest(List<string> Permissions);
 
 /// <summary>Xodim roli shabloni — yangi xodim qo'shishda template tanlab olsa, default ruxsatlari avtomatik belgilanadi.</summary>
-public record StaffRoleTemplateDto(string Id, string Code, string Name, string Description, List<string> DefaultPermissions);
+public record StaffRoleTemplateDto(string Id, string Code, string Name, string Description, List<string> DefaultPermissions,
+    /// <summary>Shu roldagi xodimlar soni.</summary>
+    int MemberCount = 0);
+
+/// <summary>Rolni yaratish/tahrirlash (Boshqaruv → Rollar).</summary>
+public record SaveStaffRoleRequest(string Name, string? Description, List<string>? Permissions);
 
 /// <summary>Xodim yaratishda rolle shablonini tanlab, qo'shimcha ruxsatlari bilan qo'shish so'rovi.</summary>
 public record CreateStaffWithTemplateRequest(
     string FullName, string Position, string? Phone = null, string? NewPassword = null,
-    string? TemplateCode = null, List<string>? ExtraPermissions = null);
+    string? TemplateCode = null, List<string>? ExtraPermissions = null,
+    /// <summary>Xodimning ROLI (id). Yaratishda: berilsa ruxsatlar roldan. Tahrirda: <c>null</c> —
+    /// o'zgarmaydi, <c>""</c> — individual ruxsatlarga o'tkaziladi.</summary>
+    string? RoleTemplateId = null);
 
 /// <summary>Taklif/shikoyat — admin ko'rinishi uchun (yuboruvchi roli/ismi + ixtiyoriy rasm bilan).</summary>
 public record FeedbackDto(

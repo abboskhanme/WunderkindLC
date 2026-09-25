@@ -58,7 +58,7 @@ export function TeacherSalaryDetailModal({ teacher, from, to, onClose }: Props) 
               <p className="font-semibold text-slate-800">{ledger.fullName}</p>
               <p className="text-sm text-slate-500">
                 {ledger.salaryMode === 'percent'
-                  ? `Foizli maosh: guruh to'lovining ${ledger.salaryPercent ?? 0}%i`
+                  ? `Foizli maosh: hisoblangan oylikning ${ledger.salaryPercent ?? 0}%i`
                   : `Belgilangan oylik: ${formatMoney(ledger.salary)}`}
               </p>
             </div>

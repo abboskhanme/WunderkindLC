@@ -111,3 +111,14 @@
   paydo bo'lardi
 - [2026-09-19] Turlar seed'i FAQAT jadval bo'sh bo'lganda yoziladi (tizim ustunlaridan farqli)
   → foydalanuvchi o'chirgan tur har restartda qayta tug'ilmasin
+- [2026-09-25] Xodim roldan ruxsatni NUSXA qilib oladimi yoki jonli bog'lanadimi? → jonli
+  (`AppUser.RoleTemplateId`; rol o'zgarsa hammasi yangilanadi) → foydalanuvchi "ruxsat rolga
+  beriladi" dedi; nusxada rolni tahrirlash mavjud xodimlarga ta'sir qilmay chalg'itardi
+- [2026-09-25] Eski xodimlar rolga avtomatik biriktirilmaydi → "Individual ruxsatlar" bo'lib
+  qoladi, admin tahrirda rol tanlaydi → ruxsatlarini taxmin bilan o'zgartirib yubormaslik uchun
+- [2026-09-25] Foiz bazasi o'zgarishi kuchga kirish oyi `2026-09` (`CenterMeta.SalaryChargedBaseFrom`,
+  migratsiya qo'yadi) → foydalanuvchi
+  "joriy oydan" dedi, o'tgan oylar maoshi o'zgarmasin
+- [2026-09-25] Hisoblangan bazada VOZVRAT va 100% CHEGIRMA o'qituvchi foizini kamaytiradimi? → yo'q
+  (baza = `MonthlyCharge.Amount`) → foydalanuvchi "to'liq oylikdan, chegirmani markaz ko'taradi"
+  dedi; muzlatish vozvratida oylikning o'zi qisqargani uchun natija avvalgidek. Tasdiq so'raldi

@@ -139,7 +139,7 @@ export function PaymentHistoryPanel({ studentId, onPaid, onChargeEdited, variant
     comment?: string,
     method?: string,
     date?: string,
-    extra?: { receiptNo?: string; paidTime?: string; cardLast4?: string; forceReceipt?: boolean },
+    extra?: { receiptNo?: string; paidTime?: string; cardLast4?: string; forceReceipt?: boolean; requestId?: string },
   ) => {
     if (!studentId) return
     // Xato QAYTA OTILADI — PaymentModal o'zi ko'rsatadi (kvitansiya band bo'lsa kartochka

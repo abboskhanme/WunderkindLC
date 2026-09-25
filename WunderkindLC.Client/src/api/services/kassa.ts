@@ -46,7 +46,7 @@ export async function addKassaPayment(
   comment?: string,
   method?: string,
   date?: string,
-  extra?: { receiptNo?: string; paidTime?: string; cardLast4?: string; forceReceipt?: boolean },
+  extra?: { receiptNo?: string; paidTime?: string; cardLast4?: string; forceReceipt?: boolean; requestId?: string },
 ): Promise<string | null> {
   if (USE_MOCK) return null
   const { data } = await api.post<{ id: string }>(`/admin/kassa/students/${studentId}/payments`, {
@@ -60,6 +60,8 @@ export async function addKassaPayment(
     paidTime: extra?.paidTime,
     cardLast4: extra?.cardLast4,
     forceReceipt: extra?.forceReceipt ?? false,
+    // Oyna ochilishining kaliti — qayta bosilgan/yuborilgan so'rov IKKINCHI to'lov yozmaydi.
+    requestId: extra?.requestId,
   })
   return data?.id ?? null
 }

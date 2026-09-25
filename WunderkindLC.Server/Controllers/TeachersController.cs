@@ -25,7 +25,7 @@ public class TeachersController(AppDbContext db, AuditService audit, IConfigurat
     /// </summary>
     private static string SalaryText(Teacher t) =>
         t.SalaryMode == "percent"
-            ? $"foizli — yig'ilganning {t.SalaryPercent}%i" + (t.BonusPct > 0 ? $" (+{t.BonusPct}% ustama)" : "")
+            ? $"foizli — hisoblangan oylikning {t.SalaryPercent}%i" + (t.BonusPct > 0 ? $" (+{t.BonusPct}% ustama)" : "")
             : $"qat'iy {AuditService.Money(t.Salary)} so'm" + (t.BonusPct > 0 ? $" (+{t.BonusPct}% ustama)" : "");
 
     /// <summary>
@@ -94,6 +94,8 @@ public class TeachersController(AppDbContext db, AuditService audit, IConfigurat
     [HttpPost]
     public async Task<ActionResult<Teacher>> Create(TeacherPayload p)
     {
+        if (p.SalaryPercent is < 0 or > 100)
+            return BadRequest(new { message = "Maosh foizi 0 dan 100 gacha bo'lishi kerak" });
         var teacher = new Teacher
         {
             FullName = p.FullName,
@@ -137,6 +139,8 @@ public class TeachersController(AppDbContext db, AuditService audit, IConfigurat
     [HttpPut("{id}")]
     public async Task<ActionResult<Teacher>> Update(string id, TeacherPayload p)
     {
+        if (p.SalaryPercent is < 0 or > 100)
+            return BadRequest(new { message = "Maosh foizi 0 dan 100 gacha bo'lishi kerak" });
         var teacher = await db.Teachers.FindAsync(id);
         if (teacher is null) return NotFound();
 
@@ -146,6 +150,8 @@ public class TeachersController(AppDbContext db, AuditService audit, IConfigurat
         // MAOSH summasi/foizi, fanlar va ruxsatlar o'zgarishi tarixda umuman ko'rinmasdi.
         var beforeTeacher = AuditService.TeacherSnapshot(teacher);
         var oldSalaryText = SalaryText(teacher);
+        var oldSalaryMode = teacher.SalaryMode;
+        var oldSalaryPercent = teacher.SalaryPercent;
         teacher.FullName = p.FullName;
         teacher.BirthDate = p.BirthDate;
         teacher.Address = p.Address;
@@ -200,6 +206,23 @@ public class TeachersController(AppDbContext db, AuditService audit, IConfigurat
                 "Oylik sozlamasi: " + string.Join(", ", parts),
                 before: new { Category = oldCategory, SalaryStartMonth = oldStart },
                 after: new { teacher.Category, teacher.SalaryStartMonth }, teacherId: teacher.Id);
+        }
+
+        // UMUMIY FOIZ qo'yildi/o'zgardi — o'qituvchining "QAT'IY 0 so'm" guruhlari "Umumiy"ga o'tadi.
+        // ⚠️ Bunday guruhlar (masalan edutizimdan ko'chirilganlar) amalda SOZLANMAGAN: ular qolsa,
+        // admin umumiy foiz qo'yib ham maosh 0 bo'lib qolardi va sababi ko'rinmasdi. Qat'iy summasi
+        // BOR guruh (ataylab qo'yilgan) va o'zining foizi bor guruh TEGILMAYDI.
+        if (teacher.SalaryMode == "percent" && teacher.SalaryPercent > 0
+            && (oldSalaryMode != "percent" || oldSalaryPercent != teacher.SalaryPercent))
+        {
+            var zeroFixed = await db.Classes
+                .Where(c => c.TeacherId == teacher.Id && c.TeacherSalaryMode == "fixed" && c.TeacherSalaryFixed == 0)
+                .ToListAsync();
+            foreach (var g in zeroFixed) g.TeacherSalaryMode = "";
+            if (zeroFixed.Count > 0)
+                audit.Record(AuditService.EntityTeacherSalary, teacher.Id, "update",
+                    $"Per-guruh maosh: {string.Join(", ", zeroFixed.Select(g => g.Name))} — qat'iy 0 so'm → umumiy " +
+                    $"({teacher.SalaryPercent}%)", teacherId: teacher.Id);
         }
 
         // MAOSH alohida qatorda — pulga tegadigan o'zgarish ro'yxatda ko'zga tashlanib tursin

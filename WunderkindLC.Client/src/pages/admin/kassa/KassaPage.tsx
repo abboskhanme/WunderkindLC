@@ -197,7 +197,7 @@ export function KassaPage() {
     comment?: string,
     method?: string,
     date?: string,
-    extra?: { receiptNo?: string; paidTime?: string; cardLast4?: string; forceReceipt?: boolean },
+    extra?: { receiptNo?: string; paidTime?: string; cardLast4?: string; forceReceipt?: boolean; requestId?: string },
   ) => {
     if (!payStudent) return
     const txId = await addKassaPayment(payStudent.id, amount, month, gid, comment, method, date, extra)

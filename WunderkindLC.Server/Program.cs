@@ -858,10 +858,11 @@ catch (Exception ex)
         }
     }
 
-    // Xodim roli shablonlari — yangi xodim qo'shishda tanlash uchun standart rol/ruxsatlar.
-    // PER-KOD IDEMPOTENT: yo'q shablon YARATILADI; mavjudiga seed'dagi YETISHMAGAN ruxsatlar
-    // QO'SHILADI (union — shablonlar UI'dan tahrirlanmaydi, ular tizim-boshqaruvidagi ro'yxat;
-    // yangi bo'lim ruxsati (masalan "calls") chiqsa, mavjud bazada ham avtomatik yangilanadi).
+    // Xodim ROLLARI — standart uchtasi (Boshqaruv → Rollar'da tahrirlanadi).
+    // ⚠️ FAQAT JADVAL BO'SH bo'lganda yoziladi (2026-09-25 dan). Ilgari har restartda mavjud rolga
+    // "yetishmagan" ruxsatlar QAYTA qo'shilardi — rollar UI'dan tahrirlanmasdi. Endi admin rolni o'zi
+    // boshqaradi: olib tashlagan ruxsati har restartda qaytib kelsa (va rolning hamma xodimiga jonli
+    // tarqalsa) — bu jimgina huquq kengaytirish bo'lardi. O'chirilgan rol ham qayta tug'ilmaydi.
     // TRY-CATCH: jadval yo'q bo'lsa (migration qo'llanmagan) logga yozib o'tadi.
     try
     {
@@ -879,14 +880,9 @@ catch (Exception ex)
                 "Asosiy boshqaruv — guruhlar, o'quvchilar, o'qituvchilar, o'quv bo'limi",
                 new[] { "leads", "students", "teachers", "classes", "schedule", "messages", "app" }),
         };
-        var existingTemplates = db.StaffRoleTemplates.ToList();
-        var created = 0;
-        var patched = 0;
-        foreach (var (code, name, desc, perms) in templates)
+        if (!db.StaffRoleTemplates.Any())
         {
-            var tpl = existingTemplates.FirstOrDefault(t => t.Code == code);
-            if (tpl is null)
-            {
+            foreach (var (code, name, desc, perms) in templates)
                 db.StaffRoleTemplates.Add(new StaffRoleTemplate
                 {
                     Code = code,
@@ -894,23 +890,8 @@ catch (Exception ex)
                     Description = desc,
                     DefaultPermissions = new List<string>(perms),
                 });
-                created++;
-                continue;
-            }
-            // Mavjud shablonga faqat YANGI ruxsatlar qo'shiladi (nom/izoh tegilmaydi).
-            var missing = perms.Where(p => !tpl.DefaultPermissions.Contains(p)).ToList();
-            if (missing.Count > 0)
-            {
-                tpl.DefaultPermissions.AddRange(missing);
-                patched++;
-            }
-        }
-        if (created + patched > 0)
-        {
             db.SaveChanges();
-            app.Logger.LogInformation(
-                "[seed] Xodim roli shablonlari sinxronlandi: {Created} yangi, {Patched} ruxsati to'ldirilgan",
-                created, patched);
+            app.Logger.LogInformation("[seed] Xodim rollari yaratildi: {Count} ta", templates.Length);
         }
     }
     catch (Exception ex)

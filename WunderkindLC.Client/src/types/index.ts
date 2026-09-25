@@ -1442,7 +1442,7 @@ export interface Teacher {
   salaryMode?: string
   /** Qat'iy oylik ish haqi (so'm) — salaryMode='fixed' da ishlatiladi */
   salary: number
-  /** Foizli maosh ulushi (%) — salaryMode='percent' da: guruhdan yig'ilgan to'lovning shu foizi */
+  /** Foizli maosh ulushi (%) — salaryMode='percent' da: hisoblangan oylikning shu foizi (2026-09 dan; oldin — yig'ilgan to'lovning) */
   salaryPercent?: number
   /** O'qituvchi toifasi: "oliy" | "1" | "2" | "mutaxasis" (bo'sh = belgilanmagan). Soat narxini belgilaydi. */
   category?: string
@@ -1644,6 +1644,10 @@ export interface Staff {
   phone?: string
   /** Akkaunt roli: 'staff' | 'admin' | 'superadmin'. Superadminda bo'lim ruxsatlari tekshirilmaydi. */
   role?: string
+  /** Xodimning ROLI (Boshqaruv → Rollar). Bo'sh = individual ruxsatlar (eski xodimlar). */
+  roleTemplateId?: string | null
+  /** Rol nomi (ko'rsatish uchun). */
+  roleName?: string | null
 }
 
 /** Xodim roli shabloni — yangi xodim qo'shishda template tanlab olsa, default ruxsatlari avtomatik belgilanadi */
@@ -1653,6 +1657,8 @@ export interface StaffRoleTemplate {
   name: string
   description: string
   defaultPermissions: string[]
+  /** Shu roldagi xodimlar soni. */
+  memberCount?: number
 }
 
 /** Taklif yoki shikoyat (ota-ona ilovasidan) */
@@ -1751,6 +1757,10 @@ export interface MonthSalary {
   substituteFee?: number
   /** Shu oyda o'z guruhida o'rinbosar o'qituvchi dars o'tgani uchun chegirilgan summa (so'm). */
   substituteDeduction?: number
+  /** Foiz qo'llangan baza: `chargedBase` bo'lsa hisoblangan TO'LIQ oylik, aks holda yig'ilgan pul. */
+  salaryBase?: number
+  /** Shu oy foizi HISOBLANGAN oylikdan (markaz sozlamasi `SalaryChargedBaseFrom` dan boshlab). */
+  chargedBase?: boolean
 }
 
 /** Maosh hisobida bitta guruhning ulushi (davr bo'yicha) */

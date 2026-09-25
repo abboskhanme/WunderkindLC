@@ -34,6 +34,24 @@ paths:
   `Group.TeacherId`; to'lov `FinanceTransaction.GroupId` tegiga ega bo'lsa 100% o'sha guruhga,
   **teglanmagan** to'lov esa o'quvchining shu oydagi billable guruhlari `MonthlyFee` nisbatida
   taqsimlanadi. Frontend `TeacherSalaryPage` (rejim toggle + foiz).
+
+- ⚠️ **FOIZ BAZASI O'ZGARDI (2026-09-25):** `CenterMeta.SalaryChargedBaseFrom` ("yyyy-MM", prod'da
+  `2026-09`) dan boshlab foiz **HISOBLANGAN TO'LIQ oylikdan** (`MonthlyCharge.Amount`, chegirma
+  AYRILMAYDI — chegirmani markaz ko'taradi). Undan oldingi oylar avvalgidek **yig'ilgan** puldan
+  (ular uchun maosh allaqachon berilgan — qayta hisoblanmaydi). Sozlama bo'sh = eski qoida.
+  Qoida bitta joyda: `SalaryLedger.UsesChargedBase` + `PercentBases.SalaryBase`; o'rinbosarlik
+  hovuzi ham AYNAN shu bazadan (`CollectedForGroupsAsync` endi `SalaryBase` ni qaytaradi — nol
+  yig'indili model buzilmasin). Shu oylardan boshlab quyidagi "pul kelmaguncha maosh 0" jumlalari
+  **faqat eski oylarga** tegishli. Testlar: `StaffRolesAndSalaryBaseTests`.
+- **Umumiy foiz:** o'qituvchi qo'shishda `Teacher.SalaryPercent` (Boshqaruv → Xodimlar, rol
+  "O'qituvchi"). Guruh `TeacherSalaryMode = ""` bo'lsa unga ergashadi ("Umumiy"), kerak bo'lsa
+  guruhda boshqa foiz/qat'iy summa (`GroupSalaryEditor`).
+  ⚠️ Umumiy foiz qo'yilganda/o'zgarganda o'qituvchining **"qat'iy, 0 so'm"** guruhlari avtomatik
+  "Umumiy"ga o'tadi (`TeachersController.Update`, auditga yoziladi) — ko'chirilgan (edutizim)
+  guruhlar shunday turadi va aks holda foiz qo'yilsa ham maosh 0 bo'lib qolardi. Qat'iy summasi
+  BOR guruh tegilmaydi.
+  ⚠️ Maosh sozlamasi VERSIYALANMAYDI: foiz qo'yilsa o'tgan oylar hisobi ham shu foiz bilan
+  ko'rinadi (bazasi o'sha oyning qoidasi bo'yicha). Bu avvaldan shunday — alohida ish.
   **TO'LOV QAYSI OYGA — `FinanceTransaction.Month`, to'lov SANASI EMAS** (yuqoridagi maosh to'lovlari
   bilan AYNAN bir xil qoida): o'quvchi 3-avgustda IYUL uchun to'lasa, pul o'qituvchining IYUL
   maoshiga kiradi — u iyulda dars bergan. Vozvrat ham o'z oyidan ayriladi. `Month` bo'sh bo'lgan
@@ -425,3 +443,40 @@ Har tur `TransactionType.BaseCategory` orqali AYNAN shu kodlardan biriga bog'lan
   restartda qayta tug'ilmasin. Tizim ustunlaridagi "yo'q bo'lgani qo'shiladi" naqshi BU YERDA EMAS.
 - ISHLATILGAN tur o'chirilmaydi (400 + nechta amalda ekani) — eski qatorlar nomsiz qolmasin.
 - Testlar: `TransactionTypeCatalogTests` (har turning toifasi HAQIQATAN mavjudligini qulflaydi).
+
+## To'lov BIR MARTA o'tadi (2026-09-25)
+
+"Saqlash" bir necha marta tez bosilganda to'lov bir necha marta yozilardi. Himoya uch qatlamli:
+
+1. **Klient — sinxron qulf** (`inFlightRef`) `PaymentModal` va `TransactionFormModal` da.
+   ⚠️ `submitting` holatining o'zi yetmaydi: u keyingi renderda yangilanadi. `TransactionFormModal`
+   da esa himoya umuman yo'q edi.
+2. **Klient — so'rov kaliti** (`requestId`, `lib/requestId.ts`): bitta oyna ochilishida BIR XIL,
+   muvaffaqiyatdan keyin yangilanadi. Xato bo'lsa kalit o'zgarmaydi, ya'ni qayta urinish
+   allaqachon o'tgan (javobi kelmagan) to'lovni ikkinchi marta yozmaydi.
+3. **Server — `PaymentIdempotency`**: o'quvchi bo'yicha qulf (tekshiruv + yozish ketma-ket) va
+   kalit keshi (30 daqiqa). `PaymentIntake.AddAsync` va `FinanceController.Create` ishlatadi.
+   ⚠️ Holat PROTSESS XOTIRASIDA: ilova bitta nusxada ishlaydi. Bir nechta nusxaga o'tilsa bu
+   bazaga (unikal indeks) ko'chirilishi SHART.
+
+Muvaffaqiyatli to'lovdan keyin global bildirishnoma chiqadi (`toast.success`, `lib/toast.ts`,
+`components/ui/Toaster.tsx` ilovaning ildizida). Xatolar toast bilan EMAS, forma ichida
+ko'rsatiladi (`error-visibility.md`).
+
+### Bekor qilish yo'llari ham shu qulf ostida
+
+Qulf kaliti HAMMA pul amalida bir xil — `"student:{id}"`: to'lov (`PaymentIntake`, `Create`),
+vozvrat (`Refund`), o'chirish (`Delete`) va tahrir (`Update`, `UpdatePayment`). Shuning uchun
+bir o'quvchining pul amallari navbat bilan bajariladi.
+
+- **Vozvrat:** qulfsiz ikki bir zumdagi so'rov ikkalasi ham eski qoldiqni ko'rib, to'lovdan
+  KO'P pul qaytarar edi. Endi qulf + oyna kaliti (`RefundPayload.RequestId`).
+- **O'chirish:** ikkinchi bosish "allaqachon o'chirilgan" (404, matn bilan) oladi.
+  ⚠️ **Vozvrati bor to'lov O'CHIRILMAYDI** (400): o'chirilsa qaytarilgan pul balansdan ikkinchi
+  marta ayrilardi. Avval vozvrat(lar) o'chiriladi.
+- **Balans qulf ICHIDA qayta o'qiladi** (`PaymentIntake` da `student` controllerda qulfdan
+  oldin yuklangan): aks holda parallel amal ta'siri eski qiymat ustidan yozilib yo'qolardi.
+- Klient: `RefundModal`, `PaymentEditModal`, `ReasonPromptModal` da sinxron qulf.
+  `ReasonPromptModal.onConfirm` Promise qaytarsa, xatodan keyin tugma qayta yoqiladi.
+
+Testlar: `PaymentIdempotencyTests`.

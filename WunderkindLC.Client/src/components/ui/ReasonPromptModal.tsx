@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { ActionReason } from '@/types'
 import { getActionReasons } from '@/api/services/actionReasons'
 import { Modal } from './Modal'
@@ -21,7 +21,11 @@ interface Props {
    * Ko'rsatilmasa `onConfirm` ga `retentionBonus` umuman uzatilmaydi (undefined).
    */
   showRetentionBonus?: boolean
-  onConfirm: (reasonId: string | undefined, date?: string, retentionBonus?: boolean) => void
+  /**
+   * Tasdiqlash. Promise qaytarsa — tugma u tugaguncha qulf, keyin (masalan xatodan so'ng) qayta
+   * yoqiladi. `void` qaytarsa — oyna yopilguncha qulf (eski xatti-harakat).
+   */
+  onConfirm: (reasonId: string | undefined, date?: string, retentionBonus?: boolean) => void | Promise<unknown>
   onClose: () => void
 }
 
@@ -39,10 +43,13 @@ export function ReasonPromptModal({
   /** Ushlab turish bonusi hisoblansinmi — standart holatda BELGILANGAN. */
   const [retentionBonus, setRetentionBonus] = useState(false)
   const [submitting, setSubmitting] = useState(false)
+  /** SINXRON qulf — `submitting` keyingi renderda yangilanadi, tez ikkinchi bosish o'tib ketmasin. */
+  const inFlightRef = useRef(false)
 
   useEffect(() => {
     if (!open) return
     setSelected(undefined)
+    inFlightRef.current = false
     setSubmitting(false)
     setRetentionBonus(false)
     setDate(defaultDate ?? new Date().toISOString().slice(0, 10))
@@ -71,13 +78,19 @@ export function ReasonPromptModal({
             type="button"
             disabled={submitting}
             onClick={() => {
-              if (submitting) return
+              if (inFlightRef.current || submitting) return
+              inFlightRef.current = true
               setSubmitting(true)
-              onConfirm(
+              const r = onConfirm(
                 selected,
                 showDate ? date : undefined,
                 showRetentionBonus ? retentionBonus : undefined,
               )
+              if (r instanceof Promise)
+                void r.finally(() => {
+                  inFlightRef.current = false
+                  setSubmitting(false)
+                })
             }}
             className={cn('rounded-lg px-4 py-2 text-sm font-medium text-white transition-colors disabled:opacity-50', toneCls)}
           >

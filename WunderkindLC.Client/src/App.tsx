@@ -2,6 +2,7 @@ import { lazy, Suspense, useEffect } from 'react'
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { getPublicBrand } from '@/api/services/settings'
 import { AppLayout } from '@/components/layout/AppLayout'
+import { Toaster } from '@/components/ui/Toaster'
 import { ProtectedRoute, RootRedirect } from '@/components/auth/ProtectedRoute'
 import { RequirePerm } from '@/components/auth/RequirePerm'
 import { KassaMobileLayout } from '@/components/layout/KassaMobileLayout'
@@ -64,7 +65,8 @@ const KpiMonthPage = lazy(() => import('@/pages/admin/kpi/KpiMonthPage').then((m
 const KpiTicketsPage = lazy(() => import('@/pages/admin/kpi/KpiTicketsPage').then((m) => ({ default: m.KpiTicketsPage })))
 const KpiClosePage = lazy(() => import('@/pages/admin/kpi/KpiClosePage').then((m) => ({ default: m.KpiClosePage })))
 const KpiRulesPage = lazy(() => import('@/pages/admin/kpi/KpiRulesPage').then((m) => ({ default: m.KpiRulesPage })))
-const StaffPage = lazy(() => import('@/pages/admin/staff/StaffPage').then((m) => ({ default: m.StaffPage })))
+const XodimlarEntry = lazy(() => import('@/pages/admin/staff/XodimlarEntry').then((m) => ({ default: m.XodimlarEntry })))
+const RolesPage = lazy(() => import('@/pages/admin/staff/RolesPage').then((m) => ({ default: m.RolesPage })))
 const FeedbackPage = lazy(() => import('@/pages/admin/feedback/FeedbackPage').then((m) => ({ default: m.FeedbackPage })))
 const SubjectsPage = lazy(() => import('@/pages/admin/subjects/SubjectsPage').then((m) => ({ default: m.SubjectsPage })))
 const CurriculaListPage = lazy(() => import('@/pages/admin/curricula/CurriculaListPage').then((m) => ({ default: m.CurriculaListPage })))
@@ -208,6 +210,7 @@ export default function App() {
 
   return (
     <Suspense fallback={<PageFallback />}>
+      <Toaster />
       <Routes>
         {/* Ochiq sahifa */}
         <Route path="/login" element={<LoginPage />} />
@@ -402,10 +405,13 @@ export default function App() {
             <Route path="boshqaruv/kpi/qoidalar" element={<RequirePerm perm="kpi.rules"><KpiRulesPage /></RequirePerm>} />
             <Route path="boshqaruv/vacancies" element={<RequirePerm perm="vacancies"><VacanciesPage /></RequirePerm>} />
             <Route path="boshqaruv/cameras" element={<RequirePerm perm="cameras"><CamerasPage /></RequirePerm>} />
-            <Route path="boshqaruv/staff" element={<RequirePerm perm="staff"><StaffPage /></RequirePerm>} />
+            {/* Xodimlar (rol bilan qo'shish) va Rollar — 2026-09-25. Eski `boshqaruv/staff` redirect. */}
+            <Route path="boshqaruv/xodimlar" element={<XodimlarEntry />} />
+            <Route path="boshqaruv/rollar" element={<RequirePerm perm="staff"><RolesPage /></RequirePerm>} />
+            <Route path="boshqaruv/staff" element={<Navigate to="/admin/boshqaruv/xodimlar" replace />} />
             <Route path="boshqaruv/feedback" element={<RequirePerm perm="feedback"><FeedbackPage /></RequirePerm>} />
             {/* Rollar endi "Xodimlar va rollar" sahifasiga birlashtirildi */}
-            <Route path="boshqaruv/roles" element={<Navigate to="/admin/boshqaruv/staff" replace />} />
+            <Route path="boshqaruv/roles" element={<Navigate to="/admin/boshqaruv/rollar" replace />} />
             <Route element={<ProtectedRoute role="superadmin" />}>
               <Route path="boshqaruv/branches" element={<BranchesPage />} />
             </Route>

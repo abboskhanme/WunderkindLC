@@ -25,12 +25,14 @@ import {
 } from '@/components/ui/RightDrawer'
 import { categoriesByDirection, financeDirectionLabels, formatMonth, monthStatusLabels, paymentMethods } from '@/config/constants'
 import { getTransactionTypes, type TransactionType } from '@/api/services/finance'
-import { balanceTextCls, formatMoney, cn } from '@/lib/utils'
+import { balanceTextCls, formatMoney, cn, apiErrorMessage } from '@/lib/utils'
+import { newRequestId } from '@/lib/requestId'
 
 interface Props {
   open: boolean
   onClose: () => void
-  onSubmit: (values: FinanceTransactionPayload) => void
+  /** Saqlash. Promise qaytarsa — tugaguncha "Saqlash" bloklanadi, xato esa forma ichida chiqadi. */
+  onSubmit: (values: FinanceTransactionPayload) => void | Promise<void>
   initial?: FinanceTransaction | null
   /**
    * YANGI amal uchun oldindan tanlangan qiymatlar (Kassalar → "Chiqim", Oylik chiqarish → maosh).
@@ -80,6 +82,15 @@ export function TransactionFormModal({ open, onClose, onSubmit, initial, preset,
   const [salaryType, setSalaryType] = useState<'all' | 'main' | 'substitute'>('all')
   // Markazning tranzaksiya turlari (Moliya → «Tranzaksiya turi»). Bir marta yuklanadi.
   const [txTypes, setTxTypes] = useState<TransactionType[]>([])
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  /**
+   * SINXRON qulf: "Saqlash" (yoki Enter) bir necha marta tez bosilsa ham so'rov BITTA ketadi.
+   * ⚠️ Ilgari himoya umuman yo'q edi — har bosish alohida to'lov yozardi.
+   */
+  const inFlightRef = useRef(false)
+  /** Forma ochilishining so'rov kaliti — server takroriy so'rovni avvalgisi sifatida qaytaradi. */
+  const requestIdRef = useRef(newRequestId())
 
   const typeOptions = txTypes.filter((t) => t.direction === form.direction)
   /** Tanlanmagan holatda ko'rsatiladigan tur — joriy toifaga mos birinchisi. */
@@ -187,7 +198,11 @@ export function TransactionFormModal({ open, onClose, onSubmit, initial, preset,
 
   useEffect(() => {
     if (!open) return
+    requestIdRef.current = newRequestId()
+    inFlightRef.current = false
     // eslint-disable-next-line react-hooks/set-state-in-effect -- modal ochilganda formani initial bilan sinxronlash (maqsadli)
+    setSubmitting(false)
+    setError(null)
     setForm(
       initial
         ? {
@@ -386,13 +401,19 @@ export function TransactionFormModal({ open, onClose, onSubmit, initial, preset,
     autoNoteRef.current = ''
   }
 
-  const handleSubmit = (e: FormEvent) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
+    if (inFlightRef.current) return
     if (form.amount <= 0 || !form.date) return
     if (isSalaryExpense && !form.teacherId) return
     if (showTuition && !form.studentId) return
-    onSubmit({
+    inFlightRef.current = true
+    setSubmitting(true)
+    setError(null)
+    try {
+      await onSubmit({
       ...form,
+      requestId: requestIdRef.current,
       // Tur EKRANDA ko'ringani bilan yoziladi: foydalanuvchi tegmagan bo'lsa ham zaxira tur
       // saqlanadi, aks holda jadvalda nom bo'sh chiqardi (`fallbackType` izohiga qarang).
       typeId: form.typeId ?? fallbackType?.id,
@@ -405,10 +426,21 @@ export function TransactionFormModal({ open, onClose, onSubmit, initial, preset,
       // (maoshda bo'sh qolsa sana oyi zaxira; o'quvchi to'lovi mantig'i o'zgarmagan)
       month: isSalaryExpense ? month : isTuitionIncome ? form.month : undefined,
       method: form.direction === 'income' ? (form.method || 'cash') : undefined,
-    })
+      })
+      // Muvaffaqiyat — keyingi saqlash (forma ochiq qolsa ham) YANGI amal.
+      requestIdRef.current = newRequestId()
+    } catch (err) {
+      // ⚠️ Forma YOPILMAYDI, kiritilgan qiymatlar qoladi — kalit ham o'sha: qayta urinish
+      // allaqachon o'tgan (lekin javobi kelmagan) to'lovni IKKINCHI marta yozmaydi.
+      setError(apiErrorMessage(err, "Saqlab bo'lmadi"))
+    } finally {
+      inFlightRef.current = false
+      setSubmitting(false)
+    }
   }
 
   const saveDisabled =
+    submitting ||
     form.amount <= 0 || (isSalaryExpense && !form.teacherId) || (showTuition && !form.studentId)
   // Yo'nalish oldindan berilgan (Kassalar → Chiqim) — panel faqat shu yo'nalish uchun.
   const lockedDirection = !initial && !!preset
@@ -421,12 +453,15 @@ export function TransactionFormModal({ open, onClose, onSubmit, initial, preset,
       footer={
         <DrawerActions onBack={onClose}>
           <Button type="submit" form="finance-form" disabled={saveDisabled}>
-            Saqlash
+            {submitting ? 'Saqlanmoqda...' : 'Saqlash'}
           </Button>
         </DrawerActions>
       }
     >
-      <form id="finance-form" onSubmit={handleSubmit} className="space-y-4">
+      <form id="finance-form" onSubmit={(e) => void handleSubmit(e)} className="space-y-4">
+        {error && (
+          <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>
+        )}
         {!lockedDirection && (
           <DrawerField label="Yo'nalish">
             <DrawerSelect

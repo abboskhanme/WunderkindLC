@@ -1,4 +1,4 @@
-﻿import { useEffect, useState } from 'react'
+﻿import { useEffect, useRef, useState } from 'react'
 import { Camera } from 'lucide-react'
 import type { Subject, Teacher } from '@/types'
 import type { TeacherPayload } from '@/api/services/teachers'
@@ -14,7 +14,8 @@ import { cn, randomPassword } from '@/lib/utils'
 interface Props {
   open: boolean
   onClose: () => void
-  onSubmit: (values: TeacherPayload) => void
+  /** Promise qaytarsa — tugaguncha "Saqlash" qulf (ikki marta bosilsa ikki o'qituvchi yaratilmasin). */
+  onSubmit: (values: TeacherPayload) => void | Promise<void>
   initial?: Teacher | null
   subjects: Subject[]
 }
@@ -27,7 +28,8 @@ const empty: TeacherPayload = {
   phone: '',
   homeroomClass: '',
   subjectIds: [],
-  salaryMode: 'fixed',
+  // Yangi o'qituvchi — FOIZLI (o'qitganidan foiz oladi). Guruhda alohida o'zgartirish mumkin.
+  salaryMode: 'percent',
   salary: 0,
   salaryPercent: 0,
   category: '',
@@ -43,10 +45,16 @@ export function TeacherFormModal({ open, onClose, onSubmit, initial, subjects }:
   const [form, setForm] = useState<TeacherPayload>(empty)
   /** «Kameradan olish» oynasi (o'quvchi formasidagi bilan bir xil komponent). */
   const [photoOpen, setPhotoOpen] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const inFlightRef = useRef(false)
 
   useEffect(() => {
     if (!open) return
+    inFlightRef.current = false
     // eslint-disable-next-line react-hooks/set-state-in-effect -- modal ochilganda formani initial bilan sinxronlash (maqsadli)
+    setSaving(false)
+    setError(null)
     setForm(
       initial
         ? {
@@ -91,10 +99,35 @@ export function TeacherFormModal({ open, onClose, onSubmit, initial, subjects }:
         : [...f.permissions, key],
     }))
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!form.fullName.trim()) return
-    onSubmit(form)
+    if (inFlightRef.current || !form.fullName.trim()) return
+    const pct = Number(form.salaryPercent ?? 0)
+    if (!Number.isFinite(pct) || pct < 0 || pct > 100) {
+      setError("Maosh foizi 0 dan 100 gacha bo'lishi kerak")
+      return
+    }
+    // Yangi o'qituvchi 0% bilan yaratilsa — maoshsiz qoladi va buni hech kim sezmasdi.
+    if (!initial && pct <= 0) {
+      setError('Oylik maosh foizini kiriting')
+      return
+    }
+    inFlightRef.current = true
+    setSaving(true)
+    setError(null)
+    try {
+      // Foizli rejimga FAQAT foiz haqiqatan kiritilganda/o'zgartirilganda o'tiladi: qat'iy maoshli
+      // eski o'qituvchi tahrirda (eski foiz qiymati bilan) jimgina foizliga aylanib qolmasin.
+      const changed = !initial || pct !== (initial.salaryPercent ?? 0)
+      await onSubmit({
+        ...form,
+        salaryPercent: pct,
+        salaryMode: pct > 0 && changed ? 'percent' : form.salaryMode,
+      })
+    } finally {
+      inFlightRef.current = false
+      setSaving(false)
+    }
   }
 
   return (
@@ -107,13 +140,16 @@ export function TeacherFormModal({ open, onClose, onSubmit, initial, subjects }:
           <Button variant="secondary" onClick={onClose}>
             Bekor qilish
           </Button>
-          <Button type="submit" form="teacher-form">
-            Saqlash
+          <Button type="submit" form="teacher-form" disabled={saving}>
+            {saving ? 'Saqlanmoqda...' : 'Saqlash'}
           </Button>
         </>
       }
     >
-      <form id="teacher-form" onSubmit={handleSubmit} className="space-y-4">
+      <form id="teacher-form" onSubmit={(e) => void handleSubmit(e)} className="space-y-4">
+        {error && (
+          <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>
+        )}
         <Input
           label="F.I.SH"
           required
@@ -154,18 +190,35 @@ export function TeacherFormModal({ open, onClose, onSubmit, initial, subjects }:
             ))}
           </Select>
         </div>
+        {/* «Manzil» ATAYIN yo'q (foydalanuvchi talabi, 2026-09-25): xodim uchun kerak emas.
+            Mavjud o'qituvchining manzili `form.address` da o'zgarmay qaytib ketadi. */}
         <div className="grid grid-cols-2 gap-4">
-          <Input
-            label="Manzil"
-            value={form.address}
-            onChange={(e) => update('address', e.target.value)}
-          />
           <PhoneInput
             label="Telefon"
             value={form.phone ?? ''}
             onChange={(phone) => update('phone', phone)}
           />
+          <div>
+            <Input
+              label="Oylik maosh foizi (%)"
+              type="number"
+              min={0}
+              max={100}
+              step="any"
+              required={!initial}
+              value={form.salaryPercent ?? 0}
+              onChange={(e) => update('salaryPercent', Number(e.target.value))}
+            />
+          </div>
         </div>
+        <p className="-mt-2 text-xs text-slate-400">
+          O'qituvchi guruhlaridagi o'quvchilarga <b>hisoblangan oylikdan</b> shu foizni oladi (chegirma
+          ayrilmaydi). Bitta guruh uchun boshqacha foiz yoki qat'iy summa — o'qituvchi kartasidagi
+          <b> «Maosh»</b> tabida.
+          {initial && initial.salaryMode !== 'percent' && (initial.salary ?? 0) > 0 && (
+            <> Hozir qat'iy maoshda — foiz kiritilsa foizliga o'tadi.</>
+          )}
+        </p>
         <div>
           <Input
             label="Maosh qaysi kundan hisoblansin"
@@ -174,9 +227,8 @@ export function TeacherFormModal({ open, onClose, onSubmit, initial, subjects }:
             onChange={(e) => update('salaryStartDate', e.target.value)}
           />
           <p className="mt-1 text-xs text-slate-400">
-            Oylik maosh — o'qituvchini ochib <b>"Maosh"</b> tabida HAR GURUH uchun alohida belgilanadi
-            (foiz yoki qat'iy summa); o'qituvchi oyligi guruhlar yig'indisi. O'qituvchi <b>oy o'rtasida</b> kelsa —
-            shu kunni belgilang (qat'iy summa birinchi oy o'sha kundan oy oxirigacha qisman). Bo'sh = eng birinchi to'lov oyidan.
+            O'qituvchi <b>oy o'rtasida</b> kelsa — shu kunni belgilang (qat'iy summa birinchi oy o'sha kundan oy
+            oxirigacha qisman). Bo'sh = eng birinchi to'lov oyidan.
           </p>
         </div>
 

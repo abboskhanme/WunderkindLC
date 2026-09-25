@@ -58,6 +58,13 @@ export interface NavChild {
   permAny?: string[]
   /** Ichki bo'lim (3-daraja) — masalan "O'quv bo'limi" → "Guruhlar" → "Reyting" */
   children?: NavChild[]
+  /**
+   * Shu band QO'SHIMCHA ravishda "egalik qiladigan" manzil prefikslari — faqat qaysi guruh
+   * FAOL ekanini aniqlash uchun (`navMatchScore`), menyuda chizilmaydi. Masalan «Xodimlar»
+   * `/admin/boshqaruv/xodimlar` ga olib boradi, lekin o'qituvchi kartasi (`/admin/teachers/:id`)
+   * ham shu bo'limniki — aks holda u sahifada menyu hech qaysi guruhni ochmasdi.
+   */
+  alsoMatch?: string[]
 }
 
 /** Menyu ikonkasi — lucide ham, Tabler ham (ikkalasi ham `className` qabul qiladi). */
@@ -202,11 +209,15 @@ export const navByRole: Record<Role, NavItem[]> = {
       icon: IconBriefcase,
       children: [
         {
+          // Barcha xodimlar (o'qituvchilar + panel akkauntlari) — rol tanlab qo'shiladi.
           label: 'Xodimlar',
-          to: '/admin/teachers',
-          permAny: ['teachers.list', 'teachers.attendance', 'teachers.substitutions', 'teacherReports'],
+          to: '/admin/boshqaruv/xodimlar',
+          permAny: ['staff', 'teachers.list', 'teachers.attendance', 'teachers.substitutions', 'teacherReports'],
+          // O'qituvchilar ro'yxati, kartasi, davomati, o'rinbosarlar — shu bo'limniki.
+          alsoMatch: ['/admin/teachers'],
         },
-        { label: 'Rollar', to: '/admin/boshqaruv/staff', perm: 'staff' },
+        // Faqat ROLLAR ro'yxati va ularning ruxsatlari.
+        { label: 'Rollar', to: '/admin/boshqaruv/rollar', perm: 'staff' },
         { label: 'Filiallar', to: '/admin/boshqaruv/branches', roles: ['superadmin'] },
       ],
     },
@@ -378,10 +389,11 @@ function matchLength(to: string, pathname: string): number {
 
 /** Band (yoki uning bolalaridan biri) manzilga qanchalik ANIQ mos kelgani. */
 export function navMatchScore(
-  item: { to: string; children?: NavChild[] },
+  item: { to: string; children?: NavChild[]; alsoMatch?: string[] },
   pathname: string,
 ): number {
   let best = matchLength(item.to, pathname)
+  for (const extra of item.alsoMatch ?? []) best = Math.max(best, matchLength(extra, pathname))
   for (const c of item.children ?? []) best = Math.max(best, navMatchScore(c, pathname))
   return best
 }

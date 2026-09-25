@@ -36,6 +36,11 @@ export interface FinanceTransactionPayload {
    * kodi o'rniga markazning o'z nomi chiqadi. Hisob-kitob avvalgidek `category` ga qaraydi.
    */
   typeId?: string
+  /**
+   * Forma ochilishining SO'ROV KALITI — shu formadagi har urinishda bir xil. Server takroriy
+   * so'rovga yangi yozuv qo'shmaydi (to'lov/amal ikki marta o'tmasin).
+   */
+  requestId?: string
   amount: number
   note?: string
   studentId?: string
@@ -191,6 +196,8 @@ export interface RefundPayload {
   amount: number
   date?: string
   reason?: string
+  /** Oyna ochilishining kaliti — qayta bosilgan "Qaytarish" ikkinchi vozvrat yozmaydi. */
+  requestId?: string
 }
 
 /**

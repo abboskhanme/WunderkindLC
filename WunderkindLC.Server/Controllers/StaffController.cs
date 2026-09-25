@@ -50,6 +50,7 @@ public class StaffController(AppDbContext db, AuditService audit) : ControllerBa
     [HttpGet]
     public async Task<ActionResult<IEnumerable<StaffDto>>> GetAll()
     {
+        var roleNames = await db.StaffRoleTemplates.AsNoTracking().ToDictionaryAsync(t => t.Id, t => t.Name);
         // Odatdagidek GET xodimga ochiq (AdminPerm qoidasi). Lekin admin/superadmin akkauntining
         // LOGINI oddiy xodimga ko'rsatilmaydi — parol tiklash u yerdan baribir yopiq, login esa
         // brute-force uchun kerakli yarim ma'lumot. Superadmin/admin uchun to'liq ko'rinadi.
@@ -60,16 +61,116 @@ public class StaffController(AppDbContext db, AuditService audit) : ControllerBa
             // Superadminlar tepada — "kim egasi" savoli ro'yxatning boshida javob topsin.
             .OrderBy(u => u.Role == Roles.SuperAdmin ? 0 : u.Role == Roles.Admin ? 1 : 2)
             .ThenBy(u => u.FullName, StringComparer.OrdinalIgnoreCase)
-            .Select(u => seesLogins || u.Role == Roles.Staff ? ToDto(u) : ToDto(u) with { Login = "" })
+            .Select(u => seesLogins || u.Role == Roles.Staff ? ToDto(u, roleNames) : ToDto(u, roleNames) with { Login = "" })
             .ToList();
     }
 
-    /// <summary>Barcha xodim roli shablonlari — yangi xodim qo'shishda tanlash uchun.</summary>
+    /// <summary>ROLLAR ro'yxati (Boshqaruv → Rollar) — har birida nechta xodim borligi bilan.</summary>
     [HttpGet("role-templates")]
-    public async Task<ActionResult<IEnumerable<StaffRoleTemplateDto>>> GetRoleTemplates() =>
-        (await db.StaffRoleTemplates.ToListAsync())
-            .Select(t => new StaffRoleTemplateDto(t.Id, t.Code, t.Name, t.Description, t.DefaultPermissions))
+    public async Task<ActionResult<IEnumerable<StaffRoleTemplateDto>>> GetRoleTemplates()
+    {
+        var counts = await db.Users.AsNoTracking()
+            .Where(u => u.RoleTemplateId != null && u.Role == Roles.Staff)
+            .GroupBy(u => u.RoleTemplateId!)
+            .Select(g => new { g.Key, Count = g.Count() })
+            .ToDictionaryAsync(x => x.Key, x => x.Count);
+        return (await db.StaffRoleTemplates.AsNoTracking().ToListAsync())
+            .OrderBy(t => t.Name, StringComparer.OrdinalIgnoreCase)
+            .Select(t => ToRoleDto(t, counts.GetValueOrDefault(t.Id)))
             .ToList();
+    }
+
+    /// <summary>
+    /// Rolni boshqarish — FAQAT "Xodimlar" bo'limiga TO'LIQ ruxsati borlar (<see cref="SetPermissions"/>
+    /// va <see cref="Create"/> dagi bilan bir xil darvoza). Rol ruxsati = uning HAMMA xodimi ruxsati:
+    /// qisman ruxsatli xodim rolni kengaytirib o'zining (yoki boshqaning) huquqini oshira olmasin.
+    /// </summary>
+    private bool CanEditRoles => AdminPermAttribute.HasFullAccess(User, "staff");
+
+    [HttpPost("role-templates")]
+    public async Task<ActionResult<StaffRoleTemplateDto>> CreateRole(SaveStaffRoleRequest req)
+    {
+        if (!CanEditRoles) return Forbid();
+        var name = (req.Name ?? "").Trim();
+        if (name.Length == 0) return BadRequest(new { message = "Rol nomini kiriting" });
+        if (name.Length > StaffRoles.MaxNameLength) return BadRequest(new { message = "Rol nomi juda uzun" });
+        if (await db.StaffRoleTemplates.AnyAsync(t => t.Name.ToLower() == name.ToLower()))
+            return BadRequest(new { message = $"«{name}» nomli rol allaqachon bor" });
+
+        var code = StaffRoles.CodeFrom(name);
+        if (await db.StaffRoleTemplates.AnyAsync(t => t.Code == code))
+            code += "_" + Guid.NewGuid().ToString("N")[..6];
+        var role = new StaffRoleTemplate
+        {
+            Code = code,
+            Name = name,
+            Description = (req.Description ?? "").Trim(),
+            DefaultPermissions = StaffRoles.Normalize(req.Permissions),
+        };
+        db.StaffRoleTemplates.Add(role);
+        audit.Record("Staff", role.Id, "create",
+            $"Rol qo'shildi: {role.Name}" +
+            (role.DefaultPermissions.Count > 0 ? $" — ruxsatlar: {string.Join(", ", role.DefaultPermissions)}" : " — ruxsatsiz"));
+        await db.SaveChangesAsync();
+        return ToRoleDto(role, 0);
+    }
+
+    /// <summary>Rolni tahrirlash. Ruxsatlar o'zgarsa — shu roldagi BARCHA xodimga darhol tarqaladi.</summary>
+    [HttpPut("role-templates/{id}")]
+    public async Task<ActionResult<StaffRoleTemplateDto>> UpdateRole(string id, SaveStaffRoleRequest req)
+    {
+        if (!CanEditRoles) return Forbid();
+        var role = await db.StaffRoleTemplates.FirstOrDefaultAsync(t => t.Id == id);
+        if (role is null) return NotFound(new { message = "Rol topilmadi" });
+        var name = (req.Name ?? "").Trim();
+        if (name.Length == 0) return BadRequest(new { message = "Rol nomini kiriting" });
+        if (name.Length > StaffRoles.MaxNameLength) return BadRequest(new { message = "Rol nomi juda uzun" });
+        if (await db.StaffRoleTemplates.AnyAsync(t => t.Id != id && t.Name.ToLower() == name.ToLower()))
+            return BadRequest(new { message = $"«{name}» nomli rol allaqachon bor" });
+
+        var oldPerms = role.DefaultPermissions.ToList();
+        var oldName = role.Name;
+        role.Name = name;
+        role.Description = (req.Description ?? "").Trim();
+        if (req.Permissions is not null) role.DefaultPermissions = StaffRoles.Normalize(req.Permissions);
+
+        var added = role.DefaultPermissions.Except(oldPerms).Order().ToList();
+        var removed = oldPerms.Except(role.DefaultPermissions).Order().ToList();
+        var synced = await StaffRoles.SyncMembersAsync(db, role);
+        var memberNames = synced == 0 ? "" : string.Join(", ", await db.Users
+            .Where(u => u.RoleTemplateId == role.Id && u.Role == Roles.Staff)
+            .OrderBy(u => u.FullName).Select(u => u.FullName).ToListAsync());
+        audit.Record("Staff", role.Id, "update",
+            $"Rol tahrirlandi: {oldName}" + (oldName != name ? $" → {name}" : "") +
+            (added.Count > 0 ? $" — qo'shildi: {string.Join(", ", added)}" : "") +
+            (removed.Count > 0 ? $" — olib tashlandi: {string.Join(", ", removed)}" : "") +
+            (added.Count + removed.Count > 0 && synced > 0 ? $" ({synced} ta xodimga tarqaldi: {memberNames})" : ""),
+            before: new { Name = oldName, Permissions = oldPerms },
+            after: new { role.Name, Permissions = role.DefaultPermissions });
+        await db.SaveChangesAsync();
+        return ToRoleDto(role, await StaffRoles.MemberCountAsync(db, role.Id));
+    }
+
+    /// <summary>Rolni o'chirish. Rolda xodim bo'lsa — 400 (avval ularni boshqa rolga o'tkazing):
+    /// jimgina "individual"ga tushirilsa, xodim ruxsatlari hech kim sezmay "muzlab" qolardi.</summary>
+    [HttpDelete("role-templates/{id}")]
+    public async Task<IActionResult> DeleteRole(string id)
+    {
+        if (!CanEditRoles) return Forbid();
+        var role = await db.StaffRoleTemplates.FirstOrDefaultAsync(t => t.Id == id);
+        if (role is null) return NotFound(new { message = "Rol topilmadi" });
+        var members = await StaffRoles.MemberCountAsync(db, id);
+        if (members > 0)
+            return BadRequest(new { message = $"Bu rolda {members} ta xodim bor — avval ularni boshqa rolga o'tkazing" });
+        // Superadmin/admin qilingan akkauntlar bog'lanishi (sanoqqa kirmaydi) — tozalanadi:
+        // orqaga tushirilsa yo'q rolga emas, individual ruxsatlariga qaytadi.
+        foreach (var u in await db.Users.Where(u => u.RoleTemplateId == id).ToListAsync())
+            u.RoleTemplateId = null;
+        db.StaffRoleTemplates.Remove(role);
+        audit.Record("Staff", role.Id, "delete", $"Rol o'chirildi: {role.Name}");
+        await db.SaveChangesAsync();
+        return NoContent();
+    }
 
     [HttpPost]
     public async Task<ActionResult<StaffDto>> Create(CreateStaffWithTemplateRequest req)
@@ -85,7 +186,19 @@ public class StaffController(AppDbContext db, AuditService audit) : ControllerBa
         // berib darajasini oshira olmasligi uchun. To'liq ruxsati bo'lmasa — ruxsatsiz yaratiladi
         // (keyin "Rollar" orqali beriladi).
         var permissions = new List<string>();
-        if (AdminPermAttribute.HasFullAccess(User, "staff"))
+        StaffRoleTemplate? role = null;
+        if (!string.IsNullOrWhiteSpace(req.RoleTemplateId))
+        {
+            // ROL bilan qo'shish (Boshqaruv → Xodimlar). Rol tanlash = ruxsat berish, shuning uchun
+            // darvoza ruxsat berish bilan bir xil (HasFullAccess) — aks holda qisman ruxsatli xodim
+            // "Administrator" rolidagi yangi akkaunt yaratib, huquqini oshirardi.
+            if (!AdminPermAttribute.HasFullAccess(User, "staff")) return Forbid();
+            role = await db.StaffRoleTemplates.FirstOrDefaultAsync(t => t.Id == req.RoleTemplateId.Trim());
+            if (role is null) return BadRequest(new { message = "Tanlangan rol topilmadi" });
+            StaffRoles.Assign(user, role);
+            permissions = user.Permissions;
+        }
+        else if (AdminPermAttribute.HasFullAccess(User, "staff"))
         {
             // Role template tanlansa — default ruxsatlari qo'shiladi
             if (!string.IsNullOrWhiteSpace(req.TemplateCode))
@@ -116,9 +229,10 @@ public class StaffController(AppDbContext db, AuditService audit) : ControllerBa
         audit.Record("Staff", user.Id, "create",
             $"Xodim qo'shildi: {user.FullName}" +
             (user.Position.Length > 0 ? $" ({user.Position})" : "") +
+            (role is not null ? $" — rol: {role.Name}" : "") +
             (permissions.Count > 0 ? $" — ruxsatlar: {string.Join(", ", permissions)}" : " — ruxsatsiz"));
         await db.SaveChangesAsync();
-        return ToDto(user);
+        return ToDto(user, role is null ? null : new Dictionary<string, string> { [role.Id] = role.Name });
     }
 
     [HttpPut("{id}")]
@@ -127,6 +241,45 @@ public class StaffController(AppDbContext db, AuditService audit) : ControllerBa
         var user = await db.Users.FindAsync(id);
         if (user is null || user.Role != Roles.Staff) return NotFound();
         if (string.IsNullOrWhiteSpace(req.FullName)) return BadRequest(new { message = "F.I.SH kerak" });
+
+        // Parol almashtirish — akkauntni egallash bilan teng (ResetPassword izohi).
+        if (!string.IsNullOrWhiteSpace(req.NewPassword) && !AdminPermAttribute.HasFullAccess(User, "staff"))
+            return Forbid();
+
+        var beforePerms = user.Permissions.ToList();
+        var beforeRole = user.RoleTemplateId;
+
+        // ROLNI almashtirish (null — tegilmaydi, "" — individual ruxsatlarga). O'sha rol qayta
+        // tanlansa ham ruxsatlar roldan QAYTA yoziladi — qandaydir sabab bilan ajralib qolgan
+        // bo'lsa (masalan superadmin bo'lib turgan paytda rol o'zgargan), shu yo'l bilan tuzaladi.
+        string? roleChange = null;
+        var fullAccess = AdminPermAttribute.HasFullAccess(User, "staff");
+        var rid = req.RoleTemplateId?.Trim();
+        var sameRole = rid is not null && rid == (user.RoleTemplateId ?? "");
+        // Rol O'ZGARSA — to'liq ruxsat shart. O'sha rol qayta kelsa (oddiy tahrir formasi uni
+        // shunchaki qaytaradi) — qisman ruxsatli xodimga to'siq emas, faqat to'liq ruxsatli
+        // kishida ruxsatlar roldan qayta yoziladi (ajralib qolgan bo'lsa tuzaladi).
+        if (rid is not null && (!sameRole || (fullAccess && rid.Length > 0)))
+        {
+            if (!fullAccess) return Forbid();
+            if (rid.Length == 0)
+            {
+                // Individual: ruxsatlari hozirgicha qoladi, faqat roldan uziladi.
+                user.RoleTemplateId = null;
+                roleChange = "individual ruxsatlar";
+            }
+            else
+            {
+                var role = await db.StaffRoleTemplates.FirstOrDefaultAsync(t => t.Id == rid);
+                if (role is null) return BadRequest(new { message = "Tanlangan rol topilmadi" });
+                StaffRoles.Assign(user, role);
+                var permsChanged = !beforePerms.Order().SequenceEqual(user.Permissions.Order());
+                roleChange = !sameRole ? role.Name
+                    : permsChanged ? $"{role.Name} (ruxsatlar roldan qayta yozildi)"
+                    : null;
+            }
+        }
+
         user.FullName = req.FullName.Trim();
         user.Position = (req.Position ?? "").Trim();
         user.Phone = PhoneUtil.Normalize(req.Phone ?? "");
@@ -139,9 +292,12 @@ public class StaffController(AppDbContext db, AuditService audit) : ControllerBa
         audit.Record("Staff", user.Id, "update",
             $"Xodim tahrirlandi: {user.FullName}" +
             (user.Position.Length > 0 ? $" ({user.Position})" : "") +
-            (!string.IsNullOrWhiteSpace(req.NewPassword) ? " — PAROL o'zgartirildi" : ""));
+            (roleChange is not null ? $" — rol: {roleChange}" : "") +
+            (!string.IsNullOrWhiteSpace(req.NewPassword) ? " — PAROL o'zgartirildi" : ""),
+            before: new { Permissions = beforePerms, RoleTemplateId = beforeRole },
+            after: new { user.Permissions, user.RoleTemplateId });
         await db.SaveChangesAsync();
-        return ToDto(user);
+        return ToDto(user, await db.StaffRoleTemplates.AsNoTracking().ToDictionaryAsync(t => t.Id, t => t.Name));
     }
 
     [HttpDelete("{id}")]
@@ -185,6 +341,10 @@ public class StaffController(AppDbContext db, AuditService audit) : ControllerBa
     [HttpPost("{id}/reset-password")]
     public async Task<ActionResult<CredentialsDto>> ResetPassword(string id)
     {
+        // ⚠️ Yangi parol QAYTARILADI — ya'ni bu akkauntga kirish. `Credentials` dagi bilan bir xil
+        // darvoza: aks holda `staff:create` li xodim to'liq huquqli xodimning parolini tiklab,
+        // uning nomidan kirib olardi.
+        if (!AdminPermAttribute.HasFullAccess(User, "staff")) return Forbid();
         var user = await db.Users.FindAsync(id);
         // Superadmin/admin qilingan akkauntning ham parolini tiklash mumkin, lekin faqat
         // superadmin (sabab — `Credentials` izohi: huquq oshirish yo'li ochilmasin).
@@ -203,9 +363,16 @@ public class StaffController(AppDbContext db, AuditService audit) : ControllerBa
     [HttpPut("{id}/permissions")]
     public async Task<ActionResult<StaffDto>> SetPermissions(string id, SetStaffPermissionsRequest req)
     {
+        // ⚠️ Ruxsat BERISH = "Xodimlar" bo'limiga TO'LIQ ruxsat. Ilgari faqat `staff:edit` yetardi:
+        // shunday xodim o'ziga `["staff","finance",...]` yozib, istalgan huquqni olardi.
+        if (!AdminPermAttribute.HasFullAccess(User, "staff")) return Forbid();
         var user = await db.Users.FindAsync(id);
         if (user is null || user.Role != Roles.Staff) return NotFound();
         var oldPerms = user.Permissions.ToList();
+        // Individual tahrir — xodim ROLDAN UZILADI: aks holda rolning keyingi tahriri bu qo'lda
+        // berilgan ruxsatlarni jimgina bosib ketardi.
+        var detached = user.RoleTemplateId is not null;
+        user.RoleTemplateId = null;
         // null/bo'sh/dublikat kalitlarni tozalaymiz — aks holda token validation'da
         // null claim qiymati 500 (ArgumentNullException) keltirib chiqarishi mumkin.
         user.Permissions = (req.Permissions ?? new())
@@ -221,7 +388,8 @@ public class StaffController(AppDbContext db, AuditService audit) : ControllerBa
             $"Xodim ruxsatlari o'zgartirildi: {user.FullName}" +
             (added.Count > 0 ? $" — qo'shildi: {string.Join(", ", added)}" : "") +
             (removed.Count > 0 ? $" — olib tashlandi: {string.Join(", ", removed)}" : "") +
-            (added.Count == 0 && removed.Count == 0 ? " — o'zgarish yo'q" : ""),
+            (added.Count == 0 && removed.Count == 0 ? " — o'zgarish yo'q" : "") +
+            (detached ? " (roldan uzildi — individual ruxsatlar)" : ""),
             before: new { Permissions = oldPerms }, after: new { user.Permissions });
         await db.SaveChangesAsync();
         return ToDto(user);
@@ -274,11 +442,21 @@ public class StaffController(AppDbContext db, AuditService audit) : ControllerBa
         }
 
         var oldRole = user.Role;
+        var oldPerms = user.Permissions.ToList();
         user.Role = role;
+        // Oddiy xodimga QAYTARILSA — roli kuchga kiradi. Superadmin bo'lib turgan paytda rol
+        // ruxsatlari o'zgargan bo'lishi mumkin (sync faqat `staff` larni yangilaydi), ya'ni eski
+        // ruxsatlar bilan qaytib, ekrandagi rol nomidan ko'proq huquqqa ega bo'lib qolardi.
+        if (role == Roles.Staff && user.RoleTemplateId is { } rtid)
+        {
+            var tpl = await db.StaffRoleTemplates.FirstOrDefaultAsync(t => t.Id == rtid);
+            if (tpl is not null) StaffRoles.Assign(user, tpl);
+            else user.RoleTemplateId = null;
+        }
         audit.Record("Staff", user.Id, "update",
             $"Akkaunt roli o'zgartirildi: {user.FullName} — {RoleLabel(oldRole)} → {RoleLabel(role)}"
             + (role == Roles.SuperAdmin ? " (to'liq huquq: bo'lim ruxsatlari endi tekshirilmaydi)" : ""),
-            before: new { Role = oldRole }, after: new { user.Role });
+            before: new { Role = oldRole, Permissions = oldPerms }, after: new { user.Role, user.Permissions });
         await db.SaveChangesAsync();
         return ToDto(user);
     }
@@ -290,6 +468,11 @@ public class StaffController(AppDbContext db, AuditService audit) : ControllerBa
         _ => "Xodim",
     };
 
-    private static StaffDto ToDto(AppUser u) =>
-        new(u.Id, u.FullName, u.Position, u.Email, u.Permissions, u.Phone, u.Role);
+    private static StaffDto ToDto(AppUser u, IReadOnlyDictionary<string, string>? roleNames = null) =>
+        new(u.Id, u.FullName, u.Position, u.Email, u.Permissions, u.Phone, u.Role,
+            u.RoleTemplateId,
+            u.RoleTemplateId is not null && roleNames is not null ? roleNames.GetValueOrDefault(u.RoleTemplateId) : null);
+
+    private static StaffRoleTemplateDto ToRoleDto(StaffRoleTemplate t, int members) =>
+        new(t.Id, t.Code, t.Name, t.Description, t.DefaultPermissions, members);
 }

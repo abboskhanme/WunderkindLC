@@ -529,9 +529,10 @@ public class ContractsController(
         var courses = groups.Select(g => ctx.CourseNames.GetValueOrDefault(g.CourseId, ""))
             .Concat(t.SubjectIds.Select(id => ctx.CourseNames.GetValueOrDefault(id, "")))
             .Where(n => n.Length > 0).Distinct().ToList();
-        // Maosh: fixed — qat'iy summa; percent — guruh tushumining foizi (shartnomaga matn ko'rinishida).
+        // Maosh: fixed — qat'iy summa; percent — guruh o'quvchilariga HISOBLANGAN oylikning foizi
+        // (2026-09 dan — `billing.md`; shartnomaga matn ko'rinishida).
         var oylik = t.SalaryMode == "percent" && t.SalaryPercent > 0
-            ? $"guruh tushumining {t.SalaryPercent.ToString("0.##", CultureInfo.InvariantCulture)}%i"
+            ? $"guruh o'quvchilariga hisoblangan oylik to'lovning {t.SalaryPercent.ToString("0.##", CultureInfo.InvariantCulture)}%i"
             : t.Salary > 0 ? AuditService.Money(t.Salary) : "";
 
         var tokens = new Dictionary<string, string>

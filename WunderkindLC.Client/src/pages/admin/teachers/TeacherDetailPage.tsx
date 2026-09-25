@@ -691,7 +691,7 @@ export function TeacherDetailPage() {
               mono
               value={
                 teacher.salaryMode === 'percent'
-                  ? `Foiz — guruh to'lovining ${teacher.salaryPercent ?? 0}%i`
+                  ? `Foiz — hisoblangan oylikning ${teacher.salaryPercent ?? 0}%i`
                   : `Qat'iy summa — ${formatMoney(teacher.salary)}`
               }
             />
@@ -1586,6 +1586,7 @@ export function TeacherDetailPage() {
               lines={salaryLedger?.groups}
               saving={salaryLoading}
               onSaved={reloadSalary}
+              teacherPercent={teacher.salaryMode === 'percent' ? (teacher.salaryPercent ?? 0) : null}
             />
           )}
 
@@ -1918,9 +1919,12 @@ type SalaryRow = {
 }
 
 /**
- * O'qituvchining HAR guruhi uchun alohida maosh sozlamasi: "Foiz" (shu guruh to'lovidan %) yoki
- * "Qat'iy" (shu guruh uchun qat'iy summa) — boshqa variant yo'q. Saqlanganda o'qituvchi oyligi
- * guruhlar ulushi yig'indisi sifatida hisoblanadi.
+ * O'qituvchining HAR guruhi uchun maosh sozlamasi: "Umumiy" (o'qituvchining umumiy foizi — xodim
+ * qo'shishda belgilanadi), "Foiz" (shu guruh uchun boshqa %) yoki "Qat'iy" (shu guruh uchun qat'iy
+ * summa). Saqlanganda o'qituvchi oyligi guruhlar ulushi yig'indisi sifatida hisoblanadi.
+ *
+ * "Umumiy" faqat o'qituvchi FOIZLI bo'lsa taklif qilinadi: qat'iy maoshli (eski) o'qituvchida u
+ * "oylikni guruhlar orasida bo'lish" degani bo'lardi va chalg'itardi.
  */
 function GroupSalaryEditor({
   teacherId,
@@ -1929,6 +1933,7 @@ function GroupSalaryEditor({
   lines,
   saving,
   onSaved,
+  teacherPercent,
 }: {
   teacherId: string
   groups: Group[]
@@ -1936,6 +1941,8 @@ function GroupSalaryEditor({
   lines?: GroupSalaryLine[]
   saving: boolean
   onSaved: () => void
+  /** O'qituvchining UMUMIY foizi (foizli bo'lsa); `null` — qat'iy maoshli, "Umumiy" taklif qilinmaydi. */
+  teacherPercent: number | null
 }) {
   const lineByGroup = useMemo(() => {
     const m: Record<string, GroupSalaryLine> = {}
@@ -1943,14 +1950,15 @@ function GroupSalaryEditor({
     return m
   }, [lines])
 
-  // Har qator FOIZ yoki QAT'IY — "umumiy" yo'q. Sozlanmagan guruh amaldagi (ledger) qiymatdan,
-  // u ham bo'lmasa "foiz 0" dan boshlanadi (admin tanlaydi).
+  // Sozlanmagan guruh (mode "") — o'qituvchi foizli bo'lsa "Umumiy"; aks holda amaldagi (ledger)
+  // qiymatdan, u ham bo'lmasa "foiz 0" dan boshlanadi (admin tanlaydi).
   const buildRows = (): SalaryRow[] =>
     groups.map((g) => {
       const line = (lines ?? []).find((l) => l.groupId === g.id)
       const raw =
         g.teacherSalaryMode === 'fixed' ? 'fixed' : g.teacherSalaryMode === 'percent' ? 'percent' : ''
-      const mode: string = raw || (line?.mode === 'fixed' ? 'fixed' : 'percent')
+      const mode: string =
+        raw || (teacherPercent !== null ? '' : line?.mode === 'fixed' ? 'fixed' : 'percent')
       return {
         groupId: g.id,
         name: g.name,
@@ -2012,7 +2020,7 @@ function GroupSalaryEditor({
   return (
     <Card
       title="Per-guruh maosh"
-      sub="Har guruh uchun alohida foiz yoki qat'iy summa. O'qituvchi oyligi = guruhlar yig'indisi. Yopilgan guruhlar ham qoladi — o'tgan oylar hisobi ularga bog'liq."
+      sub="«Umumiy» — o'qituvchining umumiy foizi; kerak bo'lsa guruh uchun boshqa foiz yoki qat'iy summa. Foiz hisoblangan oylikdan (chegirmasiz). O'qituvchi oyligi = guruhlar yig'indisi. Yopilgan guruhlar ham qoladi — o'tgan oylar hisobi ularga bog'liq."
     >
       <div className="space-y-2">
         {rows.map((r) => {
@@ -2053,7 +2061,8 @@ function GroupSalaryEditor({
               <div className="mt-3 flex flex-wrap items-center gap-2">
                 <div className="inline-flex rounded-lg border border-slate-200 p-0.5">
                   {[
-                    { v: 'percent', label: 'Foiz' },
+                    ...(teacherPercent !== null ? [{ v: '', label: `Umumiy (${teacherPercent}%)` }] : []),
+                    { v: 'percent', label: 'Boshqa foiz' },
                     { v: 'fixed', label: "Qat'iy summa" },
                   ].map((opt) => (
                     <button

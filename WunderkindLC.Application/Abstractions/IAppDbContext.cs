@@ -13,6 +13,7 @@ namespace WunderkindLC.Application.Abstractions;
 public interface IAppDbContext
 {
     DbSet<AppUser> Users { get; }
+    DbSet<StaffRoleTemplate> StaffRoleTemplates { get; }
     DbSet<Student> Students { get; }
     DbSet<Teacher> Teachers { get; }
     DbSet<TeacherAttendance> TeacherAttendances { get; }

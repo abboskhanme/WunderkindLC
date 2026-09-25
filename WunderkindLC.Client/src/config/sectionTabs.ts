@@ -17,8 +17,14 @@ import type { CardTabItem } from '@/components/ui/CardTabs'
  */
 export function teacherTabs(canSee: (perm: string) => boolean): CardTabItem[] {
   return [
-    // `end` — `/admin/teachers/attendance` ochilganda «Ro'yxati» ham faol bo'lib qolmasin
-    { label: "Ro'yxati", to: '/admin/teachers', end: true, hidden: !canSee('teachers.list') },
+    // Barcha xodimlar (rol bo'yicha) — Boshqaruv → Xodimlar.
+    {
+      label: 'Xodimlar',
+      to: '/admin/boshqaruv/xodimlar',
+      hidden: !canSee('staff') && !canSee('teachers.list'),
+    },
+    // `end` — `/admin/teachers/attendance` ochilganda «O'qituvchilar» ham faol bo'lib qolmasin
+    { label: "O'qituvchilar", to: '/admin/teachers', end: true, hidden: !canSee('teachers.list') },
     { label: 'Davomati', to: '/admin/teachers/attendance', hidden: !canSee('teachers.attendance') },
     {
       label: "O'rinbosarlar",

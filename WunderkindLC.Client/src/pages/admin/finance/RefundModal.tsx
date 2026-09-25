@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import { Undo2, Snowflake } from 'lucide-react'
 import type { FinanceTransaction } from '@/types'
@@ -9,6 +9,8 @@ import { Button } from '@/components/ui/Button'
 import { Input, Textarea } from '@/components/ui/Input'
 import { apiErrorMessage, formatMoney } from '@/lib/utils'
 import posthog from '@/lib/posthog'
+import { toast } from '@/lib/toast'
+import { newRequestId } from '@/lib/requestId'
 
 interface Props {
   /** Vozvrat qilinadigan o'quvchi to'lovi (income + tuition) */
@@ -24,7 +26,8 @@ const today = () => new Date().toISOString().slice(0, 10)
  *
  * Muzlatish bilan bog'liq: o'quvchi oy o'rtasida MUZLATILGANDA shu oy hisobi qatnashilgan darslarga qayta
  * hisoblanadi va o'quvchida AVANS (ortiqcha to'lov) paydo bo'ladi — shu avans qaytariladi, balans 0 ga tushadi.
- * Server: alohida vozvrat yozuvi (kassa chiqimi), balans −summa, o'qituvchi foizi net'dan qayta hisoblanadi.
+ * Server: alohida vozvrat yozuvi (kassa chiqimi), balans −summa. O'qituvchi foizi 2026-09 dan HISOBLANGAN
+ * oylikdan — vozvrat unga ta'sir qilmaydi (muzlatishda oylikning o'zi qisqaradi); eski oylarda net'dan.
  */
 export function RefundModal({ payment, onClose, onSaved }: Props) {
   const [amount, setAmount] = useState(0)
@@ -33,12 +36,18 @@ export function RefundModal({ payment, onClose, onSaved }: Props) {
   const [advance, setAdvance] = useState<number | null>(null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  /** SINXRON qulf — "Qaytarish" tez-tez bosilsa ham vozvrat BITTA yoziladi. */
+  const inFlightRef = useRef(false)
+  /** Oyna ochilishining kaliti — server takroriy so'rovga ikkinchi vozvrat yozmaydi. */
+  const requestIdRef = useRef(newRequestId())
 
   const alreadyRefunded = payment?.refunded ?? 0
   const refundable = payment ? payment.amount - alreadyRefunded : 0
 
   useEffect(() => {
     if (!payment) return
+    requestIdRef.current = newRequestId()
+    inFlightRef.current = false
     // eslint-disable-next-line react-hooks/set-state-in-effect -- modal ochilganda formani to'lov bilan sinxronlash (maqsadli)
     setError(null)
     setDate(today())
@@ -63,17 +72,25 @@ export function RefundModal({ payment, onClose, onSaved }: Props) {
 
   const submit = async (e: FormEvent) => {
     e.preventDefault()
-    if (!payment || amount <= 0 || amount > refundable) return
+    if (inFlightRef.current || !payment || amount <= 0 || amount > refundable) return
+    inFlightRef.current = true
     setSaving(true)
     setError(null)
     try {
-      await refundPayment(payment.id, { amount, date, reason: reason.trim() || undefined })
+      await refundPayment(payment.id, {
+        amount,
+        date,
+        reason: reason.trim() || undefined,
+        requestId: requestIdRef.current,
+      })
       posthog.capture('payment_refunded', { is_partial_refund: amount < refundable })
+      toast.success('Pul qaytarildi', formatMoney(amount))
       onSaved()
       onClose()
     } catch (err) {
       setError(apiErrorMessage(err, "Vozvratni saqlab bo'lmadi"))
     } finally {
+      inFlightRef.current = false
       setSaving(false)
     }
   }

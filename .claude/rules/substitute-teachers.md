@@ -80,6 +80,10 @@ uchun to'lanadi. Shuning uchun bitta dars narxi = `oylik ÷ hamma darslar` — b
 dagi legacy-qat'iy **jurnal jarimasi** formulasi bilan AYNAN bir xil (ikki joyda ikki xil
 bo'lmasin).
 
+⚠️ **2026-09-25 dan:** baza oyga qarab — `CenterMeta.SalaryChargedBaseFrom` dan boshlab
+HISOBLANGAN to'liq oylik (`billing.md`). `CollectedForGroupsAsync` shu `SalaryBase` ni qaytaradi,
+ya'ni asosiy o'qituvchi va o'rinbosar baribir BITTA bazadan. Quyidagi ikki band eski oylar uchun.
+
 ⚠️ **YIG'ILGAN pul, HISOBLANGAN emas.** Manba — `SalaryLedger.CollectedForGroupsAsync`
 (taqsimot: teglangan to'lov 100% guruhga, teglanmagani `MonthlyFee` nisbatida — butun
 tizimdagi bilan bir xil konvensiya). Bu metod AYNAN shu sabab ommaviy: o'rinbosarning maosh

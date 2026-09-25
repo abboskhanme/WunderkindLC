@@ -18,6 +18,34 @@ export interface CreateStaffWithTemplatePayload {
   templateCode?: string
   /** Qo'shimcha ruxsatlari */
   extraPermissions?: string[]
+  /**
+   * Xodimning ROLI (id). Yaratishda — ruxsatlar roldan olinadi. Tahrirda: berilmasa rol
+   * o'zgarmaydi, `''` — individual ruxsatlarga o'tkaziladi.
+   */
+  roleTemplateId?: string
+}
+
+/** Rolni yaratish/tahrirlash (Boshqaruv → Rollar). */
+export interface StaffRolePayload {
+  name: string
+  description?: string
+  permissions: string[]
+}
+
+export async function createStaffRole(payload: StaffRolePayload): Promise<StaffRoleTemplate> {
+  const { data } = await api.post<StaffRoleTemplate>('/admin/staff/role-templates', payload)
+  return data
+}
+
+/** Rolni tahrirlash — ruxsatlar shu roldagi BARCHA xodimga darhol tarqaladi. */
+export async function updateStaffRole(id: string, payload: StaffRolePayload): Promise<StaffRoleTemplate> {
+  const { data } = await api.put<StaffRoleTemplate>(`/admin/staff/role-templates/${id}`, payload)
+  return data
+}
+
+/** Rolni o'chirish — rolda xodim bo'lsa server rad etadi (sababi bilan). */
+export async function deleteStaffRole(id: string): Promise<void> {
+  await api.delete(`/admin/staff/role-templates/${id}`)
 }
 
 export async function getStaffRoleTemplates(): Promise<StaffRoleTemplate[]> {

@@ -397,10 +397,12 @@ public static class SubstituteTeacherService
                     : (ctx.OriginalTeacher?.SalaryPercent ?? 0m);
                 pool = decimal.Round(ctx.CollectedInMonth * pct / 100m, 2);
                 if (ctx.ActiveStudents == 0)
-                    warning = "Guruhda faol o'quvchi yo'q — bu oyda yig'ilgan puldan haq chiqmaydi";
+                    warning = "Guruhda faol o'quvchi yo'q — bu oyda foiz bazasi yo'q, haq chiqmaydi";
                 else if (ctx.CollectedInMonth <= 0)
-                    warning = "Bu oyda guruhdan hali pul yig'ilmagan — haq 0 bo'ladi " +
-                              "(pul kelgach maosh varaqasida o'zi paydo bo'ladi)";
+                    // `CollectedInMonth` — FOIZ BAZASI (oyga qarab yig'ilgan pul yoki hisoblangan oylik,
+                    // `SalaryLedger.UsesChargedBase`), shuning uchun matn ikkalasiga ham to'g'ri.
+                    warning = "Bu oyda guruh bo'yicha foiz bazasi 0 (hisob yozilmagan yoki pul yig'ilmagan) — " +
+                              "haq 0 bo'ladi (baza paydo bo'lgach maosh varaqasida o'zi chiqadi)";
                 break;
         }
 
