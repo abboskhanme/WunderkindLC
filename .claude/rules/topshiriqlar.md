@@ -15,7 +15,8 @@ paths:
 # Topshiriqlar (Kanban) qoidalari
 
 `/admin/topshiriqlar` — adminlarga/xodimlarga beriladigan **loyihaviy topshiriqlar** va ular
-bo'yicha nazorat. Menyuda "Boshqaruv" dan TEPADA (kundalik ish oqimi).
+bo'yicha nazorat. Menyuda **Future → Boshqaruv → Topshiriqlar** (2026-09-26 dan: hozircha
+ishlatilmaydi, asosiy menyudan olindi; marshrut o'zgarmagan).
 
 ## 1. BITTA MODUL — eski "Adminga topshiriq" OLIB TASHLANDI
 

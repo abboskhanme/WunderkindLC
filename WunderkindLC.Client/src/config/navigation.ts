@@ -99,7 +99,6 @@ export const navByRole: Record<Role, NavItem[]> = {
   // sahifa ochilmaydi, yon tomonda ro'yxat chiqadi. '#' bilan boshlangan kalit hech qaysi
   // manzilga mos kelmaydi, ya'ni `activeNavTo` faqat BOLALAR bo'yicha qaror qiladi.
   admin: [
-    { label: 'Topshiriqlar', to: '/admin/topshiriqlar', icon: IconClipboardCheck, perm: 'tasks' },
     {
       label: 'Lidlar',
       to: '#lidlar',
@@ -334,6 +333,9 @@ export const navByRole: Record<Role, NavItem[]> = {
           label: 'Boshqaruv',
           to: '#future-admin',
           children: [
+            // Topshiriqlar (Kanban) — hozircha ishlatilmaydi (2026-09-26), shu sabab asosiy menyudan
+            // Future'ga olindi. Marshrut o'zgarmadi: eski havolalar ishlayveradi.
+            { label: 'Topshiriqlar', to: '/admin/topshiriqlar', perm: 'tasks' },
             { label: 'KPI', to: '/admin/boshqaruv/kpi', perm: 'kpi' },
             { label: 'Vakansiyalar', to: '/admin/boshqaruv/vacancies', perm: 'vacancies' },
             { label: 'Kameralar', to: '/admin/boshqaruv/cameras', perm: 'cameras' },

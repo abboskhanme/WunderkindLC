@@ -480,7 +480,12 @@ export function ClassesPage() {
         </span>
       ),
     },
-    { key: 'course', header: 'Kurs', render: (c) => courseName(c.courseId) || '—' },
+    // Kurs nomi bir qatorda — "Ingliz tili - 225000" kabi nomlar tor ustunda 3 qatorga bo'linib qisilardi.
+    {
+      key: 'course',
+      header: 'Kurs',
+      render: (c) => <span className="inline-block min-w-[160px] whitespace-nowrap">{courseName(c.courseId) || '—'}</span>,
+    },
     { key: 'level', header: 'Darajasi', render: (c) => (c.grade > 0 ? c.grade : '') },
     { key: 'days', header: 'Kun', render: (c) => <span className="whitespace-nowrap">{formatGroupDays(c.days)}</span> },
     {

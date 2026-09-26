@@ -97,7 +97,6 @@ function leafRoutes(items: { to: string; children?: { to: string; children?: unk
 describe('edutizim menyusi', () => {
   it("guruhlar edutizimdagi TARTIBDA, eng pastda 'Future'", () => {
     expect(navByRole.admin.map((i) => i.label)).toEqual([
-      'Topshiriqlar',
       'Lidlar',
       'Guruh',
       "O'quvchilar",
