@@ -1726,6 +1726,24 @@ public class FinanceTransaction
     /// O'qituvchining foizli maoshi va "yig'ilgan" hisobotlari vozvratni AYIRADI (net = to'langan − vozvrat).
     /// null = oddiy tranzaksiya (vozvrat emas).</summary>
     public string? RefundOfId { get; set; }
+
+    /* ---------- BEKOR QILISH (2026-09-26) — yozuv HECH QACHON o'chirilmaydi ---------- */
+
+    /// <summary>
+    /// Tranzaksiya BEKOR QILINGAN. Qator bazada QOLADI (tarix va nazorat uchun), balansga ta'siri
+    /// qaytarilgan. ⚠️ `AppDbContext` dagi GLOBAL FILTR bunday qatorlarni BARCHA so'rovlardan
+    /// (balans, maosh, hisobot, kassa, kvitansiya nazorati) chiqaradi — ko'rsatish kerak bo'lgan
+    /// joy (Moliya ro'yxatlari) ularni ataylab <c>IgnoreQueryFilters()</c> bilan oladi.
+    /// </summary>
+    public bool IsVoided { get; set; }
+    /// <summary>Qachon bekor qilingan (markaz vaqti, "yyyy-MM-ddTHH:mm:ss").</summary>
+    public string? VoidedAt { get; set; }
+    /// <summary>Kim bekor qilgan (F.I.Sh).</summary>
+    public string? VoidedBy { get; set; }
+    /// <summary>Bekor qilgan akkaunt id'si.</summary>
+    public string? VoidedById { get; set; }
+    /// <summary>Sabab (sabablar katalogidan, ixtiyoriy).</summary>
+    public string? VoidReason { get; set; }
 }
 
 /// <summary>O'qituvchining bir kunlik ish davomati.</summary>

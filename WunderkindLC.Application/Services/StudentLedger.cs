@@ -15,6 +15,20 @@ namespace WunderkindLC.Application.Services;
 /// </summary>
 public static class StudentLedger
 {
+    /// <summary>
+    /// O'quvchining BEKOR QILINGAN to'lovlari — faqat ADMIN tarixida ustiga chizilgan holda ko'rsatish
+    /// uchun (<see cref="BuildAsync"/> ularni global filtr sabab umuman ko'rmaydi va jamilarga qo'shmaydi).
+    /// ⚠️ O'quvchi/ota-ona ilovasiga BERILMAYDI: "bekor qilingan to'lov" ular uchun faqat chalg'itadi.
+    /// </summary>
+    public static async Task<List<PaymentDto>> VoidedPaymentsAsync(IAppDbContext db, string studentId) =>
+        (await db.FinanceTransactions.IgnoreQueryFilters().AsNoTracking()
+            .Where(t => t.StudentId == studentId && t.IsVoided && t.Direction == "income" && t.Category == "tuition")
+            .ToListAsync())
+        .Select(t => new PaymentDto(t.Date, t.Amount, t.Note, t.Month, t.Comment, t.Method,
+            ReceiptNo: t.ReceiptNo, PaidTime: t.PaidTime, CardLast4: t.CardLast4,
+            IsVoided: true, VoidedAt: t.VoidedAt, VoidedBy: t.VoidedBy, VoidReason: t.VoidReason))
+        .ToList();
+
     /// <summary>Oy bo'yicha aggregate hisob (barcha guruhlar yig'indisi) — to'lov allokatsiyasi uchun.</summary>
     private record ChargeRow(string Month, decimal Amount, decimal Discount, string? GroupId = null);
 

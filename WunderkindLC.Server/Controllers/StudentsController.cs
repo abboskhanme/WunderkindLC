@@ -1711,7 +1711,13 @@ public class StudentsController(
     {
         var student = await db.Students.FindAsync(id);
         if (student is null) return NotFound();
-        return await StudentLedger.BuildAsync(db, student);
+        var ledger = await StudentLedger.BuildAsync(db, student);
+        // Admin tarixida BEKOR QILINGAN to'lovlar ham ko'rinadi (ustiga chizilgan) — jamilarga kirmaydi.
+        var voided = await StudentLedger.VoidedPaymentsAsync(db, student.Id);
+        return voided.Count == 0 ? ledger : ledger with
+        {
+            Payments = ledger.Payments.Concat(voided).OrderByDescending(p => p.Date).ToList(),
+        };
     }
 
     /// <summary>Shu oyning HISOBLANGAN summasini qo'lda tahrirlaydi ("O'quvchilar" ruxsati, tahrir

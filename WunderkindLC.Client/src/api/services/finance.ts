@@ -92,6 +92,11 @@ export interface TransactionFilters {
   to?: string
   direction?: FinanceDirection
   category?: string
+  /**
+   * BEKOR QILINGANLAR ham qaytsinmi (ustiga chizilgan holda ko'rsatish uchun). Faqat ro'yxat
+   * chizadigan joy so'raydi — jamini hisoblaydigan sahifalar SO'RAMASIN (bekor qilingan pul sanalardi).
+   */
+  includeVoided?: boolean
 }
 
 /* ---------- Mock yordamchilari ---------- */

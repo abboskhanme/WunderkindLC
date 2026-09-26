@@ -41,14 +41,19 @@ public class FinanceController(AppDbContext db, AuditService audit, AutoMessageS
             refunded is not null && refunded.TryGetValue(t.Id, out var rf) ? rf : 0m,
             t.RefundOfId,
             t.ReceiptNo, t.PaidTime, t.CardLast4, t.CreatedBy, t.CreatedById,
-            t.TypeId is not null && typeNames is not null && typeNames.TryGetValue(t.TypeId, out var tn) ? tn : null);
+            t.TypeId is not null && typeNames is not null && typeNames.TryGetValue(t.TypeId, out var tn) ? tn : null,
+            t.IsVoided, t.VoidedAt, t.VoidedBy, t.VoidReason);
 
     [HttpGet("transactions")]
     public async Task<ActionResult<IEnumerable<FinanceTransactionDto>>> GetTransactions(
         [FromQuery] string? from, [FromQuery] string? to,
-        [FromQuery] string? direction, [FromQuery] string? category)
+        [FromQuery] string? direction, [FromQuery] string? category,
+        // BEKOR QILINGANLAR ham qaytsinmi (ustiga chizilgan holda ko'rsatish uchun). Standart YO'Q:
+        // bu endpointdan jamini klientda hisoblaydigan sahifalar (hisobotlar, kunlik hisobot,
+        // analitika) bor — ular bekor qilingan pulni sanab yubormasin.
+        [FromQuery] bool includeVoided = false)
     {
-        var query = db.FinanceTransactions.AsQueryable();
+        var query = includeVoided ? db.FinanceTransactions.IgnoreQueryFilters() : db.FinanceTransactions.AsQueryable();
         if (!string.IsNullOrEmpty(from)) query = query.Where(t => string.Compare(t.Date, from) >= 0);
         if (!string.IsNullOrEmpty(to)) query = query.Where(t => string.Compare(t.Date, to) <= 0);
         if (!string.IsNullOrEmpty(direction)) query = query.Where(t => t.Direction == direction);
@@ -662,10 +667,16 @@ public class FinanceController(AppDbContext db, AuditService audit, AutoMessageS
         }).ToList();
     }
 
+    /// <summary>
+    /// Tranzaksiyani BEKOR QILISH (marshrut tarixiy sababdan <c>DELETE</c>). ⚠️ 2026-09-26 dan qator
+    /// bazadan O'CHIRILMAYDI: <see cref="FinanceTransaction.IsVoided"/> belgilanadi, balansga ta'siri
+    /// qaytariladi, Moliya ro'yxatlarida esa ustiga chizilgan holda "Bekor qilindi" bo'lib turadi.
+    /// Hisob-kitobdan global filtr chiqaradi (<c>AppDbContext</c>).
+    /// </summary>
     [HttpDelete("transactions/{id}")]
     public async Task<IActionResult> Delete(string id, [FromQuery] string? reasonId = null)
     {
-        // ⚠️ QULF (o'quvchi bo'yicha): ikki marta bosilgan "O'chirish" ikkinchi marta balansni
+        // ⚠️ QULF (o'quvchi bo'yicha): ikki marta bosilgan "Bekor qilish" ikkinchi marta balansni
         // qaytarmasin, va parallel to'lov/vozvrat balansi ustidan yozilmasin.
         var owner = await db.FinanceTransactions.AsNoTracking()
             .Where(t => t.Id == id).Select(t => t.StudentId).FirstOrDefaultAsync();
@@ -673,32 +684,34 @@ public class FinanceController(AppDbContext db, AuditService audit, AutoMessageS
             owner is not null ? "student:" + owner : "finance:tx:" + id);
 
         var tx = await db.FinanceTransactions.FindAsync(id);
-        if (tx is null) return NotFound(new { message = "Bu amal allaqachon o'chirilgan" });
+        if (tx is null) return NotFound(new { message = "Bu amal allaqachon bekor qilingan" });
 
-        // ⚠️ VOZVRATI BOR to'lov o'chirilmaydi. O'chirilsa to'lov summasi balansdan to'liq ayriladi,
-        // vozvrat qatori esa qolib, qaytarilgan pul balansdan IKKINCHI marta ayrilgan bo'lardi
-        // (o'quvchiga hech qachon bo'lmagan qarz yoziladi). Avval vozvratlar o'chiriladi.
+        // ⚠️ VOZVRATI BOR to'lov bekor qilinmaydi. Bekor qilinsa to'lov summasi balansdan to'liq
+        // ayriladi, vozvrat esa kuchda qolib, qaytarilgan pul balansdan IKKINCHI marta ayrilgan
+        // bo'lardi (o'quvchiga hech qachon bo'lmagan qarz). Avval vozvrat(lar) bekor qilinadi.
         var refundCount = await db.FinanceTransactions
             .CountAsync(r => r.RefundOfId == id && r.Direction == "expense" && r.Category == "refund");
         if (refundCount > 0)
-            return BadRequest(new { message = $"Bu to'lovdan {refundCount} ta vozvrat qilingan — avval vozvrat(lar)ni o'chiring" });
+            return BadRequest(new { message = $"Bu to'lovdan {refundCount} ta vozvrat qilingan — avval vozvrat(lar)ni bekor qiling" });
 
         var reason = string.IsNullOrWhiteSpace(reasonId) ? "" : (await db.ActionReasons.Where(r => r.Id == reasonId).Select(r => r.Label).FirstOrDefaultAsync() ?? "");
         var dir = tx.Direction == "income" ? "Kirim" : "Chiqim";
         var actor = User.FindFirst(System.Security.Claims.ClaimTypes.Name)?.Value ?? "Admin";
-        // To'lov o'quvchiga tegishli bo'lsa — arxiv sarlavhasida kimning to'lovi ekanini ko'rsatamiz.
         var sName = tx.StudentId is null ? null : await db.Students.Where(s => s.Id == tx.StudentId).Select(s => s.FullName).FirstOrDefaultAsync();
-        ArchiveService.Snapshot(db, "finance", tx.Id,
-            sName != null ? $"{sName} — to'lov" : $"{(tx.Direction == "income" ? "Kirim" : "Chiqim")} {tx.Category}",
-            $"{tx.Amount} so'm" + (string.IsNullOrEmpty(tx.Month) ? "" : $" · {tx.Month}"),
-            tx, reason.Length > 0 ? reason : null, actor);
         audit.Record(AuditService.EntityFinanceTransaction, tx.Id, "delete",
-            $"O'chirildi: {dir} {tx.Category} — {AuditService.Money(tx.Amount)} so'm" + (reason.Length > 0 ? $" — sabab: {reason}" : ""),
+            $"Bekor qilindi: {dir} {tx.Category} — {AuditService.Money(tx.Amount)} so'm"
+                + (sName is null ? "" : $" ({sName})")
+                + (reason.Length > 0 ? $" — sabab: {reason}" : ""),
             before: AuditService.Snapshot(tx), studentId: tx.StudentId, teacherId: tx.TeacherId);
 
-        // To'lov o'chirilsa — o'quvchi balansiga qo'shilgan summani QAYTARAMIZ (qarz tiklanadi).
+        // Balansga qo'shilgan (yoki vozvratda ayrilgan) summa QAYTARILADI — qarz/avans tiklanadi.
         await ApplyBalanceAsync(tx.StudentId, -StudentBalanceEffect(tx));
-        db.FinanceTransactions.Remove(tx);
+        // Qator O'CHIRILMAYDI — bekor qilingan deb belgilanadi (tarix va nazorat uchun).
+        tx.IsVoided = true;
+        tx.VoidedAt = AppClock.Iso();
+        tx.VoidedBy = actor;
+        tx.VoidedById = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        tx.VoidReason = reason.Length > 0 ? reason : null;
         await db.SaveChangesAsync();
         return NoContent();
     }

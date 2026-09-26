@@ -15,6 +15,17 @@ export const auditActionConfig: Record<AuditAction, { label: string; cls: string
   delete: { label: "O'chirildi", cls: 'bg-red-50 text-red-700' },
 }
 
+/**
+ * Yozuv yorlig'i. ⚠️ Moliya tranzaksiyasi 2026-09-26 dan O'CHIRILMAYDI, BEKOR QILINADI — lekin audit
+ * amali (`create|update|delete` katalogi) `delete` bo'lib qoladi. Matni "Bekor qilindi" bilan
+ * boshlangan yozuvda "O'chirildi" deyish yolg'on bo'lardi (qator bazada turibdi).
+ */
+export function auditActionLabel(action: AuditAction, summary?: string | null): { label: string; cls: string } {
+  if (action === 'delete' && summary?.startsWith('Bekor qilindi'))
+    return { label: 'Bekor qilindi', cls: 'bg-red-50 text-red-700' }
+  return auditActionConfig[action] ?? { label: action, cls: 'bg-slate-100 text-slate-600' }
+}
+
 const moneyKeys = new Set(['amount', 'salary', 'monthlyFee', 'discountAmount'])
 /** Ha/Yo'q ko'rinishida chiziladigan bayroqlar. */
 const boolKeys = new Set(['isSupport'])

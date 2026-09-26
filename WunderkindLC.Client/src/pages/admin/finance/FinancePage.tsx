@@ -1,6 +1,6 @@
 ﻿import { useCallback, useEffect, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
-import { Plus, Pencil, Trash2, Download, TrendingUp, TrendingDown, Wallet, AlertCircle, Calculator, History, Inbox, Percent, Search, Receipt, Undo2, Banknote, Users } from 'lucide-react'
+import { Plus, Pencil, Ban, Download, TrendingUp, TrendingDown, Wallet, AlertCircle, Calculator, History, Inbox, Percent, Search, Receipt, Undo2, Banknote, Users } from 'lucide-react'
 import type {
   FinanceDirection,
   FinanceMonthly,
@@ -197,9 +197,10 @@ export function FinancePage() {
     Promise.all([
       getFinanceSummary(rangeFrom, rangeTo),
       getFinanceMonthly(yearOf(rangeTo)),
-      getTransactions({ from: rangeFrom, to: rangeTo, direction: dirFilter === 'all' ? undefined : dirFilter }),
+      // includeVoided: bekor qilinganlar ham ro'yxatda (ustiga chizilgan) — jamiga `live` filtri bilan kirmaydi.
+      getTransactions({ from: rangeFrom, to: rangeTo, direction: dirFilter === 'all' ? undefined : dirFilter, includeVoided: true }),
       getSalaryReport(rangeFrom, rangeTo),
-      getTransactions({ from: rangeFrom, to: rangeTo, direction: 'income', category: 'tuition' }),
+      getTransactions({ from: rangeFrom, to: rangeTo, direction: 'income', category: 'tuition', includeVoided: true }),
       getCourseReport(rangeFrom, rangeTo),
       getRefunds(rangeFrom, rangeTo),
       getCashiers(rangeFrom, rangeTo),
@@ -264,10 +265,10 @@ export function FinancePage() {
     return deleteTransaction(t.id, reasonId)
       .then(() => {
         setDeleting(null)
-        toast.success("O'chirildi", formatMoney(t.amount))
+        toast.success('Bekor qilindi', formatMoney(t.amount))
         load()
       })
-      .catch((e) => alert(apiErrorMessage(e, "O'chirib bo'lmadi")))
+      .catch((e) => alert(apiErrorMessage(e, "Bekor qilib bo'lmadi")))
   }
 
   const handleAccrue = async () => {
@@ -285,7 +286,7 @@ export function FinancePage() {
     exportToCsv(
       'moliya.csv',
       ['Sana', "Yo'nalish", 'Toifa', "To'lov usuli", 'Izoh', 'Summa'],
-      visibleTx.map((t) => [
+      visibleTx.filter(live).map((t) => [
         formatDate(t.date),
         financeDirectionLabels[t.direction],
         t.typeName || financeCategoryLabel(t.category, t.direction),
@@ -381,7 +382,7 @@ export function FinancePage() {
     exportToCsv(
       'tolovlar.csv',
       ['Sana', "O'quvchi", 'Guruh', 'Oy', "To'lov usuli", 'Kvitansiya', "To'lov vaqti", 'Kiritgan', 'Summa'],
-      filteredPayments.map((p) => [
+      filteredPayments.filter(live).map((p) => [
         formatDate(p.date),
         p.studentName ?? '',
         p.groupName ?? '',
@@ -449,13 +450,14 @@ export function FinancePage() {
   }
   // Maosh jurnalga bog'langan bo'lsa (Guruhlar → Jurnal boshqaruvi) — "Ushlanma" ustuni ko'rsatiladi.
   const anyDeduction = salaryReport.some((r) => (r.deduction ?? 0) > 0)
-  const paymentsTotal = filteredPayments.reduce((a, p) => a + p.amount, 0)
-  const paymentsCashTotal = filteredPayments.reduce((a, p) => a + (p.method === 'cash' ? p.amount : 0), 0)
+  // ⚠️ BEKOR QILINGANLAR ro'yxatda ko'rinadi, lekin HECH BIR jamiga kirmaydi (`live`).
+  const paymentsTotal = filteredPayments.filter(live).reduce((a, p) => a + p.amount, 0)
+  const paymentsCashTotal = filteredPayments.filter(live).reduce((a, p) => a + (p.method === 'cash' ? p.amount : 0), 0)
 
   // To'lov usuli (naqt/karta/bank) bo'yicha KIRIM summalari — "Amallar" jadvalidagi filtr uchun.
   // Usul faqat kirimga (income) taalluqli; chiqim/eski (method yo'q) yozuvlar hisoblanmaydi.
   const incomeByMethod: Record<'cash' | 'card' | 'bank', number> = { cash: 0, card: 0, bank: 0 }
-  for (const t of transactions) {
+  for (const t of transactions.filter(live)) {
     if (t.direction === 'income' && (t.method === 'cash' || t.method === 'card' || t.method === 'bank')) {
       incomeByMethod[t.method] += t.amount
     }
@@ -470,7 +472,7 @@ export function FinancePage() {
   // To'lovlar bo'limidagi usul kesimidagi summalar (filtr chiplarida ko'rsatiladi). O'qituvchi/
   // qidiruv/kvitansiya filtrlari QO'LLANGAN ro'yxatdan sanaladi — usul chiplari faqat o'zini filtrlaydi.
   const paymentsByMethod: Record<'cash' | 'card' | 'bank', number> = { cash: 0, card: 0, bank: 0 }
-  for (const p of payments) {
+  for (const p of payments.filter(live)) {
     if (p.method === 'cash' || p.method === 'card' || p.method === 'bank') paymentsByMethod[p.method] += p.amount
   }
 
@@ -661,7 +663,7 @@ export function FinancePage() {
                     </thead>
                     <tbody>
                       {txPg.paged.map((t) => (
-                        <tr key={t.id}>
+                        <tr key={t.id} className={cn(t.isVoided && VOIDED_ROW)}>
                           <td className="font-mono text-[12.5px] text-slate-500">
                             {formatDate(t.date)}
                             {t.createdAt && formatTime(t.createdAt) && (
@@ -693,7 +695,8 @@ export function FinancePage() {
                           </td>
                           <td className="num">
                             <div className="flex items-center justify-end gap-0.5">
-                              {t.direction === 'income' && (
+                              {t.isVoided && <VoidedBadge t={t} />}
+                              {!t.isVoided && t.direction === 'income' && (
                                 <button
                                   type="button"
                                   title="Chek (kvitansiya)"
@@ -718,7 +721,7 @@ export function FinancePage() {
                                   <History className="h-4 w-4" />
                                 </button>
                               )}
-                              {can('finance.main', 'edit') && (
+                              {!t.isVoided && can('finance.main', 'edit') && (
                                 <button
                                   type="button"
                                   title="Tahrirlash"
@@ -731,14 +734,14 @@ export function FinancePage() {
                                   <Pencil className="h-4 w-4" />
                                 </button>
                               )}
-                              {can('finance.main', 'delete') && (
+                              {!t.isVoided && can('finance.main', 'delete') && (
                                 <button
                                   type="button"
-                                  title="O'chirish"
+                                  title="Bekor qilish (yozuv o'chmaydi, balans tiklanadi)"
                                   onClick={() => handleDelete(t)}
                                   className="rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-red-50 hover:text-red-600"
                                 >
-                                  <Trash2 className="h-4 w-4" />
+                                  <Ban className="h-4 w-4" />
                                 </button>
                               )}
                             </div>
@@ -921,7 +924,7 @@ export function FinancePage() {
           {tab === 'payments' && (
             <div className="space-y-6">
               <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
-                <StatCard label="To'lovlar soni" value={String(filteredPayments.length)} icon={Wallet} />
+                <StatCard label="To'lovlar soni" value={String(filteredPayments.filter(live).length)} icon={Wallet} />
                 <StatCard
                   label="Jami summa"
                   value={formatMoney(paymentsTotal)}
@@ -945,7 +948,7 @@ export function FinancePage() {
                     ? `${payAuthor.name} kiritgan to'lovlar`
                     : payTeacher
                       ? "O'qituvchi guruhlariga teglangan to'lovlar (teglanmagan to'lov bitta o'qituvchiga tegishli emas)"
-                      : "O'quvchi to'lovlari (tuition) — xato bo'lsa o'chiring, balans qayta tiklanadi"
+                      : "O'quvchi to'lovlari (tuition) — xato bo'lsa bekor qiling: balans tiklanadi, yozuv ustiga chizilgan holda qoladi"
                 }
                 actions={
                   <div className="flex flex-wrap items-center gap-2">
@@ -1047,7 +1050,7 @@ export function FinancePage() {
                     </thead>
                     <tbody>
                       {payPg.paged.map((p) => (
-                        <tr key={p.id}>
+                        <tr key={p.id} className={cn(p.isVoided && VOIDED_ROW)}>
                           <td className="font-mono text-[12.5px] text-slate-500">
                             {formatDate(p.date)}
                             {p.createdAt && formatTime(p.createdAt) && (
@@ -1105,14 +1108,17 @@ export function FinancePage() {
                           </td>
                           <td className="num">
                             <div className="flex items-center justify-end gap-0.5">
-                              <button
-                                type="button"
-                                title="Chek (kvitansiya)"
-                                onClick={() => openReceipt(p.id)}
-                                className="rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-brand-50 hover:text-brand-600"
-                              >
-                                <Receipt className="h-4 w-4" />
-                              </button>
+                              {p.isVoided && <VoidedBadge t={p} />}
+                              {!p.isVoided && (
+                                <button
+                                  type="button"
+                                  title="Chek (kvitansiya)"
+                                  onClick={() => openReceipt(p.id)}
+                                  className="rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-brand-50 hover:text-brand-600"
+                                >
+                                  <Receipt className="h-4 w-4" />
+                                </button>
+                              )}
                               {canSeeAudit && (
                                 <button
                                   type="button"
@@ -1128,7 +1134,7 @@ export function FinancePage() {
                                   <History className="h-4 w-4" />
                                 </button>
                               )}
-                              {isSuper && can('finance.main', 'edit') && (
+                              {!p.isVoided && isSuper && can('finance.main', 'edit') && (
                                 <button
                                   type="button"
                                   title="Tahrirlash (balans va oylik hisob moslanadi)"
@@ -1138,7 +1144,7 @@ export function FinancePage() {
                                   <Pencil className="h-4 w-4" />
                                 </button>
                               )}
-                              {isSuper && can('finance.main', 'delete') && (p.refunded ?? 0) < p.amount && (
+                              {!p.isVoided && isSuper && can('finance.main', 'delete') && (p.refunded ?? 0) < p.amount && (
                                 <button
                                   type="button"
                                   title="Pul qaytarish (vozvrat)"
@@ -1148,14 +1154,14 @@ export function FinancePage() {
                                   <Undo2 className="h-4 w-4" />
                                 </button>
                               )}
-                              {can('finance.main', 'delete') && (
+                              {!p.isVoided && can('finance.main', 'delete') && (
                                 <button
                                   type="button"
-                                  title="O'chirish (balans tiklanadi)"
+                                  title="Bekor qilish (yozuv o'chmaydi, balans tiklanadi)"
                                   onClick={() => handleDelete(p)}
                                   className="rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-red-50 hover:text-red-600"
                                 >
-                                  <Trash2 className="h-4 w-4" />
+                                  <Ban className="h-4 w-4" />
                                 </button>
                               )}
                             </div>
@@ -1379,9 +1385,13 @@ export function FinancePage() {
       <ReasonPromptModal
         open={!!deleting}
         category="finance_delete"
-        title="Tranzaksiyani o'chirish"
-        message={deleting ? "Ushbu moliyaviy amalni o'chirasizmi?" : undefined}
-        confirmLabel="O'chirish"
+        title="Tranzaksiyani bekor qilish"
+        message={
+          deleting
+            ? "Amal bekor qilinadi: balansga ta'siri qaytariladi, lekin yozuv o'chmaydi — ro'yxatda ustiga chizilgan holda «Bekor qilindi» bo'lib qoladi."
+            : undefined
+        }
+        confirmLabel="Bekor qilish"
         tone="red"
         onConfirm={doDelete}
         onClose={() => setDeleting(null)}
@@ -1400,6 +1410,27 @@ export function FinancePage() {
         }}
       />
     </div>
+  )
+}
+
+/** Bekor qilingan tranzaksiya — hisobga KIRMAYDI (ro'yxatda ko'rinadi, jamilarda yo'q). */
+const live = (t: FinanceTransaction) => !t.isVoided
+
+/** Bekor qilingan qator: xira + ustiga chizilgan (amallar ustunidagi belgi chizilmaydi). */
+const VOIDED_ROW = 'bg-slate-50/70 text-slate-400 [&>td:not(:last-child)]:line-through [&>td:not(:last-child)]:opacity-70'
+
+/** «Bekor qilindi» belgisi — kim, qachon va nega (sichqoncha ustida to'liq). */
+function VoidedBadge({ t }: { t: FinanceTransaction }) {
+  const detail = [t.voidedBy, t.voidedAt ? formatDateTime(t.voidedAt) : null, t.voidReason]
+    .filter(Boolean)
+    .join(' · ')
+  return (
+    <span
+      title={detail ? `Bekor qilindi: ${detail}` : 'Bekor qilindi'}
+      className="mr-1 inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-red-50 px-2 py-0.5 text-[11px] font-semibold text-red-600"
+    >
+      <Ban className="h-3 w-3" /> Bekor qilindi
+    </span>
   )
 }
 

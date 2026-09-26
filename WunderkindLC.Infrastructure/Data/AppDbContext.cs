@@ -288,6 +288,10 @@ public class AppDbContext(DbContextOptions<AppDbContext> options)
         b.Entity<Group>().Property(c => c.TeacherSalaryFixed).HasPrecision(18, 2);
         b.Entity<Subject>().Property(s => s.Price).HasPrecision(18, 2);
         b.Entity<FinanceTransaction>().Property(t => t.Amount).HasPrecision(18, 2);
+        // BEKOR QILINGAN tranzaksiyalar HAMMA joydan chiqariladi (balans, maosh, hisobotlar, kassa,
+        // kvitansiya nazorati) — 25+ faylda har so'rovga shart qo'shib, birini unutish xavfi o'rniga.
+        // Ko'rsatish kerak bo'lgan joy ataylab `IgnoreQueryFilters()` qiladi (FinanceController).
+        b.Entity<FinanceTransaction>().HasQueryFilter(t => !t.IsVoided);
         b.Entity<MonthlyCharge>().Property(c => c.Amount).HasPrecision(18, 2);
         b.Entity<MonthlyCharge>().Property(c => c.Discount).HasPrecision(18, 2);
         b.Entity<Teacher>().Property(t => t.Salary).HasPrecision(18, 2);

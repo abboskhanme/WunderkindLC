@@ -480,3 +480,24 @@ bir o'quvchining pul amallari navbat bilan bajariladi.
   `ReasonPromptModal.onConfirm` Promise qaytarsa, xatodan keyin tugma qayta yoqiladi.
 
 Testlar: `PaymentIdempotencyTests`.
+
+## Tranzaksiyani BEKOR QILISH — o'chirilmaydi (2026-09-26)
+
+Migratsiya: `AddFinanceTransactionVoid` (`IsVoided`, `VoidedAt`, `VoidedBy`, `VoidedById`, `VoidReason`).
+
+- `DELETE api/admin/finance/transactions/{id}` endi qatorni **o'chirmaydi**: `IsVoided = true`,
+  kim/qachon/sabab yoziladi, balansga ta'siri qaytariladi (`StudentBalanceEffect`), audit "Bekor qilindi".
+  Ikkinchi marta bekor qilish — 404 "allaqachon bekor qilingan". Vozvrati bor to'lov — 400.
+- ⚠️ **GLOBAL FILTR** (`AppDbContext`: `HasQueryFilter(t => !t.IsVoided)`) bekor qilinganlarni
+  BARCHA so'rovlardan chiqaradi: balans, maosh, hisobotlar, kassa, kvitansiya nazorati (raqam
+  qayta ishlatilishi mumkin), to'lov idempotentligi. Yangi so'rov yozganda hech narsa qilish shart emas.
+- Ko'rsatish kerak bo'lgan joylar ataylab `IgnoreQueryFilters()`:
+  - `GET transactions?includeVoided=true` — faqat Moliya jadvallari (Amallar, To'lovlar). Standart
+    `false`: bu endpointdan jamini klientda hisoblaydigan sahifalar bor.
+  - `GET students/{id}/ledger` — admin to'lov tarixida (`StudentLedger.VoidedPaymentsAsync`).
+    ⚠️ O'quvchi/ota-ona ilovasiga BERILMAYDI.
+- Klientda bekor qilingan qator ustiga chizilgan + «Bekor qilindi» belgisi (kim/qachon/sabab
+  sichqoncha ustida) va amal tugmalarisiz; jamilar va CSV eksport `live` filtri bilan ularni sanamaydi.
+- ⚠️ `IgnoreQueryFilters()` ni hisob-kitob uchun ISHLATMANG — faqat ko'rsatish uchun.
+- Eski (2026-09-26 gacha) o'chirilganlar avvalgidek Arxivda (`ArchiveService`, "finance").
+- Testlar: `FinanceVoidTests`.

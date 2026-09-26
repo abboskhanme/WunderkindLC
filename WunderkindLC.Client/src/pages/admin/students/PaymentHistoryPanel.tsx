@@ -1,6 +1,6 @@
 ﻿import { useEffect, useRef, useState } from 'react'
 import { AlertCircle, Check, Pencil, RefreshCw, Users, Wallet, X } from 'lucide-react'
-import type { MonthLedger, MonthStatus, Student, StudentLedger } from '@/types'
+import type { MonthLedger, LedgerPayment, MonthStatus, Student, StudentLedger } from '@/types'
 import { getStudentLedger, editStudentCharge, getStudent, addPayment } from '@/api/services/students'
 import { useAuth } from '@/context/auth-context'
 import { usePerm } from '@/lib/permissions'
@@ -9,7 +9,7 @@ import { Loader } from '@/components/ui/Loader'
 import { AuditHistoryList } from '@/components/audit/AuditHistoryList'
 import { PaymentModal } from './PaymentModal'
 import { ReceiptModal } from '@/components/finance/ReceiptModal'
-import { formatDate, formatMoney, cn, apiErrorMessage } from '@/lib/utils'
+import { formatDate, formatDateTime, formatMoney, cn, apiErrorMessage } from '@/lib/utils'
 import { groupsText, statesToGroups } from '@/lib/studentGroups'
 import { formatMonth, monthStatusLabels, paymentMethodLabel } from '@/config/constants'
 import { DataTable } from '@/components/ui/list/DataTable'
@@ -298,7 +298,7 @@ export function PaymentHistoryPanel({ studentId, onPaid, onChargeEdited, variant
           <b className="font-bold">{formatMoney(ledger.monthlyFee)}</b>
         </p>
         <div className="flex items-center gap-2">
-          <TotalPill total={ledger.payments.length} />
+          <TotalPill total={ledger.payments.filter((p) => !p.isVoided).length} />
           <Button onClick={openPay} className="mb-2">
             <Wallet className="h-4 w-4" /> To'lov qilish
           </Button>
@@ -315,7 +315,18 @@ export function PaymentHistoryPanel({ studentId, onPaid, onChargeEdited, variant
             key: 'amount',
             header: 'Miqdori',
             align: 'right',
-            render: (p) => <span className="font-semibold text-emerald-600">+{formatMoney(p.amount)}</span>,
+            // BEKOR QILINGAN to'lov — ustiga chizilgan + belgi (jamilarga kirmaydi, faqat tarix).
+            render: (p) =>
+              p.isVoided ? (
+                <span className="inline-flex items-center gap-1.5" title={voidTitle(p)}>
+                  <span className="font-semibold text-slate-400 line-through">+{formatMoney(p.amount)}</span>
+                  <span className="whitespace-nowrap rounded-full bg-red-50 px-1.5 py-0.5 text-[10px] font-semibold text-red-600">
+                    Bekor qilindi
+                  </span>
+                </span>
+              ) : (
+                <span className="font-semibold text-emerald-600">+{formatMoney(p.amount)}</span>
+              ),
           },
           { key: 'month', header: 'Oy', render: (p) => (p.month ? formatMonth(p.month) : '—') },
           {
@@ -529,7 +540,11 @@ export function PaymentHistoryPanel({ studentId, onPaid, onChargeEdited, variant
               {ledger.payments.map((p, i) => (
                 <li
                   key={i}
-                  className="rounded-lg border border-slate-100 px-3 py-2 text-sm"
+                  title={p.isVoided ? voidTitle(p) : undefined}
+                  className={cn(
+                    'rounded-lg border border-slate-100 px-3 py-2 text-sm',
+                    p.isVoided && 'bg-slate-50 opacity-70',
+                  )}
                 >
                   <div className="flex items-center justify-between">
                     <span className="flex flex-wrap items-center gap-2 text-slate-500">
@@ -562,9 +577,19 @@ export function PaymentHistoryPanel({ studentId, onPaid, onChargeEdited, variant
                         </span>
                       )}
                     </span>
-                    <span className="shrink-0 font-mono font-medium text-emerald-600">
+                    <span
+                      className={cn(
+                        'shrink-0 font-mono font-medium',
+                        p.isVoided ? 'text-slate-400 line-through' : 'text-emerald-600',
+                      )}
+                    >
                       +{formatMoney(p.amount)}
                     </span>
+                    {p.isVoided && (
+                      <span className="ml-2 shrink-0 rounded-full bg-red-50 px-1.5 py-0.5 text-[10px] font-semibold text-red-600">
+                        Bekor qilindi
+                      </span>
+                    )}
                   </div>
                   {/* Usul bo'yicha to'liq tafsilot — bir qarashda "qachon, qaysi karta / qaysi
                       kvitansiya" savoliga javob. Ma'lumot kiritilmagan bo'lsa qator umuman chiqmaydi. */}
@@ -621,4 +646,10 @@ export function PaymentHistoryPanel({ studentId, onPaid, onChargeEdited, variant
 
     </>
   )
+}
+
+/** Bekor qilingan to'lov tafsiloti (sichqoncha ustida): kim, qachon, nega. */
+function voidTitle(p: LedgerPayment): string {
+  const parts = [p.voidedBy, p.voidedAt ? formatDateTime(p.voidedAt) : null, p.voidReason].filter(Boolean)
+  return parts.length > 0 ? `Bekor qilindi: ${parts.join(' · ')}` : 'Bekor qilindi'
 }

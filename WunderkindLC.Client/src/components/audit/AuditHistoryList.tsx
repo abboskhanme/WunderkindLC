@@ -4,7 +4,7 @@ import type { AuditLog } from '@/types'
 import { getAuditLogs, type AuditFilters } from '@/api/services/audit'
 import { Loader } from '@/components/ui/Loader'
 import { formatDateTime, cn } from '@/lib/utils'
-import { auditActionConfig as actionConfig, snapshotFields } from './auditFields'
+import { auditActionLabel, snapshotFields } from './auditFields'
 
 interface Props {
   filters: AuditFilters
@@ -87,7 +87,7 @@ export function AuditHistoryList({
   return (
     <ul className="space-y-2">
       {logs.map((log) => {
-        const cfg = actionConfig[log.action] ?? { label: log.action, cls: 'bg-slate-100 text-slate-600' }
+        const cfg = auditActionLabel(log.action, log.summary)
         const hasDetail = !!(log.before || log.after)
         const open = openId === log.id
         return (

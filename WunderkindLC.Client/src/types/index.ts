@@ -1261,6 +1261,11 @@ export interface FinanceTransaction {
    * ko'rsatiladi. null/bo'sh = turi tanlanmagan yoki eski yozuv (avvalgidek toifa chiqadi).
    */
   typeName?: string | null
+  /** BEKOR QILINGAN — qator saqlanadi, hisobga kirmaydi; ro'yxatda ustiga chizilgan holda. */
+  isVoided?: boolean
+  voidedAt?: string | null
+  voidedBy?: string | null
+  voidReason?: string | null
   /** Bu to'lovdan jami qancha VOZVRAT (pul qaytarish) qilingani (>0 = qisman/to'liq qaytarilgan) */
   refunded?: number
   /** Bu yozuvning O'ZI vozvrat bo'lsa — qaysi asl to'lov uchun (id) */
@@ -1373,6 +1378,11 @@ export interface LedgerPayment {
   paidTime?: string
   /** KARTA raqamining oxirgi 4 raqami ("1234") — to'liq raqam saqlanmaydi */
   cardLast4?: string
+  /** BEKOR QILINGAN to'lov (faqat admin tarixida) — ustiga chizilgan, jamilarga kirmaydi. */
+  isVoided?: boolean
+  voidedAt?: string | null
+  voidedBy?: string | null
+  voidReason?: string | null
 }
 
 export interface StudentLedger {

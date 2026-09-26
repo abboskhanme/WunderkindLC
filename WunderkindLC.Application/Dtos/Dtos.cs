@@ -1602,7 +1602,9 @@ public record FinanceTransactionDto(
     string? CreatedById = null,
     // Markaz katalogidagi TUR nomi ("Arenda", "Kanstovar") — jadvalda toifa kodi o'rniga shu
     // ko'rinadi. null = turi tanlanmagan/eski yozuv, u holda avvalgidek toifa yorlig'i chiqadi.
-    string? TypeName = null);
+    string? TypeName = null,
+    // BEKOR QILINGAN (qator saqlanadi, hisobga kirmaydi) — ro'yxatda ustiga chizilgan holda.
+    bool IsVoided = false, string? VoidedAt = null, string? VoidedBy = null, string? VoidReason = null);
 
 /// <summary>
 /// "Kiritgan" filtri uchun bitta variant — TO'LOV KIRITA OLADIGAN xodim/admin. Ro'yxatga
@@ -1731,7 +1733,9 @@ public record MonthLedgerDto(
 /// </summary>
 public record PaymentDto(string Date, decimal Amount, string? Note, string? Month, string? Comment, string? Method = null,
     string? GroupName = null, string? TeacherName = null, string? CourseName = null,
-    string? ReceiptNo = null, string? PaidTime = null, string? CardLast4 = null);
+    string? ReceiptNo = null, string? PaidTime = null, string? CardLast4 = null,
+    /// <summary>BEKOR QILINGAN to'lov — faqat admin ko'rinishida (ustiga chizilgan), jamilarga kirmaydi.</summary>
+    bool IsVoided = false, string? VoidedAt = null, string? VoidedBy = null, string? VoidReason = null);
 /// <summary>To'lov oynasi uchun BITTA guruh bo'yicha oylik hisob: shu guruhning oylik to'lovi (chegirma
 /// ayirilgan), shu guruhga teglangan to'langan summa va qoldiq. Aggregate emas — faqat shu guruh.</summary>
 public record GroupMonthDto(string Month, decimal Fee, decimal Paid, decimal Remaining, string Status);
