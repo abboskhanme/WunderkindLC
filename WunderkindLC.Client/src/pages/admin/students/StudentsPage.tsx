@@ -1282,7 +1282,8 @@ export function StudentsPage() {
                           </div>
                         )}
                         <div className="meta">
-                          <strong>
+                          {/* Ism bir qatorda — tor ustunda "Karimov / Ozodbek" bo'lib bo'linib qolardi. */}
+                          <strong className="whitespace-nowrap">
                             <Link
                               to={`/admin/students/${s.id}`}
                               onClick={(e) => e.stopPropagation()}
@@ -1308,7 +1309,7 @@ export function StudentsPage() {
                           return (
                             <div className="flex flex-wrap gap-1">
                               {frozen.map((g) => (
-                                <Badge key={g.groupId} tone="default">
+                                <Badge key={g.groupId} tone="default" className="whitespace-nowrap">
                                   {g.name} · {g.yearFreeze ? 'aktiv muzlatilgan' : 'muzlatilgan'}
                                 </Badge>
                               ))}
@@ -1319,7 +1320,7 @@ export function StudentsPage() {
                         return (
                           <div className="flex flex-wrap gap-1">
                             {list.map((g, gi) => (
-                              <Badge key={gi} tone="violet">
+                              <Badge key={gi} tone="violet" className="whitespace-nowrap">
                                 {g}
                               </Badge>
                             ))}
@@ -1332,16 +1333,16 @@ export function StudentsPage() {
                       {(() => {
                         const st = memberStateInfo(s)
                         return (
-                          <span className={cn('inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium', st.chip)}>
+                          <span className={cn('inline-flex items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium', st.chip)}>
                             <span className={cn('h-1.5 w-1.5 rounded-full', st.dot)} /> {st.label}
                           </span>
                         )
                       })()}
                     </td>
-                    <td className="text-slate-600">{genderLabels[s.gender]}</td>
-                    <td className="font-mono text-slate-600">{formatDate(s.birthDate)}</td>
-                    <td className="text-slate-600">{s.parentFullName}</td>
-                    <td className="font-mono text-slate-600">{s.parentPhone}</td>
+                    <td className="whitespace-nowrap text-slate-600">{genderLabels[s.gender]}</td>
+                    <td className="whitespace-nowrap font-mono text-slate-600">{formatDate(s.birthDate)}</td>
+                    <td className="whitespace-nowrap text-slate-600">{s.parentFullName}</td>
+                    <td className="whitespace-nowrap font-mono text-slate-600">{s.parentPhone}</td>
                     <td className="num">
                       {(ballMap[s.id] ?? 0) > 0 ? (
                         <span className="inline-flex items-center justify-end gap-1 font-mono font-semibold text-brand-700">
@@ -1356,7 +1357,7 @@ export function StudentsPage() {
                     </td>
                     <td
                       className={cn(
-                        'num font-semibold',
+                        'num whitespace-nowrap font-semibold',
                         s.balance < 0
                           ? 'text-red-600'
                           : s.balance > 0
