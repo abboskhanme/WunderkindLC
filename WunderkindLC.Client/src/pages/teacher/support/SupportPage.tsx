@@ -248,7 +248,7 @@ export function TeacherSupportPage() {
       </div>
 
       {/* Bo'lim 1 — Bo'sh vaqt qo'shish */}
-      <div className="rounded-[20px] border border-line bg-white p-4 shadow-[var(--shadow-card)]">
+      <div className="rounded-xl border border-line bg-white p-4 shadow-[var(--shadow-card)]">
         <div className="mb-3 flex items-center gap-2.5">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-tealsoft text-teal-700">
             <CalendarClock className="h-5 w-5" />
@@ -257,7 +257,7 @@ export function TeacherSupportPage() {
         </div>
 
         {/* Rejim tanlash (segment) */}
-        <div className="mb-3 flex gap-1 rounded-[14px] border border-line bg-slate-50 p-1">
+        <div className="mb-3 flex gap-1 rounded-lg border border-line bg-slate-50 p-1">
           {MODE_TABS.map((tab) => (
             <button
               key={tab.value}
@@ -277,7 +277,7 @@ export function TeacherSupportPage() {
           {addMode === 'today' && (
             <div>
               <label className="mb-1 block text-[12px] font-semibold text-faint">Sana</label>
-              <div className="w-full rounded-[14px] border border-line bg-slate-50 px-3 py-2.5 text-[14px] text-mute">
+              <div className="w-full rounded-lg border border-line bg-slate-50 px-3 py-2.5 text-[14px] text-mute">
                 {formatDate(today)}
               </div>
             </div>
@@ -291,7 +291,7 @@ export function TeacherSupportPage() {
                 type="date"
                 value={pickDate}
                 onChange={(e) => setPickDate(e.target.value)}
-                className="w-full rounded-[14px] border border-line bg-white px-3 py-2.5 text-[14px] text-ink outline-none focus:border-teal-500"
+                className="w-full rounded-lg border border-line bg-white px-3 py-2.5 text-[14px] text-ink outline-none focus:border-teal-500"
               />
             </div>
           )}
@@ -305,7 +305,7 @@ export function TeacherSupportPage() {
                   type="date"
                   value={dailyStart}
                   onChange={(e) => setDailyStart(e.target.value)}
-                  className="w-full rounded-[14px] border border-line bg-white px-3 py-2.5 text-[14px] text-ink outline-none focus:border-teal-500"
+                  className="w-full rounded-lg border border-line bg-white px-3 py-2.5 text-[14px] text-ink outline-none focus:border-teal-500"
                 />
               </div>
               <div>
@@ -314,7 +314,7 @@ export function TeacherSupportPage() {
                   type="date"
                   value={dailyEnd}
                   onChange={(e) => setDailyEnd(e.target.value)}
-                  className="w-full rounded-[14px] border border-line bg-white px-3 py-2.5 text-[14px] text-ink outline-none focus:border-teal-500"
+                  className="w-full rounded-lg border border-line bg-white px-3 py-2.5 text-[14px] text-ink outline-none focus:border-teal-500"
                 />
               </div>
             </div>
@@ -328,7 +328,7 @@ export function TeacherSupportPage() {
                 type="time"
                 value={startTime}
                 onChange={(e) => setStartTime(e.target.value)}
-                className="w-full rounded-[14px] border border-line bg-white px-3 py-2.5 text-[14px] text-ink outline-none focus:border-teal-500"
+                className="w-full rounded-lg border border-line bg-white px-3 py-2.5 text-[14px] text-ink outline-none focus:border-teal-500"
               />
             </div>
             <div>
@@ -337,7 +337,7 @@ export function TeacherSupportPage() {
                 type="time"
                 value={endTime}
                 onChange={(e) => setEndTime(e.target.value)}
-                className="w-full rounded-[14px] border border-line bg-white px-3 py-2.5 text-[14px] text-ink outline-none focus:border-teal-500"
+                className="w-full rounded-lg border border-line bg-white px-3 py-2.5 text-[14px] text-ink outline-none focus:border-teal-500"
               />
             </div>
           </div>
@@ -348,7 +348,7 @@ export function TeacherSupportPage() {
             <select
               value={slotMinutes}
               onChange={(e) => setSlotMinutes(Number(e.target.value))}
-              className="w-full rounded-[14px] border border-line bg-white px-3 py-2.5 text-[14px] text-ink outline-none focus:border-teal-500"
+              className="w-full rounded-lg border border-line bg-white px-3 py-2.5 text-[14px] text-ink outline-none focus:border-teal-500"
             >
               {SLOT_MINUTE_OPTIONS.map((o) => (
                 <option key={o.value} value={o.value}>
@@ -368,7 +368,7 @@ export function TeacherSupportPage() {
             type="button"
             onClick={handleAdd}
             disabled={saving}
-            className="tap-scale flex w-full items-center justify-center gap-1.5 rounded-[14px] bg-teal-600 px-4 py-3 text-[14px] font-bold text-white disabled:opacity-60"
+            className="tap-scale flex w-full items-center justify-center gap-1.5 rounded-lg bg-teal-600 px-4 py-3 text-[14px] font-bold text-white disabled:opacity-60"
           >
             <Plus className="h-4 w-4" />
             {saving ? "Qo'shilmoqda..." : "Qo'shish"}
@@ -414,7 +414,7 @@ export function TeacherSupportPage() {
       {loading ? (
         <Loader label="Yuklanmoqda..." />
       ) : daySlots.length === 0 ? (
-        <div className="flex flex-col items-center justify-center gap-3 rounded-[20px] border border-line bg-white p-8 text-center shadow-[var(--shadow-card)]">
+        <div className="flex flex-col items-center justify-center gap-3 rounded-xl border border-line bg-white p-8 text-center shadow-[var(--shadow-card)]">
           <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-tealsoft text-teal-700">
             <CalendarClock className="h-6 w-6" />
           </div>
@@ -422,7 +422,7 @@ export function TeacherSupportPage() {
           <p className="text-[13px] text-mute">Yuqoridan bo'sh vaqt blokini qo'shing.</p>
         </div>
       ) : (
-        <div className="divide-y divide-line rounded-[20px] border border-line bg-white shadow-[var(--shadow-card)]">
+        <div className="divide-y divide-line rounded-xl border border-line bg-white shadow-[var(--shadow-card)]">
           {daySlots.map((s) => {
             const chip = statusChip(s.status)
             return (

@@ -125,25 +125,61 @@ body {
 }
 
 /* ============================================================
-   O'qituvchi portali (teal) — teacher.html dizayni
-   Faqat .teacher-app ostida: Times New Roman (global shrift),
-   yumshoq soyalar, yashirin scrollbar (telefon ilova hissi).
+   O'qituvchi portali — ADMIN TIZIMI bilan BIR XIL ko'rinish
+   (Nunito, brand ko'k #3d68ff, #f0f2f2 fon, #dbe0e6 chegara, 12px kartalar).
+
+   Portal sahifalari tarixan "teal" tokenlarida yozilgan (text-ink, bg-tealsoft,
+   bg-teal-600 ...). Har faylni qayta yozmaslik uchun tokenlar SHU YERDA admin
+   qiymatlariga qayta aniqlanadi: teal ramp → brand ramp. Faqat `.teacher-app`
+   ichida — admin panelga TA'SIR QILMAYDI.
    ============================================================ */
 .teacher-app {
-  font-family: 'Times New Roman', Times, serif;
-  --shadow-card: 0 2px 8px rgba(15, 26, 23, 0.04);
-  --shadow-soft: 0 1px 2px rgba(15, 26, 23, 0.04);
-  --shadow-glow: 0 12px 28px rgba(13, 148, 136, 0.3);
-  --shadow-fab: 0 8px 24px rgba(13, 148, 136, 0.4);
+  font-family: var(--font-sans);
+  /* teal → brand (edutizim ko'ki) */
+  --color-teal-50: #eef2ff;
+  --color-teal-100: #e0e7ff;
+  --color-teal-200: #c5d2ff;
+  --color-teal-300: #9db2ff;
+  --color-teal-400: #6f8dff;
+  --color-teal-500: #5479ff;
+  --color-teal-600: #3d68ff;
+  --color-teal-700: #2f56e8;
+  --color-teal-800: #2645bd;
+  --color-teal-900: #223c96;
+  --color-tealsoft: #eef2ff;
+  /* yuza va matn — admin (`:root` --fg/--border/--bg) bilan bir xil */
+  --color-ink: #333333;
+  --color-mute: #667085;
+  --color-faint: #98a2b3;
+  --color-line: #dbe0e6;
+  --color-line-soft: #eef1f6;
+  --color-paper: #f0f2f2;
+  --color-paper2: #e6eaea;
+  --color-panel2: #f8fafc;
+  --color-panel3: #eef1f4;
+  --color-chip: #eef1f6;
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --shadow-soft: 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-glow: 0 8px 22px rgba(61, 104, 255, 0.28);
+  --shadow-fab: 0 8px 24px rgba(61, 104, 255, 0.35);
+  -webkit-tap-highlight-color: transparent;
 }
 .teacher-app .font-mono {
-  font-family: 'Times New Roman', Times, serif;
+  font-family: var(--font-sans);
+  font-feature-settings: 'tnum';
 }
-.teacher-app *::-webkit-scrollbar {
-  display: none;
+.teacher-app .skeleton {
+  display: block;
+  width: 100%;
 }
-.teacher-app * {
-  scrollbar-width: none;
+/* Telefonda scrollbar yashirin (ilova hissi); kompyuterda admin'dagidek ingichka scrollbar. */
+@media (max-width: 1023px) {
+  .teacher-app *::-webkit-scrollbar {
+    display: none;
+  }
+  .teacher-app * {
+    scrollbar-width: none;
+  }
 }
 .teacher-app .tap-scale {
   transition: transform 0.1s ease-out;
@@ -153,33 +189,39 @@ body {
 }
 
 /* ── O'qituvchi portali — TUNGI REJIM (.teacher-app.dark) ──
-   Semantik tokenlar qayta aniqlanadi (text-ink/bg-paper/border-line/bg-tealsoft...
-   avtomatik moslashadi) + komponentlardagi hardcoded neutral utility'lar
-   (bg-white, slate-*) dark qiymatga remap qilinadi → har bir o'qituvchi ekrani
-   faylga tegmasdan dark-aware bo'ladi. */
+   Semantik tokenlar qayta aniqlanadi (text-ink/bg-paper/border-line/bg-brand-50...
+   avtomatik moslashadi) + komponentlardagi hardcoded yorug' utility'lar
+   (bg-white, slate-*, *-50 fonlar) dark qiymatga remap qilinadi → har bir o'qituvchi
+   ekrani faylga tegmasdan dark-aware bo'ladi. */
 .teacher-app.dark {
-  --color-ink: #e9efed;
-  --color-mute: #9aa6a2;
-  --color-faint: #6f7a76;
-  --color-line: #26322e;
-  --color-line-soft: #1f2a27;
-  --color-paper: #0e1513;
-  --color-paper2: #131c19;
-  --color-panel2: #16201d;
-  --color-panel3: #1c2723;
-  --color-tealsoft: #0f3a34;
-  --color-chip: #18221f;
-  --shadow-card: 0 2px 10px rgba(0, 0, 0, 0.5);
+  color-scheme: dark;
+  --color-ink: #e6e9f2;
+  --color-mute: #a3acc2;
+  --color-faint: #717b93;
+  --color-line: #2a3246;
+  --color-line-soft: #222a3c;
+  --color-paper: #0f1420;
+  --color-paper2: #1b2233;
+  --color-panel2: #161c2b;
+  --color-panel3: #1e2638;
+  --color-tealsoft: #1c2750;
+  --color-teal-50: #1c2750;
+  --color-teal-100: #22306a;
+  --color-chip: #1e2638;
+  --color-brand-50: #1c2750;
+  --color-brand-100: #22306a;
+  --color-brand-200: #2b3d85;
+  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.5);
   --shadow-soft: 0 1px 3px rgba(0, 0, 0, 0.4);
   color: var(--color-ink);
 }
-/* Tashqi ramka (480px ustun atrofi) — chuqur fon */
-.teacher-app.dark.bg-neutral-200,
-.teacher-app.dark .bg-neutral-200 {
-  background-color: #05080a !important;
+.teacher-app.dark .skeleton {
+  background: linear-gradient(90deg, #1b2233 0%, #232c40 50%, #1b2233 100%);
+  background-size: 200px 100%;
 }
 /* Oq yuzalar (kartalar, nav, modal) → panel foni */
-.teacher-app.dark .bg-white {
+.teacher-app.dark .bg-white,
+.teacher-app.dark .bg-white\/95 {
   background-color: var(--color-panel2) !important;
 }
 .teacher-app.dark .bg-slate-50,
@@ -187,8 +229,21 @@ body {
   background-color: var(--color-panel3) !important;
 }
 .teacher-app.dark .bg-slate-200 {
-  background-color: #243029 !important;
+  background-color: #2a3246 !important;
 }
+/* Pastel holat fonlari — qorong'i fonda "yonib" turmasin */
+.teacher-app.dark .bg-emerald-50 { background-color: rgba(16, 185, 129, 0.14) !important; }
+.teacher-app.dark .bg-amber-50,
+.teacher-app.dark .bg-amber-100 { background-color: rgba(245, 158, 11, 0.14) !important; }
+.teacher-app.dark .bg-red-50,
+.teacher-app.dark .bg-rose-100 { background-color: rgba(239, 68, 68, 0.14) !important; }
+.teacher-app.dark .bg-violet-50 { background-color: rgba(139, 92, 246, 0.16) !important; }
+.teacher-app.dark .bg-sky-50,
+.teacher-app.dark .bg-sky-100 { background-color: rgba(14, 165, 233, 0.14) !important; }
+.teacher-app.dark .border-emerald-200 { border-color: rgba(16, 185, 129, 0.35) !important; }
+.teacher-app.dark .border-amber-200 { border-color: rgba(245, 158, 11, 0.35) !important; }
+.teacher-app.dark .border-red-200 { border-color: rgba(239, 68, 68, 0.35) !important; }
+.teacher-app.dark .border-slate-200 { border-color: var(--color-line) !important; }
 /* Matnlar */
 .teacher-app.dark .text-slate-800,
 .teacher-app.dark .text-slate-700 {
@@ -201,15 +256,27 @@ body {
 .teacher-app.dark .text-slate-400 {
   color: var(--color-faint) !important;
 }
+.teacher-app.dark .text-emerald-700,
+.teacher-app.dark .text-emerald-600 { color: #6ee7b7 !important; }
+.teacher-app.dark .text-amber-700,
+.teacher-app.dark .text-amber-800,
+.teacher-app.dark .text-amber-600 { color: #fcd34d !important; }
+.teacher-app.dark .text-red-700,
+.teacher-app.dark .text-red-600 { color: #fca5a5 !important; }
+.teacher-app.dark .text-violet-700,
+.teacher-app.dark .text-violet-600 { color: #c4b5fd !important; }
+.teacher-app.dark .text-sky-700,
+.teacher-app.dark .text-sky-600 { color: #7dd3fc !important; }
 /* Chegaralar */
-.teacher-app.dark .border-slate-100,
-.teacher-app.dark .border-slate-200 {
+.teacher-app.dark .border-slate-100 {
   border-color: var(--color-line) !important;
 }
-/* Teal aksent matni — dark fonda yorqinroq (o'qilishi uchun) */
+/* Brand aksent matni — dark fonda yorqinroq (o'qilishi uchun) */
 .teacher-app.dark .text-teal-700,
-.teacher-app.dark .text-teal-600 {
-  color: #5eead4 !important;
+.teacher-app.dark .text-teal-600,
+.teacher-app.dark .text-brand-700,
+.teacher-app.dark .text-brand-600 {
+  color: #9db2ff !important;
 }
 /* Input/textarea */
 .teacher-app.dark input,

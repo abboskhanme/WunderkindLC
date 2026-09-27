@@ -89,7 +89,7 @@ export function TeacherFeedbackPage() {
         value={text}
         onChange={(e) => setText(e.target.value)}
         placeholder="Fikringizni yozing…"
-        className="w-full resize-none rounded-[16px] border border-line bg-white p-3.5 text-[14px] text-ink shadow-[var(--shadow-card)] outline-none focus:border-teal-400"
+        className="w-full resize-none rounded-xl border border-line bg-white p-3.5 text-[14px] text-ink shadow-[var(--shadow-card)] outline-none focus:border-teal-400"
       />
 
       {/* Rasm biriktirish */}
@@ -105,7 +105,7 @@ export function TeacherFeedbackPage() {
       />
       <div className="mt-3.5">
         {file ? (
-          <div className="flex items-center gap-3 rounded-[16px] border border-line bg-white p-3 shadow-[var(--shadow-card)]">
+          <div className="flex items-center gap-3 rounded-xl border border-line bg-white p-3 shadow-[var(--shadow-card)]">
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-tealsoft text-teal-700">
               <ImageIcon className="h-5 w-5" />
             </div>
@@ -118,7 +118,7 @@ export function TeacherFeedbackPage() {
           <button
             type="button"
             onClick={() => fileRef.current?.click()}
-            className="tap-scale flex w-full items-center justify-center gap-2 rounded-[16px] border border-dashed border-line bg-white p-4 text-[14px] font-semibold text-teal-700 shadow-[var(--shadow-card)]"
+            className="tap-scale flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-line bg-white p-4 text-[14px] font-semibold text-teal-700 shadow-[var(--shadow-card)]"
           >
             <ImageIcon className="h-[22px] w-[22px]" />
             Rasm biriktirish (ixtiyoriy)

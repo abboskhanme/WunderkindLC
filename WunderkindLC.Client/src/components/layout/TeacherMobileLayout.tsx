@@ -1,49 +1,39 @@
-import { Suspense, useEffect, useState } from 'react'
-import { NavLink, Outlet } from 'react-router-dom'
-import { Home, ClipboardCheck, Trophy, MessageCircle, User } from 'lucide-react'
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react'
+import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
+import { ArrowLeft, KeyRound, LayoutGrid, LogOut, Moon, Sun, UserRound } from 'lucide-react'
 import { UnreadProvider, useUnread } from '@/context/unread-context'
 import { useAuth } from '@/context/auth-context'
+import { TeacherPortalContext, type TeacherPortalInfo } from '@/context/teacher-portal-context'
+import { getTeacherProfile, getTeacherSchool } from '@/api/services/teacher'
 import { Loader } from '@/components/ui/Loader'
+import { TeacherNotifications } from '@/components/teacher/TeacherNotifications'
+import { usePerm } from '@/lib/permissions'
 import { cn } from '@/lib/utils'
-
-function initials(name: string): string {
-  return name.split(' ').map((w) => w[0]).filter(Boolean).slice(0, 2).join('').toUpperCase()
-}
-
-/** Joriy o'qituvchi temasi ('light' | 'dark') — localStorage'dan. */
-export function getTeacherTheme(): 'light' | 'dark' {
-  return localStorage.getItem('teacher_theme') === 'dark' ? 'dark' : 'light'
-}
-/** Temani saqlash + boshqa komponentlarni xabardor qilish (custom event). */
-export function setTeacherTheme(t: 'light' | 'dark') {
-  localStorage.setItem('teacher_theme', t)
-  window.dispatchEvent(new Event('teacher-theme'))
-}
-
-interface Tab {
-  to: string
-  label: string
-  icon: typeof Home
-  end?: boolean
-  /** Xabarlar tabida o'qilmagan nuqtasi ko'rsatiladimi */
-  badge?: boolean
-}
-
-// DIQQAT: 2-tab — "Test" (onlayn/oflayn test yaratish), 3-tab — "Reyting".
-// "Jurnal" navigatsiyada YO'Q: jurnalga bosh sahifadagi guruhlar ro'yxatidan kiriladi
-// (`/teacher/groups/:id`), marshrutlar (`/teacher/journal` ham) saqlanib qolgan.
-const TABS: Tab[] = [
-  { to: '/teacher', label: 'Bosh', icon: Home, end: true },
-  { to: '/teacher/tests', label: 'Test', icon: ClipboardCheck },
-  { to: '/teacher/rating', label: 'Reyting', icon: Trophy },
-  { to: '/teacher/messages', label: 'Suhbat', icon: MessageCircle, badge: true },
-  { to: '/teacher/profile', label: 'Profil', icon: User },
-]
+import {
+  TEACHER_NAV,
+  TEACHER_SECTION_LABELS,
+  TEACHER_TABS,
+  dayMonthWeekday,
+  getTeacherTheme,
+  initials,
+  navMatches,
+  navVisible,
+  setTeacherTheme,
+  type TeacherNavItem,
+} from '@/lib/teacherPortal'
+import { todayIso } from '@/lib/month'
 
 /**
- * O'qituvchi portali — MOBIL ilova qobig'i (telefon, Flutter WebView orqali).
- * Dizayn: teacher.html (teal UI-kit). Har bir ekran o'z sarlavhasini beradi;
- * qobiq faqat skroll qiladigan kontent + pastki 5-tab teal navigatsiyani beradi.
+ * O'qituvchi portali qobig'i — ADMIN TIZIMI bilan bir xil ko'rinish (edutizim uslubi: oq yuqori
+ * panel, chapda oq yon menyu, kulrang `#f0f2f2` kontent foni, Nunito, brand ko'k).
+ *
+ * TO'LIQ MOSLASHUVCHAN — o'qituvchilar asosan TELEFONDAN ishlatadi:
+ * - telefon/planshet (<1024px): yuqori panel + pastki 5 ta tab (Bosh · Guruhlar · Davomat · Jadval ·
+ *   Menyu), qolgan bo'limlar "Menyu" sahifasida;
+ * - kompyuter (≥1024px): yuqori panel + yon menyu (hamma bo'lim), pastki tablar yo'q.
+ *
+ * Bo'limlar ro'yxati YAGONA — `lib/teacherPortal.ts` → `TEACHER_NAV` (menyu, tablar va "Menyu"
+ * sahifasi shundan quriladi).
  */
 export function TeacherMobileLayout() {
   return (
@@ -54,119 +44,296 @@ export function TeacherMobileLayout() {
 }
 
 function Shell() {
-  const { unreadChannels } = useUnread()
-  const hasUnread = unreadChannels.size > 0
   const { user } = useAuth()
+  const { can } = usePerm()
+  const { unreadChannels } = useUnread()
+  const location = useLocation()
+  const mainRef = useRef<HTMLElement>(null)
   const [theme, setTheme] = useState<'light' | 'dark'>(getTeacherTheme)
+  const [info, setInfo] = useState<TeacherPortalInfo>({ schoolName: '', logoUrl: '', telegramChannel: '', isSupport: false })
+
   useEffect(() => {
     const onChange = () => setTheme(getTeacherTheme())
     window.addEventListener('teacher-theme', onChange)
     return () => window.removeEventListener('teacher-theme', onChange)
   }, [])
 
+  // Markaz nomi/logosi va Support bayrog'i — bir marta (fon o'qish: xato bo'lsa standart ko'rinish).
+  useEffect(() => {
+    getTeacherSchool()
+      .then((s) => setInfo((i) => ({ ...i, schoolName: s.name, logoUrl: s.logoUrl ?? '', telegramChannel: s.telegramChannel })))
+      .catch(() => {})
+    getTeacherProfile()
+      .then((p) => setInfo((i) => ({ ...i, isSupport: !!p?.isSupport })))
+      .catch(() => {})
+  }, [])
+
+  // Sahifa almashganda kontent tepaga qaytadi (skroll konteyneri — main, oyna emas).
+  useEffect(() => {
+    mainRef.current?.scrollTo({ top: 0 })
+  }, [location.pathname])
+
+  const items = useMemo(
+    () => TEACHER_NAV.filter((i) => navVisible(i, (p) => can(p, 'view'), info.isSupport)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `can` har renderda yangi, ruxsatlar esa user bilan o'zgaradi
+    [user?.permissions, info.isSupport],
+  )
+  const hasUnread = unreadChannels.size > 0
+
   return (
-    <div
-      className={cn(
-        'teacher-app flex h-[100dvh] flex-col overflow-hidden bg-neutral-200 text-ink lg:flex-row lg:bg-paper2',
-        theme === 'dark' && 'dark',
-      )}
-    >
-      {/* ── DESKTOP yon menyu (faqat lg+; telefon/WebView'da YO'Q) ── */}
-      <aside className="hidden w-52 shrink-0 flex-col border-r border-line bg-white lg:flex">
-        <div className="flex items-center gap-3 border-b border-line px-4 py-4">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-teal-500 to-teal-700 text-[14px] font-bold text-white">
-            {initials(user?.fullName || 'O')}
-          </div>
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-[13px] font-bold text-ink">{user?.fullName || "O'qituvchi"}</p>
-            <p className="text-[11px] text-mute">O'qituvchi</p>
-          </div>
+    <TeacherPortalContext.Provider value={info}>
+      <div className={cn('teacher-app flex h-[100dvh] flex-col overflow-hidden bg-paper text-ink', theme === 'dark' && 'dark')}>
+        <Topbar info={info} dark={theme === 'dark'} />
+
+        <div className="flex min-h-0 flex-1">
+          <SideNav items={items} hasUnread={hasUnread} />
+          <main ref={mainRef} className="min-w-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain">
+            {/* Suspense QOBIQ ICHIDA — sahifa yuklanayotganda menyu/tablar joyida qoladi,
+                UnreadProvider (SignalR) qayta ulanmaydi. */}
+            <div className="mx-auto h-full w-full max-w-[1280px]">
+              <Suspense fallback={<Loader className="min-h-[240px]" />}>
+                <Outlet />
+              </Suspense>
+            </div>
+          </main>
         </div>
-        <nav className="flex-1 space-y-0.5 overflow-y-auto p-2">
-          {TABS.map((tab) => {
-            const Icon = tab.icon
-            return (
-              <NavLink
-                key={tab.to}
-                to={tab.to}
-                end={tab.end}
-                className={({ isActive }) =>
-                  cn(
-                    'relative flex items-center gap-3 rounded-lg px-3 py-2 text-[13px] font-semibold transition-colors',
-                    isActive ? 'bg-tealsoft text-teal-700' : 'text-mute hover:bg-paper2',
-                  )
-                }
-              >
-                <span className="relative flex-shrink-0">
-                  <Icon className="h-4 w-4" />
-                  {tab.badge && hasUnread && (
-                    <span className="absolute -right-1 -top-1 h-1.5 w-1.5 rounded-full bg-red-500 ring-1 ring-white" />
-                  )}
-                </span>
-                <span className="truncate">{tab.label}</span>
-              </NavLink>
-            )
-          })}
-        </nav>
-      </aside>
 
-      {/* ── Kontent maydoni: full-width ── */}
-      <div className="flex h-full flex-1 flex-col overflow-hidden bg-paper">
-        {/* Kontent — har bir ekran o'z sarlavha/paddingini beradi */}
-        <main className="flex-1 overflow-y-auto">
-          {/* Suspense LAYOUT ICHIDA — sahifa chunk'i yuklanayotganda qobiq (tab/menyu) qoladi,
-              UnreadProvider (SignalR) qayta mount bo'lmaydi. */}
-          <Suspense fallback={<Loader className="min-h-[240px]" />}>
-            <Outlet />
-          </Suspense>
-        </main>
+        <BottomTabs items={items} hasUnread={hasUnread} />
+      </div>
+    </TeacherPortalContext.Provider>
+  )
+}
 
-        {/* PASTKI NAVIGATSIYA — 5 tab (faqat telefon/WebView; desktopda yon menyu) */}
-        <nav className="shrink-0 border-t border-line bg-white pb-[env(safe-area-inset-bottom)] lg:hidden">
-          <div className="flex h-[60px]">
-            {TABS.map((tab) => {
-              const Icon = tab.icon
+/* ─────────────────────────── Yuqori panel ─────────────────────────── */
+
+function Topbar({ info, dark }: { info: TeacherPortalInfo; dark: boolean }) {
+  const navigate = useNavigate()
+  const name = info.schoolName || 'Wunderkind'
+  return (
+    <header className="relative z-40 flex h-14 shrink-0 items-center border-b border-line bg-white pr-1.5 shadow-[0_1px_2px_rgba(0,0,0,0.04)] sm:pr-3">
+      <div className="flex min-w-0 shrink items-center gap-2 pl-3 lg:w-[210px] lg:shrink-0 lg:pl-5">
+        <Link to="/teacher" className="flex min-w-0 items-center gap-2" title={name}>
+          {info.logoUrl ? (
+            <img src={info.logoUrl} alt="" className="h-8 w-8 shrink-0 object-contain" />
+          ) : (
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-brand-600 text-sm font-extrabold text-white">
+              {name.slice(0, 1).toUpperCase()}
+            </span>
+          )}
+          <span className="min-w-0">
+            <span className="block truncate text-[16px] font-extrabold leading-tight text-brand-600 lg:text-[17px]">{name}</span>
+            <span className="block text-[11px] font-semibold leading-tight text-mute lg:hidden">O'qituvchi</span>
+          </span>
+        </Link>
+      </div>
+
+      <div className="hidden min-w-0 flex-1 items-center gap-2.5 pl-[15px] lg:flex">
+        <button
+          type="button"
+          onClick={() => navigate(-1)}
+          className="flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-lg border border-brand-600/20 bg-brand-600/10 text-brand-600 transition-colors hover:bg-brand-600/15"
+          title="Orqaga"
+          aria-label="Orqaga"
+        >
+          <ArrowLeft className="h-4 w-4" />
+        </button>
+        <span className="truncate text-[13.5px] font-semibold text-mute">{dayMonthWeekday(todayIso())}</span>
+      </div>
+
+      <div className="ml-auto flex shrink-0 items-center gap-1">
+        <TeacherNotifications />
+        <UserMenu dark={dark} />
+      </div>
+    </header>
+  )
+}
+
+function UserMenu({ dark }: { dark: boolean }) {
+  const { user, logout } = useAuth()
+  const navigate = useNavigate()
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    const onDown = (e: MouseEvent) => ref.current && !ref.current.contains(e.target as Node) && setOpen(false)
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false)
+    document.addEventListener('mousedown', onDown)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', onDown)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [open])
+
+  const go = (to: string) => {
+    setOpen(false)
+    navigate(to)
+  }
+
+  const fullName = user?.fullName || "O'qituvchi"
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="ml-0.5 flex items-center gap-2 rounded-full lg:rounded-lg lg:py-1 lg:pl-1 lg:pr-2.5 lg:hover:bg-panel3"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        title={fullName}
+      >
+        <span className="flex h-[36px] w-[36px] items-center justify-center rounded-full border-2 border-line bg-brand-50 text-[13px] font-bold text-brand-600">
+          {initials(fullName)}
+        </span>
+        <span className="hidden max-w-[160px] text-left lg:block">
+          <span className="block truncate text-[13px] font-bold leading-tight text-ink">{fullName}</span>
+          <span className="block text-[11px] leading-tight text-mute">O'qituvchi</span>
+        </span>
+      </button>
+
+      {open && (
+        <div role="menu" className="absolute right-0 top-full z-50 mt-2 w-60 overflow-hidden rounded-xl border border-line bg-white shadow-[0_12px_32px_rgba(16,24,40,0.12)]">
+          <div className="border-b border-line-soft px-4 py-3">
+            <p className="truncate text-sm font-bold text-ink">{fullName}</p>
+            {user?.email && <p className="truncate text-xs text-faint">{user.email}</p>}
+            <p className="mt-0.5 text-xs text-faint">O'qituvchi</p>
+          </div>
+          <MenuButton icon={UserRound} label="Profil" onClick={() => go('/teacher/profile')} />
+          <MenuButton icon={KeyRound} label="Parolni almashtirish" onClick={() => go('/teacher/account')} />
+          <MenuButton
+            icon={dark ? Sun : Moon}
+            label={dark ? 'Yorug\' rejim' : 'Tungi rejim'}
+            onClick={() => setTeacherTheme(dark ? 'light' : 'dark')}
+          />
+          <button
+            role="menuitem"
+            type="button"
+            onClick={() => {
+              setOpen(false)
+              logout()
+              navigate('/login', { replace: true })
+            }}
+            className="flex w-full items-center gap-2.5 border-t border-line-soft px-4 py-2.5 text-sm font-semibold text-red-600 transition-colors hover:bg-red-50"
+          >
+            <LogOut className="h-4 w-4" />
+            Chiqish
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function MenuButton({ icon: Icon, label, onClick }: { icon: typeof UserRound; label: string; onClick: () => void }) {
+  return (
+    <button
+      role="menuitem"
+      type="button"
+      onClick={onClick}
+      className="flex w-full items-center gap-2.5 px-4 py-2.5 text-sm font-semibold text-ink transition-colors hover:bg-panel3 hover:text-brand-600"
+    >
+      <Icon className="h-4 w-4 text-faint" />
+      {label}
+    </button>
+  )
+}
+
+/* ─────────────────────────── Yon menyu (≥1024px) ─────────────────────────── */
+
+function SideNav({ items, hasUnread }: { items: TeacherNavItem[]; hasUnread: boolean }) {
+  const sections = (['main', 'work', 'account'] as const)
+    .map((s) => ({ key: s, items: items.filter((i) => i.section === s) }))
+    .filter((s) => s.items.length > 0)
+
+  return (
+    <aside className="hidden w-[210px] shrink-0 flex-col overflow-y-auto border-r border-line bg-white px-[6px] pb-3 pt-2 lg:flex">
+      {sections.map((s, idx) => (
+        <div key={s.key} className={cn(idx > 0 && 'mt-2 border-t border-line-soft pt-2')}>
+          <p className="px-3 pb-1 pt-1 text-[11px] font-bold uppercase tracking-wide text-faint">
+            {TEACHER_SECTION_LABELS[s.key]}
+          </p>
+          <div className="space-y-[2px]">
+            {s.items.map((item) => {
+              const Icon = item.icon
               return (
                 <NavLink
-                  key={tab.to}
-                  to={tab.to}
-                  end={tab.end}
-                  className="relative flex flex-1 flex-col items-center justify-center gap-0.5"
+                  key={item.to}
+                  to={item.to}
+                  end={item.end}
+                  className={({ isActive }) =>
+                    cn(
+                      'group relative flex h-[42px] items-center gap-2.5 rounded-[10px] pl-3 pr-2 text-[14px] font-semibold transition-colors',
+                      isActive ? 'bg-paper2 text-brand-600' : 'text-ink hover:bg-paper2 hover:text-brand-600',
+                    )
+                  }
                 >
                   {({ isActive }) => (
                     <>
                       <span
                         className={cn(
-                          'flex h-7 w-14 items-center justify-center rounded-xl transition-colors',
-                          isActive ? 'bg-tealsoft' : 'bg-transparent',
+                          'absolute inset-y-1.5 left-0 w-[3px] rounded-full bg-brand-600 transition-opacity',
+                          isActive ? 'opacity-100' : 'opacity-0 group-hover:opacity-100',
                         )}
-                      >
-                        <span className="relative">
-                          <Icon
-                            className={cn('h-[22px] w-[22px]', isActive ? 'text-teal-600' : 'text-faint')}
-                            strokeWidth={isActive ? 2.4 : 2}
-                          />
-                          {tab.badge && hasUnread && (
-                            <span className="absolute -right-1.5 -top-1 h-2 w-2 rounded-full bg-red-500 ring-2 ring-white" />
-                          )}
-                        </span>
-                      </span>
-                      <span
-                        className={cn(
-                          'text-[10.5px] tracking-tight',
-                          isActive ? 'font-bold text-teal-600' : 'font-medium text-faint',
+                      />
+                      <span className="relative shrink-0">
+                        <Icon className="h-5 w-5" />
+                        {item.badge && hasUnread && (
+                          <span className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-[#e53e3e] ring-2 ring-white" />
                         )}
-                      >
-                        {tab.label}
                       </span>
+                      <span className="truncate">{item.label}</span>
                     </>
                   )}
                 </NavLink>
               )
             })}
           </div>
-        </nav>
+        </div>
+      ))}
+    </aside>
+  )
+}
+
+/* ─────────────────────────── Pastki tablar (<1024px) ─────────────────────────── */
+
+function BottomTabs({ items, hasUnread }: { items: TeacherNavItem[]; hasUnread: boolean }) {
+  const { pathname } = useLocation()
+  const tabs = TEACHER_TABS.map((to) => items.find((i) => i.to === to)).filter((i): i is TeacherNavItem => !!i)
+  // Tabda yo'q bo'lim ochiq bo'lsa (Maosh, Testlar, ...) — "Menyu" tabi faol ko'rinadi.
+  const activeTab = tabs.find((t) => navMatches(t, pathname))?.to ?? '/teacher/menu'
+  const menuHasBadge = hasUnread && items.some((i) => i.badge)
+
+  const all = [
+    ...tabs.map((t) => ({ to: t.to, label: t.short ?? t.label, icon: t.icon, badge: false })),
+    { to: '/teacher/menu', label: 'Menyu', icon: LayoutGrid, badge: menuHasBadge },
+  ]
+
+  return (
+    <nav className="shrink-0 border-t border-line bg-white pb-[env(safe-area-inset-bottom)] lg:hidden">
+      <div className="mx-auto flex h-[60px] max-w-[640px]">
+        {all.map((t) => {
+          const Icon = t.icon
+          const active = activeTab === t.to
+          return (
+            <Link key={t.to} to={t.to} className="relative flex flex-1 flex-col items-center justify-center gap-0.5">
+              <span
+                className={cn(
+                  'flex h-7 w-14 items-center justify-center rounded-full transition-colors',
+                  active ? 'bg-brand-50' : 'bg-transparent',
+                )}
+              >
+                <span className="relative">
+                  <Icon className={cn('h-[21px] w-[21px]', active ? 'text-brand-600' : 'text-faint')} strokeWidth={active ? 2.4 : 2} />
+                  {t.badge && <span className="absolute -right-1.5 -top-1 h-2 w-2 rounded-full bg-[#e53e3e] ring-2 ring-white" />}
+                </span>
+              </span>
+              <span className={cn('text-[11px] tracking-tight', active ? 'font-bold text-brand-600' : 'font-semibold text-faint')}>
+                {t.label}
+              </span>
+            </Link>
+          )
+        })}
       </div>
-    </div>
+    </nav>
   )
 }

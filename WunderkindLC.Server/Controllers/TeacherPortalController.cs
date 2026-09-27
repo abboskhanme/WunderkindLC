@@ -19,7 +19,7 @@ namespace WunderkindLC.Server.Controllers;
 [ApiController]
 [Authorize(Roles = "teacher")]
 [Route("api/teacher")]
-public class TeacherPortalController(
+public partial class TeacherPortalController(
     AppDbContext db, ChatService chat, IWebHostEnvironment env, ReferenceCache refCache,
     FcmService fcm, AutoMessageService autoMsg, ContractService contracts,
     TestCertificateService testCerts, TestCertificateJobs testCertJobs,

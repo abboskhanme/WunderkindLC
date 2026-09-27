@@ -49,9 +49,9 @@ export async function getTeacherMeta(): Promise<PortalMeta | null> {
 }
 
 /** Markaz nomi + Telegram kanali (o'qituvchi ilovasi uchun). */
-export async function getTeacherSchool(): Promise<{ name: string; telegramChannel: string }> {
+export async function getTeacherSchool(): Promise<{ name: string; telegramChannel: string; logoUrl?: string }> {
   if (USE_MOCK) return { name: '', telegramChannel: '' }
-  const { data } = await api.get<{ name: string; telegramChannel: string }>('/teacher/school')
+  const { data } = await api.get<{ name: string; telegramChannel: string; logoUrl?: string }>('/teacher/school')
   return data
 }
 
@@ -363,5 +363,105 @@ export async function setTeacherTestScore(
     studentId,
     score,
   })
+  return data
+}
+
+/* ---------- Bosh sahifa · Dars jadvali · O'quvchilarim ---------- */
+// Backend: TeacherPortalController.Home.cs → TeacherHomeService (faqat o'qish).
+
+/** O'qituvchining bitta darsi (aniq sanada). */
+export interface TeacherLesson {
+  groupId: string
+  groupName: string
+  courseName: string
+  /** "yyyy-MM-dd" */
+  date: string
+  /** "HH:mm" (bo'sh bo'lishi mumkin — guruhda vaqt belgilanmagan) */
+  startTime: string
+  endTime: string
+  room: string
+  /** Jurnalda ko'rinadigan (muzlatilmagan) o'quvchilar soni */
+  studentCount: number
+  /** Darsni o'qituvchi O'RINBOSAR sifatida o'tadi */
+  isSubstitute: boolean
+  /** O'z guruhi, lekin shu kuni darsni boshqa odam o'tadi — uning ismi */
+  substitutedBy: string
+  /** Boshqa kundan shu kunga ko'chirilgan dars */
+  moved: boolean
+  /** Jurnalda "o'tildi" (davomat/baho kiritilgan) */
+  conducted: boolean
+}
+
+export interface TeacherGroupCard {
+  id: string
+  name: string
+  courseId: string
+  courseName: string
+  /** 0=Dushanba … 6=Yakshanba */
+  days: number[]
+  startTime: string
+  endTime: string
+  room: string
+  startDate: string
+  active: number
+  trial: number
+  frozen: number
+  isSubstitute: boolean
+  /** "yyyy-MM-dd" yoki "" (yaqin 3 haftada dars yo'q / jadval ruxsati yo'q) */
+  nextLessonDate: string
+}
+
+export interface TeacherOverview {
+  today: string
+  groups: TeacherGroupCard[]
+  todayLessons: TeacherLesson[]
+  studentCount: number
+  /** "Dars jadvali" ruxsati bormi (yo'q bo'lsa todayLessons bo'sh keladi) */
+  canSchedule: boolean
+}
+
+export interface TeacherStudentRow {
+  studentId: string
+  fullName: string
+  photoUrl: string
+  groupId: string
+  groupName: string
+  courseName: string
+  /** 'active' | 'trial' | 'frozen' */
+  status: string
+  memberStart: string
+  /** Shu guruh bo'yicha qarzdor oylar soni (0 — qarzi yo'q) */
+  debtMonths: number
+  /** Tanlangan oyda o'tilgan (hisobga olinadigan) darslar */
+  held: number
+  attended: number
+  absent: number
+  late: number
+  /** Davomat foizi; dars o'tilmagan bo'lsa null */
+  attendancePct: number | null
+}
+
+export interface TeacherStudents {
+  month: string
+  rows: TeacherStudentRow[]
+}
+
+export async function getTeacherOverview(): Promise<TeacherOverview> {
+  if (USE_MOCK) return { today: '', groups: [], todayLessons: [], studentCount: 0, canSchedule: true }
+  const { data } = await api.get<TeacherOverview>('/teacher/overview')
+  return data
+}
+
+/** Oraliqdagi darslar ("yyyy-MM-dd", ikkalasi ham kiradi; ko'pi bilan 62 kun). */
+export async function getTeacherSchedule(from: string, to: string): Promise<TeacherLesson[]> {
+  if (USE_MOCK) return []
+  const { data } = await api.get<TeacherLesson[]>('/teacher/schedule', { params: { from, to } })
+  return data
+}
+
+/** Barcha guruhlardagi o'quvchilar + oylik davomat (`month` "yyyy-MM", ixtiyoriy). */
+export async function getTeacherStudents(month?: string): Promise<TeacherStudents> {
+  if (USE_MOCK) return { month: month ?? '', rows: [] }
+  const { data } = await api.get<TeacherStudents>('/teacher/students', { params: { month } })
   return data
 }

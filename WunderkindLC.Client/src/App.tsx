@@ -151,6 +151,10 @@ const TeacherOwnSalaryPage = lazy(() => import('@/pages/teacher/salary/SalaryPag
 const TeacherAccountPage = lazy(() => import('@/pages/teacher/account/AccountPage').then((m) => ({ default: m.TeacherAccountPage })))
 const TeacherRatingPage = lazy(() => import('@/pages/teacher/rating/TeacherRatingPage').then((m) => ({ default: m.TeacherRatingPage })))
 const TeacherTestsPage = lazy(() => import('@/pages/teacher/tests/TeacherTestsPage').then((m) => ({ default: m.TeacherTestsPage })))
+const TeacherAttendancePortalPage = lazy(() => import('@/pages/teacher/attendance/TeacherAttendancePage').then((m) => ({ default: m.TeacherAttendancePage })))
+const TeacherSchedulePage = lazy(() => import('@/pages/teacher/schedule/TeacherSchedulePage').then((m) => ({ default: m.TeacherSchedulePage })))
+const TeacherStudentsPage = lazy(() => import('@/pages/teacher/students/TeacherStudentsPage').then((m) => ({ default: m.TeacherStudentsPage })))
+const TeacherMenuPage = lazy(() => import('@/pages/teacher/menu/TeacherMenuPage').then((m) => ({ default: m.TeacherMenuPage })))
 // O'quvchi portali (SPA ichida, /student/*)
 const StudentDashboardScreen = lazy(() => import('@/pages/student/Dashboard').then((m) => ({ default: m.StudentDashboardScreen })))
 const StudentProgressScreen = lazy(() => import('@/pages/student/Progress').then((m) => ({ default: m.StudentProgressScreen })))
@@ -427,12 +431,17 @@ export default function App() {
           </Route>
         </Route>
 
-        {/* O'qituvchi portali — MOBIL ilova qobig'i (telefon, Flutter WebView orqali).
-            Admin Sidebar/Topbar O'RNIGA pastki tab navigatsiya (TeacherMobileLayout). */}
+        {/* O'qituvchi portali — admin tizimi uslubidagi MOSLASHUVCHAN qobiq (TeacherMobileLayout):
+            telefonda pastki tablar + "Menyu", kompyuterda yon menyu. Flutter WebView ham shu yerni ochadi. */}
         <Route element={<ProtectedRoute role="teacher" />}>
           <Route path="/teacher" element={<TeacherMobileLayout />}>
             <Route index element={<TeacherDashboard />} />
             <Route path="journal" element={<RequirePerm perm="journal"><TeacherGroupsPage /></RequirePerm>} />
+            <Route path="groups" element={<TeacherGroupsPage />} />
+            <Route path="students" element={<RequirePerm perm="journal"><TeacherStudentsPage /></RequirePerm>} />
+            <Route path="attendance" element={<RequirePerm perm="journal"><TeacherAttendancePortalPage /></RequirePerm>} />
+            <Route path="schedule" element={<RequirePerm perm="schedule"><TeacherSchedulePage /></RequirePerm>} />
+            <Route path="menu" element={<TeacherMenuPage />} />
             <Route path="groups/:id" element={<RequirePerm perm="journal"><TeacherGroupDetailPage /></RequirePerm>} />
             <Route path="messages" element={<RequirePerm perm="messages"><TeacherMessagesPage /></RequirePerm>} />
             <Route path="feedback" element={<TeacherFeedbackPage />} />

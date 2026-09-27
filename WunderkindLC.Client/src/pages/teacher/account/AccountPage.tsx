@@ -66,7 +66,7 @@ export function TeacherAccountPage() {
 
       {/* Joriy parol */}
       <p className="px-0.5 pb-2 text-[13px] font-bold text-ink">Joriy parol</p>
-      <div className="mb-4 flex items-center gap-2.5 rounded-[16px] border border-line bg-white p-3.5 shadow-[var(--shadow-card)] focus-within:border-teal-400">
+      <div className="mb-4 flex items-center gap-2.5 rounded-xl border border-line bg-white p-3.5 shadow-[var(--shadow-card)] focus-within:border-teal-400">
         <Lock className="h-[18px] w-[18px] shrink-0 text-faint" />
         <input
           type={showCurrent ? 'text' : 'password'}
@@ -86,7 +86,7 @@ export function TeacherAccountPage() {
 
       {/* Yangi parol */}
       <p className="px-0.5 pb-2 text-[13px] font-bold text-ink">Yangi parol</p>
-      <div className="mb-4 flex items-center gap-2.5 rounded-[16px] border border-line bg-white p-3.5 shadow-[var(--shadow-card)] focus-within:border-teal-400">
+      <div className="mb-4 flex items-center gap-2.5 rounded-xl border border-line bg-white p-3.5 shadow-[var(--shadow-card)] focus-within:border-teal-400">
         <Lock className="h-[18px] w-[18px] shrink-0 text-faint" />
         <input
           type={showNext ? 'text' : 'password'}
@@ -106,7 +106,7 @@ export function TeacherAccountPage() {
 
       {/* Yangi parolni takrorlang */}
       <p className="px-0.5 pb-2 text-[13px] font-bold text-ink">Yangi parolni takrorlang</p>
-      <div className="mb-4 flex items-center gap-2.5 rounded-[16px] border border-line bg-white p-3.5 shadow-[var(--shadow-card)] focus-within:border-teal-400">
+      <div className="mb-4 flex items-center gap-2.5 rounded-xl border border-line bg-white p-3.5 shadow-[var(--shadow-card)] focus-within:border-teal-400">
         <Lock className="h-[18px] w-[18px] shrink-0 text-faint" />
         <input
           type={showRepeat ? 'text' : 'password'}
@@ -126,7 +126,7 @@ export function TeacherAccountPage() {
 
       {/* Xato */}
       {error && (
-        <div className="mb-4 rounded-[16px] border border-red-200 bg-red-50 p-3 text-[13px] font-semibold text-red-600">
+        <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-3 text-[13px] font-semibold text-red-600">
           {error}
         </div>
       )}

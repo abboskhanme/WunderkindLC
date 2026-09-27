@@ -109,7 +109,7 @@ export function TeacherSalaryPage() {
       {loading ? (
         <Loader label="Yuklanmoqda..." />
       ) : !ledger || ledger.months.length === 0 ? (
-        <div className="flex flex-col items-center justify-center gap-3 rounded-[20px] border border-line bg-white p-8 text-center shadow-[var(--shadow-card)]">
+        <div className="flex flex-col items-center justify-center gap-3 rounded-xl border border-line bg-white p-8 text-center shadow-[var(--shadow-card)]">
           <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-tealsoft text-teal-700">
             <Wallet className="h-6 w-6" />
           </div>
@@ -131,7 +131,7 @@ export function TeacherSalaryPage() {
                   : `Yig'ilgan to'lovga asoslangan (${ledger.salaryPercent}%)`
                 : "Qat'iy oylik"
             return (
-              <div className="rounded-[20px] border border-line bg-white p-4 shadow-[var(--shadow-card)]">
+              <div className="rounded-xl border border-line bg-white p-4 shadow-[var(--shadow-card)]">
                 <div className="mb-3 flex items-center gap-2.5">
                   <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-tealsoft text-teal-700">
                     <Wallet className="h-5 w-5" />
@@ -145,19 +145,19 @@ export function TeacherSalaryPage() {
                 </div>
 
                 <div className="grid grid-cols-3 gap-2">
-                  <div className="rounded-[14px] border border-line bg-white p-2.5 text-center">
+                  <div className="rounded-lg border border-line bg-white p-2.5 text-center">
                     <p className="text-[11px] font-semibold text-faint">Hisoblandi</p>
                     <p className="mt-0.5 text-[14px] font-extrabold text-ink font-mono">
                       {formatMoney(expected)}
                     </p>
                   </div>
-                  <div className="rounded-[14px] border border-line bg-white p-2.5 text-center">
+                  <div className="rounded-lg border border-line bg-white p-2.5 text-center">
                     <p className="text-[11px] font-semibold text-faint">Berildi</p>
                     <p className="mt-0.5 text-[14px] font-extrabold text-teal-700 font-mono">
                       {formatMoney(paid)}
                     </p>
                   </div>
-                  <div className="rounded-[14px] border border-line bg-white p-2.5 text-center">
+                  <div className="rounded-lg border border-line bg-white p-2.5 text-center">
                     <p className="text-[11px] font-semibold text-faint">Qoldi</p>
                     <p className="mt-0.5 text-[14px] font-extrabold text-ink font-mono">
                       {formatMoney(remaining)}
@@ -169,7 +169,7 @@ export function TeacherSalaryPage() {
                     hisoblangan to'liq oylik (chargedBase) yoki yig'ilgan pul — boshqasini
                     ko'rsatsak arifmetika noto'g'ri chiqardi (1 000 000 × 40% = 1 600 000). */}
                 {isPercent && cur && (cur.chargedBase ? (cur.salaryBase ?? 0) : (cur.collected ?? 0)) > 0 && (
-                  <p className="mt-3 rounded-[14px] bg-slate-50 px-3.5 py-2.5 text-[12px] leading-relaxed text-mute">
+                  <p className="mt-3 rounded-lg bg-slate-50 px-3.5 py-2.5 text-[12px] leading-relaxed text-mute">
                     {cur.chargedBase ? 'Hisoblangan oylik (chegirmasiz)' : "Yig'ilgan"}:{' '}
                     <span className="font-mono font-bold text-ink">
                       {formatMoney(cur.chargedBase ? (cur.salaryBase ?? 0) : (cur.collected ?? 0))}
@@ -185,7 +185,7 @@ export function TeacherSalaryPage() {
 
                 {/* Jami (joriy oy ko'rsatilganda alohida) */}
                 {cur && (
-                  <div className="mt-3 flex items-center justify-between rounded-[14px] bg-tealsoft px-3.5 py-2.5">
+                  <div className="mt-3 flex items-center justify-between rounded-lg bg-tealsoft px-3.5 py-2.5">
                     <p className="text-[12px] font-semibold text-teal-700">Jami qoldiq</p>
                     <p className="text-[14px] font-extrabold text-teal-700 font-mono">
                       {formatMoney(ledger.remaining)}
@@ -199,7 +199,7 @@ export function TeacherSalaryPage() {
           {/* QAYSI OYGA — eng ko'p savol tug'diradigan joy. To'lov qaysi oy UCHUN qilingan
               bo'lsa, o'sha oyga kiradi: 3-avgustda iyul uchun to'lansa — iyul maoshiga. */}
           {isPercent && (
-            <div className="mt-3 flex items-start gap-2.5 rounded-[16px] border border-line bg-white px-3.5 py-2.5 shadow-[var(--shadow-card)]">
+            <div className="mt-3 flex items-start gap-2.5 rounded-xl border border-line bg-white px-3.5 py-2.5 shadow-[var(--shadow-card)]">
               <CalendarClock className="mt-0.5 h-4 w-4 shrink-0 text-teal-600" />
               <p className="text-[12px] leading-relaxed text-mute">
                 To'lov <span className="font-bold text-ink">qaysi oy uchun</span> qilingan bo'lsa,
@@ -212,7 +212,7 @@ export function TeacherSalaryPage() {
 
           {/* Jurnal ushlanmasi haqida eslatma */}
           {ledger.journalLinked && (
-            <div className="mt-3 flex items-start gap-2.5 rounded-[16px] border border-amber-200 bg-amber-50 px-3.5 py-2.5">
+            <div className="mt-3 flex items-start gap-2.5 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-2.5">
               <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
               <p className="text-[12px] leading-relaxed text-amber-800">
                 Maosh jurnal bo'yicha hisoblanadi: jurnalda "o'tildi" deb belgilanmagan dars
@@ -223,7 +223,7 @@ export function TeacherSalaryPage() {
 
           {/* Oylar ro'yxati */}
           <p className="px-0.5 pb-2 pt-5 text-[13px] font-bold text-ink">Oylar</p>
-          <div className="divide-y divide-line rounded-[20px] border border-line bg-white shadow-[var(--shadow-card)]">
+          <div className="divide-y divide-line rounded-xl border border-line bg-white shadow-[var(--shadow-card)]">
             {[...ledger.months].reverse().map((m) => {
               const chip = statusChip(m.status)
               const missed = m.missedLessons ?? 0
@@ -336,7 +336,7 @@ export function TeacherSalaryPage() {
                         .map((l) => (
                           <div
                             key={l.groupId}
-                            className="rounded-[14px] border border-line bg-white px-3 py-2"
+                            className="rounded-lg border border-line bg-white px-3 py-2"
                           >
                             <div className="flex items-center justify-between gap-2">
                               <span className="text-[13px] font-bold text-ink">{l.groupName}</span>
@@ -377,7 +377,7 @@ export function TeacherSalaryPage() {
 
           {/* Yo'ldagilar — hali bonus berilmagan, oylari to'planayotgan sikllar */}
           {(bonuses.inProgress ?? []).length > 0 && (
-            <div className="mb-3 rounded-[20px] border border-line bg-white shadow-[var(--shadow-card)]">
+            <div className="mb-3 rounded-xl border border-line bg-white shadow-[var(--shadow-card)]">
               <div className="flex items-center gap-2.5 px-3.5 py-3">
                 <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-tealsoft text-teal-700">
                   <Hourglass className="h-5 w-5" />
@@ -437,7 +437,7 @@ export function TeacherSalaryPage() {
 
           {/* Berilgan bonuslar */}
           {bonuses.items.length > 0 && (
-            <div className="rounded-[20px] border border-line bg-white shadow-[var(--shadow-card)]">
+            <div className="rounded-xl border border-line bg-white shadow-[var(--shadow-card)]">
               <div className="flex items-center gap-2.5 px-3.5 py-3">
                 <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-tealsoft text-teal-700">
                   <Award className="h-5 w-5" />

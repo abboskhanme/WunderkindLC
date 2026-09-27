@@ -122,3 +122,16 @@
 - [2026-09-25] Hisoblangan bazada VOZVRAT va 100% CHEGIRMA o'qituvchi foizini kamaytiradimi? → yo'q
   (baza = `MonthlyCharge.Amount`) → foydalanuvchi "to'liq oylikdan, chegirmani markaz ko'taradi"
   dedi; muzlatish vozvratida oylikning o'zi qisqargani uchun natija avvalgidek. Tasdiq so'raldi
+- [2026-09-27] O'qituvchi portali "tizim bilan bir xil" — qaysi tizim? → admin paneli (Nunito, brand
+  #3d68ff, #f0f2f2 fon, oq kartalar) → teal/Times New Roman ko'rinish eski sahifalarda ham token
+  darajasida (`.teacher-app`) almashtirildi, har faylni qayta yozmasdan
+- [2026-09-27] "O'quvchilarim" da pul qancha ko'rinsin? → balans SUMMASI yo'q, faqat "to'lov
+  kutilmoqda (N oy)" belgisi → jurnal balansni ko'rsatadi, lekin umumiy ro'yxatda ortiqcha pul
+  ma'lumoti kerak emas; telefon raqamlari ham berilmadi (aloqa — "Bog'lanish kerak" navbati orqali)
+- [2026-09-27] Dars jadvali qaysi ruxsat bilan? → mavjud `schedule` ("Dars jadvali") kaliti;
+  o'quvchilar ro'yxati → `journal` → yangi ruxsat kaliti qo'shilmadi; bosh sahifa ruxsatsiz, lekin
+  jadval ruxsati bo'lmasa bugungi darslar bo'sh keladi (403 emas)
+- [2026-09-27] Tezkor davomatda belgilanmagan o'quvchi qanday ko'rinadi? → BELGILANMAGAN (foydalanuvchi
+  talabi) va hammasi belgilanmaguncha saqlab bo'lmaydi; saqlash tasdiqlash oynasi orqali → jurnal
+  qoidasi yozuvsiz o'quvchini «keldi» deb o'qiydi, qisman saqlash yolg'on davomat berardi. FAQAT
+  o'zgarganlar yuboriladi — har "kelmadi" ota-onaga avto-xabar, qayta saqlashda takrorlanmasin

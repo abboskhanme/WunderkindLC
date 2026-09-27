@@ -79,7 +79,7 @@ export function TeacherMessagesPage() {
           ))}
 
           {classes.length === 0 && (
-            <p className="rounded-[18px] border border-dashed border-line px-4 py-8 text-center text-[13px] text-faint">
+            <p className="rounded-xl border border-dashed border-line px-4 py-8 text-center text-[13px] text-faint">
               Sizga biriktirilgan guruh yo'q.
             </p>
           )}
@@ -108,7 +108,7 @@ function ChannelRow({
     <button
       type="button"
       onClick={onClick}
-      className="tap-scale flex w-full items-center gap-3 rounded-[18px] border border-line bg-white p-3.5 text-left shadow-[var(--shadow-card)]"
+      className="tap-scale flex w-full items-center gap-3 rounded-xl border border-line bg-white p-3.5 text-left shadow-[var(--shadow-card)]"
     >
       <div
         className={cn(

@@ -6,7 +6,7 @@ import {
 import { Link } from 'react-router-dom'
 import type { SalaryLedger, TeacherClass } from '@/types'
 import { getMyClasses, getTeacherSalary, getTeacherProfile } from '@/api/services/teacher'
-import { getTeacherTheme, setTeacherTheme } from '@/components/layout/TeacherMobileLayout'
+import { getTeacherTheme, setTeacherTheme } from '@/lib/teacherPortal'
 import { useAuth } from '@/context/auth-context'
 import { Loader } from '@/components/ui/Loader'
 import { formatMoney, cn } from '@/lib/utils'
@@ -18,12 +18,12 @@ type MenuItem = { to: string; label: string; sub: string; icon: typeof BookOpen;
 
 // Support o'qituvchi uchun qo'shimcha bo'lim (faqat IsSupport bo'lsa ko'rsatiladi).
 const SUPPORT_MENU: MenuItem = {
-  to: '/teacher/support', label: 'Support', sub: "Bo'sh vaqt va bron darslari", icon: LifeBuoy, color: '#0d9488',
+  to: '/teacher/support', label: 'Support', sub: "Bo'sh vaqt va bron darslari", icon: LifeBuoy, color: '#3d68ff',
 }
 
 const MENU: MenuItem[] = [
   { to: '/teacher/salary', label: 'Maosh', sub: 'Oylik hisob va tarix', icon: Wallet, color: '#7c3aed' },
-  { to: '/teacher/feedback', label: 'Taklif va shikoyat', sub: 'Adminga xabar yuborish', icon: MessageSquare, color: '#0d9488' },
+  { to: '/teacher/feedback', label: 'Taklif va shikoyat', sub: 'Adminga xabar yuborish', icon: MessageSquare, color: '#3d68ff' },
   { to: '/teacher/account', label: 'Parolni almashtirish', sub: 'Hisob xavfsizligi', icon: Lock, color: '#64748b' },
 ]
 
@@ -92,12 +92,12 @@ export function TeacherProfilePage() {
       <p className="mb-3 text-[17px] font-extrabold text-ink">Profil</p>
 
       {/* Header karta — teal cover + avatar + ma'lumot qatorlari */}
-      <div className="overflow-hidden rounded-[20px] border border-line bg-white shadow-[var(--shadow-card)]">
+      <div className="overflow-hidden rounded-xl border border-line bg-white shadow-[var(--shadow-card)]">
         <div className="h-[90px] bg-gradient-to-br from-teal-500 to-teal-700" />
         <div className="-mt-10 flex flex-col items-center pb-4">
           <div
             className="flex h-20 w-20 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-teal-500 to-teal-700 text-[30px] font-bold text-white"
-            style={{ boxShadow: '0 0 0 2px var(--color-paper), 0 0 0 5px rgba(13,148,136,.5)' }}
+            style={{ boxShadow: '0 0 0 2px var(--color-paper), 0 0 0 5px rgba(61,104,255,.45)' }}
           >
             {initialsOf(user?.fullName || 'O')}
           </div>
@@ -138,15 +138,15 @@ export function TeacherProfilePage() {
           Dars beradigan guruhlar
         </p>
         {loading ? (
-          <div className="rounded-[20px] border border-line bg-white p-5 shadow-[var(--shadow-card)]">
+          <div className="rounded-xl border border-line bg-white p-5 shadow-[var(--shadow-card)]">
             <Loader label="Yuklanmoqda..." />
           </div>
         ) : classes.length === 0 ? (
-          <div className="rounded-[20px] border border-line bg-white px-5 py-8 text-center text-[13px] text-faint shadow-[var(--shadow-card)]">
+          <div className="rounded-xl border border-line bg-white px-5 py-8 text-center text-[13px] text-faint shadow-[var(--shadow-card)]">
             Sizga biriktirilgan guruh/fan yo'q.
           </div>
         ) : (
-          <div className="overflow-hidden rounded-[20px] border border-line bg-white shadow-[var(--shadow-card)]">
+          <div className="overflow-hidden rounded-xl border border-line bg-white shadow-[var(--shadow-card)]">
             {classes.map((c, i) => (
               <Link
                 key={c.classId}
@@ -174,7 +174,7 @@ export function TeacherProfilePage() {
       </div>
 
       {/* Bo'limlar menyusi */}
-      <div className="mt-4 overflow-hidden rounded-[20px] border border-line bg-white shadow-[var(--shadow-card)]">
+      <div className="mt-4 overflow-hidden rounded-xl border border-line bg-white shadow-[var(--shadow-card)]">
         {menu.map((m, i) => {
           const Icon = m.icon
           return (
@@ -204,7 +204,7 @@ export function TeacherProfilePage() {
 
       {/* Sozlamalar */}
       <p className="mb-2 mt-5 pl-1 text-[13px] font-bold tracking-tight text-ink">Sozlamalar</p>
-      <div className="overflow-hidden rounded-[20px] border border-line bg-white shadow-[var(--shadow-card)]">
+      <div className="overflow-hidden rounded-xl border border-line bg-white shadow-[var(--shadow-card)]">
         <ToggleRow
           icon={Moon}
           color="#7c3aed"
@@ -216,7 +216,7 @@ export function TeacherProfilePage() {
         />
         <ToggleRow
           icon={Bell}
-          color="#0d9488"
+          color="#3d68ff"
           label="Bildirishnoma"
           sub={push ? 'Yoqilgan' : "O'chirilgan"}
           on={push}

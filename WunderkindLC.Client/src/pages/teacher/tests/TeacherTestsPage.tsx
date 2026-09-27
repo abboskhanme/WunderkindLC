@@ -54,15 +54,15 @@ export function TeacherTestsPage() {
       <p className="mb-3 text-[17px] font-extrabold text-ink">Test natijalari</p>
 
       {classesLoading ? (
-        <div className="rounded-[20px] border border-line bg-white p-6 shadow-[var(--shadow-card)]">
+        <div className="rounded-xl border border-line bg-white p-6 shadow-[var(--shadow-card)]">
           <Loader label="Yuklanmoqda..." />
         </div>
       ) : classes.length === 0 ? (
-        <div className="rounded-[20px] border border-line bg-white px-5 py-8 text-center text-[13px] text-faint shadow-[var(--shadow-card)]">
+        <div className="rounded-xl border border-line bg-white px-5 py-8 text-center text-[13px] text-faint shadow-[var(--shadow-card)]">
           Sizga biriktirilgan guruh yo'q.
         </div>
       ) : (
-        <div className="overflow-hidden rounded-[20px] border border-line bg-white shadow-[var(--shadow-card)]">
+        <div className="overflow-hidden rounded-xl border border-line bg-white shadow-[var(--shadow-card)]">
           {classes.map((c, i) => (
             <button
               key={c.classId}

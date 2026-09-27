@@ -91,7 +91,7 @@ export function TeacherRatingPage() {
 
       {/* Oy navigatsiyasi — «Umumiy» (standart) yoki bitta oy kesimi. Yuklanish paytida
           ham ekranda qoladi, ya'ni oy almashtirish uzilmaydi. */}
-      <div className="mb-3 rounded-[20px] border border-line bg-white p-2.5 shadow-[var(--shadow-card)]">
+      <div className="mb-3 rounded-xl border border-line bg-white p-2.5 shadow-[var(--shadow-card)]">
         <div className="flex items-center justify-center gap-2">
           <button
             type="button"
@@ -130,11 +130,11 @@ export function TeacherRatingPage() {
       {loading ? (
         <Loader label="Yuklanmoqda..." />
       ) : error ? (
-        <div className="flex flex-col items-center justify-center gap-2 rounded-[20px] border border-line bg-white p-8 text-center shadow-[var(--shadow-card)]">
+        <div className="flex flex-col items-center justify-center gap-2 rounded-xl border border-line bg-white p-8 text-center shadow-[var(--shadow-card)]">
           <p className="text-[13px] font-semibold text-rose-600">{error}</p>
         </div>
       ) : !rating || rows.length === 0 ? (
-        <div className="flex flex-col items-center justify-center gap-3 rounded-[20px] border border-line bg-white p-8 text-center shadow-[var(--shadow-card)]">
+        <div className="flex flex-col items-center justify-center gap-3 rounded-xl border border-line bg-white p-8 text-center shadow-[var(--shadow-card)]">
           <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-tealsoft text-teal-700">
             <Trophy className="h-6 w-6" />
           </div>
@@ -148,7 +148,7 @@ export function TeacherRatingPage() {
       ) : (
         <>
           {/* Umumiy karta */}
-          <div className="rounded-[20px] border border-line bg-white p-4 shadow-[var(--shadow-card)]">
+          <div className="rounded-xl border border-line bg-white p-4 shadow-[var(--shadow-card)]">
             <div className="mb-3 flex items-center gap-2.5">
               <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-tealsoft text-teal-700">
                 <Trophy className="h-5 w-5" />
@@ -162,19 +162,19 @@ export function TeacherRatingPage() {
             </div>
 
             <div className="grid grid-cols-3 gap-2">
-              <div className="rounded-[14px] border border-line bg-white p-2.5 text-center">
+              <div className="rounded-lg border border-line bg-white p-2.5 text-center">
                 <p className="text-[11px] font-semibold text-faint">Guruhlar</p>
                 <p className="mt-0.5 text-[14px] font-extrabold text-ink font-mono">
                   {rating.groupsCount}
                 </p>
               </div>
-              <div className="rounded-[14px] border border-line bg-white p-2.5 text-center">
+              <div className="rounded-lg border border-line bg-white p-2.5 text-center">
                 <p className="text-[11px] font-semibold text-faint">O'quvchilar</p>
                 <p className="mt-0.5 text-[14px] font-extrabold text-ink font-mono">
                   {rating.studentsCount}
                 </p>
               </div>
-              <div className="rounded-[14px] border border-line bg-white p-2.5 text-center">
+              <div className="rounded-lg border border-line bg-white p-2.5 text-center">
                 <p className="text-[11px] font-semibold text-faint">O'rtacha ball</p>
                 <p className="mt-0.5 text-[14px] font-extrabold text-teal-700 font-mono">
                   {rating.averageBall.toFixed(1)}
@@ -191,7 +191,7 @@ export function TeacherRatingPage() {
                 return (
                   <div
                     key={r.studentId}
-                    className="flex flex-col items-center gap-1.5 rounded-[16px] border border-line bg-white p-3 text-center shadow-[var(--shadow-card)]"
+                    className="flex flex-col items-center gap-1.5 rounded-xl border border-line bg-white p-3 text-center shadow-[var(--shadow-card)]"
                   >
                     <div
                       className={`flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br text-white ${style.ring}`}
@@ -213,7 +213,7 @@ export function TeacherRatingPage() {
 
           {/* Qolgan ro'yxat */}
           {rest.length > 0 && (
-            <div className="mt-3 divide-y divide-line rounded-[20px] border border-line bg-white shadow-[var(--shadow-card)]">
+            <div className="mt-3 divide-y divide-line rounded-xl border border-line bg-white shadow-[var(--shadow-card)]">
               {rest.map((r) => {
                 const pct = maxBall > 0 ? Math.round((r.ball / maxBall) * 100) : 0
                 return (

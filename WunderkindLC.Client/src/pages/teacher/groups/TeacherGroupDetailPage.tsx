@@ -375,8 +375,8 @@ export function TeacherGroupDetailPage() {
       {/* Sarlavha */}
       <div className="flex items-center gap-3">
         <Link
-          to="/teacher"
-          className="rounded-[14px] border border-line bg-white p-2 text-mute transition-colors hover:bg-tealsoft hover:text-teal-700"
+          to="/teacher/groups"
+          className="rounded-lg border border-line bg-white p-2 text-mute transition-colors hover:bg-tealsoft hover:text-teal-700"
         >
           <ArrowLeft className="h-5 w-5" />
         </Link>
@@ -393,13 +393,13 @@ export function TeacherGroupDetailPage() {
       {loading && !journal ? (
         <Loader label="Yuklanmoqda..." />
       ) : !g ? (
-        <Card className="rounded-[20px] border border-line bg-white py-16 text-center text-faint shadow-[var(--shadow-card)]">
+        <Card className="rounded-xl border border-line bg-white py-16 text-center text-faint shadow-[var(--shadow-card)]">
           Guruh topilmadi
         </Card>
       ) : (
         <>
           {/* Guruh ma'lumotlari */}
-          <Card className="rounded-[20px] border border-line bg-white shadow-[var(--shadow-card)]">
+          <Card className="rounded-xl border border-line bg-white shadow-[var(--shadow-card)]">
             <div className="grid grid-cols-2 gap-x-4 gap-y-4">
               <Info icon={BookOpen} label="Kurs" value={g.courseName || "—"} />
               <Info icon={User} label="O'qituvchi" value={g.teacherName || "—"} />
@@ -412,7 +412,7 @@ export function TeacherGroupDetailPage() {
                 icon={Clock}
                 label="Vaqt"
                 value={
-                  g.startTime || g.endTime ? `${g.startTime || "—"}${g.endTime ? ` â€“ ${g.endTime}` : ""}` : "—"
+                  g.startTime || g.endTime ? `${g.startTime || "—"}${g.endTime ? ` – ${g.endTime}` : ""}` : "—"
                 }
                 mono
               />
@@ -452,7 +452,7 @@ export function TeacherGroupDetailPage() {
 
           {/* Oylik jurnal */}
           {groupView === "jurnal" && (
-            <Card className="rounded-[20px] border border-line bg-white p-0 shadow-[var(--shadow-card)]">
+            <Card className="rounded-xl border border-line bg-white p-0 shadow-[var(--shadow-card)]">
               <div className="flex items-center gap-2 border-b border-line-soft px-4 py-3">
                 <BookOpen className="h-5 w-5 text-teal-600" />
                 <h2 className="font-semibold text-ink">Jurnal</h2>
@@ -676,7 +676,7 @@ export function TeacherGroupDetailPage() {
 
           {/* Davomat — shu oy jurnalidan har o'quvchi bo'yicha davomat foizi */}
           {groupView === "davomat" && (
-            <Card className="rounded-[20px] border border-line bg-white p-0 shadow-[var(--shadow-card)]">
+            <Card className="rounded-xl border border-line bg-white p-0 shadow-[var(--shadow-card)]">
               <div className="flex items-center gap-2 border-b border-line-soft px-4 py-3">
                 <ClipboardCheck className="h-5 w-5 text-teal-600" />
                 <h2 className="font-semibold text-ink">Davomat</h2>
@@ -759,7 +759,7 @@ export function TeacherGroupDetailPage() {
 
           {/* Baholash — har darsga mezonlar bo'yicha bajardi/bajarmadi (faqat o'z guruhi) */}
           {groupView === "baholash" && (
-            <Card className="rounded-[20px] border border-line bg-white shadow-[var(--shadow-card)]">
+            <Card className="rounded-xl border border-line bg-white shadow-[var(--shadow-card)]">
               <h2 className="mb-3 font-semibold text-ink">Baholash</h2>
               <GradingSection
                 groupId={id}
@@ -772,7 +772,7 @@ export function TeacherGroupDetailPage() {
 
           {/* Reyting — o'quvchilarning o'rtacha bahosi va baholash statistikasi (bir yoki bir nechta oy) */}
           {groupView === "aloqa" && id && (
-            <Card className="rounded-[20px] border border-line bg-white p-4 shadow-[var(--shadow-card)]">
+            <Card className="rounded-xl border border-line bg-white p-4 shadow-[var(--shadow-card)]">
               <div className="mb-3 flex items-center gap-2">
                 <PhoneCall className="h-5 w-5 text-teal-600" />
                 <h2 className="font-semibold text-ink">Bog'lanish kerak</h2>
@@ -1141,7 +1141,7 @@ function RatingsTab({
     return (
       <div className="space-y-4">
         {monthChips}
-        <Card className="rounded-[20px] border border-line bg-white py-12 px-4 text-center text-faint shadow-[var(--shadow-card)]">
+        <Card className="rounded-xl border border-line bg-white py-12 px-4 text-center text-faint shadow-[var(--shadow-card)]">
           <TrendingUp className="mx-auto mb-3 h-8 w-8 opacity-40" />
           <p>Baholash mezonlari topilmadi yoki o'quvchi yo'q.</p>
         </Card>
@@ -1240,7 +1240,7 @@ function RatingsTab({
       </div>
 
       {/* O'quvchilar jadvali */}
-      <Card className="rounded-[20px] border border-line bg-white p-0 shadow-[var(--shadow-card)]">
+      <Card className="rounded-xl border border-line bg-white p-0 shadow-[var(--shadow-card)]">
         <div className="overflow-x-auto">
           <table className="min-w-full border-collapse">
             <thead>
@@ -1304,7 +1304,7 @@ function RatingsTab({
 
       {/* Mezonlar bo'yicha detallar (agar ko'p bo'lsa) */}
       {criteria.length > 3 && (
-        <Card className="rounded-[20px] border border-line bg-white p-4 shadow-[var(--shadow-card)]">
+        <Card className="rounded-xl border border-line bg-white p-4 shadow-[var(--shadow-card)]">
           <h3 className="mb-4 font-semibold text-ink">Mezonlar bo'yicha tahlil</h3>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             {criteria.map((crit) => {
@@ -1350,7 +1350,7 @@ function RatingKpi({
   icon: typeof Users
 }) {
   return (
-    <div className="rounded-[18px] border border-line bg-white p-3 shadow-[var(--shadow-card)]">
+    <div className="rounded-xl border border-line bg-white p-3 shadow-[var(--shadow-card)]">
       <div className="mb-1 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-faint">
         <Icon className="h-3.5 w-3.5" />
         {label}
@@ -1388,7 +1388,7 @@ function CurriculumSection({
   const pct = curr && curr.totalItems > 0 ? Math.round((curr.coveredCount / curr.totalItems) * 100) : 0
 
   return (
-    <Card className="rounded-[20px] border border-line bg-white p-0 shadow-[var(--shadow-card)]">
+    <Card className="rounded-xl border border-line bg-white p-0 shadow-[var(--shadow-card)]">
       <button
         type="button"
         onClick={onToggleOpen}
@@ -1618,7 +1618,7 @@ function ForecastTile({
   children: ReactNode
 }) {
   return (
-    <div className="rounded-[18px] border border-line bg-white p-3 shadow-[var(--shadow-card)]">
+    <div className="rounded-xl border border-line bg-white p-3 shadow-[var(--shadow-card)]">
       <div className="mb-1 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-faint">
         <Icon className="h-3.5 w-3.5" />
         {label}

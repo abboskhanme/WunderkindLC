@@ -944,7 +944,7 @@ export function TeacherGroupTestsPanel({
         </div>
 
         {detail && isOnline && (
-          <div className="mb-3 rounded-[20px] border border-line bg-white p-4 shadow-[var(--shadow-card)]">
+          <div className="mb-3 rounded-xl border border-line bg-white p-4 shadow-[var(--shadow-card)]">
             <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-[12px] text-mute">
               <span className="inline-flex items-center gap-1.5 rounded-md bg-violet-50 px-2 py-1 text-[10px] font-bold text-violet-600">
                 <Bot className="h-3.5 w-3.5" /> ONLAYN TEST
@@ -1010,20 +1010,20 @@ export function TeacherGroupTestsPanel({
         )}
 
         {detailLoading ? (
-          <div className="rounded-[20px] border border-line bg-white p-6 shadow-[var(--shadow-card)]">
+          <div className="rounded-xl border border-line bg-white p-6 shadow-[var(--shadow-card)]">
             <Loader label="Yuklanmoqda..." />
           </div>
         ) : detailError ? (
-          <div className="rounded-[20px] border border-line bg-white p-6 text-center text-[13px] font-semibold text-rose-600 shadow-[var(--shadow-card)]">
+          <div className="rounded-xl border border-line bg-white p-6 text-center text-[13px] font-semibold text-rose-600 shadow-[var(--shadow-card)]">
             {detailError}
           </div>
         ) : detail && detail.rows.length === 0 ? (
-          <div className="rounded-[20px] border border-line bg-white px-5 py-8 text-center text-[13px] text-faint shadow-[var(--shadow-card)]">
+          <div className="rounded-xl border border-line bg-white px-5 py-8 text-center text-[13px] text-faint shadow-[var(--shadow-card)]">
             Bu guruhda faol o'quvchi yo'q.
           </div>
         ) : (
           detail && (
-            <div className="overflow-hidden rounded-[20px] border border-line bg-white shadow-[var(--shadow-card)]">
+            <div className="overflow-hidden rounded-xl border border-line bg-white shadow-[var(--shadow-card)]">
               {external.length > 0 && (
                 <p className="flex items-center gap-1.5 border-b border-line bg-panel2 px-4 py-2 text-[12px] font-bold text-mute">
                   <Users className="h-3.5 w-3.5 text-faint" /> Markazdagilar
@@ -1095,7 +1095,7 @@ export function TeacherGroupTestsPanel({
         {/* MARKAZDAN TASHQARI — test kodi bilan kirgan, markazda o'qimaydigan ishtirokchilar.
             Ular Student emas: ball qo'lda tahrirlanmaydi (faqat botdan kelgan natija). */}
         {detail && external.length > 0 && (
-          <div className="mt-4 overflow-hidden rounded-[20px] border border-line bg-white shadow-[var(--shadow-card)]">
+          <div className="mt-4 overflow-hidden rounded-xl border border-line bg-white shadow-[var(--shadow-card)]">
             <p className="flex items-center gap-1.5 border-b border-line bg-panel2 px-4 py-2 text-[12px] font-bold text-mute">
               <Globe className="h-3.5 w-3.5 text-teal-500" /> Markazdan tashqari
               <span className="font-normal text-faint">({external.length})</span>
@@ -1168,7 +1168,7 @@ export function TeacherGroupTestsPanel({
                 {certError || certJob?.error}
               </p>
             )}
-            <div className="sticky bottom-0 z-10 mt-3 rounded-[20px] border border-line bg-white/95 p-3 shadow-[var(--shadow-card)] backdrop-blur">
+            <div className="sticky bottom-0 z-10 mt-3 rounded-xl border border-line bg-white/95 p-3 shadow-[var(--shadow-card)] backdrop-blur">
               <button
                 type="button"
                 onClick={generateCertificates}
@@ -1195,7 +1195,7 @@ export function TeacherGroupTestsPanel({
         {/* SERTIFIKATLAR — yaratilganlari (yuklab olish: PDF yoki Word) */}
         {/* `certEnabled` SHART: sertifikat yoqilmagan testda bu bo'lim umuman chiqmasligi kerak. */}
         {detail && certEnabled && certificates.length > 0 && (
-          <div className="mt-4 overflow-hidden rounded-[20px] border border-line bg-white shadow-[var(--shadow-card)]">
+          <div className="mt-4 overflow-hidden rounded-xl border border-line bg-white shadow-[var(--shadow-card)]">
             <div className="flex items-center gap-2 border-b border-line bg-panel2 px-4 py-2">
               <p className="flex min-w-0 flex-1 items-center gap-1.5 text-[12px] font-bold text-mute">
                 <Award className="h-3.5 w-3.5 text-emerald-600" /> Sertifikatlar
@@ -1292,15 +1292,15 @@ export function TeacherGroupTestsPanel({
       </div>
 
       {testsLoading ? (
-        <div className="rounded-[20px] border border-line bg-white p-6 shadow-[var(--shadow-card)]">
+        <div className="rounded-xl border border-line bg-white p-6 shadow-[var(--shadow-card)]">
           <Loader label="Yuklanmoqda..." />
         </div>
       ) : testsError ? (
-        <div className="rounded-[20px] border border-line bg-white p-6 text-center text-[13px] font-semibold text-rose-600 shadow-[var(--shadow-card)]">
+        <div className="rounded-xl border border-line bg-white p-6 text-center text-[13px] font-semibold text-rose-600 shadow-[var(--shadow-card)]">
           {testsError}
         </div>
       ) : tests.length === 0 ? (
-        <div className="rounded-[20px] border border-line bg-white px-5 py-8 text-center shadow-[var(--shadow-card)]">
+        <div className="rounded-xl border border-line bg-white px-5 py-8 text-center shadow-[var(--shadow-card)]">
           <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-tealsoft text-teal-600">
             <ClipboardList className="h-6 w-6" />
           </div>
@@ -1312,7 +1312,7 @@ export function TeacherGroupTestsPanel({
           {tests.map((t) => (
             <div
               key={t.id}
-              className="tap-scale rounded-[20px] border border-line bg-white p-4 shadow-[var(--shadow-card)]"
+              className="tap-scale rounded-xl border border-line bg-white p-4 shadow-[var(--shadow-card)]"
             >
               <div className="flex items-start gap-3">
                 <button
