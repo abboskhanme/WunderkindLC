@@ -6,6 +6,7 @@ import {
   importIgKnowledgeDocx, saveIgKnowledge, type IgKnowledge, type IgKnowledgeStatus,
 } from '@/api/services/instagram'
 import { Icon, MarketingPage, MkEmpty, MkError, MkLoading, MkNotice, MkStat } from './mk'
+import { formatNumber } from '@/lib/numberFormat'
 
 /**
  * BILIM BAZASI — AI javoblarining YAGONA manbasi.
@@ -263,7 +264,7 @@ export function InstagramKnowledge() {
             <MkStat label="Jami bo'lak" value={stats.total} icon="book" tone="primary" />
             <MkStat label="Faol" value={stats.active} icon="check" tone="success" hint="Faqat shular promptga tushadi" />
             <MkStat label="O'chiq" value={stats.off} icon="close" tone="muted" hint="Saqlanadi, lekin ishlatilmaydi" />
-            <MkStat label="Matn hajmi" value={stats.chars.toLocaleString()} icon="text" tone="muted" hint="Belgilar soni" />
+            <MkStat label="Matn hajmi" value={formatNumber(stats.chars)} icon="text" tone="muted" hint="Belgilar soni" />
           </div>
         )}
 
@@ -306,7 +307,7 @@ export function InstagramKnowledge() {
                   <div style={{ minWidth: 0 }}>
                     <div style={{ fontWeight: 600 }}>{src.fileName}</div>
                     <div className="field-hint" style={{ margin: 0 }}>
-                      {src.chunks} ta bo'lak · {src.chars.toLocaleString()} belgi
+                      {src.chunks} ta bo'lak · {formatNumber(src.chars)} belgi
                     </div>
                   </div>
                   {canEdit && (

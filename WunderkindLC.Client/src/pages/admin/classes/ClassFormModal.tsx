@@ -8,6 +8,7 @@ import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { EduFormModal, EduField } from '@/components/ui/list/EduFormModal'
 import { eduInputCls, eduTextareaCls } from '@/components/ui/list/eduStyles'
+import { MoneyInput, NumberInput } from '@/components/ui/NumberInput'
 import { languageOptions } from '@/config/constants'
 import { cn } from '@/lib/utils'
 
@@ -29,17 +30,23 @@ const dayLabels: { value: number; label: string }[] = [
   { value: 6, label: 'Yak' },
 ]
 
-const empty: ClassPayload = {
+// Narx va sig'im maydonlari BO'SH bo'la oladi — saqlashda aylantiriladi.
+type ClassForm = Omit<ClassPayload, 'monthlyFee' | 'capacity'> & {
+  monthlyFee: number | null
+  capacity: number | null
+}
+
+const empty: ClassForm = {
   name: '',
   grade: 0,
   language: 'uz',
-  monthlyFee: 0,
+  monthlyFee: null,
   room: '',
   roomId: '',
   status: 'active',
   startDate: '',
   endDate: '',
-  capacity: 0,
+  capacity: null,
   courseId: '',
   teacherId: '',
   note: '',
@@ -49,7 +56,7 @@ const empty: ClassPayload = {
 }
 
 export function ClassFormModal({ open, onClose, onSubmit, initial }: Props) {
-  const [form, setForm] = useState<ClassPayload>(empty)
+  const [form, setForm] = useState<ClassForm>(empty)
   const [subjects, setSubjects] = useState<Subject[]>([])
   const [teachers, setTeachers] = useState<Teacher[]>([])
   const [rooms, setRooms] = useState<Room[]>([])
@@ -85,7 +92,7 @@ export function ClassFormModal({ open, onClose, onSubmit, initial }: Props) {
             status: initial.status ?? 'active',
             startDate: initial.startDate ?? '',
             endDate: initial.endDate ?? '',
-            capacity: initial.capacity ?? 0,
+            capacity: initial.capacity ?? null,
             courseId: initial.courseId ?? '',
             teacherId: initial.teacherId ?? '',
             note: initial.note ?? '',
@@ -97,7 +104,7 @@ export function ClassFormModal({ open, onClose, onSubmit, initial }: Props) {
     )
   }, [open, initial])
 
-  const update = <K extends keyof ClassPayload>(key: K, value: ClassPayload[K]) =>
+  const update = <K extends keyof ClassForm>(key: K, value: ClassForm[K]) =>
     setForm((f) => ({ ...f, [key]: value }))
 
   /** Kurs tanlanganda oylik narxni avtomatik to'ldirish (tahrirlash mumkin). */
@@ -127,8 +134,14 @@ export function ClassFormModal({ open, onClose, onSubmit, initial }: Props) {
       alert("Guruhga o'qituvchi biriktirish majburiy")
       return
     }
+    // Bo'sh narx jimgina 0 deb saqlanmaydi (bepul guruh bo'lsa 0 aniq yoziladi).
+    if (form.monthlyFee === null) {
+      alert("Oylik narxni kiriting (bepul bo'lsa 0 yozing)")
+      return
+    }
     try {
-      doSubmit(form)
+      // Sig'im bo'sh = 0 = cheksiz.
+      doSubmit({ ...form, monthlyFee: form.monthlyFee, capacity: form.capacity ?? 0 })
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message
       alert(msg ?? 'Saqlashda xatolik yuz berdi')
@@ -218,13 +231,11 @@ export function ClassFormModal({ open, onClose, onSubmit, initial }: Props) {
             </select>
           </EduField>
           <EduField label="Oylik narx (so'm)">
-            <input
+            <MoneyInput
+              as="input"
               className={eduInputCls}
-              type="number"
-              min={0}
-              step="any"
               value={form.monthlyFee}
-              onChange={(e) => update('monthlyFee', Number(e.target.value))}
+              onChange={(v) => update('monthlyFee', v)}
             />
           </EduField>
         </div>
@@ -344,12 +355,11 @@ export function ClassFormModal({ open, onClose, onSubmit, initial }: Props) {
             />
           </EduField>
           <EduField label="Sig'im (0 = cheksiz)">
-            <input
+            <NumberInput
+              as="input"
               className={eduInputCls}
-              type="number"
-              min={0}
-              value={form.capacity ?? 0}
-              onChange={(e) => update('capacity', Number(e.target.value))}
+              value={form.capacity}
+              onChange={(v) => update('capacity', v)}
             />
           </EduField>
         </div>

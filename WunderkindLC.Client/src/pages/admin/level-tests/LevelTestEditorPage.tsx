@@ -18,6 +18,8 @@ import { Input, Select, Textarea } from '@/components/ui/Input'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { LeadStageChip } from '@/components/leads/LeadStageChip'
 import { cn, formatDate, formatMoney, apiErrorMessage } from '@/lib/utils'
+import { formatPhone } from '@/lib/numberFormat'
+import { NumberInput } from '@/components/ui/NumberInput'
 
 interface QState {
   id?: string
@@ -27,7 +29,8 @@ interface QState {
   kind: 'question' | 'survey'
   multiple: boolean
 }
-interface BState { id?: string; label: string; minPercent: number }
+// minPercent tahrir paytida bo'sh bo'la oladi — saqlashda tekshiriladi.
+interface BState { id?: string; label: string; minPercent: number | null }
 
 function testUrl(slug: string) {
   return `${window.location.origin}/test/${slug}`
@@ -117,13 +120,18 @@ export function LevelTestEditorPage() {
     )
 
   // ---- Daraja diapazonlari ----
-  const addBand = () => setBands((bs) => [...bs, { label: '', minPercent: 0 }])
+  const addBand = () => setBands((bs) => [...bs, { label: '', minPercent: null }])
   const removeBand = (i: number) => setBands((bs) => bs.filter((_, x) => x !== i))
   const patchBand = (i: number, patch: Partial<BState>) =>
     setBands((bs) => bs.map((b, x) => (x === i ? { ...b, ...patch } : b)))
 
   const handleSave = async () => {
     if (!detail || saving) return
+    const noPercent = bands.find((b) => b.label.trim() && b.minPercent === null)
+    if (noPercent) {
+      alert(`«${noPercent.label.trim()}» darajasi uchun foizni kiriting`)
+      return
+    }
     setSaving(true)
     try {
       const updated = await updateLevelTest(id, {
@@ -142,7 +150,7 @@ export function LevelTestEditorPage() {
           }))
           .filter((q) => q.text.length > 0 && q.options.length >= 2),
         bands: bands
-          .map((b) => ({ id: b.id, label: b.label.trim(), minPercent: Math.max(0, Math.min(100, b.minPercent || 0)) }))
+          .map((b) => ({ id: b.id, label: b.label.trim(), minPercent: Math.max(0, Math.min(100, b.minPercent ?? 0)) }))
           .filter((b) => b.label.length > 0),
       })
       setDetail(updated)
@@ -412,7 +420,7 @@ export function LevelTestEditorPage() {
               <div className="space-y-2">
                 {[...bands]
                   .map((b, i) => ({ b, i }))
-                  .sort((a, z) => a.b.minPercent - z.b.minPercent)
+                  .sort((a, z) => (a.b.minPercent ?? 0) - (z.b.minPercent ?? 0))
                   .map(({ b, i }) => (
                     <div key={b.id ?? i} className="flex items-center gap-2">
                       <GripVertical className="h-4 w-4 shrink-0 text-slate-300" />
@@ -424,12 +432,10 @@ export function LevelTestEditorPage() {
                       />
                       <div className="flex items-center gap-1">
                         <span className="text-xs text-slate-400">≥</span>
-                        <input
-                          type="number"
-                          min={0}
-                          max={100}
+                        <NumberInput
+                          as="input"
                           value={b.minPercent}
-                          onChange={(e) => patchBand(i, { minPercent: Number(e.target.value) })}
+                          onChange={(v) => patchBand(i, { minPercent: v === null ? null : Math.min(100, v) })}
                           className="w-16 rounded-lg border border-slate-200 px-2 py-1.5 text-center font-mono text-sm text-slate-700 outline-none focus:border-brand-400"
                         />
                         <span className="text-xs text-slate-400">%</span>
@@ -489,7 +495,7 @@ export function LevelTestEditorPage() {
                           </div>
                         )}
                       </td>
-                      <td className="px-3 py-2 font-mono text-slate-500">{s.phone}</td>
+                      <td className="px-3 py-2 font-mono text-slate-500">{formatPhone(s.phone)}</td>
                       <td className="px-3 py-2 text-center text-slate-500">{s.age || '—'}</td>
                       <td className="px-3 py-2 text-center font-mono text-slate-700">
                         {s.score}/{s.total}
@@ -609,7 +615,7 @@ function StatsPanel({ stats, invites }: { stats: LevelTestStats | null; invites:
                     {r.fullName}
                     {r.isDeleted && <span className="ml-2 text-[11px] font-normal text-red-500">(o'chirilgan)</span>}
                   </td>
-                  <td className="px-3 py-2 font-mono text-slate-500">{r.phone}</td>
+                  <td className="px-3 py-2 font-mono text-slate-500">{formatPhone(r.phone)}</td>
                   <td className="px-3 py-2">
                     {r.level ? (
                       <span className="rounded-md bg-brand-50 px-2 py-0.5 text-xs font-semibold text-brand-700">{r.level}</span>
@@ -662,7 +668,7 @@ function StatsPanel({ stats, invites }: { stats: LevelTestStats | null; invites:
                 {invites.map((i) => (
                   <tr key={i.id} className="hover:bg-slate-50/60">
                     <td className="px-3 py-2 font-medium text-slate-700">{i.leadName}</td>
-                    <td className="px-3 py-2 font-mono text-slate-500">{i.phone}</td>
+                    <td className="px-3 py-2 font-mono text-slate-500">{formatPhone(i.phone)}</td>
                     <td className="px-3 py-2 text-center">
                       {i.smsStatus === 'sent' ? (
                         <span className="rounded-md bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700">Yuborilgan</span>

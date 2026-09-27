@@ -11,6 +11,7 @@ import type { LeadManagerRow } from '@/api/services/leads'
 import { Card } from '@/components/ui/Card'
 import { axisTick, barCursor, CATEGORICAL, gridStroke } from './palette'
 import { cn, formatMoney } from '@/lib/utils'
+import { formatNumber } from '@/lib/numberFormat'
 
 /**
  * SOTUV BO'LIMI — menejerlar reytingi: kim nechta lid bilan ishladi, nechtasini o'quvchiga
@@ -62,21 +63,21 @@ function ManagerTooltip({ active, payload }: TooltipProps) {
     <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-[13px] shadow-[var(--shadow-1)]">
       <p className="font-semibold text-slate-800">{r.name}</p>
       <p className="mt-1 text-slate-700">
-        <span className="font-mono font-semibold">{r.Lidlar.toLocaleString()}</span> ta lid
+        <span className="font-mono font-semibold">{formatNumber(r.Lidlar)}</span> ta lid
       </p>
       <p className="text-slate-700">
-        <span className="font-mono font-semibold">{r.Aylantirdi.toLocaleString()}</span> ta
+        <span className="font-mono font-semibold">{formatNumber(r.Aylantirdi)}</span> ta
         aylantirdi
         {rate != null && <span className="text-slate-400"> · {rate.toFixed(1)}%</span>}
       </p>
       <p className="text-slate-700">
-        <span className="font-mono font-semibold">{r["To'ladi"].toLocaleString()}</span> ta to'ladi
+        <span className="font-mono font-semibold">{formatNumber(r["To'ladi"])}</span> ta to'ladi
         {payRate != null && <span className="text-slate-400"> · {payRate.toFixed(1)}%</span>}
       </p>
       {r.revenue > 0 && (
-        <p className="mt-0.5 font-mono text-teal-700">{formatMoney(r.revenue)} so'm</p>
+        <p className="mt-0.5 font-mono text-teal-700">{formatMoney(r.revenue)}</p>
       )}
-      <p className="mt-0.5 text-slate-400">{r.moves.toLocaleString()} ta harakat</p>
+      <p className="mt-0.5 text-slate-400">{formatNumber(r.moves)} ta harakat</p>
     </div>
   )
 }
@@ -196,22 +197,22 @@ export function ManagerPerformance({ managers }: { managers: LeadManagerRow[] })
                     <tr key={m.userId} className="border-b border-slate-50 last:border-0">
                       <td className="py-2 pr-3 font-medium text-slate-700">{m.name || m.userId}</td>
                       <td className="py-2 pr-3 text-right font-mono tabular-nums text-slate-500">
-                        {m.created.toLocaleString()}
+                        {formatNumber(m.created)}
                       </td>
                       <td className="py-2 pr-3 text-right font-mono tabular-nums text-slate-500">
-                        {m.moves.toLocaleString()}
+                        {formatNumber(m.moves)}
                       </td>
                       <td className="py-2 pr-3 text-right font-mono tabular-nums text-slate-700">
-                        {m.leads.toLocaleString()}
+                        {formatNumber(m.leads)}
                       </td>
                       <td className="py-2 pr-3 text-right font-mono tabular-nums text-emerald-600">
-                        {m.won.toLocaleString()}
+                        {formatNumber(m.won)}
                       </td>
                       <td className="py-2 pr-3 text-right font-mono tabular-nums text-slate-500">
                         {rate != null ? `${rate.toFixed(1)}%` : '—'}
                       </td>
                       <td className="py-2 pr-3 text-right font-mono tabular-nums text-teal-700">
-                        {m.paid.toLocaleString()}
+                        {formatNumber(m.paid)}
                       </td>
                       <td
                         className={cn(

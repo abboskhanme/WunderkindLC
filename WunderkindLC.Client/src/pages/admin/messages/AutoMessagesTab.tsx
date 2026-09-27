@@ -28,6 +28,7 @@ import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
 import { Loader } from '@/components/ui/Loader'
 import { Select, Input } from '@/components/ui/Input'
+import { NumberInput } from '@/components/ui/NumberInput'
 import { Modal } from '@/components/ui/Modal'
 import { cn, apiErrorMessage } from '@/lib/utils'
 import { CHANNEL_LIST, CHANNELS, type ChannelKey } from '@/config/channels'
@@ -440,10 +441,10 @@ function MessageFormModal({
   )
   const [smsProvider, setSmsProvider] = useState<'eskiz' | 'local'>(editRule?.smsProvider === 'local' ? 'local' : 'eskiz')
   const [sendScope, setSendScope] = useState(editRule?.sendScope || sendScopeOptions[0].value)
-  const [offsetMinutes, setOffsetMinutes] = useState(editRule?.offsetMinutes ?? 0)
+  const [offsetMinutes, setOffsetMinutes] = useState<number | null>(editRule?.offsetMinutes ?? null)
   const [scheduleType, setScheduleType] = useState(editRule?.scheduleType || 'daily')
   const [scheduleTime, setScheduleTime] = useState(editRule?.scheduleTime || '09:00')
-  const [scheduleDayOfMonth, setScheduleDayOfMonth] = useState(editRule?.scheduleDayOfMonth ?? 1)
+  const [scheduleDayOfMonth, setScheduleDayOfMonth] = useState<number | null>(editRule?.scheduleDayOfMonth ?? null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
@@ -472,7 +473,7 @@ function MessageFormModal({
     setSendScope(sendScopeOptions[0].value)
     setScheduleType('daily')
     setScheduleTime('09:00')
-    setScheduleDayOfMonth(1)
+    setScheduleDayOfMonth(null)
   }
 
   const onCategoryChange = (cat: string) => {
@@ -516,6 +517,11 @@ function MessageFormModal({
           setSaving(false)
           return
         }
+        if (trigger.supportsSchedule && scheduleType === 'monthly' && (scheduleDayOfMonth ?? 0) < 1) {
+          setError('Oy kunini kiriting (1-28)')
+          setSaving(false)
+          return
+        }
         const input: AutoMessageRuleInput = {
           trigger: trigger.key,
           name: name.trim(),
@@ -525,12 +531,13 @@ function MessageFormModal({
           sendPush: picked.includes('push'),
           audience,
           template: body,
-          offsetMinutes,
+          // Bo'sh surilish = 0 (dars boshlanishida).
+          offsetMinutes: offsetMinutes ?? 0,
           sendScope: trigger.supportsSendScope ? sendScope : '',
           scheduleType: trigger.supportsSchedule ? scheduleType : '',
           // Vaqt kerak: reja (custom_schedule) YOKI qamrov "not_filled"/"all" (davomat eslatmasi kunlik vaqti).
           scheduleTime: trigger.supportsSchedule || trigger.supportsSendScope ? scheduleTime : '',
-          scheduleDayOfMonth,
+          scheduleDayOfMonth: scheduleDayOfMonth ?? 1,
           smsProvider,
         }
         if (editRule) await updateAutoMessageRule(editRule.id, input)
@@ -699,11 +706,11 @@ function MessageFormModal({
               ))}
             </Select>
             {sendScope === 'lesson_start' ? (
-              <Input
+              <NumberInput
                 label="Surilish (daq)"
-                type="number"
+                placeholder="0"
                 value={offsetMinutes}
-                onChange={(e) => setOffsetMinutes(Number(e.target.value) || 0)}
+                onChange={setOffsetMinutes}
               />
             ) : (
               <Input
@@ -727,13 +734,11 @@ function MessageFormModal({
             </Select>
             <Input label="Vaqt" type="time" value={scheduleTime} onChange={(e) => setScheduleTime(e.target.value)} />
             {scheduleType === 'monthly' && (
-              <Input
+              <NumberInput
                 label="Oy kuni (1-28)"
-                type="number"
-                min={1}
-                max={28}
+                placeholder="1"
                 value={scheduleDayOfMonth}
-                onChange={(e) => setScheduleDayOfMonth(Number(e.target.value) || 1)}
+                onChange={(v) => setScheduleDayOfMonth(v === null ? null : Math.min(v, 28))}
               />
             )}
           </div>

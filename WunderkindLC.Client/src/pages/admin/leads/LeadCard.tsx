@@ -4,6 +4,7 @@ import { CSS } from '@dnd-kit/utilities'
 import { IconPhone, IconRepeat } from '@tabler/icons-react'
 import type { Lead } from '@/types'
 import { formatDate, formatDateTime, cn } from '@/lib/utils'
+import { formatPhone } from '@/lib/numberFormat'
 
 /** Lid yaratilganidan beri o'tgan kun (createdAt "yyyy-MM-ddTHH:mm:ss"). */
 function leadAgeDays(createdAt?: string): number | null {
@@ -111,7 +112,7 @@ export function LeadCardContent({
         {onCall && phone && (
           <button
             type="button"
-            title={`Qo'ng'iroq qilish: ${phone}`}
+            title={`Qo'ng'iroq qilish: ${formatPhone(phone)}`}
             onClick={(e) => {
               e.stopPropagation()
               onCall(lead)

@@ -133,24 +133,24 @@ describe('exportToCsv', () => {
 
 describe('maskPhone', () => {
   it('9 xonali mahalliy raqamga +998 prefiksini qo\'shadi', () => {
-    expect(maskPhone('901234567')).toBe('(998) 90-123-45-67')
+    expect(maskPhone('901234567')).toBe('+998 90 123 45 67')
   })
 
   it('998… va +998… ni bir xil formatlaydi', () => {
-    expect(maskPhone('998901234567')).toBe('(998) 90-123-45-67')
-    expect(maskPhone('+998901234567')).toBe('(998) 90-123-45-67')
-    expect(maskPhone('+998 90 123 45 67')).toBe('(998) 90-123-45-67')
+    expect(maskPhone('998901234567')).toBe('+998 90 123 45 67')
+    expect(maskPhone('+998901234567')).toBe('+998 90 123 45 67')
+    expect(maskPhone('(998) 90-123-45-67')).toBe('+998 90 123 45 67')
   })
 
   it('qisman kiritishda progressiv maska beradi (input yozayotganda)', () => {
-    expect(maskPhone('9')).toBe('(998) 9')
-    expect(maskPhone('90')).toBe('(998) 90')
-    expect(maskPhone('9012')).toBe('(998) 90-12')
-    expect(maskPhone('90123456')).toBe('(998) 90-123-45-6')
+    expect(maskPhone('9')).toBe('+998 9')
+    expect(maskPhone('90')).toBe('+998 90')
+    expect(maskPhone('9012')).toBe('+998 90 12')
+    expect(maskPhone('90123456')).toBe('+998 90 123 45 6')
   })
 
   it('12 raqamdan ortig\'ini kesib tashlaydi', () => {
-    expect(maskPhone('9989012345670000')).toBe('(998) 90-123-45-67')
+    expect(maskPhone('9989012345670000')).toBe('+998 90 123 45 67')
   })
 
   it('bo\'sh satrni bo\'sh qoldiradi', () => {
@@ -162,17 +162,17 @@ describe('maskPhone', () => {
     expect(unmaskPhone(maskPhone('+998 90 123 45 67'))).toBe('998901234567')
   })
 
-  // XATO (src/lib/utils.ts:65-91): xorijiy raqamda `998` prefiksi KO'R-KO'RONA qo'shiladi va
-  // oxiri kesiladi → mavjud bo'lmagan O'ZBEK raqami hosil bo'ladi (`+79161234567` →
-  // `(998) 79-161-23-45`). Bunday raqam bazaga tushsa SMS/bot xabarlari begonaga ketishi mumkin.
+  // XATO (lib/numberFormat.ts formatPhoneInput): xorijiy raqamda `998` prefiksi KO'R-KO'RONA
+  // qo'shiladi va oxiri kesiladi → mavjud bo'lmagan O'ZBEK raqami hosil bo'ladi (`+79161234567` →
+  // `+998 79 161 23 45`). KO'RSATISH uchun `formatPhone` bu xatodan xoli (xorijiy raqamni tegmaydi). Bunday raqam bazaga tushsa SMS/bot xabarlari begonaga ketishi mumkin.
   it.skip('xorijiy raqamni soxta 998-raqamga aylantirmaydi', () => {
-    expect(maskPhone('+79161234567')).not.toBe('(998) 79-161-23-45')
+    expect(maskPhone('+79161234567')).not.toBe('+998 79 161 23 45')
     expect(unmaskPhone(maskPhone('+79161234567'))).toBe('79161234567')
   })
 
-  // XATO (src/lib/utils.ts:78-79): raqamsiz matn kiritilsa natija `'(998'` — YOPILMAGAN qavs,
-  // foydalanuvchiga "raqam bordek" ko'rinadi. Kutilgan: bo'sh satr.
-  it.skip('raqamsiz matndan yopilmagan qavs yasamaydi', () => {
+  // Ilgari XATO edi: raqamsiz matn `'(998'` (yopilmagan qavs) berardi. `+998 …` formatiga
+  // o'tilgach tuzatildi — endi bo'sh satr.
+  it('raqamsiz matndan bo\'sh satr qaytaradi', () => {
     expect(maskPhone('abc')).toBe('')
   })
 })

@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/Button'
 import { Loader } from '@/components/ui/Loader'
 import { Input, Textarea } from '@/components/ui/Input'
 import { apiErrorMessage, formatDateTime } from '@/lib/utils'
+import { formatPhone, typedPhoneInput } from '@/lib/numberFormat'
 
 interface Props {
   canEdit: boolean
@@ -35,7 +36,8 @@ export function CareerAboutTab({ canEdit }: Props) {
 
   useEffect(() => {
     getAbout()
-      .then(setForm)
+      // Saqlangan raqam ham `+998 90 123 45 67` ko'rinishida chiqsin (xorijiy raqam o'zgarmaydi).
+      .then((a) => setForm({ ...a, phone: formatPhone(a.phone), phone2: formatPhone(a.phone2) }))
       .catch((err) => setError(apiErrorMessage(err, "Ma'lumotni yuklab bo'lmadi")))
       .finally(() => setLoading(false))
   }, [])
@@ -190,14 +192,17 @@ export function CareerAboutTab({ canEdit }: Props) {
           <Input
             label="Telefon"
             value={form.phone}
-            onChange={(e) => set('phone', e.target.value)}
+            onChange={(e) => set('phone', typedPhoneInput(e.target.value, form.phone))}
+            inputMode="tel"
             placeholder="+998 90 123 45 67"
             disabled={!canEdit}
           />
           <Input
             label="Qo'shimcha telefon"
             value={form.phone2}
-            onChange={(e) => set('phone2', e.target.value)}
+            onChange={(e) => set('phone2', typedPhoneInput(e.target.value, form.phone2))}
+            inputMode="tel"
+            placeholder="+998 90 123 45 67"
             disabled={!canEdit}
           />
           <Input

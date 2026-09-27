@@ -8,6 +8,7 @@ import {
   type IgConversation, type IgConversationDetail, type IgConversationStatus,
 } from '@/api/services/instagram'
 import { ChannelIcon, Icon, MarketingPage, MkEmpty, MkError, MkLoading } from './mk'
+import { formatPhone } from '@/lib/numberFormat'
 
 /** Suhbat holati yorliqlari — xom kalit ekranda ko'rinmasin. */
 /** Avtomatik yangilash oralig'i (ms). Instagram javobi bir zumda kelmaydi — 15 soniya yetarli,
@@ -402,7 +403,7 @@ export function InstagramInbox() {
                       <Icon name="user" style={{ width: 18, height: 18, flexShrink: 0 }} />
                       <div style={{ flex: 1 }}>
                         <div className="mk-alert-title">Lidga bog'langan: {detail.lead.fullName}</div>
-                        <div>{detail.lead.phone || 'Telefon yo‘q'} · manba: {detail.lead.source || '—'}</div>
+                        <div>{detail.lead.phone ? formatPhone(detail.lead.phone) : 'Telefon yo‘q'} · manba: {detail.lead.source || '—'}</div>
                       </div>
                     </div>
                   )}

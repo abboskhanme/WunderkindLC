@@ -21,7 +21,8 @@ export default defineConfig({
     // Sof funksiyalar sinovdan o'tadi — DOM kerak emas. Kerak bo'lgan bir nechta joyda
     // (masalan `exportToCsv`) brauzer API'lari testning o'zida stub qilinadi.
     environment: 'node',
-    include: ['src/**/*.test.ts'],
+    // `.test.tsx` — komponent testlari (faylning boshida `// @vitest-environment jsdom`).
+    include: ['src/**/*.test.ts', 'src/**/*.test.tsx'],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'html'],

@@ -52,6 +52,7 @@ import { TablePagination, usePagination } from '@/components/ui/TablePagination'
 import { TeacherFormModal } from './TeacherFormModal'
 import { TeacherViewModal } from './TeacherViewModal'
 import { ReasonPromptModal } from '@/components/ui/ReasonPromptModal'
+import { formatPhone } from '@/lib/numberFormat'
 
 /** Ro'yxat holati filtri — avvalgi "Faol | Arxiv" tablari o'rniga (endi "Hammasi" ham bor). */
 type StatusFilter = 'active' | 'archived' | 'all'
@@ -468,7 +469,7 @@ export function TeachersPage() {
                       </td>
 
                       <td className="font-mono text-[12.5px] text-slate-600">
-                        {t.phone || <span className="text-slate-300">—</span>}
+                        {t.phone ? formatPhone(t.phone) : <span className="text-slate-300">—</span>}
                       </td>
 
                       {/* Fanlar / Guruhlar / Maosh rejimi — bu yerda KO'RSATILMAYDI (sarlavhadagi

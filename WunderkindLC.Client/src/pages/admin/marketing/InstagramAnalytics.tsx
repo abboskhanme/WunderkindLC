@@ -5,6 +5,7 @@ import {
 import { apiErrorMessage } from '@/lib/utils'
 import { getIgAnalytics, type IgAnalytics, type IgBreakdown } from '@/api/services/instagram'
 import { Icon, MarketingPage, MkCard, MkEmpty, MkError, MkLoading, MkStat } from './mk'
+import { formatNumber } from '@/lib/numberFormat'
 
 /**
  * GRAFIK RANGLARI — TEKSHIRILGAN (`.claude/rules/course-analytics.md`).
@@ -133,7 +134,7 @@ export function InstagramAnalytics() {
                 { label: 'Yaratilgan lidlar', value: data.totals.leads, tone: 'success', icon: 'user' },
                 { label: 'Qaynoq lidlar', value: data.totals.hot, tone: 'warning', icon: 'fire' },
               ] as const).map((s) => (
-                <MkStat key={s.label} label={s.label} value={s.value.toLocaleString()} tone={s.tone} icon={s.icon} />
+                <MkStat key={s.label} label={s.label} value={formatNumber(s.value)} tone={s.tone} icon={s.icon} />
               ))}
             </div>
 
@@ -192,7 +193,7 @@ export function InstagramAnalytics() {
                   <div className="feed-item" key={r.id} style={{ alignItems: 'center' }}>
                     <div className="rule-num" style={{ background: 'var(--primary-soft)', color: 'var(--primary)' }}>{i + 1}</div>
                     <div className="feed-body"><div style={{ fontWeight: 700, fontSize: 13.5 }}>{r.title}</div></div>
-                    <div className="mk-num">{r.count.toLocaleString()}</div>
+                    <div className="mk-num">{formatNumber(r.count)}</div>
                   </div>
                 ))}
             </MkCard>
@@ -227,7 +228,7 @@ function Breakdown({
                 </div>
               </div>
               <div style={{ textAlign: 'right', minWidth: 62 }}>
-                <div className="mk-num">{r.count.toLocaleString()}</div>
+                <div className="mk-num">{formatNumber(r.count)}</div>
                 <div className="feed-time">{pct}%</div>
               </div>
             </div>

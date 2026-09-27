@@ -34,6 +34,7 @@ import { PhoneInput } from '@/components/ui/PhoneInput'
 import { CredentialsBox } from '@/components/ui/CredentialsBox'
 import { ReasonPromptModal } from '@/components/ui/ReasonPromptModal'
 import { TeacherFormModal } from '@/pages/admin/teachers/TeacherFormModal'
+import { formatPhone } from '@/lib/numberFormat'
 
 // Avatar uchun ism harflari (faqat ko'rinish uchun)
 const initialsOf = (name: string) =>
@@ -423,7 +424,7 @@ export function StaffPage() {
                         </div>
                       </td>
                       <td className="px-4 py-2.5">{roleBadge(r)}</td>
-                      <td className="px-4 py-2.5 font-mono text-xs text-slate-500">{r.phone || '—'}</td>
+                      <td className="px-4 py-2.5 font-mono text-xs text-slate-500">{r.phone ? formatPhone(r.phone) : '—'}</td>
                       <td className="px-4 py-2.5">
                         <div className="flex items-center justify-end gap-0.5">
                           {r.kind === 'teacher' ? (

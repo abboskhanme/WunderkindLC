@@ -5,6 +5,7 @@ import { completeAndTransferClass, type CompleteAndTransferResult } from '@/api/
 import { getSubjects } from '@/api/services/subjects'
 import type { Subject } from '@/types'
 import posthog from '@/lib/posthog'
+import { formatNumber } from '@/lib/numberFormat'
 
 /** "YYYY-MM-DD" bugungi sana */
 const today = () => new Date().toISOString().slice(0, 10)
@@ -173,7 +174,7 @@ export function CompleteAndTransferModal({
             {courses.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.name}
-                {c.price ? ` — ${c.price.toLocaleString()} so'm/oy` : ''}
+                {c.price ? ` — ${formatNumber(c.price)} so'm/oy` : ''}
               </option>
             ))}
           </select>
@@ -194,7 +195,7 @@ export function CompleteAndTransferModal({
                 <strong>{selectedCourse.name}</strong>
               </span>
               {selectedCourse.price > 0 && (
-                <span>Oylik: {selectedCourse.price.toLocaleString()} so'm</span>
+                <span>Oylik: {formatNumber(selectedCourse.price)} so'm</span>
               )}
             </div>
           )}

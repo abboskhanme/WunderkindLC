@@ -14,8 +14,12 @@ import { roomTabs } from '@/config/sectionTabs'
 import { Loader } from '@/components/ui/Loader'
 import { Modal } from '@/components/ui/Modal'
 import { Input } from '@/components/ui/Input'
+import { NumberInput } from '@/components/ui/NumberInput'
 
-const emptyForm: CreateRoomPayload = {
+// Sig'im maydoni tahrir paytida bo'sh bo'la oladi — saqlashda tekshiriladi.
+type RoomForm = Omit<CreateRoomPayload, 'capacity'> & { capacity: number | null }
+
+const emptyForm: RoomForm = {
   name: '',
   capacity: 20,
   building: '',
@@ -27,7 +31,7 @@ export function RoomsPage() {
   const [loading, setLoading] = useState(true)
   const [formOpen, setFormOpen] = useState(false)
   const [editing, setEditing] = useState<Room | null>(null)
-  const [form, setForm] = useState<CreateRoomPayload>(emptyForm)
+  const [form, setForm] = useState<RoomForm>(emptyForm)
   const [saving, setSaving] = useState(false)
   const [deleteConfirm, setDeleteConfirm] = useState<Room | null>(null)
   const [query, setQuery] = useState('')
@@ -58,14 +62,18 @@ export function RoomsPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!form.name.trim()) return
-    if (form.capacity <= 0) return
+    if (form.capacity === null || form.capacity <= 0) {
+      alert("Sig'imni kiriting (1–1000)")
+      return
+    }
+    const payload: CreateRoomPayload = { ...form, capacity: form.capacity }
     setSaving(true)
     try {
       if (editing) {
-        const updated = await updateRoom(editing.id, form)
+        const updated = await updateRoom(editing.id, payload)
         setRooms((prev) => prev.map((r) => (r.id === updated.id ? updated : r)))
       } else {
-        const created = await createRoom(form)
+        const created = await createRoom(payload)
         setRooms((prev) => [...prev, created])
       }
       setFormOpen(false)
@@ -87,7 +95,7 @@ export function RoomsPage() {
     }
   }
 
-  const update = <K extends keyof CreateRoomPayload>(key: K, value: CreateRoomPayload[K]) =>
+  const update = <K extends keyof RoomForm>(key: K, value: RoomForm[K]) =>
     setForm((f) => ({ ...f, [key]: value }))
 
   // Cardlar yuklanish paytida ham TURADI — aks holda sahifa ochilganda ular bir lahzaga
@@ -215,14 +223,11 @@ export function RoomsPage() {
             value={form.name}
             onChange={(e) => update('name', e.target.value)}
           />
-          <Input
+          <NumberInput
             label="Sig'im (o'quvchilar soni) *"
-            type="number"
-            min={1}
-            max={1000}
             required
             value={form.capacity}
-            onChange={(e) => update('capacity', Number(e.target.value))}
+            onChange={(v) => update('capacity', v === null ? null : Math.min(1000, v))}
           />
           <Input
             label="Bino / qavat"

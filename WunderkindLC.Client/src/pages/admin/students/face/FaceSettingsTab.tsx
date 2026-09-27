@@ -5,6 +5,7 @@ import { getFaceSettings, saveFaceSettings } from '@/api/services/face'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { Input } from '@/components/ui/Input'
+import { NumberInput } from '@/components/ui/NumberInput'
 import { Loader } from '@/components/ui/Loader'
 import { apiErrorMessage, cn } from '@/lib/utils'
 import { FACE_PRIVACY_NOTE } from './faceLabels'
@@ -23,17 +24,21 @@ const MAX_THRESHOLD = 0.99
  *
  * ⚠️ Soatlik urinishlar chegarasi AYNAN shu jurnal qatorlaridan sanaladi; undan kam saqlansa
  * hisob hech qachon chegaraga yetmaydi va brute-force himoyasi JIMGINA o'chib qoladi. Server ham
- * shu qiymatgacha qisadi (`AdminFaceController.PutSettings`) — bu yerdagi `min` faqat foydalanuvchi
+ * shu qiymatgacha qisadi (`AdminFaceController.PutSettings`) — bu yerdagi tekshiruv faqat foydalanuvchi
  * pastroq son yozib, keyin "nega o'zgarmadi" deb hayron bo'lmasligi uchun.
  */
 const MIN_KEEP_CHECKS = 5
+const MAX_KEEP_CHECKS = 100
+
+/** Forma holati: selfilar soni maydoni BO'SH bo'la oladi (`null`). */
+type FaceSettingsForm = Omit<FaceSettings, 'keepChecks'> & { keepChecks: number | null }
 
 /**
  * SOZLAMALAR — modulni yoqish, o'xshashlik chegarasi, model versiyasi va saqlanadigan
  * selfilar soni. Qiymatlar `CenterMeta` da (maxfiy emas — kalit/parol emas).
  */
 export function FaceSettingsTab({ canEdit }: Props) {
-  const [settings, setSettings] = useState<FaceSettings | null>(null)
+  const [settings, setSettings] = useState<FaceSettingsForm | null>(null)
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -46,17 +51,22 @@ export function FaceSettingsTab({ canEdit }: Props) {
       .finally(() => setLoading(false))
   }, [])
 
-  const patch = (p: Partial<FaceSettings>) => {
+  const patch = (p: Partial<FaceSettingsForm>) => {
     setSettings((s) => (s ? { ...s, ...p } : s))
     setSaved(false)
   }
 
   const submit = async () => {
     if (!settings || busy) return
+    const keepChecks = settings.keepChecks
+    if (keepChecks === null || keepChecks < MIN_KEEP_CHECKS) {
+      setError(`Saqlanadigan selfilar sonini kiriting (${MIN_KEEP_CHECKS} dan ${MAX_KEEP_CHECKS} gacha)`)
+      return
+    }
     setBusy(true)
     setError('')
     try {
-      setSettings(await saveFaceSettings(settings))
+      setSettings(await saveFaceSettings({ ...settings, keepChecks }))
       setSaved(true)
     } catch (err) {
       setError(apiErrorMessage(err, "Saqlab bo'lmadi"))
@@ -181,19 +191,16 @@ export function FaceSettingsTab({ canEdit }: Props) {
 
           {/* ---- Saqlanadigan selfilar ---- */}
           <div>
-            <Input
+            <NumberInput
               label="Saqlanadigan selfilar (o'quvchi boshiga)"
-              type="number"
-              min={MIN_KEEP_CHECKS}
-              max={100}
               className="w-40"
               disabled={!canEdit}
               value={settings.keepChecks}
-              onChange={(e) => patch({ keepChecks: Number(e.target.value) })}
+              onChange={(v) => patch({ keepChecks: v === null ? null : Math.min(v, MAX_KEEP_CHECKS) })}
             />
             <p className="mt-1 text-xs text-slate-500">
               Har bir o'quvchidan faqat shuncha oxirgi urinish (yozuv + selfi FAYLI) saqlanadi,
-              eskilari avtomatik o'chiriladi. Qiymat {MIN_KEEP_CHECKS} dan 100 gacha. Kichik son —
+              eskilari avtomatik o'chiriladi. Qiymat {MIN_KEEP_CHECKS} dan {MAX_KEEP_CHECKS} gacha. Kichik son —
               kamroq biometrik ma'lumot saqlanadi; katta son — tekshirish uchun ko'proq tarix
               qoladi.
             </p>

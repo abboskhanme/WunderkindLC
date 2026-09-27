@@ -8,6 +8,7 @@ import {
 import {
   Icon, MarketingPage, MkCard, MkDialog, MkEmpty, MkError, MkLoading, MkNotice, MkSheet, MkStat,
 } from './mk'
+import { formatNumber } from '@/lib/numberFormat'
 
 /** Meta cheklovi: savol matni 80 belgidan oshsa API rad etadi. */
 const QUESTION_MAX = 80
@@ -170,7 +171,7 @@ export function InstagramFaq() {
               <div className="mk-kpi" style={{ marginBottom: 18 }}>
                 <MkStat label="Jami savol" value={stats.total} icon="msg" tone="primary" hint={`Ko'pi bilan ${maxItems} ta`} />
                 <MkStat label="Faol" value={stats.active} icon="check" tone="success" hint="Faqat shular Instagram'ga chiqadi" />
-                <MkStat label="Jami bosilish" value={stats.taps.toLocaleString()} icon="trendUp" tone="muted" hint="Mijozlar tugmani necha marta bosgan" />
+                <MkStat label="Jami bosilish" value={formatNumber(stats.taps)} icon="trendUp" tone="muted" hint="Mijozlar tugmani necha marta bosgan" />
               </div>
             )}
 
@@ -268,7 +269,7 @@ export function InstagramFaq() {
                                 ? <span className="badge badge-success"><span className="badge-dot" /> Faol</span>
                                 : <span className="badge" style={{ background: 'var(--surface-2)', color: 'var(--text-3)' }}>O'chiq</span>}
                             </td>
-                            <td className="mk-num">{f.tapCount.toLocaleString()}</td>
+                            <td className="mk-num">{formatNumber(f.tapCount)}</td>
                             <td>
                               <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end' }}>
                                 {canEdit && (

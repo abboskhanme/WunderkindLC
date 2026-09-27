@@ -12,11 +12,18 @@ import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { Input, Select, Time24Input } from '@/components/ui/Input'
 import { Loader } from '@/components/ui/Loader'
+import { NumberInput } from '@/components/ui/NumberInput'
 import { EnvSecretField } from '@/components/settings/EnvSecretField'
 import { apiErrorMessage } from '@/lib/utils'
 
 const control =
   'rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none transition-colors focus:border-brand-400 focus:ring-2 focus:ring-brand-100'
+
+// Port va grace maydonlari bo'sh bo'la oladi — saqlashda bo'sh = 0 (port: standart).
+type TurnstileForm = Omit<TurnstileConfig, 'port' | 'lateGraceMinutes'> & {
+  port: number | null
+  lateGraceMinutes: number | null
+}
 
 /**
  * Turniket / FaceID integratsiya sozlamasi. Qurilma (Hikvision/ZKTeco) o'tish hodisalaridan
@@ -25,7 +32,7 @@ const control =
  * o'qituvchilar davomati AVTOMATIK yuklanadi (natija — "O'qituvchilar → Davomat" dashboardida).
  */
 export function TurnstileSettings() {
-  const [cfg, setCfg] = useState<TurnstileConfig | null>(null)
+  const [cfg, setCfg] = useState<TurnstileForm | null>(null)
   const [loading, setLoading] = useState(true)
   const [status, setStatus] = useState<'idle' | 'saving' | 'saved'>('idle')
   /** Saqlash xatosi — "Saqlandi" bilan bir joyda ko'rinadi (ilgari xato JIM yutilardi). */
@@ -37,7 +44,7 @@ export function TurnstileSettings() {
       .finally(() => setLoading(false))
   }, [])
 
-  const set = <K extends keyof TurnstileConfig>(key: K, value: TurnstileConfig[K]) =>
+  const set = <K extends keyof TurnstileForm>(key: K, value: TurnstileForm[K]) =>
     setCfg((prev) => (prev ? { ...prev, [key]: value } : prev))
 
   const setTeacherDevice = (teacherId: string, deviceUserId: string) =>
@@ -57,9 +64,9 @@ export function TurnstileSettings() {
         enabled: cfg.enabled,
         vendor: cfg.vendor,
         host: (cfg.host ?? '').trim(),
-        port: cfg.port,
+        port: cfg.port ?? 0,
         workStartTime: cfg.workStartTime,
-        lateGraceMinutes: cfg.lateGraceMinutes,
+        lateGraceMinutes: cfg.lateGraceMinutes ?? 0,
         teachers: cfg.teachers,
       })
       setCfg(saved)
@@ -127,13 +134,11 @@ export function TurnstileSettings() {
             onChange={(e) => set('host', e.target.value)}
             autoComplete="off"
           />
-          <Input
+          <NumberInput
             label="Port"
-            type="number"
             placeholder="80"
-            value={String(cfg.port)}
-            onChange={(e) => set('port', Number(e.target.value) || 0)}
-            autoComplete="off"
+            value={cfg.port}
+            onChange={(v) => set('port', v === null ? null : Math.min(65535, v))}
           />
           <Input
             label="Login (.env: TURNSTILE_USERNAME)"
@@ -166,11 +171,11 @@ export function TurnstileSettings() {
           </label>
           <label className="flex flex-col gap-1 text-sm">
             <span className="font-medium text-slate-600">Grace (daqiqa)</span>
-            <input
-              type="number"
-              min={0}
+            <NumberInput
+              as="input"
+              placeholder="0"
               value={cfg.lateGraceMinutes}
-              onChange={(e) => set('lateGraceMinutes', Number(e.target.value) || 0)}
+              onChange={(v) => set('lateGraceMinutes', v)}
               className={`${control} w-28`}
             />
           </label>

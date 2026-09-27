@@ -5,6 +5,7 @@ import { createBook, updateBook, uploadBookCover } from '@/api/services/books'
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
 import { Input, Textarea } from '@/components/ui/Input'
+import { MoneyInput, NumberInput } from '@/components/ui/NumberInput'
 import { apiErrorMessage, cn } from '@/lib/utils'
 
 interface Props {
@@ -23,8 +24,8 @@ interface Props {
 export function BookFormModal({ open, initial, onClose, onSaved }: Props) {
   const [title, setTitle] = useState('')
   const [author, setAuthor] = useState('')
-  const [price, setPrice] = useState('')
-  const [stock, setStock] = useState('')
+  const [price, setPrice] = useState<number | null>(null)
+  const [stock, setStock] = useState<number | null>(null)
   const [description, setDescription] = useState('')
   const [coverUrl, setCoverUrl] = useState('')
   const [isActive, setIsActive] = useState(true)
@@ -37,8 +38,8 @@ export function BookFormModal({ open, initial, onClose, onSaved }: Props) {
     if (!open) return
     setTitle(initial?.title ?? '')
     setAuthor(initial?.author ?? '')
-    setPrice(initial ? String(initial.price) : '')
-    setStock('')
+    setPrice(initial ? initial.price : null)
+    setStock(null)
     setDescription(initial?.description ?? '')
     setCoverUrl(initial?.coverUrl ?? '')
     setIsActive(initial?.isActive ?? true)
@@ -64,12 +65,16 @@ export function BookFormModal({ open, initial, onClose, onSaved }: Props) {
       setError('Kitob nomini kiriting')
       return
     }
-    const p = Number(price)
+    if (price === null) {
+      setError('Narxni kiriting')
+      return
+    }
+    const p = price
     if (!Number.isFinite(p) || p < 0) {
       setError("Narxni to'g'ri kiriting")
       return
     }
-    const initialStock = initial ? 0 : Number(stock || 0)
+    const initialStock = initial ? 0 : (stock ?? 0)
     if (!Number.isInteger(initialStock) || initialStock < 0) {
       setError("Qoldiqni butun son sifatida kiriting")
       return
@@ -117,13 +122,11 @@ export function BookFormModal({ open, initial, onClose, onSaved }: Props) {
         <Input label="Muallif" value={author} onChange={(e) => setAuthor(e.target.value)} />
 
         <div className="grid gap-3 sm:grid-cols-2">
-          <Input
+          <MoneyInput
             label="Narxi (so'm)"
             required
-            type="number"
-            min={0}
             value={price}
-            onChange={(e) => setPrice(e.target.value)}
+            onChange={setPrice}
           />
           {initial ? (
             <div>
@@ -134,13 +137,11 @@ export function BookFormModal({ open, initial, onClose, onSaved }: Props) {
               </div>
             </div>
           ) : (
-            <Input
+            <NumberInput
               label="Boshlang'ich qoldiq (dona)"
-              type="number"
-              min={0}
               placeholder="0"
               value={stock}
-              onChange={(e) => setStock(e.target.value)}
+              onChange={setStock}
             />
           )}
         </div>

@@ -6,6 +6,7 @@ import { useAuth } from '@/context/auth-context'
 import { usePerm } from '@/lib/permissions'
 import { Button } from '@/components/ui/Button'
 import { Loader } from '@/components/ui/Loader'
+import { MoneyInput } from '@/components/ui/NumberInput'
 import { AuditHistoryList } from '@/components/audit/AuditHistoryList'
 import { PaymentModal } from './PaymentModal'
 import { ReceiptModal } from '@/components/finance/ReceiptModal'
@@ -70,7 +71,7 @@ export function PaymentHistoryPanel({ studentId, onPaid, onChargeEdited, variant
   /** Hisoblangan summani qo'lda tahrirlash (faqat super admin) — har (oy, guruh) bo'yicha alohida.
    *  Kalit: `${month}|${groupId ?? ''}` — ko'p guruhli o'quvchida har guruh ulushi alohida tahrirlanadi. */
   const [editKey, setEditKey] = useState<string | null>(null)
-  const [editVal, setEditVal] = useState('')
+  const [editVal, setEditVal] = useState<number | null>(null)
   const [saving, setSaving] = useState(false)
   /** "To'lov qilish" bosilganda — PaymentModal uchun to'liq Student kerak. */
   const [payTarget, setPayTarget] = useState<Student | null>(null)
@@ -102,7 +103,11 @@ export function PaymentHistoryPanel({ studentId, onPaid, onChargeEdited, variant
 
   const saveEdit = async (month: string, groupId?: string | null) => {
     if (!studentId) return
-    const amount = Number(editVal)
+    const amount = editVal
+    if (amount === null) {
+      alert('Summani kiriting')
+      return
+    }
     if (!Number.isFinite(amount) || amount < 0) {
       alert("Summa noto'g'ri")
       return
@@ -190,12 +195,12 @@ export function PaymentHistoryPanel({ studentId, onPaid, onChargeEdited, variant
               <span className="text-slate-300">·</span>
               {editing ? (
                 <span className="inline-flex items-center gap-1">
-                  <input
-                    type="number"
+                  <MoneyInput
+                    as="input"
                     autoFocus
                     value={editVal}
                     disabled={saving}
-                    onChange={(e) => setEditVal(e.target.value)}
+                    onChange={setEditVal}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter') saveEdit(m.month, co.groupId)
                       if (e.key === 'Escape') setEditKey(null)
@@ -230,7 +235,7 @@ export function PaymentHistoryPanel({ studentId, onPaid, onChargeEdited, variant
                       title="Bu guruh hisobini tahrirlash"
                       onClick={() => {
                         setEditKey(k)
-                        setEditVal(String(co.fee))
+                        setEditVal(co.fee)
                       }}
                       className="rounded p-0.5 text-slate-300 transition-colors hover:bg-slate-100 hover:text-brand-600"
                     >

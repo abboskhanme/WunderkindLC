@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { usePerm } from '@/lib/permissions'
 import { apiErrorMessage } from '@/lib/utils'
+import { NumberInput } from '@/components/ui/NumberInput'
 import {
   createIgRule, deleteIgRule, getIgRules, updateIgRule,
   type IgRule, type IgRuleChannel, type IgRulePayload,
@@ -8,6 +9,7 @@ import {
 import {
   Icon, MarketingPage, MkCard, MkDialog, MkEmpty, MkError, MkLoading, MkSheet, MkStat,
 } from './mk'
+import { formatNumber } from '@/lib/numberFormat'
 
 /** Qoida qaysi kanalda ishlashi. */
 const CHANNELS: { key: IgRuleChannel; label: string }[] = [
@@ -17,6 +19,9 @@ const CHANNELS: { key: IgRuleChannel; label: string }[] = [
 ]
 
 const channelLabel = (c: IgRuleChannel) => CHANNELS.find((x) => x.key === c)?.label ?? c
+
+/** Forma holati: «Tartib» maydoni bo'shatila oladi (`null`), saqlashda 0 deb olinadi. */
+type RuleForm = Omit<IgRulePayload, 'order'> & { order: number | null }
 
 const EMPTY: IgRulePayload = {
   title: '',
@@ -115,7 +120,7 @@ export function InstagramRules() {
               <MkStat label="Jami qoida" value={stats.total} icon="rules" tone="primary" />
               <MkStat label="Faol" value={stats.active} icon="check" tone="success" hint="Faqat shular ishlaydi" />
               <MkStat label="AI'ni to'xtatadi" value={stats.stopAi} icon="zap" tone="warning" hint="Javobdan keyin AI chaqirilmaydi" />
-              <MkStat label="Jami moslik" value={stats.matches.toLocaleString()} icon="trendUp" tone="muted" hint="Qoidalar necha marta ishlagan" />
+              <MkStat label="Jami moslik" value={formatNumber(stats.matches)} icon="trendUp" tone="muted" hint="Qoidalar necha marta ishlagan" />
             </div>
 
             {/* Jadval ATAYIN qoldi: ustunlar (tartib · kanal · AI · moslik) yonma-yon
@@ -165,7 +170,7 @@ export function InstagramRules() {
                             ? <span className="badge badge-success"><span className="badge-dot" /> Faol</span>
                             : <span className="badge" style={{ background: 'var(--surface-2)', color: 'var(--text-3)' }}>O'chiq</span>}
                         </td>
-                        <td className="mk-num">{r.matchCount.toLocaleString()}</td>
+                        <td className="mk-num">{formatNumber(r.matchCount)}</td>
                         <td>
                           <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end' }}>
                             {canEdit && (
@@ -247,7 +252,7 @@ function RuleSheet({
    * ochilgandan keyin "asl nusxa" o'zgarmasligi kerak, aks holda har chizilishida
    * yangilanib, hech qachon "o'zgardi" bo'lmasdi.
    */
-  const [initial] = useState<IgRulePayload>(() => (
+  const [initial] = useState<RuleForm>(() => (
     rule
       ? {
         title: rule.title,
@@ -260,11 +265,11 @@ function RuleSheet({
       }
       : { ...EMPTY, order: nextOrder }
   ))
-  const [form, setForm] = useState<IgRulePayload>(initial)
+  const [form, setForm] = useState<RuleForm>(initial)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
-  const patch = (p: Partial<IgRulePayload>) => setForm((f) => ({ ...f, ...p }))
+  const patch = (p: Partial<RuleForm>) => setForm((f) => ({ ...f, ...p }))
 
   /**
    * Forma o'zgardimi. `MkSheet` shu bayroqqa qarab Esc va ✕ bosilganda TASDIQ so'raydi:
@@ -274,7 +279,7 @@ function RuleSheet({
    * `{ ...f, ...p }` dan keyin o'zgarib qolsa satrlar teng bo'lmay, forma tegilmagan
    * holda ham "o'zgargan" ko'rinardi.
    */
-  const dirty = (Object.keys(initial) as (keyof IgRulePayload)[]).some((k) => form[k] !== initial[k])
+  const dirty = (Object.keys(initial) as (keyof RuleForm)[]).some((k) => form[k] !== initial[k])
 
   /** Kalit so'zlar chiplari — vergul bilan ajratilgani ANIQ ko'rinsin. */
   const keywordChips = form.keywords.split(',').map((k) => k.trim()).filter(Boolean)
@@ -286,9 +291,10 @@ function RuleSheet({
     }
     setSaving(true)
     setError('')
+    const payload: IgRulePayload = { ...form, order: form.order ?? 0 }
     try {
-      if (rule) await updateIgRule(rule.id, form)
-      else await createIgRule(form)
+      if (rule) await updateIgRule(rule.id, payload)
+      else await createIgRule(payload)
       onSaved()
     } catch (e) {
       setError(apiErrorMessage(e, "Saqlab bo'lmadi"))
@@ -377,9 +383,9 @@ function RuleSheet({
 
           <div className="field">
             <label className="field-label">Tartib</label>
-            <input
-              className="input" type="number" min={0} value={form.order}
-              onChange={(e) => patch({ order: Number(e.target.value) || 0 })}
+            <NumberInput
+              as="input" className="input" value={form.order}
+              onChange={(v) => patch({ order: v })}
               style={{ maxWidth: 140 }}
             />
             <div className="field-hint">Kichik raqam oldin tekshiriladi — birinchi mos kelgan qoida ishlaydi.</div>

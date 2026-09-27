@@ -2,6 +2,7 @@ import { AlertTriangle } from 'lucide-react'
 import type { PhoneMatch } from '@/api/services/students'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
+import { formatPhone } from '@/lib/numberFormat'
 
 /**
  * Telefon dublikati ogohlantirishi — "Baribir saqlash" / "Bekor qilish".
@@ -57,7 +58,7 @@ export function PhoneDupeModal({
                   {d.className || 'guruhsiz'} · {d.role} raqami
                 </p>
               </div>
-              <span className="font-mono text-sm text-slate-600">{d.phone}</span>
+              <span className="whitespace-nowrap font-mono text-sm text-slate-600">{formatPhone(d.phone)}</span>
             </li>
           ))}
         </ul>

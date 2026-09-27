@@ -5,7 +5,10 @@ import { searchBookStudents, sellBookManual } from '@/api/services/books'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Input, Select } from '@/components/ui/Input'
-import { apiErrorMessage, cn, formatMoney, maskPhone } from '@/lib/utils'
+import { NumberInput } from '@/components/ui/NumberInput'
+import { PhoneInput } from '@/components/ui/PhoneInput'
+import { apiErrorMessage, cn, formatMoney } from '@/lib/utils'
+import { formatPhone } from '@/lib/numberFormat'
 
 interface Props {
   open: boolean
@@ -38,7 +41,7 @@ const nowTime = () => new Date().toTimeString().slice(0, 5)
  */
 export function BookSellModal({ open, books, onClose, onSold }: Props) {
   const [bookId, setBookId] = useState('')
-  const [qty, setQty] = useState('1')
+  const [qty, setQty] = useState<number | null>(1)
   const [method, setMethod] = useState<BookPaymentMethod>('cash')
   const [cardLast4, setCardLast4] = useState('')
   const [paidTime, setPaidTime] = useState(nowTime())
@@ -60,14 +63,14 @@ export function BookSellModal({ open, books, onClose, onSold }: Props) {
   // Sotuvdagi kitoblar (qoldiq tugagani ham ko'rinadi — lekin tanlab bo'lmaydi).
   const sellable = useMemo(() => books.filter((b) => b.isActive), [books])
   const book = sellable.find((b) => b.id === bookId) ?? null
-  const qtyNum = Number(qty)
-  const total = book && Number.isFinite(qtyNum) ? book.price * Math.max(0, qtyNum) : 0
+  const qtyNum = qty ?? 0
+  const total = book ? book.price * Math.max(0, qtyNum) : 0
 
   // Oyna har ochilganda forma tozalanadi (oldingi sotuv qoldiqlari qolib ketmasin).
   useEffect(() => {
     if (!open) return
     setBookId('')
-    setQty('1')
+    setQty(1)
     setMethod('cash')
     setCardLast4('')
     setPaidTime(nowTime())
@@ -181,14 +184,11 @@ export function BookSellModal({ open, books, onClose, onSold }: Props) {
         </Select>
 
         {/* 2. Soni */}
-        <Input
+        <NumberInput
           label="Soni (dona)"
           required
-          type="number"
-          min={1}
-          max={book?.stock || undefined}
           value={qty}
-          onChange={(e) => setQty(e.target.value)}
+          onChange={setQty}
         />
         {book && qtyNum > book.stock && (
           <p className="-mt-2 text-sm text-red-500">
@@ -214,7 +214,7 @@ export function BookSellModal({ open, books, onClose, onSold }: Props) {
                   )}
                 </div>
                 <div className="truncate text-xs text-slate-500">
-                  {[student.className, maskPhone(student.phone || student.parentPhone)]
+                  {[student.className, formatPhone(student.phone || student.parentPhone)]
                     .filter(Boolean)
                     .join(' · ') || '—'}
                 </div>
@@ -271,7 +271,7 @@ export function BookSellModal({ open, books, onClose, onSold }: Props) {
                             )}
                           </div>
                           <div className="truncate text-xs text-slate-400">
-                            {[s.className, maskPhone(s.phone || s.parentPhone)].filter(Boolean).join(' · ') || '—'}
+                            {[s.className, formatPhone(s.phone || s.parentPhone)].filter(Boolean).join(' · ') || '—'}
                           </div>
                         </div>
                       </button>
@@ -364,12 +364,10 @@ export function BookSellModal({ open, books, onClose, onSold }: Props) {
                 onChange={(e) => setDueDate(e.target.value)}
               />
               {!student && (
-                <Input
+                <PhoneInput
                   label="Xaridor telefoni (ixtiyoriy)"
-                  inputMode="tel"
-                  placeholder="90 123 45 67"
                   value={buyerPhone}
-                  onChange={(e) => setBuyerPhone(e.target.value)}
+                  onChange={setBuyerPhone}
                 />
               )}
             </div>

@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { ChevronLeft, ChevronRight, Download, Phone, Search, UserX, Clock3, CheckCircle2, BookOpen, MessageSquare } from 'lucide-react'
 import { getDailyAbsence, type AbsentStudent, type DailyAbsence } from '@/api/services/studentAttendance'
 import { apiErrorMessage, cn, exportToCsv } from '@/lib/utils'
+import { formatPhone } from '@/lib/numberFormat'
 import { Card } from '@/components/ui/Card'
 import { StatCard } from '@/components/ui/StatCard'
 import { Badge } from '@/components/ui/Badge'
@@ -314,7 +315,7 @@ export function StudentAbsencePage() {
                         <td>
                           <Badge tone={r.isLate ? 'amber' : 'red'}>{r.reasonName}</Badge>
                         </td>
-                        <td className="font-mono text-slate-600">{r.parentPhone}</td>
+                        <td className="whitespace-nowrap font-mono text-slate-600">{formatPhone(r.parentPhone)}</td>
                         <td className="text-right">
                           <button
                             type="button"

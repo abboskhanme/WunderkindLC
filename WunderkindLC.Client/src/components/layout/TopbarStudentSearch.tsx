@@ -6,6 +6,7 @@ import { searchStudents } from '@/api/services/students'
 import { studentStateBadge } from '@/config/constants'
 import { can } from '@/lib/permissions'
 import { cn } from '@/lib/utils'
+import { formatPhone } from '@/lib/numberFormat'
 
 /** Qidiruv natijasidagi o'quvchi (arxivdagilar ham). */
 interface Hit {
@@ -219,7 +220,7 @@ export function TopbarStudentSearch() {
                     )}
                   </span>
                   {s.phone && (
-                    <span className="truncate font-mono text-xs text-slate-400">{s.phone}</span>
+                    <span className="truncate font-mono text-xs text-slate-400">{formatPhone(s.phone)}</span>
                   )}
                   {/* BARCHA guruhlar TAGMA-TAG, har biri o'z holati bilan: o'quvchi eski
                       guruhida muzlatilib yangisida aktiv bo'lsa — ikkalasi ham ko'rinadi,

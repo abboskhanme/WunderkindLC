@@ -32,11 +32,10 @@ interface PhoneInputProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 't
 }
 
 /**
- * Telefon raqami input komponenti maskalash bilan.
- * - Placeholder: "(998) 90-123-45-67"
+ * Telefon raqami input komponenti — O'zbekiston formatida: `+998 90 123 45 67`.
  * - Value (internal): masklanmagan "998901234567" yoki ""
- * - Display: maskalanmagan → "(998) 90-123-45-67"
- * - onChange: maskalanmagan raqam qaytaradi
+ * - Display: "+998 90 123 45 67" (yozish paytida qisman ham)
+ * - onChange: masklanmagan raqam qaytaradi
  */
 export function PhoneInput({ label, required, className, value, onChange, ...rest }: PhoneInputProps) {
   const displayValue = maskPhone(value ?? '')
@@ -73,7 +72,9 @@ export function PhoneInput({ label, required, className, value, onChange, ...res
       <input
         type="tel"
         className={cn(base, className)}
-        placeholder="(998) 90-123-45-67"
+        placeholder="+998 90 123 45 67"
+        inputMode="tel"
+        autoComplete="tel"
         value={displayValue}
         onChange={handleChange}
         {...rest}

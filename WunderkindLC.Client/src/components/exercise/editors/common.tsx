@@ -1,5 +1,6 @@
 /** Mashq tahrirlovchilari uchun umumiy tiplar va kichik yordamchilar. */
-import type { CSSProperties, ReactNode } from 'react'
+import { useState, type CSSProperties, type ReactNode } from 'react'
+import { NumberInput } from '@/components/ui/NumberInput'
 import type { Theme } from '../catalog'
 import { sans } from '../catalog'
 import type { ExerciseData } from '../model'
@@ -120,18 +121,25 @@ export function HintList({
   )
 }
 
-/** Raqamli maydon (so'z soni, daqiqa, soniya). */
+/**
+ * Raqamli maydon (so'z soni, daqiqa, soniya).
+ * Maydonni bo'shatish mumkin: bo'sh paytda qiymat `min` deb olinadi, lekin "0" qaytib yozilmaydi
+ * (fokusdan chiqqanda haqiqiy qiymat ko'rsatiladi).
+ */
 export function NumberField({ label, value, onChange, min = 0, max = 999, suffix }: { label: string; value: number; onChange: (v: number) => void; min?: number; max?: number; suffix?: string }) {
+  const [empty, setEmpty] = useState(false)
   return (
     <label style={{ display: 'flex', flexDirection: 'column', gap: 6, flex: 1, minWidth: 120 }}>
       <MiniLabel>{label}</MiniLabel>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <input
-          type="number"
-          min={min}
-          max={max}
-          value={value}
-          onChange={(e) => onChange(Math.max(min, Math.min(max, Number(e.target.value) || 0)))}
+        <NumberInput
+          as="input"
+          value={empty ? null : value}
+          onChange={(v) => {
+            setEmpty(v === null)
+            onChange(v === null ? min : Math.max(min, Math.min(max, v)))
+          }}
+          onBlur={() => setEmpty(false)}
           style={{ ...optInput, maxWidth: 110 }}
         />
         {suffix && <span style={{ fontSize: 13, color: '#777a82' }}>{suffix}</span>}

@@ -18,6 +18,7 @@ import { Button } from '@/components/ui/Button'
 import { Loader } from '@/components/ui/Loader'
 import { Modal } from '@/components/ui/Modal'
 import { Input, Select, Textarea } from '@/components/ui/Input'
+import { MoneyInput, NumberInput } from '@/components/ui/NumberInput'
 import { StatCard } from '@/components/ui/StatCard'
 import { apiErrorMessage, formatDateTime, formatMoney } from '@/lib/utils'
 import { SCOPE_NONE, appliedGroupLabel, defaultScopeKey, periodInvalid, scopeKey } from './discountScope'
@@ -80,22 +81,6 @@ function previewFee(fee: number, pct: number, amount: number): { final: number; 
   const afterPct = (fee * (100 - pct)) / 100
   const final = Math.round(Math.max(0, afterPct - amount))
   return { final, off: fee - final }
-}
-
-/**
- * Raqam maydonini o'qish: **bo'sh matn → 0**, **buzuq qiymat → `null`** (ya'ni 0 DAN farq
- * qiladi), vergul esa nuqtaga almashtiriladi — "12,5" o'zbek/rus klaviaturasida odatiy yozuv.
- *
- * ⚠️ Ilgari `Number(pct) || 0` edi va bu JIMGINA xato berardi: buzuq (yoki vergulli) qiymat
- * `NaN` bo'lib, `|| 0` uni **0** ga aylantirardi. Admin "foiz kiritdim" deb o'ylab, aslida
- * chegirmasiz qator saqlab yuborardi — "foiz kiritsam chegirma noto'g'ri" shikoyatining
- * klient tomonidagi sababi aynan shu edi.
- */
-function parseNum(v: string): number | null {
-  const s = v.trim().replace(',', '.')
-  if (s === '') return 0
-  const n = Number(s)
-  return Number.isFinite(n) ? n : null
 }
 
 /** Bo'lim sarlavhasi — o'quvchi profilidagi qolgan tablar bilan AYNAN bir xil ko'rinish. */
@@ -474,8 +459,8 @@ function DiscountFormModal({
   const freeScopes = useMemo(() => scopes.filter((s) => !s.hasActive), [scopes])
 
   // Boshlang'ich qiymatlar `useState` initializer'ida — oyna `key` bilan qaytadan yaratiladi.
-  const [pct, setPct] = useState(initial ? String(initial.pct) : '')
-  const [amount, setAmount] = useState(initial ? String(initial.amount) : '')
+  const [pct, setPct] = useState<number | null>(initial ? initial.pct : null)
+  const [amount, setAmount] = useState<number | null>(initial ? initial.amount : null)
   const [startMonth, setStartMonth] = useState(initial?.startMonth ?? '')
   const [endMonth, setEndMonth] = useState(initial?.endMonth ?? '')
   /**
@@ -503,33 +488,24 @@ function DiscountFormModal({
   /** Tanlangan qamrov (oylik to'lovni va nomni ko'rsatish uchun). */
   const scope = scopes.find((s) => scopeKey(s.groupId) === groupKey) ?? null
 
-  /** `null` — kiritilgan matn umuman raqam emas (bo'sh matn esa 0 deb olinadi). */
-  const pctRaw = parseNum(pct)
-  const amountRaw = parseNum(amount)
-  const pctNum = pctRaw ?? 0
-  const amountNum = amountRaw ?? 0
+  /** Bo'sh maydon (`null`) 0 deb olinadi. */
+  const pctNum = pct ?? 0
+  const amountNum = amount ?? 0
 
   /**
    * Foiz xatosi — SABABI bilan. ⚠️ "Butun son" sharti serverning shakliga bog'liq:
    * `StudentDiscountPayloadDto.Pct` — **`int`**, ya'ni `12.5` yuborilsa JSON deserializatsiya
    * 400 qaytaradi va foydalanuvchi umumiy "Chegirmani saqlab bo'lmadi" ni ko'rardi (sababsiz).
-   * Shuning uchun kasr SHU YERDA, aniq matn bilan to'xtatiladi.
+   * Maydon endi faqat butun son qabul qiladi (vergul yozib bo'lmaydi), bu tekshiruv esa zaxira —
+   * masalan eski yozuvdan kasr kelib qolsa.
    */
-  const pctError =
-    pctRaw === null
-      ? "Raqam noto'g'ri kiritilgan. Faqat raqam yozing (masalan: 20)."
-      : !Number.isInteger(pctRaw)
-        ? 'Foiz butun son bo\'lishi kerak (masalan 12, 13 — "12,5" qabul qilinmaydi).'
-        : pctRaw < 0 || pctRaw > 100
-          ? 'Foiz 0 dan 100 gacha bo\'lishi kerak.'
-          : ''
-  /** Summa `decimal` — KASR MUMKIN, faqat buzuq yoki manfiy qiymat rad etiladi. */
-  const amountError =
-    amountRaw === null
-      ? "Raqam noto'g'ri kiritilgan. Faqat raqam yozing (masalan: 50000)."
-      : amountRaw < 0
-        ? "Summa manfiy bo'lishi mumkin emas."
-        : ''
+  const pctError = !Number.isInteger(pctNum)
+    ? 'Foiz butun son bo\'lishi kerak (masalan 12, 13 — "12,5" qabul qilinmaydi).'
+    : pctNum < 0 || pctNum > 100
+      ? 'Foiz 0 dan 100 gacha bo\'lishi kerak.'
+      : ''
+  /** Summa — butun so'm (kasr kiritilmaydi), manfiy qiymat rad etiladi. */
+  const amountError = amountNum < 0 ? "Summa manfiy bo'lishi mumkin emas." : ''
   const pctInvalid = pctError !== ''
   const amountInvalid = amountError !== ''
   // Nolga tushirish uchun ALOHIDA amal bor («Bekor qilish»), shuning uchun "0 + 0" saqlanmaydi.
@@ -664,23 +640,17 @@ function DiscountFormModal({
         )}
 
         <div className="grid gap-4 sm:grid-cols-2">
-          <Input
+          {/* Server `Pct` ni `int` kutadi — maydon faqat butun son qabul qiladi. */}
+          <NumberInput
             label="Foiz (%)"
-            type="number"
-            min={0}
-            max={100}
-            /* ⚠️ Server `Pct` ni `int` kutadi — brauzer o'qi/validatsiyasi ham butun songa qulflanadi. */
-            step={1}
             value={pct}
-            onChange={(e) => setPct(e.target.value)}
+            onChange={setPct}
             placeholder="0"
           />
-          <Input
+          <MoneyInput
             label="Summa (so'm)"
-            type="number"
-            min={0}
             value={amount}
-            onChange={(e) => setAmount(e.target.value)}
+            onChange={setAmount}
             placeholder="0"
           />
         </div>

@@ -12,6 +12,7 @@ import {
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Loader } from '@/components/ui/Loader'
+import { NumberInput } from '@/components/ui/NumberInput'
 
 /** Axios xato javobidan backend xabarini ajratib oladi ({ message } yoki { error }). */
 function backendMessage(e: unknown): string {
@@ -26,12 +27,20 @@ function fmtDateTime(iso?: string): string {
   return `${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 
+// Soat/daqiqa maydonlari tahrir paytida bo'sh bo'la oladi — saqlashda tekshiriladi.
+type BackupForm = Omit<TelegramBackupConfig, 'scheduleHour' | 'scheduleMinute'> & {
+  scheduleHour: number | null
+  scheduleMinute: number | null
+}
+
+const pad2 = (n: number | null) => (n === null ? '--' : String(n).padStart(2, '0'))
+
 /**
  * "Zaxira nusxa" sozlamasi — Telegram orqali kunlik DB backup.
  * (Ilgari Telegram bot sozlamasi ichida edi — alohida bo'limga ajratildi.)
  */
 export function BackupSettings() {
-  const [cfg, setCfg] = useState<TelegramBackupConfig>({
+  const [cfg, setCfg] = useState<BackupForm>({
     adminChatId: '',
     scheduleHour: 21,
     scheduleMinute: 0,
@@ -71,10 +80,18 @@ export function BackupSettings() {
     e.preventDefault()
     const err = validateChatId(cfg.adminChatId)
     if (err) { setChatIdError(err); return }
+    if (cfg.scheduleHour === null || cfg.scheduleMinute === null) {
+      setTestResult({ success: false, message: 'Backup vaqtini kiriting (soat va daqiqa)' })
+      return
+    }
     setStatus('saving')
     setTestResult(null)
     try {
-      const updated = await saveTelegramBackupConfig(cfg)
+      const updated = await saveTelegramBackupConfig({
+        ...cfg,
+        scheduleHour: cfg.scheduleHour,
+        scheduleMinute: cfg.scheduleMinute,
+      })
       setCfg({ ...updated, adminChatId: updated.adminChatId ?? '' })
       setStatus('saved')
       setTimeout(() => setStatus('idle'), 2000)
@@ -202,31 +219,21 @@ export function BackupSettings() {
             </span>
           </label>
           <div className="flex items-center gap-2">
-            <input
-              type="number"
-              min={0}
-              max={23}
+            <NumberInput
+              as="input"
               value={cfg.scheduleHour}
-              onChange={(e) => {
-                const h = Math.max(0, Math.min(23, Number(e.target.value) || 0))
-                setCfg((p) => ({ ...p, scheduleHour: h }))
-              }}
+              onChange={(v) => setCfg((p) => ({ ...p, scheduleHour: v === null ? null : Math.min(23, v) }))}
               className="w-20 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/30"
             />
             <span className="text-lg font-semibold text-slate-400">:</span>
-            <input
-              type="number"
-              min={0}
-              max={59}
+            <NumberInput
+              as="input"
               value={cfg.scheduleMinute}
-              onChange={(e) => {
-                const mm = Math.max(0, Math.min(59, Number(e.target.value) || 0))
-                setCfg((p) => ({ ...p, scheduleMinute: mm }))
-              }}
+              onChange={(v) => setCfg((p) => ({ ...p, scheduleMinute: v === null ? null : Math.min(59, v) }))}
               className="w-20 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/30"
             />
             <span className="text-sm text-slate-500">
-              {String(cfg.scheduleHour).padStart(2, '0')}:{String(cfg.scheduleMinute).padStart(2, '0')} (UTC)
+              {pad2(cfg.scheduleHour)}:{pad2(cfg.scheduleMinute)} (UTC)
             </span>
           </div>
           <p className="text-xs text-slate-400">

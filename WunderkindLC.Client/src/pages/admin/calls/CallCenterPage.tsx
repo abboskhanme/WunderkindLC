@@ -19,6 +19,7 @@ import { Loader } from '@/components/ui/Loader'
 import { cn } from '@/lib/utils'
 import { groupsText, statesToGroups } from '@/lib/studentGroups'
 import { usePerm } from '@/lib/permissions'
+import { formatNumber, formatPhone } from '@/lib/numberFormat'
 
 /* ============================================================
    Call Center — chapda o'quvchilar ro'yxati ("Qo'ng'iroq" tugmasi bilan),
@@ -268,7 +269,7 @@ export function CallCenterPage() {
                         <div className="min-w-0 flex-1">
                           <div className="truncate text-sm font-medium text-slate-800">{s.fullName}</div>
                           <div className="truncate text-xs text-slate-400">
-                            {phone || 'Telefon kiritilmagan'}
+                            {phone ? formatPhone(phone) : 'Telefon kiritilmagan'}
                             {/* Guruh — TIRIK a'zoliklardan (`className` faqat zaxira). */}
                             {groupsText(statesToGroups(s.groupStates), s.className)
                               ? ` · ${groupsText(statesToGroups(s.groupStates), s.className)}`
@@ -418,10 +419,10 @@ function StudentDetail({ student, onClose }: { student: Student; onClose: () => 
       }
     >
       <div className="grid grid-cols-1 gap-2 text-sm sm:grid-cols-2">
-        <p><span className="text-slate-400">Telefon:</span> <span className="font-medium">{student.phone || '—'}</span></p>
-        <p><span className="text-slate-400">Ota-ona:</span> <span className="font-medium">{student.parentPhone || '—'}</span></p>
+        <p><span className="text-slate-400">Telefon:</span> <span className="font-medium">{formatPhone(student.phone) || '—'}</span></p>
+        <p><span className="text-slate-400">Ota-ona:</span> <span className="font-medium">{formatPhone(student.parentPhone) || '—'}</span></p>
         <p><span className="text-slate-400">Guruh:</span> <span className="font-medium">{student.className || '—'}</span></p>
-        <p><span className="text-slate-400">Balans:</span> <span className={cn('font-medium', (student.balance ?? 0) < 0 ? 'text-red-600' : 'text-emerald-600')}>{(student.balance ?? 0).toLocaleString()} so'm</span></p>
+        <p><span className="text-slate-400">Balans:</span> <span className={cn('font-medium', (student.balance ?? 0) < 0 ? 'text-red-600' : 'text-emerald-600')}>{formatNumber(student.balance ?? 0)} so'm</span></p>
       </div>
 
       <h4 className="mb-2 mt-4 text-xs font-bold uppercase tracking-wide text-slate-400">Qo'ng'iroqlar tarixi</h4>

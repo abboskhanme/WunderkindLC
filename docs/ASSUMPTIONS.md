@@ -138,3 +138,11 @@
 - [2026-09-27] O'qituvchi portali botga qanday ulanadi? → «🎓 O'qituvchi paneli» web_app tugmasi
   (faqat o'qituvchi chatida) + oddiy login; Telegram orqali avtomatik kirish YO'Q → foydalanuvchi
   tanlovi: yangi kirish yo'li ochilmasin
+- [2026-09-27] Telefon qaysi formatda? → `+998 90 123 45 67` (kiritish va ko'rsatish) → O'zbekistonda
+  umumqabul qilingan; jadvaldagi qisqa `93 854 70 83` (PhoneChip) edutizim bilan bir xillik uchun qoldi
+- [2026-09-27] Bo'sh summa maydoni saqlanganda nima bo'ladi? → majburiy maydonda xato matni, ixtiyoriyda 0
+  → foydalanuvchi "0 ni o'chirib bo'sh qoldirish" ni so'radi; bo'sh ≠ 0 faqat UI'da, so'rovda eski qiymat
+- [2026-09-27] Kasr son kiritiladimi? → YO'Q, hamma joyda butun son (foydalanuvchi qarori); ISTISNO —
+  KPI formulasi koeffitsiyentlari (−0,2 · 1,2 · 35,99%) → ular formulaning o'zida kasr, butun qilinsa
+  KPI hisobi buzilardi (forma ochilganda yaxlitlanib ketardi). Bazada boshqa kasrli qiymat deyarli yo'q
+  (guruh narxi, oylik hisob, foizlar — hammasi butun; 4 ta tranzaksiya kasrli)

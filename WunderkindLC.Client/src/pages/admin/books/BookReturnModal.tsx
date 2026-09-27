@@ -4,7 +4,8 @@ import type { BookOrder, BookPaymentMethod } from '@/api/services/books'
 import { returnBookOrder } from '@/api/services/books'
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
-import { Input, Textarea } from '@/components/ui/Input'
+import { Textarea } from '@/components/ui/Input'
+import { NumberInput } from '@/components/ui/NumberInput'
 import { apiErrorMessage, cn, formatMoney } from '@/lib/utils'
 import { paymentLabel } from './bookLabels'
 
@@ -51,7 +52,7 @@ const REASONS = ['Mijoz fikridan qaytdi', 'Kitob yaroqsiz', 'Xato sotildi', 'Ort
  */
 export function BookReturnModal({ order, onClose, onDone }: Props) {
   const left = order ? Math.max(0, order.qty - order.returnedQty) : 0
-  const [qty, setQty] = useState(1)
+  const [qty, setQty] = useState<number | null>(1)
   const [reason, setReason] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -67,15 +68,16 @@ export function BookReturnModal({ order, onClose, onDone }: Props) {
 
   if (!order) return null
 
-  const refund = order.isPaid ? order.unitPrice * qty : 0
-  const invalid = qty < 1 || qty > left
+  const n = qty ?? 0
+  const refund = order.isPaid ? order.unitPrice * n : 0
+  const invalid = n < 1 || n > left
 
   const confirm = async () => {
     if (busy || invalid) return
     setBusy(true)
     setError('')
     try {
-      const updated = await returnBookOrder(order.id, { qty, reason: reason.trim() || undefined })
+      const updated = await returnBookOrder(order.id, { qty: n, reason: reason.trim() || undefined })
       onDone(updated)
       onClose()
     } catch (err) {
@@ -119,15 +121,12 @@ export function BookReturnModal({ order, onClose, onDone }: Props) {
         </div>
 
         <div className="flex items-end gap-2">
-          <Input
+          <NumberInput
             label="Nechta qaytariladi"
-            type="number"
-            min={1}
-            max={left}
             required
             className="w-40"
             value={qty}
-            onChange={(e) => setQty(Number(e.target.value))}
+            onChange={setQty}
           />
           {left > 1 && (
             <Button variant="secondary" type="button" onClick={() => setQty(left)}>
@@ -156,13 +155,13 @@ export function BookReturnModal({ order, onClose, onDone }: Props) {
           ) : order.paymentMethod === 'credit' ? (
             <>
               Pul olinmagan (nasiya) — kassadan hech narsa chiqmaydi, faqat{' '}
-              <b>qarz {formatMoney(order.unitPrice * qty)} so'mga kamayadi</b>.
+              <b>qarz {formatMoney(order.unitPrice * n)} so'mga kamayadi</b>.
             </>
           ) : (
             <>Pul olinmagan — qaytariladigan summa yo'q.</>
           )}
           <div className="mt-1 text-xs opacity-80">
-            Ombor qoldig'iga +{qty || 0} dona qo'shiladi va sotuv hisobotidan shu qism ayiriladi.
+            Ombor qoldig'iga +{n} dona qo'shiladi va sotuv hisobotidan shu qism ayiriladi.
           </div>
         </div>
 

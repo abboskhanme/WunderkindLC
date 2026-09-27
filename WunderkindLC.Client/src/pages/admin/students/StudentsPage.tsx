@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useRef, useState } from 'react'
+﻿import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { usePersistentState } from '@/hooks/usePersistentState'
 import { StudentViewModal } from './StudentViewModal'
@@ -32,6 +32,7 @@ import {
 import { getTeachers } from '@/api/services/teachers'
 import { genderLabels } from '@/config/constants'
 import { formatDate, formatMoney, exportToCsv, cn, apiErrorMessage } from '@/lib/utils'
+import { formatPhone } from '@/lib/numberFormat'
 import { studentDiscountLabel } from './discountLabel'
 import { useAuth } from '@/context/auth-context'
 import { usePerm } from '@/lib/permissions'
@@ -41,6 +42,7 @@ import { PageHeader } from '@/components/ui/PageHeader'
 import { Button } from '@/components/ui/Button'
 import { Loader } from '@/components/ui/Loader'
 import { Modal } from '@/components/ui/Modal'
+import { MoneyInput } from '@/components/ui/NumberInput'
 import { StudentFormModal } from './StudentFormModal'
 import { SmsModal } from './SmsModal'
 import { NeedContactModal } from './contacts/NeedContactModal'
@@ -57,10 +59,8 @@ type Tab = 'active' | 'archived'
 type SortOption = 'default' | 'ball-desc' | 'ball-asc'
 
 /**
- * Qarz oralig'i maydonlarida strelka (▲▼) bosilganda summa shu qadam bilan o'zgaradi.
- * Qo'lda ISTALGAN summa yozilaveradi — qadam faqat strelka/klaviatura uchun (`step`
- * validatsiya emas: maydon `<form>` ichida emas, ya'ni "50 000 ga karrali bo'lsin"
- * degan cheklov qo'ymaydi).
+ * Qarz oralig'i maydonlarida klaviatura strelkasi (↑↓) bosilganda summa shu qadam bilan
+ * o'zgaradi. Qo'lda ISTALGAN summa yozilaveradi — qadam faqat strelka uchun.
  */
 const DEBT_STEP = 50_000
 
@@ -319,6 +319,16 @@ export function StudentsPage() {
   }
   const debtMinNum = parseAmount(debtMin)
   const debtMaxNum = parseAmount(debtMax)
+  // Oraliq faqat qarzdorlarga tegishli — "Qarzsizlar" tanlangan bo'lsa ro'yxat jimgina bo'sh qolardi.
+  const setDebtBound = (set: (v: string) => void, v: number | null) => {
+    set(v === null ? '' : String(v))
+    if (v !== null && balanceFilter === 'paid') setBalanceFilter('debt')
+  }
+  const stepDebtBound = (e: KeyboardEvent<HTMLInputElement>, cur: number | null, set: (v: string) => void) => {
+    if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return
+    e.preventDefault()
+    setDebtBound(set, Math.max(0, (cur ?? 0) + (e.key === 'ArrowUp' ? DEBT_STEP : -DEBT_STEP)))
+  }
   const debtRangeOn = debtMinNum !== null || debtMaxNum !== null
   /** "dan" > "gacha" — hech kim topilmaydi; foydalanuvchiga ochiq aytiladi (jim bo'sh ro'yxat emas). */
   const debtRangeInvalid = debtMinNum !== null && debtMaxNum !== null && debtMinNum > debtMaxNum
@@ -940,40 +950,24 @@ export function StudentsPage() {
                   ? 'border-brand-400'
                   : 'border-slate-200',
             )}
-            title="Qarz summasi bo'yicha: 'dan' — shu summadan baland qarzi borlar, 'gacha' — shu summadan past. Chegara qo'yilsa faqat QARZDORLAR ko'rsatiladi. Strelka (▲▼) bilan 50 000 dan oshadi/kamayadi."
+            title="Qarz summasi bo'yicha: 'dan' — shu summadan baland qarzi borlar, 'gacha' — shu summadan past. Chegara qo'yilsa faqat QARZDORLAR ko'rsatiladi. Klaviatura strelkasi (↑↓) bilan 50 000 dan oshadi/kamayadi."
           >
             <Wallet className="h-4 w-4 shrink-0 text-slate-400" />
             <span className="shrink-0 text-xs font-medium text-slate-500">Qarz:</span>
-            <input
-              type="number"
-              min={0}
-              step={DEBT_STEP}
-              inputMode="numeric"
-              value={debtMin}
-              onChange={(e) => {
-                setDebtMin(e.target.value)
-                // Oraliq faqat qarzdorlarga tegishli — "Qarzsizlar" tanlangan bo'lsa ro'yxat
-                // jimgina bo'sh qolardi.
-                if (e.target.value.trim() !== '' && balanceFilter === 'paid') {
-                  setBalanceFilter('debt')
-                }
-              }}
+            <MoneyInput
+              as="input"
+              value={debtMinNum}
+              onChange={(v) => setDebtBound(setDebtMin, v)}
+              onKeyDown={(e) => stepDebtBound(e, debtMinNum, setDebtMin)}
               placeholder="dan"
               className="w-24 rounded-md border-0 bg-transparent px-1 py-0.5 font-mono text-sm text-slate-700 outline-none placeholder:font-sans placeholder:text-slate-400"
             />
             <span className="text-slate-300">—</span>
-            <input
-              type="number"
-              min={0}
-              step={DEBT_STEP}
-              inputMode="numeric"
-              value={debtMax}
-              onChange={(e) => {
-                setDebtMax(e.target.value)
-                if (e.target.value.trim() !== '' && balanceFilter === 'paid') {
-                  setBalanceFilter('debt')
-                }
-              }}
+            <MoneyInput
+              as="input"
+              value={debtMaxNum}
+              onChange={(v) => setDebtBound(setDebtMax, v)}
+              onKeyDown={(e) => stepDebtBound(e, debtMaxNum, setDebtMax)}
               placeholder="gacha"
               className="w-24 rounded-md border-0 bg-transparent px-1 py-0.5 font-mono text-sm text-slate-700 outline-none placeholder:font-sans placeholder:text-slate-400"
             />
@@ -1342,7 +1336,7 @@ export function StudentsPage() {
                     <td className="whitespace-nowrap text-slate-600">{genderLabels[s.gender]}</td>
                     <td className="whitespace-nowrap font-mono text-slate-600">{formatDate(s.birthDate)}</td>
                     <td className="whitespace-nowrap text-slate-600">{s.parentFullName}</td>
-                    <td className="whitespace-nowrap font-mono text-slate-600">{s.parentPhone}</td>
+                    <td className="whitespace-nowrap font-mono text-slate-600">{formatPhone(s.parentPhone)}</td>
                     <td className="num">
                       {(ballMap[s.id] ?? 0) > 0 ? (
                         <span className="inline-flex items-center justify-end gap-1 font-mono font-semibold text-brand-700">

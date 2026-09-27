@@ -8,6 +8,7 @@ import { getStudentGroups } from '@/api/services/classes'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Input, Select, Textarea } from '@/components/ui/Input'
+import { MoneyInput } from '@/components/ui/NumberInput'
 import { Loader } from '@/components/ui/Loader'
 import { formatMonth, monthStatusLabels, paymentMethods } from '@/config/constants'
 import { apiErrorMessage, formatDate, formatMoney, cn } from '@/lib/utils'
@@ -22,13 +23,16 @@ interface Props {
 
 const today = () => new Date().toISOString().slice(0, 10)
 
+/** Forma holati: summa maydoni BO'SH bo'la oladi (`null`). */
+type PaymentEditForm = Omit<PaymentEditPayload, 'amount'> & { amount: number | null }
+
 /**
  * "To'lovlar" bo'limidagi kiritilgan to'lovni tahrirlash — FAQAT superadmin.
  * O'quvchi almashtirilmaydi (buning uchun to'lov o'chirilib qaytadan kiritiladi).
  * Saqlanganda server: balansni summa farqiga moslaydi, yangi (guruh, oy) hisobini ochadi, audit yozadi.
  */
 export function PaymentEditModal({ payment, onClose, onSaved }: Props) {
-  const [form, setForm] = useState<PaymentEditPayload | null>(null)
+  const [form, setForm] = useState<PaymentEditForm | null>(null)
   const [months, setMonths] = useState<MonthLedger[]>([])
   const [groups, setGroups] = useState<StudentGroupMembership[]>([])
   const [loading, setLoading] = useState(false)
@@ -71,18 +75,20 @@ export function PaymentEditModal({ payment, onClose, onSaved }: Props) {
       .finally(() => setLoading(false))
   }, [payment])
 
-  const set = <K extends keyof PaymentEditPayload>(key: K, value: PaymentEditPayload[K]) =>
+  const set = <K extends keyof PaymentEditForm>(key: K, value: PaymentEditForm[K]) =>
     setForm((f) => (f ? { ...f, [key]: value } : f))
 
   /** Saqlash. `force=true` — kvitansiya raqami boshqa to'lovda band bo'lsa ham ("Baribir saqlash"). */
   const save = async (force: boolean) => {
-    if (inFlightRef.current || !payment || !form || form.amount <= 0 || !form.date || !form.month) return
+    const amount = form?.amount ?? null
+    if (inFlightRef.current || !payment || !form || amount === null || amount <= 0 || !form.date || !form.month) return
     inFlightRef.current = true
     setSaving(true)
     setError(null)
     try {
       await updatePayment(payment.id, {
         ...form,
+        amount,
         groupId: form.groupId || undefined,
         comment: form.comment?.trim() || undefined,
         // Kvitansiya faqat naqdda, vaqt faqat kartada saqlanadi (usul o'zgarsa eskisi tozalanadi).
@@ -92,7 +98,7 @@ export function PaymentEditModal({ payment, onClose, onSaved }: Props) {
         forceReceipt: force,
       })
       setDuplicate(null)
-      toast.success("To'lov o'zgartirildi", formatMoney(form.amount))
+      toast.success("To'lov o'zgartirildi", formatMoney(amount))
       onSaved()
       onClose()
     } catch (err) {
@@ -118,7 +124,7 @@ export function PaymentEditModal({ payment, onClose, onSaved }: Props) {
     return list.sort()
   })()
 
-  const diff = payment && form ? form.amount - payment.amount : 0
+  const diff = payment && form && form.amount !== null ? form.amount - payment.amount : 0
 
   return (
     <Modal
@@ -138,7 +144,7 @@ export function PaymentEditModal({ payment, onClose, onSaved }: Props) {
             <Button
               type="submit"
               form="payment-edit-form"
-              disabled={saving || loading || !form || form.amount <= 0 || !form.month}
+              disabled={saving || loading || !form || (form.amount ?? 0) <= 0 || !form.month}
             >
               {saving ? 'Saqlanmoqda...' : 'Saqlash'}
             </Button>
@@ -178,14 +184,11 @@ export function PaymentEditModal({ payment, onClose, onSaved }: Props) {
           </div>
 
           <div className="grid grid-cols-2 gap-4">
-            <Input
+            <MoneyInput
               label="Summa (so'm)"
-              type="number"
-              min={0}
-              step="any"
               required
               value={form.amount}
-              onChange={(e) => set('amount', Number(e.target.value))}
+              onChange={(v) => set('amount', v)}
             />
             <Input
               label="Sana"

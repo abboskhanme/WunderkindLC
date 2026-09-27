@@ -5,6 +5,7 @@ import { getSupportTeachers, type SupportTeacher } from '@/api/services/support'
 import { Card } from '@/components/ui/Card'
 import { Loader } from '@/components/ui/Loader'
 import { PageHeader } from '@/components/ui/PageHeader'
+import { formatPhone } from '@/lib/numberFormat'
 
 /** Ism bosh harflari (rasm yo'q bo'lsa avatar). */
 function initials(name: string) {
@@ -73,7 +74,7 @@ export function SupportPage() {
                     </h3>
                     <p className="mt-0.5 inline-flex items-center gap-1.5 truncate text-xs text-slate-400">
                       <Phone className="h-3.5 w-3.5" />
-                      <span className="font-mono">{t.phone || '—'}</span>
+                      <span className="font-mono">{t.phone ? formatPhone(t.phone) : '—'}</span>
                     </p>
                   </div>
                   <ChevronRight className="h-5 w-5 shrink-0 text-slate-300 transition-colors group-hover:text-brand-500" />

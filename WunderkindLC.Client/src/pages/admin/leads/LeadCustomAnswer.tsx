@@ -1,5 +1,6 @@
 import type { LeadEntryField } from '@/api/services/leadEntryForm'
 import { Input, Select, Textarea } from '@/components/ui/Input'
+import { NumberInput } from '@/components/ui/NumberInput'
 
 /**
  * «Lid kiritish formasi»ning QO'SHIMCHA savoli — turiga qarab matn / raqam / select / radio /
@@ -36,17 +37,19 @@ export function LeadCustomAnswer({
       />
     )
 
-  if (field.kind === 'number')
+  if (field.kind === 'number') {
+    // Javob matn bo'lib saqlanadi; butun son — ommaviy formadagi raqamli savol bilan bir xil.
+    const num = single === '' ? null : Number(single)
     return (
-      <Input
+      <NumberInput
         label={label}
         required={field.required}
-        type="number"
         placeholder={field.placeholder}
-        value={single}
-        onChange={(e) => onSet(e.target.value ? [e.target.value] : [])}
+        value={num !== null && Number.isFinite(num) ? num : null}
+        onChange={(v) => onSet(v === null ? [] : [String(v)])}
       />
     )
+  }
 
   if (field.kind === 'select')
     return (

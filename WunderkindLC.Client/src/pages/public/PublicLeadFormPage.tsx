@@ -9,6 +9,7 @@ import {
 } from '@/api/services/publicLeadForm'
 import { getPublicBrand, type PublicBrand } from '@/api/services/settings'
 import { apiErrorMessage, cn } from '@/lib/utils'
+import { formatPhone, typedPhoneInput } from '@/lib/numberFormat'
 import { inputCls, cardPadX, primaryBtnCls, Field } from './publicFormUi'
 import posthog from '@/lib/posthog'
 
@@ -84,8 +85,11 @@ export function PublicLeadFormPage() {
     e?.preventDefault()
     if (!form || submitting) return
     if (!fullName.trim()) return setError('Ism-familiyangizni kiriting')
-    if (phone.replace(/\D/g, '').length < 9)
+    // Maydon doim "998" bilan boshlanadi — to'liq raqam 12 ta.
+    if (phone.replace(/\D/g, '').length < 12)
       return setError("Telefon raqamini to'liq kiriting (kamida 9 ta raqam)")
+    if (parentPhone && parentPhone.replace(/\D/g, '').length < 12)
+      return setError("Ota-onaning telefon raqamini to'liq kiriting")
     // Majburiy qo'shimcha savollar — serverda ham tekshiriladi, bu yerda faqat tez javob uchun.
     const missing = form.fields.find((f) => f.required && (answers[f.id]?.length ?? 0) === 0)
     if (missing) return setError(`«${missing.label}» — bu maydonni to'ldiring`)
@@ -177,7 +181,7 @@ export function PublicLeadFormPage() {
                 <Field label="Telefon raqam *">
                   <input
                     value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
+                    onChange={(e) => setPhone(typedPhoneInput(e.target.value, phone))}
                     placeholder="+998 90 123 45 67"
                     type="tel"
                     name="tel"
@@ -191,7 +195,7 @@ export function PublicLeadFormPage() {
                   <Field label="Ota-onaning telefoni">
                     <input
                       value={parentPhone}
-                      onChange={(e) => setParentPhone(e.target.value)}
+                      onChange={(e) => setParentPhone(typedPhoneInput(e.target.value, parentPhone))}
                       placeholder="+998 90 123 45 67"
                       type="tel"
                       inputMode="tel"
@@ -289,7 +293,7 @@ export function PublicLeadFormPage() {
                   href={`tel:${brand.phone}`}
                   className="text-sm font-semibold text-brand-600 hover:text-brand-700"
                 >
-                  {brand.phone}
+                  {formatPhone(brand.phone)}
                 </a>
               )}
             </div>

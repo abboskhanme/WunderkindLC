@@ -7,6 +7,7 @@ import { getStudentLedger } from '@/api/services/students'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Input, Textarea } from '@/components/ui/Input'
+import { MoneyInput } from '@/components/ui/NumberInput'
 import { apiErrorMessage, formatMoney } from '@/lib/utils'
 import posthog from '@/lib/posthog'
 import { toast } from '@/lib/toast'
@@ -30,7 +31,7 @@ const today = () => new Date().toISOString().slice(0, 10)
  * oylikdan — vozvrat unga ta'sir qilmaydi (muzlatishda oylikning o'zi qisqaradi); eski oylarda net'dan.
  */
 export function RefundModal({ payment, onClose, onSaved }: Props) {
-  const [amount, setAmount] = useState(0)
+  const [amount, setAmount] = useState<number | null>(null)
   const [date, setDate] = useState(today())
   const [reason, setReason] = useState('')
   const [advance, setAdvance] = useState<number | null>(null)
@@ -72,7 +73,7 @@ export function RefundModal({ payment, onClose, onSaved }: Props) {
 
   const submit = async (e: FormEvent) => {
     e.preventDefault()
-    if (inFlightRef.current || !payment || amount <= 0 || amount > refundable) return
+    if (inFlightRef.current || !payment || amount === null || amount <= 0 || amount > refundable) return
     inFlightRef.current = true
     setSaving(true)
     setError(null)
@@ -108,7 +109,7 @@ export function RefundModal({ payment, onClose, onSaved }: Props) {
           <Button
             type="submit"
             form="refund-form"
-            disabled={saving || amount <= 0 || amount > refundable}
+            disabled={saving || (amount ?? 0) <= 0 || (amount ?? 0) > refundable}
           >
             {saving ? 'Saqlanmoqda...' : 'Qaytarish'}
           </Button>
@@ -148,15 +149,11 @@ export function RefundModal({ payment, onClose, onSaved }: Props) {
           )}
 
           <div className="grid grid-cols-2 gap-4">
-            <Input
+            <MoneyInput
               label="Qaytariladigan summa (so'm)"
-              type="number"
-              min={0}
-              max={refundable}
-              step="any"
               required
               value={amount}
-              onChange={(e) => setAmount(Number(e.target.value))}
+              onChange={setAmount}
             />
             <Input
               label="Sana"
@@ -168,7 +165,7 @@ export function RefundModal({ payment, onClose, onSaved }: Props) {
             />
           </div>
 
-          {amount > refundable && (
+          {(amount ?? 0) > refundable && (
             <p className="text-xs font-medium text-red-600">
               Ko'pi bilan {formatMoney(refundable)} so'm qaytarish mumkin.
             </p>
@@ -185,7 +182,7 @@ export function RefundModal({ payment, onClose, onSaved }: Props) {
           <div className="flex items-start gap-2.5 rounded-lg bg-amber-50 px-3 py-2.5 text-xs text-amber-800">
             <Undo2 className="mt-0.5 h-4 w-4 shrink-0" />
             <p>
-              O'quvchi balansi <b className="font-mono">−{formatMoney(amount || 0)}</b> ga o'zgaradi.
+              O'quvchi balansi <b className="font-mono">−{formatMoney(amount ?? 0)}</b> ga o'zgaradi.
               Vozvrat "Vozvratlar" tarixida ko'rinadi va o'qituvchining foizli maoshi qolgan (qaytarilmagan)
               summadan qayta hisoblanadi.
             </p>

@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/Button'
 import { Loader } from '@/components/ui/Loader'
 import { Modal } from '@/components/ui/Modal'
 import { Input, Select, Textarea } from '@/components/ui/Input'
+import { NumberInput } from '@/components/ui/NumberInput'
 import { apiErrorMessage, cn, formatMoney } from '@/lib/utils'
 import { BookFormModal } from './BookFormModal'
 import { stockReasonLabel } from './bookLabels'
@@ -249,14 +250,14 @@ interface StockModalProps {
 
 /** Omborga kirim (+) yoki qo'lda ayirish (−). Har amal "Kirim tarixi"ga yoziladi. */
 function StockModal({ book, onClose, onSaved }: StockModalProps) {
-  const [qty, setQty] = useState('')
+  const [qty, setQty] = useState<number | null>(null)
   const [note, setNote] = useState('')
   const [mode, setMode] = useState<'in' | 'out'>('in')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
 
   useEffect(() => {
-    setQty('')
+    setQty(null)
     setNote('')
     setMode('in')
     setError('')
@@ -264,7 +265,7 @@ function StockModal({ book, onClose, onSaved }: StockModalProps) {
 
   const submit = async () => {
     if (!book || busy) return
-    const n = Number(qty)
+    const n = qty ?? 0
     if (!Number.isInteger(n) || n <= 0) {
       setError("Miqdorni butun son sifatida kiriting (0 dan katta)")
       return
@@ -307,13 +308,11 @@ function StockModal({ book, onClose, onSaved }: StockModalProps) {
           <option value="in">Kirim (+) — yangi kitob keldi</option>
           <option value="out">Ayirish (−) — yo'qolgan/buzilgan</option>
         </Select>
-        <Input
+        <NumberInput
           label="Miqdor (dona)"
           required
-          type="number"
-          min={1}
           value={qty}
-          onChange={(e) => setQty(e.target.value)}
+          onChange={setQty}
         />
         <Textarea
           label="Izoh"

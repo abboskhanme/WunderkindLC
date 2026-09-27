@@ -4,6 +4,7 @@ import { Card } from '@/components/ui/Card'
 import { StageBars } from './StageBars'
 import { OriginTable } from './OriginTable'
 import { cn, formatMoney } from '@/lib/utils'
+import { formatNumber } from '@/lib/numberFormat'
 
 /**
  * «BUTUN CRM MANZARASI» — bu sahifadagi raqamlar markazning QANCHA qismini qamraydi.
@@ -42,18 +43,18 @@ export function CrmOverviewCard({
         <div className="space-y-5">
           {/* Uchta asosiy son — grafik emas, chunki bu bitta sarlavha qiymat (hero number). */}
           <div className="grid gap-3 sm:grid-cols-3">
-            <Mini icon={Users} label="Jami lid" value={leads.toLocaleString()} tone="slate" />
+            <Mini icon={Users} label="Jami lid" value={formatNumber(leads)} tone="slate" />
             <Mini
               icon={UserCheck}
               label="O'quvchiga aylandi"
-              value={converted.toLocaleString()}
+              value={formatNumber(converted)}
               hint={`${pct(converted)}% konversiya`}
               tone="emerald"
             />
             <Mini
               icon={Wallet}
               label="To'lov qildi"
-              value={paid.toLocaleString()}
+              value={formatNumber(paid)}
               hint={
                 revenue > 0
                   ? `${pct(paid)}% · ${formatMoney(revenue)} so'm`

@@ -12,6 +12,7 @@ import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Loader } from '@/components/ui/Loader'
 import { Modal } from '@/components/ui/Modal'
+import { NumberInput } from '@/components/ui/NumberInput'
 import { apiErrorMessage, cn, formatDate } from '@/lib/utils'
 import { usePerm } from '@/lib/permissions'
 
@@ -530,12 +531,11 @@ function TestFormModal({
           {mode === 'offline' ? (
             <div>
               <label className="mb-1 block text-xs font-medium text-slate-500">Maksimal ball</label>
-              <input
-                type="number"
-                min={1}
+              <NumberInput
+                as="input"
                 className={control}
-                value={maxScore}
-                onChange={(e) => setMaxScore(e.target.value)}
+                value={maxScore === '' ? null : Number(maxScore)}
+                onChange={(v) => setMaxScore(v === null ? '' : String(v))}
                 placeholder="100"
               />
             </div>
@@ -693,13 +693,11 @@ function TestFormModal({
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
               <div>
                 <label className="mb-1 block text-xs font-medium text-slate-500">Savollar soni</label>
-                <input
-                  type="number"
-                  min={1}
-                  max={200}
+                <NumberInput
+                  as="input"
                   className={control}
-                  value={count}
-                  onChange={(e) => setCount(e.target.value)}
+                  value={count === '' ? null : Number(count)}
+                  onChange={(v) => setCount(v === null ? '' : String(Math.min(200, v)))}
                 />
               </div>
               <div>

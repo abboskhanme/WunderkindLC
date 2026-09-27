@@ -7,8 +7,11 @@ import {
 import { apiErrorMessage } from '@/lib/utils'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
-import { Input } from '@/components/ui/Input'
+import { MoneyInput, NumberInput } from '@/components/ui/NumberInput'
 import { Loader } from '@/components/ui/Loader'
+
+/** Forma holati: maydonlar BO'SH bo'la oladi (`null`). */
+type SettingsForm = { [K in keyof RetentionSettings]: RetentionSettings[K] | null }
 
 interface Props {
   onClose: () => void
@@ -17,7 +20,7 @@ interface Props {
 
 /** Ushlab turish bonusi sozlamalari (CenterMeta): muddat, ruxsat etilgan tanaffus, standart summa. */
 export function RetentionSettingsModal({ onClose, onSaved }: Props) {
-  const [form, setForm] = useState<RetentionSettings | null>(null)
+  const [form, setForm] = useState<SettingsForm | null>(null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
@@ -29,10 +32,19 @@ export function RetentionSettingsModal({ onClose, onSaved }: Props) {
 
   const submit = async () => {
     if (!form) return
+    const monthsRequired = form.monthsRequired
+    if (monthsRequired === null || monthsRequired < 1) {
+      setError('Necha oy uzluksiz o\'qishi kerakligini kiriting (1–36)')
+      return
+    }
     setSaving(true)
     setError('')
     try {
-      await saveRetentionSettings(form)
+      await saveRetentionSettings({
+        monthsRequired,
+        maxGapMonths: form.maxGapMonths ?? 0,
+        defaultAmount: form.defaultAmount ?? 0,
+      })
       onSaved()
     } catch (err) {
       setError(apiErrorMessage(err, "Sozlamalarni saqlab bo'lmadi"))
@@ -62,33 +74,24 @@ export function RetentionSettingsModal({ onClose, onSaved }: Props) {
         <Loader />
       ) : (
         <div className="space-y-3">
-          <Input
+          <NumberInput
             label="Necha oy uzluksiz o'qishi kerak"
-            type="number"
-            min={1}
-            max={36}
             value={form.monthsRequired}
-            onChange={(e) => setForm({ ...form, monthsRequired: Number(e.target.value) || 1 })}
+            onChange={(v) => setForm({ ...form, monthsRequired: v === null ? null : Math.min(v, 36) })}
           />
-          <Input
+          <NumberInput
             label="Ruxsat etilgan tanaffus (oy)"
-            type="number"
-            min={0}
-            max={12}
             value={form.maxGapMonths}
-            onChange={(e) => setForm({ ...form, maxGapMonths: Number(e.target.value) || 0 })}
+            onChange={(v) => setForm({ ...form, maxGapMonths: v === null ? null : Math.min(v, 12) })}
           />
           <p className="text-xs text-slate-400">
             Muzlatilgan yoki a'zoliksiz oylar sanoqni <b>to'xtatadi</b>, lekin siklni buzmaydi.
             Ketma-ket shu sondan ko'p bo'lsa — sikl uziladi. 0 = har qanday tanaffus uzadi.
           </p>
-          <Input
+          <MoneyInput
             label="Standart bonus summasi (so'm)"
-            type="number"
-            min={0}
-            step={1000}
             value={form.defaultAmount}
-            onChange={(e) => setForm({ ...form, defaultAmount: Number(e.target.value) || 0 })}
+            onChange={(v) => setForm({ ...form, defaultAmount: v })}
           />
           <p className="text-xs text-slate-400">
             Bonus berish oynasi shu summa bilan ochiladi — admin har safar o'zgartira oladi.

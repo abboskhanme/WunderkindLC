@@ -4,6 +4,7 @@ import {
   getIgQuality, type IgQuality, type IgQualityIntent, type IgQualityPair,
 } from '@/api/services/instagramQuality'
 import { Icon, MarketingPage, MkCard, MkEmpty, MkError, MkLoading, MkStat } from './mk'
+import { formatNumber } from '@/lib/numberFormat'
 
 /** Yakka seriya rangi — `course-analytics.md`: yashil/qizil juftlik ISHLATILMAYDI. */
 const C_BAR = '#0284c7'
@@ -192,18 +193,18 @@ export function InstagramQuality() {
             {/* ── KPI ──────────────────────────────────────────────────────── */}
             <div className="mk-kpi" style={{ marginBottom: 22 }}>
               <MkStat
-                value={data.total.toLocaleString()}
+                value={formatNumber(data.total)}
                 label="Jami taklif"
                 tone="primary"
                 icon="ai"
                 hint="AI matn yozgan javoblar"
               />
               <MkStat
-                value={data.edited.toLocaleString()}
+                value={formatNumber(data.edited)}
                 label="Tahrirlangan"
                 tone="warning"
                 icon="edit"
-                hint={`${data.kept.toLocaleString()} tasi aynan qabul qilingan`}
+                hint={`${formatNumber(data.kept)} tasi aynan qabul qilingan`}
               />
               <MkStat
                 value={`${data.editedPercent}%`}
@@ -258,7 +259,7 @@ export function InstagramQuality() {
 
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, marginTop: 14 }}>
                       <span className="feed-time">
-                        {data.itemsTotal.toLocaleString()} tadan {data.items.length.toLocaleString()} tasi ko'rsatilyapti
+                        {formatNumber(data.itemsTotal)} tadan {formatNumber(data.items.length)} tasi ko'rsatilyapti
                       </span>
                       {data.items.length < data.itemsTotal && limit < 200 && (
                         <button className="btn btn-outline btn-sm" onClick={() => setLimit(limit >= 100 ? 200 : 100)}>
@@ -332,8 +333,8 @@ function IntentTable({
                         )}
                         {on && <span className="badge badge-ai" style={{ marginLeft: 8 }}>Filtrda</span>}
                       </td>
-                      <td className="mk-num">{r.total.toLocaleString()}</td>
-                      <td className="mk-num">{r.edited.toLocaleString()}</td>
+                      <td className="mk-num">{formatNumber(r.total)}</td>
+                      <td className="mk-num">{formatNumber(r.edited)}</td>
                       <td>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                           <div className="progress-track">

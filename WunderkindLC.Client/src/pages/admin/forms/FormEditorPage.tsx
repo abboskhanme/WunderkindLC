@@ -20,6 +20,7 @@ import { Badge } from '@/components/ui/Badge'
 import { LeadStageChip } from '@/components/leads/LeadStageChip'
 import { usePerm } from '@/lib/permissions'
 import { cn, formatDate, formatMoney, apiErrorMessage } from '@/lib/utils'
+import { formatPhone } from '@/lib/numberFormat'
 import { formUrl } from './FormsPage'
 
 /** Muharrirdagi maydon holati (`id` bo'lsa — mavjud maydon). */
@@ -684,7 +685,7 @@ export function SubmissionsTable({
                     <div className="mt-1 space-y-0.5">
                       {s.age > 0 && <div className="text-[11px] font-normal text-slate-400">Yoshi: {s.age}</div>}
                       {s.parentPhone && (
-                        <div className="text-[11px] font-normal text-slate-400">Ota-ona: {s.parentPhone}</div>
+                        <div className="text-[11px] font-normal text-slate-400">Ota-ona: {formatPhone(s.parentPhone)}</div>
                       )}
                       {s.answers.map((a, k) => (
                         <div key={k} className="text-[11px] font-normal text-slate-400">
@@ -695,7 +696,7 @@ export function SubmissionsTable({
                     </div>
                   )}
                 </td>
-                <td className="px-3 py-2 font-mono text-slate-500">{s.phone}</td>
+                <td className="px-3 py-2 font-mono text-slate-500">{formatPhone(s.phone)}</td>
                 {showForm && <td className="px-3 py-2 text-slate-600">{s.formTitle}</td>}
                 <td className="px-3 py-2 text-slate-600">{s.courseName || <span className="text-slate-300">—</span>}</td>
                 <td className="px-3 py-2">

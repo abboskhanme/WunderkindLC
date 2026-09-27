@@ -6,6 +6,7 @@ import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Input, Select } from '@/components/ui/Input'
 import { PhoneInput } from '@/components/ui/PhoneInput'
+import { NumberInput } from '@/components/ui/NumberInput'
 import { PhotoUpload } from '@/components/ui/PhotoUpload'
 import { PhotoDialog } from '@/components/media/PhotoDialog'
 import { genderOptions, teacherPermissions } from '@/config/constants'
@@ -31,7 +32,8 @@ const empty: TeacherPayload = {
   // Yangi o'qituvchi — FOIZLI (o'qitganidan foiz oladi). Guruhda alohida o'zgartirish mumkin.
   salaryMode: 'percent',
   salary: 0,
-  salaryPercent: 0,
+  // Bo'sh — foizni foydalanuvchi o'zi kiritadi (saqlashda tekshiriladi).
+  salaryPercent: undefined,
   category: '',
   salaryStartMonth: '',
   salaryStartDate: '',
@@ -68,7 +70,7 @@ export function TeacherFormModal({ open, onClose, onSubmit, initial, subjects }:
             // Maosh rejimi/foizi — "Oylik hisoblash" sahifasida tahrirlanadi; bu yerda saqlanib qoladi (reset bo'lmaydi).
             salaryMode: initial.salaryMode ?? 'fixed',
             salary: initial.salary,
-            salaryPercent: initial.salaryPercent ?? 0,
+            salaryPercent: initial.salaryPercent,
             category: initial.category ?? '',
             salaryStartMonth: initial.salaryStartMonth ?? '',
             salaryStartDate: initial.salaryStartDate ?? '',
@@ -199,15 +201,11 @@ export function TeacherFormModal({ open, onClose, onSubmit, initial, subjects }:
             onChange={(phone) => update('phone', phone)}
           />
           <div>
-            <Input
+            <NumberInput
               label="Oylik maosh foizi (%)"
-              type="number"
-              min={0}
-              max={100}
-              step="any"
               required={!initial}
-              value={form.salaryPercent ?? 0}
-              onChange={(e) => update('salaryPercent', Number(e.target.value))}
+              value={form.salaryPercent}
+              onChange={(v) => update('salaryPercent', v ?? undefined)}
             />
           </div>
         </div>

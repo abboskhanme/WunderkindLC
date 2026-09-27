@@ -3,6 +3,7 @@ import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts'
 import type { LeadSourceSlice } from '@/api/services/leads'
 import { Card } from '@/components/ui/Card'
 import { CATEGORICAL, MAX_SLICES, OTHER_GRAY } from './palette'
+import { formatNumber } from '@/lib/numberFormat'
 
 /**
  * LID MANBALARI — donut.
@@ -32,7 +33,7 @@ function SourceTooltip({ active, payload }: TooltipProps): ReactNode {
   return (
     <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-[13px] shadow-[var(--shadow-1)]">
       <p className="text-slate-700">
-        <span className="font-mono font-semibold">{s.count.toLocaleString()}</span> ta lid
+        <span className="font-mono font-semibold">{formatNumber(s.count)}</span> ta lid
         <span className="text-slate-400"> · {s.pct.toFixed(1)}%</span>
       </p>
       <p className="mt-0.5 text-slate-500">{s.label}</p>
@@ -112,7 +113,7 @@ export function SourcesDonut({ sources }: { sources: LeadSourceSlice[] }) {
             {/* Donut markazi — jami. Matn har doim matn rangida. */}
             <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
               <span className="font-mono text-2xl font-semibold leading-none text-slate-800">
-                {total.toLocaleString()}
+                {formatNumber(total)}
               </span>
               <span className="mt-1 text-xs text-slate-400">jami lid</span>
             </div>
@@ -129,7 +130,7 @@ export function SourcesDonut({ sources }: { sources: LeadSourceSlice[] }) {
                 />
                 <span className="min-w-0 flex-1 truncate text-slate-600">{s.label}</span>
                 <span className="font-mono tabular-nums text-slate-800">
-                  {s.count.toLocaleString()}
+                  {formatNumber(s.count)}
                 </span>
                 <span className="w-12 text-right font-mono tabular-nums text-xs text-slate-500">
                   {s.pct.toFixed(1)}%

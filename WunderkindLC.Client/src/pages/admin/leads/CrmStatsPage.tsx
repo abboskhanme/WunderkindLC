@@ -31,6 +31,7 @@ import { ManagerPerformance } from './stats/ManagerPerformance'
 import { ManagerStageMatrix } from './stats/ManagerStageMatrix'
 import { OriginTable } from '@/components/leads/OriginTable'
 import { axisTick, barCursor, CATEGORICAL, gridStroke, stageRamp, tooltipStyle } from './stats/palette'
+import { formatNumber } from '@/lib/numberFormat'
 
 
 /**
@@ -186,17 +187,17 @@ export function CrmStatsPage() {
               <span className="ml-1 text-2xl font-medium text-slate-400">%</span>
             </div>
             <p className="mt-2 text-xs text-slate-500">
-              {kpi.total.toLocaleString()} ta liddan {kpi.converted.toLocaleString()} tasi
+              {formatNumber(kpi.total)} ta liddan {formatNumber(kpi.converted)} tasi
               o'quvchiga aylandi{kpiHint ? ` · ${kpiHint}` : ''}
             </p>
           </div>
         </div>
 
         <div className="grid gap-4 sm:grid-cols-2 lg:col-span-2">
-          <StatCard label="Jami lidlar" value={kpi.total.toLocaleString()} icon={Users} hint={kpiHint} />
+          <StatCard label="Jami lidlar" value={formatNumber(kpi.total)} icon={Users} hint={kpiHint} />
           <StatCard
             label="Aylantirilgan"
-            value={kpi.converted.toLocaleString()}
+            value={formatNumber(kpi.converted)}
             icon={UserCheck}
             iconBg="bg-emerald-50"
             iconColor="text-emerald-600"
@@ -206,7 +207,7 @@ export function CrmStatsPage() {
               aynan shu ikkitasi. Ular faqat davr analitikasi yuklanganda to'ladi. */}
           <StatCard
             label="To'lov qildi"
-            value={(analytics?.paid ?? 0).toLocaleString()}
+            value={formatNumber(analytics?.paid ?? 0)}
             icon={HandCoins}
             iconBg="bg-teal-50"
             iconColor="text-teal-600"
@@ -220,7 +221,7 @@ export function CrmStatsPage() {
             iconColor="text-teal-600"
             hint={
               analytics && analytics.paid > 0
-                ? `O'rtacha chek ${formatMoney(analytics.revenue / analytics.paid)} so'm`
+                ? `O'rtacha chek ${formatMoney(analytics.revenue / analytics.paid)}`
                 : "Aylantirilganlardan hali to'lov yo'q"
             }
           />

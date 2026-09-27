@@ -23,6 +23,7 @@ import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
 import { Input, Select } from '@/components/ui/Input'
 import { cn } from '@/lib/utils'
+import { formatPhone } from '@/lib/numberFormat'
 import { CHANNELS, CHANNEL_ORDER, type ChannelKey } from '@/config/channels'
 import { MessageEditor, type TokenDef } from '@/components/messaging/MessageEditor'
 import { SmsProviderPicker } from '@/components/messaging/SmsProviderPicker'
@@ -634,7 +635,7 @@ export function UnifiedComposer({
                         disabled={noPhone}
                         onClick={() => toggleSet(setSelStudents, r.studentId)}
                         title={r.fullName}
-                        detail={`${r.className || '—'}${phone ? ` · ${phone}` : ''}`}
+                        detail={`${r.className || '—'}${phone ? ` · ${formatPhone(phone)}` : ''}`}
                         badge={noPhone ? <Badge tone="amber">raqam yo'q</Badge> : undefined}
                       />
                     )
@@ -649,7 +650,7 @@ export function UnifiedComposer({
                         disabled={noPhone}
                         onClick={() => toggleSet(setSelTeachers, t.teacherId)}
                         title={t.fullName}
-                        detail={t.phone ?? ''}
+                        detail={formatPhone(t.phone)}
                         badge={
                           <>
                             <Badge tone="blue">O'qituvchi</Badge>

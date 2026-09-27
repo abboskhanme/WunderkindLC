@@ -5,6 +5,7 @@ import type { BotThread, BotSupportMsg } from '@/api/services/botSupport'
 import { Card } from '@/components/ui/Card'
 import { Loader } from '@/components/ui/Loader'
 import { apiErrorMessage, cn, formatTime } from '@/lib/utils'
+import { formatPhone } from '@/lib/numberFormat'
 
 export function SupportPanel() {
   const [threads, setThreads] = useState<BotThread[]>([])
@@ -157,7 +158,7 @@ export function SupportPanel() {
                       )}
                     </div>
                     <div className="truncate text-xs text-slate-400">
-                      {th.phone || th.linked || th.username || ''}
+                      {th.phone ? formatPhone(th.phone) : th.linked || th.username || ''}
                     </div>
                     {th.lastText && (
                       <div className="mt-0.5 truncate text-xs text-slate-400">

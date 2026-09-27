@@ -39,6 +39,8 @@ import {
 } from '@/api/services/testCertificates'
 import type { CertificateJob, TestCertificateTemplate } from '@/api/services/testCertificates'
 import { cn, formatDate, apiErrorMessage } from '@/lib/utils'
+import { formatPhone } from '@/lib/numberFormat'
+import { NumberInput } from '@/components/ui/NumberInput'
 import { Loader } from '@/components/ui/Loader'
 import { Modal } from '@/components/ui/Modal'
 
@@ -341,12 +343,11 @@ function TeacherTestFormModal({
           {mode === 'offline' ? (
             <div>
               <span className={label}>Maksimal ball</span>
-              <input
-                type="number"
-                min={1}
+              <NumberInput
+                as="input"
                 className={field}
-                value={maxScore}
-                onChange={(e) => setMaxScore(e.target.value)}
+                value={maxScore === '' ? null : Number(maxScore)}
+                onChange={(v) => setMaxScore(v === null ? '' : String(v))}
                 placeholder="100"
               />
             </div>
@@ -493,13 +494,11 @@ function TeacherTestFormModal({
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <span className={label}>Savollar soni</span>
-                <input
-                  type="number"
-                  min={1}
-                  max={200}
+                <NumberInput
+                  as="input"
                   className={field}
-                  value={count}
-                  onChange={(e) => setCount(e.target.value)}
+                  value={count === '' ? null : Number(count)}
+                  onChange={(v) => setCount(v === null ? '' : String(Math.min(200, v)))}
                 />
               </div>
               <div>
@@ -1065,14 +1064,12 @@ export function TeacherGroupTestsPanel({
                         ))}
                     </div>
                     <div className="flex shrink-0 items-center gap-1.5">
-                      <input
-                        type="number"
-                        min={0}
-                        max={detail.maxScore}
+                      <NumberInput
+                        as="input"
                         placeholder="—"
-                        value={scoreDrafts[r.studentId] ?? ''}
-                        onChange={(e) =>
-                          setScoreDrafts((prev) => ({ ...prev, [r.studentId]: e.target.value }))
+                        value={scoreDrafts[r.studentId] ? Number(scoreDrafts[r.studentId]) : null}
+                        onChange={(v) =>
+                          setScoreDrafts((prev) => ({ ...prev, [r.studentId]: v === null ? '' : String(v) }))
                         }
                         onBlur={() => saveScore(r.studentId)}
                         disabled={savingRow === r.studentId}
@@ -1117,7 +1114,7 @@ export function TeacherGroupTestsPanel({
                     <p className="truncate text-[14px] font-semibold text-ink">{r.fullName}</p>
                     <p className="truncate text-[11px] text-faint" title={r.answers}>
                       <span className="font-mono">{r.answers}</span> · {timeOf(r.submittedAt, '—')}
-                      {r.phone ? ` · ${r.phone}` : ''}
+                      {r.phone ? ` · ${formatPhone(r.phone)}` : ''}
                     </p>
                   </div>
                   <div className="shrink-0 text-[14px] font-bold text-ink">

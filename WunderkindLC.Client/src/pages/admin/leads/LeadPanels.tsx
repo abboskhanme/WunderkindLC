@@ -9,6 +9,7 @@ import { MessageEditor, type TokenDef } from '@/components/messaging/MessageEdit
 import { Button } from '@/components/ui/Button'
 import { Input, Select } from '@/components/ui/Input'
 import { apiErrorMessage, formatDate, formatDateTime } from '@/lib/utils'
+import { formatPhone } from '@/lib/numberFormat'
 import {
   WD_SHORT,
   isoDate,
@@ -69,7 +70,7 @@ export function LeadSmsPanel({ lead, onSent }: { lead: Lead; onSent: () => void 
   return (
     <div className="space-y-3">
       <p className="text-xs text-slate-400">
-        Raqam: <span className="font-mono text-slate-600">{phone}</span>
+        Raqam: <span className="font-mono text-slate-600">{formatPhone(phone)}</span>
       </p>
       <MessageEditor
         value={text}

@@ -19,6 +19,13 @@ import {
 import {
   ChannelIcon, Icon, MarketingPage, MkCopyRow, MkError, MkLoading, MkStatusCard,
 } from './mk'
+import { NumberInput } from '@/components/ui/NumberInput'
+
+/** Forma holati: raqamli maydonlar bo'shatila oladi (`null`) — saqlashda tekshiriladi. */
+type SettingsForm = Omit<IgSettings, 'instagramReplyDelaySeconds' | 'instagramDailyReplyLimit'> & {
+  instagramReplyDelaySeconds: number | null
+  instagramDailyReplyLimit: number | null
+}
 
 /**
  * SOZLAMALAR — Instagram akkauntni ulash, modul bayroqlari va DIAGNOSTIKA.
@@ -110,7 +117,7 @@ export function InstagramSettings() {
   const [params, setParams] = useSearchParams()
 
   const [status, setStatus] = useState<IgStatus | null>(null)
-  const [form, setForm] = useState<IgSettings | null>(null)
+  const [form, setForm] = useState<SettingsForm | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
@@ -194,15 +201,25 @@ export function InstagramSettings() {
 
   useEffect(load, [load])
 
-  const patch = (p: Partial<IgSettings>) => setForm((f) => (f ? { ...f, ...p } : f))
+  const patch = (p: Partial<SettingsForm>) => setForm((f) => (f ? { ...f, ...p } : f))
 
   const save = async () => {
     if (!form) return
+    // Bo'sh chegara 0 deb saqlanmaydi: server uni kuniga 1 ta javobga aylantirardi.
+    if (form.instagramDailyReplyLimit === null) {
+      setSaved('')
+      setError('Kunlik javob chegarasini kiriting.')
+      return
+    }
     setSaving(true)
     setError('')
     setSaved('')
     try {
-      const next = await saveIgSettings(form)
+      const next = await saveIgSettings({
+        ...form,
+        instagramReplyDelaySeconds: form.instagramReplyDelaySeconds ?? 0,
+        instagramDailyReplyLimit: form.instagramDailyReplyLimit,
+      })
       setForm(next)
       setSaved('Sozlamalar saqlandi.')
       setStatus(await getIgStatus())
@@ -642,20 +659,20 @@ export function InstagramSettings() {
 
               <div className="field">
                 <label className="field-label">Javob kechikishi (soniya)</label>
-                <input
-                  className="input" type="number" min={0} max={120} disabled={!canEdit}
+                <NumberInput
+                  as="input" className="input" disabled={!canEdit}
                   value={form.instagramReplyDelaySeconds}
-                  onChange={(e) => patch({ instagramReplyDelaySeconds: Number(e.target.value) || 0 })}
+                  onChange={(v) => patch({ instagramReplyDelaySeconds: v === null ? null : Math.min(v, 120) })}
                 />
                 <div className="field-hint">Bir zumda kelgan javob robot bo'lib ko'rinadi — kichik pauza tabiiyroq.</div>
               </div>
 
               <div className="field">
                 <label className="field-label">Kunlik javob chegarasi</label>
-                <input
-                  className="input" type="number" min={0} max={5000} disabled={!canEdit}
+                <NumberInput
+                  as="input" className="input" disabled={!canEdit}
                   value={form.instagramDailyReplyLimit}
-                  onChange={(e) => patch({ instagramDailyReplyLimit: Number(e.target.value) || 0 })}
+                  onChange={(v) => patch({ instagramDailyReplyLimit: v === null ? null : Math.min(v, 5000) })}
                 />
                 <div className="field-hint">Himoya chegarasi: kutilmagan halqada akkaunt spam sifatida bloklanmasin.</div>
               </div>

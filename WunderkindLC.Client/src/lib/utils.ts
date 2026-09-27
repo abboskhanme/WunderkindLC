@@ -1,3 +1,4 @@
+import { formatPhoneInput } from './numberFormat'
 /** Tailwind class'larni shartli birlashtirish */
 export function cn(...classes: Array<string | false | null | undefined>): string {
   return classes.filter(Boolean).join(' ')
@@ -58,36 +59,12 @@ export function formatTime(iso: string | null | undefined): string {
 }
 
 /**
- * Telefon raqamini maskalash: +(998) 90-123-45-67
- * Input: "998901234567" yoki "+998901234567" yoki "901234567"
- * Output: "(998) 90-123-45-67" (+998 prefix avtomatik qo'shiladi)
+ * Telefon raqamini O'zbekiston formatida ko'rsatish: `+998 90 123 45 67`
+ * (yozish paytida qisman ham: "9" → "+998 9"). Input: "998901234567" | "+998901234567" | "901234567".
+ * ⚠️ Yagona qoida `lib/numberFormat.ts` → `formatPhoneInput` da; bu nom eski chaqiruvlar uchun qoldi.
  */
 export function maskPhone(raw: string): string {
-  if (!raw) return ''
-  // Faqat raqamlar qol
-  let digits = raw.replace(/\D/g, '')
-
-  // +998 prefix qo'sh (agar yo'q bo'lsa)
-  if (!digits.startsWith('998')) digits = '998' + digits
-
-  // Maksimal 12 raqamga chegarala (998 + 9 raqam)
-  if (digits.length > 12) digits = digits.slice(0, 12)
-
-  // Format: (998) XX-XXX-XX-XX
-  let formatted = ''
-  if (digits.length <= 3) {
-    formatted = digits.length > 0 ? '(' + digits : ''
-  } else if (digits.length <= 5) {
-    formatted = '(' + digits.slice(0, 3) + ') ' + digits.slice(3)
-  } else if (digits.length <= 8) {
-    formatted = '(' + digits.slice(0, 3) + ') ' + digits.slice(3, 5) + '-' + digits.slice(5)
-  } else if (digits.length <= 10) {
-    formatted = '(' + digits.slice(0, 3) + ') ' + digits.slice(3, 5) + '-' + digits.slice(5, 8) + '-' + digits.slice(8)
-  } else {
-    formatted = '(' + digits.slice(0, 3) + ') ' + digits.slice(3, 5) + '-' + digits.slice(5, 8) + '-' + digits.slice(8, 10) + '-' + digits.slice(10)
-  }
-
-  return formatted
+  return formatPhoneInput(raw)
 }
 
 /**
@@ -102,8 +79,8 @@ export function formatPhoneShort(raw: string): string {
 }
 
 /**
- * Formatlanmish telefon raqamidan (+998 bilan faqat raqamlarni ol.
- * Input: "(998) 90-123-45-67"
+ * Formatlangan telefon raqamidan faqat raqamlarni oladi.
+ * Input: "+998 90 123 45 67"
  * Output: "998901234567" (backend'ga yuborish uchun)
  */
 export function unmaskPhone(formatted: string): string {

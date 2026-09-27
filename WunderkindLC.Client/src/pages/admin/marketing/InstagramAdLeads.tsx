@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { usePerm } from '@/lib/permissions'
 import { apiErrorMessage } from '@/lib/utils'
+import { formatPhone, formatNumber } from '@/lib/numberFormat'
 import {
   getIgAdLeads, retryIgAdLead,
   type IgAdLead, type IgAdLeadList, type IgBreakdown,
@@ -146,7 +147,7 @@ export function InstagramAdLeads() {
                    lid qani?" savoli ekranga chiqmasdan qolmasin. */
                 { label: 'Xato bilan qolgan', value: data.totals.failed, tone: 'danger', icon: 'warn' },
               ] as const).map((s) => (
-                <MkStat key={s.label} label={s.label} value={s.value.toLocaleString()} tone={s.tone} icon={s.icon} />
+                <MkStat key={s.label} label={s.label} value={formatNumber(s.value)} tone={s.tone} icon={s.icon} />
               ))}
             </div>
 
@@ -231,7 +232,7 @@ function AdLeadRow({
 
         <div className="page-sub" style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 2 }}>
           {lead.phone
-            ? <a href={`tel:${lead.phone}`}>{lead.phone}</a>
+            ? <a href={`tel:${lead.phone}`}>{formatPhone(lead.phone)}</a>
             : <span>telefon yo'q</span>}
           {lead.formName && <span>· {lead.formName}</span>}
           {lead.campaignName && <span>· {lead.campaignName}</span>}
@@ -280,7 +281,7 @@ function Breakdown({ title, sub, rows }: { title: string; sub: string; rows: IgB
                 </div>
               </div>
               <div style={{ textAlign: 'right', minWidth: 62 }}>
-                <div className="mk-num">{r.count.toLocaleString()}</div>
+                <div className="mk-num">{formatNumber(r.count)}</div>
                 <div className="feed-time">{pct}%</div>
               </div>
             </div>

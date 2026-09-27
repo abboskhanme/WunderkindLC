@@ -8,6 +8,7 @@ import { StatCard } from '@/components/ui/StatCard'
 import { Badge } from '@/components/ui/Badge'
 import { Loader } from '@/components/ui/Loader'
 import { cn, formatDateTime } from '@/lib/utils'
+import { formatPhone } from '@/lib/numberFormat'
 
 type ActivationFilter = 'all' | 'activated' | 'inactive'
 
@@ -193,7 +194,7 @@ export function ParentsPage() {
                         <td className="font-medium text-slate-800">
                           {r.fullName || <span className="text-slate-400">—</span>}
                         </td>
-                        <td className="font-mono text-slate-600">{r.phone || '—'}</td>
+                        <td className="whitespace-nowrap font-mono text-slate-600">{formatPhone(r.phone) || '—'}</td>
                         <td>
                           <Badge tone="default">
                             <span className="font-mono">{r.childrenCount}</span>{' '}

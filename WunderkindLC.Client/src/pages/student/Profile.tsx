@@ -11,6 +11,7 @@ import {
   type StudentCertificateDto,
 } from '@/api/services/studentPortal'
 import { Icon, gradeColor, initials, fmtDate } from '@/pages/student/lib'
+import { formatPhone } from '@/lib/numberFormat'
 
 /* ============================================================
    O'quvchi portali — PROFIL.
@@ -228,7 +229,7 @@ export function StudentProfileScreen() {
                   <div style={{ fontSize: 15, fontWeight: 700 }}>{p.parentFullName}</div>
                   {p.parentPhone && (
                     <div className="muted" style={{ fontSize: 13 }}>
-                      {p.parentPhone}
+                      {formatPhone(p.parentPhone)}
                     </div>
                   )}
                 </div>

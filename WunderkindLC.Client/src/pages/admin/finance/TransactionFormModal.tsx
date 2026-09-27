@@ -25,6 +25,7 @@ import {
 } from '@/components/ui/RightDrawer'
 import { categoriesByDirection, financeDirectionLabels, formatMonth, monthStatusLabels, paymentMethods } from '@/config/constants'
 import { getTransactionTypes, type TransactionType } from '@/api/services/finance'
+import { MoneyInput } from '@/components/ui/NumberInput'
 import { balanceTextCls, formatMoney, cn, apiErrorMessage } from '@/lib/utils'
 import { newRequestId } from '@/lib/requestId'
 
@@ -50,17 +51,20 @@ const today = () => new Date().toISOString().slice(0, 10)
 const isSalaryCat = (direction: FinanceDirection, category: string) =>
   direction === 'expense' && category === 'salary'
 
-const emptyFor = (direction: FinanceDirection): FinanceTransactionPayload => ({
+/** Forma holati: summa maydoni BO'SH bo'la oladi (`null`) — yangi amal "0" bilan ochilmaydi. */
+type TxForm = Omit<FinanceTransactionPayload, 'amount'> & { amount: number | null }
+
+const emptyFor = (direction: FinanceDirection): TxForm => ({
   date: today(),
   direction,
   category: categoriesByDirection[direction][0].value,
-  amount: 0,
+  amount: null,
   note: '',
   method: direction === 'income' ? 'cash' : undefined,
 })
 
 export function TransactionFormModal({ open, onClose, onSubmit, initial, preset, title }: Props) {
-  const [form, setForm] = useState<FinanceTransactionPayload>(emptyFor('income'))
+  const [form, setForm] = useState<TxForm>(emptyFor('income'))
   const [teachers, setTeachers] = useState<Teacher[]>([])
   const [monthInfo, setMonthInfo] = useState<MonthSalary | null>(null)
   // O'quvchi to'lovi uchun: guruh/o'quvchi tanlash + tanlangan o'quvchining oylar holati
@@ -186,7 +190,7 @@ export function TransactionFormModal({ open, onClose, onSubmit, initial, preset,
       setForm((f) => ({
         ...f,
         month: target?.month ?? f.date?.slice(0, 7),
-        amount: due ? due.remaining : 0,
+        amount: due ? due.remaining : null,
       }))
     })
   }
@@ -283,7 +287,7 @@ export function TransactionFormModal({ open, onClose, onSubmit, initial, preset,
     if (type === 'substitute') amt = substituteAmount(monthInfo.remaining, subFee)
     else if (type === 'main') amt = Math.max(0, monthInfo.remaining - subFee)
 
-    setForm((f) => ({ ...f, amount: amt, note }))
+    setForm((f) => ({ ...f, amount: amt > 0 ? amt : null, note }))
     autoNoteRef.current = note
   }
 
@@ -309,7 +313,7 @@ export function TransactionFormModal({ open, onClose, onSubmit, initial, preset,
 
         setForm((f) => ({
           ...f,
-          amount: amt,
+          amount: amt > 0 ? amt : null,
           // Izoh bo'sh yoki oldingi AVTO izoh bo'lsa — tanlangan oyga qarab yangilanadi
           note: !f.note?.trim() || f.note === autoNoteRef.current ? autoNote : f.note,
         }))
@@ -339,9 +343,9 @@ export function TransactionFormModal({ open, onClose, onSubmit, initial, preset,
     }
   }, [open])
 
-  const update = <K extends keyof FinanceTransactionPayload>(
+  const update = <K extends keyof TxForm>(
     key: K,
-    value: FinanceTransactionPayload[K],
+    value: TxForm[K],
   ) => setForm((f) => ({ ...f, [key]: value }))
 
   // Yo'nalish o'zgarsa, toifani shu yo'nalishning birinchi qiymatiga moslaymiz
@@ -404,7 +408,8 @@ export function TransactionFormModal({ open, onClose, onSubmit, initial, preset,
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
     if (inFlightRef.current) return
-    if (form.amount <= 0 || !form.date) return
+    const amount = form.amount
+    if (amount === null || amount <= 0 || !form.date) return
     if (isSalaryExpense && !form.teacherId) return
     if (showTuition && !form.studentId) return
     inFlightRef.current = true
@@ -413,6 +418,7 @@ export function TransactionFormModal({ open, onClose, onSubmit, initial, preset,
     try {
       await onSubmit({
       ...form,
+      amount,
       requestId: requestIdRef.current,
       // Tur EKRANDA ko'ringani bilan yoziladi: foydalanuvchi tegmagan bo'lsa ham zaxira tur
       // saqlanadi, aks holda jadvalda nom bo'sh chiqardi (`fallbackType` izohiga qarang).
@@ -441,7 +447,7 @@ export function TransactionFormModal({ open, onClose, onSubmit, initial, preset,
 
   const saveDisabled =
     submitting ||
-    form.amount <= 0 || (isSalaryExpense && !form.teacherId) || (showTuition && !form.studentId)
+    (form.amount ?? 0) <= 0 || (isSalaryExpense && !form.teacherId) || (showTuition && !form.studentId)
   // Yo'nalish oldindan berilgan (Kassalar → Chiqim) — panel faqat shu yo'nalish uchun.
   const lockedDirection = !initial && !!preset
 
@@ -730,13 +736,11 @@ export function TransactionFormModal({ open, onClose, onSubmit, initial, preset,
         )}
 
         <DrawerField label="Qiymat (so'm)" required>
-          <DrawerInput
-            type="number"
-            min={0}
-            step="any"
+          <MoneyInput
+            as={DrawerInput}
             required
             value={form.amount}
-            onChange={(e) => update('amount', Number(e.target.value))}
+            onChange={(v) => update('amount', v)}
           />
         </DrawerField>
         {form.direction === 'income' && (

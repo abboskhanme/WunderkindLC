@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { ArrowLeft, ShieldCheck } from 'lucide-react'
 import { getPublicBrand, type PublicBrand } from '@/api/services/settings'
+import { formatPhone } from '@/lib/numberFormat'
 
 /**
  * Ommaviy (autentifikatsiyasiz) maxfiylik siyosati sahifasi — `/privacy`.
@@ -44,7 +45,7 @@ export function PrivacyPolicyPage() {
       )}
       {brand.phone && (
         <>
-          telefon: <b>{brand.phone}</b>
+          telefon: <b>{formatPhone(brand.phone)}</b>
         </>
       )}
       {!brand.email && !brand.phone && <b>o'quv markazi ma'muriyati</b>}

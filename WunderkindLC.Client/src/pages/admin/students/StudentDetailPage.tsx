@@ -60,6 +60,7 @@ import { getTeachers } from '@/api/services/teachers'
 import { getStudentTestResults } from '@/api/services/testResults'
 import type { Student, StudentGroupMembership, Curriculum, Group, Teacher, StudentTestResult } from '@/types'
 import { cn, formatDate, formatDateTime, formatMoney, apiErrorMessage, gradeBadgeCls } from '@/lib/utils'
+import { formatPhone } from '@/lib/numberFormat'
 import { usePerm, useSuperOrGranted } from '@/lib/permissions'
 import { readBackState } from '@/lib/nav'
 import { useAuth } from '@/context/auth-context'
@@ -930,7 +931,7 @@ export function StudentDetailPage() {
                 <InfoRow icon={MapPin} label="Manzil" value={data.address || '—'} />
                 <InfoRow icon={GraduationCap} label="Guruh rahbari" value={data.homeroomTeacher || '—'} />
                 <InfoRow icon={User} label="Ota-ona" value={data.parentFullName || '—'} />
-                <InfoRow icon={Phone} label="Ota-ona telefoni" value={data.parentPhone || '—'} />
+                <InfoRow icon={Phone} label="Ota-ona telefoni" value={formatPhone(data.parentPhone) || '—'} />
                 {/* Chegirma HAR FAN uchun alohida bo'lishi mumkin — batafsili «Chegirma» tabida.
                     ⚠️ SANOQ registrdan (`discounts.active`) olinadi: `StudentNotebook` da
                     `discountCount` YO'Q, ya'ni usiz «+N ta fan» qismi HECH QACHON chiqmasdi va
@@ -2373,7 +2374,7 @@ function StudentCallRow({ call }: { call: StudentCall }) {
           )}
         </div>
         <div className="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs text-slate-400">
-          <span className="font-mono">{call.phoneNumber}</span>
+          <span className="font-mono">{formatPhone(call.phoneNumber)}</span>
           {call.handler && <span>· {call.handler}</span>}
         </div>
       </div>
@@ -2406,7 +2407,7 @@ function StudentSmsRow({ sms }: { sms: StudentSms }) {
         </div>
         <p className="mt-1 whitespace-pre-wrap break-words text-sm text-slate-600">{sms.message}</p>
         <div className="mt-0.5 text-xs text-slate-400">
-          <span className="font-mono">{sms.phoneNumber}</span>
+          <span className="font-mono">{formatPhone(sms.phoneNumber)}</span>
         </div>
       </div>
     </div>

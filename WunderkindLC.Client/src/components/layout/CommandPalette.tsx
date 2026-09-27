@@ -10,6 +10,7 @@ import { searchStudents } from '@/api/services/students'
 import { studentStateBadge } from '@/config/constants'
 import { can as hasPerm } from '@/lib/permissions'
 import { cn } from '@/lib/utils'
+import { formatPhone } from '@/lib/numberFormat'
 import { groupsText } from '@/lib/studentGroups'
 
 interface Cmd {
@@ -383,7 +384,7 @@ export function CommandPalette() {
                               <span className="truncate text-xs text-slate-400">
                                 {s.className && <span>{s.className}</span>}
                                 {s.className && s.phone && <span> · </span>}
-                                {s.phone && <span className="font-mono">{s.phone}</span>}
+                                {s.phone && <span className="font-mono">{formatPhone(s.phone)}</span>}
                               </span>
                             )}
                           </span>

@@ -16,6 +16,7 @@ import { Loader } from '@/components/ui/Loader'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Input, Select, Textarea } from '@/components/ui/Input'
+import { MoneyInput } from '@/components/ui/NumberInput'
 import { useAsync } from '@/hooks/useAsync'
 import { expenseCategories, financeCategoryLabel } from '@/config/constants'
 import { usePerm } from '@/lib/permissions'
@@ -50,18 +51,21 @@ export function PlannedExpensePage() {
   const [open, setOpen] = useState(false)
   const [saving, setSaving] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
+  const [amount, setAmount] = useState<number | null>(null)
 
   const rows = data ?? []
   const pg = usePagination(rows)
 
   const openNew = () => {
     setEditing(null)
+    setAmount(null)
     setFormError(null)
     setOpen(true)
   }
 
   const openEdit = (row: PlannedExpense) => {
     setEditing(row)
+    setAmount(row.amount)
     setFormError(null)
     setOpen(true)
   }
@@ -69,9 +73,13 @@ export function PlannedExpensePage() {
   const submit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     const f = new FormData(e.currentTarget)
+    if (amount === null) {
+      setFormError('Miqdorini kiriting')
+      return
+    }
     const payload = {
       name: String(f.get('name') ?? '').trim(),
-      amount: Number(f.get('amount') ?? 0),
+      amount,
       category: String(f.get('category') ?? 'other'),
       startDate: String(f.get('startDate') ?? ''),
       endDate: String(f.get('endDate') ?? ''),
@@ -164,7 +172,7 @@ export function PlannedExpensePage() {
           <form onSubmit={submit} className="space-y-3">
             <Input name="name" label="Nomi" required defaultValue={editing?.name ?? ''} />
             <div className="grid grid-cols-2 gap-3">
-              <Input name="amount" label="Miqdori" type="number" min="0" required defaultValue={editing?.amount ?? ''} />
+              <MoneyInput label="Miqdori" required value={amount} onChange={setAmount} />
               <Select name="category" label="Turi" defaultValue={editing?.category ?? 'other'}>
                 {expenseCategories.map((c) => (
                   <option key={c.value} value={c.value}>

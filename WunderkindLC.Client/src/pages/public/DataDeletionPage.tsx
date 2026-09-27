@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { ArrowLeft, Trash2 } from 'lucide-react'
 import { getPublicBrand, type PublicBrand } from '@/api/services/settings'
+import { formatPhone } from '@/lib/numberFormat'
 
 /**
  * MA'LUMOTNI O'CHIRISH — ommaviy (autentifikatsiyasiz) sahifa, `/data-deletion`.
@@ -118,7 +119,7 @@ export function DataDeletionPage() {
                 )}
                 {brand.phone && (
                   <li>
-                    Telefon: <b>{brand.phone}</b>
+                    Telefon: <b>{formatPhone(brand.phone)}</b>
                   </li>
                 )}
                 <li>Instagram: markaz sahifasiga Direct orqali</li>

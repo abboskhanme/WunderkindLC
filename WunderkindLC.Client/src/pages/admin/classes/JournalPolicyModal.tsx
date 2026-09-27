@@ -4,7 +4,12 @@ import { getJournalPolicy, saveJournalPolicy, type JournalPolicy } from '@/api/s
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Loader } from '@/components/ui/Loader'
+import { NumberInput } from '@/components/ui/NumberInput'
 import { cn } from '@/lib/utils'
+
+// Kun maydonlari tahrir paytida BO'SH bo'la oladi (saqlashda tekshiriladi).
+type DayField = 'retroDays' | 'salaryGraceDays' | 'unpaidCutoffDay'
+type PolicyForm = Omit<JournalPolicy, DayField> & Record<DayField, number | null>
 
 /**
  * "Jurnal boshqaruvi" — barcha guruhlar jurnali uchun tahrirlash siyosati (Guruhlar sahifasidan
@@ -14,14 +19,19 @@ import { cn } from '@/lib/utils'
  * (muzlatish emas: hisob davom etadi, to'lovdan keyin qaytadi, admin hammani ko'radi).
  */
 export function JournalPolicyModal({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const [policy, setPolicy] = useState<JournalPolicy | null>(null)
+  const [policy, setPolicy] = useState<PolicyForm | null>(null)
+  // Serverdan kelgan qiymatlar — yashirin (o'chiq bo'limdagi) bo'sh maydon shu bilan saqlanadi.
+  const [loaded, setLoaded] = useState<JournalPolicy | null>(null)
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
     if (!open) return
     setPolicy(null)
     getJournalPolicy()
-      .then(setPolicy)
+      .then((p) => {
+        setLoaded(p)
+        setPolicy(p)
+      })
       .catch(() => {
         alert("Jurnal sozlamasini yuklab bo'lmadi")
         onClose()
@@ -30,10 +40,28 @@ export function JournalPolicyModal({ open, onClose }: { open: boolean; onClose: 
   }, [open])
 
   const save = async () => {
-    if (!policy) return
+    if (!policy || !loaded) return
+    if (policy.editMode === 'window' && policy.retroDays === null) {
+      alert('Orqaga ruxsat etilgan kunlar sonini kiriting')
+      return
+    }
+    if (policy.hideUnpaidAfterDay && policy.unpaidCutoffDay === null) {
+      alert("To'lov muddati kunini kiriting")
+      return
+    }
+    if (policy.salaryRequireJournal && policy.salaryGraceDays === null) {
+      alert("Jurnalni to'ldirish muhlatini kiriting")
+      return
+    }
+    const payload: JournalPolicy = {
+      ...policy,
+      retroDays: policy.retroDays ?? loaded.retroDays,
+      unpaidCutoffDay: policy.unpaidCutoffDay ?? loaded.unpaidCutoffDay,
+      salaryGraceDays: policy.salaryGraceDays ?? loaded.salaryGraceDays,
+    }
     setSaving(true)
     try {
-      await saveJournalPolicy(policy)
+      await saveJournalPolicy(payload)
       onClose()
     } catch (err) {
       const message =
@@ -45,7 +73,7 @@ export function JournalPolicyModal({ open, onClose }: { open: boolean; onClose: 
     }
   }
 
-  const set = (patch: Partial<JournalPolicy>) =>
+  const set = (patch: Partial<PolicyForm>) =>
     setPolicy((p) => (p ? { ...p, ...patch } : p))
 
   return (
@@ -103,14 +131,10 @@ export function JournalPolicyModal({ open, onClose }: { open: boolean; onClose: 
             {policy.editMode === 'window' && (
               <div className="mt-3 flex items-center gap-3 rounded-lg bg-slate-50 px-3 py-2.5">
                 <span className="text-sm text-slate-600">Orqaga ruxsat etilgan muddat:</span>
-                <input
-                  type="number"
-                  min={1}
-                  max={90}
+                <NumberInput
+                  as="input"
                   value={policy.retroDays}
-                  onChange={(e) =>
-                    set({ retroDays: Math.max(1, Math.min(90, Number(e.target.value) || 1)) })
-                  }
+                  onChange={(v) => set({ retroDays: v === null ? null : Math.max(1, Math.min(90, v)) })}
                   className="w-20 rounded-lg border border-slate-200 px-2.5 py-1.5 text-center text-sm font-semibold outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100"
                 />
                 <span className="text-sm text-slate-600">kun</span>
@@ -173,14 +197,10 @@ export function JournalPolicyModal({ open, onClose }: { open: boolean; onClose: 
             {policy.hideUnpaidAfterDay && (
               <div className="mt-3 flex flex-wrap items-center gap-3 rounded-lg bg-slate-50 px-3 py-2.5">
                 <span className="text-sm text-slate-600">To'lov muddati — oyning</span>
-                <input
-                  type="number"
-                  min={1}
-                  max={28}
+                <NumberInput
+                  as="input"
                   value={policy.unpaidCutoffDay}
-                  onChange={(e) =>
-                    set({ unpaidCutoffDay: Math.max(1, Math.min(28, Number(e.target.value) || 1)) })
-                  }
+                  onChange={(v) => set({ unpaidCutoffDay: v === null ? null : Math.max(1, Math.min(28, v)) })}
                   className="w-20 rounded-lg border border-slate-200 px-2.5 py-1.5 text-center text-sm font-semibold outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100"
                 />
                 <span className="text-sm text-slate-600">-kuni</span>
@@ -227,14 +247,10 @@ export function JournalPolicyModal({ open, onClose }: { open: boolean; onClose: 
               <>
                 <div className="mt-3 flex flex-wrap items-center gap-3 rounded-lg bg-slate-50 px-3 py-2.5">
                   <span className="text-sm text-slate-600">Jurnalni to'ldirish muhlati:</span>
-                  <input
-                    type="number"
-                    min={0}
-                    max={30}
+                  <NumberInput
+                    as="input"
                     value={policy.salaryGraceDays}
-                    onChange={(e) =>
-                      set({ salaryGraceDays: Math.max(0, Math.min(30, Number(e.target.value) || 0)) })
-                    }
+                    onChange={(v) => set({ salaryGraceDays: v === null ? null : Math.min(30, v) })}
                     className="w-20 rounded-lg border border-slate-200 px-2.5 py-1.5 text-center text-sm font-semibold outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100"
                   />
                   <span className="text-sm text-slate-600">kun</span>

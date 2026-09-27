@@ -10,6 +10,7 @@ import { Badge } from '@/components/ui/Badge'
 import { Loader } from '@/components/ui/Loader'
 import { Select, Textarea } from '@/components/ui/Input'
 import { apiErrorMessage, cn, formatDateTime, openTelegram } from '@/lib/utils'
+import { formatPhone } from '@/lib/numberFormat'
 import { statusIcons, statusLabels, statusOrder, statusTones } from './careerLabels'
 
 interface Props {
@@ -147,7 +148,7 @@ export function ApplicationDetailModal({
               <div className="flex items-center gap-2">
                 <Phone className="h-4 w-4 text-slate-400" />
                 <a href={`tel:${app.phone}`} className="text-brand-600 hover:underline">
-                  {app.phone}
+                  {formatPhone(app.phone)}
                 </a>
               </div>
               <div className="text-slate-500">

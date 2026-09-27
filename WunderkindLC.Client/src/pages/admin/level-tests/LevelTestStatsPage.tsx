@@ -16,6 +16,7 @@ import { DailyFlowChart } from '@/components/charts/DailyFlowChart'
 import { FunnelAiPanel } from '@/components/ai/FunnelAiPanel'
 import { usePerm } from '@/lib/permissions'
 import { cn, formatDate, formatMoney } from '@/lib/utils'
+import { formatPhone } from '@/lib/numberFormat'
 
 /**
  * DARAJA TESTLARI STATISTIKASI — "Formalar" bo'limining alohida cardi (`/admin/level-tests/stats`).
@@ -312,7 +313,7 @@ export function LevelTestStatsPage() {
                             {r.isDeleted && (
                               <span className="ml-1.5 text-[11px] font-normal text-red-500">(lid o'chirilgan)</span>
                             )}
-                            <div className="font-mono text-[11px] font-normal text-slate-400">{r.phone}</div>
+                            <div className="font-mono text-[11px] font-normal text-slate-400">{formatPhone(r.phone)}</div>
                           </td>
                           <td className="px-3 py-2 text-slate-500">
                             <Link to={`/admin/level-tests/${r.testId}`} className="text-inherit hover:underline">

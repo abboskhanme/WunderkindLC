@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/Button'
 import { MessageEditor, type TokenDef } from '@/components/messaging/MessageEditor'
 import { SmsProviderPicker } from '@/components/messaging/SmsProviderPicker'
 import { cn, formatMoney } from '@/lib/utils'
+import { formatPhone } from '@/lib/numberFormat'
 
 /** SMS oluvchi — SmsModal faqat shu maydonlarni ishlatadi (Student ham mos keladi). */
 export interface SmsRecipient {
@@ -430,7 +431,7 @@ export function SmsModal({ open, onClose, recipients }: Props) {
                         <span className="min-w-0 flex-1 truncate">
                           <span className="font-medium text-slate-700">{r.fullName}</span>
                           <span className={cn('ml-1 text-xs', phone ? 'text-slate-400' : 'text-amber-600')}>
-                            · {phone || "raqam yo'q"}
+                            · {phone ? formatPhone(phone) : "raqam yo'q"}
                           </span>
                         </span>
                         {isDebtor(r) && (

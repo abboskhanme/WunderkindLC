@@ -11,6 +11,16 @@ import { Modal } from '@/components/ui/Modal'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
+import { MoneyInput } from '@/components/ui/NumberInput'
+
+/** Forma holati: ulush maydoni BO'SH bo'la oladi (`null`). */
+type ShareForm = Omit<RetentionShare, 'amount'> & { amount: number | null }
+
+/** Jami summa bo'yicha qayta bo'lish; jami bo'sh bo'lsa ochiq ulushlar ham bo'shaydi. */
+function resplit(shares: ShareForm[], total: number | null): ShareForm[] {
+  if (total === null) return shares.map((s) => ({ ...s, amount: s.alreadyAwarded ? 0 : null }))
+  return splitByMonths(shares.map((s) => ({ ...s, amount: s.amount ?? 0 })), total)
+}
 
 interface Props {
   row: RetentionRow
@@ -32,9 +42,9 @@ interface Props {
 export function GiveRetentionBonusModal({ row, defaultAmount, onClose, onSaved }: Props) {
   const initialTotal = defaultAmount > 0 ? defaultAmount : row.shares.reduce((s, x) => s + x.amount, 0)
 
-  const [total, setTotal] = useState<number>(initialTotal)
-  const [shares, setShares] = useState<RetentionShare[]>(() =>
-    splitByMonths(row.shares, initialTotal),
+  const [total, setTotal] = useState<number | null>(initialTotal > 0 ? initialTotal : null)
+  const [shares, setShares] = useState<ShareForm[]>(() =>
+    resplit(row.shares, initialTotal > 0 ? initialTotal : null),
   )
   const [note, setNote] = useState('')
   const [saving, setSaving] = useState(false)
@@ -43,22 +53,22 @@ export function GiveRetentionBonusModal({ row, defaultAmount, onClose, onSaved }
   /** Bonus tegishi mumkin bo'lgan o'qituvchilar — bloklanganlar hisobga kirmaydi. */
   const openShares = useMemo(() => shares.filter((s) => !s.alreadyAwarded), [shares])
   const allBlocked = shares.length > 0 && openShares.length === 0
-  const sum = useMemo(() => openShares.reduce((s, x) => s + x.amount, 0), [openShares])
-  const balanced = sum === total
+  const sum = useMemo(() => openShares.reduce((s, x) => s + (x.amount ?? 0), 0), [openShares])
+  const balanced = sum === (total ?? 0)
   const period = `${row.startMonth} … ${row.months.at(-1)?.month ?? ''}`
 
   /** Jami summa o'zgarganda — ulushlarni oylar nisbatida qayta bo'lish. */
-  const changeTotal = (value: number) => {
-    const next = Math.max(0, Math.round(value) || 0)
+  const changeTotal = (value: number | null) => {
+    const next = value === null ? null : Math.max(0, Math.round(value))
     setTotal(next)
-    setShares((prev) => splitByMonths(prev, next))
+    setShares((prev) => resplit(prev, next))
   }
 
-  const changeShare = (teacherId: string, value: number) =>
+  const changeShare = (teacherId: string, value: number | null) =>
     setShares((prev) =>
       prev.map((s) =>
         s.teacherId === teacherId && !s.alreadyAwarded
-          ? { ...s, amount: Math.max(0, Math.round(value) || 0) }
+          ? { ...s, amount: value === null ? null : Math.max(0, Math.round(value)) }
           : s,
       ),
     )
@@ -66,7 +76,7 @@ export function GiveRetentionBonusModal({ row, defaultAmount, onClose, onSaved }
   const submit = async () => {
     // `saving` tekshiruvi — tugma `disabled` bo'lishidan tashqari IKKINCHI to'siq: tez ikki marta
     // bosilganda ikkita `POST /awards` ketib qolmasin (server ham qulf bilan himoyalangan).
-    if (saving || !balanced || allBlocked) return
+    if (saving || !balanced || allBlocked || total === null) return
     setSaving(true)
     setError('')
     try {
@@ -76,7 +86,7 @@ export function GiveRetentionBonusModal({ row, defaultAmount, onClose, onSaved }
         totalAmount: total,
         shares: openShares.map((s) => ({
           teacherId: s.teacherId,
-          amount: s.amount,
+          amount: s.amount ?? 0,
           months: s.months,
         })),
         note: note.trim() || undefined,
@@ -101,7 +111,7 @@ export function GiveRetentionBonusModal({ row, defaultAmount, onClose, onSaved }
           </Button>
           <Button
             onClick={() => void submit()}
-            disabled={saving || allBlocked || !balanced || total <= 0}
+            disabled={saving || allBlocked || !balanced || (total ?? 0) <= 0}
             title={
               allBlocked
                 ? "Barcha o'qituvchilar bu o'quvchi orqali allaqachon bonus olgan"
@@ -124,13 +134,10 @@ export function GiveRetentionBonusModal({ row, defaultAmount, onClose, onSaved }
           </div>
         </div>
 
-        <Input
+        <MoneyInput
           label="Bonus summasi (so'm)"
-          type="number"
-          min={0}
-          step={1000}
           value={total}
-          onChange={(e) => changeTotal(Number(e.target.value))}
+          onChange={changeTotal}
           disabled={allBlocked}
         />
 
@@ -155,14 +162,12 @@ export function GiveRetentionBonusModal({ row, defaultAmount, onClose, onSaved }
                     {s.alreadyAwarded && ' · ulushi 0, vazni qolganlarga taqsimlandi'}
                   </div>
                 </div>
-                <input
-                  type="number"
-                  min={0}
-                  step={1000}
+                <MoneyInput
+                  as="input"
                   disabled={s.alreadyAwarded}
                   className="w-36 rounded-lg border border-slate-200 px-3 py-2 text-right text-sm outline-none focus:border-brand-400 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400"
                   value={s.amount}
-                  onChange={(e) => changeShare(s.teacherId, Number(e.target.value))}
+                  onChange={(v) => changeShare(s.teacherId, v)}
                 />
               </div>
             ))}
@@ -176,7 +181,7 @@ export function GiveRetentionBonusModal({ row, defaultAmount, onClose, onSaved }
           <div className="mt-2 flex items-center justify-between border-t border-slate-100 pt-2 text-sm">
             <span className="text-slate-500">Yig'indi</span>
             <span className={balanced ? 'font-semibold text-emerald-600' : 'font-semibold text-rose-600'}>
-              {formatMoney(sum)} {balanced ? '✓' : `≠ ${formatMoney(total)}`}
+              {formatMoney(sum)} {balanced ? '✓' : `≠ ${formatMoney(total ?? 0)}`}
             </span>
           </div>
         </div>

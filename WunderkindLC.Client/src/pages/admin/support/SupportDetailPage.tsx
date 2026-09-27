@@ -7,6 +7,7 @@ import { Loader } from '@/components/ui/Loader'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { Badge, type BadgeTone } from '@/components/ui/Badge'
 import { cn, formatDate } from '@/lib/utils'
+import { formatPhone } from '@/lib/numberFormat'
 
 type Filter = 'all' | 'done' | 'booked' | 'open'
 
@@ -77,7 +78,7 @@ export function SupportDetailPage() {
             {detail.fullName}
           </span>
         }
-        sub={detail.phone ? `Telefon: ${detail.phone}` : 'Telefon kiritilmagan'}
+        sub={detail.phone ? `Telefon: ${formatPhone(detail.phone)}` : 'Telefon kiritilmagan'}
       />
 
       {/* KPI plitkalar */}

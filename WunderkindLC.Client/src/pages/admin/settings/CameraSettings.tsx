@@ -5,10 +5,17 @@ import { Link } from 'react-router-dom'
 import { getCameraSettings, saveCameraSettings, type CameraConfig } from '@/api/services/settings'
 import { Card } from '@/components/ui/Card'
 import { Input } from '@/components/ui/Input'
+import { NumberInput } from '@/components/ui/NumberInput'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { Loader } from '@/components/ui/Loader'
 import { apiErrorMessage, cn } from '@/lib/utils'
+
+// Port maydonlari bo'sh bo'la oladi — bo'sh = standart port (554 / 80).
+type CameraForm = Omit<CameraConfig, 'nvrRtspPort' | 'nvrIsapiPort'> & {
+  nvrRtspPort: number | null
+  nvrIsapiPort: number | null
+}
 
 /**
  * Kamera integratsiya sozlamasi. IP kameralar RTSP oqimi media-shlyuz (MediaMTX) orqali brauzerda
@@ -21,7 +28,7 @@ import { apiErrorMessage, cn } from '@/lib/utils'
  *      O'chiq bo'lsa kameralar baribir jonli ko'rinaveradi. Batafsil: `.claude/rules/cameras.md`.
  */
 export function CameraSettings() {
-  const [cfg, setCfg] = useState<CameraConfig | null>(null)
+  const [cfg, setCfg] = useState<CameraForm | null>(null)
   const [loading, setLoading] = useState(true)
   const [status, setStatus] = useState<'idle' | 'saving' | 'saved'>('idle')
   /** Saqlash xatosi — ilgari `try` umuman yo'q edi: so'rov yiqilsa holat abadiy 'saving' da
@@ -41,7 +48,7 @@ export function CameraSettings() {
       const saved = await saveCameraSettings({
         enabled: cfg.enabled, recordEnabled: cfg.recordEnabled,
         nvrEnabled: cfg.nvrEnabled, nvrHost: cfg.nvrHost,
-        nvrRtspPort: cfg.nvrRtspPort, nvrIsapiPort: cfg.nvrIsapiPort, nvrVendor: cfg.nvrVendor,
+        nvrRtspPort: cfg.nvrRtspPort || 554, nvrIsapiPort: cfg.nvrIsapiPort || 80, nvrVendor: cfg.nvrVendor,
       })
       setCfg(saved)
       setStatus('saved')
@@ -137,10 +144,10 @@ export function CameraSettings() {
                   <option value="hikvision">Hikvision</option>
                 </select>
               </label>
-              <Input label="RTSP porti" type="number" value={String(cfg.nvrRtspPort)}
-                onChange={(e) => setCfg({ ...cfg, nvrRtspPort: Number(e.target.value) || 554 })} />
-              <Input label="ISAPI (HTTP) porti" type="number" value={String(cfg.nvrIsapiPort)}
-                onChange={(e) => setCfg({ ...cfg, nvrIsapiPort: Number(e.target.value) || 80 })} />
+              <NumberInput label="RTSP porti" placeholder="554" value={cfg.nvrRtspPort}
+                onChange={(v) => setCfg({ ...cfg, nvrRtspPort: v === null ? null : Math.min(65535, v) })} />
+              <NumberInput label="ISAPI (HTTP) porti" placeholder="80" value={cfg.nvrIsapiPort}
+                onChange={(v) => setCfg({ ...cfg, nvrIsapiPort: v === null ? null : Math.min(65535, v) })} />
             </div>
 
             <div className={cn('mt-4 rounded-lg border px-3 py-2.5 text-xs',

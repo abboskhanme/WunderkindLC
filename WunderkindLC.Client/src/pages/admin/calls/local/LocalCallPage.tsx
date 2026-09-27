@@ -22,6 +22,8 @@ import { Loader } from '@/components/ui/Loader'
 import { Modal } from '@/components/ui/Modal'
 import { Input, Textarea, Select } from '@/components/ui/Input'
 import { cn, formatDateTime } from '@/lib/utils'
+import { formatPhone } from '@/lib/numberFormat'
+import { PhoneInput } from '@/components/ui/PhoneInput'
 import { groupsText, statesToGroups } from '@/lib/studentGroups'
 
 /* ============================================================
@@ -235,7 +237,7 @@ function DialTab({ agents, onError }: { agents: CtiAgent[]; onError: (msg: strin
                     <div className="min-w-0 flex-1">
                       <div className="truncate text-sm font-medium text-slate-800">{s.fullName}</div>
                       <div className="truncate text-xs text-slate-400">
-                        {phone || 'Telefon kiritilmagan'}
+                        {phone ? formatPhone(phone) : 'Telefon kiritilmagan'}
                         {/* Guruh — TIRIK a'zoliklardan (`className` faqat zaxira). */}
                         {groupsText(statesToGroups(s.groupStates), s.className)
                           ? ` · ${groupsText(statesToGroups(s.groupStates), s.className)}`
@@ -475,7 +477,7 @@ function HistoryTab({ agents, onError }: { agents: CtiAgent[]; onError: (msg: st
                   <DirectionIcon direction={g.lastDirection} className="mt-0.5 h-4 w-4 flex-shrink-0" />
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
-                      <span className="truncate text-sm font-semibold text-slate-800">{g.remoteNumber}</span>
+                      <span className="truncate text-sm font-semibold text-slate-800">{formatPhone(g.remoteNumber)}</span>
                       {(g.studentName || g.contactName) && (
                         <span className="truncate text-sm text-slate-400">{g.studentName || g.contactName}</span>
                       )}
@@ -645,7 +647,7 @@ function NumberHistoryPanel({ number }: { number: string }) {
           onClick={() => setSelectedId(null)}
           className="inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-sm font-semibold text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700"
         >
-          <ChevronLeft className="h-4 w-4" /> {number} — barcha tarix
+          <ChevronLeft className="h-4 w-4" /> {formatPhone(number)} — barcha tarix
         </button>
         <CallDetailPanel callId={selectedId} />
       </div>
@@ -655,7 +657,7 @@ function NumberHistoryPanel({ number }: { number: string }) {
   return (
     <Card tight>
       <div className="border-b border-slate-100 px-4 py-3">
-        <div className="text-base font-bold text-slate-800">{number}</div>
+        <div className="text-base font-bold text-slate-800">{formatPhone(number)}</div>
         <div className="mt-0.5 text-xs text-slate-400">
           {loading
             ? 'Yuklanmoqda...'
@@ -805,7 +807,7 @@ function CallDetailPanel({ callId }: { callId: string }) {
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <div className="text-lg font-bold text-slate-800">
-              {detail.remoteNumber}
+              {formatPhone(detail.remoteNumber)}
               {(detail.studentName || detail.contactName) && (
                 <span className="ml-2 text-base font-medium text-slate-400">
                   {detail.studentName || detail.contactName}
@@ -988,7 +990,7 @@ function DialModal({
   }
 
   return (
-    <Modal open onClose={onClose} size="sm" title={`Qo'ng'iroq qil: ${number}`}>
+    <Modal open onClose={onClose} size="sm" title={`Qo'ng'iroq qil: ${formatPhone(number)}`}>
       <div className="space-y-3">
         {agents.length === 0 ? (
           <p className="text-sm text-slate-400">Agentlar yo'q.</p>
@@ -1059,7 +1061,7 @@ function SmsModal({
   }
 
   return (
-    <Modal open onClose={onClose} size="sm" title={`SMS yuborish: ${number}`}>
+    <Modal open onClose={onClose} size="sm" title={`SMS yuborish: ${formatPhone(number)}`}>
       <div className="space-y-3">
         {agents.length === 0 ? (
           <p className="text-sm text-slate-400">Agentlar yo'q.</p>
@@ -1193,16 +1195,15 @@ function AgentsTab({
       {dialFor && (
         <Modal open onClose={() => setDialFor(null)} size="sm" title={`Qo'ng'iroq qil: ${dialFor.displayName}`}>
           <div className="space-y-3">
-            <Input
+            <PhoneInput
               label="Telefon raqami"
               value={dialNumber}
-              onChange={(e) => setDialNumber(e.target.value.replace(/[^\d+]/g, ''))}
-              placeholder="+998 XX XXX XX XX"
+              onChange={setDialNumber}
             />
             <div className="flex justify-end gap-2">
               <Button variant="secondary" onClick={() => setDialFor(null)}>Yopish</Button>
               <Button
-                disabled={dialNumber.replace(/\D/g, '').length < 7}
+                disabled={dialNumber.length < 12}
                 onClick={async () => {
                   try {
                     const r = await dialCtiAgent(dialFor.id, dialNumber)

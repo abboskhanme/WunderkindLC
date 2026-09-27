@@ -2,6 +2,7 @@ import type { LeadFunnelStage, LeadManagerRow } from '@/api/services/leads'
 import { Card } from '@/components/ui/Card'
 import { matrixTint } from './palette'
 import { cn } from '@/lib/utils'
+import { formatNumber } from '@/lib/numberFormat'
 
 /**
  * «KIM QAYSI BOSQICHGACHA OLIB BORDI» — menejer × bosqich matritsasi.
@@ -92,7 +93,7 @@ export function ManagerStageMatrix({
                         )
                       })}
                       <td className="py-1.5 pl-3 text-right font-mono tabular-nums font-semibold text-emerald-600">
-                        {m.won.toLocaleString()}
+                        {formatNumber(m.won)}
                       </td>
                     </tr>
                   )

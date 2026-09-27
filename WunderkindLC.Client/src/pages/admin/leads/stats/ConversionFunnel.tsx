@@ -13,6 +13,7 @@ import {
 import type { LeadFunnelStage } from '@/api/services/leads'
 import { Card } from '@/components/ui/Card'
 import { axisTick, barCursor, formatDwell, gridStroke, stageRamp } from './palette'
+import { formatNumber } from '@/lib/numberFormat'
 
 /**
  * KONVERSIYA VORONKASI — gorizontal bar.
@@ -74,7 +75,7 @@ function FunnelTooltip({ active, payload }: TooltipProps): ReactNode {
     <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-[13px] shadow-[var(--shadow-1)]">
       <p className="font-semibold text-slate-800">{row.title}</p>
       <p className="mt-1 text-slate-700">
-        <span className="font-mono font-semibold">{row.reached.toLocaleString()}</span> ta lid
+        <span className="font-mono font-semibold">{formatNumber(row.reached)}</span> ta lid
         <span className="text-slate-400"> · {row.pct.toFixed(1)}%</span>
       </p>
       {row.dwell ? (
@@ -97,7 +98,7 @@ export function ConversionFunnel({ funnel }: { funnel: LeadFunnelStage[] }) {
     .map((s) => ({
       ...s,
       dwell: formatDwell(s.avgHours),
-      tipLabel: `${s.reached.toLocaleString()} · ${s.pct.toFixed(0)}%`,
+      tipLabel: `${formatNumber(s.reached)} · ${s.pct.toFixed(0)}%`,
     }))
 
   const ramp = stageRamp(rows.length)

@@ -16,6 +16,7 @@ import {
   DrawerTextarea,
 } from '@/components/ui/RightDrawer'
 import { Loader } from '@/components/ui/Loader'
+import { MoneyInput } from '@/components/ui/NumberInput'
 import { formatMoney, formatDate, formatDateTime, apiErrorMessage, cn } from '@/lib/utils'
 import { formatMonth, monthStatusLabels, paymentMethods, paymentMethodLabel } from '@/config/constants'
 import posthog from '@/lib/posthog'
@@ -71,16 +72,16 @@ const RECEIPT_SERIES = 'KV'
 /** Oylar ro'yxatidan standart tanlov. Avval JORIY OYGACHA (o'tgan/joriy) eng eski QARZDOR oy tanlanadi —
  *  ya'ni qarz bo'lsa u to'lanadi. KELAJAK (avans) oy HECH QACHON avtomatik tanlanmaydi (foydalanuvchi o'zi
  *  tanlashi mumkin) — aks holda qarz bo'lsa ham to'lov kelasi oyga yozilib qolardi. Qarz bo'lmasa — joriy oy. */
-const pickDefault = (rows: Row[]): { month: string; amount: number } => {
+const pickDefault = (rows: Row[]): { month: string; amount: number | null } => {
   const cur = currentMonth()
   // Joriy oygacha bo'lgan eng eski qarzdor oy (o'tgan qarzni birinchi to'laymiz).
   const due = rows.find((r) => r.remaining > 0 && r.month <= cur)
   if (due) return { month: due.month, amount: due.remaining }
   // Qarz yo'q — joriy oyni tanlaymiz (ro'yxatda bo'lsa), aks holda oxirgi mavjud oy. Kelajak oy summasi
-  // avtomatik to'ldirilmaydi (0) — cheksiz avans yozilib qolmasligi uchun.
+  // avtomatik to'ldirilmaydi (bo'sh) — cheksiz avans yozilib qolmasligi uchun.
   const curRow = rows.find((r) => r.month === cur)
   const target = curRow ?? rows[rows.length - 1]
-  return { month: target?.month ?? cur, amount: curRow ? curRow.remaining : 0 }
+  return { month: target?.month ?? cur, amount: curRow && curRow.remaining > 0 ? curRow.remaining : null }
 }
 
 /** Guruh tanlovidagi izoh: muzlatilgan / guruhdan chiqarilgan a'zolik ekani ko'rinib tursin. */
@@ -100,7 +101,7 @@ export function PaymentModal({
   onClose,
   onSubmit,
 }: Props) {
-  const [amount, setAmount] = useState<number>(0)
+  const [amount, setAmount] = useState<number | null>(null)
   const [month, setMonth] = useState<string>(currentMonth())
   const [rows, setRows] = useState<Row[]>([])
   const [groups, setGroups] = useState<StudentGroupMembership[]>([])
@@ -170,7 +171,7 @@ export function PaymentModal({
     setGroupId('')
     setComment("")
     setMethod('cash')
-    setAmount(0)
+    setAmount(null)
     setMonth(currentMonth())
     setPaidDate(today())
     setReceiptNo('')
@@ -266,14 +267,14 @@ export function PaymentModal({
   const handleMonthChange = (value: string) => {
     setMonth(value)
     const r = rows.find((x) => x.month === value)
-    setAmount(r && r.remaining > 0 ? r.remaining : 0)
+    setAmount(r && r.remaining > 0 ? r.remaining : null)
   }
 
   /** To'lovni saqlash. `force=true` — kvitansiya band bo'lsa ham ("Baribir saqlash"). */
   const save = async (force: boolean) => {
     // Ikki marta bosishdan himoya (dublikat to'lov yaratilmasin).
     // ⚠️ `blocked` — guruhlar yoki oylik hisob YUKLANMAGAN: qaysi guruh/oy ekani noaniq.
-    if (inFlightRef.current || submitting || blocked || amount <= 0 || !month || (needGroup && !groupId)) return
+    if (inFlightRef.current || submitting || blocked || amount === null || amount <= 0 || !month || (needGroup && !groupId)) return
     inFlightRef.current = true
     setSubmitting(true)
     setError(null)
@@ -315,11 +316,11 @@ export function PaymentModal({
   }
 
   const selected = rows.find((r) => r.month === month)
-  const newBalance = student ? student.balance + amount : 0
+  const newBalance = student ? student.balance + (amount ?? 0) : 0
   const monthOptions = rows.length > 0 ? rows.map((r) => r.month) : [currentMonth()]
   const isOpen = open ?? !!student
   const saveDisabled =
-    !student || amount <= 0 || !month || (needGroup && !groupId) || loading || loadingMonths || submitting || blocked
+    !student || (amount ?? 0) <= 0 || !month || (needGroup && !groupId) || loading || loadingMonths || submitting || blocked
 
   const primaryAction = duplicate ? (
     // Kvitansiya band — kassir ataylab davom etishi mumkin (haqiqatan takroriy blank bo'lsa).
@@ -509,7 +510,7 @@ export function PaymentModal({
                 <DrawerField
                   label="Qiymat (so'm)"
                   hint={
-                    amount > 0 ? (
+                    (amount ?? 0) > 0 ? (
                       <>
                         To'lovdan keyingi balans:{' '}
                         <span className={cn('font-mono font-semibold', newBalance < 0 ? 'text-red-600' : 'text-emerald-600')}>
@@ -519,13 +520,11 @@ export function PaymentModal({
                     ) : undefined
                   }
                 >
-                  <DrawerInput
-                    type="number"
-                    min={0}
-                    step="any"
+                  <MoneyInput
+                    as={DrawerInput}
                     autoFocus
                     value={amount}
-                    onChange={(e) => setAmount(Number(e.target.value))}
+                    onChange={setAmount}
                   />
                 </DrawerField>
 

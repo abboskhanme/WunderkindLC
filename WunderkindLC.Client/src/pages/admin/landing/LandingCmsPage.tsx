@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { landingCmsService } from '@/api/services/landingCms'
 import { useAuth } from '@/context/auth-context'
 import { can } from '@/lib/permissions'
+import { NumberInput } from '@/components/ui/NumberInput'
 import type {
   LandingTeacher,
   LandingCertificate,
@@ -285,6 +286,10 @@ export const LandingCmsPage: React.FC = () => {
   // --- Submit & Delete Handlers ---
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (formData.order == null) {
+      alert('Tartib raqamini kiriting')
+      return
+    }
     try {
       if (modalType === 'teacher') {
         if (editingItem) {
@@ -1417,10 +1422,10 @@ export const LandingCmsPage: React.FC = () => {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">Tartib (Order)</label>
-                  <input
-                    type="number"
-                    value={formData.order || 1}
-                    onChange={(e) => setFormData({ ...formData, order: parseInt(e.target.value) || 1 })}
+                  <NumberInput
+                    as="input"
+                    value={formData.order ?? null}
+                    onChange={(v) => setFormData({ ...formData, order: v })}
                     className="w-full px-3 py-2 border rounded-lg dark:bg-gray-800 dark:border-gray-700 dark:text-white"
                   />
                 </div>

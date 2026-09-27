@@ -13,16 +13,21 @@ import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Loader } from '@/components/ui/Loader'
 import { PageHeader } from '@/components/ui/PageHeader'
+import { NumberInput } from '@/components/ui/NumberInput'
 import { apiErrorMessage, cn } from '@/lib/utils'
+
+// Limit maydoni tahrir paytida BO'SH bo'la oladi (fokusdan chiqqanda 0 deb saqlanadi).
+type Row = Omit<AiCheckOverviewRow, 'effectiveLimit'> & { effectiveLimit: number | null }
 
 const control =
   'rounded-lg border border-slate-200 px-2 py-1.5 text-sm text-slate-800 outline-none transition-colors focus:border-brand-400'
 
 export function AiCheckPage() {
   const [loading, setLoading] = useState(true)
-  const [rows, setRows] = useState<AiCheckOverviewRow[]>([])
-  const [defaultLimit, setDefaultLimit] = useState(3)
+  const [rows, setRows] = useState<Row[]>([])
+  const [defaultLimit, setDefaultLimit] = useState<number | null>(3)
   const [savingDefault, setSavingDefault] = useState<'idle' | 'saving' | 'saved'>('idle')
+  const [defaultError, setDefaultError] = useState('')
   const [query, setQuery] = useState('')
   // Bo'lim o'quvchi ilovasida ochiqmi (default: yopiq).
   const [enabled, setEnabled] = useState(false)
@@ -64,18 +69,28 @@ export function AiCheckPage() {
   }
 
   const saveDefault = async () => {
+    if (defaultLimit === null) {
+      setDefaultError('Kunlik limitni kiriting')
+      return
+    }
+    setDefaultError('')
     setSavingDefault('saving')
-    await saveAiCheckSettings(defaultLimit)
-    setSavingDefault('saved')
-    setTimeout(() => setSavingDefault('idle'), 1500)
+    try {
+      await saveAiCheckSettings(defaultLimit)
+      setSavingDefault('saved')
+      setTimeout(() => setSavingDefault('idle'), 1500)
+    } catch (e) {
+      setSavingDefault('idle')
+      setDefaultError(apiErrorMessage(e, "Saqlab bo'lmadi"))
+    }
   }
 
-  const patchRow = (id: string, patch: Partial<AiCheckOverviewRow>) =>
+  const patchRow = (id: string, patch: Partial<Row>) =>
     setRows((prev) => prev.map((r) => (r.studentId === id ? { ...r, ...patch } : r)))
 
-  const persist = async (r: AiCheckOverviewRow) => {
+  const persist = async (r: Row) => {
     try {
-      await saveAiAccess(r.studentId, r.effectiveLimit, r.premium, r.blocked)
+      await saveAiAccess(r.studentId, r.effectiveLimit ?? 0, r.premium, r.blocked)
     } catch (e) {
       alert(e instanceof Error ? e.message : 'Saqlab boʻlmadi')
     }
@@ -149,11 +164,10 @@ export function AiCheckPage() {
         sub="Premium yoki shaxsiy limiti yo'q o'quvchilar uchun (kuniga necha marta)"
         actions={
           <div className="flex items-center gap-2">
-            <input
-              type="number"
-              min={0}
+            <NumberInput
+              as="input"
               value={defaultLimit}
-              onChange={(e) => setDefaultLimit(Math.max(0, Number(e.target.value) || 0))}
+              onChange={setDefaultLimit}
               className={control + ' w-20'}
             />
             <Button onClick={saveDefault} disabled={savingDefault === 'saving'}>
@@ -163,6 +177,12 @@ export function AiCheckPage() {
           </div>
         }
       >
+        {defaultError && (
+          <p className="mb-2 flex items-start gap-1.5 text-xs font-medium text-red-600">
+            <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+            {defaultError}
+          </p>
+        )}
         <p className="text-xs text-slate-400">
           AI tekshiruv ishlashi uchun Sozlamalar → AI Tahlil (Gemini) kaliti, Speaking uchun esa
           Sozlamalar → Speaking (Azure) kiritilgan bo'lishi kerak.
@@ -219,13 +239,16 @@ export function AiCheckPage() {
                     <td className="text-center font-mono">{r.speakingCount}</td>
                     <td className="text-center font-mono">{r.todayUsed}</td>
                     <td className="text-center">
-                      <input
-                        type="number"
-                        min={0}
+                      <NumberInput
+                        as="input"
                         value={r.effectiveLimit}
                         disabled={r.premium}
-                        onChange={(e) => patchRow(r.studentId, { effectiveLimit: Math.max(0, Number(e.target.value) || 0) })}
-                        onBlur={() => persist(r)}
+                        onChange={(v) => patchRow(r.studentId, { effectiveLimit: v })}
+                        onBlur={() => {
+                          // Bo'sh qoldirilgan limit 0 deb saqlanadi va shunday KO'RSATILADI.
+                          if (r.effectiveLimit === null) patchRow(r.studentId, { effectiveLimit: 0 })
+                          persist(r)
+                        }}
                         className={control + ' w-16 text-center disabled:opacity-40'}
                       />
                     </td>

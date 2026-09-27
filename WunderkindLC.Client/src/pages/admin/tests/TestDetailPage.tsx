@@ -18,6 +18,8 @@ import { Card } from '@/components/ui/Card'
 import { Loader } from '@/components/ui/Loader'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { apiErrorMessage, formatDate } from '@/lib/utils'
+import { formatPhone } from '@/lib/numberFormat'
+import { NumberInput } from '@/components/ui/NumberInput'
 import { usePerm } from '@/lib/permissions'
 
 const MEDALS = ['🥇', '🥈', '🥉']
@@ -392,14 +394,15 @@ export function TestDetailPage() {
                         )}
                         {savedId === r.studentId && <Check className="h-4 w-4 text-emerald-500" />}
                         <div className="flex items-center gap-1">
-                          <input
-                            type="number"
-                            min={0}
-                            max={detail.maxScore}
+                          <NumberInput
+                            as="input"
                             disabled={!editable || savingId === r.studentId}
-                            value={draft[r.studentId] ?? ''}
-                            onChange={(e) =>
-                              setDraft((d) => ({ ...d, [r.studentId]: e.target.value }))
+                            value={draft[r.studentId] ? Number(draft[r.studentId]) : null}
+                            onChange={(v) =>
+                              setDraft((d) => ({
+                                ...d,
+                                [r.studentId]: v === null ? '' : String(Math.min(detail.maxScore, v)),
+                              }))
                             }
                             onBlur={() => editable && save(r.studentId)}
                             onKeyDown={(e) => {
@@ -602,7 +605,7 @@ export function TestDetailPage() {
                           {r.fullName}
                         </span>
                         {!!r.phone && (
-                          <span className="ml-2 text-xs text-slate-400">{r.phone}</span>
+                          <span className="ml-2 text-xs text-slate-400">{formatPhone(r.phone)}</span>
                         )}
                       </td>
                       <td className="px-4 py-2.5">

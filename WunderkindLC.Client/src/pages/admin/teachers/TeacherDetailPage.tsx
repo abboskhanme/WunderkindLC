@@ -48,6 +48,8 @@ import { getClasses } from '@/api/services/classes'
 import { getSubjects } from '@/api/services/subjects'
 import { genderLabels, formatMonth } from '@/config/constants'
 import { formatDate, formatMoney, cn, apiErrorMessage } from '@/lib/utils'
+import { formatPhone } from '@/lib/numberFormat'
+import { MoneyInput, NumberInput } from '@/components/ui/NumberInput'
 import { Card } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { StatCard } from '@/components/ui/StatCard'
@@ -175,7 +177,7 @@ export function TeacherDetailPage() {
   const [selMonthLoading, setSelMonthLoading] = useState(false)
   const [dedOpen, setDedOpen] = useState(false)
   const [payOpen, setPayOpen] = useState(false)
-  const [payAmount, setPayAmount] = useState(0)
+  const [payAmount, setPayAmount] = useState<number | null>(0)
   // "Qaysi oy uchun" — standart tanlangan oy, lekin formada O'ZGARTIRISH mumkin
   // (masalan, iyul maoshi 5-avgustda berilsa: oy = iyul, sana = 5-avgust).
   const [payMonth, setPayMonth] = useState(currentMonthKey)
@@ -339,7 +341,8 @@ export function TeacherDetailPage() {
   }
 
   const submitPay = async () => {
-    if (!id || !payMonth) return
+    // Summa bo'sh/0 bo'lsa tugma o'chiq turadi — bu yerga yetib kelmaydi.
+    if (!id || !payMonth || payAmount === null || payAmount <= 0) return
     setPayBusy(true)
     setPayError(null)
     try {
@@ -681,7 +684,7 @@ export function TeacherDetailPage() {
             </div>
             <InfoRow label="Tug'ilgan kun" value={teacher.birthDate ? formatDate(teacher.birthDate) : '—'} />
             <InfoRow label="Manzil" value={teacher.address || '—'} />
-            <InfoRow label="Telefon" value={teacher.phone || '—'} mono />
+            <InfoRow label="Telefon" value={formatPhone(teacher.phone) || '—'} mono />
             <InfoRow
               label="Fanlar"
               value={subjectNames || '—'}
@@ -1469,12 +1472,10 @@ export function TeacherDetailPage() {
                   </label>
                   <label className="block">
                     <span className="text-xs text-slate-500">Summa (so'm)</span>
-                    <input
-                      type="number"
-                      min={0}
-                      step="any"
+                    <MoneyInput
+                      as="input"
                       value={payAmount}
-                      onChange={(e) => setPayAmount(Number(e.target.value))}
+                      onChange={setPayAmount}
                       className="mt-1 w-full rounded-lg border border-slate-200 px-2.5 py-1.5 font-mono text-sm focus:border-brand-400 focus:outline-none"
                     />
                   </label>
@@ -1517,10 +1518,10 @@ export function TeacherDetailPage() {
                   <button
                     type="button"
                     onClick={submitPay}
-                    disabled={payBusy || payAmount <= 0 || !payMonth}
+                    disabled={payBusy || (payAmount ?? 0) <= 0 || !payMonth}
                     className={cn(
                       'rounded-lg px-4 py-2 text-sm font-semibold text-white transition-colors',
-                      payBusy || payAmount <= 0 || !payMonth
+                      payBusy || (payAmount ?? 0) <= 0 || !payMonth
                         ? 'cursor-not-allowed bg-slate-300'
                         : 'bg-brand-600 hover:bg-brand-700',
                     )}
@@ -1912,8 +1913,9 @@ type SalaryRow = {
   courseName: string
   monthlyFee: number
   mode: string
-  percent: number
-  fixed: number
+  /** Tahrir paytida bo'sh bo'la oladi — saqlashda tekshiriladi. */
+  percent: number | null
+  fixed: number | null
   /** Guruh yopilgan/arxivlangan — ro'yxatda qoladi (o'tgan oylar hisobi shunga bog'liq) */
   archived: boolean
 }
@@ -1992,6 +1994,13 @@ function GroupSalaryEditor({
   const dirty = useMemo(() => rows.some(isRowDirty), [rows, initial])
 
   const handleSave = async () => {
+    const empty = rows
+      .filter(isRowDirty)
+      .find((r) => (r.mode === 'percent' && r.percent === null) || (r.mode === 'fixed' && r.fixed === null))
+    if (empty) {
+      alert(`«${empty.name}» guruhi uchun ${empty.mode === 'percent' ? 'foizni' : 'summani'} kiriting`)
+      return
+    }
     setBusy(true)
     setSaved(false)
     try {
@@ -2001,8 +2010,8 @@ function GroupSalaryEditor({
       const items: GroupSalaryItem[] = rows.filter(isRowDirty).map((r) => ({
         groupId: r.groupId,
         mode: r.mode,
-        percent: r.mode === 'percent' ? r.percent : 0,
-        fixed: r.mode === 'fixed' ? r.fixed : 0,
+        percent: r.mode === 'percent' ? (r.percent ?? 0) : 0,
+        fixed: r.mode === 'fixed' ? (r.fixed ?? 0) : 0,
       }))
       if (items.length === 0) return
       await saveGroupSalaries(teacherId, items)
@@ -2083,13 +2092,10 @@ function GroupSalaryEditor({
 
                 {r.mode === 'percent' && (
                   <div className="flex items-center gap-1">
-                    <input
-                      type="number"
-                      min={0}
-                      max={100}
-                      step="any"
+                    <NumberInput
+                      as="input"
                       value={r.percent}
-                      onChange={(e) => setRow(r.groupId, { percent: Number(e.target.value) })}
+                      onChange={(v) => setRow(r.groupId, { percent: v === null ? null : Math.min(100, v) })}
                       className="w-24 rounded-lg border border-slate-200 px-2.5 py-1.5 font-mono text-sm focus:border-brand-400 focus:outline-none"
                     />
                     <span className="text-sm text-slate-500">%</span>
@@ -2097,12 +2103,10 @@ function GroupSalaryEditor({
                 )}
                 {r.mode === 'fixed' && (
                   <div className="flex items-center gap-1">
-                    <input
-                      type="number"
-                      min={0}
-                      step="any"
+                    <MoneyInput
+                      as="input"
                       value={r.fixed}
-                      onChange={(e) => setRow(r.groupId, { fixed: Number(e.target.value) })}
+                      onChange={(v) => setRow(r.groupId, { fixed: v })}
                       className="w-40 rounded-lg border border-slate-200 px-2.5 py-1.5 font-mono text-sm focus:border-brand-400 focus:outline-none"
                     />
                     <span className="text-sm text-slate-500">so'm</span>

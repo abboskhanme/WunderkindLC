@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { Select } from '@/components/ui/Input'
 import { Loader } from '@/components/ui/Loader'
+import { NumberInput } from '@/components/ui/NumberInput'
 
 /**
  * Local SMS — Eskiz'ga muqobil kanal: SMS Local Call CTI agent-telefonining SIM-kartasidan
@@ -16,7 +17,7 @@ import { Loader } from '@/components/ui/Loader'
 export function LocalSmsSettings() {
   const [enabled, setEnabled] = useState(false)
   const [defaultAgentId, setDefaultAgentId] = useState('')
-  const [delaySeconds, setDelaySeconds] = useState(0)
+  const [delaySeconds, setDelaySeconds] = useState<number | null>(0)
   const [agents, setAgents] = useState<CtiAgent[]>([])
   const [loading, setLoading] = useState(true)
   const [status, setStatus] = useState<'idle' | 'saving' | 'saved'>('idle')
@@ -38,7 +39,8 @@ export function LocalSmsSettings() {
     setStatus('saving')
     setError(null)
     try {
-      const saved = await saveLocalSmsSettings({ enabled, defaultAgentId: defaultAgentId || null, delaySeconds })
+      // Bo'sh = 0 = kutishsiz.
+      const saved = await saveLocalSmsSettings({ enabled, defaultAgentId: defaultAgentId || null, delaySeconds: delaySeconds ?? 0 })
       setEnabled(saved.enabled)
       setDefaultAgentId(saved.defaultAgentId ?? '')
       setDelaySeconds(saved.delaySeconds)
@@ -112,12 +114,11 @@ export function LocalSmsSettings() {
           <label className="mb-1 block text-sm font-medium text-slate-700">
             Ikkita SMS orasidagi kutish (soniya)
           </label>
-          <input
-            type="number"
-            min={0}
-            max={300}
+          <NumberInput
+            as="input"
+            placeholder="0"
             value={delaySeconds}
-            onChange={(e) => setDelaySeconds(Math.max(0, Math.min(300, Number(e.target.value) || 0)))}
+            onChange={(v) => setDelaySeconds(v === null ? null : Math.min(300, v))}
             className="max-w-[140px] rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 outline-none focus:border-brand-400"
           />
           <p className="mt-1 text-xs text-slate-400">

@@ -5,6 +5,7 @@ import type { PublicTest, TestResult } from '@/types'
 import { getPublicTest, submitPublicTest, getInviteTest, submitInviteTest } from '@/api/services/publicTest'
 import { getPublicBrand, type PublicBrand } from '@/api/services/settings'
 import { apiErrorMessage, cn } from '@/lib/utils'
+import { typedPhoneInput } from '@/lib/numberFormat'
 import { inputCls, cardPadX, primaryBtnCls, Field } from './publicFormUi'
 
 type Phase = 'loading' | 'notfound' | 'used' | 'intro' | 'quiz' | 'done'
@@ -63,7 +64,8 @@ export function PublicTestPage() {
     if (!invite) {
       if (!fullName.trim()) return setError('Ism-familiyangizni kiriting')
       const digits = phone.replace(/\D/g, '')
-      if (digits.length < 9)
+      // Maydon doim "998" bilan boshlanadi — to'liq raqam 12 ta.
+      if (digits.length < 12)
         return setError("Telefon raqamini to'liq kiriting (kamida 9 ta raqam)")
     }
     setError('')
@@ -195,7 +197,7 @@ export function PublicTestPage() {
                     <Field label="Telefon raqam *">
                       <input
                         value={phone}
-                        onChange={(e) => setPhone(e.target.value)}
+                        onChange={(e) => setPhone(typedPhoneInput(e.target.value, phone))}
                         placeholder="+998 90 123 45 67"
                         type="tel"
                         name="tel"

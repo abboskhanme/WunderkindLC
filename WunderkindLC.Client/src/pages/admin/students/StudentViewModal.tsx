@@ -9,6 +9,7 @@ import { getStudentCredentials, resetStudentPassword } from '@/api/services/stud
 import { getStudentGroups } from '@/api/services/classes'
 import { genderLabels } from '@/config/constants'
 import { apiErrorMessage, formatDate, formatMoney, cn } from '@/lib/utils'
+import { formatPhone } from '@/lib/numberFormat'
 import { groupsText } from '@/lib/studentGroups'
 import { studentDiscountLabel } from './discountLabel'
 
@@ -138,7 +139,7 @@ function StudentViewBody({ student }: { student: Student }) {
             </div>
           )}
           <Row label="Ota-onasi" value={student.parentFullName} />
-          <Row label="Ota-onasi raqami" value={student.parentPhone} mono />
+          <Row label="Ota-onasi raqami" value={formatPhone(student.parentPhone)} mono />
           <Row label="Balans" value={formatMoney(student.balance)} mono />
           {/* Chegirma HAR FAN uchun alohida bo'lishi mumkin — matn `discountCount` ni ham hisobga oladi. */}
           {!!studentDiscountLabel(student) && (

@@ -6,6 +6,7 @@ import {
   type IgAnalytics, type IgConversation, type IgStatus,
 } from '@/api/services/instagram'
 import { ChannelIcon, Icon, MarketingPage, MkCard, MkEmpty, MkError, MkLoading, MkStat } from './mk'
+import { formatNumber } from '@/lib/numberFormat'
 
 /** Bugungi sana ("yyyy-MM-dd"). */
 const today = () => new Date().toISOString().slice(0, 10)
@@ -126,7 +127,7 @@ export function InstagramDashboard() {
         {/* Bugungi raqamlar */}
         <div className="mk-kpi" style={{ marginBottom: 22 }}>
           {stats.map((s) => (
-            <MkStat key={s.label} label={s.label} value={s.value.toLocaleString()} icon={s.icon} tone={s.tone} />
+            <MkStat key={s.label} label={s.label} value={formatNumber(s.value)} icon={s.icon} tone={s.tone} />
           ))}
         </div>
 

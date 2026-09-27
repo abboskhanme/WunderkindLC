@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
 import { Input, Select, Textarea } from '@/components/ui/Input'
 import { Loader } from '@/components/ui/Loader'
+import { MoneyInput, NumberInput } from '@/components/ui/NumberInput'
 import { usePerm } from '@/lib/permissions'
 import { formatMonth } from '@/config/constants'
 import { currentMonth } from '@/lib/month'
@@ -392,7 +393,7 @@ function ProfileModal({
   const [guarantee, setGuarantee] = useState(profile?.guaranteeUntilMonth ?? '')
   const [isActive, setIsActive] = useState(profile?.isActive ?? true)
   const [note, setNote] = useState(profile?.note ?? '')
-  const [baseSalary, setBaseSalary] = useState('')
+  const [baseSalary, setBaseSalary] = useState<number | null>(null)
   const [saving, setSaving] = useState(false)
 
   // Nomzodlar — profil BERILISHI mumkin bo'lgan xodimlar (profili borlar ham keladi,
@@ -416,7 +417,7 @@ function ProfileModal({
 
   const save = async () => {
     if (!userId.trim()) return alert('Xodimni tanlang.')
-    if (!editing && !baseSalary.trim()) return alert('Birinchi okladni kiriting.')
+    if (!editing && baseSalary === null) return alert('Birinchi okladni kiriting.')
     setSaving(true)
     try {
       await saveKpiProfile({
@@ -427,8 +428,8 @@ function ProfileModal({
         guaranteeUntilMonth: guarantee || null,
         isActive,
         note: note.trim() || null,
-        baseSalary: baseSalary.trim() ? Number(baseSalary) : null,
-        salaryEffectiveFrom: baseSalary.trim() ? startMonth : null,
+        baseSalary,
+        salaryEffectiveFrom: baseSalary !== null ? startMonth : null,
       })
       onSaved()
     } catch (err) {
@@ -536,13 +537,12 @@ function ProfileModal({
         </p>
 
         {!editing && (
-          <Input
+          <MoneyInput
             label="Birinchi oklad (so'm)"
             required
-            type="number"
             value={baseSalary}
-            onChange={(e) => setBaseSalary(e.target.value)}
-            placeholder="Masalan 2500000"
+            onChange={setBaseSalary}
+            placeholder="Masalan 2 500 000"
           />
         )}
 
@@ -579,13 +579,13 @@ function SalaryModal({
   onSaved: () => void
 }) {
   const [effectiveFrom, setEffectiveFrom] = useState(nextMonth(currentMonth()))
-  const [amount, setAmount] = useState(String(profile.currentSalary || ''))
+  const [amount, setAmount] = useState<number | null>(profile.currentSalary || null)
   const [note, setNote] = useState('')
   const [saving, setSaving] = useState(false)
 
   const save = async () => {
-    const value = Number(amount)
-    if (!Number.isFinite(value) || value <= 0) return alert("Oklad summasini to'g'ri kiriting.")
+    const value = amount
+    if (value === null || value <= 0) return alert("Oklad summasini to'g'ri kiriting.")
     if (!isEffectiveMonthAllowed(effectiveFrom))
       return alert("O'tgan oyni tanlab bo'lmaydi — yopilgan oylar qayta yozilmaydi.")
     setSaving(true)
@@ -629,12 +629,11 @@ function SalaryModal({
           bilan qolaveradi.
         </div>
 
-        <Input
+        <MoneyInput
           label="Yangi oklad (so'm)"
           required
-          type="number"
           value={amount}
-          onChange={(e) => setAmount(e.target.value)}
+          onChange={setAmount}
         />
 
         <Select
@@ -717,6 +716,11 @@ function RulesSection({ canEdit }: { canEdit: boolean }) {
   const save = async () => {
     if (!isEffectiveMonthAllowed(effectiveFrom))
       return alert("O'tgan oyni tanlab bo'lmaydi — yopilgan oylar qayta yozilmaydi.")
+    // Bo'sh qoldirilgan majburiy maydon jimgina 0 deb saqlanmaydi.
+    const missing = visibleRuleGroups(roleCode)
+      .flatMap((g) => g.fields)
+      .find((f) => !f.nullable && draft[f.key] === null)
+    if (missing) return alert(`«${missing.label}» maydonini to'ldiring.`)
     if (
       !confirm(
         `${roleLabel(roleCode)} uchun YANGI versiya yaratilsinmi? U ` +
@@ -924,28 +928,27 @@ function RuleFieldInput({
   onChange: (value: number | null) => void
 }) {
   const shown =
-    value === null || value === undefined
-      ? ''
-      : field.kind === 'percent'
-        ? String(toPercentInput(value))
-        : String(value)
+    value === null || value === undefined ? null : field.kind === 'percent' ? toPercentInput(value) : value
+  const label = field.kind === 'percent' ? `${field.label} (%)` : field.label
+  const placeholder = field.nullable ? "bo'sh = chegara yo'q" : undefined
 
   return (
     <div>
-      <Input
-        label={field.kind === 'percent' ? `${field.label} (%)` : field.label}
-        type="number"
-        value={shown}
-        disabled={disabled}
-        placeholder={field.nullable ? "bo'sh = chegara yo'q" : undefined}
-        onChange={(e) => {
-          const raw = e.target.value
-          if (raw === '') return onChange(field.nullable ? null : 0)
-          const n = Number(raw)
-          if (!Number.isFinite(n)) return
-          onChange(field.kind === 'percent' ? fromPercentInput(n) : n)
-        }}
-      />
+      {field.kind === 'money' ? (
+        <MoneyInput label={label} value={shown} disabled={disabled} placeholder={placeholder} onChange={onChange} />
+      ) : (
+        // Jarimalar manfiy va kasr (-0,2), foizlar kasrli bo'lishi mumkin — KPI formulasi ISTISNOSI
+        // (qolgan tizimda kasr kiritilmaydi, `NumberInput.fractional` izohiga qarang).
+        <NumberInput
+          label={label}
+          fractional
+          value={shown}
+          allowNegative={field.kind === 'number'}
+          disabled={disabled}
+          placeholder={placeholder}
+          onChange={(v) => onChange(v === null ? null : field.kind === 'percent' ? fromPercentInput(v) : v)}
+        />
+      )}
       {field.hint && <p className="mt-1 text-[11px] text-slate-400">{field.hint}</p>}
       {field.kind === 'money' && value != null && value > 0 && (
         <p className="mt-1 font-mono text-[11px] text-slate-400">{formatMoney(value)}</p>
@@ -1042,7 +1045,6 @@ function TierTableEditor({
                     <div className="flex items-center justify-end gap-2">
                       <NumCell
                         value={t.coef}
-                        step={0.05}
                         disabled={disabled}
                         onChange={(v) => patch(i, { coef: v })}
                       />
@@ -1079,27 +1081,28 @@ function TierTableEditor({
   )
 }
 
+/** Jadval katagi: bo'shatish mumkin (bo'sh = 0, fokusdan chiqqanda "0" ko'rinadi). */
 function NumCell({
   value,
   onChange,
   disabled,
-  step,
 }: {
   value: number
   onChange: (value: number) => void
   disabled: boolean
-  step?: number
 }) {
+  const [empty, setEmpty] = useState(false)
   return (
-    <input
-      type="number"
-      step={step ?? 'any'}
-      value={String(value)}
+    <NumberInput
+      as="input"
+      fractional
+      value={empty ? null : value}
       disabled={disabled}
-      onChange={(e) => {
-        const n = Number(e.target.value)
-        if (Number.isFinite(n)) onChange(n)
+      onChange={(v) => {
+        setEmpty(v === null)
+        onChange(v === null ? 0 : v)
       }}
+      onBlur={() => setEmpty(false)}
       className="w-24 rounded-lg border border-slate-200 px-2 py-1.5 text-right text-sm text-slate-800 outline-none transition-colors focus:border-brand-400 focus:ring-2 focus:ring-brand-100 disabled:bg-slate-50"
     />
   )

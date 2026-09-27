@@ -23,6 +23,7 @@ import { Loader } from '@/components/ui/Loader'
 import { ReceiptModal } from '@/components/finance/ReceiptModal'
 import { PaymentModal } from '@/pages/admin/students/PaymentModal'
 import { formatMoney, apiErrorMessage, cn } from '@/lib/utils'
+import { formatPhone } from '@/lib/numberFormat'
 
 /** O'qituvchi qatori — arxivdagilar ham ro'yxatda (ularning qarzi ham to'lanishi mumkin). */
 interface TeacherRow {
@@ -272,7 +273,7 @@ export function KassaPage() {
                   </p>
                   <p className="truncate text-[12px] text-slate-400">
                     {s.groups.length > 0 ? s.groups.join(', ') : 'Guruhsiz'}
-                    {s.phone || s.parentPhone ? ` · ${s.phone || s.parentPhone}` : ''}
+                    {s.phone || s.parentPhone ? ` · ${formatPhone(s.phone || s.parentPhone)}` : ''}
                   </p>
                   <p className={balanceClass(s.balance)}>{formatMoney(s.balance)}</p>
                 </div>

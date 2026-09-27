@@ -8,6 +8,7 @@ import { StatCard } from '@/components/ui/StatCard'
 import { Badge } from '@/components/ui/Badge'
 import { Loader } from '@/components/ui/Loader'
 import { cn, formatDateTime } from '@/lib/utils'
+import { formatPhone } from '@/lib/numberFormat'
 
 type ActivationFilter = 'all' | 'activated' | 'inactive'
 
@@ -152,7 +153,7 @@ export function TeacherAppPage() {
                 {filtered.map((r) => (
                   <tr key={r.teacherId}>
                     <td className="font-medium text-slate-800">{r.fullName}</td>
-                    <td className="font-mono text-slate-600">{r.phone || '—'}</td>
+                    <td className="whitespace-nowrap font-mono text-slate-600">{formatPhone(r.phone) || '—'}</td>
                     <td>
                       {r.isActivated ? (
                         <Badge tone="green">

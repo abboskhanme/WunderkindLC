@@ -43,6 +43,7 @@ import { Loader } from '@/components/ui/Loader'
 import { Modal } from '@/components/ui/Modal'
 import { Input, Textarea } from '@/components/ui/Input'
 import { TablePagination, usePagination } from '@/components/ui/TablePagination'
+import { formatPhone } from '@/lib/numberFormat'
 
 const control =
   'rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none transition-colors focus:border-brand-400 focus:ring-2 focus:ring-brand-100'
@@ -708,7 +709,7 @@ export function SubstituteTeachersPage() {
                 )
                 .map((t) => (
                   <option key={t.id} value={t.id}>
-                    {t.fullName} ({t.phone || "Tel ko'rsatilmagan"})
+                    {t.fullName} ({t.phone ? formatPhone(t.phone) : "Tel ko'rsatilmagan"})
                   </option>
                 ))}
             </select>

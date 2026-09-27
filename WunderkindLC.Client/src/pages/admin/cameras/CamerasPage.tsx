@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { Input } from '@/components/ui/Input'
+import { NumberInput } from '@/components/ui/NumberInput'
 import { Loader } from '@/components/ui/Loader'
 import { Modal } from '@/components/ui/Modal'
 import { usePerm } from '@/lib/permissions'
@@ -204,7 +205,7 @@ function SingleCamera({
   canDelete: boolean
 }) {
   const [start, setStart] = useState('')
-  const [durationMin, setDurationMin] = useState(1)
+  const [durationMin, setDurationMin] = useState<number | null>(1)
   const [clipUrl, setClipUrl] = useState<string | null>(null)
   const [busy, setBusy] = useState<'view' | 'download' | 'nvr' | null>(null)
   const [nvrCheck, setNvrCheck] = useState<{ error: string; segments: NvrSegment[] } | null>(null)
@@ -215,6 +216,7 @@ function SingleCamera({
 
   const view = async () => {
     if (!start) { alert('Vaqtni tanlang'); return }
+    if (!durationMin) { alert('Davomiylikni kiriting (1–60 daqiqa)'); return }
     setBusy('view')
     try {
       const blob = await getClipBlob(camera.id, startIso(), durationMin * 60)
@@ -241,6 +243,7 @@ function SingleCamera({
 
   const download = async () => {
     if (!start) { alert('Vaqtni tanlang'); return }
+    if (!durationMin) { alert('Davomiylikni kiriting (1–60 daqiqa)'); return }
     setBusy('download')
     try {
       const blob = await getClipBlob(camera.id, startIso(), durationMin * 60)
@@ -311,8 +314,8 @@ function SingleCamera({
           </label>
           <label className="flex flex-col gap-1 text-sm">
             <span className="font-medium text-slate-600">Davomiyligi (daqiqa)</span>
-            <input type="number" min={1} max={60} value={durationMin}
-              onChange={(e) => setDurationMin(Math.min(60, Math.max(1, Number(e.target.value) || 1)))}
+            <NumberInput as="input" value={durationMin}
+              onChange={(v) => setDurationMin(v === null ? null : Math.min(60, v))}
               className="w-28 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-brand-400" />
           </label>
           <Button variant="secondary" onClick={view} disabled={busy !== null}>
@@ -361,11 +364,14 @@ function SingleCamera({
   )
 }
 
+// NVR kanali maydoni bo'sh bo'la oladi (bo'sh = 0, ya'ni "NVR'da yo'q").
+type CameraForm = Omit<SaveCameraPayload, 'nvrChannel'> & { nvrChannel: number | null }
+
 function CameraFormModal({
   open, camera, onClose, onSaved,
 }: { open: boolean; camera: Camera | null; onClose: () => void; onSaved: () => void }) {
-  const [form, setForm] = useState<SaveCameraPayload>(
-    { name: '', rtspUrl: '', retentionDays: 7, isActive: true, recordEnabled: true, nvrChannel: 0 })
+  const [form, setForm] = useState<CameraForm>(
+    { name: '', rtspUrl: '', retentionDays: 7, isActive: true, recordEnabled: true, nvrChannel: null })
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
@@ -375,19 +381,21 @@ function CameraFormModal({
           rtspSubUrl: camera.rtspSubUrl, retentionDays: camera.retentionDays,
           isActive: camera.isActive, note: camera.note, recordEnabled: camera.recordEnabled,
           nvrChannel: camera.nvrChannel }
-      : { name: '', rtspUrl: '', retentionDays: 7, isActive: true, recordEnabled: true, nvrChannel: 0 })
+      : { name: '', rtspUrl: '', retentionDays: 7, isActive: true, recordEnabled: true, nvrChannel: null })
   }, [open, camera])
 
-  const set = <K extends keyof SaveCameraPayload>(k: K, v: SaveCameraPayload[K]) =>
+  const set = <K extends keyof CameraForm>(k: K, v: CameraForm[K]) =>
     setForm((p) => ({ ...p, [k]: v }))
+  const hasNvr = (form.nvrChannel ?? 0) > 0
 
   const submit = async () => {
     if (!form.name.trim()) { alert('Nomi shart'); return }
     if (!form.rtspUrl.trim()) { alert('RTSP manzili shart'); return }
     setSaving(true)
     try {
-      if (camera) await updateCamera(camera.id, form)
-      else await createCamera(form)
+      const payload: SaveCameraPayload = { ...form, nvrChannel: form.nvrChannel ?? 0 }
+      if (camera) await updateCamera(camera.id, payload)
+      else await createCamera(payload)
       onSaved()
     } catch {
       alert('Saqlashda xatolik')
@@ -420,10 +428,10 @@ function CameraFormModal({
       </div>
       {/* NVR kanali — YOZUVDAN oldin: kanal berilsa lokal yozuv umuman kerak emas. */}
       <div className="mt-4">
-        <Input label="NVR kanali (0 = NVR'da yo'q)" type="number" min={0}
+        <NumberInput label="NVR kanali (0 = NVR'da yo'q)"
           placeholder="1"
-          value={String(form.nvrChannel)}
-          onChange={(e) => set('nvrChannel', Math.max(0, Number(e.target.value) || 0))} />
+          value={form.nvrChannel}
+          onChange={(v) => set('nvrChannel', v)} />
         <p className="mt-1.5 text-[11px] text-slate-500">
           Kamera videoregistratordagi nechanchi kanal. Berilsa arxiv <b>NVR'dan</b> olinadi va
           serverda hech narsa yozilmaydi. NVR'ning o'zi — Sozlamalar → Kamera integratsiya.
@@ -433,14 +441,14 @@ function CameraFormModal({
       {/* Yozuv — alohida blok: yoqilmasa saqlash muddatining ma'nosi yo'q.
           ⚠️ NVR kanali berilgan bo'lsa bu blok ma'nosini yo'qotadi (arxiv NVR'da). */}
       <div className={cn('mt-4 rounded-lg border border-slate-200 bg-slate-50 px-3 py-3',
-        form.nvrChannel > 0 && 'opacity-50')}>
+        hasNvr && 'opacity-50')}>
         <label className="inline-flex cursor-pointer items-center gap-2 text-sm font-medium text-slate-700">
-          <input type="checkbox" checked={form.recordEnabled} disabled={form.nvrChannel > 0}
+          <input type="checkbox" checked={form.recordEnabled} disabled={hasNvr}
             onChange={(e) => set('recordEnabled', e.target.checked)}
             className="h-4 w-4 rounded border-slate-300 accent-brand-600" />
           Yozib borish (24/7 diskka)
         </label>
-        {form.nvrChannel > 0 && (
+        {hasNvr && (
           <p className="mt-1.5 text-[11px] font-medium text-sky-700">
             NVR kanali berilgan — arxiv NVR'dan olinadi, bu yerda yozish kerak emas.
           </p>
@@ -454,11 +462,11 @@ function CameraFormModal({
 
       <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
         <label className={cn('flex flex-col gap-1 text-sm',
-          (!form.recordEnabled || form.nvrChannel > 0) && 'opacity-50')}>
+          (!form.recordEnabled || hasNvr) && 'opacity-50')}>
           <span className="font-medium text-slate-600">Yozuv saqlash muddati</span>
           <select
             value={form.retentionDays}
-            disabled={!form.recordEnabled || form.nvrChannel > 0}
+            disabled={!form.recordEnabled || hasNvr}
             onChange={(e) => set('retentionDays', Number(e.target.value))}
             className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-brand-400 disabled:bg-slate-100"
           >

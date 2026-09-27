@@ -6,6 +6,7 @@ import {
   IG_LIMITS,
   type IgMediaItem, type IgMediaKind, type IgPostType,
 } from '@/api/services/instagramContent'
+import { NumberInput } from '@/components/ui/NumberInput'
 import { Icon } from '../mk'
 import { fmtBytes, mediaKindLocked } from './helpers'
 
@@ -328,7 +329,7 @@ export function MediaEditor({
       <div className="mk-media-grid" style={{ marginTop: 14 }}>
         <NumField label="Kenglik, px" value={item.width} onChange={(v) => onChange({ width: v })} />
         <NumField label="Balandlik, px" value={item.height} onChange={(v) => onChange({ height: v })} />
-        <NumField label="Hajm, bayt" value={item.sizeBytes} onChange={(v) => onChange({ sizeBytes: v })} />
+        <NumField label="Hajm, bayt" value={item.sizeBytes} onChange={(v) => onChange({ sizeBytes: v })} group />
         <NumField
           label="Davomiylik, s"
           value={item.durationSeconds}
@@ -383,12 +384,12 @@ export function MediaEditor({
           </div>
           <div className="field" style={{ margin: 0 }}>
             <label className="field-label">Muqova kadri, ms</label>
-            <input
+            <NumberInput
+              as="input"
               className="input"
-              type="number"
-              value={item.thumbOffsetMs < 0 ? '' : item.thumbOffsetMs}
+              value={item.thumbOffsetMs < 0 ? null : item.thumbOffsetMs}
               placeholder="berilmagan"
-              onChange={(e) => onChange({ thumbOffsetMs: e.target.value === '' ? -1 : Number(e.target.value) })}
+              onChange={(v) => onChange({ thumbOffsetMs: v ?? -1 })}
             />
             <div className="field-hint">Bo‘sh = berilmagan; 0 = birinchi kadr.</div>
           </div>
@@ -408,26 +409,27 @@ export function MediaEditor({
   )
 }
 
-/** Butun son maydoni: bo'sh — 0 ("noma'lum"). */
+/** Son maydoni: bo'sh — 0 ("noma'lum"), 0 esa bo'sh ko'rinadi. */
 function NumField({
-  label, value, onChange, disabled,
+  label, value, onChange, disabled, group,
 }: {
   label: string
   value: number
   onChange: (v: number) => void
   disabled?: boolean
+  group?: boolean
 }) {
   return (
     <div>
       <label className="field-label" style={{ fontSize: 11.5 }}>{label}</label>
-      <input
+      <NumberInput
+        as="input"
         className="input"
-        type="number"
-        min={0}
         disabled={disabled}
-        value={value === 0 ? '' : value}
+        group={group}
+        value={value === 0 ? null : value}
         placeholder="noma’lum"
-        onChange={(e) => onChange(e.target.value === '' ? 0 : Number(e.target.value))}
+        onChange={(v) => onChange(v ?? 0)}
       />
     </div>
   )

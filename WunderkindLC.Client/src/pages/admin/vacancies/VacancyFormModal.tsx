@@ -5,6 +5,7 @@ import { createVacancy, updateVacancy } from '@/api/services/career'
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
 import { Input, Select, Textarea } from '@/components/ui/Input'
+import { MoneyInput, NumberInput } from '@/components/ui/NumberInput'
 import { apiErrorMessage } from '@/lib/utils'
 import { employmentOptions } from './careerLabels'
 
@@ -26,15 +27,15 @@ export function VacancyFormModal({ open, initial, onClose, onSaved }: Props) {
   const [department, setDepartment] = useState('')
   const [employmentType, setEmploymentType] = useState<EmploymentType>('full')
   const [location, setLocation] = useState('')
-  const [salaryFrom, setSalaryFrom] = useState('')
-  const [salaryTo, setSalaryTo] = useState('')
+  const [salaryFrom, setSalaryFrom] = useState<number | null>(null)
+  const [salaryTo, setSalaryTo] = useState<number | null>(null)
   const [salaryNote, setSalaryNote] = useState('')
   const [description, setDescription] = useState('')
   const [requirements, setRequirements] = useState('')
   const [responsibilities, setResponsibilities] = useState('')
   const [conditions, setConditions] = useState('')
   const [deadline, setDeadline] = useState('')
-  const [order, setOrder] = useState('0')
+  const [order, setOrder] = useState<number | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
 
@@ -45,15 +46,15 @@ export function VacancyFormModal({ open, initial, onClose, onSaved }: Props) {
     setDepartment(initial?.department ?? '')
     setEmploymentType(initial?.employmentType ?? 'full')
     setLocation(initial?.location ?? '')
-    setSalaryFrom(initial?.salaryFrom ? String(initial.salaryFrom) : '')
-    setSalaryTo(initial?.salaryTo ? String(initial.salaryTo) : '')
+    setSalaryFrom(initial?.salaryFrom || null)
+    setSalaryTo(initial?.salaryTo || null)
     setSalaryNote(initial?.salaryNote ?? '')
     setDescription(initial?.description ?? '')
     setRequirements(initial?.requirements ?? '')
     setResponsibilities(initial?.responsibilities ?? '')
     setConditions(initial?.conditions ?? '')
     setDeadline(initial?.deadline ?? '')
-    setOrder(String(initial?.order ?? 0))
+    setOrder(initial ? initial.order : null)
     setError('')
   }, [open, initial])
 
@@ -64,12 +65,9 @@ export function VacancyFormModal({ open, initial, onClose, onSaved }: Props) {
       setError('Lavozim nomini kiriting')
       return
     }
-    const from = Number(salaryFrom || 0)
-    const to = Number(salaryTo || 0)
-    if (!Number.isFinite(from) || from < 0 || !Number.isFinite(to) || to < 0) {
-      setError("Maoshni to'g'ri kiriting")
-      return
-    }
+    // Bo'sh maosh = 0 (ilovada maosh izohi ko'rsatiladi).
+    const from = salaryFrom ?? 0
+    const to = salaryTo ?? 0
     if (to > 0 && from > to) {
       setError("Maoshning quyi chegarasi yuqori chegaradan katta bo'lmasin")
       return
@@ -88,7 +86,7 @@ export function VacancyFormModal({ open, initial, onClose, onSaved }: Props) {
       responsibilities: responsibilities.trim(),
       conditions: conditions.trim(),
       deadline: deadline.trim(),
-      order: Number(order || 0),
+      order: order ?? 0,
     }
 
     setBusy(true)
@@ -160,21 +158,17 @@ export function VacancyFormModal({ open, initial, onClose, onSaved }: Props) {
         </div>
 
         <div className="grid gap-3 sm:grid-cols-3">
-          <Input
+          <MoneyInput
             label="Maosh (dan)"
-            type="number"
-            min={0}
             value={salaryFrom}
-            onChange={(e) => setSalaryFrom(e.target.value)}
-            placeholder="4000000"
+            onChange={setSalaryFrom}
+            placeholder="4 000 000"
           />
-          <Input
+          <MoneyInput
             label="Maosh (gacha)"
-            type="number"
-            min={0}
             value={salaryTo}
-            onChange={(e) => setSalaryTo(e.target.value)}
-            placeholder="8000000"
+            onChange={setSalaryTo}
+            placeholder="8 000 000"
           />
           <Input
             label="Maosh izohi"
@@ -226,11 +220,11 @@ export function VacancyFormModal({ open, initial, onClose, onSaved }: Props) {
             value={deadline}
             onChange={(e) => setDeadline(e.target.value)}
           />
-          <Input
+          <NumberInput
             label="Tartib raqami"
-            type="number"
+            allowNegative
             value={order}
-            onChange={(e) => setOrder(e.target.value)}
+            onChange={setOrder}
             placeholder="0"
           />
         </div>

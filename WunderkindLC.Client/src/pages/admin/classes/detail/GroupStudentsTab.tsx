@@ -21,6 +21,7 @@ import {
   type GroupRosterRow,
 } from '@/api/services/classes'
 import { apiErrorMessage, cn, exportToCsv, formatDate, formatMoney } from '@/lib/utils'
+import { formatPhone } from '@/lib/numberFormat'
 import type { BackState } from '@/lib/nav'
 import { membershipBadge } from '@/lib/groupDisplay'
 import { Button } from '@/components/ui/Button'
@@ -156,7 +157,7 @@ export function GroupStudentsTab({
         String(i + 1),
         m.fullName,
         formatDate(m.joinedAt),
-        m.phone ?? '',
+        formatPhone(m.phone),
         String(m.balance),
         String(m.price ?? groupFee),
         membershipBadge(m.status, m.yearFreeze, m.isActive).label,

@@ -19,6 +19,7 @@ import { PageHeader } from '@/components/ui/PageHeader'
 import { Loader } from '@/components/ui/Loader'
 import { Modal } from '@/components/ui/Modal'
 import { Input } from '@/components/ui/Input'
+import { NumberInput } from '@/components/ui/NumberInput'
 
 // Leaflet marker ikoni Vite bilan to'g'ri yuklanmaydi — CDN'dan ko'rsatamiz (LocationPage'dagidek).
 const markerIcon = new L.Icon({
@@ -32,14 +33,18 @@ const markerIcon = new L.Icon({
 // Toshkent markazi — yangi filial uchun standart ko'rinish.
 const DEFAULT_CENTER: [number, number] = [41.311081, 69.279737]
 
-const empty: BranchPayload = { name: '', address: '', latitude: 0, longitude: 0, radiusMeters: 100 }
+// Radius maydoni tahrir paytida bo'sh bo'la oladi — saqlashda tekshiriladi.
+type BranchForm = Omit<BranchPayload, 'radiusMeters'> & { radiusMeters: number | null }
+
+const empty: BranchForm = { name: '', address: '', latitude: 0, longitude: 0, radiusMeters: 100 }
 
 export function BranchesPage() {
   const [branches, setBranches] = useState<Branch[]>([])
   const [loading, setLoading] = useState(true)
   const [formOpen, setFormOpen] = useState(false)
   const [editing, setEditing] = useState<Branch | null>(null)
-  const [form, setForm] = useState<BranchPayload>(empty)
+  const [form, setForm] = useState<BranchForm>(empty)
+  const [formError, setFormError] = useState('')
   // Joriy joyni aniqlash holati + xaritani markazlash uchun nishon nuqta
   const [locating, setLocating] = useState(false)
   const [flyTo, setFlyTo] = useState<[number, number] | null>(null)
@@ -53,6 +58,7 @@ export function BranchesPage() {
   const openCreate = () => {
     setEditing(null)
     setForm(empty)
+    setFormError('')
     setFlyTo(null)
     setFormOpen(true)
   }
@@ -65,6 +71,7 @@ export function BranchesPage() {
       longitude: b.longitude,
       radiusMeters: b.radiusMeters,
     })
+    setFormError('')
     setFlyTo(null)
     setFormOpen(true)
   }
@@ -98,12 +105,18 @@ export function BranchesPage() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     if (!form.name.trim()) return
+    if (form.radiusMeters === null || form.radiusMeters <= 0) {
+      setFormError('Radiusni kiriting (metrda)')
+      return
+    }
+    setFormError('')
+    const payload: BranchPayload = { ...form, radiusMeters: form.radiusMeters }
     if (editing) {
-      updateBranch(editing.id, form).then((u) =>
+      updateBranch(editing.id, payload).then((u) =>
         setBranches((p) => p.map((x) => (x.id === u.id ? u : x))),
       )
     } else {
-      createBranch(form).then((c) => setBranches((p) => [...p, c]))
+      createBranch(payload).then((c) => setBranches((p) => [...p, c]))
     }
     setFormOpen(false)
   }
@@ -229,14 +242,12 @@ export function BranchesPage() {
             value={form.address}
             onChange={(e) => setForm((f) => ({ ...f, address: e.target.value }))}
           />
-          <Input
+          <NumberInput
             label="Radius (metr)"
-            type="number"
-            min={10}
-            step={10}
             value={form.radiusMeters}
-            onChange={(e) => setForm((f) => ({ ...f, radiusMeters: Number(e.target.value) }))}
+            onChange={(v) => setForm((f) => ({ ...f, radiusMeters: v }))}
           />
+          {formError && <p className="text-sm font-medium text-red-600">{formError}</p>}
           <div>
             <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
               <label className="block text-sm font-medium text-slate-600">
@@ -275,7 +286,7 @@ export function BranchesPage() {
                         },
                       }}
                     />
-                    <Circle center={[form.latitude, form.longitude]} radius={form.radiusMeters} />
+                    <Circle center={[form.latitude, form.longitude]} radius={form.radiusMeters ?? 0} />
                   </>
                 )}
               </MapContainer>
