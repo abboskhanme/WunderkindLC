@@ -7,6 +7,7 @@ paths:
   - "WunderkindLC.Client/src/lib/teacherPortal.ts"
   - "WunderkindLC.Server/Controllers/TeacherPortalController*.cs"
   - "WunderkindLC.Application/Services/TeacherHomeService.cs"
+  - "WunderkindLC.Application/Services/TelegramBotService.cs"
 ---
 
 # O'qituvchi portali qoidalari
@@ -83,7 +84,24 @@ Xato bo'lsa oyna YOPILMAYDI, sabab ichida ko'rinadi. Saqlangandan keyin dars man
 Jurnalda shu kunga ustun bo'lmasa (dars ko'chirilgan) saqlash YOPIQ — aks holda yozuv ko'rinmas
 sanaga tushardi. Muzlatilganlar ro'yxatda yo'q; a'zoligi keyin boshlanganlar xira, bosilmaydi.
 
-## 5. Testlar
+## 5. TELEGRAM BOT — «🎓 O'qituvchi paneli» (Mini App)
+
+Portal asosiy botda `web_app` tugmasi bilan Telegram ICHIDA ochiladi (`TelegramBotService`):
+- reply-klaviaturada ENG TEPADA — faqat chat FAOL o'qituvchiga bog'langan bo'lsa
+  (`IsTeacherChatAsync`; o'quvchi/ota-onada tugma yo'q);
+- o'qituvchining login xabari ostida inline tugma (`TeacherPanelInline`).
+
+⚠️ Kirish ODDIY (login/parol yoki botdagi «🔑 Yangi kod olish») — Telegram orqali AVTOMATIK kirish
+ATAYIN qilinmagan: u yangi kirish yo'li bo'lardi (foydalanuvchi tanlovi, 2026-09-27). Kerak bo'lsa
+`TelegramInitData` (karyera botidagi) naqshida alohida ish sifatida ko'rilsin.
+
+SPA Mini App uchun tayyor: SDK `index.html` da, `ready()/expand()` — `main.tsx`, CSP
+`frame-ancestors` Telegram Web'ga ochiq, cookie'lar https'da `SameSite=None`.
+⚠️ `web_app` faqat HTTPS manzilni qabul qiladi — `TeacherPanelUrl` ni http qilmang
+(`TeacherBotButtonTests` qulflaydi).
+
+## 6. Testlar
 
 Backend — `TeacherHomeServiceTests` (reja, ko'rinish doirasi, to'lov darvozasi, RBAC manba matnidan).
 Klient — `lib/__tests__/teacherPortal.test.ts` (sana, dars holati, menyu katalogi).
+Bot — `TeacherBotButtonTests` (tugma faqat o'qituvchida, eng tepada, https).

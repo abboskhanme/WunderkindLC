@@ -135,3 +135,6 @@
   talabi) va hammasi belgilanmaguncha saqlab bo'lmaydi; saqlash tasdiqlash oynasi orqali → jurnal
   qoidasi yozuvsiz o'quvchini «keldi» deb o'qiydi, qisman saqlash yolg'on davomat berardi. FAQAT
   o'zgarganlar yuboriladi — har "kelmadi" ota-onaga avto-xabar, qayta saqlashda takrorlanmasin
+- [2026-09-27] O'qituvchi portali botga qanday ulanadi? → «🎓 O'qituvchi paneli» web_app tugmasi
+  (faqat o'qituvchi chatida) + oddiy login; Telegram orqali avtomatik kirish YO'Q → foydalanuvchi
+  tanlovi: yangi kirish yo'li ochilmasin
