@@ -21,6 +21,7 @@ import { TurnstileSettings } from './TurnstileSettings'
 import { CameraSettings } from './CameraSettings'
 import { CheckSettings } from './CheckSettings'
 import { PosthogSettings } from './PosthogSettings'
+import { LEGACY_SETTINGS_REDIRECTS } from '@/config/settingsGroups'
 
 type Status = 'idle' | 'saving' | 'saved'
 
@@ -97,7 +98,14 @@ export function SettingsPage() {
 
   if (section === 'reminders') return <Navigate to="/admin/messages" replace />
   if (section in legacyChannelTab) {
-    return <Navigate to={`/admin/settings/channels?tab=${legacyChannelTab[section]}`} replace />
+    return <Navigate to={`/admin/sozlamalar/sotuv?bolim=kanallar&tab=${legacyChannelTab[section]}`} replace />
+  }
+  // edutizim tuzilishiga ko'chgan bo'limlar — yangi guruh sahifasiga (xatcho'plar ishlayversin).
+  // "Xabar kanallari" ning ichki tabi (`?tab=`) saqlanadi.
+  if (section in LEGACY_SETTINGS_REDIRECTS) {
+    const tab = searchParams.get('tab')
+    const to = LEGACY_SETTINGS_REDIRECTS[section] + (tab ? `&tab=${encodeURIComponent(tab)}` : '')
+    return <Navigate to={to} replace />
   }
 
   return (

@@ -146,3 +146,7 @@
   KPI formulasi koeffitsiyentlari (−0,2 · 1,2 · 35,99%) → ular formulaning o'zida kasr, butun qilinsa
   KPI hisobi buzilardi (forma ochilganda yaxlitlanib ketardi). Bazada boshqa kasrli qiymat deyarli yo'q
   (guruh narxi, oylik hisob, foizlar — hammasi butun; 4 ta tranzaksiya kasrli)
+- [2026-09-27] edutizim "Funksionallik" qatorlari bizda nimani ochadi? → Moliya sozlamalari = to'lov
+  nazorati, Davomat sozlamalari = jurnal tahrirlash siyosati, O'qituvchi holatlari = maosh va jurnal
+  (uchalasi `JournalPolicyModal` ning o'z bo'limi), Xonalar holati = Xonalar sahifasi, Topshiriq
+  boshqaruvi = Baholash mezonlari → mazmuni edutizimdagi izohga eng yaqin mavjud sozlama

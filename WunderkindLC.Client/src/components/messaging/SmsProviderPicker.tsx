@@ -19,7 +19,7 @@ interface Props {
 
 /**
  * SMS qaysi orqali yuborilishini tanlash: Eskiz (standart) | Local (CTI agent telefonining SIM-kartasi).
- * Local SMS tizimda umuman yoqilmagan bo'lsa (Sozlamalar → Xabar kanallari → SMS) hech narsa
+ * Local SMS tizimda umuman yoqilmagan bo'lsa (Sozlamalar → Sotuv va marketing → Xabar kanallari → SMS) hech narsa
  * ko'rsatmaydi — faqat Eskiz ishlaydi (mavjud xulq o'zgarmaydi).
  */
 export function SmsProviderPicker({
@@ -64,7 +64,7 @@ export function SmsProviderPicker({
       </div>
       {provider === 'local' && !allowAgentOverride && (
         <p className="text-xs text-slate-400">
-          Standart agent orqali yuboriladi (Sozlamalar → Xabar kanallari → SMS).
+          Standart agent orqali yuboriladi (Sozlamalar → Sotuv va marketing → Xabar kanallari → SMS).
         </p>
       )}
       {provider === 'local' && allowAgentOverride && (

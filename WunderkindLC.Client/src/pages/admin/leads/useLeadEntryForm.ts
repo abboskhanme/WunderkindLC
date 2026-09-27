@@ -90,7 +90,7 @@ function valuesOf(initial: Lead): LeadFormValues {
  */
 export function useLeadEntryForm(open: boolean, initial: Lead | null | undefined) {
   const [form, setForm] = useState<LeadFormValues>(emptyLeadForm)
-  // Manba ro'yxati serverdan ("O'quv bo'limi → Sabablar" → "Lid manbalari"); xato/bo'sh bo'lsa fallback.
+  // Manba ro'yxati serverdan ("Sozlamalar → O'quv → Sabablar" → "Lid manbalari"); xato/bo'sh bo'lsa fallback.
   const [sourceOptions, setSourceOptions] = useState<string[]>(leadSourceOptions)
   // Tashqi maktab ma'lumotnomasi (tuman → maktablar) — o'quvchi formasidagi bilan bir xil.
   const [districts, setDistricts] = useState<District[]>([])

@@ -1,3 +1,4 @@
+import { SETTINGS_GROUPS, groupPermAny } from './settingsGroups'
 import type { ComponentType } from 'react'
 import { LayoutDashboard, NotebookText, MessageSquare } from 'lucide-react'
 // Admin menyusi — edutizim bilan BIR XIL ikonkalar (Tabler outline, edutizim ham shularni ishlatadi).
@@ -243,11 +244,12 @@ export const navByRole: Record<Role, NavItem[]> = {
       label: 'Sozlamalar',
       to: '#sozlamalar',
       icon: IconSettings,
-      children: [
-        { label: 'Umumiy sozlamalar', to: '/admin/settings/school', perm: 'settings.school' },
-        { label: 'Moliya', to: '/admin/settings/check', perm: 'settings.check' },
-        { label: 'Ilova sozlamalari', to: '/admin/settings/apk', perm: 'settings.apk' },
-      ],
+      // edutizim tuzilishi — `config/settingsGroups.ts` (sahifa bilan YAGONA manba). Guruh menyuda
+      // ko'rinadi, agar undagi BIRORTA band ruxsati bo'lsa (ruxsatsiz band bo'lsa — hammaga).
+      children: SETTINGS_GROUPS.map((g) => {
+        const any = groupPermAny(g)
+        return any === null ? { label: g.label, to: g.to } : { label: g.label, to: g.to, permAny: any }
+      }),
     },
     {
       // FUTURE — bizda BOR, lekin edutizimda YO'Q bo'limlar (foydalanuvchi qarori). Ichi
@@ -278,7 +280,6 @@ export const navByRole: Record<Role, NavItem[]> = {
             { label: 'Testlar natijalari', to: '/admin/test-results', perm: 'classes.testResults' },
             { label: 'Formalar', to: '/admin/forms', permAny: ['leads.forms', 'schedule.levelTests'] },
             { label: 'Kitoblar sotuvi', to: '/admin/books', perm: 'books' },
-            { label: 'Sabablar', to: '/admin/reasons', perm: 'settings.reasons' },
           ],
         },
         {
@@ -345,12 +346,9 @@ export const navByRole: Record<Role, NavItem[]> = {
           label: 'Sozlamalar',
           to: '#future-settings',
           children: [
-            { label: 'Landing Boshqaruvi', to: '/admin/landing', perm: 'settings.landing' },
-            { label: 'Tuman va maktablar', to: '/admin/districts', perm: 'settings.districts' },
-            { label: 'Xabar kanallari', to: '/admin/settings/channels', perm: 'settings.channels' },
+            // Landing, Tumanlar, Xabar kanallari, Azure, Gemini, Sabablar — edutizim tuzilishidagi
+            // Sozlamalar ichiga ko'chdi (config/settingsGroups.ts). Bu yerda faqat integratsiyalar.
             { label: 'Zaxira nusxa', to: '/admin/settings/backup', perm: 'settings.backup' },
-            { label: 'Speaking (Azure)', to: '/admin/settings/azure-speech', perm: 'settings.azure-speech' },
-            { label: 'AI Tahlil (Gemini)', to: '/admin/settings/gemini', perm: 'settings.gemini' },
             { label: 'Turniket integratsiya', to: '/admin/settings/turnstile', perm: 'settings.turnstile' },
             { label: 'Kamera integratsiya', to: '/admin/settings/cameras', perm: 'settings.cameras' },
             { label: 'PostHog Analitika', to: '/admin/settings/posthog', perm: 'settings.posthog' },

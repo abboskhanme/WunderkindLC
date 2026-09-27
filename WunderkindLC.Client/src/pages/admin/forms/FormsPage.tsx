@@ -287,7 +287,7 @@ export function FormsPage() {
             placeholder="Masalan: Bepul sinov darsi"
           />
           <p className="text-xs text-slate-400">
-            Manba ro'yxati «O'quv bo'limi → Sabablar» sahifasida boshqariladi. Yaratgandan so'ng
+            Manba ro'yxati «Sozlamalar → O'quv → Sabablar» sahifasida boshqariladi. Yaratgandan so'ng
             qo'shimcha savollar va matnlarni sozlaysiz.
           </p>
         </div>

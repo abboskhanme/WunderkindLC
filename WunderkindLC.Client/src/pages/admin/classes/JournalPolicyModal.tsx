@@ -11,6 +11,11 @@ import { cn } from '@/lib/utils'
 type DayField = 'retroDays' | 'salaryGraceDays' | 'unpaidCutoffDay'
 type PolicyForm = Omit<JournalPolicy, DayField> & Record<DayField, number | null>
 
+/** Oynaning bo'limlari. Sozlamalar sahifasidagi har qator faqat O'Z bo'limini ochadi
+ *  (edutizim: "Davomat sozlamalari" · "Moliya sozlamalari" · "O'qituvchi holatlari"). */
+export type JournalPolicySection = 'edit' | 'payment' | 'salary'
+const ALL_SECTIONS: JournalPolicySection[] = ['edit', 'payment', 'salary']
+
 /**
  * "Jurnal boshqaruvi" — barcha guruhlar jurnali uchun tahrirlash siyosati (Guruhlar sahifasidan
  * ochiladi). Rejim: erkin / faqat bugungi kun / oxirgi N kun; qo'shimcha: faqat "o'tildi" darsga
@@ -18,7 +23,19 @@ type PolicyForm = Omit<JournalPolicy, DayField> & Record<DayField, number | null
  * Alohida "To'lov nazorati" bo'limi — to'lamagan o'quvchini FAQAT o'qituvchi jurnalidan yashiradi
  * (muzlatish emas: hisob davom etadi, to'lovdan keyin qaytadi, admin hammani ko'radi).
  */
-export function JournalPolicyModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+export function JournalPolicyModal({
+  open,
+  onClose,
+  sections = ALL_SECTIONS,
+  title = 'Jurnal boshqaruvi',
+}: {
+  open: boolean
+  onClose: () => void
+  /** Ko'rsatiladigan bo'limlar (standart — hammasi). Yashirilganlari serverdagi qiymat bilan saqlanadi. */
+  sections?: JournalPolicySection[]
+  title?: string
+}) {
+  const show = (s: JournalPolicySection) => sections.includes(s)
   const [policy, setPolicy] = useState<PolicyForm | null>(null)
   // Serverdan kelgan qiymatlar — yashirin (o'chiq bo'limdagi) bo'sh maydon shu bilan saqlanadi.
   const [loaded, setLoaded] = useState<JournalPolicy | null>(null)
@@ -80,7 +97,7 @@ export function JournalPolicyModal({ open, onClose }: { open: boolean; onClose: 
     <Modal
       open={open}
       onClose={onClose}
-      title="Jurnal boshqaruvi"
+      title={title}
       size="lg"
       footer={
         <>
@@ -98,6 +115,7 @@ export function JournalPolicyModal({ open, onClose }: { open: boolean; onClose: 
       ) : (
         <div className="space-y-5">
           {/* ---- Tahrirlash oynasi (rejim) ---- */}
+          {show('edit') && (
           <div>
             <h3 className="mb-2 text-sm font-semibold text-slate-700">
               Baho/davomat kiritish oynasi
@@ -144,8 +162,10 @@ export function JournalPolicyModal({ open, onClose }: { open: boolean; onClose: 
               </div>
             )}
           </div>
+          )}
 
           {/* ---- Qo'shimcha cheklovlar ---- */}
+          {show('edit') && (
           <div className="space-y-2">
             <h3 className="text-sm font-semibold text-slate-700">Qo'shimcha</h3>
 
@@ -167,8 +187,10 @@ export function JournalPolicyModal({ open, onClose }: { open: boolean; onClose: 
               onChange={(v) => set({ applyToAdmins: v })}
             />
           </div>
+          )}
 
           {/* ---- To'lov nazorati (o'qituvchi jurnalida yashirish) ---- */}
+          {show('payment') && (
           <div>
             <h3 className="mb-2 text-sm font-semibold text-slate-700">To'lov nazorati</h3>
             <p className="mb-3 text-xs text-slate-500">
@@ -230,8 +252,10 @@ export function JournalPolicyModal({ open, onClose }: { open: boolean; onClose: 
               </div>
             )}
           </div>
+          )}
 
           {/* ---- Maoshni jurnalga bog'lash ---- */}
+          {show('salary') && (
           <div>
             <h3 className="mb-2 text-sm font-semibold text-slate-700">Maosh va jurnal</h3>
 
@@ -274,8 +298,10 @@ export function JournalPolicyModal({ open, onClose }: { open: boolean; onClose: 
               </>
             )}
           </div>
+          )}
 
           {/* ---- Eslatma ---- */}
+          {show('edit') && (
           <div className="flex items-start gap-2.5 rounded-lg bg-blue-50 px-3 py-2.5 text-xs text-blue-700">
             <Info className="mt-0.5 h-4 w-4 shrink-0" />
             <div>
@@ -288,6 +314,7 @@ export function JournalPolicyModal({ open, onClose }: { open: boolean; onClose: 
               </p>
             </div>
           </div>
+          )}
         </div>
       )}
     </Modal>

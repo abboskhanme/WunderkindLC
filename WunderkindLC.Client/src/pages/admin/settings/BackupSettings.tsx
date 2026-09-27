@@ -156,7 +156,7 @@ export function BackupSettings() {
         <div className="mb-4 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
           <p>
-            Telegram bot sozlanmagan — backup yuborish uchun avval "Sozlamalar → Xabar kanallari →
+            Telegram bot sozlanmagan — backup yuborish uchun avval "Sozlamalar → Sotuv va marketing → Xabar kanallari →
             Telegram" bo'limida bot tokenini kiriting.
           </p>
         </div>

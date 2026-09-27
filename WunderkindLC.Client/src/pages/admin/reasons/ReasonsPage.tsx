@@ -52,7 +52,8 @@ const CATEGORIES: { key: string; title: string; sub: string; icon: LucideIcon }[
 const control =
   'rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-800 outline-none transition-colors focus:border-brand-400'
 
-export function ReasonsPage() {
+/** `embedded` — Sozlamalar sahifasi ichida (o'z sarlavhasisiz) ko'rsatilganda. */
+export function ReasonsPage({ embedded = false }: { embedded?: boolean } = {}) {
   const [loading, setLoading] = useState(true)
   const [absence, setAbsence] = useState<AbsenceReason[]>([])
   const [absStatus, setAbsStatus] = useState<'idle' | 'saving' | 'saved'>('idle')
@@ -126,10 +127,12 @@ export function ReasonsPage() {
 
   return (
     <div>
-      <PageHeader
-        title="Sabablar"
-        sub="Barcha amallar uchun sabablar shu yerda boshqariladi — muzlatish, o'chirish, sinovga qaytarish, lid/guruh va davomat"
-      />
+      {!embedded && (
+        <PageHeader
+          title="Sabablar"
+          sub="Barcha amallar uchun sabablar shu yerda boshqariladi — muzlatish, o'chirish, sinovga qaytarish, lid/guruh va davomat"
+        />
+      )}
 
       <div className="grid gap-4 lg:grid-cols-2">
         {/* Davomat sabablari */}

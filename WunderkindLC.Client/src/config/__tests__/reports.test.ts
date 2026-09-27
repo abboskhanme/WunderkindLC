@@ -214,7 +214,7 @@ describe('activeNavTo — qaysi menyu bandi faol', () => {
     ['/admin/boshqaruv/rollar', 'Boshqaruv'],
     ['/admin/teachers/attendance', 'Boshqaruv'],
     ['/admin/marketing/inbox', 'Future'],
-    ['/admin/settings/school', 'Sozlamalar'],
+    ['/admin/sozlamalar/umumiy', 'Sozlamalar'],
     ['/admin/students/davomat', 'Nazorat'],
     ['/admin/finance', 'Moliya'],
   ])('%s → «%s»', (path, label) => {

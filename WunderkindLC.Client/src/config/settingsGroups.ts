@@ -1,0 +1,254 @@
+/**
+ * SOZLAMALAR KATALOGI — edutizim tuzilishida (foydalanuvchi talabi, 2026-09-27).
+ *
+ * YAGONA MANBA: yon menyudagi "Sozlamalar" guruhi (`navigation.ts`) ham, har bir guruh sahifasi
+ * (`SettingsGroupPage`: chapda bo'limlar kartasi, o'ngda kontent) ham SHU ro'yxatdan quriladi.
+ *
+ * edutizim: Umumiy sozlamalar · Moliya · O'quv · Sotuv va marketing · Ilova sozlamalari ·
+ * Gamifikatsiya. Bizda FAQAT BOR sozlamalar joylashtirilgan; edutizimda bo'lib bizda yo'q
+ * bo'limlar (Obuna, Bayram kunlari, Ommaviy oferta, Gamifikatsiya, Yon panel modullari...)
+ * ATAYIN ko'rsatilmaydi — soxta "bo'sh" sahifa qilinmaydi.
+ *
+ * ⚠️ Komponent bu yerga QO'SHILMAYDI (react-refresh): panel faqat KALIT bilan ko'rsatiladi,
+ * kalit → komponent xaritasi `SettingsGroupPage` da.
+ */
+import {
+  IconBrandInstagram,
+  IconBuildingCommunity,
+  IconChecklist,
+  IconClockHour4,
+  IconDeviceMobile,
+  IconFileText,
+  IconGift,
+  IconLayoutGrid,
+  IconListDetails,
+  IconMapPin,
+  IconMessages,
+  IconMicrophone,
+  IconMoneybag,
+  IconReceipt,
+  IconSchool,
+  IconSparkles,
+  IconUserCheck,
+  IconUserCog,
+  IconWorld,
+  type Icon,
+} from '@tabler/icons-react'
+
+export type SettingsGroupKey = 'umumiy' | 'moliya' | 'oquv' | 'sotuv' | 'ilova'
+
+/** Bo'lim ichida chiziladigan TAYYOR sozlama komponenti (kalit → komponent `SettingsGroupPage` da). */
+export type SettingsPanelKey = 'check' | 'school' | 'account' | 'reasons' | 'channels' | 'apk' | 'azure' | 'gemini'
+
+/** Qatordan ochiladigan oyna (mavjud modallar). */
+export type SettingsModalKey = 'journal-edit' | 'journal-payment' | 'journal-salary' | 'retention'
+
+/** Ruxsat: `perm` — shu kalit (+ `action`), yo'q bo'lsa hamma ko'radi. */
+interface Gated {
+  perm?: string
+  /** `view` (standart) — ko'rish; `edit` — faqat o'zgartira oladiganga (oyna faqat saqlash uchun). */
+  action?: 'view' | 'edit'
+}
+
+/** edutizim "Funksionallik" uslubidagi kulrang qator: rangli ikonka + sarlavha + izoh + strelka. */
+export interface SettingsRow extends Gated {
+  key: string
+  title: string
+  sub: string
+  icon: Icon
+  /** Ikonka plitkasining rangi (edutizim ranglari). */
+  color: string
+  open: { modal: SettingsModalKey } | { to: string }
+}
+
+/** Chap kartadagi bitta band. */
+export interface SettingsItem extends Gated {
+  /** Manzildagi `?bolim=` qiymati (`?tab=` emas: "Xabar kanallari" paneli `tab` ni o'z ichki
+   *  tablari — sms/telegram/firebase — uchun ishlatadi). */
+  key: string
+  label: string
+  icon: Icon
+  /** `rows` — qatorlar ro'yxati; `panel` — tayyor komponent; `link` — alohida sahifaga o'tish. */
+  kind: 'rows' | 'panel' | 'link'
+  rows?: SettingsRow[]
+  panel?: SettingsPanelKey
+  to?: string
+}
+
+export interface SettingsGroup {
+  key: SettingsGroupKey
+  label: string
+  to: string
+  items: SettingsItem[]
+}
+
+/* edutizim ranglari (Umumiy sozlamalar → Funksionallik skrinshotidan). */
+const GREEN = '#22c55e'
+const BLUE = '#3d68ff'
+const VIOLET = '#8b5cf6'
+const ORANGE = '#f59e0b'
+const PINK = '#ec4899'
+const CYAN = '#06b6d4'
+
+/** Jurnal siyosati (`JournalPolicyModal`) — server ruxsati `classes` (PUT journal/policy). */
+const JOURNAL = { perm: 'classes', action: 'edit' as const }
+
+export const SETTINGS_GROUPS: SettingsGroup[] = [
+  {
+    key: 'umumiy',
+    label: 'Umumiy sozlamalar',
+    to: '/admin/sozlamalar/umumiy',
+    items: [
+      {
+        key: 'funksionallik',
+        label: 'Funksionallik',
+        icon: IconLayoutGrid,
+        kind: 'rows',
+        rows: [
+          {
+            key: 'moliya', title: 'Moliya sozlamalari', icon: IconMoneybag, color: GREEN,
+            sub: "To'lov qilmagan o'quvchini o'qituvchi jurnalida yashirish",
+            open: { modal: 'journal-payment' }, ...JOURNAL,
+          },
+          {
+            key: 'davomat', title: 'Davomat sozlamalari', icon: IconClockHour4, color: BLUE,
+            sub: "Baho va davomat kiritish muddati, o'tilgan dars qoidasi",
+            open: { modal: 'journal-edit' }, ...JOURNAL,
+          },
+          {
+            key: 'oqituvchi', title: "O'qituvchi holatlari", icon: IconUserCheck, color: VIOLET,
+            sub: "Maoshning jurnal bo'yicha hisoblanishi va to'ldirish muhlati",
+            open: { modal: 'journal-salary' }, ...JOURNAL,
+          },
+          {
+            key: 'xonalar', title: 'Xonalar holati', icon: IconSchool, color: ORANGE,
+            sub: "Xonalar ro'yxati, sig'imi va bandligi",
+            open: { to: '/admin/rooms' }, perm: 'classes.rooms',
+          },
+          {
+            key: 'topshiriq', title: 'Topshiriq boshqaruvi', icon: IconFileText, color: PINK,
+            sub: 'Baholash mezonlari va ularning ballari',
+            open: { to: '/admin/grading' }, perm: 'schedule.grading',
+          },
+        ],
+      },
+      { key: 'chek', label: 'Chek', icon: IconReceipt, kind: 'panel', panel: 'check', perm: 'settings.check' },
+      { key: 'markaz', label: "Markaz ma'lumotlari", icon: IconBuildingCommunity, kind: 'panel', panel: 'school', perm: 'settings.school' },
+      { key: 'foydalanuvchi', label: 'Foydalanuvchi sozlamalari', icon: IconUserCog, kind: 'panel', panel: 'account' },
+    ],
+  },
+  {
+    key: 'moliya',
+    label: 'Moliya',
+    to: '/admin/sozlamalar/moliya',
+    items: [
+      {
+        key: 'moliya',
+        label: 'Moliya sozlamalari',
+        icon: IconMoneybag,
+        kind: 'rows',
+        rows: [
+          {
+            key: 'tolov', title: "To'lov nazorati", icon: IconMoneybag, color: GREEN,
+            sub: "To'lov qilmagan o'quvchini o'qituvchi jurnalida yashirish",
+            open: { modal: 'journal-payment' }, ...JOURNAL,
+          },
+          {
+            key: 'bonus', title: 'Ushlab turish bonusi', icon: IconGift, color: CYAN,
+            sub: "O'quvchini ushlab turgan o'qituvchiga beriladigan bonus qoidalari",
+            open: { modal: 'retention' }, perm: 'finance.bonus', action: 'edit',
+          },
+        ],
+      },
+    ],
+  },
+  {
+    key: 'oquv',
+    label: "O'quv",
+    to: '/admin/sozlamalar/oquv',
+    items: [
+      { key: 'sabablar', label: 'Sabablar', icon: IconListDetails, kind: 'panel', panel: 'reasons', perm: 'settings.reasons' },
+      {
+        key: 'jurnal',
+        label: 'Jurnal va davomat',
+        icon: IconChecklist,
+        kind: 'rows',
+        rows: [
+          {
+            key: 'davomat', title: 'Davomat sozlamalari', icon: IconClockHour4, color: BLUE,
+            sub: "Baho va davomat kiritish muddati, o'tilgan dars qoidasi",
+            open: { modal: 'journal-edit' }, ...JOURNAL,
+          },
+          {
+            key: 'topshiriq', title: 'Baholash mezonlari', icon: IconFileText, color: PINK,
+            sub: "Guruhlarda o'quvchilarni baholash mezonlari",
+            open: { to: '/admin/grading' }, perm: 'schedule.grading',
+          },
+        ],
+      },
+    ],
+  },
+  {
+    key: 'sotuv',
+    label: 'Sotuv va marketing',
+    to: '/admin/sozlamalar/sotuv',
+    items: [
+      { key: 'kanallar', label: 'Xabar kanallari', icon: IconMessages, kind: 'panel', panel: 'channels', perm: 'settings.channels' },
+      { key: 'instagram', label: 'Instagram', icon: IconBrandInstagram, kind: 'link', to: '/admin/marketing/settings', perm: 'marketing.settings' },
+      { key: 'landing', label: 'Landing sahifa', icon: IconWorld, kind: 'link', to: '/admin/landing', perm: 'settings.landing' },
+      { key: 'tumanlar', label: 'Tuman va maktablar', icon: IconMapPin, kind: 'link', to: '/admin/districts', perm: 'settings.districts' },
+    ],
+  },
+  {
+    key: 'ilova',
+    label: 'Ilova sozlamalari',
+    to: '/admin/sozlamalar/ilova',
+    items: [
+      { key: 'apk', label: 'Mobil ilova', icon: IconDeviceMobile, kind: 'panel', panel: 'apk', perm: 'settings.apk' },
+      { key: 'azure', label: 'Speaking (Azure)', icon: IconMicrophone, kind: 'panel', panel: 'azure', perm: 'settings.azure-speech' },
+      { key: 'gemini', label: 'AI tahlil (Gemini)', icon: IconSparkles, kind: 'panel', panel: 'gemini', perm: 'settings.gemini' },
+    ],
+  },
+]
+
+/** Ruxsat tekshiruvchi: `(perm, action) => boolean` (odatda `usePerm().can`). */
+export type CanFn = (perm: string, action: 'view' | 'edit') => boolean
+
+const allowed = (x: Gated, can: CanFn) => !x.perm || can(x.perm, x.action ?? 'view')
+
+/** Foydalanuvchiga ko'rinadigan guruhlar: band va qatorlar ruxsat bo'yicha filtrlanadi,
+ *  bo'sh qolgan `rows` bandi va bandsiz guruh butunlay tushib qoladi. */
+export function visibleSettingsGroups(can: CanFn): SettingsGroup[] {
+  return SETTINGS_GROUPS.map((g) => ({
+    ...g,
+    items: g.items
+      .filter((i) => allowed(i, can))
+      .map((i) => (i.rows ? { ...i, rows: i.rows.filter((r) => allowed(r, can)) } : i))
+      .filter((i) => i.kind !== 'rows' || (i.rows?.length ?? 0) > 0),
+  })).filter((g) => g.items.length > 0)
+}
+
+/**
+ * Menyuda guruhni ko'rsatish uchun kalitlar: guruhdagi BIRORTA band yoki qator ruxsati yetarli.
+ * Ruxsatsiz band (Foydalanuvchi sozlamalari) bo'lgan guruh uchun `null` — hamma ko'radi.
+ */
+export function groupPermAny(g: SettingsGroup): string[] | null {
+  const perms: string[] = []
+  for (const i of g.items) {
+    if (!i.perm && i.kind !== 'rows') return null
+    if (i.perm) perms.push(i.perm)
+    for (const r of i.rows ?? []) if (r.perm) perms.push(r.perm)
+  }
+  return [...new Set(perms)]
+}
+
+/** Eski `/admin/settings/:section` manzillari → yangi guruh sahifasi (xatcho'plar ishlayversin). */
+export const LEGACY_SETTINGS_REDIRECTS: Record<string, string> = {
+  school: '/admin/sozlamalar/umumiy?bolim=markaz',
+  check: '/admin/sozlamalar/umumiy?bolim=chek',
+  reasons: '/admin/sozlamalar/oquv?bolim=sabablar',
+  channels: '/admin/sozlamalar/sotuv?bolim=kanallar',
+  apk: '/admin/sozlamalar/ilova?bolim=apk',
+  'azure-speech': '/admin/sozlamalar/ilova?bolim=azure',
+  gemini: '/admin/sozlamalar/ilova?bolim=gemini',
+}

@@ -90,9 +90,12 @@ data, only the page is missing) · `—` out of scope (rule 3).
 | Hisobotlar → Kirim chiqim | `/admin/moliya/kirim-chiqim` | ✅ |
 | Hisobotlar → Xonalar analitikasi | `/admin/rooms/utilization` | 🟡 |
 | Hisobotlar → Xodimlar reytingi | `/admin/teacher-reports` | 🟡 |
-| **Sozlamalar** → Umumiy sozlamalar | `/admin/settings/school` | 🟡 |
-| Sozlamalar → Moliya | `/admin/settings/check` | 🟡 |
-| Sozlamalar → Ilova sozlamalari | `/admin/settings/apk` | 🟡 |
+| **Sozlamalar** → Umumiy sozlamalar | `/admin/sozlamalar/umumiy` (Funksionallik · Chek · Markaz · Foydalanuvchi) | ✅ |
+| Sozlamalar → Moliya | `/admin/sozlamalar/moliya` | 🟡 (only what we have) |
+| Sozlamalar → O'quv | `/admin/sozlamalar/oquv` (Sabablar · Jurnal va davomat) | 🟡 |
+| Sozlamalar → Sotuv va marketing | `/admin/sozlamalar/sotuv` (Xabar kanallari · Instagram · Landing · Tumanlar) | 🟡 |
+| Sozlamalar → Ilova sozlamalari | `/admin/sozlamalar/ilova` (APK · Azure · Gemini) | 🟡 |
+| Sozlamalar → Gamifikatsiya | — (no gamification module) | — |
 | **Home** (Dars jadvali + 12 cards) | `/admin` | ✅ |
 | Group detail (left card + tabs, O'quvchilar first) | `/admin/classes/:id` | ✅ (our extra tabs kept after) |
 | Student profile (edutizim left card) | `/admin/students/:id` | ✅ (tab order still ours) |
@@ -104,7 +107,8 @@ edutizim itself lists "Kirim chiqim" and "Xodimlar reytingi" in two groups; we m
 kirish · O'quv dasturi, Baholash mezonlari, Testlar natijalari, Formalar, Kitoblar sotuvi,
 Sabablar · Guruh chati, Support Telegram, Call Center · AI check, ilova Support/O'qituvchilar ·
 Instagram marketing · Hisobotlar hub + our extra reports · KPI, Vakansiyalar, Kameralar ·
-extra Sozlamalar (Landing, Tumanlar, Kanallar, Zaxira, Azure, Gemini, Turniket, Kamera, PostHog).
+extra Sozlamalar (Zaxira, Turniket, Kamera, PostHog). Landing, Tumanlar, Kanallar, Azure, Gemini and
+Sabablar moved into the edutizim-shaped Sozlamalar (2026-09-27, `config/settingsGroups.ts`).
 
 ## Phases
 

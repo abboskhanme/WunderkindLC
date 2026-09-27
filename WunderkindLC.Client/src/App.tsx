@@ -115,6 +115,7 @@ const CashierPaymentsPage = lazy(() => import('@/pages/admin/finance/CashierPaym
 const KassaPage = lazy(() => import('@/pages/admin/kassa/KassaPage').then((m) => ({ default: m.KassaPage })))
 const KassaMyPaymentsPage = lazy(() => import('@/pages/admin/kassa/KassaMyPaymentsPage').then((m) => ({ default: m.KassaMyPaymentsPage })))
 const SettingsEntry = lazy(() => import('@/pages/admin/settings/SettingsEntry').then((m) => ({ default: m.SettingsEntry })))
+const SettingsGroupPage = lazy(() => import('@/pages/admin/settings/SettingsGroupPage').then((m) => ({ default: m.SettingsGroupPage })))
 const AuditLogPage = lazy(() => import('@/pages/admin/settings/AuditLogPage').then((m) => ({ default: m.AuditLogPage })))
 const ContactQueuePage = lazy(() => import('@/pages/admin/students/contacts/ContactQueuePage').then((m) => ({ default: m.ContactQueuePage })))
 const StudentNotesPage = lazy(() => import('@/pages/admin/students/notes/StudentNotesPage').then((m) => ({ default: m.StudentNotesPage })))
@@ -374,7 +375,11 @@ export default function App() {
             <Route path="finance" element={<RequirePerm perm="finance.main"><FinancePage /></RequirePerm>} />
             {/* Bitta kassir qabul qilgan to'lovlar — alohida sahifa (Moliya → Kassirlar qatoridan). */}
             <Route path="finance/cashiers/:key" element={<RequirePerm perm="finance.main"><CashierPaymentsPage /></RequirePerm>} />
-            <Route path="settings" element={<Navigate to="/admin/settings/school" replace />} />
+            <Route path="settings" element={<Navigate to="/admin/sozlamalar/umumiy" replace />} />
+            {/* Sozlamalar — edutizim tuzilishida (config/settingsGroups.ts). RequirePerm YO'Q:
+                sahifa har bandni o'zi ruxsat bo'yicha filtrlaydi (hisobotlar hub'idagi naqsh). */}
+            <Route path="sozlamalar" element={<Navigate to="/admin/sozlamalar/umumiy" replace />} />
+            <Route path="sozlamalar/:group" element={<SettingsGroupPage />} />
             <Route path="landing" element={<RequirePerm perm="settings.landing"><LandingCmsPage /></RequirePerm>} />
             {/* O'zgarishlar tarixi — Sozlamalar ICHIDA, lekin ruxsati boshqa (`audit`). Statik
                 segment `settings/:section` dinamikasidan ustun turadi (React Router reyting), ya'ni

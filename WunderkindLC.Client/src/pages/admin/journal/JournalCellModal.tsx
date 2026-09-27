@@ -191,7 +191,7 @@ export function JournalCellModal({
             </button>
           </div>
           {absentReasons.length === 0 ? (
-            <p className="text-xs text-slate-400">Sabablar yo'q — O'quv bo'limi → Sabablar bo'limida qo'shing</p>
+            <p className="text-xs text-slate-400">Sabablar yo'q — Sozlamalar → O'quv → Sabablar bo'limida qo'shing</p>
           ) : (
             <div className="flex flex-wrap gap-2">
               {absentReasons.map((r) => (
