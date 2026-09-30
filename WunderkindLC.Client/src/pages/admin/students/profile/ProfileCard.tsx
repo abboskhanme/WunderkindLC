@@ -16,6 +16,7 @@ import type { StudentNotebook } from '@/api/services/studentNotebook'
 import { DropdownMenu, type DropdownMenuItem } from '@/components/ui/DropdownMenu'
 import { cn, formatMoney, formatPhoneShort } from '@/lib/utils'
 import { amountDue, initials } from './model'
+import { schoolGradeLabel } from '@/lib/schoolGrades'
 
 /**
  * edutizim profil kartasi (chap, ~280px): 96px dumaloq rasm + kamera belgisi, ism, telefon +
@@ -105,6 +106,9 @@ export function ProfileCard({
         <h1 className="mt-3 text-[16px] font-semibold leading-tight text-black">{data.fullName}</h1>
         {student?.isArchived && (
           <span className="mt-1 rounded-full bg-red-50 px-2 py-0.5 text-[11px] font-semibold text-red-600">Arxivda</span>
+        )}
+        {schoolGradeLabel(student?.schoolGradeNow) && (
+          <span className="mt-1 text-[12px] text-[#6b7280]">{schoolGradeLabel(student?.schoolGradeNow)}</span>
         )}
         {phone && (
           <p className="mt-1 inline-flex items-center gap-1 text-[12px] text-[#6b7280]">

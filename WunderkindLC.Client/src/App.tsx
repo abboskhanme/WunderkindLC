@@ -38,6 +38,7 @@ const FirstLessonLeadsPage = lazy(() => import('@/pages/admin/leads/FirstLessonL
 const CrmStatsPage = lazy(() => import('@/pages/admin/leads/CrmStatsPage').then((m) => ({ default: m.CrmStatsPage })))
 const ReportsPage = lazy(() => import('@/pages/admin/reports/ReportsPage').then((m) => ({ default: m.ReportsPage })))
 const DiscountsReportPage = lazy(() => import('@/pages/admin/reports/DiscountsReportPage').then((m) => ({ default: m.DiscountsReportPage })))
+const SchoolGradesReportPage = lazy(() => import('@/pages/admin/reports/SchoolGradesReportPage').then((m) => ({ default: m.SchoolGradesReportPage })))
 const SchedulePage = lazy(() => import('@/pages/admin/schedule/SchedulePage').then((m) => ({ default: m.SchedulePage })))
 const StudentsPage = lazy(() => import('@/pages/admin/students/StudentsPage').then((m) => ({ default: m.StudentsPage })))
 const RetentionBonusPage = lazy(() => import('@/pages/admin/students/RetentionBonusPage').then((m) => ({ default: m.RetentionBonusPage })))
@@ -81,7 +82,6 @@ const TestResultsPage = lazy(() => import('@/pages/admin/tests/TestResultsPage')
 const TestGroupPage = lazy(() => import('@/pages/admin/tests/TestGroupPage').then((m) => ({ default: m.TestGroupPage })))
 const TestDetailPage = lazy(() => import('@/pages/admin/tests/TestDetailPage').then((m) => ({ default: m.TestDetailPage })))
 const CertificateTemplatesPage = lazy(() => import('@/pages/admin/tests/CertificateTemplatesPage').then((m) => ({ default: m.CertificateTemplatesPage })))
-const DistrictsPage = lazy(() => import('@/pages/admin/districts/DistrictsPage').then((m) => ({ default: m.DistrictsPage })))
 const AiCheckPage = lazy(() => import('@/pages/admin/ai-check/AiCheckPage').then((m) => ({ default: m.AiCheckPage })))
 const AiCheckStudentPage = lazy(() => import('@/pages/admin/ai-check/AiCheckStudentPage').then((m) => ({ default: m.AiCheckStudentPage })))
 const ArchivePage = lazy(() => import('@/pages/admin/archive/ArchivePage').then((m) => ({ default: m.ArchivePage })))
@@ -284,6 +284,7 @@ export default function App() {
                 "Hisobotlar" bo'limining O'Z marshruti ostida. Chegirma BERISH avvalgidek
                 o'quvchi profilida qoladi. */}
             <Route path="hisobotlar/chegirmalar" element={<RequirePerm perm="finance.discounts"><DiscountsReportPage /></RequirePerm>} />
+            <Route path="hisobotlar/sinflar" element={<RequirePerm perm="students.list"><SchoolGradesReportPage /></RequirePerm>} />
             <Route path="crm-stats" element={<RequirePerm perm="leads.stats"><CrmStatsPage /></RequirePerm>} />
             <Route path="students" element={<RequirePerm perm="students.list"><StudentsPage /></RequirePerm>} />
             {/* Bog'lanish kerak — O'quvchilar bo'limi ICHIDA, lekin ruxsati alohida (`contacts`). */}
@@ -331,7 +332,8 @@ export default function App() {
             <Route path="test-results/certificate-templates" element={<RequirePerm perm="classes.testResults"><CertificateTemplatesPage /></RequirePerm>} />
             <Route path="test-results/:groupId" element={<RequirePerm perm="classes.testResults"><TestGroupPage /></RequirePerm>} />
             <Route path="test-results/:groupId/tests/:testId" element={<RequirePerm perm="classes.testResults"><TestDetailPage /></RequirePerm>} />
-            <Route path="districts" element={<RequirePerm perm="settings.districts"><DistrictsPage /></RequirePerm>} />
+            {/* Tuman va maktablar — 2026-09-29 da tizimdan butunlay olib tashlandi; eski havola Sozlamalarga tushadi. */}
+            <Route path="districts" element={<Navigate to="/admin/sozlamalar" replace />} />
             <Route path="archive" element={<RequirePerm perm="settings.archive"><ArchivePage /></RequirePerm>} />
             <Route path="grading" element={<RequirePerm perm="schedule.grading"><GradingCriteriaPage /></RequirePerm>} />
             <Route path="books" element={<RequirePerm perm="books"><BookSalesPage /></RequirePerm>} />

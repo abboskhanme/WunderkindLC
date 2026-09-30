@@ -63,7 +63,7 @@ public class StudentsController(
     {
         if (!StudentListView.IsKnownState(state))
             return BadRequest(new { message = $"Noma'lum holat: {state}" });
-        // AsNoTracking: quyida obyektlar KO'RSATISH uchun o'zgartiriladi (guruh nomlari, tuman,
+        // AsNoTracking: quyida obyektlar KO'RSATISH uchun o'zgartiriladi (guruh nomlari,
         // hujjat manzillarini tozalash) — ular tasodifan bazaga yozilib qolmasin.
         var q = db.Students.AsNoTracking().AsQueryable();
         if (!includeArchived) q = q.Where(s => !s.IsArchived);
@@ -83,19 +83,6 @@ public class StudentsController(
         // Ro'yxat ustunlari: manba, moderator, to'lov sanasi, ilova, shartnoma.
         await StudentListView.EnrichExtrasAsync(db, students);
 
-        // Tuman + maktab nomlarini biriktiramiz (DB'ga yozilmaydi — faqat ko'rsatish uchun).
-        // Bu lug'atlar deyarli o'zgarmaydi, ro'yxat esa tez-tez ochiladi — DataCache orqali:
-        // tuman/maktab tahrirlanganda interceptor versiyani oshiradi va kesh o'zi yangilanadi,
-        // TTL faqat zaxira. Faqat Id/Name proyeksiya qilinadi (butun entity emas, trackingsiz).
-        var districtNames = await dataCache.GetOrCreateAsync(
-            "ref:districtNames", [nameof(District)], TimeSpan.FromMinutes(10),
-            cdb => cdb.Districts.AsNoTracking().Select(d => new { d.Id, d.Name })
-                .ToDictionaryAsync(x => x.Id, x => x.Name));
-        var schoolNames = await dataCache.GetOrCreateAsync(
-            "ref:schoolNames", [nameof(School)], TimeSpan.FromMinutes(10),
-            cdb => cdb.Schools.AsNoTracking().Select(s => new { s.Id, s.Name })
-                .ToDictionaryAsync(x => x.Id, x => x.Name));
-
         // AMALDAGI CHEGIRMALAR SONI — bitta ommaviy so'rov (`MemberState` naqshi bilan bir xil).
         // Chegirma endi HAR FAN uchun alohida bo'lgani sababli ro'yxatda "nechta" ko'rsatiladi;
         // summa esa bu yerda hisoblanmaydi (u oylik hisobda).
@@ -109,10 +96,6 @@ public class StudentsController(
         foreach (var s in students)
         {
             s.DiscountCount = discountCounts.GetValueOrDefault(s.Id, 0);
-            if (!string.IsNullOrEmpty(s.DistrictId))
-                s.DistrictName = districtNames.GetValueOrDefault(s.DistrictId, "");
-            if (!string.IsNullOrEmpty(s.SchoolId))
-                s.SchoolName = schoolNames.GetValueOrDefault(s.SchoolId, "");
         }
         return students;
     }
@@ -573,6 +556,30 @@ public class StudentsController(
         return DateOnly.TryParse($"{m}-01", out _) ? m : "";
     }
 
+    private const string SchoolGradeInvalid = "Sinf 1 dan 11 gacha yoki «Maktabni bitirgan» bo'lishi kerak";
+
+    /// <summary><see cref="StudentPayload.SchoolGrade"/> qabul qilinadimi: <c>null</c> (tegilmaydi),
+    /// <c>0</c> (tozalash) yoki <see cref="SchoolGrades.IsValid"/>.</summary>
+    private static bool SchoolGradeOk(int? grade) => grade is null or 0 || SchoolGrades.IsValid(grade.Value);
+
+    /// <summary>
+    /// Maktab sinfini yozadi. Qiymat JORIY o'quv yiliga bog'lab saqlanadi — keyingi yillarda
+    /// <see cref="SchoolGrades.Current"/> uni o'zi oshiradi. Tahrir formasi joriy sinfni qaytarib
+    /// yuborgani uchun qayta bog'lash natijani O'ZGARTIRMAYDI (g + (Y − y0) = joriy).
+    /// </summary>
+    private static void ApplySchoolGrade(Student s, int? grade)
+    {
+        if (grade is null || !SchoolGradeOk(grade)) return;
+        if (grade == 0)
+        {
+            s.SchoolGrade = null;
+            s.SchoolGradeYear = null;
+            return;
+        }
+        s.SchoolGrade = grade;
+        s.SchoolGradeYear = SchoolGrades.AcademicYear(AppClock.Today);
+    }
+
     /// <summary>"Familiya Ism Sharifi" — parts'ni birlashtirish (bo'sh qismlar tashlanadi).</summary>
     private static string JoinName(string? last, string? first, string? middle) =>
         string.Join(' ', new[] { last, first, middle }
@@ -582,6 +589,7 @@ public class StudentsController(
     [HttpPost]
     public async Task<ActionResult<Student>> Create(StudentPayload p)
     {
+        if (!SchoolGradeOk(p.SchoolGrade)) return BadRequest(new { message = SchoolGradeInvalid });
         var cls = await db.Classes.FirstOrDefaultAsync(c => c.Name == p.ClassName);
         var student = AddStudent(p, cls);
         // CHEGIRMA REGISTRI: o'quvchi chegirma bilan YARATILSA registrda qator ochiladi —
@@ -674,8 +682,6 @@ public class StudentsController(
             MotherPhone = motherPhone,
             ParentPassportUrl = string.IsNullOrWhiteSpace(p.ParentPassportUrl) ? null : p.ParentPassportUrl,
             ClassName = p.ClassName,
-            DistrictId = (p.DistrictId ?? "").Trim(),
-            SchoolId = (p.SchoolId ?? "").Trim(),
             EnrollmentDate = enrollment,
             CreatedAt = AppClock.Iso(),
             Balance = 0,
@@ -692,6 +698,7 @@ public class StudentsController(
             RetentionBonus = p.RetentionBonus ?? false,
             RetentionBonusStartMonth = NormalizeMonth(p.RetentionBonusStartMonth),
         };
+        ApplySchoolGrade(student, p.SchoolGrade);
         db.Students.Add(student);
 
         // O'quvchiga "student" rolli tizim akkaunti generatsiya qilib biriktiramiz.
@@ -791,6 +798,7 @@ public class StudentsController(
     {
         var student = await db.Students.FindAsync(id);
         if (student is null) return NotFound();
+        if (!SchoolGradeOk(p.SchoolGrade)) return BadRequest(new { message = SchoolGradeInvalid });
 
         var beforeProfile = AuditService.StudentProfileSnapshot(student);
 
@@ -842,8 +850,7 @@ public class StudentsController(
         var hasLiveMembership = await db.StudentGroups
             .AnyAsync(sg => sg.StudentId == student.Id && sg.IsActive);
         if (!hasLiveMembership) student.ClassName = p.ClassName;
-        if (p.DistrictId is not null) student.DistrictId = p.DistrictId.Trim();
-        if (p.SchoolId is not null) student.SchoolId = p.SchoolId.Trim();
+        ApplySchoolGrade(student, p.SchoolGrade);
         if (!string.IsNullOrWhiteSpace(p.EnrollmentDate))
         {
             // Noto'g'ri sana saqlanib, keyin oylik billing batch'ini crash qilmasligi uchun aniq xato qaytaramiz.

@@ -52,8 +52,6 @@ public static class LeadEntryRules
     public const string KeyMotherPhone = "motherPhone";
     public const string KeySource = "source";
     public const string KeyInterestSubject = "interestSubject";
-    public const string KeyDistrict = "districtId";
-    public const string KeySchool = "schoolId";
     public const string KeyNote = "note";
 
     /// <param name="Key">Kalit (<see cref="Lead"/> maydoni).</param>
@@ -65,7 +63,7 @@ public static class LeadEntryRules
     /// Standart maydonlar — TARTIBI formadagi chizilish tartibi bilan bir xil.
     ///
     /// <para>⚠️ Standart maydonlarning TARTIBI sozlanmaydi (faqat holati): ular formada juftlik
-    /// va bog'liqlik bilan chiziladi (tuman → maktab kaskadi, ikki ustunli setka), tartibni
+    /// bo'lib chiziladi (ikki ustunli setka), tartibni
     /// erkin o'zgartirish bu tuzilishni buzardi. Erkin tartib — QO'SHIMCHA savollarda.</para>
     /// </summary>
     public static readonly IReadOnlyList<StandardField> Standard = new StandardField[]
@@ -83,8 +81,6 @@ public static class LeadEntryRules
         new(KeyMotherPhone, "Onasi raqami"),
         new(KeySource, "Manba"),
         new(KeyInterestSubject, "Qiziqqan fani (kurs)"),
-        new(KeyDistrict, "Tuman"),
-        new(KeySchool, "Maktab"),
         new(KeyNote, "Izoh"),
     };
 
@@ -105,10 +101,10 @@ public static class LeadEntryRules
     /// <list type="bullet">
     /// <item>qulflangan maydon (F.I.SH) — DOIM ko'rinadi va majburiy;</item>
     /// <item>ko'rinmaydigan maydon MAJBURIY bo'la olmaydi (aks holda foydalanuvchi to'ldira
-    /// olmaydigan maydon tufayli lid umuman saqlanmasdi);</item>
-    /// <item>maktab tumansiz ko'rsatilmaydi — maktab ro'yxati tumandan quriladi (kaskad),
-    /// tumansiz select doim bo'sh turardi.</item>
+    /// olmaydigan maydon tufayli lid umuman saqlanmasdi).</item>
     /// </list>
+    /// <paramref name="all"/> — boshqa maydonlarning holati (bog'liq maydonlar uchun; tuman → maktab
+    /// kaskadi 2026-09-29 da maydonlar bilan birga olib tashlangan, hozir ishlatilmaydi).
     /// </summary>
     public static (bool Visible, bool Required) NormalizeStandard(
         string key, string? state, IReadOnlyDictionary<string, string> all)
@@ -117,13 +113,7 @@ public static class LeadEntryRules
         if (def is null) return (false, false);
         if (def.Locked) return (true, true);
 
-        var s = NormalizeState(state);
-        if (key == KeySchool)
-        {
-            var district = NormalizeState(all.TryGetValue(KeyDistrict, out var d) ? d : null);
-            if (district == StateHidden) return (false, false);
-        }
-        return s switch
+        return NormalizeState(state) switch
         {
             StateHidden => (false, false),
             StateRequired => (true, true),
@@ -178,8 +168,6 @@ public static class LeadEntryRules
         KeyMotherPhone => lead.MotherPhone,
         KeySource => lead.Source,
         KeyInterestSubject => lead.InterestSubject,
-        KeyDistrict => lead.DistrictId,
-        KeySchool => lead.SchoolId,
         KeyNote => lead.Note ?? "",
         _ => "",
     };

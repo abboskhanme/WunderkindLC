@@ -1,9 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import type { District, Student } from '@/types'
+import type { Student } from '@/types'
 import type { PhoneMatch, StudentPayload } from '@/api/services/students'
 import { archiveStudent, updateStudent } from '@/api/services/students'
-import { getDistricts } from '@/api/services/districts'
 import { PhoneInput } from '@/components/ui/PhoneInput'
 import { ReasonPromptModal } from '@/components/ui/ReasonPromptModal'
 import { genderOptions } from '@/config/constants'
@@ -11,6 +10,7 @@ import { apiErrorMessage } from '@/lib/utils'
 import { readBackState } from '@/lib/nav'
 import { PhoneDupeModal } from '../PhoneDupeModal'
 import { findPhoneDupes, joinName, payloadFromStudent } from '../studentFormModel'
+import { SCHOOL_GRADE_OPTIONS } from '@/lib/schoolGrades'
 import { FilledPhoneWrap, FormButton, FormField, ProfileSection, SelectField, TextField } from './shared'
 
 /**
@@ -37,7 +37,6 @@ export function EditTab({
   const navigate = useNavigate()
   const { backTo } = readBackState(useLocation().state, { backTo: '/admin/students', backLabel: '' })
   const [form, setForm] = useState<StudentPayload>(() => payloadFromStudent(student))
-  const [districts, setDistricts] = useState<District[]>([])
   const [checking, setChecking] = useState(false)
   const [saving, setSaving] = useState(false)
   const [savedMsg, setSavedMsg] = useState('')
@@ -46,13 +45,6 @@ export function EditTab({
   const [pending, setPending] = useState<StudentPayload | null>(null)
   const [archiveOpen, setArchiveOpen] = useState(false)
 
-  useEffect(() => {
-    getDistricts()
-      .then(setDistricts)
-      .catch(() => {
-        /* tarmoq/mok — tuman ro'yxati bo'sh qoladi */
-      })
-  }, [])
 
   const update = <K extends keyof StudentPayload>(key: K, value: StudentPayload[K]) => {
     setSavedMsg('')
@@ -110,8 +102,6 @@ export function EditTab({
       })
       .catch((e) => alert(apiErrorMessage(e, 'Arxivlashda xatolik')))
   }
-
-  const schools = districts.find((d) => d.id === form.districtId)?.schools ?? []
 
   return (
     <ProfileSection>
@@ -175,19 +165,16 @@ export function EditTab({
               <PhoneInput value={form.motherPhone ?? ''} onChange={(v) => update('motherPhone', v)} />
             </FilledPhoneWrap>
           </FormField>
-          <FormField label="Tuman">
+          <FormField label="Sinf">
             <SelectField
-              value={form.districtId ?? ''}
-              // Tuman o'zgarsa, oldingi maktab tanlovi tozalanadi.
-              onChange={(e) => {
-                setSavedMsg('')
-                setForm((f) => ({ ...f, districtId: e.target.value, schoolId: '' }))
-              }}
+              value={form.schoolGrade ? String(form.schoolGrade) : ''}
+              // Bo'sh tanlov = 0 ("tozalash") — `null` serverda "tegilmaydi" degani.
+              onChange={(e) => update('schoolGrade', e.target.value ? Number(e.target.value) : 0)}
             >
               <option value="">Tanlang</option>
-              {districts.map((d) => (
-                <option key={d.id} value={d.id}>
-                  {d.name}
+              {SCHOOL_GRADE_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
                 </option>
               ))}
             </SelectField>
@@ -195,20 +182,6 @@ export function EditTab({
 
           <FormField label="Uy adresi">
             <TextField value={form.address} onChange={(e) => update('address', e.target.value)} />
-          </FormField>
-          <FormField label="O'qish joyi (maktab)">
-            <SelectField
-              value={form.schoolId ?? ''}
-              disabled={!canEdit || !form.districtId}
-              onChange={(e) => update('schoolId', e.target.value)}
-            >
-              <option value="">{form.districtId ? 'Tanlang' : 'Avval tumanni tanlang'}</option>
-              {schools.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name}
-                </option>
-              ))}
-            </SelectField>
           </FormField>
         </fieldset>
 

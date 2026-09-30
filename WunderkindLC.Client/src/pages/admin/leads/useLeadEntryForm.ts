@@ -1,9 +1,8 @@
 import { useEffect, useState } from 'react'
-import type { District, Lead } from '@/types'
+import type { Lead } from '@/types'
 import { leadSourceOptions } from '@/config/constants'
 import { getLeadSources } from '@/api/services/leadSources'
 import { getLeadCourses, type LeadAnswersPayload } from '@/api/services/leads'
-import { getDistricts } from '@/api/services/districts'
 import {
   getLeadAnswers,
   getLeadEntryForm,
@@ -34,8 +33,6 @@ export const emptyLeadForm: LeadFormValues = {
   note: '',
   source: '',
   interestSubject: '',
-  districtId: '',
-  schoolId: '',
 }
 
 /** Standart maydon yorliqlari — XATO MATNI uchun ("«Otasi raqami» to'ldirilmagan"). */
@@ -50,8 +47,6 @@ export const standardLabels: Record<string, string> = {
   motherPhone: 'Onasi raqami',
   source: 'Manba',
   interestSubject: 'Qiziqqan fani (kurs)',
-  districtId: 'Tuman',
-  schoolId: 'Maktab',
   note: 'Izoh',
 }
 
@@ -79,8 +74,6 @@ function valuesOf(initial: Lead): LeadFormValues {
     note: initial.note ?? '',
     source: initial.source ?? '',
     interestSubject: initial.interestSubject ?? '',
-    districtId: initial.districtId ?? '',
-    schoolId: initial.schoolId ?? '',
   }
 }
 
@@ -92,8 +85,6 @@ export function useLeadEntryForm(open: boolean, initial: Lead | null | undefined
   const [form, setForm] = useState<LeadFormValues>(emptyLeadForm)
   // Manba ro'yxati serverdan ("Sozlamalar → O'quv → Sabablar" → "Lid manbalari"); xato/bo'sh bo'lsa fallback.
   const [sourceOptions, setSourceOptions] = useState<string[]>(leadSourceOptions)
-  // Tashqi maktab ma'lumotnomasi (tuman → maktablar) — o'quvchi formasidagi bilan bir xil.
-  const [districts, setDistricts] = useState<District[]>([])
   // "Qiziqqan fani" ro'yxati — markazdagi kurslar (Subject nomlari).
   const [courseOptions, setCourseOptions] = useState<string[]>([])
 
@@ -115,9 +106,6 @@ export function useLeadEntryForm(open: boolean, initial: Lead | null | undefined
 
   useEffect(() => {
     if (!open) return
-    getDistricts()
-      .then(setDistricts)
-      .catch(() => setDistricts([]))
     getLeadCourses()
       .then(setCourseOptions)
       .catch(() => setCourseOptions([]))
@@ -224,7 +212,6 @@ export function useLeadEntryForm(open: boolean, initial: Lead | null | undefined
     setForm,
     update,
     sourceOptions,
-    districts,
     courseOptions,
     fields,
     answers,

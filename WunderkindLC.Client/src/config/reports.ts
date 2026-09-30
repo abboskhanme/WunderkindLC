@@ -108,6 +108,14 @@ export const reportGroups: ReportGroup[] = [
         perm: 'finance.bonus',
         description: "Bonusga chiqqan o'quvchilar, berilgan va bekor qilingan bonuslar",
       },
+      {
+        label: 'Sinflar kesimi',
+        to: '/admin/hisobotlar/sinflar',
+        perm: 'students.list',
+        description: "O'quvchilar maktabda nechanchi sinfda o'qiydi — sinflar bo'yicha taqsimot",
+        // Sof hisobot (yozuvchi amal yo'q) va yangi sahifa — eski menyu guruhida bandi YO'Q.
+        inNav: true,
+      },
     ],
   },
   {

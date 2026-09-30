@@ -48,8 +48,9 @@ export function payloadFromStudent(initial: Student): StudentPayload {
     motherFullName: initial.motherFullName ?? '',
     motherPhone: initial.motherPhone ?? '',
     className: initial.className,
-    districtId: initial.districtId ?? '',
-    schoolId: initial.schoolId ?? '',
+    // JORIY sinf (xom saqlangan emas) — server uni joriy o'quv yiliga qayta bog'laydi, natija
+    // o'zgarmaydi. Kiritilmagan bo'lsa 0 ("tozalash" = o'zgarishsiz).
+    schoolGrade: initial.schoolGradeNow ?? 0,
     enrollmentDate: initial.enrollmentDate,
     discountPct: initial.discountPct,
     discountAmount: initial.discountAmount,

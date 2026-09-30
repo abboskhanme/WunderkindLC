@@ -81,7 +81,6 @@ public class LeadsController(
             string.IsNullOrWhiteSpace(lead.ConvertedStudentId)
                 ? "no-lesson"
                 : attendanceByStudent.GetValueOrDefault(lead.ConvertedStudentId, "no-lesson"),
-            lead.DistrictId, lead.SchoolId,
             lead.RepeatCount, lead.LastRepeatAt,
             lead.AssigneeUserId,
             string.IsNullOrWhiteSpace(lead.AssigneeUserId)
@@ -264,8 +263,6 @@ public class LeadsController(
             Stage = p.Stage,
             Source = p.Source ?? "",
             InterestSubject = p.InterestSubject ?? "",
-            DistrictId = p.DistrictId ?? "",
-            SchoolId = p.SchoolId ?? "",
             CreatedAt = Now(),
             // MAS'UL XODIM — lidni QO'LDA kiritgan odam. ⚠️ Bu FAQAT shu endpointda: ommaviy
             // forma, daraja testi, landing va Instagram/Meta webhook'lari orqali tug'ilgan lid
@@ -336,8 +333,6 @@ public class LeadsController(
         lead.Note = p.Note;
         if (p.Source is not null) lead.Source = p.Source;
         if (p.InterestSubject is not null) lead.InterestSubject = p.InterestSubject;
-        if (p.DistrictId is not null) lead.DistrictId = p.DistrictId;
-        if (p.SchoolId is not null) lead.SchoolId = p.SchoolId;
 
         // «Lid kiritish formasi» qoidalari tahrirlashda ham amal qiladi — aks holda majburiy
         // maydon bir marta to'ldirilib, keyin tahrirlashda bo'shatib yuborilardi.
@@ -563,9 +558,6 @@ public class LeadsController(
             ParentPhone = !string.IsNullOrWhiteSpace(lead.FatherPhone) ? lead.FatherPhone : lead.MotherPhone,
             EnrollmentDate = enrollment,
             ClassName = group?.Name ?? "",
-            // Lidda tanlangan tashqi maktab (tuman + maktab) o'quvchiga ko'chadi.
-            DistrictId = lead.DistrictId,
-            SchoolId = lead.SchoolId,
         };
         db.Students.Add(student);
 

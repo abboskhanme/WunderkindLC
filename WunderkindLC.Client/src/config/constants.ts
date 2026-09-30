@@ -226,7 +226,6 @@ export const adminPermissions: AdminPermSection[] = [
     pages: [
       { key: 'settings.school', label: "Markaz ma'lumotlari" },
       { key: 'settings.landing', label: 'Landing Boshqaruvi' },
-      { key: 'settings.districts', label: 'Tuman va maktablar' },
       { key: 'settings.reasons', label: 'Sabablar' },
       { key: 'settings.channels', label: 'Xabar kanallari' },
       { key: 'settings.backup', label: 'Zaxira nusxa' },

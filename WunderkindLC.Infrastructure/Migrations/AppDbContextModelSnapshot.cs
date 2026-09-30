@@ -6238,6 +6238,12 @@ namespace WunderkindLC.Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<int?>("SchoolGrade")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("SchoolGradeYear")
+                        .HasColumnType("integer");
+
                     b.Property<string>("SchoolId")
                         .IsRequired()
                         .HasColumnType("text");

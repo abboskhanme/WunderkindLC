@@ -10,7 +10,7 @@ import {
   type DragStartEvent,
 } from '@dnd-kit/core'
 import { IconLayoutColumns, IconList, IconMessage, IconPlus, IconSearch } from '@tabler/icons-react'
-import type { District, Lead, LeadSource, Stage } from '@/types'
+import type { Lead, LeadSource, Stage } from '@/types'
 import {
   createLead,
   getLeadCourses,
@@ -19,7 +19,6 @@ import {
   type LeadAnswersPayload,
 } from '@/api/services/leads'
 import { getLeadSources } from '@/api/services/leadSources'
-import { getDistricts } from '@/api/services/districts'
 import {
   createStage,
   deleteStage,
@@ -62,7 +61,7 @@ import { useUrlFilters } from './useUrlFilters'
 
 const FILTER_KEYS = [
   'q', 'from', 'to', 'day', 'stage', 'course', 'level', 'group', 'teacher', 'moderator',
-  'status', 'source', 'district', 'school',
+  'status', 'source',
 ] as const
 
 /** Select'dagi "bo'sh qiymatli" variant (manbasiz, mas'ulsiz, kurssiz). */
@@ -91,7 +90,6 @@ export function LeadsPage() {
   const [loading, setLoading] = useState(true)
   const [activeId, setActiveId] = useState<string | null>(null)
   const [sources, setSources] = useState<LeadSource[]>([])
-  const [districts, setDistricts] = useState<District[]>([])
   const [courseNames, setCourseNames] = useState<string[]>([])
 
   // Filtr paneli: manzilda filtr bo'lsa (masalan "orqaga" qaytilganda) — ochiq holda boshlanadi.
@@ -118,7 +116,6 @@ export function LeadsPage() {
       })
       .finally(() => setLoading(false))
     getLeadSources().then(setSources).catch(() => setSources([]))
-    getDistricts().then(setDistricts).catch(() => setDistricts([]))
     getLeadCourses().then(setCourseNames).catch(() => setCourseNames([]))
   }, [])
 
@@ -233,13 +230,6 @@ export function LeadsPage() {
   const stageIds = useMemo(() => new Set(stages.map((s) => s.id)), [stages])
   const stageOf = (l: Lead) => (stageIds.has(l.stage) ? l.stage : (stages[0]?.id ?? l.stage))
 
-  // Maktab id → nomi (qidiruv uchun) — tumanlar ma'lumotnomasidan.
-  const schoolNames = useMemo(() => {
-    const m = new Map<string, string>()
-    for (const d of districts) for (const s of d.schools) m.set(s.id, s.name)
-    return m
-  }, [districts])
-
   // Qidiruv FAQAT lidlar ro'yxati ichida (serverga so'rov yubormaydi). Matnli maydonlar oddiy
   // "ichida bor" bo'yicha; telefonlar esa faqat RAQAMLAR bo'yicha solishtiriladi — shu sabab
   // "901234567" ham "+998 90 123 45 67" ni topadi.
@@ -249,7 +239,7 @@ export function LeadsPage() {
     if (!q) return true
     const text = [
       l.fullName, l.fatherFullName, l.motherFullName, l.source, l.interestSubject, l.note,
-      l.schoolId ? schoolNames.get(l.schoolId) : '', l.teacherName, l.groupName, l.assigneeName,
+      l.teacherName, l.groupName, l.assigneeName,
       l.level, shortLeadId(l.id),
     ]
       .filter(Boolean)
@@ -277,8 +267,6 @@ export function LeadsPage() {
     if (f.status === 'lead' && l.convertedStudentId) return false
     if (f.status === 'student' && !l.convertedStudentId) return false
     if (f.source && (f.source === NONE ? !!l.source : l.source !== f.source)) return false
-    if (f.district && l.districtId !== f.district) return false
-    if (f.school && l.schoolId !== f.school) return false
     return matchesSearch(l)
   }
   const visibleLeads = leads.filter(matches)
@@ -549,34 +537,6 @@ export function LeadsPage() {
             ))}
             <option value={NONE}>Noma'lum</option>
           </FilterSelect>
-          {districts.length > 0 && (
-            <>
-              <FilterSelect
-                placeholder="Tuman"
-                value={f.district}
-                // Tuman o'zgarsa, oldingi maktab tanlovi tozalanadi (boshqa tumanga tegishli edi).
-                onChange={(e) => set({ district: e.target.value, school: '' })}
-              >
-                {districts.map((d) => (
-                  <option key={d.id} value={d.id}>
-                    {d.name}
-                  </option>
-                ))}
-              </FilterSelect>
-              <FilterSelect
-                placeholder="Maktab"
-                value={f.school}
-                disabled={!f.district}
-                onChange={(e) => set({ school: e.target.value })}
-              >
-                {(districts.find((d) => d.id === f.district)?.schools ?? []).map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name}
-                  </option>
-                ))}
-              </FilterSelect>
-            </>
-          )}
           {filtersActive && (
             <button
               type="button"

@@ -6,8 +6,6 @@ import { uploadAdminFile, getStudentCredentials } from '@/api/services/students'
 import { getClasses } from '@/api/services/classes'
 import { getTeachers } from '@/api/services/teachers'
 import type { Group, Teacher } from '@/types'
-import { getDistricts } from '@/api/services/districts'
-import type { District } from '@/types'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Input, Select } from '@/components/ui/Input'
@@ -18,6 +16,7 @@ import { randomPassword, cn, apiErrorMessage } from '@/lib/utils'
 import { StudentPhotoDialog } from './StudentPhotoDialog'
 import { PhoneDupeModal } from './PhoneDupeModal'
 import { findPhoneDupes, joinName, payloadFromStudent } from './studentFormModel'
+import { SCHOOL_GRADE_OPTIONS } from '@/lib/schoolGrades'
 
 interface Props {
   open: boolean
@@ -42,8 +41,7 @@ const empty: StudentPayload = {
   motherFullName: '',
   motherPhone: '',
   className: '',
-  districtId: '',
-  schoolId: '',
+  schoolGrade: null,
   enrollmentDate: new Date().toISOString().slice(0, 10),
   discountPct: 0,
   discountAmount: 0,
@@ -59,7 +57,6 @@ export function StudentFormModal({ open, onClose, onSubmit, initial }: Props) {
   const [teachers, setTeachers] = useState<Teacher[]>([])
   /** "Guruhga biriktirish" bosqichi: avval o'qituvchi, keyin o'sha o'qituvchining guruhi. */
   const [teacherId, setTeacherId] = useState('')
-  const [districts, setDistricts] = useState<District[]>([])
   /** Fayl yuklash holatlari (har maydon uchun alohida). */
   const [uploading, setUploading] = useState<{ birth?: boolean }>({})
   /** Tahrirlanayotgan o'quvchining login (username)i — backend'dan olinadi, faqat ko'rsatish uchun. */
@@ -133,10 +130,6 @@ export function StudentFormModal({ open, onClose, onSubmit, initial }: Props) {
     () => groups.filter((g) => g.teacherId === teacherId),
     [groups, teacherId],
   )
-
-  useEffect(() => {
-    if (open) getDistricts().then(setDistricts).catch(() => { /* tarmoq/mok — tuman ro'yxati bo'sh qoladi */ })
-  }, [open])
 
   // Tahrirda o'quvchining login(username)ini yuklab ko'rsatamiz.
   useEffect(() => {
@@ -416,42 +409,25 @@ export function StudentFormModal({ open, onClose, onSubmit, initial }: Props) {
               </div>
             </div>
           )}
-          <div className="mt-3">
+          <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
             <Input
               label="Markazga kelgan sana"
               type="date"
               value={form.enrollmentDate}
               onChange={(e) => update('enrollmentDate', e.target.value)}
             />
-          </div>
-          <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
+            {/* Maktab sinfi — "nechanchi sinflar o'qiyapti" statistikasi uchun. Har yili 1-sentabrda
+                server uni o'zi oshiradi (`lib/schoolGrades.ts`). */}
             <Select
-              label="Tuman"
-              value={form.districtId ?? ''}
-              onChange={(e) => {
-                // Tuman o'zgarsa, oldingi maktab tanlovi tozalanadi.
-                setForm((f) => ({ ...f, districtId: e.target.value, schoolId: '' }))
-              }}
+              label="Sinf"
+              value={form.schoolGrade ? String(form.schoolGrade) : ''}
+              // Bo'sh tanlov = 0 ("tozalash") — `null` serverda "tegilmaydi" degani.
+              onChange={(e) => update('schoolGrade', e.target.value ? Number(e.target.value) : 0)}
             >
               <option value="">— tanlanmagan —</option>
-              {districts.map((d) => (
-                <option key={d.id} value={d.id}>
-                  {d.name}
-                </option>
-              ))}
-            </Select>
-            <Select
-              label="Maktab"
-              value={form.schoolId ?? ''}
-              disabled={!form.districtId}
-              onChange={(e) => update('schoolId', e.target.value)}
-            >
-              <option value="">
-                {form.districtId ? '— tanlanmagan —' : '— avval tumanni tanlang —'}
-              </option>
-              {(districts.find((d) => d.id === form.districtId)?.schools ?? []).map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name}
+              {SCHOOL_GRADE_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
                 </option>
               ))}
             </Select>

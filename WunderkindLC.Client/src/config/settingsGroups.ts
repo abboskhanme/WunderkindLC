@@ -22,7 +22,6 @@ import {
   IconGift,
   IconLayoutGrid,
   IconListDetails,
-  IconMapPin,
   IconMessages,
   IconMicrophone,
   IconMoneybag,
@@ -196,7 +195,6 @@ export const SETTINGS_GROUPS: SettingsGroup[] = [
       { key: 'kanallar', label: 'Xabar kanallari', icon: IconMessages, kind: 'panel', panel: 'channels', perm: 'settings.channels' },
       { key: 'instagram', label: 'Instagram', icon: IconBrandInstagram, kind: 'link', to: '/admin/marketing/settings', perm: 'marketing.settings' },
       { key: 'landing', label: 'Landing sahifa', icon: IconWorld, kind: 'link', to: '/admin/landing', perm: 'settings.landing' },
-      { key: 'tumanlar', label: 'Tuman va maktablar', icon: IconMapPin, kind: 'link', to: '/admin/districts', perm: 'settings.districts' },
     ],
   },
   {

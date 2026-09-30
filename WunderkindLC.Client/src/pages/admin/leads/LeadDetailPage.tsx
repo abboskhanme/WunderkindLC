@@ -160,7 +160,7 @@ export function LeadDetailPage() {
   }, [id])
 
   const entry = useLeadEntryForm(!!formLead, formLead)
-  const { form, update, setForm, show, req } = entry
+  const { form, update, show, req } = entry
   const activity = useLeadActivity(lead?.id ?? null)
   const { groups, teacherOptions } = useLeadGroupOptions(!!lead)
 
@@ -183,7 +183,6 @@ export function LeadDetailPage() {
   }, [timeline, rightTab])
 
   const callNumbers = useMemo(() => (lead ? leadCallNumbers(lead) : []), [lead])
-  const schoolOptions = entry.districts.find((d) => d.id === form.districtId)?.schools ?? []
 
   if (loading) return <Loader label="Yuklanmoqda..." />
   if (!lead)
@@ -510,38 +509,6 @@ export function LeadDetailPage() {
               {show('motherPhone') && (
                 <FieldRow label="Onasi raqami" required={req('motherPhone')}>
                   <PhoneInput value={form.motherPhone} onChange={(phone) => update('motherPhone', phone)} />
-                </FieldRow>
-              )}
-              {show('districtId') && (
-                <FieldRow label="Tuman" required={req('districtId')}>
-                  <Select
-                    value={form.districtId ?? ''}
-                    // Tuman o'zgarsa, oldingi maktab tanlovi tozalanadi.
-                    onChange={(e) => setForm((fv) => ({ ...fv, districtId: e.target.value, schoolId: '' }))}
-                  >
-                    <option value="">...</option>
-                    {entry.districts.map((d) => (
-                      <option key={d.id} value={d.id}>
-                        {d.name}
-                      </option>
-                    ))}
-                  </Select>
-                </FieldRow>
-              )}
-              {show('schoolId') && (
-                <FieldRow label="Maktab" required={req('schoolId')}>
-                  <Select
-                    value={form.schoolId ?? ''}
-                    disabled={!form.districtId}
-                    onChange={(e) => update('schoolId', e.target.value)}
-                  >
-                    <option value="">{form.districtId ? '...' : '— avval tuman —'}</option>
-                    {schoolOptions.map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.name}
-                      </option>
-                    ))}
-                  </Select>
                 </FieldRow>
               )}
               {!canEdit && (

@@ -68,10 +68,12 @@ paths:
   soni + aylantirilgan + konversiya %; normalizatsiya — kurs id → nomi, registr farqisiz kurs nomiga
   moslash, bo'sh = "Ko'rsatilmagan". UI: `CrmStatsPage` — gorizontal bar (top 10) + to'liq jadval.
 
-- **Lidda tashqi maktab** (migratsiya `AddLeadSchool`): `Lead.DistrictId`/`SchoolId` (o'quvchidagi
-  `District`/`School` ma'lumotnomasi) — formada tuman→maktab select'lari, Lidlar sahifasida shu bo'yicha
-  filtr + lidlar ichida qidiruv (ism/telefon/ota-ona/manba/maktab; telefon raqamlar bo'yicha).
-  Konversiyada (`/convert`) tuman/maktab `Student`ga ko'chadi.
+- **Tuman/maktab — OLIB TASHLANGAN (2026-09-29, mijoz: "umuman qolmasin").** Lid va o'quvchi
+  formalarida, filtrlarda, konversiyada, «Lid kiritish formasi» katalogida va Sozlamalarda YO'Q;
+  `DistrictsController` va `settings.districts` kaliti o'chirilgan. `Lead`/`Student` dagi
+  `DistrictId`/`SchoolId` ustunlari va `Districts`/`Schools` jadvallari bazada faqat ma'lumot
+  saqlanib turishi uchun qolgan — yangi kod ularni ISHLATMASIN. Lidlar ichidagi qidiruv:
+  ism/telefon/ota-ona/manba (telefon raqamlar bo'yicha).
 
 ## SOTUV BO'LIMI ANALITIKASI (2026-08-19)
 

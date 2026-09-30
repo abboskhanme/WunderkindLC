@@ -121,8 +121,7 @@ public class Branch
     public DateTime CreatedAt { get; set; } = AppClock.Now;
 }
 
-/// <summary>Tuman (hudud) — o'quvchi qaysi tumandan ekanini tanlash uchun. Sozlamalardan boshqariladi.
-/// Ichida maktablar (<see cref="School"/>) bo'ladi.</summary>
+/// <summary>Tuman (hudud). ⚠️ ESKI (2026-09-29): tuman/maktab tizimdan butunlay olib tashlangan — UI ham, API ham yo'q. Ustun faqat bazadagi ma'lumot saqlanib turishi uchun qoldirilgan; YANGI kod ishlatmasin.</summary>
 public class District
 {
     public string Id { get; set; } = Guid.NewGuid().ToString();
@@ -131,8 +130,7 @@ public class District
     public int Order { get; set; }
 }
 
-/// <summary>Maktab — tumanga tegishli (raqami yoki nomi). O'quvchi tuman → maktabni tanlaydi.
-/// Sozlamalardan har tuman ichida yaratiladi.</summary>
+/// <summary>Maktab (tumanga tegishli). ⚠️ ESKI (2026-09-29): tuman/maktab tizimdan butunlay olib tashlangan — UI ham, API ham yo'q. Ustun faqat bazadagi ma'lumot saqlanib turishi uchun qoldirilgan; YANGI kod ishlatmasin.</summary>
 public class School
 {
     public string Id { get; set; } = Guid.NewGuid().ToString();
@@ -338,16 +336,22 @@ public class Student
     /// eski yozuvlar uchun saqlanadi.</summary>
     public string? ParentPassportUrl { get; set; }
     public string ClassName { get; set; } = string.Empty;
-    /// <summary>O'quvchi tegishli tuman (<see cref="District"/> id). Bo'sh = tanlanmagan.</summary>
+    /// <summary>Tuman id. ⚠️ ESKI (2026-09-29): tuman/maktab tizimdan butunlay olib tashlangan — UI ham, API ham yo'q. Ustun faqat bazadagi ma'lumot saqlanib turishi uchun qoldirilgan; YANGI kod ishlatmasin.</summary>
     public string DistrictId { get; set; } = string.Empty;
-    /// <summary>O'quvchi tegishli maktab (<see cref="School"/> id). Bo'sh = tanlanmagan.</summary>
+    /// <summary>Maktab id. ⚠️ ESKI (2026-09-29): tuman/maktab tizimdan butunlay olib tashlangan — UI ham, API ham yo'q. Ustun faqat bazadagi ma'lumot saqlanib turishi uchun qoldirilgan; YANGI kod ishlatmasin.</summary>
     public string SchoolId { get; set; } = string.Empty;
-    /// <summary>Tuman nomi (DB'ga yozilmaydi — ro'yxat/profil endpointida DistrictId'dan to'ldiriladi).</summary>
+    /// <summary>
+    /// Maktab SINFI — <see cref="SchoolGradeYear"/> o'quv yilidagi holati (1..11, 12 = bitirgan).
+    /// <c>null</c> = kiritilmagan. ⚠️ To'g'ridan-to'g'ri KO'RSATMANG — sinf har yili oshadi,
+    /// joriy qiymat <see cref="SchoolGradeNow"/> (qoida: <see cref="SchoolGrades"/>).
+    /// </summary>
+    public int? SchoolGrade { get; set; }
+    /// <summary><see cref="SchoolGrade"/> kiritilgan O'QUV YILI (boshlanish yili, masalan 2026 = 2026/27).</summary>
+    public int? SchoolGradeYear { get; set; }
+    /// <summary>BUGUNGI maktab sinfi (DB'ga yozilmaydi — har javobda hisoblanadi, ya'ni ro'yxat,
+    /// profil va statistika doim joriy o'quv yiliga mos).</summary>
     [System.ComponentModel.DataAnnotations.Schema.NotMapped]
-    public string DistrictName { get; set; } = string.Empty;
-    /// <summary>Maktab nomi/raqami (DB'ga yozilmaydi — SchoolId'dan to'ldiriladi).</summary>
-    [System.ComponentModel.DataAnnotations.Schema.NotMapped]
-    public string SchoolName { get; set; } = string.Empty;
+    public int? SchoolGradeNow => SchoolGrades.Current(SchoolGrade, SchoolGradeYear, AppClock.Today);
     /// <summary>
     /// O'quvchi HOZIR QATNAYOTGAN guruh nomlari (ro'yxat ustunida ko'rinadi; DB'ga yozilmaydi —
     /// ro'yxat endpointida M2M a'zoliklardan to'ldiriladi).
@@ -1273,10 +1277,9 @@ public class Lead
     /// qolmasin degani.</para>
     /// </summary>
     public string Level { get; set; } = string.Empty;
-    /// <summary>Lid o'qiydigan TASHQI maktab tumani (<see cref="District"/> id). Bo'sh = tanlanmagan.</summary>
+    /// <summary>Tuman id. ⚠️ ESKI (2026-09-29): tuman/maktab tizimdan butunlay olib tashlangan — UI ham, API ham yo'q. Ustun faqat bazadagi ma'lumot saqlanib turishi uchun qoldirilgan; YANGI kod ishlatmasin.</summary>
     public string DistrictId { get; set; } = string.Empty;
-    /// <summary>Lid o'qiydigan TASHQI maktab (<see cref="School"/> id). Bo'sh = tanlanmagan.
-    /// O'quvchiga aylantirilganda <see cref="Student.SchoolId"/> ga ko'chiriladi.</summary>
+    /// <summary>Maktab id. ⚠️ ESKI (2026-09-29): tuman/maktab tizimdan butunlay olib tashlangan — UI ham, API ham yo'q. Ustun faqat bazadagi ma'lumot saqlanib turishi uchun qoldirilgan; YANGI kod ishlatmasin.</summary>
     public string SchoolId { get; set; } = string.Empty;
     /// <summary>Yaratilgan vaqt (ISO "yyyy-MM-ddTHH:mm:ss").</summary>
     public string CreatedAt { get; set; } = string.Empty;

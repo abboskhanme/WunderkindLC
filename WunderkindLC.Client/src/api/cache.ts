@@ -187,9 +187,9 @@ const CROSS_INVALIDATION: Record<string, string[]> = {
   '/admin/rooms': ['/admin/classes', '/admin/schedule'],
 
   /* ─────────── LID · MARKETING ─────────── */
-  // `POST /admin/leads/{id}/convert` lidni O'QUVCHIGA aylantiradi (tuman/maktabni ham ko'chiradi).
+  // `POST /admin/leads/{id}/convert` lidni O'QUVCHIGA aylantiradi.
   '/admin/leads': ['/admin/students', '/admin/classes', '/admin/lead-forms', '/admin/lead-sources',
-    '/admin/lead-stages', '/admin/level-tests', '/admin/districts', '/admin/schools'],
+    '/admin/lead-stages', '/admin/level-tests'],
   // Bosqich/manba nomlari lid qatorlariga denormalizatsiya qilingan.
   '/admin/lead-stages': ['/admin/leads', '/admin/lead-forms'],
   '/admin/lead-sources': ['/admin/leads', '/admin/lead-forms'],
@@ -235,8 +235,6 @@ const CROSS_INVALIDATION: Record<string, string[]> = {
 
   /* ─────────── HUJJAT · MA'LUMOTNOMA · SAYT ─────────── */
   '/admin/contracts': ['/admin/students', '/student/contracts'],
-  '/admin/districts': ['/admin/schools', '/admin/students', '/admin/leads'],
-  '/admin/schools': ['/admin/districts', '/admin/students', '/admin/leads'],
   '/admin/cameras': [],
   // Sabablar katalogi o'chirish/muzlatish/chiqarish oqimlarining ochiladigan ro'yxati.
   '/admin/action-reasons': ['/admin/classes', '/admin/students', '/admin/finance',

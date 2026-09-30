@@ -121,6 +121,8 @@ export type StudentPayload = Omit<Student, 'id' | 'balance' | 'parentFullName' |
   /** Backend father/mother'dan o'zi hosil qiladi — forma yubormaydi (ixtiyoriy). */
   parentFullName?: string
   parentPhone?: string
+  /** Maktab sinfi: `null`/yo'q = tegilmaydi, `0` = tozalash, 1..11 yoki 12 (bitirgan) = o'rnatish. */
+  schoolGrade?: number | null
 }
 
 export async function getStudents(state?: 'trial' | 'active'): Promise<Student[]> {

@@ -3,8 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { usePersistentState } from '@/hooks/usePersistentState'
 import { StudentViewModal } from './StudentViewModal'
 import { Plus, Search, Pencil, Trash2, Send, Download, X, Wallet, History, Archive, RotateCcw, FileDown, Upload, ChevronLeft, ChevronRight, Lock, LockOpen, Loader2, Phone, PhoneCall, Cake, Medal, Snowflake, CalendarClock, CheckCircle2 } from 'lucide-react'
-import type { Gender, Student, Teacher, District } from '@/types'
-import { getDistricts } from '@/api/services/districts'
+import type { Gender, Student, Teacher } from '@/types'
 import type { StudentPayload, StudentImportResult } from '@/api/services/students'
 import {
   getStudents,
@@ -51,6 +50,7 @@ import { ReceiptModal } from '@/components/finance/ReceiptModal'
 import { PaymentHistoryModal } from './PaymentHistoryModal'
 import { ReasonPromptModal } from '@/components/ui/ReasonPromptModal'
 import { CallPickerModal, type CallOption } from '@/components/CallPickerModal'
+import { matchesSchoolGrade, schoolGradeDistribution, type SchoolGradeFilter } from '@/lib/schoolGrades'
 
 type BalanceFilter = 'all' | 'debt' | 'paid'
 /** Surat filtri — rasmi bor / rasmi yo'q o'quvchilarni ajratish uchun. */
@@ -179,13 +179,12 @@ export function StudentsPage() {
    * guruhsizlarni birga beradi va eski saqlangan tanlov ham buzilmaydi.
    */
   const [activeFilter, setActiveFilter] = usePersistentState<StateFilter>('students.activeFilter', 'all')
-  const [districtFilter, setDistrictFilter] = usePersistentState('students.districtFilter', 'all')
-  const [schoolFilter, setSchoolFilter] = usePersistentState('students.schoolFilter', 'all')
+  // Maktab sinfi: 'all' | 'none' (kiritilmagan) | "1".."12" (`lib/schoolGrades.ts`).
+  const [gradeFilter, setGradeFilter] = usePersistentState<SchoolGradeFilter>('students.gradeFilter', 'all')
   const [photoFilter, setPhotoFilter] = usePersistentState<PhotoFilter>('students.photoFilter', 'all')
   /** "Bugun tug'ilgan kun" filtri — yil hisobga olinmasdan oy/kun bo'yicha solishtiriladi. */
   const [birthdayToday, setBirthdayToday] = usePersistentState('students.birthdayToday', false)
   const [sort, setSort] = usePersistentState<SortOption>('students.sort', 'default')
-  const [districts, setDistricts] = useState<District[]>([])
 
   // tanlash
   const [selected, setSelected] = useState<Set<string>>(new Set())
@@ -273,7 +272,6 @@ export function StudentsPage() {
       })
       setGroupTeachers(mapping)
     })
-    getDistricts().then(setDistricts)
     getStudentBalls()
       .then((balls) => {
         const map: Record<string, number> = {}
@@ -287,6 +285,9 @@ export function StudentsPage() {
 
   // Joriy tab manbai.
   const source = tab === 'active' ? students : archived
+  // Sinflar kesimi — Holat filtridagi kabi JORIY ro'yxat (faol/arxiv tabi) bo'yicha sanaladi.
+  const gradeCounts = useMemo(() => schoolGradeDistribution(source.map((s) => s.schoolGradeNow)), [source])
+
   /**
    * Holat filtri variantlaridagi sonlar — BOSHQA filtrlarga bog'liq emas (qidiruv/guruh
    * tanlangan bo'lsa ham): savol "markazda nechta muzlatilgan bor", "shu qidiruv ichida
@@ -393,14 +394,13 @@ export function StudentsPage() {
     const matchActive =
       activeFilter === 'all' || groupScoped ||
       (activeFilter === 'inactive' ? studentState(s) !== 'active' : studentState(s) === activeFilter)
-    const matchDistrict = districtFilter === 'all' || s.districtId === districtFilter
-    const matchSchool = schoolFilter === 'all' || s.schoolId === schoolFilter
+    const matchGrade = matchesSchoolGrade(s.schoolGradeNow, gradeFilter)
     const matchBirthday = !birthdayToday || (s.birthDate && s.birthDate.slice(5, 10) === todayMonthDay)
     // Surat: birthCertificateUrl — o'quvchi rasmi (nomi eski, `types/index.ts` izohiga qarang).
     const hasPhoto = !!(s.birthCertificateUrl && s.birthCertificateUrl.trim())
     const matchPhoto =
       photoFilter === 'all' || (photoFilter === 'with' ? hasPhoto : !hasPhoto)
-    return matchSearch && matchClass && matchTeacher && matchGender && matchBalance && matchDebtRange && matchActive && matchDistrict && matchSchool && matchBirthday && matchPhoto
+    return matchSearch && matchClass && matchTeacher && matchGender && matchBalance && matchDebtRange && matchActive && matchGrade && matchBirthday && matchPhoto
   })
     .sort((a, b) => {
       if (sort === 'ball-desc' || sort === 'ball-asc') {
@@ -412,7 +412,7 @@ export function StudentsPage() {
       // "Yangi kiritilgani tepada": tizimga kiritilgan vaqt (bo'lmasa qabul sanasi) bo'yicha kamayish.
       return (b.createdAt || b.enrollmentDate || '').localeCompare(a.createdAt || a.enrollmentDate || '')
     }),
-  [source, search, classFilter, teacherFilter, genderFilter, balanceFilter, debtRangeOn, debtMinNum, debtMaxNum, activeFilter, districtFilter, schoolFilter, birthdayToday, todayMonthDay, photoFilter, sort, ballMap])
+  [source, search, classFilter, teacherFilter, genderFilter, balanceFilter, debtRangeOn, debtMinNum, debtMaxNum, activeFilter, gradeFilter, birthdayToday, todayMonthDay, photoFilter, sort, ballMap])
 
   /** Filtrlangan ro'yxatdagi JAMI qarz (musbat son) — toolbar o'ng tomonida ko'rsatiladi. */
   const filteredDebtTotal = useMemo(
@@ -435,7 +435,7 @@ export function StudentsPage() {
   // qidirib bir o'quvchini belgilab, keyin boshqasini qidirib belgilay olishi uchun.
   useEffect(() => {
     setPage(1)
-  }, [search, classFilter, teacherFilter, genderFilter, balanceFilter, debtMin, debtMax, activeFilter, districtFilter, schoolFilter, photoFilter, birthdayToday, sort, tab, pageSize])
+  }, [search, classFilter, teacherFilter, genderFilter, balanceFilter, debtMin, debtMax, activeFilter, gradeFilter, photoFilter, birthdayToday, sort, tab, pageSize])
   // Faqat tab (faol/arxiv/hammasi) almashganda tanlovni tozalaymiz — bu boshqa ro'yxat.
   useEffect(() => {
     setSelected(new Set())
@@ -492,8 +492,7 @@ export function StudentsPage() {
     balanceFilter !== 'all' ||
     debtRangeOn ||
     activeFilter !== 'all' ||
-    districtFilter !== 'all' ||
-    schoolFilter !== 'all' ||
+    gradeFilter !== 'all' ||
     photoFilter !== 'all' ||
     birthdayToday ||
     sort !== 'default'
@@ -508,8 +507,7 @@ export function StudentsPage() {
     setDebtMin('')
     setDebtMax('')
     setActiveFilter('all')
-    setDistrictFilter('all')
-    setSchoolFilter('all')
+    setGradeFilter('all')
     setPhotoFilter('all')
     setBirthdayToday(false)
     setSort('default')
@@ -1010,33 +1008,15 @@ export function StudentsPage() {
             <option value="inactive">Aktiv emas ({stateCounts.inactive})</option>
           </select>
           <select
-            value={districtFilter}
-            onChange={(e) => {
-              // Tuman o'zgarsa, oldingi maktab tanlovi tozalanadi (boshqa tumanga tegishli edi).
-              setDistrictFilter(e.target.value)
-              setSchoolFilter('all')
-            }}
+            value={gradeFilter}
+            onChange={(e) => setGradeFilter(e.target.value)}
             className={control}
+            title="Maktab sinfi bo'yicha filtr"
           >
-            <option value="all">Barcha tumanlar</option>
-            {districts.map((d) => (
-              <option key={d.id} value={d.id}>
-                {d.name}
-              </option>
-            ))}
-          </select>
-          <select
-            value={schoolFilter}
-            onChange={(e) => setSchoolFilter(e.target.value)}
-            disabled={districtFilter === 'all'}
-            className={cn(control, districtFilter === 'all' && 'opacity-50')}
-          >
-            <option value="all">
-              {districtFilter === 'all' ? 'Barcha maktablar' : '— tanlanmagan —'}
-            </option>
-            {(districts.find((d) => d.id === districtFilter)?.schools ?? []).map((sc) => (
-              <option key={sc.id} value={sc.id}>
-                {sc.name}
+            <option value="all">Barcha sinflar</option>
+            {gradeCounts.map((r) => (
+              <option key={r.grade ?? 'none'} value={r.grade == null ? 'none' : String(r.grade)}>
+                {r.label} ({r.count})
               </option>
             ))}
           </select>

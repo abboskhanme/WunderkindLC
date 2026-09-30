@@ -45,7 +45,7 @@ export function LeadFormModal({ open, onClose, onSubmit, initial }: Props) {
   // Holat, sozlama («Lid kiritish formasi») va tekshiruv — `useLeadEntryForm` da: lid sahifasining
   // chap paneli ham AYNAN shundan foydalanadi (qoidalar ikki joyda ayri ketmasin).
   const {
-    form, setForm, update, sourceOptions, districts, courseOptions, fields, answers,
+    form, update, sourceOptions, courseOptions, fields, answers,
     setAnswer, toggleAnswer, show, req, validate, saving, setSaving, error, setError,
   } = useLeadEntryForm(open, initial)
 
@@ -207,45 +207,6 @@ export function LeadFormModal({ open, onClose, onSubmit, initial }: Props) {
               {courseOptions.map((c) => (
                 <option key={c} value={c}>
                   {c}
-                </option>
-              ))}
-            </Select>
-          )}
-        </Pair>
-        {/* Tashqi maktab (lid qayerda o'qiydi) — o'quvchiga aylantirilganda ko'chadi */}
-        <Pair>
-          {show('districtId') && (
-            <Select
-              label="Tuman"
-              required={req('districtId')}
-              value={form.districtId ?? ''}
-              onChange={(e) => {
-                // Tuman o'zgarsa, oldingi maktab tanlovi tozalanadi.
-                setForm((f) => ({ ...f, districtId: e.target.value, schoolId: '' }))
-              }}
-            >
-              <option value="">— tanlanmagan —</option>
-              {districts.map((d) => (
-                <option key={d.id} value={d.id}>
-                  {d.name}
-                </option>
-              ))}
-            </Select>
-          )}
-          {show('schoolId') && (
-            <Select
-              label="Maktab"
-              required={req('schoolId')}
-              value={form.schoolId ?? ''}
-              disabled={!form.districtId}
-              onChange={(e) => update('schoolId', e.target.value)}
-            >
-              <option value="">
-                {form.districtId ? '— tanlanmagan —' : '— avval tumanni tanlang —'}
-              </option>
-              {(districts.find((d) => d.id === form.districtId)?.schools ?? []).map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name}
                 </option>
               ))}
             </Select>

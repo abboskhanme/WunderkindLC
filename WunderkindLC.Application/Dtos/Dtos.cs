@@ -86,12 +86,14 @@ public record StudentPayload(
     string? FatherFullName = null, string? FatherPhone = null,
     string? MotherFullName = null, string? MotherPhone = null,
     string? DiscountStartMonth = null, string? DiscountEndMonth = null,
-    string? DistrictId = null, string? SchoolId = null,
     string? DiscountGroupId = null,
     /// <summary>Ushlab turish bonusi ptichkasi. null = tegilmaydi (eski chaqiruvlar buzilmaydi).</summary>
     bool? RetentionBonus = null,
     /// <summary>Bonus sanog'i boshlanadigan oy "YYYY-MM" (admin QO'LDA kiritadi). null = tegilmaydi.</summary>
-    string? RetentionBonusStartMonth = null);
+    string? RetentionBonusStartMonth = null,
+    /// <summary>Maktab sinfi (<see cref="WunderkindLC.Domain.SchoolGrades"/>): <c>null</c> = tegilmaydi
+    /// (eski mijozlar buzilmaydi), <c>0</c> = tozalash, 1..11 yoki 12 (bitirgan) = o'rnatish.</summary>
+    int? SchoolGrade = null);
 /// <summary>O'quvchi to'lovi kiritish so'rovi. <paramref name="Date"/> — to'lov haqiqatan sodir bo'lgan
 /// sana (ISO "YYYY-MM-DD"), ixtiyoriy — bo'sh bo'lsa bugungi sana ishlatiladi (masalan bugun to'lagan,
 /// lekin tizimga ertaga kiritilayotgan to'lov uchun eski sanani tanlash imkoni).</summary>
@@ -121,8 +123,6 @@ public record DuplicateReceiptDto(
     string CreatedBy, DateTime CreatedAt);
 
 /* ---------- Tuman + maktab (sozlamalar) ---------- */
-public record DistrictDto(string Id, string Name, int Order, List<SchoolDto> Schools);
-public record SchoolDto(string Id, string DistrictId, string Name, int Order);
 public record DistrictCreate(string? Name);
 public record DistrictUpdate(string? Name);
 public record SchoolCreate(string? Name);
@@ -833,7 +833,6 @@ public record LeadCreateRequest(
     string? Phone, string? FatherFullName, string? FatherPhone,
     string? MotherFullName, string? MotherPhone, string? Note, string Stage,
     string? Source = null, string? InterestSubject = null,
-    string? DistrictId = null, string? SchoolId = null,
     Dictionary<string, List<string>>? Answers = null);
 /// <summary>Lid (bo'lajak o'quvchi) tahrirlash so'rovi.
 /// TELEFON VALIDATSIYA (PhoneUtil.Normalize orqali standartlashtirilib saqlanadi):
@@ -847,7 +846,6 @@ public record LeadUpdateRequest(
     string? Phone, string? FatherFullName, string? FatherPhone,
     string? MotherFullName, string? MotherPhone, string? Note,
     string? Source = null, string? InterestSubject = null,
-    string? DistrictId = null, string? SchoolId = null,
     Dictionary<string, List<string>>? Answers = null);
 public record LeadStageRequest(string Stage);
 
@@ -883,8 +881,6 @@ public record ScheduleTrialRequest(string GroupId, string ScheduledAt);
 public record TrialResultRequest(string Result);
 
 /// <summary>Lid + birinchi dars davomat holati: "attended" | "absent" | "no-lesson".
-/// DistrictId/SchoolId — lid o'qiydigan TASHQI maktab (filtr uchun; nomlarini frontend
-/// tumanlar ma'lumotnomasidan (GET /admin/districts) yechadi).
 /// RepeatCount/LastRepeatAt — TAKRORIY murojaat (ommaviy forma yoki daraja testi orqali yana
 /// yozilgan): kanban kartasidagi «Takroriy N» belgisi uchun.</summary>
 public record LeadWithAttendanceDto(
@@ -892,7 +888,6 @@ public record LeadWithAttendanceDto(
     string FatherFullName, string FatherPhone, string MotherFullName, string MotherPhone,
     string? Note, string Stage, string Source, string InterestSubject, string? CreatedAt,
     string? ConvertedStudentId, string? FirstLessonAttendance,
-    string DistrictId, string SchoolId,
     int RepeatCount, string LastRepeatAt,
     /// <summary>Lidni ISHLAYOTGAN xodim (<c>AppUser</c>.Id). Null = biriktirilmagan (bot/ommaviy
     /// forma orqali kelgan va hali hech kim tegmagan lid) — KPI'da "biriktirilmagan" alohida sanaladi.</summary>

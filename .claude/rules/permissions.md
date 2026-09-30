@@ -154,7 +154,7 @@ turmaydi.
 | `calls` | `.cloud` `.local` | `CallsController` · `Cti/CtiController` |
 | `tasks` | `.board` `.dashboard` `.settings` | `WorkTasksController` (metod darajasida) |
 | `kpi` | `.today` `.month` `.tickets` `.close` `.rules` | `KpiController` (metod darajasida) |
-| `settings` | `.school` `.landing` `.districts` `.reasons` `.channels` `.backup` `.apk` `.azure-speech` `.gemini` `.check` `.turnstile` `.cameras` `.posthog` `.archive` | `SettingsController` (metod darajasida) · `LandingCmsController` · `DistrictsController` · `ActionReasonsController` · `LeadSourcesController` · `ArchiveController` |
+| `settings` | `.school` `.landing` `.reasons` `.channels` `.backup` `.apk` `.azure-speech` `.gemini` `.check` `.turnstile` `.cameras` `.posthog` `.archive` | `SettingsController` (metod darajasida) · `LandingCmsController` · `ActionReasonsController` · `LeadSourcesController` · `ArchiveController` |
 
 Sahifasiz bo'limlar (bittasi = bitta sahifa): `contacts` · `teacherReports` · `contracts` ·
 `books` · `kassa` · `audit` · `staff` · `feedback` · `cameras` · `vacancies` · `ai` ·

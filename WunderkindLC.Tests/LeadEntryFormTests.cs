@@ -136,21 +136,20 @@ public class LeadEntryFormTests
     }
 
     [Fact]
-    public async Task Tuman_yashirilsa_maktab_ham_yashiriladi()
+    public async Task Tuman_va_maktab_maydonlari_katalogda_YOQ_va_eski_qator_lidni_toxtatmaydi()
     {
+        // Tuman/maktab 2026-09-29 da tizimdan butunlay olib tashlangan (mijoz: "umuman qolmasin").
+        // Bazada ular uchun MAJBURIY qilib saqlangan eski qator qolgan bo'lsa ham, lid yaratish
+        // to'xtab qolmasligi kerak — foydalanuvchi bu maydonni endi hech qayerda to'ldira olmaydi.
+        Assert.DoesNotContain(LeadEntryRules.Standard, f => f.Key is "districtId" or "schoolId");
+
         using var t = TestDb.Sqlite();
         var db = t.Context;
-        // Maktab ro'yxati TUMANDAN quriladi (kaskad) — tumansiz select doim bo'sh turardi.
-        await LeadEntryFormService.SaveAsync(db, new LeadEntryFormPayload(
-            new()
-            {
-                St(LeadEntryRules.KeyDistrict, LeadEntryRules.StateHidden),
-                St(LeadEntryRules.KeySchool, LeadEntryRules.StateRequired),
-            }, null));
-
-        var school = await db.LeadEntryFields.SingleAsync(x => x.Key == LeadEntryRules.KeySchool);
-        Assert.False(school.Visible);
-        Assert.False(school.Required);
+        db.LeadEntryFields.Add(new LeadEntryField { Key = "schoolId", Label = "Maktab", Visible = true, Required = true });
+        await db.SaveChangesAsync();
+        var (error, _) = await LeadEntryFormService.ValidateAsync(
+            db, NewLead(name: "Ali"), new Dictionary<string, List<string>>());
+        Assert.Null(error);
     }
 
     // ===================== 3) Qo'shimcha savollar =====================
@@ -362,8 +361,7 @@ public class LeadEntryFormTests
             FullName = "a", Gender = "male", BirthDate = "2000-01-01", Phone = "998901234567",
             FatherFullName = "b", FatherPhone = "998901234568",
             MotherFullName = "c", MotherPhone = "998901234569",
-            Source = "Instagram", InterestSubject = "IELTS",
-            DistrictId = "d1", SchoolId = "s1", Note = "izoh",
+            Source = "Instagram", InterestSubject = "IELTS", Note = "izoh",
         };
         foreach (var def in LeadEntryRules.Standard)
             Assert.False(string.IsNullOrWhiteSpace(LeadEntryRules.ValueOf(def.Key, lead)),

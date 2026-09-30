@@ -89,6 +89,8 @@ public class AuditService(IAppDbContext db, IHttpContextAccessor http)
         s.MotherPhone,
         s.ClassName,
         s.EnrollmentDate,
+        // JORIY sinf (saqlangan juftlik emas) — tarixda "7 → 8" ko'rinishida o'qilsin.
+        SchoolGrade = s.SchoolGradeNow,
     };
 
     /// <summary>

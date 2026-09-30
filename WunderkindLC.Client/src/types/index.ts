@@ -590,10 +590,6 @@ export interface Lead {
   source?: string
   /** Qiziqqan fani / yo'nalishi */
   interestSubject?: string
-  /** O'qiydigan TASHQI maktab tumani (District id) */
-  districtId?: string
-  /** O'qiydigan TASHQI maktab (School id) */
-  schoolId?: string
   /** Yaratilgan vaqti (ISO) */
   createdAt?: string
   /** Aylantirilgan o'quvchi id'si (null = hali aylantirilmagan) */
@@ -782,14 +778,12 @@ export interface Student extends StudentListExtras {
   archiveReason?: string | null
   /** Biriktirilgan asosiy guruh (ClassName) */
   className: string
-  /** Tegishli tuman (District id). Bo'sh = tanlanmagan. */
-  districtId?: string
-  /** Tegishli maktab (School id). Bo'sh = tanlanmagan. */
-  schoolId?: string
-  /** Tuman nomi (faqat ko'rsatish uchun — backend to'ldiradi). */
-  districtName?: string
-  /** Maktab nomi/raqami (faqat ko'rsatish uchun — backend to'ldiradi). */
-  schoolName?: string
+  /**
+   * BUGUNGI maktab sinfi (1..11, 12 = bitirgan; `null` = kiritilmagan). Server hisoblaydi — sinf har
+   * yili 1-sentabrda o'zi oshadi (`lib/schoolGrades.ts`). ⚠️ Serverdagi XOM `schoolGrade` ATAYIN
+   * tipga kiritilmagan: u eski o'quv yilidagi qiymat, tahrirda qaytarib yuborilsa yillik oshish yo'qolardi.
+   */
+  schoolGradeNow?: number | null
   /** O'quvchi FAOL a'zo bo'lgan barcha guruh nomlari (ro'yxat ko'rinishi uchun) */
   groups?: string[]
   /**
@@ -835,23 +829,6 @@ export interface Student extends StudentListExtras {
   retentionBonus?: boolean
   /** Bonus sanog'i qaysi oydan boshlanadi ("YYYY-MM"). Admin QO'LDA kiritadi; bo'sh = boshlanmagan. */
   retentionBonusStartMonth?: string
-}
-
-/* ---------- Tuman + maktab ---------- */
-
-export interface School {
-  id: string
-  districtId: string
-  /** Maktab raqami yoki nomi */
-  name: string
-  order: number
-}
-
-export interface District {
-  id: string
-  name: string
-  order: number
-  schools: School[]
 }
 
 /* ---------- AI tekshiruv (Speaking / Writing) ---------- */

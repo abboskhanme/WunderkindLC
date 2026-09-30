@@ -59,8 +59,9 @@ Har standart maydonning holati: **`hidden`** (so'ralmaydi) · **`optional`** (ix
 2. **F.I.SH (`fullName`) QULFLANGAN** — doim ko'rinadi va doim majburiy (`Locked: true`).
    Ommaviy formadagi "ism va telefon HAR DOIM so'raladi" bilan bir xil sabab: ismsiz lid
    kanbanda tanib bo'lmaydigan kartaga aylanardi.
-3. **Maktab tumansiz ko'rsatilmaydi** — maktab ro'yxati TUMANDAN quriladi (kaskad), tumansiz
-   select doim bo'sh turardi. `districtId = hidden` → `schoolId` ham `hidden`.
+3. **Tuman/maktab maydonlari katalogda YO'Q** (2026-09-29 da tizimdan olib tashlangan). Bazada ular
+   uchun eski qator qolgan bo'lsa (hatto `required`), u e'tiborsiz qoldiriladi — lid yaratish
+   to'xtamaydi (`LeadEntryFormTests.Tuman_va_maktab_maydonlari_katalogda_YOQ_...`).
 
 ⚠️ Noma'lum holat **`optional`** ga tushadi — sozlama buzilib qolgandan ko'ra ishlagani yaxshi.
 
@@ -83,7 +84,7 @@ butunlay saqlab bo'lmaydigan holga keltirardi (test buni qulflaydi).
 ## 5. STANDART maydonlarning TARTIBI sozlanmaydi
 
 Sozlanadigani faqat HOLAT. Sabab: standart maydonlar formada juftlik va bog'liqlik bilan
-chiziladi (tuman → maktab kaskadi, ikki ustunli setka) — erkin tartib bu tuzilishni buzardi.
+chiziladi (ikki ustunli setka) — erkin tartib bu tuzilishni buzardi.
 
 **Erkin tartib — QO'SHIMCHA savollarda** (`Order`), ular standart maydonlardan KEYIN chiziladi.
 
@@ -175,8 +176,8 @@ o'zgartirmadi).
 ## 12. Testlar
 
 `WunderkindLC.Tests/LeadEntryFormTests.cs` — 21 test: bo'sh sozlamada standart xatti-harakat,
-majburiy maydon rad etishi, `hidden`+`required` normalizatsiyasi, F.I.SH qulfi, tuman→maktab
-kaskadi, majburiy qo'shimcha savol, javobning savol MATNI bilan saqlanishi, begona variantning
+majburiy maydon rad etishi, `hidden`+`required` normalizatsiyasi, F.I.SH qulfi, olib tashlangan
+tuman/maktab qatorining lidni to'xtatmasligi, majburiy qo'shimcha savol, javobning savol MATNI bilan saqlanishi, begona variantning
 rad etilishi, bitta/ko'p tanlov, variantsiz `select` ning matnga tushishi, to'liq almashtirish,
 `MaxFields` chegarasi, tartib, `answers = null` da javoblarning tegilmasligi va katalog
 yaxlitligi.

@@ -1,5 +1,6 @@
 import type { AuditAction } from '@/types'
 import { formatMoney } from '@/lib/utils'
+import { schoolGradeLabel } from '@/lib/schoolGrades'
 
 /**
  * AUDIT snapshotlarini o'qiladigan ko'rinishga keltirish — sof funksiyalar.
@@ -60,6 +61,7 @@ export const auditFieldLabels: Record<string, string> = {
   motherPhone: "Onasi telefoni",
   className: 'Guruh',
   enrollmentDate: 'Qabul sanasi',
+  schoolGrade: 'Maktab sinfi',
   grade: 'Daraja',
   language: 'Til',
   room: 'Xona',
@@ -96,6 +98,7 @@ export function fmtAuditValue(key: string, value: unknown): string {
   if (key === 'salaryMode') return value === 'percent' ? 'Foizli' : "Qat'iy"
   if (key === 'direction') return value === 'income' ? 'Kirim' : 'Chiqim'
   if (key === 'gender') return value === 'female' ? 'Ayol' : 'Erkak'
+  if (key === 'schoolGrade' && typeof value === 'number') return schoolGradeLabel(value) || String(value)
   if (key === 'language') return value === 'ru' ? 'Rus' : "O'zbek"
   if (key === 'status') {
     const map: Record<string, string> = { active: 'Aktiv', frozen: 'Muzlatilgan', full: "To'lgan", archived: 'Arxiv', trial: 'Sinov' }

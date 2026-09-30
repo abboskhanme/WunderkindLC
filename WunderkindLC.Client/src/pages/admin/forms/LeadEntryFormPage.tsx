@@ -29,10 +29,6 @@ interface FieldState {
 /** Segmented control tugmalarining tartibi — "kamdan ko'pga" (so'ralmaydi → majburiy). */
 const STATES: LeadEntryState[] = ['hidden', 'optional', 'required']
 
-/** Tuman kaliti — maktab AYNAN shunga bog'liq (kaskad), shu sabab alohida nomlangan. */
-const KEY_DISTRICT = 'districtId'
-const KEY_SCHOOL = 'schoolId'
-
 /**
  * «LID KIRITISH FORMASI» — Lidlar bo'limidagi «Yangi lid» oynasi qanday ko'rinishini sozlash.
  *
@@ -74,10 +70,6 @@ export function LeadEntryFormPage() {
   // ---- Standart maydonlar ----
   const setState = (key: string, state: LeadEntryState) =>
     setStandard((ss) => ss.map((s) => (s.key === key ? { ...s, state } : s)))
-
-  /** Tuman so'ralmasa maktab ham ko'rsatilmaydi — server ham AYNAN shunday normallashtiradi. */
-  const districtHidden =
-    standard.find((s) => s.key === KEY_DISTRICT)?.state === 'hidden'
 
   // ---- Qo'shimcha savollar (lid formasi muharriridagi bilan bir xil boshqaruv) ----
   const addField = () =>
@@ -125,8 +117,8 @@ export function LeadEntryFormPage() {
           }))
           .filter((f) => f.label.length > 0),
       })
-      // Server TOZALAGAN holatni qaytadan yozamiz: masalan tuman so'ralmasa maktab ham
-      // yopiladi, variantsiz qolgan "ro'yxatdan tanlash" esa oddiy matnga tushadi.
+      // Server TOZALAGAN holatni qaytadan yozamiz: masalan variantsiz qolgan
+      // "ro'yxatdan tanlash" oddiy matnga tushadi.
       apply(updated)
       setSaved(true)
       setTimeout(() => setSaved(false), 1600)
@@ -180,16 +172,9 @@ export function LeadEntryFormPage() {
         >
           <div className="divide-y divide-slate-100">
             {standard.map((s) => {
-              // Maktab tumandan quriladi (kaskad): tumansiz select doim bo'sh turardi
-              const cascadeOff = s.key === KEY_SCHOOL && districtHidden
               return (
                 <div key={s.key} className="py-2.5 first:pt-0 last:pb-0">
-                  <div
-                    className={cn(
-                      'flex flex-wrap items-center justify-between gap-3',
-                      cascadeOff && 'opacity-50',
-                    )}
-                  >
+                  <div className="flex flex-wrap items-center justify-between gap-3">
                     <span className="flex items-center gap-1.5 text-sm text-slate-700">
                       {s.label}
                       {s.locked && <Lock className="h-3.5 w-3.5 text-slate-300" />}
@@ -202,7 +187,7 @@ export function LeadEntryFormPage() {
                         <button
                           key={st}
                           onClick={() => setState(s.key, st)}
-                          disabled={!canEdit || s.locked || cascadeOff}
+                          disabled={!canEdit || s.locked}
                           className={cn(
                             'rounded-md px-2.5 py-1 font-medium transition-colors disabled:cursor-not-allowed',
                             s.state === st
@@ -215,12 +200,6 @@ export function LeadEntryFormPage() {
                       ))}
                     </div>
                   </div>
-                  {cascadeOff && (
-                    <p className="mt-1 text-[11px] text-amber-600">
-                      Tuman so'ralmasa maktab ham ko'rsatilmaydi — maktablar ro'yxati tumandan
-                      quriladi.
-                    </p>
-                  )}
                 </div>
               )
             })}

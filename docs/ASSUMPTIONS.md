@@ -150,3 +150,19 @@
   nazorati, Davomat sozlamalari = jurnal tahrirlash siyosati, O'qituvchi holatlari = maosh va jurnal
   (uchalasi `JournalPolicyModal` ning o'z bo'limi), Xonalar holati = Xonalar sahifasi, Topshiriq
   boshqaruvi = Baholash mezonlari → mazmuni edutizimdagi izohga eng yaqin mavjud sozlama
+- [2026-09-29] O'quvchi "sinfi" — guruhmi yoki maktab sinfimi? → MAKTAB sinfi (1–11 + «Maktabni bitirgan»),
+  yangi `Student.SchoolGrade`/`SchoolGradeYear`; eski `ClassName` (asosiy guruh yorlig'i) tegilmadi → foydalanuvchi
+  maqsadi "nechanchi sinflar o'qiyapti" statistikasi
+- [2026-09-29] Sinf har yili qo'lda yangilanadimi? → YO'Q: kiritilgan o'quv yiliga bog'lab saqlanadi va har
+  1-sentabrda o'zi oshadi (`SchoolGrades.Current`), 11 dan keyin «bitirgan» → aks holda statistika bir yilda eskirardi
+- [2026-09-29] «Maktabgacha» varianti kerakmi? → qo'shilmadi (avto-oshish yoshga bog'liq emas, noto'g'ri 1-sinf
+  chiqarardi); bunday o'quvchi «Sinfi kiritilmagan» da qoladi → oddiylik
+- [2026-09-29] Statistika qayerda? → «Hisobotlar → Sinflar kesimi» (`/admin/hisobotlar/sinflar`, `students.list`,
+  standart qamrov — AKTIV o'quvchilar) + o'quvchilar ro'yxatida «Sinf» filtri (sonlari bilan) → yangi endpoint
+  kerak bo'lmadi, manba o'quvchilar ro'yxatining o'zi
+- [2026-09-29] OSM xarita qatlami → global `Referrer-Policy: no-referrer` o'zgarmadi, faqat xarita rasmlariga
+  `strict-origin-when-cross-origin` (`OsmTileLayer`) → `/uploads` manzillari tashqariga chiqmasin
+- [2026-09-29] "Tuman va maktab umuman qolmasin" — bazadagi ustun/jadvallar ham o'chirilsinmi? → Hozircha
+  YO'Q: kod, UI, API, filtrlar, lid formasi katalogi va Sozlamalar sahifasi olib tashlandi; `Students`/`Leads`
+  dagi `DistrictId`/`SchoolId` va `Districts`/`Schools` jadvallari bazada qoldi → qaytarib bo'lmaydigan
+  ma'lumot o'chirish alohida tasdiq talab qiladi. Markazning O'Z manzilidagi «Tuman» (`CenterMeta.District`) tegilmadi
