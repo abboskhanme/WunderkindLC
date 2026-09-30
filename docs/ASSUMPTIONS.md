@@ -166,3 +166,11 @@
   YO'Q: kod, UI, API, filtrlar, lid formasi katalogi va Sozlamalar sahifasi olib tashlandi; `Students`/`Leads`
   dagi `DistrictId`/`SchoolId` va `Districts`/`Schools` jadvallari bazada qoldi → qaytarib bo'lmaydigan
   ma'lumot o'chirish alohida tasdiq talab qiladi. Markazning O'Z manzilidagi «Tuman» (`CenterMeta.District`) tegilmadi
+- [2026-09-30] "O'quvchini butunlay o'chirish" — kim qila oladi? → foydalanuvchi: "role berilgan istalgan
+  odam" → mavjud `students.list:delete` («O'quvchilar ro'yxati» → «O'chirish») kaliti, yangi kalit ochilmadi →
+  Rollar matritsasida allaqachon bor va arxivdagi eski o'chirish ham shu kalitda
+- [2026-09-30] Butunlay o'chirishda o'quvchining to'lovlari ham o'chsinmi? → YO'Q: tirik to'lovi bor o'quvchi
+  rad etiladi (avval to'lovni bekor qilish kerak), bekor qilinganlari saqlanib o'quvchidan ajratiladi →
+  moliya yozuvlari hech qachon o'chirilmaydi (billing.md), kassa hisoboti orqaga o'zgarmasin
+- [2026-09-30] Butunlay o'chirishdan keyin tarixda iz qolsinmi? → o'quvchining barcha audit qatorlari o'chadi,
+  faqat BITTA "kim, qachon, kimni o'chirdi" qatori qoladi → qaytarib bo'lmaydigan amalning javobgari ko'rinsin

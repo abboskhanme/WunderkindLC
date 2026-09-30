@@ -382,6 +382,36 @@ export async function deleteStudent(id: string, reasonId?: string): Promise<void
   await api.delete(`/admin/students/${id}`, { params: reasonId ? { reasonId } : undefined })
 }
 
+/** «Butunlay o'chirish» oynasi uchun: nimalar o'chadi (`detach` — saqlanadi, faqat ajratiladi). */
+export interface StudentPurgeItem {
+  key: string
+  label: string
+  count: number
+  detach: boolean
+}
+
+export interface StudentPurgePreview {
+  studentId: string
+  fullName: string
+  /** `false` — tirik pul amali bor, sababi `blockReason` da. */
+  canPurge: boolean
+  blockReason: string | null
+  liveTransactions: number
+  liveTransactionsTotal: number
+  items: StudentPurgeItem[]
+}
+
+/** Ruxsat — `students.list:delete` (boshqalarga 403). */
+export async function getStudentPurgePreview(id: string): Promise<StudentPurgePreview> {
+  const { data } = await api.get<StudentPurgePreview>(`/admin/students/${id}/purge-preview`)
+  return data
+}
+
+/** O'quvchini va unga tegishli HAMMA narsani o'chiradi — arxivga ham tushmaydi, qaytarib bo'lmaydi. */
+export async function purgeStudent(id: string): Promise<void> {
+  await api.delete(`/admin/students/${id}/purge`)
+}
+
 /** O'quvchining tizim akkaunti (login/parol) */
 export async function getStudentCredentials(id: string): Promise<Credentials> {
   if (USE_MOCK) {

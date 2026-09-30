@@ -64,6 +64,7 @@ public interface IAppDbContext
     DbSet<PushMessage> PushMessages { get; }
     DbSet<TelegramRegistration> TelegramRegistrations { get; }
     DbSet<LoginOtpCode> LoginOtpCodes { get; }
+    DbSet<RefreshToken> RefreshTokens { get; }
     DbSet<BotUser> BotUsers { get; }
     DbSet<TelegramGroup> TelegramGroups { get; }
 
@@ -125,6 +126,7 @@ public interface IAppDbContext
     DbSet<CourseItem> CourseItems { get; }
     DbSet<CourseQuestion> CourseQuestions { get; }
     DbSet<CourseProgress> CourseProgresses { get; }
+    DbSet<CourseItemAttempt> CourseItemAttempts { get; }
     DbSet<GroupCurriculumLog> GroupCurriculumLogs { get; }
 
     // Amal sabablari (muzlatish/o'chirish/sinovga qaytarish/lid/guruh)

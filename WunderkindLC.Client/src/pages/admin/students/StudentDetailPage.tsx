@@ -7,7 +7,7 @@ import {
   CalendarClock, Award, Download, LifeBuoy, Sparkles, Pencil, MessageSquare,
   PhoneIncoming, PhoneOutgoing, PhoneMissed, PhoneCall, MessageSquareText,
   Snowflake, CheckCircle2, RotateCcw, ArrowLeftRight, Plus, NotebookText, X,
-  StickyNote, Gift, BadgePercent,
+  StickyNote, Gift, BadgePercent, Trash2,
   DoorOpen, LogIn, LogOut, RefreshCw, Wifi, WifiOff,
 } from 'lucide-react'
 import { genderLabels } from '@/config/constants'
@@ -98,6 +98,7 @@ import { CallPickerModal, type CallOption } from '@/components/CallPickerModal'
 import { ReasonPromptModal } from '@/components/ui/ReasonPromptModal'
 import { TransferGroupModal } from '../classes/TransferGroupModal'
 import { StudentJournalModal } from './StudentJournalModal'
+import { StudentPurgeModal } from './StudentPurgeModal'
 
 const uzMonths = [
   'Yanvar', 'Fevral', 'Mart', 'Aprel', 'May', 'Iyun',
@@ -172,6 +173,10 @@ export function StudentDetailPage() {
   // "Bog'lanish kerak" — ALOHIDA ruxsat (`contacts`), o'quvchi tahririga bog'liq emas.
   const canContact = can('contacts', 'create')
   const [contactOpen, setContactOpen] = useState(false)
+  // «Butunlay o'chirish» (dublikat/xato kiritilgan) — «O'quvchilar ro'yxati» → «O'chirish» ruxsati:
+  // admin/superadmin va Rollar'da shu ruxsat berilgan xodim (server: `StudentPurgeController.MayPurge`).
+  const canPurge = can('students.list', 'delete')
+  const [purgeOpen, setPurgeOpen] = useState(false)
   /** Shu o'quvchi bo'yicha bog'lanish talablari — "Aloqa" tabida ko'rinadi. */
   const [contacts, setContacts] = useState<ContactRequestItem[]>([])
   /** Ro'yxatni KO'RISH ruxsati — talab ochish (`create`) dan alohida. */
@@ -914,6 +919,9 @@ export function StudentDetailPage() {
                   : []),
                 ...(can('students.list', 'edit')
                   ? [{ label: 'Tahrirlash', icon: Pencil, onClick: openEdit }]
+                  : []),
+                ...(canPurge
+                  ? [{ label: "Butunlay o'chirish", icon: Trash2, danger: true, onClick: () => setPurgeOpen(true) }]
                   : []),
               ]}
             />
@@ -1908,6 +1916,16 @@ export function StudentDetailPage() {
           if (id) getStudentContactRequests(id).then(setContacts).catch(() => {})
         }}
       />
+
+      {/* Butunlay o'chirish — nimalar o'chishini ko'rsatib, aniq tasdiq so'raydi. O'chgach profil
+          endi yo'q: ro'yxatga qaytamiz (`replace` — "orqaga" o'chgan profilga olib kelmasin). */}
+      {purgeOpen && id && (
+        <StudentPurgeModal
+          studentId={id}
+          onClose={() => setPurgeOpen(false)}
+          onPurged={() => navigate('/admin/students', { replace: true })}
+        />
+      )}
 
       {/* O'quvchi rasmi — dumaloq avatarni bosganda ochiladi (kamera yoki fayl). */}
       <StudentPhotoDialog
