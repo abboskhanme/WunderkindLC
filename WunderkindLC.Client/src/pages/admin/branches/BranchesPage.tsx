@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { MapContainer, TileLayer, Marker, Circle, useMapEvents, useMap } from 'react-leaflet'
+import { MapContainer, Marker, Circle, useMapEvents, useMap } from 'react-leaflet'
 import L from 'leaflet'
 // Leaflet CSS shu yerda — global index.css'da EMAS (faqat xarita sahifalariga kerak)
 import 'leaflet/dist/leaflet.css'
@@ -20,6 +20,7 @@ import { Loader } from '@/components/ui/Loader'
 import { Modal } from '@/components/ui/Modal'
 import { Input } from '@/components/ui/Input'
 import { NumberInput } from '@/components/ui/NumberInput'
+import { OsmTileLayer } from '@/components/map/OsmTileLayer'
 
 // Leaflet marker ikoni Vite bilan to'g'ri yuklanmaydi — CDN'dan ko'rsatamiz (LocationPage'dagidek).
 const markerIcon = new L.Icon({
@@ -200,7 +201,7 @@ export function BranchesPage() {
                   scrollWheelZoom={false}
                   style={{ height: '100%', width: '100%' }}
                 >
-                  <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+                  <OsmTileLayer />
                   {(b.latitude !== 0 || b.longitude !== 0) && (
                     <>
                       <Marker position={[b.latitude, b.longitude]} icon={markerIcon} />
@@ -270,7 +271,7 @@ export function BranchesPage() {
                 zoom={14}
                 style={{ height: '100%', width: '100%' }}
               >
-                <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+                <OsmTileLayer />
                 <FlyTo target={flyTo} />
                 <ClickPicker onPick={(lat, lng) => setForm((f) => ({ ...f, latitude: lat, longitude: lng }))} />
                 {hasPoint && (

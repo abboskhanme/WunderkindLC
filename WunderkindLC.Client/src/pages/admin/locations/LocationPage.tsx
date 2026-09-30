@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
-import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet'
+import { MapContainer, Marker, Popup } from 'react-leaflet'
+import { OsmTileLayer } from '@/components/map/OsmTileLayer'
 import L from 'leaflet'
 // Leaflet CSS shu yerda — global index.css'da EMAS (faqat xarita sahifalariga kerak)
 import 'leaflet/dist/leaflet.css'
@@ -114,10 +115,7 @@ export function LocationPage() {
                 style={{ height: '100%', width: '100%' }}
                 key={`${classFilter}-${filtered.length}`}
               >
-                <TileLayer
-                  attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-                  url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                />
+                <OsmTileLayer />
                 {filtered.map((r) => (
                   <Marker
                     key={r.studentId}

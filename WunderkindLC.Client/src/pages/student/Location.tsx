@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { MapContainer, TileLayer, Marker, useMap, useMapEvents } from 'react-leaflet'
+import { MapContainer, Marker, useMap, useMapEvents } from 'react-leaflet'
+import { OsmTileLayer } from '@/components/map/OsmTileLayer'
 import L from 'leaflet'
 // Leaflet CSS shu yerda — global index.css'da EMAS (faqat xarita sahifalariga kerak)
 import 'leaflet/dist/leaflet.css'
@@ -223,10 +224,7 @@ export function StudentLocationScreen() {
               style={{ height: '100%', width: '100%' }}
               scrollWheelZoom
             >
-              <TileLayer
-                attribution='&copy; OpenStreetMap'
-                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-              />
+              <OsmTileLayer />
               <ClickToSet onSet={setPos} />
               <Recenter pos={pos} />
               {pos && (
