@@ -50,6 +50,12 @@ public static class AppSecrets
     /// bo'sh bo'lsa faqat karyera boti ishlamaydi, qolgan hamma narsa odatdagidek yuradi.</summary>
     public static string CareerBotToken => Read("Career:BotToken", EnvKeys.CareerBotToken);
 
+    /* ---------- O'qituvchi boti (o'qituvchi paneli Mini App'i — ALOHIDA bot) ---------- */
+
+    /// <summary>O'qituvchilar botining BotFather tokeni (<see cref="TeacherBotService"/>). Bo'sh bo'lsa
+    /// faqat shu bot ishlamaydi — asosiy bot va o'qituvchi paneli odatdagidek ishlaydi.</summary>
+    public static string TeacherBotToken => Read("TeacherBot:BotToken", EnvKeys.TeacherBotToken);
+
     /* ---------- Push (Firebase / FCM) ---------- */
 
     /// <summary>Firebase service account JSON (to'liq, bir qatorda) — serverdan push yuborish uchun.
@@ -161,6 +167,7 @@ public static class AppSecrets
 
     public static bool TelegramConfigured => TelegramBotToken.Length > 0;
     public static bool CareerBotConfigured => CareerBotToken.Length > 0;
+    public static bool TeacherBotConfigured => TeacherBotToken.Length > 0;
     public static bool GeminiConfigured => GeminiApiKey.Length > 0;
     public static bool AzureSpeechConfigured => AzureSpeechKey.Length > 0 && AzureSpeechRegion.Length > 0;
     public static bool EskizConfigured => EskizEmail.Length > 0 && EskizPassword.Length > 0;
@@ -182,6 +189,7 @@ public static class AppSecrets
     {
         public const string TelegramBotToken = "TELEGRAM_BOT_TOKEN";
         public const string CareerBotToken = "CAREER_BOT_TOKEN";
+        public const string TeacherBotToken = "TEACHER_BOT_TOKEN";
         public const string FcmServiceAccountJson = "FCM_SERVICE_ACCOUNT_JSON";
         public const string GeminiApiKey = "GEMINI_API_KEY";
         public const string AzureSpeechKey = "AZURE_SPEECH_KEY";

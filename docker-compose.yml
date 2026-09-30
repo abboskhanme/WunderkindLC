@@ -94,6 +94,8 @@ services:
       # MiniAppUrl bo'sh bo'lsa APP_HOST'dan yasaladi: https://<APP_HOST>/vakansiya
       Career__BotToken: "${CAREER_BOT_TOKEN:-}"
       Career__MiniAppUrl: "${CAREER_MINIAPP_URL:-}"
+      # O'qituvchi boti (o'qituvchi paneli Mini App'i; ALOHIDA bot, token MAXFIY).
+      TeacherBot__BotToken: "${TEACHER_BOT_TOKEN:-}"
       # Push (Firebase) — service account JSON (MAXFIY, bir qatorli):
       Fcm__ServiceAccountJson: "${FCM_SERVICE_ACCOUNT_JSON:-}"
       # AI Tahlil (Gemini) kaliti (MAXFIY):

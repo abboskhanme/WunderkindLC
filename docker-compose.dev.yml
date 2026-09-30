@@ -49,9 +49,10 @@ services:
       # lokal bot serverdagi bot bilan BIR XIL token bilan `getUpdates` qilsa, xabarlarni
       # o'g'irlaydi va JONLI bot foydalanuvchilarga javob bermay qoladi. Shu sabab bo'sh.
       # Botni lokal sinash uchun BotFather'da ALOHIDA test boti oching va .env ga qo'shing:
-      #     DEV_TELEGRAM_BOT_TOKEN=...      DEV_CAREER_BOT_TOKEN=...
+      #     DEV_TELEGRAM_BOT_TOKEN=...      DEV_CAREER_BOT_TOKEN=...      DEV_TEACHER_BOT_TOKEN=...
       Telegram__BotToken: "${DEV_TELEGRAM_BOT_TOKEN:-}"
       Career__BotToken: "${DEV_CAREER_BOT_TOKEN:-}"
+      TeacherBot__BotToken: "${DEV_TEACHER_BOT_TOKEN:-}"
       # Eskiz — bo'sh: lokaldan HAQIQIY SMS ketib qolmasin (pul va mijozlar bezovtaligi).
       Eskiz__Email: ""
       Eskiz__Password: ""

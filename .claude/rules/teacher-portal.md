@@ -100,6 +100,24 @@ SPA Mini App uchun tayyor: SDK `index.html` da, `ready()/expand()` — `main.tsx
 ⚠️ `web_app` faqat HTTPS manzilni qabul qiladi — `TeacherPanelUrl` ni http qilmang
 (`TeacherBotButtonTests` qulflaydi).
 
+## 5.1. O'QITUVCHI BOTI — alohida bot (2026-09-30)
+
+Foydalanuvchi talabi: o'qituvchilar panelni **alohida bot** orqali ochsin (`@Wundora_LC_bot`,
+`.env: TEACHER_BOT_TOKEN` → compose `TeacherBot__BotToken`). Karyera boti naqshi:
+`TeacherTelegramService` (mijoz) + `TeacherBotService` (long polling).
+
+- **Pastda BITTA tugma** (reply-klaviatura, `web_app`, `is_persistent`) — «🎓 O'qituvchi paneli»,
+  `TelegramBotService.TeacherPanelUrl` ga olib boradi (manzil va matn asosiy bot bilan UMUMIY).
+- ⚠️ **Chapdagi ko'k menyu tugmasi YO'Q** (foydalanuvchi talabi) — startupda `setChatMenuButton`
+  `type=default` + `deleteMyCommands`. BotFather'da qo'lda qo'yilgan tugma ham keyingi restartda
+  tozalanadi. Menyu tugmasini `web_app` qilib QO'YMANG.
+- Bot o'qituvchini TANIMAYDI va telefon so'ramaydi: tugma har kimga ko'rinadi, kirish esa panel
+  ichida login/parol bilan (§5 dagi qaror — yangi kirish yo'li ochilmaydi).
+- Asosiy botdagi o'qituvchi tugmasi va o'qituvchiga boradigan xabarlar (davomat eslatmasi,
+  e'lonlar, shartnomalar) **o'zgarmadi** — ular hamon asosiy botdan ketadi.
+- ⚠️ Dev'da `DEV_TEACHER_BOT_TOKEN` (bo'sh = bot o'chiq): prod tokeni bilan lokal `getUpdates`
+  jonli botning xabarlarini o'g'irlardi. Testlar: `TeacherBotServiceTests`.
+
 ## 6. Testlar
 
 Backend — `TeacherHomeServiceTests` (reja, ko'rinish doirasi, to'lov darvozasi, RBAC manba matnidan).

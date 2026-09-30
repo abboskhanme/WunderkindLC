@@ -407,6 +407,10 @@ builder.Services.AddHostedService<TelegramBotService>();
 builder.Services.AddSingleton<CareerTelegramService>();
 builder.Services.AddSingleton<CareerService>();
 builder.Services.AddHostedService<CareerBotService>();
+// O'QITUVCHI BOTI — ALOHIDA bot (.env: TEACHER_BOT_TOKEN): pastda bitta tugma → o'qituvchi paneli
+// (Mini App). Token bo'sh bo'lsa bot jim kutadi.
+builder.Services.AddSingleton<TeacherTelegramService>();
+builder.Services.AddHostedService<TeacherBotService>();
 // MARKETING — INSTAGRAM AI AGENTI.
 // `InstagramApi` — Graph API mijozi: typed HttpClient (`AddHttpClient<T>`), ya'ni ulanishlar
 // pulda boshqariladi va socket tugab qolmaydi (`CameraGateway` bilan bir xil naqsh).
