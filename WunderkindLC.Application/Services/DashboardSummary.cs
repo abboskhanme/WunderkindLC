@@ -65,17 +65,58 @@ public static class DashboardSummary
             .Select(s => new StudentRow(s.Id, s.IsArchived, s.Balance)).ToList();
         // Arxivlangan guruhlar ham YUKLANADI — ular orqali o'tgan o'quvchilarning "ketdi" tarixi
         // yo'qolmasin (`course-analytics.md` §5). "Guruhlar" soni esa faqat arxivlanmaganlardan.
-        var groups = (await db.Classes.AsNoTracking()
-                .Select(g => new { g.Id, g.CourseId, g.IsArchived, g.Status }).ToListAsync(ct))
-            .Select(g => new GroupRow(g.Id, g.CourseId ?? "", g.IsArchived, g.Status ?? "")).ToList();
+        var groups = await LoadGroupsAsync(db, ct);
         var memberships = await db.StudentGroups.AsNoTracking().ToListAsync(ct);
-        var payments = (await db.FinanceTransactions.AsNoTracking()
-                .Where(t => t.StudentId != null && t.Direction == "income" && t.Category == "tuition")
-                .Select(t => new { StudentId = t.StudentId!, t.Date }).ToListAsync(ct))
-            .Select(t => new PaymentRow(t.StudentId, t.Date ?? "")).ToList();
+        var payments = await LoadPaymentsAsync(db, ct);
 
         return Compute(leads, trials, deletedLeads, students, memberships, groups, payments,
             month, today.ToString("yyyy-MM-dd"));
+    }
+
+    private static async Task<List<GroupRow>> LoadGroupsAsync(IAppDbContext db, CancellationToken ct) =>
+        (await db.Classes.AsNoTracking()
+            .Select(g => new { g.Id, g.CourseId, g.IsArchived, g.Status }).ToListAsync(ct))
+        .Select(g => new GroupRow(g.Id, g.CourseId ?? "", g.IsArchived, g.Status ?? "")).ToList();
+
+    private static async Task<List<PaymentRow>> LoadPaymentsAsync(IAppDbContext db, CancellationToken ct) =>
+        (await db.FinanceTransactions.AsNoTracking()
+            .Where(t => t.StudentId != null && t.Direction == "income" && t.Category == "tuition")
+            .Select(t => new { StudentId = t.StudentId!, t.Date }).ToListAsync(ct))
+        .Select(t => new PaymentRow(t.StudentId, t.Date ?? "")).ToList();
+
+    // ============================ KARTOCHKA RO'YXATLARI ============================
+
+    /// <summary>
+    /// Kartochka ro'yxatidagi bitta o'quvchi: hodisa SANASI ("ketgan" — oraliq tugagan kun,
+    /// "birinchi to'lov" — to'lov kuni) va ketganlarda chiqib ketgan GURUH (to'lovda bo'sh).
+    /// </summary>
+    public readonly record struct MovementRow(string Date, string GroupId);
+
+    /// <summary>Bosh sahifadagi qaysi kartochkalarning RO'YXATI bor (<see cref="MovementAsync"/>).</summary>
+    public const string LeftNew = "leftNew";
+    public const string LeftActive = "leftActive";
+    public const string FirstPayment = "firstPayment";
+    public static readonly IReadOnlyList<string> MovementKinds = [LeftNew, LeftActive, FirstPayment];
+
+    /// <summary>
+    /// "Yangi/Aktiv o'quvchidan ketganlar" yoki "Birinchi to'lovni qilganlar" — O'QUVCHILARI
+    /// (o'quvchi id → <see cref="MovementRow"/>). Kartochka sonini hisoblaydigan AYNAN o'sha
+    /// funksiyalardan (<see cref="LeftStudentsInMonth"/>, <see cref="FirstPaymentStudentsInMonth"/>),
+    /// ya'ni ro'yxatdagi qatorlar soni kartochkadagi son bilan TENG.
+    /// <para>⚠️ Bazada yo'q o'quvchi (yetim a'zolik/to'lov) bu yerda qolishi mumkin — kartochka uni
+    /// sanamaydi (<c>knownIds</c>), chaqiruvchi esa o'quvchilarni bazadan yuklaganda u o'zi tushadi.</para>
+    /// </summary>
+    public static async Task<Dictionary<string, MovementRow>> MovementAsync(
+        IAppDbContext db, string kind, string month, CancellationToken ct = default)
+    {
+        if (kind == FirstPayment)
+            return FirstPaymentStudentsInMonth(await LoadPaymentsAsync(db, ct), month);
+
+        var groups = await LoadGroupsAsync(db, ct);
+        var memberships = await db.StudentGroups.AsNoTracking().ToListAsync(ct);
+        var (fromNew, fromActive) = LeftStudentsInMonth(
+            memberships, groups.ToDictionary(g => g.Id, g => g.CourseId, StringComparer.Ordinal), month);
+        return kind == LeftNew ? fromNew : fromActive;
     }
 
     /// <summary>12 ta ko'rsatkich. <paramref name="month"/> — "yyyy-MM", <paramref name="today"/> — "yyyy-MM-dd".</summary>
@@ -169,8 +210,22 @@ public static class DashboardSummary
         IReadOnlyDictionary<string, string> courseByGroup,
         string month)
     {
-        var fromNew = new HashSet<string>(StringComparer.Ordinal);
-        var fromActive = new HashSet<string>(StringComparer.Ordinal);
+        var (fromNew, fromActive) = LeftStudentsInMonth(memberships, courseByGroup, month);
+        return (fromNew.Count, fromActive.Count);
+    }
+
+    /// <summary>
+    /// <see cref="LeftInMonth"/> ning O'QUVCHILARI (kartochka ro'yxati uchun) — qoida AYNAN o'sha,
+    /// sanoq shu lug'atlarning <c>Count</c> i. Qiymat — oraliq tugagan sana va oraliqni YOPGAN
+    /// a'zolikning guruhi. Bir o'quvchi ikki kursdan ketgan bo'lsa — ENG KECHKI ketish.
+    /// </summary>
+    public static (Dictionary<string, MovementRow> FromNew, Dictionary<string, MovementRow> FromActive) LeftStudentsInMonth(
+        IEnumerable<StudentGroup> memberships,
+        IReadOnlyDictionary<string, string> courseByGroup,
+        string month)
+    {
+        var fromNew = new Dictionary<string, MovementRow>(StringComparer.Ordinal);
+        var fromActive = new Dictionary<string, MovementRow>(StringComparer.Ordinal);
 
         foreach (var pair in memberships.GroupBy(m => (m.StudentId, Course: CourseKey(m.GroupId, courseByGroup))))
         {
@@ -186,24 +241,35 @@ public static class DashboardSummary
                 // MergeIntervals a'zoliklarni JoinedAt bo'yicha tartiblab yig'adi, ya'ni har a'zolik
                 // aynan bitta oraliqqa tushadi.
                 var next = i + 1 < intervals.Count ? intervals[i + 1].Start : null;
-                var everActive = list.Any(m =>
+                var inInterval = list.Where(m =>
                     (m.JoinedAt ?? "").Length >= 10
                     && string.CompareOrdinal(m.JoinedAt, iv.Start) >= 0
-                    && (next is null || string.CompareOrdinal(m.JoinedAt, next) < 0)
-                    && MembershipLifecycle.FirstActivatedAt(m).Length >= 7);
+                    && (next is null || string.CompareOrdinal(m.JoinedAt, next) < 0)).ToList();
+                var everActive = inInterval.Any(m => MembershipLifecycle.FirstActivatedAt(m).Length >= 7);
+                // Oraliqni YOPGAN a'zolik — eng kech chiqqani (parallel guruhda ham).
+                var closing = inInterval.OrderByDescending(m => m.LeftAt ?? "", StringComparer.Ordinal).FirstOrDefault();
+                var row = new MovementRow(iv.End!, closing?.GroupId ?? "");
 
-                (everActive ? fromActive : fromNew).Add(pair.Key.StudentId);
+                var target = everActive ? fromActive : fromNew;
+                if (!target.TryGetValue(pair.Key.StudentId, out var prev) || string.CompareOrdinal(row.Date, prev.Date) > 0)
+                    target[pair.Key.StudentId] = row;
             }
         }
-        return (fromNew.Count, fromActive.Count);
+        return (fromNew, fromActive);
     }
 
     /// <summary>BIRINCHI TO'LOVNI QILGANLAR — o'quvchining eng birinchi o'quv to'lovi shu oyda.</summary>
     public static int FirstPaymentsInMonth(IEnumerable<PaymentRow> payments, string month) =>
+        FirstPaymentStudentsInMonth(payments, month).Count;
+
+    /// <summary><see cref="FirstPaymentsInMonth"/> ning O'QUVCHILARI: id → birinchi to'lov sanasi.</summary>
+    public static Dictionary<string, MovementRow> FirstPaymentStudentsInMonth(IEnumerable<PaymentRow> payments, string month) =>
         payments
             .Where(p => p.Date.Length >= 7)
             .GroupBy(p => p.StudentId)
-            .Count(g => g.Select(p => p.Date).Min(StringComparer.Ordinal)![..7] == month);
+            .Select(g => (Id: g.Key, First: g.Select(p => p.Date).Min(StringComparer.Ordinal)!))
+            .Where(x => x.First[..7] == month)
+            .ToDictionary(x => x.Id, x => new MovementRow(x.First, ""), StringComparer.Ordinal);
 
     private static bool InMonth(string? iso, string month) =>
         iso is { Length: >= 7 } && iso[..7] == month;

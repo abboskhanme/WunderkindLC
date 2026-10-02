@@ -565,6 +565,10 @@ export interface StudentListExtras {
   appFirstLoginAt?: string
   /** Ota-onaga yuborilgan oxirgi shartnoma raqami. */
   contractNumber?: number | null
+  /** Bosh sahifa kartochkasi ro'yxatida — ketgan kun yoki birinchi to'lov kuni. */
+  movementDate?: string
+  /** O'sha ro'yxatda — chiqib ketgan guruh nomi. */
+  movementGroup?: string
 }
 
 export interface Lead {

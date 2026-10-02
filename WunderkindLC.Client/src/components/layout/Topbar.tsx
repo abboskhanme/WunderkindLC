@@ -83,6 +83,12 @@ export function Topbar({ onMenuClick, collapsed = false }: TopbarProps) {
     navigate('/login', { replace: true })
   }
 
+  // Ilova ichida tarix bo'lmasa (havola yangi tabda/xatcho'pdan ochilgan) `navigate(-1)`
+  // ilovadan chiqib ketardi yoki hech narsa qilmasdi — u holda rolga mos bosh sahifaga
+  // (`homeFor`: admin/xodim → /admin, faqat kassa xodimi → /kassa). Naqsh: `LeadDetailPage`.
+  const goBack = () =>
+    ((window.history.state as { idx?: number } | null)?.idx ?? 0) > 0 ? navigate(-1) : navigate(homeFor(user))
+
   const openAccount = () => {
     setMenuOpen(false)
     navigate('/admin/account')
@@ -131,7 +137,7 @@ export function Topbar({ onMenuClick, collapsed = false }: TopbarProps) {
       <div className="flex min-w-0 flex-1 items-center gap-2.5 pl-2 lg:pl-[15px]">
         {/* Orqaga — edutizimdagi "undo" tugmasi */}
         <button
-          onClick={() => navigate(-1)}
+          onClick={goBack}
           className="hidden h-[30px] w-[30px] shrink-0 items-center justify-center rounded-lg border border-brand-600/20 bg-brand-600/10 text-brand-600 transition-colors hover:bg-brand-600/15 sm:flex"
           title="Orqaga"
           aria-label="Orqaga"

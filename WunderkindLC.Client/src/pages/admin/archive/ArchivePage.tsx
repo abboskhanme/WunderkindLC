@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { RotateCcw, Trash2 } from 'lucide-react'
 import type { ArchivedRecord } from '@/types'
 import {
@@ -13,6 +14,7 @@ import { Loader } from '@/components/ui/Loader'
 import { Badge } from '@/components/ui/Badge'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { formatDate, cn, apiErrorMessage } from '@/lib/utils'
+import { MONTHS_TITLE } from '@/lib/teacherPortal'
 
 /** Arxiv turlari (Uzbek yorliqlar bilan). */
 const TABS: { key: string; label: string }[] = [
@@ -30,6 +32,24 @@ export function ArchivePage() {
   const [rows, setRows] = useState<ArchivedRecord[]>([])
   const [loading, setLoading] = useState(true)
   const [busyId, setBusyId] = useState<string | null>(null)
+  /**
+   * `?month=yyyy-MM` — bosh sahifadagi "Buyurtmadan ketganlar" kartochkasidan: faqat o'sha OYDA
+   * o'chirilganlar. Kartochka ham `DeletedAt` PREFIKSI bo'yicha sanaydi (`DashboardSummary`), ya'ni
+   * ro'yxat soni kartochka bilan teng. Filtr ochiq yoziladi va bir bosishda olib tashlanadi.
+   */
+  const [searchParams, setSearchParams] = useSearchParams()
+  const monthRaw = searchParams.get('month') ?? ''
+  const month = /^\d{4}-(0[1-9]|1[0-2])$/.test(monthRaw) ? monthRaw : ''
+  const shown = month ? rows.filter((r) => (r.deletedAt ?? '').startsWith(month)) : rows
+  const clearMonth = () =>
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev)
+        next.delete('month')
+        return next
+      },
+      { replace: true },
+    )
 
   const loadCounts = useCallback(async () => {
     try {
@@ -125,16 +145,28 @@ export function ArchivePage() {
         })}
       </div>
 
+      {month && (
+        <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-brand-600/20 bg-brand-600/5 px-3.5 py-2 text-[13px] text-slate-700">
+          <span>
+            Faqat <b>{MONTHS_TITLE[Number(month.slice(5, 7)) - 1]} {month.slice(0, 4)}</b> oyida
+            o'chirilganlar ko'rsatilmoqda{!loading && <> — {shown.length} ta</>}.
+          </span>
+          <button type="button" onClick={clearMonth} className="font-semibold text-brand-600 hover:underline">
+            Hammasini ko'rsatish
+          </button>
+        </div>
+      )}
+
       <Card>
         {loading ? (
           <Loader label="Yuklanmoqda..." />
-        ) : rows.length === 0 ? (
+        ) : shown.length === 0 ? (
           <p className="py-10 text-center text-sm text-slate-400">
-            Bu bo'limda o'chirilgan yozuv yo'q
+            {month ? "Bu oyda o'chirilgan yozuv yo'q" : "Bu bo'limda o'chirilgan yozuv yo'q"}
           </p>
         ) : (
           <div className="space-y-2">
-            {rows.map((r) => (
+            {shown.map((r) => (
               <div
                 key={r.id}
                 className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-100 px-3.5 py-3 transition-colors hover:bg-slate-50"

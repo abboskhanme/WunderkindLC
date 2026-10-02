@@ -130,7 +130,10 @@ function Topbar({ info, dark }: { info: TeacherPortalInfo; dark: boolean }) {
       <div className="hidden min-w-0 flex-1 items-center gap-2.5 pl-[15px] lg:flex">
         <button
           type="button"
-          onClick={() => navigate(-1)}
+          // Tarix bo'lmasa (havola yangi tabda ochilgan) — ilovadan chiqib ketmasin, bosh sahifaga.
+          onClick={() =>
+            ((window.history.state as { idx?: number } | null)?.idx ?? 0) > 0 ? navigate(-1) : navigate('/teacher')
+          }
           className="flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-lg border border-brand-600/20 bg-brand-600/10 text-brand-600 transition-colors hover:bg-brand-600/15"
           title="Orqaga"
           aria-label="Orqaga"

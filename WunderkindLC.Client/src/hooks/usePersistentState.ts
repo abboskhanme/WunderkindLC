@@ -8,9 +8,21 @@ import type { Dispatch, SetStateAction } from 'react'
  *
  * Kalit sahifaga xos bo'lishi kerak (masalan `"students.classFilter"`), aks holda turli sahifalar
  * bir-birining holatini ustiga yozadi. Sessiya (tab) yopilganda holat o'z-o'zidan tozalanadi.
+ *
+ * `override` berilsa (`undefined` emas) — saqlangan qiymat O'RNIGA shu olinadi va saqlanadi.
+ * Sahifaga tayyor filtr bilan kelinganda kerak (masalan bosh sahifa kartochkasidan): faqat
+ * BIRINCHI renderda o'qiladi, keyingi o'zgarishlari e'tiborsiz.
  */
-export function usePersistentState<T>(key: string, initial: T): [T, Dispatch<SetStateAction<T>>] {
+export function usePersistentState<T>(key: string, initial: T, override?: T): [T, Dispatch<SetStateAction<T>>] {
   const [state, setState] = useState<T>(() => {
+    if (override !== undefined) {
+      try {
+        sessionStorage.setItem(key, JSON.stringify(override))
+      } catch {
+        /* saqlanmasa ham shu sahifada qiymat ishlaydi */
+      }
+      return override
+    }
     try {
       const raw = sessionStorage.getItem(key)
       return raw !== null ? (JSON.parse(raw) as T) : initial

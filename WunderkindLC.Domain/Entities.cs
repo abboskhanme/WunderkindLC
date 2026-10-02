@@ -451,6 +451,15 @@ public class Student
     [System.ComponentModel.DataAnnotations.Schema.NotMapped]
     public int? ContractNumber { get; set; }
     /// <summary>
+    /// Bosh sahifa KARTOCHKA RO'YXATIDA (`GET students/month-movement`) — hodisa sanasi: ketgan kun
+    /// yoki birinchi to'lov kuni. Boshqa endpointlarda bo'sh.
+    /// </summary>
+    [System.ComponentModel.DataAnnotations.Schema.NotMapped]
+    public string MovementDate { get; set; } = string.Empty;
+    /// <summary>O'sha ro'yxatda — chiqib KETGAN guruh nomi (arxivlangan guruh ham). To'lov ro'yxatida bo'sh.</summary>
+    [System.ComponentModel.DataAnnotations.Schema.NotMapped]
+    public string MovementGroup { get; set; } = string.Empty;
+    /// <summary>
     /// O'quvchi arxivga ko'chirilganmi (boshqa maktabga ketgan, o'qishdan chiqarilgan, ...).
     /// Arxivlangan o'quvchi faol ro'yxatdan yashirinadi, oylik to'lov hisoblanmaydi, login bloklanadi,
     /// lekin tarixiy ma'lumotlari (jurnal, davomat, to'lovlar) saqlanadi.

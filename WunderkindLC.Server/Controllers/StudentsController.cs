@@ -443,6 +443,49 @@ public class StudentsController(
     }
 
     /// <summary>
+    /// BOSH SAHIFA KARTOCHKASI RO'YXATI — "Yangi o'quvchidan ketganlar" (<c>leftNew</c>), "Aktiv
+    /// o'quvchidan ketganlar" (<c>leftActive</c>), "Birinchi to'lovni qilganlar" (<c>firstPayment</c>).
+    /// Tanlov kartochka sonini hisoblaydigan AYNAN o'sha funksiyadan (<see cref="DashboardSummary.MovementAsync"/>),
+    /// ya'ni qatorlar soni kartochkadagi son bilan teng.
+    /// <para>⚠️ ARXIVLANGANLAR HAM qaytadi: ketgan o'quvchi ko'pincha keyin arxivlanadi, kartochka esa
+    /// uni baribir sanaydi (<c>knownIds</c> — barcha o'quvchilar).</para>
+    /// <para><paramref name="month"/> — "yyyy-MM", bo'sh = joriy oy. Ruxsat — sinf darajasidagi
+    /// <c>students.list</c> (ro'yxat bilan bir xil, hujjat manzillari <see cref="RedactDocs"/> bilan).</para>
+    /// </summary>
+    [HttpGet("month-movement")]
+    public async Task<ActionResult<IEnumerable<Student>>> MonthMovement(
+        [FromQuery] string? kind, [FromQuery] string? month = null)
+    {
+        if (kind is null || !DashboardSummary.MovementKinds.Contains(kind))
+            return BadRequest(new { message = $"Noma'lum ro'yxat: {kind}" });
+        var m = string.IsNullOrEmpty(month) ? AppClock.Today.ToString("yyyy-MM") : month;
+        if (m.Length != 7 || !DateOnly.TryParseExact(m + "-01", "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out _))
+            return BadRequest(new { message = "Oy noto'g'ri (kutilgan ko'rinish: yyyy-MM)" });
+
+        var rows = await DashboardSummary.MovementAsync(db, kind, m);
+        var ids = rows.Keys.ToList();
+        // AsNoTracking — pastda ko'rsatish uchun o'zgartiriladi (RedactDocs, guruh nomlari).
+        var students = await db.Students.AsNoTracking().Where(s => ids.Contains(s.Id)).ToListAsync();
+        RedactDocs(students);
+        await StudentMembershipView.EnrichAsync(db, students);
+        await StudentListView.EnrichExtrasAsync(db, students);
+
+        var groupIds = rows.Values.Select(r => r.GroupId).Where(g => g.Length > 0).Distinct().ToList();
+        var groupNames = await db.Classes.AsNoTracking().Where(g => groupIds.Contains(g.Id))
+            .ToDictionaryAsync(g => g.Id, g => g.Name);
+        foreach (var s in students)
+        {
+            var r = rows[s.Id];
+            s.MovementDate = r.Date;
+            s.MovementGroup = groupNames.GetValueOrDefault(r.GroupId, "");
+        }
+        return students
+            .OrderByDescending(s => s.MovementDate, StringComparer.Ordinal)
+            .ThenBy(s => s.FullName)
+            .ToList();
+    }
+
+    /// <summary>
     /// "JORIY OYDA OBUNASI TUGAYDIGANLAR" — puli joriy oy darslarini qoplamaydigan o'quvchilar
     /// (<see cref="SubscriptionRisk"/>: mavjud hisob qatorlari + accrual qoidasi, qayta hisob yo'q).
     /// Ruxsat — sinf darajasidagi <c>students.list</c> darvozasi (o'quvchilar ro'yxati bilan

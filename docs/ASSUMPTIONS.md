@@ -174,3 +174,11 @@
   moliya yozuvlari hech qachon o'chirilmaydi (billing.md), kassa hisoboti orqaga o'zgarmasin
 - [2026-09-30] Butunlay o'chirishdan keyin tarixda iz qolsinmi? → o'quvchining barcha audit qatorlari o'chadi,
   faqat BITTA "kim, qachon, kimni o'chirdi" qatori qoladi → qaytarib bo'lmaydigan amalning javobgari ko'rinsin
+- [2026-10-02] "...dan ketganlar" / "Birinchi to'lovni qilganlar" kartochkalari qayerga? → yangi ro'yxatlar
+  `/admin/students/ketganlar` va `/admin/students/birinchi-tolov` (`GET students/month-movement`, ruxsat
+  `students.list`, arxivlanganlar HAM) → ro'yxat kartochka sonini hisoblaydigan funksiyaning o'zidan, son teng
+  chiqsin. "Birinchi to'lov" kartochkasi `finance.main` bilan ko'rinadi, lekin bosish `students.list` talab qiladi
+- [2026-10-02] Bu ikki ro'yxat menyuga qo'shilsinmi? → yo'q, faqat «Hisobotlar» hub'ida (oy tanlab ko'rish uchun)
+  → asosiy kirish kartochkadan, menyuni kengaytirish so'ralmagan
+- [2026-10-01] "Muzlatilgan" kartochkasi oddiy + «aktiv muzlatilgan»ni BIRGA sanaydi, ro'yxat filtrida esa ular
+  alohida edi → filtrga "Barcha muzlatilganlar" varianti qo'shildi → kartochka soni ro'yxat bilan teng chiqsin

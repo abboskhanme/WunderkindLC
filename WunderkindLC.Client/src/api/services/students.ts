@@ -256,6 +256,25 @@ export async function searchStudents(
   return data
 }
 
+/**
+ * Bosh sahifa kartochkasining RO'YXATI: shu oyda yangi/aktiv o'quvchidan ketganlar yoki birinchi
+ * to'lovni qilganlar. Tanlov SERVERDA — kartochka sonini hisoblaydigan funksiyaning o'zidan
+ * (`DashboardSummary.MovementAsync`), ya'ni qatorlar soni kartochkadagi son bilan teng.
+ * Arxivlangan o'quvchilar ham keladi. `month` bo'sh — joriy oy.
+ */
+export type MonthMovementKind = 'leftNew' | 'leftActive' | 'firstPayment'
+
+export async function getMonthMovement(kind: MonthMovementKind, month?: string): Promise<Student[]> {
+  if (USE_MOCK) {
+    await delay()
+    return []
+  }
+  const { data } = await api.get<Student[]>('/admin/students/month-movement', {
+    params: month ? { kind, month } : { kind },
+  })
+  return data
+}
+
 /** Faqat arxivlangan o'quvchilar ro'yxati (alohida ko'rish uchun). */
 export async function getArchivedStudents(): Promise<Student[]> {
   if (USE_MOCK) {

@@ -142,6 +142,57 @@ public class DashboardSummaryTests
         Assert.Equal((1, 0), DashboardSummary.LeftInMonth(ms, Courses, Month));
     }
 
+    // ============================ Kartochka RO'YXATLARI ============================
+
+    [Fact]
+    public void Ketganlar_royxati_sanoq_bilan_TENG_va_chiqib_ketgan_guruh_bilan()
+    {
+        var ms = new[]
+        {
+            M("new1", "gA", "trial", "2026-09-01", left: "2026-09-10"),
+            M("act1", "gM", "active", "2026-05-01", activated: "2026-05-03", left: "2026-09-12"),
+            // guruh almashtirish — ro'yxatga ham TUSHMAYDI (sanoqdagidek)
+            M("move", "gA", "active", "2026-05-01", activated: "2026-05-03", left: "2026-09-05"),
+            M("move", "gB", "active", "2026-09-06", activated: "2026-09-06"),
+            // sertifikat bilan tugatgan — churn emas
+            M("done", "gA", "completed", "2026-05-01", activated: "2026-05-03", left: "2026-09-10"),
+        };
+        var (fromNew, fromActive) = DashboardSummary.LeftStudentsInMonth(ms, Courses, Month);
+
+        Assert.Equal(DashboardSummary.LeftInMonth(ms, Courses, Month), (fromNew.Count, fromActive.Count));
+        Assert.Equal(new DashboardSummary.MovementRow("2026-09-10", "gA"), Assert.Single(fromNew).Value);
+        Assert.Equal("new1", Assert.Single(fromNew).Key);
+        Assert.Equal(new DashboardSummary.MovementRow("2026-09-12", "gM"), fromActive["act1"]);
+        Assert.Single(fromActive);
+    }
+
+    [Fact]
+    public void Ikki_kursdan_ketgan_oquvchi_royxatda_BIR_qator_eng_kechki_ketish_bilan()
+    {
+        var ms = new[]
+        {
+            M("s1", "gA", "active", "2026-05-01", activated: "2026-05-03", left: "2026-09-11"),
+            M("s1", "gM", "active", "2026-05-01", activated: "2026-05-03", left: "2026-09-10"),
+        };
+        var (_, fromActive) = DashboardSummary.LeftStudentsInMonth(ms, Courses, Month);
+        Assert.Equal(new DashboardSummary.MovementRow("2026-09-11", "gA"), Assert.Single(fromActive).Value);
+    }
+
+    [Fact]
+    public void Birinchi_tolov_royxati_sanoq_bilan_TENG_va_birinchi_sana_bilan()
+    {
+        var pays = new[]
+        {
+            new DashboardSummary.PaymentRow("new", "2026-09-20"),
+            new DashboardSummary.PaymentRow("new", "2026-09-03"),
+            new DashboardSummary.PaymentRow("old", "2026-08-15"),
+            new DashboardSummary.PaymentRow("old", "2026-09-15"),
+        };
+        var list = DashboardSummary.FirstPaymentStudentsInMonth(pays, Month);
+        Assert.Equal(DashboardSummary.FirstPaymentsInMonth(pays, Month), list.Count);
+        Assert.Equal(new DashboardSummary.MovementRow("2026-09-03", ""), list["new"]);
+    }
+
     // ============================ Holatlar ============================
 
     [Fact]

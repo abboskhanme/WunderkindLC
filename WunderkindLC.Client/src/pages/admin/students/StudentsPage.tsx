@@ -1,5 +1,5 @@
 ﻿import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { usePersistentState } from '@/hooks/usePersistentState'
 import { StudentViewModal } from './StudentViewModal'
 import { Plus, Search, Pencil, Trash2, Send, Download, X, Wallet, History, Archive, RotateCcw, FileDown, Upload, ChevronLeft, ChevronRight, Lock, LockOpen, Loader2, Phone, PhoneCall, Cake, Medal, Snowflake, CalendarClock, CheckCircle2 } from 'lucide-react'
@@ -51,6 +51,7 @@ import { PaymentHistoryModal } from './PaymentHistoryModal'
 import { ReasonPromptModal } from '@/components/ui/ReasonPromptModal'
 import { CallPickerModal, type CallOption } from '@/components/CallPickerModal'
 import { matchesSchoolGrade, schoolGradeDistribution, type SchoolGradeFilter } from '@/lib/schoolGrades'
+import { studentListPresetFromUrl } from '@/lib/homeCards'
 
 type BalanceFilter = 'all' | 'debt' | 'paid'
 /** Surat filtri — rasmi bor / rasmi yo'q o'quvchilarni ajratish uchun. */
@@ -73,7 +74,7 @@ const control =
  * yorliq (active > trial > yearFrozen > frozen); eski javoblarda bo'lmasa `active` bayrog'iga
  * tushamiz.
  */
-type StateFilter = 'all' | 'active' | 'trial' | 'yearFrozen' | 'frozen' | 'inactive'
+type StateFilter = 'all' | 'active' | 'trial' | 'yearFrozen' | 'frozen' | 'anyFrozen' | 'inactive'
 
 /**
  * O'quvchining USTUN ko'rsatadigan holati — filtr ham AYNAN shundan ishlaydi, ya'ni
@@ -132,7 +133,16 @@ export function StudentsPage() {
   const { user } = useAuth()
   const { can } = usePerm()
   const navigate = useNavigate()
-  const [tab, setTab] = usePersistentState<Tab>('students.tab', 'active')
+  const location = useLocation()
+  /**
+   * Bosh sahifa kartochkasidan kelinganmi (`?preset=debtors|frozen`, `lib/homeCards.ts`).
+   * Ha bo'lsa SAQLANGAN filtrlar tashlanadi va faqat kartochkaning sharti qo'yiladi — aks holda
+   * avvalgi qidiruv/guruh filtri qolib, ro'yxatdagi son kartochkadagidan farq qilardi.
+   * Bir marta (birinchi renderda) o'qiladi; parametr keyin manzildan olib tashlanadi (pastda).
+   */
+  const [preset] = useState(() => studentListPresetFromUrl(location.search))
+  const fresh = <T,>(value: T): T | undefined => (preset ? value : undefined)
+  const [tab, setTab] = usePersistentState<Tab>('students.tab', 'active', fresh('active'))
   const [students, setStudents] = useState<Student[]>([])
   const [archived, setArchived] = useState<Student[]>([])
   const [classNames, setClassNames] = useState<string[]>([])
@@ -147,7 +157,7 @@ export function StudentsPage() {
   const [archiveTarget, setArchiveTarget] = useState<Student | null>(null)
 
   // filtrlar — sahifadan chiqib qaytilganda saqlanadi (usePersistentState)
-  const [search, setSearch] = usePersistentState('students.search', '')
+  const [search, setSearch] = usePersistentState('students.search', '', fresh(''))
   /**
    * Qidiruv maydonining JORIY matni. `usePersistentState` har `setState` da
    * `sessionStorage.setItem` (sinxron I/O) qiladi — ya'ni har HARF diskka yozilib, yozish
@@ -162,29 +172,39 @@ export function StudentsPage() {
     const t = setTimeout(() => setSearch(searchInput), 250)
     return () => clearTimeout(t)
   }, [searchInput, search, setSearch])
-  const [classFilter, setClassFilter] = usePersistentState('students.classFilter', 'all')
-  const [teacherFilter, setTeacherFilter] = usePersistentState('students.teacherFilter', 'all')
-  const [genderFilter, setGenderFilter] = usePersistentState<'all' | Gender>('students.genderFilter', 'all')
-  const [balanceFilter, setBalanceFilter] = usePersistentState<BalanceFilter>('students.balanceFilter', 'all')
+  const [classFilter, setClassFilter] = usePersistentState('students.classFilter', 'all', fresh('all'))
+  const [teacherFilter, setTeacherFilter] = usePersistentState('students.teacherFilter', 'all', fresh('all'))
+  const [genderFilter, setGenderFilter] = usePersistentState<'all' | Gender>('students.genderFilter', 'all', fresh<'all' | Gender>('all'))
+  const [balanceFilter, setBalanceFilter] = usePersistentState<BalanceFilter>(
+    'students.balanceFilter', 'all', fresh<BalanceFilter>(preset === 'debtors' ? 'debt' : 'all'),
+  )
   /**
    * QARZ SUMMASI oralig'i ("shu summadan baland / shu summadan past qarzdorlar").
    * MATN sifatida saqlanadi: bo'sh satr = chegara qo'yilmagan, bu `0` dan FARQ qiladi
    * (0 kiritilsa "qarzi 0 dan katta", ya'ni barcha qarzdorlar degani).
    */
-  const [debtMin, setDebtMin] = usePersistentState('students.debtMin', '')
-  const [debtMax, setDebtMax] = usePersistentState('students.debtMax', '')
+  const [debtMin, setDebtMin] = usePersistentState('students.debtMin', '', fresh(''))
+  const [debtMax, setDebtMax] = usePersistentState('students.debtMax', '', fresh(''))
   /**
    * A'zolik HOLATI filtri — "Holat" ustunidagi yorliq bilan AYNAN bir xil qiymatlar
    * (`memberStateInfo`). `inactive` ("Aktiv emas") ATAYIN qoldirildi: u sinov + muzlatilgan +
    * guruhsizlarni birga beradi va eski saqlangan tanlov ham buzilmaydi.
    */
-  const [activeFilter, setActiveFilter] = usePersistentState<StateFilter>('students.activeFilter', 'all')
+  const [activeFilter, setActiveFilter] = usePersistentState<StateFilter>(
+    'students.activeFilter', 'all', fresh<StateFilter>(preset === 'frozen' ? 'anyFrozen' : 'all'),
+  )
   // Maktab sinfi: 'all' | 'none' (kiritilmagan) | "1".."12" (`lib/schoolGrades.ts`).
-  const [gradeFilter, setGradeFilter] = usePersistentState<SchoolGradeFilter>('students.gradeFilter', 'all')
-  const [photoFilter, setPhotoFilter] = usePersistentState<PhotoFilter>('students.photoFilter', 'all')
+  const [gradeFilter, setGradeFilter] = usePersistentState<SchoolGradeFilter>('students.gradeFilter', 'all', fresh<SchoolGradeFilter>('all'))
+  const [photoFilter, setPhotoFilter] = usePersistentState<PhotoFilter>('students.photoFilter', 'all', fresh<PhotoFilter>('all'))
   /** "Bugun tug'ilgan kun" filtri — yil hisobga olinmasdan oy/kun bo'yicha solishtiriladi. */
-  const [birthdayToday, setBirthdayToday] = usePersistentState('students.birthdayToday', false)
-  const [sort, setSort] = usePersistentState<SortOption>('students.sort', 'default')
+  const [birthdayToday, setBirthdayToday] = usePersistentState('students.birthdayToday', false, fresh(false))
+  const [sort, setSort] = usePersistentState<SortOption>('students.sort', 'default', fresh<SortOption>('default'))
+  // Preset qo'llandi — parametr manzildan olinadi: aks holda o'quvchi kartasidan "orqaga"
+  // qaytilganda filtrlar har safar qaytadan tashlanib, foydalanuvchi tanlovi yo'qolardi.
+  const { pathname } = location
+  useEffect(() => {
+    if (preset) navigate(pathname, { replace: true })
+  }, [preset, pathname, navigate])
 
   // tanlash
   const [selected, setSelected] = useState<Set<string>>(new Set())
@@ -359,6 +379,8 @@ export function StudentsPage() {
     const memberMatches = (st: string) =>
       activeFilter === 'all' ? true
       : activeFilter === 'inactive' ? st !== 'active'
+      // «Aktiv muzlatish»da ham a'zolik statusi "frozen" (`year-freeze.md` §1).
+      : activeFilter === 'anyFrozen' ? st === 'frozen'
       : st === activeFilter
 
     const matchClass =
@@ -393,7 +415,9 @@ export function StudentsPage() {
     const groupScoped = classFilter !== 'all' || teacherFilter !== 'all'
     const matchActive =
       activeFilter === 'all' || groupScoped ||
-      (activeFilter === 'inactive' ? studentState(s) !== 'active' : studentState(s) === activeFilter)
+      (activeFilter === 'inactive' ? studentState(s) !== 'active'
+        : activeFilter === 'anyFrozen' ? studentState(s) === 'frozen' || studentState(s) === 'yearFrozen'
+        : studentState(s) === activeFilter)
     const matchGrade = matchesSchoolGrade(s.schoolGradeNow, gradeFilter)
     const matchBirthday = !birthdayToday || (s.birthDate && s.birthDate.slice(5, 10) === todayMonthDay)
     // Surat: birthCertificateUrl — o'quvchi rasmi (nomi eski, `types/index.ts` izohiga qarang).
@@ -1005,6 +1029,8 @@ export function StudentsPage() {
                 baribir turibdi, filtrni yashirish faqat sanashni qiyinlashtirardi. */}
             <option value="yearFrozen">● Aktiv muzlatilgan ({stateCounts.yearFrozen})</option>
             <option value="frozen">● Muzlatilgan ({stateCounts.frozen})</option>
+            {/* Ikkala muzlatish BIRGA — bosh sahifadagi "Muzlatilgan" kartochkasi shuni sanaydi. */}
+            <option value="anyFrozen">Barcha muzlatilganlar ({stateCounts.frozen + stateCounts.yearFrozen})</option>
             <option value="inactive">Aktiv emas ({stateCounts.inactive})</option>
           </select>
           <select

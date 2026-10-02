@@ -2,7 +2,7 @@ import { useNavigate } from 'react-router-dom'
 import type { DashboardSummary } from '@/api/services/dashboard'
 import { usePerm } from '@/lib/permissions'
 import { cn } from '@/lib/utils'
-import { HOME_CARDS } from '@/lib/homeCards'
+import { HOME_CARDS, cardHref } from '@/lib/homeCards'
 
 /**
  * Bosh sahifaning 12 ta kartochkasi (ro'yxat, ranglar va ruxsatlar — `lib/homeCards.ts`).
@@ -25,7 +25,7 @@ export function HomeStatCards({ data, loading }: { data: DashboardSummary | null
             key={c.key}
             type="button"
             disabled={!clickable}
-            onClick={() => clickable && navigate(c.to)}
+            onClick={() => clickable && navigate(cardHref(c, data?.month))}
             className={cn(
               'flex h-[76px] min-w-0 items-center gap-2 rounded-xl border border-[#DBE0E6] bg-white px-2 pb-1 pt-2 text-left shadow-[0_1px_2px_rgba(0,0,0,0.05)] transition-shadow',
               clickable ? 'cursor-pointer hover:shadow-md' : 'cursor-default',

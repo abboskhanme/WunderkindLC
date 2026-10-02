@@ -55,6 +55,25 @@ public class HomeEndpointsRbacTests
     }
 
     [Fact]
+    public void Kartochka_royxati_oquvchilar_ruxsati_ostida()
+    {
+        // "Ketganlar" / "Birinchi to'lov" ro'yxatida ism, telefon, balans bor — sinf darajasidagi
+        // `students.list` darvozasi qo'llanadi. Metodda o'z [AdminPerm] i bo'lsa u sinfdagisini
+        // BEKOR qilardi (permissions.md §4), [AllowAnonymous] esa hammasini.
+        var src = Source("StudentsController.cs");
+        Assert.Contains("[AdminPerm(\"students.list\")]", ClassHeader(src, "StudentsController"));
+
+        var i = src.IndexOf("[HttpGet(\"month-movement\")]", StringComparison.Ordinal);
+        Assert.True(i > 0, "month-movement endpointi topilmadi");
+        var sig = src.IndexOf("public async Task", i, StringComparison.Ordinal);
+        var attrs = src[i..sig];
+        Assert.DoesNotContain("AdminPerm", attrs);
+        Assert.DoesNotContain("AllowAnonymous", attrs);
+        // Hujjat manzillari ruxsatsiz xodimga tozalanadi (uploads-security.md).
+        Assert.Contains("RedactDocs(students)", src[sig..src.IndexOf("return students", sig, StringComparison.Ordinal)]);
+    }
+
+    [Fact]
     public void Jadval_tori_va_eksporti_dars_jadvali_ruxsati_ostida()
     {
         var src = Source("ScheduleController.cs");

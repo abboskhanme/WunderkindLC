@@ -116,6 +116,20 @@ export const reportGroups: ReportGroup[] = [
         // Sof hisobot (yozuvchi amal yo'q) va yangi sahifa — eski menyu guruhida bandi YO'Q.
         inNav: true,
       },
+      // Bosh sahifa kartochkalarining ro'yxatlari — asosiy kirish KARTOCHKADAN (`lib/homeCards.ts`),
+      // shuning uchun menyuga (`inNav`) qo'shilmadi; hub'da oyni tanlab ko'rish uchun turadi.
+      {
+        label: "Ketgan o'quvchilar",
+        to: '/admin/students/ketganlar',
+        perm: 'students.list',
+        description: "Tanlangan oyda kim kursdan butunlay ketdi — yangi (sinovdagi) va aktiv o'quvchilardan alohida",
+      },
+      {
+        label: "Birinchi to'lovni qilganlar",
+        to: '/admin/students/birinchi-tolov',
+        perm: 'students.list',
+        description: "Tanlangan oyda kim markazga birinchi marta o'quv to'lovini qildi",
+      },
     ],
   },
   {

@@ -30,6 +30,8 @@ const ParentsListPage = lazy(() => import('@/pages/admin/students/lists/ParentsL
 const NewStudentsPage = lazy(() => import('@/pages/admin/students/lists/NewStudentsPage').then((m) => ({ default: m.NewStudentsPage })))
 const ActiveStudentsPage = lazy(() => import('@/pages/admin/students/lists/ActiveStudentsPage').then((m) => ({ default: m.ActiveStudentsPage })))
 const ArchivedStudentsPage = lazy(() => import('@/pages/admin/students/lists/ArchivedStudentsPage').then((m) => ({ default: m.ArchivedStudentsPage })))
+const LeftStudentsPage = lazy(() => import('@/pages/admin/students/lists/MonthMovementPages').then((m) => ({ default: m.LeftStudentsPage })))
+const FirstPaymentStudentsPage = lazy(() => import('@/pages/admin/students/lists/MonthMovementPages').then((m) => ({ default: m.FirstPaymentStudentsPage })))
 const SubscriptionRiskPage = lazy(() => import('@/pages/admin/students/lists/SubscriptionRiskPage').then((m) => ({ default: m.SubscriptionRiskPage })))
 const NotAttendedGroupsPage = lazy(() => import('@/pages/admin/nazorat/NotAttendedGroupsPage').then((m) => ({ default: m.NotAttendedGroupsPage })))
 const LeadsPage = lazy(() => import('@/pages/admin/leads/LeadsPage').then((m) => ({ default: m.LeadsPage })))
@@ -302,6 +304,9 @@ export default function App() {
             <Route path="students/yangi" element={<RequirePerm perm="students.list"><NewStudentsPage /></RequirePerm>} />
             <Route path="students/aktiv" element={<RequirePerm perm="students.list"><ActiveStudentsPage /></RequirePerm>} />
             <Route path="students/arxiv" element={<RequirePerm perm="students.list"><ArchivedStudentsPage /></RequirePerm>} />
+            {/* Bosh sahifa kartochkalarining ro'yxatlari (`lib/homeCards.ts`) — menyuda YO'Q, kartochkadan ochiladi. */}
+            <Route path="students/ketganlar" element={<RequirePerm perm="students.list"><LeftStudentsPage /></RequirePerm>} />
+            <Route path="students/birinchi-tolov" element={<RequirePerm perm="students.list"><FirstPaymentStudentsPage /></RequirePerm>} />
             <Route path="students/obuna-tugaydi" element={<RequirePerm perm="students.list"><SubscriptionRiskPage /></RequirePerm>} />
             <Route path="students/:id" element={<RequirePerm perm="students.list"><StudentDetailPage /></RequirePerm>} />
             <Route path="teachers" element={<TeachersEntry />} />
