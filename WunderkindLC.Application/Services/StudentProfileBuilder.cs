@@ -142,6 +142,7 @@ public static class StudentProfileBuilder
             st.ParentPassportUrl,
             report.Subjects, gradesByMonth, avgGrade,
             monthlyAttendance, conducted, attended, pct, reasonCounts,
-            hwDone, hwMissed, bGood, bBad, trend);
+            hwDone, hwMissed, bGood, bBad, trend,
+            st.SchoolGradeNow, st.IsArchived);
     }
 }

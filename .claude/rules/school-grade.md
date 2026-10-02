@@ -30,7 +30,9 @@ Boshqa qiymat — 400 (sabab matni bilan). Audit: `StudentProfileSnapshot.School
 
 - Qo'shish/tahrirlash: `StudentFormModal` («Boshqa ma'lumotlar» → Markazga kelgan sana · Sinf), profil
   «Tahrirlash» tabi. Tuman/maktab tizimdan butunlay olib tashlangan (`crm-leads.md`).
-- Profil kartasi: ism ostida "7-sinf".
+- Profil: kartada ism ostida "7-sinf" + «Shaxsiy ma'lumotlar» → «Sinf». ⚠️ Manba — daftar
+  (`StudentNotebookDto.SchoolGradeNow`), to'liq `Student` EMAS: u faqat "Tahrirlash" bosilganda
+  yuklanadi va sinf profil ochilganda ko'rinmay qolardi (2026-10-02 da shunday xato bo'lgan).
 - O'quvchilar ro'yxati: «Sinf» filtri (sonlari joriy tab bo'yicha, Holat filtridagi kabi).
 - «Hisobotlar → Sinflar kesimi» (`/admin/hisobotlar/sinflar`, `students.list`) — manba
   `GET /admin/students` (yangi endpoint YO'Q), standart qamrov — AKTIV o'quvchilar.

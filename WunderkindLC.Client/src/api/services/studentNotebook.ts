@@ -67,6 +67,10 @@ export interface StudentNotebook {
   marksTrend: MonthMarks[]
   // O'zlashtirish darajasi taqsimoti
   masteryDistribution?: MasteryDistribution | null
+  /** Maktab sinfi — JORIY qiymat (server har yili o'zi oshiradi; `lib/schoolGrades.ts`). */
+  schoolGradeNow?: number | null
+  /** Arxivdami — profil kartasidagi "Arxivda" belgisi uchun. */
+  isArchived?: boolean
 }
 
 export async function getStudentNotebook(id: string): Promise<StudentNotebook> {

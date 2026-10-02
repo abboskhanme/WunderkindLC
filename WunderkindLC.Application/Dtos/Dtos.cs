@@ -1456,7 +1456,12 @@ public record StudentNotebookDto(
     MonthlyAttendanceDto Attendance, int Conducted, int Attended, int AttendancePct,
     List<AttendanceReasonCountDto> Reasons,
     // Uy vazifa + xulq (oyma-oy)
-    int HomeworkDone, int HomeworkMissed, int BehaviorGood, int BehaviorBad, List<MonthMarksDto> MarksTrend);
+    int HomeworkDone, int HomeworkMissed, int BehaviorGood, int BehaviorBad, List<MonthMarksDto> MarksTrend,
+    // Maktab sinfi — JORIY qiymat (`Student.SchoolGradeNow`, har yili o'zi oshadi; `school-grade.md`).
+    // Ilgari profil kartasi uni faqat "Tahrirlash" yuklagan to'liq yozuvdan olardi — ochilganda ko'rinmasdi.
+    int? SchoolGradeNow = null,
+    // Arxivdami — profil kartasidagi "Arxivda" belgisi uchun (xuddi shu sabab: ilgari faqat "Tahrirlash" dan keyin chiqardi).
+    bool IsArchived = false);
 
 /// <summary>Portal reytingidagi bitta qator (o'quvchi/parent ko'rinishi — shaxsiy ma'lumotsiz: telefon/balans/manzil yo'q).
 /// <paramref name="Ball"/> — YIG'ILGAN ball (reyting shu bo'yicha); Average — qo'shimcha ko'rsatkich.

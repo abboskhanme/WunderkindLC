@@ -104,11 +104,14 @@ export function ProfileCard({
         </div>
 
         <h1 className="mt-3 text-[16px] font-semibold leading-tight text-black">{data.fullName}</h1>
-        {student?.isArchived && (
+        {/* Daftardan (`data`) — `student` faqat "Tahrirlash" bosilganda yuklanadi (pastdagi sinf bilan bir xil sabab). */}
+        {(data.isArchived || student?.isArchived) && (
           <span className="mt-1 rounded-full bg-red-50 px-2 py-0.5 text-[11px] font-semibold text-red-600">Arxivda</span>
         )}
-        {schoolGradeLabel(student?.schoolGradeNow) && (
-          <span className="mt-1 text-[12px] text-[#6b7280]">{schoolGradeLabel(student?.schoolGradeNow)}</span>
+        {/* Sinf — daftardan (`data`): `student` faqat "Tahrirlash" bosilganda yuklanadi, ya'ni
+            undan olinsa sinf profil ochilganda ko'rinmasdi. */}
+        {schoolGradeLabel(data.schoolGradeNow) && (
+          <span className="mt-1 text-[12px] text-[#6b7280]">{schoolGradeLabel(data.schoolGradeNow)}</span>
         )}
         {phone && (
           <p className="mt-1 inline-flex items-center gap-1 text-[12px] text-[#6b7280]">

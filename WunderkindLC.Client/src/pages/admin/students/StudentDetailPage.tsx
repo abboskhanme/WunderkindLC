@@ -61,6 +61,7 @@ import { getStudentTestResults } from '@/api/services/testResults'
 import type { Student, StudentGroupMembership, Curriculum, Group, Teacher, StudentTestResult } from '@/types'
 import { cn, formatDate, formatDateTime, formatMoney, apiErrorMessage, gradeBadgeCls } from '@/lib/utils'
 import { formatPhone } from '@/lib/numberFormat'
+import { schoolGradeLabel } from '@/lib/schoolGrades'
 import { usePerm, useSuperOrGranted } from '@/lib/permissions'
 import { readBackState } from '@/lib/nav'
 import { useAuth } from '@/context/auth-context'
@@ -936,6 +937,7 @@ export function StudentDetailPage() {
                 <InfoRow icon={User} label="Jinsi" value={genderLabels[data.gender as 'male' | 'female'] ?? data.gender} />
                 <InfoRow icon={Cake} label="Tug'ilgan kun" value={data.birthDate ? formatDate(data.birthDate) : '—'} />
                 <InfoRow icon={CalendarPlus} label="Qabul sanasi" value={data.enrollmentDate ? formatDate(data.enrollmentDate) : '—'} />
+                <InfoRow icon={BookOpen} label="Sinf" value={schoolGradeLabel(data.schoolGradeNow) || '—'} />
                 <InfoRow icon={MapPin} label="Manzil" value={data.address || '—'} />
                 <InfoRow icon={GraduationCap} label="Guruh rahbari" value={data.homeroomTeacher || '—'} />
                 <InfoRow icon={User} label="Ota-ona" value={data.parentFullName || '—'} />
