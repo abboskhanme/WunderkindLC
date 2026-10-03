@@ -71,6 +71,10 @@ export interface StudentNotebook {
   schoolGradeNow?: number | null
   /** Arxivdami — profil kartasidagi "Arxivda" belgisi uchun. */
   isArchived?: boolean
+  /** O'quvchining o'z telefoni va ota/ona telefonlari (`parentPhone` ko'pincha bo'sh). */
+  phone?: string
+  fatherPhone?: string
+  motherPhone?: string
 }
 
 export async function getStudentNotebook(id: string): Promise<StudentNotebook> {

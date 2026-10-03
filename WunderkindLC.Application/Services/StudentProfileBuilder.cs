@@ -143,6 +143,7 @@ public static class StudentProfileBuilder
             report.Subjects, gradesByMonth, avgGrade,
             monthlyAttendance, conducted, attended, pct, reasonCounts,
             hwDone, hwMissed, bGood, bBad, trend,
-            st.SchoolGradeNow, st.IsArchived);
+            st.SchoolGradeNow, st.IsArchived,
+            st.Phone ?? "", st.FatherPhone ?? "", st.MotherPhone ?? "");
     }
 }

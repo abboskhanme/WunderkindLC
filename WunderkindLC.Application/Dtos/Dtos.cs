@@ -1461,7 +1461,10 @@ public record StudentNotebookDto(
     // Ilgari profil kartasi uni faqat "Tahrirlash" yuklagan to'liq yozuvdan olardi — ochilganda ko'rinmasdi.
     int? SchoolGradeNow = null,
     // Arxivdami — profil kartasidagi "Arxivda" belgisi uchun (xuddi shu sabab: ilgari faqat "Tahrirlash" dan keyin chiqardi).
-    bool IsArchived = false);
+    bool IsArchived = false,
+    // O'quvchining O'Z telefoni va ota/ona telefonlari — profil kartasi raqamni shulardan oladi.
+    // Ilgari faqat `ParentPhone` bor edi, u esa importdan keyin HAMMADA bo'sh: raqam profilda ko'rinmasdi.
+    string Phone = "", string FatherPhone = "", string MotherPhone = "");
 
 /// <summary>Portal reytingidagi bitta qator (o'quvchi/parent ko'rinishi — shaxsiy ma'lumotsiz: telefon/balans/manzil yo'q).
 /// <paramref name="Ball"/> — YIG'ILGAN ball (reyting shu bo'yicha); Average — qo'shimcha ko'rsatkich.

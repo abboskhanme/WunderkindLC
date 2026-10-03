@@ -50,7 +50,12 @@ export function ProfileCard({
   onCall: () => void
 }) {
   const [copied, setCopied] = useState(false)
-  const phone = student ? student.phone || student.parentPhone : data.parentPhone
+  // Daftardan (`data`) — `student` faqat "Tahrirlash" bosilganda yuklanadi, ya'ni undan olinsa
+  // raqam profil ochilganda ko'rinmasdi (importdagi o'quvchilarda `parentPhone` bo'sh). Tartib:
+  // o'quvchining o'zi → ota-ona → ota → ona.
+  const phone =
+    data.phone || data.parentPhone || data.fatherPhone || data.motherPhone ||
+    (student ? student.phone || student.parentPhone : '')
   const due = amountDue(data.balance)
 
   const copyPhone = () => {

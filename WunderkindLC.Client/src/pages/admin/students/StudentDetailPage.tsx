@@ -941,7 +941,12 @@ export function StudentDetailPage() {
                 <InfoRow icon={MapPin} label="Manzil" value={data.address || '—'} />
                 <InfoRow icon={GraduationCap} label="Guruh rahbari" value={data.homeroomTeacher || '—'} />
                 <InfoRow icon={User} label="Ota-ona" value={data.parentFullName || '—'} />
-                <InfoRow icon={Phone} label="Ota-ona telefoni" value={formatPhone(data.parentPhone) || '—'} />
+                <InfoRow icon={Phone} label="Telefon" value={formatPhone(data.phone ?? '') || '—'} />
+                <InfoRow
+                  icon={Phone}
+                  label="Ota-ona telefoni"
+                  value={formatPhone(data.parentPhone || data.fatherPhone || data.motherPhone || '') || '—'}
+                />
                 {/* Chegirma HAR FAN uchun alohida bo'lishi mumkin — batafsili «Chegirma» tabida.
                     ⚠️ SANOQ registrdan (`discounts.active`) olinadi: `StudentNotebook` da
                     `discountCount` YO'Q, ya'ni usiz «+N ta fan» qismi HECH QACHON chiqmasdi va

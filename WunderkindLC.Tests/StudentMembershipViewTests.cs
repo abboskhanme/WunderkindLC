@@ -247,6 +247,26 @@ public class StudentMembershipViewTests
     }
 
     [Fact]
+    public async Task StudentNotebook_oquvchining_OZ_telefoni_va_ota_ona_telefonlari_qaytadi()
+    {
+        // Profil kartasi raqamni daftardan oladi. Ilgari faqat `ParentPhone` qaytardi — importdagi
+        // o'quvchilarda u bo'sh bo'lgani uchun profilda raqam umuman chiqmasdi.
+        using var db = TestDb.Sqlite();
+        var g = AddGroup(db.Context, "A guruh");
+        var s = AddStudent(db.Context, className: g.Name);
+        s.Phone = "+998-77-728-12-38";
+        s.FatherPhone = "+998-90-111-22-33";
+        s.MotherPhone = "+998-91-444-55-66";
+        db.Context.SaveChanges();
+
+        var notebook = await StudentProfileBuilder.BuildAsync(db.Context, s);
+
+        Assert.Equal("+998-77-728-12-38", notebook.Phone);
+        Assert.Equal("+998-90-111-22-33", notebook.FatherPhone);
+        Assert.Equal("+998-91-444-55-66", notebook.MotherPhone);
+    }
+
+    [Fact]
     public void BIR_GURUHDA_IKKINCHI_azolik_qatori_BAZADA_MUMKIN_EMAS()
     {
         // QULF: (StudentId, GroupId) unikal — guruhdan chiqib qayta qo'shilganda MAVJUD qator
