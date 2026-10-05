@@ -62,6 +62,28 @@ Qoidalar QAYTA YOZILMAGAN, chaqiriladi:
 - davomat foizi — `StudentJournalBuilder.BuildCells` (o'quvchi portali bilan bir xil); kech kelgan KELGAN.
 
 ⚠️ "O'quvchilarim" da balans SUMMASI va telefon YO'Q — faqat qarzdor oylar soni (belgi uchun).
+(Telefon faqat §3.5 dagi «O'quvchilar» tabida — o'z guruhi o'quvchilari, tahrirlash uchun.)
+
+## 3.5. O'QUVCHINI TAHRIRLASH (guruh sahifasi → «O'quvchilar» tabi, 2026-10-05)
+
+Foydalanuvchi talabi: o'qituvchi o'z guruhi o'quvchisining **ism-familiyasi, maktab sinfi va
+telefonini** tuzata olsin (asosan Telegram Mini App ichida). Qo'shish/chiqarish — TAQIQLANGAN.
+
+| Endpoint | Nima |
+|---|---|
+| `GET api/teacher/groups/{classId}/students` | guruhning tirik a'zolari (ism, telefon, joriy sinf, holat) |
+| `PUT api/teacher/groups/{classId}/students/{studentId}` | `{ fullName, schoolGrade, phone }` — FAQAT shu uchtasi |
+
+- Qoida — `TeacherStudentEdit` (Application, sof, `TeacherStudentEditTests`). Sinf: `0` = tozalash,
+  joriy o'quv yiliga bog'lanadi (admin bilan bir xil, `school-grade.md`). Telefon ixtiyoriy, lekin
+  O'ZGARTIRILSA haqiqiy raqam bo'lishi shart; o'zgarmagan (eski/xorijiy) raqam qayta tekshirilmaydi.
+- Darvoza: `journal` ruxsati + guruh EGASI (`TeacherGroupAccess.OwnedBy`) + o'quvchi shu guruhning
+  `IsActive` a'zosi va arxivda emas. ⚠️ **O'rinbosar tahrirlay OLMAYDI** (u vaqtincha keladi).
+- Login akkauntidagi ism ham yangilanadi; audit — `Student/update`, ActorName = o'qituvchi.
+- ⚠️ **O'qituvchi portalida a'zo qo'shish/chiqarish/muzlatish YO'Q va bo'lmaydi** — test
+  (`Oqituvchi_portalida_azo_QOSHISH_CHIQARISH_yoli_YOQ`) bunday endpoint paydo bo'lsa qizaradi.
+- Klient: `pages/teacher/groups/TeacherGroupStudentsTab.tsx` — qator butunlay bosiladi, maydonlar
+  mobil'da 16px (iOS Telegram'da fokusda zoom bo'lmasin), xato oyna ichida, oyna yopilmaydi.
 
 ## 4. TEZKOR DAVOMAT (`/teacher/attendance?group=&date=`)
 

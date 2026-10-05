@@ -182,3 +182,7 @@
   → asosiy kirish kartochkadan, menyuni kengaytirish so'ralmagan
 - [2026-10-01] "Muzlatilgan" kartochkasi oddiy + «aktiv muzlatilgan»ni BIRGA sanaydi, ro'yxat filtrida esa ular
   alohida edi → filtrga "Barcha muzlatilganlar" varianti qo'shildi → kartochka soni ro'yxat bilan teng chiqsin
+- [2026-10-05] O'qituvchi tahririda o'rinbosar ham tahrirlay oladimi? → yo'q, faqat guruh egasi →
+  o'rinbosar guruhga vaqtincha keladi, o'quvchi ma'lumoti esa doimiy
+- [2026-10-05] O'qituvchi telefonni BO'SH qoldira oladimi? → ha (audit bilan) → "tahrirlash" talabi; noto'g'ri
+  formatdagi YANGI raqam esa rad etiladi

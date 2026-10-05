@@ -465,3 +465,41 @@ export async function getTeacherStudents(month?: string): Promise<TeacherStudent
   const { data } = await api.get<TeacherStudents>('/teacher/students', { params: { month } })
   return data
 }
+
+/* ---------- Guruh o'quvchilari (o'qituvchi tahriri) ---------- */
+
+/**
+ * O'z guruhining faol a'zosi — guruh sahifasidagi «O'quvchilar» tabi uchun. Telefon BOR (o'qituvchi
+ * uni tahrirlaydi), balans va ota-ona ma'lumoti YO'Q.
+ */
+export interface TeacherGroupStudent {
+  id: string
+  fullName: string
+  phone: string
+  /** JORIY maktab sinfi (server har yili o'zi oshiradi; `lib/schoolGrades.ts`). */
+  schoolGradeNow: number | null
+  /** A'zolik holati: `active` | `trial` | `frozen`. */
+  status: string
+}
+
+/** O'qituvchi o'zgartira oladigan FAQAT uch maydon. `schoolGrade`: 0 — tozalash. */
+export interface TeacherStudentEditPayload {
+  fullName: string
+  schoolGrade: number
+  phone: string
+}
+
+export async function getTeacherGroupStudents(classId: string): Promise<TeacherGroupStudent[]> {
+  if (USE_MOCK) return []
+  const { data } = await api.get<TeacherGroupStudent[]>(`/teacher/groups/${classId}/students`)
+  return data
+}
+
+export async function updateTeacherGroupStudent(
+  classId: string,
+  studentId: string,
+  payload: TeacherStudentEditPayload,
+): Promise<TeacherGroupStudent> {
+  const { data } = await api.put<TeacherGroupStudent>(`/teacher/groups/${classId}/students/${studentId}`, payload)
+  return data
+}

@@ -4001,6 +4001,16 @@ public record StudentNoteOverviewDto(
 /// </summary>
 public record TeacherContactRequest(List<string> StudentIds, string? ReasonId = null, string? Note = null);
 
+/// <summary>
+/// O'qituvchi guruh sahifasidagi «O'quvchilar» tabi: o'z guruhining FAOL a'zosi.
+/// Telefon BOR — o'qituvchi uni tahrirlay olishi uchun (faqat o'z guruhi o'quvchilari).
+/// Balans/ota-ona ma'lumoti ATAYIN yo'q.
+/// </summary>
+public record TeacherGroupStudentDto(string Id, string FullName, string Phone, int? SchoolGradeNow, string Status);
+
+/// <summary>O'qituvchi tahriri — faqat uch maydon (<c>TeacherStudentEdit</c>). Sinf: null — tegilmaydi, 0 — tozalash.</summary>
+public record TeacherStudentEditRequest(string? FullName, int? SchoolGrade, string? Phone);
+
 /* =================================================================================================
  *  O'RINBOSAR O'QITUVCHILAR (Substitute Teacher Assignments)
  * ============================================================================================== */

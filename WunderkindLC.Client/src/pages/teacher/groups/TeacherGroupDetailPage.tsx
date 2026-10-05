@@ -27,6 +27,7 @@ import { PhotoViewerModal } from '@/components/ui/PhotoViewerModal'
 import { Button } from '@/components/ui/Button'
 import { JournalCellModal } from '@/pages/admin/journal/JournalCellModal'
 import { TeacherGroupTestsPanel } from '@/pages/teacher/tests/TeacherGroupTestsPanel'
+import { TeacherGroupStudentsTab } from './TeacherGroupStudentsTab'
 
 const weekdayShort = ['Du', 'Se', 'Cho', 'Pa', 'Ju', 'Sha', 'Ya']
 const uzMonths = [
@@ -77,7 +78,7 @@ export function TeacherGroupDetailPage() {
 
   // ---- Guruh o'quv dasturi (darsda o'tilgan) ----
   const [groupView, setGroupView] = useState<
-    'jurnal' | 'davomat' | 'baholash' | 'reyting' | 'imtihonlar' | 'dastur' | 'aloqa'
+    'jurnal' | 'davomat' | 'baholash' | 'reyting' | 'imtihonlar' | 'dastur' | 'oquvchilar' | 'aloqa'
   >('jurnal')
   const [curr, setCurr] = useState<GroupCurriculum | null>(null)
   const [currLoading, setCurrLoading] = useState(true)
@@ -430,6 +431,8 @@ export function TeacherGroupDetailPage() {
               { key: "reyting", label: "Reyting" },
               { key: "imtihonlar", label: "Imtihonlar" },
               { key: "dastur", label: "O'quv dasturi" },
+              // O'QUVCHILAR — ism-familiya, sinf, telefonni tahrirlash (qo'shish/chiqarish YO'Q).
+              { key: "oquvchilar", label: "O'quvchilar" },
               // ALOQA — o'quvchini "Bog'lanish kerak" navbatiga yuborish (admin ko'radi va qo'ng'iroq qiladi).
               { key: "aloqa", label: "Aloqa" },
             ] as const).map((t) => (
@@ -771,6 +774,16 @@ export function TeacherGroupDetailPage() {
           )}
 
           {/* Reyting — o'quvchilarning o'rtacha bahosi va baholash statistikasi (bir yoki bir nechta oy) */}
+          {groupView === "oquvchilar" && id && (
+            <Card className="rounded-xl border border-line bg-white p-4 shadow-[var(--shadow-card)]">
+              <div className="mb-3 flex items-center gap-2">
+                <Users className="h-5 w-5 text-teal-600" />
+                <h2 className="font-semibold text-ink">O'quvchilar</h2>
+              </div>
+              <TeacherGroupStudentsTab groupId={id} />
+            </Card>
+          )}
+
           {groupView === "aloqa" && id && (
             <Card className="rounded-xl border border-line bg-white p-4 shadow-[var(--shadow-card)]">
               <div className="mb-3 flex items-center gap-2">

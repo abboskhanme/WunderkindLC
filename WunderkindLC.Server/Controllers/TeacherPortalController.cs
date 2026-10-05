@@ -23,7 +23,7 @@ public partial class TeacherPortalController(
     AppDbContext db, ChatService chat, IWebHostEnvironment env, ReferenceCache refCache,
     FcmService fcm, AutoMessageService autoMsg, ContractService contracts,
     TestCertificateService testCerts, TestCertificateJobs testCertJobs,
-    ContactQueueService queue) : ControllerBase
+    ContactQueueService queue, AuditService audit) : ControllerBase
 {
     /// <summary>"Darsga kelmadi" avto-xabari (attendance_absent) — o'quvchi(lar)ga guruh+sabab bilan.
     /// Exception yutiladi (jurnal javobini bloklamaydi).</summary>
