@@ -106,6 +106,26 @@ public class KassaController(AppDbContext db, AuditService audit, AutoMessageSer
         return PaymentIntakeHttp.ToActionResult(this, res);
     }
 
+
+    // ---------- «Chegirma» — kelmagan darslar (to'lov oynasida, `LessonDiscountHttp`) ----------
+
+    [HttpGet("students/{id}/lesson-discounts")]
+    public Task<ActionResult<List<LessonDiscountDto>>> LessonDiscounts(string id) =>
+        LessonDiscountHttp.ListAsync(db, id);
+
+    [HttpGet("students/{id}/lesson-discounts/quote")]
+    public Task<ActionResult<LessonDiscountQuoteDto>> LessonDiscountQuote(
+        string id, [FromQuery] string? groupId, [FromQuery] string? month, [FromQuery] int lessons) =>
+        LessonDiscountHttp.QuoteAsync(db, id, groupId, month, lessons);
+
+    [HttpPost("students/{id}/lesson-discounts")]
+    public Task<ActionResult<LessonDiscountDto>> ApplyLessonDiscount(string id, LessonDiscountRequest req) =>
+        LessonDiscountHttp.ApplyAsync(db, audit, User, id, req);
+
+    [HttpPost("students/{id}/lesson-discounts/{discountId}/cancel")]
+    public Task<ActionResult<LessonDiscountDto>> CancelLessonDiscount(string id, string discountId) =>
+        LessonDiscountHttp.CancelAsync(db, audit, User, id, discountId);
+
     /// <summary>
     /// KASSIR O'ZI kiritgan to'lovlar (davr bo'yicha) + jami. Kassir FAQAT o'zinikini ko'radi —
     /// filtr so'rovdan emas, TOKENDAN olinadi (boshqa kassirning hisobotini so'rab bo'lmaydi).

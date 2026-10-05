@@ -407,6 +407,7 @@ export function KassaPage() {
       <PaymentModal
         student={payStudent}
         presentation="modal"
+        channel="kassa"
         onClose={() => setPayStudent(null)}
         onSubmit={handlePayment}
       />

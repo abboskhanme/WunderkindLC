@@ -1786,6 +1786,26 @@ public class StudentsController(
         return decimal.TryParse(v, NumberStyles.Any, CultureInfo.InvariantCulture, out var d) ? d : null;
     }
 
+
+    // ---------- «Chegirma» — kelmagan darslar (to'lov oynasida, `LessonDiscountHttp`) ----------
+
+    [HttpGet("{id}/lesson-discounts")]
+    public Task<ActionResult<List<LessonDiscountDto>>> LessonDiscounts(string id) =>
+        LessonDiscountHttp.ListAsync(db, id);
+
+    [HttpGet("{id}/lesson-discounts/quote")]
+    public Task<ActionResult<LessonDiscountQuoteDto>> LessonDiscountQuote(
+        string id, [FromQuery] string? groupId, [FromQuery] string? month, [FromQuery] int lessons) =>
+        LessonDiscountHttp.QuoteAsync(db, id, groupId, month, lessons);
+
+    [HttpPost("{id}/lesson-discounts")]
+    public Task<ActionResult<LessonDiscountDto>> ApplyLessonDiscount(string id, LessonDiscountRequest req) =>
+        LessonDiscountHttp.ApplyAsync(db, audit, User, id, req);
+
+    [HttpPost("{id}/lesson-discounts/{discountId}/cancel")]
+    public Task<ActionResult<LessonDiscountDto>> CancelLessonDiscount(string id, string discountId) =>
+        LessonDiscountHttp.CancelAsync(db, audit, User, id, discountId);
+
     /// <summary>Bitta guruh bo'yicha o'quvchining oylik hisobi (to'lov oynasi uchun) — aggregate emas, faqat
     /// shu guruh narxi + shu guruhga teglangan to'lovlar. O'quvchi bir nechta guruhda o'qisa shu kerak.</summary>
     [HttpGet("{id}/group-ledger")]
@@ -1859,6 +1879,11 @@ public class StudentsController(
         decimal? specDiscount = DiscountRules.Resolve(rows, month, gid) is null
             ? null
             : TuitionService.DiscountForMonth(rows, Math.Max(0m, req.Amount), month, gid);
+        // Kelmagan darslar chegirmasi (to'lov oynasidagi «Chegirma») registrda YO'Q — u mutlaq so'm
+        // bo'lib qatorning `Discount`iga qo'shilgan. Qayta hisobda uni ham qo'shamiz, aks holda u
+        // jimgina o'chib ketardi. `null` holatda eski chegirma (u bilan birga) saqlanadi.
+        if (specDiscount is not null)
+            specDiscount += await LessonDiscountService.ActiveAmountAsync(db, student.Id, gid, month);
 
         // ⚠️ REJA AVVAL TUZILADI (sof funksiya), qator KEYIN o'zgartiriladi. Ilgari chegirma
         // `charge` ustida DARHOL qirqilar, "eski effektiv" esa ALLAQACHON O'ZGARGAN chegirma bilan

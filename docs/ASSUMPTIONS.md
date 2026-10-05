@@ -192,3 +192,8 @@
   joriy oydan» tanlansa) → kurs narxi o'zgarishidagi mavjud qoida bilan bir xil
 - [2026-10-05] Maosh/tushum taqsimoti og'irliklari sinf narxiga o'tadimi? → yo'q, guruh narxida qoladi → maosh foizi
   baribir hisoblangan oylikdan; og'irlik faqat teglanmagan to'lovni bo'lish uchun
+- [2026-10-05] «Chegirma» (kelmagan darslar) bir dars narxi qayerdan? → sinf oralig'i / kursning bir dars narxi,
+  bo'lmasa oylik ÷ shu oydagi darslar → qisman oy hisobi bilan bir xil manba
+- [2026-10-05] To'langan oyga chegirma? → rad etiladi, faqat to'lanmagan qoldiqdan ayriladi → aks holda jimgina avans
+  bo'lardi; pul qaytarish — «Vozvrat»
+- [2026-10-05] Chegirma qayerda? → admin to'lov oynasi ham, Kassa ham (ruxsat: to'lov ruxsati) → kassir to'lov paytida qo'yadi

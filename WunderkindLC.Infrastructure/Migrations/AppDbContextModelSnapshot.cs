@@ -5150,6 +5150,69 @@ namespace WunderkindLC.Infrastructure.Migrations
                     b.ToTable("LeadTelegramMessages");
                 });
 
+            modelBuilder.Entity("WunderkindLC.Domain.LessonDiscount", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasColumnType("text");
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<string>("CancelledAt")
+                        .HasColumnType("text");
+
+                    b.Property<string>("CancelledByName")
+                        .HasColumnType("text");
+
+                    b.Property<string>("CreatedAt")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("CreatedById")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("CreatedByName")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("GroupId")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<decimal>("LessonPrice")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<int>("Lessons")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Month")
+                        .IsRequired()
+                        .HasMaxLength(7)
+                        .HasColumnType("character varying(7)");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("StudentId")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<bool>("WasLocked")
+                        .HasColumnType("boolean");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("StudentId", "GroupId", "Month");
+
+                    b.ToTable("LessonDiscounts");
+                });
+
             modelBuilder.Entity("WunderkindLC.Domain.LessonNote", b =>
                 {
                     b.Property<string>("Id")

@@ -21,6 +21,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options)
     public DbSet<Camera> Cameras => Set<Camera>();
     public DbSet<Subject> Subjects => Set<Subject>();
     public DbSet<SubjectPriceBand> SubjectPriceBands => Set<SubjectPriceBand>();
+    public DbSet<LessonDiscount> LessonDiscounts => Set<LessonDiscount>();
     public DbSet<Group> Classes => Set<Group>();
     public DbSet<GroupTeacherAssignment> GroupTeacherAssignments => Set<GroupTeacherAssignment>();
     public DbSet<SubstituteTeacherAssignment> SubstituteTeacherAssignments => Set<SubstituteTeacherAssignment>();
@@ -298,6 +299,13 @@ public class AppDbContext(DbContextOptions<AppDbContext> options)
             .HasForeignKey(x => x.SubjectId)
             .OnDelete(DeleteBehavior.Cascade);
         b.Entity<SubjectPriceBand>().HasIndex(x => x.SubjectId);
+        // «Chegirma» (kelmagan darslar) — o'quvchi bo'yicha ro'yxat va (o'quvchi, guruh, oy) bo'yicha qidiruv.
+        b.Entity<LessonDiscount>().Property(x => x.StudentId).HasMaxLength(200);
+        b.Entity<LessonDiscount>().Property(x => x.GroupId).HasMaxLength(200);
+        b.Entity<LessonDiscount>().Property(x => x.Month).HasMaxLength(7);
+        b.Entity<LessonDiscount>().Property(x => x.LessonPrice).HasPrecision(18, 2);
+        b.Entity<LessonDiscount>().Property(x => x.Amount).HasPrecision(18, 2);
+        b.Entity<LessonDiscount>().HasIndex(x => new { x.StudentId, x.GroupId, x.Month });
         b.Entity<FinanceTransaction>().Property(t => t.Amount).HasPrecision(18, 2);
         // BEKOR QILINGAN tranzaksiyalar HAMMA joydan chiqariladi (balans, maosh, hisobotlar, kassa,
         // kvitansiya nazorati) — 25+ faylda har so'rovga shart qo'shib, birini unutish xavfi o'rniga.

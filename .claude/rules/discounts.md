@@ -8,6 +8,9 @@ paths:
   - "WunderkindLC.Client/src/api/services/discounts.ts"
   - "WunderkindLC.Client/src/pages/admin/students/DiscountSection.tsx"
   - "WunderkindLC.Client/src/pages/admin/reports/DiscountsReportPage.tsx"
+  - "WunderkindLC.Application/Services/LessonDiscountService.cs"
+  - "WunderkindLC.Server/Controllers/LessonDiscountHttp.cs"
+  - "WunderkindLC.Client/src/pages/admin/students/LessonDiscountPanel.tsx"
 ---
 
 # Chegirmalar qoidalari
@@ -322,3 +325,45 @@ emas; "qaysi fan o'zgardi" faqat `summary` matnida ko'rinadi.
   emas, USTUNLIK** darajasi sifatida qo'shing va §1 dagi jadvalni yangilang.
 - Javob shakli o'zgarsa — `WunderkindLC.Client/src/api/services/discounts.ts` bilan
   MAYDONMA-MAYDON mos bo'lishi SHART (ikkala tomon BIRGA o'zgaradi).
+
+## 13. KELMAGAN DARSLAR CHEGIRMASI — to'lov oynasidagi «Chegirma» (2026-10-05)
+
+Migratsiya `AddLessonDiscounts` (`LessonDiscount` jadvali). WunderkindLMS dagi «kasallik
+chegirmasi» naqshi; foydalanuvchi talabi bilan nomi shunchaki **«Chegirma»**.
+
+To'lov oynasida (admin `PaymentModal` ham, «Kassa» ham) guruh va oy tanlangach
+**«Chegirma (kelmagan darslar)»**: kelmagan darslar SONI + SABAB (majburiy) → oylikdan ayiriladi.
+
+```
+bir dars narxi = sinf oralig'ining / kursning LessonPrice; yo'q bo'lsa — oylik ÷ oydagi darslar (yaxlit so'm)
+ayriladi       = min(darslar × bir dars narxi, shu oyning TO'LANMAGAN qoldig'i)
+```
+
+⚠️ **Bu §1–§12 dagi REGISTR EMAS** — "foiz/summa, shu oydan boshlab amal qiladi" emas, BIR
+MARTALIK tuzatish: aniq (guruh, oy) hisob qatorining `Discount` iga MUTLAQ so'm sifatida
+qo'shiladi. Shuning uchun `DiscountBook`/`Resolve` uni bilmaydi va bilmasligi kerak.
+
+⚠️ **To'liq to'langan oyga QO'LLANMAYDI** (400). Aks holda chegirma jimgina "avans" bo'lib
+qolardi; to'langan pulni qaytarish — «Vozvrat». Qisman to'langan oyda faqat QOLDIQ ayriladi.
+
+⚠️ **Hisob qatori `Locked = true` bo'ladi** — narxni joriy oyga qo'llash, `ReapplyCurrentMonthAsync`,
+muzlatishdagi purge va h.k. qulfsiz qatorning `Discount` ini qayta hisoblab chegirmani jimgina
+o'chirib yuborardi. Qo'lda oylik tahriri (§8.5) esa registr chegirmasiga AMALDAGI darslar
+chegirmalarini QO'SHADI (`LessonDiscountService.ActiveAmountAsync`).
+
+**Bekor qilish** (oynadagi «Bekor qilish»): summa hisobga va qarzga QAYTADI, qator iz sifatida
+qoladi (`CancelledAt`). Qulf: shu oyda boshqa amaldagi chegirma bo'lsa qoladi, aks holda
+BIRINCHI chegirmadan oldingi holat (`WasLocked`) tiklanadi — avval qo'lda tahrirlangan oy
+qulfsiz bo'lib qolmasin.
+
+- Hisobi hali yozilmagan oy (masalan kelgusi oy) — hisob avans to'lovdagi kabi yaratiladi
+  (`EnsureChargeAsync`), keyin chegirma qo'llanadi.
+- Maosh foizi bazasi (`Amount`) O'ZGARMAYDI — oddiy chegirma kabi markaz ko'taradi.
+- Chegirmalar hisobotiga (§9) o'z-o'zidan tushadi — u `MonthlyCharge.Discount` dan yig'iladi.
+
+**Ruxsat:** to'lov ruxsatlari ostida — `StudentsController` (`students.list`) va `KassaController`
+(`kassa`) da bir xil marshrutlar (`{id}/lesson-discounts` · `/quote` · `/{discountId}/cancel`),
+mantiq BITTA joyda (`LessonDiscountHttp` → `LessonDiscountService`). Yangi ruxsat kaliti YO'Q.
+Qo'llash va bekor qilish `PaymentIdempotency.LockAsync("student:{id}")` ostida (to'lov bilan
+bir xil qulf). **Audit:** `StudentDiscount` turi, matn «Chegirma (kelmagan darslar): …».
+**To'liq o'chirish** (`StudentPurge`) qatorlarni ham o'chiradi. Testlar: `LessonDiscountTests`.

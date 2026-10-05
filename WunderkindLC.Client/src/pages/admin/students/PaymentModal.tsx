@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { Wallet, AlertTriangle } from 'lucide-react'
 import type { MonthStatus, Student, StudentGroupMembership } from '@/types'
-import { getStudentLedger, getGroupLedger, receiptDuplicateOf, type DuplicateReceipt } from '@/api/services/students'
+import { getStudentLedger, getGroupLedger, receiptDuplicateOf, type DuplicateReceipt, type LessonDiscountChannel } from '@/api/services/students'
 import { getStudentGroups } from '@/api/services/classes'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
@@ -22,6 +22,7 @@ import { formatMonth, monthStatusLabels, paymentMethods, paymentMethodLabel } fr
 import posthog from '@/lib/posthog'
 import { toast } from '@/lib/toast'
 import { newRequestId } from '@/lib/requestId'
+import { LessonDiscountPanel } from './LessonDiscountPanel'
 
 interface Props {
   student: Student | null
@@ -39,6 +40,8 @@ interface Props {
    * oyna). Telefondagi kassa portali (`/kassa`) o'zgarmasligi uchun `modal` ni tanlaydi.
    */
   presentation?: 'drawer' | 'modal'
+  /** «Chegirma» (kelmagan darslar) qaysi yo'l bilan yoziladi: admin paneli yoki kassa portali (ruxsat shunga qarab). */
+  channel?: LessonDiscountChannel
   onClose: () => void
   onSubmit: (
     amount: number,
@@ -98,6 +101,7 @@ export function PaymentModal({
   title = "To'lov kiritish",
   headerSlot,
   presentation = 'drawer',
+  channel = 'admin',
   onClose,
   onSubmit,
 }: Props) {
@@ -122,6 +126,8 @@ export function PaymentModal({
   /** Kvitansiya raqami BAND — server 409 qaytardi; shu to'lov ma'lumoti kartochka bo'lib chiqadi. */
   const [duplicate, setDuplicate] = useState<DuplicateReceipt | null>(null)
   const [error, setError] = useState<string | null>(null)
+  /** Shu oynada qo'llangan/bekor qilingan chegirmalarning balansga ta'siri ("to'lovdan keyingi balans" uchun). */
+  const [balanceAdj, setBalanceAdj] = useState(0)
 
   const [loading, setLoading] = useState(false) // boshlang'ich (guruhlar) yuklash
   const [loadingMonths, setLoadingMonths] = useState(false) // tanlangan guruh oylari
@@ -179,6 +185,7 @@ export function PaymentModal({
     setCardLast4('')
     setDuplicate(null)
     setError(null)
+    setBalanceAdj(0)
     setGroupsError(null)
     setMonthsError(null)
     if (!studentId) return
@@ -264,6 +271,28 @@ export function PaymentModal({
   /** Ma'lumot ishonchsiz — saqlash BLOKLANADI (pul noto'g'ri hisobga tushmasin). */
   const blocked = !!groupsError || !!monthsError
 
+  /**
+   * Chegirma qo'llangan/bekor qilingandan keyin — oylar qoldig'ini QAYTA yuklaydi, tanlangan oy
+   * o'zgarmaydi, summa yangi qoldiqqa tenglanadi (kassir eski summani to'lab yubormasin).
+   */
+  const reloadLedger = (keepMonth: string) => {
+    if (!studentId || !groupId) return
+    const req = ++reqRef.current
+    getGroupLedger(studentId, groupId)
+      .then((ledger) => {
+        if (reqRef.current !== req) return
+        const r: Row[] = ledger.months.map((m) => ({ month: m.month, remaining: m.remaining, status: m.status }))
+        setRows(r)
+        setMonth(keepMonth)
+        const cur = r.find((x) => x.month === keepMonth)
+        setAmount(cur && cur.remaining > 0 ? cur.remaining : null)
+      })
+      .catch((err) => {
+        if (reqRef.current !== req) return
+        setMonthsError(apiErrorMessage(err, "Oylik hisobni yuklab bo'lmadi"))
+      })
+  }
+
   const handleMonthChange = (value: string) => {
     setMonth(value)
     const r = rows.find((x) => x.month === value)
@@ -316,7 +345,7 @@ export function PaymentModal({
   }
 
   const selected = rows.find((r) => r.month === month)
-  const newBalance = student ? student.balance + (amount ?? 0) : 0
+  const newBalance = student ? student.balance + balanceAdj + (amount ?? 0) : 0
   const monthOptions = rows.length > 0 ? rows.map((r) => r.month) : [currentMonth()]
   const isOpen = open ?? !!student
   const saveDisabled =
@@ -506,6 +535,21 @@ export function PaymentModal({
                     })}
                   </DrawerSelect>
                 </DrawerField>
+
+                {/* «Chegirma» — kelmagan darslar uchun shu oyning oyligidan ayirish (faqat guruh bo'yicha hisob). */}
+                {groupId && studentId && selected && (
+                  <LessonDiscountPanel
+                    key={`${studentId}:${groupId}:${month}`}
+                    channel={channel}
+                    studentId={studentId}
+                    groupId={groupId}
+                    month={month}
+                    onChanged={(delta) => {
+                      setBalanceAdj((b) => b + delta)
+                      reloadLedger(month)
+                    }}
+                  />
+                )}
 
                 <DrawerField
                   label="Qiymat (so'm)"

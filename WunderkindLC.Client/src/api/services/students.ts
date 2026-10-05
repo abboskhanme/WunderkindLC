@@ -937,3 +937,71 @@ export async function getStudentNoteDays(month?: string): Promise<{ date: string
   })
   return data
 }
+
+/* ---------- «Chegirma» — kelmagan darslar (to'lov oynasida; server `LessonDiscountService`) ---------- */
+
+/** Qaysi yo'l: admin paneli (`students.list`) yoki kassa portali (`kassa`) — ruxsat shunga qarab. */
+export type LessonDiscountChannel = 'admin' | 'kassa'
+
+export interface LessonDiscountQuote {
+  groupId: string
+  month: string
+  lessons: number
+  /** Shu oydagi jami darslar (guruh kunlari bo'yicha). */
+  lessonsInMonth: number
+  lessonPrice: number
+  /** Oyning to'lanmagan qoldig'i — ayriladigan summa undan oshmaydi. */
+  remaining: number
+  amount: number
+}
+
+export interface LessonDiscount {
+  id: string
+  groupId: string
+  groupName: string
+  month: string
+  lessons: number
+  lessonPrice: number
+  amount: number
+  reason: string
+  createdAt: string
+  createdByName: string
+  cancelled: boolean
+  cancelledAt: string | null
+  cancelledByName: string | null
+}
+
+const lessonDiscountBase = (channel: LessonDiscountChannel, studentId: string) =>
+  channel === 'kassa'
+    ? `/admin/kassa/students/${studentId}/lesson-discounts`
+    : `/admin/students/${studentId}/lesson-discounts`
+
+export async function getLessonDiscounts(channel: LessonDiscountChannel, studentId: string): Promise<LessonDiscount[]> {
+  if (USE_MOCK) return []
+  const { data } = await api.get<LessonDiscount[]>(lessonDiscountBase(channel, studentId))
+  return data
+}
+
+export async function quoteLessonDiscount(
+  channel: LessonDiscountChannel, studentId: string, groupId: string, month: string, lessons: number,
+): Promise<LessonDiscountQuote> {
+  const { data } = await api.get<LessonDiscountQuote>(`${lessonDiscountBase(channel, studentId)}/quote`, {
+    params: { groupId, month, lessons },
+  })
+  return data
+}
+
+export async function applyLessonDiscount(
+  channel: LessonDiscountChannel, studentId: string,
+  payload: { groupId: string; month: string; lessons: number; reason: string },
+): Promise<LessonDiscount> {
+  const { data } = await api.post<LessonDiscount>(lessonDiscountBase(channel, studentId), payload)
+  return data
+}
+
+export async function cancelLessonDiscount(
+  channel: LessonDiscountChannel, studentId: string, discountId: string,
+): Promise<LessonDiscount> {
+  const { data } = await api.post<LessonDiscount>(`${lessonDiscountBase(channel, studentId)}/${discountId}/cancel`)
+  return data
+}

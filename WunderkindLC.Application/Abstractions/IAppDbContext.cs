@@ -21,6 +21,7 @@ public interface IAppDbContext
     DbSet<Camera> Cameras { get; }
     DbSet<Subject> Subjects { get; }
     DbSet<SubjectPriceBand> SubjectPriceBands { get; }
+    DbSet<LessonDiscount> LessonDiscounts { get; }
     DbSet<Group> Classes { get; }
     DbSet<GroupTeacherAssignment> GroupTeacherAssignments { get; }
     DbSet<SubstituteTeacherAssignment> SubstituteTeacherAssignments { get; }

@@ -74,6 +74,28 @@ public class HomeEndpointsRbacTests
     }
 
     [Fact]
+    public void Chegirma_kelmagan_darslar__tolov_ruxsatlari_ostida()
+    {
+        // To'lovni kim qabul qila olsa chegirmani ham o'sha qo'yadi: admin yo'li `students.list`,
+        // kassa yo'li `kassa`. Metodda o'z [AdminPerm] i yoki [AllowAnonymous] bo'lmasin.
+        foreach (var (file, cls, perm) in new[]
+                 {
+                     ("StudentsController.cs", "StudentsController", "students.list"),
+                     ("KassaController.cs", "KassaController", "kassa"),
+                 })
+        {
+            var src = Source(file);
+            Assert.Contains($"[AdminPerm(\"{perm}\")]", ClassHeader(src, cls));
+            var i = src.IndexOf("lesson-discounts\")]", StringComparison.Ordinal);
+            Assert.True(i > 0, $"{cls}: lesson-discounts topilmadi");
+            var block = src[(i - 200)..src.IndexOf("lesson-discounts/{discountId}/cancel", i, StringComparison.Ordinal)];
+            Assert.DoesNotContain("AdminPerm", block);
+            Assert.DoesNotContain("AllowAnonymous", block);
+            Assert.Contains("LessonDiscountHttp.", src);
+        }
+    }
+
+    [Fact]
     public void Jadval_tori_va_eksporti_dars_jadvali_ruxsati_ostida()
     {
         var src = Source("ScheduleController.cs");

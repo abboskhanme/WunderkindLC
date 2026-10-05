@@ -192,6 +192,14 @@ public record PhoneMatchDto(
 
 /* ---------- Excel'dan ommaviy import ---------- */
 public record StudentImportRowErrorDto(int Row, string Message);
+
+/* ---------- «Chegirma» — kelmagan darslar (`LessonDiscountService`) ---------- */
+public record LessonDiscountRequest(string GroupId, string Month, int Lessons, string? Reason);
+public record LessonDiscountQuoteDto(
+    string GroupId, string Month, int Lessons, int LessonsInMonth, decimal LessonPrice, decimal Remaining, decimal Amount);
+public record LessonDiscountDto(
+    string Id, string GroupId, string GroupName, string Month, int Lessons, decimal LessonPrice, decimal Amount,
+    string Reason, string CreatedAt, string CreatedByName, bool Cancelled, string? CancelledAt, string? CancelledByName);
 /// <param name="Existing">Bazada (yoki shu faylda yuqoriroqda) BOR bo'lib chiqqan qatorlar — yangi o'quvchi yaratilmadi.</param>
 /// <param name="AddedToGroups">Ulardan mavjud o'quvchi yangi guruhga qo'shilgani.</param>
 /// <param name="Warnings">Xato emas, lekin ko'rib chiqilsin: mavjud o'quvchi / ismdosh / guruhdan chiqqan.</param>

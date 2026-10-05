@@ -834,6 +834,36 @@ public class SubjectPriceBand
     public decimal LessonPrice { get; set; }
 }
 
+/// <summary>
+/// «CHEGIRMA» — kelmagan darslar uchun oylikdan ayirish (to'lov oynasida, migratsiya `AddLessonDiscounts`).
+/// Kassir N dars + sabab kiritadi; (o'quvchi, guruh, oy) hisobining <c>Discount</c> i shuncha oshadi va
+/// hisob <c>Locked</c> bo'ladi (keyingi qayta hisoblar chegirmani o'chirib yubormasin). Qoida —
+/// <c>LessonDiscountService</c>; WunderkindLMS dagi «kasallik chegirmasi» naqshi.
+/// </summary>
+public class LessonDiscount
+{
+    public string Id { get; set; } = Guid.NewGuid().ToString();
+    public string StudentId { get; set; } = string.Empty;
+    public string GroupId { get; set; } = string.Empty;
+    /// <summary>"yyyy-MM".</summary>
+    public string Month { get; set; } = string.Empty;
+    /// <summary>Kelmagan darslar soni.</summary>
+    public int Lessons { get; set; }
+    /// <summary>Hisoblashda olingan bir dars narxi (snapshot).</summary>
+    public decimal LessonPrice { get; set; }
+    /// <summary>HAQIQATDA ayrilgan summa (to'lanmagan qoldiq bilan cheklangan bo'lishi mumkin).</summary>
+    public decimal Amount { get; set; }
+    public string Reason { get; set; } = string.Empty;
+    /// <summary>Hisob qatori chegirmadan OLDIN qo'lda tahrirlanganmi — bekor qilinganda shu tiklanadi.</summary>
+    public bool WasLocked { get; set; }
+    public string CreatedAt { get; set; } = string.Empty;
+    public string CreatedById { get; set; } = string.Empty;
+    public string CreatedByName { get; set; } = string.Empty;
+    /// <summary>Bekor qilinganmi (qator O'CHIRILMAYDI — iz qoladi).</summary>
+    public string? CancelledAt { get; set; }
+    public string? CancelledByName { get; set; }
+}
+
 /// <summary>O'quv xonasi (auditoriya). Guruhlarga FK orqali bog'lanadi.</summary>
 public class Room
 {
