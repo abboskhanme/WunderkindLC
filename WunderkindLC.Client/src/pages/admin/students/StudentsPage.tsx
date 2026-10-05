@@ -253,7 +253,8 @@ export function StudentsPage() {
     try {
       const result = await importStudents(file)
       setImportResult(result)
-      if (result.created > 0) setStudents(await getStudents())
+      // Mavjud o'quvchi guruhga qo'shilgan yoki sinfi to'ldirilgan bo'lishi ham mumkin.
+      if (result.created > 0 || (result.existing ?? 0) > 0) setStudents(await getStudents())
     } catch (err) {
       const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message
       alert('Yuklashda xatolik: ' + (msg ?? 'fayl noto\'g\'ri yoki server xatosi'))
@@ -1589,6 +1590,12 @@ export function StudentsPage() {
                   O'tkazib yuborildi (bo'sh): <b>{importResult.skipped}</b>
                 </span>
               )}
+              {(importResult.existing ?? 0) > 0 && (
+                <span className="text-sky-700">
+                  Mavjud o'quvchi (qayta yaratilmadi): <b>{importResult.existing}</b>
+                  {(importResult.addedToGroups ?? 0) > 0 && <>, guruhga qo'shildi: <b>{importResult.addedToGroups}</b></>}
+                </span>
+              )}
             </div>
 
             {importResult.errors.length > 0 && (
@@ -1605,6 +1612,29 @@ export function StudentsPage() {
                       <tr key={i}>
                         <td className="px-3 py-2 text-slate-500">{e.row}</td>
                         <td className="px-3 py-2 text-red-600">{e.message}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {/* Ogohlantirishlar — xato emas: mavjud o'quvchi, ismdosh (dublikat emasligini tekshiring)
+                yoki guruhdan avval chiqqan. Server `StudentImportPlan` qarori. */}
+            {(importResult.warnings?.length ?? 0) > 0 && (
+              <div className="max-h-56 overflow-auto rounded-lg border border-amber-100">
+                <table className="w-full text-left text-sm">
+                  <thead className="sticky top-0 bg-amber-50 text-xs uppercase tracking-wide text-amber-700">
+                    <tr>
+                      <th className="w-16 px-3 py-2">Qator</th>
+                      <th className="px-3 py-2">E'tibor bering</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-amber-50">
+                    {importResult.warnings!.map((w, i) => (
+                      <tr key={i}>
+                        <td className="px-3 py-2 text-slate-500">{w.row}</td>
+                        <td className="px-3 py-2 text-amber-800">{w.message}</td>
                       </tr>
                     ))}
                   </tbody>

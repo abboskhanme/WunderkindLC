@@ -67,6 +67,12 @@ export interface StudentImportResult {
   failed: number
   skipped: number
   errors: StudentImportRowError[]
+  /** Bazada (yoki faylda yuqoriroqda) BOR bo'lib chiqqan qatorlar — yangi o'quvchi yaratilmadi. */
+  existing?: number
+  /** Ulardan mavjud o'quvchi yangi guruhga qo'shilgani. */
+  addedToGroups?: number
+  /** Xato emas, ko'rib chiqish uchun: mavjud o'quvchi, ismdosh, guruhdan chiqqan. */
+  warnings?: StudentImportRowError[]
 }
 
 /** O'quvchilarni ommaviy kiritish uchun bo'sh Excel shablonini yuklab oladi (.xlsx). */

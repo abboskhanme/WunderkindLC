@@ -752,43 +752,7 @@ public class StudentsController(
         // Oylik to'lov DARROV yozilmaydi — a'zolik AKTIVLASHTIRILGANDA boshlanadi
         // (qisman birinchi oy + keyingi to'liq oylar; muzlatilsa to'xtaydi).
         if (cls is not null)
-        {
-            var memberStatus = NormalizeStatus(status);
-            db.StudentGroups.Add(new StudentGroup
-            {
-                StudentId = student.Id,
-                GroupId = cls.Id,
-                JoinedAt = enrollment,
-                IsActive = memberStatus != "frozen", // frozen — IsActive = false
-                Status = memberStatus,
-                // ⚠️ HOLAT SANASIZ QOLMASIN. Ilgari bu yerda `ActivatedAt`/`FrozenAt` UMUMAN
-                // yozilmasdi va qator ZID chiqardi: "active" (ya'ni pullik), lekin qachondan
-                // ekani noma'lum. `TuitionService.AccruableMonth` haqiqiy sana talab qilgani
-                // uchun bunday a'zolikka oylik HECH QACHON hisoblanmasdi, teglanmagan to'lov
-                // taqsimoti (maosh, per-guruh balans, kurs moliyasi) esa uni "pullik" deb
-                // olardi — bir guruhning puli ikkinchisining o'qituvchisiga bo'linib ketardi.
-                // Endi sana = qabul sanasi: "active" tanlansa hisob shu sanadan yuritiladi
-                // (qabul oyining O'ZI qisman hisobsiz qoladi — u faqat «Aktivlashtirish»
-                // oynasida yoziladi), "frozen" tanlansa esa a'zolik boshidanoq to'xtatilgan.
-                //
-                // ⚠️ ORQAGA SANALGAN QABUL SANASI QIRQILADI (`MembershipLifecycle.ActivationStartForCreate`). Sabab:
-                // `AccrueDue` har 12 soatda butun tarixni skanerlaydi, ya'ni eski `enrollment`
-                // bilan OMMAVIY IMPORT qilinsa bir necha oylik qarz JIMGINA yozilib, ota-onalarga
-                // avto-SMS to'lqini ketardi (`.claude/rules/membership-periods.md` §6 aynan shu
-                // xavfdan qo'riqlaydi). Bu yo'l qisman oylik ham YOZMAYDI, ya'ni orqaga sanashning
-                // to'g'ri natijasi baribir chiqmasdi. Haqiqatan o'tmishdan aktivlashtirish kerak
-                // bo'lsa — «Aktivlashtirish» oynasi: u qisman oylikni yozadi va bo'shliqlarni
-                // ONGLI ravishda (`AccrueCatchUpAsync`) to'ldiradi.
-                ActivatedAt = memberStatus == "active"
-                    ? MembershipLifecycle.ActivationStartForCreate(enrollment, AppClock.Today)
-                    : string.Empty,
-                FrozenAt = memberStatus == "frozen" ? enrollment : string.Empty,
-                // RecordedAt — HAQIQIY bugungi sana (enrollment ORQAGA sanalgan bo'lishi mumkin).
-                // Jurnalda undan OLDINGI, allaqachon davomati olingan darslar avto-"keldi" ✓
-                // bo'lib to'lib qolmasin (ClassesController.AddMember bilan bir xil qoida).
-                RecordedAt = AppClock.Today.ToString("yyyy-MM-dd"),
-            });
-        }
+            AddMembershipRow(student.Id, cls, status, enrollment);
 
         // Chegirma berilgan bo'lsa — audit yozuvi.
         if (student.DiscountPct > 0 || student.DiscountAmount > 0)
@@ -1541,7 +1505,54 @@ public class StudentsController(
     {
         "F.I.SH (o'quvchi)*", "Telefon", "Ota ismi", "Ota tel", "Ona ismi", "Ona tel",
         "Guruh", "Holat", "Tug'ilgan sana (YYYY-MM-DD)", "Jinsi (o'g'il/qiz)",
+        // ⚠️ YANGI ustunlar faqat OXIRIGA qo'shiladi — ustunlar o'rni bo'yicha o'qiladi, ya'ni eski
+        // (10 ustunli) to'ldirilgan fayllar ham avvalgidek import bo'ladi.
+        "Sinf (1-11 yoki bitirgan)",
     };
+
+    /// <summary>
+    /// Guruh a'zoligini yaratadi — yangi o'quvchi (<see cref="AddStudent"/>) va Excel importida
+    /// MAVJUD o'quvchini guruhga qo'shish uchun BITTA qoida (holat, sanalar, orqaga sanani qirqish).
+    /// SaveChanges QILMAYDI.
+    /// </summary>
+    private void AddMembershipRow(string studentId, Group cls, string status, string enrollment)
+    {
+        var memberStatus = NormalizeStatus(status);
+        db.StudentGroups.Add(new StudentGroup
+        {
+            StudentId = studentId,
+            GroupId = cls.Id,
+            JoinedAt = enrollment,
+            IsActive = memberStatus != "frozen", // frozen — IsActive = false
+            Status = memberStatus,
+            // ⚠️ HOLAT SANASIZ QOLMASIN. Ilgari bu yerda `ActivatedAt`/`FrozenAt` UMUMAN
+            // yozilmasdi va qator ZID chiqardi: "active" (ya'ni pullik), lekin qachondan
+            // ekani noma'lum. `TuitionService.AccruableMonth` haqiqiy sana talab qilgani
+            // uchun bunday a'zolikka oylik HECH QACHON hisoblanmasdi, teglanmagan to'lov
+            // taqsimoti (maosh, per-guruh balans, kurs moliyasi) esa uni "pullik" deb
+            // olardi — bir guruhning puli ikkinchisining o'qituvchisiga bo'linib ketardi.
+            // Endi sana = qabul sanasi: "active" tanlansa hisob shu sanadan yuritiladi
+            // (qabul oyining O'ZI qisman hisobsiz qoladi — u faqat «Aktivlashtirish»
+            // oynasida yoziladi), "frozen" tanlansa esa a'zolik boshidanoq to'xtatilgan.
+            //
+            // ⚠️ ORQAGA SANALGAN QABUL SANASI QIRQILADI (`MembershipLifecycle.ActivationStartForCreate`). Sabab:
+            // `AccrueDue` har 12 soatda butun tarixni skanerlaydi, ya'ni eski `enrollment`
+            // bilan OMMAVIY IMPORT qilinsa bir necha oylik qarz JIMGINA yozilib, ota-onalarga
+            // avto-SMS to'lqini ketardi (`.claude/rules/membership-periods.md` §6 aynan shu
+            // xavfdan qo'riqlaydi). Bu yo'l qisman oylik ham YOZMAYDI, ya'ni orqaga sanashning
+            // to'g'ri natijasi baribir chiqmasdi. Haqiqatan o'tmishdan aktivlashtirish kerak
+            // bo'lsa — «Aktivlashtirish» oynasi: u qisman oylikni yozadi va bo'shliqlarni
+            // ONGLI ravishda (`AccrueCatchUpAsync`) to'ldiradi.
+            ActivatedAt = memberStatus == "active"
+                ? MembershipLifecycle.ActivationStartForCreate(enrollment, AppClock.Today)
+                : string.Empty,
+            FrozenAt = memberStatus == "frozen" ? enrollment : string.Empty,
+            // RecordedAt — HAQIQIY bugungi sana (enrollment ORQAGA sanalgan bo'lishi mumkin).
+            // Jurnalda undan OLDINGI, allaqachon davomati olingan darslar avto-"keldi" ✓
+            // bo'lib to'lib qolmasin (ClassesController.AddMember bilan bir xil qoida).
+            RecordedAt = AppClock.Today.ToString("yyyy-MM-dd"),
+        });
+    }
 
     // Guruh bo'yicha status mapping (guruh berilgan bo'lsa status to'ldirish uchun).
     private static string NormalizeGroupStatus(Group? cls, string statusFromRow)
@@ -1574,6 +1585,9 @@ public class StudentsController(
             new[] { "Holat", "ixtiyoriy: trial, active yoki frozen (default: trial). Guruh bo'lsa qo'llaniladi" },
             new[] { "Tug'ilgan sana", "YYYY-MM-DD, masalan 2015-03-21 (ixtiyoriy)" },
             new[] { "Jinsi", "o'g'il yoki qiz (bo'sh bo'lsa — o'g'il)" },
+            new[] { "Sinf", "ixtiyoriy. Maktabdagi sinf: 1 dan 11 gacha raqam (masalan 7) yoki «bitirgan». Har yili 1-sentabrda o'zi oshadi" },
+            new[] { "", "" },
+            new[] { "Takroriy o'quvchi", "Bazada F.I.SH va telefoni (o'quvchi/ota/ona) mos o'quvchi bo'lsa, yangisi yaratilmaydi — faqat ko'rsatilgan guruhga qo'shiladi. Bir o'quvchini bir nechta guruhga qo'shish uchun uni har guruh bilan alohida qatorda yozing" },
             new[] { "", "" },
             new[] { "Mavjud guruhlar:", groupNames.Count == 0 ? "(guruh yaratilmagan)" : "" },
         };
@@ -1620,63 +1634,111 @@ public class StudentsController(
             .GroupBy(c => c.Name, StringComparer.OrdinalIgnoreCase)
             .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
 
-        var errors = new List<StudentImportRowErrorDto>();
-        int created = 0, skipped = 0;
+        // DUBLIKATDAN HIMOYA (`StudentImportPlan`): bazadagi o'quvchilar va ularning a'zoliklari —
+        // qator bilan ism + telefon mos kelsa yangisi yaratilmaydi, faqat guruhga qo'shiladi.
+        var existing = (await db.Students.AsNoTracking()
+                .Select(x => new { x.Id, x.FullName, x.IsArchived, x.SchoolGrade, x.SchoolGradeYear,
+                                   x.Phone, x.FatherPhone, x.MotherPhone, x.ParentPhone })
+                .ToListAsync())
+            .Select(x => new StudentImportPlan.Existing(x.Id, x.FullName, x.IsArchived,
+                SchoolGrades.Current(x.SchoolGrade, x.SchoolGradeYear, AppClock.Today),
+                x.Phone, x.FatherPhone, x.MotherPhone, x.ParentPhone))
+            .ToList();
+        var groupNameById = classByName.Values.ToDictionary(c => c.Id, c => c.Name, StringComparer.Ordinal);
+        var memberships = (await db.StudentGroups.AsNoTracking()
+                .Select(m => new { m.StudentId, m.GroupId, m.IsActive }).ToListAsync())
+            .Where(m => groupNameById.ContainsKey(m.GroupId))
+            .Select(m => (m.StudentId, groupNameById[m.GroupId], m.IsActive))
+            .ToList();
 
         // 0-qator — sarlavha; ma'lumot 1-indeksdan boshlanadi (Excel'dagi 2-qator).
-        // Ustunlar tartibi: 0=FISH, 1=telefon, 2=ota ismi, 3=ota tel, 4=ona ismi, 5=ona tel, 6=guruh (ixtiyoriy), 7=holat, 8=tug'ilgan sana, 9=jinsi
-        for (var i = 1; i < rows.Count; i++)
+        // Ustunlar: 0=FISH, 1=telefon, 2=ota ismi, 3=ota tel, 4=ona ismi, 5=ona tel, 6=guruh, 7=holat,
+        // 8=tug'ilgan sana, 9=jinsi, 10=sinf (eski fayllarda bo'sh).
+        var planRows = rows.Skip(1).Select((r, i) => new StudentImportPlan.Row(
+            i + 2, r[0], r[1], r[2], r[3], r[4], r[5], r[6], r[7], r[8], r[9], r[10])).ToList();
+        var steps = StudentImportPlan.Build(planRows, existing, memberships, classByName.Keys);
+
+        var errors = new List<StudentImportRowErrorDto>();
+        var warnings = new List<StudentImportRowErrorDto>();
+        int created = 0, skipped = 0, existingCount = 0, addedToGroups = 0;
+        var createdByIndex = new Dictionary<int, Student>();
+
+        foreach (var step in steps)
         {
-            var r = rows[i];
-            var excelRow = i + 1; // Excel'da 1-asosli qator raqami
-
-            if (r.All(string.IsNullOrWhiteSpace)) { skipped++; continue; }
-
-            var fullName = r[0].Trim();
-            if (string.IsNullOrWhiteSpace(fullName))
-            { errors.Add(new StudentImportRowErrorDto(excelRow, "F.I.SH bo'sh")); continue; }
-
-            // Ota-ona: father yoki mother (bo'lsa) ishlatiladi
-            var fatherFullName = r[2].Trim();
-            var fatherPhone = r[3].Trim();
-            var motherFullName = r[4].Trim();
-            var motherPhone = r[5].Trim();
-
-            // GURUH — ixtiyoriy. Bo'sh bo'lsa faqat Student yaratiladi (guruhga qo'shilmay).
-            var groupName = r[6].Trim();
-            Group? cls = null;
-            if (!string.IsNullOrWhiteSpace(groupName))
+            var r = step.Source;
+            var cls = r.Group.Trim().Length > 0 ? classByName.GetValueOrDefault(r.Group.Trim()) : null;
+            switch (step.Kind)
             {
-                if (!classByName.TryGetValue(groupName, out cls))
+                case StudentImportPlan.Kind.Error:
+                    errors.Add(new StudentImportRowErrorDto(step.ExcelRow, step.Message ?? "Xato"));
+                    break;
+
+                case StudentImportPlan.Kind.Create:
                 {
-                    errors.Add(new StudentImportRowErrorDto(excelRow, $"Guruh topilmadi: \"{groupName}\""));
-                    continue;
+                    var payload = new StudentPayload(
+                        FullName: StudentImportPlan.CleanName(r.FullName),
+                        BirthDate: NormalizeDate(r.BirthDate),
+                        Address: "",
+                        Gender: NormalizeGender(r.Gender),
+                        ParentFullName: null,
+                        ParentPhone: null,
+                        ClassName: cls?.Name ?? "", // guruh bo'lsa guruh nomi, aks holda bo'sh
+                        EnrollmentDate: null,
+                        Phone: PhoneUtil.Normalize(r.Phone),
+                        FatherFullName: r.FatherName.Trim().Length > 0 ? r.FatherName.Trim() : null,
+                        FatherPhone: r.FatherPhone.Trim().Length > 0 ? PhoneUtil.Normalize(r.FatherPhone) : null,
+                        MotherFullName: r.MotherName.Trim().Length > 0 ? r.MotherName.Trim() : null,
+                        MotherPhone: r.MotherPhone.Trim().Length > 0 ? PhoneUtil.Normalize(r.MotherPhone) : null,
+                        SchoolGrade: step.Grade);
+                    // Holat — faqat guruh bo'lsa qo'llaniladi
+                    var status = cls is not null ? NormalizeGroupStatus(cls, r.Status.Trim()) : "";
+                    createdByIndex[step.NewIndex!.Value] = AddStudent(payload, cls, status);
+                    created++;
+                    if (step.Warning is not null) warnings.Add(new StudentImportRowErrorDto(step.ExcelRow, step.Warning));
+                    break;
                 }
+
+                case StudentImportPlan.Kind.Join:
+                case StudentImportPlan.Kind.Skip when step.ExistingId is not null || step.NewIndex is not null:
+                {
+                    // MAVJUD o'quvchi (bazada yoki shu faylda yuqoriroqda yaratilgan).
+                    var student = step.ExistingId is not null
+                        ? await db.Students.FindAsync(step.ExistingId)
+                        : createdByIndex.GetValueOrDefault(step.NewIndex!.Value);
+                    if (student is null) { skipped++; break; }
+                    existingCount++;
+
+                    if (step.FillGrade && student.SchoolGrade is null)
+                    {
+                        var before = AuditService.StudentProfileSnapshot(student);
+                        ApplySchoolGrade(student, step.Grade);
+                        audit.Record(AuditService.EntityStudent, student.Id, "update",
+                            $"O'quvchi ma'lumoti tahrirlandi — Excel importi, sinf qo'shildi ({student.FullName})",
+                            before: before, after: AuditService.StudentProfileSnapshot(student), studentId: student.Id);
+                    }
+
+                    if (step.Kind == StudentImportPlan.Kind.Join && cls is not null)
+                    {
+                        AddMembershipRow(student.Id, cls, NormalizeGroupStatus(cls, r.Status.Trim()),
+                            AppClock.Today.ToString("yyyy-MM-dd"));
+                        audit.Record("Membership", $"{cls.Id}:{student.Id}", "create",
+                            $"Guruhga qo'shildi (Excel importi): {student.FullName} → {cls.Name}",
+                            studentId: student.Id);
+                        addedToGroups++;
+                    }
+                    warnings.Add(new StudentImportRowErrorDto(step.ExcelRow, step.Message ?? ""));
+                    break;
+                }
+
+                default: // bo'sh qator
+                    skipped++;
+                    break;
             }
-
-            var payload = new StudentPayload(
-                FullName: fullName,
-                BirthDate: NormalizeDate(r[8]),
-                Address: "",
-                Gender: NormalizeGender(r[9]),
-                ParentFullName: null,
-                ParentPhone: null,
-                ClassName: cls?.Name ?? "", // guruh bo'lsa guruh nomi, aks holda bo'sh
-                EnrollmentDate: null,
-                Phone: PhoneUtil.Normalize(r[1]),
-                FatherFullName: fatherFullName.Length > 0 ? fatherFullName : null,
-                FatherPhone: fatherPhone.Length > 0 ? PhoneUtil.Normalize(fatherPhone) : null,
-                MotherFullName: motherFullName.Length > 0 ? motherFullName : null,
-                MotherPhone: motherPhone.Length > 0 ? PhoneUtil.Normalize(motherPhone) : null);
-
-            // Holat — faqat guruh bo'lsa qo'llaniladi
-            var status = cls is not null ? NormalizeGroupStatus(cls, r[7].Trim()) : "";
-            AddStudent(payload, cls, status);
-            created++;
         }
 
-        if (created > 0) await db.SaveChangesAsync();
-        return new StudentImportResultDto(created, errors.Count, skipped, errors);
+        if (created > 0 || existingCount > 0) await db.SaveChangesAsync();
+        return new StudentImportResultDto(created, errors.Count, skipped, errors,
+            Existing: existingCount, AddedToGroups: addedToGroups, Warnings: warnings);
     }
 
     private static string NormalizeGender(string raw)

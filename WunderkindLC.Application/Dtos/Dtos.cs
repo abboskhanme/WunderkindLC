@@ -192,7 +192,11 @@ public record PhoneMatchDto(
 
 /* ---------- Excel'dan ommaviy import ---------- */
 public record StudentImportRowErrorDto(int Row, string Message);
-public record StudentImportResultDto(int Created, int Failed, int Skipped, List<StudentImportRowErrorDto> Errors);
+/// <param name="Existing">Bazada (yoki shu faylda yuqoriroqda) BOR bo'lib chiqqan qatorlar — yangi o'quvchi yaratilmadi.</param>
+/// <param name="AddedToGroups">Ulardan mavjud o'quvchi yangi guruhga qo'shilgani.</param>
+/// <param name="Warnings">Xato emas, lekin ko'rib chiqilsin: mavjud o'quvchi / ismdosh / guruhdan chiqqan.</param>
+public record StudentImportResultDto(int Created, int Failed, int Skipped, List<StudentImportRowErrorDto> Errors,
+    int Existing = 0, int AddedToGroups = 0, List<StudentImportRowErrorDto>? Warnings = null);
 
 /// <summary>Tanlangan o'quvchilarni Excel'ga eksport qilish so'rovi.</summary>
 public record StudentExportSelectedRequest(List<string> StudentIds);

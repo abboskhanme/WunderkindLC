@@ -37,4 +37,20 @@ Boshqa qiymat — 400 (sabab matni bilan). Audit: `StudentProfileSnapshot.School
 - «Hisobotlar → Sinflar kesimi» (`/admin/hisobotlar/sinflar`, `students.list`) — manba
   `GET /admin/students` (yangi endpoint YO'Q), standart qamrov — AKTIV o'quvchilar.
 
+- **Excel importi** — shablonda «Sinf (1-11 yoki bitirgan)» ustuni (OXIRGI ustun: eski 10 ustunli
+  fayllar ham o'qiladi). Qabul qilinadi: `7`, `7-sinf`, `7 sinf`, `7 класс`, `7.0` (Excel raqami),
+  `bitirgan`/`tugatgan` → 12. ⚠️ Harfli sinf (`7a`, `8-B`) markazda YO'Q — xato qator bo'lib qaytadi
+  (foydalanuvchi qarori). Bo'sh — kiritilmagan. Mavjud o'quvchida sinf YO'Q bo'lsa importdagisi
+  yoziladi, BOR bo'lsa tegilmaydi. Qoida: `StudentImportPlan.TryParseGrade` (`StudentImportPlanTests`).
+
+### Importda DUBLIKATDAN HIMOYA (`StudentImportPlan`, 2026-10-05)
+
+Ilgari har qator yangi o'quvchi yaratardi — ikki guruh ro'yxatidagi o'quvchi ikki marta yaratilgan
+(2026-09-30, 22 ta dublikat qo'lda birlashtirildi). Endi: ISM (registr/apostrof/bo'shliqdan qat'i
+nazar) VA kamida bitta TELEFON (o'quvchi/ota/ona) mos → yangisi YARATILMAYDI, faqat ko'rsatilgan
+guruhga qo'shiladi; faylning o'zidagi takror ham shunday. Faqat ismi mos → yaratiladi, lekin
+ogohlantirish bilan (ismdoshlar jimgina birlashmasin). Arxivdagi o'quvchi bilan mos — xato
+(avval tiklang). Guruhdan avval chiqqan — jimgina qaytarilmaydi (ogohlantirish). Natija oynasida
+«Mavjud o'quvchi» va ogohlantirishlar jadvali.
+
 Klient yordamchilari — `lib/schoolGrades.ts` (faqat yorliq/filtr/sanoq; sinfni QAYTA hisoblamaydi).
