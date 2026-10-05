@@ -444,9 +444,21 @@ aks holda (sinf yo'q / oraliqdan tashqarida / kurssiz guruh)          → guruh 
 - 1-sentabrda sinf o'zi oshadi → sentabr hisobi yangi oraliq narxida yoziladi (alohida ish yo'q).
 - Oraliq bir dars narxi `0` — pro-rata (oylik ÷ jami dars), `null` EMAS: oraliq topilganda kursning
   bir dars narxi ishlatilmaydi (u boshqa oylikka mo'ljallangan).
-- Kurs tahririda oraliqlar o'zgarsa va «Ha — joriy oydan» tanlansa: joriy oy hisoblari (qo'lda
-  tahrirlanmagan) har o'quvchi uchun YANGI oraliqlar bilan qayta moslanadi — saqlanmagan oraliqlar
-  `PricingBook.From(rows)` bilan beriladi (bazadan o'qilsa eskisi chiqardi).
+- ⚠️ **SINF NARXI DARHOL QO'LLANADI (2026-10-05, foydalanuvchi talabi: "shu zahoti avtomatik").**
+  Uch yo'l, uchalasi ham SO'RAMASDAN:
+  1. **Kurs sinf narxlari o'zgarsa** (`SubjectsController.Update`) — joriy oy hisoblari har o'quvchi uchun
+     YANGI oraliqlar bilan qayta moslanadi (saqlanmagan oraliqlar `PricingBook.From(rows)` bilan beriladi —
+     bazadan o'qilsa eskisi chiqardi). «Ha/Yo'q» endi FAQAT ASOSIY narx uchun so'raladi: «Yo'q» bo'lsa joriy
+     oyda oraliqqa tushmaganlar eski asosiy narxda qoladi, tushganlar yangi sinf narxiga o'tadi.
+  2. **Guruh boshqa kursga o'tkazilsa** (`ClassesController.Update`) — yangi kursning sinf narxlari ham shunday.
+  3. **O'quvchining SINFI o'zgarsa** — `GradeRepricing.ApplyAsync` (YAGONA yo'l): admin tahriri, Excel
+     importi (mavjud o'quvchiga sinf qo'shilishi) va o'qituvchi tahriri. JORIY va KEYINGI (oldindan
+     to'langan) oylar qayta hisoblanadi, har oy tarixga alohida yoziladi («Oylik sinfga qarab qayta
+     hisoblandi (7-sinf → 8-sinf) …», `StudentDiscount` turi). ⚠️ O'qituvchi sinfni tuzatsa ham pul o'zgaradi.
+  Hammasida TEGILMAYDI: o'tgan oylar, `Locked` qatorlar (qo'lda tahrir, «Chegirma») va ESKI to'liq narxga
+  teng bo'lmagan QISMAN oy (aktivlashtirish/muzlatish/chiqish). Sinf narxi YO'Q kursda sinf umuman
+  ahamiyatsiz — hamma guruhning asosiy narxida qoladi. Testlar: `SubjectPriceBandBillingTests`
+  (`Sinf_kiritilsa_…`, `Kurs_sinf_narxlari_ozgarsa_…`).
 - `SubjectPayload.PriceBands`: `null` — tegilmaydi (eski mijoz), `[]` — hammasi o'chiriladi.
   Tekshiruv (`TuitionPricing.Validate`): 1 ≤ dan ≤ gacha ≤ 12, narx > 0, ustma-ust emas, ≤ 12 ta.
 - Yozilgan hisoblar TEGILMAYDI (retroaktiv qayta hisob yo'q).

@@ -60,10 +60,10 @@ export function SubjectsPage() {
 
   const handleSubmit = (values: SubjectPayload) => {
     if (editing) {
-      // Narx YOKI sinf oraliqlari o'zgargan bo'lsa — bog'langan guruhlar o'quvchilariga joriy
-      // oydan qo'llashni so'raymiz (Ha/Yo'q). Server ikkalasini bitta `applyFee` bilan qo'llaydi.
+      // ASOSIY narx o'zgargan bo'lsa — joriy oydan qo'llashni so'raymiz (Ha/Yo'q). SINF NARXLARI esa
+      // so'ralmaydi: server ularni joriy oyga har doim darhol qo'llaydi (foydalanuvchi talabi).
       const bandsChanged = !sameBands(values.priceBands, editing.priceBands)
-      if (values.price !== editing.price || bandsChanged) {
+      if (values.price !== editing.price) {
         setFeePrompt({ id: editing.id, values, oldPrice: editing.price, bandsChanged })
         setFormOpen(false)
         setEditing(null)
@@ -247,8 +247,13 @@ export function SubjectsPage() {
                 </>
               )}
               {feePrompt.bandsChanged && <>sinf narxlari o'zgardi. </>}
-              Yangi narx shu kursga bog'langan guruhlardagi o'quvchilarga qachondan qo'llansin?
+              Yangi asosiy narx shu kursga bog'langan guruhlardagi o'quvchilarga qachondan qo'llansin?
             </p>
+            {feePrompt.bandsChanged && (
+              <p className="rounded-lg bg-brand-50 px-3 py-2 text-brand-800">
+                Sinf narxlari joriy oydan <b>avtomatik</b> qo'llanadi (sinfi oraliqqa tushgan o'quvchilarga).
+              </p>
+            )}
             <div className="rounded-lg bg-slate-50 px-3 py-2 text-slate-500">
               <p>
                 <b className="text-slate-700">Ha</b> — joriy oy to'lovi yangi narxga o'zgaradi

@@ -341,4 +341,167 @@ public class SubjectPriceBandBillingTests
 
         Assert.Empty(await ctx.SubjectPriceBands.AsNoTracking().ToListAsync());
     }
+
+    // ============================ Sinf o'zgarsa — DARHOL qayta hisob ============================
+
+    private sealed class NoHttpContext : Microsoft.AspNetCore.Http.IHttpContextAccessor
+    {
+        public Microsoft.AspNetCore.Http.HttpContext? HttpContext { get => null; set { } }
+    }
+
+    private static MonthlyCharge AddCharge(AppDbContext ctx, Student s, Group g, string month, decimal amount, bool locked = false)
+    {
+        var c = new MonthlyCharge { StudentId = s.Id, GroupId = g.Id, Month = month, Amount = amount, Date = $"{month}-01", Locked = locked };
+        ctx.MonthlyCharges.Add(c);
+        s.Balance -= amount;
+        return c;
+    }
+
+    [Fact]
+    public async Task Sinf_kiritilsa_JORIY_va_KEYINGI_oylik_darhol_sinf_narxiga_otadi__otgan_oy_TEGILMAYDI()
+    {
+        using var db = TestDb.Sqlite();
+        var ctx = db.Context;
+        var (_, g) = AddCourseWithBands(ctx);
+        var s = AddStudent(ctx, null);
+        AddMembership(ctx, s, g, $"{M(-3)}-01");
+        AddCharge(ctx, s, g, M(-1), GroupFee);
+        AddCharge(ctx, s, g, M(0), GroupFee);
+        AddCharge(ctx, s, g, M(1), GroupFee);   // oldindan to'langan oy
+        await ctx.SaveChangesAsync();
+
+        s.SchoolGrade = 5;
+        s.SchoolGradeYear = Year;
+        var changes = await TuitionService.ApplyGradeChangeAsync(ctx, s, null, null);
+        await ctx.SaveChangesAsync();
+
+        Assert.Equal(2, changes.Count);
+        Assert.Equal(GroupFee, await ChargeOf(ctx, s, M(-1)));
+        Assert.Equal(LowFee, await ChargeOf(ctx, s, M(0)));
+        Assert.Equal(LowFee, await ChargeOf(ctx, s, M(1)));
+        Assert.Equal(-(GroupFee + 2 * LowFee), (await ctx.Students.AsNoTracking().SingleAsync(x => x.Id == s.Id)).Balance);
+    }
+
+    [Fact]
+    public async Task Sinf_oraliqdan_tashqariga_chiqsa_ASOSIY_narxga_qaytadi()
+    {
+        using var db = TestDb.Sqlite();
+        var ctx = db.Context;
+        var (_, g) = AddCourseWithBands(ctx);
+        var s = AddStudent(ctx, 5);
+        AddMembership(ctx, s, g, $"{M(-3)}-01");
+        AddCharge(ctx, s, g, M(0), LowFee);
+        await ctx.SaveChangesAsync();
+
+        var (oldGrade, oldYear) = (s.SchoolGrade, s.SchoolGradeYear);
+        s.SchoolGrade = 11;
+        await TuitionService.ApplyGradeChangeAsync(ctx, s, oldGrade, oldYear);
+        await ctx.SaveChangesAsync();
+
+        Assert.Equal(GroupFee, await ChargeOf(ctx, s, M(0)));
+    }
+
+    [Fact]
+    public async Task Sinf_narxi_YOQ_kursda_sinf_ahamiyatsiz__oylik_OZGARMAYDI()
+    {
+        using var db = TestDb.Sqlite();
+        var ctx = db.Context;
+        var plain = new Subject { Name = "Matematika", Price = GroupFee };
+        ctx.Subjects.Add(plain);
+        var g = new Group { Name = "M guruh", MonthlyFee = GroupFee, CourseId = plain.Id, Days = new List<int> { 0, 2, 4 } };
+        ctx.Classes.Add(g);
+        var s = AddStudent(ctx, null);
+        AddMembership(ctx, s, g, $"{M(-3)}-01");
+        AddCharge(ctx, s, g, M(0), GroupFee);
+        await ctx.SaveChangesAsync();
+
+        s.SchoolGrade = 5;
+        s.SchoolGradeYear = Year;
+        Assert.Empty(await TuitionService.ApplyGradeChangeAsync(ctx, s, null, null));
+        await ctx.SaveChangesAsync();
+        Assert.Equal(GroupFee, await ChargeOf(ctx, s, M(0)));
+    }
+
+    [Fact]
+    public async Task Qisman_oy_va_qolda_tahrirlangan_oy_sinf_ozgarganda_TEGILMAYDI()
+    {
+        using var db = TestDb.Sqlite();
+        var ctx = db.Context;
+        var (_, g) = AddCourseWithBands(ctx);
+        var partial = AddStudent(ctx, null);
+        var locked = AddStudent(ctx, null);
+        AddMembership(ctx, partial, g, $"{M(0)}-15");
+        AddMembership(ctx, locked, g, $"{M(-3)}-01");
+        AddCharge(ctx, partial, g, M(0), 150_000m);                 // oy o'rtasida aktivlashtirilgan
+        AddCharge(ctx, locked, g, M(0), GroupFee, locked: true);    // qo'lda tahrirlangan / «Chegirma»
+        await ctx.SaveChangesAsync();
+
+        foreach (var st in new[] { partial, locked })
+        {
+            st.SchoolGrade = 5;
+            st.SchoolGradeYear = Year;
+            Assert.Empty(await TuitionService.ApplyGradeChangeAsync(ctx, st, null, null));
+        }
+        await ctx.SaveChangesAsync();
+        Assert.Equal(150_000m, await ChargeOf(ctx, partial, M(0)));
+        Assert.Equal(GroupFee, await ChargeOf(ctx, locked, M(0)));
+    }
+
+    [Fact]
+    public async Task GradeRepricing_har_ozgargan_oyni_TARIXGA_yozadi__ozgarmasa_yozmaydi()
+    {
+        using var db = TestDb.Sqlite();
+        var ctx = db.Context;
+        var (_, g) = AddCourseWithBands(ctx);
+        var s = AddStudent(ctx, 7);
+        AddMembership(ctx, s, g, $"{M(-3)}-01");
+        AddCharge(ctx, s, g, M(0), LowFee);
+        await ctx.SaveChangesAsync();
+        var audit = new AuditService(ctx, new NoHttpContext());
+
+        // Formadagi joriy sinf qayta yuborildi (o'zgarmadi) — hech narsa yozilmaydi.
+        Assert.Equal(0, await GradeRepricing.ApplyAsync(ctx, audit, s, s.SchoolGrade, s.SchoolGradeYear));
+
+        var (oldGrade, oldYear) = (s.SchoolGrade, s.SchoolGradeYear);
+        s.SchoolGrade = 8;
+        Assert.Equal(1, await GradeRepricing.ApplyAsync(ctx, audit, s, oldGrade, oldYear));
+        await ctx.SaveChangesAsync();
+
+        Assert.Equal(MidFee, await ChargeOf(ctx, s, M(0)));
+        var log = await ctx.AuditLogs.AsNoTracking().SingleAsync(a => a.StudentId == s.Id);
+        Assert.Equal(AuditService.EntityStudentDiscount, log.EntityType);
+        Assert.Contains("7-sinf → 8-sinf", log.Summary);
+    }
+
+    [Fact]
+    public async Task Kurs_sinf_narxlari_ozgarsa_asosiy_narx_ESKICHA_qolganda_ham_ORALIQDAGILAR_otadi()
+    {
+        // SubjectsController: asosiy narx «Yo'q» (keyingi oydan), sinf narxlari esa joriy oyga DARHOL —
+        // servis eski asosiy narx bilan, YANGI oraliqlar bilan chaqiriladi.
+        using var db = TestDb.Sqlite();
+        var ctx = db.Context;
+        var course = new Subject { Name = "Ingliz tili", Price = GroupFee };
+        ctx.Subjects.Add(course);
+        var g = new Group { Name = "A guruh", MonthlyFee = GroupFee, CourseId = course.Id, Days = new List<int> { 0, 2, 4 } };
+        ctx.Classes.Add(g);
+        var inBand = AddStudent(ctx, 5);
+        var outBand = AddStudent(ctx, 10);
+        foreach (var st in new[] { inBand, outBand })
+        {
+            AddMembership(ctx, st, g, $"{M(-3)}-01");
+            AddCharge(ctx, st, g, M(0), GroupFee);
+        }
+        await ctx.SaveChangesAsync();
+
+        var newRows = new[] { new SubjectPriceBand { SubjectId = course.Id, GradeFrom = 3, GradeTo = 7, Price = LowFee } };
+        g.MonthlyFee = 350_000m; // asosiy narx ham o'zgardi, lekin joriy oyga qo'llanmaydi
+        var applied = await TuitionService.ApplyGroupFeeToCurrentMonthAsync(
+            ctx, g.Id, g.Name, GroupFee, PricingBook.From(newRows), courseId: course.Id,
+            oldFee: GroupFee, oldPricing: PricingBook.Empty);
+        await ctx.SaveChangesAsync();
+
+        Assert.Equal(1, applied);
+        Assert.Equal(LowFee, await ChargeOf(ctx, inBand, M(0)));
+        Assert.Equal(GroupFee, await ChargeOf(ctx, outBand, M(0)));
+    }
 }

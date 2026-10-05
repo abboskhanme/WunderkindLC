@@ -79,9 +79,14 @@ public class SubjectsController(AppDbContext db, AuditService audit) : Controlle
     /// <summary>
     /// Kursni tahrirlash. Narx o'zgarsa — shu kursga bog'langan BARCHA guruhlarning oylik to'lovi
     /// (<c>MonthlyFee</c>) yangi narxga yangilanadi. <paramref name="applyFee"/> = true ("Ha — joriy
-    /// oydan") bo'lsa, yangi narx shu guruhlardagi o'quvchilarning JORIY oy hisobiga ham qo'llanadi
+    /// oydan") bo'lsa, yangi ASOSIY narx shu guruhlardagi o'quvchilarning JORIY oy hisobiga ham qo'llanadi
     /// (balans farqqa moslanadi, qo'lda tahrirlangan oyliklar tegilmaydi). false ("Yo'q") bo'lsa —
-    /// joriy oy eski narxda qoladi, yangi narx keyingi oy hisoblashidan amal qiladi.
+    /// joriy oy eski asosiy narxda qoladi, yangi narx keyingi oy hisoblashidan amal qiladi.
+    ///
+    /// <para>⚠️ SINF NARXLARI esa joriy oyga HAR DOIM, so'ralmasdan qo'llanadi (foydalanuvchi talabi,
+    /// 2026-10-05: "shu zahoti avtomatik"). Asosiy narx bilan bir so'rovda o'zgarib «Yo'q» tanlansa —
+    /// joriy oyda sinfi oraliqqa tushmaganlar eski asosiy narxda qoladi, oraliqqa tushganlar yangi
+    /// sinf narxiga o'tadi.</para>
     /// </summary>
     [HttpPut("{id}")]
     public async Task<ActionResult<CourseWithBandsDto>> Update(string id, SubjectPayload payload, [FromQuery] bool applyFee = false)
@@ -124,13 +129,19 @@ public class SubjectsController(AppDbContext db, AuditService audit) : Controlle
             {
                 var gOld = g.MonthlyFee;
                 if (priceChanged) g.MonthlyFee = payload.Price;
-                if (applyFee && (gOld != g.MonthlyFee || bandsChanged))
+                // Joriy oy: asosiy narx — faqat «Ha» bo'lsa; sinf narxlari — har doim.
+                var currentFee = applyFee ? g.MonthlyFee : gOld;
+                if ((applyFee && gOld != g.MonthlyFee) || bandsChanged)
                     appliedTotal += await TuitionService.ApplyGroupFeeToCurrentMonthAsync(
-                        db, g.Id, g.Name, g.MonthlyFee, pricing, courseId: id, oldFee: gOld, oldPricing: oldPricing);
+                        db, g.Id, g.Name, currentFee, pricing, courseId: id, oldFee: gOld, oldPricing: oldPricing);
             }
 
             var tail = $" ({subject.Name}) — {groups.Count} ta guruhga"
-                + (applyFee ? $", joriy oydan {appliedTotal} o'quvchiga qo'llandi" : ", keyingi oydan amal qiladi");
+                + (applyFee || !priceChanged
+                    ? $", joriy oydan {appliedTotal} o'quvchiga qo'llandi"
+                    : bandsChanged
+                        ? $", sinf narxlari joriy oydan {appliedTotal} o'quvchiga qo'llandi, asosiy narx keyingi oydan"
+                        : ", keyingi oydan amal qiladi");
             if (priceChanged)
                 audit.Record(AuditCourse, subject.Id, "update",
                     $"Kurs narxi o'zgartirildi: {AuditService.Money(oldPrice)} → {AuditService.Money(payload.Price)} so'm" + tail,

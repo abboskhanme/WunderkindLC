@@ -255,15 +255,30 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
             }
         }
 
+        // Guruh BOSHQA KURSGA o'tkazilsa uning SINF NARXLARI joriy oyga so'ralmasdan qo'llanadi
+        // (kurs tahriridagi kabi — `SubjectsController.Update`); asosiy narx esa faqat «Ha» bo'lsa.
+        // ⚠️ `oldCourseId ?? ""`: kurssiz guruh uchun `null` uzatilsa servis uni YANGI kurs deb oladi.
+        var courseChanged = (oldCourseId ?? "") != (cls.CourseId ?? "");
+        if (courseChanged && oldFee == cls.MonthlyFee)
+        {
+            var bandApplied = await TuitionService.ApplyGroupFeeToCurrentMonthAsync(
+                db, cls.Id, oldName, cls.MonthlyFee, await PricingBook.LoadAsync(db),
+                courseId: cls.CourseId, oldFee: oldFee, oldCourseId: oldCourseId ?? "");
+            if (bandApplied > 0)
+                audit.Record(AuditService.EntityClassFee, cls.Id, "update",
+                    $"Guruh kursi almashdi — sinf narxlari joriy oydan {bandApplied} o'quvchiga qo'llandi ({cls.Name})");
+        }
+
         if (oldFee != cls.MonthlyFee)
         {
             var applied = 0;
-            if (applyFee)
+            if (applyFee || courseChanged)
                 // Kurs ham shu so'rovda almashgan bo'lishi mumkin — YANGI va ESKI kurs aniq uzatiladi
                 // (bazadan o'qilsa eskisi chiqardi); qisman oy hisoblari tegilmaydi (`oldFee`).
+                // «Yo'q» + kurs almashuvi: joriy oyda asosiy narx eskisi, sinf narxlari — yangi kursniki.
                 applied = await TuitionService.ApplyGroupFeeToCurrentMonthAsync(
-                    db, cls.Id, oldName, cls.MonthlyFee, await PricingBook.LoadAsync(db),
-                    courseId: cls.CourseId, oldFee: oldFee, oldCourseId: oldCourseId);
+                    db, cls.Id, oldName, applyFee ? cls.MonthlyFee : oldFee, await PricingBook.LoadAsync(db),
+                    courseId: cls.CourseId, oldFee: oldFee, oldCourseId: oldCourseId ?? "");
 
             var summary = $"Oylik to'lov o'zgartirildi: {AuditService.Money(oldFee)} → {AuditService.Money(cls.MonthlyFee)} so'm ({cls.Name})";
             summary += applyFee

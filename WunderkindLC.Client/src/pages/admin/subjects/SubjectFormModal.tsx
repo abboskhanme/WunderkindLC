@@ -144,7 +144,8 @@ export function SubjectFormModal({ open, onClose, onSubmit, initial }: Props) {
               <p className="text-[13px] font-semibold text-slate-800">Sinflar va narxlar</p>
               <p className="text-xs text-slate-400">
                 Ixtiyoriy. Masalan: 3–7-sinf — 225 000, 8–9-sinf — 275 000. O'quvchining oyligi
-                uning joriy sinfiga qarab o'zi tanlanadi.
+                uning joriy sinfiga qarab o'zi tanlanadi. O'zgarish joriy oy hisobiga darhol qo'llanadi;
+                oraliq kiritilmasa hamma asosiy narxni to'laydi.
               </p>
             </div>
             {bands.length < MAX_PRICE_BANDS && (

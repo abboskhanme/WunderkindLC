@@ -857,7 +857,10 @@ public class StudentsController(
         var hasLiveMembership = await db.StudentGroups
             .AnyAsync(sg => sg.StudentId == student.Id && sg.IsActive);
         if (!hasLiveMembership) student.ClassName = p.ClassName;
+        var (oldGrade, oldGradeYear) = (student.SchoolGrade, student.SchoolGradeYear);
         ApplySchoolGrade(student, p.SchoolGrade);
+        // Sinf o'zgarsa — kurs SINF NARXI bo'lgan guruhlarda joriy oylik DARHOL moslanadi.
+        await GradeRepricing.ApplyAsync(db, audit, student, oldGrade, oldGradeYear);
         if (!string.IsNullOrWhiteSpace(p.EnrollmentDate))
         {
             // Noto'g'ri sana saqlanib, keyin oylik billing batch'ini crash qilmasligi uchun aniq xato qaytaramiz.
@@ -1711,10 +1714,12 @@ public class StudentsController(
                     if (step.FillGrade && student.SchoolGrade is null)
                     {
                         var before = AuditService.StudentProfileSnapshot(student);
+                        var (oldGrade, oldGradeYear) = (student.SchoolGrade, student.SchoolGradeYear);
                         ApplySchoolGrade(student, step.Grade);
                         audit.Record(AuditService.EntityStudent, student.Id, "update",
                             $"O'quvchi ma'lumoti tahrirlandi — Excel importi, sinf qo'shildi ({student.FullName})",
                             before: before, after: AuditService.StudentProfileSnapshot(student), studentId: student.Id);
+                        await GradeRepricing.ApplyAsync(db, audit, student, oldGrade, oldGradeYear);
                     }
 
                     if (step.Kind == StudentImportPlan.Kind.Join && cls is not null)

@@ -26,6 +26,10 @@ Klient tipida (`types/index.ts`) ATAYIN faqat `schoolGradeNow` bor; tahrir paylo
 `null` = tegilmaydi (eski mijozlar/import buzilmaydi) · `0` = tozalash · 1..12 = o'rnatish.
 Boshqa qiymat — 400 (sabab matni bilan). Audit: `StudentProfileSnapshot.SchoolGrade` (joriy sinf).
 
+⚠️ **Sinf PULGA ta'sir qiladi** (kursda sinf narxlari bo'lsa): sinfni yozadigan HAR yo'l yozgandan keyin
+`GradeRepricing.ApplyAsync` ni chaqiradi — joriy (va oldindan to'langan) oylik darhol sinf narxiga
+moslanadi (`billing.md` «SINFGA QARAB OYLIK»). Yangi sinf yozish yo'li qo'shsangiz — uni ham chaqiring.
+
 ## 4. Qayerda ko'rinadi
 
 - Qo'shish/tahrirlash: `StudentFormModal` («Boshqa ma'lumotlar» → Markazga kelgan sana · Sinf), profil

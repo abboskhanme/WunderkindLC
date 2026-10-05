@@ -165,6 +165,57 @@ public static class TuitionService
         return applied;
     }
 
+    /// <summary>Sinf o'zgarishi tufayli qayta hisoblangan bitta oy (audit uchun).</summary>
+    public sealed record GradeRepriceChange(string GroupName, string Month, decimal OldAmount, decimal NewAmount);
+
+    /// <summary>
+    /// O'QUVCHINING MAKTAB SINFI o'zgarganda — uning JORIY va undan KEYINGI (oldindan to'langan) oylari
+    /// hisobini kurs SINF NARXIGA darhol moslaydi (`.claude/rules/billing.md` «SINFGA QARAB OYLIK»).
+    /// Sinf narxi yo'q kurs (yoki sinfi narxga ta'sir qilmaydigan guruh) — TEGILMAYDI: u yerda
+    /// o'quvchi guruhning oddiy narxida qoladi. Balans farqqa to'g'rilanadi. SaveChanges — chaqiruvchida.
+    ///
+    /// <para>Tegilmaydi: o'tgan oylar (tarix), <c>Locked</c> (qo'lda tahrirlangan, «Chegirma» qo'yilgan)
+    /// qatorlar va ESKI to'liq narxga teng bo'lmagan qator — oy o'rtasidagi QISMAN hisob
+    /// (aktivlashtirish/muzlatish/chiqish); u to'liq oylik bilan ustidan yozilsa o'quvchiga o'qimagan
+    /// darslari uchun qarz tushardi (<see cref="ApplyGroupFeeToCurrentMonthAsync"/> bilan bir xil qoida).</para>
+    /// </summary>
+    /// <param name="oldGrade">O'zgarishdan OLDINGI <see cref="Student.SchoolGrade"/>.</param>
+    /// <param name="oldGradeYear">O'zgarishdan OLDINGI <see cref="Student.SchoolGradeYear"/>.</param>
+    public static async Task<List<GradeRepriceChange>> ApplyGradeChangeAsync(IAppDbContext db, Student s,
+                                                                            int? oldGrade, int? oldGradeYear)
+    {
+        if (oldGrade == s.SchoolGrade && oldGradeYear == s.SchoolGradeYear) return [];
+        var month = CurrentMonth();
+        var charges = (await db.MonthlyCharges.Where(c => c.StudentId == s.Id && c.GroupId != null).ToListAsync())
+            .Where(c => !c.Locked && string.CompareOrdinal(c.Month, month) >= 0)
+            .OrderBy(c => c.Month, StringComparer.Ordinal)
+            .ToList();
+        if (charges.Count == 0) return [];
+
+        var groupIds = charges.Select(c => c.GroupId!).Distinct().ToList();
+        var groups = await db.Classes.AsNoTracking().Where(g => groupIds.Contains(g.Id)).ToDictionaryAsync(g => g.Id);
+        var courseIds = groups.Values.Select(g => g.CourseId).Where(id => !string.IsNullOrEmpty(id)).Distinct().ToList();
+        if (courseIds.Count == 0) return [];
+        var pricing = PricingBook.From(await db.SubjectPriceBands.AsNoTracking()
+            .Where(b => courseIds.Contains(b.SubjectId)).ToListAsync());
+        var before = new Student { Id = s.Id, SchoolGrade = oldGrade, SchoolGradeYear = oldGradeYear };
+        var book = await DiscountBook.LoadForStudentAsync(db, s.Id);
+
+        var changes = new List<GradeRepriceChange>();
+        foreach (var charge in charges)
+        {
+            if (!groups.TryGetValue(charge.GroupId!, out var g)) continue;
+            var newFee = pricing.MonthlyFee(g, s, charge.Month);
+            var oldFee = pricing.MonthlyFee(g, before, charge.Month);
+            if (newFee == oldFee) continue;          // bu guruhda sinf narxga ta'sir qilmaydi
+            if (charge.Amount != oldFee) continue;   // qisman oy — tegilmaydi
+            var oldAmount = charge.Amount;
+            if (ApplyFeeToCharge(charge, s, newFee, book))
+                changes.Add(new GradeRepriceChange(g.Name, charge.Month, oldAmount, newFee));
+        }
+        return changes;
+    }
+
     /// <summary>Bitta hisob qatorini yangi narxga moslaydi (balans farqqa to'g'rilanadi). <c>Locked</c>
     /// (qo'lda tahrirlangan) yoki o'zgarishsiz bo'lsa tegmaydi. Qaytaradi: qo'llandimi.</summary>
     private static bool ApplyFeeToCharge(MonthlyCharge charge, Student? s, decimal newFee, DiscountBook book)

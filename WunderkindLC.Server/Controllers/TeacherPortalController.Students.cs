@@ -79,6 +79,7 @@ public partial class TeacherPortalController
         if (error is not null) return BadRequest(new { message = error });
 
         var before = AuditService.StudentProfileSnapshot(student);
+        var (oldGrade, oldGradeYear) = (student.SchoolGrade, student.SchoolGradeYear);
         TeacherStudentEdit.Apply(student, input, AppClock.Today);
 
         // Login akkauntidagi ism ham yangilanadi (admin tahriri bilan bir xil — `StudentsController.Update`).
@@ -91,6 +92,8 @@ public partial class TeacherPortalController
             audit.Record(AuditService.EntityStudent, student.Id, "update",
                 $"O'quvchi ma'lumoti tahrirlandi — o'qituvchi tomonidan ({student.FullName})",
                 before: before, after: after, studentId: student.Id);
+        // Sinf o'zgarsa — oylik admin tahriridagi kabi DARHOL moslanadi (yagona yo'l: `GradeRepricing`).
+        await GradeRepricing.ApplyAsync(db, audit, student, oldGrade, oldGradeYear);
 
         await db.SaveChangesAsync();
         return ToGroupStudentDto(student, membership!.Status ?? "");
