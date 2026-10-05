@@ -491,6 +491,10 @@ public static class StudentDiscountService
                 .Where(t => scopeTeacherIds.Contains(t.Id)).Select(t => new { t.Id, t.FullName }).ToListAsync())
             .ToDictionary(x => x.Id, x => x.FullName);
         var activeScopes = activeRows.Select(d => d.GroupId ?? "").ToHashSet(StringComparer.Ordinal);
+        // Qamrovdagi oylik — o'quvchining SINFIGA QARAB (`TuitionPricing`), hisob bilan bir xil.
+        var grade = await db.Students.AsNoTracking().Where(s => s.Id == studentId)
+            .Select(s => new { s.SchoolGrade, s.SchoolGradeYear }).FirstOrDefaultAsync();
+        var pricing = await PricingBook.LoadAsync(db);
 
         // JORIY oyning HAQIQIY hisob summalari — modal chegirmani AYNAN shulardan ko'rsatadi
         // (guruh narxidan farq qilishi mumkin: qisman oy yoki qo'lda tahrirlangan `Locked` qator).
@@ -519,7 +523,8 @@ public static class StudentDiscountService
                 m.Id, m.Name,
                 string.IsNullOrEmpty(m.CourseId) ? "" : scopeCourses.GetValueOrDefault(m.CourseId, ""),
                 string.IsNullOrEmpty(m.TeacherId) ? "" : scopeTeachers.GetValueOrDefault(m.TeacherId, ""),
-                m.MonthlyFee,
+                TuitionPricing.Resolve(pricing.BandsOf(m.CourseId), m.MonthlyFee,
+                    grade?.SchoolGrade, grade?.SchoolGradeYear, month).Monthly,
                 activeScopes.Contains(m.Id),
                 currentCharges.TryGetValue(m.Id, out var chg) ? chg : null)));
 

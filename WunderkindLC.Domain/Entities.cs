@@ -815,6 +815,25 @@ public class Subject
     public decimal LessonPrice { get; set; }
 }
 
+/// <summary>
+/// Kursning SINF ORALIG'I va shu oraliq narxi (migratsiya `AddSubjectPriceBands`). O'quvchining
+/// oyligi uning JORIY maktab sinfi tushgan oraliqdan olinadi; oraliq topilmasa (sinf kiritilmagan
+/// yoki oraliqdan tashqarida) — guruh narxi. Qoida YAGONA joyda: <c>TuitionPricing</c>.
+/// Kursning sinflar qamrovi = oraliqlarining birlashmasi. SPEC: <c>docs/SPEC-kurs-sinf-narxi.md</c>.
+/// </summary>
+public class SubjectPriceBand
+{
+    public string Id { get; set; } = Guid.NewGuid().ToString();
+    public string SubjectId { get; set; } = string.Empty;
+    /// <summary>Oraliq boshi va oxiri (ikkalasi KIRADI): 1..11, 12 = «Maktabni bitirgan».</summary>
+    public int GradeFrom { get; set; }
+    public int GradeTo { get; set; }
+    /// <summary>Shu oraliq uchun oylik narx (so'm).</summary>
+    public decimal Price { get; set; }
+    /// <summary>Shu oraliq uchun bir dars narxi (qisman oy). 0 = pro-rata (oylik ÷ jami dars).</summary>
+    public decimal LessonPrice { get; set; }
+}
+
 /// <summary>O'quv xonasi (auditoriya). Guruhlarga FK orqali bog'lanadi.</summary>
 public class Room
 {

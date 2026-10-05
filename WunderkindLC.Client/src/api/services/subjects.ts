@@ -1,4 +1,4 @@
-import type { Subject } from '@/types'
+import type { Subject, SubjectPriceBand } from '@/types'
 import { delay, uid } from '@/lib/utils'
 import { api, USE_MOCK } from '../client'
 import { subjectsMock } from '../mock/subjects'
@@ -7,8 +7,10 @@ export interface SubjectPayload {
   name: string
   /** Kurs narxi (so'm) */
   price: number
-  /** Bir dars uchun yaxlit narx (so'm) — 12 tadan kam dars qolganda qisman-oy hisobida ishlatiladi */
+  /** Bir dars uchun yaxlit narx (so'm) — qisman-oy hisobida ishlatiladi */
   lessonPrice?: number
+  /** Sinf oraliqlari. Berilmasa — server tegmaydi; bo'sh ro'yxat — hammasi o'chiriladi. */
+  priceBands?: SubjectPriceBand[]
 }
 
 export async function getSubjects(): Promise<Subject[]> {

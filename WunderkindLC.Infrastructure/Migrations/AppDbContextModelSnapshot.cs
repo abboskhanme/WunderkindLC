@@ -6817,6 +6817,37 @@ namespace WunderkindLC.Infrastructure.Migrations
                     b.ToTable("SubjectCurricula");
                 });
 
+            modelBuilder.Entity("WunderkindLC.Domain.SubjectPriceBand", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasColumnType("text");
+
+                    b.Property<int>("GradeFrom")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("GradeTo")
+                        .HasColumnType("integer");
+
+                    b.Property<decimal>("LessonPrice")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<decimal>("Price")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<string>("SubjectId")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SubjectId");
+
+                    b.ToTable("SubjectPriceBands");
+                });
+
             modelBuilder.Entity("WunderkindLC.Domain.SubstituteTeacherAssignment", b =>
                 {
                     b.Property<string>("Id")
@@ -8090,6 +8121,15 @@ namespace WunderkindLC.Infrastructure.Migrations
                     b.HasOne("WunderkindLC.Domain.Student", null)
                         .WithMany()
                         .HasForeignKey("StudentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("WunderkindLC.Domain.SubjectPriceBand", b =>
+                {
+                    b.HasOne("WunderkindLC.Domain.Subject", null)
+                        .WithMany()
+                        .HasForeignKey("SubjectId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });

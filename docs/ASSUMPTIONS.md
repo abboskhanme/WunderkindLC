@@ -186,3 +186,9 @@
   o'rinbosar guruhga vaqtincha keladi, o'quvchi ma'lumoti esa doimiy
 - [2026-10-05] O'qituvchi telefonni BO'SH qoldira oladimi? → ha (audit bilan) → "tahrirlash" talabi; noto'g'ri
   formatdagi YANGI raqam esa rad etiladi
+- [2026-10-05] Sinfi kiritilmagan / oraliqqa tushmagan o'quvchi qancha to'laydi? → guruh (kurs asosiy) narxi →
+  bazada 532 tadan atigi 57 tasida sinf bor; jimgina 0 yoki boshqa narx bo'lmasin
+- [2026-10-05] Oraliqlar o'zgarganda allaqachon yozilgan oylar qayta hisoblanadimi? → yo'q (joriy oy faqat «Ha —
+  joriy oydan» tanlansa) → kurs narxi o'zgarishidagi mavjud qoida bilan bir xil
+- [2026-10-05] Maosh/tushum taqsimoti og'irliklari sinf narxiga o'tadimi? → yo'q, guruh narxida qoladi → maosh foizi
+  baribir hisoblangan oylikdan; og'irlik faqat teglanmagan to'lovni bo'lish uchun

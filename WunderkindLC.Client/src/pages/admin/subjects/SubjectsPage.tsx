@@ -20,6 +20,7 @@ import { Modal } from '@/components/ui/Modal'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { apiErrorMessage, cn, formatMoney } from '@/lib/utils'
 import { usePerm } from '@/lib/permissions'
+import { bandLabel, sameBands } from '@/lib/priceBands'
 import { SubjectFormModal } from './SubjectFormModal'
 
 export function SubjectsPage() {
@@ -35,6 +36,8 @@ export function SubjectsPage() {
     id: string
     values: SubjectPayload
     oldPrice: number
+    /** Sinf oraliqlari ham o'zgardimi (narx o'zgarmagan bo'lsa ham so'raladi). */
+    bandsChanged: boolean
   } | null>(null)
   // Kursni o'chirishni tasdiqlash (brauzer confirm o'rniga)
   const [deleting, setDeleting] = useState<Subject | null>(null)
@@ -57,9 +60,11 @@ export function SubjectsPage() {
 
   const handleSubmit = (values: SubjectPayload) => {
     if (editing) {
-      // Narx o'zgargan bo'lsa — bog'langan guruhlar o'quvchilariga qo'llashni so'raymiz (Ha/Yo'q)
-      if (values.price !== editing.price) {
-        setFeePrompt({ id: editing.id, values, oldPrice: editing.price })
+      // Narx YOKI sinf oraliqlari o'zgargan bo'lsa — bog'langan guruhlar o'quvchilariga joriy
+      // oydan qo'llashni so'raymiz (Ha/Yo'q). Server ikkalasini bitta `applyFee` bilan qo'llaydi.
+      const bandsChanged = !sameBands(values.priceBands, editing.priceBands)
+      if (values.price !== editing.price || bandsChanged) {
+        setFeePrompt({ id: editing.id, values, oldPrice: editing.price, bandsChanged })
         setFormOpen(false)
         setEditing(null)
         return
@@ -161,6 +166,19 @@ export function SubjectsPage() {
                       <span className="font-mono">{formatMoney(s.lessonPrice ?? 0)}</span> / dars
                     </p>
                   )}
+                  {/* Sinf oraliqlari — o'quvchi oyligi joriy sinfiga qarab (yuqoridagi — asosiy narx). */}
+                  {(s.priceBands?.length ?? 0) > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-1">
+                      {s.priceBands!.map((b) => (
+                        <span
+                          key={`${b.gradeFrom}-${b.gradeTo}`}
+                          className="rounded-md bg-slate-100 px-1.5 py-0.5 text-[11px] text-slate-600"
+                        >
+                          {bandLabel(b)} · <span className="font-mono">{formatMoney(b.price)}</span>
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -219,12 +237,17 @@ export function SubjectsPage() {
         {feePrompt && (
           <div className="space-y-3 text-sm text-slate-600">
             <p>
-              <span className="font-medium text-slate-800">{feePrompt.values.name}</span> kursining
-              oylik narxi{' '}
-              <span className="font-medium">{formatMoney(feePrompt.oldPrice)}</span> →{' '}
-              <span className="font-medium">{formatMoney(feePrompt.values.price)}</span> ga
-              o'zgardi. Yangi narx shu kursga bog'langan guruhlardagi o'quvchilarga qachondan
-              qo'llansin?
+              <span className="font-medium text-slate-800">{feePrompt.values.name}</span> kursining{' '}
+              {feePrompt.values.price !== feePrompt.oldPrice && (
+                <>
+                  oylik narxi{' '}
+                  <span className="font-medium">{formatMoney(feePrompt.oldPrice)}</span> →{' '}
+                  <span className="font-medium">{formatMoney(feePrompt.values.price)}</span> ga o'zgardi
+                  {feePrompt.bandsChanged ? ', ' : '. '}
+                </>
+              )}
+              {feePrompt.bandsChanged && <>sinf narxlari o'zgardi. </>}
+              Yangi narx shu kursga bog'langan guruhlardagi o'quvchilarga qachondan qo'llansin?
             </p>
             <div className="rounded-lg bg-slate-50 px-3 py-2 text-slate-500">
               <p>

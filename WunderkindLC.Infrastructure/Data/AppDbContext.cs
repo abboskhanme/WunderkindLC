@@ -20,6 +20,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options)
     public DbSet<TurnstileEvent> TurnstileEvents => Set<TurnstileEvent>();
     public DbSet<Camera> Cameras => Set<Camera>();
     public DbSet<Subject> Subjects => Set<Subject>();
+    public DbSet<SubjectPriceBand> SubjectPriceBands => Set<SubjectPriceBand>();
     public DbSet<Group> Classes => Set<Group>();
     public DbSet<GroupTeacherAssignment> GroupTeacherAssignments => Set<GroupTeacherAssignment>();
     public DbSet<SubstituteTeacherAssignment> SubstituteTeacherAssignments => Set<SubstituteTeacherAssignment>();
@@ -287,6 +288,16 @@ public class AppDbContext(DbContextOptions<AppDbContext> options)
         b.Entity<Group>().Property(c => c.TeacherSalaryPercent).HasPrecision(18, 2);
         b.Entity<Group>().Property(c => c.TeacherSalaryFixed).HasPrecision(18, 2);
         b.Entity<Subject>().Property(s => s.Price).HasPrecision(18, 2);
+        // Kursning sinf oraliqlari — kurs o'chirilsa o'zi ham o'chadi (navigatsiya ATAYIN yo'q:
+        // `Subject` JSON'i boshqa joylarda o'zgarmasin).
+        b.Entity<SubjectPriceBand>().Property(x => x.SubjectId).HasMaxLength(200);
+        b.Entity<SubjectPriceBand>().Property(x => x.Price).HasPrecision(18, 2);
+        b.Entity<SubjectPriceBand>().Property(x => x.LessonPrice).HasPrecision(18, 2);
+        b.Entity<SubjectPriceBand>()
+            .HasOne<Subject>().WithMany()
+            .HasForeignKey(x => x.SubjectId)
+            .OnDelete(DeleteBehavior.Cascade);
+        b.Entity<SubjectPriceBand>().HasIndex(x => x.SubjectId);
         b.Entity<FinanceTransaction>().Property(t => t.Amount).HasPrecision(18, 2);
         // BEKOR QILINGAN tranzaksiyalar HAMMA joydan chiqariladi (balans, maosh, hisobotlar, kassa,
         // kvitansiya nazorati) — 25+ faylda har so'rovga shart qo'shib, birini unutish xavfi o'rniga.

@@ -30,6 +30,9 @@ public static class StudentGroupLedger
                 .Select(s => new { s.Name, s.LessonPrice }).FirstOrDefaultAsync();
         var courseName = course?.Name ?? group.Name;
         var lessonFee = course?.LessonPrice ?? 0m;
+        // SINFGA QARAB NARX — hisob yozilmagan oylar ko'rinishi haqiqiy hisob bilan BIR XIL bo'lsin
+        // (`TuitionPricing`, `TuitionService.AccrueMonth`).
+        var pricing = await PricingBook.LoadForCourseAsync(db, group.CourseId);
 
         var months = new List<GroupMonthDto>();
         // Sinov (trial) — to'lov hisoblanmaydi.
@@ -135,18 +138,21 @@ public static class StudentGroupLedger
             }
             else
             {
-                // Hisob hali yo'q (kelajak/avans yoki accrue qilinmagan) — guruh narxidan PREVIEW.
+                // Hisob hali yo'q (kelajak/avans yoki accrue qilinmagan) — narxdan PREVIEW
+                // (o'quvchining shu oydagi sinfi kurs oralig'iga tushsa — oraliq narxi).
+                var (monthly, bandLesson) = pricing.Resolve(group, student, month);
+                var lf = bandLesson ?? lessonFee;
                 if (membership.ActivatedAt.Length >= 10 && membership.ActivatedAt[..7] == month)
-                    gross = ActivationGross(group, lessonFee, membership.ActivatedAt);
+                    gross = ActivationGross(group, monthly, lf, membership.ActivatedAt);
                 else if (membership.FrozenAt.Length >= 10 && membership.FrozenAt[..7] == month)
-                    gross = FreezeGross(group, lessonFee, membership.ActivatedAt, membership.FrozenAt);
+                    gross = FreezeGross(group, monthly, lf, membership.ActivatedAt, membership.FrozenAt);
                 // Guruhdan CHIQARILGAN/TUGATGAN a'zolik — chiqish oyi ham muzlatish kabi QISMAN
                 // (chiqish sanasigacha o'qilgan darslar), to'liq oylik EMAS.
                 else if (!membership.IsActive && (membership.LeftAt ?? "").Length >= 10
                          && membership.LeftAt![..7] == month)
-                    gross = FreezeGross(group, lessonFee, membership.ActivatedAt, membership.LeftAt!);
+                    gross = FreezeGross(group, monthly, lf, membership.ActivatedAt, membership.LeftAt!);
                 else
-                    gross = group.MonthlyFee;
+                    gross = monthly;
                 discount = discounts.DiscountFor(student.Id, gross, month, group.Id);
             }
             var effective = gross - discount;
@@ -167,22 +173,22 @@ public static class StudentGroupLedger
     /// <summary>Aktivlashtirilgan oyning qisman narxi — <see cref="TuitionService.ChargeActivationProrateAsync"/>
     /// bilan AYNAN bir formula: qolgan darslar soni <see cref="TuitionService.ProratedLessonCharge"/> ga beriladi
     /// (12+ dars yoki to'liq oy → to'liq oylik; aks holda kurs `LessonPrice`i × dars, u yo'q bo'lsa pro-rata).</summary>
-    private static decimal ActivationGross(Group cls, decimal lessonFee, string dateIso)
+    private static decimal ActivationGross(Group cls, decimal monthly, decimal lessonFee, string dateIso)
     {
-        if (cls.MonthlyFee <= 0 || !DateOnly.TryParse(dateIso, out var d)) return cls.MonthlyFee;
+        if (monthly <= 0 || !DateOnly.TryParse(dateIso, out var d)) return monthly;
         var ms = new DateOnly(d.Year, d.Month, 1);
         var me = new DateOnly(d.Year, d.Month, DateTime.DaysInMonth(d.Year, d.Month));
         var total = TuitionService.LessonsInRange(cls.Days, ms, me);
         var rem = TuitionService.LessonsInRange(cls.Days, d, me);
-        return TuitionService.ProratedLessonCharge(cls.MonthlyFee, lessonFee, rem, total);
+        return TuitionService.ProratedLessonCharge(monthly, lessonFee, rem, total);
     }
 
     /// <summary>Muzlatilgan oyning qisman narxi — <see cref="TuitionService.ChargeFreezeProrateAsync"/> bilan
     /// AYNAN bir formula: MUZLATISH SANASI HAM hisobga olinadi (o'sha kuni dars bo'lsa qo'shiladi) va
     /// <see cref="TuitionService.ProratedLessonCharge"/> ishlatiladi.</summary>
-    private static decimal FreezeGross(Group cls, decimal lessonFee, string actIso, string fzIso)
+    private static decimal FreezeGross(Group cls, decimal monthly, decimal lessonFee, string actIso, string fzIso)
     {
-        if (cls.MonthlyFee <= 0 || !DateOnly.TryParse(fzIso, out var fz)) return 0m;
+        if (monthly <= 0 || !DateOnly.TryParse(fzIso, out var fz)) return 0m;
         var ms = new DateOnly(fz.Year, fz.Month, 1);
         var me = new DateOnly(fz.Year, fz.Month, DateTime.DaysInMonth(fz.Year, fz.Month));
         var total = TuitionService.LessonsInRange(cls.Days, ms, me);
@@ -190,6 +196,6 @@ public static class StudentGroupLedger
         if (actIso.Length >= 10 && actIso[..7] == fzIso[..7] && DateOnly.TryParse(actIso, out var act) && act > ms)
             from = act;
         var before = fz >= from ? TuitionService.LessonsInRange(cls.Days, from, fz) : 0;
-        return TuitionService.ProratedLessonCharge(cls.MonthlyFee, lessonFee, before, total);
+        return TuitionService.ProratedLessonCharge(monthly, lessonFee, before, total);
     }
 }

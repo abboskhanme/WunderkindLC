@@ -90,6 +90,18 @@ public static class SubscriptionRisk
         IReadOnlySet<(string StudentId, string? GroupId)> written,
         IReadOnlyDictionary<string, decimal> feesById,
         DiscountBook book,
+        string month) =>
+        Pending(memberships, written, m => feesById.GetValueOrDefault(m.GroupId), book, month);
+
+    /// <summary>
+    /// Yuqoridagi <c>Pending</c> ning narxi A'ZOLIK bo'yicha tanlanadigan varianti — sinfga qarab
+    /// narx (`TuitionPricing`) uchun. Guruh narxi lug'atini oluvchi variant shunga delegat qiladi.
+    /// </summary>
+    public static IEnumerable<MonthCharge> Pending(
+        IEnumerable<StudentGroup> memberships,
+        IReadOnlySet<(string StudentId, string? GroupId)> written,
+        Func<StudentGroup, decimal> feeOf,
+        DiscountBook book,
         string month)
     {
         foreach (var m in memberships)
@@ -97,11 +109,32 @@ public static class SubscriptionRisk
             if (m.Status != "active" || !m.IsActive) continue;
             if (!TuitionService.AccruableMonth(m, month)) continue;
             if (written.Contains((m.StudentId, (string?)m.GroupId))) continue;
-            var fee = feesById.GetValueOrDefault(m.GroupId);
+            var fee = feeOf(m);
             if (fee <= 0) continue;
             var effective = fee - book.DiscountFor(m.StudentId, fee, month, m.GroupId);
             yield return new MonthCharge(m.StudentId, effective, Written: false);
         }
+    }
+
+    /// <summary>
+    /// Hali yozilmagan oy narxi — a'zolik bo'yicha, SINFGA QARAB (`TuitionPricing`), ya'ni keyin
+    /// `AccrueMonth` yozadigan summa bilan bir xil. `IncomePlan` ham shuni ishlatadi.
+    /// </summary>
+    public static async Task<Func<StudentGroup, decimal>> PendingFeeResolverAsync(
+        IAppDbContext db, string month, CancellationToken ct = default)
+    {
+        var groups = await db.Classes.AsNoTracking().ToDictionaryAsync(c => c.Id, ct);
+        var grades = await db.Students.AsNoTracking()
+            .Select(s => new { s.Id, s.SchoolGrade, s.SchoolGradeYear })
+            .ToDictionaryAsync(s => s.Id, ct);
+        var pricing = await PricingBook.LoadAsync(db, ct);
+        return m =>
+        {
+            if (!groups.TryGetValue(m.GroupId, out var g)) return 0m;
+            var st = grades.GetValueOrDefault(m.StudentId);
+            return TuitionPricing.Resolve(pricing.BandsOf(g.CourseId), g.MonthlyFee,
+                st?.SchoolGrade, st?.SchoolGradeYear, month).Monthly;
+        };
     }
 
     /// <summary>Bazadan yuklab, <see cref="Compute"/> ni chaqiradi. Faqat o'qish.</summary>
@@ -125,15 +158,14 @@ public static class SubscriptionRisk
         var written = monthRows.Select(c => (c.StudentId, c.GroupId))
             .ToHashSet();
 
-        var feesById = await db.Classes.AsNoTracking()
-            .ToDictionaryAsync(c => c.Id, c => c.MonthlyFee, ct);
         var book = await DiscountBook.LoadAsync(db, memberships
             .Where(m => m.Status == "active" && m.IsActive).Select(m => m.StudentId));
+        var feeOf = await PendingFeeResolverAsync(db, month, ct);
 
         var charges = monthRows
             .Where(c => liveIds.Contains(c.StudentId))
             .Select(c => new MonthCharge(c.StudentId, Math.Max(0m, c.Amount - c.Discount), Written: true))
-            .Concat(Pending(memberships, written, feesById, book, month))
+            .Concat(Pending(memberships, written, feeOf, book, month))
             .ToList();
 
         var rows = students.Select(s => new StudentRow(

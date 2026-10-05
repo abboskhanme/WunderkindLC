@@ -422,6 +422,47 @@ o'quvchi kunlar nisbatida hisoblanadi (dars kunlari bo'yicha emas).
   "Ushlanma" ustuni, `TeacherSalaryDetailModal`da oy qatorini bosib guruh+sanalar, o'qituvchining
   `SalaryPage`ida ham xuddi shunday.
 
+## SINFGA QARAB OYLIK (2026-10-05, migratsiya `AddSubjectPriceBands`)
+
+Kursda **sinf oraliqlari** bo'lishi mumkin (`SubjectPriceBand`: 3–7-sinf 225 000, 8–9-sinf 275 000 …).
+O'quvchining oyligi uning **o'sha oydagi** maktab sinfiga qarab tanlanadi. SPEC: `docs/SPEC-kurs-sinf-narxi.md`.
+
+```
+sinf (oyning 1-kuniga, SchoolGrades.Current) kurs oralig'iga tushsa → oraliq Price (+ oraliq LessonPrice)
+aks holda (sinf yo'q / oraliqdan tashqarida / kurssiz guruh)          → guruh MonthlyFee (+ kurs LessonPrice)
+```
+
+- ⚠️ **YAGONA joy — `TuitionPricing` / `PricingBook`.** O'quvchi QARZIGA tegadigan yangi kod
+  `Group.MonthlyFee` ni TO'G'RIDAN-TO'G'RI o'qimaydi: `PricingBook.Resolve(group, student, month)`.
+  Hozir ulangan: `AccrueMonth`, `AccrueCatchUpAsync`, `EnsureChargeAsync`, aktivlashtirish va muzlatish
+  qisman oyi, `ApplyGroupFeeToCurrentMonthAsync`, `StudentGroupLedger` (to'lov oynasi), `StudentLedger`,
+  `SubscriptionRisk`/`IncomePlan`, shartnoma summasi, ota-ona ilovasi, guruh a'zolari narxi, chegirma oynasi.
+- ⚠️ **ATAYIN guruh narxida qoladi** (guruh darajasidagi og'irliklar): teglanmagan to'lovni guruhlarga
+  bo'lish (`SalaryLedger`, `GroupBalanceService`, `CourseFinanceReport`), KPI o'rtacha narx, kurs
+  analitikasi tushumi, ushlab turish bonusi og'irligi, eski guruhsiz (ClassName) billing. Maosh foizi
+  2026-09 dan HISOBLANGAN oylikdan (`MonthlyCharge.Amount`) — demak u avtomatik to'g'ri.
+- 1-sentabrda sinf o'zi oshadi → sentabr hisobi yangi oraliq narxida yoziladi (alohida ish yo'q).
+- Oraliq bir dars narxi `0` — pro-rata (oylik ÷ jami dars), `null` EMAS: oraliq topilganda kursning
+  bir dars narxi ishlatilmaydi (u boshqa oylikka mo'ljallangan).
+- Kurs tahririda oraliqlar o'zgarsa va «Ha — joriy oydan» tanlansa: joriy oy hisoblari (qo'lda
+  tahrirlanmagan) har o'quvchi uchun YANGI oraliqlar bilan qayta moslanadi — saqlanmagan oraliqlar
+  `PricingBook.From(rows)` bilan beriladi (bazadan o'qilsa eskisi chiqardi).
+- `SubjectPayload.PriceBands`: `null` — tegilmaydi (eski mijoz), `[]` — hammasi o'chiriladi.
+  Tekshiruv (`TuitionPricing.Validate`): 1 ≤ dan ≤ gacha ≤ 12, narx > 0, ustma-ust emas, ≤ 12 ta.
+- Yozilgan hisoblar TEGILMAYDI (retroaktiv qayta hisob yo'q).
+- ⚠️ **BEPUL guruhda (narx 0) oraliq QO'LLANMAYDI**, kurs formasi esa asosiy narxi 0 kursga oraliq
+  qo'shishni rad etadi. Sabab: bunday guruhda hisob hech qachon yozilmagan — oraliq narxi qo'llansa
+  `AccrueDue` (butun tarixni skanerlaydi) aktivlashtirishdan beri BARCHA oylarga orqaga qarz yozib,
+  ota-onalarga SMS yuborardi.
+- ⚠️ **«Joriy oydan qo'llash» (`ApplyGroupFeeToCurrentMonthAsync`) endi `oldFee` bilan:** narxi
+  o'zgarmagan o'quvchi va ESKI to'liq narxga teng bo'lmagan (qisman — aktivlashtirish/muzlatish/chiqish
+  oyi yoki qo'lda o'zgartirilgan) hisob TEGILMAYDI. Ilgari kurs/guruh narxi o'zgarganda qisman oy
+  hisobi to'liq oylik bilan ustidan yozilardi (o'qilmagan darslarga qarz). Kurs shu so'rovda
+  almashtirilsa YANGI/ESKI kurs id'si aniq uzatiladi (bazadan o'qilsa eskisi chiqardi).
+- Ommaviy aktivlashtirish/muzlatish oraliqlarni BIR MARTA yuklaydi (`pricing` parametri, `lessonFee` naqshi).
+- ⚠️ Bazada ko'p o'quvchida sinf kiritilmagan — ular guruh narxini to'layveradi.
+- Testlar: `TuitionPricingTests`, `SubjectPriceBandBillingTests`; klient — `lib/__tests__/priceBands.test.ts`.
+
 ## TRANZAKSIYA TURLARI — markaz katalogi (migratsiya `AddTransactionTypes`)
 
 Moliya → «Tranzaksiya turi»: markaz o'z nomlarini kiritadi («Arenda», «Kanstovar», «SAT oylik

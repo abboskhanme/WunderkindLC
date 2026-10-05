@@ -119,14 +119,15 @@ public static class IncomePlan
             .Select(c => new { c.StudentId, c.GroupId, c.Amount, c.Discount }).ToListAsync(ct);
         var written = monthRows.Select(c => (c.StudentId, c.GroupId)).ToHashSet();
 
-        var feesById = await db.Classes.AsNoTracking().ToDictionaryAsync(c => c.Id, c => c.MonthlyFee, ct);
         var book = await DiscountBook.LoadAsync(db, memberships
             .Where(m => m.Status == "active" && m.IsActive).Select(m => m.StudentId));
+        // SINFGA QARAB NARX — keyin yoziladigan hisob bilan bir xil (`TuitionPricing`).
+        var feeOf = await SubscriptionRisk.PendingFeeResolverAsync(db, month, ct);
 
         var charges = monthRows
             .Where(c => liveIds.Contains(c.StudentId))
             .Select(c => new SubscriptionRisk.MonthCharge(c.StudentId, Math.Max(0m, c.Amount - c.Discount), Written: true))
-            .Concat(SubscriptionRisk.Pending(memberships, written, feesById, book, month))
+            .Concat(SubscriptionRisk.Pending(memberships, written, feeOf, book, month))
             .ToList();
 
         // To'lov QAYSI OYGA — `Month`, sana EMAS (`.claude/rules/billing.md`). Eski (Month'siz)

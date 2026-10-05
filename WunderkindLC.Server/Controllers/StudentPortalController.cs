@@ -548,7 +548,9 @@ public class StudentPortalController(
                 .ToList();
         }
 
-        var monthlyFee = cls?.MonthlyFee ?? 0m;
+        // Oylik — o'quvchining SINFIGA qarab (`TuitionPricing`), hisob bilan bir xil.
+        var monthlyFee = cls is null ? 0m
+            : (await PricingBook.LoadForCourseAsync(db, cls.CourseId)).MonthlyFee(cls, s, TuitionService.CurrentMonth());
 
         return new StudentDashboardDto(
             profile, meta, todayLessons, todayGrades, s.Balance, monthlyFee);

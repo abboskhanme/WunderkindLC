@@ -982,6 +982,19 @@ export interface Subject {
   /** Bir dars uchun yaxlit narx (so'm) — qisman-oy aktivlashtirishda 12 tadan kam dars
    *  qolganda har bir dars uchun shu summa olinadi. 0 = kiritilmagan (eski pro-rata). */
   lessonPrice?: number
+  /** Sinf oraliqlari va narxlari: o'quvchi oyligi uning JORIY sinfiga qarab (server `TuitionPricing`).
+   *  Bo'sh — kurs bitta narxda (`price`). */
+  priceBands?: SubjectPriceBand[]
+}
+
+/** Kursning bitta sinf oralig'i: `gradeFrom..gradeTo` (ikkalasi kiradi, 12 = maktabni bitirgan). */
+export interface SubjectPriceBand {
+  gradeFrom: number
+  gradeTo: number
+  /** Shu oraliq uchun oylik narx (so'm). */
+  price: number
+  /** Bir dars narxi (qisman oy); 0 = pro-rata. */
+  lessonPrice: number
 }
 
 /* ---------- Guruhlar ---------- */

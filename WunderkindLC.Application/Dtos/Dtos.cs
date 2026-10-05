@@ -504,7 +504,16 @@ public record StudentSmsDto(
     string Id, string PhoneNumber, string Message, string Status, string Provider, string CreatedAt);
 
 /* ---------- Subjects (Kurslar) ---------- */
-public record SubjectPayload(string Name, decimal Price = 0, decimal LessonPrice = 0);
+/// <param name="PriceBands">Sinf oraliqlari va narxlari (`TuitionPricing`). <c>null</c> — TEGILMAYDI
+/// (eski mijozlar buzilmaydi), bo'sh ro'yxat — hammasi o'chiriladi.</param>
+public record SubjectPayload(string Name, decimal Price = 0, decimal LessonPrice = 0,
+    List<SubjectPriceBandDto>? PriceBands = null);
+
+/// <summary>Kursning bitta sinf oralig'i: <c>GradeFrom..GradeTo</c> (ikkalasi kiradi, 12 = bitirgan).</summary>
+public record SubjectPriceBandDto(int GradeFrom, int GradeTo, decimal Price, decimal LessonPrice = 0);
+
+/// <summary>Kurs + sinf oraliqlari (ro'yxat va tahrir javobi). Maydonlari `Subject` bilan bir xil + oraliqlar.</summary>
+public record CourseWithBandsDto(string Id, string Name, decimal Price, decimal LessonPrice, List<SubjectPriceBandDto> PriceBands);
 
 /* ---------- Guruhlar (Groups) ---------- */
 /// <summary>Jadval konflikti: mavjud guruh bir xil xona yoki o'qituvchi, kun va vaqtda ishlaydi.</summary>

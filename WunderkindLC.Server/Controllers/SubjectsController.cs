@@ -14,9 +14,45 @@ namespace WunderkindLC.Server.Controllers;
 [Route("api/admin/subjects")]
 public class SubjectsController(AppDbContext db, AuditService audit) : ControllerBase
 {
+    /// <summary>Kurslar + har birining sinf oraliqlari (`TuitionPricing`). Maydonlar avvalgidek, ustiga `priceBands`.</summary>
     [HttpGet]
-    public async Task<ActionResult<IEnumerable<Subject>>> GetAll() =>
-        await db.Subjects.OrderBy(s => s.Name).ToListAsync();
+    public async Task<ActionResult<IEnumerable<CourseWithBandsDto>>> GetAll()
+    {
+        var subjects = await db.Subjects.AsNoTracking().OrderBy(s => s.Name).ToListAsync();
+        var bands = (await db.SubjectPriceBands.AsNoTracking().ToListAsync())
+            .ToLookup(b => b.SubjectId, StringComparer.Ordinal);
+        return subjects.Select(x => ToDto(x, bands[x.Id])).ToList();
+    }
+
+    private static CourseWithBandsDto ToDto(Subject x, IEnumerable<SubjectPriceBand> bands) => new(
+        x.Id, x.Name, x.Price, x.LessonPrice,
+        bands.OrderBy(b => b.GradeFrom)
+            .Select(b => new SubjectPriceBandDto(b.GradeFrom, b.GradeTo, b.Price, b.LessonPrice)).ToList());
+
+    /// <summary>Oraliqlar tekshiruvi + BEPUL kursga oraliq taqiqlanadi (`TuitionPricing.Resolve` izohi:
+    /// bepul guruhga oraliq qo'llansa fon hisobi o'tgan barcha oylarga orqaga qarz yozardi).</summary>
+    private static string? BandsError(IReadOnlyList<TuitionPricing.Band> bands, decimal coursePrice) =>
+        TuitionPricing.Validate(bands)
+        ?? (bands.Count > 0 && coursePrice <= 0
+            ? "Sinf narxlari uchun kursning asosiy oylik narxini kiriting (bepul kursga oraliq qo'shilmaydi)"
+            : null);
+
+    private static List<TuitionPricing.Band> ToBands(IEnumerable<SubjectPriceBandDto> dtos) =>
+        dtos.Select(b => new TuitionPricing.Band(b.GradeFrom, b.GradeTo, b.Price, b.LessonPrice))
+            .OrderBy(b => b.GradeFrom).ToList();
+
+    private static List<SubjectPriceBand> ToRows(string subjectId, IEnumerable<TuitionPricing.Band> bands) =>
+        bands.Select(b => new SubjectPriceBand
+        {
+            SubjectId = subjectId, GradeFrom = b.GradeFrom, GradeTo = b.GradeTo, Price = b.Price, LessonPrice = b.LessonPrice,
+        }).ToList();
+
+    /// <summary>"3–7-sinf 225 000 · 8–9-sinf 275 000" — audit matni; bo'sh — "yo'q".</summary>
+    private static string BandsText(IEnumerable<TuitionPricing.Band> bands)
+    {
+        var list = bands.Select(b => $"{TuitionPricing.Label(b)} {AuditService.Money(b.Price)}").ToList();
+        return list.Count == 0 ? "yo'q" : string.Join(" · ", list);
+    }
 
     /// <summary>Tarixdagi tur nomi — "Kurslar" bo'limiga tushadi (<c>AuditSections</c>).
     /// Ilgari kurs narxi <c>ClassFee</c> deb yozilar va tarixda "Guruhlar"ga tushib ketardi;
@@ -24,14 +60,20 @@ public class SubjectsController(AppDbContext db, AuditService audit) : Controlle
     private const string AuditCourse = "Course";
 
     [HttpPost]
-    public async Task<ActionResult<Subject>> Create(SubjectPayload payload)
+    public async Task<ActionResult<CourseWithBandsDto>> Create(SubjectPayload payload)
     {
+        var bands = ToBands(payload.PriceBands ?? []);
+        if (BandsError(bands, payload.Price) is { } bandError) return BadRequest(new { message = bandError });
+
         var subject = new Subject { Name = payload.Name, Price = payload.Price, LessonPrice = payload.LessonPrice };
         db.Subjects.Add(subject);
+        var rows = ToRows(subject.Id, bands);
+        db.SubjectPriceBands.AddRange(rows);
         audit.Record(AuditCourse, subject.Id, "create",
-            $"Kurs qo'shildi: {subject.Name} — {AuditService.Money(subject.Price)} so'm/oy");
+            $"Kurs qo'shildi: {subject.Name} — {AuditService.Money(subject.Price)} so'm/oy"
+            + (bands.Count > 0 ? $"; sinf narxlari: {BandsText(bands)}" : ""));
         await db.SaveChangesAsync();
-        return subject;
+        return ToDto(subject, rows);
     }
 
     /// <summary>
@@ -42,35 +84,61 @@ public class SubjectsController(AppDbContext db, AuditService audit) : Controlle
     /// joriy oy eski narxda qoladi, yangi narx keyingi oy hisoblashidan amal qiladi.
     /// </summary>
     [HttpPut("{id}")]
-    public async Task<ActionResult<Subject>> Update(string id, SubjectPayload payload, [FromQuery] bool applyFee = false)
+    public async Task<ActionResult<CourseWithBandsDto>> Update(string id, SubjectPayload payload, [FromQuery] bool applyFee = false)
     {
         var subject = await db.Subjects.FindAsync(id);
         if (subject is null) return NotFound();
+
+        // SINF ORALIQLARI (`TuitionPricing`): null — tegilmaydi (eski mijoz), aks holda to'liq almashtiriladi.
+        var oldRows = await db.SubjectPriceBands.Where(b => b.SubjectId == id).ToListAsync();
+        var oldBands = oldRows.Select(b => new TuitionPricing.Band(b.GradeFrom, b.GradeTo, b.Price, b.LessonPrice))
+            .OrderBy(b => b.GradeFrom).ToList();
+        var newBands = payload.PriceBands is null ? oldBands : ToBands(payload.PriceBands);
+        if (BandsError(newBands, payload.Price) is { } bandError) return BadRequest(new { message = bandError });
+        var bandsChanged = !oldBands.SequenceEqual(newBands);
+        var rows = oldRows;
+        if (bandsChanged)
+        {
+            db.SubjectPriceBands.RemoveRange(oldRows);
+            rows = ToRows(id, newBands);
+            db.SubjectPriceBands.AddRange(rows);
+        }
+
         var oldPrice = subject.Price;
         var oldName = subject.Name;
         subject.Name = payload.Name;
         subject.Price = payload.Price;
         subject.LessonPrice = payload.LessonPrice;
+        var priceChanged = oldPrice != payload.Price;
 
-        if (oldPrice != payload.Price)
+        if (priceChanged || bandsChanged)
         {
-            // Shu kursga bog'langan guruhlar oyligini yangi narxga yangilaymiz.
+            // Shu kursga bog'langan guruhlar oyligini yangi narxga yangilaymiz. «Joriy oydan» tanlansa —
+            // joriy oy hisoblari har o'quvchi uchun YANGI oraliqlar bilan qayta moslanadi (hali saqlanmagan
+            // oraliqlar shu yerda xotiradan beriladi — bazadan o'qilsa eskisi chiqardi).
+            var pricing = PricingBook.From(rows);
+            var oldPricing = PricingBook.From(oldRows);
             var groups = await db.Classes.Where(c => c.CourseId == id).ToListAsync();
             var appliedTotal = 0;
             foreach (var g in groups)
             {
                 var gOld = g.MonthlyFee;
-                g.MonthlyFee = payload.Price;
-                if (applyFee && gOld != payload.Price)
-                    appliedTotal += await TuitionService.ApplyGroupFeeToCurrentMonthAsync(db, g.Id, g.Name, payload.Price);
+                if (priceChanged) g.MonthlyFee = payload.Price;
+                if (applyFee && (gOld != g.MonthlyFee || bandsChanged))
+                    appliedTotal += await TuitionService.ApplyGroupFeeToCurrentMonthAsync(
+                        db, g.Id, g.Name, g.MonthlyFee, pricing, courseId: id, oldFee: gOld, oldPricing: oldPricing);
             }
 
-            var summary = $"Kurs narxi o'zgartirildi: {AuditService.Money(oldPrice)} → {AuditService.Money(payload.Price)} so'm ({subject.Name}) — {groups.Count} ta guruhga";
-            summary += applyFee
-                ? $", joriy oydan {appliedTotal} o'quvchiga qo'llandi"
-                : ", keyingi oydan amal qiladi";
-            audit.Record(AuditCourse, subject.Id, "update", summary,
-                before: new { Price = oldPrice, subject.Name }, after: new { subject.Price, subject.Name });
+            var tail = $" ({subject.Name}) — {groups.Count} ta guruhga"
+                + (applyFee ? $", joriy oydan {appliedTotal} o'quvchiga qo'llandi" : ", keyingi oydan amal qiladi");
+            if (priceChanged)
+                audit.Record(AuditCourse, subject.Id, "update",
+                    $"Kurs narxi o'zgartirildi: {AuditService.Money(oldPrice)} → {AuditService.Money(payload.Price)} so'm" + tail,
+                    before: new { Price = oldPrice, subject.Name }, after: new { subject.Price, subject.Name });
+            if (bandsChanged)
+                audit.Record(AuditCourse, subject.Id, "update",
+                    $"Kurs sinf narxlari o'zgartirildi: {BandsText(oldBands)} → {BandsText(newBands)}" + tail,
+                    before: new { PriceBands = BandsText(oldBands) }, after: new { PriceBands = BandsText(newBands) });
         }
 
         if (oldName != payload.Name)
@@ -87,7 +155,7 @@ public class SubjectsController(AppDbContext db, AuditService audit) : Controlle
             await db.Leads.Where(l => l.InterestSubject == oldName)
                 .ExecuteUpdateAsync(s => s.SetProperty(l => l.InterestSubject, payload.Name));
 
-        return subject;
+        return ToDto(subject, rows);
     }
 
     [HttpDelete("{id}")]

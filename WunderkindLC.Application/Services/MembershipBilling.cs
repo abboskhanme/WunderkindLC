@@ -57,9 +57,11 @@ public static class MembershipBilling
     /// qirqilmasa, keyingi accrual sikli o'sha oylarni QAYTA yozardi
     /// (<see cref="MembershipLifecycle.TruncatePastPeriodsAfter"/>).</para>
     /// <c>null</c> bo'lsa tarixga tegilmaydi (eski chaqiruvlar).</param>
+    /// <param name="pricing">Kurslarning sinf oraliqlari, OLDINDAN yuklangan bo'lsa (ommaviy amal —
+    /// <paramref name="lessonFee"/> bilan bir xil sabab). <c>null</c> — yakka so'rov, natija bir xil.</param>
     public static async Task<FreezeSettlement> SettleFreezeAsync(
         IAppDbContext db, Student student, Group group, string activatedAt, string freezeDate,
-        decimal? lessonFee = null, StudentGroup? membership = null)
+        decimal? lessonFee = null, StudentGroup? membership = null, PricingBook? pricing = null)
     {
         if (membership is not null)
             MembershipLifecycle.TruncatePastPeriodsAfter(membership, freezeDate);
@@ -68,7 +70,7 @@ public static class MembershipBilling
                                  && string.CompareOrdinal(activatedAt, freezeDate) > 0;
 
         if (!frozenBeforeActive)
-            await TuitionService.ChargeFreezeProrateAsync(db, student, group, activatedAt, freezeDate, lessonFee);
+            await TuitionService.ChargeFreezeProrateAsync(db, student, group, activatedAt, freezeDate, lessonFee, pricing);
 
         var (restored, purged) = await TuitionService.PurgeChargesAfterMonthAsync(
             db, student, group.Id, freezeDate, inclusive: frozenBeforeActive);

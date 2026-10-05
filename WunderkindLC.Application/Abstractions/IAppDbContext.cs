@@ -20,6 +20,7 @@ public interface IAppDbContext
     DbSet<TurnstileEvent> TurnstileEvents { get; }
     DbSet<Camera> Cameras { get; }
     DbSet<Subject> Subjects { get; }
+    DbSet<SubjectPriceBand> SubjectPriceBands { get; }
     DbSet<Group> Classes { get; }
     DbSet<GroupTeacherAssignment> GroupTeacherAssignments { get; }
     DbSet<SubstituteTeacherAssignment> SubstituteTeacherAssignments { get; }

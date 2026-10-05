@@ -56,8 +56,13 @@ public static class StudentLedger
         decimal fee;
         if (billableGroups.Count > 0)
         {
+            // SINFGA QARAB NARX (`TuitionPricing`) — hisob bilan bir xil.
+            var pricing = await PricingBook.LoadAsync(db);
             fee = billableGroups.Sum(g =>
-                g.MonthlyFee - TuitionService.DiscountForMonth(discounts, g.MonthlyFee, currentMonth, g.Id));
+            {
+                var gf = pricing.MonthlyFee(g, student, currentMonth);
+                return gf - TuitionService.DiscountForMonth(discounts, gf, currentMonth, g.Id);
+            });
         }
         else
         {

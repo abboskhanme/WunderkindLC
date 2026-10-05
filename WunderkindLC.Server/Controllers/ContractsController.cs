@@ -422,6 +422,8 @@ public class ContractsController(
         /// <summary>Chegirma REGISTRI — shartnomadagi oylik to'lov AYNAN shundan hisoblanadi
         /// (bir marta yuklanadi; ommaviy yuborishda o'quvchi boshiga so'rov qilinmasin).</summary>
         public DiscountBook Discounts = DiscountBook.Empty;
+        /// <summary>Kurslarning sinf oraliqlari — shartnomadagi oylik o'quvchining SINFIGA qarab (`TuitionPricing`).</summary>
+        public PricingBook Pricing = PricingBook.Empty;
     }
 
     private async Task<TokenCtx> LoadCtxAsync()
@@ -433,6 +435,7 @@ public class ContractsController(
             TeacherNames = await db.Teachers.AsNoTracking().ToDictionaryAsync(t => t.Id, t => t.FullName),
             Groups = await db.Classes.AsNoTracking().ToDictionaryAsync(g => g.Id),
             Discounts = await DiscountBook.LoadAllAsync(db),
+            Pricing = await PricingBook.LoadAsync(db),
         };
         var mems = await db.StudentGroups.AsNoTracking().Where(sg => sg.IsActive)
             .Select(sg => new { sg.StudentId, sg.GroupId, sg.Status }).ToListAsync();
@@ -478,7 +481,7 @@ public class ContractsController(
         var net = 0m;
         foreach (var g in billable)
         {
-            var fee = g.MonthlyFee;
+            var fee = ctx.Pricing.MonthlyFee(g, s, month);
             var line = fee - TuitionService.DiscountForMonth(rows, fee, month, g.Id);
             if (line > 0) net += line;
         }

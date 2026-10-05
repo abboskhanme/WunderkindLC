@@ -259,7 +259,11 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
         {
             var applied = 0;
             if (applyFee)
-                applied = await TuitionService.ApplyGroupFeeToCurrentMonthAsync(db, cls.Id, oldName, cls.MonthlyFee);
+                // Kurs ham shu so'rovda almashgan bo'lishi mumkin — YANGI va ESKI kurs aniq uzatiladi
+                // (bazadan o'qilsa eskisi chiqardi); qisman oy hisoblari tegilmaydi (`oldFee`).
+                applied = await TuitionService.ApplyGroupFeeToCurrentMonthAsync(
+                    db, cls.Id, oldName, cls.MonthlyFee, await PricingBook.LoadAsync(db),
+                    courseId: cls.CourseId, oldFee: oldFee, oldCourseId: oldCourseId);
 
             var summary = $"Oylik to'lov o'zgartirildi: {AuditService.Money(oldFee)} → {AuditService.Money(cls.MonthlyFee)} so'm ({cls.Name})";
             summary += applyFee
@@ -588,6 +592,7 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
                           {
                               s.Id, s.FullName, s.Phone, sg.JoinedAt, sg.LeftAt, sg.IsActive,
                               sg.Status, sg.ActivatedAt, sg.FrozenAt, sg.YearFreeze,
+                              s.SchoolGrade, s.SchoolGradeYear,
                           })
                          .ToListAsync();
         var ids = rows.Select(r => r.Id).Distinct().ToList();
@@ -625,12 +630,15 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
 
         var book = CanSeeFinance() ? await DiscountBook.LoadAsync(db, ids) : null;
         var month = TuitionService.CurrentMonth();
+        // Har o'quvchining oyligi — SINFIGA qarab (`TuitionPricing`), hisob bilan bir xil.
+        var bands = (await PricingBook.LoadForCourseAsync(db, group.CourseId)).BandsOf(group.CourseId);
 
         return rows.Select(r =>
         {
+            var fee = TuitionPricing.Resolve(bands, group.MonthlyFee, r.SchoolGrade, r.SchoolGradeYear, month).Monthly;
             decimal? price = book is null
                 ? null
-                : group.MonthlyFee - book.DiscountFor(r.Id, group.MonthlyFee, month, id);
+                : fee - book.DiscountFor(r.Id, fee, month, id);
             var note = lastNotes.TryGetValue(r.Id, out var n) ? n : ("", "");
             return new GroupRosterRowDto(
                 r.Id, r.FullName, r.JoinedAt, r.LeftAt, r.IsActive,
@@ -865,7 +873,8 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
     /// <see cref="ActivateMember"/> uni bermaydi va avvalgidek ishlaydi —
     /// <see cref="FreezeCoreAsync"/> dagi bilan bir xil naqsh.</param>
     private async Task<(bool Already, decimal MovedAdvance, int CatchUpMonths)> ActivateCoreAsync(
-        Group cls, StudentGroup sg, string date, bool? retentionBonus, decimal? lessonFee = null)
+        Group cls, StudentGroup sg, string date, bool? retentionBonus, decimal? lessonFee = null,
+        PricingBook? pricing = null)
     {
         // Allaqachon faol bo'lsa — qayta aktivlashtirish kerak emas (ikki marta hisoblamaslik uchun).
         if (sg.Status == "active") return (true, 0m, 0);
@@ -894,16 +903,20 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
         sg.RecordedAt = AppClock.Today.ToString("yyyy-MM-dd");
 
         var s = await db.Students.FindAsync(studentId);
+        // Oraliqlar — bir marta (yakka amalda shu yerda, ommaviyda chaqiruvchidan).
+        pricing ??= await PricingBook.LoadForCourseAsync(db, cls.CourseId);
+        // Tarixdagi "oylik" — o'quvchining SINFIGA qarab (`TuitionPricing`), haqiqiy hisob bilan bir xil.
+        var monthlyForAudit = s is null || date.Length < 7 ? cls.MonthlyFee : pricing.MonthlyFee(cls, s, date[..7]);
         audit.Record("Membership", $"{cls.Id}:{studentId}", "update",
             $"Aktivlashtirildi: {s?.FullName ?? studentId} — {cls.Name} ({date} sanasidan, " +
-            $"oylik {AuditService.Money(cls.MonthlyFee)} so'm)" +
+            $"oylik {AuditService.Money(monthlyForAudit)} so'm)" +
             (reactivateFromFreeze ? " — muzlatishdan qaytarildi" : ""),
             studentId: studentId);
 
         var catchUpMonths = 0;
         if (s is not null)
         {
-            await TuitionService.ChargeActivationProrateAsync(db, s, cls, date, addSegment: reactivateFromFreeze, lessonFee: lessonFee);
+            await TuitionService.ChargeActivationProrateAsync(db, s, cls, date, addSegment: reactivateFromFreeze, lessonFee: lessonFee, pricing: pricing);
             // ORQAGA SANALGAN aktivlashtirish: aktivlashtirilgan oydan KEYINGI oylardan joriy oygacha
             // to'liq oylik hisoblar DARHOL yoziladi (aks holda fon xizmati 12 soatgacha kechikardi).
             // Idempotent — mavjud hisoblarga tegmaydi, kelajak oy yozmaydi.
@@ -1003,7 +1016,7 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
     /// <see cref="FreezeMember"/> uni bermaydi va avvalgidek ishlaydi.</param>
     private async Task<(bool Already, decimal Restored, string? Error)> FreezeCoreAsync(
         Group cls, StudentGroup sg, string date, string reasonLabel, bool yearFreeze,
-        decimal? lessonFee = null)
+        decimal? lessonFee = null, PricingBook? pricing = null)
     {
         if (sg.Status == "frozen") return (true, 0m, null);
         if (sg.Status != "active" && sg.Status != "trial")
@@ -1024,7 +1037,7 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
             // muzlatishda keyingi oylar hisobini bekor qilish — hammasi YAGONA manbada
             // (guruhni yopish / tugatish / guruh almashtirish bilan aynan bir xil).
             restored = (await MembershipBilling.SettleFreezeAsync(
-                db, s, cls, activatedAt, date, lessonFee, sg)).Restored;
+                db, s, cls, activatedAt, date, lessonFee, sg, pricing)).Restored;
         }
 
         audit.Record("Membership", $"{cls.Id}:{sg.StudentId}", "update",
@@ -1163,6 +1176,8 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
         var lessonFees = await TuitionService.LessonFeesForCoursesAsync(db, groups.Values.Select(g => g.CourseId));
         decimal FeeFor(string? courseId) =>
             !string.IsNullOrEmpty(courseId) && lessonFees.TryGetValue(courseId, out var f) ? f : 0m;
+        // Kurslarning sinf oraliqlari — xuddi shu sabab bilan BIR MARTA (`TuitionPricing`).
+        var pricing = await PricingBook.LoadAsync(db);
 
         var changed = 0;
         var skipped = skippedNotEligible;
@@ -1199,7 +1214,7 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
 
                     if (freeze)
                     {
-                        var r = await FreezeCoreAsync(cls, sg, date, reasonLabel, yearFreeze, FeeFor(cls.CourseId));
+                        var r = await FreezeCoreAsync(cls, sg, date, reasonLabel, yearFreeze, FeeFor(cls.CourseId), pricing);
                         if (r.Error is not null)
                         {
                             failed++;
@@ -1211,7 +1226,7 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
                     }
                     else
                     {
-                        var r = await ActivateCoreAsync(cls, sg, date, req.RetentionBonus, FeeFor(cls.CourseId));
+                        var r = await ActivateCoreAsync(cls, sg, date, req.RetentionBonus, FeeFor(cls.CourseId), pricing);
                         if (r.Already) { skipped++; continue; }
                         movedAdvance += r.MovedAdvance;
                         catchUpMonths += r.CatchUpMonths;
@@ -1509,6 +1524,10 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
             .ToDictionary(s => s.Id, s => s.Name);
         var teacherNames = (await db.Teachers.Where(t => teacherIds.Contains(t.Id)).ToListAsync())
             .ToDictionary(t => t.Id, t => t.FullName);
+        // Kartadagi va to'lov oynasidagi "oylik" — o'quvchining SINFIGA qarab (`TuitionPricing`).
+        var student = await db.Students.AsNoTracking().FirstOrDefaultAsync(x => x.Id == studentId);
+        var pricing = await PricingBook.LoadAsync(db);
+        var month = TuitionService.CurrentMonth();
 
         var rows = memberships
             .Where(m => classes.ContainsKey(m.GroupId))
@@ -1520,7 +1539,8 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
                     m.Status ?? "trial",
                     string.IsNullOrEmpty(c.CourseId) ? "" : courseNames.GetValueOrDefault(c.CourseId, ""),
                     string.IsNullOrEmpty(c.TeacherId) ? "" : teacherNames.GetValueOrDefault(c.TeacherId, ""),
-                    c.MonthlyFee, c.Days, c.StartTime, c.EndTime, c.Room ?? "",
+                    student is null ? c.MonthlyFee : pricing.MonthlyFee(c, student, month),
+                    c.Days, c.StartTime, c.EndTime, c.Room ?? "",
                     m.ActivatedAt ?? "", m.FrozenAt ?? "", m.YearFreeze);
             })
             .OrderByDescending(r => r.IsActive).ThenBy(r => r.GroupName, StringComparer.OrdinalIgnoreCase)

@@ -90,7 +90,20 @@ public static class TuitionService
     /// yozuvi BOR o'quvchilar tegiladi (hali hisoblanmagan o'quvchi keyingi AccrueMonth orqali yangi
     /// narxda hisoblanadi). Qaytaradi: nechta o'quvchiga qo'llandi. SaveChanges — chaqiruvchida.
     /// </summary>
-    public static async Task<int> ApplyGroupFeeToCurrentMonthAsync(IAppDbContext db, string groupId, string groupName, decimal newFee)
+    /// <param name="pricing">Kursning sinf oraliqlari — berilmasa bazadan olinadi. Kurs oraliqlari
+    /// TAHRIRLANAYOTGAN paytda (hali saqlanmagan) chaqiruvchi YANGI oraliqlarni shu yerga beradi.</param>
+    /// <param name="courseId">Guruhning (YANGI) kursi. ⚠️ Kurs shu so'rovda almashtirilayotgan bo'lsa
+    /// bazadan o'qish ESKISINI berardi — chaqiruvchi o'zi uzatadi. <c>null</c> — bazadan.</param>
+    /// <param name="oldFee">O'zgarishdan OLDINGI guruh narxi. Berilsa: (1) narxi o'zgarmagan o'quvchi
+    /// TEGILMAYDI; (2) joriy oy hisobi ESKI to'liq narxga teng bo'lmasa (oy o'rtasidagi qisman hisob —
+    /// aktivlashtirish/muzlatish/chiqish) u ham TEGILMAYDI. Aks holda qisman hisob to'liq oylik bilan
+    /// ustidan yozilib, o'quvchiga o'qimagan darslari uchun qarz tushardi. <c>null</c> — eski xatti-harakat.</param>
+    /// <param name="oldPricing">ESKI oraliqlar (kurs oraliqlari tahrirlanayotganda). <c>null</c> — <paramref name="pricing"/>.</param>
+    /// <param name="oldCourseId">ESKI kurs (guruh kursi almashtirilayotganda). <c>null</c> — <paramref name="courseId"/>.</param>
+    public static async Task<int> ApplyGroupFeeToCurrentMonthAsync(IAppDbContext db, string groupId, string groupName, decimal newFee,
+                                                                   PricingBook? pricing = null, string? courseId = null,
+                                                                   decimal? oldFee = null, PricingBook? oldPricing = null,
+                                                                   string? oldCourseId = null)
     {
         var month = CurrentMonth();
         var applied = 0;
@@ -108,8 +121,25 @@ public static class TuitionService
                 // ⚠️ Chegirma kitobi BIR MARTA — o'quvchi boshiga so'rov qilinsa N+1 bo'lardi
                 // (guruhda 500 o'quvchi = 500 so'rov).
                 var book = await DiscountBook.LoadAsync(db, sids);
+                // SINFGA QARAB NARX: `newFee` — guruhning ASOSIY narxi; o'quvchining sinfi kurs
+                // oralig'iga tushsa uning narxi oraliqdan olinadi (`TuitionPricing`).
+                courseId ??= await db.Classes.Where(c => c.Id == groupId).Select(c => c.CourseId).FirstOrDefaultAsync();
+                pricing ??= await PricingBook.LoadForCourseAsync(db, courseId);
+                oldPricing ??= pricing;
+                oldCourseId ??= courseId;
                 foreach (var charge in groupCharges)
-                    if (ApplyFeeToCharge(charge, byId.GetValueOrDefault(charge.StudentId), newFee, book)) applied++;
+                {
+                    var st = byId.GetValueOrDefault(charge.StudentId);
+                    if (st is null) continue;
+                    var fee = pricing.Resolve(courseId, newFee, st, month).Monthly;
+                    if (oldFee is { } of)
+                    {
+                        var oldResolved = oldPricing.Resolve(oldCourseId, of, st, month).Monthly;
+                        if (oldResolved == fee) continue;            // shu o'quvchining narxi o'zgarmadi
+                        if (charge.Amount != oldResolved) continue;  // qisman / qo'lda o'zgartirilgan oy
+                    }
+                    if (ApplyFeeToCharge(charge, st, fee, book)) applied++;
+                }
             }
         }
 
@@ -125,7 +155,11 @@ public static class TuitionService
                 var byId = nameStudents.ToDictionary(s => s.Id);
                 var book = await DiscountBook.LoadAsync(db, ids);
                 foreach (var charge in nameCharges)
+                {
+                    // Qisman oy hisobi to'liq oylik bilan ustidan yozilmasin (yuqoridagi bilan bir xil qoida).
+                    if (oldFee is { } of && (of == newFee || charge.Amount != of)) continue;
                     if (ApplyFeeToCharge(charge, byId.GetValueOrDefault(charge.StudentId), newFee, book)) applied++;
+                }
             }
         }
         return applied;
@@ -310,11 +344,18 @@ public static class TuitionService
     /// 1 martaga tushiradi. Qolgan chaqiruvchilar (yakka aktivlashtirish, guruh almashtirish,
     /// sertifikat bilan tugatish) parametrni bermaydi va avvalgidek ishlaydi —
     /// <see cref="ChargeFreezeProrateAsync"/> dagi bilan AYNAN bir xil naqsh.</param>
-    public static async Task ChargeActivationProrateAsync(IAppDbContext db, Student s, Group cls, string dateIso, bool addSegment = false, decimal? lessonFee = null)
+    /// <param name="pricing">Kurslarning sinf oraliqlari, OLDINDAN yuklangan bo'lsa (ommaviy amal).
+    /// <c>null</c> — shu kursniki yakka so'rov bilan olinadi; natija bir xil.</param>
+    public static async Task ChargeActivationProrateAsync(IAppDbContext db, Student s, Group cls, string dateIso, bool addSegment = false, decimal? lessonFee = null,
+                                                          PricingBook? pricing = null)
     {
         try
         {
-            if (cls.MonthlyFee <= 0 || dateIso.Length < 10 || !DateOnly.TryParse(dateIso, out var d)) return;
+            if (dateIso.Length < 10 || !DateOnly.TryParse(dateIso, out var d)) return;
+            // SINFGA QARAB NARX (`TuitionPricing`): oraliq topilsa uning oyligi va bir dars narxi.
+            var (monthly, bandLesson) = (pricing ?? await PricingBook.LoadForCourseAsync(db, cls.CourseId))
+                .Resolve(cls, s, dateIso[..7]);
+            if (monthly <= 0) return;
             var monthStart = new DateOnly(d.Year, d.Month, 1);
             var monthEnd = new DateOnly(d.Year, d.Month, DateTime.DaysInMonth(d.Year, d.Month));
             var totalInMonth = LessonsInRange(cls.Days, monthStart, monthEnd);
@@ -323,8 +364,8 @@ public static class TuitionService
 
         // Yangi formula: birinchi darsdan (remaining == jami) yoki 12+ dars qolgan → to'liq oylik;
         // 12 tadan kam qolgan → qolgan dars × kursning bir dars yaxlit narxi (LessonPrice).
-        var fee = lessonFee ?? await LessonFeeForCourseAsync(db, cls.CourseId);
-        var gross = ProratedLessonCharge(cls.MonthlyFee, fee, remaining, totalInMonth);
+        var fee = bandLesson ?? lessonFee ?? await LessonFeeForCourseAsync(db, cls.CourseId);
+        var gross = ProratedLessonCharge(monthly, fee, remaining, totalInMonth);
         if (gross <= 0) return;
 
         var month = dateIso[..7];
@@ -372,7 +413,7 @@ public static class TuitionService
                 // SHU OYDA muzlatilgandan keyin QAYTA aktivlashtirish: mavjud hisob = muzlatishgacha studied
                 // segment. Yangi segment (shu sanadan oy oxirigacha) USTIGA QO'SHILADI — gap (muzlatish↔qayta
                 // aktiv) hisoblanmaydi, studied portion yo'qolmaydi. Yig'indi to'liq oylikdan oshmaydi.
-                var newAmount = Math.Min(existing.Amount + gross, cls.MonthlyFee);
+                var newAmount = Math.Min(existing.Amount + gross, monthly);
                 var newDiscount = book.DiscountFor(s.Id, newAmount, month, cls.Id);
                 existing.Amount = newAmount;
                 existing.Discount = newDiscount;
@@ -414,9 +455,15 @@ public static class TuitionService
     /// amalda — <see cref="LessonFeesForCoursesAsync"/>). ⚠️ FAQAT tezlik uchun: <c>null</c> bo'lsa
     /// aynan o'sha qiymat shu yerda yakka so'rov bilan olinadi, ya'ni natija bir xil. Ommaviy
     /// muzlatishda guruh bitta bo'lgani uchun bu bir xil so'rovni 500 martadan 1 martaga tushiradi.</param>
-    public static async Task ChargeFreezeProrateAsync(IAppDbContext db, Student s, Group cls, string activatedAtIso, string freezeDateIso, decimal? lessonFee = null)
+    /// <param name="pricing">Kurslarning sinf oraliqlari, OLDINDAN yuklangan bo'lsa (ommaviy amal).</param>
+    public static async Task ChargeFreezeProrateAsync(IAppDbContext db, Student s, Group cls, string activatedAtIso, string freezeDateIso, decimal? lessonFee = null,
+                                                      PricingBook? pricing = null)
     {
-        if (cls.MonthlyFee <= 0 || freezeDateIso.Length < 10 || !DateOnly.TryParse(freezeDateIso, out var fz)) return;
+        if (freezeDateIso.Length < 10 || !DateOnly.TryParse(freezeDateIso, out var fz)) return;
+        // SINFGA QARAB NARX (`TuitionPricing`) — muzlatish oyi bo'yicha.
+        var (monthly, bandLesson) = (pricing ?? await PricingBook.LoadForCourseAsync(db, cls.CourseId))
+            .Resolve(cls, s, freezeDateIso[..7]);
+        if (monthly <= 0) return;
         var monthStart = new DateOnly(fz.Year, fz.Month, 1);
         var monthEnd = new DateOnly(fz.Year, fz.Month, DateTime.DaysInMonth(fz.Year, fz.Month));
         var totalInMonth = LessonsInRange(cls.Days, monthStart, monthEnd);
@@ -437,8 +484,8 @@ public static class TuitionService
         var studied = fz >= activeFrom ? LessonsInRange(cls.Days, activeFrom, fz) : 0;
         // Qatnashilgan darslar uchun (aktivlashtirish bilan bir xil formula): jami/12+ → to'liq, aks holda
         // qatnashilgan dars × kursning bir dars yaxlit narxi (LessonPrice; yo'q bo'lsa eski pro-rata).
-        var fee = lessonFee ?? await LessonFeeForCourseAsync(db, cls.CourseId);
-        var gross = ProratedLessonCharge(cls.MonthlyFee, fee, studied, totalInMonth);
+        var fee = bandLesson ?? lessonFee ?? await LessonFeeForCourseAsync(db, cls.CourseId);
+        var gross = ProratedLessonCharge(monthly, fee, studied, totalInMonth);
 
         // Shu (o'quvchi, oy) uchun kerak bo'ladigan IKKALA qator ham BITTA so'rovda: aggregate
         // (GroupId=null) va shu guruhniki. Ilgari bular ketma-ket ikki so'rov edi
@@ -466,10 +513,10 @@ public static class TuitionService
         if (activatedThisMonth && existing is not null && existing.Date == activatedAtIso)
         {
             var remainingAtActivation = LessonsInRange(cls.Days, act, monthEnd);
-            var projectedAtActivation = ProratedLessonCharge(cls.MonthlyFee, fee, remainingAtActivation, totalInMonth);
+            var projectedAtActivation = ProratedLessonCharge(monthly, fee, remainingAtActivation, totalInMonth);
             carry = Math.Max(0m, existing.Amount - projectedAtActivation);
         }
-        var totalGross = Math.Min(carry + gross, cls.MonthlyFee);
+        var totalGross = Math.Min(carry + gross, monthly);
         // Chegirma REGISTRDAN (qarang: ChargeActivationProrateAsync).
         var book = await DiscountBook.LoadForStudentAsync(db, s.Id);
         var discount = totalGross > 0 ? book.DiscountFor(s.Id, totalGross, month, cls.Id) : 0m;
@@ -503,7 +550,9 @@ public static class TuitionService
     {
         var created = new List<(string StudentId, decimal Amount)>();
         var classList = await db.Classes.ToListAsync();
-        var feesById = classList.ToDictionary(c => c.Id, c => c.MonthlyFee);
+        var groupsById = classList.ToDictionary(c => c.Id);
+        // SINFGA QARAB NARX — barcha kurslar oraliqlari BIR MARTA (`TuitionPricing`).
+        var pricing = await PricingBook.LoadAsync(db);
         var feesByName = classList.GroupBy(c => c.Name).ToDictionary(g => g.Key, g => g.First().MonthlyFee);
         // Barcha a'zoliklar (holat bilan). Oylik to'lov faqat FAOL (active) a'zolikka — aktivlashtirilgan
         // oydan KEYINGI oylar uchun (aktiv oyi qisman to'lov bilan alohida yozilgan) va muzlatish oyidan OLDIN.
@@ -542,7 +591,7 @@ public static class TuitionService
                     if (m.Status != "active" || !m.IsActive) continue;
                     if (!AccruableMonth(m, month)) continue;
                     if (already.Contains((s.Id, (string?)m.GroupId))) continue;
-                    var gfee = feesById.TryGetValue(m.GroupId, out var f) ? f : 0m;
+                    var gfee = groupsById.TryGetValue(m.GroupId, out var grp) ? pricing.MonthlyFee(grp, s, month) : 0m;
                     if (gfee <= 0) continue;
                     var eff = AccrueOne(db, s, book.For(s.Id), m.GroupId, month, gfee);
                     total += eff;
@@ -639,7 +688,8 @@ public static class TuitionService
     public static async Task<int> AccrueCatchUpAsync(IAppDbContext db, Student s, Group cls, string activatedAtIso,
                                                      Domain.StudentGroup? membership = null)
     {
-        if (cls.MonthlyFee <= 0 || string.IsNullOrEmpty(activatedAtIso) || activatedAtIso.Length < 7) return 0;
+        // ⚠️ Narx endi OY BO'YICHA tanlanadi (sinf 1-sentabrda oshadi) — "narx 0" tekshiruvi halqada.
+        if (string.IsNullOrEmpty(activatedAtIso) || activatedAtIso.Length < 7) return 0;
         var from = NextMonth(activatedAtIso[..7]);
         var cur = CurrentMonth();
         // ODATDAGI HOLAT (joriy oydan aktivlashtirish, tarix yo'q) — qiladigan ish yo'q, pastdagi
@@ -671,15 +721,18 @@ public static class TuitionService
 
         // Chegirma qatorlari — BIR MARTA (halqa ichida emas): oralig'i bir necha oy bo'lishi mumkin.
         var discounts = (await DiscountBook.LoadForStudentAsync(db, s.Id)).For(s.Id);
+        var pricing = await PricingBook.LoadForCourseAsync(db, cls.CourseId);
 
         var created = 0;
         foreach (var month in months)
         {
             if (string.CompareOrdinal(month, cur) > 0) continue; // KELAJAK oy hech qachon yozilmaydi
             if (existing.Contains(month)) continue;
+            var monthFee = pricing.MonthlyFee(cls, s, month);
+            if (monthFee <= 0) continue;
             // Eski aggregate (GroupId=null) qator bo'lsa — dublikat bo'lmasin.
             await PurgeAggregateRowAsync(db, s, month);
-            AccrueOne(db, s, discounts, cls.Id, month, cls.MonthlyFee); // to'liq oylik + chegirma
+            AccrueOne(db, s, discounts, cls.Id, month, monthFee); // to'liq oylik (sinf oralig'i bo'yicha) + chegirma
             created++;
         }
         return created;
@@ -700,7 +753,12 @@ public static class TuitionService
         if (groupId is null)
             fee = (await db.Classes.FirstOrDefaultAsync(c => c.Name == s.ClassName))?.MonthlyFee ?? 0m;
         else
-            fee = (await db.Classes.Where(c => c.Id == groupId).Select(c => c.MonthlyFee).FirstOrDefaultAsync());
+        {
+            var g = await db.Classes.Where(c => c.Id == groupId)
+                .Select(c => new { c.CourseId, c.MonthlyFee }).FirstOrDefaultAsync();
+            fee = g is null ? 0m
+                : (await PricingBook.LoadForCourseAsync(db, g.CourseId)).Resolve(g.CourseId, g.MonthlyFee, s, month).Monthly;
+        }
         if (fee <= 0) return false;
 
         var discounts = (await DiscountBook.LoadForStudentAsync(db, s.Id)).For(s.Id);
