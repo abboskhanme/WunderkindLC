@@ -52,6 +52,12 @@ public static class PaymentIntake
         if (!PaymentFields.TryNormalizeCardLast4(req.CardLast4, out var cardLast4))
             return PaymentIntakeResult.Invalid("Karta raqamining oxirgi 4 raqamini kiriting");
 
+        // KASSA: tanlangani yoki kiritgan xodimning o'z kassasi / «Asosiy kassa» (`CashboxService`).
+        // Noto'g'ri/arxivlangan kassa — xato: pul kassir bilmagan kassaga jimgina yozilmasin.
+        var cashbox = await CashboxService.ResolveAsync(db, req.CashboxId, createdById);
+        if (cashbox.Error is not null)
+            return PaymentIntakeResult.Invalid(cashbox.Error);
+
         // QOG'OZ KVITANSIYA raqami BIR MARTA ishlatiladi — band bo'lsa 409 va allaqachon kiritilgan
         // to'lov ma'lumoti qaytadi (kassir ekranida kartochka bo'lib chiqadi).
         // "Baribir saqlash" (ForceReceipt) bosilgan bo'lsa — kassir ataylab davom etyapti, o'tkazamiz.
@@ -154,6 +160,7 @@ public static class PaymentIntake
             CardLast4 = cardLast4,
             CreatedBy = createdBy,     // mas'ul (chek uchun)
             CreatedById = createdById,  // kim kiritgani (kassir hisoboti)
+            CashboxId = cashbox.CashboxId,
         };
         db.FinanceTransactions.Add(tx);
 

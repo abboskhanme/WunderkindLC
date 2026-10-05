@@ -899,6 +899,7 @@ public static class TuitionService
                         Method = tx.Method,
                         Comment = tx.Comment,
                         CreatedBy = tx.CreatedBy,
+                        CashboxId = tx.CashboxId, // pul o'sha kassada turibdi — faqat guruh tegi o'zgaradi
                         Note = $"O'quvchi to'lovi ({tx.Month}) [{toGroup.Name}] {mark}",
                     });
                 }

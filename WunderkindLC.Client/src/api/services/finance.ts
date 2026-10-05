@@ -60,6 +60,8 @@ export interface FinanceTransactionPayload {
   paidTime?: string
   /** Karta raqamining oxirgi 4 raqami (karta orqali to'lov) */
   cardLast4?: string
+  /** Qaysi kassa. Yaratishda bo'sh — standart kassa; tahrirda bo'sh — o'zgarmaydi. */
+  cashboxId?: string
 }
 
 /**
@@ -85,6 +87,8 @@ export interface PaymentEditPayload {
   cardLast4?: string
   /** Kvitansiya raqami boshqa to'lovda band bo'lsa ham saqlash ("Baribir saqlash"). */
   forceReceipt?: boolean
+  /** Kassani almashtirish (xato kassaga yozilgan to'lov). Bo'sh = o'zgarmaydi. */
+  cashboxId?: string
 }
 
 export interface TransactionFilters {

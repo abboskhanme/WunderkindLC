@@ -23,6 +23,7 @@ import posthog from '@/lib/posthog'
 import { toast } from '@/lib/toast'
 import { newRequestId } from '@/lib/requestId'
 import { LessonDiscountPanel } from './LessonDiscountPanel'
+import { cashboxOptionLabel, showCashboxPicker, useCashboxOptions } from '@/hooks/useCashboxOptions'
 
 interface Props {
   student: Student | null
@@ -53,7 +54,7 @@ interface Props {
     /** Naqd — qog'oz kvitansiya raqami ("KV..."); karta — to'lov vaqti "HH:mm" va karta
      *  raqamining oxirgi 4 raqami.
      *  `forceReceipt` — kvitansiya band bo'lsa ham saqlash ("Baribir saqlash"). */
-    extra?: { receiptNo?: string; paidTime?: string; cardLast4?: string; forceReceipt?: boolean; requestId?: string },
+    extra?: { receiptNo?: string; paidTime?: string; cardLast4?: string; forceReceipt?: boolean; requestId?: string; cashboxId?: string },
   ) => void | Promise<void>
 }
 
@@ -128,6 +129,10 @@ export function PaymentModal({
   const [error, setError] = useState<string | null>(null)
   /** Shu oynada qo'llangan/bekor qilingan chegirmalarning balansga ta'siri ("to'lovdan keyingi balans" uchun). */
   const [balanceAdj, setBalanceAdj] = useState(0)
+  /** KASSA: kassir QO'LDA tanlagan kassa (`null` — tanlamagan, uning standart kassasi ishlatiladi). */
+  const [cashboxPick, setCashboxPick] = useState<string | null>(null)
+  const cashboxes = useCashboxOptions(open ?? !!student)
+  const cashboxId = cashboxPick ?? cashboxes?.defaultId ?? ''
 
   const [loading, setLoading] = useState(false) // boshlang'ich (guruhlar) yuklash
   const [loadingMonths, setLoadingMonths] = useState(false) // tanlangan guruh oylari
@@ -186,6 +191,7 @@ export function PaymentModal({
     setDuplicate(null)
     setError(null)
     setBalanceAdj(0)
+    setCashboxPick(null)
     setGroupsError(null)
     setMonthsError(null)
     if (!studentId) return
@@ -318,6 +324,8 @@ export function PaymentModal({
         cardLast4: method === 'card' && cardLast4 ? cardLast4 : undefined,
         forceReceipt: force,
         requestId: requestIdRef.current,
+        // Bo'sh — server kassirning o'z kassasini / «Asosiy kassa»ni tanlaydi.
+        cashboxId: cashboxId || undefined,
       })
       setDuplicate(null)
       // Keyingi to'lov (oyna yopilmay qolsa ham) — YANGI to'lov, yangi kalit.
@@ -575,6 +583,19 @@ export function PaymentModal({
                 <DrawerField label="To'lov turi" group>
                   <DrawerChoice options={paymentMethods} value={method} onChange={setMethod} />
                 </DrawerField>
+
+                {/* KASSA — faqat bir nechta kassa bo'lsa; oldindan kassirning o'z kassasi tanlangan. */}
+                {showCashboxPicker(cashboxes) && (
+                  <DrawerField label="Kassa">
+                    <DrawerSelect value={cashboxId} onChange={(e) => setCashboxPick(e.target.value)}>
+                      {cashboxes.items.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {cashboxOptionLabel(c)}
+                        </option>
+                      ))}
+                    </DrawerSelect>
+                  </DrawerField>
+                )}
 
                 {/* NAQD — qog'oz kvitansiya raqami: seriya "KV" (o'zgarmas) + raqam. */}
                 {method === 'cash' && (

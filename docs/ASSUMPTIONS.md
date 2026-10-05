@@ -197,3 +197,11 @@
 - [2026-10-05] To'langan oyga chegirma? → rad etiladi, faqat to'lanmagan qoldiqdan ayriladi → aks holda jimgina avans
   bo'lardi; pul qaytarish — «Vozvrat»
 - [2026-10-05] Chegirma qayerda? → admin to'lov oynasi ham, Kassa ham (ruxsat: to'lov ruxsati) → kassir to'lov paytida qo'yadi
+- [2026-10-05] Vozvrat qaysi kassadan chiqadi? → asl to'lov tushgan kassadan (arxivlangan bo'lsa qaytaruvchining
+  standart kassasi) → pulni qabul qilgan kassa qaytaradi, kassa qoldig'i izchil qoladi
+- [2026-10-05] Kassa o'chiriladimi? → yo'q, faqat arxivlanadi; «Asosiy kassa» arxivlanmaydi → tarix va qoldiq
+  yo'qolmasin, mas'ulsiz to'lov uchun zaxira kassa doim bo'lsin
+- [2026-10-05] Bitta kassa bo'lsa to'lov oynasida «Kassa» maydoni? → ko'rsatilmaydi (2+ faol kassada chiqadi) →
+  ortiqcha maydon, server baribir o'sha kassani tanlaydi
+- [2026-10-05] Kassa mas'uli kim bo'la oladi? → xodim/admin/superadmin akkaunti (o'qituvchi emas) → to'lovni
+  faqat panel akkauntlari kiritadi

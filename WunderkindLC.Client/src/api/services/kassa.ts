@@ -46,7 +46,7 @@ export async function addKassaPayment(
   comment?: string,
   method?: string,
   date?: string,
-  extra?: { receiptNo?: string; paidTime?: string; cardLast4?: string; forceReceipt?: boolean; requestId?: string },
+  extra?: { receiptNo?: string; paidTime?: string; cardLast4?: string; forceReceipt?: boolean; requestId?: string; cashboxId?: string },
 ): Promise<string | null> {
   if (USE_MOCK) return null
   const { data } = await api.post<{ id: string }>(`/admin/kassa/students/${studentId}/payments`, {
@@ -62,6 +62,8 @@ export async function addKassaPayment(
     forceReceipt: extra?.forceReceipt ?? false,
     // Oyna ochilishining kaliti — qayta bosilgan/yuborilgan so'rov IKKINCHI to'lov yozmaydi.
     requestId: extra?.requestId,
+    // Qaysi kassa (bo'sh — server kassirning o'z kassasini / «Asosiy kassa»ni tanlaydi).
+    cashboxId: extra?.cashboxId,
   })
   return data?.id ?? null
 }

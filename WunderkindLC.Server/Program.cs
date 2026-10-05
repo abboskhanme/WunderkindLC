@@ -778,6 +778,15 @@ using (var scope = app.Services.CreateScope())
     }
 }
 
+// KASSALAR — «Asosiy kassa» (zaxira kassa, `Id = "main"`) HAR DOIM bo'lsin: mas'uli yo'q to'lov shu
+// yerga tushadi. Mavjud bazada uni `AddCashboxes` migratsiyasi yaratadi (eski yozuvlarni ham unga
+// ko'chiradi); bu blok faqat YANGI (bo'sh) baza uchun. Idempotent.
+if (CashboxService.EnsureMain(db))
+{
+    db.SaveChanges();
+    app.Logger.LogInformation("[seed] «{Name}» yaratildi", CashboxService.MainName);
+}
+
 // DAVOMAT SABABLARI — jurnalda "kelmadi" ni belgilash uchun KAMIDA BITTA sabab kerak.
 // ⚠️ Bu jadval ilgari hech qayerda seed qilinmasdi: bo'sh markazda katak oynasida faqat
 // "Keldi" bo'lar va "Sabablar yo'q" deb yozilardi — ya'ni davomat QO'YIB BO'LMASDI

@@ -109,7 +109,10 @@ public record PaymentRequest(decimal Amount, string? Month, string? GroupId = nu
     /// <summary>Klient kaliti — bitta to'lov oynasining BARCHA urinishlarida bir xil. Qayta
     /// bosilgan/qayta yuborilgan so'rov yangi to'lov emas, o'sha to'lovni qaytaradi
     /// (<see cref="Services.PaymentIdempotency"/>). Bo'sh bo'lsa — eski xatti-harakat.</summary>
-    string? RequestId = null);
+    string? RequestId = null,
+    /// <summary>Pul qaysi KASSAGA tushadi. Bo'sh — kiritgan xodimning o'z kassasi / «Asosiy kassa»
+    /// (<see cref="Services.CashboxService.ResolveAsync"/>).</summary>
+    string? CashboxId = null);
 
 /// <summary>
 /// ALLAQACHON kiritilgan kvitansiya raqami haqidagi ma'lumot — bitta qog'oz blank ikki marta
@@ -197,6 +200,21 @@ public record StudentImportRowErrorDto(int Row, string Message);
 public record LessonDiscountRequest(string GroupId, string Month, int Lessons, string? Reason);
 public record LessonDiscountQuoteDto(
     string GroupId, string Month, int Lessons, int LessonsInMonth, decimal LessonPrice, decimal Remaining, decimal Amount);
+/* ---------- Kassalar (`docs/SPEC-kassalar.md`) ---------- */
+
+/// <summary>Kassa kartasi: qoldiq (butun tarix) + tanlangan davrdagi kirim/chiqim.</summary>
+public record CashboxDto(
+    string Id, string Name, string? ResponsibleUserId, string? ResponsibleName, bool IsMain, bool IsArchived,
+    decimal Balance, decimal PeriodIncome, decimal PeriodExpense, string CreatedAt);
+
+/// <summary>To'lov oynasidagi tanlov uchun (qoldiqsiz).</summary>
+public record CashboxOptionDto(string Id, string Name, string? ResponsibleName, bool Mine);
+
+/// <summary><paramref name="DefaultId"/> — shu foydalanuvchining standart kassasi (oldindan tanlanadi).</summary>
+public record CashboxOptionsDto(List<CashboxOptionDto> Items, string? DefaultId);
+
+public record CashboxPayload(string? Name, string? ResponsibleUserId);
+
 public record LessonDiscountDto(
     string Id, string GroupId, string GroupName, string Month, int Lessons, decimal LessonPrice, decimal Amount,
     string Reason, string CreatedAt, string CreatedByName, bool Cancelled, string? CancelledAt, string? CancelledByName);
@@ -1628,7 +1646,9 @@ public record FinanceTransactionDto(
     // ko'rinadi. null = turi tanlanmagan/eski yozuv, u holda avvalgidek toifa yorlig'i chiqadi.
     string? TypeName = null,
     // BEKOR QILINGAN (qator saqlanadi, hisobga kirmaydi) — ro'yxatda ustiga chizilgan holda.
-    bool IsVoided = false, string? VoidedAt = null, string? VoidedBy = null, string? VoidReason = null);
+    bool IsVoided = false, string? VoidedAt = null, string? VoidedBy = null, string? VoidReason = null,
+    // Qaysi kassa (id + nomi; nomi faqat ro'yxat endpointida to'ldiriladi).
+    string? CashboxId = null, string? CashboxName = null);
 
 /// <summary>
 /// "Kiritgan" filtri uchun bitta variant — TO'LOV KIRITA OLADIGAN xodim/admin. Ro'yxatga
@@ -1673,7 +1693,9 @@ public record PaymentEditPayload(
     string Date, decimal Amount, string Month,
     string? GroupId = null, string? Method = null, string? Comment = null,
     string? ReceiptNo = null, string? PaidTime = null, bool ForceReceipt = false,
-    string? CardLast4 = null);
+    string? CardLast4 = null,
+    // Kassani almashtirish (xato kassaga yozilgan to'lov). null = o'zgarmaydi.
+    string? CashboxId = null);
 
 public record FinanceTransactionPayload(
     string Date, string Direction, string Category, decimal Amount, string? Note,
@@ -1684,7 +1706,9 @@ public record FinanceTransactionPayload(
     // avvalgidek `Category` ga qaraydi (TransactionType izohiga qarang).
     string? TypeId = null,
     // Klient kaliti — bitta oyna ochilishining barcha urinishlarida bir xil (PaymentIdempotency).
-    string? RequestId = null);
+    string? RequestId = null,
+    // Qaysi kassa. Yaratishda bo'sh — standart kassa; tahrirda bo'sh — o'zgarmaydi.
+    string? CashboxId = null);
 public record CategoryAmountDto(string Category, decimal Amount);
 public record FinanceSummaryDto(
     decimal TotalIncome, decimal TotalExpense, decimal Net,

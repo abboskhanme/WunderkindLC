@@ -62,6 +62,7 @@ import { usePerm } from '@/lib/permissions'
 import { PhotoDialog } from '@/components/media/PhotoDialog'
 import { TeacherBonusPanel } from '@/components/retention/TeacherBonusPanel'
 import { TeacherAiPanel } from './TeacherAiPanel'
+import { cashboxOptionLabel, showCashboxPicker, useCashboxOptions } from '@/hooks/useCashboxOptions'
 import { TeacherReviewsFeed } from './TeacherReviewsFeed'
 import {
   getTeacherRetentionBonuses,
@@ -187,6 +188,10 @@ export function TeacherDetailPage() {
   const [payNote, setPayNote] = useState('')
   const [payBusy, setPayBusy] = useState(false)
   const [payError, setPayError] = useState<string | null>(null)
+  /** KASSA: qaysi kassadan berilmoqda (`null` — tanlanmagan, foydalanuvchining standart kassasi). */
+  const [payCashbox, setPayCashbox] = useState<string | null>(null)
+  const cashboxes = useCashboxOptions(payOpen)
+  const payCashboxId = payCashbox ?? cashboxes?.defaultId ?? ''
 
   // Oxirgi 12 oy (joriy oydan orqaga) — tanlagich uchun, alohida so'rovsiz.
   const monthOptions = useMemo(() => {
@@ -287,6 +292,7 @@ export function TeacherDetailPage() {
     setPayDate(new Date().toISOString().slice(0, 10))
     setPayNote(salaryNoteFor(selMonth, 'all'))
     setPayError(null)
+    setPayCashbox(null)
     setPayOpen(true)
   }
 
@@ -355,6 +361,8 @@ export function TeacherDetailPage() {
         // QAYSI OY UCHUN — formada tanlangan oy (sanadan mustaqil)
         month: payMonth,
         note: payNote.trim() || undefined,
+        // Bo'sh — server standart kassani tanlaydi (beruvchining o'z kassasi / «Asosiy kassa»).
+        cashboxId: payCashboxId || undefined,
       })
       // Natija ko'rinsin: yuqoridagi panel to'lov qilingan OYga o'tadi
       const m = await getSalaryMonth(id, payMonth)
@@ -1492,6 +1500,22 @@ export function TeacherDetailPage() {
                     </span>
                   </label>
                 </div>
+                {showCashboxPicker(cashboxes) && (
+                  <label className="mt-3 block">
+                    <span className="text-xs text-slate-500">Kassa (qaysi kassadan)</span>
+                    <select
+                      value={payCashboxId}
+                      onChange={(e) => setPayCashbox(e.target.value)}
+                      className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-sm focus:border-brand-400 focus:outline-none"
+                    >
+                      {cashboxes.items.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {cashboxOptionLabel(c)}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
                 <label className="mt-3 block">
                   <span className="text-xs text-slate-500">Izoh</span>
                   <input

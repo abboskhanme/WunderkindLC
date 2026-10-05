@@ -13,6 +13,7 @@ import { Loader } from '@/components/ui/Loader'
 import { formatMonth, monthStatusLabels, paymentMethods } from '@/config/constants'
 import { apiErrorMessage, formatDate, formatMoney, cn } from '@/lib/utils'
 import { toast } from '@/lib/toast'
+import { cashboxOptionLabel, showCashboxPicker, useCashboxOptions } from '@/hooks/useCashboxOptions'
 
 interface Props {
   /** Tahrirlanadigan o'quvchi to'lovi (income + tuition) */
@@ -42,6 +43,13 @@ export function PaymentEditModal({ payment, onClose, onSaved }: Props) {
   const [error, setError] = useState<string | null>(null)
   /** Kvitansiya raqami BOSHQA to'lovda band — server 409 bilan qaytargan yozuv. */
   const [duplicate, setDuplicate] = useState<DuplicateReceipt | null>(null)
+  const cashboxes = useCashboxOptions(!!payment)
+  // To'lovning kassasi arxivlangan bo'lsa ham tanlovda o'z nomi bilan turadi — aks holda select
+  // birinchi kassani ko'rsatib, saqlashda kassani jimgina almashtirib yuborardi.
+  const archivedCashbox =
+    payment?.cashboxId && cashboxes && !cashboxes.items.some((c) => c.id === payment.cashboxId)
+      ? { id: payment.cashboxId, name: `${payment.cashboxName ?? 'Kassa'} (arxiv)` }
+      : null
 
   useEffect(() => {
     if (!payment) return
@@ -58,6 +66,7 @@ export function PaymentEditModal({ payment, onClose, onSaved }: Props) {
       receiptNo: payment.receiptNo ?? '',
       paidTime: payment.paidTime ?? '',
       cardLast4: payment.cardLast4 ?? '',
+      cashboxId: payment.cashboxId ?? undefined,
     })
     const sid = payment.studentId
     if (!sid) {
@@ -96,6 +105,8 @@ export function PaymentEditModal({ payment, onClose, onSaved }: Props) {
         paidTime: (form.method ?? 'cash') === 'card' ? form.paidTime || '' : '',
         cardLast4: (form.method ?? 'cash') === 'card' ? form.cardLast4 || '' : '',
         forceReceipt: force,
+        // Bo'sh — kassa o'zgarmaydi.
+        cashboxId: form.cashboxId || undefined,
       })
       setDuplicate(null)
       toast.success("To'lov o'zgartirildi", formatMoney(amount))
@@ -237,6 +248,18 @@ export function PaymentEditModal({ payment, onClose, onSaved }: Props) {
               ))}
             </Select>
           </div>
+
+          {showCashboxPicker(cashboxes) && (
+            <Select label="Kassa" value={form.cashboxId ?? ''} onChange={(e) => set('cashboxId', e.target.value)}>
+              {!form.cashboxId && <option value="">— kassasiz —</option>}
+              {archivedCashbox && <option value={archivedCashbox.id}>{archivedCashbox.name}</option>}
+              {cashboxes.items.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {cashboxOptionLabel(c)}
+                </option>
+              ))}
+            </Select>
+          )}
 
           <div>
             <label className="mb-1 block text-sm font-medium text-slate-600">To'lov usuli</label>

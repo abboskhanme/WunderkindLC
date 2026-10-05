@@ -17,6 +17,8 @@ public class AuditService(IAppDbContext db, IHttpContextAccessor http)
         v.ToString("#,##0", CultureInfo.InvariantCulture).Replace(",", " ");
 
     public const string EntityFinanceTransaction = "FinanceTransaction";
+    /// <summary>Kassa (Moliya → «Kassalar»): yaratish, tahrirlash, arxivlash/tiklash.</summary>
+    public const string EntityCashbox = "Cashbox";
     /// <summary>Rejalashtirilgan xarajat (Moliya → «Rejalashtirilgan xarajatlar»).</summary>
     public const string EntityPlannedExpense = "PlannedExpense";
     public const string EntityTeacherSalary = "TeacherSalary";
@@ -68,6 +70,8 @@ public class AuditService(IAppDbContext db, IHttpContextAccessor http)
         t.GroupId,
         t.Method,
         t.Comment,
+        // Qaysi kassaga tushgan/qaysidan chiqqan — tarixda "pul qayerda edi" savoliga javob.
+        t.CashboxId,
     };
 
     /// <summary>

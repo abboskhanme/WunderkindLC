@@ -30,7 +30,9 @@ public class FinanceController(AppDbContext db, AuditService audit, AutoMessageS
         IReadOnlyDictionary<string, string>? groups = null,
         IReadOnlyDictionary<string, decimal>? refunded = null,
         // Markaz katalogidagi tur nomlari — berilmasa jadvalda avvalgidek toifa yorlig'i chiqadi.
-        IReadOnlyDictionary<string, string>? typeNames = null) =>
+        IReadOnlyDictionary<string, string>? typeNames = null,
+        // Kassa nomlari — berilsa ro'yxatda "qaysi kassa" ko'rinadi (id baribir qaytadi).
+        IReadOnlyDictionary<string, string>? cashboxNames = null) =>
         new(t.Id, t.Date, t.Direction, t.Category, t.Amount, t.Note,
             t.StudentId, t.StudentId is not null && students.TryGetValue(t.StudentId, out var s) ? s : null,
             t.TeacherId, t.TeacherId is not null && teachers.TryGetValue(t.TeacherId, out var te) ? te : null,
@@ -42,7 +44,9 @@ public class FinanceController(AppDbContext db, AuditService audit, AutoMessageS
             t.RefundOfId,
             t.ReceiptNo, t.PaidTime, t.CardLast4, t.CreatedBy, t.CreatedById,
             t.TypeId is not null && typeNames is not null && typeNames.TryGetValue(t.TypeId, out var tn) ? tn : null,
-            t.IsVoided, t.VoidedAt, t.VoidedBy, t.VoidReason);
+            t.IsVoided, t.VoidedAt, t.VoidedBy, t.VoidReason,
+            t.CashboxId,
+            t.CashboxId is not null && cashboxNames is not null && cashboxNames.TryGetValue(t.CashboxId, out var cb) ? cb : null);
 
     [HttpGet("transactions")]
     public async Task<ActionResult<IEnumerable<FinanceTransactionDto>>> GetTransactions(
@@ -65,7 +69,8 @@ public class FinanceController(AppDbContext db, AuditService audit, AutoMessageS
         var groups = await GroupNames();
         var refunded = await RefundedByPaymentAsync();
         var typeNames = await TypeNames();
-        return list.Select(t => ToDto(t, students, teachers, groups, refunded, typeNames)).ToList();
+        var cashboxNames = await CashboxNames();
+        return list.Select(t => ToDto(t, students, teachers, groups, refunded, typeNames, cashboxNames)).ToList();
     }
 
     /// <summary>Har asl to'lov (paymentId) uchun jami qaytarilgan summa (vozvrat yozuvlaridan).</summary>
@@ -112,6 +117,14 @@ public class FinanceController(AppDbContext db, AuditService audit, AutoMessageS
         return ((long)(uint)hash % 1_000_000_000).ToString("D9");
     }
 
+    /// <summary>Kassalar: Id → nom (arxivlanganlari ham — eski yozuv o'z kassasi bilan ko'rinsin).</summary>
+    private async Task<Dictionary<string, string>> CashboxNames() =>
+        await db.Cashboxes.AsNoTracking().ToDictionaryAsync(x => x.Id, x => x.Name);
+
+    /// <summary>Kassa nomi audit matni uchun ("—" = kassasiz).</summary>
+    private async Task<string> CashboxLabel(string? id) =>
+        id is null ? "—" : await db.Cashboxes.AsNoTracking().Where(x => x.Id == id).Select(x => x.Name).FirstOrDefaultAsync() ?? id;
+
     /// <summary>Tranzaksiya turlari: Id → nom (jadvalda toifa o'rniga markazning O'Z nomi).</summary>
     private async Task<Dictionary<string, string>> TypeNames() =>
         await db.TransactionTypes.AsNoTracking().ToDictionaryAsync(x => x.Id, x => x.Name);
@@ -131,6 +144,11 @@ public class FinanceController(AppDbContext db, AuditService audit, AutoMessageS
         var dupReceipt = p.ForceReceipt ? null : await ReceiptGuard.FindDuplicateAsync(db, newReceiptNo);
         if (dupReceipt is not null)
             return Conflict(new { message = $"{newReceiptNo} kvitansiya raqami allaqachon kiritilgan", duplicate = dupReceipt });
+
+        // KASSA: tanlangani yoki kiritgan xodimning o'z kassasi / «Asosiy kassa» (`CashboxService`).
+        var cashbox = await CashboxService.ResolveAsync(db, p.CashboxId,
+            User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value);
+        if (cashbox.Error is not null) return BadRequest(new { message = cashbox.Error });
 
         // ⚠️ QULF + SO'ROV KALITI (PaymentIdempotency): tekshiruv va yozish ketma-ket bo'lsin — aks
         // holda bir zumda bosilgan ikki "Saqlash" ikkalasi ham quyidagi tekshiruvdan o'tib IKKI
@@ -191,6 +209,7 @@ public class FinanceController(AppDbContext db, AuditService audit, AutoMessageS
             CardLast4 = newCardLast4,
             CreatedBy = User.FindFirst(System.Security.Claims.ClaimTypes.Name)?.Value, // mas'ul (chek uchun)
             CreatedById = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value,
+            CashboxId = cashbox.CashboxId,
         };
         db.FinanceTransactions.Add(tx);
         // O'quvchiga bog'langan tuition kirimi balansni oshiradi (izchillik — o'chirishda qaytariladi).
@@ -269,6 +288,11 @@ public class FinanceController(AppDbContext db, AuditService audit, AutoMessageS
                 return Conflict(new { message = $"{upReceiptNo} kvitansiya raqami allaqachon kiritilgan", duplicate = upDup });
         }
 
+        // Kassa — faqat ANIQ tanlansa o'zgaradi (bo'sh = o'zgarmaydi; eski forma kassa yubormaydi).
+        var boxChange = await CashboxService.ChangeAsync(db, p.CashboxId, tx.CashboxId);
+        if (boxChange.Error is not null) return BadRequest(new { message = boxChange.Error });
+        var newCashboxId = boxChange.CashboxId;
+
         var before = AuditService.Snapshot(tx);
         // Eski balans ta'sirini (eski o'quvchida) hisoblab olamiz — tahrirdan keyin delta qo'llaymiz.
         var oldEffect = StudentBalanceEffect(tx);
@@ -280,6 +304,11 @@ public class FinanceController(AppDbContext db, AuditService audit, AutoMessageS
         if (tx.Direction != p.Direction) changes.Add($"yo'nalish {tx.Direction} → {p.Direction}");
         if (tx.Category != p.Category) changes.Add($"toifa {tx.Category} → {p.Category}");
         if (tx.Note != p.Note) changes.Add("izoh o'zgartirildi");
+        if (newCashboxId is not null)
+        {
+            changes.Add($"kassa {await CashboxLabel(tx.CashboxId)} → {await CashboxLabel(newCashboxId)}");
+            tx.CashboxId = newCashboxId;
+        }
 
         tx.Date = p.Date;
         tx.Direction = p.Direction;
@@ -500,6 +529,12 @@ public class FinanceController(AppDbContext db, AuditService audit, AutoMessageS
         if (!PaymentFields.TryNormalizeCardLast4(p.CardLast4, out var editCardLast4))
             return BadRequest(new { message = "Karta raqamining oxirgi 4 raqamini kiriting" });
         if (tx.CardLast4 != editCardLast4) changes.Add($"karta raqami {tx.CardLast4 ?? "—"} → {editCardLast4 ?? "—"}");
+        // Kassa — xato kassaga yozilgan to'lovni tuzatish. Bo'sh = o'zgarmaydi.
+        var editBox = await CashboxService.ChangeAsync(db, p.CashboxId, tx.CashboxId);
+        if (editBox.Error is not null) return BadRequest(new { message = editBox.Error });
+        var editCashboxId = editBox.CashboxId;
+        if (editCashboxId is not null)
+            changes.Add($"kassa {await CashboxLabel(tx.CashboxId)} → {await CashboxLabel(editCashboxId)}");
 
         // 1) BALANS — faqat summa farqi (o'quvchi va toifa o'zgarmaydi).
         student.Balance += p.Amount - tx.Amount;
@@ -519,6 +554,7 @@ public class FinanceController(AppDbContext db, AuditService audit, AutoMessageS
         tx.ReceiptNo = receiptNo;
         tx.PaidTime = editPaidTime;
         tx.CardLast4 = editCardLast4;
+        if (editCashboxId is not null) tx.CashboxId = editCashboxId;
         if (wasAutoNote)
             tx.Note = $"O'quvchi to'lovi ({month})"
                 + (groupId is null ? "" : $" [{GName(groupId)}]")
@@ -599,6 +635,10 @@ public class FinanceController(AppDbContext db, AuditService audit, AutoMessageS
             return BadRequest(new { message = "Kelajak sanaga vozvrat kiritib bo'lmaydi" });
 
         var reason = string.IsNullOrWhiteSpace(p.Reason) ? null : p.Reason.Trim();
+        // KASSA: pulni qabul qilgan kassa qaytaradi (to'lov va vozvrat bitta kassada — uning qoldig'i
+        // to'g'ri qoladi). U kassa arxivlangan/yo'q bo'lsa — qaytarayotgan xodimning standart kassasi.
+        var actorId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        var refundCashboxId = await CashboxService.ForRefundAsync(db, tx.CashboxId, actorId);
         var refund = new FinanceTransaction
         {
             Date = date,
@@ -613,7 +653,8 @@ public class FinanceController(AppDbContext db, AuditService audit, AutoMessageS
             Note = $"Vozvrat ({student.FullName})" + (reason is null ? "" : $" — {reason}"),
             Comment = reason,
             CreatedBy = User.FindFirst(System.Security.Claims.ClaimTypes.Name)?.Value,
-            CreatedById = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value,
+            CreatedById = actorId,
+            CashboxId = refundCashboxId,
         };
         db.FinanceTransactions.Add(refund);
 

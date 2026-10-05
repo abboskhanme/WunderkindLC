@@ -510,7 +510,7 @@ export async function addPayment(
   /** Naqd to'lovda — qog'oz kvitansiya raqami ("KV..."); kartada — to'lov vaqti "HH:mm" va
    *  karta raqamining oxirgi 4 raqami.
    *  `forceReceipt` — kvitansiya raqami band bo'lsa ham saqlash ("Baribir saqlash"). */
-  extra?: { receiptNo?: string; paidTime?: string; cardLast4?: string; forceReceipt?: boolean; requestId?: string },
+  extra?: { receiptNo?: string; paidTime?: string; cardLast4?: string; forceReceipt?: boolean; requestId?: string; cashboxId?: string },
 ): Promise<string | null> {
   if (USE_MOCK) {
     await delay(250)
@@ -529,6 +529,8 @@ export async function addPayment(
     forceReceipt: extra?.forceReceipt ?? false,
     // Oyna ochilishining kaliti — qayta bosilgan/yuborilgan so'rov IKKINCHI to'lov yozmaydi.
     requestId: extra?.requestId,
+    // Qaysi kassa (bo'sh — server kassirning o'z kassasini / «Asosiy kassa»ni tanlaydi).
+    cashboxId: extra?.cashboxId,
   })
   return data?.id ?? null
 }

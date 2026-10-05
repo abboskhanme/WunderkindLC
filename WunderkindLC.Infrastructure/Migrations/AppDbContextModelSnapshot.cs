@@ -1019,6 +1019,40 @@ namespace WunderkindLC.Infrastructure.Migrations
                     b.ToTable("CareerBotUsers");
                 });
 
+            modelBuilder.Entity("WunderkindLC.Domain.Cashbox", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("CreatedAt")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("CreatedByName")
+                        .HasColumnType("text");
+
+                    b.Property<bool>("IsArchived")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("ResponsibleName")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("ResponsibleUserId")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("Cashboxes");
+                });
+
             modelBuilder.Entity("WunderkindLC.Domain.CenterAiAnalysis", b =>
                 {
                     b.Property<string>("Id")
@@ -2750,6 +2784,10 @@ namespace WunderkindLC.Infrastructure.Migrations
                     b.Property<string>("CardLast4")
                         .HasColumnType("text");
 
+                    b.Property<string>("CashboxId")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
                     b.Property<string>("Category")
                         .IsRequired()
                         .HasColumnType("text");
@@ -2821,6 +2859,8 @@ namespace WunderkindLC.Infrastructure.Migrations
                         .HasColumnType("text");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("CashboxId");
 
                     b.HasIndex("Date");
 

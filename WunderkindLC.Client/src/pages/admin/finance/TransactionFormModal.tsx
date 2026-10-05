@@ -28,6 +28,7 @@ import { getTransactionTypes, type TransactionType } from '@/api/services/financ
 import { MoneyInput } from '@/components/ui/NumberInput'
 import { balanceTextCls, formatMoney, cn, apiErrorMessage } from '@/lib/utils'
 import { newRequestId } from '@/lib/requestId'
+import { cashboxOptionLabel, showCashboxPicker, useCashboxOptions } from '@/hooks/useCashboxOptions'
 
 interface Props {
   open: boolean
@@ -88,6 +89,15 @@ export function TransactionFormModal({ open, onClose, onSubmit, initial, preset,
   const [txTypes, setTxTypes] = useState<TransactionType[]>([])
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // KASSA: tahrirda — yozuvning o'z kassasi; yangi amalda — tanlanmaguncha foydalanuvchining standart kassasi.
+  const cashboxes = useCashboxOptions(open)
+  const cashboxId = form.cashboxId ?? cashboxes?.defaultId ?? ''
+  // Yozuvning kassasi arxivlangan bo'lsa ham tanlovda o'z nomi bilan turadi (aks holda select
+  // jimgina birinchi kassani ko'rsatib, saqlashda kassani almashtirib yuborardi).
+  const archivedCashbox =
+    initial?.cashboxId && cashboxes && !cashboxes.items.some((c) => c.id === initial.cashboxId)
+      ? { id: initial.cashboxId, name: `${initial.cashboxName ?? 'Kassa'} (arxiv)` }
+      : null
   /**
    * SINXRON qulf: "Saqlash" (yoki Enter) bir necha marta tez bosilsa ham so'rov BITTA ketadi.
    * ⚠️ Ilgari himoya umuman yo'q edi — har bosish alohida to'lov yozardi.
@@ -225,6 +235,7 @@ export function TransactionFormModal({ open, onClose, onSubmit, initial, preset,
                 ? initial.date?.slice(0, 7)
                 : undefined),
             method: initial.method,
+            cashboxId: initial.cashboxId ?? undefined,
           }
         : preset
           ? {
@@ -432,6 +443,8 @@ export function TransactionFormModal({ open, onClose, onSubmit, initial, preset,
       // (maoshda bo'sh qolsa sana oyi zaxira; o'quvchi to'lovi mantig'i o'zgarmagan)
       month: isSalaryExpense ? month : isTuitionIncome ? form.month : undefined,
       method: form.direction === 'income' ? (form.method || 'cash') : undefined,
+      // Bo'sh — server standart kassani tanlaydi (kiritganning o'z kassasi / «Asosiy kassa»).
+      cashboxId: cashboxId || undefined,
       })
       // Muvaffaqiyat — keyingi saqlash (forma ochiq qolsa ham) YANGI amal.
       requestIdRef.current = newRequestId()
@@ -750,6 +763,18 @@ export function TransactionFormModal({ open, onClose, onSubmit, initial, preset,
               value={form.method ?? 'cash'}
               onChange={(v) => update('method', v)}
             />
+          </DrawerField>
+        )}
+        {showCashboxPicker(cashboxes) && (
+          <DrawerField label={form.direction === 'income' ? 'Kassa (qaysi kassaga)' : 'Kassa (qaysi kassadan)'}>
+            <DrawerSelect value={cashboxId} onChange={(e) => update('cashboxId', e.target.value)}>
+              {archivedCashbox && <option value={archivedCashbox.id}>{archivedCashbox.name}</option>}
+              {cashboxes.items.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {cashboxOptionLabel(c)}
+                </option>
+              ))}
+            </DrawerSelect>
           </DrawerField>
         )}
         <DrawerField

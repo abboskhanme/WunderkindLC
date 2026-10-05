@@ -52,6 +52,7 @@ import { PaymentEditModal } from './PaymentEditModal'
 import { RefundModal } from './RefundModal'
 import { RetentionBonusTab } from './RetentionBonusTab'
 import { useAuth } from '@/context/auth-context'
+import { CashboxesPanel } from './CashboxesPanel'
 import { usePerm } from '@/lib/permissions'
 import { tabFromUrl } from '@/lib/tabParam'
 
@@ -141,6 +142,10 @@ export function FinancePage() {
   /** "To'lovlar" tabidagi "Kiritgan" filtri — tanlangan xodim (null = hammasi). Kalit emas, obyekt
    *  saqlanadi: davr o'zgarib ro'yxatdan tushib qolsa ham tanlov yo'qolmaydi. */
   const [payAuthor, setPayAuthor] = useState<PaymentAuthor | null>(null)
+  /** «Kassa» filtri (`null` = barchasi) — qaysi kassaga tushgan to'lovlar. Nomi bilan saqlanadi:
+   *  davr o'zgarib bu kassada to'lov qolmasa ham tanlov ro'yxatda turadi (aks holda select
+   *  "barchasi" ko'rsatib, ro'yxat esa jimgina shu kassa bo'yicha filtrlanib qolardi). */
+  const [payCashbox, setPayCashbox] = useState<{ id: string; name: string } | null>(null)
   /** To'lov kirita oladigan xodim/adminlar (filtr ro'yxati uchun). */
   const [payAuthors, setPayAuthors] = useState<PaymentAuthor[]>([])
   /** "To'lovlar" tabidagi saralash (sana / kvitansiya raqami). */
@@ -229,7 +234,7 @@ export function FinancePage() {
     let newTxId: string | null = null
     if (!editing && values.direction === 'income' && values.category === 'tuition' && values.studentId) {
       newTxId = await addPayment(values.studentId, values.amount, values.month, undefined, undefined, values.method,
-        undefined, { requestId: values.requestId })
+        undefined, { requestId: values.requestId, cashboxId: values.cashboxId })
       toast.success("To'lov qabul qilindi", formatMoney(values.amount))
     } else if (editing) {
       await updateTransaction(editing.id, values)
@@ -333,10 +338,17 @@ export function FinancePage() {
   const authorOptions = payAuthor && !payAuthors.some((a) => a.key === payAuthor.key)
     ? [payAuthor, ...payAuthors]
     : payAuthors
+  /** Davrdagi to'lovlar tushgan kassalar (filtr variantlari — alohida so'rovsiz) + tanlangani. */
+  const payCashboxMap = new Map(
+    payments.filter((p) => p.cashboxId).map((p) => [p.cashboxId!, p.cashboxName ?? p.cashboxId!] as const),
+  )
+  if (payCashbox && !payCashboxMap.has(payCashbox.id)) payCashboxMap.set(payCashbox.id, payCashbox.name)
+  const payCashboxes = [...payCashboxMap].sort((a, b) => a[1].localeCompare(b[1]))
   const filteredPayments = (() => {
     const q = paySearch.trim().toLowerCase()
     return payments.filter((p) => {
       if (payTeacher && (!p.groupId || teacherByGroup.get(p.groupId) !== payTeacher)) return false
+      if (payCashbox && p.cashboxId !== payCashbox.id) return false
       if (!matchesAuthor(p)) return false
       // To'lov usuli (naqd/karta/bank) — usuli belgilanmagan eski yozuvlar filtrga tushmaydi.
       if (payMethod !== 'all' && p.method !== payMethod) return false
@@ -965,6 +977,24 @@ export function FinancePage() {
                         </option>
                       ))}
                     </select>
+                    {/* KASSA — bir nechta kassaga tushgan bo'lsa (bitta kassada filtr ma'nosiz). */}
+                    {(payCashboxes.length >= 2 || payCashbox) && (
+                      <select
+                        value={payCashbox?.id ?? ''}
+                        onChange={(e) => {
+                          const id = e.target.value
+                          setPayCashbox(id ? { id, name: payCashboxMap.get(id) ?? id } : null)
+                        }}
+                        className={filterSelect}
+                      >
+                        <option value="">Kassa: barchasi</option>
+                        {payCashboxes.map(([id, name]) => (
+                          <option key={id} value={id}>
+                            {name}
+                          </option>
+                        ))}
+                      </select>
+                    )}
                     {/* Kvitansiya raqami kiritilgan / kiritilmagan to'lovlar. */}
                     <select
                       value={payReceipt}
@@ -1189,6 +1219,8 @@ export function FinancePage() {
               Qatorni bosish — o'sha kassirning to'lovlari ro'yxati. */}
           {tab === 'cashiers' && (
             <div className="space-y-6">
+              {/* KASSALAR — pul qaysi kassada turibdi (yaratish/tahrirlash faqat superadmin). */}
+              <CashboxesPanel from={rangeFrom} to={rangeTo} isSuperAdmin={user?.role === 'superadmin'} />
               <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
                 <StatCard label="Kassirlar" value={String(cashiers.length)} icon={Users} />
                 <StatCard

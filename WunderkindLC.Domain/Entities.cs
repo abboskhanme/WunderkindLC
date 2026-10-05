@@ -1805,6 +1805,32 @@ public class FinanceTransaction
     public string? VoidedById { get; set; }
     /// <summary>Sabab (sabablar katalogidan, ixtiyoriy).</summary>
     public string? VoidReason { get; set; }
+
+    /// <summary>Pul QAYSI KASSAGA tushgan / qaysi kassadan chiqqan (<see cref="Cashbox"/>.Id).
+    /// Kassa qoldig'i = shu kassaning kirimlari − chiqimlari. Tanlanmasa — kiritgan xodimning o'z
+    /// kassasi, bo'lmasa «Asosiy kassa» (`CashboxService.ResolveAsync`). Migratsiyagacha bo'lgan
+    /// yozuvlar «Asosiy kassa»ga ko'chirilgan. null — faqat kassa umuman yo'q bo'lgan baza.</summary>
+    public string? CashboxId { get; set; }
+}
+
+/// <summary>
+/// KASSA — pul turadigan joy (Moliya → «Kassalar»). Har kirim/chiqim bitta kassaga yoziladi,
+/// qoldiq tranzaksiyalardan hisoblanadi (alohida saqlanmaydi). Yaratish/tahrirlash/arxivlash —
+/// FAQAT superadmin. «Asosiy kassa» (<c>Id = "main"</c>) arxivlanmaydi: u zaxira kassa.
+/// </summary>
+public class Cashbox
+{
+    public string Id { get; set; } = Guid.NewGuid().ToString();
+    public string Name { get; set; } = string.Empty;
+    /// <summary>Mas'ul xodim (<see cref="AppUser"/>.Id) — u kiritgan pul avtomatik shu kassaga tushadi.</summary>
+    public string? ResponsibleUserId { get; set; }
+    /// <summary>Mas'ul F.I.Sh — SNAPSHOT (akkaunt o'chsa ham karta o'qilsin).</summary>
+    public string? ResponsibleName { get; set; }
+    /// <summary>Arxivlangan kassa yangi to'lov qabul qilmaydi; qoldig'i va tarixi saqlanadi.</summary>
+    public bool IsArchived { get; set; }
+    /// <summary>Markaz vaqti, "yyyy-MM-ddTHH:mm:ss".</summary>
+    public string CreatedAt { get; set; } = string.Empty;
+    public string? CreatedByName { get; set; }
 }
 
 /// <summary>O'qituvchining bir kunlik ish davomati.</summary>

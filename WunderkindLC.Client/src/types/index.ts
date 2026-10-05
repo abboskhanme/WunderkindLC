@@ -1260,6 +1260,10 @@ export interface FinanceTransaction {
   voidedAt?: string | null
   voidedBy?: string | null
   voidReason?: string | null
+  /** Qaysi kassaga tushgan / qaysi kassadan chiqqan (`api/services/cashboxes.ts`). */
+  cashboxId?: string | null
+  /** Kassa nomi — faqat ro'yxat endpointida to'ldiriladi. */
+  cashboxName?: string | null
   /** Bu to'lovdan jami qancha VOZVRAT (pul qaytarish) qilingani (>0 = qisman/to'liq qaytarilgan) */
   refunded?: number
   /** Bu yozuvning O'ZI vozvrat bo'lsa — qaysi asl to'lov uchun (id) */

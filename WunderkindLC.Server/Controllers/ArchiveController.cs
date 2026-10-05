@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using WunderkindLC.Infrastructure.Data;
 using WunderkindLC.Application.Dtos;
 using WunderkindLC.Domain;
+using WunderkindLC.Application.Services;
 
 namespace WunderkindLC.Server.Controllers;
 
@@ -112,6 +113,9 @@ public class ArchiveController(AppDbContext db) : ControllerBase
                     var tx = JsonSerializer.Deserialize<FinanceTransaction>(json)!;
                     if (await db.FinanceTransactions.AnyAsync(x => x.Id == tx.Id))
                         return BadRequest(new { message = existsMessage });
+                    // Kassalardan oldingi arxiv yozuvi (kassasiz) yoki kassasi endi yo'q — standart kassaga.
+                    if (tx.CashboxId is null || !await db.Cashboxes.AnyAsync(b => b.Id == tx.CashboxId))
+                        tx.CashboxId = (await CashboxService.ResolveAsync(db, null, null)).CashboxId;
                     db.FinanceTransactions.Add(tx);
                     // O'chirishda balans QAYTARILGAN edi (FinanceController.Delete) — tiklashda QAYTA qo'llaymiz.
                     if (tx.Direction == "income" && tx.Category == "tuition" && !string.IsNullOrEmpty(tx.StudentId))

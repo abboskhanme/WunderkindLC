@@ -542,3 +542,45 @@ Migratsiya: `AddFinanceTransactionVoid` (`IsVoided`, `VoidedAt`, `VoidedBy`, `Vo
 - ⚠️ `IgnoreQueryFilters()` ni hisob-kitob uchun ISHLATMANG — faqat ko'rsatish uchun.
 - Eski (2026-09-26 gacha) o'chirilganlar avvalgidek Arxivda (`ArchiveService`, "finance").
 - Testlar: `FinanceVoidTests`.
+
+## KASSALAR (2026-10-05, migratsiya `AddCashboxes`)
+
+Moliya → «Kassalar» (`/admin/finance?tab=cashiers`). SPEC: `docs/SPEC-kassalar.md`. Har kirim/chiqim
+bitta KASSAGA yoziladi (`FinanceTransaction.CashboxId`), kassa QOLDIG'I saqlanmaydi — tranzaksiyalardan
+hisoblanadi (kirim − chiqim; bekor qilinganlar global filtr bilan tushadi). Qoida — `CashboxService`.
+
+- **Qaysi kassaga** (`CashboxService.ResolveAsync`): oynada tanlangani → kiritgan xodimning O'Z kassasi
+  (`Cashbox.ResponsibleUserId`) → «Asosiy kassa» → birinchi faol. ⚠️ Tanlangan kassa yo'q/arxivlangan
+  bo'lsa — **400**, jimgina boshqa kassaga TUSHIRILMAYDI (pul kassir bilmagan kassaga yozilib, qoldiqlar
+  yolg'on chiqardi).
+- **Ulangan yo'llar:** `PaymentIntake` (admin to'lovi + Kassa portali), `FinanceController.Create`
+  (kirim/chiqim/maosh), **vozvrat — ASL to'lovning kassasidan** (pulni qabul qilgan kassa qaytaradi;
+  u arxivlangan bo'lsa qaytaruvchining standart kassasi), avans ko'chirishdagi bo'linish (asl kassa
+  saqlanadi), arxivdan tiklash (kassasiz/yo'q kassa → standart). Tahrir (`Update`, `UpdatePayment`):
+  `cashboxId` faqat ANIQ berilsa o'zgaradi, auditga "kassa A → B" yoziladi.
+  ⚠️ **Yangi pul yozish yo'li qo'shsangiz — `CashboxService.ResolveAsync` ni chaqiring**, aks holda
+  yozuv kassasiz qoladi va hech qaysi kassa qoldig'ida ko'rinmaydi.
+- **«Asosiy kassa»** — `Id = "main"`: migratsiya yaratadi va BARCHA eski yozuvlarni unga ko'chiradi
+  (foydalanuvchi qarori); yangi bazada `Program.cs` yaratadi. Arxivlanmaydi (zaxira kassa).
+- **Ruxsat:** yaratish/tahrirlash/arxivlash/tiklash — **FAQAT superadmin**, HARD rol tekshiruvi
+  (`year-freeze.md` §3 sababi: `AdminPerm` admin'ni ham o'tkazadi); admin 403 + sabab matni oladi.
+  Kassa kartalari (`GET /api/admin/cashboxes`) — `finance.main` (ReadRequiresPerm). Tanlov ro'yxati
+  (`GET options`) — admin panelidagi har kimga. Yangi ruxsat kaliti YO'Q. Audit turi `Cashbox` →
+  bo'lim `finance`.
+  ⚠️ **Bu "kassir qoldiqlarni ko'rmaydi" degani EMAS:** `GET /api/admin/finance/transactions` (va
+  `summary`/`monthly`) sinf darajasida `[AdminPerm("finance.main")]` — GET har qanday xodimga ochiq
+  (kassalardan OLDINGI holat), javobda esa endi `cashboxId/cashboxName` ham bor, ya'ni xom yozuvlardan
+  qoldiqni hisoblash mumkin. Yopish — ALOHIDA ish (shu endpointni o'qiydigan sahifalar tekshirilsin).
+- **Kassa o'chirilmaydi, arxivlanadi:** yangi pul qabul qilmaydi, qoldig'i va tarixi saqlanadi. Nom
+  FAOL kassalar orasida takrorlanmaydi (registrsiz). ⚠️ Qoldig'i bor kassa ham arxivlanadi («Ko'chirish»
+  hali yo'q — rad etilsa, ishlatilgan kassani umuman arxivlab bo'lmasdi): tasdiq oynasi qoldiqni aytadi,
+  «Jami» esa ARXIVDAGI kassalar qoldig'ini ham sanaydi (pul jismonan bor).
+- **UI:** «Kassalar» tabida kartalar (qoldiq — butun tarix, kirim/chiqim — tanlangan davr); «Kassa»
+  tanlovi `PaymentModal`, `TransactionFormModal`, `PaymentEditModal` da FAQAT 2+ faol kassa bo'lsa
+  (`hooks/useCashboxOptions.ts`) va o'qituvchi profilidagi «Maosh berish» formasida, oldindan
+  foydalanuvchining standart kassasi. Tahrirda yozuvning
+  arxivlangan kassasi "(arxiv)" bo'lib turadi — select jimgina boshqa kassaga almashtirmasin.
+  «To'lovlar» tabida «Kassa» filtri.
+- **Hali YO'Q:** «Ko'chirish» (kassalar orasida pul o'tkazish), kassa bo'yicha alohida tranzaksiyalar
+  sahifasi, hisobotlarda kassa filtri.
+- Testlar: `CashboxServiceTests`, `HomeEndpointsRbacTests` → `Kassalar__yozish_FAQAT_superadmin…`.

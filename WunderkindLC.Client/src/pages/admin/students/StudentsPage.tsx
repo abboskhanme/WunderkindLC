@@ -624,7 +624,7 @@ export function StudentsPage() {
     comment?: string,
     method?: string,
     date?: string,
-    extra?: { receiptNo?: string; paidTime?: string; cardLast4?: string; forceReceipt?: boolean; requestId?: string },
+    extra?: { receiptNo?: string; paidTime?: string; cardLast4?: string; forceReceipt?: boolean; requestId?: string; cashboxId?: string },
   ) => {
     if (!paying) return
     const id = paying.id

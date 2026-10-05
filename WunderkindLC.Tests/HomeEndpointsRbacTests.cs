@@ -96,6 +96,31 @@ public class HomeEndpointsRbacTests
     }
 
     [Fact]
+    public void Kassalar__yozish_FAQAT_superadmin__qoldiqlar_moliya_ruxsati_bilan()
+    {
+        var src = Source("CashboxesController.cs");
+        var header = ClassHeader(src, "CashboxesController");
+        Assert.Contains("[Authorize]", header);
+        Assert.Contains("[AdminPerm(\"finance.main\")]", header);
+        Assert.DoesNotContain("AllowAnonymous", src);
+
+        // Kassa kartalari — o'qish ham ruxsat bilan. (Xom `finance/transactions` hamon xodimga ochiq —
+        // billing.md «KASSALAR»; bu test faqat SHU endpointni qulflaydi.)
+        Assert.Contains("[AdminPerm(\"finance.main\", ReadRequiresPerm = true)]", src);
+
+        // Har yozish amali HARD rol tekshiruvi bilan boshlanadi (admin ham o'tmaydi).
+        Assert.Contains("User.IsInRole(Roles.SuperAdmin)", src);
+        var writes = Regex.Matches(src, @"\[Http(Post|Put|Patch|Delete)[^\]]*\]");
+        Assert.Equal(4, writes.Count);
+        foreach (Match m in writes)
+        {
+            var body = src[m.Index..];
+            body = body[..body.IndexOf("\n    }", StringComparison.Ordinal)];
+            Assert.Contains("DenyUnlessSuperAdmin()", body);
+        }
+    }
+
+    [Fact]
     public void Jadval_tori_va_eksporti_dars_jadvali_ruxsati_ostida()
     {
         var src = Source("ScheduleController.cs");

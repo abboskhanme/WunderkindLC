@@ -22,6 +22,7 @@ public interface IAppDbContext
     DbSet<Subject> Subjects { get; }
     DbSet<SubjectPriceBand> SubjectPriceBands { get; }
     DbSet<LessonDiscount> LessonDiscounts { get; }
+    DbSet<Cashbox> Cashboxes { get; }
     DbSet<Group> Classes { get; }
     DbSet<GroupTeacherAssignment> GroupTeacherAssignments { get; }
     DbSet<SubstituteTeacherAssignment> SubstituteTeacherAssignments { get; }
