@@ -7,11 +7,9 @@ import {
 } from '@/api/services/teacher'
 import { Avatar, EmptyState, SkeletonRows } from '@/components/teacher/TeacherUi'
 import { Button } from '@/components/ui/Button'
-import { Input, Select } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
-import { PhoneInput } from '@/components/ui/PhoneInput'
 import { useAsync } from '@/hooks/useAsync'
-import { formatPhone } from '@/lib/numberFormat'
+import { formatPhone, typedPhoneInput } from '@/lib/numberFormat'
 import { SCHOOL_GRADE_OPTIONS, schoolGradeLabel } from '@/lib/schoolGrades'
 import { toast } from '@/lib/toast'
 import { apiErrorMessage, cn } from '@/lib/utils'
@@ -29,11 +27,17 @@ import { apiErrorMessage, cn } from '@/lib/utils'
 
 const STATUS_LABEL: Record<string, string> = { trial: 'Sinovda', frozen: 'Muzlatilgan' }
 
-/** "+998-90-123-45-67" → "998901234567" (PhoneInput masklanmagan raqam bilan ishlaydi). */
+/** Faqat raqamlar — o'zgarganini solishtirish va qidiruv uchun. */
 const digitsOf = (phone: string) => phone.replace(/\D/g, '')
 
-/** 16px mobil, 13px katta ekran — iOS fokusda zoom qilmasin. */
-const fieldCls = 'min-h-[42px] text-base sm:min-h-[34px] sm:text-[13px]'
+/**
+ * O'qituvchi portali maydonlari (`TeacherGroupTestsPanel` naqshi) — tokenlar bilan, ya'ni tungi
+ * rejimda ham o'qiladi. Admin `Input` ATAYIN ishlatilmadi: undagi `text-[#333]`/`border-black/25`
+ * tungi rejimda ko'rinmaydi. Mobil'da 16px — iOS Telegram'da fokusda sahifa kattalashmasin.
+ */
+const field =
+  'h-11 w-full rounded-lg border border-line bg-white px-3 text-base text-ink outline-none transition-colors focus:border-brand-600 sm:h-10 sm:text-[14px]'
+const label = 'mb-1 block text-[12.5px] font-semibold text-mute'
 
 export function TeacherGroupStudentsTab({ groupId }: { groupId: string }) {
   const { data, loading, error } = useAsync(
@@ -161,13 +165,14 @@ function EditStudentModal({
 }) {
   const [fullName, setFullName] = useState(student.fullName)
   const [grade, setGrade] = useState(student.schoolGradeNow ?? 0)
-  const [phone, setPhone] = useState(digitsOf(student.phone))
+  // Ko'rinish matni (`+998 90 123 45 67`); eski/xorijiy raqam o'zgarmasdan ko'rsatiladi.
+  const [phone, setPhone] = useState(formatPhone(student.phone))
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   // Sinxron qulf: tez ikki bosishda so'rov ikki marta ketmasin (`saving` keyingi renderda yangilanadi).
   const inFlight = useRef(false)
 
-  const phoneChanged = phone !== digitsOf(student.phone)
+  const phoneChanged = digitsOf(phone) !== digitsOf(student.phone)
   const dirty =
     fullName.trim() !== student.fullName.trim() || grade !== (student.schoolGradeNow ?? 0) || phoneChanged
 
@@ -185,7 +190,7 @@ function EditStudentModal({
         fullName: fullName.trim(),
         schoolGrade: grade,
         // O'zgarmagan raqam saqlangan ko'rinishida yuboriladi — server uni qayta tekshirmaydi.
-        phone: phoneChanged ? phone : student.phone,
+        phone: phoneChanged ? digitsOf(phone) : student.phone,
       })
       onSaved(row)
     } catch (e) {
@@ -221,29 +226,45 @@ function EditStudentModal({
           void save()
         }}
       >
-        <Input
-          label="Ism-familiya"
-          required
-          value={fullName}
-          onChange={(e) => setFullName(e.target.value)}
-          autoComplete="off"
-          maxLength={150}
-          className={fieldCls}
-        />
-        <Select
-          label="Sinf (maktabda)"
-          value={grade ? String(grade) : ''}
-          onChange={(e) => setGrade(e.target.value ? Number(e.target.value) : 0)}
-          className={fieldCls}
-        >
-          <option value="">— kiritilmagan —</option>
-          {SCHOOL_GRADE_OPTIONS.map((o) => (
-            <option key={o.value} value={o.value}>
-              {o.label}
-            </option>
-          ))}
-        </Select>
-        <PhoneInput label="Telefon raqami" value={phone} onChange={setPhone} className={fieldCls} />
+        <label className="block">
+          <span className={label}>
+            Ism-familiya <span className="text-red-600">*</span>
+          </span>
+          <input
+            className={field}
+            value={fullName}
+            onChange={(e) => setFullName(e.target.value)}
+            autoComplete="off"
+            maxLength={150}
+          />
+        </label>
+        <label className="block">
+          <span className={label}>Sinf (maktabda)</span>
+          <select
+            className={field}
+            value={grade ? String(grade) : ''}
+            onChange={(e) => setGrade(e.target.value ? Number(e.target.value) : 0)}
+          >
+            <option value="">— kiritilmagan —</option>
+            {SCHOOL_GRADE_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="block">
+          <span className={label}>Telefon raqami</span>
+          <input
+            type="tel"
+            inputMode="tel"
+            autoComplete="off"
+            placeholder="+998 90 123 45 67"
+            className={field}
+            value={phone}
+            onChange={(e) => setPhone(typedPhoneInput(e.target.value, phone))}
+          />
+        </label>
         {error && <p className="text-[13px] text-red-600">{error}</p>}
         {/* Enter bilan yuborish uchun (footer tugmalari forma tashqarisida). */}
         <button type="submit" hidden />
