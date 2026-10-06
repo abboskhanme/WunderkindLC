@@ -37,24 +37,19 @@ public class TelegramBotService(
     /// <summary>Ro'yxatdan o'tgan foydalanuvchi klaviaturasidagi "bir martalik kod olish" tugmasi matni.</summary>
     private const string OtpButtonText = "🔑 Yangi kod olish";
     /// <summary>
-    /// O'qituvchi portali — bot ICHIDA Telegram Mini App sifatida ochiladi (<c>web_app</c> tugma).
+    /// O'qituvchi portali va o'quvchi/ota-ona kabineti — bot ICHIDA Telegram Mini App sifatida ochiladi (<c>web_app</c> tugma).
     /// <para>Kirish odatdagidek: birinchi ochilishda login/parol (yoki shu botdagi bir martalik kod),
     /// keyin sessiya Telegram WebView'da saqlanadi. Telegram orqali AVTOMATIK kirish ATAYIN qilinmagan
     /// (yangi kirish yo'li bo'lardi — foydalanuvchi tanlovi, 2026-09-27). SPA Mini App uchun tayyor:
     /// SDK <c>index.html</c> da, <c>ready()/expand()</c> — <c>main.tsx</c>, CSP <c>frame-ancestors</c>
     /// Telegram Web'ga ochiq (Program.cs).</para>
+    /// <para>⚠️ BITTA tugma — «📱 Panel» (foydalanuvchi talabi, 2026-10-07): o'qituvchi ham, o'quvchi/ota-ona
+    /// ham bitta tugmani bosadi. Manzil — sayt ILDIZI: <c>RootRedirect</c> kirgan foydalanuvchini roliga
+    /// qarab o'zi yo'naltiradi (o'qituvchi → <c>/teacher</c>, o'quvchi/ota-ona → <c>/student</c>), kirmagan
+    /// bo'lsa login sahifasiga, kirgandan keyin yana o'z portaliga. Rol bo'yicha alohida tugma/manzil QO'SHMANG.</para>
     /// </summary>
-    public const string TeacherPanelButtonText = "🎓 O'qituvchi paneli";
-    public const string TeacherPanelUrl = WebAppUrl + "teacher";
-
-    /// <summary>
-    /// O'QUVCHI / OTA-ONA kabineti — `/student` portali bot ICHIDA Mini App bo'lib ochiladi (uchrashuv
-    /// talabi, 2026-10-07): balans/qarz, dars jadvali, oylik test natijalari, reyting. Tugma faqat telefoni
-    /// o'quvchiga bog'langan chatda. Kirish o'qituvchi paneli bilan bir xil — login/parol yoki shu botdagi
-    /// «🔑 Yangi kod olish» (Telegram orqali avtomatik kirish ATAYIN yo'q, 2026-09-27 qarori).
-    /// </summary>
-    public const string StudentPanelButtonText = "🎒 O'quvchi kabineti";
-    public const string StudentPanelUrl = WebAppUrl + "student";
+    public const string PanelButtonText = "📱 Panel";
+    public const string PanelUrl = WebAppUrl;
 
     /// <summary>Telefon so'rovchi yagona yo'riqnoma. XAVFSIZLIK: raqam FAQAT «Telefon raqamni yuborish»
     /// tugmasi orqali (Telegram kontakti) qabul qilinadi — matn sifatida yozilgan raqam profilga
@@ -457,8 +452,8 @@ public class TelegramBotService(
                 var db = scope.ServiceProvider.GetRequiredService<IAppDbContext>();
                 await SendAsync(chatId,
                     "✅ Rahmat! Endi pastdagi tugmalardan foydalanishingiz mumkin.",
-                    RegisteredKeyboard(await BookSalesEnabledAsync(db, ct), await IsTeacherChatAsync(db, chatId, ct),
-                        await IsStudentChatAsync(db, chatId, ct)), ct);
+                    RegisteredKeyboard(await BookSalesEnabledAsync(db, ct),
+                        await IsTeacherChatAsync(db, chatId, ct) || await IsStudentChatAsync(db, chatId, ct)), ct);
             }
         }
         else if (OnlineTestBotService.Handles(data))
@@ -672,13 +667,12 @@ public class TelegramBotService(
                 var isStudent = await IsStudentChatAsync(db, chatId, ct);
                 await SendAsync(chatId,
                     "Assalomu alaykum! 👋\n\nPastdagi tugmalardan foydalaning:\n"
-                    + (isTeacher ? $"• {TeacherPanelButtonText} — guruhlar, davomat, dars jadvali, maosh\n" : "")
-                    + (isStudent ? $"• {StudentPanelButtonText} — balans, dars jadvali, test natijalari, reyting\n" : "")
+                    + PanelGreetingLine(isTeacher, isStudent)
                     + $"• {OtpButtonText} — tizimga kirish uchun bir martalik kod\n"
                     + $"• {OnlineTestBotService.TestButtonText} — sizga ochilgan onlayn testlar\n"
                     + (books ? $"• {BookShopBotService.BooksButtonText} — sotuvdagi kitoblarga buyurtma\n" : "")
                     + $"• {SupportButtonText} — administratorga savol",
-                    RegisteredKeyboard(books, isTeacher, isStudent), ct);
+                    RegisteredKeyboard(books, isTeacher || isStudent), ct);
                 return;
             }
         }
@@ -837,7 +831,7 @@ public class TelegramBotService(
 
         await SendAsync(chatId,
             "✅ Ro'yxatdan o'tdingiz:\n• " + string.Join("\n• ", linked),
-            RegisteredKeyboard(meta?.BookSalesEnabled ?? true, teachers.Count > 0, students.Any(s => !s.IsArchived)), ct);
+            RegisteredKeyboard(meta?.BookSalesEnabled ?? true, teachers.Count > 0 || students.Any(s => !s.IsArchived)), ct);
 
         // Admin/xodim — yangi lid xabarnomalari haqida ma'lumot.
         if (admins.Count > 0)
@@ -909,7 +903,7 @@ public class TelegramBotService(
                 if (string.IsNullOrEmpty(s.UserId)) continue;
                 var user = await db.Users.FirstOrDefaultAsync(u => u.Id == s.UserId, ct);
                 if (user is null || !seen.Add(user.Id)) continue;
-                await SendAsync(chatId, BuildLoginText(user), null, ct, parseMode: "HTML");
+                await SendAsync(chatId, BuildLoginText(user), PanelInline, ct, parseMode: "HTML");
             }
 
             foreach (var tch in teachers)
@@ -917,7 +911,7 @@ public class TelegramBotService(
                 if (string.IsNullOrEmpty(tch.UserId)) continue;
                 var user = await db.Users.FirstOrDefaultAsync(u => u.Id == tch.UserId, ct);
                 if (user is null || !seen.Add(user.Id)) continue;
-                await SendAsync(chatId, BuildLoginText(user), TeacherPanelInline, ct, parseMode: "HTML");
+                await SendAsync(chatId, BuildLoginText(user), PanelInline, ct, parseMode: "HTML");
             }
 
             foreach (var u in admins)
@@ -935,13 +929,23 @@ public class TelegramBotService(
         }
     }
 
-    /// <summary>O'qituvchi login xabari ostidagi tugma — portal shu yerning o'zida (Mini App) ochiladi.</summary>
-    public static readonly object TeacherPanelInline = new
+    /// <summary>O'qituvchi va o'quvchi/ota-ona login xabari ostidagi tugma — panel shu yerning o'zida (Mini App)
+    /// ochiladi; qaysi portal ekanini rol hal qiladi (<see cref="PanelUrl"/>).</summary>
+    public static readonly object PanelInline = new
     {
         inline_keyboard = new object[][]
         {
-            new object[] { new { text = "🎓 O'qituvchi panelini ochish", web_app = new { url = TeacherPanelUrl } } },
+            new object[] { new { text = "📱 Panelni ochish", web_app = new { url = PanelUrl } } },
         },
+    };
+
+    /// <summary>/start salomidagi «📱 Panel» satri — tugma bitta, izoh esa chatning roliga qarab.</summary>
+    public static string PanelGreetingLine(bool teacher, bool student) => (teacher, student) switch
+    {
+        (true, true) => $"• {PanelButtonText} — o'qituvchi paneli yoki o'quvchi kabineti (login bo'yicha)\n",
+        (true, false) => $"• {PanelButtonText} — guruhlar, davomat, dars jadvali, maosh\n",
+        (false, true) => $"• {PanelButtonText} — balans, dars jadvali, test natijalari, reyting\n",
+        _ => "",
     };
 
     /// <summary>HTML parse_mode bilan yuboriladi — &lt;code&gt; ichidagi login/parol Telegram mijozida
@@ -1350,13 +1354,11 @@ public class TelegramBotService(
     /// <summary>Ro'yxatdan o'tgan (telefoni tasdiqlangan) foydalanuvchi klaviaturasi: bir martalik
     /// kirish kodi → ONLAYN TESTNI ISHLASH → (yoqilgan bo'lsa) KITOB SOTIB OLISH → adminga murojaat.
     /// Ro'yxatdan o'tish tugagach (va ro'yxatdan o'tgan foydalanuvchi /start bosganda) o'rnatiladi.</summary>
-    public static object RegisteredKeyboard(bool books = true, bool teacher = false, bool student = false)
+    public static object RegisteredKeyboard(bool books = true, bool panel = false)
     {
         var rows = new List<object[]>();
-        // O'qituvchiga — portalni ochuvchi tugma ENG TEPADA (kundalik ish: davomat, jadval, guruhlar).
-        if (teacher) rows.Add(new object[] { new { text = TeacherPanelButtonText, web_app = new { url = TeacherPanelUrl } } });
-        // O'quvchi/ota-onaga — o'z kabineti (balans, jadval, test natijalari, reyting).
-        if (student) rows.Add(new object[] { new { text = StudentPanelButtonText, web_app = new { url = StudentPanelUrl } } });
+        // O'qituvchi yoki o'quvchi/ota-onaga — BITTA «📱 Panel» tugmasi ENG TEPADA; portalni rol tanlaydi.
+        if (panel) rows.Add(new object[] { new { text = PanelButtonText, web_app = new { url = PanelUrl } } });
         rows.Add(new object[] { new { text = OtpButtonText } });
         rows.Add(new object[] { new { text = OnlineTestBotService.TestButtonText } });
         if (books) rows.Add(new object[] { new { text = BookShopBotService.BooksButtonText } });
@@ -1379,8 +1381,8 @@ public class TelegramBotService(
         one_time_keyboard = false,
     };
 
-    /// <summary>Shu chat FAOL (arxivlanmagan) o'qituvchiga bog'langanmi — "O'qituvchi paneli" tugmasi
-    /// faqat shunda ko'rsatiladi. Arxivlangan o'qituvchining eski bog'lanishi tugmani qaytarmaydi.</summary>
+    /// <summary>Shu chat FAOL (arxivlanmagan) o'qituvchiga bog'langanmi — «📱 Panel» tugmasi shunda
+    /// (yoki o'quvchiga bog'langan bo'lsa) ko'rsatiladi. Arxivlangan o'qituvchining eski bog'lanishi tugmani qaytarmaydi.</summary>
     private static async Task<bool> IsTeacherChatAsync(IAppDbContext db, long chatId, CancellationToken ct)
     {
         var ids = await db.TelegramRegistrations
@@ -1391,7 +1393,7 @@ public class TelegramBotService(
     }
 
     /// <summary>Shu chat ARXIVLANMAGAN o'quvchiga (o'zi yoki ota-onasi telefoni bilan) bog'langanmi —
-    /// «O'quvchi kabineti» tugmasi faqat shunda.</summary>
+    /// «📱 Panel» tugmasi shunda ham ko'rsatiladi.</summary>
     private static async Task<bool> IsStudentChatAsync(IAppDbContext db, long chatId, CancellationToken ct)
     {
         var ids = await db.TelegramRegistrations

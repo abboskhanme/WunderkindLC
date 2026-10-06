@@ -7,7 +7,7 @@ namespace WunderkindLC.Tests;
 /// <summary>
 /// O'QITUVCHI BOTI (<see cref="TeacherBotService"/>, <c>.env: TEACHER_BOT_TOKEN</c>).
 /// <para>Qulflanadi (foydalanuvchi talabi): pastda BITTA tugma va u o'qituvchi panelini Mini App
-/// sifatida ochadi; chapdagi ko'k menyu tugmasi YO'Q; dev muhiti JONLI tokenni o'g'irlamaydi.</para>
+/// sifatida ochadi (asosiy botdagi bilan bir xil «📱 Panel»); chapdagi ko'k menyu tugmasi YO'Q; dev muhiti JONLI tokenni o'g'irlamaydi.</para>
 /// </summary>
 public class TeacherBotServiceTests
 {
@@ -22,8 +22,8 @@ public class TeacherBotServiceTests
         Assert.Equal(1, rows.GetArrayLength());
         Assert.Equal(1, rows[0].GetArrayLength());
         var btn = rows[0][0];
-        Assert.Equal(TelegramBotService.TeacherPanelButtonText, btn.GetProperty("text").GetString());
-        Assert.Equal(TelegramBotService.TeacherPanelUrl, btn.GetProperty("web_app").GetProperty("url").GetString());
+        Assert.Equal(TelegramBotService.PanelButtonText, btn.GetProperty("text").GetString());
+        Assert.Equal(TelegramBotService.PanelUrl, btn.GetProperty("web_app").GetProperty("url").GetString());
         Assert.False(btn.TryGetProperty("request_contact", out _));   // telefon so'ralmaydi
         Assert.True(kb.GetProperty("is_persistent").GetBoolean());    // tugma doim ko'rinadi
     }
@@ -31,7 +31,7 @@ public class TeacherBotServiceTests
     [Fact]
     public void Panel_manzili_https__asosiy_botdagi_bilan_AYNAN_bir_xil()
     {
-        Assert.Equal(TelegramBotService.TeacherPanelUrl, TeacherBotService.PanelUrl);
+        Assert.Equal(TelegramBotService.PanelUrl, TeacherBotService.PanelUrl);
         Assert.StartsWith("https://", TeacherBotService.PanelUrl);   // web_app faqat https qabul qiladi
     }
 

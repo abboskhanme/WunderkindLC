@@ -5,11 +5,11 @@ using Xunit;
 namespace WunderkindLC.Tests;
 
 /// <summary>
-/// Botdagi «🎓 O'qituvchi paneli» tugmasi (Telegram Mini App, <c>web_app</c>).
-/// <para>Qulflanadi: o'qituvchi paneli tugmasi FAQAT o'qituvchi klaviaturasida (o'quvchi/ota-onada esa
-/// o'z «O'quvchi kabineti» tugmasi — 2026-10-07 uchrashuv talabi),
-/// eng tepada turadi va HTTPS manzilga olib boradi — Telegram <c>web_app</c> uchun faqat https qabul
-/// qiladi, http bo'lsa tugma yuborilmaydi va BUTUN klaviatura xabari rad etiladi.</para>
+/// Botdagi YAGONA «📱 Panel» tugmasi (Telegram Mini App, <c>web_app</c>).
+/// <para>Qulflanadi (foydalanuvchi talabi, 2026-10-07): o'qituvchi ham, o'quvchi/ota-ona ham BITTA tugmani
+/// ko'radi; u eng tepada, sayt ILDIZIGA (rol bo'yicha yo'naltirish — <c>RootRedirect</c>) va HTTPS manzilga
+/// olib boradi — Telegram <c>web_app</c> uchun faqat https qabul qiladi, http bo'lsa tugma yuborilmaydi va
+/// BUTUN klaviatura xabari rad etiladi.</para>
 /// </summary>
 public class TeacherBotButtonTests
 {
@@ -20,49 +20,48 @@ public class TeacherBotButtonTests
         rows.EnumerateArray().SelectMany(r => r.EnumerateArray());
 
     [Fact]
-    public void Oqituvchi_klaviaturasida_panel_tugmasi_eng_tepada()
+    public void Panel_tugmasi_eng_tepada_va_BITTA()
     {
-        var rows = Rows(TelegramBotService.RegisteredKeyboard(books: true, teacher: true));
+        var rows = Rows(TelegramBotService.RegisteredKeyboard(books: true, panel: true));
         var first = rows[0][0];
-        Assert.Equal(TelegramBotService.TeacherPanelButtonText, first.GetProperty("text").GetString());
-        Assert.Equal(TelegramBotService.TeacherPanelUrl, first.GetProperty("web_app").GetProperty("url").GetString());
+        Assert.Equal(TelegramBotService.PanelButtonText, first.GetProperty("text").GetString());
+        Assert.Equal(TelegramBotService.PanelUrl, first.GetProperty("web_app").GetProperty("url").GetString());
+        Assert.Single(Buttons(rows), b => b.TryGetProperty("web_app", out _));
     }
 
     [Fact]
-    public void Oquvchi_va_ota_ona_klaviaturasida_panel_tugmasi_YOQ()
+    public void Ochuvchi_bolmagan_chatda_panel_tugmasi_YOQ()
     {
-        var rows = Rows(TelegramBotService.RegisteredKeyboard(books: true, teacher: false));
+        var rows = Rows(TelegramBotService.RegisteredKeyboard(books: true, panel: false));
         Assert.DoesNotContain(Buttons(rows), b => b.TryGetProperty("web_app", out _));
     }
 
     [Fact]
-    public void Oquvchi_ota_ona_klaviaturasida_KABINET_tugmasi__https_va_student_portaliga()
+    public void Panel_manzili_https_va_sayt_ILDIZI__portalni_rol_tanlaydi()
     {
-        var rows = Rows(TelegramBotService.RegisteredKeyboard(books: true, teacher: false, student: true));
-        var first = rows[0][0];
-        Assert.Equal(TelegramBotService.StudentPanelButtonText, first.GetProperty("text").GetString());
-        Assert.Equal(TelegramBotService.StudentPanelUrl, first.GetProperty("web_app").GetProperty("url").GetString());
-        Assert.StartsWith("https://", TelegramBotService.StudentPanelUrl);
-        Assert.EndsWith("/student", TelegramBotService.StudentPanelUrl);
-        // O'qituvchi paneli o'quvchiga ko'rinmaydi.
-        Assert.DoesNotContain(Buttons(rows), b => b.GetProperty("text").GetString() == TelegramBotService.TeacherPanelButtonText);
+        Assert.StartsWith("https://", TelegramBotService.PanelUrl);
+        Assert.EndsWith("/", TelegramBotService.PanelUrl);
+        Assert.DoesNotContain("/teacher", TelegramBotService.PanelUrl);
+        Assert.DoesNotContain("/student", TelegramBotService.PanelUrl);
+
+        var inline = JsonDocument.Parse(JsonSerializer.Serialize(TelegramBotService.PanelInline)).RootElement;
+        var btn = inline.GetProperty("inline_keyboard")[0][0];
+        Assert.Equal(TelegramBotService.PanelUrl, btn.GetProperty("web_app").GetProperty("url").GetString());
     }
 
     [Fact]
-    public void Panel_manzili_https_va_oqituvchi_portaliga_olib_boradi()
+    public void Salomlashuvda_panel_satri_rolga_qarab__lekin_tugma_bitta()
     {
-        Assert.StartsWith("https://", TelegramBotService.TeacherPanelUrl);
-        Assert.EndsWith("/teacher", TelegramBotService.TeacherPanelUrl);
-
-        var inline = JsonDocument.Parse(JsonSerializer.Serialize(TelegramBotService.TeacherPanelInline)).RootElement;
-        var btn = inline.GetProperty("inline_keyboard")[0][0];
-        Assert.Equal(TelegramBotService.TeacherPanelUrl, btn.GetProperty("web_app").GetProperty("url").GetString());
+        Assert.Contains("maosh", TelegramBotService.PanelGreetingLine(teacher: true, student: false));
+        Assert.Contains("test natijalari", TelegramBotService.PanelGreetingLine(teacher: false, student: true));
+        Assert.Contains(TelegramBotService.PanelButtonText, TelegramBotService.PanelGreetingLine(true, true));
+        Assert.Equal("", TelegramBotService.PanelGreetingLine(false, false));
     }
 
     [Fact]
     public void Qolgan_tugmalar_joyida_qoladi()
     {
-        var texts = Buttons(Rows(TelegramBotService.RegisteredKeyboard(books: true, teacher: true)))
+        var texts = Buttons(Rows(TelegramBotService.RegisteredKeyboard(books: true, panel: true)))
             .Select(b => b.GetProperty("text").GetString()).ToList();
         Assert.Contains(OnlineTestBotService.TestButtonText, texts);
         Assert.Contains(BookShopBotService.BooksButtonText, texts);

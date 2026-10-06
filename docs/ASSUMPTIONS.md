@@ -216,3 +216,5 @@
   bayroq yo'q, sabablar katalogi matn bilan boshqariladi
 - [2026-10-07] «Darsga keldi» xabari necha marta? → har dars uchun BIR marta (saqlashdan oldin keldi bo'lmaganlarga);
   qoida default O'CHIQ → ota-onaga har darsda SMS — pul, admin ongli yoqsin
+- [2026-10-07] Botda o'qituvchi va o'quvchi uchun alohida tugmalarmi? → BITTA «📱 Panel» tugmasi, manzil sayt
+  ildizi (RootRedirect rol bo'yicha yo'naltiradi) → foydalanuvchi: "bitta Panel deb nomlangan button yetadi"

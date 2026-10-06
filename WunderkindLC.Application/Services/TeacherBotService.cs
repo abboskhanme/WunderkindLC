@@ -21,10 +21,10 @@ namespace WunderkindLC.Application.Services;
 public class TeacherBotService(TeacherTelegramService bot, ILogger<TeacherBotService> logger) : BackgroundService
 {
     /// <summary>Pastdagi YAGONA tugma matni — asosiy botdagi bilan bir xil (o'qituvchi adashmasin).</summary>
-    public const string OpenButtonText = TelegramBotService.TeacherPanelButtonText;
+    public const string OpenButtonText = TelegramBotService.PanelButtonText;
 
     /// <summary>Panel manzili — asosiy botdagi bilan AYNAN bir xil (ikki joyda ayrilib ketmasin).</summary>
-    public const string PanelUrl = TelegramBotService.TeacherPanelUrl;
+    public const string PanelUrl = TelegramBotService.PanelUrl;
 
     /// <summary>
     /// Pastdagi doimiy klaviatura: BITTA qator, BITTA tugma — Mini App (<c>web_app</c>).
@@ -40,11 +40,11 @@ public class TeacherBotService(TeacherTelegramService bot, ILogger<TeacherBotSer
     public const string WelcomeText =
         "👋 <b>Assalomu alaykum!</b>\n\n"
         + "Bu — markazimizning <b>o'qituvchilar</b> boti.\n"
-        + "Pastdagi «🎓 O'qituvchi paneli» tugmasini bosing: guruhlar, davomat, dars jadvali va maosh "
+        + "Pastdagi «📱 Panel» tugmasini bosing: guruhlar, davomat, dars jadvali va maosh "
         + "shu yerda ochiladi.\n\n"
         + "Kirish — o'qituvchi login va parolingiz bilan.";
 
-    public const string HintText = "Panelni ochish uchun pastdagi «🎓 O'qituvchi paneli» tugmasini bosing 👇";
+    public const string HintText = "Panelni ochish uchun pastdagi «📱 Panel» tugmasini bosing 👇";
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {

@@ -113,12 +113,21 @@ Xato bo'lsa oyna YOPILMAYDI, sabab ichida ko'rinadi. Saqlangandan keyin dars man
 Jurnalda shu kunga ustun bo'lmasa (dars ko'chirilgan) saqlash YOPIQ — aks holda yozuv ko'rinmas
 sanaga tushardi. Muzlatilganlar ro'yxatda yo'q; a'zoligi keyin boshlanganlar xira, bosilmaydi.
 
-## 5. TELEGRAM BOT — «🎓 O'qituvchi paneli» (Mini App)
+## 5. TELEGRAM BOT — «📱 Panel» (Mini App)
+
+⚠️ **BITTA tugma — «📱 Panel» (2026-10-07, foydalanuvchi talabi):** o'qituvchi ham, o'quvchi/ota-ona
+ham bitta tugmani bosadi. Manzil — sayt **ILDIZI** (`TelegramBotService.PanelUrl`): `RootRedirect`
+kirgan foydalanuvchini rol bo'yicha o'zi yo'naltiradi (o'qituvchi → `/teacher`, o'quvchi/ota-ona →
+`/student`), kirmagan bo'lsa login → keyin o'z portaliga. Rol bo'yicha ALOHIDA tugma/manzil QO'SHMANG
+(ilgari «🎓 O'qituvchi paneli» va «🎒 O'quvchi kabineti» ikki tugma edi).
 
 Portal asosiy botda `web_app` tugmasi bilan Telegram ICHIDA ochiladi (`TelegramBotService`):
-- reply-klaviaturada ENG TEPADA — faqat chat FAOL o'qituvchiga bog'langan bo'lsa
-  (`IsTeacherChatAsync`; o'quvchi/ota-onada tugma yo'q);
-- o'qituvchining login xabari ostida inline tugma (`TeacherPanelInline`).
+- reply-klaviaturada ENG TEPADA — chat FAOL o'qituvchiga (`IsTeacherChatAsync`) YOKI arxivlanmagan
+  o'quvchiga (`IsStudentChatAsync`) bog'langan bo'lsa; salomdagi izoh satri rolga qarab
+  (`PanelGreetingLine`), tugma esa bitta;
+- o'qituvchi va o'quvchi login xabari ostida inline tugma (`PanelInline`).
+- Eski klaviaturadagi eski tugmalar ham ishlayveradi (`web_app` — bot matn olmaydi); yangi tugma
+  /start bosilganda chiqadi.
 
 ⚠️ Kirish ODDIY (login/parol yoki botdagi «🔑 Yangi kod olish») — Telegram orqali AVTOMATIK kirish
 ATAYIN qilinmagan: u yangi kirish yo'li bo'lardi (foydalanuvchi tanlovi, 2026-09-27). Kerak bo'lsa
@@ -126,13 +135,11 @@ ATAYIN qilinmagan: u yangi kirish yo'li bo'lardi (foydalanuvchi tanlovi, 2026-09
 
 SPA Mini App uchun tayyor: SDK `index.html` da, `ready()/expand()` — `main.tsx`, CSP
 `frame-ancestors` Telegram Web'ga ochiq, cookie'lar https'da `SameSite=None`.
-⚠️ `web_app` faqat HTTPS manzilni qabul qiladi — `TeacherPanelUrl` ni http qilmang
+⚠️ `web_app` faqat HTTPS manzilni qabul qiladi — `PanelUrl` ni http qilmang
 (`TeacherBotButtonTests` qulflaydi).
 
-**O'quvchi/ota-ona uchun ham (2026-10-07):** «🎒 O'quvchi kabineti» `web_app` tugmasi (`/student`) —
-chat arxivlanmagan o'quvchiga bog'langan bo'lsa (`IsStudentChatAsync`). Kirish o'sha-o'sha ODDIY
-(login/parol), avto-kirish yo'q. Kabinetda «Dars jadvali» va «Test natijalari» ekranlari
-(`GET /student/groups`, `GET /student/test-results` — mavjud endpointlar).
+**O'quvchi kabineti (2026-10-07):** «Dars jadvali» va «Test natijalari» ekranlari qo'shildi
+(`GET /student/groups`, `GET /student/test-results` — mavjud endpointlar). Kirish o'sha-o'sha ODDIY.
 
 ## 5.1. O'QITUVCHI BOTI — alohida bot (2026-09-30)
 
@@ -140,8 +147,9 @@ Foydalanuvchi talabi: o'qituvchilar panelni **alohida bot** orqali ochsin (`@Wun
 `.env: TEACHER_BOT_TOKEN` → compose `TeacherBot__BotToken`). Karyera boti naqshi:
 `TeacherTelegramService` (mijoz) + `TeacherBotService` (long polling).
 
-- **Pastda BITTA tugma** (reply-klaviatura, `web_app`, `is_persistent`) — «🎓 O'qituvchi paneli»,
-  `TelegramBotService.TeacherPanelUrl` ga olib boradi (manzil va matn asosiy bot bilan UMUMIY).
+- **Pastda BITTA tugma** (reply-klaviatura, `web_app`, `is_persistent`) — «📱 Panel»,
+  `TelegramBotService.PanelUrl` ga (sayt ildizi, rol bo'yicha yo'naltirish) olib boradi (manzil va
+  matn asosiy bot bilan UMUMIY).
 - ⚠️ **Chapdagi ko'k menyu tugmasi YO'Q** (foydalanuvchi talabi) — startupda `setChatMenuButton`
   `type=default` + `deleteMyCommands`. BotFather'da qo'lda qo'yilgan tugma ham keyingi restartda
   tozalanadi. Menyu tugmasini `web_app` qilib QO'YMANG.
