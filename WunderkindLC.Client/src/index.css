@@ -937,6 +937,11 @@ body {
   box-shadow: none;
 }
 
+/* O'quvchi profili bo'limlari: telefonda BITTA qator (yonga suriladi), tugmalar siqilmaydi. */
+.profile-tabs { scrollbar-width: none; }
+.profile-tabs::-webkit-scrollbar { display: none; }
+.profile-tabs .tab { flex-shrink: 0; white-space: nowrap; }
+
 /* ---- Toolbar ---- */
 .toolbar {
   display: flex;

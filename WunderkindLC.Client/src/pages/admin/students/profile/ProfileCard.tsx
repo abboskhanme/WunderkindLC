@@ -155,18 +155,24 @@ export function ProfileCard({
           label="Qatnashgan darslar"
           value={data.conducted > 0 ? `${data.attended} / ${data.conducted}` : '—'}
         />
-        <StatRow
-          icon={<IconCreditCard className="h-[18px] w-[18px]" />}
-          label="To'lash kerak"
-          value={formatMoney(due)}
-          valueCls={due > 0 ? 'text-red-600' : undefined}
-        />
-        <StatRow
-          icon={<IconWallet className="h-[18px] w-[18px]" />}
-          label="Balans"
-          value={formatMoney(data.balance)}
-          valueCls={data.balance < 0 ? 'text-red-600' : data.balance > 0 ? 'text-emerald-700' : undefined}
-        />
+        {/* Balans BITTA qatorda: ilgari «To'lash kerak 670 000» va «Balans −670 000» yonma-yon turib
+            bir xil narsani ikki marta aytardi. Endi holatga qarab: qarz → «To'lash kerak» (qizil),
+            avans → «Avans» (yashil), nol → «Balans». */}
+        {due > 0 ? (
+          <StatRow
+            icon={<IconCreditCard className="h-[18px] w-[18px]" />}
+            label="To'lash kerak"
+            value={formatMoney(due)}
+            valueCls="text-red-600"
+          />
+        ) : (
+          <StatRow
+            icon={<IconWallet className="h-[18px] w-[18px]" />}
+            label={data.balance > 0 ? 'Avans' : 'Balans'}
+            value={formatMoney(data.balance)}
+            valueCls={data.balance > 0 ? 'text-emerald-700' : undefined}
+          />
+        )}
         <StatRow
           icon={<IconPercentage className="h-[18px] w-[18px]" />}
           label="Chegirma"

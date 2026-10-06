@@ -182,17 +182,21 @@ export function PaymentHistoryPanel({ studentId, onPaid, onChargeEdited, variant
           return (
             <div
               key={i}
-              className="flex items-center gap-1.5 text-xs font-normal text-slate-400"
+              className="flex min-w-0 items-center gap-1.5 text-xs font-normal text-slate-400"
             >
               <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-brand-300" />
               {/* GURUH nomi asosiy, yonida — kursi (bir xil bo'lsa takrorlanmaydi). */}
-              <span className="truncate text-slate-500">
+              <span
+                className="min-w-0 truncate text-slate-500"
+                title={co.groupName && co.courseName && co.courseName !== co.groupName
+                  ? `${co.groupName} — ${co.courseName}` : co.groupName || co.courseName}
+              >
                 {co.groupName || co.courseName}
                 {co.groupName && co.courseName && co.courseName !== co.groupName
                   ? ` — ${co.courseName}`
                   : ''}
               </span>
-              <span className="text-slate-300">·</span>
+              <span className="shrink-0 text-slate-300">·</span>
               {editing ? (
                 <span className="inline-flex items-center gap-1">
                   <MoneyInput
@@ -228,7 +232,7 @@ export function PaymentHistoryPanel({ studentId, onPaid, onChargeEdited, variant
                 </span>
               ) : (
                 <>
-                  <span className="font-mono text-slate-500">{formatMoney(co.fee)}</span>
+                  <span className="shrink-0 whitespace-nowrap font-mono text-slate-500">{formatMoney(co.fee)}</span>
                   {isSuper && (
                     <button
                       type="button"
@@ -459,8 +463,9 @@ export function PaymentHistoryPanel({ studentId, onPaid, onChargeEdited, variant
         {/* Oylar bo'yicha holat */}
         <div>
           <p className="mb-2 text-sm font-medium text-slate-600">Oylar bo'yicha</p>
-          <div className="overflow-hidden rounded-xl border border-slate-200">
-            <table className="w-full text-left text-sm">
+          {/* Tor ekranda jadval o'z ichida yonga suriladi (ilgari `overflow-hidden` «Holat» ustunini kesardi). */}
+          <div className="overflow-x-auto rounded-xl border border-slate-200">
+            <table className="w-full min-w-[640px] text-left text-sm">
               <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-400">
                 <tr>
                   <th className="px-4 py-2.5">Oy</th>
@@ -474,11 +479,13 @@ export function PaymentHistoryPanel({ studentId, onPaid, onChargeEdited, variant
               <tbody className="divide-y divide-slate-100">
                 {ledger.months.map((m) => (
                   <tr key={m.month} className="hover:bg-slate-50/60">
-                    <td className="px-4 py-2.5 align-top font-medium text-slate-700">
+                    {/* Kenglik cheklangan: uzun guruh nomi `truncate` bilan qisqaradi — aks holda bu ustun
+                        jadvalni kengaytirib, «Holat» ustuni ekrandan chiqib ketardi (to'liq nom — `title`). */}
+                    <td className="max-w-[18rem] px-4 py-2.5 align-top font-medium text-slate-700">
                       {formatMonth(m.month)}
                       {renderCourses(m)}
                     </td>
-                    <td className="px-4 py-2.5 text-right align-top font-mono text-slate-600">
+                    <td className="whitespace-nowrap px-4 py-2.5 text-right align-top font-mono text-slate-600">
                       {formatMoney(m.charged)}
                       {isSuper && m.courses.length > 1 && (
                         <p className="mt-0.5 text-[10px] font-normal text-slate-300">
@@ -488,18 +495,18 @@ export function PaymentHistoryPanel({ studentId, onPaid, onChargeEdited, variant
                     </td>
                     <td
                       className={cn(
-                        'px-4 py-2.5 text-right font-mono',
+                        'whitespace-nowrap px-4 py-2.5 text-right font-mono',
                         m.discount > 0 ? 'text-amber-600 font-medium' : 'text-slate-300',
                       )}
                     >
                       {m.discount > 0 ? `−${formatMoney(m.discount)}` : '—'}
                     </td>
-                    <td className="px-4 py-2.5 text-right font-mono text-emerald-600 font-medium">
+                    <td className="whitespace-nowrap px-4 py-2.5 text-right font-mono text-emerald-600 font-medium">
                       {formatMoney(m.paid)}
                     </td>
                     <td
                       className={cn(
-                        'px-4 py-2.5 text-right font-mono',
+                        'whitespace-nowrap px-4 py-2.5 text-right font-mono',
                         m.remaining > 0 ? 'text-red-600' : 'text-slate-400',
                       )}
                     >
@@ -508,7 +515,7 @@ export function PaymentHistoryPanel({ studentId, onPaid, onChargeEdited, variant
                     <td className="px-4 py-2.5 text-center">
                       <span
                         className={cn(
-                          'rounded-md px-2 py-0.5 text-xs font-medium',
+                          'whitespace-nowrap rounded-md px-2 py-0.5 text-xs font-medium',
                           statusStyles[m.status],
                         )}
                       >

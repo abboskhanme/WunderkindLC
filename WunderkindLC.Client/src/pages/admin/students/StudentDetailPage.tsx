@@ -897,10 +897,11 @@ export function StudentDetailPage() {
     <div className="space-y-6">
       <BackLink />
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[25%_75%]">
-        {/* CHAP USTUN — o'quvchi profili + shaxsiy ma'lumotlar (bitta karta), 40% */}
-        <div className="lg:sticky lg:top-4 lg:self-start">
-          <Card className="relative space-y-5">
+      {/* ⚠️ Ustunlar `minmax(0,1fr)` bilan: ilgari `25%_75%` + `gap-6` jami 100% dan OSHIB ketardi —
+          o'ng ustun (to'lov jadvali, guruh kartalari) sahifadan chiqib, chetidagi ustunlar kesilardi. */}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[300px_minmax(0,1fr)] 2xl:grid-cols-[320px_minmax(0,1fr)]">
+        {/* CHAP USTUN — profil kartasi va shaxsiy ma'lumotlar (ikki ALOHIDA karta, ichma-ich emas) */}
+        <div className="min-w-0 space-y-4 lg:sticky lg:top-4 lg:self-start">
             {/* edutizim profil kartasi: rasm · ism · telefon + nusxa · uch amal tugmasi ·
                 ko'rsatkichlar ("To'lash kerak", "Balans", chegirma). Amallar AYNAN eski
                 oynalarni ochadi — qoidalar o'zgarmagan. */}
@@ -927,39 +928,31 @@ export function StudentDetailPage() {
               ]}
             />
 
-            {/* Shaxsiy ma'lumotlar */}
-            <div className="border-t border-slate-100 pt-4">
-              <div className="mb-3 flex items-center gap-2">
+            {/* Shaxsiy ma'lumotlar — ALOHIDA karta, bitta ustunli ro'yxat (yorliq chapda, qiymat
+                o'ngda). Ilgari profil kartasi bilan bitta ramka ichida 2 ustunga siqilgan edi: uzun
+                ism va telefon raqami bo'g'inlarga bo'linib ketardi. Chegirma bu yerda TAKRORLANMAYDI —
+                u profil kartasidagi ko'rsatkichlarda bor (sanoq registrdan, `discounts.active`). */}
+          <Card>
+            <div>
+              <div className="mb-2 flex items-center gap-2">
                 <User className="h-5 w-5 text-brand-600" />
                 <h2 className="font-semibold text-slate-800">Shaxsiy ma'lumotlar</h2>
               </div>
-              <div className="grid grid-cols-2 gap-x-4 gap-y-4">
-                <InfoRow icon={User} label="Jinsi" value={genderLabels[data.gender as 'male' | 'female'] ?? data.gender} />
-                <InfoRow icon={Cake} label="Tug'ilgan kun" value={data.birthDate ? formatDate(data.birthDate) : '—'} />
-                <InfoRow icon={CalendarPlus} label="Qabul sanasi" value={data.enrollmentDate ? formatDate(data.enrollmentDate) : '—'} />
-                <InfoRow icon={BookOpen} label="Sinf" value={schoolGradeLabel(data.schoolGradeNow) || '—'} />
-                <InfoRow icon={MapPin} label="Manzil" value={data.address || '—'} />
-                <InfoRow icon={GraduationCap} label="Guruh rahbari" value={data.homeroomTeacher || '—'} />
-                <InfoRow icon={User} label="Ota-ona" value={data.parentFullName || '—'} />
-                <InfoRow icon={Phone} label="Telefon" value={formatPhone(data.phone ?? '') || '—'} />
-                <InfoRow
+              <dl className="divide-y divide-slate-100">
+                <InfoLine icon={User} label="Jinsi" value={genderLabels[data.gender as 'male' | 'female'] ?? data.gender} />
+                <InfoLine icon={Cake} label="Tug'ilgan kun" value={data.birthDate ? formatDate(data.birthDate) : '—'} />
+                <InfoLine icon={CalendarPlus} label="Qabul sanasi" value={data.enrollmentDate ? formatDate(data.enrollmentDate) : '—'} />
+                <InfoLine icon={BookOpen} label="Sinf" value={schoolGradeLabel(data.schoolGradeNow) || '—'} />
+                <InfoLine icon={Phone} label="Telefon" value={formatPhone(data.phone ?? '') || '—'} />
+                <InfoLine icon={User} label="Ota-ona" value={data.parentFullName || '—'} />
+                <InfoLine
                   icon={Phone}
                   label="Ota-ona telefoni"
                   value={formatPhone(data.parentPhone || data.fatherPhone || data.motherPhone || '') || '—'}
                 />
-                {/* Chegirma HAR FAN uchun alohida bo'lishi mumkin — batafsili «Chegirma» tabida.
-                    ⚠️ SANOQ registrdan (`discounts.active`) olinadi: `StudentNotebook` da
-                    `discountCount` YO'Q, ya'ni usiz «+N ta fan» qismi HECH QACHON chiqmasdi va
-                    bu qator o'sha sahifaning «Chegirma» tabi bilan ZID bo'lardi. */}
-                <InfoRow
-                  icon={Percent}
-                  label="Chegirma"
-                  value={
-                    studentDiscountLabel({ ...data, discountCount: discounts?.active.length }) ||
-                    'Yo\'q'
-                  }
-                />
-              </div>
+                <InfoLine icon={GraduationCap} label="Guruh rahbari" value={data.homeroomTeacher || '—'} />
+                <InfoLine icon={MapPin} label="Manzil" value={data.address || '—'} />
+              </dl>
               {(data.photoUrl || data.parentPassportUrl) && (
                 <div className="mt-4 flex flex-wrap gap-4 border-t border-slate-100 pt-4">
                   {data.photoUrl && (
@@ -980,7 +973,10 @@ export function StudentDetailPage() {
 
         {/* O'NG USTUN — bo'limlar (tab) */}
         <div className="min-w-0 space-y-6">
-          <div className="tabs flex-wrap" role="tablist">
+          {/* Bo'limlar — oq karta ichida (edutizimdagidek). Telefonda BITTA qator, yonga suriladi
+              (ilgari 5 qatorga sochilib, kontentni ekrandan pastga surib yuborardi). */}
+          <div className="rounded-xl border border-[#dbe0e6] bg-white p-2 shadow-[0_1px_2px_rgba(0,0,0,0.05)]">
+          <div className="profile-tabs flex gap-2 overflow-x-auto lg:flex-wrap lg:overflow-visible" role="tablist">
             <button type="button" className={cn('tab', tab === 'guruhlar' && 'active')} onClick={() => setTab('guruhlar')}>
               <School className="mr-1 inline h-3.5 w-3.5" /> Guruhlar
             </button>
@@ -1027,6 +1023,7 @@ export function StudentDetailPage() {
             <button type="button" className={cn('tab', tab === 'ai' && 'active')} onClick={() => setTab('ai')}>
               <Sparkles className="mr-1 inline h-3.5 w-3.5" /> AI Tahlil
             </button>
+          </div>
           </div>
 
           {/* CHEGIRMA — registr, tarix va oylar bo'yicha haqiqatan qo'llangan summa.
@@ -2694,10 +2691,11 @@ function Section({
 }) {
   return (
     <Card>
-      <div className="mb-4 flex items-center gap-2">
+      {/* Telefonda amal tugmalari sarlavha OSTIGA tushadi (ilgari sarlavha yoniga siqilib, ustma-ust chiqardi). */}
+      <div className="mb-4 flex flex-wrap items-center gap-x-2 gap-y-3">
         <Icon className="h-5 w-5 text-brand-600" />
         <h2 className="font-semibold text-slate-800">{title}</h2>
-        {action && <div className="ml-auto">{action}</div>}
+        {action && <div className="w-full sm:ml-auto sm:w-auto">{action}</div>}
       </div>
       {children}
     </Card>
@@ -3289,7 +3287,8 @@ function BonusCourseCard({ row }: { row: RetentionRow }) {
   )
 }
 
-function InfoRow({
+/** «Shaxsiy ma'lumotlar» qatori: belgi + yorliq chapda, qiymat o'ngda (uzun qiymat o'ng tomonda o'raladi). */
+function InfoLine({
   icon: Icon,
   label,
   value,
@@ -3299,12 +3298,14 @@ function InfoRow({
   value: string
 }) {
   return (
-    <div className="flex items-start gap-2.5">
-      <Icon className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
-      <div className="min-w-0">
-        <p className="text-xs text-slate-400">{label}</p>
-        <p className="break-words text-sm font-medium text-slate-700">{value}</p>
-      </div>
+    <div className="flex items-start gap-3 py-2.5 text-sm">
+      <dt className="flex shrink-0 items-center gap-2 text-slate-500">
+        <Icon className="h-4 w-4 text-slate-400" />
+        {label}
+      </dt>
+      <dd className={cn('min-w-0 flex-1 break-words text-right font-medium', value === '—' ? 'text-slate-300' : 'text-slate-700')}>
+        {value}
+      </dd>
     </div>
   )
 }
