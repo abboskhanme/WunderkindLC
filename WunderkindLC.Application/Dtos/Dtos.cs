@@ -1165,7 +1165,11 @@ public record GroupJournalInfoDto(
 public record GroupJournalStudentDto(
     string StudentId, string FullName, string Status, string ActivatedAt, decimal Balance, string MemberStart,
     string PresentDefaultFrom, string FrozenAt, int DebtMonths = 0,
-    bool PaymentHidden = false, string PaymentHiddenReason = "", string PhotoUrl = "");
+    bool PaymentHidden = false, string PaymentHiddenReason = "", string PhotoUrl = "",
+    // Guruhdan CHIQQAN qator: "" — a'zo, "left" — chiqarilgan/boshqa guruhga o'tgan, "completed" —
+    // sertifikat bilan tugatgan. Bunday qator `Status="frozen"` bilan (faqat ko'rish) keladi,
+    // `FrozenAt` — oxirgi kuni; yorliq shu maydondan ("Chiqgan"/"Tugatgan").
+    string Ended = "");
 /// <summary>Guruhning bitta oylik jurnali: ustunlar guruh dars kunlari bo'yicha avtomatik, qatorlar — faol o'quvchilar.
 /// <see cref="ConductedDates"/> — "o'tildi" deb belgilangan dars sanalari (sababsiz o'quvchi shu kunda KELDI = yashil).</summary>
 public record GroupJournalDto(

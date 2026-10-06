@@ -94,14 +94,20 @@ public static class MembershipBilling
 
         var frozenBeforeActive = activatedAt.Length >= 10
                                  && string.CompareOrdinal(activatedAt, freezeDate) > 0;
+        // ⚠️ HECH QACHON AKTIVLASHTIRILMAGAN a'zolik (sinov — `ActivatedAt` bo'sh/buzuq) uchun qisman
+        // to'lov YOZILMAYDI. Ilgari `ChargeFreezeProrateAsync` bo'sh sanani "oy boshidan faol" deb olib,
+        // sinovdagi o'quvchini muzlatganda (ommaviy muzlatish ham) oyning 1-kunidan beri darslarni
+        // hisoblab, balansni manfiy qilardi. `BillableInMonth`/`AccruableMonth` bilan bir xil talab.
+        var neverActivated = activatedAt.Length < 10 || !DateOnly.TryParse(activatedAt[..10], out _);
+        var charge = !frozenBeforeActive && !neverActivated;
 
-        if (!frozenBeforeActive)
+        if (charge)
             await TuitionService.ChargeFreezeProrateAsync(db, student, group, activatedAt, freezeDate, lessonFee, pricing);
 
         var (restored, purged) = await TuitionService.PurgeChargesAfterMonthAsync(
             db, student, group.Id, freezeDate, inclusive: frozenBeforeActive);
 
-        return new FreezeSettlement(!frozenBeforeActive, restored, purged);
+        return new FreezeSettlement(charge, restored, purged);
     }
 
     /// <summary>Guruh o'chirilishidan oldin uning hisoblari balansga qaytarilishi natijasi.</summary>

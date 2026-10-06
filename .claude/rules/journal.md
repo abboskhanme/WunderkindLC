@@ -93,3 +93,13 @@ paths:
   qo'shilgan (ikkala chaqiruv joyida ham). O'quvchi profilida (admin) "Yig'ilgan ballar" bo'limi va
   o'quvchi portali "Baholash" ekranida "Bu oyda / Jami yig'ilgan" ball
   (`StudentGradingGroupDto.MonthBall/TotalBall`) — o'rtacha ko'rsatilmaydi.
+
+## Guruhdan CHIQQAN o'quvchi jurnalda (2026-10-06)
+
+`JournalService.GroupMonthAsync` faol a'zolardan tashqari guruhdan **chiqqanlarni** ham beradi — faqat
+ular O'QIGAN oylarda (boshlangan oyidan chiqish oyigacha). Bunday qator `Status="frozen"` bilan keladi
+(klient uni muzlatilganlar blokida FAQAT KO'RISH qiladi; o'qituvchi jurnali va bulk davomat muzlatilganlarni
+umuman olmaydi), `FrozenAt` — oxirgi kuni, `Ended` — `"left"` (chiqarilgan/boshqa guruhga o'tgan) yoki
+`"completed"` (sertifikat bilan). Yorliq «Chiqgan»/«Tugatgan», «Muzlatilgan» EMAS.
+⚠️ Ilgari faqat `IsActive` olinardi: chiqarilgan/o'tkazilgan o'quvchi o'qigan oylaridan ham yo'qolar,
+sertifikat bilan tugatilgan guruh jurnali bo'm-bo'sh ochilardi.

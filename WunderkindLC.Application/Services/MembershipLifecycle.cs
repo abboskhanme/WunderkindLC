@@ -274,6 +274,17 @@ public static class MembershipLifecycle
 
     /// <summary>"boshlanish|tugash" qatorini ajratadi. Yaroqsiz/bo'sh qator — <c>false</c>
     /// (buzuq yozuv butun hisobni yiqitmasin).</summary>
+    /// <summary>
+    /// A'zolikning shu OYDA tugagan YOPILGAN davri bormi — ya'ni shu oy hisobida OLDINGI segment
+    /// (muzlatish/chiqishgacha qatnashilgan darslar) turibdi. <see cref="ClosePeriod"/> dan KEYIN
+    /// chaqiriladi (joriy davr shu yerda tarixga ko'chgan bo'ladi). Qayta aktivlashtirishda yangi
+    /// segment shu hisob USTIGA qo'shilishi kerak — aks holda oldingi darslar hisobdan yo'qolardi
+    /// (shu oyda: muzlatish → qayta aktivlashtirish, chiqarish → qayta qo'shish, guruhga qaytarish).
+    /// </summary>
+    public static bool ClosedPeriodEndsInMonth(Domain.StudentGroup m, string month) =>
+        month.Length >= 7 && m.PastPeriods.Any(p =>
+            TryParsePeriod(p, out _, out var to) && to.Length >= 7 && to[..7] == month[..7]);
+
     public static bool TryParsePeriod(string? raw, out string from, out string to)
     {
         from = to = string.Empty;

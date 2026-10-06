@@ -1,4 +1,4 @@
-﻿import { useCallback, useEffect, useMemo, useState } from 'react'
+﻿import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 import {
   ArrowLeft, GraduationCap, CalendarCheck, ClipboardCheck,
@@ -760,22 +760,28 @@ export function StudentDetailPage() {
     }
   }
 
-  const applyEdit = (values: StudentPayload) => {
-    if (!id) return
-    updateStudent(id, values)
-      .then(() => setReloadKey((k) => k + 1))
-      .catch((e) => alert(e?.response?.data?.message ?? 'Saqlab bo\'lmadi'))
-  }
+  /** Tahrir so'rovi ketayotganda qayta «Saqlash» ikkinchi so'rov yubormasin (sinxron qulf). */
+  const editInFlight = useRef(false)
 
   /**
    * ⚠️ Chegirma bu formadan BOSHQARILMAYDI — «Chegirma» tabidan, HAR FAN uchun alohida
    * beriladi. Shuning uchun "chegirmani joriy oyga qo'llaymizmi?" so'rovi OLIB TASHLANDI:
    * server `PUT /students/{id}` dagi chegirma maydonlarini e'tiborga olmaydi.
    */
-  const handleEditSubmit = (values: StudentPayload) => {
-    if (!editing) return
-    applyEdit(values)
-    setEditing(null)
+  const handleEditSubmit = async (values: StudentPayload) => {
+    if (!editing || !id || editInFlight.current) return
+    editInFlight.current = true
+    try {
+      await updateStudent(id, values)
+      // Forma FAQAT saqlangandan keyin yopiladi — xato bo'lsa kiritilgan ma'lumot yo'qolmasin
+      // (ilgari oyna so'rovdan OLDIN yopilardi, 400 da hammasini qaytadan yozish kerak edi).
+      setEditing(null)
+      setReloadKey((k) => k + 1)
+    } catch (e) {
+      alert(apiErrorMessage(e, "Saqlab bo'lmadi"))
+    } finally {
+      editInFlight.current = false
+    }
   }
 
   // O'quv dasturi uchun guruh→kurs id xaritasi. A'zolikda faqat courseName bor (courseId yo'q),

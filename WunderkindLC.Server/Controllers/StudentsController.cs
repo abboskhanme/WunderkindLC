@@ -633,7 +633,9 @@ public class StudentsController(
     public async Task<ActionResult<Student>> Create(StudentPayload p)
     {
         if (!SchoolGradeOk(p.SchoolGrade)) return BadRequest(new { message = SchoolGradeInvalid });
-        var cls = await db.Classes.FirstOrDefaultAsync(c => c.Name == p.ClassName);
+        // ⚠️ Nom bo'yicha qidiruvda ARXIVLANMAGAN guruh ustun: «Tugatish (sertifikat bilan)» yangi guruhga
+        // eski nomni beradi, ya'ni bir xil nomli arxiv guruh ham bo'ladi — o'quvchi o'shanga tushib qolardi.
+        var cls = await db.Classes.Where(c => c.Name == p.ClassName).OrderBy(c => c.IsArchived).FirstOrDefaultAsync();
         var student = AddStudent(p, cls);
         // CHEGIRMA REGISTRI: o'quvchi chegirma bilan YARATILSA registrda qator ochiladi —
         // «BARCHA GURUHLAR» qamrovida (`groupId: null`). ⚠️ Bu ATAYIN qoldirilgan: import va eski
@@ -918,26 +920,48 @@ public class StudentsController(
         // M2M a'zolik bo'lsa billing AccrueMonth/aktivlashtirish (a'zolik narxi) orqali yuritiladi —
         // ClassName narxi bo'yicha qayta hisoblamaymiz (aks holda ikki manba bir-biriga zid summa yozadi).
         var hasMembership = await db.StudentGroups.AnyAsync(sg => sg.StudentId == student.Id);
-        var cls = await db.Classes.FirstOrDefaultAsync(c => c.Name == student.ClassName);
-        // Agar className YANGI qiymatga o'zgardi va o'quvchining hech qanday M2M a'zoligi yo'q bo'lsa —
-        // bu admin o'quvchini guruhga qo'shmoqchi (StudentFormModal "Guruhga biriktirish" dropdown).
-        // Bunday holatda M2M a'zolik (Status="trial") yaratamiz va billing QILINMAYDI —
-        // to'lov faqat aktivlashtirish (ActivateMember) paytida boshlanishi kerak.
-        if (classChanged && !hasMembership && cls is not null)
+        var cls = await db.Classes.Where(c => c.Name == student.ClassName).OrderBy(c => c.IsArchived).FirstOrDefaultAsync();
+        // Agar className YANGI qiymatga o'zgardi va o'quvchining TIRIK a'zoligi yo'q bo'lsa — bu admin
+        // o'quvchini guruhga qo'shmoqchi (StudentFormModal "Guruhga biriktirish" dropdown). Bunday
+        // holatda M2M a'zolik (Status="trial") yaratamiz va billing QILINMAYDI — to'lov faqat
+        // aktivlashtirish (ActivateMember) paytida boshlanishi kerak.
+        // ⚠️ Ilgari faqat "umuman a'zoligi yo'q" o'quvchida ishlardi: guruhdan CHIQQAN o'quvchiga forma
+        // tanlovni ko'rsatar, lekin a'zolik yaratilmas — faqat `ClassName` yorlig'i yozilib, o'quvchi
+        // guruhda bordek ko'rinardi. Endi o'sha (o'quvchi, guruh) qatori bo'lsa `AddMember` dagidek tiklanadi.
+        if (classChanged && !hasLiveMembership && cls is not null && !cls.IsArchived)
         {
-            db.StudentGroups.Add(new StudentGroup
+            var today = AppClock.Today.ToString("yyyy-MM-dd");
+            var joinedAt = student.EnrollmentDate.Length >= 10 ? student.EnrollmentDate : today;
+            var old = await db.StudentGroups.FirstOrDefaultAsync(sg => sg.StudentId == student.Id && sg.GroupId == cls.Id);
+            if (old is not null)
             {
-                StudentId = student.Id,
-                GroupId = cls.Id,
-                JoinedAt = student.EnrollmentDate.Length >= 10
-                    ? student.EnrollmentDate
-                    : AppClock.Today.ToString("yyyy-MM-dd"),
-                IsActive = true,
-                Status = "trial",
-                // Jurnaldagi avto-"keldi" qoidasi shu sanadan boshlanadi (JoinedAt orqaga
-                // sanalgan bo'lishi mumkin — eski darslar bo'sh qolishi kerak).
-                RecordedAt = AppClock.Today.ToString("yyyy-MM-dd"),
-            });
+                // Oldingi faol davr tarixga — sanalar tozalanishidan OLDIN (`membership-periods.md` §3).
+                MembershipLifecycle.ClosePeriod(old, today);
+                old.IsActive = true;
+                old.LeftAt = null;
+                old.JoinedAt = today;
+                old.Status = "trial";
+                old.ActivatedAt = string.Empty;
+                old.FrozenAt = string.Empty;
+                old.YearFreeze = false;
+                old.RecordedAt = today;
+            }
+            else
+                db.StudentGroups.Add(new StudentGroup
+                {
+                    StudentId = student.Id,
+                    GroupId = cls.Id,
+                    JoinedAt = joinedAt,
+                    IsActive = true,
+                    Status = "trial",
+                    // Jurnaldagi avto-"keldi" qoidasi shu sanadan boshlanadi (JoinedAt orqaga
+                    // sanalgan bo'lishi mumkin — eski darslar bo'sh qolishi kerak).
+                    RecordedAt = today,
+                });
+            audit.Record("Membership", $"{cls.Id}:{student.Id}", "create",
+                $"Guruhga qo'shildi (o'quvchi formasidan): {student.FullName} → {cls.Name} (sinov)"
+                    + (old is not null ? " — qayta qo'shildi" : ""),
+                studentId: student.Id);
             hasMembership = true; // billing blokini o'tkazib yuborish uchun
         }
         if (!hasMembership && cls is not null && cls.MonthlyFee > 0)
@@ -1526,7 +1550,10 @@ public class StudentsController(
             StudentId = studentId,
             GroupId = cls.Id,
             JoinedAt = enrollment,
-            IsActive = memberStatus != "frozen", // frozen — IsActive = false
+            // ⚠️ Muzlatilgan ham TIRIK a'zolik (`FreezeCoreAsync` dagidek `IsActive=true`). Ilgari `false`
+            // yozilardi: chiqish sanasisiz "chiqqan" qator bo'lib, «Aktiv emas» da chiqar va aktivlashtirib
+            // bo'lmasdi (server faqat faol a'zolikni aktivlashtiradi).
+            IsActive = true,
             Status = memberStatus,
             // ⚠️ HOLAT SANASIZ QOLMASIN. Ilgari bu yerda `ActivatedAt`/`FrozenAt` UMUMAN
             // yozilmasdi va qator ZID chiqardi: "active" (ya'ni pullik), lekin qachondan
@@ -1635,7 +1662,8 @@ public class StudentsController(
         // Guruhlar oldindan yuklab olinadi (har qatorda DB so'rovi bo'lmasligi uchun).
         var classByName = (await db.Classes.ToListAsync())
             .GroupBy(c => c.Name, StringComparer.OrdinalIgnoreCase)
-            .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
+            // Bir xil nomli guruhlardan ARXIVLANMAGANI (Create bilan bir xil qoida).
+            .ToDictionary(g => g.Key, g => g.OrderBy(c => c.IsArchived).First(), StringComparer.OrdinalIgnoreCase);
 
         // DUBLIKATDAN HIMOYA (`StudentImportPlan`): bazadagi o'quvchilar va ularning a'zoliklari —
         // qator bilan ism + telefon mos kelsa yangisi yaratilmaydi, faqat guruhga qo'shiladi.

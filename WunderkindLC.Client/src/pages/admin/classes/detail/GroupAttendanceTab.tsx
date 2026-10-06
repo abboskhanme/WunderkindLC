@@ -241,7 +241,11 @@ export function GroupAttendanceTab({
             />
           </Section>
           {frozen.length > 0 && (
-            <Section title="Muzlatilgan o'quvchilar" count={frozen.length} hint="faqat ko'rish — baho/davomat saqlanadi">
+            <Section
+              title={frozen.some((s) => s.ended) ? "Muzlatilgan va chiqqan o'quvchilar" : "Muzlatilgan o'quvchilar"}
+              count={frozen.length}
+              hint="faqat ko'rish — baho/davomat saqlanadi"
+            >
               <Grid
                 rows={frozen}
                 frozenRows

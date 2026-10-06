@@ -243,6 +243,19 @@ o'quvchi kunlar nisbatida hisoblanadi (dars kunlari bo'yicha emas).
   oylik va oldindan yozilgan keyingi oylar qarz bo'lib qolardi). Oynada AKTIV a'zolik uchun
   **chiqish sanasi** so'raladi (`?date=`, bo'sh — bugun, kelajak — 400). Muzlatilgan/sinovdagi
   a'zolikka pul jihatidan tegilmaydi. Testlar: `MembershipLeaveTests`.
+  Shu bilan birga (tekshiruvda topilgan, 2026-10-06):
+  - chiqarishda o'quvchining «asosiy guruh» yorlig'i (`ClassName`) chiqqan guruhda qolmaydi (boshqa tirik
+    guruhi yoki bo'sh) — aks holda portal chati, ro'yxat belgisi va guruhni o'chirish uni guruhda deb bilardi;
+  - o'tkazishda sanalar tekshiriladi (aktivlashtirish chiqishdan OLDIN bo'lmaydi); maqsad guruhda o'quvchi
+    MUZLATILGAN bo'lsa — o'tkazish emas, «Aktivlashtirish» (sabab matni bilan 400);
+  - qo'lda «chiqarish + qo'shish + aktivlashtirish» oqimida avans shu oyda CHIQQAN a'zolikdan ham ko'chadi.
+- ⚠️ **HECH aktivlashtirilmagan (sinov) a'zolik muzlatilsa oylik YOZILMAYDI** (`SettleFreezeAsync`):
+  ilgari bo'sh `ActivatedAt` "oy boshidan faol" deb olinib, ommaviy muzlatishda sinovdagilarga oyning
+  1-kunidan beri darslar hisoblanardi.
+- ⚠️ **Shu OYDA chiqib qayta qo'shilsa/qaytarilsa oldingi segment SAQLANADI**
+  (`MembershipLifecycle.ClosedPeriodEndsInMonth` → `addSegment`): ilgari faqat muzlatishdan qaytishda
+  qo'shilardi, qayta qo'shish va o'tkazib qaytarishda esa oy boshidagi darslar yangi segment bilan
+  almashib, hisobdan yo'qolardi.
 
 - **OMMAVIY MUZLATISH / AKTIVLASHTIRISH** (bir paytda ko'p o'quvchi). Ikki kirish nuqtasi:
   guruh sahifasi a'zolar modalidan (`POST /api/admin/classes/{id}/members/bulk-freeze` va

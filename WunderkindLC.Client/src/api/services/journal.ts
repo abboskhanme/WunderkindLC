@@ -77,6 +77,10 @@ export interface GroupJournalStudent {
    *  ustiga bosilganda ochiladi — o'qituvchi o'quvchini yuzidan tanishi uchun. Eski javoblarda
    *  bo'lmasligi mumkin (shuning uchun ixtiyoriy). */
   photoUrl?: string
+  /** Guruhdan CHIQQAN qator ('left' — chiqarilgan/boshqa guruhga o'tgan, 'completed' — sertifikat bilan
+   *  tugatgan). Bunday qator `status: 'frozen'` bilan keladi (faqat ko'rish), `frozenAt` — oxirgi kuni;
+   *  faqat o'quvchi o'qigan oylarda chiqadi. Bo'sh/yo'q — guruh a'zosi. */
+  ended?: '' | 'left' | 'completed'
 }
 /** Bitta darsning bir martalik boshqa kunga ko'chirilishi (shu oyga tegishli). */
 export interface LessonReschedule {

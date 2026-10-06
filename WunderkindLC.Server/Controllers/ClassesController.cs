@@ -821,15 +821,17 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
         }
 
         var cls = await db.Classes.FindAsync(id);
+        var student = await db.Students.FindAsync(studentId);
         var status = sg.Status;
         var restored = 0m;
-        if (status == "active" && cls is not null && await db.Students.FindAsync(studentId) is { } s)
+        if (status == "active" && cls is not null && student is not null)
         {
             // Bir o'quvchining pul amallari bir navbatda (to'lov/vozvrat bilan bir qulf) — balans
             // qulf ICHIDA qayta o'qiladi (parallel to'lov ta'siri eski qiymat ustidan yozilmasin).
             using var gate = await PaymentIdempotency.LockAsync("student:" + studentId);
-            s.Balance = await db.Students.AsNoTracking().Where(x => x.Id == studentId).Select(x => x.Balance).FirstAsync();
-            restored = (await MembershipBilling.LeaveGroupAsync(db, s, cls, sg, leftAt)).Restored;
+            student.Balance = await db.Students.AsNoTracking().Where(x => x.Id == studentId).Select(x => x.Balance).FirstAsync();
+            restored = (await MembershipBilling.LeaveGroupAsync(db, student, cls, sg, leftAt)).Restored;
+            await ReleasePrimaryGroupNameAsync(student, cls);
             await RecordRemovalAsync();
             await db.SaveChangesAsync();
             return NoContent();
@@ -838,6 +840,7 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
         // Sinov/muzlatilgan — hisob yo'q yoki allaqachon yopilgan: faqat chiqish.
         sg.IsActive = false;
         sg.LeftAt = leftAt;
+        if (student is not null && cls is not null) await ReleasePrimaryGroupNameAsync(student, cls);
         await RecordRemovalAsync();
         await db.SaveChangesAsync();
         return NoContent();
@@ -852,6 +855,23 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
                     + (reason.Length > 0 ? $" — sabab: {reason}" : ""),
                 studentId: studentId);
         }
+    }
+
+    /// <summary>
+    /// O'quvchining «asosiy guruh» yorlig'i (<see cref="Student.ClassName"/>) chiqqan guruh nomida
+    /// qolmasin: boshqa TIRIK guruhi bo'lsa o'sha, bo'lmasa bo'sh. ⚠️ Ilgari chiqarilgan o'quvchi yorliq
+    /// orqali guruhda "qolib ketardi": portalda guruh darslari va chati, ro'yxatda guruh belgisi va
+    /// filtri, guruhni o'chirishda "faol o'quvchi bor" xatosi. Billing bunga tayanmaydi (`AccrueMonth`
+    /// yorliqni faqat UMUMAN a'zoligi yo'q o'quvchida ishlatadi).
+    /// </summary>
+    private async Task ReleasePrimaryGroupNameAsync(Student s, Group left)
+    {
+        if (!string.Equals(s.ClassName, left.Name, StringComparison.Ordinal)) return;
+        s.ClassName = await (from sg in db.StudentGroups
+                             join c in db.Classes on sg.GroupId equals c.Id
+                             where sg.StudentId == s.Id && sg.IsActive && sg.GroupId != left.Id
+                             orderby sg.JoinedAt
+                             select c.Name).FirstOrDefaultAsync() ?? "";
     }
 
     /// <summary>A'zolikni SINOVGA qaytarish (active/frozen → trial). Oylik to'lov hisoblanmaydi (trial).</summary>
@@ -946,6 +966,10 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
         // izsiz yo'qolardi (aynan shu sabab muzlashdan oldingi oylar "pullik emas" bo'lib qolar,
         // to'lov oynasida ko'rinmas, maosh/bonus/analitika esa noto'g'ri hisoblanardi).
         MembershipLifecycle.ClosePeriod(sg, date);
+        // Shu OYDA chiqarilib qayta qo'shilgan (sinov) a'zolik ham oldingi segmentni saqlaydi —
+        // ilgari faqat muzlatishdan qaytish hisobga olinardi, qayta qo'shishda esa oy boshidagi
+        // qatnashilgan darslar yangi segment bilan almashib, hisobdan yo'qolardi.
+        var addSegment = reactivateFromFreeze || MembershipLifecycle.ClosedPeriodEndsInMonth(sg, date);
         sg.Status = "active";
         sg.ActivatedAt = date;
         sg.FrozenAt = string.Empty;
@@ -971,7 +995,7 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
         var catchUpMonths = 0;
         if (s is not null)
         {
-            await TuitionService.ChargeActivationProrateAsync(db, s, cls, date, addSegment: reactivateFromFreeze, lessonFee: lessonFee, pricing: pricing);
+            await TuitionService.ChargeActivationProrateAsync(db, s, cls, date, addSegment: addSegment, lessonFee: lessonFee, pricing: pricing);
             // ORQAGA SANALGAN aktivlashtirish: aktivlashtirilgan oydan KEYINGI oylardan joriy oygacha
             // to'liq oylik hisoblar DARHOL yoziladi (aks holda fon xizmati 12 soatgacha kechikardi).
             // Idempotent — mavjud hisoblarga tegmaydi, kelajak oy yozmaydi.
@@ -1001,10 +1025,15 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
         if (s is not null && date.Length >= 7)
         {
             var month = date[..7];
-            var frozen = await db.StudentGroups
-                .Where(x => x.StudentId == studentId && x.GroupId != cls.Id && x.Status == "frozen")
+            // Shu oyda MUZLATILGAN yoki guruhdan CHIQQAN a'zolik — chiqarish endi muzlatish emas, balki
+            // `IsActive=false` + `LeftAt` (`MembershipBilling.LeaveGroupAsync`); ikkalasi ham "guruh
+            // almashtirish belgisi" — aks holda «chiqarish + qo'shish» oqimida avans eski guruhda qolardi.
+            var ended = await db.StudentGroups
+                .Where(x => x.StudentId == studentId && x.GroupId != cls.Id && (x.Status == "frozen" || !x.IsActive))
                 .ToListAsync();
-            foreach (var fz in frozen.Where(x => x.FrozenAt.Length >= 7 && x.FrozenAt[..7] == month))
+            foreach (var fz in ended.Where(x =>
+                         (x.Status == "frozen" && x.FrozenAt.Length >= 7 && x.FrozenAt[..7] == month)
+                         || (!x.IsActive && (x.LeftAt ?? "").Length >= 7 && x.LeftAt![..7] == month)))
             {
                 var fromGroup = await db.Classes.FindAsync(fz.GroupId);
                 if (fromGroup is null) continue;
@@ -1375,11 +1404,24 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
         var toSg = await db.StudentGroups
             .FirstOrDefaultAsync(x => x.GroupId == req.ToGroupId && x.StudentId == studentId);
         if (toSg is { IsActive: true })
-            return BadRequest(new { message = "O'quvchi allaqachon maqsad guruhda" });
+            return BadRequest(new
+            {
+                message = toSg.Status == "frozen"
+                    ? "O'quvchi maqsad guruhda muzlatilgan — o'tkazish o'rniga o'sha guruhda «Aktivlashtirish» qiling"
+                    : "O'quvchi allaqachon maqsad guruhda",
+            });
 
         var freezeDate = string.IsNullOrWhiteSpace(req.FreezeDate)
             ? AppClock.Today.ToString("yyyy-MM-dd") : req.FreezeDate!.Trim();
         var activateDate = string.IsNullOrWhiteSpace(req.ActivateDate) ? freezeDate : req.ActivateDate!.Trim();
+        // Sanalar tekshiriladi (`CompleteAndTransfer` dagi kabi): aktivlashtirish chiqishdan OLDIN bo'lsa
+        // ustma-ust kunlar IKKALA guruhda ham hisoblanardi; buzuq sana esa hisobni jimgina o'tkazib yuborardi.
+        if (!DateOnly.TryParse(freezeDate, out var fz) || !DateOnly.TryParse(activateDate, out var ac))
+            return BadRequest(new { message = "Sana noto'g'ri" });
+        if (ac < fz)
+            return BadRequest(new { message = "Yangi guruhda aktivlashtirish sanasi eski guruhdan chiqish sanasidan oldin bo'lmaydi" });
+        freezeDate = fz.ToString("yyyy-MM-dd");
+        activateDate = ac.ToString("yyyy-MM-dd");
 
         // Eski guruhda bekor qilingan oylar — (4) avans ko'chirishga uzatiladi (pastdagi izohga qarang).
         var purgedMonths = new List<string>();
@@ -1431,7 +1473,10 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
         // Jurnalda MemberStart bilan RecordedAt orasidagi, allaqachon davomati olingan darslar
         // avto-"keldi" ✓ bo'lib to'lib qolmasin (AddMember/ActivateMember bilan bir xil qoida).
         toSg.RecordedAt = AppClock.Today.ToString("yyyy-MM-dd");
-        await TuitionService.ChargeActivationProrateAsync(db, s, toGroup, activateDate);
+        // O'quvchi shu OYDA chiqqan guruhiga qaytsa (masalan xato o'tkazishni tuzatish) — o'sha oydagi
+        // oldingi segment saqlanib, yangisi USTIGA qo'shiladi (ActivateCoreAsync bilan bir xil qoida).
+        await TuitionService.ChargeActivationProrateAsync(db, s, toGroup, activateDate,
+            addSegment: MembershipLifecycle.ClosedPeriodEndsInMonth(toSg, activateDate));
 
         // 4) AVANSNI KO'CHIRISH: o'quvchi shu oy uchun ESKI guruhga allaqachon to'lagan bo'lsa, muzlatish
         //    qisman hisobidan ORTIB QOLGAN summa yangi guruhga qayta teglanadi. Aks holda to'lagan o'quvchi

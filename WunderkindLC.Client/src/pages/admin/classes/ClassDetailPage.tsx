@@ -147,6 +147,9 @@ export function ClassDetailPage() {
   const [rError, setRError] = useState<string | null>(null)
   /** CHAP ustundagi a'zolar ro'yxati (TO'LIQ tarix — chiqqan/muzlatilgan/sinov/aktiv). */
   const [members, setMembers] = useState<GroupMember[]>([])
+  /** A'zolar / «O'quvchilar» jadvali YUKLANMADI — bo'sh ro'yxat ("a'zo yo'q") bilan adashtirilmasin. */
+  const [membersError, setMembersError] = useState<string | null>(null)
+  const [rosterError, setRosterError] = useState<string | null>(null)
   // "O'quvchilar" tabi (edutizim jadvali) — telefon, kurslar soni, narx va oxirgi izoh bilan.
   // A'zolar ro'yxati (`members`) TEGILMAYDI: chap ustun va oynalar avvalgidek shundan ishlaydi.
   const [roster, setRoster] = useState<GroupRosterRow[]>([])
@@ -300,7 +303,12 @@ export function ClassDetailPage() {
   /** Chap ustundagi a'zolar ro'yxatini qayta yuklaydi (TO'LIQ tarix — barcha a'zoliklar). */
   const reloadMembers = useCallback(() => {
     if (!id) return
-    getGroupMembers(id).then(setMembers).catch(() => setMembers([]))
+    getGroupMembers(id)
+      .then((m) => {
+        setMembers(m)
+        setMembersError(null)
+      })
+      .catch((e) => setMembersError(apiErrorMessage(e, "A'zolar ro'yxatini yuklab bo'lmadi")))
   }, [id])
 
   useEffect(() => {
@@ -662,8 +670,11 @@ export function ClassDetailPage() {
     if (!id) return
     setRosterLoading(true)
     getGroupRoster(id)
-      .then(setRoster)
-      .catch(() => setRoster([]))
+      .then((r) => {
+        setRoster(r)
+        setRosterError(null)
+      })
+      .catch((e) => setRosterError(apiErrorMessage(e, "O'quvchilar ro'yxatini yuklab bo'lmadi")))
       .finally(() => setRosterLoading(false))
   }, [id])
 
@@ -868,6 +879,7 @@ export function ClassDetailPage() {
                   <div className="mb-3 flex items-center gap-2">
                     <Users className="h-5 w-5 text-brand-600" />
                     <h2 className="font-semibold text-slate-800">A'zolar</h2>
+                    {membersError && <span className="text-xs text-red-600">{membersError}</span>}
                     <span className="text-sm text-slate-400">{members.filter((m) => m.isActive).length}</span>
                     <div className="ml-auto flex shrink-0 items-center gap-1">
                       {members.length > 1 && (
@@ -1024,6 +1036,7 @@ export function ClassDetailPage() {
           {/* Oylik jurnal */}
           {/* O'QUVCHILAR (edutizim jadvali) — amallar chap ustundagi a'zolar ro'yxati bilan AYNAN
               bir xil oynalarni ochadi (`openRoster`), ya'ni qoidalar ikki joyda ayrilmaydi. */}
+          {tab === 'oquvchilar' && rosterError && <p className="text-sm text-red-600">{rosterError}</p>}
           {tab === 'oquvchilar' && (
             <GroupStudentsTab
               groupId={id}
@@ -1301,7 +1314,7 @@ export function ClassDetailPage() {
                               className="flex w-full items-center gap-1.5 px-4 py-1.5 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600"
                             >
                               {frozenVisible ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
-                              Muzlatilgan ({frozenStudents.length}) — faqat ko'rish, baho/davomat saqlanadi
+                              {frozenStudents.some((s) => s.ended) ? "Muzlatilgan / chiqqan" : 'Muzlatilgan'} ({frozenStudents.length}) — faqat ko'rish, baho/davomat saqlanadi
                             </button>
                           </td>
                         </tr>
@@ -1325,10 +1338,19 @@ export function ClassDetailPage() {
                                   <span className={cn('font-medium', balanceTextCls(st.balance, st.debtMonths))}>
                                     {st.fullName}
                                   </span>
-                                  <span className="inline-flex shrink-0 items-center gap-1 rounded bg-sky-50 px-1.5 py-0.5 text-[10px] font-medium text-sky-700">
-                                    <Snowflake className="h-3 w-3" />
-                                    Muzlatilgan
-                                  </span>
+                                  {/* Guruhdan chiqqan (boshqa guruhga o'tgan) o'quvchi «Muzlatilgan» EMAS — o'z yorlig'i
+                                      va oxirgi kuni bilan (u faqat o'qigan oylarida ko'rinadi). */}
+                                  {st.ended ? (
+                                    <span className="inline-flex shrink-0 items-center gap-1 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-500">
+                                      {st.ended === 'completed' ? 'Tugatgan' : 'Chiqgan'}
+                                      {st.frozenAt ? ` ${formatDate(st.frozenAt)}` : ''}
+                                    </span>
+                                  ) : (
+                                    <span className="inline-flex shrink-0 items-center gap-1 rounded bg-sky-50 px-1.5 py-0.5 text-[10px] font-medium text-sky-700">
+                                      <Snowflake className="h-3 w-3" />
+                                      Muzlatilgan
+                                    </span>
+                                  )}
                                 </div>
                               </td>
                               {journal!.columns.map((c) => {

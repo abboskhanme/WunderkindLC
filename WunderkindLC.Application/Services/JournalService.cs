@@ -25,9 +25,30 @@ public static class JournalService
             .Select(n => new JournalColumnDto(n.Date, n.Period))
             .ToListAsync();
 
+    /// <summary>Chiqqan a'zolik shu oy jurnalida ko'rinadimi: chiqish oyi shu oy yoki keyin VA shu oyga
+    /// qadar guruhda boshlagan bo'lsa (o'qimagan oylarida ko'rinmaydi).</summary>
+    private static bool EndedVisibleIn(StudentGroup m, string month)
+    {
+        if (m.IsActive) return true;
+        var end = EndOf(m);
+        if (end.Length < 7 || string.CompareOrdinal(end[..7], month) < 0) return false;
+        var start = MemberStart(m) ?? m.JoinedAt;
+        return start is not { Length: >= 7 } || string.CompareOrdinal(start[..7], month) <= 0;
+    }
+
+    /// <summary>Chiqqan a'zolikning oxirgi kuni: muzlatilgan bo'lib chiqqan bo'lsa muzlatish sanasi (undan
+    /// keyin o'qimagan), aks holda chiqish sanasi.</summary>
+    private static string EndOf(StudentGroup m)
+    {
+        var left = m.LeftAt ?? "";
+        var frozen = m.FrozenAt ?? "";
+        if (frozen.Length >= 10 && (left.Length < 10 || string.CompareOrdinal(frozen, left) < 0)) return frozen[..10];
+        return left.Length >= 10 ? left[..10] : left;
+    }
+
     /// <summary>
     /// Guruhning bitta OYLIK jurnali. Dars jadvali yo'q — ustunlar guruh <see cref="Group.Days"/> (hafta
-    /// kunlari) bo'yicha SHU OYDAGI sanalardan avtomatik quriladi (Period=1). Qatorlar — faqat FAOL a'zolar.
+    /// kunlari) bo'yicha SHU OYDAGI sanalardan avtomatik quriladi (Period=1). Qatorlar — a'zolar (+ shu oyda o'qigan, keyin chiqqanlar — faqat ko'rish).
     /// Mavjud oylar: guruh boshlanish sanasidan (yoki eng erta a'zolik) joriy oygacha. Fan = guruh kursi.
     /// </summary>
     public static async Task<GroupJournalDto?> GroupMonthAsync(IAppDbContext db, string classId, string? month)
@@ -38,9 +59,31 @@ public static class JournalService
         var courseName = string.IsNullOrEmpty(subjectId) ? "" : (await db.Subjects.FindAsync(subjectId))?.Name ?? "";
         var teacherName = string.IsNullOrEmpty(cls.TeacherId) ? "" : (await db.Teachers.FindAsync(cls.TeacherId))?.FullName ?? "";
 
-        // Faol a'zolar (IsActive). Status: trial/active/frozen.
-        var memberships = await db.StudentGroups.Where(sg => sg.GroupId == classId && sg.IsActive).ToListAsync();
-        var ids = memberships.Select(m => m.StudentId).ToList();
+        // Faol a'zolar (IsActive, status: trial/active/frozen) + GURUHDAN CHIQQANLAR — faqat o'qigan
+        // oylarida (chiqish oyigacha), muzlatilganlar kabi FAQAT KO'RISH qatorida (pastda `shown`).
+        // ⚠️ Ilgari faqat `IsActive` olinardi: chiqarilgan/boshqa guruhga o'tkazilgan o'quvchi o'qigan
+        // oylaridan ham yo'qolar, sertifikat bilan tugatilgan guruh jurnali esa bo'm-bo'sh ochilardi.
+        var allMemberships = await db.StudentGroups.Where(sg => sg.GroupId == classId).ToListAsync();
+
+        // Mavjud oylar: guruh StartDate (yoki eng erta a'zolik JoinedAt) oyidan joriy oygacha.
+        var starts = new List<string>();
+        if (!string.IsNullOrEmpty(cls.StartDate) && cls.StartDate.Length >= 7) starts.Add(cls.StartDate[..7]);
+        foreach (var m in allMemberships)
+            if (!string.IsNullOrEmpty(m.JoinedAt) && m.JoinedAt.Length >= 7) starts.Add(m.JoinedAt[..7]);
+        var cur = TuitionService.CurrentMonth();
+        // TUGATILGAN (arxivlangan) guruhda oylar ARXIV OYIDA to'xtaydi — aks holda o'qituvchi profilidan
+        // ochilgan tugatilgan guruh jurnali bo'm-bo'sh joriy oyda ochilardi (oxirgi haqiqiy oy ko'rinsin).
+        if (cls.IsArchived && cls.ArchivedAt is { Length: >= 7 } archMonth
+            && string.CompareOrdinal(archMonth[..7], cur) < 0)
+            cur = archMonth[..7];
+        var from = starts.Count > 0 ? starts.Min()! : cur;
+        if (string.CompareOrdinal(from, cur) > 0) from = cur;
+        var months = TuitionService.MonthRange(from, cur).ToList();
+        if (months.Count == 0) months.Add(cur);
+        var resolved = !string.IsNullOrEmpty(month) && months.Contains(month) ? month! : months[^1];
+
+        var shown = allMemberships.Where(m => m.IsActive || EndedVisibleIn(m, resolved)).ToList();
+        var ids = shown.Select(m => m.StudentId).ToList();
         var studentById = (await db.Students.Where(s => ids.Contains(s.Id)).ToListAsync())
             .ToDictionary(s => s.Id);
         // Balans — SHU GURUH bo'yicha (umumiy Student.Balance emas): o'quvchi bir nechta guruhda o'qib
@@ -54,42 +97,29 @@ public static class JournalService
         var policy = await JournalPolicy.GetAsync(db);
         var curMonthNow = TuitionService.CurrentMonth();
         var dayNow = AppClock.Today.Day;
-        var students = memberships
+        var students = shown
             .Where(m => studentById.ContainsKey(m.StudentId))
             .Select(m =>
             {
                 var st = studentById[m.StudentId];
                 var bal = balanceByStudent.GetValueOrDefault(m.StudentId);
                 var (payHidden, payReason) = JournalPolicy.PaymentGate(policy, bal, curMonthNow, dayNow);
+                // Chiqqan a'zolik — klient uni muzlatilganlar blokida (faqat ko'rish, chiqishdan keyingi
+                // darslar avto-"keldi" emas) ko'rsatadi: holat "frozen", tugash sanasi — chiqish sanasi.
+                var ended = m.IsActive ? "" : m.Status == "completed" ? "completed" : "left";
                 return new GroupJournalStudentDto(
-                    m.StudentId, st.FullName, m.Status ?? "trial", m.ActivatedAt ?? "",
+                    m.StudentId, st.FullName, ended.Length > 0 ? "frozen" : m.Status ?? "trial", m.ActivatedAt ?? "",
                     bal.Balance,
                     // ⚠️ `RecordedAt` KUN sifatida solishtiriladi (klientda `autoPresent`), shuning
                     // uchun 10 belgigacha qirqiladi: ko'chirilgan ma'lumotda u to'liq ISO vaqt
                     // ("2026-09-18T17:39:16Z") bo'lib tushgan va "2026-09-18" >= o'sha satr FALSE
                     // chiqib, o'sha kungi dars hech qachon avtomatik "keldi" bo'lmasdi.
-                    MemberStart(m) ?? "", DayOnly(m.RecordedAt), m.FrozenAt ?? "", bal.DebtMonths,
-                    payHidden, payReason, st.BirthCertificateUrl ?? "");
+                    MemberStart(m) ?? "", DayOnly(m.RecordedAt), ended.Length > 0 ? EndOf(m) : m.FrozenAt ?? "", bal.DebtMonths,
+                    payHidden, payReason, st.BirthCertificateUrl ?? "", ended);
             })
             .OrderBy(s => s.FullName, StringComparer.OrdinalIgnoreCase)
             .ToList();
 
-        // Mavjud oylar: guruh StartDate (yoki eng erta a'zolik JoinedAt) oyidan joriy oygacha.
-        var starts = new List<string>();
-        if (!string.IsNullOrEmpty(cls.StartDate) && cls.StartDate.Length >= 7) starts.Add(cls.StartDate[..7]);
-        foreach (var m in memberships)
-            if (!string.IsNullOrEmpty(m.JoinedAt) && m.JoinedAt.Length >= 7) starts.Add(m.JoinedAt[..7]);
-        var cur = TuitionService.CurrentMonth();
-        // TUGATILGAN (arxivlangan) guruhda oylar ARXIV OYIDA to'xtaydi — aks holda o'qituvchi profilidan
-        // ochilgan tugatilgan guruh jurnali bo'm-bo'sh joriy oyda ochilardi (oxirgi haqiqiy oy ko'rinsin).
-        if (cls.IsArchived && cls.ArchivedAt is { Length: >= 7 } archMonth
-            && string.CompareOrdinal(archMonth[..7], cur) < 0)
-            cur = archMonth[..7];
-        var from = starts.Count > 0 ? starts.Min()! : cur;
-        if (string.CompareOrdinal(from, cur) > 0) from = cur;
-        var months = TuitionService.MonthRange(from, cur).ToList();
-        if (months.Count == 0) months.Add(cur);
-        var resolved = !string.IsNullOrEmpty(month) && months.Contains(month) ? month! : months[^1];
 
         // Bir martalik ko'chirishlar (dars boshqa kunga): asl kun olib tashlanadi, yangi kun qo'shiladi.
         var moves = await db.LessonReschedules.Where(r => r.ClassId == classId).ToListAsync();
