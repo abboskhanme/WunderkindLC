@@ -555,7 +555,7 @@ export function ClassDetailPage() {
         await freezeMember(id, rosterTarget.studentId, date ?? rosterDate, reasonId, rosterReason === 'yearFreeze')
       // Bonus ptichkasi faqat aktivlashtirish oynasida bo'ladi — boshqa oqimlarda `undefined`.
       else if (rosterReason === 'activate') await activateMember(id, rosterTarget.studentId, date ?? rosterDate, retentionBonus)
-      else if (rosterReason === 'remove') await removeGroupMember(id, rosterTarget.studentId, reasonId)
+      else if (rosterReason === 'remove') await removeGroupMember(id, rosterTarget.studentId, reasonId, date)
       else await returnMemberToTrial(id, rosterTarget.studentId, reasonId)
       setRosterReason(null)
       setRosterTarget(null)
@@ -1787,7 +1787,9 @@ export function ClassDetailPage() {
               : rosterReason === 'activate'
                 ? `${rosterTarget.fullName} — shu sanadan boshlab qisman oylik hisoblanadi.`
                 : rosterReason === 'remove'
-                  ? `${rosterTarget.fullName} ni guruhdan chiqarasizmi?`
+                  ? rosterTarget.status === 'active'
+                    ? `${rosterTarget.fullName} guruhdan chiqariladi — shu sanagacha qatnashgan darslari hisoblanadi, keyingi oylar hisobi bekor qilinadi.`
+                    : `${rosterTarget.fullName} ni guruhdan chiqarasizmi?`
                   : `${rosterTarget.fullName} — sinov holatiga qaytariladi (oylik to'lov hisoblanmaydi).`
             : undefined
         }
@@ -1799,7 +1801,9 @@ export function ClassDetailPage() {
           : 'Sinovga qaytarish'
         }
         tone={rosterReason === 'freeze' || rosterReason === 'yearFreeze' ? 'sky' : rosterReason === 'remove' ? 'red' : 'brand'}
-        showDate={rosterReason === 'freeze' || rosterReason === 'yearFreeze' || rosterReason === 'activate'}
+        // Chiqarishda sana — faqat AKTIV a'zolikka (hisob shu sanagacha yopiladi).
+        showDate={rosterReason === 'freeze' || rosterReason === 'yearFreeze' || rosterReason === 'activate'
+          || (rosterReason === 'remove' && rosterTarget?.status === 'active')}
         showRetentionBonus={rosterReason === 'activate' && canSetBonus}
         defaultDate={rosterDate}
         onConfirm={confirmRosterReason}

@@ -205,3 +205,7 @@
   ortiqcha maydon, server baribir o'sha kassani tanlaydi
 - [2026-10-05] Kassa mas'uli kim bo'la oladi? → xodim/admin/superadmin akkaunti (o'qituvchi emas) → to'lovni
   faqat panel akkauntlari kiritadi
+- [2026-10-06] Guruh almashtirishda eski a'zolik holati? → guruhdan CHIQADI (IsActive=false, LeftAt), muzlatilgan
+  bo'lib qolmaydi; hisob avvalgidek sanagacha qisman → foydalanuvchi: "muzlatilgan bo'lib qolmasin, butunlay chiqsin"
+- [2026-10-06] Aktiv o'quvchini guruhdan chiqarishda oylik? → muzlatishdagi kabi: chiqish sanasigacha qisman, keyingi
+  oylar bekor (oynada sana so'raladi) → "butunlay chiqib ketsin"; ilgari to'liq oy va oldindan yozilgan oylar qarz qolardi

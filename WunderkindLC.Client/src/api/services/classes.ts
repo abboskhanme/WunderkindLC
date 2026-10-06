@@ -297,15 +297,20 @@ export async function addGroupMember(
   return data
 }
 
-/** Guruhdan o'quvchini chiqarish (left deb belgilanadi). Sabab (ixtiyoriy) auditga yoziladi. */
-export async function removeGroupMember(id: string, studentId: string, reasonId?: string): Promise<void> {
+/**
+ * Guruhdan o'quvchini chiqarish (left deb belgilanadi). Sabab (ixtiyoriy) auditga yoziladi.
+ * `date` — chiqish sanasi (bo'sh = bugun): AKTIV a'zolikda shu sanagacha qatnashgan darslar
+ * hisoblanadi, keyingi oylar hisobi bekor qilinadi (server `RemoveMember`).
+ */
+export async function removeGroupMember(id: string, studentId: string, reasonId?: string, date?: string): Promise<void> {
   if (USE_MOCK) {
     await delay(150)
     return
   }
-  await api.delete(`/admin/classes/${id}/members/${studentId}`, {
-    params: reasonId ? { reasonId } : undefined,
-  })
+  const params: Record<string, string> = {}
+  if (reasonId) params.reasonId = reasonId
+  if (date) params.date = date
+  await api.delete(`/admin/classes/${id}/members/${studentId}`, { params })
 }
 
 /**

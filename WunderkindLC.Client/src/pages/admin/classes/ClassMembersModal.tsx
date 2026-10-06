@@ -217,7 +217,7 @@ Kerak bo'lsa "Parolni tiklash" orqali yangi parol bering.`)
       // «Aktiv muzlatish» — AYNAN o'sha endpoint, farq faqat bayroqda.
       if (kind === 'freeze' || kind === 'yearFreeze')
         await freezeMember(group.id, m.studentId, date ?? new Date().toISOString().slice(0, 10), reasonId, kind === 'yearFreeze')
-      else if (kind === 'remove') await removeGroupMember(group.id, m.studentId, reasonId)
+      else if (kind === 'remove') await removeGroupMember(group.id, m.studentId, reasonId, date)
       else await returnMemberToTrial(group.id, m.studentId, reasonId)
       const fresh = await getGroupMembers(group.id)
       setMembers(fresh)
@@ -659,7 +659,9 @@ Kerak bo'lsa "Parolni tiklash" orqali yangi parol bering.`)
                 ? `${reasonAction.m.fullName} — shu sanadan muzlatiladi va «yangi o'quv yiliga o'tish» deb belgilanadi. Hisob-kitob oddiy muzlatish bilan bir xil.`
                 : reasonAction.kind === 'return'
                   ? `${reasonAction.m.fullName} — sinov holatiga qaytariladi (oylik to'lov hisoblanmaydi).`
-                  : `${reasonAction.m.fullName} ni guruhdan chiqarasizmi?`
+                  : reasonAction.m.status === 'active'
+                    ? `${reasonAction.m.fullName} guruhdan chiqariladi — shu sanagacha qatnashgan darslari hisoblanadi, keyingi oylar hisobi bekor qilinadi.`
+                    : `${reasonAction.m.fullName} ni guruhdan chiqarasizmi?`
             : undefined
         }
         confirmLabel={
@@ -669,7 +671,8 @@ Kerak bo'lsa "Parolni tiklash" orqali yangi parol bering.`)
           : 'Chiqarish'
         }
         tone={reasonAction?.kind === 'freeze' || reasonAction?.kind === 'yearFreeze' ? 'sky' : reasonAction?.kind === 'return' ? 'brand' : 'red'}
-        showDate={reasonAction?.kind === 'freeze' || reasonAction?.kind === 'yearFreeze'}
+        showDate={reasonAction?.kind === 'freeze' || reasonAction?.kind === 'yearFreeze'
+          || (reasonAction?.kind === 'remove' && reasonAction.m.status === 'active')}
         onConfirm={confirmReasonAction}
         onClose={() => setReasonAction(null)}
       />

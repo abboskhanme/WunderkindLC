@@ -59,6 +59,32 @@ public static class MembershipBilling
     /// <c>null</c> bo'lsa tarixga tegilmaydi (eski chaqiruvlar).</param>
     /// <param name="pricing">Kurslarning sinf oraliqlari, OLDINDAN yuklangan bo'lsa (ommaviy amal —
     /// <paramref name="lessonFee"/> bilan bir xil sabab). <c>null</c> — yakka so'rov, natija bir xil.</param>
+    /// <summary>
+    /// A'zolik GURUHDAN CHIQADI — YAGONA yo'l: guruhdan chiqarish (<c>ClassesController.RemoveMember</c>)
+    /// va guruh almashtirishning ESKI tomoni (<c>TransferMember</c>) AYNAN shuni chaqiradi.
+    /// <list type="bullet">
+    ///   <item>AKTIV a'zolikda hisob muzlatishdagi kabi yopiladi (<see cref="SettleFreezeAsync"/>):
+    ///     chiqish oyi faqat <paramref name="leftAt"/> gacha qatnashilgan darslar uchun, keyingi
+    ///     oylarga (oldindan) yozilgan hisoblar bekor qilinadi. Muzlatilgan a'zolik hisobi muzlatishda
+    ///     allaqachon yopilgan, sinovda hisob yo'q — ularga tegilmaydi;</item>
+    ///   <item>a'zolik <c>IsActive=false</c>, <c>LeftAt</c> bo'ladi — MUZLATILGAN bo'lib QOLMAYDI
+    ///     (ilgari guruh almashtirishda eski guruhda <c>frozen</c> + faol bo'lib qolar va o'quvchi
+    ///     ikki guruhda birdan ko'rinardi). <c>Status</c> o'zgartirilmaydi — chegara <c>LeftAt</c>
+    ///     (<see cref="MembershipLifecycle.NotLeftBeforeMonth"/>, ledger chiqish oyida to'xtaydi).</item>
+    /// </list>
+    /// SaveChanges — chaqiruvchida. Testlar: <c>MembershipLeaveTests</c>.
+    /// </summary>
+    public static async Task<FreezeSettlement> LeaveGroupAsync(
+        IAppDbContext db, Student student, Group group, StudentGroup membership, string leftAt)
+    {
+        var settlement = membership.Status == "active"
+            ? await SettleFreezeAsync(db, student, group, membership.ActivatedAt, leftAt, membership: membership)
+            : new FreezeSettlement(false, 0m, new List<string>());
+        membership.IsActive = false;
+        membership.LeftAt = leftAt;
+        return settlement;
+    }
+
     public static async Task<FreezeSettlement> SettleFreezeAsync(
         IAppDbContext db, Student student, Group group, string activatedAt, string freezeDate,
         decimal? lessonFee = null, StudentGroup? membership = null, PricingBook? pricing = null)

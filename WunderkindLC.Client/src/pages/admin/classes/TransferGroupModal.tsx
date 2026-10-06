@@ -22,7 +22,8 @@ interface Props {
 }
 
 /**
- * O'quvchini joriy guruhdan boshqa (mavjud) guruhga o'tkazish: eski guruh muzlatiladi,
+ * O'quvchini joriy guruhdan boshqa (mavjud) guruhga o'tkazish: o'quvchi eski guruhdan CHIQADI
+ * (hisob shu sanagacha, «Guruhdan chiqarilganlar» tarixida qoladi — muzlatilgan bo'lib QOLMAYDI),
  * yangi guruh darhol aktivlashtiriladi — bitta modal, ikkita sana bilan.
  */
 export function TransferGroupModal({ open, onClose, studentId, studentName, fromGroupId, fromGroupName, onDone }: Props) {
@@ -145,7 +146,7 @@ export function TransferGroupModal({ open, onClose, studentId, studentName, from
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <label className="block">
               <span className="mb-1 block text-sm font-medium text-slate-600">
-                Eski guruhda muzlatish sanasi
+                Eski guruhdan chiqish sanasi
               </span>
               <input
                 type="date"
@@ -172,8 +173,8 @@ export function TransferGroupModal({ open, onClose, studentId, studentName, from
 
         <p className="text-xs text-slate-400">
           Saqlanganda: eski guruhda shu sanagacha qatnashgan darslar uchun qisman to'lov hisoblanib
-          a'zolik muzlatiladi; yangi guruhda esa shu sanadan qisman oylik hisoblanib darhol
-          aktivlashtiriladi. O'quvchi shu oy uchun eski guruhga allaqachon to'lagan bo'lsa —
+          o'quvchi eski guruhdan chiqadi (guruhning tarixida qoladi); yangi guruhda esa shu sanadan
+          qisman oylik hisoblanib darhol aktivlashtiriladi. O'quvchi shu oy uchun eski guruhga allaqachon to'lagan bo'lsa —
           ortib qolgan summa avtomatik YANGI guruhga o'tkaziladi (to'lagan o'quvchi yangi guruhda
           qarzdor bo'lib ko'rinmasligi uchun).
         </p>

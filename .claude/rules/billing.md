@@ -231,6 +231,19 @@ o'quvchi kunlar nisbatida hisoblanadi (dars kunlari bo'yicha emas).
   (`TransferMember`), **Guruhni yopish** (`Close`) va **Guruhni tugatish — sertifikat bilan**
   (`CompleteAndTransfer`). Yangi muzlatish yo'li qo'shilsa — SHU metod chaqiriladi, nusxa ko'chirilmaydi.
 
+- **GURUHDAN CHIQISH — YAGONA yo'l `MembershipBilling.LeaveGroupAsync` (2026-10-06):** guruhdan
+  **chiqarish** (`RemoveMember`) va **guruh almashtirishning ESKI tomoni** (`TransferMember`) shuni
+  chaqiradi. AKTIV a'zolikda hisob muzlatishdagi kabi yopiladi (`SettleFreezeAsync` — chiqish oyi
+  sanagacha QISMAN, keyingi oylar BEKOR), so'ng a'zolik `IsActive=false` + `LeftAt` bo'ladi.
+  ⚠️ **Eski guruhda MUZLATILGAN bo'lib QOLMAYDI** — ilgari almashtirishda `frozen` + faol bo'lib qolar,
+  o'quvchi ikki guruhda birdan ko'rinardi ("duplikat", foydalanuvchi shikoyati). `Status`
+  o'zgartirilmaydi, chegara `LeftAt` (`NotLeftBeforeMonth`, ledger chiqish oyida to'xtaydi); guruh
+  sahifasida u «Guruhdan chiqarilganlar» tarixida, profilda «Chiqgan» bo'lib turadi.
+  ⚠️ **Chiqarish endi pulni ham yopadi** (ilgari faqat `IsActive=false` — oy o'rtasida chiqqanda to'liq
+  oylik va oldindan yozilgan keyingi oylar qarz bo'lib qolardi). Oynada AKTIV a'zolik uchun
+  **chiqish sanasi** so'raladi (`?date=`, bo'sh — bugun, kelajak — 400). Muzlatilgan/sinovdagi
+  a'zolikka pul jihatidan tegilmaydi. Testlar: `MembershipLeaveTests`.
+
 - **OMMAVIY MUZLATISH / AKTIVLASHTIRISH** (bir paytda ko'p o'quvchi). Ikki kirish nuqtasi:
   guruh sahifasi a'zolar modalidan (`POST /api/admin/classes/{id}/members/bulk-freeze` va
   `.../bulk-activate` — faqat SHU guruh a'zoliklari) va **o'quvchilar ro'yxatidan**

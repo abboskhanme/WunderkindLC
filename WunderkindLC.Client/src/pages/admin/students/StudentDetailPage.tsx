@@ -706,7 +706,7 @@ export function StudentDetailPage() {
         // Bonus ptichkasi faqat aktivlashtirish oynasida ko'rinadi — qolgan oqimlarda `undefined`.
         await activateMember(groupModal.groupId, id, date ?? groupActionDate, retentionBonus)
       } else if (groupReasonAction === 'remove') {
-        await removeGroupMember(groupModal.groupId, id, reasonId)
+        await removeGroupMember(groupModal.groupId, id, reasonId, date)
       } else {
         await returnMemberToTrial(groupModal.groupId, id, reasonId)
       }
@@ -1976,7 +1976,9 @@ export function StudentDetailPage() {
               : groupReasonAction === 'activate'
                 ? `${groupModal.groupName} — shu sanadan boshlab oylik to'lov hisoblanadi.`
                 : groupReasonAction === 'remove'
-                  ? `${groupModal.groupName} guruhidan chiqarilsinmi?`
+                  ? groupModal.status === 'active'
+                    ? `${groupModal.groupName} guruhidan chiqariladi — shu sanagacha qatnashgan darslari hisoblanadi, keyingi oylar hisobi bekor qilinadi.`
+                    : `${groupModal.groupName} guruhidan chiqarilsinmi?`
                   : `${groupModal.groupName} — sinov holatiga qaytariladi (oylik to'lov hisoblanmaydi).`
             : undefined
         }
@@ -1988,14 +1990,15 @@ export function StudentDetailPage() {
           : 'Sinovga qaytarish'
         }
         tone={groupReasonAction === 'freeze' || groupReasonAction === 'yearFreeze' ? 'sky' : groupReasonAction === 'remove' ? 'red' : 'brand'}
-        showDate={groupReasonAction === 'freeze' || groupReasonAction === 'yearFreeze' || groupReasonAction === 'activate'}
+        showDate={groupReasonAction === 'freeze' || groupReasonAction === 'yearFreeze' || groupReasonAction === 'activate'
+          || (groupReasonAction === 'remove' && groupModal?.status === 'active')}
         showRetentionBonus={groupReasonAction === 'activate' && canSetBonus}
         defaultDate={groupActionDate}
         onConfirm={confirmGroupReason}
         onClose={() => setGroupReasonAction(null)}
       />
 
-      {/* Guruhni almashtirish — eski guruh muzlaydi, yangisi aktivlashadi. */}
+      {/* Guruhni almashtirish — eski guruhdan chiqadi (hisob shu sanagacha), yangisi aktivlashadi. */}
       {groupModal && (
         <TransferGroupModal
           open={groupTransferOpen}
