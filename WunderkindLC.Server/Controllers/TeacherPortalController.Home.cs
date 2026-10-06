@@ -33,6 +33,15 @@ public partial class TeacherPortalController
             db, t.Id, AppClock.Today, t.Permissions.Contains(TeacherPermissions.Schedule));
     }
 
+    /// <summary>O'z guruhlaridagi qarzdorlar soni va jami qarz (maosh sahifasi: "qarzdorlar to'lasa").</summary>
+    [HttpGet("debt-summary")]
+    public async Task<ActionResult<TeacherDebtSummaryDto>> DebtSummary()
+    {
+        var t = await Me();
+        if (t is null) return NotFound();
+        return await TeacherHomeService.DebtSummaryForTeacherAsync(db, t.Id);
+    }
+
     /// <summary>Oraliqdagi darslar (<c>from</c>/<c>to</c> "yyyy-MM-dd", ikkalasi ham kiradi).
     /// Berilmasa — joriy hafta (Du..Ya). Oraliq ko'pi bilan <see cref="TeacherHomeService.MaxScheduleDays"/> kun.</summary>
     [HttpGet("schedule")]

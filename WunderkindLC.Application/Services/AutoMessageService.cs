@@ -198,6 +198,44 @@ public class AutoMessageService(
         }, group: group, ct: ct);
     }
 
+    /// <summary>
+    /// O'quvchi darsga KELGANDA (attendance_present) ota-onaga xabar — faqat SHU so'rovda yangi «keldi»
+    /// bo'lganlarga: <paramref name="wasPresent"/> — saqlashdan OLDIN allaqachon «keldi» bo'lganlar
+    /// (<see cref="JournalService.PresentStudentIdsAsync"/>). Qayta saqlash yoki qayta «hammasi keldi»
+    /// takror xabar yubormaydi. Qoida yoqilmagan bo'lsa hech narsa o'qilmaydi. Xato yutiladi —
+    /// davomat javobini bloklamaydi (`attendance_absent` bilan bir xil).
+    /// </summary>
+    public async Task DispatchNewlyPresentAsync(
+        IAppDbContext db, string classId, string subjectId, string dateIso, int period,
+        IReadOnlyCollection<string> studentIds, IReadOnlySet<string> wasPresent, CancellationToken ct = default)
+    {
+        try
+        {
+            if (studentIds.Count == 0) return;
+            if (!await db.AutoMessageRules.AnyAsync(r => r.Enabled && r.Trigger == AutoMessageTriggers.AttendancePresent, ct))
+                return;
+            var now = await JournalService.PresentStudentIdsAsync(db, classId, subjectId, dateIso, period, studentIds);
+            var fresh = now.Where(id => !wasPresent.Contains(id)).ToList();
+            if (fresh.Count == 0) return;
+            var cls = await db.Classes.FindAsync(new object[] { classId }, ct);
+            var sana = dateIso.Length >= 10 ? $"{dateIso[8..10]}.{dateIso[5..7]}.{dateIso[..4]}" : dateIso;
+            foreach (var sid in fresh)
+            {
+                var s = await db.Students.FindAsync(new object[] { sid }, ct);
+                if (s is null) continue;
+                await DispatchStudentAsync(db, AutoMessageTriggers.AttendancePresent, s, new Dictionary<string, string>
+                {
+                    ["{sana}"] = sana,
+                    ["{guruh}"] = cls?.Name ?? "",
+                }, group: cls, ct: ct);
+            }
+        }
+        catch (Exception)
+        {
+            // Avto-xabar davomatni to'xtatmaydi (SMS/Telegram nosozligi jurnal xatosi emas).
+        }
+    }
+
     /// <summary>Yangi yaratilgan oylik hisoblar (monthly_charge) uchun ota-onaga xabar. (o'quvchi, oy)
     /// bo'yicha yig'iladi — bitta o'quvchiga bir oyda BITTA xabar (guruhlar summasi). {oy}=oy nomi,
     /// {summa}=shu oy hisobi, {qarzdorlik}=joriy balans (dispatcher Student tokenizeridan). Idempotent:

@@ -197,4 +197,63 @@ public class StaffRolesAndSalaryBaseTests
     [Fact]
     public void CodeFrom_lotin_harfi_yoq_nomda_tasodifiy_kod() =>
         Assert.StartsWith("role_", StaffRoles.CodeFrom("Касса"));
+
+    [Fact]
+    public async Task Hisoblangan_bazada_HOZIR_CHIQADIGAN_oylik_tushgan_puldan__farq_qarzdorlar_tolasa()
+    {
+        // Foydalanuvchi qarori (2026-10-07): rasmiy oylik hisoblangandan, o'qituvchiga esa
+        // "hozir tushgan puldan" ham ko'rsatiladi.
+        using var db = TestDb.Sqlite();
+        var ctx = db.Context;
+        var (t, g, s) = Setup(ctx, Cutover);
+        Charge(ctx, s, g, Cutover, 600_000m);
+        Pay(ctx, s, g, Cutover, 200_000m);       // 600 000 dan faqat 200 000 tushgan
+        await ctx.SaveChangesAsync();
+
+        var m = (await SalaryLedger.BuildAsync(ctx, t, Cutover, Cutover)).Months.Single(x => x.Month == Cutover);
+
+        Assert.True(m.ChargedBase);
+        Assert.Equal(300_000m, m.Expected);
+        Assert.Equal(100_000m, m.CollectedExpected);
+    }
+
+    [Fact]
+    public async Task Yigilgan_bazali_oyda_HOZIR_CHIQADIGAN_rasmiy_oylikning_ozi()
+    {
+        using var db = TestDb.Sqlite();
+        var ctx = db.Context;
+        var (t, g, s) = Setup(ctx, Cutover);
+        Charge(ctx, s, g, Before, 600_000m);
+        Pay(ctx, s, g, Before, 200_000m);
+        await ctx.SaveChangesAsync();
+
+        var m = (await SalaryLedger.BuildAsync(ctx, t, Before, Before)).Months.Single(x => x.Month == Before);
+
+        Assert.False(m.ChargedBase);
+        Assert.Equal(m.Expected, m.CollectedExpected);
+    }
+
+    [Fact]
+    public async Task Oqituvchi_kabineti__qarzdorlar_soni_va_JAMI_qarzi()
+    {
+        using var db = TestDb.Sqlite();
+        var ctx = db.Context;
+        var (t, g, s) = Setup(ctx, Cutover);
+        var paid = new Student { FullName = "To'lagan O'quvchi", EnrollmentDate = "2026-01-01" };
+        ctx.Students.Add(paid);
+        ctx.StudentGroups.Add(new StudentGroup
+        {
+            StudentId = paid.Id, GroupId = g.Id, Status = "active", IsActive = true,
+            JoinedAt = "2026-01-01", ActivatedAt = "2026-01-01", RecordedAt = "2026-01-01",
+        });
+        Charge(ctx, s, g, After, 600_000m);
+        Charge(ctx, paid, g, After, 600_000m);
+        Pay(ctx, paid, g, After, 600_000m);
+        await ctx.SaveChangesAsync();
+
+        var debt = await TeacherHomeService.DebtSummaryAsync(ctx, new[] { g.Id });
+
+        Assert.Equal(1, debt.DebtorCount);
+        Assert.Equal(600_000m, debt.DebtTotal);
+    }
 }

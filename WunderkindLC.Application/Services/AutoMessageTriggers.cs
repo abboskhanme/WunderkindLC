@@ -20,6 +20,7 @@ public static class AutoMessageTriggers
     public const string MonthlyCharge = "monthly_charge";
     public const string PaymentDebt = "payment_debt";
     public const string AttendanceAbsent = "attendance_absent";
+    public const string AttendancePresent = "attendance_present";
     public const string GradeEntered = "grade_entered";
     public const string Birthday = "birthday";
     public const string StudentAdded = "student_added";
@@ -103,6 +104,16 @@ public static class AutoMessageTriggers
             DefaultTemplate: "Hurmatli ota-ona! Farzandingiz {ism} {sana} kuni {guruh} guruhida darsga kelmadi. Sabab: {sabab}. {markaz}",
             Category: CategoryEducation),
 
+        new(AttendancePresent,
+            "O'quvchi darsga kelganda",
+            "Davomatda o'quvchi «keldi» deb belgilanganda (yakka katak yoki «hammasi keldi») ota-onaga xabar. Har dars uchun BIR MARTA — qayta saqlansa yoki qayta «hammasi keldi» bosilsa takror ketmaydi. ⚠️ Har kuni har o'quvchiga ketadi: SMS kanali pullik, Telegram/push bepul.",
+            new[] { "{ism}", "{fish}", "{sana}", "{guruh}", "{markaz}" },
+            Sms: true, Push: true, Telegram: true,
+            SupportsSchedule: false, SupportsSendScope: false,
+            Audiences: new[] { "parents", "students" }, DefaultAudience: "parents",
+            DefaultTemplate: "Hurmatli ota-ona! Farzandingiz {ism} {sana} kuni {guruh} guruhida darsga keldi. {markaz}",
+            Category: CategoryEducation),
+
         new(GradeEntered,
             "Baho qo'yilganda",
             "Jurnalda o'quvchiga baho qo'yilganda ota-onaga (yoki o'quvchiga) xabar. Qoida mavjud bo'lmasa — eski standart push saqlanadi.",
@@ -175,7 +186,7 @@ public static class AutoMessageTriggers
 
         new(LessonAttendance,
             "Davomat eslatmasi (o'qituvchi)",
-            "O'qituvchilarga davomat (jurnal) eslatmasi. Rejimlar: dars boshlangach to'ldirmaganga; kunlik belgilangan vaqtda bugun darsi bo'lib to'ldirmaganlarga; yoki hammaga.",
+            "O'qituvchilarga davomat (jurnal) eslatmasi. Rejimlar: darsdan OLDIN yoki dars boshlangach (to'ldirmaganga); kunlik belgilangan vaqtda bugun darsi bo'lib to'ldirmaganlarga; yoki hammaga.",
             new[] { "{fish}", "{guruh}", "{kurs}", "{dars_vaqti}", "{telefon}", "{markaz}" },
             Sms: true, Push: true, Telegram: true,
             SupportsSchedule: false, SupportsSendScope: true,

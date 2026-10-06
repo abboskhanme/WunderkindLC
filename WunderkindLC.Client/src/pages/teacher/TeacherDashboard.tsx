@@ -201,6 +201,28 @@ export function TeacherDashboard() {
         )}
       </div>
 
+      {/* QARZDORLAR — o'z guruhlari bo'yicha soni va JAMI qarz (uchrashuv talabi, 2026-10-07).
+          O'quvchi kesimidagi summa ko'rsatilmaydi; ro'yxatda faqat belgi (`teacher-portal.md`). */}
+      {(data?.debtorCount ?? 0) > 0 && (
+        <Link
+          to={can('journal', 'view') ? '/teacher/students' : '/teacher'}
+          className="tap-scale flex items-center gap-3 rounded-xl border border-red-200 bg-red-50 p-3 sm:p-4"
+        >
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-red-100 text-red-600">
+            <AlertCircle className="h-5 w-5" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-[13px] font-semibold text-red-700">
+              Qarzdorlar: {data!.debtorCount} ta o'quvchi
+            </p>
+            <p className="text-[12px] text-red-600">
+              Jami qarz: <span className="font-mono font-bold">{formatMoney(data!.debtTotal ?? 0)}</span> — to'lovni eslating
+            </p>
+          </div>
+          <ChevronRight className="h-4 w-4 shrink-0 text-red-400" />
+        </Link>
+      )}
+
       {/* ⚠️ `grid-cols-1` SHART: ustunsiz grid telefonda eng uzun (bir qatorli) guruh nomigacha
           kengayib, butun sahifani ekrandan chiqarib yuborardi. */}
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-3 lg:gap-4">

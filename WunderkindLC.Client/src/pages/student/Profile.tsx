@@ -26,6 +26,8 @@ interface MenuEntry {
 }
 
 const MENU: MenuEntry[] = [
+  { icon: 'calendar', label: 'Dars jadvali', color: '#2563EB', to: '/student/schedule' },
+  { icon: 'clipboard', label: 'Test natijalari', color: '#DC2626', to: '/student/tests' },
   { icon: 'grid', label: 'Umumiy statistika', color: '#1B7A66', to: '/student/statistics' },
   { icon: 'chart', label: 'Baholar', color: '#2563EB', to: '/student/grades' },
   { icon: 'checkCircle', label: 'Davomat', color: '#16A34A', to: '/student/attendance' },

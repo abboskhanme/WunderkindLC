@@ -86,9 +86,14 @@ public class StudentAttendanceController(AppDbContext db) : ControllerBase
             .ThenBy(r => r.FullName, StringComparer.OrdinalIgnoreCase)
             .ToList();
 
+        // Kelganlar — davomat olingan o'quvchilardan kelmaganlarni (distinct) ayirib; kech kelgan KELGAN.
+        var absentStudents = rows.Where(r => !r.IsLate).Select(r => r.StudentId).Distinct().Count();
+        var unexcused = rows.Count(r => !r.IsLate
+            && r.ReasonName.Contains("sababsiz", StringComparison.OrdinalIgnoreCase));
         return new DailyAbsenceDto(
             day, conductedGroupIds.Count, markedStudents,
-            rows.Count(r => !r.IsLate), rows.Count(r => r.IsLate), rows);
+            rows.Count(r => !r.IsLate), rows.Count(r => r.IsLate), rows,
+            Math.Max(0, markedStudents - absentStudents), unexcused);
     }
 
     /// <summary>

@@ -524,3 +524,48 @@ export async function getStudentContracts(studentId?: string): Promise<ContractD
   const { data } = await api.get<ContractDoc[]>('/student/contracts', { params: sid(studentId) })
   return data
 }
+
+// ---------- Oylik test natijalari va dars jadvali (Mini App kabineti, 2026-10-07) ----------
+
+/** O'quvchining bitta test natijasi (o'qituvchi kiritadi). `score` null — baho qo'yilmagan. */
+export interface StudentTestResult {
+  testId: string
+  groupId: string
+  groupName: string
+  name: string
+  date: string
+  maxScore: number
+  score: number | null
+  /** Guruhdagi o'rni va baholanganlar soni. */
+  rank: number
+  total: number
+}
+
+/** O'quvchining guruhi — jadval uchun (kunlar 0=Du … 6=Ya, vaqt "HH:mm"). */
+export interface StudentGroupItem {
+  groupId: string
+  name: string
+  courseName: string
+  teacherName: string
+  days: number[]
+  startTime: string
+  endTime: string
+  room: string
+  /** active | trial | frozen | finished */
+  state: string
+  status: string
+  isActive: boolean
+  groupArchived: boolean
+  joinedAt: string
+  leftAt: string
+}
+
+export async function getStudentTestResults(studentId?: string): Promise<StudentTestResult[]> {
+  const { data } = await api.get<StudentTestResult[]>('/student/test-results', { params: sid(studentId) })
+  return data
+}
+
+export async function getStudentPortalGroups(studentId?: string): Promise<StudentGroupItem[]> {
+  const { data } = await api.get<StudentGroupItem[]>('/student/groups', { params: sid(studentId) })
+  return data
+}

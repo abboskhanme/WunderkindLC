@@ -46,6 +46,7 @@ const CATEGORY_FALLBACK: Record<string, string> = {
   test_result: 'Lidlar',
   student_added: "O'quv jarayoni",
   attendance_absent: "O'quv jarayoni",
+  attendance_present: "O'quv jarayoni",
   lesson_attendance: "O'quv jarayoni",
   birthday: "O'quv jarayoni",
   grade_entered: "O'quv jarayoni",
@@ -441,7 +442,12 @@ function MessageFormModal({
   )
   const [smsProvider, setSmsProvider] = useState<'eskiz' | 'local'>(editRule?.smsProvider === 'local' ? 'local' : 'eskiz')
   const [sendScope, setSendScope] = useState(editRule?.sendScope || sendScopeOptions[0].value)
-  const [offsetMinutes, setOffsetMinutes] = useState<number | null>(editRule?.offsetMinutes ?? null)
+  // Davomat eslatmasi «dars boshlanishiga nisbatan»: oldin (manfiy) yoki keyin. Maydonda MUSBAT son,
+  // yo'nalish alohida — server `OffsetMinutes` ni ishorali saqlaydi (masalan −90 = darsdan 1,5 soat oldin).
+  const [offsetMinutes, setOffsetMinutes] = useState<number | null>(
+    editRule?.offsetMinutes != null ? Math.abs(editRule.offsetMinutes) : null,
+  )
+  const [offsetBefore, setOffsetBefore] = useState<boolean>((editRule?.offsetMinutes ?? 0) < 0)
   const [scheduleType, setScheduleType] = useState(editRule?.scheduleType || 'daily')
   const [scheduleTime, setScheduleTime] = useState(editRule?.scheduleTime || '09:00')
   const [scheduleDayOfMonth, setScheduleDayOfMonth] = useState<number | null>(editRule?.scheduleDayOfMonth ?? null)
@@ -532,7 +538,7 @@ function MessageFormModal({
           audience,
           template: body,
           // Bo'sh surilish = 0 (dars boshlanishida).
-          offsetMinutes: offsetMinutes ?? 0,
+          offsetMinutes: (offsetBefore ? -1 : 1) * (offsetMinutes ?? 0),
           sendScope: trigger.supportsSendScope ? sendScope : '',
           scheduleType: trigger.supportsSchedule ? scheduleType : '',
           // Vaqt kerak: reja (custom_schedule) YOKI qamrov "not_filled"/"all" (davomat eslatmasi kunlik vaqti).
@@ -706,12 +712,17 @@ function MessageFormModal({
               ))}
             </Select>
             {sendScope === 'lesson_start' ? (
-              <NumberInput
-                label="Surilish (daq)"
-                placeholder="0"
-                value={offsetMinutes}
-                onChange={setOffsetMinutes}
-              />
+              <div className="grid grid-cols-2 gap-2">
+                <Select
+                  label="Qachon"
+                  value={offsetBefore ? 'before' : 'after'}
+                  onChange={(e) => setOffsetBefore(e.target.value === 'before')}
+                >
+                  <option value="before">Darsdan oldin</option>
+                  <option value="after">Dars boshlangach</option>
+                </Select>
+                <NumberInput label="Daqiqa" placeholder={offsetBefore ? '90' : '0'} value={offsetMinutes} onChange={setOffsetMinutes} />
+              </div>
             ) : (
               <Input
                 label="Yuborish vaqti"

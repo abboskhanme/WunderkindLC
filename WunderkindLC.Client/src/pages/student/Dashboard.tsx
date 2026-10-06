@@ -178,6 +178,25 @@ export function StudentDashboardScreen() {
               </a>
             )}
 
+            {/* Tez havolalar — dars jadvali, oylik test natijalari, to'lovlar (Mini App kabineti, 2026-10-07). */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginTop: 14 }}>
+              {[
+                { icon: 'calendar', label: 'Dars jadvali', to: '/student/schedule', color: '#2563EB' },
+                { icon: 'clipboard', label: 'Test natijalari', to: '/student/tests', color: '#DC2626' },
+                { icon: 'wallet', label: "To'lovlar", to: '/student/finance', color: '#7C3AED' },
+              ].map((q) => (
+                <button
+                  key={q.to}
+                  className="card press"
+                  onClick={() => navigate(q.to)}
+                  style={{ borderRadius: 16, padding: '12px 8px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}
+                >
+                  <Icon name={q.icon} size={22} color={q.color} />
+                  <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)' }}>{q.label}</span>
+                </button>
+              ))}
+            </div>
+
             {/* Umumiy statistika */}
             <div className="sh" style={{ marginTop: 18 }}>
               <div className="sh-title">Umumiy statistika</div>

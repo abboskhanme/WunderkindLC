@@ -43,6 +43,13 @@ paths:
   hovuzi ham AYNAN shu bazadan (`CollectedForGroupsAsync` endi `SalaryBase` ni qaytaradi — nol
   yig'indili model buzilmasin). Shu oylardan boshlab quyidagi "pul kelmaguncha maosh 0" jumlalari
   **faqat eski oylarga** tegishli. Testlar: `StaffRolesAndSalaryBaseTests`.
+  ⚠️ **"HOZIR CHIQADIGAN" — `MonthSalaryDto.CollectedExpected` (2026-10-07, faqat KO'RSATKICH):**
+  rasmiy maosh (`Expected`) hisoblangan bazada QOLADI (foydalanuvchi tanlovi), yonida esa "shu
+  oyning TUSHGAN pulidan hozir qancha chiqadi" ko'rsatiladi: guruh bo'yicha yig'ilgan pul × foiz
+  (qat'iy guruhda — qat'iy ulush) − o'rinbosar ushlanmasi + o'rinbosar haqi, `Expected` dan
+  OSHMAYDI. Farqi = "qarzdorlar to'lasa yana +". Yig'ilgan bazali (eski) oylarda = `Expected`.
+  Hech narsa to'lamaydi va hech qayerga yozilmaydi — o'qituvchini qarzdorlarni yopishga undash
+  uchun (o'qituvchi kabineti → Maosh, admin o'qituvchi sahifasi).
 - **Umumiy foiz:** o'qituvchi qo'shishda `Teacher.SalaryPercent` (Boshqaruv → Xodimlar, rol
   "O'qituvchi"). Guruh `TeacherSalaryMode = ""` bo'lsa unga ergashadi ("Umumiy"), kerak bo'lsa
   guruhda boshqa foiz/qat'iy summa (`GroupSalaryEditor`).

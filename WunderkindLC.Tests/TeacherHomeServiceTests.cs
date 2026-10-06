@@ -382,7 +382,8 @@ public class TeacherHomeServiceTests
     public void Barcha_endpointlar_oqituvchini_tokendan_oladi()
     {
         var home = Source("TeacherPortalController.Home.cs");
-        Assert.Equal(3, Regex.Matches(home, @"var t = await Me\(\);").Count);
+        // overview · schedule · students · debt-summary (2026-10-07) — hammasi o'qituvchini TOKENDAN oladi.
+        Assert.Equal(4, Regex.Matches(home, @"var t = await Me\(\);").Count);
         Assert.DoesNotContain("teacherId", home);
     }
 }

@@ -6,7 +6,8 @@ namespace WunderkindLC.Tests;
 
 /// <summary>
 /// Botdagi «🎓 O'qituvchi paneli» tugmasi (Telegram Mini App, <c>web_app</c>).
-/// <para>Qulflanadi: tugma FAQAT o'qituvchi klaviaturasida (o'quvchi/ota-onaga portal kerak emas),
+/// <para>Qulflanadi: o'qituvchi paneli tugmasi FAQAT o'qituvchi klaviaturasida (o'quvchi/ota-onada esa
+/// o'z «O'quvchi kabineti» tugmasi — 2026-10-07 uchrashuv talabi),
 /// eng tepada turadi va HTTPS manzilga olib boradi — Telegram <c>web_app</c> uchun faqat https qabul
 /// qiladi, http bo'lsa tugma yuborilmaydi va BUTUN klaviatura xabari rad etiladi.</para>
 /// </summary>
@@ -32,6 +33,19 @@ public class TeacherBotButtonTests
     {
         var rows = Rows(TelegramBotService.RegisteredKeyboard(books: true, teacher: false));
         Assert.DoesNotContain(Buttons(rows), b => b.TryGetProperty("web_app", out _));
+    }
+
+    [Fact]
+    public void Oquvchi_ota_ona_klaviaturasida_KABINET_tugmasi__https_va_student_portaliga()
+    {
+        var rows = Rows(TelegramBotService.RegisteredKeyboard(books: true, teacher: false, student: true));
+        var first = rows[0][0];
+        Assert.Equal(TelegramBotService.StudentPanelButtonText, first.GetProperty("text").GetString());
+        Assert.Equal(TelegramBotService.StudentPanelUrl, first.GetProperty("web_app").GetProperty("url").GetString());
+        Assert.StartsWith("https://", TelegramBotService.StudentPanelUrl);
+        Assert.EndsWith("/student", TelegramBotService.StudentPanelUrl);
+        // O'qituvchi paneli o'quvchiga ko'rinmaydi.
+        Assert.DoesNotContain(Buttons(rows), b => b.GetProperty("text").GetString() == TelegramBotService.TeacherPanelButtonText);
     }
 
     [Fact]

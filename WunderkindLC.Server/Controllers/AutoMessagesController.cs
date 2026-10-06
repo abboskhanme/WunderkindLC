@@ -138,7 +138,9 @@ public class AutoMessagesController(AppDbContext db) : ControllerBase
         rule.SendTelegram = req.SendTelegram && info.Telegram;
         rule.Audience = info.Audiences.Contains(req.Audience) ? req.Audience : info.DefaultAudience;
         rule.Template = (req.Template ?? "").Trim();
-        rule.OffsetMinutes = req.OffsetMinutes < 0 ? 0 : req.OffsetMinutes;
+        // Manfiy = darsdan OLDIN (uchrashuv talabi: «darsdan 1–1,5 soat oldin davomat olishni unutmang»).
+        // Ilgari 0 ga qirqilardi — faqat dars boshlangach eslatish mumkin edi. Chegara ±3 soat.
+        rule.OffsetMinutes = Math.Clamp(req.OffsetMinutes, -180, 180);
         rule.SendScope = info.SupportsSendScope
             ? (ReminderSendScopes.IsKnown(req.SendScope) ? req.SendScope : ReminderSendScopes.LessonStart)
             : "";

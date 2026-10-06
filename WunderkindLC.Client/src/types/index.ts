@@ -1769,6 +1769,9 @@ export interface MonthSalary {
   salaryBase?: number
   /** Shu oy foizi HISOBLANGAN oylikdan (markaz sozlamasi `SalaryChargedBaseFrom` dan boshlab). */
   chargedBase?: boolean
+  /** «Hozir chiqadigan» — o'sha foiz, lekin HAQIQATAN TUSHGAN puldan. `chargedBase` oylarida `expected` dan
+   *  kichik bo'lishi mumkin: farq — qarzdorlar to'lasa qo'shiladigan qism. Aks holda = expected. */
+  collectedExpected?: number
 }
 
 /** Maosh hisobida bitta guruhning ulushi (davr bo'yicha) */

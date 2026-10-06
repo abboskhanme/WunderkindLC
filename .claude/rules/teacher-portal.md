@@ -48,6 +48,7 @@ shundan quriladi; bo'limni bir joyga qo'shing, uchalasida paydo bo'ladi. Ruxsati
 | `GET api/teacher/overview` | — | guruh kartalari + bugungi darslar + o'quvchilar soni |
 | `GET api/teacher/schedule?from&to` | `schedule` (aks holda 403) | oraliqdagi darslar, ≤ 62 kun |
 | `GET api/teacher/students?month` | `journal` (aks holda 403) | barcha a'zoliklar + oylik davomat |
+| `GET api/teacher/debt-summary` | — | o'z guruhlaridagi qarzdorlar SONI + JAMI qarz (yig'indi) |
 
 ⚠️ `overview` "Dars jadvali" ruxsatisiz ham ochiladi, lekin `todayLessons` BO'SH (`canSchedule=false`).
 
@@ -62,6 +63,12 @@ Qoidalar QAYTA YOZILMAGAN, chaqiriladi:
 - davomat foizi — `StudentJournalBuilder.BuildCells` (o'quvchi portali bilan bir xil); kech kelgan KELGAN.
 
 ⚠️ "O'quvchilarim" da balans SUMMASI va telefon YO'Q — faqat qarzdor oylar soni (belgi uchun).
+⚠️ Qarzdorlar xulosasi (`TeacherHomeService.DebtSummaryAsync`, `overview` ichida ham) — faqat
+YIG'INDI: nechta o'quvchi va jami qancha. Har o'quvchining summasi baribir berilmaydi. Manba —
+`GroupBalanceService` (guruh balansi bilan bir xil), faqat faol, sinovda bo'lmagan a'zolar; ikki
+guruhdagi o'quvchi BIR marta sanaladi. To'lov darvozasi bu yerda QO'LLANMAYDI — maqsad aynan
+jurnalda yashiringan qarzdorlarni ham ko'rsatish (uchrashuv talabi: "o'qituvchi qarzdorlikni
+yopishga qiziqsin", maosh sahifasidagi "qarzdorlar to'lasa yana +" bilan birga).
 (Telefon faqat §3.5 dagi «O'quvchilar» tabida — o'z guruhi o'quvchilari, tahrirlash uchun.)
 
 ## 3.5. O'QUVCHINI TAHRIRLASH (guruh sahifasi → «O'quvchilar» tabi, 2026-10-05)
@@ -121,6 +128,11 @@ SPA Mini App uchun tayyor: SDK `index.html` da, `ready()/expand()` — `main.tsx
 `frame-ancestors` Telegram Web'ga ochiq, cookie'lar https'da `SameSite=None`.
 ⚠️ `web_app` faqat HTTPS manzilni qabul qiladi — `TeacherPanelUrl` ni http qilmang
 (`TeacherBotButtonTests` qulflaydi).
+
+**O'quvchi/ota-ona uchun ham (2026-10-07):** «🎒 O'quvchi kabineti» `web_app` tugmasi (`/student`) —
+chat arxivlanmagan o'quvchiga bog'langan bo'lsa (`IsStudentChatAsync`). Kirish o'sha-o'sha ODDIY
+(login/parol), avto-kirish yo'q. Kabinetda «Dars jadvali» va «Test natijalari» ekranlari
+(`GET /student/groups`, `GET /student/test-results` — mavjud endpointlar).
 
 ## 5.1. O'QITUVCHI BOTI — alohida bot (2026-09-30)
 

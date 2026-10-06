@@ -107,7 +107,7 @@ public class LessonAttendanceReminderService(
                 continue;
             }
 
-            // "lesson_start" (default): har guruh darsi boshlangach +N daqiqada.
+            // "lesson_start" (default): har guruh darsi boshlangach +N daqiqada (N manfiy — darsdan OLDIN).
             foreach (var g in groups)
             {
                 if (!TimeSpan.TryParse(g.StartTime, out var start)) continue;
@@ -182,7 +182,10 @@ public class LessonAttendanceReminderService(
 
         var courseName = string.IsNullOrEmpty(g.CourseId) ? "" : (await db.Subjects.FindAsync(g.CourseId))?.Name ?? "";
         var template = string.IsNullOrWhiteSpace(rule.Template)
-            ? "Assalomu alaykum, {fish}! {guruh} guruhida ({kurs}) dars boshlandi ({dars_vaqti}). Iltimos, davomatni jurnalga kiriting."
+            ? rule.OffsetMinutes < 0 && rule.SendScope != ReminderSendScopes.NotFilled
+                // Darsdan OLDINGI eslatma — dars hali boshlanmagan.
+                ? "Assalomu alaykum, {fish}! {guruh} guruhida ({kurs}) dars {dars_vaqti} da boshlanadi. Davomat olishni unutmang."
+                : "Assalomu alaykum, {fish}! {guruh} guruhida ({kurs}) dars boshlandi ({dars_vaqti}). Iltimos, davomatni jurnalga kiriting."
             : rule.Template;
         var body = MessageTokenizer.Teacher(template, teacher, centerName,
             extra: new Dictionary<string, string> { ["{kurs}"] = courseName }, group: g);

@@ -371,7 +371,44 @@ public static class TeacherHomeService
             .Distinct()
             .Count();
 
-        return new TeacherOverviewDto(today.ToString("yyyy-MM-dd"), cards, todayLessons, studentCount, canSchedule);
+        var debt = await DebtSummaryAsync(db, owned);
+        return new TeacherOverviewDto(today.ToString("yyyy-MM-dd"), cards, todayLessons, studentCount, canSchedule,
+            debt.DebtorCount, debt.DebtTotal);
+    }
+
+    /// <summary>
+    /// O'qituvchining O'Z guruhlaridagi qarzdorlar: SHU GURUH balansi manfiy o'quvchilar (distinct) va jami
+    /// qarz (har guruh qarzi alohida qo'shiladi). ⚠️ To'lov darvozasi bu yerda QO'LLANMAYDI — u aynan
+    /// qarzdorlarni jurnaldan yashiradi, sanoqdan tushirib yuborsak "qarzdor yo'q" chiqardi.
+    /// </summary>
+    public static async Task<TeacherDebtSummaryDto> DebtSummaryAsync(IAppDbContext db, IReadOnlyCollection<string> ownedGroupIds)
+    {
+        if (ownedGroupIds.Count == 0) return new TeacherDebtSummaryDto(0, 0m);
+        var ids = ownedGroupIds.ToList();
+        var memberships = await db.StudentGroups.AsNoTracking()
+            .Where(sg => ids.Contains(sg.GroupId) && sg.IsActive && sg.Status != "trial")
+            .Select(sg => new { sg.GroupId, sg.StudentId })
+            .ToListAsync();
+        var debtors = new HashSet<string>(StringComparer.Ordinal);
+        var total = 0m;
+        foreach (var grp in memberships.GroupBy(m => m.GroupId, StringComparer.Ordinal))
+        {
+            var balances = await GroupBalanceService.DetailedForGroupAsync(db, grp.Key, grp.Select(m => m.StudentId).ToList());
+            foreach (var (sid, info) in balances)
+            {
+                if (info.Balance >= 0) continue;
+                debtors.Add(sid);
+                total += -info.Balance;
+            }
+        }
+        return new TeacherDebtSummaryDto(debtors.Count, decimal.Round(total, 0));
+    }
+
+    /// <summary>O'qituvchining o'z (o'rinbosarliksiz) guruhlari bo'yicha qarzdorlik.</summary>
+    public static async Task<TeacherDebtSummaryDto> DebtSummaryForTeacherAsync(IAppDbContext db, string teacherId)
+    {
+        var (_, owned) = await VisibleGroupsAsync(db, teacherId);
+        return await DebtSummaryAsync(db, owned);
     }
 
     /// <summary>

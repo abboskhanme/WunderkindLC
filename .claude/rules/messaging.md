@@ -1,5 +1,5 @@
 ---
-description: Xabar tizimi — yagona AVTO-XABAR (AutoMessageRule + 13 trigger), Local SMS provider, Telegram bot (majburiy obuna, guruhga lid yuborish), xabarlar frontendi.
+description: Xabar tizimi — yagona AVTO-XABAR (AutoMessageRule + 14 trigger), Local SMS provider, Telegram bot (majburiy obuna, guruhga lid yuborish), xabarlar frontendi.
 paths:
   - "WunderkindLC.Application/Services/AutoMessage*.cs"
   - "WunderkindLC.Application/Services/Message*.cs"
@@ -62,9 +62,14 @@ paths:
 
 - **Yagona AVTO-XABAR tizimi:** `AutoMessageRule` entity (migratsiya `AddAutoMessages`) — har qoida:
   Trigger + 3 kanal bayrog'i (SendSms/SendPush/SendTelegram) + Audience + Template (tokenli) + jadval
-  maydonlari. **13 trigger** katalogi `AutoMessageTriggers` (Application/Services): payment_received,
+  maydonlari. **14 trigger** katalogi `AutoMessageTriggers` (Application/Services): payment_received,
   monthly_charge, payment_debt, attendance_absent, birthday, student_added, lead_new, trial_reminder,
-  test_link, test_result, lesson_attendance, custom_schedule, **grade_entered** (baho qo'yilganda).
+  test_link, test_result, lesson_attendance, custom_schedule, **grade_entered** (baho qo'yilganda),
+  **attendance_present** (2026-10-07: "Farzandingiz darsga keldi" — `DispatchNewlyPresentAsync`, har dars
+  uchun BIR MARTA: saqlashdan OLDIN «keldi» bo'lganlarga qayta ketmaydi; qoida yoqilmasa hech narsa o'qilmaydi).
+  `lesson_attendance` «lesson_start» rejimida `OffsetMinutes` MANFIY bo'lishi mumkin (−180..180): darsdan
+  OLDIN eslatma (uchrashuv talabi: "darsdan 1–1,5 soat oldin davomat olishni unutmang"); UI'da
+  «Qachon: darsdan oldin / dars boshlangach» + daqiqa.
   Har trigger `Category` maydoniga ega ("Lidlar" | "O'quv jarayoni" | "Moliya" | "Boshqa") —
   GET /triggers javobida `category` chiqadi, frontend shu bo'yicha guruhlaydi. Markaziy dispatcher
   `AutoMessageService` (singleton) — DispatchStudent/LeadAsync (SMS=Eskiz+SmsLog,

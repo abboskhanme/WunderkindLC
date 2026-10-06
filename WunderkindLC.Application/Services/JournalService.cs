@@ -561,6 +561,16 @@ public static class JournalService
         return req.Absent ? absentReasonId : null;
     }
 
+    /// <summary>Shu darsda (guruh, fan, sana, dars raqami) ANIQ «keldi» (<c>Present</c>) deb yozilgan
+    /// o'quvchilar — «keldi» xabari faqat YANGI kelganlarga ketishi uchun (saqlashdan oldin va keyin).</summary>
+    public static async Task<HashSet<string>> PresentStudentIdsAsync(
+        IAppDbContext db, string classId, string subjectId, string date, int period, IReadOnlyCollection<string> studentIds) =>
+        (await db.JournalEntries.AsNoTracking()
+            .Where(e => e.ClassId == classId && e.SubjectId == subjectId && e.Date == date && e.Period == period
+                        && e.Present && studentIds.Contains(e.StudentId))
+            .Select(e => e.StudentId)
+            .ToListAsync()).ToHashSet();
+
     public static async Task ClearEntryAsync(
         IAppDbContext db, string classId, string subjectId, int quarter,
         string studentId, string date, int period)

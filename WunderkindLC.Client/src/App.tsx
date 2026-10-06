@@ -178,6 +178,8 @@ const StudentSupportScreen = lazy(() => import('@/pages/student/Support').then((
 const StudentAccountScreen = lazy(() => import('@/pages/student/Account').then((m) => ({ default: m.StudentAccountScreen })))
 const CertificatesPage = lazy(() => import('@/pages/student/Certificates').then((m) => ({ default: m.CertificatesPage })))
 const StudentContractsScreen = lazy(() => import('@/pages/student/Contracts').then((m) => ({ default: m.StudentContractsScreen })))
+const StudentTestResultsScreen = lazy(() => import('@/pages/student/TestResults').then((m) => ({ default: m.StudentTestResultsScreen })))
+const StudentScheduleScreen = lazy(() => import('@/pages/student/Schedule').then((m) => ({ default: m.StudentScheduleScreen })))
 
 // Lazy sahifa chunk'i yuklanayotganda ko'rsatiladigan zaxira ekran.
 // ⚠️ Bu TASHQI boundary faqat LAYOUTSIZ marshrutlar (login, ommaviy sahifalar) uchun:
@@ -490,6 +492,8 @@ export default function App() {
             <Route path="account" element={<StudentAccountScreen />} />
             <Route path="certificates" element={<CertificatesPage />} />
             <Route path="contracts" element={<StudentContractsScreen />} />
+            <Route path="tests" element={<StudentTestResultsScreen />} />
+            <Route path="schedule" element={<StudentScheduleScreen />} />
           </Route>
         </Route>
 

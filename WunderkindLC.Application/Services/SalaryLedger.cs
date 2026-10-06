@@ -332,13 +332,16 @@ public static class SalaryLedger
             decimal monthCollected = 0m;
             decimal monthCharged = 0m, grossPotential = 0m;
             decimal monthSalaryBase = 0m;
+            // «HOZIR CHIQADIGAN» oylik — o'sha foiz/ushlanmalar, lekin baza HAQIQATAN TUSHGAN pul
+            // (hisoblangan baza ishlatilgan oylarda o'qituvchiga ko'rsatiladi: qarzdorlar to'lasa qancha qo'shiladi).
+            decimal grossCollectedSum = 0m, collectedGroupDeduction = 0m;
             var lessonLines = new List<SalaryLessonStatDto>();
             int plannedTotal = 0, conductedTotal = 0;
 
             foreach (var g in groups)
             {
                 var mode = EffMode(g.TeacherSalaryMode, teacher.SalaryMode);
-                decimal contribution, potential;
+                decimal contribution, potential, collectedContribution;
                 if (mode == "percent")
                 {
                     var pct = g.TeacherSalaryMode == "percent" ? g.TeacherSalaryPercent : teacher.SalaryPercent;
@@ -349,6 +352,7 @@ public static class SalaryLedger
                     contribution = decimal.Round(salaryBase * pct / 100m, 2);
                     // "Hammasi to'lansa" — hisoblangan bazada maoshning O'ZI (pul kelishiga bog'liq emas).
                     potential = UsesChargedBase(month, bases.ChargedFrom) ? contribution : decimal.Round(chg * pct / 100m, 2);
+                    collectedContribution = decimal.Round(col * pct / 100m, 2);
                     groupPeriodCollected[g.Id] += col;
                     monthCollected += col;
                     monthSalaryBase += salaryBase;
@@ -359,6 +363,7 @@ public static class SalaryLedger
                     var amt = g.TeacherSalaryMode == "fixed" ? g.TeacherSalaryFixed : 0m;
                     contribution = decimal.Round(amt * factor, 2);
                     potential = contribution;
+                    collectedContribution = contribution;   // qat'iy summa to'lovga bog'liq emas
                 }
 
                 // ---------- ASOSIY O'QITUVCHIDAN USHLANMA (teacher = ASOSIY) ----------
@@ -391,6 +396,7 @@ public static class SalaryLedger
                             // "ushlandi" deb yuborilardi.
                             contribution = Math.Max(0m, contribution - subDeduction);
                             potential = Math.Max(0m, potential - subDeduction);
+                            collectedContribution = Math.Max(0m, collectedContribution - subDeduction);
                         }
                     }
                 }
@@ -405,9 +411,12 @@ public static class SalaryLedger
                     conductedTotal += stat.Conducted;
                     if (contribution > 0 && stat.Missed > 0)
                         ded = decimal.Round(contribution * stat.Missed / stat.Planned, 2);
+                    if (collectedContribution > 0 && stat.Missed > 0)
+                        collectedGroupDeduction += decimal.Round(collectedContribution * stat.Missed / stat.Planned, 2);
                 }
 
                 grossSum += contribution;
+                grossCollectedSum += collectedContribution;
                 groupDeduction += ded;
                 groupPeriodExpected[g.Id] += contribution - ded;
                 if (journalLinked && stat is not null)
@@ -486,6 +495,17 @@ public static class SalaryLedger
             var potentialExpected = basePotential - deduction;
             if (potentialExpected < expected) potentialExpected = expected;   // yig'ilgan hisoblangandan oshib ketgan holat
 
+            // «Hozir chiqadigan» — faqat hisoblangan baza oylarida farq qiladi (yig'ilgan bazada u = expected).
+            var collectedExpected = expected;
+            if (UsesChargedBase(month, bases.ChargedFrom) && (anyConfigured || teacher.SalaryMode == "percent"))
+            {
+                var baseCollected = anyConfigured
+                    ? decimal.Round(grossCollectedSum, 2)
+                    : Math.Max(0m, decimal.Round(TotalCollected(month) * teacher.SalaryPercent / 100m, 2) - monthSubstituteDeduction);
+                var dedCollected = journalLinked && plannedTotal > 0 ? decimal.Round(collectedGroupDeduction, 2) : 0m;
+                collectedExpected = Math.Min(expected, Math.Max(0m, baseCollected + monthSubstituteFee - dedCollected));
+            }
+
             months.Add(new MonthSalaryDto(
                 month, expected, paid, remaining, status,
                 baseExpected, deduction,
@@ -499,7 +519,8 @@ public static class SalaryLedger
                 decimal.Round(monthSubstituteDeduction, 2),
                 // Legacy-foizda baza oyning JAMI bazasidan (guruh ulushlaridan emas).
                 decimal.Round(!anyConfigured && teacher.SalaryMode == "percent" ? TotalSalaryBase(month) : monthSalaryBase, 2),
-                UsesChargedBase(month, bases.ChargedFrom)));
+                UsesChargedBase(month, bases.ChargedFrom),
+                decimal.Round(collectedExpected, 2)));
         }
 
         var totalExpected = months.Sum(m => m.Expected);

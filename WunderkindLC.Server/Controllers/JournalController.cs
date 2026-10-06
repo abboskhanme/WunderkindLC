@@ -81,6 +81,11 @@ public class JournalController(AppDbContext db, FcmService fcm, AutoMessageServi
         // ⚠️ SetEntryAsync SABABNI matn bilan tashlaydi ("Sana guruh yaratilishidan oldin" va h.k.).
         // Ushlanmasa 500 bo'lib chiqar va foydalanuvchi "server xatosi" ko'rardi — nima
         // noto'g'ri ekani esa yo'qolardi. `Reschedule` da bu allaqachon shunday qilingan.
+        // «Keldi» xabari faqat YANGI kelganga — saqlashdan OLDINGI holat.
+        var one = new[] { req.StudentId };
+        var wasPresent = req.Present
+            ? await JournalService.PresentStudentIdsAsync(db, req.ClassId, req.SubjectId, req.Date, req.Period, one)
+            : new HashSet<string>();
         bool newAbsence;
         try
         {
@@ -91,7 +96,9 @@ public class JournalController(AppDbContext db, FcmService fcm, AutoMessageServi
             return BadRequest(new { message = ex.Message });
         }
         if (newAbsence)
-            await DispatchAbsencesAsync(req.ClassId, req.Date, req.ReasonId, new[] { req.StudentId });
+            await DispatchAbsencesAsync(req.ClassId, req.Date, req.ReasonId, one);
+        if (req.Present)
+            await autoMsg.DispatchNewlyPresentAsync(db, req.ClassId, req.SubjectId, req.Date, req.Period, one, wasPresent);
         return NoContent();
     }
 
@@ -104,6 +111,9 @@ public class JournalController(AppDbContext db, FcmService fcm, AutoMessageServi
             isAdmin: true, skipConducted: true);
         if (deny is not null) return BadRequest(new { message = deny });
         // SABAB matn bilan qaytsin (yuqoridagi `SetEntry` bilan bir xil sabab).
+        var wasPresent = !req.Absent
+            ? await JournalService.PresentStudentIdsAsync(db, req.ClassId, req.SubjectId, req.Date, req.Period, req.StudentIds)
+            : new HashSet<string>();
         string? absentReasonId;
         try
         {
@@ -115,6 +125,8 @@ public class JournalController(AppDbContext db, FcmService fcm, AutoMessageServi
         }
         if (absentReasonId is not null)
             await DispatchAbsencesAsync(req.ClassId, req.Date, absentReasonId, req.StudentIds);
+        if (!req.Absent)
+            await autoMsg.DispatchNewlyPresentAsync(db, req.ClassId, req.SubjectId, req.Date, req.Period, req.StudentIds, wasPresent);
         return NoContent();
     }
 

@@ -38,6 +38,10 @@ export interface DailyAbsence {
   absentCount: number
   lateCount: number
   rows: AbsentStudent[]
+  /** Kelganlar (davomat olinganlar − kelmaganlar; kech kelgan KELGAN). Eski serverda yo'q. */
+  presentCount?: number
+  /** Sababsiz qoldirganlar (sabab nomida "sababsiz"). Eski serverda yo'q. */
+  unexcusedCount?: number
 }
 
 /** Berilgan kundagi kelmagan/kechikkan o'quvchilar (sana bo'sh = bugun) */

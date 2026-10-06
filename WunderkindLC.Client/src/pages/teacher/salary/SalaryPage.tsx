@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import {
   AlertTriangle, ArrowLeft, Award, CalendarClock, ChevronDown, Hourglass, Wallet,
 } from 'lucide-react'
-import { getTeacherSalary, getMyRetentionBonuses } from '@/api/services/teacher'
+import { getTeacherSalary, getMyRetentionBonuses, getTeacherDebtSummary, type TeacherDebtSummary } from '@/api/services/teacher'
 import type { TeacherRetentionSummary } from '@/api/services/retentionBonus'
 import type { SalaryLedger } from '@/types'
 import { formatMoney } from '@/lib/utils'
@@ -55,6 +55,8 @@ export function TeacherSalaryPage() {
   const [ledger, setLedger] = useState<SalaryLedger | null>(null)
   /** Ushlab turish bonuslari — maoshdan ALOHIDA (Expected/Remaining ga qo'shilmagan). */
   const [bonuses, setBonuses] = useState<TeacherRetentionSummary | null>(null)
+  /** O'z guruhlaridagi qarzdorlar (ikkilamchi — yuklanmasa "qarzdorlar to'lasa" qatori qisqa chiqadi). */
+  const [debt, setDebt] = useState<TeacherDebtSummary | null>(null)
   const [loading, setLoading] = useState(true)
   /** Ushlanma sababi ochilgan oy ("YYYY-MM") */
   const [expanded, setExpanded] = useState<string | null>(null)
@@ -70,6 +72,13 @@ export function TeacherSalaryPage() {
       })
       .finally(() => {
         if (alive) setLoading(false)
+      })
+    getTeacherDebtSummary()
+      .then((d) => {
+        if (alive) setDebt(d)
+      })
+      .catch(() => {
+        /* ikkilamchi ma'lumot — maosh kartasi usiz ham to'liq */
       })
     getMyRetentionBonuses()
       .then((d) => {
@@ -181,6 +190,26 @@ export function TeacherSalaryPage() {
                       {formatMoney(cur.baseExpected ?? cur.expected)}
                     </span>
                   </p>
+                )}
+
+                {/* HOZIR CHIQADIGAN — rasmiy oylik hisoblangan bazadan; tushgan pul bo'yicha esa kamroq bo'lishi
+                    mumkin. Farq — qarzdorlar to'lasa qo'shiladi (foydalanuvchi qarori, 2026-10-07). */}
+                {cur?.chargedBase && cur.collectedExpected != null && cur.collectedExpected < cur.expected && (
+                  <div className="mt-3 space-y-1.5 rounded-lg border border-amber-200 bg-amber-50 px-3.5 py-2.5 text-[12px] text-amber-800">
+                    <div className="flex items-center justify-between gap-2">
+                      <span>Hozir chiqadigan (tushgan puldan)</span>
+                      <span className="font-mono font-bold">{formatMoney(cur.collectedExpected)}</span>
+                    </div>
+                    <div className="flex items-center justify-between gap-2">
+                      <span>Qarzdorlar to'lasa yana</span>
+                      <span className="font-mono font-bold">+{formatMoney(cur.expected - cur.collectedExpected)}</span>
+                    </div>
+                    {debt && debt.debtorCount > 0 && (
+                      <p className="text-amber-700">
+                        Guruhlaringizda {debt.debtorCount} ta qarzdor, jami {formatMoney(debt.debtTotal)} — to'lovni eslating.
+                      </p>
+                    )}
+                  </div>
                 )}
 
                 {/* Jami (joriy oy ko'rsatilganda alohida) */}

@@ -209,3 +209,10 @@
   bo'lib qolmaydi; hisob avvalgidek sanagacha qisman → foydalanuvchi: "muzlatilgan bo'lib qolmasin, butunlay chiqsin"
 - [2026-10-06] Aktiv o'quvchini guruhdan chiqarishda oylik? → muzlatishdagi kabi: chiqish sanasigacha qisman, keyingi
   oylar bekor (oynada sana so'raladi) → "butunlay chiqib ketsin"; ilgari to'liq oy va oldindan yozilgan oylar qarz qolardi
+- [2026-10-07] Maosh bazasi (uchrashuv: "to'langan puldan")? → rasmiy maosh HISOBLANGAN bazada qoladi, yonida
+  "hozir chiqadigan (tushgan puldan)" + "qarzdorlar to'lasa yana +" ko'rsatkichi → foydalanuvchi: "3-usul, lekin
+  taxminiy chiqadigan oyligi ko'rsatilib tursin"
+- [2026-10-07] Davomat monitoringida «Sababsiz»? → sabab NOMIDA "sababsiz" so'zi bor qaydnomalar → alohida
+  bayroq yo'q, sabablar katalogi matn bilan boshqariladi
+- [2026-10-07] «Darsga keldi» xabari necha marta? → har dars uchun BIR marta (saqlashdan oldin keldi bo'lmaganlarga);
+  qoida default O'CHIQ → ota-onaga har darsda SMS — pul, admin ongli yoqsin

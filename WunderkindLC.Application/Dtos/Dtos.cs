@@ -289,7 +289,12 @@ public record MonthSalaryDto(
     decimal SubstituteFee = 0, decimal SubstituteDeduction = 0,
     /// <summary>FOIZ QO'LLANGAN baza (foizli guruhlar bo'yicha): <paramref name="ChargedBase"/> bo'lsa
     /// hisoblangan TO'LIQ oylik, aks holda yig'ilgan pul. Ekranda "baza × foiz = maosh" shundan.</summary>
-    decimal SalaryBase = 0, bool ChargedBase = false);
+    decimal SalaryBase = 0, bool ChargedBase = false,
+    /// <summary>«HOZIR CHIQADIGAN» oylik — o'sha foiz va ushlanmalar, lekin baza HAQIQATAN TUSHGAN pul.
+    /// <paramref name="ChargedBase"/> oylarida <paramref name="Expected"/> dan kichik bo'lishi mumkin:
+    /// farq — qarzdorlar to'lasa qo'shiladigan qism (foydalanuvchi qarori, 2026-10-07: rasmiy oylik
+    /// hisoblangandan, o'qituvchiga esa "hozir tushgan puldan" ham ko'rsatiladi). Aks holda = Expected.</summary>
+    decimal CollectedExpected = 0);
 /// <summary>
 /// Maosh hisobida bitta guruhning ulushi (davr bo'yicha): qaysi rejim (foiz/qat'iy), qiymati,
 /// shu davrda guruhdan yig'ilgan to'lov bazasi va shu guruh keltirgan hisoblangan maosh.
@@ -1099,7 +1104,10 @@ public record AbsentStudentDto(
 /// <summary>Bir kunlik davomat xulosasi: o'tilgan darslar, davomat olingan o'quvchilar, kelmaganlar/kechikkanlar.</summary>
 public record DailyAbsenceDto(
     string Date, int ConductedGroups, int MarkedStudents, int AbsentCount, int LateCount,
-    List<AbsentStudentDto> Rows);
+    List<AbsentStudentDto> Rows,
+    // KELGANLAR (davomat olingan o'quvchilar − kelmaganlar; kech kelgan KELGAN) va SABABSIZ qoldirganlar
+    // (sabab nomida "sababsiz" — bulk davomat aynan shu nomli sababni avtomatik yaratadi). 2026-10-07.
+    int PresentCount = 0, int UnexcusedCount = 0);
 
 /// <summary>O'quvchi jurnalidagi bitta dars (faqat o'qish uchun).</summary>
 public record StudentJournalCellDto(

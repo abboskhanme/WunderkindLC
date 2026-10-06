@@ -418,6 +418,21 @@ export interface TeacherOverview {
   studentCount: number
   /** "Dars jadvali" ruxsati bormi (yo'q bo'lsa todayLessons bo'sh keladi) */
   canSchedule: boolean
+  /** O'z guruhlaridagi qarzdorlar soni va jami qarz (faqat JAMI — o'quvchi kesimi ko'rsatilmaydi). */
+  debtorCount?: number
+  debtTotal?: number
+}
+
+export interface TeacherDebtSummary {
+  debtorCount: number
+  debtTotal: number
+}
+
+/** O'z guruhlaridagi qarzdorlik jamlanmasi (maosh sahifasi: "qarzdorlar to'lasa"). */
+export async function getTeacherDebtSummary(): Promise<TeacherDebtSummary> {
+  if (USE_MOCK) return { debtorCount: 0, debtTotal: 0 }
+  const { data } = await api.get<TeacherDebtSummary>('/teacher/debt-summary')
+  return data
 }
 
 export interface TeacherStudentRow {

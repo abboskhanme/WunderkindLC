@@ -47,6 +47,15 @@ public class TelegramBotService(
     public const string TeacherPanelButtonText = "🎓 O'qituvchi paneli";
     public const string TeacherPanelUrl = WebAppUrl + "teacher";
 
+    /// <summary>
+    /// O'QUVCHI / OTA-ONA kabineti — `/student` portali bot ICHIDA Mini App bo'lib ochiladi (uchrashuv
+    /// talabi, 2026-10-07): balans/qarz, dars jadvali, oylik test natijalari, reyting. Tugma faqat telefoni
+    /// o'quvchiga bog'langan chatda. Kirish o'qituvchi paneli bilan bir xil — login/parol yoki shu botdagi
+    /// «🔑 Yangi kod olish» (Telegram orqali avtomatik kirish ATAYIN yo'q, 2026-09-27 qarori).
+    /// </summary>
+    public const string StudentPanelButtonText = "🎒 O'quvchi kabineti";
+    public const string StudentPanelUrl = WebAppUrl + "student";
+
     /// <summary>Telefon so'rovchi yagona yo'riqnoma. XAVFSIZLIK: raqam FAQAT «Telefon raqamni yuborish»
     /// tugmasi orqali (Telegram kontakti) qabul qilinadi — matn sifatida yozilgan raqam profilga
     /// BOG'LANMAYDI, aks holda begona (hatto admin) raqamini yozib akkauntni egallash mumkin edi.</summary>
@@ -448,7 +457,8 @@ public class TelegramBotService(
                 var db = scope.ServiceProvider.GetRequiredService<IAppDbContext>();
                 await SendAsync(chatId,
                     "✅ Rahmat! Endi pastdagi tugmalardan foydalanishingiz mumkin.",
-                    RegisteredKeyboard(await BookSalesEnabledAsync(db, ct), await IsTeacherChatAsync(db, chatId, ct)), ct);
+                    RegisteredKeyboard(await BookSalesEnabledAsync(db, ct), await IsTeacherChatAsync(db, chatId, ct),
+                        await IsStudentChatAsync(db, chatId, ct)), ct);
             }
         }
         else if (OnlineTestBotService.Handles(data))
@@ -659,14 +669,16 @@ public class TelegramBotService(
             {
                 var books = await BookSalesEnabledAsync(db, ct);
                 var isTeacher = await IsTeacherChatAsync(db, chatId, ct);
+                var isStudent = await IsStudentChatAsync(db, chatId, ct);
                 await SendAsync(chatId,
                     "Assalomu alaykum! 👋\n\nPastdagi tugmalardan foydalaning:\n"
                     + (isTeacher ? $"• {TeacherPanelButtonText} — guruhlar, davomat, dars jadvali, maosh\n" : "")
+                    + (isStudent ? $"• {StudentPanelButtonText} — balans, dars jadvali, test natijalari, reyting\n" : "")
                     + $"• {OtpButtonText} — tizimga kirish uchun bir martalik kod\n"
                     + $"• {OnlineTestBotService.TestButtonText} — sizga ochilgan onlayn testlar\n"
                     + (books ? $"• {BookShopBotService.BooksButtonText} — sotuvdagi kitoblarga buyurtma\n" : "")
                     + $"• {SupportButtonText} — administratorga savol",
-                    RegisteredKeyboard(books, isTeacher), ct);
+                    RegisteredKeyboard(books, isTeacher, isStudent), ct);
                 return;
             }
         }
@@ -825,7 +837,7 @@ public class TelegramBotService(
 
         await SendAsync(chatId,
             "✅ Ro'yxatdan o'tdingiz:\n• " + string.Join("\n• ", linked),
-            RegisteredKeyboard(meta?.BookSalesEnabled ?? true, teachers.Count > 0), ct);
+            RegisteredKeyboard(meta?.BookSalesEnabled ?? true, teachers.Count > 0, students.Any(s => !s.IsArchived)), ct);
 
         // Admin/xodim — yangi lid xabarnomalari haqida ma'lumot.
         if (admins.Count > 0)
@@ -1338,11 +1350,13 @@ public class TelegramBotService(
     /// <summary>Ro'yxatdan o'tgan (telefoni tasdiqlangan) foydalanuvchi klaviaturasi: bir martalik
     /// kirish kodi → ONLAYN TESTNI ISHLASH → (yoqilgan bo'lsa) KITOB SOTIB OLISH → adminga murojaat.
     /// Ro'yxatdan o'tish tugagach (va ro'yxatdan o'tgan foydalanuvchi /start bosganda) o'rnatiladi.</summary>
-    public static object RegisteredKeyboard(bool books = true, bool teacher = false)
+    public static object RegisteredKeyboard(bool books = true, bool teacher = false, bool student = false)
     {
         var rows = new List<object[]>();
         // O'qituvchiga — portalni ochuvchi tugma ENG TEPADA (kundalik ish: davomat, jadval, guruhlar).
         if (teacher) rows.Add(new object[] { new { text = TeacherPanelButtonText, web_app = new { url = TeacherPanelUrl } } });
+        // O'quvchi/ota-onaga — o'z kabineti (balans, jadval, test natijalari, reyting).
+        if (student) rows.Add(new object[] { new { text = StudentPanelButtonText, web_app = new { url = StudentPanelUrl } } });
         rows.Add(new object[] { new { text = OtpButtonText } });
         rows.Add(new object[] { new { text = OnlineTestBotService.TestButtonText } });
         if (books) rows.Add(new object[] { new { text = BookShopBotService.BooksButtonText } });
@@ -1374,6 +1388,17 @@ public class TelegramBotService(
             .Select(r => r.TeacherId!)
             .ToListAsync(ct);
         return ids.Count > 0 && await db.Teachers.AnyAsync(t => ids.Contains(t.Id) && !t.IsArchived, ct);
+    }
+
+    /// <summary>Shu chat ARXIVLANMAGAN o'quvchiga (o'zi yoki ota-onasi telefoni bilan) bog'langanmi —
+    /// «O'quvchi kabineti» tugmasi faqat shunda.</summary>
+    private static async Task<bool> IsStudentChatAsync(IAppDbContext db, long chatId, CancellationToken ct)
+    {
+        var ids = await db.TelegramRegistrations
+            .Where(r => r.ChatId == chatId && r.StudentId != null && r.StudentId != "")
+            .Select(r => r.StudentId)
+            .ToListAsync(ct);
+        return ids.Count > 0 && await db.Students.AnyAsync(s => ids.Contains(s.Id) && !s.IsArchived, ct);
     }
 
     /// <summary>Kitoblar sotuvi botda yoqilganmi (Sozlamalar → Kitoblar sotuvi).</summary>

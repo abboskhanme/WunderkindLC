@@ -361,9 +361,16 @@ public partial class TeacherPortalController(
         var hidden = await JournalPolicy.PaymentHiddenStudentsAsync(db, req.ClassId, new[] { req.StudentId });
         if (hidden.Contains(req.StudentId))
             return BadRequest(new { message = JournalPolicy.PaymentHiddenMessage });
+        // «Keldi» xabari faqat YANGI kelganga — saqlashdan OLDINGI holat (admin jurnali bilan bir xil).
+        var one = new[] { req.StudentId };
+        var wasPresent = req.Present
+            ? await JournalService.PresentStudentIdsAsync(db, req.ClassId, req.SubjectId, req.Date, req.Period, one)
+            : new HashSet<string>();
         var newAbsence = await JournalService.SetEntryAsync(db, req, fcm, autoMsg);
         if (newAbsence)
-            await DispatchAbsencesAsync(req.ClassId, req.Date, req.ReasonId, new[] { req.StudentId });
+            await DispatchAbsencesAsync(req.ClassId, req.Date, req.ReasonId, one);
+        if (req.Present)
+            await autoMsg.DispatchNewlyPresentAsync(db, req.ClassId, req.SubjectId, req.Date, req.Period, one, wasPresent);
         return NoContent();
     }
 
@@ -489,9 +496,14 @@ public partial class TeacherPortalController(
             if (allowed.Count == 0) return NoContent();
             req = req with { StudentIds = allowed };
         }
+        var wasPresent = !req.Absent
+            ? await JournalService.PresentStudentIdsAsync(db, req.ClassId, req.SubjectId, req.Date, req.Period, req.StudentIds)
+            : new HashSet<string>();
         var absentReasonId = await JournalService.BulkAttendanceAsync(db, req);
         if (absentReasonId is not null)
             await DispatchAbsencesAsync(req.ClassId, req.Date, absentReasonId, req.StudentIds);
+        if (!req.Absent)
+            await autoMsg.DispatchNewlyPresentAsync(db, req.ClassId, req.SubjectId, req.Date, req.Period, req.StudentIds, wasPresent);
         return NoContent();
     }
 

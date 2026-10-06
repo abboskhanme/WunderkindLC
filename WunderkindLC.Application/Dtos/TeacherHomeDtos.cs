@@ -28,7 +28,13 @@ public record TeacherGroupCardDto(
 /// <c>CanSchedule=false</c> bo'lsa (ruxsat "Dars jadvali" berilmagan) <c>TodayLessons</c> bo'sh.</summary>
 public record TeacherOverviewDto(
     string Today, List<TeacherGroupCardDto> Groups, List<TeacherLessonDto> TodayLessons,
-    int StudentCount, bool CanSchedule);
+    int StudentCount, bool CanSchedule,
+    // O'z guruhlaridagi QARZDORLAR soni (distinct) va jami qarz — uchrashuv talabi (2026-10-07).
+    // ⚠️ Faqat JAMI: o'quvchi kesimidagi summa o'qituvchiga ko'rsatilmaydi (`teacher-portal.md`).
+    int DebtorCount = 0, decimal DebtTotal = 0);
+
+/// <summary>O'qituvchining o'z guruhlari bo'yicha qarzdorlik jamlanmasi.</summary>
+public record TeacherDebtSummaryDto(int DebtorCount, decimal DebtTotal);
 
 /// <summary>"O'quvchilarim" qatori — bitta a'zolik (o'quvchi bir nechta guruhda bo'lsa bir nechta qator).
 /// Davomat sanoqlari tanlangan OY bo'yicha, <c>StudentJournalBuilder</c> qoidasida

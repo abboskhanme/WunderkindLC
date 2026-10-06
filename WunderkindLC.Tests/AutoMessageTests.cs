@@ -96,11 +96,12 @@ public class AutoMessageTests
     // ===================== 1) Trigger katalogi (sof mantiq) =====================
 
     [Fact]
-    public void Triggerlar_13_ta_va_kalitlari_takrorlanmaydi()
+    public void Triggerlar_14_ta_va_kalitlari_takrorlanmaydi()
     {
-        // messaging.md: "13 trigger" katalogi AutoMessageTriggers da.
-        Assert.Equal(13, AutoMessageTriggers.All.Length);
-        Assert.Equal(13, AutoMessageTriggers.All.Select(t => t.Key).Distinct().Count());
+        // messaging.md: "14 trigger" katalogi AutoMessageTriggers da (2026-10-07: + attendance_present).
+        Assert.Equal(14, AutoMessageTriggers.All.Length);
+        Assert.Equal(14, AutoMessageTriggers.All.Select(t => t.Key).Distinct().Count());
+        Assert.Contains(AutoMessageTriggers.All, t => t.Key == AutoMessageTriggers.AttendancePresent);
     }
 
     [Fact]
@@ -1392,5 +1393,54 @@ public class AutoMessageTests
         var n = Assert.Single(ctx.UserNotifications);
         Assert.Equal("u-t1", n.UserId);
         Assert.Contains("Karimov Karim", n.Body);
+    }
+
+    [Fact]
+    public async Task DispatchNewlyPresent_faqat_YANGI_kelganga__oldin_keldi_bolganga_qayta_ketmaydi()
+    {
+        // Uchrashuv talabi (2026-10-07): "Farzandingiz darsga keldi" — har dars uchun BIR MARTA.
+        using var db = TestDb.Sqlite();
+        var ctx = db.Context;
+        var fresh = NewStudent("Aliyev Ali", "u-1");
+        var again = NewStudent("Karimov Bek", "u-2");
+        ctx.Students.AddRange(fresh, again);
+        var g = new Group { Name = "IELTS-1" };
+        ctx.Classes.Add(g);
+        ctx.AutoMessageRules.Add(PushRule(AutoMessageTriggers.AttendancePresent, "{ism} {sana} kuni {guruh}da keldi"));
+        var iso = AppClock.Today.ToString("yyyy-MM-dd");
+        foreach (var s in new[] { fresh, again })
+            ctx.JournalEntries.Add(new JournalEntry
+            {
+                ClassId = g.Id, SubjectId = "c1", Quarter = 1, StudentId = s.Id, Date = iso, Period = 1, Present = true,
+            });
+        ctx.SaveChanges();
+
+        // `again` saqlashdan OLDIN ham «keldi» edi.
+        await new MessagingStack().Auto.DispatchNewlyPresentAsync(
+            ctx, g.Id, "c1", iso, 1, new[] { fresh.Id, again.Id }, new HashSet<string> { again.Id });
+
+        var n = Assert.Single(ctx.UserNotifications);
+        Assert.Equal("u-1", n.UserId);
+        Assert.StartsWith("Ali ", n.Body);
+        Assert.Contains("IELTS-1da keldi", n.Body);
+    }
+
+    [Fact]
+    public async Task DispatchNewlyPresent_qoida_yoqilmagan_bolsa_hech_narsa_yubormaydi()
+    {
+        using var db = TestDb.Sqlite();
+        var ctx = db.Context;
+        var s = NewStudent();
+        ctx.Students.Add(s);
+        var iso = AppClock.Today.ToString("yyyy-MM-dd");
+        ctx.JournalEntries.Add(new JournalEntry
+        {
+            ClassId = "g1", SubjectId = "c1", Quarter = 1, StudentId = s.Id, Date = iso, Period = 1, Present = true,
+        });
+        ctx.SaveChanges();
+
+        await new MessagingStack().Auto.DispatchNewlyPresentAsync(ctx, "g1", "c1", iso, 1, new[] { s.Id }, new HashSet<string>());
+
+        Assert.Empty(ctx.UserNotifications);
     }
 }
