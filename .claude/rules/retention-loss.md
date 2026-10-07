@@ -12,7 +12,7 @@ paths:
 
 # «Ketish sabablari» (Retention / Loss) qoidalari
 
-"Hisobotlar → O'qituvchilar → Ketish sabablari" (`/admin/hisobotlar/ketish-sabablari`, ruxsat
+"Hisobotlar → Ketish sabablari" (asosiy menyu, `mainReportRoutes`; hub'da O'qituvchilar bo'limi) (`/admin/hisobotlar/ketish-sabablari`, ruxsat
 **`teachers.retention`**). Savol: tanlangan davrda **qaysi o'qituvchidan** nechta o'quvchi KETDI,
 **NEGA** ketdi va bu uning AKTIV o'quvchilariga nisbatan qancha. O'qituvchi sahifasining
 «Samaradorlik» tabida ixcham ko'rinishi bor (`TeacherRetentionCard`, oxirgi 6 oy, o'sha endpoint).

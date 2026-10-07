@@ -30,6 +30,17 @@ export const edutizimReportRoutes = new Set([
 ])
 
 /**
+ * Edutizimda YO'Q, lekin markaz KUNDALIK ishlatadigan hisobotlar (2026-10-07 uchrashuvi talablari) —
+ * ular ham asosiy "Hisobotlar" guruhida turadi va "Future → Hisobotlar" ga TUSHMAYDI
+ * (foydalanuvchi: "ishlatilishini hisobga olgan holda Future menyusidan olib chiqish kerak").
+ */
+export const mainReportRoutes = new Set([
+  ...edutizimReportRoutes,
+  '/admin/hisobotlar/yoqotilgan-lidlar',
+  '/admin/hisobotlar/ketish-sabablari',
+])
+
+/**
  * edutizimning O'ZIDA ikki guruhda turadigan bandlar (masalan "Kirim chiqim" — Moliya va
  * Hisobotlar, "Xodimlar reytingi" — Nazorat va Hisobotlar). Xodim ularni ikkala joydan ham
  * qidiradi, shuning uchun bizda ham ikki joyda. Boshqa takrorlar TAQIQLANGAN (test qulflaydi).
@@ -127,6 +138,8 @@ export const navByRole: Record<Role, NavItem[]> = {
       // Tartib edutizimdagidek: yangi → aktiv → arxiv → ro'yxat → ota-ona → obuna → manzillar.
       children: [
         { label: "Yangi o'quvchilar", to: '/admin/students/yangi', perm: 'students.list' },
+        // Resepshn: yangi o'quvchini qabul qilish cheklisti (uchrashuv talabi, Future'dan chiqarildi).
+        { label: 'Qabul cheklisti', to: '/admin/students/qabul', perm: 'students.list' },
         { label: "Aktiv o'quvchilar", to: '/admin/students/aktiv', perm: 'students.list' },
         { label: "Arxiv o'quvchilar", to: '/admin/students/arxiv', perm: 'students.list' },
         { label: "O'quvchilar ro'yxati", to: '/admin/students', end: true, perm: 'students.list' },
@@ -218,6 +231,10 @@ export const navByRole: Record<Role, NavItem[]> = {
         },
         // Faqat ROLLAR ro'yxati va ularning ruxsatlari.
         { label: 'Rollar', to: '/admin/boshqaruv/rollar', perm: 'staff' },
+        // HR: vakansiyalar + qabul voronkasi va 30 kunlik moslashuv (uchrashuv talabi, Future'dan chiqarildi).
+        { label: 'Vakansiyalar', to: '/admin/boshqaruv/vacancies', perm: 'vacancies.list' },
+        // Yangi xodimning 30 kunlik moslashuvi — ariza "Ishga qabul qilindi" bo'lganda o'zi boshlanadi.
+        { label: 'Moslashuv (onboarding)', to: '/admin/boshqaruv/moslashuv', perm: 'vacancies.onboarding' },
         { label: 'Filiallar', to: '/admin/boshqaruv/branches', roles: ['superadmin'] },
       ],
     },
@@ -238,6 +255,8 @@ export const navByRole: Record<Role, NavItem[]> = {
         { label: 'Kirim chiqim', to: '/admin/moliya/kirim-chiqim', perm: 'finance.main' },
         { label: 'Xonalar analitikasi', to: '/admin/rooms/utilization', perm: 'classes.rooms' },
         { label: 'Xodimlar reytingi', to: '/admin/teacher-reports', perm: 'teacherReports' },
+        { label: "Yo'qotilgan lidlar", to: '/admin/hisobotlar/yoqotilgan-lidlar', perm: 'leads.stats' },
+        { label: 'Ketish sabablari', to: '/admin/hisobotlar/ketish-sabablari', perm: 'teachers.retention' },
       ],
     },
     {
@@ -264,7 +283,6 @@ export const navByRole: Record<Role, NavItem[]> = {
           children: [
             { label: 'Arxiv (barcha turdagi)', to: '/admin/archive', perm: 'settings.archive' },
             { label: "Kassa (to'lov qabul qilish)", to: '/admin/kassa', perm: 'kassa' },
-            { label: 'Qabul cheklisti', to: '/admin/students/qabul', perm: 'students.list' },
             { label: "Bog'lanish kerak", to: '/admin/students/boglanish', perm: 'contacts' },
             { label: 'Izohlarga javoblar', to: '/admin/students/izohlar', perm: 'students.notes' },
             { label: 'Ushlab turish bonusi', to: '/admin/students/bonus', perm: 'finance.bonus' },
@@ -327,7 +345,7 @@ export const navByRole: Record<Role, NavItem[]> = {
           children: [
             { label: 'Barcha hisobotlar', to: '/admin/hisobotlar', end: true, permAny: reportPerms },
             ...navReports
-              .filter((r) => !edutizimReportRoutes.has(r.to))
+              .filter((r) => !mainReportRoutes.has(r.to))
               .map((r) => ({ label: r.label, to: r.to, perm: r.perm })),
           ],
         },
@@ -339,9 +357,6 @@ export const navByRole: Record<Role, NavItem[]> = {
             // Future'ga olindi. Marshrut o'zgarmadi: eski havolalar ishlayveradi.
             { label: 'Topshiriqlar', to: '/admin/topshiriqlar', perm: 'tasks' },
             { label: 'KPI', to: '/admin/boshqaruv/kpi', perm: 'kpi' },
-            { label: 'Vakansiyalar', to: '/admin/boshqaruv/vacancies', perm: 'vacancies.list' },
-            // Yangi xodimning 30 kunlik moslashuvi — ariza "Ishga qabul qilindi" bo'lganda o'zi boshlanadi.
-            { label: 'Moslashuv (onboarding)', to: '/admin/boshqaruv/moslashuv', perm: 'vacancies.onboarding' },
             { label: 'Kameralar', to: '/admin/boshqaruv/cameras', perm: 'cameras' },
           ],
         },

@@ -9,7 +9,7 @@ import {
   visibleReportGroups,
 } from '../reports'
 import { permLabel } from '../constants'
-import { navByRole, activeNavTo, edutizimReportRoutes, edutizimDuplicateRoutes } from '../navigation'
+import { navByRole, activeNavTo, edutizimReportRoutes, edutizimDuplicateRoutes, mainReportRoutes } from '../navigation'
 
 /**
  * HISOBOTLAR KATALOGI — `config/reports.ts` yagona manba bo'lgani uchun undagi xato
@@ -79,6 +79,16 @@ describe('hisobotlar katalogi', () => {
     const routes = reports.children!.map((c) => c.to)
     expect(routes[0]).toBe('/admin/hisobotlar') // "Barcha hisobotlar" — birinchi
     for (const to of edutizimReportRoutes) expect(routes).not.toContain(to)
+    for (const to of mainReportRoutes) expect(routes).not.toContain(to)
+  })
+
+  it("ishlatiladigan yangi bandlar Future'da QOLMAGAN (asosiy guruhga chiqarilgan)", () => {
+    const future = navByRole.admin.find((i) => i.label === 'Future')!
+    const inFuture = leafRoutes(future.children as never)
+    for (const to of ['/admin/students/qabul', '/admin/boshqaruv/vacancies', '/admin/boshqaruv/moslashuv',
+      '/admin/hisobotlar/yoqotilgan-lidlar', '/admin/hisobotlar/ketish-sabablari']) {
+      expect(inFuture, to).not.toContain(to)
+    }
   })
 })
 
@@ -214,6 +224,12 @@ describe('activeNavTo — qaysi menyu bandi faol', () => {
     ['/admin/boshqaruv/rollar', 'Boshqaruv'],
     ['/admin/teachers/attendance', 'Boshqaruv'],
     ['/admin/marketing/inbox', 'Future'],
+    // Uchrashuv talablari bo'yicha qurilgan va KUNDALIK ishlatiladigan bandlar — Future'dan chiqarilgan.
+    ['/admin/students/qabul', "O'quvchilar"],
+    ['/admin/boshqaruv/vacancies', 'Boshqaruv'],
+    ['/admin/boshqaruv/moslashuv', 'Boshqaruv'],
+    ['/admin/hisobotlar/yoqotilgan-lidlar', 'Hisobotlar'],
+    ['/admin/hisobotlar/ketish-sabablari', 'Hisobotlar'],
     ['/admin/sozlamalar/umumiy', 'Sozlamalar'],
     ['/admin/students/davomat', 'Nazorat'],
     ['/admin/finance', 'Moliya'],

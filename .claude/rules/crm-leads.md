@@ -238,8 +238,9 @@ birinchi bosqichga o'tkazadi, holati o'zgarmaydi).
 ### 7. Hisobot — `GET lost-report?from&to` (`/admin/hisobotlar/yoqotilgan-lidlar`)
 
 Ruxsat — `[AdminPerm("leads.stats", ReadRequiresPerm = true)]` (faqat `leads.list` bor operator
-ko'rmaydi), klientda `RequirePerm perm="leads.stats"`, katalogda `config/reports.ts` (`inNav: true`,
-Future → Hisobotlar). Yangi ruxsat kaliti YO'Q.
+ko'rmaydi), klientda `RequirePerm perm="leads.stats"`, katalogda `config/reports.ts` (`inNav: true`).
+Menyuda — ASOSIY **Hisobotlar** guruhida (2026-10-07 dan Future'da EMAS: `mainReportRoutes`).
+Yangi ruxsat kaliti YO'Q.
 
 ⚠️ **DAVR — lid KELGAN sana bo'yicha** (`LeadAnalytics.InRange`, CRM analitikasi bilan bir xil):
 «shu davrda kelgan lidlarning qanchasini HOZIR yo'qotilgan». Barcha foizlar bitta to'plamdan —

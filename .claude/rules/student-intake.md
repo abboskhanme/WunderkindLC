@@ -21,7 +21,7 @@ Uch joyda ko'rinadi, uchalasi ham BITTA manbadan (`StudentIntake`, Application/S
 | Joy | Nima |
 |---|---|
 | O'quvchi profili → chap ustun, profil kartasi ostida — **«Qabul cheklisti»** kartasi (`IntakeChecklistCard`) | 5 band, progress, har band uchun "qayerda tuzatiladi" tugmasi; to'liq bo'lsa BITTA qatorga yig'iladi |
-| **Future → O'quvchilar → «Qabul cheklisti»** (`/admin/students/qabul`) | yangi o'quvchilar jadvali, "To'liq emas" (standart) / band bo'yicha filtr, katakni bosib qo'lda belgilash |
+| **O'quvchilar → «Qabul cheklisti»** (`/admin/students/qabul`, 2026-10-07 dan asosiy menyuda) | yangi o'quvchilar jadvali, "To'liq emas" (standart) / band bo'yicha filtr, katakni bosib qo'lda belgilash |
 | O'quvchilar → «Yangi o'quvchilar» | «Qabul» ustuni (`3/5`) + sahifaga havola |
 
 Migratsiya: **bitta yangi jadval** — `StudentIntakeMarks` (faqat QO'LDA belgilar). Backfill YO'Q.

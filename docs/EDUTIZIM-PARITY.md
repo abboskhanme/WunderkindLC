@@ -106,9 +106,15 @@ edutizim itself lists "Kirim chiqim" and "Xodimlar reytingi" in two groups; we m
 **Future** (ours only): Bog'lanish kerak, Izohlarga javoblar, Ushlab turish bonusi, Yuz bilan
 kirish · O'quv dasturi, Baholash mezonlari, Testlar natijalari, Formalar, Kitoblar sotuvi,
 Sabablar · Guruh chati, Support Telegram, Call Center · AI check, ilova Support/O'qituvchilar ·
-Instagram marketing · Hisobotlar hub + our extra reports · KPI, Vakansiyalar, Kameralar ·
+Instagram marketing · Hisobotlar hub + our extra reports · KPI, Kameralar ·
 extra Sozlamalar (Zaxira, Turniket, Kamera, PostHog). Landing, Tumanlar, Kanallar, Azure, Gemini and
 Sabablar moved into the edutizim-shaped Sozlamalar (2026-09-27, `config/settingsGroups.ts`).
+
+**Promoted out of Future (2026-10-07, user: "these will be used — take them out of Future"):**
+the meeting follow-up features sit in the main groups although edutizim lacks them —
+O'quvchilar → Qabul cheklisti · Boshqaruv → Vakansiyalar, Moslashuv (onboarding) ·
+Hisobotlar → Yo'qotilgan lidlar, Ketish sabablari (`mainReportRoutes` keeps them out of
+Future → Hisobotlar). Locked by `reports.test.ts`.
 
 ## Phases
 
