@@ -218,3 +218,25 @@
   qoida default O'CHIQ → ota-onaga har darsda SMS — pul, admin ongli yoqsin
 - [2026-10-07] Botda o'qituvchi va o'quvchi uchun alohida tugmalarmi? → BITTA «📱 Panel» tugmasi, manzil sayt
   ildizi (RootRedirect rol bo'yicha yo'naltiradi) → foydalanuvchi: "bitta Panel deb nomlangan button yetadi"
+- [2026-10-07] Lid «yo'qotilgan» — bosqichmi? → yo'q, lidning O'Z maydonlari (LostAt/LostReason...), ustun taxtada QAT'IY
+  oxirgi → bosqichlar foydalanuvchi o'chiradigan narsa; tiklanganda lid avvalgi bosqichiga qaytadi
+- [2026-10-07] Yo'qotilgan lidlar hisobotining davri? → lid KELGAN sana bo'yicha → foizlar bitta to'plamdan, ≤100%
+- [2026-10-07] Yo'qotilgan lid formani qayta to'ldirsa? → yo'qotilgan qoladi, «Qaytib keldi» belgisi → avtomatik tiklash 5 ta
+  kirish yo'lini o'zgartirardi
+- [2026-10-07] HR voronkasidagi eski `review` bosqichi? → eski qatorlar uchun ko'rinadi, unga yangi o'tkazish yo'q → mavjud
+  ma'lumot buzilmasin
+- [2026-10-07] Arizani `hired` dan qaytarish moslashuvni bekor qiladimi? → yo'q → moslashuv alohida yuritiladi
+- [2026-10-07] Karyera bo'limi kaliti? → `vacancies.list` (moslashuv — `vacancies.onboarding`) → faqat moslashuv berilgan
+  xodim nomzod CV'larini o'qiy olmasin
+- [2026-10-07] Kassadan kassaga ko'chirish kimda? → faqat superadmin; manbada yetarli pul bo'lmasa rad → kassir kamomadni
+  qog'ozda boshqa kassaga o'tkaza olmasin
+- [2026-10-07] Moliya turlari seed'i? → BIR MARTA (`SeedMarkers: finance-types-2026-10`), edutizimdagi eski turlar yangi
+  toifaga ko'chiriladi → admin o'chirgan tur qayta tug'ilmasin; eski tranzaksiyalar eski toifasida qoladi (backfill yo'q)
+- [2026-10-07] Kitob sotuvi Moliya'ga? → to'langan sotuv `book` kirimi bo'lib kassaga tushadi, qaytarish — chiqim; eski
+  sotuvlar qo'shilmaydi → uchrashuv: "kitob sotuvi alohida to'lov turi"
+- [2026-10-07] Ketish sababi qayerda saqlanadi? → alohida `MembershipReasonLog` (StudentGroup ustuni emas), tarix uchun audit
+  matni zaxira → qayta qo'shilgan a'zolikka eski sabab yopishib qolmasin
+- [2026-10-07] Boshqa kursga o'tish — ketishmi? → o'sha kurs uchun HA («Boshqa guruhda o'qiyapti» belgisi bilan), kurs
+  ichidagi almashish — yo'q → bosh sahifadagi «Ketgan o'quvchilar» bilan bir xil son
+- [2026-10-07] «Yangi o'quvchi» (qabul cheklisti)? → arxivlanmagan + sinovda yoki oxirgi 60 kunda qabul qilingan
+  (EnrollmentDate) → edutizimdan ommaviy import qilinganlar «yangi» bo'lib chiqmasin
