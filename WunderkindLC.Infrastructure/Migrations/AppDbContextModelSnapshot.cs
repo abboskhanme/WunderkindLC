@@ -1053,6 +1053,69 @@ namespace WunderkindLC.Infrastructure.Migrations
                     b.ToTable("Cashboxes");
                 });
 
+            modelBuilder.Entity("WunderkindLC.Domain.CashboxTransfer", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<string>("CreatedAt")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("CreatedById")
+                        .HasColumnType("text");
+
+                    b.Property<string>("CreatedByName")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Date")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)");
+
+                    b.Property<string>("FromCashboxId")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<bool>("IsVoided")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<string>("ToCashboxId")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("VoidReason")
+                        .HasColumnType("text");
+
+                    b.Property<string>("VoidedAt")
+                        .HasColumnType("text");
+
+                    b.Property<string>("VoidedById")
+                        .HasColumnType("text");
+
+                    b.Property<string>("VoidedByName")
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("FromCashboxId");
+
+                    b.HasIndex("ToCashboxId");
+
+                    b.ToTable("CashboxTransfers");
+                });
+
             modelBuilder.Entity("WunderkindLC.Domain.CenterAiAnalysis", b =>
                 {
                     b.Property<string>("Id")
@@ -2629,6 +2692,137 @@ namespace WunderkindLC.Infrastructure.Migrations
                     b.ToTable("Districts");
                 });
 
+            modelBuilder.Entity("WunderkindLC.Domain.EmployeeOnboarding", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasColumnType("text");
+
+                    b.Property<int>("ApplicationNumber")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("CancelledAt")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("CompletedAt")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("CreatedAt")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("CreatedBy")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("FullName")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("JobApplicationId")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("MentorId")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("MentorName")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Note")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Phone")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Position")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("StaffUserId")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("StartDate")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("TeacherId")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("JobApplicationId");
+
+                    b.HasIndex("Status", "StartDate");
+
+                    b.ToTable("EmployeeOnboardings");
+                });
+
+            modelBuilder.Entity("WunderkindLC.Domain.EmployeeOnboardingTask", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasColumnType("text");
+
+                    b.Property<int>("DayOffset")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("DoneAt")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("DoneBy")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Note")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("OnboardingId")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<int>("Order")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("StepId")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OnboardingId", "Order");
+
+                    b.ToTable("EmployeeOnboardingTasks");
+                });
+
             modelBuilder.Entity("WunderkindLC.Domain.ExternalTestScore", b =>
                 {
                     b.Property<string>("Id")
@@ -2781,6 +2975,10 @@ namespace WunderkindLC.Infrastructure.Migrations
                         .HasPrecision(18, 2)
                         .HasColumnType("numeric(18,2)");
 
+                    b.Property<string>("BookOrderId")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
                     b.Property<string>("CardLast4")
                         .HasColumnType("text");
 
@@ -2859,6 +3057,8 @@ namespace WunderkindLC.Infrastructure.Migrations
                         .HasColumnType("text");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("BookOrderId");
 
                     b.HasIndex("CashboxId");
 
@@ -4799,6 +4999,24 @@ namespace WunderkindLC.Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<string>("LostAt")
+                        .HasColumnType("text");
+
+                    b.Property<string>("LostByName")
+                        .HasColumnType("text");
+
+                    b.Property<string>("LostByUserId")
+                        .HasColumnType("text");
+
+                    b.Property<string>("LostComment")
+                        .HasColumnType("text");
+
+                    b.Property<string>("LostReason")
+                        .HasColumnType("text");
+
+                    b.Property<string>("LostReasonId")
+                        .HasColumnType("text");
+
                     b.Property<string>("MotherFullName")
                         .IsRequired()
                         .HasColumnType("text");
@@ -5668,6 +5886,52 @@ namespace WunderkindLC.Infrastructure.Migrations
                     b.ToTable("LoginOtpCodes");
                 });
 
+            modelBuilder.Entity("WunderkindLC.Domain.MembershipReasonLog", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Action")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("CreatedAt")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Date")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)");
+
+                    b.Property<string>("GroupId")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("ReasonId")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("ReasonLabel")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("StudentId")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Date");
+
+                    b.HasIndex("StudentId", "GroupId");
+
+                    b.ToTable("MembershipReasonLogs");
+                });
+
             modelBuilder.Entity("WunderkindLC.Domain.MonthlyCharge", b =>
                 {
                     b.Property<string>("Id")
@@ -5708,6 +5972,43 @@ namespace WunderkindLC.Infrastructure.Migrations
                         .IsUnique();
 
                     b.ToTable("MonthlyCharges");
+                });
+
+            modelBuilder.Entity("WunderkindLC.Domain.OnboardingStep", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasColumnType("text");
+
+                    b.Property<string>("CreatedAt")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int>("DayOffset")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<int>("Order")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("UpdatedAt")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Order");
+
+                    b.ToTable("OnboardingSteps");
                 });
 
             modelBuilder.Entity("WunderkindLC.Domain.PlannedExpense", b =>
@@ -6037,6 +6338,21 @@ namespace WunderkindLC.Infrastructure.Migrations
                     b.HasIndex("DistrictId", "Order");
 
                     b.ToTable("Schools");
+                });
+
+            modelBuilder.Entity("WunderkindLC.Domain.SeedMarker", b =>
+                {
+                    b.Property<string>("Key")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("AppliedAt")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Key");
+
+                    b.ToTable("SeedMarkers");
                 });
 
             modelBuilder.Entity("WunderkindLC.Domain.SmsBatch", b =>
@@ -6834,6 +7150,45 @@ namespace WunderkindLC.Infrastructure.Migrations
                     b.HasIndex("StudentId", "IsActive");
 
                     b.ToTable("StudentGroups");
+                });
+
+            modelBuilder.Entity("WunderkindLC.Domain.StudentIntakeMark", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Item")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("MarkedAt")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("MarkedById")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("MarkedByName")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Note")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("StudentId")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("StudentId", "Item")
+                        .IsUnique();
+
+                    b.ToTable("StudentIntakeMarks");
                 });
 
             modelBuilder.Entity("WunderkindLC.Domain.StudentNote", b =>
