@@ -5,11 +5,16 @@
 // ⚠️ Production kodi tuzatilmaydi: tasdiqlangan xatolar `it.skip` bilan qoldirilgan.
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import type { CareerStage } from '@/api/services/career'
 import {
   employmentLabels,
   employmentOptions,
   isExpired,
+  legacyStatuses,
   salaryText,
+  stageLabel,
+  stageOptions,
+  statusIcons,
   statusLabels,
   statusOrder,
   statusTones,
@@ -121,14 +126,50 @@ describe('yorliq/rang kataloglari', () => {
     for (const o of employmentOptions) expect(o.label).toBe(employmentLabels[o.value])
   })
 
-  it('statusOrder backend bosqichlari bilan bir xil ketma-ketlikda', () => {
-    expect(statusOrder).toEqual(['new', 'review', 'interview', 'trial', 'hired', 'rejected'])
+  it('statusOrder — yig\'ilishdagi voronka (backend FunnelStages + rad etildi)', () => {
+    // CV → Test → Demo dars → HR suhbati → Rahbar suhbati → Ishga qabul; eski `review` YO'Q.
+    expect(statusOrder).toEqual(['new', 'test', 'trial', 'interview', 'director', 'hired', 'rejected'])
+    expect(statusOrder.map((k) => statusLabels[k])).toEqual([
+      'CV qabul qilindi',
+      'Test',
+      'Demo dars',
+      'HR suhbati',
+      'Rahbar (direktor) suhbati',
+      'Ishga qabul qilindi',
+      'Rad etildi',
+    ])
   })
 
-  it('har bir bosqichda yorliq ham, rang ham bor (UI bo\'sh katak ko\'rsatmaydi)', () => {
-    for (const s of statusOrder) {
+  it('har bir bosqichda (eskisi ham) yorliq, ikonka va rang bor (UI bo\'sh katak ko\'rsatmaydi)', () => {
+    for (const s of [...statusOrder, ...legacyStatuses]) {
       expect(statusLabels[s]).toBeTruthy()
+      expect(statusIcons[s]).toBeTruthy()
       expect(statusTones[s]).toBeTruthy()
     }
+  })
+})
+
+describe('eski (legacy) bosqich — stageOptions / stageLabel', () => {
+  const st = (key: CareerStage['key'], isLegacy = false): CareerStage => ({
+    key, label: `L-${key}`, candidateText: '', icon: '•', order: 1, isFinal: false, isLegacy,
+  })
+  const server = [st('new'), st('review', true), st('test'), st('hired'), st('rejected')]
+
+  it('eski bosqich yangi o\'tish uchun taklif qilinmaydi', () => {
+    expect(stageOptions(server, 'new').map((s) => s.key)).toEqual(['new', 'test', 'hired', 'rejected'])
+  })
+
+  it('ariza HOZIR eski bosqichda bo\'lsa — u tanlagichda qoladi (izohni yangilash uchun)', () => {
+    expect(stageOptions(server, 'review').map((s) => s.key)).toContain('review')
+  })
+
+  it('server katalogi bo\'lmasa — zaxira ro\'yxat, eskisisiz', () => {
+    const keys = stageOptions([], 'test').map((s) => s.key)
+    expect(keys).toEqual(statusOrder)
+  })
+
+  it('stageLabel: server yorlig\'i, bo\'lmasa zaxira', () => {
+    expect(stageLabel(server, 'test')).toBe('L-test')
+    expect(stageLabel([], 'director')).toBe('Rahbar (direktor) suhbati')
   })
 })

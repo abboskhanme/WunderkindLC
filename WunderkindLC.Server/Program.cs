@@ -778,6 +778,20 @@ using (var scope = app.Services.CreateScope())
     }
 }
 
+// MOSLASHUV (onboarding) — 30 kunlik cheklistning 11 ta STANDART qadami.
+// ⚠️ FAQAT katalog BO'SH bo'lganda (tranzaksiya turlaridagi qoida): admin o'chirgan qadam restartda
+// qayta tug'ilmasin. TRY-CATCH: jadval yo'q bo'lsa (migratsiya qo'llanmagan) logga yozib o'tadi.
+try
+{
+    var onbSteps = await OnboardingService.EnsureCatalogAsync(db);
+    if (onbSteps > 0)
+        app.Logger.LogInformation("[seed] Moslashuv katalogiga {Count} ta standart qadam yozildi", onbSteps);
+}
+catch (Exception ex)
+{
+    app.Logger.LogWarning(ex, "[seed] moslashuv katalogi seed qilinmadi (migratsiya qo'llanmagan bo'lsa normal)");
+}
+
 // KASSALAR — «Asosiy kassa» (zaxira kassa, `Id = "main"`) HAR DOIM bo'lsin: mas'uli yo'q to'lov shu
 // yerga tushadi. Mavjud bazada uni `AddCashboxes` migratsiyasi yaratadi (eski yozuvlarni ham unga
 // ko'chiradi); bu blok faqat YANGI (bo'sh) baza uchun. Idempotent.

@@ -1,5 +1,5 @@
 import type { BadgeTone } from '@/components/ui/Badge'
-import type { ApplicationStatus, EmploymentType, Vacancy } from '@/api/services/career'
+import type { ApplicationStatus, CareerStage, EmploymentType, Vacancy } from '@/api/services/career'
 
 /**
  * KARYERA bo'limining yagona yorliq/rang jadvallari — vakansiya kartalari, arizalar ro'yxati
@@ -24,19 +24,23 @@ export const employmentOptions: { value: EmploymentType; label: string }[] = [
 /** Bosqich → ro'yxatdagi rang (Badge tone). */
 export const statusTones: Record<ApplicationStatus, BadgeTone> = {
   new: 'blue',
-  review: 'violet',
-  interview: 'amber',
+  review: 'default',
+  test: 'indigo',
   trial: 'teal',
+  interview: 'amber',
+  director: 'violet',
   hired: 'green',
   rejected: 'red',
 }
 
 /** Server bosqichlar katalogini bermaguncha ishlatiladigan zaxira yorliqlar. */
 export const statusLabels: Record<ApplicationStatus, string> = {
-  new: 'Yangi ariza',
-  review: "Ko'rib chiqilmoqda",
-  interview: 'Suhbatga taklif',
-  trial: 'Sinov bosqichi',
+  new: 'CV qabul qilindi',
+  review: "Ko'rib chiqilmoqda (eski)",
+  test: 'Test',
+  trial: 'Demo dars',
+  interview: 'HR suhbati',
+  director: 'Rahbar (direktor) suhbati',
   hired: 'Ishga qabul qilindi',
   rejected: 'Rad etildi',
 }
@@ -44,21 +48,55 @@ export const statusLabels: Record<ApplicationStatus, string> = {
 export const statusIcons: Record<ApplicationStatus, string> = {
   new: '📥',
   review: '🔍',
-  interview: '🗣',
+  test: '📝',
   trial: '🎯',
+  interview: '🗣',
+  director: '👔',
   hired: '✅',
   rejected: '❌',
 }
 
-/** Filtr chiplari va bosqich tanlagichdagi tartib. */
+/**
+ * Filtr chiplari va bosqich tanlagichdagi tartib — yig'ilishdagi VORONKA:
+ * CV → Test → Demo dars → HR suhbati → Rahbar suhbati → Ishga qabul, oxirida "Rad etildi".
+ * Eski `review` bu yerda YO'Q ({@link legacyStatuses}) — u faqat mavjud arizada ko'rsatiladi.
+ */
 export const statusOrder: ApplicationStatus[] = [
   'new',
-  'review',
-  'interview',
+  'test',
   'trial',
+  'interview',
+  'director',
   'hired',
   'rejected',
 ]
+
+/** ESKI bosqichlar: yangi o'tish uchun taklif qilinmaydi (server ham rad etadi). */
+export const legacyStatuses: ApplicationStatus[] = ['review']
+
+/**
+ * Bosqich tanlagichidagi variantlar: server katalogi (bo'lsa) yoki zaxira ro'yxat; ESKI bosqich
+ * faqat ariza HOZIR o'sha bosqichda bo'lsa qoladi (izohini yangilash uchun).
+ */
+export function stageOptions(stages: CareerStage[], current: ApplicationStatus): CareerStage[] {
+  const list: CareerStage[] = stages.length > 0
+    ? stages
+    : [...statusOrder, ...legacyStatuses].map((k, i) => ({
+        key: k,
+        label: statusLabels[k],
+        candidateText: '',
+        icon: statusIcons[k],
+        order: i + 1,
+        isFinal: k === 'hired' || k === 'rejected',
+        isLegacy: legacyStatuses.includes(k),
+      }))
+  return list.filter((s) => !(s.isLegacy ?? legacyStatuses.includes(s.key)) || s.key === current)
+}
+
+/** Bosqich nomi: server katalogidan, bo'lmasa zaxira yorliq (noma'lum kalit — o'zi). */
+export function stageLabel(stages: CareerStage[], key: ApplicationStatus): string {
+  return stages.find((s) => s.key === key)?.label ?? statusLabels[key] ?? key
+}
 
 /** Vakansiya maoshini bitta satrga jamlaydi (ilovadagi ko'rinish bilan bir xil mantiq). */
 export function salaryText(v: Pick<Vacancy, 'salaryFrom' | 'salaryTo' | 'salaryNote'>): string {

@@ -241,7 +241,10 @@ const CROSS_INVALIDATION: Record<string, string[]> = {
     '/admin/journal', '/admin/contacts'],
   // Landing/vakansiya CMS — OMMAVIY sahifa va brend nomi (`/school`, `/public/brand`).
   '/admin/landing': ['/public', '/school'],
-  '/admin/career': ['/public'],
+  // Ariza "Ishga qabul qilindi" bo'lsa server moslashuvni AVTOMATIK boshlaydi (onboarding.md).
+  '/admin/career': ['/public', '/admin/onboarding'],
+  // Moslashuv cheklisti — boshqa bo'lim ro'yxatlariga ta'sir qilmaydi.
+  '/admin/onboarding': [],
   // Topshiriqlar (Kanban) — doska/ustun/topshiriq/izoh hammasi shu miqyosda; boshqa bo'lim
   // ro'yxatlariga ta'sir qilmaydi, shuning uchun bog'liq miqyos yo'q.
   '/admin/work-tasks': [],

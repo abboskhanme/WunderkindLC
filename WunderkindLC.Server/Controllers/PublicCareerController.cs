@@ -53,7 +53,7 @@ public class PublicCareerController(
         var about = CareerController.ToDto(await db.CareerAbout.AsNoTracking().FirstOrDefaultAsync());
 
         var vacancies = await db.Vacancies.AsNoTracking()
-            .Where(v => v.Status == "active")
+            .Where(v => v.Status == CareerService.VacancyActive) // "paused" (OFF) va "archived" ko'rinmaydi
             .OrderBy(v => v.Order).ThenByDescending(v => v.CreatedAt)
             .ToListAsync();
 
@@ -153,7 +153,7 @@ public class PublicCareerController(
             return Unauthorized(new { message = "Ariza yuborish faqat Telegram ilovasi orqali mumkin." });
 
         var vacancy = await db.Vacancies.AsNoTracking().FirstOrDefaultAsync(v => v.Id == p.VacancyId);
-        if (vacancy is null || vacancy.Status != "active")
+        if (vacancy is null || vacancy.Status != CareerService.VacancyActive)
             return NotFound(new { message = "Vakansiya topilmadi yoki yopilgan" });
 
         var today = AppClock.Today.ToString("yyyy-MM-dd");

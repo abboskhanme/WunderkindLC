@@ -18,16 +18,21 @@ namespace WunderkindLC.Server.Controllers;
 ///   <item><b>Arizalar</b> — nomzodlar ro'yxati, bosqichni o'zgartirish (nomzodga karyera boti
 ///     orqali avtomatik xabar ketadi) va ichki izoh.</item>
 /// </list>
-/// Ruxsat kaliti: <c>vacancies</c> (xodim uchun; admin/superadmin — cheklovsiz).
+/// Ruxsat kaliti: <c>vacancies.list</c> sahifasi (bo'lim kaliti <c>vacancies</c> uni merosi bilan
+/// ochadi; admin/superadmin — cheklovsiz). Bo'limning ikkinchi sahifasi — «Moslashuv»
+/// (<c>vacancies.onboarding</c>, <c>OnboardingController</c>).
 /// </summary>
 [ApiController]
 [Authorize]
 // O'QISH ham darvozalanadi (ReadRequiresPerm): `GET applications` va `applications/{id}` javobida
 // nomzodning `CvUrl` — `/uploads/*.pdf` REZYUME manzili qaytadi (ustiga telefon, ichki `AdminNote`).
 // `/uploads` autentifikatsiyasiz berilgani uchun manzilni olgan xodim CV'ni abadiy ko'chirib ola
-// oladi. Shu sabab GET uchun ham `vacancies` bo'limi ruxsati (biror amali) talab qilinadi.
+// oladi. Shu sabab GET uchun ham ruxsat (biror amali) talab qilinadi.
+// ⚠️ Kalit SAHIFA darajasida (`vacancies.list`), bo'lim emas: aks holda faqat «Moslashuv»
+// (`vacancies.onboarding`) berilgan xodim yuqoriga o'qish merosi bilan CV'larni ham o'qir edi
+// (`.claude/rules/permissions.md` §2 — nozik o'qish darvozasi sahifa kaliti bilan).
 // Nomzod tomoni (Mini App) bunga bog'liq EMAS — u alohida `api/career` ([AllowAnonymous]) da.
-[AdminPerm("vacancies", ReadRequiresPerm = true)]
+[AdminPerm("vacancies.list", ReadRequiresPerm = true)]
 [Route("api/admin/career")]
 public class CareerController(AppDbContext db, CareerService career, AuditService audit) : ControllerBase
 {
@@ -43,7 +48,7 @@ public class CareerController(AppDbContext db, CareerService career, AuditServic
 
     internal static List<CareerStageDto> StageDtos() =>
         CareerService.Stages
-            .Select(s => new CareerStageDto(s.Key, s.Label, s.CandidateText, s.Icon, s.Order, s.IsFinal))
+            .Select(s => new CareerStageDto(s.Key, s.Label, s.CandidateText, s.Icon, s.Order, s.IsFinal, s.IsLegacy))
             .ToList();
 
     // =============================================================================================
@@ -107,12 +112,15 @@ public class CareerController(AppDbContext db, CareerService career, AuditServic
     //  VAKANSIYALAR
     // =============================================================================================
 
-    /// <summary>Vakansiyalar. <paramref name="status"/> — "active" | "archived" (bo'sh = hammasi).</summary>
+    /// <summary>Vakansiyalar. <paramref name="status"/> — "active" | "paused" | "archived" yoki vergul
+    /// bilan bir nechtasi ("active,paused" — joriy ro'yxat); bo'sh = hammasi.</summary>
     [HttpGet("vacancies")]
     public async Task<ActionResult<List<VacancyDto>>> Vacancies([FromQuery] string? status)
     {
         var query = db.Vacancies.AsNoTracking().AsQueryable();
-        if (!string.IsNullOrWhiteSpace(status)) query = query.Where(v => v.Status == status);
+        var statuses = (status ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(CareerService.IsValidVacancyStatus).Distinct().ToList();
+        if (statuses.Count > 0) query = query.Where(v => statuses.Contains(v.Status));
         var list = await query.OrderBy(v => v.Order).ThenByDescending(v => v.CreatedAt).ToListAsync();
 
         // Arizalar soni BIR so'rovda (N+1 bo'lmasin).
@@ -138,7 +146,7 @@ public class CareerController(AppDbContext db, CareerService career, AuditServic
 
         var v = new Vacancy
         {
-            Status = "active",
+            Status = CareerService.VacancyActive,
             CreatedAt = AppClock.Iso(),
             CreatedBy = Actor,
         };
@@ -164,6 +172,32 @@ public class CareerController(AppDbContext db, CareerService career, AuditServic
         return await WithCountsAsync(v);
     }
 
+    /// <summary>
+    /// BITTA TUGMA bilan YOQISH/O'CHIRISH (ON/OFF). O'chirilgan ("paused") vakansiya Mini App'da
+    /// DARHOL ko'rinmay qoladi va ariza qabul qilmaydi (ilova har ochilishda bazadan o'qiydi —
+    /// kesh yo'q), lekin admin ro'yxatida joyida turadi. Idempotent: holat allaqachon shunday
+    /// bo'lsa hech narsa o'zgarmaydi va tarixga yozilmaydi. Arxivdagini avval tiklash kerak.
+    /// </summary>
+    [HttpPut("vacancies/{id}/active")]
+    public async Task<ActionResult<VacancyDto>> SetActive(string id, VacancyActivePayload p)
+    {
+        var v = await db.Vacancies.FirstOrDefaultAsync(x => x.Id == id);
+        if (v is null) return NotFound(new { message = "Vakansiya topilmadi" });
+        if (v.Status == CareerService.VacancyArchived)
+            return BadRequest(new { message = "Vakansiya arxivda — avval uni arxivdan tiklang." });
+
+        var target = p.Active ? CareerService.VacancyActive : CareerService.VacancyPaused;
+        if (v.Status != target)
+        {
+            v.Status = target;
+            audit.Record("Vacancy", v.Id, "update", p.Active
+                ? $"Vakansiya YOQILDI (nomzodlar ilovasida ko'rinadi): {v.Title}"
+                : $"Vakansiya O'CHIRILDI (nomzodlar ilovasida ko'rinmaydi, ariza qabul qilinmaydi): {v.Title}");
+            await db.SaveChangesAsync();
+        }
+        return await WithCountsAsync(v);
+    }
+
     /// <summary>Arxivlash — ilovada ko'rinmaydi, arizalar saqlanadi.</summary>
     [HttpPost("vacancies/{id}/archive")]
     public async Task<ActionResult<VacancyDto>> Archive(string id)
@@ -171,7 +205,7 @@ public class CareerController(AppDbContext db, CareerService career, AuditServic
         var v = await db.Vacancies.FirstOrDefaultAsync(x => x.Id == id);
         if (v is null) return NotFound(new { message = "Vakansiya topilmadi" });
 
-        v.Status = "archived";
+        v.Status = CareerService.VacancyArchived;
         v.ArchivedAt = AppClock.Iso();
         v.ArchivedBy = Actor;
         audit.Record("Vacancy", v.Id, "update", $"Vakansiya arxivlandi: {v.Title}");
@@ -186,7 +220,7 @@ public class CareerController(AppDbContext db, CareerService career, AuditServic
         var v = await db.Vacancies.FirstOrDefaultAsync(x => x.Id == id);
         if (v is null) return NotFound(new { message = "Vakansiya topilmadi" });
 
-        v.Status = "active";
+        v.Status = CareerService.VacancyActive;
         v.ArchivedAt = "";
         v.ArchivedBy = "";
         audit.Record("Vacancy", v.Id, "update", $"Vakansiya arxivdan qaytarildi: {v.Title}");
@@ -292,7 +326,11 @@ public class CareerController(AppDbContext db, CareerService career, AuditServic
         return ToDto(a, history);
     }
 
-    /// <summary>Bosqichni o'zgartiradi — tarixga yoziladi va nomzodga botda xabar ketadi.</summary>
+    /// <summary>
+    /// Bosqichni o'zgartiradi — tarixga yoziladi va nomzodga botda xabar ketadi. Ariza
+    /// "Ishga qabul qilindi" bosqichiga O'TGANDA 30 kunlik moslashuv cheklisti AVTOMATIK
+    /// boshlanadi (idempotent — shu arizaga moslashuv bo'lsa yangisi ochilmaydi).
+    /// </summary>
     [HttpPost("applications/{id}/status")]
     public async Task<ActionResult<JobApplicationDto>> SetStatus(string id, JobApplicationStatusPayload p)
     {
@@ -302,15 +340,32 @@ public class CareerController(AppDbContext db, CareerService career, AuditServic
         var a = await db.JobApplications.FirstOrDefaultAsync(x => x.Id == id);
         if (a is null) return NotFound(new { message = "Ariza topilmadi" });
 
+        // Eski (legacy) bosqichga YANGI o'tish yopiq — faqat o'sha bosqichdagi arizaning izohi yangilanadi.
+        if (!CareerService.CanMoveTo(a.Status, p.Status))
+            return BadRequest(new { message = $"«{CareerService.StageOf(p.Status).Label}» — eski bosqich, " +
+                "unga o'tkazib bo'lmaydi. Voronkadagi bosqichlardan birini tanlang." });
+
         var note = (p.Note ?? "").Trim();
         if (note.Length > 2000) note = note[..2000];
 
         var oldStatus = a.Status;
-        await career.SetStatusAsync(db, a, p.Status, note, Actor);
+        var changed = await career.SetStatusAsync(db, a, p.Status, note, Actor);
         audit.Record("JobApplication", a.Id, "update",
             $"Ariza #{a.Number} bosqichi: {CareerService.StageOf(oldStatus).Label} → " +
             $"{CareerService.StageOf(a.Status).Label} ({a.FullName})" +
             (note.Length > 0 ? $" — izoh: {note}" : ""));
+
+        // MOSLASHUV — faqat bosqich haqiqatan "hired" ga O'ZGARGANDA (izohni yangilash qayta
+        // boshlamasin; o'chirilgan moslashuv izoh tahririda "tirilib" qolmasin).
+        if (changed && a.Status == CareerService.StatusHired)
+        {
+            var (onb, created) = await OnboardingService.StartForApplicationAsync(db, a, Actor, AppClock.Today);
+            if (created)
+                audit.Record(OnboardingService.AuditEntity, onb.Id, "create",
+                    $"Moslashuv (30 kun) avtomatik boshlandi: {onb.FullName} — ariza #{a.Number} " +
+                    $"«{a.VacancyTitle}» ishga qabul qilindi");
+        }
+
         await db.SaveChangesAsync();
         return ToDto(a, null);
     }
@@ -358,7 +413,22 @@ public class CareerController(AppDbContext db, CareerService career, AuditServic
         var total = rows.Sum(r => r.Count);
         var hired = byStatus.GetValueOrDefault(CareerService.StatusHired);
         var rejected = byStatus.GetValueOrDefault(CareerService.StatusRejected);
-        return new CareerStatsDto(total, total - hired - rejected, hired, rejected, byStatus);
+
+        // VORONKA: har ariza qaysi bosqichgacha yetib borgan — joriy bosqich + TARIX (rad etilgan
+        // nomzod ham qayerda to'xtagani bilan sanaladi). Tarix (ariza, bosqich) juftligiga
+        // qisqartirilib bitta so'rovda olinadi.
+        var apps = await db.JobApplications.AsNoTracking()
+            .Select(a => new { a.Id, a.Status }).ToListAsync();
+        var history = (await db.JobApplicationEvents.AsNoTracking()
+                .Select(e => new { e.ApplicationId, e.Status }).Distinct().ToListAsync())
+            .ToLookup(e => e.ApplicationId, e => e.Status);
+        var funnel = CareerService.ComputeFunnel(
+                apps.Select(a => new CareerService.FunnelInput(a.Status, history[a.Id])))
+            .Select(f => new CareerFunnelStepDto(f.Key, f.Label, f.Icon, f.Order,
+                f.Reached, f.Current, f.RejectedHere, f.FromPrevPct, f.FromStartPct))
+            .ToList();
+
+        return new CareerStatsDto(total, total - hired - rejected, hired, rejected, byStatus, funnel);
     }
 
     internal static JobApplicationDto ToDto(JobApplication a, List<JobApplicationEventDto>? history) => new(

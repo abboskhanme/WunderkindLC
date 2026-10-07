@@ -339,7 +339,9 @@ export const navByRole: Record<Role, NavItem[]> = {
             // Future'ga olindi. Marshrut o'zgarmadi: eski havolalar ishlayveradi.
             { label: 'Topshiriqlar', to: '/admin/topshiriqlar', perm: 'tasks' },
             { label: 'KPI', to: '/admin/boshqaruv/kpi', perm: 'kpi' },
-            { label: 'Vakansiyalar', to: '/admin/boshqaruv/vacancies', perm: 'vacancies' },
+            { label: 'Vakansiyalar', to: '/admin/boshqaruv/vacancies', perm: 'vacancies.list' },
+            // Yangi xodimning 30 kunlik moslashuvi — ariza "Ishga qabul qilindi" bo'lganda o'zi boshlanadi.
+            { label: 'Moslashuv (onboarding)', to: '/admin/boshqaruv/moslashuv', perm: 'vacancies.onboarding' },
             { label: 'Kameralar', to: '/admin/boshqaruv/cameras', perm: 'cameras' },
           ],
         },

@@ -279,9 +279,19 @@ export const adminPermissions: AdminPermSection[] = [
   { key: 'staff', label: 'Xodimlar' },
   { key: 'feedback', label: 'Taklif va shikoyatlar' },
   { key: 'cameras', label: 'Kameralar' },
-  // Vakansiyalar — ishga qabul moduli (Wunderkind Career boti + `/vakansiya` Mini App):
-  // vakansiya e'lonlari, nomzod arizalari va "Biz haqimizda" bloki.
-  { key: 'vacancies', label: 'Vakansiyalar' },
+  // Vakansiyalar — ishga qabul moduli (Wunderkind Career boti + `/vakansiya` Mini App).
+  // Ikki sahifa: vakansiyalar/arizalar (CV manzillari — nozik) va yangi xodimning 30 kunlik
+  // MOSLASHUVI. Yalang `vacancies` (eski yozuvlar) merosi bilan ikkalasini ham ochadi.
+  // ⚠️ Arizalar darvozasi SAHIFA kaliti bilan (`vacancies.list`): faqat moslashuv berilgan
+  // xodim yuqoriga o'qish merosi bilan nomzod CV'larini o'qiy olmasin (permissions.md §2).
+  {
+    key: 'vacancies',
+    label: 'Vakansiyalar',
+    pages: [
+      { key: 'vacancies.list', label: 'Vakansiyalar va arizalar' },
+      { key: 'vacancies.onboarding', label: 'Moslashuv (30 kunlik onboarding)' },
+    ],
+  },
   // Bosh sahifadagi markaz AI tahlili — DEFAULT faqat superadmin ko'radi; xodimga shu yerdan
   // ruxsat beriladi ("Ko'rish" = karta ko'rinadi, "Qo'shish" = qo'lda tahlil yaratish tugmasi).
   { key: 'ai', label: 'AI tahlil (bosh sahifa)' },

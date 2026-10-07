@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import type { LucideIcon } from 'lucide-react'
-import { Briefcase, Building2, UserCheck, Users, UserX } from 'lucide-react'
+import { Briefcase, Building2, ListChecks, UserCheck, Users, UserX } from 'lucide-react'
 import type { CareerStage, CareerStats, Vacancy } from '@/api/services/career'
 import { getCareerStats, getStages, getVacancies } from '@/api/services/career'
 import { PageHeader } from '@/components/ui/PageHeader'
@@ -10,6 +11,7 @@ import { usePerm } from '@/lib/permissions'
 import { VacancyListTab } from './VacancyListTab'
 import { ApplicationsTab } from './ApplicationsTab'
 import { CareerAboutTab } from './CareerAboutTab'
+import { CareerFunnel } from './CareerFunnel'
 
 type Tab = 'vacancies' | 'applications' | 'about'
 
@@ -23,16 +25,21 @@ type Tab = 'vacancies' | 'applications' | 'about'
  *    nomzodga botda avtomatik xabar ketadi);
  *  • Biz haqimizda — ilovaning birinchi ekrani (matn, manzil, ijtimoiy tarmoqlar).
  *
- * Ruxsat kaliti: `vacancies`.
+ * Ruxsat kaliti: `vacancies.list` (yalang `vacancies` merosi bilan ochadi). Ikkinchi sahifa —
+ * «Moslashuv» (`vacancies.onboarding`): ariza "Ishga qabul qilindi" bo'lganda yangi xodimning
+ * 30 kunlik cheklisti o'zi boshlanadi.
  */
 export function VacanciesPage() {
   const { can } = usePerm()
+  const canOnboarding = can('vacancies.onboarding', 'view')
   const [tab, setTab] = useState<Tab>('vacancies')
   const [stages, setStages] = useState<CareerStage[]>([])
   const [vacancies, setVacancies] = useState<Vacancy[]>([])
   const [stats, setStats] = useState<CareerStats | null>(null)
   const [vacancyFilter, setVacancyFilter] = useState('')
 
+  // Jamlanma — ikkilamchi ma'lumot (sahifaning asosiy ro'yxatlari o'z xatosini ko'rsatadi),
+  // shuning uchun xato jim: kartalar shunchaki chizilmaydi.
   const refreshStats = useCallback(() => {
     getCareerStats().then(setStats).catch(() => setStats(null))
   }, [])
@@ -55,6 +62,15 @@ export function VacanciesPage() {
         title="Vakansiyalar"
         sub="Ishga qabul boti va nomzodlar ilovasi (Wunderkind Career)"
         actions={
+          <div className="flex flex-wrap items-center gap-2">
+          {canOnboarding && (
+            <Link
+              to="/admin/boshqaruv/moslashuv"
+              className="inline-flex min-h-[31px] items-center gap-1.5 rounded-lg border border-brand-600/50 bg-white px-3 py-1 text-xs font-medium text-brand-600 hover:bg-brand-50"
+            >
+              <ListChecks className="h-4 w-4" /> Moslashuv (30 kun)
+            </Link>
+          )}
           <div className="tabs">
             <TabButton active={tab === 'vacancies'} onClick={() => setTab('vacancies')} icon={Briefcase}>
               Vakansiyalar
@@ -76,6 +92,7 @@ export function VacanciesPage() {
             <TabButton active={tab === 'about'} onClick={() => setTab('about')} icon={Building2}>
               Biz haqimizda
             </TabButton>
+          </div>
           </div>
         }
       />
@@ -107,24 +124,28 @@ export function VacanciesPage() {
         </div>
       )}
 
+      {tab === 'applications' && stats?.funnel && <CareerFunnel steps={stats.funnel} />}
+
       {tab === 'vacancies' ? (
         <VacancyListTab
-          canCreate={can('vacancies', 'create')}
-          canEdit={can('vacancies', 'edit')}
-          canDelete={can('vacancies', 'delete')}
+          canCreate={can('vacancies.list', 'create')}
+          canEdit={can('vacancies.list', 'edit')}
+          canDelete={can('vacancies.list', 'delete')}
           onOpenApplications={openApplications}
         />
       ) : tab === 'applications' ? (
         <ApplicationsTab
           stages={stages}
           vacancies={vacancies}
-          canEdit={can('vacancies', 'edit')}
-          canDelete={can('vacancies', 'delete')}
+          canEdit={can('vacancies.list', 'edit')}
+          canDelete={can('vacancies.list', 'delete')}
           vacancyFilter={vacancyFilter}
           onVacancyFilterChange={setVacancyFilter}
+          counts={stats?.byStatus}
+          onChanged={refreshStats}
         />
       ) : (
-        <CareerAboutTab canEdit={can('vacancies', 'edit')} />
+        <CareerAboutTab canEdit={can('vacancies.list', 'edit')} />
       )}
     </div>
   )

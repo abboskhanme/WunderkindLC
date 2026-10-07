@@ -29,9 +29,83 @@ public class CareerServiceTests
     {
         // Bu kalitlar bazada saqlanadi va Mini App/frontend ham AYNAN shularni kutadi —
         // o'zgartirish = buzilish. Test ataylab qattiq yozilgan.
+        // 2026-10: voronka yig'ilish talabiga moslandi — ESKI kalitlarning HAMMASI saqlangan
+        // (new, review, interview, trial, hired, rejected), yangilari: test, director.
         Assert.Equal(
-            new[] { "new", "review", "interview", "trial", "hired", "rejected" },
+            new[] { "new", "review", "test", "trial", "interview", "director", "hired", "rejected" },
             CareerService.Stages.Select(s => s.Key).ToArray());
+    }
+
+    [Fact]
+    public void Stages_EskiKalitlarningHammasi_HamonHaqiqiy()
+    {
+        // Bazadagi mavjud arizalar "noma'lum bosqich" bo'lib qolmasin — eski katalogdagi har kalit bor.
+        foreach (var eski in new[] { "new", "review", "interview", "trial", "hired", "rejected" })
+            Assert.True(CareerService.IsValidStatus(eski), $"Eski kalit yo'qolgan: {eski}");
+    }
+
+    [Fact]
+    public void FunnelStages_YigilishdagiVoronka_TartibBilan()
+    {
+        // CV qabul qilish -> Test -> Demo dars -> HR suhbati -> Rahbar (direktor) suhbati -> Ishga qabul.
+        Assert.Equal(
+            new[] { "new", "test", "trial", "interview", "director", "hired" },
+            CareerService.FunnelStages.Select(s => s.Key).ToArray());
+        Assert.Equal(
+            new[] { "CV qabul qilindi", "Test", "Demo dars", "HR suhbati", "Rahbar (direktor) suhbati", "Ishga qabul qilindi" },
+            CareerService.FunnelStages.Select(s => s.Label).ToArray());
+    }
+
+    [Fact]
+    public void FunnelStages_TartibQatiyOsuvchi()
+    {
+        var orders = CareerService.FunnelStages.Select(s => s.Order).ToList();
+        Assert.Equal(orders.OrderBy(o => o).ToList(), orders);
+        Assert.Equal(orders.Count, orders.Distinct().Count());
+    }
+
+    [Fact]
+    public void Review_EskiBosqich_VoronkadaYoq_CVBilanBirOrinda()
+    {
+        var review = CareerService.StageOf(CareerService.StatusReview);
+
+        Assert.True(review.IsLegacy);
+        Assert.DoesNotContain(CareerService.FunnelStages, s => s.Key == CareerService.StatusReview);
+        // Ma'nosi "CV ko'rib chiqilmoqda" — yo'l-xaritada CV bosqichi bilan BIR o'rinda.
+        Assert.Equal(CareerService.StageOf(CareerService.StatusNew).Order, review.Order);
+        // Faqat bitta eski bosqich bor.
+        Assert.Single(CareerService.Stages, s => s.IsLegacy);
+    }
+
+    [Theory]
+    [InlineData("new", "test", true)]
+    [InlineData("new", "director", true)]
+    [InlineData("hired", "new", true)]           // orqaga qaytarish taqiqlanmagan (admin xatosini tuzatish)
+    [InlineData("new", "review", false)]         // eski bosqichga YANGI o'tish yopiq
+    [InlineData("interview", "review", false)]
+    [InlineData("review", "review", true)]       // o'sha bosqichdagi arizaning izohini yangilash
+    [InlineData("review", "test", true)]         // eski bosqichdan chiqib ketish mumkin
+    [InlineData("new", "nomalum", false)]
+    [InlineData("new", null, false)]
+    public void CanMoveTo_EskiBosqichgaYangiOtishYopiq(string? current, string? target, bool kutilgan)
+    {
+        Assert.Equal(kutilgan, CareerService.CanMoveTo(current, target));
+    }
+
+    [Theory]
+    [InlineData("new", 1)]
+    [InlineData("review", 1)]
+    [InlineData("test", 2)]
+    [InlineData("trial", 3)]
+    [InlineData("interview", 4)]
+    [InlineData("director", 5)]
+    [InlineData("hired", 6)]
+    [InlineData("rejected", 0)]
+    [InlineData("nomalum", 0)]
+    [InlineData(null, 0)]
+    public void FunnelOrderOf_KalitlarniVoronkaOrniga(string? key, int kutilgan)
+    {
+        Assert.Equal(kutilgan, CareerService.FunnelOrderOf(key));
     }
 
     [Fact]
@@ -64,8 +138,12 @@ public class CareerServiceTests
     }
 
     [Theory]
-    [InlineData("new", "Yangi ariza")]
-    [InlineData("review", "Ko'rib chiqilmoqda")]
+    [InlineData("new", "CV qabul qilindi")]
+    [InlineData("review", "Ko'rib chiqilmoqda (eski)")]
+    [InlineData("test", "Test")]
+    [InlineData("trial", "Demo dars")]
+    [InlineData("interview", "HR suhbati")]
+    [InlineData("director", "Rahbar (direktor) suhbati")]
     [InlineData("hired", "Ishga qabul qilindi")]
     [InlineData("rejected", "Rad etildi")]
     public void StageOf_MavjudKalit_TogriBosqich(string key, string label)
@@ -92,6 +170,8 @@ public class CareerServiceTests
     [InlineData("review", true)]
     [InlineData("interview", true)]
     [InlineData("trial", true)]
+    [InlineData("test", true)]
+    [InlineData("director", true)]
     [InlineData("hired", true)]
     [InlineData("rejected", true)]
     [InlineData("deleted", false)]
@@ -101,6 +181,127 @@ public class CareerServiceTests
     public void IsValidStatus_FaqatKatalogKalitlari(string? key, bool kutilgan)
     {
         Assert.Equal(kutilgan, CareerService.IsValidStatus(key));
+    }
+
+    /* =========================================================================================
+     *  VORONKA KONVERSIYASI — ComputeFunnel
+     * ========================================================================================= */
+
+    private static CareerService.FunnelInput A(string status, params string[] history) => new(status, history);
+
+    private static CareerService.FunnelStep Qadam(List<CareerService.FunnelStep> f, string key) =>
+        f.Single(s => s.Key == key);
+
+    [Fact]
+    public void ComputeFunnel_BoshRoyxat_HammasiNol()
+    {
+        var f = CareerService.ComputeFunnel([]);
+
+        Assert.Equal(CareerService.FunnelStages.Count, f.Count);
+        Assert.All(f, s => Assert.Equal(0, s.Reached));
+        Assert.All(f, s => Assert.Equal(0, s.FromStartPct));
+        Assert.Equal(0, f[0].FromPrevPct);
+    }
+
+    [Fact]
+    public void ComputeFunnel_YetibBorganlar_VaKonversiya()
+    {
+        var f = CareerService.ComputeFunnel(
+        [
+            A("new", "new"),
+            A("new", "new"),
+            A("test", "new", "test"),
+            A("trial", "new", "test", "trial"),
+            A("hired", "new", "test", "trial", "interview", "director", "hired"),
+        ]);
+
+        Assert.Equal(5, Qadam(f, "new").Reached);
+        Assert.Equal(3, Qadam(f, "test").Reached);
+        Assert.Equal(2, Qadam(f, "trial").Reached);
+        Assert.Equal(1, Qadam(f, "interview").Reached);
+        Assert.Equal(1, Qadam(f, "hired").Reached);
+
+        Assert.Equal(100, Qadam(f, "new").FromPrevPct);
+        Assert.Equal(60, Qadam(f, "test").FromPrevPct);   // 3/5
+        Assert.Equal(66, Qadam(f, "trial").FromPrevPct);  // 2/3 — pastga yaxlitlanadi
+        Assert.Equal(50, Qadam(f, "interview").FromPrevPct);
+        Assert.Equal(20, Qadam(f, "hired").FromStartPct);  // 1/5
+
+        Assert.Equal(2, Qadam(f, "new").Current);
+        Assert.Equal(1, Qadam(f, "hired").Current);
+    }
+
+    [Fact]
+    public void ComputeFunnel_RadEtilgan_QayerdaToxtaganiBilanSanaladi()
+    {
+        // Demo darsdan keyin rad etilgan nomzod: CV, Test, Demo dars — "o'tilgan", HR — yo'q.
+        var f = CareerService.ComputeFunnel([A("rejected", "new", "test", "trial", "rejected")]);
+
+        Assert.Equal(1, Qadam(f, "trial").Reached);
+        Assert.Equal(0, Qadam(f, "interview").Reached);
+        Assert.Equal(1, Qadam(f, "trial").RejectedHere);
+        Assert.Equal(0, Qadam(f, "new").RejectedHere);
+        Assert.All(f, s => Assert.Equal(0, s.Current)); // rad etilgan hech bir bosqichda "turmaydi"
+    }
+
+    [Fact]
+    public void ComputeFunnel_BosqichOtkazibYuborilsa_OraliqlarOtilganSanaladi()
+    {
+        // CV → to'g'ridan-to'g'ri HR suhbati: test va demo dars ham "yetib borilgan" hisoblanadi.
+        var f = CareerService.ComputeFunnel([A("interview", "new", "interview")]);
+
+        Assert.Equal(1, Qadam(f, "test").Reached);
+        Assert.Equal(1, Qadam(f, "trial").Reached);
+        Assert.Equal(1, Qadam(f, "interview").Reached);
+        Assert.Equal(0, Qadam(f, "director").Reached);
+    }
+
+    [Fact]
+    public void ComputeFunnel_EskiReview_CVBosqichigaQoshiladi()
+    {
+        var f = CareerService.ComputeFunnel([A("review", "new", "review")]);
+
+        Assert.Equal(1, Qadam(f, "new").Reached);
+        Assert.Equal(1, Qadam(f, "new").Current);
+        Assert.Equal(0, Qadam(f, "test").Reached);
+        Assert.DoesNotContain(f, s => s.Key == "review");
+    }
+
+    [Fact]
+    public void ComputeFunnel_TarixsizVaNomalumBosqich_KamidaCVgaYetgan()
+    {
+        // Buzuq/eski yozuv (tarixsiz, noma'lum bosqich) ham jami sonda — birinchi bosqichda.
+        var f = CareerService.ComputeFunnel([A("nomalum"), A("rejected")]);
+
+        Assert.Equal(2, Qadam(f, "new").Reached);
+        Assert.Equal(1, Qadam(f, "new").RejectedHere);
+        Assert.Equal(0, Qadam(f, "test").Reached);
+    }
+
+    /* =========================================================================================
+     *  VAKANSIYA HOLATI — ON/OFF
+     * ========================================================================================= */
+
+    [Theory]
+    [InlineData("active", true)]
+    [InlineData("paused", true)]
+    [InlineData("archived", true)]
+    [InlineData("", false)]
+    [InlineData(null, false)]
+    [InlineData("Active", false)]
+    [InlineData("deleted", false)]
+    public void IsValidVacancyStatus_FaqatUchHolat(string? status, bool kutilgan)
+    {
+        Assert.Equal(kutilgan, CareerService.IsValidVacancyStatus(status));
+    }
+
+    [Fact]
+    public void VacancyHolatlari_EskiQiymatlarOzgarmagan()
+    {
+        // Bazadagi vakansiyalar "active"/"archived" bilan yozilgan — qiymatlar o'zgarmasin.
+        Assert.Equal("active", CareerService.VacancyActive);
+        Assert.Equal("archived", CareerService.VacancyArchived);
+        Assert.Equal("paused", CareerService.VacancyPaused);
     }
 
     /* =========================================================================================

@@ -9,10 +9,23 @@ import { api } from '../client'
  * yuritadi — bosqich o'zgarganda nomzodga botda avtomatik xabar ketadi.
  */
 
-export type VacancyStatus = 'active' | 'archived'
+/** `active` — yoqilgan (ilovada ko'rinadi) · `paused` — O'CHIRILGAN (OFF, vaqtincha yopiq) · `archived` */
+export type VacancyStatus = 'active' | 'paused' | 'archived'
 export type EmploymentType = 'full' | 'part' | 'shift' | 'remote'
-/** Ariza bosqichlari — backenddagi `CareerService.Stages` bilan bir xil kalitlar */
-export type ApplicationStatus = 'new' | 'review' | 'interview' | 'trial' | 'hired' | 'rejected'
+/**
+ * Ariza bosqichlari — backenddagi `CareerService.Stages` bilan bir xil kalitlar.
+ * Voronka: new (CV) → test → trial (Demo dars) → interview (HR suhbati) → director → hired;
+ * `rejected` — yakuniy natija; `review` — ESKI bosqich (faqat mavjud arizalarda).
+ */
+export type ApplicationStatus =
+  | 'new'
+  | 'review'
+  | 'test'
+  | 'trial'
+  | 'interview'
+  | 'director'
+  | 'hired'
+  | 'rejected'
 
 export interface CareerAbout {
   title: string
@@ -122,6 +135,26 @@ export interface CareerStage {
   icon: string
   order: number
   isFinal: boolean
+  /** ESKI bosqich: ko'rsatiladi, lekin yangi o'tish uchun taklif qilinmaydi */
+  isLegacy?: boolean
+}
+
+/** Voronka qadami — "nechta nomzod shu bosqichgacha yetib bordi" */
+export interface CareerFunnelStep {
+  key: ApplicationStatus
+  label: string
+  icon: string
+  order: number
+  /** Shu bosqichga (yoki undan keyingisiga) yetib borganlar */
+  reached: number
+  /** Hozir aynan shu bosqichda */
+  current: number
+  /** Shu bosqichda to'xtab, rad etilganlar */
+  rejectedHere: number
+  /** Oldingi bosqichdan o'tish ulushi, % */
+  fromPrevPct: number
+  /** Jami arizalardan ulush, % */
+  fromStartPct: number
 }
 
 export interface CareerStats {
@@ -131,6 +164,8 @@ export interface CareerStats {
   hired: number
   rejected: number
   byStatus: Record<string, number>
+  /** Voronka konversiyasi (eski server bermasa — yo'q) */
+  funnel?: CareerFunnelStep[]
 }
 
 const BASE = '/admin/career'
@@ -156,9 +191,11 @@ export async function saveAbout(payload: Partial<CareerAbout>): Promise<CareerAb
 
 /* ---------- Vakansiyalar ---------- */
 
-export async function getVacancies(status?: VacancyStatus): Promise<Vacancy[]> {
+/** `status` — bitta holat yoki bir nechtasi (`['active', 'paused']` — joriy ro'yxat). */
+export async function getVacancies(status?: VacancyStatus | VacancyStatus[]): Promise<Vacancy[]> {
+  const value = Array.isArray(status) ? status.join(',') : status
   const { data } = await api.get<Vacancy[]>(`${BASE}/vacancies`, {
-    params: { status: status || undefined },
+    params: { status: value || undefined },
   })
   return data
 }
@@ -170,6 +207,15 @@ export async function createVacancy(payload: VacancyPayload): Promise<Vacancy> {
 
 export async function updateVacancy(id: string, payload: VacancyPayload): Promise<Vacancy> {
   const { data } = await api.put<Vacancy>(`${BASE}/vacancies/${id}`, payload)
+  return data
+}
+
+/**
+ * BITTA TUGMA bilan yoqish/o'chirish (ON/OFF). O'chirilgan vakansiya nomzodlar ilovasida
+ * (Telegram bot Mini App'i va `/vakansiya` sahifasi) darhol ko'rinmay qoladi.
+ */
+export async function setVacancyActive(id: string, active: boolean): Promise<Vacancy> {
+  const { data } = await api.put<Vacancy>(`${BASE}/vacancies/${id}/active`, { active })
   return data
 }
 

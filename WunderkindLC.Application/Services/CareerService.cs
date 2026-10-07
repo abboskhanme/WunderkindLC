@@ -17,28 +17,61 @@ public class CareerService(CareerTelegramService careerBot, ILogger<CareerServic
      * ============================================================================================= */
 
     public const string StatusNew = "new";
+    /// <summary>ESKI bosqich ("Ko'rib chiqilmoqda") — yangi voronkada YO'Q, faqat mavjud arizalar
+    /// uchun saqlangan (<see cref="Stage.IsLegacy"/>). Ma'nosi "CV ko'rib chiqilmoqda", shuning
+    /// uchun yo'l-xaritada <see cref="StatusNew"/> bilan BIR o'rinda turadi (tartibi bir xil).</summary>
     public const string StatusReview = "review";
-    public const string StatusInterview = "interview";
+    public const string StatusTest = "test";
+    /// <summary>"Demo dars" — eski "Sinov bosqichi" kaliti (ma'nosi bir xil: sinov/namunaviy dars).</summary>
     public const string StatusTrial = "trial";
+    /// <summary>"HR suhbati" — eski "Suhbatga taklif" kaliti (birinchi suhbat — HR bilan).</summary>
+    public const string StatusInterview = "interview";
+    /// <summary>"Rahbar (direktor) suhbati" — yangi bosqich.</summary>
+    public const string StatusDirector = "director";
     public const string StatusHired = "hired";
     public const string StatusRejected = "rejected";
 
     /// <param name="Key">Bosqich kaliti (bazada shu saqlanadi).</param>
     /// <param name="Label">Admin panelidagi nomi.</param>
-    /// <param name="CandidateText">Nomzod "Arizalarim"da ko'radigan matn.</param>
+    /// <param name="CandidateText">Nomzod "Arizalarim"da va bot xabarida ko'radigan matn.</param>
     /// <param name="Icon">Emoji (bot xabari va ilovada).</param>
-    /// <param name="Order">Yo'l-xaritadagi tartib (rad etish — yakuniy, tartibi yo'q).</param>
+    /// <param name="Order">Yo'l-xaritadagi tartib (rad etish — yakuniy, tartibi 99).</param>
     /// <param name="IsFinal">Yakuniy bosqichmi (keyin o'zgarmaydi degani emas — shunchaki natija).</param>
-    public record Stage(string Key, string Label, string CandidateText, string Icon, int Order, bool IsFinal);
+    /// <param name="IsLegacy">ESKI bosqich: mavjud arizalar uchun haqiqiy (ko'rsatiladi, undan
+    /// chiqib ketish mumkin), lekin YANGI o'tish uchun taklif qilinmaydi va qabul qilinmaydi
+    /// (<see cref="CanMoveTo"/>). Voronkada o'zi bilan bir xil tartibli asosiy bosqichga qo'shiladi.</param>
+    public record Stage(string Key, string Label, string CandidateText, string Icon, int Order, bool IsFinal,
+        bool IsLegacy = false);
 
-    /// <summary>Barcha bosqichlar — TARTIB bilan. "rejected" ro'yxat oxirida (yo'l-xaritaga kirmaydi).</summary>
+    /// <summary>
+    /// Barcha bosqichlar — TARTIB bilan. Voronka (2026-10 yig'ilishi):
+    /// <b>CV qabul qilindi → Test → Demo dars → HR suhbati → Rahbar (direktor) suhbati → Ishga
+    /// qabul qilindi</b>, yakuniy natija — "Rad etildi" (yo'l-xaritaga kirmaydi).
+    ///
+    /// <para>⚠️ ESKI KALITLAR SAQLANGAN (bazadagi arizalar "noma'lum bosqich" bo'lib qolmasin):
+    /// <c>new</c> = CV, <c>trial</c> = Demo dars, <c>interview</c> = HR suhbati, <c>hired</c>.
+    /// Yangilari — <c>test</c>, <c>director</c>. <c>review</c> — ESKI (legacy): ko'rsatiladi,
+    /// lekin yangi o'tish uchun yopiq. Eski tartibda <c>interview</c> <c>trial</c> dan OLDIN edi —
+    /// endi voronka bo'yicha keyin (tartib bazada saqlanmaydi, faqat shu katalogda).</para>
+    /// </summary>
     public static readonly IReadOnlyList<Stage> Stages =
     [
-        new(StatusNew, "Yangi ariza", "Arizangiz qabul qilindi va navbatda turibdi.", "📥", 1, false),
-        new(StatusReview, "Ko'rib chiqilmoqda", "Hujjatlaringiz mutaxassislar tomonidan o'rganilmoqda.", "🔍", 2, false),
-        new(StatusInterview, "Suhbatga taklif", "Siz suhbatga taklif qilindingiz — tafsilotlar quyida.", "🗣", 3, false),
-        new(StatusTrial, "Sinov bosqichi", "Sinov dars / amaliy topshiriq bosqichidasiz.", "🎯", 4, false),
-        new(StatusHired, "Ishga qabul qilindi", "Tabriklaymiz! Siz jamoamizga qabul qilindingiz.", "✅", 5, true),
+        new(StatusNew, "CV qabul qilindi",
+            "CV'ingiz qabul qilindi va ko'rib chiqilmoqda. Keyingi bosqich haqida shu yerda xabar beramiz.",
+            "📥", 1, false),
+        new(StatusReview, "Ko'rib chiqilmoqda (eski)",
+            "Hujjatlaringiz mutaxassislar tomonidan o'rganilmoqda.", "🔍", 1, false, IsLegacy: true),
+        new(StatusTest, "Test",
+            "Siz test bosqichiga o'tdingiz. Test vaqti va tafsilotlari quyidagi izohda.", "📝", 2, false),
+        new(StatusTrial, "Demo dars",
+            "Siz demo dars bosqichiga o'tdingiz. Dars mavzusi, sanasi va vaqti quyidagi izohda.", "🎯", 3, false),
+        new(StatusInterview, "HR suhbati",
+            "Sizni HR suhbatiga taklif qilamiz. Suhbat vaqti va joyi quyidagi izohda.", "🗣", 4, false),
+        new(StatusDirector, "Rahbar (direktor) suhbati",
+            "Oxirgi qadam — markaz rahbari (direktor) bilan suhbat. Vaqti quyidagi izohda.", "👔", 5, false),
+        new(StatusHired, "Ishga qabul qilindi",
+            "Tabriklaymiz! Siz jamoamizga qabul qilindingiz. Birinchi 30 kunlik moslashuv rejasi " +
+            "bo'yicha HR bo'limi siz bilan bog'lanadi.", "✅", 6, true),
         new(StatusRejected, "Rad etildi", "Afsuski, bu safar sizning nomzodingiz tanlanmadi.", "❌", 99, true),
     ];
 
@@ -46,6 +79,96 @@ public class CareerService(CareerTelegramService careerBot, ILogger<CareerServic
         Stages.FirstOrDefault(s => s.Key == key) ?? Stages[0];
 
     public static bool IsValidStatus(string? key) => Stages.Any(s => s.Key == key);
+
+    /// <summary>
+    /// Arizani <paramref name="target"/> bosqichiga o'tkazish mumkinmi. ESKI (legacy) bosqichga
+    /// faqat ariza ALLAQACHON o'sha bosqichda bo'lsa (izohni yangilash) — yangi o'tish yopiq.
+    /// </summary>
+    public static bool CanMoveTo(string? current, string? target)
+    {
+        var stage = Stages.FirstOrDefault(s => s.Key == target);
+        if (stage is null) return false;
+        return !stage.IsLegacy || current == target;
+    }
+
+    /// <summary>Asosiy voronka bosqichlari (tartib bilan): eski va "rad etildi" kirmaydi.</summary>
+    public static IReadOnlyList<Stage> FunnelStages =>
+        Stages.Where(s => !s.IsLegacy && s.Key != StatusRejected).OrderBy(s => s.Order).ToList();
+
+    /// <summary>
+    /// Bosqichning voronkadagi o'rni (1..N). Eski bosqich — o'zi bilan bir xil tartibli asosiy
+    /// bosqichning o'rni; "rad etildi" va noma'lum kalit — 0 (voronkaga hissa qo'shmaydi).
+    /// </summary>
+    public static int FunnelOrderOf(string? key)
+    {
+        var s = Stages.FirstOrDefault(x => x.Key == key);
+        return s is null || s.Key == StatusRejected ? 0 : s.Order;
+    }
+
+    /* =============================================================================================
+     *  VORONKA KONVERSIYASI — "nechta nomzod qaysi bosqichgacha yetib bordi"
+     * ============================================================================================= */
+
+    /// <summary>Bitta ariza: joriy bosqich + tarixda uchragan bosqichlar.</summary>
+    public record FunnelInput(string Status, IEnumerable<string> History);
+
+    /// <summary>Voronka qadami natijasi.</summary>
+    /// <param name="Reached">Shu bosqichga (yoki undan keyingisiga) YETIB BORGAN arizalar soni.</param>
+    /// <param name="Current">Hozir AYNAN shu bosqichda turgan arizalar (eski bosqich — o'z o'rniga qo'shiladi).</param>
+    /// <param name="RejectedHere">Eng uzoq yetgan bosqichi shu bo'lib, RAD ETILGANLAR — "qayerda yo'qotyapmiz".</param>
+    /// <param name="FromPrevPct">Oldingi bosqichdan o'tish ulushi (%, butun; birinchi qadam — 100).</param>
+    /// <param name="FromStartPct">Jami arizalardan ulush (%, butun).</param>
+    public record FunnelStep(string Key, string Label, string Icon, int Order,
+        int Reached, int Current, int RejectedHere, int FromPrevPct, int FromStartPct);
+
+    /// <summary>
+    /// Voronka konversiyasi (sof funksiya). Ariza qaysi bosqichgacha "yetib borgan" — joriy
+    /// bosqichi VA tarixidagi bosqichlarning ENG UZOG'I bo'yicha: rad etilgan nomzod ham qaysi
+    /// bosqichda to'xtagani bilan hisoblanadi, bosqich o'tkazib yuborilgan bo'lsa (CV → HR) oraliq
+    /// bosqichlar ham "o'tilgan" sanaladi. Har ariza kamida birinchi bosqichga (CV) yetgan.
+    /// </summary>
+    public static List<FunnelStep> ComputeFunnel(IEnumerable<FunnelInput> apps)
+    {
+        var funnel = FunnelStages;
+        var reached = new int[funnel.Count];
+        var current = new int[funnel.Count];
+        var rejectedHere = new int[funnel.Count];
+        var total = 0;
+
+        foreach (var a in apps)
+        {
+            total++;
+            var max = a.History.Append(a.Status).Select(FunnelOrderOf).DefaultIfEmpty(0).Max();
+            if (max < funnel[0].Order) max = funnel[0].Order;
+            var cur = FunnelOrderOf(a.Status);
+            for (var i = 0; i < funnel.Count; i++)
+            {
+                if (max >= funnel[i].Order) reached[i]++;
+                if (cur == funnel[i].Order) current[i]++;
+                if (a.Status == StatusRejected && max == funnel[i].Order) rejectedHere[i]++;
+            }
+        }
+
+        static int Pct(int part, int whole) => whole <= 0 ? 0 : (int)Math.Floor(part * 100.0 / whole);
+        return funnel.Select((s, i) => new FunnelStep(
+            s.Key, s.Label, s.Icon, s.Order, reached[i], current[i], rejectedHere[i],
+            i == 0 ? (total > 0 ? 100 : 0) : Pct(reached[i], reached[i - 1]),
+            Pct(reached[i], total))).ToList();
+    }
+
+    /* =============================================================================================
+     *  VAKANSIYA HOLATI — bitta tugma bilan YOQISH/O'CHIRISH (ON/OFF) + arxiv
+     * ============================================================================================= */
+
+    /// <summary>Yoqilgan — Mini App'da ko'rinadi va ariza qabul qiladi.</summary>
+    public const string VacancyActive = "active";
+    /// <summary>O'chirilgan (OFF) — vaqtincha yopiq: Mini App'da KO'RINMAYDI, ariza qabul qilmaydi,
+    /// lekin admin ro'yxatida joyida turadi va bitta tugma bilan qayta yoqiladi.</summary>
+    public const string VacancyPaused = "paused";
+    /// <summary>Arxivlangan — butunlay yopilgan (alohida "Arxiv" filtrida).</summary>
+    public const string VacancyArchived = "archived";
+
+    public static bool IsValidVacancyStatus(string? s) => s is VacancyActive or VacancyPaused or VacancyArchived;
 
     /* =============================================================================================
      *  ARIZA YARATISH

@@ -121,6 +121,11 @@ public static class AuditSections
         ["Contract"] = "contracts",
         ["Vacancy"] = "vacancies",
         ["JobApplication"] = "vacancies",
+        // MOSLASHUV (onboarding) — yangi xodimning 30 kunlik cheklisti va uning qadamlar katalogi.
+        // Vakansiyalar bo'limida: moslashuv ishga qabul voronkasining DAVOMI (ariza "Ishga qabul
+        // qilindi" bo'lganda avtomatik boshlanadi), ruxsati ham shu bo'limda (`vacancies.onboarding`).
+        ["Onboarding"] = "vacancies",
+        ["OnboardingStep"] = "vacancies",
         ["Staff"] = "staff",
         // --- KPI (xodimlar samaradorligi) ---
         // ⚠️ ALOHIDA "kpi" bo'limi ATAYIN OCHILMADI: `All` ro'yxatiga yangi chip qo'shish

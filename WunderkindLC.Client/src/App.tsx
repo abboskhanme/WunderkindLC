@@ -111,6 +111,7 @@ const SupportTelegramPage = lazy(() => import('@/pages/admin/messages/SupportTel
 const LocationPage = lazy(() => import('@/pages/admin/locations/LocationPage').then((m) => ({ default: m.LocationPage })))
 const CamerasPage = lazy(() => import('@/pages/admin/cameras/CamerasPage').then((m) => ({ default: m.CamerasPage })))
 const VacanciesPage = lazy(() => import('@/pages/admin/vacancies/VacanciesPage').then((m) => ({ default: m.VacanciesPage })))
+const OnboardingPage = lazy(() => import('@/pages/admin/onboarding/OnboardingPage').then((m) => ({ default: m.OnboardingPage })))
 const ParentsPage = lazy(() => import('@/pages/admin/parents/ParentsPage').then((m) => ({ default: m.ParentsPage })))
 const TeacherAppPage = lazy(() => import('@/pages/admin/parents/TeacherAppPage').then((m) => ({ default: m.TeacherAppPage })))
 const FinancePage = lazy(() => import('@/pages/admin/finance/FinancePage').then((m) => ({ default: m.FinancePage })))
@@ -424,7 +425,9 @@ export default function App() {
             <Route path="boshqaruv/kpi/tiketlar" element={<RequirePerm perm="kpi.tickets"><KpiTicketsPage /></RequirePerm>} />
             <Route path="boshqaruv/kpi/yopish" element={<RequirePerm perm="kpi.close"><KpiClosePage /></RequirePerm>} />
             <Route path="boshqaruv/kpi/qoidalar" element={<RequirePerm perm="kpi.rules"><KpiRulesPage /></RequirePerm>} />
-            <Route path="boshqaruv/vacancies" element={<RequirePerm perm="vacancies"><VacanciesPage /></RequirePerm>} />
+            <Route path="boshqaruv/vacancies" element={<RequirePerm perm="vacancies.list"><VacanciesPage /></RequirePerm>} />
+            {/* Moslashuv (30 kunlik onboarding) — vakansiyalar bo'limining ikkinchi sahifasi. */}
+            <Route path="boshqaruv/moslashuv" element={<RequirePerm perm="vacancies.onboarding"><OnboardingPage /></RequirePerm>} />
             <Route path="boshqaruv/cameras" element={<RequirePerm perm="cameras"><CamerasPage /></RequirePerm>} />
             {/* Xodimlar (rol bilan qo'shish) va Rollar — 2026-09-25. Eski `boshqaruv/staff` redirect. */}
             <Route path="boshqaruv/xodimlar" element={<XodimlarEntry />} />
