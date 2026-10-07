@@ -118,13 +118,15 @@ const CROSS_INVALIDATION: Record<string, string[]> = {
   /* ─────────── PUL ─────────── */
   // Tranzaksiya/to'lov/qaytarish/hisoblash: o'quvchi BALANSI ro'yxatlarda va guruh
   // a'zolari qatorida chiqadi, kitob qarzi va retention-bonus ham shu pul oqimidan.
+  // Qabul cheklisti («to'lov qabul qilingan») va kassa balansi ham shu puldan.
   '/admin/finance': ['/admin/students', '/admin/kassa', '/admin/classes', '/admin/teachers',
-    '/admin/books', '/admin/retention-bonus', '/student/finance'],
+    '/admin/books', '/admin/retention-bonus', '/student/finance', '/admin/student-intake',
+    '/admin/cashboxes'],
   // Kassa — o'sha pul, boshqa eshik (`POST /admin/kassa/students/{id}/payments`).
   '/admin/kassa': ['/admin/finance', '/admin/students', '/admin/classes', '/admin/books',
-    '/admin/retention-bonus', '/student/finance'],
-  // Kitob sotuvi tasdiqlansa moliya tranzaksiyasi va o'quvchi qarzi o'zgaradi.
-  '/admin/books': ['/admin/finance', '/admin/kassa', '/admin/students'],
+    '/admin/retention-bonus', '/student/finance', '/admin/student-intake', '/admin/cashboxes'],
+  // Kitob sotuvi tasdiqlansa moliya tranzaksiyasi va o'quvchi qarzi o'zgaradi; pul kassaga tushadi.
+  '/admin/books': ['/admin/finance', '/admin/kassa', '/admin/students', '/admin/cashboxes'],
   // Bonus o'qituvchi maoshidan to'lanadi.
   '/admin/retention-bonus': ['/admin/finance', '/admin/teachers', '/admin/students',
     '/teacher/retention-bonus'],
@@ -134,14 +136,16 @@ const CROSS_INVALIDATION: Record<string, string[]> = {
   // yozuvi, navbatdagi snapshot, portal ko'rinishi (login blok, sertifikat) — hammasi.
   '/admin/students': ['/admin/classes', '/admin/finance', '/admin/kassa', '/admin/journal',
     '/admin/student-attendance', '/admin/contacts', '/admin/archive', '/admin/grading',
-    '/admin/course-analytics', '/admin/test-results', '/admin/parents', '/student'],
+    '/admin/course-analytics', '/admin/test-results', '/admin/parents', '/student',
+    '/admin/student-intake'],
   // A'zolik amallari (qo'shish/chiqarish/muzlatish/ko'chirish/yopish) IKKI tomonni ham
   // o'zgartiradi va `billing.md` bo'yicha oylik hisobni qayta yozadi; jadval, xona bandligi
   // va o'qituvchi maoshi ham guruhdan kelib chiqadi.
   '/admin/classes': ['/admin/students', '/admin/finance', '/admin/kassa', '/admin/journal',
     '/admin/student-attendance', '/admin/grading', '/admin/course-analytics', '/admin/schedule',
     '/admin/rooms', '/admin/teachers', '/admin/archive', '/admin/curriculum',
-    '/admin/retention-bonus', '/admin/retention-loss', '/student', '/teacher'],
+    '/admin/retention-bonus', '/admin/retention-loss', '/student', '/teacher',
+    '/admin/student-intake'],
   // Umumiy arxiv uchta ro'yxatga qaytaradi.
   '/admin/archive': ['/admin/students', '/admin/teachers', '/admin/classes'],
   '/admin/parents': ['/admin/students'],
@@ -234,7 +238,7 @@ const CROSS_INVALIDATION: Record<string, string[]> = {
     '/admin/contacts', '/admin/lead-forms', '/admin/level-tests'],
 
   /* ─────────── HUJJAT · MA'LUMOTNOMA · SAYT ─────────── */
-  '/admin/contracts': ['/admin/students', '/student/contracts'],
+  '/admin/contracts': ['/admin/students', '/student/contracts', '/admin/student-intake'],
   '/admin/cameras': [],
   // Sabablar katalogi o'chirish/muzlatish/chiqarish oqimlarining ochiladigan ro'yxati.
   '/admin/action-reasons': ['/admin/classes', '/admin/students', '/admin/finance',

@@ -50,6 +50,11 @@ public static class BookFinance
         if (!BookSalesService.IsPaid(order)) return null;
         var amount = BookSalesService.NetTotal(order);
         if (amount <= 0) return null;
+        // Bir buyurtmaga BITTA kirim: bunday qator Moliya'da tahrirlanmaydi/bekor qilinmaydi, ya'ni
+        // takrori (poyga yoki qayta chaqiruv) kassada abadiy qolardi.
+        if (db.FinanceTransactions.Local.Any(t => t.BookOrderId == order.Id && t.Direction == "income")
+            || await db.FinanceTransactions.AnyAsync(t => t.BookOrderId == order.Id && t.Direction == "income", ct))
+            return null;
 
         var tx = new FinanceTransaction
         {

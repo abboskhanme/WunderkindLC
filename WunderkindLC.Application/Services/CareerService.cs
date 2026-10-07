@@ -41,7 +41,11 @@ public class CareerService(CareerTelegramService careerBot, ILogger<CareerServic
     /// chiqib ketish mumkin), lekin YANGI o'tish uchun taklif qilinmaydi va qabul qilinmaydi
     /// (<see cref="CanMoveTo"/>). Voronkada o'zi bilan bir xil tartibli asosiy bosqichga qo'shiladi.</param>
     public record Stage(string Key, string Label, string CandidateText, string Icon, int Order, bool IsFinal,
-        bool IsLegacy = false);
+        bool IsLegacy = false, string? CandidateLabel = null)
+    {
+        /// <summary>NOMZODGA ko'rinadigan nom (Mini App, bot xabari) — "(eski)" kabi ichki belgisiz.</summary>
+        public string PublicLabel => CandidateLabel ?? Label;
+    }
 
     /// <summary>
     /// Barcha bosqichlar — TARTIB bilan. Voronka (2026-10 yig'ilishi):
@@ -60,7 +64,8 @@ public class CareerService(CareerTelegramService careerBot, ILogger<CareerServic
             "CV'ingiz qabul qilindi va ko'rib chiqilmoqda. Keyingi bosqich haqida shu yerda xabar beramiz.",
             "📥", 1, false),
         new(StatusReview, "Ko'rib chiqilmoqda (eski)",
-            "Hujjatlaringiz mutaxassislar tomonidan o'rganilmoqda.", "🔍", 1, false, IsLegacy: true),
+            "Hujjatlaringiz mutaxassislar tomonidan o'rganilmoqda.", "🔍", 1, false, IsLegacy: true,
+            CandidateLabel: "Ko'rib chiqilmoqda"),
         new(StatusTest, "Test",
             "Siz test bosqichiga o'tdingiz. Test vaqti va tafsilotlari quyidagi izohda.", "📝", 2, false),
         new(StatusTrial, "Demo dars",
@@ -257,7 +262,7 @@ public class CareerService(CareerTelegramService careerBot, ILogger<CareerServic
                 $"{stage.Icon} <b>Arizangiz holati yangilandi</b>",
                 "",
                 $"💼 Vakansiya: <b>{Esc(app.VacancyTitle)}</b>",
-                $"📌 Bosqich: <b>{Esc(stage.Label)}</b>",
+                $"📌 Bosqich: <b>{Esc(stage.PublicLabel)}</b>",
                 "",
                 Esc(stage.CandidateText),
             };

@@ -41,7 +41,8 @@ describe('bosh sahifa kartochkalari', () => {
 
   it("aniq ro'yxati BOR kartochkalar o'sha ro'yxatga olib boradi", () => {
     const to = Object.fromEntries(HOME_CARDS.map((c) => [c.key, c.to]))
-    expect(to.orders).toBe('/admin/leads?status=lead')
+    // Kartochka yo'qotilgan lidlarni sanamaydi — ro'yxat ham ularni yashiradi (`lost=hide`).
+    expect(to.orders).toBe('/admin/leads?status=lead&lost=hide')
     expect(to.firstLesson).toBe('/admin/leads/birinchi-dars?color=upcoming')
     expect(to.newStudents).toBe('/admin/students/yangi')
     expect(to.activeStudents).toBe('/admin/students/aktiv')

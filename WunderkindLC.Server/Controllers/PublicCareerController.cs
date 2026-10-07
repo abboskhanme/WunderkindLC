@@ -223,7 +223,7 @@ public class PublicCareerController(
 
         return new PublicApplicationDto(
             a.Id, a.Number, a.VacancyTitle,
-            a.Status, stage.Label, stage.Icon, stage.CandidateText, a.StatusNote,
+            a.Status, stage.PublicLabel, stage.Icon, stage.CandidateText, a.StatusNote,
             a.CreatedAt, a.StatusChangedAt, history);
     }
 

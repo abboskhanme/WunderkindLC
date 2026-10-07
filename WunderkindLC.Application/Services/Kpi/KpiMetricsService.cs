@@ -1423,6 +1423,7 @@ public static class KpiMetricsService
             var staleFrom = (ParseDate(dayIso) ?? AppClock.Today).AddDays(-30).ToString("yyyy-MM-dd");
             var stale = await db.Leads.AsNoTracking()
                 .CountAsync(l => l.AssigneeUserId == userId && l.ConvertedStudentId == null
+                                 && l.LostAt == null   // yo'qotilgan lid YOPILGAN — jarima emas
                                  && string.Compare(l.CreatedAt, staleFrom) < 0, ct);
             signals.Add(new KpiSignalDto("staleLeads", "30 kundan eski ochiq lid", stale,
                 stale == 0 ? "ok" : "warn", LinkLeads));

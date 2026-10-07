@@ -422,6 +422,9 @@ public class BooksController(AppDbContext db, TelegramService telegram, IWebHost
     [HttpPost("orders/{id}/approve")]
     public async Task<ActionResult<BookOrderDto>> Approve(string id)
     {
+        // POYGA: ikki tab/kassir bir buyurtmani bir vaqtda o'zgartirsa (to'lov ↔ qaytarish ↔ tasdiq)
+        // pul IKKI marta yozilardi — buyurtma QULF ICHIDA o'qiladi (`PaymentIdempotency` qulfi).
+        using var gate = await PaymentIdempotency.LockAsync("book-order:" + id);
         var order = await db.BookOrders.FirstOrDefaultAsync(o => o.Id == id);
         if (order is null) return NotFound();
 
@@ -474,6 +477,9 @@ public class BooksController(AppDbContext db, TelegramService telegram, IWebHost
     [HttpPost("orders/{id}/return")]
     public async Task<ActionResult<BookOrderDto>> Return(string id, BookReturnPayload payload)
     {
+        // POYGA: ikki tab/kassir bir buyurtmani bir vaqtda o'zgartirsa (to'lov ↔ qaytarish ↔ tasdiq)
+        // pul IKKI marta yozilardi — buyurtma QULF ICHIDA o'qiladi (`PaymentIdempotency` qulfi).
+        using var gate = await PaymentIdempotency.LockAsync("book-order:" + id);
         var order = await db.BookOrders.FirstOrDefaultAsync(o => o.Id == id);
         if (order is null) return NotFound();
 
@@ -760,6 +766,9 @@ public class BooksController(AppDbContext db, TelegramService telegram, IWebHost
     [HttpPost("orders/{id}/pay")]
     public async Task<ActionResult<BookOrderDto>> PayCredit(string id, BookCreditPayPayload payload)
     {
+        // POYGA: ikki tab/kassir bir buyurtmani bir vaqtda o'zgartirsa (to'lov ↔ qaytarish ↔ tasdiq)
+        // pul IKKI marta yozilardi — buyurtma QULF ICHIDA o'qiladi (`PaymentIdempotency` qulfi).
+        using var gate = await PaymentIdempotency.LockAsync("book-order:" + id);
         var order = await db.BookOrders.FirstOrDefaultAsync(o => o.Id == id);
         if (order is null) return NotFound();
 
