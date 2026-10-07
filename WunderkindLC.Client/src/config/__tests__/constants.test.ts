@@ -55,6 +55,15 @@ describe('financeCategoryLabel', () => {
     expect(financeCategoryLabel('refund')).toBe('Vozvrat')
   })
 
+  it("kitob, mock, internet, kantselyariya — o'z toifasida (yig'ilish talabi)", () => {
+    expect(financeCategoryLabel('book', 'income')).toBe("Kitob/qo'llanma sotuvi")
+    expect(financeCategoryLabel('mock', 'income')).toBe("Mock imtihon to'lovi")
+    expect(financeCategoryLabel('internet', 'expense')).toBe('Internet')
+    expect(financeCategoryLabel('stationery', 'expense')).toBe('Kantselyariya')
+    // Kitob qaytarishdagi pul — chiqim tomonida "sotuv" deb chiqmasin.
+    expect(financeCategoryLabel('book', 'expense')).toBe('Kitob qaytarish')
+  })
+
   it('noma\'lum kod o\'zi qaytadi (yorliq yo\'qolmaydi)', () => {
     expect(financeCategoryLabel('nomalum_kod')).toBe('nomalum_kod')
     expect(financeCategoryLabel('')).toBe('')

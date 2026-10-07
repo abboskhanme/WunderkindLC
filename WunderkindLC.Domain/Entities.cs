@@ -1829,6 +1829,12 @@ public class FinanceTransaction
     /// kassasi, bo'lmasa «Asosiy kassa» (`CashboxService.ResolveAsync`). Migratsiyagacha bo'lgan
     /// yozuvlar «Asosiy kassa»ga ko'chirilgan. null — faqat kassa umuman yo'q bo'lgan baza.</summary>
     public string? CashboxId { get; set; }
+
+    /// <summary>KITOB SOTUVIDAN avtomatik yozilgan bo'lsa — qaysi buyurtma (<see cref="BookOrder"/>.Id):
+    /// sotuv kirimi (<c>Category="book"</c>, income) yoki qaytarishdagi pul (<c>"book"</c>, expense).
+    /// Bunday yozuv Moliyada TAHRIRLANMAYDI va bekor qilinmaydi — summasi kitob bo'limida (qaytarish)
+    /// o'zgaradi (`BookFinance`). null — oddiy tranzaksiya.</summary>
+    public string? BookOrderId { get; set; }
 }
 
 /// <summary>

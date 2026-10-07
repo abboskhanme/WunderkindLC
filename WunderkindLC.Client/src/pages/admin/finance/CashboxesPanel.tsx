@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
-import { Archive, Crown, Pencil, Plus, RotateCcw, Wallet } from 'lucide-react'
+import { Archive, ArrowLeftRight, Crown, Pencil, Plus, RotateCcw, Wallet } from 'lucide-react'
 import {
   archiveCashbox,
   createCashbox,
@@ -16,12 +16,15 @@ import { Button } from '@/components/ui/Button'
 import { RightDrawer, DrawerActions, DrawerField, DrawerInput, DrawerSelect } from '@/components/ui/RightDrawer'
 import { apiErrorMessage, balanceTextCls, cn, formatMoney } from '@/lib/utils'
 import { toast } from '@/lib/toast'
+import { CashboxTransferForm, CashboxTransfersCard } from './CashboxTransfers'
 
 /**
  * Moliya → «Kassalar»: kassa KARTALARI (qoldiq + davr ichidagi kirim/chiqim), `docs/SPEC-kassalar.md`.
- * Yaratish/tahrirlash/arxivlash — FAQAT superadmin (`isSuperAdmin`; server ham 403 qaytaradi).
+ * Yaratish/tahrirlash/arxivlash va KASSADAN KASSAGA KO'CHIRISH — FAQAT superadmin (`isSuperAdmin`;
+ * server ham 403 qaytaradi).
  *
  * Qoldiq — BUTUN tarix bo'yicha (kassada hozir qancha pul), kirim/chiqim esa sahifadagi davr bo'yicha.
+ * Ko'chirishlar kirim/chiqimga QO'SHILMAYDI — kartada alohida qator (`billing.md`).
  */
 export function CashboxesPanel({ from, to, isSuperAdmin }: { from: string; to: string; isSuperAdmin: boolean }) {
   const [boxes, setBoxes] = useState<Cashbox[]>([])
@@ -31,6 +34,8 @@ export function CashboxesPanel({ from, to, isSuperAdmin }: { from: string; to: s
   const [confirmArchive, setConfirmArchive] = useState<string | null>(null)
   /** Ochiq forma: `null` — yopiq, `'new'` — yangi kassa, aks holda tahrirlanayotgan kassa. */
   const [editing, setEditing] = useState<Cashbox | 'new' | null>(null)
+  /** Ko'chirish oynasi: `null` — yopiq; `fromId` — oldindan tanlangan "qayerdan" (kartadagi tugma). */
+  const [transfer, setTransfer] = useState<{ fromId: string | null } | null>(null)
   const inFlight = useRef(false)
 
   useEffect(() => {
@@ -49,8 +54,8 @@ export function CashboxesPanel({ from, to, isSuperAdmin }: { from: string; to: s
 
   const active = boxes.filter((b) => !b.isArchived)
   const archived = boxes.filter((b) => b.isArchived)
-  // Jami — ARXIVDAGILAR bilan: arxivlangan kassadagi pul jismonan bor, "Ko'chirish" hali yo'q —
-  // ularni tashlab yuborsak arxivlash bilan pul jamidan yo'qolgandek ko'rinardi.
+  // Jami — ARXIVDAGILAR bilan: arxivlangan kassadagi pul jismonan bor (uni «Ko'chirish» bilan faol
+  // kassaga olish mumkin) — tashlab yuborsak arxivlash bilan pul jamidan yo'qolgandek ko'rinardi.
   const total = boxes.reduce((a, b) => a + b.balance, 0)
   const archivedTotal = archived.reduce((a, b) => a + b.balance, 0)
 
@@ -81,9 +86,16 @@ export function CashboxesPanel({ from, to, isSuperAdmin }: { from: string; to: s
         }
         actions={
           isSuperAdmin ? (
-            <Button onClick={() => setEditing('new')}>
-              <Plus className="h-4 w-4" /> Yangi kassa qo'shish
-            </Button>
+            <>
+              {boxes.length >= 2 && (
+                <Button variant="secondary" onClick={() => setTransfer({ fromId: null })}>
+                  <ArrowLeftRight className="h-4 w-4" /> Kassadan kassaga
+                </Button>
+              )}
+              <Button onClick={() => setEditing('new')}>
+                <Plus className="h-4 w-4" /> Yangi kassa qo'shish
+              </Button>
+            </>
           ) : undefined
         }
       >
@@ -118,6 +130,13 @@ export function CashboxesPanel({ from, to, isSuperAdmin }: { from: string; to: s
                   </div>
                   {isSuperAdmin && (
                     <div className="flex shrink-0 gap-1">
+                      {active.length >= 2 && (
+                        <button type="button" aria-label="Boshqa kassaga ko'chirish" title="Boshqa kassaga ko'chirish"
+                          onClick={() => setTransfer({ fromId: b.id })}
+                          className="rounded-md p-1.5 text-slate-400 hover:bg-slate-100 hover:text-brand-600">
+                          <ArrowLeftRight className="h-4 w-4" />
+                        </button>
+                      )}
                       <button type="button" aria-label="Tahrirlash" onClick={() => setEditing(b)}
                         className="rounded-md p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700">
                         <Pencil className="h-4 w-4" />
@@ -137,12 +156,21 @@ export function CashboxesPanel({ from, to, isSuperAdmin }: { from: string; to: s
                   {' · '}
                   <span className="font-mono text-red-600">−{formatMoney(b.periodExpense)}</span>
                 </p>
+                {/* Ko'chirishlar kirim/chiqim EMAS — alohida qator, faqat bo'lsa. */}
+                {(b.periodTransferIn > 0 || b.periodTransferOut > 0) && (
+                  <p className="mt-0.5 text-xs text-slate-500">
+                    Ko'chirish: <span className="font-mono text-sky-700">+{formatMoney(b.periodTransferIn)}</span>
+                    {' · '}
+                    <span className="font-mono text-slate-600">−{formatMoney(b.periodTransferOut)}</span>
+                  </p>
+                )}
                 {confirmArchive === b.id && (
                   <div className="mt-3 rounded-lg bg-red-50 p-2 text-xs text-red-700">
                     Arxivlansa yangi pul qabul qilmaydi (qoldig'i va tarixi saqlanadi).
                     {b.balance !== 0 && (
                       <b className="mt-1 block">
-                        Kassada {formatMoney(b.balance)} qoldiq bor — u arxivdagi kassada qoladi.
+                        Kassada {formatMoney(b.balance)} qoldiq bor — u arxivdagi kassada qoladi. Avval uni
+                        «Kassadan kassaga» bilan boshqa kassaga o'tkazish mumkin.
                       </b>
                     )}
                     <div className="mt-2 flex gap-2">
@@ -177,11 +205,20 @@ export function CashboxesPanel({ from, to, isSuperAdmin }: { from: string; to: s
                         <span className={cn('ml-2 font-mono text-xs', balanceTextCls(b.balance))}>{formatMoney(b.balance)}</span>
                       </span>
                       {isSuperAdmin && (
-                        <button type="button"
-                          onClick={() => void runRowAction(() => restoreCashbox(b.id), 'Kassa tiklandi', "Tiklab bo'lmadi")}
-                          className="inline-flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-xs font-semibold text-brand-600 hover:bg-brand-50">
-                          <RotateCcw className="h-3.5 w-3.5" /> Tiklash
-                        </button>
+                        <span className="flex shrink-0 items-center gap-1">
+                          {/* Arxivdagi qoldiqni faol kassaga olish — arxivlangan kassa pul QABUL qilmaydi, beradi. */}
+                          {b.balance > 0 && active.length > 0 && (
+                            <button type="button" onClick={() => setTransfer({ fromId: b.id })}
+                              className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-semibold text-brand-600 hover:bg-brand-50">
+                              <ArrowLeftRight className="h-3.5 w-3.5" /> Ko'chirish
+                            </button>
+                          )}
+                          <button type="button"
+                            onClick={() => void runRowAction(() => restoreCashbox(b.id), 'Kassa tiklandi', "Tiklab bo'lmadi")}
+                            className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-semibold text-brand-600 hover:bg-brand-50">
+                            <RotateCcw className="h-3.5 w-3.5" /> Tiklash
+                          </button>
+                        </span>
                       )}
                     </li>
                   ))}
@@ -191,6 +228,22 @@ export function CashboxesPanel({ from, to, isSuperAdmin }: { from: string; to: s
           )}
         </div>
       </Card>
+
+      <CashboxTransfersCard from={from} to={to} tick={tick} isSuperAdmin={isSuperAdmin}
+        onChanged={() => setTick((x) => x + 1)} />
+
+      {isSuperAdmin && transfer !== null && (
+        <CashboxTransferForm
+          key={transfer.fromId ?? 'any'}
+          boxes={boxes}
+          initialFromId={transfer.fromId}
+          onClose={() => setTransfer(null)}
+          onSaved={() => {
+            setTransfer(null)
+            setTick((x) => x + 1)
+          }}
+        />
+      )}
 
       {isSuperAdmin && editing !== null && (
         <CashboxForm

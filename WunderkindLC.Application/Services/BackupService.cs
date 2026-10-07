@@ -67,6 +67,9 @@ public static class BackupService
         // ---- Moliya ----
         await Add("financeTransactions", db.FinanceTransactions);
         await Add("monthlyCharges", db.MonthlyCharges);
+        // Kassalar va kassadan kassaga ko'chirishlar — kassa QOLDIG'I shulardan tiklanadi.
+        await Add("cashboxes", db.Cashboxes);
+        await Add("cashboxTransfers", db.CashboxTransfers);
         // ---- Aloqa / bildirishnoma ----
         await Add("chatMessages", db.ChatMessages);
         await Add("broadcasts", db.Broadcasts);

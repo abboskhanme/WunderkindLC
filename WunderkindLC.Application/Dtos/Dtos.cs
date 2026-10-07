@@ -205,7 +205,9 @@ public record LessonDiscountQuoteDto(
 /// <summary>Kassa kartasi: qoldiq (butun tarix) + tanlangan davrdagi kirim/chiqim.</summary>
 public record CashboxDto(
     string Id, string Name, string? ResponsibleUserId, string? ResponsibleName, bool IsMain, bool IsArchived,
-    decimal Balance, decimal PeriodIncome, decimal PeriodExpense, string CreatedAt);
+    decimal Balance, decimal PeriodIncome, decimal PeriodExpense, string CreatedAt,
+    // Davr ichidagi KO'CHIRISHLAR (kirim/chiqim EMAS — alohida ko'rsatiladi).
+    decimal PeriodTransferIn = 0m, decimal PeriodTransferOut = 0m);
 
 /// <summary>To'lov oynasidagi tanlov uchun (qoldiqsiz).</summary>
 public record CashboxOptionDto(string Id, string Name, string? ResponsibleName, bool Mine);
@@ -1666,7 +1668,9 @@ public record FinanceTransactionDto(
     // BEKOR QILINGAN (qator saqlanadi, hisobga kirmaydi) — ro'yxatda ustiga chizilgan holda.
     bool IsVoided = false, string? VoidedAt = null, string? VoidedBy = null, string? VoidReason = null,
     // Qaysi kassa (id + nomi; nomi faqat ro'yxat endpointida to'ldiriladi).
-    string? CashboxId = null, string? CashboxName = null);
+    string? CashboxId = null, string? CashboxName = null,
+    // Kitob sotuvidan avtomatik yozilgan bo'lsa — buyurtma id'si (Moliyada tahrir/bekor qilish YO'Q).
+    string? BookOrderId = null);
 
 /// <summary>
 /// "Kiritgan" filtri uchun bitta variant — TO'LOV KIRITA OLADIGAN xodim/admin. Ro'yxatga

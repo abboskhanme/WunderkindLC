@@ -46,7 +46,17 @@ public class FinanceController(AppDbContext db, AuditService audit, AutoMessageS
             t.TypeId is not null && typeNames is not null && typeNames.TryGetValue(t.TypeId, out var tn) ? tn : null,
             t.IsVoided, t.VoidedAt, t.VoidedBy, t.VoidReason,
             t.CashboxId,
-            t.CashboxId is not null && cashboxNames is not null && cashboxNames.TryGetValue(t.CashboxId, out var cb) ? cb : null);
+            t.CashboxId is not null && cashboxNames is not null && cashboxNames.TryGetValue(t.CashboxId, out var cb) ? cb : null,
+            t.BookOrderId);
+
+    /// <summary>
+    /// KITOB SOTUVIDAN yozilgan qator Moliyada o'zgartirilmaydi (`BookFinance`): summasi kitob
+    /// bo'limidagi qaytarish bilan o'zgaradi. Bu yerda tahrirlansa/bekor qilinsa buyurtma "to'langan"
+    /// bo'lib qolar, kassa esa boshqa summani ko'rsatardi — ikki joy bir-biridan ajralib ketardi.
+    /// </summary>
+    private const string BookLinkedMessage =
+        "Bu yozuv «Kitoblar sotuvi»dan avtomatik yozilgan — summani o'sha bo'limda (kitobni qaytarish) o'zgartiring. "
+        + "Kassasini tuzatish uchun «Kassadan kassaga ko'chirish»dan foydalaning.";
 
     [HttpGet("transactions")]
     public async Task<ActionResult<IEnumerable<FinanceTransactionDto>>> GetTransactions(
@@ -275,6 +285,7 @@ public class FinanceController(AppDbContext db, AuditService audit, AutoMessageS
 
         var tx = await db.FinanceTransactions.FindAsync(id);
         if (tx is null) return NotFound();
+        if (tx.BookOrderId is not null) return BadRequest(new { message = BookLinkedMessage });
 
         if (p.Amount <= 0)
             return BadRequest(new { message = "Summa musbat bo'lishi kerak" });
@@ -726,6 +737,7 @@ public class FinanceController(AppDbContext db, AuditService audit, AutoMessageS
 
         var tx = await db.FinanceTransactions.FindAsync(id);
         if (tx is null) return NotFound(new { message = "Bu amal allaqachon bekor qilingan" });
+        if (tx.BookOrderId is not null) return BadRequest(new { message = BookLinkedMessage });
 
         // ⚠️ VOZVRATI BOR to'lov bekor qilinmaydi. Bekor qilinsa to'lov summasi balansdan to'liq
         // ayriladi, vozvrat esa kuchda qolib, qaytarilgan pul balansdan IKKINCHI marta ayrilgan

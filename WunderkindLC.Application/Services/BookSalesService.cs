@@ -222,10 +222,11 @@ public static class BookSalesService
     /// </summary>
     /// <param name="method">Pul qanday olindi: <see cref="PayCash"/> yoki <see cref="PayCard"/>.</param>
     /// <param name="cardLast4">Karta bo'lsa — oxirgi 4 raqam (to'liq raqam SAQLANMAYDI).</param>
+    /// <param name="actorId">Pulni olgan xodimning akkaunt id'si — kirim UNING kassasiga tushadi (`BookFinance`).</param>
     /// <returns><c>null</c> — muvaffaqiyat; aks holda foydalanuvchiga ko'rsatiladigan xato matni.</returns>
     public static async Task<string?> PayCreditAsync(
         IAppDbContext db, BookOrder order, string method, string? cardLast4, string paidBy,
-        CancellationToken ct = default)
+        string? actorId = null, CancellationToken ct = default)
     {
         if (!IsCredit(order)) return "Bu buyurtma nasiyaga sotilmagan — to'lov allaqachon olingan.";
         if (order.Status != StatusApproved)
@@ -243,6 +244,8 @@ public static class BookSalesService
         order.SettledMethod = method;
         // Karta bo'lsa oxirgi 4 raqam yoziladi; naqdda eski qiymat qolib ketmasin.
         order.CardLast4 = method == PayCard ? cardLast4 : null;
+        // KASSA: pul shu paytda olindi — kitob kirimi (o'sha SaveChanges bilan, `BookFinance`).
+        await BookFinance.AddSaleIncomeAsync(db, order, actorId, paidBy, ct);
         await db.SaveChangesAsync(ct);
         return null;
     }
@@ -253,8 +256,9 @@ public static class BookSalesService
     /// o'zgartirmasdan xato matnini qaytaradi (chaqiruvchi 400 qiladi va mijozga xabar yubormaydi).
     /// </summary>
     /// <returns><c>null</c> — muvaffaqiyat; aks holda foydalanuvchiga ko'rsatiladigan xato matni.</returns>
+    /// <param name="actorId">Tasdiqlagan xodimning akkaunt id'si — naqd/karta kirimi UNING kassasiga tushadi.</param>
     public static async Task<string?> ApproveAsync(
-        IAppDbContext db, BookOrder order, string decidedBy, CancellationToken ct = default)
+        IAppDbContext db, BookOrder order, string decidedBy, string? actorId = null, CancellationToken ct = default)
     {
         if (order.Status != StatusPending)
             return $"Buyurtma allaqachon hal qilingan ({StatusLabel(order.Status)}).";
@@ -276,6 +280,8 @@ public static class BookSalesService
         // Naqd/kartada pul shu paytda olinadi. NASIYADA esa yo'q — `PaidAt` bo'sh qoladi va
         // buyurtma "qarz" bo'lib sanaladi (qarang: PayCreditAsync).
         if (!IsCredit(order)) order.PaidAt = order.DecidedAt;
+        // KASSA: naqd/kartada pul hozir olindi — kitob kirimi (nasiyada null — pul keyin, `PayCreditAsync`).
+        var income = await BookFinance.AddSaleIncomeAsync(db, order, actorId, decidedBy, ct);
 
         try
         {
@@ -283,6 +289,7 @@ public static class BookSalesService
         }
         catch (DbUpdateConcurrencyException)
         {
+            if (income is not null) db.FinanceTransactions.Remove(income);
             // QOLDIQ POYGASI: yuqoridagi tekshiruv bilan SaveChanges orasida BOSHQA amal
             // (ikkinchi kassir, bot buyurtmasini tasdiqlash, ombor korreksiyasi) shu kitobning
             // qoldig'ini o'zgartirgan. `Book.Stock` konkurentlik tokeni bo'lgani uchun (qarang:
@@ -387,9 +394,10 @@ public static class BookSalesService
     /// <see cref="BookOrder.ReturnedQty"/> qo'shilib boradi, <see cref="BookOrder.Qty"/> dan oshmaydi.</para>
     /// </summary>
     /// <returns><c>null</c> — muvaffaqiyat; aks holda foydalanuvchiga ko'rsatiladigan xato matni.</returns>
+    /// <param name="actorId">Qaytargan xodimning akkaunt id'si (sotuv kassasi arxivlangan bo'lsa pul uning kassasidan chiqadi).</param>
     public static async Task<string?> ReturnAsync(
         IAppDbContext db, BookOrder order, int qty, string reason, string returnedBy,
-        CancellationToken ct = default)
+        string? actorId = null, CancellationToken ct = default)
     {
         if (ReturnError(order, qty) is { } error) return error;
 
@@ -418,6 +426,8 @@ public static class BookSalesService
         order.ReturnedBy = returnedBy ?? string.Empty;
         order.ReturnReason = (reason ?? string.Empty).Trim();
         order.RefundedAmount += refund;
+        // KASSA: qaytarilgan pul sotuv kirimi tushgan kassadan chiqadi (kirimi yo'q eski sotuvda — yo'q).
+        var refundTx = await BookFinance.AddRefundExpenseAsync(db, order, refund, qty, actorId, returnedBy, ct);
 
         try
         {
@@ -425,6 +435,7 @@ public static class BookSalesService
         }
         catch (DbUpdateConcurrencyException)
         {
+            if (refundTx is not null) db.FinanceTransactions.Remove(refundTx);
             // QOLDIQ POYGASI (`ApproveAsync` bilan bir xil): oraga boshqa amal tushgan, UPDATE 0
             // qator yangilagan va bazaga HECH NARSA yozilmagan. Xotiradagi o'zgarishlarni ham
             // qaytaramiz — chaqiruvchi "qaytarilgan" buyurtmani ko'rib qolmasin.

@@ -137,8 +137,8 @@ qarz bitta odamda qoladi), aks holda `n:{ism}|{mahalliy telefon}`.
 - `CreditCollected` — davr ichida yig'ilgan pul, **`PaidAt` bo'yicha** (nasiya o'tgan oyda
   sotilib, pul shu oyda kelishi mumkin).
 
-Kitob sotuvi baribir `FinanceTransaction`ga yozilmaydi (§7) — nasiya ham o'quvchi balansiga
-tegmaydi, u faqat shu bo'limning qarzi.
+Nasiya o'quvchi balansiga tegmaydi, u faqat shu bo'limning qarzi. Kassaga (moliyaga) pul faqat
+**«To'landi» bosilganda** kirim bo'lib tushadi — sotuv paytida emas (§7).
 
 ## 2.2 QOLDIQ POYGASI (race) — `Book.Stock` konkurentlik tokeni
 
@@ -313,8 +313,30 @@ Yozish amallari `can('books','edit')` bilan darvozalangan. API qatlami
 `api/services/books.ts`, yorliqlar `bookLabels.ts` (status/to'lov/sabab matnlari — komponentda xom
 satr yozilmasin).
 
-## 7. Moliya bilan bog'liqlik — YO'Q
+## 7. Moliya bilan bog'liqlik — KASSAGA tushadi (2026-10-07, `BookFinance`)
 
-Kitob sotuvi **`FinanceTransaction`ga yozilmaydi** va o'quvchi balansiga tegmaydi. Tushum faqat shu
-bo'limning analitikasida ko'rinadi. (Sabab: o'quv to'lovi hisobotlarini kitob savdosi buzmasin.)
-Agar kelajakda kassaga ulash kerak bo'lsa — `ApproveAsync` ichida, bitta joyda qilinadi.
+Yig'ilish talabi ("kassa va to'lov turlari: … kitob/qo'llanmalar sotuvi") bo'yicha kitob puli endi
+KASSAGA yoziladi — pul HAQIQATAN olingan/qaytarilgan paytda, `BookSalesService` ning o'sha (yagona)
+`SaveChanges`ida:
+
+| Hodisa | Moliya yozuvi |
+|---|---|
+| Naqd/karta sotuv tasdiqlandi (`ApproveAsync`, qo'lda sotuv ham) | kirim, toifa **`book`**, summa = sotuv |
+| Nasiya sotildi | — (pul olinmagan) |
+| Nasiya «To'landi» (`PayCreditAsync`) | kirim `book`, summa = o'sha paytdagi SOF (`NetTotal`) |
+| Qaytarishda pul berildi (`ReturnAsync`, `RefundFor > 0`) | chiqim `book`, sotuv kirimi tushgan KASSADAN |
+
+- ⚠️ **`tuition` EMAS, `StudentId` YOZILMAYDI** — asl xavotir ("o'quv to'lovi hisobotlarini kitob
+  savdosi buzmasin") shu bilan saqlanadi: balans, o'qituvchi foizi, KPI, kurs moliyasi faqat
+  `tuition`/`refund` ga qaraydi. Xaridor — izohda ("Kitob sotuvi #12: … — Ali").
+- Kassa: amalni qilgan xodimning O'Z kassasi → «Asosiy kassa» (`CashboxService.ResolveAsync`;
+  controller `ActorId` ni uzatadi). Turi — kitob toifasidagi markaz turi (jadvalda o'z nomi bilan).
+- `FinanceTransaction.BookOrderId` — bog'lanish. Bunday qator Moliyada **tahrirlanmaydi va bekor
+  qilinmaydi** (400): summa shu bo'limdagi qaytarish bilan o'zgaradi, kassani tuzatish — «Kassadan
+  kassaga ko'chirish».
+- ⚠️ **Eski sotuvlar BACKFILL qilinmaydi.** Shuning uchun qaytarishda pul faqat shu buyurtmaning moliya
+  KIRIMI bo'lsa chiqim qilinadi — aks holda kassaga hech qachon kirmagan pul undan ayirilardi.
+- Poyga (`DbUpdateConcurrencyException`) bo'lsa qo'shilgan moliya yozuvi ham kontekstdan olib tashlanadi.
+- Bo'lim analitikasi (tushum, nasiya, qaytarish) avvalgidek SHU yerda hisoblanadi — moliya yozuvi faqat
+  kassa qoldig'i va umumiy moliya hisobotlari uchun.
+- Testlar: `BookFinanceTests`.

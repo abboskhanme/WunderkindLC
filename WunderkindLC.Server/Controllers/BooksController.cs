@@ -36,6 +36,8 @@ public class BooksController(AppDbContext db, TelegramService telegram, IWebHost
     private const int PhoneScanLimit = 40;
 
     private string Actor => User.FindFirst(ClaimTypes.Name)?.Value ?? "Admin";
+    /// <summary>Akkaunt id'si — kitob puli shu xodimning KASSASIGA tushadi (`BookFinance`, `CashboxService`).</summary>
+    private string? ActorId => User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
 
     // =============================================================================================
     //  OMBOR — kitoblar CRUD
@@ -423,7 +425,7 @@ public class BooksController(AppDbContext db, TelegramService telegram, IWebHost
         var order = await db.BookOrders.FirstOrDefaultAsync(o => o.Id == id);
         if (order is null) return NotFound();
 
-        var error = await BookSalesService.ApproveAsync(db, order, Actor);
+        var error = await BookSalesService.ApproveAsync(db, order, Actor, ActorId);
         if (error is not null) return BadRequest(new { message = error });
 
         // DIQQAT: ApproveAsync O'ZI SaveChanges qiladi — shuning uchun audit yozuvini
@@ -480,7 +482,7 @@ public class BooksController(AppDbContext db, TelegramService telegram, IWebHost
         var refund = BookSalesService.RefundFor(order, payload.Qty);
 
         var error = await BookSalesService.ReturnAsync(
-            db, order, payload.Qty, payload.Reason ?? "", Actor);
+            db, order, payload.Qty, payload.Reason ?? "", Actor, ActorId);
         if (error is not null) return BadRequest(new { message = error });
 
         // DIQQAT: ReturnAsync O'ZI SaveChanges qiladi — audit yozuvi alohida saqlanadi
@@ -660,7 +662,7 @@ public class BooksController(AppDbContext db, TelegramService telegram, IWebHost
 
         // Qoldiq yetmasa — bu yerda 400 qaytadi va SaveChanges CHAQIRILMAYDI, ya'ni buyurtma ham
         // yozilmaydi (yarim holatda "pending" qatori qolib ketmasin).
-        var error = await BookSalesService.ApproveAsync(db, order, Actor);
+        var error = await BookSalesService.ApproveAsync(db, order, Actor, ActorId);
         if (error is not null) return BadRequest(new { message = error });
 
         audit.Record("BookOrder", order.Id, "create",
@@ -773,7 +775,7 @@ public class BooksController(AppDbContext db, TelegramService telegram, IWebHost
                 return BadRequest(new { message = "Karta to'lovida oxirgi 4 raqam majburiy" });
         }
 
-        var error = await BookSalesService.PayCreditAsync(db, order, method, last4, Actor);
+        var error = await BookSalesService.PayCreditAsync(db, order, method, last4, Actor, ActorId);
         if (error is not null) return BadRequest(new { message = error });
 
         // DIQQAT: PayCreditAsync O'ZI SaveChanges qiladi — audit yozuvi alohida saqlanadi
