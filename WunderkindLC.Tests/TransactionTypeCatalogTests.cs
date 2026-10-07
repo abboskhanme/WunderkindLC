@@ -15,10 +15,10 @@ public class TransactionTypeCatalogTests
     /// <summary>Klientdagi ro'yxatlar bilan bir xil (config/constants.ts).</summary>
     private static readonly HashSet<string> KnownCategories =
     [
-        // kirim
-        "tuition", "donation", "rent_in", "other",
-        // chiqim
-        "salary", "utilities", "supplies", "rent", "repair", "penalty",
+        // kirim (book, mock — 2026-10, `FinanceTypeSeed`)
+        "tuition", "book", "mock", "donation", "rent_in", "other",
+        // chiqim (internet, stationery — 2026-10: filial xarajatlari alohida toifada)
+        "salary", "utilities", "internet", "supplies", "stationery", "rent", "repair", "penalty",
     ];
 
     [Theory]
@@ -43,6 +43,18 @@ public class TransactionTypeCatalogTests
         foreach (var (kind, name, baseCategory) in TransactionTypeCatalog.Seed)
             Assert.True(KnownCategories.Contains(baseCategory),
                 $"{kind}/{name}: noma'lum toifa '{baseCategory}'");
+    }
+
+    [Fact]
+    public void Majburiy_turlarning_toifasi_ham_MAVJUD_tizim_toifasi()
+    {
+        foreach (var r in FinanceTypeSeed.RequiredTypes)
+        {
+            Assert.True(KnownCategories.Contains(r.Category), $"{r.Kind}/{r.Name}: noma'lum toifa '{r.Category}'");
+            Assert.True(TransactionTypeCatalog.IsKind(r.Kind), $"{r.Name}: noma'lum bo'lim '{r.Kind}'");
+        }
+        Assert.Contains("book", KnownCategories);
+        Assert.Contains("stationery", KnownCategories);
     }
 
     [Fact]

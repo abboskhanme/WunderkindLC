@@ -25,7 +25,13 @@ public static class CashboxService
 
     public sealed record Resolution(string? CashboxId, string? Error);
 
-    public sealed record Balance(decimal Total, decimal PeriodIncome, decimal PeriodExpense);
+    /// <summary>
+    /// Kassa qoldig'i. <paramref name="Total"/> — butun tarix: kirim − chiqim + ko'chirib kelingan −
+    /// ko'chirib ketilgan. Davr maydonlari ALOHIDA: ko'chirish kirim/chiqim EMAS, shuning uchun
+    /// <paramref name="PeriodIncome"/>/<paramref name="PeriodExpense"/> ga qo'shilmaydi.
+    /// </summary>
+    public sealed record Balance(decimal Total, decimal PeriodIncome, decimal PeriodExpense,
+                                 decimal PeriodTransferIn = 0m, decimal PeriodTransferOut = 0m);
 
     // ============================ Sof qoidalar ============================
 
@@ -104,7 +110,12 @@ public static class CashboxService
         return await ResolveAsync(db, requestedId, null, ct);
     }
 
-    /// <summary>Har kassaning qoldig'i (butun tarix) va davr ichidagi kirim/chiqimi.</summary>
+    /// <summary>
+    /// Har kassaning qoldig'i (butun tarix) va davr ichidagi kirim/chiqimi + ko'chirishlari.
+    /// <para>⚠️ KO'CHIRISH (<see cref="CashboxTransfer"/>) faqat SHU YERDA qoldiqqa qo'shiladi — u
+    /// moliya tranzaksiyasi emas, ya'ni P&amp;L/hisobotlarga umuman tushmaydi. Bekor qilingan ko'chirish
+    /// ham, bekor qilingan tranzaksiya ham global filtr bilan o'z-o'zidan tushib qoladi.</para>
+    /// </summary>
     public static async Task<Dictionary<string, Balance>> BalancesAsync(IAppDbContext db, string? from, string? to,
                                                                        CancellationToken ct = default)
     {
@@ -113,14 +124,44 @@ public static class CashboxService
             .Where(t => t.CashboxId != null)
             .Select(t => new { t.CashboxId, t.Direction, t.Amount, t.Date })
             .ToListAsync(ct);
+        var transfers = await db.CashboxTransfers.AsNoTracking()
+            .Select(t => new { t.FromCashboxId, t.ToCashboxId, t.Amount, t.Date })
+            .ToListAsync(ct);
         bool InPeriod(string date) =>
             (string.IsNullOrEmpty(from) || string.CompareOrdinal(date, from) >= 0)
             && (string.IsNullOrEmpty(to) || string.CompareOrdinal(date, to) <= 0);
 
-        return rows.GroupBy(r => r.CashboxId!).ToDictionary(g => g.Key, g => new Balance(
-            g.Sum(r => r.Direction == "income" ? r.Amount : -r.Amount),
-            g.Where(r => r.Direction == "income" && InPeriod(r.Date)).Sum(r => r.Amount),
-            g.Where(r => r.Direction != "income" && InPeriod(r.Date)).Sum(r => r.Amount)));
+        var byBox = rows.ToLookup(r => r.CashboxId!);
+        var inBy = transfers.ToLookup(t => t.ToCashboxId);
+        var outBy = transfers.ToLookup(t => t.FromCashboxId);
+        var ids = byBox.Select(g => g.Key).Concat(inBy.Select(g => g.Key)).Concat(outBy.Select(g => g.Key)).Distinct();
+        return ids.ToDictionary(id => id, id =>
+        {
+            var own = byBox[id];
+            var inT = inBy[id];
+            var outT = outBy[id];
+            return new Balance(
+                own.Sum(r => r.Direction == "income" ? r.Amount : -r.Amount) + inT.Sum(t => t.Amount) - outT.Sum(t => t.Amount),
+                own.Where(r => r.Direction == "income" && InPeriod(r.Date)).Sum(r => r.Amount),
+                own.Where(r => r.Direction != "income" && InPeriod(r.Date)).Sum(r => r.Amount),
+                inT.Where(t => InPeriod(t.Date)).Sum(t => t.Amount),
+                outT.Where(t => InPeriod(t.Date)).Sum(t => t.Amount));
+        });
+    }
+
+    /// <summary>Bitta kassaning HOZIRGI qoldig'i (butun tarix, ko'chirishlar bilan). Kassa yo'q/bo'sh — 0.</summary>
+    public static async Task<decimal> TotalAsync(IAppDbContext db, string cashboxId, CancellationToken ct = default)
+    {
+        var rows = await db.FinanceTransactions.AsNoTracking()
+            .Where(t => t.CashboxId == cashboxId)
+            .Select(t => new { t.Direction, t.Amount })
+            .ToListAsync(ct);
+        var transfers = await db.CashboxTransfers.AsNoTracking()
+            .Where(t => t.FromCashboxId == cashboxId || t.ToCashboxId == cashboxId)
+            .Select(t => new { t.ToCashboxId, t.Amount })
+            .ToListAsync(ct);
+        return rows.Sum(r => r.Direction == "income" ? r.Amount : -r.Amount)
+               + transfers.Sum(t => t.ToCashboxId == cashboxId ? t.Amount : -t.Amount);
     }
 
     /// <summary>«Asosiy kassa» bo'lmasa yaratadi (yangi baza). SaveChanges — chaqiruvchida. true = qo'shildi.</summary>

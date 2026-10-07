@@ -23,6 +23,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options)
     public DbSet<SubjectPriceBand> SubjectPriceBands => Set<SubjectPriceBand>();
     public DbSet<LessonDiscount> LessonDiscounts => Set<LessonDiscount>();
     public DbSet<Cashbox> Cashboxes => Set<Cashbox>();
+    public DbSet<CashboxTransfer> CashboxTransfers => Set<CashboxTransfer>();
+    public DbSet<SeedMarker> SeedMarkers => Set<SeedMarker>();
     public DbSet<Group> Classes => Set<Group>();
     public DbSet<GroupTeacherAssignment> GroupTeacherAssignments => Set<GroupTeacherAssignment>();
     public DbSet<SubstituteTeacherAssignment> SubstituteTeacherAssignments => Set<SubstituteTeacherAssignment>();
@@ -320,6 +322,23 @@ public class AppDbContext(DbContextOptions<AppDbContext> options)
         // kvitansiya nazorati) — 25+ faylda har so'rovga shart qo'shib, birini unutish xavfi o'rniga.
         // Ko'rsatish kerak bo'lgan joy ataylab `IgnoreQueryFilters()` qiladi (FinanceController).
         b.Entity<FinanceTransaction>().HasQueryFilter(t => !t.IsVoided);
+        // Kitob sotuvidan avtomatik yozilgan kirim/qaytarish — buyurtma bo'yicha topiladi (`BookFinance`).
+        b.Entity<FinanceTransaction>().Property(x => x.BookOrderId).HasMaxLength(200);
+        b.Entity<FinanceTransaction>().HasIndex(x => x.BookOrderId);
+        // KASSADAN KASSAGA KO'CHIRISH — kirim/chiqim EMAS, alohida jadval (`FinanceEntities.cs` izohi).
+        // Bekor qilingani qoldiqqa kirmaydi (FinanceTransaction bilan bir xil global filtr).
+        b.Entity<CashboxTransfer>().Property(x => x.Id).HasMaxLength(200);
+        b.Entity<CashboxTransfer>().Property(x => x.FromCashboxId).HasMaxLength(200);
+        b.Entity<CashboxTransfer>().Property(x => x.ToCashboxId).HasMaxLength(200);
+        b.Entity<CashboxTransfer>().Property(x => x.Date).HasMaxLength(10);
+        b.Entity<CashboxTransfer>().Property(x => x.Note).HasMaxLength(500);
+        b.Entity<CashboxTransfer>().Property(x => x.Amount).HasPrecision(18, 2);
+        b.Entity<CashboxTransfer>().HasIndex(x => x.FromCashboxId);
+        b.Entity<CashboxTransfer>().HasIndex(x => x.ToCashboxId);
+        b.Entity<CashboxTransfer>().HasQueryFilter(x => !x.IsVoided);
+        // Bir martalik seed belgilari — kalit bo'yicha (`SeedMarker`).
+        b.Entity<SeedMarker>().HasKey(x => x.Key);
+        b.Entity<SeedMarker>().Property(x => x.Key).HasMaxLength(100);
         b.Entity<MonthlyCharge>().Property(c => c.Amount).HasPrecision(18, 2);
         b.Entity<MonthlyCharge>().Property(c => c.Discount).HasPrecision(18, 2);
         b.Entity<Teacher>().Property(t => t.Salary).HasPrecision(18, 2);

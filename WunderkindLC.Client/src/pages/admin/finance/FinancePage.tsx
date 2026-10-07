@@ -733,7 +733,17 @@ export function FinancePage() {
                                   <History className="h-4 w-4" />
                                 </button>
                               )}
-                              {!t.isVoided && can('finance.main', 'edit') && (
+                              {/* Kitob sotuvidan yozilgan qator — summasi «Kitoblar sotuvi»da (qaytarish)
+                                  o'zgaradi, server ham tahrir/bekor qilishni rad etadi (billing.md). */}
+                              {t.bookOrderId && !t.isVoided && (
+                                <span
+                                  title="«Kitoblar sotuvi»dan avtomatik yozilgan — o'zgartirish o'sha bo'limda (kitobni qaytarish)"
+                                  className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-500"
+                                >
+                                  KITOB
+                                </span>
+                              )}
+                              {!t.isVoided && !t.bookOrderId && can('finance.main', 'edit') && (
                                 <button
                                   type="button"
                                   title="Tahrirlash"
@@ -746,7 +756,7 @@ export function FinancePage() {
                                   <Pencil className="h-4 w-4" />
                                 </button>
                               )}
-                              {!t.isVoided && can('finance.main', 'delete') && (
+                              {!t.isVoided && !t.bookOrderId && can('finance.main', 'delete') && (
                                 <button
                                   type="button"
                                   title="Bekor qilish (yozuv o'chmaydi, balans tiklanadi)"

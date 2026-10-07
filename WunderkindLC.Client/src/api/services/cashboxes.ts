@@ -17,6 +17,9 @@ export interface Cashbox {
   balance: number
   periodIncome: number
   periodExpense: number
+  /** Davr ichida boshqa kassadan KO'CHIRIB kelingan / ketgan (kirim-chiqim EMAS — alohida). */
+  periodTransferIn: number
+  periodTransferOut: number
   createdAt: string
 }
 
@@ -69,4 +72,56 @@ export async function archiveCashbox(id: string): Promise<void> {
 
 export async function restoreCashbox(id: string): Promise<void> {
   await api.post(`/admin/cashboxes/${encodeURIComponent(id)}/restore`)
+}
+
+/* ---------- KASSADAN KASSAGA KO'CHIRISH (billing.md) ---------- */
+
+/** Bitta ko'chirish. Bekor qilingani ham qaytadi (ro'yxatda ustiga chizilgan, hisobga kirmaydi). */
+export interface CashboxTransfer {
+  id: string
+  fromCashboxId: string
+  fromCashboxName: string
+  toCashboxId: string
+  toCashboxName: string
+  amount: number
+  /** "yyyy-MM-dd" */
+  date: string
+  note: string | null
+  createdAt: string
+  createdByName: string | null
+  isVoided: boolean
+  voidedAt: string | null
+  voidedByName: string | null
+  voidReason: string | null
+}
+
+export interface CashboxTransferPayload {
+  fromCashboxId: string
+  toCashboxId: string
+  amount: number
+  /** Bo'sh — bugun. Kelajak sana server tomonidan rad etiladi. */
+  date?: string
+  note?: string
+  /** Oyna kaliti — qayta bosilgan "Saqlash" ikkinchi ko'chirish yozmasin (`lib/requestId.ts`). */
+  requestId?: string
+}
+
+/** Ko'chirishlar tarixi (`finance.main`). */
+export async function getCashboxTransfers(from?: string, to?: string): Promise<CashboxTransfer[]> {
+  if (USE_MOCK) return []
+  const { data } = await api.get<CashboxTransfer[]>('/admin/cashboxes/transfers', { params: { from, to } })
+  return data
+}
+
+/** Kassadan kassaga ko'chirish — FAQAT superadmin (server 403). Qoldiq yetmasa — 400 sabab bilan. */
+export async function createCashboxTransfer(payload: CashboxTransferPayload): Promise<CashboxTransfer> {
+  const { data } = await api.post<CashboxTransfer>('/admin/cashboxes/transfers', payload)
+  return data
+}
+
+/** Ko'chirishni bekor qilish (qator qoladi, qoldiqlar tiklanadi) — FAQAT superadmin. */
+export async function voidCashboxTransfer(id: string, reason?: string): Promise<void> {
+  await api.delete(`/admin/cashboxes/transfers/${encodeURIComponent(id)}`, {
+    params: { reason: reason || undefined },
+  })
 }

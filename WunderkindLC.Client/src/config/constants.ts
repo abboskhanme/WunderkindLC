@@ -328,18 +328,26 @@ export interface CategoryOption {
   label: string
 }
 
-/** Kirim toifalari */
+/**
+ * Kirim toifalari. ⚠️ Serverdagi `FinanceCategories` / `TransactionTypeCatalogTests.KnownCategories`
+ * bilan bir xil bo'lsin (`.claude/rules/billing.md` «KIRIM/CHIQIM TURLARI»).
+ */
 export const incomeCategories: CategoryOption[] = [
   { value: 'tuition', label: "O'quvchi to'lovi" },
+  // Kitob sotuvi «Kitoblar sotuvi» bo'limidan kassaga O'ZI yoziladi (`BookFinance`).
+  { value: 'book', label: "Kitob/qo'llanma sotuvi" },
+  { value: 'mock', label: "Mock imtihon to'lovi" },
   { value: 'donation', label: 'Homiylik' },
   { value: 'rent_in', label: 'Ijaradan kirim' },
   { value: 'other', label: 'Boshqa kirim' },
 ]
 
-/** Chiqim toifalari */
+/** Chiqim toifalari — filial xarajatlari (ijara, kommunal, internet, kantselyariya) ALOHIDA. */
 export const expenseCategories: CategoryOption[] = [
   { value: 'salary', label: 'Oylik maosh' },
   { value: 'utilities', label: 'Kommunal' },
+  { value: 'internet', label: 'Internet' },
+  { value: 'stationery', label: 'Kantselyariya' },
   { value: 'supplies', label: 'Jihoz/materiallar' },
   { value: 'rent', label: 'Ijara' },
   { value: 'repair', label: "Ta'mirlash" },
@@ -363,6 +371,8 @@ export const categoriesByDirection: Record<FinanceDirection, CategoryOption[]> =
 export function financeCategoryLabel(category: string, direction?: FinanceDirection): string {
   // Vozvrat — qo'lda kiritilmaydi (faqat to'lovdan qaytariladi), shuning uchun kategoriya ro'yxatida yo'q.
   if (category === 'refund') return 'Vozvrat'
+  // Kitob qaytarishda kassadan chiqqan pul — qo'lda kiritilmaydi, shuning uchun chiqim ro'yxatida yo'q.
+  if (category === 'book' && direction === 'expense') return 'Kitob qaytarish'
   const list = direction
     ? [...categoriesByDirection[direction], ...(direction === 'income' ? expenseCategories : incomeCategories)]
     : [...incomeCategories, ...expenseCategories]

@@ -19,6 +19,8 @@ public class AuditService(IAppDbContext db, IHttpContextAccessor http)
     public const string EntityFinanceTransaction = "FinanceTransaction";
     /// <summary>Kassa (Moliya → «Kassalar»): yaratish, tahrirlash, arxivlash/tiklash.</summary>
     public const string EntityCashbox = "Cashbox";
+    /// <summary>Kassadan kassaga ko'chirish (yaratish / bekor qilish) — `CashboxTransferService`.</summary>
+    public const string EntityCashboxTransfer = "CashboxTransfer";
     /// <summary>Rejalashtirilgan xarajat (Moliya → «Rejalashtirilgan xarajatlar»).</summary>
     public const string EntityPlannedExpense = "PlannedExpense";
     public const string EntityTeacherSalary = "TeacherSalary";

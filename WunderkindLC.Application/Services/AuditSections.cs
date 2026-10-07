@@ -97,6 +97,7 @@ public static class AuditSections
         // --- Moliya ---
         ["FinanceTransaction"] = "finance",
         ["Cashbox"] = "finance",
+        ["CashboxTransfer"] = "finance",
         ["TransactionType"] = "finance",
         ["PlannedExpense"] = "finance",
 

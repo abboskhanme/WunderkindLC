@@ -610,8 +610,9 @@ hisoblanadi (kirim − chiqim; bekor qilinganlar global filtr bilan tushadi). Qo
   (kassalardan OLDINGI holat), javobda esa endi `cashboxId/cashboxName` ham bor, ya'ni xom yozuvlardan
   qoldiqni hisoblash mumkin. Yopish — ALOHIDA ish (shu endpointni o'qiydigan sahifalar tekshirilsin).
 - **Kassa o'chirilmaydi, arxivlanadi:** yangi pul qabul qilmaydi, qoldig'i va tarixi saqlanadi. Nom
-  FAOL kassalar orasida takrorlanmaydi (registrsiz). ⚠️ Qoldig'i bor kassa ham arxivlanadi («Ko'chirish»
-  hali yo'q — rad etilsa, ishlatilgan kassani umuman arxivlab bo'lmasdi): tasdiq oynasi qoldiqni aytadi,
+  FAOL kassalar orasida takrorlanmaydi (registrsiz). ⚠️ Qoldig'i bor kassa ham arxivlanadi (rad etilsa,
+  minusdagi kassani umuman arxivlab bo'lmasdi): tasdiq oynasi qoldiqni aytadi va uni avval «Kassadan
+  kassaga» bilan o'tkazishni taklif qiladi; arxivdagi qoldiqni keyin ham chiqarish mumkin (quyida).
   «Jami» esa ARXIVDAGI kassalar qoldig'ini ham sanaydi (pul jismonan bor).
 - **UI:** «Kassalar» tabida kartalar (qoldiq — butun tarix, kirim/chiqim — tanlangan davr); «Kassa»
   tanlovi `PaymentModal`, `TransactionFormModal`, `PaymentEditModal` da FAQAT 2+ faol kassa bo'lsa
@@ -619,6 +620,65 @@ hisoblanadi (kirim − chiqim; bekor qilinganlar global filtr bilan tushadi). Qo
   foydalanuvchining standart kassasi. Tahrirda yozuvning
   arxivlangan kassasi "(arxiv)" bo'lib turadi — select jimgina boshqa kassaga almashtirmasin.
   «To'lovlar» tabida «Kassa» filtri.
-- **Hali YO'Q:** «Ko'chirish» (kassalar orasida pul o'tkazish), kassa bo'yicha alohida tranzaksiyalar
-  sahifasi, hisobotlarda kassa filtri.
+- **Hali YO'Q:** kassa bo'yicha alohida tranzaksiyalar sahifasi, hisobotlarda kassa filtri.
 - Testlar: `CashboxServiceTests`, `HomeEndpointsRbacTests` → `Kassalar__yozish_FAQAT_superadmin…`.
+
+## KASSADAN KASSAGA KO'CHIRISH (2026-10-07, jadval `CashboxTransfers`)
+
+Moliya → «Kassalar» → «Kassadan kassaga» (kartadagi ⇄ tugmasi «qayerdan»ni oldindan tanlaydi).
+Qoida — `CashboxTransferService`, controller — `CashboxTransfersController`
+(`api/admin/cashboxes/transfers`).
+
+⚠️ **ENG MUHIM — ko'chirish KIRIM ham, CHIQIM ham EMAS va `FinanceTransaction` ga YOZILMAYDI.**
+Alohida jadval (`CashboxTransfer`) ATAYIN: moliya tranzaksiyalarini 25+ joy o'qiydi (P&L, pul oqimi,
+«Kirim chiqim», kassir hisoboti, maosh bazasi, KPI, AI tahlil) — ko'chirish o'sha yerda bo'lsa har biriga
+istisno kerak bo'lardi va bittasi unutilsa pul ikki marta "kirim" bo'lib sanalardi. Ko'chirishni FAQAT
+`CashboxService.BalancesAsync` / `TotalAsync` o'qiydi: qoldiq = kirim − chiqim + kelgan − ketgan.
+Kartada ko'chirish kirim/chiqimga QO'SHILMAYDI — alohida qator (`PeriodTransferIn/Out`).
+⚠️ Yangi kassa ko'rsatkichi yozsangiz — qoldiqni QO'LDA yig'mang, `CashboxService` dan oling (aks holda
+ko'chirishlar tushib qoladi).
+
+- **Ruxsat — FAQAT superadmin** (HARD rol, kassalardagi bilan bir xil sabab). Kassir O'Z kassasidan
+  ham ko'chira olmaydi: ko'chirish = "pul jismonan boshqa kassaga o'tdi" degan da'vo, uni pulni QABUL
+  QILGAN tomon (rahbar) yozadi — aks holda kassir kamomadni qog'ozda boshqa kassaga "o'tkazib" yuborardi.
+  Tarix (`GET`) — `finance.main` (ReadRequiresPerm). Yangi ruxsat kaliti YO'Q.
+- **MINUSGA TUSHMAYDI:** chiqayotgan kassada yetarli qoldiq bo'lmasa — 400 sabab bilan ("qoldiq N,
+  ko'chirish M"). Tekshiruv + yozish bitta jarayon qulfi ostida (`LockScope`), bir oyna kaliti
+  (`RequestId`) bilan qayta bosilgan "Saqlash" ikkinchi ko'chirish yozmaydi. ⚠️ Oddiy CHIQIM uchun bu
+  qoida YO'Q (avvalgidek kassa xarajat bilan minusga tushishi mumkin) — u alohida qaror.
+- **Arxivlangan kassa** pul QABUL QILMAYDI, lekin undan CHIQARISH mumkin — arxivdagi qoldiq shu yo'l
+  bilan faol kassaga olinadi. O'z-o'ziga, nol/manfiy summa, kelajak sana — rad etiladi.
+- **Bekor qilish** (`DELETE {id}?reason=`) — qator O'CHMAYDI (`IsVoided`, global filtr, tarixda ustiga
+  chizilgan), ikkala qoldiq tiklanadi. ⚠️ Qabul qilgan kassa pulni allaqachon ishlatgan bo'lsa (qoldig'i
+  summadan kam) — RAD etiladi: bekor qilish uni minusga tushirmasin. Audit: `CashboxTransfer` → `finance`.
+- **Sana** — pul haqiqatan o'tgan kun (orqaga mumkin, kelajak yo'q). Minus tekshiruvi esa HOZIRGI
+  qoldiq bo'yicha (orqaga sanalganda o'tmishdagi oraliq qoldiq tekshirilmaydi — qabul qilingan).
+- Testlar: `CashboxTransferTests` (qoldiq, hisobotlarga tushmasligi, minus, bekor qilish, RBAC).
+
+## KIRIM/CHIQIM TURLARI — majburiy toifalar (2026-10-07)
+
+Yig'ilish talabi: to'lov turlari — **O'qish to'lovi · Kitob/qo'llanma sotuvi · Mock imtihon to'lovi ·
+Boshqa kirim**; filial xarajatlari ALOHIDA — **Ijara · Kommunal · Internet · Kantselyariya**.
+
+- Yangi TIZIM toifalari (`FinanceCategories`): kirim `book`, `mock`; chiqim `internet`, `stationery`
+  (`supplies` — «Jihoz/materiallar» — alohida qoladi). Klient ro'yxati `config/constants.ts`, server
+  qulfi `TransactionTypeCatalogTests.KnownCategories` — ikkalasi bir xil bo'lsin. Hisobotlar (P&L, pul
+  oqimi, «Kirim chiqim», «Toifalar bo'yicha») allaqachon TOIFA bo'yicha guruhlaydi — yangi toifalar
+  o'z-o'zidan alohida qator bo'ladi (yangi hisob-kitob yo'q).
+- **Seed BIR MARTALIK** (`FinanceTypeSeed`, `SeedMarker` kaliti `finance-types-2026-10`): mavjud
+  bazada bir marta ishlaydi, keyin admin o'chirgan tur QAYTA tug'ilmaydi. Eski turlar QAYTA BOG'LANADI
+  (yangisi qo'shilmaydi): «Kitob uchun»/«Mock to'lov» (`other` edi), «Internet va telefon» (`utilities`
+  edi), «Kanstovar» (`supplies` edi). Faqat ESKI toifadagi qator ko'chiriladi; nomdosh tur boshqa
+  toifada tursa — tegilmaydi (admin qarori). Yetishmagani bo'lim oxiriga qo'shiladi.
+- ⚠️ **Mavjud TRANZAKSIYALAR qayta yozilmaydi** (backfill YO'Q): eski «Internet» xarajatlari hisobotda
+  «Kommunal»da qoladi, yangilari — «Internet»da.
+- **Kitob puli endi kassaga tushadi** (`BookFinance`, `books.md` §7): naqd/karta sotuv tasdiqlanganda
+  va nasiya to'langanda — kirim `book`; qaytarishda pul berilsa — chiqim `book` (sotuv kassasidan).
+  ⚠️ `tuition` EMAS va `StudentId` YOZILMAYDI — o'quvchi balansi, o'qituvchi foizi, KPI kitob pulini
+  ko'rmaydi. `FinanceTransaction.BookOrderId` bor qator Moliyada TAHRIRLANMAYDI va BEKOR QILINMAYDI (400) —
+  summasi kitob bo'limida (qaytarish) o'zgaradi; jadvalda «KITOB» belgisi. Moliya → «Yangi amal»da
+  kitob turi tanlansa — "bo'limdagi sotuvni qayta kiritmang" ogohlantirishi (pul ikki marta sanalmasin).
+- **Mock** — alohida modul YO'Q: kirim qo'lda, «Mock imtihon to'lovi» turi bilan kiritiladi.
+- **«Kassalar balansi»** — bosh sahifada FAQAT superadmin uchun ixcham qator (har faol kassa + jami,
+  arxivdagilar alohida), Moliya → «Kassalar» ga havola (`CashboxBalanceStrip`).
+- Testlar: `FinanceTypeSeedTests`, `BookFinanceTests`, `TransactionTypeCatalogTests`.

@@ -525,6 +525,14 @@ export function TransactionFormModal({ open, onClose, onSubmit, initial, preset,
             </DrawerSelect>
           )}
         </DrawerField>
+        {/* Kitob kirimi: «Kitoblar sotuvi»dagi sotuv kassaga O'ZI yoziladi (`BookFinance`) — bu yerda
+            qayta kiritilsa pul IKKI marta sanalardi. */}
+        {form.direction === 'income' && form.category === 'book' && (
+          <p className="-mt-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">
+            «Kitoblar sotuvi» bo'limida sotilgan kitob puli kassaga o'zi yoziladi — uni bu yerda qayta kiritmang.
+            Bu yerda faqat bo'limdan tashqari sotuv (masalan qo'llanma) kiritiladi.
+          </p>
+        )}
 
         {/* Oylik maosh: o'qituvchi tanlash + shu oy holati */}
         {isSalaryExpense && (

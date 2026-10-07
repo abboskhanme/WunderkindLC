@@ -33,20 +33,23 @@ public static class TransactionTypeCatalog
     public static readonly (string Kind, string Name, string BaseCategory)[] Seed =
     [
         // — KIRIM —
+        // ⚠️ Kitob/Mock/Internet/Kanstovar 2026-10 dan O'Z toifasida (`FinanceTypeSeed` — yig'ilish talabi:
+        // to'lov va filial xarajatlari ALOHIDA toifalarda). Mavjud bazada ular bir marta qayta bog'lanadi.
         ("kirim", "O'quvchi to'ladi", "tuition"),
-        ("kirim", "Kitob uchun", "other"),
-        ("kirim", "Mock to'lov", "other"),
+        ("kirim", "Kitob uchun", "book"),
+        ("kirim", "Mock to'lov", "mock"),
         ("kirim", "Oldingi oydagi qarzi", "tuition"),
         ("kirim", "Fond", "other"),
         ("kirim", "SAT oylik to'lovlari", "tuition"),
+        ("kirim", "Boshqa kirim", "other"),
         // — CHIQIM —
         ("chiqim", "Adashib kiritilgan pulni balansdan chiqarish", "other"),
         ("chiqim", "Hodimga avans", "salary"),
         ("chiqim", "Hodimga oylik", "salary"),
-        ("chiqim", "Internet va telefon", "utilities"),
+        ("chiqim", "Internet va telefon", "internet"),
         ("chiqim", "Kommunal to'lovlar", "utilities"),
         ("chiqim", "Arenda", "rent"),
-        ("chiqim", "Kanstovar", "supplies"),
+        ("chiqim", "Kanstovar", "stationery"),
         ("chiqim", "Boshqa", "other"),
         ("chiqim", "One Family", "other"),
         ("chiqim", "Marketing", "other"),

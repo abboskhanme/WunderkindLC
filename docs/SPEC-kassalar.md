@@ -51,4 +51,6 @@ with a key). Audit type `Cashbox` → section `finance`.
 
 ## Out of scope (next steps)
 
-«Ko'chirish» (transfer between kassas), per-kassa transaction page, kassa filter in reports.
+Per-kassa transaction page, kassa filter in reports.
+(«Ko'chirish» — transfer between kassas — done 2026-10-07: `CashboxTransfer`, see `.claude/rules/billing.md`
+«KASSADAN KASSAGA KO'CHIRISH».)

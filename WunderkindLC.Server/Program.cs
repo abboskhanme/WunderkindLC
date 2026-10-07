@@ -833,6 +833,22 @@ if (CashboxService.EnsureMain(db))
     }
 }
 
+// MAJBURIY KIRIM/CHIQIM TURLARI (yig'ilish: kitob, mock, boshqa kirim; ijara, kommunal, internet,
+// kantselyariya) — BIR MARTALIK (`SeedMarker`): mavjud bazaga bir marta olib kiriladi, keyin admin
+// o'chirgan tur QAYTA tug'ilmaydi. Batafsil — `FinanceTypeSeed`. TRY-CATCH: jadval yo'q bo'lsa
+// (migratsiya hali qo'llanmagan) logga yozib o'tadi va keyingi restartda qayta urinadi.
+try
+{
+    var (ran, added, repointed) = await FinanceTypeSeed.EnsureOnceAsync(db);
+    if (ran)
+        app.Logger.LogInformation("[seed] Moliya turlari: {Added} ta yangi tur, {Repointed} ta tur yangi toifaga bog'landi",
+            added, repointed);
+}
+catch (Exception ex)
+{
+    app.Logger.LogWarning(ex, "[seed] majburiy moliya turlari seed qilinmadi (migratsiya qo'llanmagan bo'lsa normal)");
+}
+
 // KPI: rol QOIDALARI (Excel konstantalari) va kunlik CHEKLIST shablonlari.
 // IDEMPOTENT — mavjud versiya/shablon HECH QACHON qayta yozilmaydi, faqat yo'q bo'lgani
 // qo'shiladi (rahbarning «Qoidalar» sahifasidagi tahriri restartda yo'qolmasin).

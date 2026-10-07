@@ -3,7 +3,9 @@ import { useSearchParams } from 'react-router-dom'
 import { IconChartBar, IconFileExport, IconFilter } from '@tabler/icons-react'
 import { getDashboardSummary, type DashboardSummary } from '@/api/services/dashboard'
 import { exportScheduleDay, getScheduleGrid, type ScheduleGrid } from '@/api/services/schedule'
+import { CashboxBalanceStrip } from '@/components/dashboard/home/CashboxBalanceStrip'
 import { HomeButton } from '@/components/dashboard/home/HomeControls'
+import { useAuth } from '@/context/auth-context'
 import { HomeFilterRow } from '@/components/dashboard/home/HomeFilterRow'
 import { HomeStatCards } from '@/components/dashboard/home/HomeStatCards'
 import { ScheduleBoard } from '@/components/dashboard/home/ScheduleBoard'
@@ -49,6 +51,9 @@ export function AdminDashboard({ scheduleOnly = false }: {
   scheduleOnly?: boolean
 } = {}) {
   const { can } = usePerm()
+  const { user } = useAuth()
+  // «Kassalar balansi» — FAQAT superadmin monitoringi (kassa yozuvlari ham faqat uniki, billing.md).
+  const showCashboxes = !scheduleOnly && user?.role === 'superadmin'
   const canSchedule = can('schedule.timetable', 'view')
   const canOpenGroup = can('classes.list', 'view')
   const anyCard = !scheduleOnly && HOME_CARDS.some((c) => can(c.perm, 'view'))
@@ -141,6 +146,8 @@ export function AdminDashboard({ scheduleOnly = false }: {
           )}
         </>
       )}
+
+      {showCashboxes && (!anyCard || showStats) && <CashboxBalanceStrip />}
 
       {canSchedule && showFilter && (
         <HomeFilterRow

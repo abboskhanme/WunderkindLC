@@ -154,5 +154,6 @@ public class CashboxesController(AppDbContext db, AuditService audit) : Controll
 
     private static CashboxDto ToDto(Cashbox b, CashboxService.Balance? balance) =>
         new(b.Id, b.Name, b.ResponsibleUserId, b.ResponsibleName, b.Id == CashboxService.MainId, b.IsArchived,
-            balance?.Total ?? 0m, balance?.PeriodIncome ?? 0m, balance?.PeriodExpense ?? 0m, b.CreatedAt);
+            balance?.Total ?? 0m, balance?.PeriodIncome ?? 0m, balance?.PeriodExpense ?? 0m, b.CreatedAt,
+            balance?.PeriodTransferIn ?? 0m, balance?.PeriodTransferOut ?? 0m);
 }
