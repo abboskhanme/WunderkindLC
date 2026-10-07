@@ -41,6 +41,7 @@ const CrmStatsPage = lazy(() => import('@/pages/admin/leads/CrmStatsPage').then(
 const ReportsPage = lazy(() => import('@/pages/admin/reports/ReportsPage').then((m) => ({ default: m.ReportsPage })))
 const DiscountsReportPage = lazy(() => import('@/pages/admin/reports/DiscountsReportPage').then((m) => ({ default: m.DiscountsReportPage })))
 const SchoolGradesReportPage = lazy(() => import('@/pages/admin/reports/SchoolGradesReportPage').then((m) => ({ default: m.SchoolGradesReportPage })))
+const RetentionLossPage = lazy(() => import('@/pages/admin/reports/RetentionLossPage').then((m) => ({ default: m.RetentionLossPage })))
 const SchedulePage = lazy(() => import('@/pages/admin/schedule/SchedulePage').then((m) => ({ default: m.SchedulePage })))
 const StudentsPage = lazy(() => import('@/pages/admin/students/StudentsPage').then((m) => ({ default: m.StudentsPage })))
 const RetentionBonusPage = lazy(() => import('@/pages/admin/students/RetentionBonusPage').then((m) => ({ default: m.RetentionBonusPage })))
@@ -289,6 +290,7 @@ export default function App() {
                 o'quvchi profilida qoladi. */}
             <Route path="hisobotlar/chegirmalar" element={<RequirePerm perm="finance.discounts"><DiscountsReportPage /></RequirePerm>} />
             <Route path="hisobotlar/sinflar" element={<RequirePerm perm="students.list"><SchoolGradesReportPage /></RequirePerm>} />
+            <Route path="hisobotlar/ketish-sabablari" element={<RequirePerm perm="teachers.retention"><RetentionLossPage /></RequirePerm>} />
             <Route path="crm-stats" element={<RequirePerm perm="leads.stats"><CrmStatsPage /></RequirePerm>} />
             <Route path="students" element={<RequirePerm perm="students.list"><StudentsPage /></RequirePerm>} />
             {/* Bog'lanish kerak — O'quvchilar bo'limi ICHIDA, lekin ruxsati alohida (`contacts`). */}

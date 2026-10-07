@@ -141,7 +141,7 @@ const CROSS_INVALIDATION: Record<string, string[]> = {
   '/admin/classes': ['/admin/students', '/admin/finance', '/admin/kassa', '/admin/journal',
     '/admin/student-attendance', '/admin/grading', '/admin/course-analytics', '/admin/schedule',
     '/admin/rooms', '/admin/teachers', '/admin/archive', '/admin/curriculum',
-    '/admin/retention-bonus', '/student', '/teacher'],
+    '/admin/retention-bonus', '/admin/retention-loss', '/student', '/teacher'],
   // Umumiy arxiv uchta ro'yxatga qaytaradi.
   '/admin/archive': ['/admin/students', '/admin/teachers', '/admin/classes'],
   '/admin/parents': ['/admin/students'],

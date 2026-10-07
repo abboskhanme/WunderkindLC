@@ -138,6 +138,14 @@ export interface TodayLessonMonitor {
   attendanceDone: boolean
   /** Bugun baho qo'yilganmi (jurnal bahosi yoki mezon belgisi) */
   gradesDone: boolean
+  /** Dars shu kunga KO'CHIRILGAN (vaqti ham yangi bo'lishi mumkin) */
+  moved?: boolean
+  /** Shu kuni darsni o'tadigan o'rinbosar ('' — yo'q) */
+  substituteTeacherName?: string
+  /** Dars bosqichi so'rov paytida: hali boshlanmagan | ketyapti | tugagan */
+  phase?: 'upcoming' | 'started' | 'ended' | ''
+  /** KECHIKKAN — dars boshlangan/tugagan, davomat hali olinmagan */
+  overdue?: boolean
 }
 export interface TodayLessons {
   date: string

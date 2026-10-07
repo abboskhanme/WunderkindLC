@@ -101,6 +101,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options)
 
     // Amal sabablari (muzlatish/o'chirish/sinovga qaytarish/lid/guruh)
     public DbSet<ActionReason> ActionReasons => Set<ActionReason>();
+    public DbSet<MembershipReasonLog> MembershipReasonLogs => Set<MembershipReasonLog>();
     public DbSet<LeadSource> LeadSources => Set<LeadSource>();
 
     // Arxiv — o'chirilgan entity'larning JSON suratlari (ko'rish/tiklash uchun)
@@ -715,6 +716,15 @@ public class AppDbContext(DbContextOptions<AppDbContext> options)
         b.Entity<SubjectCurriculum>().HasIndex(sc => sc.CurriculumId);
 
         b.Entity<ActionReason>().HasIndex(r => new { r.Category, r.Order });
+
+        // A'zolik amalidagi sabab — hisobot (o'quvchi, guruh) juftligi bo'yicha qidiradi.
+        b.Entity<MembershipReasonLog>().Property(x => x.StudentId).HasMaxLength(200);
+        b.Entity<MembershipReasonLog>().Property(x => x.GroupId).HasMaxLength(200);
+        b.Entity<MembershipReasonLog>().Property(x => x.Action).HasMaxLength(20);
+        b.Entity<MembershipReasonLog>().Property(x => x.Date).HasMaxLength(10);
+        b.Entity<MembershipReasonLog>().Property(x => x.ReasonId).HasMaxLength(200);
+        b.Entity<MembershipReasonLog>().HasIndex(x => new { x.StudentId, x.GroupId });
+        b.Entity<MembershipReasonLog>().HasIndex(x => x.Date);
 
         // Tuman + maktab (maktab tuman ichida tartiblanadi/qidiriladi).
         b.Entity<District>().HasIndex(d => d.Order);

@@ -140,6 +140,9 @@ export const adminPermissions: AdminPermSection[] = [
       { key: 'teachers.list', label: "O'qituvchilar ro'yxati va profili" },
       { key: 'teachers.attendance', label: "O'qituvchilar davomati" },
       { key: 'teachers.substitutions', label: "O'rinbosarlar" },
+      // «Ketish sabablari» (Retention / Loss) hisoboti — o'quvchi ismlari va sabablar bor,
+      // shuning uchun alohida kalit (serverda ReadRequiresPerm). `.claude/rules/retention-loss.md`.
+      { key: 'teachers.retention', label: 'Ketish sabablari (retention)' },
     ],
   },
   {

@@ -134,6 +134,8 @@ public interface IAppDbContext
 
     // Amal sabablari (muzlatish/o'chirish/sinovga qaytarish/lid/guruh)
     DbSet<ActionReason> ActionReasons { get; }
+    /// <summary>A'zolik amalidagi (chiqarish/almashtirish/muzlatish/yopish) tanlangan SABAB — «Ketish sabablari» hisoboti uchun.</summary>
+    DbSet<MembershipReasonLog> MembershipReasonLogs { get; }
     DbSet<LeadSource> LeadSources { get; }
 
     // Arxiv — o'chirilgan entity'larning JSON suratlari (ko'rish/tiklash uchun)
