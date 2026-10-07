@@ -25,8 +25,13 @@ namespace WunderkindLC.Application.Services;
 /// </summary>
 public static class DashboardSummary
 {
-    /// <summary>Lid: aylantirilganmi (o'quvchi bo'lganmi).</summary>
-    public readonly record struct LeadRow(string Id, bool Converted);
+    /// <summary>Lid: aylantirilganmi (o'quvchi bo'lganmi) va YO'QOTILGANmi (<see cref="LeadLoss"/>).
+    /// <see cref="IsOpen"/> — OCHIQ lid (faol ish): ikkalasi ham emas. Bosh sahifa kartochkalari,
+    /// «Birinchi darsga yozilganlar» va sinov eslatmasi AYNAN shu ta'rifdan foydalanadi.</summary>
+    public readonly record struct LeadRow(string Id, bool Converted, bool Lost = false)
+    {
+        public bool IsOpen => !Converted && !Lost;
+    }
 
     /// <summary>Sinov darsi: <paramref name="ScheduledAt"/> — ISO "yyyy-MM-ddTHH:mm".</summary>
     public readonly record struct TrialRow(string LeadId, string Result, string ScheduledAt);
@@ -49,8 +54,9 @@ public static class DashboardSummary
         var month = today.ToString("yyyy-MM");
 
         var leads = (await db.Leads.AsNoTracking()
-                .Select(l => new { l.Id, l.ConvertedStudentId }).ToListAsync(ct))
-            .Select(l => new LeadRow(l.Id, l.ConvertedStudentId != null)).ToList();
+                .Select(l => new { l.Id, l.ConvertedStudentId, l.LostAt }).ToListAsync(ct))
+            .Select(l => new LeadRow(l.Id, l.ConvertedStudentId != null, !string.IsNullOrWhiteSpace(l.LostAt)))
+            .ToList();
         var trials = (await db.TrialLessons.AsNoTracking()
                 .Where(t => t.Result == TrialPending)
                 .Select(t => new { t.LeadId, t.Result, t.ScheduledAt }).ToListAsync(ct))
@@ -163,10 +169,13 @@ public static class DashboardSummary
             Archived: students.Count(s => s.IsArchived));
     }
 
-    /// <summary>BUYURTMALAR — ochiq lidlar: hali o'quvchiga aylantirilmagan.
-    /// <para>Loyihada "yo'qotilgan lid" bosqichi YO'Q: rad etilgan lid O'CHIRILADI (arxivga tushadi),
-    /// ya'ni jadvalda qolgan har bir aylantirilmagan lid — ochiq buyurtma.</para></summary>
-    public static int OpenLeads(IEnumerable<LeadRow> leads) => leads.Count(l => !l.Converted);
+    /// <summary>BUYURTMALAR — ochiq lidlar: hali o'quvchiga aylantirilmagan VA yo'qotilmagan.
+    /// <para>2026-10 gacha "yo'qotilgan lid" holati YO'Q edi (rad etilgan lid O'CHIRILARDI). Endi
+    /// lid sabab bilan YO'QOTILGAN deb belgilanadi (<see cref="LeadLoss"/>) — u faol ish emas, shuning
+    /// uchun bu yerda sanalmaydi. ⚠️ "Buyurtmadan ketganlar" (<c>OrdersLeft</c>) esa avvalgidek faqat
+    /// O'CHIRILGAN lidlar: kartochka ro'yxati arxiv sahifasi, yo'qotilganlar u yerda yo'q — sanoq
+    /// ro'yxatdan farq qilmasin. Yo'qotilganlar — «Yo'qotilgan lidlar» hisobotida.</para></summary>
+    public static int OpenLeads(IEnumerable<LeadRow> leads) => leads.Count(l => l.IsOpen);
 
     /// <summary>
     /// BIRINCHI DARSGA KELADIGANLAR — ochiq lid, unda natijasi hali belgilanmagan (<see cref="TrialPending"/>)
@@ -176,7 +185,7 @@ public static class DashboardSummary
     /// </summary>
     public static int FirstLessonLeads(IEnumerable<LeadRow> leads, IEnumerable<TrialRow> trials, string today)
     {
-        var open = leads.Where(l => !l.Converted).Select(l => l.Id).ToHashSet(StringComparer.Ordinal);
+        var open = leads.Where(l => l.IsOpen).Select(l => l.Id).ToHashSet(StringComparer.Ordinal);
         return trials
             .Where(t => t.Result == TrialPending
                         && t.ScheduledAt.Length >= 10

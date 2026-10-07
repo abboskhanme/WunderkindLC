@@ -5,6 +5,7 @@ import { IconPhone, IconRepeat } from '@tabler/icons-react'
 import type { Lead } from '@/types'
 import { formatDate, formatDateTime, cn } from '@/lib/utils'
 import { formatPhone } from '@/lib/numberFormat'
+import { cameBackAfterLoss, isLeadLost } from './leadLabels'
 
 /** Lid yaratilganidan beri o'tgan kun (createdAt "yyyy-MM-ddTHH:mm:ss"). */
 function leadAgeDays(createdAt?: string): number | null {
@@ -21,7 +22,8 @@ function leadAgeDays(createdAt?: string): number | null {
  * o'nlab rangli karta yonma-yon turganda "shoshilinch" belgisi ma'nosini yo'qotardi.
  */
 function agingAccent(lead: Lead): string | null {
-  if (lead.convertedStudentId) return null
+  // Yo'qotilgan lid — faol ish emas, "qolib ketdi" belgisi unga ma'nosiz.
+  if (lead.convertedStudentId || isLeadLost(lead)) return null
   const days = leadAgeDays(lead.createdAt)
   if (days == null) return null
   if (days >= 14) return '#dc2626'
@@ -50,6 +52,7 @@ function todayIso(): string {
  */
 function footHint(lead: Lead): { text: string; color: string } {
   if (lead.convertedStudentId) return { text: "O'quvchi", color: '#00A35C' }
+  if (isLeadLost(lead)) return { text: "Yo'qotilgan", color: '#e11d48' }
   if (lead.firstLessonAt) {
     const past = lead.firstLessonAt.slice(0, 10) < todayIso()
     return { text: `Sinov: ${shortAt(lead.firstLessonAt)}`, color: past ? '#DE4141' : '#3D68FF' }
@@ -131,6 +134,21 @@ export function LeadCardContent({
       {/* TAKRORIY MUROJAAT — odam ommaviy forma yoki daraja testi orqali YANA yozilgan. Bosqich
           ATAYIN o'zgarmaydi (birinchi teginish saqlanadi), shuning uchun "yo'qotilgan" ustunidagi
           karta ham shu belgi bilan ko'zga tashlanadi (`crm-leads.md`). */}
+      {/* YO'QOTILGAN — sabab (snapshot) kartaning o'zida: ustunni ochgan menejer "nega" ni
+          bir qarashda ko'rsin. Yo'qotilgandan KEYIN yana murojaat qilgan bo'lsa — alohida belgi. */}
+      {isLeadLost(lead) && (
+        <div className="mt-1 flex flex-wrap items-center gap-1">
+          <Tag className="bg-rose-50 text-rose-700" title={lead.lostComment || undefined}>
+            {lead.lostReason || 'Sababsiz'}
+          </Tag>
+          {cameBackAfterLoss(lead) && (
+            <Tag className="bg-sky-50 text-sky-700" title="Yo'qotilgandan keyin yana murojaat qildi">
+              <IconRepeat className="h-3 w-3" /> Qaytib keldi
+            </Tag>
+          )}
+        </div>
+      )}
+
       {(attendance || (!!lead.repeatCount && lead.repeatCount > 0)) && (
         <div className="mt-1 flex flex-wrap gap-1">
           {!!lead.repeatCount && lead.repeatCount > 0 && (

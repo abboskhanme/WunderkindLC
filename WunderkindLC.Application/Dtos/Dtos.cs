@@ -947,7 +947,13 @@ public record LeadWithAttendanceDto(
     string? TeacherId = null,
     string? TeacherName = null,
     /// <summary>KURS DARAJASI — lidning eng so'nggi daraja testi natijasi (<c>LevelTestSubmission.Level</c>).</summary>
-    string? Level = null);
+    string? Level = null,
+    /// <summary>YO'QOTILGAN lid (<c>LeadLoss</c>): null — yo'qotilmagan. Sabab — snapshot matn.</summary>
+    string? LostAt = null,
+    string? LostReasonId = null,
+    string? LostReason = null,
+    string? LostComment = null,
+    string? LostByName = null);
 
 /// <summary>
 /// «Birinchi darsga yozilganlar» qatori (<c>GET api/admin/leads/first-lesson</c>). Tanlov qoidasi —

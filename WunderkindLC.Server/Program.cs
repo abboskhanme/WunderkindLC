@@ -702,6 +702,8 @@ using (var scope = app.Services.CreateScope())
             ("remove_trial", new[] { "Sinovdan keyin qoldirmadi", "Qiziqmadi", "Narx mos kelmadi" }),
             ("remove_frozen", new[] { "Uzoq vaqt qaytmadi", "Boshqa markazga o'tdi", "Voz kechdi" }),
             ("lead_delete", new[] { "Aloqaga chiqmadi", "Qiziqmadi", "Noto'g'ri raqam", "Takror / spam" }),
+            // Yo'qotilgan lid sababi MAJBURIY — kategoriya bo'sh qolsa lidni yo'qotib bo'lmasdi.
+            (LeadLoss.ReasonCategory, LeadLoss.DefaultReasons.ToArray()),
             ("group_delete", new[] { "O'quvchi yetarli emas", "O'qituvchi ketdi", "Kurs tugadi", "Guruhlar birlashtirildi" }),
             ("student_delete", new[] { "Boshqa markazga o'tdi", "Ko'chib ketdi", "Xato kiritilgan", "Voz kechdi" }),
             ("teacher_delete", new[] { "Ishdan bo'shadi", "Boshqa joyga o'tdi", "Xato kiritilgan" }),

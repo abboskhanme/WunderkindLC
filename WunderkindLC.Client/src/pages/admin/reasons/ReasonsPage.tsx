@@ -42,6 +42,8 @@ const CATEGORIES: { key: string; title: string; sub: string; icon: LucideIcon }[
   { key: 'contact', title: "Bog'lanish kerak", sub: "O'quvchini bog'lanish navbatiga qo'shishda tanlanadi", icon: PhoneCall },
   { key: 'archive_student', title: "Talaba arxivga olinganda", sub: "O'quvchi arxivga ko'chirilganda tanlanadi", icon: Archive },
   { key: 'lead_delete', title: "Lid o'chirilganda", sub: 'Lid (mijoz) o’chirilganda', icon: Users },
+  // Lid «Yo'qotilgan» ustuniga o'tkazilganda — sabab MAJBURIY, «Yo'qotilgan lidlar» hisoboti shundan.
+  { key: 'lead_lost', title: "Lid yo'qotilganda", sub: "Lid «Yo'qotilgan» ustuniga o'tkazilganda (majburiy)", icon: UserX },
   { key: 'group_delete', title: "Guruh o'chirilganda", sub: 'Guruh o’chirilganda', icon: Layers },
   { key: 'student_delete', title: "Talaba o'chirilganda", sub: "O'quvchi butunlay o'chirilganda", icon: UserMinus },
   { key: 'teacher_delete', title: "O'qituvchi o'chirilganda", sub: "O'qituvchi butunlay o'chirilganda", icon: GraduationCap },

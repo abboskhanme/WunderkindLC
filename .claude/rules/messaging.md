@@ -192,7 +192,8 @@ Entity — `LeadTelegramMessage` (LeadId · ChatId · MessageId · TextHash · I
 Testlar: `WunderkindLC.Tests/LeadsTests.cs` (§5).
 
 Lid xabari — **KARTA**: u lidning **JORIY holatini** ko'rsatadi (bosqich, sinov darsi, takroriy
-murojaat, izohlar, «O'quvchi bo'ldi», oxirgi test natijasi) va lid har o'zgarganda o'sha xabar
+murojaat, izohlar, «❌ Yo'qotildi: sabab» — izohi faqat shaxsiy chatda, `crm-leads.md` «YO'QOTILGAN
+LIDLAR» §5, «O'quvchi bo'ldi», oxirgi test natijasi) va lid har o'zgarganda o'sha xabar
 `editMessageText` bilan **joyida tahrirlanadi** — yangi xabar YUBORILMAYDI.
 Ilgari faqat lid TUG'ILGANDAGI xabar turardi va u bir kunda eskirardi; har o'zgarishga yangi xabar
 yuborish esa guruhni «o'zgardi / yana o'zgardi» oqimiga aylantirardi.

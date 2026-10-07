@@ -13,6 +13,8 @@ export const eventTypeLabels: Record<LeadEventType, string> = {
   trial: 'Sinov darsi',
   convert: 'Aylantirildi',
   created: 'Yaratildi',
+  lost: "Yo'qotildi",
+  restore: 'Tiklandi',
 }
 
 export const eventTypeColors: Record<LeadEventType, string> = {
@@ -22,6 +24,8 @@ export const eventTypeColors: Record<LeadEventType, string> = {
   trial: 'bg-violet-50 text-violet-600',
   convert: 'bg-emerald-50 text-emerald-600',
   created: 'bg-slate-100 text-slate-500',
+  lost: 'bg-rose-50 text-rose-700',
+  restore: 'bg-sky-50 text-sky-700',
 }
 
 /**
@@ -94,3 +98,18 @@ export function leadCallNumbers(l: { phone?: string; fatherPhone?: string; mothe
     { label: 'Onasi', number: l.motherPhone ?? '' },
   ].filter((n) => n.number)
 }
+
+/**
+ * Lid YO'QOTILGANmi (serverdagi `LeadLoss.IsLost` bilan bitta ta'rif). Bu BOSQICH EMAS — lidning
+ * `stage` i o'z joyida qoladi, kanbanda esa u faqat DOIMIY "Yo'qotilgan" ustunida chiziladi.
+ */
+export const isLeadLost = (l: { lostAt?: string | null }) => !!l.lostAt
+
+/**
+ * Yo'qotilgandan KEYIN yana murojaat qilgan (forma/daraja testi orqali). Takroriy murojaat
+ * holatni ATAYIN o'zgartirmaydi (birinchi teginish qoidasi — `lead-forms.md` §4), shuning uchun
+ * bunday karta "Yo'qotilgan" ustunida alohida belgi bilan ko'zga tashlanadi — aks holda qaytib
+ * kelgan mijoz e'tibordan chetda qolardi.
+ */
+export const cameBackAfterLoss = (l: { lostAt?: string | null; lastRepeatAt?: string | null }) =>
+  !!l.lostAt && !!l.lastRepeatAt && l.lastRepeatAt > l.lostAt

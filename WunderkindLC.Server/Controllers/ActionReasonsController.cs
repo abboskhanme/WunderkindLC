@@ -30,7 +30,10 @@ public class ActionReasonsController(AppDbContext db) : ControllerBase
     /// </summary>
     private static readonly string[] Categories =
     {
-        "freeze", "return_trial", "remove_active", "remove_trial", "remove_frozen", "lead_delete", "group_delete",
+        "freeze", "return_trial", "remove_active", "remove_trial", "remove_frozen", "lead_delete",
+        // "lead_lost" — lidni «Yo'qotilgan» ustuniga o'tkazishda MAJBURIY sabab (LeadLoss.ReasonCategory).
+        "lead_lost",
+        "group_delete",
         // "contact" — "Bog'lanish kerak" talabini ochishdagi sabab (ContactService.ReasonCategory).
         "contact",
         "student_delete", "teacher_delete", "staff_delete", "finance_delete", "archive_student",

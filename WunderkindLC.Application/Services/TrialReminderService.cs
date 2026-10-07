@@ -70,6 +70,9 @@ public class TrialReminderService(
             if (lead is null) continue;
             // Aylantirilgan (o'quvchiga o'tgan) lidga eslatma yubormaymiz.
             if (lead.ConvertedStudentId is not null) continue;
+            // YO'QOTILGAN lid ham faol ish emas — "bormayman" degan odamga eslatma SMS ketmasin
+            // (tiklansa sinov yozuvi joyida, eslatma yana ishlaydi).
+            if (LeadLoss.IsLost(lead)) continue;
             var group = string.IsNullOrWhiteSpace(trial.GroupId) ? null
                 : await db.Classes.FirstOrDefaultAsync(c => c.Id == trial.GroupId, ct);
             await autoMsg.DispatchLeadAsync(db, AutoMessageTriggers.TrialReminder, lead,

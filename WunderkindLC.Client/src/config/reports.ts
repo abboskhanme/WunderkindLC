@@ -67,6 +67,14 @@ export const reportGroups: ReportGroup[] = [
         inNav: true,
       },
       {
+        // SOF hisobot (yozuvchi amal yo'q) va yangi sahifa — eski menyu guruhida bandi YO'Q.
+        label: "Yo'qotilgan lidlar",
+        to: '/admin/hisobotlar/yoqotilgan-lidlar',
+        perm: 'leads.stats',
+        description: "Qaysi lidlarni yo'qotdik va nega — sabab, manba va mas'ul xodim kesimida",
+        inNav: true,
+      },
+      {
         label: 'Lid formalari statistikasi',
         to: '/admin/forms/statistika',
         perm: 'leads.forms',

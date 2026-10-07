@@ -696,6 +696,14 @@ public static class LeadNotifier
             // superadminning SHAXSIY chatidagi kartada qoladi.
             state.Add($"💬 {p.NoteCount} ta izoh");
         }
+        if (LeadLoss.IsLost(l))
+        {
+            // Sabab — katalog matni (guruhga ham chiqadi); IZOH esa ichki matn, faqat shaxsiy chatda
+            // (yuqoridagi menejer izohlari bilan bir xil qoida).
+            state.Add($"❌ Yo'qotildi: {(string.IsNullOrWhiteSpace(l.LostReason) ? "sababsiz" : l.LostReason)}");
+            if (includeNotes && !string.IsNullOrWhiteSpace(l.LostComment))
+                state.Add($"• {Shorten(l.LostComment, MaxNoteLength)}");
+        }
         if (!string.IsNullOrWhiteSpace(l.ConvertedStudentId)) state.Add("✅ O'quvchi bo'ldi");
         return string.Join("\n", state);
     }
