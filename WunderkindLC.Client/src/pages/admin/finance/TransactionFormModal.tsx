@@ -3,8 +3,8 @@ import type { FormEvent } from 'react'
 import type {
   FinanceDirection,
   FinanceTransaction,
-  MonthLedger,
   MonthSalary,
+  MonthStatus,
   Group,
   Student,
   Teacher,
@@ -12,7 +12,7 @@ import type {
 import type { FinanceTransactionPayload } from '@/api/services/finance'
 import { getTeachers, getSalaryMonth } from '@/api/services/teachers'
 import { getClasses } from '@/api/services/classes'
-import { getStudents, getStudentLedger } from '@/api/services/students'
+import { getStudents, getStudentLedger, getGroupLedger } from '@/api/services/students'
 import { Button } from '@/components/ui/Button'
 import {
   RightDrawer,
@@ -55,6 +55,10 @@ const isSalaryCat = (direction: FinanceDirection, category: string) =>
 /** Forma holati: summa maydoni BO'SH bo'la oladi (`null`) — yangi amal "0" bilan ochilmaydi. */
 type TxForm = Omit<FinanceTransactionPayload, 'amount'> & { amount: number | null }
 
+/** "Qaysi oy uchun" qatori — umumiy (`MonthLedger`) va guruh (`GroupMonth`) hisobining umumiy qismi. */
+type LedgerRow = { month: string; remaining: number; status: MonthStatus }
+const toRow = (m: LedgerRow): LedgerRow => ({ month: m.month, remaining: m.remaining, status: m.status })
+
 const emptyFor = (direction: FinanceDirection): TxForm => ({
   date: today(),
   direction,
@@ -71,10 +75,14 @@ export function TransactionFormModal({ open, onClose, onSubmit, initial, preset,
   // O'quvchi to'lovi uchun: guruh/o'quvchi tanlash + tanlangan o'quvchining oylar holati
   const [classes, setClasses] = useState<Group[]>([])
   const [students, setStudents] = useState<Student[]>([])
+  // Tanlangan GURUH ID'si (o'quvchi to'lovi shu guruhga bog'lanib yoziladi — `groupId`).
   const [classId, setClassId] = useState('')
   // Tuition to'lovi: avval o'qituvchi, keyin uning guruhi (kaskad)
   const [tuitionTeacherId, setTuitionTeacherId] = useState('')
-  const [ledgerMonths, setLedgerMonths] = useState<MonthLedger[]>([])
+  // Oylar holati: guruh tanlangan bo'lsa — SHU GURUH hisobi (`getGroupLedger`), aks holda umumiy.
+  const [ledgerMonths, setLedgerMonths] = useState<LedgerRow[]>([])
+  /** Eskirgan javob (tez almashtirilgan o'quvchi/guruh) yangisini bosib ketmasin. */
+  const ledgerReqRef = useRef(0)
   // Tanlangan o'quvchining BALANSI (manfiy = qarz, musbat = haqdorlik). null = hali yuklanmagan.
   const [studentBalance, setStudentBalance] = useState<number | null>(null)
   // O'quvchini QIDIRISH — kaskad (o'qituvchi → guruh) o'rniga to'g'ridan-to'g'ri ism/telefon bo'yicha.
@@ -118,8 +126,10 @@ export function TransactionFormModal({ open, onClose, onSubmit, initial, preset,
   // Tanlanmagan bo'lsa — zaxira sifatida sana oyi ishlatiladi (eski xatti-harakat).
   const month = form.month || form.date?.slice(0, 7)
 
+  const selectedGroup = classes.find((c) => c.id === classId)
+
   /**
-   * Tanlangan GURUHDAGI o'quvchilar — TIRIK a'zolik bo'yicha (`classId` — guruh NOMI).
+   * Tanlangan GURUHDAGI o'quvchilar — TIRIK a'zolik bo'yicha (`classId` — guruh ID'si).
    *
    * ⚠️ Ilgari `s.className === classId` edi, ya'ni eski "asosiy guruh" yorlig'i. U BIRINCHI
    * qo'shilgan guruhda qotib qoladi: o'quvchi yangi guruhga o'tgan bo'lsa, kassir o'sha guruhni
@@ -133,11 +143,11 @@ export function TransactionFormModal({ open, onClose, onSubmit, initial, preset,
             (s) =>
               !s.isArchived &&
               ((s.groupStates?.length ?? 0) > 0
-                ? s.groupStates!.some((g) => g.name === classId)
-                : s.className === classId),
+                ? s.groupStates!.some((g) => g.groupId === classId)
+                : !!selectedGroup && s.className === selectedGroup.name),
           )
         : [],
-    [students, classId],
+    [students, classId, selectedGroup],
   )
   // Faqat guruhi bor o'qituvchilar tanlov ro'yxatida; guruhlar tanlangan o'qituvchiniki.
   const tuitionTeacherOptions = useMemo(
@@ -178,31 +188,53 @@ export function TransactionFormModal({ open, onClose, onSubmit, initial, preset,
    * to'lov baribir yoziladi — guruh tegi bo'sh qoladi (eski/arxiv guruh holati).
    */
   const pickStudent = (s: Student) => {
-    const name = s.groupStates?.[0]?.name ?? s.className ?? ''
-    const cls = classes.find((c) => c.name === name)
+    const gs = s.groupStates?.[0]
+    const cls = gs ? classes.find((c) => c.id === gs.groupId) : classes.find((c) => c.name === s.className)
     setTuitionTeacherId(cls?.teacherId ?? '')
-    setClassId(cls?.name ?? '')
+    setClassId(cls?.id ?? '')
     setStudentQuery('')
-    onStudentChange(s.id)
+    onStudentChange(s.id, cls?.id ?? '')
   }
 
-  // O'quvchi tanlanganda — uning oylar holatini yuklab, eng eski qarzdor oyni standart qilamiz.
-  const onStudentChange = (id: string) => {
+  /**
+   * O'quvchi (yoki guruh) tanlanganda — oylar holatini yuklab, eng eski qarzdor oyni standart qilamiz.
+   *
+   * ⚠️ Guruh tanlangan bo'lsa qoldiq SHU GURUH bo'yicha (o'quvchi profilidagi to'lov oynasi bilan bir
+   * xil). Ilgari HAR DOIM umumiy hisob olinardi: guruh almashtirgan o'quvchida Foundation oktabri
+   * uchun eski guruhning qarzi ham qo'shilib (308 000 o'rniga 413 000) chiqardi.
+   * BALANS esa umumiy qoladi — kassir o'quvchining jami qarzini ham ko'rsin.
+   */
+  const onStudentChange = (id: string, groupId: string = classId) => {
     setForm((f) => ({ ...f, studentId: id || undefined, month: undefined }))
     setLedgerMonths([])
     setStudentBalance(null)
+    const req = ++ledgerReqRef.current
     if (!id) return
-    getStudentLedger(id).then((l) => {
-      setLedgerMonths(l.months)
-      setStudentBalance(l.balance)
-      const due = l.months.find((m) => m.remaining > 0)
-      const target = due ?? l.months[l.months.length - 1]
+    const applyRows = (rows: LedgerRow[]) => {
+      if (req !== ledgerReqRef.current) return
+      setLedgerMonths(rows)
+      const due = rows.find((m) => m.remaining > 0)
+      const target = due ?? rows[rows.length - 1]
       setForm((f) => ({
         ...f,
         month: target?.month ?? f.date?.slice(0, 7),
         amount: due ? due.remaining : null,
       }))
-    })
+    }
+    const fail = (err: unknown) => {
+      if (req === ledgerReqRef.current) setError(apiErrorMessage(err, "O'quvchining oylar holatini yuklab bo'lmadi"))
+    }
+    getStudentLedger(id)
+      .then((l) => {
+        if (req !== ledgerReqRef.current) return
+        setStudentBalance(l.balance)
+        if (!groupId) applyRows(l.months.map(toRow))
+      })
+      .catch(fail)
+    if (groupId)
+      getGroupLedger(id, groupId)
+        .then((l) => applyRows(l.months.map(toRow)))
+        .catch(fail)
   }
 
   const onMonthChange = (mo: string) => {
@@ -438,6 +470,9 @@ export function TransactionFormModal({ open, onClose, onSubmit, initial, preset,
       // teacherId faqat oylik maosh chiqimida; studentId faqat o'quvchi to'lovida saqlanadi
       teacherId: isSalaryExpense ? form.teacherId : undefined,
       studentId: isTuitionIncome ? form.studentId : undefined,
+      // GURUH: yangi to'lovda tanlangan guruh (bo'sh — guruhsiz eski xatti-harakat); tahrirda
+      // yuborilmaydi — server mavjud tegni saqlaydi.
+      groupId: showTuition ? classId || undefined : undefined,
       // month = "QAYSI OY UCHUN" (sana emas!): o'quvchi to'lovida ham, maoshda ham saqlanadi —
       // maosh shu maydon bo'yicha oyga bog'lanadi (SalaryLedger.BuildAsync)
       // (maoshda bo'sh qolsa sana oyi zaxira; o'quvchi to'lovi mantig'i o'zgarmagan)
@@ -688,13 +723,18 @@ export function TransactionFormModal({ open, onClose, onSubmit, initial, preset,
                 value={classId}
                 disabled={!tuitionTeacherId}
                 onChange={(e) => {
-                  setClassId(e.target.value)
-                  onStudentChange('')
+                  const gid = e.target.value
+                  setClassId(gid)
+                  // Tanlangan o'quvchi shu guruhda ham bo'lsa — qoladi, oylar SHU guruh bo'yicha qayta yuklanadi.
+                  const keep = form.studentId && students.some(
+                    (s) => s.id === form.studentId && s.groupStates?.some((g) => g.groupId === gid),
+                  )
+                  onStudentChange(keep ? form.studentId! : '', gid)
                 }}
               >
                 <option value="">{tuitionTeacherId ? '— guruh —' : "— avval o'qituvchi —"}</option>
                 {tuitionGroups.map((c) => (
-                  <option key={c.id} value={c.name}>
+                  <option key={c.id} value={c.id}>
                     {c.name}
                   </option>
                 ))}
@@ -726,6 +766,7 @@ export function TransactionFormModal({ open, onClose, onSubmit, initial, preset,
                   {formatMoney(studentBalance)}
                   <span className="ml-2 text-[12px] font-normal text-[#6b7280]">
                     {studentBalance < 0 ? 'qarz' : studentBalance > 0 ? 'haqdor (avans)' : "qarzi yo'q"}
+                    {classId ? " · barcha guruhlar bo'yicha" : ''}
                   </span>
                 </p>
               </DrawerField>

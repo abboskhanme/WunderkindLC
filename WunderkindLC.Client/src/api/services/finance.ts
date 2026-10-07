@@ -52,6 +52,12 @@ export interface FinanceTransactionPayload {
    * maosh aynan shu maydon bo'yicha oyga bog'lanadi (`SalaryLedger.BuildAsync`).
    */
   month?: string
+  /**
+   * QAYSI GURUH UCHUN (o'quvchi to'lovi). ⚠️ Bo'sh qolsa to'lov guruhlar orasida OYLIK NARXI
+   * nisbatida taqsimlanadi (`GroupBalanceService`) — 2+ guruhli o'quvchida pul chiqib ketgan
+   * guruhga ham bo'linib, to'lagan guruhida qarz qolib ketardi.
+   */
+  groupId?: string
   /** To'lov usuli (kirim uchun): cash | card | bank */
   method?: string
   /** Qog'oz kvitansiya raqami (naqd to'lov) — "KV" seriyasi bilan */
