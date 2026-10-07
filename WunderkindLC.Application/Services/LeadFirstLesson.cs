@@ -80,7 +80,8 @@ public static class LeadFirstLesson
     public static Dictionary<string, TrialRow> Select(
         IEnumerable<DashboardSummary.LeadRow> leads, IEnumerable<TrialRow> trials, string today)
     {
-        var open = leads.Where(l => !l.Converted).Select(l => l.Id).ToHashSet(StringComparer.Ordinal);
+        // OCHIQ lid — aylantirilmagan VA yo'qotilmagan (`DashboardSummary.LeadRow.IsOpen`, bitta ta'rif).
+        var open = leads.Where(l => l.IsOpen).Select(l => l.Id).ToHashSet(StringComparer.Ordinal);
         var result = new Dictionary<string, TrialRow>(StringComparer.Ordinal);
         foreach (var g in trials.Where(t => open.Contains(t.LeadId)).GroupBy(t => t.LeadId))
         {

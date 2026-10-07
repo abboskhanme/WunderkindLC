@@ -631,6 +631,15 @@ export interface Lead {
   teacherName?: string | null
   /** KURS DARAJASI — eng so'nggi daraja testi natijasi. */
   level?: string | null
+  /**
+   * YO'QOTILGAN lid (serverda `LeadLoss`): null/bo'sh — yo'qotilmagan. Bu BOSQICH EMAS — `stage`
+   * o'z joyida qoladi (tiklanganda lid o'sha ustunga qaytadi). Sabab — katalogdan SNAPSHOT matn.
+   */
+  lostAt?: string | null
+  lostReasonId?: string | null
+  lostReason?: string | null
+  lostComment?: string | null
+  lostByName?: string | null
 }
 
 /**
@@ -654,7 +663,7 @@ export interface LeadStageCount {
 }
 
 /** Lid tarixidagi voqea turi */
-export type LeadEventType = 'note' | 'stage' | 'call' | 'trial' | 'convert' | 'created'
+export type LeadEventType = 'note' | 'stage' | 'call' | 'trial' | 'convert' | 'created' | 'lost' | 'restore'
 
 /** Lid tarixi (timeline) yozuvi */
 export interface LeadEvent {

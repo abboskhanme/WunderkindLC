@@ -7,6 +7,8 @@ import {
   Phone,
   Trash2,
   ClipboardCheck,
+  UserX,
+  RotateCcw,
 } from 'lucide-react'
 import {
   IconArrowLeft,
@@ -26,6 +28,7 @@ import {
   updateLeadStage,
 } from '@/api/services/leads'
 import { getStages } from '@/api/services/stages'
+import { markLeadLost, restoreLead, type LeadLossState } from '@/api/services/leadLoss'
 import { CallPickerModal } from '@/components/CallPickerModal'
 import { ReceiptModal } from '@/components/finance/ReceiptModal'
 import { DropdownMenu, type DropdownMenuItem } from '@/components/ui/DropdownMenu'
@@ -37,8 +40,9 @@ import { Loader } from '@/components/ui/Loader'
 import { ReasonPromptModal } from '@/components/ui/ReasonPromptModal'
 import { genderOptions } from '@/config/constants'
 import { usePerm } from '@/lib/permissions'
-import { cn, formatDate, formatDateTime } from '@/lib/utils'
+import { apiErrorMessage, cn, formatDate, formatDateTime } from '@/lib/utils'
 import { LeadCustomAnswer } from './LeadCustomAnswer'
+import { LeadLostModal } from './LeadLostModal'
 import {
   LeadConvertPanel,
   LeadLevelTestPanel,
@@ -46,7 +50,7 @@ import {
   LeadTrialForm,
   LeadTrialList,
 } from './LeadPanels'
-import { eventTypeColors, eventTypeLabels, leadCallNumbers } from './leadLabels'
+import { eventTypeColors, eventTypeLabels, isLeadLost, leadCallNumbers } from './leadLabels'
 import { useLeadActivity, useLeadGroupOptions } from './useLeadDetail'
 import { leadErrorText, useLeadEntryForm } from './useLeadEntryForm'
 
@@ -130,6 +134,9 @@ export function LeadDetailPage() {
   const [modal, setModal] = useState<ActionModal>(null)
   const [callOpen, setCallOpen] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  /** "Yo'qotilgan deb belgilash" oynasi */
+  const [losing, setLosing] = useState(false)
+  const [restoring, setRestoring] = useState(false)
   const [receiptTrial, setReceiptTrial] = useState<string | null>(null)
   const [receiptAuto, setReceiptAuto] = useState(false)
   const [noteText, setNoteText] = useState('')
@@ -207,7 +214,44 @@ export function LeadDetailPage() {
     setLead({ ...lead, stage })
     updateLeadStage(lead.id, stage)
       .then(() => activity.refresh())
-      .catch(() => setLead((l) => (l ? { ...l, stage: prev } : l)))
+      .catch((err) => {
+        // Optimistik: eski bosqich qaytariladi VA sabab ko'rsatiladi (`error-visibility.md` §3).
+        setLead((l) => (l ? { ...l, stage: prev } : l))
+        alert(apiErrorMessage(err, "Bosqichni o'zgartirib bo'lmadi"))
+      })
+  }
+
+  /* ---------- Yo'qotilgan (lost) ---------- */
+  const lost = isLeadLost(lead)
+  /** Server qaytargan holat — FAQAT muvaffaqiyatdan keyin qo'llanadi (optimistik emas). */
+  const applyLossState = (st: LeadLossState) => {
+    setLead((l) =>
+      l
+        ? {
+            ...l,
+            stage: st.stage,
+            lostAt: st.lostAt,
+            lostReasonId: st.lostReasonId,
+            lostReason: st.lostReason,
+            lostComment: st.lostComment,
+            lostByName: st.lostByName,
+            assigneeUserId: st.assigneeUserId,
+            assigneeName: st.assigneeName,
+          }
+        : l,
+    )
+    activity.refresh()
+  }
+  const doRestore = async () => {
+    if (restoring) return
+    setRestoring(true)
+    try {
+      applyLossState(await restoreLead(lead.id))
+    } catch (err) {
+      alert(apiErrorMessage(err, "Lidni tiklab bo'lmadi"))
+    } finally {
+      setRestoring(false)
+    }
   }
 
   const save = async () => {
@@ -259,12 +303,18 @@ export function LeadDetailPage() {
 
   const menu: DropdownMenuItem[] = [
     { label: 'Sinov darsiga yozish', icon: CalendarClock, onClick: () => setModal('trial') },
-    ...(lead.convertedStudentId
+    // Yo'qotilgan lidni aylantirib bo'lmaydi (server ham rad etadi) — avval tiklanadi.
+    ...(lead.convertedStudentId || lost
       ? []
       : [{ label: "O'quvchiga aylantirish", icon: GraduationCap, onClick: () => setModal('convert') }]),
     { label: 'SMS yuborish', icon: MessageSquare, onClick: () => setModal('sms') },
     { label: 'Daraja testi yuborish', icon: ClipboardCheck, onClick: () => setModal('test') },
     ...(callNumbers.length > 0 ? [{ label: "Qo'ng'iroq qilish", icon: Phone, onClick: () => setCallOpen(true) }] : []),
+    ...(canEdit && !lead.convertedStudentId
+      ? lost
+        ? [{ label: 'Tiklash (faol ishga qaytarish)', icon: RotateCcw, onClick: () => void doRestore() }]
+        : [{ label: "Yo'qotilgan deb belgilash", icon: UserX, danger: true, onClick: () => setLosing(true) }]
+      : []),
     ...(canDelete ? [{ label: "Lidni o'chirish", icon: Trash2, danger: true, onClick: () => setDeleting(true) }] : []),
   ]
 
@@ -299,7 +349,9 @@ export function LeadDetailPage() {
             <div className="relative min-w-0 flex-1">
               <select
                 value={currentStage}
-                disabled={!canEdit}
+                // Yo'qotilgan lid bosqichdan bosqichga surilmaydi (server ham rad etadi) — avval tiklanadi.
+                disabled={!canEdit || lost}
+                title={lost ? "Lid yo'qotilgan — bosqichni o'zgartirish uchun avval tiklang" : undefined}
                 onChange={(e) => changeStage(e.target.value)}
                 aria-label="Bosqich"
                 className="h-9 w-full cursor-pointer appearance-none truncate rounded-lg bg-transparent pl-2 pr-8 text-[15px] font-bold text-black outline-none transition-colors hover:bg-black/[0.03] disabled:cursor-default"
@@ -325,6 +377,31 @@ export function LeadDetailPage() {
               style={{ width: stages.length ? `${((stageIndex + 1) / stages.length) * 100}%` : '0%' }}
             />
           </div>
+          {/* YO'QOTILGAN — sabab, izoh, kim/qachon va «Tiklash». Bosqich tanlovi shu payt qulf. */}
+          {lost && (
+            <div className="mt-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-[13px] text-rose-800">
+              <div className="flex items-start gap-2">
+                <UserX className="mt-0.5 h-4 w-4 shrink-0" />
+                <div className="min-w-0 flex-1">
+                  <p className="font-semibold">Yo'qotilgan: {lead.lostReason || 'sababsiz'}</p>
+                  {lead.lostComment && <p className="mt-0.5 break-words text-rose-700">{lead.lostComment}</p>}
+                  <p className="mt-0.5 text-[12px] text-rose-700/80">
+                    {[lead.lostByName, lead.lostAt ? formatDateTime(lead.lostAt) : ''].filter(Boolean).join(' · ')}
+                  </p>
+                </div>
+                {canEdit && (
+                  <button
+                    type="button"
+                    onClick={() => void doRestore()}
+                    disabled={restoring}
+                    className="shrink-0 rounded-md bg-white px-2 py-1 text-[12px] font-semibold text-rose-700 shadow-sm transition-colors hover:bg-rose-100 disabled:opacity-50"
+                  >
+                    {restoring ? '...' : 'Tiklash'}
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
           <div className="mt-2 flex items-center gap-1 rounded-lg bg-[#F0F2F2] p-1">
             <PillTab active={leftTab === 'main'} onClick={() => setLeftTab('main')}>
               Asosiy
@@ -704,6 +781,18 @@ export function LeadDetailPage() {
         onConfirm={doDelete}
         onClose={() => setDeleting(false)}
       />
+      {losing && (
+        <LeadLostModal
+          open
+          leadName={lead.fullName}
+          onClose={() => setLosing(false)}
+          onConfirm={async (reasonId, comment) => {
+            // Xato bo'lsa oyna ochiq qoladi va sababni O'ZI ko'rsatadi.
+            applyLossState(await markLeadLost(lead.id, reasonId, comment))
+            setLosing(false)
+          }}
+        />
+      )}
     </div>
   )
 }

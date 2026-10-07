@@ -1386,6 +1386,24 @@ public class Lead
     /// <summary>Shartnoma yopilgan sana "yyyy-MM-dd" — oylik hisob shu ustun bo'yicha guruhlanadi
     /// (<see cref="CreatedAt"/> emas: o'tgan oyning lidi bu oyda yopilishi mumkin).</summary>
     public string? ClosedAt { get; set; }
+
+    // ---- YO'QOTILGAN LID (`.claude/rules/crm-leads.md` «YO'QOTILGAN LIDLAR») ----
+    // Bu BOSQICH EMAS: lid o'z `Stage` ida qoladi (qaysi bosqichda yo'qotilgani ko'rinsin, tiklanganda
+    // o'sha joyga qaytsin), "yo'qotilgan" esa shu maydonlar bilan ifodalanadi. `LostAt` bo'sh (null) —
+    // lid YO'QOTILMAGAN. Mavjud qatorlar null bo'lib qoladi (backfill kerak emas).
+    // Yozish/tozalash YAGONA joyda — `LeadLoss` (Application).
+
+    /// <summary>Yo'qotilgan deb belgilangan vaqt (ISO "yyyy-MM-ddTHH:mm:ss"); null = lid yo'qotilmagan.</summary>
+    public string? LostAt { get; set; }
+    /// <summary>Tanlangan sabab (<see cref="ActionReason"/>.Id, kategoriya <c>lead_lost</c>).</summary>
+    public string? LostReasonId { get; set; }
+    /// <summary>Sabab MATNI — SNAPSHOT: katalogdagi sabab keyin o'zgartirilsa/o'chirilsa ham hisobot buzilmasin.</summary>
+    public string? LostReason { get; set; }
+    /// <summary>Ixtiyoriy izoh ("nima dedi") — ichki matn, guruhdagi Telegram kartasiga chiqmaydi.</summary>
+    public string? LostComment { get; set; }
+    /// <summary>Kim belgiladi (<see cref="AppUser"/>.Id) va uning o'sha paytdagi ismi.</summary>
+    public string? LostByUserId { get; set; }
+    public string? LostByName { get; set; }
 }
 
 /// <summary>

@@ -64,8 +64,10 @@ public class LeadsController(
             var trials = ctx.TrialsByLead[lead.Id].ToList();
             var shown = LeadFirstLesson.Display(trials, today);
             var group = shown is { } s ? ctx.Groups.GetValueOrDefault(s.GroupId) : null;
-            // Kutilayotgan birinchi dars — FAQAT ochiq lidda (bosh sahifa kartochkasi bilan bitta ta'rif).
-            var first = string.IsNullOrWhiteSpace(lead.ConvertedStudentId) ? LeadFirstLesson.Pick(trials, today) : null;
+            // Kutilayotgan birinchi dars — FAQAT ochiq lidda (bosh sahifa kartochkasi bilan bitta ta'rif):
+            // aylantirilgan ham, YO'QOTILGAN ham ochiq emas (`LeadLoss`).
+            var first = string.IsNullOrWhiteSpace(lead.ConvertedStudentId) && !LeadLoss.IsLost(lead)
+                ? LeadFirstLesson.Pick(trials, today) : null;
             return new LeadWithAttendanceDto(
             lead.Id, lead.FullName, lead.Gender, lead.BirthDate, lead.Phone,
             lead.FatherFullName, lead.FatherPhone, lead.MotherFullName,
@@ -95,7 +97,10 @@ public class LeadsController(
             // bo'sh bo'lsa avvalgidek daraja testi natijasi (`Lead.Level` izohiga qarang).
             Level: string.IsNullOrWhiteSpace(lead.Level)
                 ? ctx.LevelByLead.GetValueOrDefault(lead.Id)
-                : lead.Level);
+                : lead.Level,
+            // YO'QOTILGAN — kanbandagi doimiy ustun va filtrlar shundan quriladi (`LeadLoss`).
+            LostAt: lead.LostAt, LostReasonId: lead.LostReasonId, LostReason: lead.LostReason,
+            LostComment: lead.LostComment, LostByName: lead.LostByName);
         }).ToList();
     }
 
@@ -118,8 +123,9 @@ public class LeadsController(
         [FromQuery] string? color = null, [FromQuery] string? q = null)
     {
         var today = AppClock.Today.ToString("yyyy-MM-dd");
+        // Ochiq lid = aylantirilmagan VA yo'qotilmagan (bosh sahifa kartochkasi bilan bitta ta'rif).
         var leads = await db.Leads.AsNoTracking()
-            .Where(l => l.ConvertedStudentId == null)
+            .Where(l => l.ConvertedStudentId == null && l.LostAt == null)
             .Select(l => new
             {
                 l.Id, l.FullName, l.Phone, l.FatherPhone, l.MotherPhone, l.FatherFullName,
@@ -355,6 +361,9 @@ public class LeadsController(
     {
         var lead = await db.Leads.FindAsync(id);
         if (lead is null) return NotFound();
+        // YO'QOTILGAN lid jimgina boshqa ustunga o'tib ketmasin: avval tiklanadi (`LeadLoss.RestoreAsync`
+        // — u kerak bo'lsa bosqichni ham o'zi o'zgartiradi va hodisani yozadi).
+        if (LeadLoss.IsLost(lead)) return BadRequest(new { message = LeadLoss.StageLockedMessage });
         var stage = await db.LeadStages.FindAsync(req.Stage);
         // Eski bosqich YANGILASHDAN OLDIN o'qib olinadi — voronkaga "qayerdan qayerga" yoziladi.
         var oldStage = lead.Stage;
@@ -543,6 +552,8 @@ public class LeadsController(
         if (lead is null) return NotFound();
         if (lead.ConvertedStudentId is not null)
             return BadRequest(new { message = "Lid allaqachon o'quvchiga aylantirilgan" });
+        // Bitta lid bir vaqtda "yo'qotilgan" va "o'quvchi" bo'lib qolmasin — avval tiklanadi.
+        if (LeadLoss.IsLost(lead)) return BadRequest(new { message = LeadLoss.ConvertLockedMessage });
 
         var today = AppClock.Today.ToString("yyyy-MM-dd");
         var enrollment = string.IsNullOrWhiteSpace(req.EnrollmentDate) ? today : req.EnrollmentDate!;

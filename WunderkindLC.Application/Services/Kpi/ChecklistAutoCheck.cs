@@ -156,7 +156,9 @@ public static class ChecklistAutoCheck
         IAppDbContext db, string userId, List<Domain.WorkTask> openTasks, CancellationToken ct)
     {
         var openLeadIds = await db.Leads
-            .Where(l => l.AssigneeUserId == userId && l.ConvertedStudentId == null && l.ClosedAt == null)
+            // YO'QOTILGAN lid ochiq emas (`LeadLoss`) — unga topshiriq bog'lash talab qilinmaydi.
+            .Where(l => l.AssigneeUserId == userId && l.ConvertedStudentId == null && l.ClosedAt == null
+                        && l.LostAt == null)
             .Select(l => l.Id)
             .ToListAsync(ct);
         if (openLeadIds.Count == 0) return true;

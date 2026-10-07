@@ -4,6 +4,7 @@ paths:
   - "WunderkindLC.Server/Controllers/Lead*.cs"
   - "WunderkindLC.Application/Services/LeadNotifier.cs"
   - "WunderkindLC.Application/Services/TrialReminderService.cs"
+  - "WunderkindLC.Application/Services/LeadLoss*.cs"
   - "WunderkindLC.Client/src/pages/admin/leads/**"
   - "WunderkindLC.Client/src/pages/admin/marketing/**"
 ---
@@ -142,3 +143,113 @@ ko'rsatadi.
 Uchala sahifada ham `LeadOutcome` zanjiri: lid → o'quvchi → `FinanceTransaction` (kirim/tuition
 MINUS chiqim/refund). Ya'ni **"o'quvchi bo'ldi" hali pul degani emas** — sotuv konversiyasi
 (`payRate`) aynan pul to'laganlar ulushi. Kitob sotuvi bunga kirmaydi (`.claude/rules/books.md`).
+
+## YO'QOTILGAN LIDLAR (2026-10)
+
+Yig'ilish talabi: «yo'qotilgan mijozlar uchun alohida ustun va sabablarni belgilash (vaqt to'g'ri
+kelmadi, narx qimmatlik qildi, boshqa kursga ketdi)». Kod: `LeadLoss` (belgilash/tiklash — YAGONA
+joy), `LeadLossReport` (hisobot, sof), `LeadLossController` (HTTP). Testlar: `LeadLossTests`,
+klientda `pages/admin/leads/__tests__/leadLoss.test.tsx`.
+
+### 1. ENG MUHIM — bu BOSQICH EMAS
+
+`Lead.LostAt` (+ `LostReasonId` · `LostReason` · `LostComment` · `LostByUserId` · `LostByName`).
+`LostAt == null` — lid yo'qotilmagan (mavjud qatorlar shunday, backfill YO'Q).
+
+⚠️ **`Lead.Stage` TEGILMAYDI.** Sabablar:
+- `LeadStage` ustunlarini foydalanuvchi o'zi o'chiradi/qayta nomlaydi — "Yo'qotilgan" ham bosqich
+  bo'lsa, uni o'chirib yuborish butun hisobotni jimgina buzardi;
+- `Program.cs` dagi "yetim lidlarni tuzatish" mavjud bo'lmagan bosqichdagi lidni har restartda
+  birinchi ustunga ko'chiradi — soxta `"lost"` bosqich id'si u yerda yo'qolardi;
+- lid QAYSI bosqichda yo'qotilgani saqlanadi (`lost` hodisasining `FromStage` i) va tiklanganda
+  o'sha joyga qaytadi.
+
+Kanbandagi **«Yo'qotilgan» ustuni — DOIMIY tizim ustuni** (`LostColumn`, droppable id
+`__lost__`): har doim foydalanuvchi ustunlaridan KEYIN, tahrirlanmaydi/o'chirilmaydi/ko'chirilmaydi;
+bazada qatori YO'Q. Yo'qotilgan lid o'z bosqichi ustunida CHIZILMAYDI — faqat shu ustunda.
+
+### 2. Holat o'tishlari
+
+| Amal | Endpoint | Qoida |
+|---|---|---|
+| Yo'qotilgan deb belgilash | `PATCH {id}/lost` `{ reasonId, comment }` | Sabab **MAJBURIY**, faqat `lead_lost` kategoriyasidan; izoh ≤ 1000 belgi (uzunrog'i 400, qirqilmaydi); aylantirilgan va allaqachon yo'qotilgan lid — 400 |
+| Tiklash | `PATCH {id}/restore` `{ stage? }` | `stage` berilsa o'sha bosqichga (alohida `stage` hodisasi `FromStage/ToStage` bilan — voronka buzilmasin) |
+| Bosqich surish | `PATCH {id}` | yo'qotilgan lidga **400** — avval tiklanadi |
+| O'quvchiga aylantirish | `POST {id}/convert` | yo'qotilgan lidga **400** — bitta lid bir vaqtda "yo'qotilgan" va "o'quvchi" bo'lmasin |
+
+Har amal: `LeadEvent` (`lost` / `restore` turlari — voronka ularni O'QIMAYDI), audit (`Lead` →
+"Lidlar" bo'limi), keyin `LeadNotifier.SyncCardAsync`. Belgilashda mas'ul bo'sh bo'lsa — belgilagan
+xodim biriktiriladi (`ChangeStage` qoidasi), bori USTIDAN yozilmaydi.
+
+⚠️ **HOLAT HECH QACHON JIMGINA O'ZGARMAYDI:** karta «Yo'qotilgan» ustuniga tashlansa sabab oynasi
+(`LeadLostModal`) ochiladi; undan boshqa ustunga sudralsa — tasdiqlash so'raladi va `restore`
+chaqiriladi. Lid sahifasida: "⋮" → «Yo'qotilgan deb belgilash» / qizil blokda «Tiklash»; yo'qotilgan
+lidda bosqich tanlovi va «O'quvchiga aylantirish» yopiq.
+
+⚠️ `ReasonPromptModal` ATAYIN ishlatilmadi — u yerda sabab ixtiyoriy.
+
+### 3. Sabab — `ActionReason`, kategoriya `lead_lost`
+
+`ActionReasonsController.Categories` va `ReasonsPage.CATEGORIES` («Lid yo'qotilganda») — IKKALASIDA
+ham. Standart to'plam `LeadLoss.DefaultReasons` — `Program.cs` dagi per-kategoriya seed (kategoriya
+BO'SH bo'lsa yoziladi). Lidga sabab MATNI SNAPSHOT bo'lib yoziladi (`contacts.md` naqshi): katalogda
+qayta nomlansa/o'chirilsa ham eski lid va hisobot o'z sababi bilan qoladi. Filtr va hisobot shu
+MATN bo'yicha guruhlaydi (id bo'yicha emas).
+
+### 4. "OCHIQ LID" ta'rifi — yo'qotilgan FAOL ISH EMAS
+
+`DashboardSummary.LeadRow.IsOpen` = aylantirilmagan VA yo'qotilmagan. Shu ta'rifdan:
+
+| Joy | Nima bo'ladi |
+|---|---|
+| Bosh sahifa «Buyurtmalar» / «Birinchi darsga keladiganlar» | yo'qotilgan SANALMAYDI |
+| «Birinchi darsga yozilganlar» (`first-lesson`) | ro'yxatga TUSHMAYDI |
+| Lidlar ro'yxatidagi `firstLessonAt` | yo'qotilganda bo'sh |
+| Sinov darsi eslatma SMS (`TrialReminderService`) | YUBORILMAYDI (tiklansa yana ishlaydi) |
+| KPI cheklisti «ochiq lidlarga topshiriq bog'langan» | yo'qotilgan talab qilinmaydi |
+| Ommaviy SMS (tanlovsiz standart auditoriya) | kirmaydi; qo'lda tanlansa — ketadi |
+
+⚠️ **«Buyurtmadan ketganlar» (`OrdersLeft`) O'ZGARMADI** — avvalgidek faqat O'CHIRILGAN lidlar:
+kartochka ro'yxati arxiv sahifasi, yo'qotilganlar u yerda yo'q (sanoq ro'yxatdan farq qilmasin).
+Yo'qotilganlar — «Yo'qotilgan lidlar» hisobotida.
+
+⚠️ Voronka analitikasi (`LeadAnalytics`), `LeadCrmOverview` va `/stats` bosqich kesimi TEGILMAGAN:
+yo'qotilgan lid o'z (oxirgi) bosqichida sanaladi — u o'sha bosqichgacha HAQIQATAN yetgan.
+
+⚠️ **TAKRORIY MUROJAAT holatni O'ZGARTIRMAYDI** (birinchi teginish qoidasi, `lead-forms.md` §4):
+yo'qotilgan odam formani qayta to'ldirsa ham lid yo'qotilganligicha qoladi. Shuning uchun kartada
+`lastRepeatAt > lostAt` bo'lsa «Qaytib keldi» belgisi chiqadi (`cameBackAfterLoss`). Avto-tiklash
+QILINMAGAN — kerak bo'lsa lid yaratuvchi 5 joyning hammasiga (`RepeatCount++` qatorlari) qo'shilsin.
+
+### 5. Telegram kartasi
+
+`BuildStateText` → «❌ Yo'qotildi: <sabab>» (guruhga ham). **IZOH faqat superadminning shaxsiy
+chatida** — menejer izohi bilan bir xil qoida (`messaging.md` «LID KARTASI»). Yo'qotilmagan lid
+kartasining matni/xeshi o'zgarmagan.
+
+### 6. Filtrlar (Lidlar sahifasi, ikkala ko'rinish)
+
+`?lost=hide|only` va `?reason=<sabab matni>` (sabab tanlansa — faqat o'sha sabab bilan
+yo'qotilganlar). Standart — hammasi; jadvalda yo'qotilgan qator ism yonida «Yo'qotilgan» chipi bilan.
+`hide` da kanbandagi ustun turaveradi (kartaga tashlash mumkin), lekin kartalari chizilmaydi.
+Ustunni o'chirishda yo'qotilgan lidlar sanalmaydi (ular u yerda ko'rinmaydi; yetim-tuzatish ularni
+birinchi bosqichga o'tkazadi, holati o'zgarmaydi).
+
+### 7. Hisobot — `GET lost-report?from&to` (`/admin/hisobotlar/yoqotilgan-lidlar`)
+
+Ruxsat — `[AdminPerm("leads.stats", ReadRequiresPerm = true)]` (faqat `leads.list` bor operator
+ko'rmaydi), klientda `RequirePerm perm="leads.stats"`, katalogda `config/reports.ts` (`inNav: true`,
+Future → Hisobotlar). Yangi ruxsat kaliti YO'Q.
+
+⚠️ **DAVR — lid KELGAN sana bo'yicha** (`LeadAnalytics.InRange`, CRM analitikasi bilan bir xil):
+«shu davrda kelgan lidlarning qanchasini HOZIR yo'qotilgan». Barcha foizlar bitta to'plamdan —
+100% dan oshmaydi. "Yo'qotilgan sana bo'yicha" sanoq va "kelgan sana bo'yicha" maxraj aralashtirilsa
+"120% yo'qotish" kabi ma'nosiz raqam chiqardi. Tiklangan lid yo'qotilgan SANALMAYDI.
+
+Tarkibi: KPI (kelgan · yo'qotilgan · ulush · aylangan), sabablar donut'i (eng ko'p 5 tasi + «Boshqa»),
+manba va MAS'UL xodim (`AssigneeUserId`, joriy ism; bo'sh — «Biriktirilmagan») kesimi — jami va
+yo'qotilgan, oylik oqim (bo'sh oylar NOL bilan, ≤ 36 oy), eng so'nggi 100 ta yo'qotilgan lid
+(qirqilgani `RecentTruncated` bilan OCHIQ yoziladi).
+
+Ranglar — `#0284c7` (kelgan) + `#e11d48` (yo'qotilgan), `course-analytics.md` §6 juftligi;
+sabablar — `stats/palette.ts`. Foiz alohida o'q bilan CHIZILMAYDI (faqat tooltip/jadvalda).

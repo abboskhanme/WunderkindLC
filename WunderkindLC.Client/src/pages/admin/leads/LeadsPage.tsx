@@ -19,6 +19,7 @@ import {
   type LeadAnswersPayload,
 } from '@/api/services/leads'
 import { getLeadSources } from '@/api/services/leadSources'
+import { LOST_COLUMN_ID, markLeadLost, restoreLead, type LeadLossState } from '@/api/services/leadLoss'
 import {
   createStage,
   deleteStage,
@@ -45,7 +46,9 @@ import { LeadCardContent } from './LeadCard'
 import { LeadFormModal, type LeadFormValues } from './LeadFormModal'
 import { LeadBulkSmsModal } from './LeadBulkSmsModal'
 import { StageFormModal } from './StageFormModal'
-import { leadCallNumbers, shortLeadId, tableDateTime } from './leadLabels'
+import { LostColumn } from './LostColumn'
+import { LeadLostModal } from './LeadLostModal'
+import { isLeadLost, leadCallNumbers, shortLeadId, tableDateTime } from './leadLabels'
 import { useUrlFilters } from './useUrlFilters'
 
 /**
@@ -62,6 +65,8 @@ import { useUrlFilters } from './useUrlFilters'
 const FILTER_KEYS = [
   'q', 'from', 'to', 'day', 'stage', 'course', 'level', 'group', 'teacher', 'moderator',
   'status', 'source',
+  // YO'QOTILGANLAR: `lost` — '' (hammasi) | 'hide' | 'only'; `reason` — yo'qotish sababi (matn).
+  'lost', 'reason',
 ] as const
 
 /** Select'dagi "bo'sh qiymatli" variant (manbasiz, mas'ulsiz, kurssiz). */
@@ -105,6 +110,8 @@ export function LeadsPage() {
   const [editingStage, setEditingStage] = useState<Stage | null>(null)
   const [callLead, setCallLead] = useState<Lead | null>(null)
   const [bulkSmsLeads, setBulkSmsLeads] = useState<Lead[] | null>(null)
+  /** "Yo'qotilgan" ustuniga tashlangan lid — sabab oynasi (holat jimgina o'zgarmaydi). */
+  const [lostTarget, setLostTarget] = useState<Lead | null>(null)
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }))
 
@@ -140,6 +147,26 @@ export function LeadsPage() {
   /* ---------- Karta drag-and-drop ---------- */
   const handleDragStart = (e: DragStartEvent) => setActiveId(String(e.active.id))
 
+  /** Server qaytargan "yo'qotilgan" holatini ro'yxatdagi qatorga qo'llaydi (muvaffaqiyatdan KEYIN). */
+  const applyLossState = (st: LeadLossState) =>
+    setLeads((prev) =>
+      prev.map((l) =>
+        l.id === st.id
+          ? {
+              ...l,
+              stage: st.stage,
+              lostAt: st.lostAt,
+              lostReasonId: st.lostReasonId,
+              lostReason: st.lostReason,
+              lostComment: st.lostComment,
+              lostByName: st.lostByName,
+              assigneeUserId: st.assigneeUserId,
+              assigneeName: st.assigneeName,
+            }
+          : l,
+      ),
+    )
+
   const handleDragEnd = (e: DragEndEvent) => {
     setActiveId(null)
     const { active, over } = e
@@ -147,11 +174,35 @@ export function LeadsPage() {
     const leadId = String(active.id)
     const newStage = String(over.id)
     const lead = leads.find((l) => l.id === leadId)
-    if (!lead || lead.stage === newStage) return
+    if (!lead) return
 
+    // "YO'QOTILGAN" ustuniga — sabab oynasi. Holat FAQAT oynada tasdiqlangach o'zgaradi.
+    if (newStage === LOST_COLUMN_ID) {
+      if (isLeadLost(lead)) return
+      if (lead.convertedStudentId) {
+        alert("O'quvchiga aylantirilgan lidni yo'qotilgan deb belgilab bo'lmaydi.")
+        return
+      }
+      setLostTarget(lead)
+      return
+    }
+
+    // Yo'qotilgan karta boshqa ustunga — TIKLASH (server bosqichni ham o'zgartiradi va tarixga yozadi).
+    if (isLeadLost(lead)) {
+      const title = stages.find((s) => s.id === newStage)?.title ?? ''
+      if (!confirm(`"${lead.fullName}" lidini tiklab, «${title}» ustuniga o'tkazasizmi?`)) return
+      restoreLead(lead.id, newStage)
+        .then(applyLossState)
+        .catch((err) => alert(apiErrorMessage(err, "Lidni tiklab bo'lmadi")))
+      return
+    }
+
+    if (lead.stage === newStage) return
     setLeads((prev) => prev.map((l) => (l.id === leadId ? { ...l, stage: newStage } : l)))
-    updateLeadStage(leadId, newStage).catch(() => {
+    // Optimistik: xatoda eski ustun qaytariladi VA sabab ko'rsatiladi (`error-visibility.md` §3).
+    updateLeadStage(leadId, newStage).catch((err) => {
       setLeads((prev) => prev.map((l) => (l.id === leadId ? { ...l, stage: lead.stage } : l)))
+      alert(apiErrorMessage(err, "Lidni ko'chirib bo'lmadi"))
     })
   }
 
@@ -190,7 +241,9 @@ export function LeadsPage() {
   }
 
   const handleStageDelete = (stage: Stage) => {
-    const count = leads.filter((l) => l.stage === stage.id).length
+    // Yo'qotilgan lidlar SANALMAYDI: ular bu ustunda ko'rinmaydi (faqat "Yo'qotilgan" ustunida), ustun
+    // o'chsa esa serverdagi yetim-tuzatish ularni birinchi bosqichga o'tkazadi — holati o'zgarmaydi.
+    const count = leads.filter((l) => l.stage === stage.id && !isLeadLost(l)).length
     if (count > 0) {
       alert("Bu ustunda lidlar bor. Avval ularni boshqa ustunga ko'chiring.")
       return
@@ -267,6 +320,10 @@ export function LeadsPage() {
     if (f.status === 'lead' && l.convertedStudentId) return false
     if (f.status === 'student' && !l.convertedStudentId) return false
     if (f.source && (f.source === NONE ? !!l.source : l.source !== f.source)) return false
+    // YO'QOTILGANLAR: yashirish / faqat ular; sabab tanlansa — faqat o'sha sabab bilan yo'qotilganlar.
+    if (f.lost === 'hide' && isLeadLost(l)) return false
+    if (f.lost === 'only' && !isLeadLost(l)) return false
+    if (f.reason && (!isLeadLost(l) || (l.lostReason ?? '') !== f.reason)) return false
     return matchesSearch(l)
   }
   const visibleLeads = leads.filter(matches)
@@ -292,6 +349,11 @@ export function LeadsPage() {
     for (const l of leads) if (l.source && !names.includes(l.source)) names.push(l.source)
     return names
   }, [sources, leads])
+  // Yo'qotish sabablari — lidlardagi SNAPSHOT matnlardan (katalogdan o'chirilgan sabab ham qoladi).
+  const lostReasonOptions = useMemo(
+    () => [...new Set(leads.filter(isLeadLost).map((l) => l.lostReason || '').filter(Boolean))].sort(),
+    [leads],
+  )
 
   /* ---------- Jadval ---------- */
   const sorted = useMemo(
@@ -359,14 +421,24 @@ export function LeadsPage() {
       key: 'name',
       header: "O'quvchini ismi",
       render: (l) => (
-        <button
-          type="button"
-          onClick={() => openLead(l)}
-          className="max-w-[220px] truncate text-left font-medium text-black hover:text-brand-600 hover:underline"
-          title={l.fullName}
-        >
-          {l.fullName || '—'}
-        </button>
+        <span className="inline-flex max-w-[300px] items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => openLead(l)}
+            className="max-w-[220px] truncate text-left font-medium text-black hover:text-brand-600 hover:underline"
+            title={l.fullName}
+          >
+            {l.fullName || '—'}
+          </button>
+          {isLeadLost(l) && (
+            <span
+              className="shrink-0 rounded bg-rose-50 px-1.5 py-px text-[10.5px] font-semibold text-rose-700"
+              title={`Yo'qotilgan: ${l.lostReason || 'sababsiz'}${l.lostComment ? ` — ${l.lostComment}` : ''}`}
+            >
+              Yo'qotilgan
+            </span>
+          )}
+        </span>
       ),
     },
     {
@@ -405,7 +477,9 @@ export function LeadsPage() {
   const canCreate = can('leads.list', 'create')
   const openBulkSms = () => {
     if (selectMode && selected.size > 0) setBulkSmsLeads(leads.filter((l) => selected.has(l.id)))
-    else setBulkSmsLeads(leads.filter((l) => !l.convertedStudentId))
+    // Standart auditoriya — OCHIQ lidlar: aylantirilgan ham, yo'qotilgan ham emas ("bormayman"
+    // degan odamga ommaviy SMS ketmasin; kerak bo'lsa ular qo'lda tanlanadi).
+    else setBulkSmsLeads(leads.filter((l) => !l.convertedStudentId && !isLeadLost(l)))
   }
 
   const viewToggle = (
@@ -537,6 +611,17 @@ export function LeadsPage() {
             ))}
             <option value={NONE}>Noma'lum</option>
           </FilterSelect>
+          <FilterSelect placeholder="Yo'qotilganlar" value={f.lost} onChange={(e) => set({ lost: e.target.value })}>
+            <option value="hide">Yo'qotilganlarni yashirish</option>
+            <option value="only">Faqat yo'qotilganlar</option>
+          </FilterSelect>
+          <FilterSelect placeholder="Yo'qotish sababi" value={f.reason} onChange={(e) => set({ reason: e.target.value })}>
+            {lostReasonOptions.map((r) => (
+              <option key={r} value={r}>
+                {r}
+              </option>
+            ))}
+          </FilterSelect>
           {filtersActive && (
             <button
               type="button"
@@ -600,7 +685,8 @@ export function LeadsPage() {
                 key={stage.id}
                 stage={stage}
                 leads={visibleLeads
-                  .filter((l) => stageOf(l) === stage.id)
+                  // Yo'qotilgan lid o'z bosqichida emas, faqat DOIMIY "Yo'qotilgan" ustunida chiziladi.
+                  .filter((l) => !isLeadLost(l) && stageOf(l) === stage.id)
                   // Eng so'nggi HARAKAT tepada. `createdAt` EMAS, chunki takroriy murojaatda
                   // u ATAYIN o'zgarmaydi (first-touch: lid QACHON birinchi kelgani hisobotlar
                   // uchun saqlanadi — `.claude/rules/lead-forms.md` §4). Operatorga esa "kim
@@ -625,6 +711,18 @@ export function LeadsPage() {
                 onCall={setCallLead}
               />
             ))}
+
+            {/* DOIMIY "Yo'qotilgan" ustuni — har doim foydalanuvchi ustunlaridan KEYIN (ular qayta
+                tartiblansa ham), tahrirlanmaydi/o'chirilmaydi. Eng so'nggi yo'qotilgani tepada. */}
+            <LostColumn
+              leads={visibleLeads
+                .filter(isLeadLost)
+                .sort((a, b) => (b.lostAt || '').localeCompare(a.lostAt || ''))}
+              hidden={f.lost === 'hide'}
+              showReportLink={can('leads.stats', 'view')}
+              onCardClick={openLead}
+              onCall={setCallLead}
+            />
 
             <button
               type="button"
@@ -665,6 +763,20 @@ export function LeadsPage() {
         title={callLead?.fullName}
         numbers={callNumbers}
       />
+      {/* Har ochilishda YANGI nusxa — oldingi lidning tanlovi/izohi qolib ketmasin. */}
+      {lostTarget && (
+        <LeadLostModal
+          key={lostTarget.id}
+          open
+          leadName={lostTarget.fullName}
+          onClose={() => setLostTarget(null)}
+          onConfirm={async (reasonId, comment) => {
+            // Xato bo'lsa oyna ochiq qoladi va sababni O'ZI ko'rsatadi (ro'yxat tegilmaydi).
+            applyLossState(await markLeadLost(lostTarget.id, reasonId, comment))
+            setLostTarget(null)
+          }}
+        />
+      )}
     </div>
   )
 }
