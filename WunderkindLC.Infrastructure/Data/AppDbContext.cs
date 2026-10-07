@@ -31,6 +31,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options)
     public DbSet<RetentionBonusTrack> RetentionBonusTracks => Set<RetentionBonusTrack>();
     public DbSet<StudentGroup> StudentGroups => Set<StudentGroup>();
     public DbSet<StudentNote> StudentNotes => Set<StudentNote>();
+    public DbSet<StudentIntakeMark> StudentIntakeMarks => Set<StudentIntakeMark>();
     public DbSet<StudentDiscount> StudentDiscounts => Set<StudentDiscount>();
     public DbSet<Lead> Leads => Set<Lead>();
     public DbSet<LeadStage> LeadStages => Set<LeadStage>();
@@ -404,6 +405,11 @@ public class AppDbContext(DbContextOptions<AppDbContext> options)
         b.Entity<Lead>().Property(l => l.PhoneKey).HasMaxLength(16);
         b.Entity<Lead>().HasIndex(l => l.PhoneKey);
         b.Entity<StudentNote>().HasIndex(n => n.StudentId);
+        // QABUL CHEKLISTI — har (o'quvchi, band) uchun BITTA qo'lda belgi: ikki marta bosilsa
+        // ikkinchi qator paydo bo'lib, "olib tashlash" faqat bittasini o'chirardi.
+        b.Entity<StudentIntakeMark>().Property(x => x.StudentId).HasMaxLength(200);
+        b.Entity<StudentIntakeMark>().Property(x => x.Item).HasMaxLength(32);
+        b.Entity<StudentIntakeMark>().HasIndex(x => new { x.StudentId, x.Item }).IsUnique();
         b.Entity<TrialLesson>().HasIndex(t => t.LeadId);
         b.Entity<FinanceTransaction>().HasIndex(t => t.Date);
         // Per-guruh billing: har (o'quvchi, guruh, oy) uchun bitta hisob.

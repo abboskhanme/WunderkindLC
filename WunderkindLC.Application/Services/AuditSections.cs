@@ -64,6 +64,9 @@ public static class AuditSections
         ["StudentBall"] = "students",
         ["StudentFaceProfile"] = "students",
         ["TrustedDevice"] = "students",
+        // "StudentIntake" — QABUL CHEKLISTI bandiga qo'lda "bajarildi" belgisini qo'yish/olib tashlash
+        // (`StudentIntake.ApplyMarkAsync`). Amal bitta o'quvchining profiliga tegishli.
+        ["StudentIntake"] = "students",
 
         // --- Bog'lanish kerak (follow-up navbati) ---
         ["ContactRequest"] = "contacts",

@@ -94,6 +94,7 @@ import { StudentFormModal } from './StudentFormModal'
 import { DiscountSection } from './DiscountSection'
 import { studentDiscountLabel } from './discountLabel'
 import { ProfileCard } from './profile/ProfileCard'
+import { IntakeChecklistCard } from '@/components/students/IntakeChecklistCard'
 import { SmsModal } from './SmsModal'
 import { CallPickerModal, type CallOption } from '@/components/CallPickerModal'
 import { ReasonPromptModal } from '@/components/ui/ReasonPromptModal'
@@ -932,6 +933,17 @@ export function StudentDetailPage() {
                   ? [{ label: "Butunlay o'chirish", icon: Trash2, danger: true, onClick: () => setPurgeOpen(true) }]
                   : []),
               ]}
+            />
+
+            {/* QABUL CHEKLISTI — 5 ta band va "qayerda tuzatiladi" tugmalari; to'liq bo'lsa bitta
+                qatorga yig'iladi. Tahrir/to'lov (`reloadKey`) yoki a'zolik o'zgarsa qayta so'raladi. */}
+            <IntakeChecklistCard
+              key={data.id}
+              studentId={data.id}
+              refreshKey={`${reloadKey}:${groups.filter((g) => g.isActive).map((g) => `${g.groupId}-${g.status}`).join(',')}`}
+              onEditProfile={can('students.list', 'edit') ? openEdit : undefined}
+              onAddGroup={openAddGroup}
+              onPay={openPayment}
             />
 
             {/* Shaxsiy ma'lumotlar — ALOHIDA karta, bitta ustunli ro'yxat (yorliq chapda, qiymat

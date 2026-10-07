@@ -33,6 +33,7 @@ const ArchivedStudentsPage = lazy(() => import('@/pages/admin/students/lists/Arc
 const LeftStudentsPage = lazy(() => import('@/pages/admin/students/lists/MonthMovementPages').then((m) => ({ default: m.LeftStudentsPage })))
 const FirstPaymentStudentsPage = lazy(() => import('@/pages/admin/students/lists/MonthMovementPages').then((m) => ({ default: m.FirstPaymentStudentsPage })))
 const SubscriptionRiskPage = lazy(() => import('@/pages/admin/students/lists/SubscriptionRiskPage').then((m) => ({ default: m.SubscriptionRiskPage })))
+const IntakeChecklistPage = lazy(() => import('@/pages/admin/students/lists/IntakeChecklistPage').then((m) => ({ default: m.IntakeChecklistPage })))
 const NotAttendedGroupsPage = lazy(() => import('@/pages/admin/nazorat/NotAttendedGroupsPage').then((m) => ({ default: m.NotAttendedGroupsPage })))
 const LeadsPage = lazy(() => import('@/pages/admin/leads/LeadsPage').then((m) => ({ default: m.LeadsPage })))
 const LeadDetailPage = lazy(() => import('@/pages/admin/leads/LeadDetailPage').then((m) => ({ default: m.LeadDetailPage })))
@@ -310,6 +311,8 @@ export default function App() {
             <Route path="students/ketganlar" element={<RequirePerm perm="students.list"><LeftStudentsPage /></RequirePerm>} />
             <Route path="students/birinchi-tolov" element={<RequirePerm perm="students.list"><FirstPaymentStudentsPage /></RequirePerm>} />
             <Route path="students/obuna-tugaydi" element={<RequirePerm perm="students.list"><SubscriptionRiskPage /></RequirePerm>} />
+            {/* Qabul cheklisti (Future) — `students/:id` dan OLDIN (statik yo'l). */}
+            <Route path="students/qabul" element={<RequirePerm perm="students.list"><IntakeChecklistPage /></RequirePerm>} />
             <Route path="students/:id" element={<RequirePerm perm="students.list"><StudentDetailPage /></RequirePerm>} />
             <Route path="teachers" element={<TeachersEntry />} />
             <Route path="teachers/substitutions" element={<RequirePerm perm="teachers.substitutions"><SubstituteTeachersPage /></RequirePerm>} />
