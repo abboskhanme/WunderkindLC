@@ -264,6 +264,7 @@ export const navByRole: Record<Role, NavItem[]> = {
           children: [
             { label: 'Arxiv (barcha turdagi)', to: '/admin/archive', perm: 'settings.archive' },
             { label: "Kassa (to'lov qabul qilish)", to: '/admin/kassa', perm: 'kassa' },
+            { label: 'Qabul cheklisti', to: '/admin/students/qabul', perm: 'students.list' },
             { label: "Bog'lanish kerak", to: '/admin/students/boglanish', perm: 'contacts' },
             { label: 'Izohlarga javoblar', to: '/admin/students/izohlar', perm: 'students.notes' },
             { label: 'Ushlab turish bonusi', to: '/admin/students/bonus', perm: 'finance.bonus' },

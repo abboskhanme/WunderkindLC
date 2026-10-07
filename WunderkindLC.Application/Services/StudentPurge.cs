@@ -75,6 +75,7 @@ public static class StudentPurge
                 await db.StudentDiscounts.CountAsync(x => x.StudentId == id, ct)
                 + await db.LessonDiscounts.CountAsync(x => x.StudentId == id, ct), false),
             new("notes", "Izohlar", await db.StudentNotes.CountAsync(x => x.StudentId == id, ct), false),
+            new("intake", "Qabul cheklisti belgilari", await db.StudentIntakeMarks.CountAsync(x => x.StudentId == id, ct), false),
             new("contacts", "Bog'lanish talablari", await db.ContactRequests.CountAsync(x => x.StudentId == id, ct), false),
             new("tests", "Test natijalari va sertifikatlar",
                 await db.TestScores.CountAsync(x => x.StudentId == id, ct)
@@ -145,6 +146,7 @@ public static class StudentPurge
         db.StudentDiscounts.RemoveRange(await db.StudentDiscounts.Where(x => x.StudentId == id).ToListAsync(ct));
         db.LessonDiscounts.RemoveRange(await db.LessonDiscounts.Where(x => x.StudentId == id).ToListAsync(ct));
         db.StudentNotes.RemoveRange(await db.StudentNotes.Where(x => x.StudentId == id).ToListAsync(ct));
+        db.StudentIntakeMarks.RemoveRange(await db.StudentIntakeMarks.Where(x => x.StudentId == id).ToListAsync(ct));
         db.ContactAttempts.RemoveRange(await db.ContactAttempts.Where(x => x.StudentId == id).ToListAsync(ct));
         db.ContactRequests.RemoveRange(await db.ContactRequests.Where(x => x.StudentId == id).ToListAsync(ct));
         db.TestScores.RemoveRange(await db.TestScores.Where(x => x.StudentId == id).ToListAsync(ct));

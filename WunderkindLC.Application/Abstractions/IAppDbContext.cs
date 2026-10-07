@@ -31,6 +31,8 @@ public interface IAppDbContext
     DbSet<RetentionBonusTrack> RetentionBonusTracks { get; }
     DbSet<StudentGroup> StudentGroups { get; }
     DbSet<StudentNote> StudentNotes { get; }
+    /// <summary>Qabul cheklistining QO'LDA qo'yilgan belgilari (`StudentIntake`).</summary>
+    DbSet<StudentIntakeMark> StudentIntakeMarks { get; }
     DbSet<StudentDiscount> StudentDiscounts { get; }
     DbSet<Lead> Leads { get; }
     DbSet<LeadStage> LeadStages { get; }
