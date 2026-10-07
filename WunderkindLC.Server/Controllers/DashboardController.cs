@@ -55,22 +55,37 @@ public class DashboardController(DataCache dataCache) : ControllerBase
             db => DashboardSummary.BuildAsync(db, today));
     }
 
-    /// <summary>Darslar monitoringi: tanlangan sanada (default — bugun) guruh Days bo'yicha dars
-    /// kuni bo'lgan guruhlar, har biri uchun davomat qilinganmi va baho qo'yilganmi.</summary>
+    /// <summary>Darslar monitoringi: tanlangan sanada (default — bugun) darsi BOR guruhlar (guruh kunlari
+    /// + ko'chirilgan darslar, guruh umri ichida — <see cref="AttendanceWatch"/>), har biri uchun davomat
+    /// qilinganmi va baho qo'yilganmi. "Nazorat → Davomat qilinmagan guruhlar" va "O'quvchilar davomati"
+    /// sahifasidagi «Davomat olinmagan guruhlar» bo'limi shu yerdan o'qiydi.
+    /// <para>Dars BOSQICHI (<c>Phase</c>/<c>Overdue</c>) keshdan KEYIN, har so'rovda hisoblanadi — u
+    /// soatga bog'liq, kesh esa 5 daqiqagacha eski bo'lishi mumkin.</para></summary>
     [HttpGet("today-lessons")]
     public async Task<ActionResult<TodayLessonsDto>> TodayLessons([FromQuery] string? date = null)
     {
         // Sana berilmasa yoki format noto'g'ri bo'lsa — bugun.
         var day = DateOnly.TryParseExact(date, "yyyy-MM-dd", out var parsed) ? parsed : AppClock.Today;
-        return await dataCache.GetOrCreateAsync(
+        var dto = await dataCache.GetOrCreateAsync(
             $"dashboard:today-lessons:{day:yyyy-MM-dd}",
             new[]
             {
                 nameof(Group), nameof(Teacher), nameof(Subject), nameof(Room), nameof(StudentGroup),
                 nameof(LessonNote), nameof(JournalEntry), nameof(CriterionGrade),
+                nameof(LessonReschedule), nameof(SubstituteTeacherAssignment),
             },
             TimeSpan.FromMinutes(5),
             db => ComputeTodayLessonsAsync(db, day));
+
+        var now = AppClock.Now;
+        return dto with
+        {
+            Lessons = dto.Lessons.Select(l =>
+            {
+                var phase = AttendanceWatch.Phase(dto.Date, l.StartTime, l.EndTime, now);
+                return l with { Phase = phase, Overdue = AttendanceWatch.Overdue(l.AttendanceDone, phase) };
+            }).ToList(),
+        };
     }
 
     private static async Task<TodayLessonsDto> ComputeTodayLessonsAsync(IAppDbContext db, DateOnly day)
@@ -79,14 +94,29 @@ public class DashboardController(DataCache dataCache) : ControllerBase
         // JS bilan bir xil indeks: 0=Dushanba ... 6=Yakshanba.
         var dayIdx = ((int)day.DayOfWeek + 6) % 7;
 
-        // Days (List<int>) EF tarjimasiga ishonmaymiz — guruhlar soni kichik, xotirada filtrlaymiz.
-        var groups = (await db.Classes.AsNoTracking().Where(g => !g.IsArchived).ToListAsync())
-            .Where(g => g.Days is { Count: > 0 } && g.Days.Contains(dayIdx))
-            .OrderBy(g => g.StartTime).ThenBy(g => g.Name)
+        // Dars kunlari — o'qituvchi jadvali bilan BITTA manba (`AttendanceWatch.LessonsOn` →
+        // `TeacherHomeService.PlanLessons`): KO'CHIRILGAN darslar (asl kunidan olinadi, yangi kuniga
+        // qo'shiladi), guruh umri va o'rinbosar. Days (List<int>) EF tarjimasiga ishonmaymiz —
+        // guruhlar soni kichik, xotirada filtrlaymiz.
+        var allGroups = await db.Classes.AsNoTracking().Where(g => !g.IsArchived).ToListAsync();
+        var allIds = allGroups.Select(g => g.Id).ToList();
+        var moves = (await db.LessonReschedules.AsNoTracking()
+                .Where(r => allIds.Contains(r.ClassId) && (r.FromDate == today || r.ToDate == today))
+                .ToListAsync())
+            .ToLookup(r => r.ClassId, StringComparer.Ordinal);
+        var assignments = (await db.SubstituteTeacherAssignments.AsNoTracking()
+                .Where(a => a.IsActive && allIds.Contains(a.GroupId)
+                            && string.Compare(a.Date, today) <= 0
+                            && string.Compare(a.EndDate ?? a.Date, today) >= 0)
+                .ToListAsync())
+            .ToLookup(a => a.GroupId, StringComparer.Ordinal);
+        var planned = AttendanceWatch.LessonsOn(allGroups, moves, assignments, day)
+            .OrderBy(l => ScheduleRules.ParseTime(l.StartTime) ?? int.MaxValue)
+            .ThenBy(l => l.Group.Name, StringComparer.OrdinalIgnoreCase)
             .ToList();
-        if (groups.Count == 0) return new TodayLessonsDto(today, dayIdx, []);
+        if (planned.Count == 0) return new TodayLessonsDto(today, dayIdx, []);
 
-        var groupIds = groups.Select(g => g.Id).ToHashSet();
+        var groupIds = planned.Select(l => l.Group.Id).ToHashSet();
 
         var teacherNames = (await db.Teachers.AsNoTracking()
                 .Select(t => new { t.Id, t.FullName }).ToListAsync())
@@ -118,16 +148,26 @@ public class DashboardController(DataCache dataCache) : ControllerBase
                 .Where(g => g.Date == today && groupIds.Contains(g.GroupId))
                 .Select(g => g.GroupId).ToListAsync()).ToHashSet();
 
-        var lessons = groups.Select(g => new TodayLessonMonitorDto(
-            g.Id, g.Name,
-            courseNames.GetValueOrDefault(g.CourseId, ""),
-            g.TeacherId,
-            teacherNames.GetValueOrDefault(g.TeacherId, "Biriktirilmagan"),
-            !string.IsNullOrEmpty(g.RoomId) ? roomNames.GetValueOrDefault(g.RoomId, g.Room ?? "") : g.Room ?? "",
-            g.StartTime, g.EndTime,
-            membersByGroup.GetValueOrDefault(g.Id, 0),
-            attendanceDone.Contains(g.Id),
-            journalGraded.Contains(g.Id) || criterionGraded.Contains(g.Id))).ToList();
+        var lessons = planned.Select(l =>
+        {
+            var g = l.Group;
+            return new TodayLessonMonitorDto(
+                g.Id, g.Name,
+                courseNames.GetValueOrDefault(g.CourseId, ""),
+                g.TeacherId,
+                teacherNames.GetValueOrDefault(g.TeacherId, "Biriktirilmagan"),
+                !string.IsNullOrEmpty(g.RoomId) ? roomNames.GetValueOrDefault(g.RoomId, g.Room ?? "") : g.Room ?? "",
+                // Ko'chirilgan darsda — YANGI vaqt (asl davomiylik saqlanadi).
+                l.StartTime.Length > 0 ? l.StartTime : g.StartTime,
+                l.EndTime.Length > 0 ? l.EndTime : g.EndTime,
+                membersByGroup.GetValueOrDefault(g.Id, 0),
+                attendanceDone.Contains(g.Id),
+                journalGraded.Contains(g.Id) || criterionGraded.Contains(g.Id),
+                Moved: l.Moved,
+                SubstituteTeacherName: l.SubstituteTeacherId.Length > 0
+                    ? teacherNames.GetValueOrDefault(l.SubstituteTeacherId, "O'rinbosar")
+                    : "");
+        }).ToList();
 
         return new TodayLessonsDto(today, dayIdx, lessons);
     }

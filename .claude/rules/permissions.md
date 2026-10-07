@@ -145,7 +145,7 @@ turmaydi.
 | `marketing` | `.dashboard` `.inbox` `.rules` `.knowledge` `.analytics` `.settings` | `InstagramController` (metod darajasida) |
 | `leads` | `.list` `.stats` `.forms` | `LeadsController` · `LeadStagesController` · `LeadFormsController` |
 | `students` | `.list` `.notes` `.attendance` `.turnstile` `.face` | `StudentsController` · `StudentAttendanceController` · `StudentTurnstileController` · `AdminFaceController` · `CertificatesController` |
-| `teachers` | `.list` `.attendance` `.substitutions` | `TeachersController` · `TeacherAttendanceController` · `SubstituteTeachersController` |
+| `teachers` | `.list` `.attendance` `.substitutions` `.retention` | `TeachersController` · `TeacherAttendanceController` · `SubstituteTeachersController` · `RetentionLossController` (RRP, `retention-loss.md`) |
 | `schedule` | `.courses` `.analytics` `.curricula` `.grading` `.levelTests` | `SubjectsController` · `CourseAnalyticsController` · `CurriculumController` · `GradingController` · `LevelTestsController` |
 | `classes` | `.list` `.rooms` `.testResults` | `ClassesController` · `JournalController` · `RoomsController` · `TestResultsController` |
 | `messages` | `.broadcast` `.chat` `.support` | `MessagesController` (+ `chat` metodi) · `AutoMessagesController` · `BotSupportController` |

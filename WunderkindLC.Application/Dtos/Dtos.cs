@@ -1262,10 +1262,15 @@ public record DashboardSummaryDto(
 /// <summary>Bosh sahifa "Bugungi darslar" monitoringi: bugun dars kuni bo'lgan har bir guruh uchun
 /// o'qituvchi davomat qildimi (bugungi Conducted LessonNote) va baho qo'ydimi (bugungi jurnal
 /// bahosi yoki mezon belgisi).</summary>
+/// <para>2026-10-07: dars sanasi/vaqti <c>AttendanceWatch</c> dan (ko'chirilgan darslar, guruh umri,
+/// o'rinbosar). <c>Moved</c> — dars shu kunga KO'CHIRILGAN; <c>SubstituteTeacherName</c> — shu kuni
+/// darsni o'tadigan o'rinbosar; <c>Phase</c> — upcoming | started | ended (so'rov paytidagi markaz
+/// vaqtiga nisbatan); <c>Overdue</c> — dars boshlangan, davomat hali olinmagan.</para>
 public record TodayLessonMonitorDto(
     string GroupId, string GroupName, string CourseName, string TeacherId, string TeacherName,
     string Room, string StartTime, string EndTime, int StudentsCount,
-    bool AttendanceDone, bool GradesDone);
+    bool AttendanceDone, bool GradesDone,
+    bool Moved = false, string SubstituteTeacherName = "", string Phase = "", bool Overdue = false);
 public record TodayLessonsDto(string Date, int DayIndex, List<TodayLessonMonitorDto> Lessons);
 
 /* ---------- Class performance / rating ---------- */

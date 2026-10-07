@@ -1,7 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { ChevronLeft, ChevronRight, Download, Phone, Search, UserX, Clock3, CheckCircle2, BookOpen, MessageSquare, UserCheck, AlertTriangle } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Download, Phone, Search, UserX, Clock3, CheckCircle2, BookOpen, MessageSquare, UserCheck, AlertTriangle, AlarmClock } from 'lucide-react'
 import { getDailyAbsence, type AbsentStudent, type DailyAbsence } from '@/api/services/studentAttendance'
+import { getTodayLessons } from '@/api/services/dashboard'
+import type { TodayLessonMonitor } from '@/types'
+import { NotTakenLessonsCard } from '@/components/attendance/NotTakenLessonsCard'
+import { overdueCount } from '@/lib/attendanceWatch'
+import { usePerm } from '@/lib/permissions'
 import { apiErrorMessage, cn, exportToCsv } from '@/lib/utils'
 import { formatPhone } from '@/lib/numberFormat'
 import { Card } from '@/components/ui/Card'
@@ -56,6 +61,11 @@ export function StudentAbsencePage() {
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [smsOpen, setSmsOpen] = useState(false)
 
+  /** «Davomat olinmagan guruhlar» — Darslar monitoringi bilan BITTA manba (`today-lessons`). */
+  const [lessons, setLessons] = useState<TodayLessonMonitor[]>([])
+  const [lessonsError, setLessonsError] = useState('')
+  const { can } = usePerm()
+
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- sana o'zgarganda ma'lumotni qayta yuklash (maqsadli)
     setLoading(true)
@@ -67,6 +77,14 @@ export function StudentAbsencePage() {
       .finally(() => setLoading(false))
   }, [date])
 
+  useEffect(() => {
+    let alive = true
+    getTodayLessons(date)
+      .then((t) => { if (alive) { setLessons(t.lessons); setLessonsError('') } })
+      .catch((err) => { if (alive) setLessonsError(apiErrorMessage(err, "Darslar ro'yxatini yuklab bo'lmadi")) })
+    return () => { alive = false }
+  }, [date])
+
   const isToday = date === today()
 
   // BUGUN ko'rilayotganda sonlar har daqiqada jimgina yangilanadi (real vaqtga yaqin — uchrashuv talabi).
@@ -76,6 +94,10 @@ export function StudentAbsencePage() {
     const t = window.setInterval(() => {
       getDailyAbsence(date)
         .then(setData)
+        .catch(() => {})
+      // Dars bosqichi (kechikkanmi) soatga bog'liq — u ham har daqiqada yangilanadi.
+      getTodayLessons(date)
+        .then((t) => setLessons(t.lessons))
         .catch(() => {})
     }, 60_000)
     return () => window.clearInterval(t)
@@ -209,14 +231,28 @@ export function StudentAbsencePage() {
       ) : (
         <>
           {/* Statistika */}
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-6">
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-4 xl:grid-cols-7">
             <StatCard label="Keldi" value={data?.presentCount ?? 0} icon={UserCheck} iconBg="bg-emerald-50" iconColor="text-emerald-600" />
             <StatCard label="Kelmadi" value={data?.absentCount ?? 0} icon={UserX} iconBg="bg-red-50" iconColor="text-red-600" />
             <StatCard label="Sababsiz" value={data?.unexcusedCount ?? 0} icon={AlertTriangle} iconBg="bg-red-50" iconColor="text-red-700" />
             <StatCard label="Kechikdi" value={data?.lateCount ?? 0} icon={Clock3} iconBg="bg-amber-50" iconColor="text-amber-600" />
             <StatCard label="Davomat olindi" value={data?.markedStudents ?? 0} icon={CheckCircle2} iconBg="bg-emerald-50" iconColor="text-emerald-600" />
             <StatCard label="Darsi o'tilgan guruh" value={data?.conductedGroups ?? 0} icon={BookOpen} iconBg="bg-brand-50" iconColor="text-brand-600" />
+            <StatCard
+              label="Davomat olinmagan"
+              value={overdueCount(lessons)}
+              icon={AlarmClock}
+              iconBg="bg-red-50"
+              iconColor="text-red-600"
+              hint="Dars boshlangan, davomat yo'q"
+            />
           </div>
+
+          <NotTakenLessonsCard
+            lessons={lessons}
+            error={lessonsError}
+            monitorHref={can('classes.notAttended', 'view') ? '/admin/nazorat/davomat-qilinmagan' : null}
+          />
 
           {(data?.conductedGroups ?? 0) === 0 ? (
             <Card className="py-10 text-center text-slate-400">

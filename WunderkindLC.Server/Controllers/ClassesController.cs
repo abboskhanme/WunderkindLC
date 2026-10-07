@@ -848,6 +848,8 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
         async Task RecordRemovalAsync()
         {
             var reason = await ReasonLabelAsync(reasonId);
+            // Tuzilgan sabab — «Ketish sabablari» hisoboti uchun (audit matni faqat o'qish uchun).
+            MembershipReasons.Record(db, studentId, id, MembershipReasons.ActionRemove, leftAt, reasonId, reason);
             var statusLabel = status == "active" ? "aktiv" : status == "frozen" ? "muzlatilgan" : "sinovdagi";
             audit.Record("Membership", $"{id}:{studentId}", "delete",
                 $"Guruhdan chiqarildi ({statusLabel}, {leftAt}, guruh: {cls?.Name ?? id})"
@@ -1075,7 +1077,7 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
             return NotFound(new { message = "Faol a'zolik topilmadi" });
 
         var reason = await ReasonLabelAsync(req.ReasonId);
-        var r = await FreezeCoreAsync(cls, sg, date, reason, req.YearFreeze == true);
+        var r = await FreezeCoreAsync(cls, sg, date, reason, req.YearFreeze == true, reasonId: req.ReasonId);
         // trial yoki active emas — kutilmagan holat (eski/buzilgan yozuv).
         if (r.Error is not null) return BadRequest(new { message = r.Error });
         // Allaqachon muzlatilgan bo'lsa — qayta muzlatish kerak emas (takroriy prorate'ni oldini olamiz).
@@ -1098,9 +1100,11 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
     /// amalda — <see cref="TuitionService.LessonFeesForCoursesAsync"/>). ⚠️ FAQAT tezlik uchun:
     /// <c>null</c> bo'lsa AYNAN o'sha qiymat pastda yakka so'rov bilan olinadi. Yakka
     /// <see cref="FreezeMember"/> uni bermaydi va avvalgidek ishlaydi.</param>
+    /// <param name="reasonId">Tanlangan sabab (<see cref="ActionReason.Id"/>) — tuzilgan yozuv uchun
+    /// (<see cref="MembershipReasons.Record"/>). <c>null</c> — sababsiz (yozuv yo'q).</param>
     private async Task<(bool Already, decimal Restored, string? Error)> FreezeCoreAsync(
         Group cls, StudentGroup sg, string date, string reasonLabel, bool yearFreeze,
-        decimal? lessonFee = null, PricingBook? pricing = null)
+        decimal? lessonFee = null, PricingBook? pricing = null, string? reasonId = null)
     {
         if (sg.Status == "frozen") return (true, 0m, null);
         if (sg.Status != "active" && sg.Status != "trial")
@@ -1131,6 +1135,9 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
                 + (restored > 0 ? $" — keyingi oylar hisobi bekor qilindi: {AuditService.Money(restored)} so'm" : "")
                 + (reasonLabel.Length > 0 ? $" — sabab: {reasonLabel}" : ""),
             studentId: sg.StudentId);
+        // Tuzilgan sabab — muzlatilgan o'quvchi keyinroq SABABSIZ chiqarilsa, «Ketish sabablari»
+        // hisoboti haqiqiy sababni shu yerdan oladi (MembershipReasons.Resolve, 2-qadam).
+        MembershipReasons.Record(db, sg.StudentId, cls.Id, MembershipReasons.ActionFreeze, date, reasonId, reasonLabel);
 
         return (false, restored, null);
     }
@@ -1298,7 +1305,7 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
 
                     if (freeze)
                     {
-                        var r = await FreezeCoreAsync(cls, sg, date, reasonLabel, yearFreeze, FeeFor(cls.CourseId), pricing);
+                        var r = await FreezeCoreAsync(cls, sg, date, reasonLabel, yearFreeze, FeeFor(cls.CourseId), pricing, req.ReasonId);
                         if (r.Error is not null)
                         {
                             failed++;
@@ -1493,6 +1500,9 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
         if (s.ClassName == fromGroup.Name) s.ClassName = toGroup.Name;
 
         var reason = await ReasonLabelAsync(req.ReasonId);
+        // Tuzilgan sabab (eski guruh tomoni). Kurs ichidagi almashtirish ketish EMAS, lekin boshqa
+        // KURSGA o'tish kurs kesimida ketish bo'lib sanaladi — sababi shu yerdan olinadi.
+        MembershipReasons.Record(db, studentId, id, MembershipReasons.ActionTransfer, freezeDate, req.ReasonId, reason);
         audit.Record("Membership", $"{id}:{studentId}", "update",
             $"Guruh almashtirildi: {fromGroup.Name} → {toGroup.Name} (eski guruhdan chiqdi {freezeDate}, aktivlashtirish {activateDate})"
                 + (movedAdvance > 0 ? $" — {AuditService.Money(movedAdvance)} so'm to'lov yangi guruhga ko'chirildi" : "")
@@ -2027,8 +2037,11 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
     /// (to'lov oynasi muzlatilgan/arxiv guruhlarni ham ko'rsatadi).</para>
     /// </summary>
     /// <param name="what">Audit matnining boshi: «Guruh yopildi» yoki «Guruh arxivlandi».</param>
+    /// <param name="reasonId">«Guruhni yopish» da tanlangan sabab — har yopilgan a'zolikka tuzilgan
+    /// yozuv sifatida ham yoziladi (<see cref="MembershipReasons.ActionClose"/>). Arxivlashda yo'q.</param>
+    /// <param name="reasonLabel">O'sha sababning nomi (bo'sh — yozuv yo'q).</param>
     private async Task<(int Frozen, int AlreadyFrozen, int TrialClosed, decimal Restored)> CloseMembersAsync(
-        Group group, string date, string what)
+        Group group, string date, string what, string? reasonId = null, string reasonLabel = "")
     {
         var members = await db.StudentGroups
             .Where(sg => sg.GroupId == group.Id && sg.IsActive)
@@ -2056,6 +2069,7 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
                 audit.Record("Membership", $"{group.Id}:{m.StudentId}", "update",
                     $"{what} — sinovdagi a'zolik yakunlandi ({date}, guruh: {group.Name})",
                     studentId: m.StudentId);
+                MembershipReasons.Record(db, m.StudentId, group.Id, MembershipReasons.ActionClose, date, reasonId, reasonLabel);
                 continue;
             }
 
@@ -2073,6 +2087,7 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
             audit.Record("Membership", $"{group.Id}:{m.StudentId}", "update",
                 $"{what} — muzlatildi ({date}, guruh: {group.Name})",
                 studentId: m.StudentId);
+            MembershipReasons.Record(db, m.StudentId, group.Id, MembershipReasons.ActionClose, date, reasonId, reasonLabel);
         }
 
         return (frozen, alreadyFrozen, trialClosed, restored);
@@ -2091,8 +2106,10 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
         if (date.Length < 10 || !DateOnly.TryParse(date, out _))
             return BadRequest(new { message = "Sana noto'g'ri (YYYY-MM-DD)" });
 
+        // Sabab AVVAL o'qiladi — u har yopilgan a'zolikka ham tuzilgan yozuv bo'lib tushadi.
+        var reason = await ReasonLabelAsync(req.ReasonId);
         var (frozen, alreadyFrozen, trialClosed, restored) =
-            await CloseMembersAsync(group, date, "Guruh yopildi");
+            await CloseMembersAsync(group, date, "Guruh yopildi", req.ReasonId, reason);
 
         // Guruhni arxivga (NotActive) olamiz — o'quvchilar ARXIVLANMAYDI.
         group.IsArchived = true;
@@ -2100,7 +2117,6 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
         group.Status = "archived";
         if (string.IsNullOrWhiteSpace(group.EndDate)) group.EndDate = date;
 
-        var reason = await ReasonLabelAsync(req.ReasonId);
         audit.Record(AuditService.EntityGroup, id, "update",
             $"Guruh yopildi ({group.Name}) — {date} sanasidan {frozen} a'zo muzlatildi, guruh arxivga olindi"
             + (trialClosed > 0 ? $", {trialClosed} sinovdagi a'zolik yakunlandi" : "")

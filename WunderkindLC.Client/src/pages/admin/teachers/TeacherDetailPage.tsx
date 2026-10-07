@@ -59,6 +59,7 @@ import { CredentialsBox } from '@/components/ui/CredentialsBox'
 import { AuditHistoryList } from '@/components/audit/AuditHistoryList'
 import { useAuth } from '@/context/auth-context'
 import { usePerm } from '@/lib/permissions'
+import { TeacherRetentionCard } from '@/components/teachers/TeacherRetentionCard'
 import { PhotoDialog } from '@/components/media/PhotoDialog'
 import { TeacherBonusPanel } from '@/components/retention/TeacherBonusPanel'
 import { TeacherAiPanel } from './TeacherAiPanel'
@@ -1810,6 +1811,9 @@ export function TeacherDetailPage() {
                   </span>
                 </div>
               </Card>
+
+              {/* «Ketish sabablari» — hisobot bilan BITTA manba; ruxsat `teachers.retention`. */}
+              {id && can('teachers.retention', 'view') && <TeacherRetentionCard teacherId={id} />}
 
               {/* Detail table */}
               <Card title="Batafsil ko'rsatkichlar">

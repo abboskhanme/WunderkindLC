@@ -236,6 +236,42 @@ public static class DashboardSummary
         var fromNew = new Dictionary<string, MovementRow>(StringComparer.Ordinal);
         var fromActive = new Dictionary<string, MovementRow>(StringComparer.Ordinal);
 
+        foreach (var e in LeftEvents(memberships, courseByGroup, end => InMonth(end, month)))
+        {
+            var row = new MovementRow(e.Date, e.GroupId);
+            var target = e.EverActive ? fromActive : fromNew;
+            if (!target.TryGetValue(e.StudentId, out var prev) || string.CompareOrdinal(row.Date, prev.Date) > 0)
+                target[e.StudentId] = row;
+        }
+        return (fromNew, fromActive);
+    }
+
+    /// <summary>
+    /// Bitta KETISH hodisasi — (o'quvchi, kurs) oralig'i tugadi va bu "tugatdi" (sertifikat) EMAS.
+    /// </summary>
+    /// <param name="CourseKey">Kurs id; kurssiz guruhda <c>"group:{guruh id}"</c> (o'zi alohida "kurs").</param>
+    /// <param name="Date">Oraliq tugagan sana (yopgan a'zolikning <c>LeftAt</c>).</param>
+    /// <param name="GroupId">Oraliqni YOPGAN a'zolikning guruhi — eng kech chiqqani (parallel guruhda ham).</param>
+    /// <param name="EverActive">Oraliq ichidagi birorta a'zolik aktivlashtirilgan bo'lganmi
+    /// ("aktivdan ketgan"); <c>false</c> — faqat sinovdan iborat ("yangidan ketgan").</param>
+    /// <param name="Closing">Oraliqni yopgan a'zolikning o'zi (sabab qidirish uchun — <c>FrozenAt</c>).</param>
+    public readonly record struct LeftEvent(
+        string StudentId, string CourseKey, string Date, string GroupId, bool EverActive, StudentGroup? Closing);
+
+    /// <summary>
+    /// KETISH HODISALARI — "ketdi" qoidasining YAGONA amalga oshirilishi: bosh sahifa kartochkasi
+    /// (<see cref="LeftStudentsInMonth"/>) ham, «Ketish sabablari» hisoboti
+    /// (<see cref="RetentionLossReport"/>) ham AYNAN shuni chaqiradi.
+    /// <para>(o'quvchi, kurs) juftligi bo'yicha <see cref="CourseAnalytics.MergeIntervals"/>: guruh
+    /// almashtirish (bir kurs ichida, 7 kungacha tanaffus) va sertifikat bilan tugatish KETISH EMAS
+    /// (<c>.claude/rules/course-analytics.md</c> §1).</para>
+    /// </summary>
+    /// <param name="endFilter">Oraliq tugash sanasi ("yyyy-MM-dd") qaysi davrga tushishi kerak.</param>
+    public static IEnumerable<LeftEvent> LeftEvents(
+        IEnumerable<StudentGroup> memberships,
+        IReadOnlyDictionary<string, string> courseByGroup,
+        Func<string, bool> endFilter)
+    {
         foreach (var pair in memberships.GroupBy(m => (m.StudentId, Course: CourseKey(m.GroupId, courseByGroup))))
         {
             var list = pair.ToList();
@@ -244,7 +280,7 @@ public static class DashboardSummary
             for (var i = 0; i < intervals.Count; i++)
             {
                 var iv = intervals[i];
-                if (iv.Completed || !InMonth(iv.End, month)) continue;
+                if (iv.Completed || iv.End is null || !endFilter(iv.End)) continue;
 
                 // Oraliqqa tegishli a'zoliklar: boshlanishi [iv.Start, keyingi oraliq boshi) ichida.
                 // MergeIntervals a'zoliklarni JoinedAt bo'yicha tartiblab yig'adi, ya'ni har a'zolik
@@ -257,14 +293,9 @@ public static class DashboardSummary
                 var everActive = inInterval.Any(m => MembershipLifecycle.FirstActivatedAt(m).Length >= 7);
                 // Oraliqni YOPGAN a'zolik — eng kech chiqqani (parallel guruhda ham).
                 var closing = inInterval.OrderByDescending(m => m.LeftAt ?? "", StringComparer.Ordinal).FirstOrDefault();
-                var row = new MovementRow(iv.End!, closing?.GroupId ?? "");
-
-                var target = everActive ? fromActive : fromNew;
-                if (!target.TryGetValue(pair.Key.StudentId, out var prev) || string.CompareOrdinal(row.Date, prev.Date) > 0)
-                    target[pair.Key.StudentId] = row;
+                yield return new LeftEvent(pair.Key.StudentId, pair.Key.Course, iv.End, closing?.GroupId ?? "", everActive, closing);
             }
         }
-        return (fromNew, fromActive);
     }
 
     /// <summary>BIRINCHI TO'LOVNI QILGANLAR — o'quvchining eng birinchi o'quv to'lovi shu oyda.</summary>
@@ -283,7 +314,8 @@ public static class DashboardSummary
     private static bool InMonth(string? iso, string month) =>
         iso is { Length: >= 7 } && iso[..7] == month;
 
-    private static string CourseKey(string groupId, IReadOnlyDictionary<string, string> courseByGroup) =>
+    /// <summary>A'zolikni kurs kesimida birlashtirish kaliti — kurssiz guruh o'zi alohida "kurs".</summary>
+    public static string CourseKey(string groupId, IReadOnlyDictionary<string, string> courseByGroup) =>
         courseByGroup.TryGetValue(groupId, out var c) && !string.IsNullOrEmpty(c) ? c : "group:" + groupId;
 
     private static CourseAnalytics.MembershipRow ToRow(StudentGroup m, string course) => new(

@@ -158,6 +158,14 @@ export const reportGroups: ReportGroup[] = [
         perm: 'teachers.attendance',
         description: "O'qituvchilarning oylik davomat jadvali",
       },
+      {
+        label: 'Ketish sabablari',
+        to: '/admin/hisobotlar/ketish-sabablari',
+        perm: 'teachers.retention',
+        description: "Qaysi o'qituvchidan nechta o'quvchi ketdi, nega ketdi va bu uning aktiv o'quvchilariga nisbatan qancha (retention / loss)",
+        // Sof hisobot (yozuvchi amal yo'q) va yangi sahifa — eski menyu guruhida bandi YO'Q.
+        inNav: true,
+      },
     ],
   },
   {

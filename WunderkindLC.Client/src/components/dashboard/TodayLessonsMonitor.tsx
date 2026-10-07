@@ -1,9 +1,11 @@
 import { useMemo, useState } from 'react'
 import {
+  AlarmClock,
   CalendarCheck,
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
+  Clock3,
   ClipboardList,
   Star,
   XCircle,
@@ -52,15 +54,27 @@ function StatusChip({ done, label }: { done: boolean; label: string }) {
   )
 }
 
+/** Hali BOSHLANMAGAN dars — davomat "olinmagan" emas, KUTILMOQDA (qizil bo'lib qo'rqitmasin). */
+function PendingChip({ label }: { label: string }) {
+  return (
+    <span className="inline-flex items-center gap-1 whitespace-nowrap rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-semibold text-slate-500">
+      <Clock3 className="h-3.5 w-3.5" />
+      {label}
+    </span>
+  )
+}
+
 /**
  * Bosh sahifa "Darslar monitoringi" — tanlangan sanada (default bugun) dars kuni bo'lgan har bir
  * guruh bo'yicha o'qituvchi davomat qilganmi va baho qo'yganmi ko'rsatadi. O'qituvchi bo'yicha
  * guruhlangan, keng ekranda ikki ustun. Tepada kun/oy tanlash — eski sanalarni ham ko'rish mumkin.
  */
-type AttFilter = 'all' | 'done' | 'undone'
+type AttFilter = 'all' | 'done' | 'undone' | 'overdue'
 const ATT_FILTERS: { value: AttFilter; label: string }[] = [
   { value: 'all', label: 'Hammasi' },
   { value: 'undone', label: 'Davomat qilmagan' },
+  // Dars BOSHLANGAN (yoki tugagan), davomat hali yo'q — server `overdue` bayrog'i (AttendanceWatch).
+  { value: 'overdue', label: 'Kechikkan' },
   { value: 'done', label: 'Davomat qilgan' },
 ]
 
@@ -102,7 +116,7 @@ export function TodayLessonsMonitor() {
     setDate(value === todayStr.slice(0, 7) ? todayStr : `${value}-01`)
   }
 
-  const { byTeacher, doneAtt, doneGrade, total, shownTotal } = useMemo(() => {
+  const { byTeacher, doneAtt, doneGrade, overdue, total, shownTotal } = useMemo(() => {
     const lessons = data?.lessons ?? []
     // Filtr faqat ko'rsatiladigan ro'yxatga ta'sir qiladi; yig'indi hisoblari (yuqorida)
     // to'liq kun bo'yicha qoladi.
@@ -111,7 +125,9 @@ export function TodayLessonsMonitor() {
         ? lessons.filter((l) => l.attendanceDone)
         : attFilter === 'undone'
           ? lessons.filter((l) => !l.attendanceDone)
-          : lessons
+          : attFilter === 'overdue'
+            ? lessons.filter((l) => l.overdue)
+            : lessons
     const map = new Map<string, { teacher: string; lessons: TodayLessonMonitor[] }>()
     for (const l of filtered) {
       const key = l.teacherId || 'none'
@@ -123,6 +139,7 @@ export function TodayLessonsMonitor() {
       byTeacher,
       doneAtt: lessons.filter((l) => l.attendanceDone).length,
       doneGrade: lessons.filter((l) => l.gradesDone).length,
+      overdue: lessons.filter((l) => l.overdue).length,
       total: lessons.length,
       shownTotal: filtered.length,
     }
@@ -214,6 +231,12 @@ export function TodayLessonsMonitor() {
               <Star className="h-3.5 w-3.5" />
               Baho: {doneGrade}/{total}
             </span>
+            {overdue > 0 && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-red-50 px-2.5 py-1 text-red-600">
+                <AlarmClock className="h-3.5 w-3.5" />
+                Kechikkan: {overdue}
+              </span>
+            )}
             {/* Davomat holati bo'yicha filtr — faqat pastdagi ro'yxatni toraytiradi. */}
             <div className="ml-auto inline-flex rounded-lg border border-slate-200 p-0.5">
               {ATT_FILTERS.map((f) => (
@@ -240,7 +263,7 @@ export function TodayLessonsMonitor() {
               </div>
               <h4>Ro'yxat bo'sh</h4>
               <p>
-                {attFilter === 'undone'
+                {attFilter === 'undone' || attFilter === 'overdue'
                   ? 'Barcha darslarga davomat qilingan.'
                   : attFilter === 'done'
                     ? 'Hali hech bir darsga davomat qilinmagan.'
@@ -278,10 +301,19 @@ export function TodayLessonsMonitor() {
                           {l.endTime ? `–${l.endTime}` : ''}
                           {l.room ? ` · ${l.room}` : ''}
                           {` · ${l.studentsCount} o'quvchi`}
+                          {l.moved ? " · ko'chirilgan dars" : ''}
                         </p>
+                        {l.substituteTeacherName && (
+                          <p className="truncate text-xs text-amber-700">O'rinbosar: {l.substituteTeacherName}</p>
+                        )}
                       </div>
                       <div className="flex items-center gap-1.5">
-                        <StatusChip done={l.attendanceDone} label="Davomat" />
+                        {/* Hali boshlanmagan darsda davomat "yo'q" emas — kutilmoqda. */}
+                        {!l.attendanceDone && l.phase === 'upcoming' ? (
+                          <PendingChip label="Davomat" />
+                        ) : (
+                          <StatusChip done={l.attendanceDone} label={l.overdue ? 'Davomat · kechikkan' : 'Davomat'} />
+                        )}
                         <StatusChip done={l.gradesDone} label="Baho" />
                       </div>
                     </div>
