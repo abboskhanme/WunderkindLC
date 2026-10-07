@@ -11,7 +11,7 @@ import { Loader } from '@/components/ui/Loader'
 import { Select, Textarea } from '@/components/ui/Input'
 import { apiErrorMessage, cn, formatDateTime, openTelegram } from '@/lib/utils'
 import { formatPhone } from '@/lib/numberFormat'
-import { statusIcons, statusLabels, statusOrder, statusTones } from './careerLabels'
+import { stageLabel, stageOptions, statusIcons, statusTones } from './careerLabels'
 
 interface Props {
   open: boolean
@@ -59,13 +59,9 @@ export function ApplicationDetailModal({
       .finally(() => setLoading(false))
   }, [open, applicationId])
 
-  /** Bosqich tanlagichi: server katalogi (bo'lsa), aks holda lokal zaxira ro'yxat. */
-  const list: CareerStage[] = stages.length > 0
-    ? stages
-    : statusOrder.map((k, i) => ({
-        key: k, label: statusLabels[k], candidateText: '', icon: statusIcons[k],
-        order: i + 1, isFinal: k === 'hired' || k === 'rejected',
-      }))
+  /** Bosqich tanlagichi: server katalogi (bo'lsa) yoki zaxira ro'yxat; ESKI bosqich faqat
+   *  ariza hozir o'sha bosqichda bo'lsa ko'rinadi (server ham yangi o'tishni rad etadi). */
+  const list: CareerStage[] = app ? stageOptions(stages, app.status) : []
   const history = app?.history ?? []
 
   const applyStatus = async () => {
@@ -135,8 +131,8 @@ export function ApplicationDetailModal({
               <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">
                 Nomzod
               </span>
-              <Badge tone={statusTones[app.status]}>
-                {statusIcons[app.status]} {statusLabels[app.status]}
+              <Badge tone={statusTones[app.status] ?? 'default'}>
+                {statusIcons[app.status]} {stageLabel(stages, app.status)}
               </Badge>
             </div>
 
@@ -210,6 +206,12 @@ export function ApplicationDetailModal({
                 <p className="text-xs text-slate-400">
                   Bu matn nomzodga botda va «Arizalarim» bo'limida ko'rinadi.
                 </p>
+                {status === 'hired' && app.status !== 'hired' && (
+                  <p className="rounded-lg bg-emerald-50 px-3 py-2 text-xs text-emerald-700">
+                    Saqlangach yangi xodimning <b>30 kunlik moslashuv cheklisti</b> avtomatik
+                    boshlanadi (Boshqaruv → Moslashuv).
+                  </p>
+                )}
                 <Button onClick={applyStatus} disabled={busy}>
                   {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
                   Saqlash va xabar berish
@@ -235,11 +237,11 @@ export function ApplicationDetailModal({
                           : 'bg-slate-100 text-slate-500',
                       )}
                     >
-                      {statusIcons[h.status]}
+                      {statusIcons[h.status] ?? '•'}
                     </span>
                     <div className="min-w-0">
                       <p className="text-sm font-semibold text-slate-700">
-                        {statusLabels[h.status]}
+                        {stageLabel(stages, h.status)}
                       </p>
                       {h.note && <p className="text-sm text-slate-500">{h.note}</p>}
                       <p className="text-xs text-slate-400">

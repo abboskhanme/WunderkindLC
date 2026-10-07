@@ -3,7 +3,9 @@ import {
   Archive, ArchiveRestore, Briefcase, MapPin, Pencil, Plus, Trash2, Users, Wallet, Clock,
 } from 'lucide-react'
 import type { Vacancy, VacancyStatus } from '@/api/services/career'
-import { archiveVacancy, deleteVacancy, getVacancies, restoreVacancy } from '@/api/services/career'
+import {
+  archiveVacancy, deleteVacancy, getVacancies, restoreVacancy, setVacancyActive,
+} from '@/api/services/career'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
@@ -20,17 +22,28 @@ interface Props {
   onOpenApplications: (vacancyId: string) => void
 }
 
-type Filter = '' | VacancyStatus
+/** `current` — joriy (yoqilgan + o'chirilgan), `archived` — arxiv, `''` — hammasi. */
+type Filter = '' | 'current' | 'archived'
+
+const FILTER_STATUSES: Record<Filter, VacancyStatus[] | undefined> = {
+  current: ['active', 'paused'],
+  archived: ['archived'],
+  '': undefined,
+}
 
 /**
- * VAKANSIYALAR ro'yxati — yaratish, tahrirlash, ARXIVLASH/tiklash.
- * Arxivlangan vakansiya nomzod ilovasida ko'rinmaydi, lekin unga tushgan arizalar saqlanadi;
- * shuning uchun ariza tushgan vakansiyani o'chirish o'rniga arxivlash taklif qilinadi.
+ * VAKANSIYALAR ro'yxati — yaratish, tahrirlash, BITTA TUGMA bilan YOQISH/O'CHIRISH (ON/OFF),
+ * ARXIVLASH/tiklash.
+ * - O'chirilgan (OFF) vakansiya nomzodlar ilovasida (Telegram bot Mini App'i va `/vakansiya`
+ *   sahifasi) darhol ko'rinmay qoladi va ariza qabul qilmaydi, lekin ro'yxatda joyida turadi.
+ * - Arxivlangan vakansiya ham ko'rinmaydi, unga tushgan arizalar saqlanadi; shuning uchun ariza
+ *   tushgan vakansiyani o'chirish o'rniga arxivlash taklif qilinadi.
  */
 export function VacancyListTab({ canCreate, canEdit, canDelete, onOpenApplications }: Props) {
   const [items, setItems] = useState<Vacancy[]>([])
   const [loading, setLoading] = useState(true)
-  const [filter, setFilter] = useState<Filter>('active')
+  const [filter, setFilter] = useState<Filter>('current')
+  const [togglingId, setTogglingId] = useState<string | null>(null)
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState<Vacancy | null>(null)
   const [error, setError] = useState('')
@@ -38,7 +51,7 @@ export function VacancyListTab({ canCreate, canEdit, canDelete, onOpenApplicatio
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- filtr o'zgarganda qayta yuklash (maqsadli)
     setLoading(true)
-    getVacancies(filter || undefined)
+    getVacancies(FILTER_STATUSES[filter])
       .then(setItems)
       .catch((err) => setError(apiErrorMessage(err, "Vakansiyalarni yuklab bo'lmadi")))
       .finally(() => setLoading(false))
@@ -49,10 +62,25 @@ export function VacancyListTab({ canCreate, canEdit, canDelete, onOpenApplicatio
       const exists = prev.some((x) => x.id === v.id)
       const next = exists ? prev.map((x) => (x.id === v.id ? v : x)) : [...prev, v]
       // Filtrga to'g'ri kelmay qolgan yozuv ro'yxatdan chiqib ketsin.
+      const allowed = FILTER_STATUSES[filter]
       return next
-        .filter((x) => !filter || x.status === filter)
+        .filter((x) => !allowed || allowed.includes(x.status))
         .sort((a, b) => a.order - b.order || b.createdAt.localeCompare(a.createdAt))
     })
+
+  /** ON/OFF — server javobidan keyin yangilanadi (optimistik EMAS: xato bo'lsa holat o'zgarmaydi). */
+  const doToggle = async (v: Vacancy) => {
+    if (togglingId) return
+    setTogglingId(v.id)
+    setError('')
+    try {
+      upsert(await setVacancyActive(v.id, v.status !== 'active'))
+    } catch (err) {
+      setError(apiErrorMessage(err, "Vakansiya holatini o'zgartirib bo'lmadi"))
+    } finally {
+      setTogglingId(null)
+    }
+  }
 
   const doArchive = async (v: Vacancy) => {
     try {
@@ -85,7 +113,7 @@ export function VacancyListTab({ canCreate, canEdit, canDelete, onOpenApplicatio
       <div className="toolbar">
         <div className="left">
           {([
-            ['active', 'Faol'],
+            ['current', 'Joriy'],
             ['archived', 'Arxiv'],
             ['', 'Hammasi'],
           ] as [Filter, string][]).map(([key, label]) => (
@@ -149,12 +177,16 @@ export function VacancyListTab({ canCreate, canEdit, canDelete, onOpenApplicatio
                   <div className="flex flex-wrap items-center gap-1.5">
                     {v.status === 'archived' ? (
                       <Badge tone="default">Arxivda</Badge>
-                    ) : expired ? (
-                      <Badge tone="amber">Muddati tugagan</Badge>
                     ) : (
-                      <Badge tone="green" dot>
-                        Faol
-                      </Badge>
+                      <>
+                        {expired && <Badge tone="amber">Muddati tugagan</Badge>}
+                        <ActiveSwitch
+                          on={v.status === 'active'}
+                          busy={togglingId === v.id}
+                          disabled={!canEdit}
+                          onToggle={() => doToggle(v)}
+                        />
+                      </>
                     )}
                   </div>
                 </div>
@@ -210,7 +242,7 @@ export function VacancyListTab({ canCreate, canEdit, canDelete, onOpenApplicatio
                       </Button>
                     )}
                     {canEdit &&
-                      (v.status === 'active' ? (
+                      (v.status !== 'archived' ? (
                         <Button variant="secondary" onClick={() => doArchive(v)}>
                           <Archive className="h-3.5 w-3.5" /> Arxivlash
                         </Button>
@@ -239,5 +271,53 @@ export function VacancyListTab({ canCreate, canEdit, canDelete, onOpenApplicatio
         onSaved={upsert}
       />
     </div>
+  )
+}
+
+interface ActiveSwitchProps {
+  on: boolean
+  busy: boolean
+  disabled: boolean
+  onToggle: () => void
+}
+
+/**
+ * BITTA TUGMA — vakansiyani yoqish/o'chirish. Ruxsati yo'q xodimga faqat holat ko'rinadi.
+ * Holat nomzodlar ilovasidagi ko'rinish bilan bog'liq ekani yonida yozilgan (sarlavha matni).
+ */
+function ActiveSwitch({ on, busy, disabled, onToggle }: ActiveSwitchProps) {
+  const hint = on
+    ? "Yoqilgan — nomzodlar ilovasida ko'rinadi va ariza qabul qiladi"
+    : "O'chirilgan — nomzodlar ilovasida ko'rinmaydi, ariza qabul qilinmaydi"
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={on}
+      title={hint}
+      disabled={disabled || busy}
+      onClick={onToggle}
+      className={cn(
+        'inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] font-semibold transition-colors disabled:cursor-default',
+        on ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-slate-200 bg-slate-50 text-slate-500',
+        !disabled && 'hover:brightness-95',
+        busy && 'opacity-60',
+      )}
+    >
+      <span
+        className={cn(
+          'relative inline-flex h-4 w-7 flex-none items-center rounded-full transition-colors',
+          on ? 'bg-emerald-500' : 'bg-slate-300',
+        )}
+      >
+        <span
+          className={cn(
+            'absolute h-3 w-3 rounded-full bg-white shadow transition-all',
+            on ? 'left-[14px]' : 'left-0.5',
+          )}
+        />
+      </span>
+      {on ? 'Yoqilgan' : "O'chirilgan"}
+    </button>
   )
 }

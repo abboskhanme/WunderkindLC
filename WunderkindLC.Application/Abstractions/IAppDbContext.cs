@@ -115,6 +115,10 @@ public interface IAppDbContext
     DbSet<JobApplication> JobApplications { get; }
     DbSet<JobApplicationEvent> JobApplicationEvents { get; }
     DbSet<CareerBotUser> CareerBotUsers { get; }
+    // Moslashuv (onboarding) — 30 kunlik adaptatsiya cheklisti
+    DbSet<OnboardingStep> OnboardingSteps { get; }
+    DbSet<EmployeeOnboarding> EmployeeOnboardings { get; }
+    DbSet<EmployeeOnboardingTask> EmployeeOnboardingTasks { get; }
 
     // LMS (Ta'lim)
 

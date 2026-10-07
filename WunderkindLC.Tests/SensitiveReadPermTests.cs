@@ -73,8 +73,8 @@ public class SensitiveReadPermTests
     public void Karyera_arizalari_oqishi_ruxsat_talab_qiladi()
     {
         Assert.True(
-            ReadIsGated(ControllerSource("CareerController.cs"), "vacancies"),
-            "CareerController da [AdminPerm(\"vacancies\", ReadRequiresPerm = true)] yo'q — " +
+            ReadIsGated(ControllerSource("CareerController.cs"), "vacancies.list"),
+            "CareerController da [AdminPerm(\"vacancies.list\", ReadRequiresPerm = true)] yo'q — " +
             "nomzod CV manzillarini har qanday xodim o'qiy oladi");
     }
 

@@ -45,7 +45,10 @@ public record VacancyPayload(
 /* ---------- Ariza ---------- */
 
 /// <summary>Bosqich katalogi elementi (admin va Mini App bir xil ro'yxatni ishlatadi).</summary>
-public record CareerStageDto(string Key, string Label, string CandidateText, string Icon, int Order, bool IsFinal);
+/// <param name="IsLegacy">ESKI bosqich (masalan <c>review</c>): mavjud arizalarda ko'rsatiladi, lekin
+/// yangi o'tish uchun taklif qilinmaydi va yo'l-xaritaga alohida qadam bo'lib chizilmaydi.</param>
+public record CareerStageDto(string Key, string Label, string CandidateText, string Icon, int Order, bool IsFinal,
+    bool IsLegacy = false);
 
 /// <summary>Ariza bosqichi tarixidagi bitta yozuv.</summary>
 public record JobApplicationEventDto(string Status, string Note, string CreatedAt, string CreatedBy);
@@ -66,8 +69,22 @@ public record JobApplicationStatusPayload(string Status, string? Note);
 /// <summary>Faqat admin ko'radigan ichki izoh.</summary>
 public record JobApplicationNotePayload(string? AdminNote);
 
-/// <summary>Arizalar bo'limining tepasidagi jamlanma (bosqich bo'yicha son).</summary>
-public record CareerStatsDto(int Total, int Active, int Hired, int Rejected, Dictionary<string, int> ByStatus);
+/// <summary>Arizalar bo'limining tepasidagi jamlanma (bosqich bo'yicha son + voronka konversiyasi).</summary>
+public record CareerStatsDto(int Total, int Active, int Hired, int Rejected, Dictionary<string, int> ByStatus,
+    List<CareerFunnelStepDto>? Funnel = null);
+
+/// <summary>Voronka qadami: shu bosqichgacha yetib borganlar va o'tish ulushi
+/// (hisob — <c>CareerService.ComputeFunnel</c>).</summary>
+/// <param name="Reached">Shu bosqichga (yoki undan keyingisiga) yetib borgan arizalar.</param>
+/// <param name="Current">Hozir aynan shu bosqichda turganlar.</param>
+/// <param name="RejectedHere">Shu bosqichda to'xtab, rad etilganlar.</param>
+/// <param name="FromPrevPct">Oldingi bosqichdan o'tish ulushi (%).</param>
+/// <param name="FromStartPct">Jami arizalardan ulush (%).</param>
+public record CareerFunnelStepDto(string Key, string Label, string Icon, int Order,
+    int Reached, int Current, int RejectedHere, int FromPrevPct, int FromStartPct);
+
+/// <summary>Vakansiyani bitta tugma bilan yoqish/o'chirish (ON/OFF).</summary>
+public record VacancyActivePayload(bool Active);
 
 /* =================================================================================================
  *  MINI APP (nomzod tomoni) — qisqartirilgan, maxfiy maydonlarsiz DTO'lar

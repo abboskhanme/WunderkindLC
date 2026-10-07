@@ -354,9 +354,14 @@
     }).join('');
   }
 
-  /** Bosqichlar yo'l-xaritasi: o'tilgan / joriy / kutilayotgan (rad etilsa — qizil yakun). */
+  /**
+   * Bosqichlar yo'l-xaritasi: o'tilgan / joriy / kutilayotgan (rad etilsa — qizil yakun).
+   * Bosqichlar SERVERDAN keladi (bootstrap) — bu yerda qattiq yozilmaydi. ESKI (isLegacy)
+   * bosqich alohida qadam bo'lib chizilmaydi: u o'zi bilan bir xil tartibli asosiy bosqich
+   * o'rnida "joriy" ko'rinadi (masalan eski "Ko'rib chiqilmoqda" → "CV qabul qilindi").
+   */
   function roadmap(app) {
-    var flow = (state.stages || []).filter(function (s) { return s.key !== 'rejected'; });
+    var flow = (state.stages || []).filter(function (s) { return s.key !== 'rejected' && !s.isLegacy; });
     var rejected = app.status === 'rejected';
     var current = rejected ? null : (state.stages || []).filter(function (s) { return s.key === app.status; })[0];
     var currentOrder = current ? current.order : 0;

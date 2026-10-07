@@ -27,6 +27,8 @@ public class AuditSectionsTests
     [InlineData("Book", "books")]
     [InlineData("Contract", "contracts")]
     [InlineData("Vacancy", "vacancies")]
+    [InlineData("Onboarding", "vacancies")]
+    [InlineData("OnboardingStep", "vacancies")]
     [InlineData("Staff", "staff")]
     [InlineData("CenterMeta", "settings")]
     public void SectionOf_turni_togri_bolimga_soladi(string entityType, string expected)

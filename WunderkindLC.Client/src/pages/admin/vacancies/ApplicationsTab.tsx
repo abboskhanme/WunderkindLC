@@ -8,7 +8,7 @@ import { Loader } from '@/components/ui/Loader'
 import { apiErrorMessage, cn, formatDateTime } from '@/lib/utils'
 import { formatPhone } from '@/lib/numberFormat'
 import { ApplicationDetailModal } from './ApplicationDetailModal'
-import { statusIcons, statusLabels, statusOrder, statusTones } from './careerLabels'
+import { legacyStatuses, stageLabel as labelOf, statusIcons, statusOrder, statusTones } from './careerLabels'
 
 interface Props {
   stages: CareerStage[]
@@ -18,6 +18,11 @@ interface Props {
   /** Vakansiyalar tabidan "N ta ariza" bosilganda oldindan qo'yiladigan filtr. */
   vacancyFilter: string
   onVacancyFilterChange: (id: string) => void
+  /** Bosqich bo'yicha arizalar soni (`stats.byStatus`) — chiplarda son, eski bosqich chipi
+   *  faqat unda ariza bo'lsa ko'rinadi. */
+  counts?: Record<string, number>
+  /** Ariza o'zgardi/o'chdi — sahifa jamlanmani (stats, voronka) qayta yuklaydi. */
+  onChanged?: () => void
 }
 
 /**
@@ -25,7 +30,7 @@ interface Props {
  * tafsilot modali ochiladi (u yerda bosqich o'zgartiriladi va nomzodga xabar ketadi).
  */
 export function ApplicationsTab({
-  stages, vacancies, canEdit, canDelete, vacancyFilter, onVacancyFilterChange,
+  stages, vacancies, canEdit, canDelete, vacancyFilter, onVacancyFilterChange, counts, onChanged,
 }: Props) {
   const [items, setItems] = useState<JobApplication[]>([])
   const [loading, setLoading] = useState(true)
@@ -45,11 +50,17 @@ export function ApplicationsTab({
     return () => window.clearTimeout(timer)
   }, [status, vacancyFilter, q])
 
-  const patch = (a: JobApplication) =>
+  const patch = (a: JobApplication) => {
     setItems((prev) => prev.map((x) => (x.id === a.id ? { ...x, ...a } : x)))
+    onChanged?.()
+  }
 
-  const stageLabel = (key: ApplicationStatus) =>
-    stages.find((s) => s.key === key)?.label ?? statusLabels[key]
+  const stageLabel = (key: ApplicationStatus) => labelOf(stages, key)
+  // Voronka bosqichlari + ESKI bosqich (faqat unda ariza qolgan bo'lsa yoki u tanlangan bo'lsa).
+  const chipKeys: ApplicationStatus[] = [
+    ...statusOrder,
+    ...legacyStatuses.filter((k) => (counts?.[k] ?? 0) > 0 || status === k),
+  ]
 
   return (
     <div>
@@ -62,7 +73,7 @@ export function ApplicationsTab({
           >
             Barchasi
           </button>
-          {statusOrder.map((key) => (
+          {chipKeys.map((key) => (
             <button
               key={key}
               type="button"
@@ -70,6 +81,9 @@ export function ApplicationsTab({
               onClick={() => setStatus(key)}
             >
               {statusIcons[key]} {stageLabel(key)}
+              {counts && (counts[key] ?? 0) > 0 && (
+                <span className="ml-1 text-[11px] font-bold opacity-70">{counts[key]}</span>
+              )}
             </button>
           ))}
         </div>
@@ -132,7 +146,7 @@ export function ApplicationsTab({
                   <h3 className="text-[15px] font-bold text-slate-800">{a.fullName}</h3>
                   <p className="text-xs text-slate-500">{a.vacancyTitle}</p>
                 </div>
-                <Badge tone={statusTones[a.status]}>
+                <Badge tone={statusTones[a.status] ?? 'default'}>
                   {statusIcons[a.status]} {stageLabel(a.status)}
                 </Badge>
               </div>
@@ -161,7 +175,10 @@ export function ApplicationsTab({
         canDelete={canDelete}
         onClose={() => setOpenId(null)}
         onChanged={patch}
-        onDeleted={(id) => setItems((prev) => prev.filter((x) => x.id !== id))}
+        onDeleted={(id) => {
+          setItems((prev) => prev.filter((x) => x.id !== id))
+          onChanged?.()
+        }}
       />
     </div>
   )

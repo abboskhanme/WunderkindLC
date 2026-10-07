@@ -192,6 +192,10 @@ public class AppDbContext(DbContextOptions<AppDbContext> options)
     public DbSet<JobApplication> JobApplications => Set<JobApplication>();
     public DbSet<JobApplicationEvent> JobApplicationEvents => Set<JobApplicationEvent>();
     public DbSet<CareerBotUser> CareerBotUsers => Set<CareerBotUser>();
+    // Moslashuv (onboarding) — 30 kunlik adaptatsiya cheklisti (OnboardingEntities.cs)
+    public DbSet<OnboardingStep> OnboardingSteps => Set<OnboardingStep>();
+    public DbSet<EmployeeOnboarding> EmployeeOnboardings => Set<EmployeeOnboarding>();
+    public DbSet<EmployeeOnboardingTask> EmployeeOnboardingTasks => Set<EmployeeOnboardingTask>();
 
     /* ---------- Bog'lanish kerak (follow-up navbati) ---------- */
     public DbSet<ContactStage> ContactStages => Set<ContactStage>();
@@ -815,6 +819,21 @@ public class AppDbContext(DbContextOptions<AppDbContext> options)
         b.Entity<JobApplication>().HasIndex(a => new { a.VacancyId, a.Status });
         b.Entity<JobApplicationEvent>().HasIndex(e => new { e.ApplicationId, e.CreatedAt });
         b.Entity<CareerBotUser>().HasIndex(u => u.ChatId).IsUnique();
+
+        // ---------- Moslashuv (onboarding) ----------
+        foreach (var (type, prop) in new (Type, string)[]
+        {
+            (typeof(EmployeeOnboarding), "Status"), (typeof(EmployeeOnboarding), "JobApplicationId"),
+            (typeof(EmployeeOnboarding), "StartDate"),
+            (typeof(EmployeeOnboardingTask), "OnboardingId"),
+        })
+            b.Entity(type).Property(prop).HasMaxLength(200);
+        // Avtomatik boshlash idempotentligi "shu arizaga moslashuv bormi" deb qidiradi.
+        b.Entity<EmployeeOnboarding>().HasIndex(o => o.JobApplicationId);
+        // Monitoring ro'yxati holat bo'yicha, eng yangisi tepada.
+        b.Entity<EmployeeOnboarding>().HasIndex(o => new { o.Status, o.StartDate });
+        b.Entity<EmployeeOnboardingTask>().HasIndex(t => new { t.OnboardingId, t.Order });
+        b.Entity<OnboardingStep>().HasIndex(s => s.Order);
 
         // Daraja testi — Slug ommaviy URL kaliti (noyob, indekslanishi uchun uzunlik beriladi).
         b.Entity<LevelTest>().Property(t => t.Slug).HasMaxLength(64);

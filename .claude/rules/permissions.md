@@ -155,10 +155,14 @@ turmaydi.
 | `tasks` | `.board` `.dashboard` `.settings` | `WorkTasksController` (metod darajasida) |
 | `kpi` | `.today` `.month` `.tickets` `.close` `.rules` | `KpiController` (metod darajasida) |
 | `settings` | `.school` `.landing` `.reasons` `.channels` `.backup` `.apk` `.azure-speech` `.gemini` `.check` `.turnstile` `.cameras` `.posthog` `.archive` | `SettingsController` (metod darajasida) · `LandingCmsController` · `ActionReasonsController` · `LeadSourcesController` · `ArchiveController` |
+| `vacancies` | `.list` `.onboarding` | `CareerController` (`vacancies.list`, RRP) · `OnboardingController` (`vacancies.onboarding`, RRP) |
 
 Sahifasiz bo'limlar (bittasi = bitta sahifa): `contacts` · `teacherReports` · `contracts` ·
-`books` · `kassa` · `audit` · `staff` · `feedback` · `cameras` · `vacancies` · `ai` ·
-`retentionBonus`.
+`books` · `kassa` · `audit` · `staff` · `feedback` · `cameras` · `ai` · `retentionBonus`.
+
+⚠️ `vacancies` 2026-10 dan IKKI sahifali (`onboarding.md` §7): `CareerController` darvozasi bo'limdan
+`vacancies.list` ga TORAYTIRILDI — aks holda faqat «Moslashuv» berilgan xodim yuqoriga o'qish
+merosi bilan nomzod CV'larini o'qir edi (§2). Yalang `vacancies` ruxsatli xodimlar o'zgarishsiz.
 
 ⚠️ `settings.posthog` — sozlamasi klientda, serverda alohida endpoint YO'Q (shuning uchun
 jadvalda controller ko'rsatilmagan).
