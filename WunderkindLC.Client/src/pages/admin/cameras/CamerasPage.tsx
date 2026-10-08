@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import Hls from 'hls.js'
+import { Link } from 'react-router-dom'
 import { Video, Plus, Pencil, Trash2, ArrowLeft, Download, Play, VideoOff, Circle, CircleOff, Server, Search } from 'lucide-react'
 import {
   getCameras, createCamera, updateCamera, deleteCamera, getClipBlob, cameraLiveUrl, nvrSearch,
-  type Camera, type SaveCameraPayload, type NvrSegment,
+  getCameraStatus,
+  type Camera, type SaveCameraPayload, type NvrSegment, type CameraStatus,
 } from '@/api/services/cameras'
 import { cn, apiErrorMessage } from '@/lib/utils'
 import { Card } from '@/components/ui/Card'
@@ -58,16 +60,34 @@ export function CamerasPage() {
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState<Camera | null>(null)
+  /** «Kamera kuzatuvini yoqish» holati. O'chiq bo'lsa jonli pleyerlar CHIZILMAYDI (server ham
+   *  oqimni bermaydi) — o'rniga sabab va sozlamaga yo'l ko'rsatiladi. */
+  const [status, setStatus] = useState<CameraStatus | null>(null)
+  const [loadError, setLoadError] = useState('')
 
-  const load = () => getCameras().then(setCameras).finally(() => setLoading(false))
+  const load = () =>
+    Promise.all([getCameras(), getCameraStatus()])
+      .then(([list, st]) => { setCameras(list); setStatus(st); setLoadError('') })
+      .catch((err) => setLoadError(apiErrorMessage(err, "Kameralarni yuklab bo'lmadi")))
+      .finally(() => setLoading(false))
   useEffect(() => { load() }, [])
 
   const selected = cameras.find((c) => c.id === selectedId) ?? null
+  const viewing = status?.enabled ?? false
 
-  const onSaved = () => { setModalOpen(false); setEditing(null); load() }
+  const onSaved = (saved: Camera) => {
+    setModalOpen(false); setEditing(null); load()
+    // Kamera saqlandi, lekin shlyuz qabul qilmagan — jim qoldirmaymiz.
+    if (saved.warning) alert(`Kamera saqlandi, lekin: ${saved.warning}`)
+  }
   const onDelete = async (c: Camera) => {
-    if (!confirm(`"${c.name}" kamerasini o'chirasizmi?`)) return
-    await deleteCamera(c.id)
+    if (!confirm(`"${c.name}" kamerasini o'chirasizmi? Uning serverdagi yozuvlari ham o'chiriladi.`)) return
+    try {
+      await deleteCamera(c.id)
+    } catch (err) {
+      alert(apiErrorMessage(err, "Kamerani o'chirib bo'lmadi"))
+      return
+    }
     if (selectedId === c.id) setSelectedId(null)
     load()
   }
@@ -86,12 +106,26 @@ export function CamerasPage() {
         }
       />
 
+      {loadError && (
+        <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-sm text-red-800">{loadError}</div>
+      )}
+
+      {!loading && status && !status.enabled && (
+        <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-900">
+          <b>Kamera kuzatuvi o'chirilgan.</b> {status.message}
+          {can('settings.cameras', 'view') && (
+            <> <Link to="/admin/settings/cameras" className="font-medium text-brand-700 underline">Sozlamaga o'tish</Link></>
+          )}
+        </div>
+      )}
+
       {loading ? (
         <Card>
           <Loader label="Yuklanmoqda..." />
         </Card>
       ) : selected ? (
         <SingleCamera
+          viewing={viewing}
           camera={selected}
           onBack={() => setSelectedId(null)}
           onEdit={() => { setEditing(selected); setModalOpen(true) }}
@@ -114,7 +148,7 @@ export function CamerasPage() {
           {cameras.map((c) => (
             <Card key={c.id} className="overflow-hidden p-0">
               <button type="button" onClick={() => setSelectedId(c.id)} className="block w-full">
-                {c.isActive
+                {c.isActive && viewing
                   ? <LivePlayer id={c.id} className="aspect-video w-full" />
                   : <div className="flex aspect-video w-full items-center justify-center bg-slate-100 text-slate-400">
                       <VideoOff className="h-7 w-7" />
@@ -195,8 +229,10 @@ async function clipError(err: unknown): Promise<string> {
 
 /** Bitta kamera: katta jonli ko'rinish + playback (orqaga qaytarish / qirqib yuklab olish). */
 function SingleCamera({
-  camera, onBack, onEdit, onDelete, canEdit, canDelete,
+  viewing, camera, onBack, onEdit, onDelete, canEdit, canDelete,
 }: {
+  /** «Kamera kuzatuvini yoqish» yoqilganmi — o'chiq bo'lsa jonli oqim ham, arxiv ham yopiq. */
+  viewing: boolean
   camera: Camera
   onBack: () => void
   onEdit: () => void
@@ -281,7 +317,12 @@ function SingleCamera({
           <Badge tone="green" dot>Jonli</Badge>
           <ArchiveBadge source={camera.archiveSource} />
         </div>
-        <LivePlayer id={camera.id} className="aspect-video w-full" />
+        {viewing
+          ? <LivePlayer id={camera.id} className="aspect-video w-full" />
+          : <div className="flex aspect-video w-full flex-col items-center justify-center bg-slate-100 text-slate-400">
+              <VideoOff className="mb-1 h-7 w-7" />
+              <span className="text-xs">Kamera kuzatuvi o'chirilgan</span>
+            </div>}
       </Card>
 
       {/* Playback / qirqish — yozuv bo'lmasa MA'NOSIZ, shuning uchun sabab ochiq yoziladi. */}
@@ -369,7 +410,7 @@ type CameraForm = Omit<SaveCameraPayload, 'nvrChannel'> & { nvrChannel: number |
 
 function CameraFormModal({
   open, camera, onClose, onSaved,
-}: { open: boolean; camera: Camera | null; onClose: () => void; onSaved: () => void }) {
+}: { open: boolean; camera: Camera | null; onClose: () => void; onSaved: (saved: Camera) => void }) {
   const [form, setForm] = useState<CameraForm>(
     { name: '', rtspUrl: '', retentionDays: 7, isActive: true, recordEnabled: true, nvrChannel: null })
   const [saving, setSaving] = useState(false)
@@ -394,11 +435,11 @@ function CameraFormModal({
     setSaving(true)
     try {
       const payload: SaveCameraPayload = { ...form, nvrChannel: form.nvrChannel ?? 0 }
-      if (camera) await updateCamera(camera.id, payload)
-      else await createCamera(payload)
-      onSaved()
-    } catch {
-      alert('Saqlashda xatolik')
+      const saved = camera ? await updateCamera(camera.id, payload) : await createCamera(payload)
+      onSaved(saved)
+    } catch (err) {
+      // Server sababni `message` da qaytaradi ("Nomi shart", "RTSP manzili shart") — yashirmaymiz.
+      alert(apiErrorMessage(err, 'Saqlashda xatolik'))
     } finally { setSaving(false) }
   }
 

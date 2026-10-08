@@ -96,6 +96,8 @@ export function CameraSettings() {
             <li>Har kameraga uning <b>RTSP manzili</b>ni (login/parol bilan) kiriting.</li>
             <li>Media-shlyuz (MediaMTX) RTSP'ni brauzer ko'radigan <b>HLS</b> ga o'giradi.</li>
             <li>Jonli kuzatuv — Kameralar bo'limida, hech qanday qo'shimcha sozlamasiz.</li>
+            <li>Bu kalit <b>o'chirilsa</b> — jonli ko'rish va arxivni ko'rish yopiladi (kameralar ro'yxati
+                va sozlamasi qoladi). 24/7 yozuv esa quyidagi o'z kaliti bilan boshqariladi.</li>
             <li>Yozuvni orqaga qaytarish va <b>qirqib yuklab olish</b> faqat quyidagi «24/7 yozib
                 borish» yoqilgan bo'lsa ishlaydi.</li>
           </ul>

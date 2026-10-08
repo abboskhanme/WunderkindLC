@@ -14,6 +14,7 @@ import { formatMonth, monthStatusLabels, paymentMethods } from '@/config/constan
 import { apiErrorMessage, formatDate, formatMoney, cn } from '@/lib/utils'
 import { toast } from '@/lib/toast'
 import { cashboxOptionLabel, showCashboxPicker, useCashboxOptions } from '@/hooks/useCashboxOptions'
+import { todayIso } from '@/lib/month'
 
 interface Props {
   /** Tahrirlanadigan o'quvchi to'lovi (income + tuition) */
@@ -22,7 +23,8 @@ interface Props {
   onSaved: () => void
 }
 
-const today = () => new Date().toISOString().slice(0, 10)
+/** Bugun — MAHALLIY sana (UTC+5). `toISOString()` UTC beradi: 00:00–05:00 orasida "kecha" chiqardi. */
+const today = () => todayIso()
 
 /** Forma holati: summa maydoni BO'SH bo'la oladi (`null`). */
 type PaymentEditForm = Omit<PaymentEditPayload, 'amount'> & { amount: number | null }
@@ -91,6 +93,11 @@ export function PaymentEditModal({ payment, onClose, onSaved }: Props) {
   const save = async (force: boolean) => {
     const amount = form?.amount ?? null
     if (inFlightRef.current || !payment || !form || amount === null || amount <= 0 || !form.date || !form.month) return
+    // Allaqachon qaytarilgan (vozvrat) summadan kam bo'lmaydi — server ham rad etadi, bu yerda sabab darhol ko'rinsin.
+    if (amount < (payment.refunded ?? 0)) {
+      setError(`Bu to'lovdan ${formatMoney(payment.refunded ?? 0)} qaytarilgan — summa undan kam bo'lishi mumkin emas`)
+      return
+    }
     inFlightRef.current = true
     setSaving(true)
     setError(null)

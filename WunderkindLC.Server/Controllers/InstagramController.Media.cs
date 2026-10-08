@@ -178,9 +178,15 @@ public partial class InstagramController
         return dir;
     }
 
-    /// <summary>To'liq (absolut) ochiq manzil — Meta faylni shu manzildan yuklab oladi.</summary>
+    /// <summary>To'liq (absolut) ochiq manzil — Meta faylni shu manzildan yuklab oladi.
+    /// <para>🔴 Host — <c>App:Host</c> dan (webhook va OAuth manzillari bilan BIR manba,
+    /// <see cref="InstagramWebhookController.PublicBaseUrl"/>), so'rov hostidan EMAS: admin CRM'ni
+    /// IP, <c>www.</c> yoki vaqtinchalik domen bilan ochgan bo'lsa post media manzili o'sha
+    /// (Meta yetib bormaydigan yoki HTTPS bo'lmagan) host bilan saqlanib qolardi va post
+    /// faqat joylash paytida «media yuklab bo'lmadi» bilan yiqilardi. <c>App:Host</c> bo'sh
+    /// bo'lsa — eskicha, so'rov hostidan.</para></summary>
     private string PublicMediaUrl(string storedName) =>
-        $"{Request.Scheme}://{Request.Host}{MarketingPublicMedia.RequestPath}/{storedName}";
+        $"{InstagramWebhookController.PublicBaseUrl(Request)}{MarketingPublicMedia.RequestPath}/{storedName}";
 
     /// <summary>Fayl bosh va oxirgi bo'lagidan o'lcham/davomiylikni o'lchaydi (topilmasa 0).</summary>
     private static async Task<(int Width, int Height, double Duration)> MeasureAsync(

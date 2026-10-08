@@ -216,7 +216,6 @@ export const adminPermissions: AdminPermSection[] = [
     key: 'calls',
     label: 'Call Center',
     pages: [
-      { key: 'calls.cloud', label: 'Bulut (MoiZvonki)' },
       { key: 'calls.local', label: 'Local Call' },
     ],
   },

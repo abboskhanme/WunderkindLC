@@ -31,7 +31,10 @@ import {
   blockTeacher,
   unblockTeacher,
   downloadTeacherCredentials,
+  resetTeacherPassword,
 } from '@/api/services/teachers'
+import type { Credentials } from '@/types'
+import { todayIso } from '@/lib/month'
 import { useAuth } from '@/context/auth-context'
 import { usePerm } from '@/lib/permissions'
 import { getSubjects } from '@/api/services/subjects'
@@ -112,6 +115,15 @@ export function TeachersPage() {
   // Arxivga ko'chirish tasdiq oynasi
   const [archiveTarget, setArchiveTarget] = useState<Teacher | null>(null)
   const [reason, setReason] = useState('')
+  const [archiveBusy, setArchiveBusy] = useState(false)
+  const [archiveError, setArchiveError] = useState('')
+  // Arxivlashdan keyingi ogohlantirish (to'lanmagan maosh, bekor qilingan o'rinbosarliklar)
+  const [archiveNotice, setArchiveNotice] = useState<{ teacher: Teacher; lines: string[]; unpaid: boolean } | null>(null)
+  // Arxivdan qaytarilgan, lekin paroli yo'q (arxivlashda o'chirilgan) o'qituvchi — yangi parol taklifi
+  const [loginFix, setLoginFix] = useState<Teacher | null>(null)
+  const [loginFixBusy, setLoginFixBusy] = useState(false)
+  const [loginFixError, setLoginFixError] = useState('')
+  const [loginFixCreds, setLoginFixCreds] = useState<Credentials | null>(null)
   const [deleting, setDeleting] = useState<Teacher | null>(null)
   // "Vaqtincha aktiv emas" oynasi — o'qituvchi tizimga kira olmaydi (arxivlash EMAS)
   const [blockTarget, setBlockTarget] = useState<Teacher | null>(null)
@@ -185,37 +197,75 @@ export function TeachersPage() {
     setEditing(null)
   }
 
-  const confirmArchive = () => {
-    if (!archiveTarget) return
+  // ⚠️ Oyna faqat SAQLANGANDAN KEYIN yopiladi: server rad etsa (masalan o'qituvchining faol guruhlari
+  // bor — avval boshqa o'qituvchi tayinlash kerak) sabab shu oynada ko'rinadi, kiritilgan sabab qoladi.
+  const confirmArchive = async () => {
+    if (!archiveTarget || archiveBusy) return
     const t = archiveTarget
-    const today = new Date().toISOString().slice(0, 10)
-    archiveTeacher(t.id, reason.trim())
-      .then(() => {
-        setTeachers((prev) => prev.filter((x) => x.id !== t.id))
-        setArchived((prev) => [
-          { ...t, isArchived: true, archivedAt: today, archiveReason: reason.trim() },
-          ...prev,
-        ])
-      })
-      // Ilgari so'rov JIM yiqilardi: o'qituvchi ro'yxatda qolar, sabab ko'rinmasdi.
-      .catch((e) => alert(apiErrorMessage(e, "O'qituvchini arxivlab bo'lmadi")))
+    setArchiveBusy(true)
+    setArchiveError('')
+    try {
+      const res = await archiveTeacher(t.id, reason.trim())
+      setTeachers((prev) => prev.filter((x) => x.id !== t.id))
+      setArchived((prev) => [
+        { ...t, isArchived: true, archivedAt: todayIso(), archiveReason: reason.trim() },
+        ...prev,
+      ])
+      setArchiveTarget(null)
+      setReason('')
+      const lines: string[] = []
+      if (res.warning) lines.push(res.warning)
+      if (res.cancelledSubstitutions > 0)
+        lines.push(
+          `${res.cancelledSubstitutions} ta o'rinbosarlik tayinlovining kelajakdagi kunlari bekor qilindi (o'tgan kunlar maosh tarixida qoladi).`,
+        )
+      if (lines.length > 0) setArchiveNotice({ teacher: t, lines, unpaid: res.unpaidSalary > 0 })
+    } catch (e) {
+      setArchiveError(apiErrorMessage(e, "O'qituvchini arxivlab bo'lmadi"))
+    } finally {
+      setArchiveBusy(false)
+    }
+  }
+
+  const closeArchive = () => {
+    if (archiveBusy) return
     setArchiveTarget(null)
-    setReason('')
+    setArchiveError('')
   }
 
   const handleRestore = (t: Teacher) => {
     if (!confirm(`"${t.fullName}" o'qituvchini arxivdan qaytarasizmi?`)) return
     restoreTeacher(t.id)
-      .then(() => {
+      .then((res) => {
         setArchived((prev) => prev.filter((x) => x.id !== t.id))
         setTeachers((prev) =>
           [{ ...t, isArchived: false, archivedAt: null, archiveReason: null }, ...prev].sort(
             (a, b) => a.fullName.localeCompare(b.fullName),
           ),
         )
+        // Arxivlashda parol o'chirilgan — yangisi bo'lmasa o'qituvchi tizimga KIRA OLMAYDI.
+        if (res.loginBlocked) {
+          setLoginFixCreds(null)
+          setLoginFixError('')
+          setLoginFix(t)
+        }
       })
       // Ilgari so'rov JIM yiqilardi: o'qituvchi arxivda qolar, sababi aytilmasdi.
       .catch((e) => alert(apiErrorMessage(e, "Arxivdan qaytarib bo'lmadi")))
+  }
+
+  /** Arxivdan qaytarilgan o'qituvchiga YANGI parol — mavjud "parolni tiklash" yo'li orqali. */
+  const createNewPassword = async () => {
+    if (!loginFix || loginFixBusy) return
+    setLoginFixBusy(true)
+    setLoginFixError('')
+    try {
+      setLoginFixCreds(await resetTeacherPassword(loginFix.id))
+    } catch (e) {
+      setLoginFixError(apiErrorMessage(e, "Yangi parol yaratib bo'lmadi"))
+    } finally {
+      setLoginFixBusy(false)
+    }
   }
 
   /** Vaqtincha faolsizlantirish — login yopiladi, paroli va butun tarixi joyida qoladi. */
@@ -223,7 +273,7 @@ export function TeachersPage() {
     const t = blockTarget
     if (!t) return
     const note = blockNote.trim()
-    const today = new Date().toISOString().slice(0, 10)
+    const today = todayIso()
     blockTeacher(t.id, note)
       .then(() => {
         setTeachers((prev) =>
@@ -663,16 +713,16 @@ export function TeachersPage() {
       {/* Arxivga ko'chirish tasdiqi */}
       <Modal
         open={!!archiveTarget}
-        onClose={() => setArchiveTarget(null)}
+        onClose={closeArchive}
         size="md"
         title="Arxivga ko'chirish"
         footer={
           <>
-            <Button variant="secondary" onClick={() => setArchiveTarget(null)}>
+            <Button variant="secondary" onClick={closeArchive} disabled={archiveBusy}>
               Bekor qilish
             </Button>
-            <Button variant="danger" onClick={confirmArchive}>
-              <Archive className="h-4 w-4" /> Arxivga ko'chirish
+            <Button variant="danger" onClick={confirmArchive} disabled={archiveBusy}>
+              <Archive className="h-4 w-4" /> {archiveBusy ? 'Arxivlanmoqda...' : "Arxivga ko'chirish"}
             </Button>
           </>
         }
@@ -683,6 +733,10 @@ export function TeachersPage() {
             ko'chiriladi: faol ro'yxatdan yashiriladi va tizimga kirishi bloklanadi. Jurnal va
             hisobot ma'lumotlari saqlanib qoladi.
           </p>
+          <div className="rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-500">
+            Faol guruhlari bo'lsa avval ularga boshqa o'qituvchi tayinlang. Qat'iy oylik bugun
+            to'xtaydi, kelajakdagi o'rinbosarlik kunlari bekor qilinadi.
+          </div>
           <Textarea
             label="Sabab (ixtiyoriy)"
             value={reason}
@@ -690,6 +744,87 @@ export function TeachersPage() {
             rows={3}
             placeholder="Masalan: ishdan bo'shadi"
           />
+          {archiveError && (
+            <div className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{archiveError}</div>
+          )}
+        </div>
+      </Modal>
+
+      {/* Arxivlashdan keyingi ogohlantirish */}
+      <Modal
+        open={!!archiveNotice}
+        onClose={() => setArchiveNotice(null)}
+        size="md"
+        title="O'qituvchi arxivlandi"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setArchiveNotice(null)}>
+              Yopish
+            </Button>
+            {archiveNotice?.unpaid && (
+              <Button
+                onClick={() => {
+                  const id = archiveNotice.teacher.id
+                  setArchiveNotice(null)
+                  navigate(`/admin/teachers/${id}`)
+                }}
+              >
+                Maosh bo'limini ochish
+              </Button>
+            )}
+          </>
+        }
+      >
+        <div className="space-y-2">
+          {archiveNotice?.lines.map((l, i) => (
+            <p key={i} className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">
+              {l}
+            </p>
+          ))}
+        </div>
+      </Modal>
+
+      {/* Arxivdan qaytarildi, lekin paroli yo'q — yangi parol taklifi */}
+      <Modal
+        open={!!loginFix}
+        onClose={() => !loginFixBusy && setLoginFix(null)}
+        size="md"
+        title="Tizimga kirish yopiq"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setLoginFix(null)} disabled={loginFixBusy}>
+              {loginFixCreds ? 'Yopish' : 'Keyinroq'}
+            </Button>
+            {!loginFixCreds && (
+              <Button onClick={createNewPassword} disabled={loginFixBusy}>
+                {loginFixBusy ? 'Yaratilmoqda...' : 'Yangi parol yaratish'}
+              </Button>
+            )}
+          </>
+        }
+      >
+        <div className="space-y-3">
+          <p className="text-sm text-slate-600">
+            <span className="font-semibold text-slate-800">{loginFix?.fullName}</span> arxivdan
+            qaytarildi, lekin arxivlashda uning paroli o'chirilgan — yangi parol berilmaguncha u
+            tizimga <b>kira olmaydi</b>.
+          </p>
+          {loginFixCreds && (
+            <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
+              <div>
+                Login: <b className="font-mono">{loginFixCreds.login}</b>
+              </div>
+              <div>
+                Yangi parol: <b className="font-mono">{loginFixCreds.password}</b>
+              </div>
+              <div className="mt-1 text-xs text-emerald-700">
+                Parol faqat hozir ko'rinadi — o'qituvchiga yetkazing.
+              </div>
+            </div>
+          )}
+          {loginFixError && (
+            <div className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{loginFixError}</div>
+          )}
         </div>
       </Modal>
     </div>

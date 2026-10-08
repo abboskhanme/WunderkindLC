@@ -240,3 +240,91 @@
   ichidagi almashish — yo'q → bosh sahifadagi «Ketgan o'quvchilar» bilan bir xil son
 - [2026-10-07] «Yangi o'quvchi» (qabul cheklisti)? → arxivlanmagan + sinovda yoki oxirgi 60 kunda qabul qilingan
   (EnrollmentDate) → edutizimdan ommaviy import qilinganlar «yangi» bo'lib chiqmasin
+- [2026-10-08] O'quvchini arxivlash a'zolikka tegsinmi? → HA: arxiv = o'quvchi ketdi, har tirik a'zolik oddiy
+  chiqarish yo'li bilan yopiladi (`LeaveGroupAsync`, sabab = arxiv sababi); tiklash guruhsiz → aks holda tiklashda
+  arxivdagi oylar birdaniga hisoblanar va har oy uchun SMS ketardi (audit C1)
+- [2026-10-08] Eski (yopilmagan) arxivdagi o'quvchilar ma'lumoti? → backfill YO'Q; o'qish yo'llari `IsArchived` ni
+  himoya sifatida filtrlaydi, tiklashda tirik a'zoliklar `ArchivedAt` sanasida yopiladi → prod ma'lumoti jimgina o'zgarmasin
+- [2026-10-08] Arxiv sababisiz arxivlash KPI'da? → "Sabab ko'rsatilmagan" (UnknownReasonFine) → KPI maqsadi — ketish
+  sababini yozdirish
+- [2026-10-08] To'lovi bor guruhni o'chirish? → 400, arxivlash taklif qilinadi; faqat to'lanmagan hisoblar qaytariladi →
+  aks holda to'langan oylar balansga yolg'on avans bo'lib qaytardi
+- [2026-10-08] O'qituvchi oy o'rtasida almashsa maosh? → guruhning oylik ulushi rejali dars kunlari bo'yicha
+  `GroupTeacherHistory` egalariga mutanosib bo'linadi; tarix yo'q bo'lsa 100% joriy o'qituvchiga → ikki o'qituvchi
+  ulushi yig'indisi bitta o'qituvchinikiga teng bo'ladigan yagona bo'linish
+- [2026-10-08] Arxivdan qaytarilgan o'qituvchining arxivdagi oylari? → `Teacher.InactivePeriods` ga yoziladi va maoshga
+  kirmaydi → tiklash ArchivedAt ni tozalab, qat'iy maoshni orqaga yozib yuborardi
+- [2026-10-08] Sinovdagi o'quvchining to'lovi? → sinov guruhiga bog'langan AVANS, hisob yaratilmaydi → aktivlashtirish
+  uni oddiy iste'mol qiladi; ilgari guruhsiz to'liq hisob paydo bo'lib, keyin o'chirilmasdi
+- [2026-10-08] Bo'lingan to'lovni (guruh almashtirishda) bekor qilish? → butun oila (asl + `SplitFromId`) birga bekor
+  qilinadi, qaytarish esa har qator alohida → bu bitta jismoniy to'lov; har bo'lak o'z guruhi maoshi/balansiga tegishli
+- [2026-10-08] "Kech" sababi ota-onaga xabar? → hech qanday xabar yo'q (na "kelmadi", na "keldi") → o'quvchi kelgan,
+  "keldi" xabari faqat aniq `Present` bayrog'iga bog'langan
+- [2026-10-08] Mezon bo'yicha baholash va qo'lda qo'yilgan baho? → `JournalEntry.GradeFromCriteria` bayrog'i; sinxron faqat
+  o'zi qo'ygan bahoni o'zgartiradi; eski ma'lumot migratsiyada heuristika bilan belgilandi (baho = o'sha kun belgilangan
+  mezonlar soni) → ilgari har belgi qo'lda bahoni bosib ketardi, ya'ni teng qiymat deyarli doim sinxron baho
+- [2026-10-08] O'rinbosar qoplagan darsni ko'chirish? → hech kim ko'chira olmaydi, avval o'rinbosarlik o'zgartiriladi →
+  aks holda o'rinbosarga eski sana uchun haq to'lanib, yangi sanada yozish huquqi bo'lmasdi
+- [2026-10-08] Kunlik eslatmalar restartda takrorlanmasin? → bitta `BackgroundJobRun` jadvali: har oluvchi yuborishdan
+  OLDIN atomik belgilanadi + ish tugagach ish belgisi → yiqilishda ko'pi bilan bitta oluvchi o'tkazib yuboriladi,
+  takror pullik SMS esa yo'q
+- [2026-10-08] Restartda tugallanmagan ommaviy SMS? → 12 soatgacha davom ettiriladi, eskisi "uzilgan" bo'ladi →
+  kechagi e'lon bugun ketib qolmasin
+- [2026-10-08] Arxivdagi o'quvchiga avto-xabarlar? → faqat `payment_received` (to'lov kvitansiyasi) ketadi → eski
+  qarzni to'lagan ota-ona kvitansiya olsin, davomat/baho xabarlari esa ketgan oilaga bormasin
+- [2026-10-08] Guruhga bog'lanmagan eski qarz eslatmasi? → kurs nomisiz bitta umumiy eslatma → noto'g'ri guruh nomi
+  yolg'on, jim o'tkazish esa qarzni unuttiradi
+- [2026-10-08] Yuz bilan kirish veb/Mini App'da? → majburlanmaydi, istisno hujjatlashtirildi (`auth-sessions.md` §5) →
+  yuz vektori telefonda hisoblanadi, vebda selfi oqimi yo'q; majburlash hammani saytdan chiqarib qo'yardi
+- [2026-10-08] Qurilmani bekor qilish sessiyalarni yopadimi? → o'quvchining BARCHA refresh tokenlari bekor → tokenlar
+  qurilma id'sini saqlamaydi, model o'zgarishi kerak bo'lmasin
+- [2026-10-08] Lidni aylantirishda shu raqamli o'quvchi bor? → 409 + nomzodlar, "Mavjud o'quvchiga bog'lash" yoki
+  "Baribir yaratish" → dublikat o'quvchilar oldi olinsin
+- [2026-10-08] Aylantirilgan lid raqamidan yangi murojaat? → yangi lid ("Avval o'quvchi bo'lgan: <ism>" izohi bilan) →
+  aka-uka/qayta yozilish pipeline'da ko'rinsin; Meta CAPI eski aylantirishni yangi reklama lidiga hisoblamaydi
+- [2026-10-08] Topshirilgan natijasi bor test/formani o'chirish? → 400, faqat o'chirib qo'yish (`IsActive=false`) →
+  lid kanallari va qabul cheklisti tarixdan yo'qolmasin
+- [2026-10-08] Eski Instagram hodisasiga avto-javob? → DM 24 soat, izoh 72 soatdan eski bo'lsa javob yo'q (saqlanadi,
+  telefon→lid ishlaydi, operatorga belgi) → modul yoqilganda eski izohlarga ommaviy ochiq javob ketmasin
+- [2026-10-08] Agent o'chirilganda webhook? → obuna bekor qilinadi va ice-breaker'lar o'chiriladi (agent o'chiq paytdagi
+  DM'lar CRM'ga tushmaydi) → har kiruvchi xabarga "akkaunt ulanmagan" ogohlantirishi ketmasin
+- [2026-10-08] Bot orqali naqd kitob buyurtmasi? → tasdiqlash faqat zaxirani band qiladi, pul "To'landi" bosilganda
+  kassaga tushadi; kelmagan buyurtma bekor qilinadi (pul harakatisiz) → pul HAQIQATAN olingan paytda yozilsin
+- [2026-10-08] "Kamera kuzatuvini yoqish" o'chiq bo'lsa? → jonli ko'rish, klip va NVR qidiruvi yopiladi; ro'yxat va
+  sozlash ochiq; yozuv bunga bog'lanmagan (o'z bosh kaliti bor) → kalit nomiga mos ishlasin
+- [2026-10-08] Ishlatilgan davomat sababini o'chirish? → 400 (soni bilan), soft-delete emas → natija bir xil, migratsiyasiz
+- [2026-10-08] Xodim o'chirilganda unga biriktirilganlar? → faqat TIRIK havolalar bo'shatiladi (ochiq lid, kassa
+  mas'uli, tugallanmagan topshiriq, KPI profili, CTI agenti, Telegram) — yopilgan lid/tugagan topshiriq tarix bo'lib qoladi
+- [2026-10-08] Telegram JSON zaxirasi? → maxfiy maydonlar NOMI bo'yicha olib tashlanadi, ~90 biznes jadvali qo'shildi,
+  49 MB dan oshsa og'ir jadvallarsiz → yangi `*Token`/`*Password` maydon o'z-o'zidan chiqarib tashlanadi
+- [2026-10-08] Arxivdagi (yopilgan) guruhga o'quvchi yaratish/import? → API 400; Excel importda o'quvchi guruhsiz
+  yaratiladi + qator ogohlantirishi; shablonda faqat faol guruhlar → yopilgan guruhdan har oy hisob yozilmasin
+- [2026-10-08] O'rinbosar haqi sanalari? → saqlangan sanalar guruh umri bilan qirqiladi, ko'chirilgan dars YANGI sanasida
+  sanaladi; guruhning HOZIRGI hafta kunlari bilan filtrlanmaydi → kunlar o'zgarsa o'tgan (to'langan) oylar buzilmasin
+- [2026-10-08] Guruh almashtirishda chegirma? → qator BO'LINADI (eski guruh qatori o'tish oyida tugaydi, yangi guruhga
+  yangi qator) → o'tish oyidagi ikkala qisman hisob ham o'z chegirmasini saqlasin
+- [2026-10-08] «Tugatish»da muzlatilgan a'zoning ketish sababi? → muzlatish sababi tizim yorlig'idan ustun → KPI
+  "nazoratdan tashqari" sababni yo'qotmasin
+- [2026-10-08] Yaratishda `active` bo'lgan o'quvchining birinchi oyi? → shu oyga to'lov kelganda qisman (prorate) hisob
+  ochiladi (`EnsureChargeAsync`), yaratishda yozilmaydi → bepul oy bo'lmasin, ommaviy importda SMS to'lqini ham bo'lmasin
+- [2026-10-08] Ommaviy davomat xabarlari? → bazadagi navbat (`AttendanceNotifyItems`), har oluvchi alohida, 6 soatdan
+  eskisi yuborilmaydi → restartda yo'qolmasin, ertasi kuni kelgan "kelmadi" chalg'itmasin
+- [2026-10-08] Standart Local SMS agenti o'chirilsa? → bloklanmaydi, ogohlantirish + SMS sozlamalarida banner → ketgan
+  xodim telefonini darhol uzish muhimroq, lekin avto-SMS jim to'xtamasin
+- [2026-10-08] Telegram zaxirasi formati? → `.json.gz` (oqimli siqish) → 1 GB RAM serverda xotira ikki baravar
+  oshmasin va 49 MB chegarasiga sig'sin
+- [2026-10-08] Instagram suhbati yangi lidga qayta bog'lansa reklama krediti? → suhbat lid tarixini saqlaydi
+  (`IgConversation.PastLeadIds`), DM xabar kelgan paytdagi egasiga yoziladi → to'lagan eski lid reklamasini yo'qotmasin
+- [2026-10-08] Bot belgisi (disclosure)? → faqat DM/shaxsiy javobda, ochiq izohda yo'q → bir xil uzun ochiq matn spam
+  ko'rinmasin; Meta talabi xabar almashinuvga tegishli
+- [2026-10-08] Qarz eslatmasida xato bo'lsa kun yopiladimi? → belgisi qo'yilmay xatoga uchragan qarzdor qolsa kun
+  "bajarildi" bo'lmaydi, keyingi soatda faqat o'shalar qayta uriniladi
+- [2026-10-08] Qo'lda ochilgan DB tranzaksiyasi? → faqat `CreateExecutionStrategy().ExecuteAsync` ichida (qayta urinishda
+  holat bazadan qayta o'qiladi); guruhni o'chirish bitta `SaveChanges` ga o'tkazildi → `EnableRetryOnFailure` strategiyasiz
+  tranzaksiyani rad etib, ikkala amal ham 500 berardi
+- [2026-10-08] MoiZvonki kerakmi? → YO'Q (foydalanuvchi qarori): integratsiya, «Call Center — Bulut» sahifasi va
+  `calls.cloud` ruxsati olib tashlandi; yagona telefoniya — Local Call (CTI). `Calls` jadvali (eski tarix) bazada
+  QOLDIRILDI, DROP qilinmadi → prod'da bo'shligi tasdiqlansa alohida migratsiya bilan o'chiriladi
+- [2026-10-08] KPI qo'ng'iroq ko'rsatkichlari manbasi? → Local Call yozuvlari (`CtiCallRecord`), xodim — agentning
+  `StaffUserId` i orqali; "teginish" = kiruvchi + chiquvchi (javobsiz kiruvchi emas); yozuvni tinglash CTI'ning
+  "faqat o'zinikini" qoidasi bilan → MoiZvonki olib tashlangach `Calls` to'ldirilmaydi, KPI jimgina bo'sh qolmasin

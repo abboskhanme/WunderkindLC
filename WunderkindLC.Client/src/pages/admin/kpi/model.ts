@@ -202,9 +202,11 @@ export function coefTone(coef: number): BadgeTone {
 }
 
 /**
- * Qo'ng'iroq yo'nalishi — `Call` entity'sining NATIV qiymatlari (`inbound`/`outbound`).
+ * Qo'ng'iroq yo'nalishi — KPI namunasi shartnomasi (`inbound`/`outbound`). Server Local Call
+ * (CTI) qiymatlarini shunga o'giradi: `incoming`/`missed` → `inbound`, `outgoing` → `outbound`
+ * (`KpiCallSource.SampleDirection`).
  *
- * ⚠️ Qisqartirilgan `in`/`out` ATAYIN ishlatilmaydi: baza qiymati to'liq, va uni yo'lda
+ * ⚠️ Qisqartirilgan `in`/`out` ATAYIN ishlatilmaydi: shartnoma qiymati to'liq, va uni yo'lda
  * qisqartirish ikki tomonni jimgina bir-biriga mos kelmaydigan qilib qo'yardi.
  */
 export function callDirectionLabel(direction: string): string {

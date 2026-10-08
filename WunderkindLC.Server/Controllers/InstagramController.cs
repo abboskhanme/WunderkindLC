@@ -187,6 +187,39 @@ public partial class InstagramController(
         if (wasEnabled != meta.InstagramEnabled)
             logger.LogInformation("[instagram] modul {State}", meta.InstagramEnabled ? "yoqildi" : "o'chirildi");
 
+        // 🔴 AGENT O'CHIRILDI — webhook obunasi va FAQ tugmalari Meta'dan OLIB TASHLANADI.
+        // Ilgari ular faol qolardi: mijoz Direct'da tugmalarni ko'rar (bosganiga hech kim javob
+        // bermasdi) va hodisalar kelaverardi. BEST-EFFORT: yiqilsa sozlama saqlash BEKOR
+        // BO'LMAYDI, sabab esa javobdagi `Warning` da OCHIQ qaytadi (jim yutilmaydi).
+        var warning = "";
+        if (wasEnabled && !meta.InstagramEnabled)
+        {
+            var acc = await db.IgAccounts.FirstOrDefaultAsync(a => a.IsActive, ct);
+            if (acc is not null && acc.AccessToken.Length > 0)
+            {
+                var (unsubscribed, detachWarning) = await DetachFromMetaAsync(acc.AccessToken, ct);
+                if (unsubscribed) acc.WebhookSubscribed = false;
+                warning = detachWarning;
+                await db.SaveChangesAsync(ct);
+            }
+        }
+        // Agent QAYTA YOQILDI — webhook obunasi tiklanadi (o'chirishda bekor qilingan edi).
+        else if (!wasEnabled && meta.InstagramEnabled)
+        {
+            var acc = await db.IgAccounts.FirstOrDefaultAsync(a => a.IsActive, ct);
+            if (acc is not null && acc.AccessToken.Length > 0)
+            {
+                var (okSub, errSub) = await api.SubscribeWebhookAsync(acc.AccessToken, ct);
+                acc.WebhookSubscribed = okSub;
+                await db.SaveChangesAsync(ct);
+                if (!okSub)
+                {
+                    logger.LogWarning("[instagram] modul yoqilganda webhook obunasi tiklanmadi: {Err}", errSub);
+                    warning = "Webhook obunasi tiklanmadi — izoh/DM kelmasligi mumkin. Instagram javobi: " + errSub;
+                }
+            }
+        }
+
         // 🔴 Modul O'CHIQDAN → YOQILGANga o'tganda FAQ tugmalarini Meta'ga QAYTA yuboramiz:
         // tugmalar modul o'chiq paytida qo'shilgan bo'lsa bazada bor, Meta'da esa yo'q edi —
         // ular «Qayta yuborish» qo'lda bosilmaguncha ko'rinmasdi (§22). Sinxron o'zi §3
@@ -207,16 +240,43 @@ public partial class InstagramController(
             }
         }
 
-        return ToSettings(meta);
+        return ToSettings(meta, warning);
     }
 
-    private static IgSettingsDto ToSettings(CenterMeta m) => new(
+    private static IgSettingsDto ToSettings(CenterMeta m, string warning = "") => new(
         m.InstagramEnabled, m.InstagramAutoReplyComments, m.InstagramAutoReplyDm,
         m.InstagramPrivateReplyEnabled, m.InstagramAppId, m.InstagramAiModel,
         m.InstagramLeadSource, m.InstagramNotifyTelegram, m.InstagramReplyDelaySeconds,
         m.InstagramDailyReplyLimit, m.InstagramGreeting,
         m.InstagramLeadAdsEnabled, m.InstagramAdsLeadSource,
-        m.InstagramAdsStatsEnabled, m.InstagramPublishEnabled);
+        m.InstagramAdsStatsEnabled, m.InstagramPublishEnabled, warning);
+
+    /// <summary>
+    /// Akkauntni Meta'dan "UZADI": webhook obunasi bekor qilinadi va FAQ tugmalari (ice
+    /// breakers) olib tashlanadi. BEST-EFFORT — natija qaytadi, chaqiruvchi amalni bekor qilmaydi.
+    ///
+    /// <para>🔴 Nega kerak: uzish/o'chirishdan keyin obuna Meta'da FAOL qolardi — hodisalar
+    /// kelaverar, akkaunt uzilgan bo'lsa esa HAR xabar adminlarga "akkaunt ulanmagan" signali
+    /// bo'lib tushardi; Direct'da esa javobsiz FAQ tugmalari turaverardi.</para>
+    /// </summary>
+    /// <returns><c>Unsubscribed</c> — obuna bekor qilindimi; <c>Warning</c> — bo'sh = hammasi
+    /// joyida, aks holda foydalanuvchiga ko'rsatiladigan sabab (token javobga TUSHMAYDI).</returns>
+    private async Task<(bool Unsubscribed, string Warning)> DetachFromMetaAsync(string token, CancellationToken ct)
+    {
+        var problems = new List<string>();
+        var (okUnsub, errUnsub) = await api.UnsubscribeWebhookAsync(token, ct);
+        if (!okUnsub) problems.Add("webhook obunasi bekor qilinmadi (" + errUnsub + ")");
+        var (okFaq, errFaq) = await api.DeleteIceBreakersAsync(token, ct);
+        if (!okFaq) problems.Add("FAQ tugmalari olib tashlanmadi (" + errFaq + ")");
+
+        if (problems.Count > 0)
+            logger.LogWarning("[instagram] Meta'dan uzishda muammo: {Problems}", string.Join("; ", problems));
+
+        return (okUnsub, problems.Count == 0
+            ? ""
+            : "Meta tomonida: " + string.Join("; ", problems)
+              + ". Meta Dashboard'dan qo'lda tekshiring (hodisalar kelaversa ham bot javob bermaydi).");
+    }
 
     // =============================================================================================
     //  AKKAUNTNI ULASH / UZISH
@@ -269,6 +329,15 @@ public partial class InstagramController(
         var accounts = await db.IgAccounts.Where(a => a.IsActive).ToListAsync(ct);
         if (accounts.Count == 0) return BadRequest(new { message = "Ulangan Instagram akkaunt yo'q." });
 
+        // Token TOZALANISHIDAN OLDIN Meta'dan uziladi (webhook obunasi + FAQ tugmalari) — keyin
+        // bunga token qolmaydi. BEST-EFFORT: yiqilsa ham uzish bajariladi, sabab javobda.
+        var warnings = new List<string>();
+        foreach (var a in accounts.Where(a => a.AccessToken.Length > 0))
+        {
+            var (_, w) = await DetachFromMetaAsync(a.AccessToken, ct);
+            if (w.Length > 0) warnings.Add(w);
+        }
+
         foreach (var a in accounts)
         {
             a.IsActive = false;
@@ -277,9 +346,16 @@ public partial class InstagramController(
         }
 
         audit.Record(AuditEntity, accounts[0].Id, "update",
-            $"Instagram akkaunti uzildi (@{accounts[0].Username}) — avtomatik javoblar to'xtadi");
+            $"Instagram akkaunti uzildi (@{accounts[0].Username}) — avtomatik javoblar to'xtadi"
+            + (warnings.Count == 0 ? ", webhook obunasi va FAQ tugmalari olib tashlandi" : " (Meta tomonida qisman: " + string.Join(" ", warnings) + ")"));
         await db.SaveChangesAsync(ct);
-        return Ok(new { message = "Instagram akkaunti uzildi." });
+        return Ok(new
+        {
+            message = warnings.Count == 0
+                ? "Instagram akkaunti uzildi — webhook obunasi va FAQ tugmalari ham olib tashlandi."
+                : "Instagram akkaunti uzildi.",
+            warning = string.Join(" ", warnings),
+        });
     }
 
     /// <summary>Tokenni QO'LDA yangilash. Odatda buni fon xizmati 45-kunda o'zi qiladi; bu tugma
@@ -362,8 +438,13 @@ public partial class InstagramController(
             logger.LogWarning("[instagram] qo'lda ulash: tokenni uzaytirib bo'lmadi: {Err}", errRef);
 
         // --- 3) Webhook obunasi (obunasiz hodisa UMUMAN kelmaydi) ---
-        var (okSub, errSub) = await api.SubscribeWebhookAsync(saveToken, ct);
-        if (!okSub) logger.LogWarning("[instagram] qo'lda ulash: webhook obunasi bo'lmadi: {Err}", errSub);
+        // 🔴 FAQAT AGENT YOQILGAN bo'lsa (OAuth callback bilan bir xil, audit R3-10): "agent o'chiq =
+        // webhook yo'q". Agent keyin yoqilganda obuna `SaveSettings` da o'zi tiklanadi.
+        var agentOn = (await db.CenterMeta.AsNoTracking().FirstOrDefaultAsync(ct))?.InstagramEnabled == true;
+        var (okSub, errSub) = agentOn
+            ? await api.SubscribeWebhookAsync(saveToken, ct)
+            : (false, "");
+        if (agentOn && !okSub) logger.LogWarning("[instagram] qo'lda ulash: webhook obunasi bo'lmadi: {Err}", errSub);
 
         // --- 4) Saqlash: eskisi arxivga (tokeni tozalanadi), yangisi faol ---
         var now = AppClock.Iso();
@@ -395,7 +476,7 @@ public partial class InstagramController(
         // Yozuvda faqat "qo'lda ulandi" fakti — OAuth yozuvidan farqi ko'rinib tursin.
         audit.Record(AuditEntity, account.Id, "create",
             $"Instagram akkaunti QO'LDA (token bilan) ulandi: @{account.Username} "
-            + $"(webhook obunasi: {(okSub ? "bor" : "YO'Q")}, "
+            + $"(webhook obunasi: {(okSub ? "bor" : agentOn ? "YO'Q" : "agent o'chiq — yoqilganda qilinadi")}, "
             + $"token muddati: {(expiresAt.Length > 0 ? $"{DaysLeft(expiresAt)} kun" : "noma'lum")})");
         await db.SaveChangesAsync(ct);
 
@@ -506,15 +587,59 @@ public partial class InstagramController(
             {
                 var stageTitle = await db.LeadStages.AsNoTracking()
                     .Where(s => s.Id == l.Stage).Select(s => s.Title).FirstOrDefaultAsync(ct) ?? "";
-                lead = new IgLeadBriefDto(l.Id, l.FullName, l.Phone, l.Source, stageTitle, l.CreatedAt);
+                lead = new IgLeadBriefDto(l.Id, l.FullName, l.Phone, l.Source, stageTitle, l.CreatedAt,
+                    Converted: l.ConvertedStudentId != null);
             }
         }
+
+        // IZOH SUHBATI — operator izohga javob bera olishi uchun (IG-9): eng oxirgi kiruvchi izoh
+        // va unga yopiq javob (private reply) hali mumkinmi.
+        var target = await LatestCommentAsync(c.Id, null, ct);
+        var privateBlocked = target is null ? "" : await PrivateReplyBlockedReasonAsync(target, ct);
 
         return new IgConversationDetailDto(
             ToConversationDto(c, await CampaignNameAsync(c.AdCampaignId, ct)),
             messages.Select(ToMessageDto).ToList(),
             lead,
-            InstagramContract.DmWindowOpen(c.LastInboundAt, AppClock.Now));
+            InstagramContract.DmWindowOpen(c.LastInboundAt, AppClock.Now),
+            // ⚠️ 24 soatdan keyin ham operator 7 kun ichida HUMAN_AGENT tegi bilan yoza oladi
+            // (`Reply`) — UI banneri "24 soat yopildi" deb yolg'on gapirmasin.
+            InstagramContract.HumanAgentWindowOpen(c.LastInboundAt, AppClock.Now),
+            target?.CommentId ?? "",
+            target is not null && privateBlocked.Length == 0,
+            privateBlocked);
+    }
+
+    /// <summary>Suhbatdagi KIRUVCHI izoh qatori: <paramref name="commentId"/> berilsa AYNAN o'sha
+    /// (shu suhbatga tegishli bo'lsa), aks holda eng oxirgisi. Izoh yo'q bo'lsa <c>null</c>.</summary>
+    private async Task<IgMessage?> LatestCommentAsync(string conversationId, string? commentId, CancellationToken ct)
+    {
+        var q = db.IgMessages.AsNoTracking()
+            .Where(m => m.ConversationId == conversationId
+                        && m.Direction == IgConst.DirIn
+                        && m.Channel == IgConst.ChannelComment
+                        && m.CommentId != "");
+        var wanted = (commentId ?? "").Trim();
+        if (wanted.Length > 0) q = q.Where(m => m.CommentId == wanted);
+        return await q.OrderByDescending(m => m.CreatedAt).FirstOrDefaultAsync(ct);
+    }
+
+    /// <summary>
+    /// Izohga YOPIQ javob (private reply) nega mumkin EMAS — bo'sh satr = mumkin.
+    /// <para>Meta qoidasi (§11 tuzoq 4): izohdan keyin <see cref="IgConst.PrivateReplyDays"/> kun
+    /// ichida va har izohga BIR MARTA. Ikkinchi urinish Meta'da xato beradi — shuning uchun
+    /// oldindan ochiq sabab bilan to'xtatiladi.</para>
+    /// </summary>
+    private async Task<string> PrivateReplyBlockedReasonAsync(IgMessage comment, CancellationToken ct)
+    {
+        var commentId = comment.CommentId;
+        if (await db.IgMessages.AsNoTracking().AnyAsync(
+                m => m.CommentId == commentId && m.Channel == IgConst.ChannelPrivateReply && m.Error == "", ct))
+            return "Bu izohga yopiq javob allaqachon yuborilgan — Instagram har izohga faqat BIR MARTA ruxsat beradi.";
+        if (!InstagramContract.TryIso(comment.CreatedAt, out var at)
+            || (AppClock.Now - at).TotalDays >= IgConst.PrivateReplyDays)
+            return $"Izoh yozilganiga {IgConst.PrivateReplyDays} kundan ko'p bo'ldi — Instagram yopiq javobga ruxsat bermaydi.";
+        return "";
     }
 
     /// <summary>
@@ -581,10 +706,19 @@ public partial class InstagramController(
         InstagramContract.AdCampaignLabel(c.AdCampaignId, adCampaignName, c.AdId));
 
     /// <summary>
-    /// OPERATOR JAVOBI (DM). Yuborishdan oldin <b>24 soatlik oyna</b> tekshiriladi: mijoz oxirgi
-    /// marta 24 soatdan oldin yozgan bo'lsa Instagram xabarni RAD ETADI. Ilgari (NUR loyihasida)
-    /// bu tekshirilmasdi — so'rov xato berardi, log'da qolib ketardi va operator "yubordim" deb
-    /// o'ylab yurardi. Shu sabab bu yerda aniq o'zbekcha 400 qaytadi.
+    /// OPERATOR JAVOBI — uch rejim (<c>payload.Mode</c>):
+    /// <list type="bullet">
+    ///   <item><c>dm</c> (standart) — shaxsiy xabar. Yuborishdan oldin <b>javob oynasi</b>
+    ///     tekshiriladi: 24 soat ichida oddiy, 7 kungacha <c>HUMAN_AGENT</c> tegi bilan, undan
+    ///     keyin Instagram DM'ga umuman ruxsat bermaydi — aniq o'zbekcha 400 qaytadi (NUR'da
+    ///     tekshirilmasdi: so'rov xato berar, operator esa "yubordim" deb o'ylardi).</item>
+    ///   <item><c>comment</c> — izohga OCHIQ javob (post ostida). 🔴 Ilgari operator izoh
+    ///     suhbatiga faqat DM yoza olardi: izoh yozgan, lekin DM ochmagan odamga javob umuman
+    ///     yetib bormasdi (24 soatlik oyna ham yo'q edi).</item>
+    ///   <item><c>private_reply</c> — izoh muallifiga YOPIQ javob (7 kun ichida, bir marta).</item>
+    /// </list>
+    /// Izoh rejimlarida maqsad — <c>payload.CommentId</c> (shu suhbatniki bo'lsa) yoki eng
+    /// oxirgi kiruvchi izoh.
     ///
     /// <para>Javob yuborilgach bot <c>IgConst.OperatorPauseMinutes</c> davomida jim bo'ladi —
     /// mijoz bir vaqtda odam va bot bilan gaplashmasin.</para>
@@ -601,6 +735,16 @@ public partial class InstagramController(
         var text = (payload.Text ?? "").Trim();
         if (text.Length == 0) return BadRequest(new { message = "Xabar matni bo'sh." });
 
+        var mode = (payload.Mode ?? "").Trim().ToLowerInvariant() switch
+        {
+            IgConst.ReplyModeComment => IgConst.ReplyModeComment,
+            IgConst.ReplyModePrivate => IgConst.ReplyModePrivate,
+            "" or IgConst.ReplyModeDm => IgConst.ReplyModeDm,
+            _ => "",
+        };
+        if (mode.Length == 0)
+            return BadRequest(new { message = "Javob turi noto'g'ri (dm · comment · private_reply)." });
+
         var c = await db.IgConversations.FirstOrDefaultAsync(x => x.Id == id, ct);
         if (c is null) return NotFound(new { message = "Suhbat topilmadi." });
 
@@ -608,38 +752,81 @@ public partial class InstagramController(
         if (acc is null || acc.AccessToken.Length == 0)
             return BadRequest(new { message = "Instagram akkaunt ulanmagan — Sozlamalar bo'limidan ulang." });
 
-        // ── JAVOB OYNASI: operator uchun IKKI BOSQICH ──
-        //
-        // 24 soat ichida — odatdagi javob. 24 soatdan keyin, lekin 7 kun ichida — Meta'ning
-        // `HUMAN_AGENT` tegi bilan (u aynan "javobni TIRIK ODAM yozdi" degani va operator
-        // yo'lida bu rost). Ilgari bu yerda faqat 24 soat tekshirilar va operator juma kuni
-        // kelgan savolga dushanba kuni javob YOZA OLMASDI — UI esa buni Instagram'ning mutlaq
-        // cheklovi qilib ko'rsatardi, aslida bu bizning ishlatmagan imkoniyatimiz edi.
-        //
-        // 🔴 Teg BOTGA berilmaydi (`InstagramPipeline` hamon `DmWindowOpen` ga tayanadi):
-        // avtomatik javobni "odam yozdi" deb belgilash Meta siyosatini buzadi.
-        var standardWindow = InstagramContract.DmWindowOpen(c.LastInboundAt, AppClock.Now);
-        var humanAgentWindow = InstagramContract.HumanAgentWindowOpen(c.LastInboundAt, AppClock.Now);
+        bool ok;
+        string err;
+        string channel;
+        var commentId = "";
+        var mediaId = "";
 
-        if (!standardWindow && !humanAgentWindow)
-            return BadRequest(new
+        if (mode == IgConst.ReplyModeDm)
+        {
+            // ── JAVOB OYNASI: operator uchun IKKI BOSQICH ──
+            //
+            // 24 soat ichida — odatdagi javob. 24 soatdan keyin, lekin 7 kun ichida — Meta'ning
+            // `HUMAN_AGENT` tegi bilan (u aynan "javobni TIRIK ODAM yozdi" degani va operator
+            // yo'lida bu rost). Ilgari bu yerda faqat 24 soat tekshirilar va operator juma kuni
+            // kelgan savolga dushanba kuni javob YOZA OLMASDI — UI esa buni Instagram'ning mutlaq
+            // cheklovi qilib ko'rsatardi, aslida bu bizning ishlatmagan imkoniyatimiz edi.
+            //
+            // 🔴 Teg BOTGA berilmaydi (`InstagramPipeline` hamon `DmWindowOpen` ga tayanadi):
+            // avtomatik javobni "odam yozdi" deb belgilash Meta siyosatini buzadi.
+            var standardWindow = InstagramContract.DmWindowOpen(c.LastInboundAt, AppClock.Now);
+            var humanAgentWindow = InstagramContract.HumanAgentWindowOpen(c.LastInboundAt, AppClock.Now);
+
+            if (!standardWindow && !humanAgentWindow)
+                return BadRequest(new
+                {
+                    message = "Javob berish oynasi yopilgan: mijoz oxirgi yozganidan beri "
+                              + $"{IgConst.HumanAgentWindowHours / 24} kundan ko'p vaqt o'tdi. "
+                              + "Instagram bu holatda DM yuborishga umuman ruxsat bermaydi — "
+                              + "telefon orqali bog'laning"
+                              + (await LatestCommentAsync(c.Id, null, ct) is not null
+                                  ? " yoki izohga ochiq javob yozing."
+                                  : "."),
+                });
+
+            channel = IgConst.ChannelDm;
+            (ok, err) = await api.SendDmAsync(
+                acc.IgUserId, c.IgUserId, text, acc.AccessToken, ct, humanAgent: !standardWindow);
+        }
+        else
+        {
+            var target = await LatestCommentAsync(c.Id, payload.CommentId, ct);
+            if (target is null)
+                return BadRequest(new
+                {
+                    message = string.IsNullOrWhiteSpace(payload.CommentId)
+                        ? "Bu suhbatda javob beriladigan izoh yo'q — shaxsiy xabar (DM) yozing."
+                        : "Ko'rsatilgan izoh bu suhbatga tegishli emas.",
+                });
+
+            commentId = target.CommentId;
+            mediaId = target.MediaId;
+
+            if (mode == IgConst.ReplyModeComment)
             {
-                message = "Javob berish oynasi yopilgan: mijoz oxirgi yozganidan beri "
-                          + $"{IgConst.HumanAgentWindowHours / 24} kundan ko'p vaqt o'tdi. "
-                          + "Instagram bu holatda DM yuborishga umuman ruxsat bermaydi — "
-                          + "telefon orqali bog'laning.",
-            });
-
-        var (ok, err) = await api.SendDmAsync(
-            acc.IgUserId, c.IgUserId, text, acc.AccessToken, ct, humanAgent: !standardWindow);
+                channel = IgConst.ChannelComment;
+                (ok, err) = await api.ReplyToCommentAsync(commentId, text, acc.AccessToken, ct);
+            }
+            else
+            {
+                var blocked = await PrivateReplyBlockedReasonAsync(target, ct);
+                if (blocked.Length > 0) return BadRequest(new { message = blocked });
+                channel = IgConst.ChannelPrivateReply;
+                (ok, err) = await api.SendPrivateReplyAsync(commentId, text, acc.AccessToken, ct);
+            }
+        }
 
         var now = AppClock.Iso();
         var sent = new IgMessage
         {
             ConversationId = c.Id,
             Direction = "out",
-            Channel = IgConst.ChannelDm,
+            Channel = channel,
             Text = text,
+            // Izoh rejimida — QAYSI izohga va QAYSI post ostida (bot tarixi va dedup shu ustunlarga tayanadi).
+            CommentId = commentId,
+            MediaId = mediaId,
             ActorName = Actor,
             IsAi = false,
             // Xato bo'lsa ham qator SAQLANADI: "javob ketmadi" ni operator ko'rishi kerak.
@@ -672,11 +859,17 @@ public partial class InstagramController(
         }
 
         // ⚠️ Auditga xabar MATNI yozilmaydi (begona odamning shaxsiy yozishmasi tarixga
-        // ko'chirilmasin) — faqat "kim, kimga, javob berdi".
+        // ko'chirilmasin) — faqat "kim, kimga, qaysi kanalda javob berdi".
+        var where = channel switch
+        {
+            IgConst.ChannelComment => "izohiga ochiq javob",
+            IgConst.ChannelPrivateReply => "izohiga yopiq javob",
+            _ => "suhbatiga javob",
+        };
         audit.Record(AuditEntity, c.Id, "update",
             ok
-                ? $"Instagram suhbatiga operator javob yozdi (@{c.Username})"
-                : $"Instagram suhbatiga operator javobi YUBORILMADI (@{c.Username}): {err}");
+                ? $"Instagram {where} — operator yozdi (@{c.Username})"
+                : $"Instagram {where} YUBORILMADI (@{c.Username}): {err}");
         await db.SaveChangesAsync(ct);
 
         if (!ok) return BadRequest(new { message = err });
@@ -695,11 +888,19 @@ public partial class InstagramController(
     public Task<IActionResult> Release(string id, CancellationToken ct) =>
         SetStatusAsync(id, IgConst.StatusBot, "botga qaytarildi", ct);
 
-    /// <summary>Suhbatni yopish (hal bo'ldi).</summary>
+    /// <summary>Suhbatni yopish (hal bo'ldi).
+    /// <para>⚠️ Mijoz YANGI xabar yozsa suhbat O'ZI qayta ochiladi
+    /// (<see cref="InstagramContract.ReopenOnInbound"/>) — yopish uni abadiy jim qilmaydi.</para></summary>
     [HttpPost("conversations/{id}/close")]
     [AdminPerm("marketing.inbox")]
     public Task<IActionResult> Close(string id, CancellationToken ct) =>
         SetStatusAsync(id, IgConst.StatusClosed, "yopildi", ct);
+
+    /// <summary>Yopilgan suhbatni QO'LDA qayta ochish — botga qaytadi (javob maydoni ochiladi).</summary>
+    [HttpPost("conversations/{id}/reopen")]
+    [AdminPerm("marketing.inbox")]
+    public Task<IActionResult> Reopen(string id, CancellationToken ct) =>
+        SetStatusAsync(id, IgConst.StatusBot, "qayta ochildi", ct);
 
     private async Task<IActionResult> SetStatusAsync(string id, string status, string what, CancellationToken ct)
     {
@@ -778,8 +979,11 @@ public partial class InstagramController(
                 : payload.Note!.Trim());
 
         // ⚠️ Upsert `c.LeadId` ni to'ldirib qo'yadi — "birinchi bog'lanish" undan OLDIN o'qiladi.
-        var firstLink = string.IsNullOrWhiteSpace(c.LeadId);
-        var (leadId, isNew) = await InstagramLeadBridge.UpsertAsync(db, c, output, source, ct);
+        // Bog'langan lid CRM'dan o'chirilgan yoki o'quvchiga AYLANTIRILGAN bo'lsa ham "birinchi" —
+        // yangi (qaytgan o'quvchi uchun ochilgan) lid e'lon qilinsin. Qoida pipeline bilan YAGONA.
+        var firstLink = !await IgLeadLinks.HasLiveLeadAsync(db, c.LeadId, ct);
+        var (leadId, isNew) = await InstagramLeadBridge.UpsertAsync(
+            db, c, output, source, ct, autoMsg: HttpContext.RequestServices.GetService<AutoMessageService>());
         if (string.IsNullOrEmpty(leadId))
             return BadRequest(new { message = "Lid yaratilmadi — keyinroq qaytadan urinib ko'ring." });
 
@@ -808,7 +1012,9 @@ public partial class InstagramController(
         // JIMGINA yangilanadi: `RepeatCount`, izoh va hodisalar o'zgargan, karta esa eski
         // ma'lumot bilan qolib ketardi.
         // SaveChanges'dan KEYIN chaqiriladi (karta bazadagi yozilgan holatdan quriladi).
-        if (firstLink && (meta?.InstagramNotifyTelegram ?? true))
+        // YANGI lidning kartasi hali yo'q — `SyncCardAsync` unga hech narsa yubormasdi, shuning
+        // uchun u bayroqdan qat'i nazar e'lon qilinadi.
+        if ((firstLink || isNew) && (meta?.InstagramNotifyTelegram ?? true))
         {
             var fresh = await db.Leads.FirstOrDefaultAsync(l => l.Id == leadId, ct);
             if (fresh is not null)
@@ -828,7 +1034,8 @@ public partial class InstagramController(
 
         var stage = await db.LeadStages.AsNoTracking()
             .Where(s => s.Id == lead.Stage).Select(s => s.Title).FirstOrDefaultAsync(ct) ?? "";
-        return Ok(new IgLeadBriefDto(lead.Id, lead.FullName, lead.Phone, lead.Source, stage, lead.CreatedAt));
+        return Ok(new IgLeadBriefDto(lead.Id, lead.FullName, lead.Phone, lead.Source, stage, lead.CreatedAt,
+            Converted: lead.ConvertedStudentId != null));
     }
 
     /// <summary>Suhbatdagi KIRUVCHI xabarlardan telefon raqamini qidiradi (eng oxirgisi ustun).</summary>
@@ -1522,14 +1729,43 @@ public partial class InstagramController(
         if (row.FormName.Length == 0)
             row.FormName = await adsApi.FetchFormNameAsync(row.FormId, page.AccessToken, ct);
 
-        var (leadId, isNew) = await MetaLeadBridge.UpsertAsync(db, row, meta.InstagramAdsLeadSource, ct);
+        string leadId;
+        bool isNew;
+        try
+        {
+            (leadId, isNew) = await MetaLeadBridge.UpsertAsync(
+                db, row, meta.InstagramAdsLeadSource, ct, HttpContext.RequestServices.GetService<AutoMessageService>());
+        }
+        catch (Exception ex)
+        {
+            // Webhook yo'li bilan bir xil: lid yaratilmasa ham reklama lidi yozuvi xato bilan QOLADI.
+            logger.LogError(ex, "Reklama lidini qayta olishda CRM lidi yaratilmadi ({Id})", row.LeadgenId);
+            row.Error = InstagramContract.Trim("Lid yaratilmadi: " + ex.Message, 400);
+            await db.SaveChangesAsync(ct);
+            return BadRequest(new { message = row.Error });
+        }
         row.LeadId = leadId;
         row.IsNewLead = isNew;
         row.Error = "";
+        page.LastLeadAt = AppClock.Iso();
+        page.LastError = "";
 
         audit.Record(AuditEntity, row.Id, "update",
             $"Reklama lidi qayta olindi va CRM'ga qo'shildi: {row.FullName} {row.Phone}".TrimEnd());
         await db.SaveChangesAsync(ct);
+
+        // 🔴 TELEGRAM KARTASI — webhook yo'li (`MetaLeadgenService`) bilan AYNAN bir xil. Ilgari
+        // «Qayta olish» lidni CRM'ga qo'shar, lekin guruhga hech narsa yubormasdi: token
+        // tuzatilgandan keyin tiklangan PULLIK lidlardan menejer xabar topmasdi.
+        // SaveChanges'dan KEYIN (karta bazadagi yozilgan holatdan quriladi), xatosi jim yutiladi.
+        if (meta.InstagramNotifyTelegram)
+        {
+            var lead = await db.Leads.FirstOrDefaultAsync(l => l.Id == leadId, ct);
+            if (lead is not null)
+                await LeadNotifier.NotifyNewLeadAsync(
+                    db, telegram, lead, isNewLead: isNew,
+                    createdBy: MetaLeadBridge.ActorName, ct: ct, logger: logger);
+        }
 
         return Ok(new { leadId, isNew });
     }
@@ -1565,7 +1801,10 @@ public record IgSettingsDto(
     // ⚠️ Bu ikki bayroq SHU YERDA bo'lishi SHART. Ular `CenterMeta` da bor edi, lekin hech qaysi
     // `PUT` da o'zlashtirilmasdi — ya'ni modullarni UI'dan YOQIB BO'LMASDI va admin ularni faqat
     // bazadan qo'lda yoqishi mumkin edi. Sozlamalar sahifasi aynan shu DTO'ni o'qiydi.
-    bool InstagramAdsStatsEnabled, bool InstagramPublishEnabled);
+    bool InstagramAdsStatsEnabled, bool InstagramPublishEnabled,
+    // FAQAT JAVOBDA: sozlama saqlandi, lekin Meta tomonidagi qadam (webhook obunasini bekor
+    // qilish/tiklash, FAQ tugmalarini olib tashlash) bajarilmadi — sabab OCHIQ ko'rsatiladi.
+    string? Warning = null);
 
 /// <summary>
 /// QO'LDA ulash uchun Instagram Login tokeni (<c>POST /connect-token</c>).
@@ -1635,16 +1874,26 @@ public record IgConversationListDto(List<IgConversationDto> Items, int Total, in
 /// <summary><paramref name="DmWindowOpen"/> — 24 soatlik oyna ochiqmi; UI javob maydonini
 /// shunga qarab bloklaydi (operator bekorga yozib o'tirmasin).</summary>
 public record IgConversationDetailDto(
-    IgConversationDto Conversation, List<IgMessageDto> Messages, IgLeadBriefDto? Lead, bool DmWindowOpen);
+    IgConversationDto Conversation, List<IgMessageDto> Messages, IgLeadBriefDto? Lead, bool DmWindowOpen,
+    // 24 soatdan keyin ham operator 7 kun ichida HUMAN_AGENT tegi bilan DM yoza oladimi.
+    bool HumanAgentWindowOpen,
+    // Izoh suhbati: eng oxirgi kiruvchi izoh (bo'sh = izoh yo'q) va unga yopiq javob mumkinmi.
+    string LatestCommentId, bool PrivateReplyAvailable, string PrivateReplyBlockedReason);
 
 public record IgMessageDto(
     string Id, string ConversationId, string Direction, string Channel, string Text,
     string ActorName, bool IsAi, string AiIntent, int AiScore, string Error,
     string CommentId, string MediaId, string IgMessageId, string CreatedAt);
 
-public record IgLeadBriefDto(string Id, string FullName, string Phone, string Source, string Stage, string CreatedAt);
+/// <param name="Converted">Lid o'quvchiga AYLANTIRILGAN — Inbox «Lidga aylantirish» tugmasini qaytaradi:
+/// qaytgan o'quvchining yangi murojaati YANGI lid bo'ladi (aylantirilgan lid qayta ishlatilmaydi, CRM-1).</param>
+public record IgLeadBriefDto(string Id, string FullName, string Phone, string Source, string Stage, string CreatedAt,
+    bool Converted = false);
 
-public record IgReplyPayload(string? Text);
+/// <param name="Mode"><c>dm</c> (standart) · <c>comment</c> (izohga ochiq javob) ·
+/// <c>private_reply</c> (izohga yopiq javob).</param>
+/// <param name="CommentId">Izoh rejimida aniq izoh; bo'sh = suhbatdagi eng oxirgi kiruvchi izoh.</param>
+public record IgReplyPayload(string? Text, string? Mode = null, string? CommentId = null);
 
 public record IgCreateLeadPayload(string? Name, string? Phone, string? Interest, string? Note);
 

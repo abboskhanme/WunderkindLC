@@ -31,6 +31,23 @@ oradagi 14 kun ham ochilardi), dars soni esa oraliqdan yaratilganda har doim **2
 har doim `SelectedDates` bo'yicha, xotirada (`CoversDate`). Massiv ustun ichidan qidirish
 PostgreSQL'da ishlaydi-yu SQLite testlarida ishlamaydi (audit qoidasidagi `ILike` bilan bir xil hol).
 
+⚠️ **PUL UCHUN saqlangan sanadan faqat HAQIQATAN dars bo'lmagan kunlar tushadi (audit SAL-1, audit R1-2):**
+`EffectiveDates(a, guruh, ko'chirishlar)` va `LessonsInMonth` saqlangan `SelectedDates` dan (1) guruh
+UMRIDAN tashqaridagilarni (`StartDate` .. `LessonEnd(EndDate, ArchivedAt)`) olib tashlaydi va (2)
+ko'chirilgan darsning ESKI sanasini YANGI sanasiga almashtiradi (o'sha dars, boshqa kun). Sabab: narxning
+MAXRAJI (oyning dars soni) allaqachon qirqilgan edi, SURATI esa yo'q — 6 darsdan 3 tasidan keyin guruh
+yopilsa o'rinbosarga hovuzning 2 baravari to'lanar, asosiy o'qituvchi 0 da qolardi.
+⚠️ Guruhning HOZIRGI hafta kunlari bilan KESISHTIRILMAYDI: jadval oktabrda o'zgarsa sentabrdagi o'tilgan
+o'rinbosar darslari allaqachon to'langan maosh oyidan jimgina yo'qolardi (sana yaratishda o'sha paytdagi
+dars kuni ekani `ValidateAsync` da tekshirilgan). Maxraj qoidasi o'zgarmagan.
+Kirish huquqi (`CoversDate`) va audit jumlasi saqlangan sanalarda qoladi.
+
+⚠️ **Asosiy o'qituvchi = qamralgan SANADA guruh egasi (audit C3).** Ushlanma saqlangan
+`OriginalTeacherId` dan emas, `GroupTeacherHistory` bo'yicha o'sha kunning egasidan olinadi
+(`SalaryLedger`); narxdagi "asosiy o'qituvchi" (legacy rejimlarda hovuz uning sozlamasidan) — o'sha OY
+egasi (`PerLessonBatchAsync`). Ilgari o'qituvchi almashgach ushlanma hech kimdan olinmas, o'rinbosarning
+o'zi ega bo'lib qolsa esa ikki marta olardi. `OriginalTeacherId` faqat ko'rsatish uchun qoladi.
+
 ## 1. PUL — **NOL YIG'INDILI**
 
 > **Asosiy o'qituvchidan ayirilgan summa AYNAN o'rinbosarga to'lanadi. Markaz uchun neytral.**
@@ -157,7 +174,7 @@ Har bir endpoint o'rinbosarga nima ochilishini **o'zi** hal qiladi.
 | `GET journal/group` | ✅ **o'qish** | jurnalni ko'rmasdan davomat qo'yib bo'lmaydi |
 | `PUT/DELETE journal` (katak) | ✅ **yozish**, `req.Date` bo'yicha | baho/davomat aynan uning ishi |
 | `POST journal/bulk-attendance` | ✅ **yozish**, `req.Date` bo'yicha | o'sha darsning davomati |
-| `POST/DELETE journal/reschedule` | ❌ | dars ko'chirish guruh JADVALINI va oyning dars sonini (maosh maxraji) o'zgartiradi — guruh egasining qarori |
+| `POST/DELETE journal/reschedule` | ❌ | dars ko'chirish guruh JADVALINI va oyning dars sonini (maosh maxraji) o'zgartiradi — guruh egasining qarori. ⚠️ O'rinbosar QAMRAGAN kunni hech kim (admin ham) ko'chira olmaydi — avval tayinlovni o'zgartirish kerak (`JournalService.CheckMoveAsync`) |
 | `GET grading/group/{id}/board` | ✅ **o'qish** | baho qo'yish uchun mezonlar taxtasi kerak |
 | `POST grading/grade`, `grade/bulk` | ✅ **yozish**, `req.Date` bo'yicha | o'zi o'tgan darsning bahosi |
 | `GET curriculum/group/{id}` | ✅ **o'qish** | "guruh qayerga yetgan, bugun qaysi mavzu" — dars o'tish uchun ZARUR |
@@ -177,7 +194,7 @@ belgilangan ("tekshiruv faqat frontendda edi, API to'g'ridan-to'g'ri chaqirilsa 
 | Sana formati AYNAN `yyyy-MM-dd` | — | `"2026-13-99"` bazaga yozilardi (`DateOnly.TryParse` madaniyatga qarab qabul qilib yuborishi mumkin — ISO shakli qaytib chiqishi tekshiriladi) |
 | Har sana guruhning HAQIQIY dars kuni | — | dars yo'q kunga "dars o'tildi" deb pul yozilardi |
 | Sanalar soni | `MaxDates = 60` | chegara umuman yo'q edi — 1000 ta sana yuborib shuncha darsga haq yozdirish mumkin edi |
-| O'tmish oynasi | `MaxBackdateDays = 14` | ⚠️ butunlay taqiqlanMAYDI ("kecha kasal bo'ldi, bugun rasmiylashtiramiz" — odatiy hol), lekin yopilgan oy maoshini orqaga qarab jimgina o'zgartirish mumkin bo'lmasin |
+| O'tmish oynasi | `MaxBackdateDays = 14` | ⚠️ butunlay taqiqlanMAYDI ("kecha kasal bo'ldi, bugun rasmiylashtiramiz" — odatiy hol), lekin yopilgan oy maoshini orqaga qarab jimgina o'zgartirish mumkin bo'lmasin. **BEKOR QILISHDA ham** (SAL-4) — pastga qarang |
 | Guruh ko'rinadimi | `TeacherGroupAccess.Visible` | arxivlangan/bloklangan guruhda dars ham, pul ham yo'q |
 | O'rinbosar ishda-mi | `Teacher.IsArchived` / `IsBlocked` | ishdan ketgan o'qituvchiga maosh yozilardi |
 | O'ziga o'zi o'rinbosar emasmi | — | ma'nosiz + qo'sh to'lov |
@@ -185,6 +202,24 @@ belgilangan ("tekshiruv faqat frontendda edi, API to'g'ridan-to'g'ri chaqirilsa 
 
 **AYNAN shu tekshiruv `POST /` da ham, `GET /preview` da ham ishlatiladi** — "modal ruxsat
 berdi, server rad etdi" holati bo'lmaydi.
+
+### Bekor qilish — o'sha o'tmish oynasi (audit SAL-4)
+
+`CancelAssignmentAsync`: `bugun − 14` kundan ESKI sanalar o'zgartirilmaydi (ular yopilgan oy maoshiga
+kirgan — o'rinbosarga to'langan, asosiydan ushlangan). Hammasi oyna ichida — tayinlov to'liq bekor
+(`delete`); bir qismi eski — faqat oyna ichidagi va kelajakdagi kunlar olib tashlanadi, eskilari o'z
+kuchida qoladi (`update`, jumlada ikkalasi ham); hammasi eski — 400 sabab bilan.
+⚠️ NEGA "faqat kelajak" emas, aynan 14 kun: yaratish shu oynada orqaga yozishga ruxsat beradi —
+"nima o'zgartirsa bo'ladi" qoidasi bitta bo'lsin (kecha yanglish tayinlangan kunni ham tuzatish mumkin).
+Klientda «Bekor qilish» tugmasi hamma kuni eski qatorlarda ko'rinmaydi, qisman holatda tasdiq oynasi
+qaysi kunlar qolishini aytadi (`lib/substituteCancel.ts` — server qoidasining nusxasi, konstanta bir xil).
+
+### O'qituvchi arxivlanganda (audit SAL-2)
+
+`CancelFutureForTeacherAsync` — o'qituvchi o'rinbosar YOKI asosiy bo'lgan faol tayinlovlarning bugungi
+va kelajakdagi kunlari bekor qilinadi (o'tganlari maosh tarixi bo'lib qoladi), har tayinlovga audit.
+Guruh yopilganda/o'chirilganda/o'qituvchisi almashganda tayinlovlar — `SubstituteGroupLifecycle`
+(guruhlar jamoasi).
 
 `today` — **PARAMETR** (`null` = `AppClock.Today`): o'tmish oynasi testda vaqtni surmasdan
 tekshirilsin.
@@ -213,9 +248,11 @@ oyda dars kuni yo'q) yoki `null`; u tayinlashga TO'SIQ emas.
 
 ### O'qituvchi ilovasi
 
-`GET /api/teacher/substitutions` — faqat FAOL tayinlovlar. Filtr
-`SubstituteTeacherId == me || OriginalTeacherId == me`, ya'ni javobda **asosiy o'qituvchi ham**
-qatnashadi va u yerda o'rinbosarning haqi turadi.
+`GET /api/teacher/substitutions` — faqat FAOL tayinlovlar (`SubstituteTeacherService.ForTeacherAsync`).
+Filtr: `SubstituteTeacherId == me` YOKI qamralgan SANADA guruh egasi `me` (tarix bo'yicha,
+`GroupOwnership.OwnerOn`), ya'ni javobda **asosiy o'qituvchi ham** qatnashadi va u yerda o'rinbosarning
+haqi turadi. ⚠️ Ilgari saqlangan `OriginalTeacherId == me` edi — guruh o'qituvchisi almashgach yangi
+egasi o'z guruhidagi o'rinbosarlikni ko'rmasdi (maosh varaqasi esa ushlanmani undan olardi).
 
 ⚠️ Pul maydonlari (`EstimatedSalary`, `EstimatedDeduction`, `PerLessonFee`, `StudentCount`)
 `TeacherPermissions.Salary` bilan darvozalangan. **403 qaytarilMAYDI, javob TOZALANADI**
@@ -271,3 +308,29 @@ so'rov yo'q; o'quvchilar soni, ko'chirishlar va yig'ilgan pul bittadan guruhlang
 - **Uzoq muddatga mo'ljallanmagan** (`MaxDates = 60`): butun kurs davomida boshqa odam
   o'qitadigan bo'lsa — guruhning ASOSIY o'qituvchisini almashtirish kerak, aks holda maosh,
   reyting va jurnal tarixi noto'g'ri odamga bog'lanib qoladi.
+
+## 9. GURUH HAYOTI O'ZGARGANDA — `SubstituteGroupLifecycle` (2026-10-07)
+
+Tayinlov sanalari O'ZIDA saqlanadi va guruh hayotidan mustaqil sanalardi. Natija: guruh 6 sanadan 3
+tasi o'tganda yopilsa, o'rinbosarga hamon 6 dars yozilar, maxraj esa (yopilgan oyning haqiqiy darslari)
+qirqilgani uchun bitta dars narxi 2 barobar chiqib, asosiy o'qituvchining ulushi 0 gacha tushardi;
+o'qituvchi almashganda `OriginalTeacherId` eski odamda qolib, ushlanma HECH KIMDAN ayrilmasdi.
+
+| Hodisa | Nima bo'ladi |
+|---|---|
+| Guruh YOPILDI / ARXIVLANDI / TUGATILDI | yopish kunidan **KEYINGI** sanalar olib tashlanadi; sanasi qolmagan tayinlov bekor (`IsActive=false`) |
+| Guruh O'CHIRILDI | guruhning barcha tayinlovlari o'chiriladi |
+| Asosiy O'QITUVCHI ALMASHDI (`Update`) | bugungi va keyingi sanalar: o'rinbosar YANGI EGANING O'ZI bo'lsa — olib tashlanadi (qo'sh haq yo'q); aks holda `OriginalTeacherId` = yangi ega. Tayinlovda o'tmish sanalari ham bo'lsa u IKKIGA bo'linadi (o'tmish eski egada qoladi) |
+
+- ⚠️ **Yopish kunining O'ZI dars** (`SalaryLedger.LessonEnd` chegarasi KIRADI, muzlatish/yopish sanasi
+  hisobda ham qatnashgan kun) — o'sha kungi o'rinbosar darsi QOLADI.
+- ⚠️ Qirqish/bo'lish SAQLANGAN XOM sanalar ustida (`SubstituteTeacherService.SummaryDates`), pul uchun
+  filtrlangan `EffectiveDates` ustida EMAS (audit R1-2): aks holda ko'chirilgan kunda (masalan dushanba →
+  seshanba) haqiqatan o'tilgan dars "dars kuni emas" deb tayinlovdan ABADIY o'chib ketardi.
+- ⚠️ Guruhning `EndDate`/`ArchivedAt`/jadvali o'zgarishidan **OLDIN** chaqiriladi: eski (sanalarsiz)
+  tayinlov guruh umri/jadvali (va ko'chirishlar) bo'yicha yoyiladi.
+- Qisqartirilgan qatorda `SelectedDates` = qolgan sanalar, `Date`/`EndDate` = ularning birinchi/oxirgisi.
+- Audit — §6 dagi kabi (`substitute_teacher`, `"{groupId}:{assignmentId}"`, teacherId = o'rinbosar);
+  qisqartirish/egani almashtirish `update`, bekor qilish `delete`, bo'linishdan chiqqan qator `create`.
+- Testlar: `AuditFixT1Tests` (`Guruh_yopilganda_…`, `Oqituvchi_almashganda_…`), `AuditFixFx1Tests` (`R1_2__…`).
+

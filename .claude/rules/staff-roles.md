@@ -37,6 +37,13 @@ yoki shu roldagi akkaunt yaratib o'z huquqini oshira olmasin.
   qilinganlarning bog'lanishi tozalanadi.
 - Parol tiklash/almashtirish va individual ruxsat berish ham `HasFullAccess("staff")` — akkauntga
   kirish = uning huquqlari (ilgari `staff:create`/`staff:edit` yetardi — huquq oshirish yo'li).
+  Yangi parol xodimning BARCHA ochiq sessiyalarini tugatadi (`auth-sessions.md` §2).
+- **O'chirilgan xodim ARXIVDAN tiklansa** (`ArchiveController`, tur `staff`) — ruxsatlarsiz, ROLSIZ
+  (`RoleTemplateId = null`) va PAROLSIZ qaytadi. ⚠️ Rol bog'lanishi qolsa rolning KEYINGI tahriri
+  (`SyncMembersAsync`) eski ruxsatlarni jimgina qaytarib yozardi. Parol suratga umuman tushmaydi
+  (`ArchiveService.StripSecrets` — parol xeshi, ochiq dastlabki parol, har qanday token/secret; ilgari
+  ular tungi JSON zaxirasi bilan Telegram'ga ham ketardi), eski suratlar startupda tozalanadi
+  (`ScrubStoredSecretsAsync`). Javob admin'ga parol va rolni qayta berishni aytadi.
 
 ## 4. O'qituvchi — TIZIM roli
 
@@ -54,3 +61,24 @@ Foiz bazasi va "Umumiy" rejim — `billing.md`.
 - Per-xodim ruxsat MATRITSASI ATAYIN yo'q — huquq roldan.
 - Menyuda «Xodimlar» `/admin/teachers` sahifalarida ham faol (`NavChild.alsoMatch`).
 - Eski manzillar: `boshqaruv/staff` → xodimlar, `boshqaruv/roles` → rollar.
+
+## 6. Xodimni O'CHIRISH — jonli havolalar bo'shatiladi (`StaffRelease`)
+
+Akkaunt o'chirilganda (`DELETE api/admin/staff/{id}`) o'sha tranzaksiyada: KPI profili nofaol,
+OCHIQ lidlar (aylantirilmagan/yopilmagan/yo'qotilmagan) biriktirilmagan holatga, kassa mas'ulsiz
+(ism snapshot'i ham tozalanadi), bajarilmagan topshiriqlar mas'ulsiz (topshiriq tarixiga yozuv),
+CTI agent o'chiriladi, Telegram xodim bog'lanishi uziladi. Nima bo'shatilgani — o'sha BITTA audit
+qatorida. Sabab: ilgari KPI'da "arvoh" qator qolar, o'chirilgan odamga topshiriq eslatmasi ketaverardi.
+
+⚠️ CTI agent `CtiController.UpdateAgent` dagi o'chirish bilan BIR XIL bo'shatiladi (2026-10-08): nofaol,
+`IsOnline=false`, FCM tokeni tozalanadi va saqlangandan KEYIN jonli WebSocket uziladi (`logout` buyrug'i,
+`CtiConnectionManager.DisconnectAsync`). Ilgari faqat `IsActive=false` edi — telefon ochiq ulanish bilan
+qo'ng'iroq/SMS'da davom etardi. Agent STANDART Local SMS agenti bo'lsa — audit matnida "⚠️ … standart Local
+SMS agenti edi — avtomatik Local SMS'lar to'xtadi" va javobda `warning` (messaging.md, `LocalSmsDefaultAgent`).
+
+⚠️ TARIX tegilmaydi: yopilgan/yo'qotilgan lidlarning `AssigneeUserId` i (yo'qotish hisoboti, KPI),
+bajarilgan topshiriqlar, `ClosedByUserId`.
+
+⚠️ Arxiv suratiga `PasswordHash` va ochiq `InitialPassword` TUSHMAYDI (`SecretScrub`) — surat kunlik
+Telegram zaxirasiga ham kiradi. Arxivdan tiklangan akkaunt PAROLSIZ bo'ladi: admin yangisini yaratadi.
+

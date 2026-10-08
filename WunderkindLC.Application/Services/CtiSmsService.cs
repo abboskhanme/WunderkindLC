@@ -82,6 +82,12 @@ public class CtiSmsService(CtiConnectionManager conn, FcmService fcm, ILogger<Ct
         if (agent is null)
             return await FinishAsync(db, phone, message, recipientName, batchId, ownsBatch, false,
                 "", "yetkazilmadi", "Local SMS agent topilmadi.", null, ct);
+        // ⚠️ O'CHIRILGAN agent orqali yuborilmaydi (standart agent ham, aniq tanlangani ham).
+        // Ilgari o'chirish faqat yangi loginni to'sardi — avto-xabarlar (AutoMessageSmsSender,
+        // SmsQueueService) ishdan ketgan xodimning SIM-kartasidan ota-onalarga ketaverardi.
+        if (InactiveAgentError(agent, isDefault: string.IsNullOrWhiteSpace(agentId)) is { } inactive)
+            return await FinishAsync(db, phone, message, recipientName, batchId, ownsBatch, false,
+                "", "yetkazilmadi", inactive, agent.Id, ct);
 
         var number = NormalizePhone(phone);
         if (number.Length == 0)
@@ -92,13 +98,16 @@ public class CtiSmsService(CtiConnectionManager conn, FcmService fcm, ILogger<Ct
         // oldin, shunda noto'g'ri so'rovlar (yuqoridagi validatsiya) kutish vaqtini yemaydi.
         await PaceAsync(meta?.LocalSmsDelaySeconds ?? 0, ct);
 
-        var commandId = Guid.NewGuid().ToString();
         var cmd = new CtiCommandLog
         {
             AgentId = resolvedAgentId, Action = "send_sms", Payload = $"{number}: {message}", Status = "pending",
         };
         db.CtiCommandLogs.Add(cmd);
         await db.SaveChangesAsync(ct);
+        // ⚠️ Ilovaga va SmsLog.RequestId ga AYNAN jurnal yozuvining id'si: ilova `ack` da shu id'ni
+        // qaytaradi (CtiWebSocketHandler uni CtiCommandLogs.Id bo'yicha "acked" qiladi), SMS tarixi
+        // esa buyruqqa bog'lanadi. Ilgari alohida GUID yuborilardi — hech bir ack mos kelmasdi.
+        var commandId = cmd.Id;
 
         object SmsMsg() => new { action = "send_sms", to = number, text = message, commandId };
 
@@ -163,6 +172,18 @@ public class CtiSmsService(CtiConnectionManager conn, FcmService fcm, ILogger<Ct
         return await FinishAsync(db, phone, message, recipientName, batchId, ownsBatch, false,
             commandId, "yetkazilmadi", "Agent oflayn — yetkazilmadi.", resolvedAgentId, ct);
     }
+
+    /// <summary>
+    /// Agent SMS yuborishga yaroqsiz bo'lsa (o'chirilgan) — sabab matni, aks holda <c>null</c> (sof).
+    /// </summary>
+    /// <param name="isDefault">Agent markazning STANDART Local SMS agenti sifatida tanlanganmi —
+    /// unda matn sozlamani qayerdan tuzatishni ham aytadi.</param>
+    public static string? InactiveAgentError(CtiAgent agent, bool isDefault) =>
+        agent.IsActive
+            ? null
+            : isDefault
+                ? $"Standart Local SMS agenti \"{agent.DisplayName}\" o'chirilgan — Sozlamalar → Xabar kanallari → SMS da boshqa agentni tanlang."
+                : $"Local SMS agenti \"{agent.DisplayName}\" o'chirilgan.";
 
     /// <summary>SmsLog (har doim) + agar <paramref name="ownsBatch"/> bo'lsa bittalik SmsBatch yozadi.</summary>
     private static async Task<LocalSmsResult> FinishAsync(

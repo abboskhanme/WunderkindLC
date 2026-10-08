@@ -80,7 +80,11 @@ public partial class TeacherPortalController
 
         var before = AuditService.StudentProfileSnapshot(student);
         var (oldGrade, oldGradeYear) = (student.SchoolGrade, student.SchoolGradeYear);
+        var phonesBefore = TelegramLinks.PhonesSignature(student);
         TeacherStudentEdit.Apply(student, input, AppClock.Today);
+        // Raqam o'zgarsa ESKI raqam bilan ulangan Telegram chat uziladi (admin tahriri bilan bir xil — `TelegramLinks`).
+        if (TelegramLinks.PhonesChanged(phonesBefore, student))
+            await TelegramLinks.PruneStaleAsync(db, audit, student, "raqam o'zgardi — o'qituvchi tahriri");
 
         // Login akkauntidagi ism ham yangilanadi (admin tahriri bilan bir xil — `StudentsController.Update`).
         var user = student.UserId is null ? null : await db.Users.FindAsync(student.UserId);

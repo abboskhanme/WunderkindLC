@@ -13,12 +13,13 @@ import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Loader } from '@/components/ui/Loader'
 import { apiErrorMessage, cn, formatDate, formatDateTime } from '@/lib/utils'
+import { localIsoDate } from '@/lib/localDate'
 
 /** "YYYY-MM-DD" — bugundan `days` kun oldin. */
 function daysAgo(days: number): string {
   const d = new Date()
   d.setDate(d.getDate() - days)
-  return d.toISOString().slice(0, 10)
+  return localIsoDate(d)
 }
 
 const ranges = [

@@ -7,9 +7,10 @@ import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { apiErrorMessage } from '@/lib/utils'
+import { localIsoDate } from '@/lib/localDate'
 
 /** "YYYY-MM-DD" bugungi sana */
-const today = () => new Date().toISOString().slice(0, 10)
+const today = () => localIsoDate(new Date())
 
 /**
  * GURUHNI YOPISH modali — sertifikatsiz "arxivga olish":

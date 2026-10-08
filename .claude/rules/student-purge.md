@@ -23,6 +23,14 @@ Mantiq — `StudentPurge` (Application, testlar: `StudentPurgeTests`).
 | Bog'liq qatorlar | faqat 4 jadval (hisob, a'zolik, izoh, jurnal) — qolgani yetim | **o'quvchiga tegishli HAR BIR jadval** |
 | Fayllar (rasm, passport, selfi, sertifikat) | diskda qoladi | **diskdan ham o'chadi** |
 | Kim | `students.list:delete` | `students.list:delete` (AYNAN bir xil kalit) |
+| Tarix | «O'quvchi o'chirildi …» qatori (2026-10-07 dan, `studentId` bilan) | bitta qator (§6) |
+
+**Arxivdan TIKLASH** («Arxiv (barcha turdagi)» → «Tiklash», `ArchiveController`): o'chirishda oylik
+hisoblar va a'zoliklar ham o'chgan, surat esa eski BALANSNI saqlaydi. Shuning uchun tiklashda:
+balans = `min(max(surat, 0), qolgan qatorlar)` (`StudentArchiving.RestoredBalance`: qarz faqat qolgan
+qatorlar uni tushuntirsa qoladi, avans suratdagidan oshmaydi — to'lovlar qolib hisoblar o'chgani uchun
+"tekin avans" chiqmasin), `ClassName` bo'shatiladi (guruhsiz billing yorliqqa qarab qayta ishlamasin),
+o'chgan login akkauntiga bog'lanish uziladi. Javobda — "guruhsiz tiklandi, guruhga qo'shing".
 
 ## 2. RUXSAT — «O'quvchilar ro'yxati va profili» → «O'chirish» (`students.list:delete`)
 
@@ -63,6 +71,12 @@ uning tokenlari/qurilmalari/xabarlari.
 **Saqlanadi, faqat ajratiladi** (`StudentId = null`) — boshqa bo'limning yozuvi:
 bekor qilingan pul amallari · qo'ng'iroqlar (`Call`, `CtiCallRecord`) · kitob sotuvi · lid
 (`ConvertedStudentId`) · support darslari (bron qilingan — qayta **bo'sh** bo'ladi, o'tilgani qoladi).
+
+⚠️ **LID YOPIQ QOLADI** (2026-10-07): ajratilgan lid YO'QOTILGAN deb belgilanadi (`LeadLoss` maydonlari,
+sabab «O'quvchi o'chirildi» — katalogdan tashqari snapshot, lid tarixiga `lost` hodisasi, bosqich
+tegilmaydi). Sabab: "ochiq lid" = aylantirilmagan VA yo'qotilmagan — faqat `ConvertedStudentId = null`
+qilinsa lid jimgina QAYTA OCHILIB bosh sahifa, KPI ("eski ochiq lidlar"), sinov eslatmasi va cheklistga
+"ishlanmagan lid" bo'lib tushardi.
 
 **Tegilmaydi:** shartnomalar — ular ota-ona TELEFONIGA bog'langan (`Contract.RecipientKey`) va
 aka-ukalar bilan umumiy.

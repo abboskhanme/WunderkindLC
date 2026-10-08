@@ -207,6 +207,14 @@ public static class AutoMessageTriggers
 
     public static bool IsKnown(string? key) => !string.IsNullOrWhiteSpace(key) && All.Any(t => t.Key == key);
 
+    /// <summary>
+    /// ARXIVDAGI o'quvchiga ham yuboriladigan hodisa — FAQAT to'lov kvitansiyasi
+    /// (<see cref="PaymentReceived"/>): eski qarzini to'lagan ota-ona tasdiqni olishi kerak.
+    /// Qolgan hammasi (davomat, baho, guruhga qo'shilish, oylik hisob, eslatmalar) arxivdagi
+    /// o'quvchiga ketmaydi — arxiv = o'quvchi markazdan ketdi.
+    /// </summary>
+    public static bool ReachesArchived(string? trigger) => trigger == PaymentReceived;
+
     public static TriggerInfo? Get(string? key) => All.FirstOrDefault(t => t.Key == key);
 }
 

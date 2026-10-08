@@ -21,7 +21,8 @@ public static class LeadOrigins
     public const string Form = "form";
     /// <summary>Daraja testi (<c>LevelTestResult</c>).</summary>
     public const string Test = "test";
-    /// <summary>Instagram AI agenti (<c>IgConversation.LeadId</c>) — izoh yoki DM.</summary>
+    /// <summary>Instagram AI agenti (<c>IgConversation.LeadId</c> + tarix <c>PastLeadIds</c>,
+    /// <see cref="IgLeadLinks.LinkedLeadIdsAsync"/>) — izoh yoki DM.</summary>
     public const string Instagram = "instagram";
     /// <summary>Instagram/Facebook REKLAMASI — Lead Ads formasi (<c>IgAdLead.LeadId</c>).</summary>
     public const string Ads = "ads";

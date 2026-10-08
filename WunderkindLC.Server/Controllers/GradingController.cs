@@ -65,17 +65,30 @@ public class GradingController(AppDbContext db, DataCache dataCache) : Controlle
         return NoContent();
     }
 
+    /// <para>Mezon o'chganda uning belgilaridan hisoblangan jurnal baholari ham QAYTA SINXRONLANADI
+    /// (<see cref="GradingService.ResyncAsync"/>; qo'lda qo'yilgan baho tegilmaydi) — aks holda jurnalda
+    /// endi mavjud bo'lmagan checklar soni osilib qolardi. <c>ExecuteDeleteAsync</c> ChangeTracker'dan
+    /// o'tmaydi, shuning uchun kesh (reyting/ball) QO'LDA yangilanadi.</para>
     [HttpDelete("criteria/{id}")]
     public async Task<ActionResult> DeleteCriterion(string id)
     {
         var c = await db.GradingCriteria.FindAsync(id);
         if (c is null) return NotFound();
+        var affected = await AffectedCellsAsync(db.CriterionGrades.Where(g => g.CriterionId == id));
         await db.GroupGradingCriteria.Where(g => g.CriterionId == id).ExecuteDeleteAsync();
         await db.CriterionGrades.Where(g => g.CriterionId == id).ExecuteDeleteAsync();
         db.GradingCriteria.Remove(c);
+        await GradingService.ResyncAsync(db, affected);
         await db.SaveChangesAsync();
+        dataCache.Bump(new[] { nameof(CriterionGrade), nameof(GroupGradingCriterion), nameof(JournalEntry) });
         return NoContent();
     }
+
+    /// <summary>Belgilangan (Done) mezon kataklari → (guruh, o'quvchi, sana) — qayta sinxron uchun.</summary>
+    private static async Task<List<(string GroupId, string StudentId, string Date)>> AffectedCellsAsync(
+        IQueryable<CriterionGrade> q) =>
+        (await q.Where(g => g.Done).Select(g => new { g.GroupId, g.StudentId, g.Date }).Distinct().ToListAsync())
+            .Select(x => (x.GroupId, x.StudentId, x.Date)).ToList();
 
     // ---------- Guruhga biriktirish ----------
 
@@ -85,15 +98,29 @@ public class GradingController(AppDbContext db, DataCache dataCache) : Controlle
         await db.GroupGradingCriteria.Where(g => g.GroupId == groupId)
             .OrderBy(g => g.Order).Select(g => g.CriterionId).ToListAsync();
 
-    /// <summary>Guruhga biriktirilgan mezonlarni to'liq almashtirish.</summary>
+    /// <summary>Guruhga biriktirilgan mezonlarni to'liq almashtirish.
+    /// <para>Ajratilgan mezonlar jurnal bahosidan ham chiqadi: ularning belgilari bor kataklar QAYTA
+    /// SINXRONLANADI (faqat sinxronning o'z bahosi; qo'lda qo'yilgan baho tegilmaydi).</para></summary>
     [HttpPut("group/{groupId}/criteria")]
     public async Task<ActionResult> SetGroupCriteria(string groupId, GroupCriteriaInput input)
     {
+        var next = (input.CriterionIds ?? new()).Distinct().ToList();
+        var removed = (await db.GroupGradingCriteria.Where(g => g.GroupId == groupId)
+                .Select(g => g.CriterionId).ToListAsync())
+            .Where(cid => !next.Contains(cid)).ToList();
+        List<(string GroupId, string StudentId, string Date)> affected = removed.Count == 0 ? new()
+            : await AffectedCellsAsync(db.CriterionGrades.Where(g => g.GroupId == groupId && removed.Contains(g.CriterionId)));
         await db.GroupGradingCriteria.Where(g => g.GroupId == groupId).ExecuteDeleteAsync();
         var order = 0;
-        foreach (var cid in (input.CriterionIds ?? new()).Distinct())
+        foreach (var cid in next)
             db.GroupGradingCriteria.Add(new GroupGradingCriterion { GroupId = groupId, CriterionId = cid, Order = order++ });
         await db.SaveChangesAsync();
+        if (affected.Count > 0)
+        {
+            await GradingService.ResyncAsync(db, affected);
+            await db.SaveChangesAsync();
+        }
+        dataCache.Bump(new[] { nameof(GroupGradingCriterion) });
         return NoContent();
     }
 
@@ -107,13 +134,14 @@ public class GradingController(AppDbContext db, DataCache dataCache) : Controlle
         return await BuildBoardAsync(db, group, month);
     }
 
+    /// <summary>Bitta katakni belgilash. Jurnal qoidalari (kelajak sana, dars kuni, jurnal siyosati —
+    /// adminga "Adminlarga ham qo'llash" bo'yicha) — <see cref="GradingService.UpsertGradeAsync"/>.</summary>
     [HttpPost("grade")]
     public async Task<ActionResult> Grade(SetCriterionGradeRequest req)
     {
         try
         {
-            await UpsertGradeAsync(db, req);
-            await db.SaveChangesAsync();
+            await GradingService.UpsertGradeAsync(db, req, isAdmin: true);
             return Ok(new { ok = true });
         }
         catch (InvalidOperationException ex)
@@ -128,8 +156,14 @@ public class GradingController(AppDbContext db, DataCache dataCache) : Controlle
     {
         var group = await db.Classes.FindAsync(req.GroupId);
         if (group is null) return NotFound();
-        await BulkGradeAsync(db, group, req.CriterionId, req.Date, req.Done);
-        await db.SaveChangesAsync();
+        try
+        {
+            await GradingService.BulkGradeAsync(db, group, req.CriterionId, req.Date, req.Done, isAdmin: true);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
         return Ok(new { ok = true });
     }
 
@@ -234,150 +268,8 @@ public class GradingController(AppDbContext db, DataCache dataCache) : Controlle
         return new GradingBoardDto(group.Id, group.Name, months, resolved, dates, criteria, rows);
     }
 
-    /// <summary>Bitta katakni belgilash: Done=true → yozuv (bajardi); Done=false → yozuvni o'chiramiz (sparse).
-    /// So'ng shu (o'quvchi, sana) uchun jurnal bahosini mezon checklari soniga sinxronlaydi.</summary>
-    public static async Task UpsertGradeAsync(AppDbContext db, SetCriterionGradeRequest req)
-    {
-        // Jurnal bilan bir xil qoida: a'zolik boshlanishidan (aktivlashtirilgan bo'lsa ActivatedAt,
-        // aks holda JoinedAt) OLDINGI sanaga mezon belgilab bo'lmaydi (jurnal bahosi ham yaralib qolardi).
-        var membership = await db.StudentGroups.FirstOrDefaultAsync(sg =>
-            sg.GroupId == req.GroupId && sg.StudentId == req.StudentId && sg.IsActive);
-        var memberStart = JournalService.MemberStart(membership);
-        if (memberStart is not null && string.CompareOrdinal(req.Date, memberStart) < 0)
-            throw new InvalidOperationException(
-                "O'quvchi guruhga qo'shilgan/aktivlashtirilgan sanadan oldingi darsga mezon belgilab bo'lmaydi");
-
-        var existing = await db.CriterionGrades.FirstOrDefaultAsync(
-            g => g.GroupId == req.GroupId && g.StudentId == req.StudentId
-                 && g.CriterionId == req.CriterionId && g.Date == req.Date);
-        var now = AppClock.Now.ToString("yyyy-MM-ddTHH:mm:ss");
-        if (req.Done)
-        {
-            if (existing is null)
-                db.CriterionGrades.Add(new CriterionGrade
-                {
-                    GroupId = req.GroupId, StudentId = req.StudentId, CriterionId = req.CriterionId,
-                    Date = req.Date, Done = true, UpdatedAt = now,
-                });
-            else { existing.Done = true; existing.UpdatedAt = now; }
-        }
-        else if (existing is not null)
-        {
-            db.CriterionGrades.Remove(existing);
-        }
-
-        // Mezon o'zgarishini saqlaymiz (sanoq aniq bo'lishi uchun) → so'ng jurnal bahosini sinxronlaymiz.
-        await db.SaveChangesAsync();
-        var group = await db.Classes.FindAsync(req.GroupId);
-        if (group is not null)
-        {
-            await SyncJournalGradeAsync(db, group, req.StudentId, req.Date);
-            await db.SaveChangesAsync();
-        }
-    }
-
-    /// <summary>Shu sanada bitta mezon bo'yicha guruhning BARCHA faol (frozen emas) o'quvchisini belgilaydi/olib tashlaydi.</summary>
-    public static async Task BulkGradeAsync(AppDbContext db, Group group, string criterionId, string date, bool done)
-    {
-        // A'zoligi shu sanadan KEYIN boshlangan o'quvchilar chetlab o'tiladi (jurnal bulk-attendance bilan
-        // bir xil) — yangi qo'shilgan/aktivlashtirilgan o'quvchiga orqadagi darsga mezon belgilanmasin.
-        var memberIds = (await db.StudentGroups
-                .Where(sg => sg.GroupId == group.Id && sg.IsActive && sg.Status != "frozen")
-                .ToListAsync())
-            .Where(sg =>
-            {
-                var start = JournalService.MemberStart(sg);
-                return start is null || string.CompareOrdinal(date, start) >= 0;
-            })
-            .Select(sg => sg.StudentId).ToList();
-        var existing = await db.CriterionGrades
-            .Where(g => g.GroupId == group.Id && g.CriterionId == criterionId && g.Date == date).ToListAsync();
-        var byStudent = existing.ToDictionary(g => g.StudentId);
-        var now = AppClock.Now.ToString("yyyy-MM-ddTHH:mm:ss");
-        foreach (var sid in memberIds)
-        {
-            byStudent.TryGetValue(sid, out var e);
-            if (done)
-            {
-                if (e is null)
-                    db.CriterionGrades.Add(new CriterionGrade
-                    {
-                        GroupId = group.Id, StudentId = sid, CriterionId = criterionId,
-                        Date = date, Done = true, UpdatedAt = now,
-                    });
-                else { e.Done = true; e.UpdatedAt = now; }
-            }
-            else if (e is not null)
-            {
-                db.CriterionGrades.Remove(e);
-            }
-        }
-
-        // Mezon o'zgarishlarini saqlaymiz → so'ng har bir o'quvchining jurnal bahosini sinxronlaymiz.
-        await db.SaveChangesAsync();
-        foreach (var sid in memberIds)
-            await SyncJournalGradeAsync(db, group, sid, date);
-        await db.SaveChangesAsync();
-    }
-
-    /// <summary>
-    /// MEZON CHECKLARI SONI = JURNAL BAHOSI. (guruh, o'quvchi, sana) bo'yicha BELGILANGAN (Done) va guruhga
-    /// BIRIKTIRILGAN mezonlar sonini hisoblab <see cref="JournalEntry.Grade"/> ga yozadi (0 bo'lsa bahoni
-    /// tozalaydi — sabab/uy vazifa saqlanadi). Kurssiz guruh yoki noto'g'ri sana (StartDate'dan oldin yoki
-    /// kelajak) — jurnalga yozilmaydi. Belgilanganda dars "o'tildi" (LessonNote.Conducted) bo'ladi.
-    /// </summary>
-    private static async Task SyncJournalGradeAsync(AppDbContext db, Group group, string studentId, string date)
-    {
-        var subjectId = group.CourseId ?? "";
-        if (string.IsNullOrEmpty(subjectId)) return; // kurssiz guruh — jurnal yo'q
-        const int quarter = 1, period = 1;
-
-        // Noto'g'ri sana (jurnal validatsiyasi bilan izchil): kelajak yoki guruh boshlanishidan oldin — o'tkazib yuboramiz.
-        var today = AppClock.Today.ToString("yyyy-MM-dd");
-        if (string.Compare(date, today) > 0) return;
-        if (!string.IsNullOrEmpty(group.StartDate) && string.Compare(date, group.StartDate) < 0) return;
-
-        // Guruhga biriktirilgan mezonlar (board ko'rsatadigan) bo'yicha belgilangan (Done) sonni hisoblaymiz.
-        var assigned = await db.GroupGradingCriteria.Where(g => g.GroupId == group.Id)
-            .Select(g => g.CriterionId).ToListAsync();
-        var count = assigned.Count == 0 ? 0 : await db.CriterionGrades.CountAsync(g =>
-            g.GroupId == group.Id && g.StudentId == studentId && g.Date == date && g.Done
-            && assigned.Contains(g.CriterionId));
-
-        var entry = await db.JournalEntries.FirstOrDefaultAsync(e =>
-            e.ClassId == group.Id && e.SubjectId == subjectId && e.Quarter == quarter &&
-            e.StudentId == studentId && e.Date == date && e.Period == period);
-
-        if (count > 0)
-        {
-            if (entry is null)
-            {
-                entry = new JournalEntry
-                {
-                    ClassId = group.Id, SubjectId = subjectId, Quarter = quarter,
-                    StudentId = studentId, Date = date, Period = period,
-                };
-                db.JournalEntries.Add(entry);
-            }
-            entry.Grade = count;
-
-            // Darsni "o'tildi" deb belgilash (jurnal ustuni/yashil holat uchun) — SetEntryAsync bilan izchil.
-            var note = await db.LessonNotes.FirstOrDefaultAsync(n =>
-                n.ClassId == group.Id && n.SubjectId == subjectId &&
-                n.Quarter == quarter && n.Date == date && n.Period == period);
-            if (note is null)
-                db.LessonNotes.Add(new LessonNote
-                {
-                    ClassId = group.Id, SubjectId = subjectId, Quarter = quarter,
-                    Date = date, Period = period, Conducted = true,
-                });
-            else if (!note.Conducted) note.Conducted = true;
-        }
-        else if (entry is not null)
-        {
-            entry.Grade = null; // checklar olib tashlandi — bahoni tozalaymiz (boshqa maydonlar saqlanadi)
-        }
-    }
+    // Belgilash va jurnal bahosi sinxroni — GradingService (Application) da: o'qituvchi ilovasi ham
+    // shuni chaqiradi va mantiq testlanadi (test loyihasi Server'ga bog'lanmagan).
 
     /// <summary>Guruh uchun baholash statistikasi: oylik mezon ballari + nechta ba'ho kiritilgan.</summary>
     [HttpGet("group/{groupId}/summary")]

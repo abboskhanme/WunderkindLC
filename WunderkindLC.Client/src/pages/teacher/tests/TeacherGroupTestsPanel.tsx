@@ -40,6 +40,7 @@ import {
 import type { CertificateJob, TestCertificateTemplate } from '@/api/services/testCertificates'
 import { cn, formatDate, apiErrorMessage } from '@/lib/utils'
 import { formatPhone } from '@/lib/numberFormat'
+import { localIsoDate } from '@/lib/localDate'
 import { NumberInput } from '@/components/ui/NumberInput'
 import { Loader } from '@/components/ui/Loader'
 import { Modal } from '@/components/ui/Modal'
@@ -53,7 +54,7 @@ import { Modal } from '@/components/ui/Modal'
  * ikkalasi ham serverda BIR XIL `TestResultService`ga boradi.
  */
 
-const todayIso = () => new Date().toISOString().slice(0, 10)
+const todayIso = () => localIsoDate(new Date())
 
 /** Javob varianti harflari (A, B, C, ...). */
 const LETTERS = ['A', 'B', 'C', 'D', 'E', 'F']

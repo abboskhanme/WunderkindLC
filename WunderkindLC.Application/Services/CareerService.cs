@@ -221,9 +221,14 @@ public class CareerService(CareerTelegramService careerBot, ILogger<CareerServic
      * ============================================================================================= */
 
     /// <summary>
-    /// Ariza bosqichini o'zgartiradi: yozuvni yangilaydi, tarixga hodisa qo'shadi va nomzodga
-    /// KARYERA BOTI orqali xabar yuboradi. SaveChanges chaqiruvchida.
+    /// Ariza bosqichini o'zgartiradi: yozuvni yangilaydi va tarixga hodisa qo'shadi.
+    /// SaveChanges chaqiruvchida.
     /// </summary>
+    /// <remarks>
+    /// ⚠️ Nomzodga xabar BU YERDA YUBORILMAYDI — chaqiruvchi SaveChanges muvaffaqiyatli bo'lgach
+    /// <see cref="NotifyCandidateAsync"/> ni chaqiradi. Ilgari xabar saqlashdan OLDIN ketardi:
+    /// saqlash yiqilsa nomzod "HR suhbatiga o'tdingiz" xabarini olar, bazada esa hech narsa o'zgarmasdi.
+    /// </remarks>
     /// <returns>Bosqich haqiqatan o'zgarganmi (bir xil bo'lsa ham izoh yangilanadi).</returns>
     public async Task<bool> SetStatusAsync(
         IAppDbContext db, JobApplication app, string status, string note, string actor,
@@ -246,7 +251,6 @@ public class CareerService(CareerTelegramService careerBot, ILogger<CareerServic
             CreatedBy = actor,
         });
 
-        await NotifyCandidateAsync(app, ct);
         return changed;
     }
 

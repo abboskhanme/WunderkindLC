@@ -5,6 +5,10 @@ paths:
   - "WunderkindLC.Application/Services/LeadNotifier.cs"
   - "WunderkindLC.Application/Services/TrialReminderService.cs"
   - "WunderkindLC.Application/Services/LeadLoss*.cs"
+  - "WunderkindLC.Application/Services/LeadConversion.cs"
+  - "WunderkindLC.Application/Services/LeadRemoval.cs"
+  - "WunderkindLC.Application/Services/LeadTrialRules.cs"
+  - "WunderkindLC.Application/Services/LeadIntake.cs"
   - "WunderkindLC.Client/src/pages/admin/leads/**"
   - "WunderkindLC.Client/src/pages/admin/marketing/**"
 ---
@@ -64,7 +68,9 @@ paths:
   xil konvensiya): lid formasidagi maydon endi erkin matn emas, `GET /api/admin/leads/courses`
   (Subject nomlari; kurslar `schedule` ruxsatida bo'lgani uchun leads ruxsati ostida alohida endpoint)
   dan keladigan SELECT. Ro'yxatda yo'q eski/landing qiymati variant sifatida saqlanadi. Kurs nomi
-  o'zgartirilsa `SubjectsController.Update` eski nomli lidlarni ham ko'chiradi (`LeadSource` kabi).
+  o'zgartirilsa `SubjectsController.Update` eski nomli lidlarni ham ko'chiradi (`LeadSource` kabi) —
+  o'sha tranzaksiyada. ⚠️ Kurs nomlari NOYOB (registr/apostrof farqisiz) va eski nom boshqa kursda
+  ham bo'lsa lidlar ko'chirilmaydi (`.claude/rules/admin-core.md` §2).
   **CRM statistikasi** (`/stats` → `CrmStatsDto.ByInterest`, `CrmInterestStatDto`): fan bo'yicha lid
   soni + aylantirilgan + konversiya %; normalizatsiya — kurs id → nomi, registr farqisiz kurs nomiga
   moslash, bo'sh = "Ko'rsatilmagan". UI: `CrmStatsPage` — gorizontal bar (top 10) + to'liq jadval.
@@ -75,6 +81,68 @@ paths:
   `DistrictId`/`SchoolId` ustunlari va `Districts`/`Schools` jadvallari bazada faqat ma'lumot
   saqlanib turishi uchun qolgan — yangi kod ularni ISHLATMASIN. Lidlar ichidagi qidiruv:
   ism/telefon/ota-ona/manba (telefon raqamlar bo'yicha).
+
+## O'QUVCHIGA AYLANTIRISH — `LeadConversion` (2026-10-07, audit C5)
+
+Ilgari `POST {id}/convert` o'quvchi yaratishning "yupqa" IKKINCHI yo'li edi: lidning o'z telefoni
+ko'chmas (formadan/Instagram/Meta/testdan kelgan o'quvchi TELEFONSIZ — SMS, qo'ng'iroq moslash,
+ota-ona kabineti ishlamas), ota/ona maydonlari, login akkaunt, `CreatedAt`, audit va
+`StudentAdded` avto-xabari yo'q edi; guruh to'lsa ham `ClassName` o'sha guruhga yozilar, klient esa
+"Aylantirilgan" deb jimgina ko'rsatardi. Endi butun mantiq `LeadConversion` da va qoidalar AYNAN
+ikki manbadan ko'chirilgan (ularning fayllari tegilmagan — o'zgarsa bu yerni ham yangilang):
+
+| Qism | Manba qoida |
+|---|---|
+| O'quvchi yozuvi | `StudentsController.AddStudent`: telefon/ota/ona → `PhoneUtil.Normalize`; ASOSIY ota-ona (`ParentFullName/ParentPhone`) = ota, bo'lmasa ona; `CreatedAt`; "student" akkaunt (`AccountFactory`); `Student` auditi "O'quvchi qo'shildi" |
+| A'zolik | `ClassesController.AddMember`: sig'im = o'rin band qilganlar (`OccupiesSeatExpr`, ⚠️ arxivdagi o'quvchi SANALMAYDI); yangi a'zolik `trial`, `RecordedAt` = bugun; avval chiqqan bo'lsa davr tarixga (`ClosePeriod`); `ClassName` FAQAT a'zolik yaratilganda; `Membership` auditi `"{groupId}:{studentId}"` |
+| Avto-xabar | `StudentAdded` — faqat a'zolik haqiqatan yaratilganda (guruh to'lgan bo'lsa yo'q) |
+| Lid | `ConvertedStudentId`, KPI `ClosedByUserId/ClosedAt`, mas'ul bo'sh bo'lsa — yopgan xodim; `convert` hodisasi; `Lead` auditi |
+| Sinov darsi | sanasi o'tgan/BUGUNGI `pending` sinov → `stayed` + `AttendedAt` = sinov kuni (KPI "sinovga keldi" o'sha oyga); KELAJAKDAGI tegilmaydi |
+
+- **Qabul sanasi** bo'sh → bugun; buzuq → **400** (AddStudent importdagi kabi jimgina almashtirmaydi).
+  Topilmagan/arxivlangan guruh → 400 (ilgari jimgina guruhsiz o'quvchi yaratilardi).
+- **Ruxsat:** `leads.list:create` (sinf) **+ `students.list:create`** (`MayCreateStudents`, 403 sabab
+  matni bilan). Klientda «O'quvchiga aylantirish» ikkala ruxsat bo'lsagina ko'rinadi.
+- **DUBLIKAT → 409** `{ code: "duplicate_student", candidates }` — `StudentImportPlan` qoidasi:
+  ISM (`NameKey`) VA kamida bitta TELEFON mos, faqat ARXIVLANMAGAN o'quvchilar. Klient ikki yo'l
+  beradi: **«Mavjud o'quvchiga bog'lash»** (`?linkStudentId=` — yangi o'quvchi/akkaunt YARATILMAYDI,
+  lid o'sha o'quvchiga yopiladi, guruh tanlangan bo'lsa unga qo'shiladi — allaqachon a'zo bo'lsa
+  tegilmaydi) va **«Baribir yangi o'quvchi yaratish»** (`?force=true`).
+- **Guruh to'lgan** — o'quvchi yaratiladi, javobda `groupFull = true`, klient panelda sariq
+  ogohlantirish ko'rsatadi ("guruhga QO'SHILMADI") — oyna yopilmaydi.
+
+## LID YARATISH, O'CHIRISH, SINOV — boshqa qoidalar (2026-10-07)
+
+- **Qo'lda lid — telefon dublikati 409** (`POST /api/admin/leads`, `code: "duplicate_lead"`, mavjud
+  lid(lar): id, ism, bosqich, aylantirilgan/yo'qotilgan). Modal "Bu raqamli lid allaqachon bor" deb
+  havola va «Baribir yaratish» (`?force=true`, aka-uka bir raqamda) ko'rsatadi. Solishtirish
+  `Lead.PhoneKey` (asosiy telefon) bo'yicha — aylantirilgan lid ham ko'rsatiladi (aka-uka holati).
+- **Tashqi kanallardagi takroriy murojaat aylantirilgan lidga YOPISHMAYDI** — `FindByPhoneAsync`
+  faqat ochiq (aylantirilmagan) lidni qaytaradi; yangi lidga "Avval o'quvchi bo'lgan: <ism>" izohi
+  (CRM-1, `lead-forms.md` §4). Instagram'da suhbat yangi lidga ko'chadi, lekin eski lid
+  `IgConversation.PastLeadIds` tarixida qoladi — kanal tahlili va reklama ROI'si pul to'lagan ESKI
+  lidni yo'qotmaydi, yangi lid esa Telegram guruhiga YANGI lid bo'lib tushadi
+  (`marketing-instagram.md` §6.1, §6.4).
+- **`lead_new` avto-SMS** endi Instagram va Meta reklama lidlarida ham ketadi (YANGI + telefonli) —
+  `InstagramLeadBridge`/`MetaLeadBridge` ichida (CRM-9). Takroriy murojaatga — yo'q.
+- **Aylantirilgan lid O'CHIRILMAYDI** (400): KPI "shartnoma", sotuv tushumi va qabul cheklisti
+  («Daraja testi») unga tayanadi. UI'da "Lidni o'chirish" yashirin.
+- **O'chirishda** (`LeadRemoval`): hodisalar + sinovlar alohida **`lead_history`** arxiv yozuviga
+  (`{ "Events": [...], "Trials": [...] }`) olinadi — "Arxiv"dan tiklanganda tarix ham qaytadi
+  (`ArchiveController.Restore`); `IgConversation.LeadId` / `IgAdLead.LeadId` TOZALANADI (aks holda
+  Inbox'da «Lidga aylantirish» yashirinar, reklama lidini «Qayta olish» rad etardi).
+- **Sinov darsi** faqat OCHIQ lidga: aylantirilgan yoki yo'qotilgan lidga `POST {id}/trials` → 400
+  (UI'da tugmalar yashirin).
+- **Sinov natijasini TUZATISH mumkin** (`PATCH trials/{id}`, UI'da «Tuzatish…»): kelmagan holatga
+  (`no_show`/`pending`) o'tilsa `AttendedAt` TOZALANADI — KPI `trialCame` to'la `AttendedAt` ni
+  "keldi" deb sanaydi; "keldi" oilasi ichida (keldi → qoldi) sana saqlanadi
+  (`LeadTrialRules.ApplyAttendance`). Tarixga "natijasi tuzatildi: X → Y" yoziladi; bir xil natija
+  qayta yuborilsa hech narsa yozilmaydi.
+- **Kanban ustunlari va lid manbalari AUDITGA yoziladi** (turlar `LeadStage`, `LeadSource` → "Lidlar"):
+  ular voronka, CRM statistikasi va CAPI (bosqich nomi) natijasini o'zgartiradi. Ichida
+  (yo'qotilmagan) lid bor ustun serverda ham o'chirilmaydi (400, soni bilan).
+- **Landing** (`POST /api/public/landing-lead`) anonim chaqiruvchiga lid ID'sini QAYTARMAYDI — faqat
+  `{ ok: true }`.
 
 ## SOTUV BO'LIMI ANALITIKASI (2026-08-19)
 
@@ -121,6 +189,11 @@ shuning uchun yorlig'i ochiq: «Boshqa (sayt, eski yozuvlar)».
 
 Kesimning o'zi — `LeadAnalytics.BuildOrigins`, UI — `components/leads/OriginTable.tsx`
 (CRM statistikasi ham, "Formalar"/"Daraja testi" sahifalari ham AYNAN shuni chizadi).
+
+⚠️ **Kirish to'plamlari IKKI joyda bir xil bo'lishi SHART** — `LeadsController.Analytics` ham,
+`LeadCrmOverview` ham `adsIds` (`IgAdLead.LeadId`) ni uzatadi va tushumni `Math.Max(0, …)` bilan
+qirqadi. Ilgari CRM statistikasi `adsIds` ni uzatmasdi va reklama lidlari u yerda "Boshqa" ga
+tushardi — ikki sahifa, ikki raqam (CRM-2).
 
 ### 3. «Butun CRM manzarasi» — `LeadCrmOverview`
 
@@ -254,3 +327,21 @@ yo'qotilgan, oylik oqim (bo'sh oylar NOL bilan, ≤ 36 oy), eng so'nggi 100 ta y
 
 Ranglar — `#0284c7` (kelgan) + `#e11d48` (yo'qotilgan), `course-analytics.md` §6 juftligi;
 sabablar — `stats/palette.ts`. Foiz alohida o'q bilan CHIZILMAYDI (faqat tooltip/jadvalda).
+
+## O'CHIRILGAN LIDNI ARXIVDAN TIKLASH (2026-10-07, audit CRM-4)
+
+«Sozlamalar → Arxiv» → «Lidlar» → «Tiklash» (`ArchiveController`). Ilgari faqat YALANG lid qaytardi:
+hodisalar va sinov darslari o'chirishda yo'qolgan (tarix bo'sh, kanal `created` hodisasidan aniqlangani
+uchun "Boshqa" ga o'tib ketardi — `LeadOrigins`), audit yo'q edi.
+
+- **Shartnoma (T8):** `LeadsController.Delete` lid suratidan tashqari YORDAMCHI yozuv ham yozadi —
+  `ArchiveService.Snapshot(Type = "lead_history", EntityId = lead.Id, new { Events, Trials })`.
+  Tiklashda (`ArchiveService.RestoreLeadHistoryAsync`) hodisalar va sinov darslari qayta qo'shiladi,
+  yordamchi yozuv o'chiriladi. Lid surati butunlay o'chirilsa — tarix ham birga o'chadi.
+- `lead_history` arxiv ro'yxatida va sanog'ida KO'RINMAYDI (`ArchiveService.HiddenTypes`), o'zi alohida
+  tiklanmaydi (400).
+- ⚠️ **Telefon to'qnashuvi — 400 «Bu raqam bilan boshqa lid bor: <ism>»** (`ConflictingLeadNameAsync`,
+  `PhoneKey`). O'chirilgandan keyin shu raqam bilan yangi lid ochilgan bo'lsa tiklash uni "ikkinchi
+  nusxa" qilmasin: `LeadIntake.FindByPhoneAsync` ENG ESKI lidni qaytaradi, ya'ni tiklangan eski yozuv
+  yangisini telefon bo'yicha qidiruvda to'sib qo'yardi.
+- Bosqichi o'chirilgan bo'lsa — birinchi ustunga. Tiklash auditga yoziladi (`Lead`).

@@ -48,9 +48,12 @@ public static class CourseFinanceReport
         var memberships = await db.StudentGroups.ToListAsync();
         var membsByStudent = memberships.GroupBy(m => m.StudentId)
             .ToDictionary(g => g.Key, g => g.ToList());
-        // Guruhdagi faol o'quvchilar soni (arxivlanmagan a'zolik).
+        // Guruhdagi faol o'quvchilar soni (arxivlanmagan a'zolik). ⚠️ Arxivlangan O'QUVCHI sanalmaydi —
+        // arxiv = o'quvchi ketdi; eski yozuvlarda a'zoligi hali tirik bo'lishi mumkin (pul qatorlari tegilmaydi).
+        var archivedStudents = (await db.Students.AsNoTracking().Where(s => s.IsArchived)
+            .Select(s => s.Id).ToListAsync()).ToHashSet();
         var activeStudentsByGroup = memberships
-            .Where(m => m.IsActive)
+            .Where(m => m.IsActive && !archivedStudents.Contains(m.StudentId))
             .GroupBy(m => m.GroupId)
             .ToDictionary(g => g.Key, g => g.Select(m => m.StudentId).Distinct().Count());
 
@@ -167,7 +170,7 @@ public static class CourseFinanceReport
 
             // Kurs o'quvchilari (shu kurs guruhlaridagi faol a'zolar, takrorlanmas).
             var studentCount = memberships
-                .Where(m => m.IsActive && gids.Contains(m.GroupId))
+                .Where(m => m.IsActive && gids.Contains(m.GroupId) && !archivedStudents.Contains(m.StudentId))
                 .Select(m => m.StudentId).Distinct().Count();
 
             // To'liq to'lagan / billable — shu kurs guruhlari bo'yicha (har (o'quvchi,guruh) bir marta).
@@ -226,8 +229,15 @@ public static class CourseFinanceReport
     {
         var teacherName = await db.Teachers.Where(t => t.Id == teacherId)
             .Select(t => t.FullName).FirstOrDefaultAsync() ?? "—";
-        var groupIds = await db.Classes.Where(c => c.TeacherId == teacherId).Select(c => c.Id).ToListAsync();
-        return await BuildPaymentsAsync(db, teacherId, teacherName, groupIds, from, to);
+        // ⚠️ Audit C3: HOZIRGI guruhlar emas — o'qituvchi TARIXDA o'qitgan guruhlar ham, har (guruh, oy)
+        // esa o'sha oyda unga tegishli darslar ULUSHI bilan (maosh varaqasi bilan AYNAN bir xil qoida —
+        // `GroupOwnership`). Ilgari o'qituvchi almashsa guruhning butun to'lov tarixi yangisiga o'tardi.
+        var groupIds = await GroupOwnership.GroupIdsOfTeacherAsync(db, teacherId);
+        var groups = await db.Classes.AsNoTracking().Where(c => groupIds.Contains(c.Id)).ToListAsync();
+        var own = await GroupOwnership.LoadAsync(db, groups);
+        var roster = groups.Where(g => g.TeacherId == teacherId).Select(g => g.Id).ToList();
+        return await BuildPaymentsAsync(db, teacherId, teacherName, groupIds, from, to,
+            weight: (gid, month) => own.Share(gid, month, teacherId), rosterGroupIds: roster);
     }
 
     /// <summary>
@@ -236,9 +246,16 @@ public static class CourseFinanceReport
     /// teglangan to'lov 100% o'z guruhiga, teglanmagan to'lov esa o'quvchining shu oydagi billable
     /// guruhlari narxi nisbatida taqsimlanadi — bu yerda MAQSADLI guruhlarga tushgan ulush olinadi.
     /// </summary>
+    /// <param name="weight">(guruh, oy) → hisobotga tushadigan ULUSH (0..1). <c>null</c> — 1 (guruh
+    /// hisoboti). O'qituvchi kesimida — o'sha oyda o'qituvchiga tegishli darslar ulushi.</param>
+    /// <param name="rosterGroupIds">Ro'yxatda (pulsiz ham) ko'rinadigan faol a'zolar qaysi guruhlardan.
+    /// <c>null</c> — <paramref name="groupIds"/>. O'qituvchi kesimida faqat HOZIRGI guruhlari: boshqa
+    /// o'qituvchiga o'tgan guruhning bugungi o'quvchilari uniki emas.</param>
     private static async Task<GroupPaymentsReportDto> BuildPaymentsAsync(
-        IAppDbContext db, string reportId, string reportName, List<string> groupIds, string? from, string? to)
+        IAppDbContext db, string reportId, string reportName, List<string> groupIds, string? from, string? to,
+        Func<string, string, decimal>? weight = null, IReadOnlyCollection<string>? rosterGroupIds = null)
     {
+        decimal W(string groupId, string month) => weight is null ? 1m : weight(groupId, month);
         var fromDate = string.IsNullOrEmpty(from)
             ? $"{await TuitionService.AcademicYearStartMonthAsync(db)}-01"
             : from;
@@ -261,13 +278,13 @@ public static class CourseFinanceReport
         // HISOBLANGAN (billed) — maqsadli guruh(lar) MonthlyCharge'laridan, davr ichida.
         var charges = await db.MonthlyCharges
             .Where(c => c.GroupId != null && groupIds.Contains(c.GroupId))
-            .Select(c => new { c.StudentId, c.Month, c.Amount, c.Discount })
+            .Select(c => new { c.StudentId, GroupId = c.GroupId!, c.Month, c.Amount, c.Discount })
             .ToListAsync();
         var billedByStudent = new Dictionary<string, decimal>();
         foreach (var c in charges)
         {
             if (!monthsSet.Contains(c.Month)) continue;
-            var net = c.Amount - c.Discount;
+            var net = (c.Amount - c.Discount) * W(c.GroupId, c.Month);
             if (net <= 0) continue;
             billedByStudent[c.StudentId] = billedByStudent.GetValueOrDefault(c.StudentId) + net;
         }
@@ -281,7 +298,11 @@ public static class CourseFinanceReport
             if (!string.IsNullOrEmpty(p.GroupId))
             {
                 if (targetIds.Contains(p.GroupId))
-                    collectedByStudent[p.StudentId] = collectedByStudent.GetValueOrDefault(p.StudentId) + p.Amount;
+                {
+                    var w = W(p.GroupId, p.Month);
+                    if (w > 0)
+                        collectedByStudent[p.StudentId] = collectedByStudent.GetValueOrDefault(p.StudentId) + p.Amount * w;
+                }
                 continue;
             }
             // Teglanmagan — narx nisbatida maqsadli guruh(lar)ga tushadigan ulushni olamiz.
@@ -290,15 +311,16 @@ public static class CourseFinanceReport
             var denom = active.Sum(m => feeByGroup.GetValueOrDefault(m.GroupId, 0m));
             if (denom <= 0) continue;
             var share = active.Where(m => targetIds.Contains(m.GroupId))
-                .Sum(m => feeByGroup.GetValueOrDefault(m.GroupId, 0m));
+                .Sum(m => feeByGroup.GetValueOrDefault(m.GroupId, 0m) * W(m.GroupId, p.Month));
             if (share <= 0) continue;
             collectedByStudent[p.StudentId] =
                 collectedByStudent.GetValueOrDefault(p.StudentId) + p.Amount * share / denom;
         }
 
         // Ko'rsatiladigan o'quvchilar: maqsadli guruh(lar) faol a'zolari + hisoblangani/yig'ilgani borlar.
+        var rosterIds = rosterGroupIds is null ? targetIds : rosterGroupIds.ToHashSet();
         var sids = new HashSet<string>(memberships
-            .Where(m => targetIds.Contains(m.GroupId) && m.IsActive).Select(m => m.StudentId));
+            .Where(m => rosterIds.Contains(m.GroupId) && m.IsActive).Select(m => m.StudentId));
         foreach (var k in billedByStudent.Keys) sids.Add(k);
         foreach (var k in collectedByStudent.Keys) sids.Add(k);
 

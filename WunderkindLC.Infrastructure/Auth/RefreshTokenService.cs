@@ -90,7 +90,16 @@ public class RefreshTokenService(
         {
             // Grace: bir vaqtli so'rov / ko'p tab — eskisini legitim deb yangi juftlik beramiz.
             if (now - token.RevokedAt.Value <= TimeSpan.FromSeconds(GraceSeconds))
+            {
+                // ⚠️ Grace FAQAT rotatsiya poygasi uchun — nasl hali TIRIK bo'lsa. Sessiya ATAYIN
+                // tugatilgan bo'lsa (logout, parol tiklash/almashtirish, qurilma bekor —
+                // `RevokeAllForUserAsync`) naslda faol token qolmaydi: aks holda 60 soniyalik oyna
+                // eski telefonga parol almashtirilgandan KEYIN ham yangi sessiya berib yuborardi.
+                if (!await db.RefreshTokens.AnyAsync(
+                        t => t.FamilyId == token.FamilyId && t.RevokedAt == null, ct))
+                    return Fail("revoked");
                 return await IssueRotatedAsync(token.FamilyId, token.UserId, ip, ua, now, ct);
+            }
 
             // Grace'dan keyin — REUSE HUJUMI: butun naslni bekor qilamiz.
             await RevokeFamilyAsync(token.FamilyId, ct);
@@ -132,6 +141,64 @@ public class RefreshTokenService(
         if (tokens.Count > 0) await db.SaveChangesAsync(ct);
     }
 
+    /// <summary>
+    /// FOYDALANUVCHINING BARCHA SESSIYALARINI TUGATADI — uning hamma faol refresh tokenlari bekor
+    /// qilinadi. Chaqiriladigan joylar: parol tiklash/o'rnatish (admin), o'z parolini almashtirish,
+    /// ishonchli qurilmani bekor qilish.
+    ///
+    /// <para>⚠️ Nega SHART: refresh token 30 kun SIRPANUVCHI (har refresh'da yangilanadi). Busiz
+    /// yo'qolgan telefon yoki parolini bilib olgan begona odam parol almashtirilgandan keyin ham
+    /// cheksiz kirib yuraverardi — parol tiklash bezakka aylanardi.</para>
+    ///
+    /// <para>⚠️ Access token (JWT) bazada yo'q — u o'z muddati (<c>JwtOptions.AccessMinutes</c>,
+    /// standart 60 daq) tugaguncha ishlaydi, keyin refresh rad etiladi va sessiya tugaydi.</para>
+    ///
+    /// <para><paramref name="keepFamilyId"/> — tirik qoladigan sessiya (foydalanuvchi O'Z parolini
+    /// almashtirgan qurilma; qarang <see cref="CurrentFamilyAsync"/>). <c>null</c> — hammasi.</para>
+    ///
+    /// <para><c>SaveChanges</c> QILMAYDI — parol o'zgarishi bilan BITTA tranzaksiyada saqlansin
+    /// (biri yozilib, ikkinchisi yozilmay qolmasin). Bekor qilingan tokenlar sonini qaytaradi.</para>
+    /// </summary>
+    public static async Task<int> RevokeAllForUserAsync(
+        AppDbContext db, string userId, Guid? keepFamilyId = null, CancellationToken ct = default)
+    {
+        if (string.IsNullOrEmpty(userId)) return 0;
+        var now = DateTime.UtcNow;
+        var tokens = await db.RefreshTokens
+            .Where(t => t.UserId == userId && t.RevokedAt == null)
+            .ToListAsync(ct);
+        var n = 0;
+        foreach (var t in tokens)
+        {
+            if (keepFamilyId is { } keep && t.FamilyId == keep) continue;
+            t.RevokedAt = now;
+            n++;
+        }
+        return n;
+    }
+
+    /// <summary>
+    /// Shu so'rov qaysi SESSIYAdan (refresh token naslidan) kelgan: avval web'ning <c>rt</c>
+    /// cookie'si (xom token → hash → nasl), bo'lmasa access tokendagi
+    /// <see cref="JwtTokenService.SessionClaimType"/> claim'i (mobil ilova). Token boshqa
+    /// foydalanuvchiniki bo'lsa yoki topilmasa — <c>null</c> (ya'ni hech qaysi sessiya saqlanmaydi).
+    /// </summary>
+    public static async Task<Guid?> CurrentFamilyAsync(
+        AppDbContext db, string userId, string? rawRefreshToken, string? sessionClaim,
+        CancellationToken ct = default)
+    {
+        if (!string.IsNullOrWhiteSpace(rawRefreshToken))
+        {
+            var hash = Hash(rawRefreshToken);
+            var family = await db.RefreshTokens.AsNoTracking()
+                .Where(t => t.TokenHash == hash && t.UserId == userId)
+                .Select(t => (Guid?)t.FamilyId)
+                .FirstOrDefaultAsync(ct);
+            if (family is not null) return family;
+        }
+        return Guid.TryParse(sessionClaim, out var g) ? g : null;
+    }
+
     // ---- Ichki yordamchilar ----
 
     /// <summary>Yangi access + refresh juftligini yaratadi (rotatsiya va grace ikkalasida bir xil yo'l).
@@ -162,7 +229,13 @@ public class RefreshTokenService(
             UserAgent = Truncate(ua, 256),
         };
         db.RefreshTokens.Add(entity);
-        var access = jwt.CreateToken(user);
+        // Sessiya nasli access tokenga ham yoziladi — o'z parolini almashtirganda AYNAN shu
+        // sessiya saqlanib, qolganlari bekor qilinadi (`RevokeAllForUserAsync`).
+        var access = jwt.CreateToken(user, familyId);
+        // "Oxirgi kirish" — refresh ham FAOL foydalanish: ilova bir marta login qilib, keyin
+        // 30 kun refresh bilan ishlaydi, ya'ni faqat login'da yozilsa "oxirgi kirish" bir oy
+        // eskirib turardi. Bu so'rov baribir saqlanadi — qo'shimcha yozuv yo'q.
+        StampLastSeen(user, AppClock.Now);
         await db.SaveChangesAsync(ct);
         return new RotateResult(true, access, raw, user, entity.ExpiresAt, null);
     }
@@ -180,6 +253,25 @@ public class RefreshTokenService(
             _ => false, // admin/superadmin/staff/parent — mavjudligi yetarli
         };
         return blocked ? null : user;
+    }
+
+    /// <summary>"Oxirgi ko'rilgan" daqiqasi qanchalik eskirganda yangilanadi. Kichik oynalarda
+    /// (bir nechta tab bir vaqtda refresh qilganda) har so'rovda qayta yozilmasin.</summary>
+    public const int LastSeenStampMinutes = 5;
+
+    /// <summary>
+    /// <see cref="AppUser.LastLoginAt"/> ni yangilaydi — faqat bo'sh yoki
+    /// <see cref="LastSeenStampMinutes"/> daqiqadan eski bo'lsa (sof, testlanadi). SaveChanges QILMAYDI.
+    /// Format login'dagi bilan bir xil (<c>yyyy-MM-ddTHH:mm:ss</c>, markaz vaqti).
+    /// </summary>
+    public static bool StampLastSeen(AppUser user, DateTime now)
+    {
+        if (DateTime.TryParse(user.LastLoginAt, System.Globalization.CultureInfo.InvariantCulture,
+                System.Globalization.DateTimeStyles.None, out var last)
+            && (now - last).TotalMinutes < LastSeenStampMinutes && last <= now)
+            return false;
+        user.LastLoginAt = now.ToString("yyyy-MM-ddTHH:mm:ss", System.Globalization.CultureInfo.InvariantCulture);
+        return true;
     }
 
     private static RotateResult Fail(string error) =>

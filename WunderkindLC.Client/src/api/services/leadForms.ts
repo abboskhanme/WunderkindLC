@@ -232,8 +232,17 @@ export async function duplicateLeadForm(id: string): Promise<LeadFormDetail> {
   return data
 }
 
+/**
+ * Formani o'chirish. ⚠️ Arizasi bor forma O'CHIRILMAYDI (server 400 — sababi bilan): o'rniga
+ * `setLeadFormActive(id, false)` (lidlarning kanali va forma statistikasi saqlanadi).
+ */
 export async function deleteLeadForm(id: string): Promise<void> {
   await api.delete(`/admin/lead-forms/${id}`)
+}
+
+/** Formani yoqish / o'chirib qo'yish (havola ariza qabul qilmaydi, arizalar qoladi). */
+export async function setLeadFormActive(id: string, isActive: boolean): Promise<void> {
+  await api.patch(`/admin/lead-forms/${id}/active`, { isActive })
 }
 
 /** Arizalar — barcha formalar bo'yicha yoki bitta forma bo'yicha. */

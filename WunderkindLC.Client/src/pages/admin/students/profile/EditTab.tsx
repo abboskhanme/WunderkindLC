@@ -223,7 +223,7 @@ export function EditTab({
         open={archiveOpen}
         category="archive_student"
         title="O'quvchini arxivga ko'chirish"
-        message={`"${student.fullName}" o'quvchini arxivga ko'chirasiz. Tarixiy ma'lumotlar (jurnal, davomat, to'lovlar) saqlanadi, lekin faol ro'yxatdan yashirinadi, oylik to'lov hisoblanmaydi va login bloklanadi.`}
+        message={`"${student.fullName}" o'quvchini arxivga ko'chirasiz. U BARCHA guruhlaridan chiqariladi (joriy oy qatnashgan darslar bo'yicha yopiladi) — arxivdan qaytarilsa guruhga qayta qo'shiladi. Tarixiy ma'lumotlar (jurnal, davomat, to'lovlar) saqlanadi, oylik to'lov hisoblanmaydi va login bloklanadi.`}
         confirmLabel="Arxivga ko'chirish"
         tone="red"
         onConfirm={doArchive}

@@ -82,7 +82,19 @@ public static class JournalService
         if (months.Count == 0) months.Add(cur);
         var resolved = !string.IsNullOrEmpty(month) && months.Contains(month) ? month! : months[^1];
 
-        var shown = allMemberships.Where(m => m.IsActive || EndedVisibleIn(m, resolved)).ToList();
+        // ARXIVLANGAN o'quvchi (eski yozuvlarda a'zoligi hali TIRIK bo'lishi mumkin) JORIY oy
+        // jurnalida ko'rinmaydi: aks holda o'qituvchi uni har darsda belgilashga majbur bo'lar,
+        // tezkor davomat "hammasi belgilanmaguncha saqlanmaydi" qoidasi bilan to'xtab qolar va ota-onaga
+        // "darsga kelmadi" ketardi. O'TGAN oylarda — o'qigan joyida ko'rinadi (tarix yo'qolmasin).
+        var curMonthNow = TuitionService.CurrentMonth();
+        var hideArchivedLive = string.CompareOrdinal(resolved, curMonthNow) >= 0;
+        var archivedIds = !hideArchivedLive ? new HashSet<string>()
+            : (await db.Students.AsNoTracking()
+                .Where(s => s.IsArchived && db.StudentGroups.Any(sg => sg.GroupId == classId && sg.IsActive && sg.StudentId == s.Id))
+                .Select(s => s.Id).ToListAsync()).ToHashSet();
+        var shown = allMemberships
+            .Where(m => m.IsActive ? !archivedIds.Contains(m.StudentId) : EndedVisibleIn(m, resolved))
+            .ToList();
         var ids = shown.Select(m => m.StudentId).ToList();
         var studentById = (await db.Students.Where(s => ids.Contains(s.Id)).ToListAsync())
             .ToDictionary(s => s.Id);
@@ -95,7 +107,6 @@ public static class JournalService
         // o'qituvchi controlleri esa (TeacherPortalController) bayroqli qatorlarni javobdan olib tashlaydi.
         // DIQQAT: darvoza BUGUNGI holatga qarab ishlaydi (ko'rilayotgan `resolved` oyga emas).
         var policy = await JournalPolicy.GetAsync(db);
-        var curMonthNow = TuitionService.CurrentMonth();
         var dayNow = AppClock.Today.Day;
         var students = shown
             .Where(m => studentById.ContainsKey(m.StudentId))
@@ -115,7 +126,7 @@ public static class JournalService
                     // ("2026-09-18T17:39:16Z") bo'lib tushgan va "2026-09-18" >= o'sha satr FALSE
                     // chiqib, o'sha kungi dars hech qachon avtomatik "keldi" bo'lmasdi.
                     MemberStart(m) ?? "", DayOnly(m.RecordedAt), ended.Length > 0 ? EndOf(m) : m.FrozenAt ?? "", bal.DebtMonths,
-                    payHidden, payReason, st.BirthCertificateUrl ?? "", ended);
+                    payHidden, payReason, st.BirthCertificateUrl ?? "", ended, Debtor: bal.Balance < 0);
             })
             .OrderBy(s => s.FullName, StringComparer.OrdinalIgnoreCase)
             .ToList();
@@ -139,7 +150,7 @@ public static class JournalService
             ? new List<JournalEntryDto>()
             : await db.JournalEntries
                 .Where(e => e.ClassId == classId && e.SubjectId == subjectId && e.Date.StartsWith(resolved))
-                .Select(e => new JournalEntryDto(e.StudentId, e.Date, e.Period, e.Grade, e.ReasonId, e.Homework, e.Behavior, e.Mastery, e.Present))
+                .Select(e => new JournalEntryDto(e.StudentId, e.Date, e.Period, e.Grade, e.ReasonId, e.Homework, e.Behavior, e.Mastery, e.Present, e.GradeFromCriteria))
                 .ToListAsync();
 
         // "O'tildi" deb belgilangan dars sanalari — sababsiz o'quvchi shu kunda KELDI (yashil) deb ko'rsatiladi.
@@ -209,11 +220,20 @@ public static class JournalService
 
     /// <summary>
     /// Bitta darsni BIR MARTALIK boshqa kunga ko'chiradi (<paramref name="fromDate"/> → <paramref name="toDate"/>).
-    /// Asl kundagi jurnal ma'lumotlari (baho/davomat/mavzu) yangi kunga KO'CHIRILADI. Avval ko'chirilgan
+    /// Asl kundagi jurnal ma'lumotlari (baho/davomat/mavzu/MEZON belgilari) yangi kunga KO'CHIRILADI. Avval ko'chirilgan
     /// dars yana ko'chirilsa — zanjir yig'iladi (asl kun → yangi kun). Xatolarni InvalidOperationException bilan qaytaradi.
+    ///
+    /// <para>⚠️ Ko'chirish oyning dars sonini (maosh maxraji) va JURNAL JARIMASINI o'zgartiradi
+    /// (<see cref="SalaryJournalStats"/>: asl kun rejadan chiqadi). Shuning uchun u jurnal
+    /// siyosatiga bo'ysunadi (<see cref="CheckMoveAsync"/>): ilgari o'qituvchi dushanbadagi
+    /// belgilamagan darsini keyingi haftaga ko'chirib, jarimadan jimgina qutulardi.</para>
+    /// <para><paramref name="isAdmin"/> — admin jurnali (siyosat faqat "Adminlarga ham qo'llash"
+    /// yoqilganda; maosh muhlati va "o'tgan darsni kelajakka" taqig'i adminga QO'LLANMAYDI —
+    /// kechikib rasmiylashtirilgan "qo'shimcha dars" admin qarori, u tarixga yoziladi).</para>
     /// </summary>
     public static async Task<LessonReschedule> RescheduleLessonAsync(
-        IAppDbContext db, string classId, string fromDate, string toDate, string? time, string? actor)
+        IAppDbContext db, string classId, string fromDate, string toDate, string? time, string? actor,
+        bool isAdmin, AuditService? audit = null)
     {
         var cls = await db.Classes.FindAsync(classId)
             ?? throw new InvalidOperationException("Guruh topilmadi");
@@ -237,6 +257,9 @@ public static class JournalService
         var toEffective = EffectiveLessonDatesInMonth(cls.Days, toDate[..7], moveRecords);
         if (toEffective.Contains(toDate))
             throw new InvalidOperationException("Bu kunda allaqachon dars bor");
+
+        var deny = await CheckMoveAsync(db, cls, fromDate, toDate, isAdmin);
+        if (deny is not null) throw new InvalidOperationException(deny);
 
         // Zanjirni yig'ish: agar shu darsning o'zi allaqachon ko'chirilgan bo'lsa (ToDate == fromDate) — o'sha
         // yozuvni yangilaymiz (asl kun saqlanadi). Aks holda yangi yozuv.
@@ -262,44 +285,187 @@ public static class JournalService
 
         // Mavjud jurnal ma'lumotlarini asl kundan yangi kunga ko'chiramiz (yo'qolmasin).
         await MoveJournalDataAsync(db, classId, fromDate, toDate);
+        audit?.Record(AuditService.EntityGroup, classId, "update",
+            $"Dars ko'chirildi: «{cls.Name}» guruhi — {UzDay(fromDate)} → {UzDay(toDate)}"
+            + (string.IsNullOrWhiteSpace(time) ? "" : $" (soat {time})"),
+            before: new { Dars = fromDate }, after: new { Dars = toDate, Vaqt = time });
         await db.SaveChangesAsync();
         return rec;
     }
 
-    /// <summary>Ko'chirishni bekor qiladi — dars asl kuniga qaytadi (ma'lumotlar ham qaytariladi).</summary>
-    public static async Task CancelRescheduleAsync(IAppDbContext db, string id)
+    /// <summary>Ko'chirishni bekor qiladi — dars asl kuniga qaytadi (ma'lumotlar ham qaytariladi).
+    /// Ko'chirish bilan BIR XIL siyosat (<see cref="CheckMoveAsync"/>): bu ham darsni boshqa kunga olib o'tadi.</summary>
+    public static async Task CancelRescheduleAsync(IAppDbContext db, string id, bool isAdmin, AuditService? audit = null)
     {
         var rec = await db.LessonReschedules.FirstOrDefaultAsync(r => r.Id == id);
         if (rec is null) return;
+        var cls = await db.Classes.FindAsync(rec.ClassId);
+        if (cls is not null)
+        {
+            var deny = await CheckMoveAsync(db, cls, rec.ToDate, rec.FromDate, isAdmin);
+            if (deny is not null) throw new InvalidOperationException(deny);
+        }
         await MoveJournalDataAsync(db, rec.ClassId, rec.ToDate, rec.FromDate);
         db.LessonReschedules.Remove(rec);
+        audit?.Record(AuditService.EntityGroup, rec.ClassId, "update",
+            $"Dars ko'chirish bekor qilindi: «{cls?.Name}» guruhi — dars {UzDay(rec.ToDate)} dan asl kuniga ({UzDay(rec.FromDate)}) qaytdi",
+            before: new { Dars = rec.ToDate }, after: new { Dars = rec.FromDate });
         await db.SaveChangesAsync();
     }
 
-    /// <summary>Guruhning bir kundagi jurnal yozuvlarini (JournalEntry + LessonNote) boshqa kunga ko'chiradi.</summary>
+    /// <summary>
+    /// Darsni <paramref name="from"/> kunidan <paramref name="to"/> kuniga olib o'tish MUMKINMI.
+    /// null = ruxsat; aks holda foydalanuvchiga ko'rsatiladigan sabab.
+    /// <list type="number">
+    /// <item><b>O'rinbosar</b> qamragan kun ko'chirilmaydi (hech kimga): tayinlov o'sha SANAGA
+    ///   bog'langan — dars ketsa, o'rinbosarning haqi va kirish huquqi dars yo'q kunda qolib ketardi.</item>
+    /// <item><b>Jurnal siyosati</b> (<see cref="JournalPolicy.CheckAsync"/>) — ikkala sana ham (o'tgan
+    ///   bo'lsa): yopiq davrdagi darsni ko'chirish ham o'sha davrni tahrirlash.</item>
+    /// <item>O'qituvchi uchun: o'tgan darsni KELAJAKKA ko'chirib bo'lmaydi va maosh muhlati
+    ///   (<see cref="CenterMeta.SalaryGraceDays"/>) o'tgan darsni ham — aks holda belgilanmagan dars
+    ///   jarimasi (<see cref="SalaryJournalStats"/>) jimgina yo'qolardi.</item>
+    /// </list>
+    /// </summary>
+    public static async Task<string?> CheckMoveAsync(IAppDbContext db, Group cls, string from, string to, bool isAdmin)
+    {
+        var subs = await db.SubstituteTeacherAssignments.AsNoTracking()
+            .Where(a => a.GroupId == cls.Id && a.IsActive).ToListAsync();
+        if (subs.Any(a => SubstituteTeacherService.CoversDate(a, from)))
+            return "Bu kunga o'rinbosar o'qituvchi biriktirilgan — avval o'rinbosar tayinlovini o'zgartiring (O'qituvchilar → O'rinbosarlar), so'ng darsni ko'chiring";
+
+        var today = AppClock.Today.ToString("yyyy-MM-dd");
+        var subject = cls.CourseId ?? "";
+        foreach (var d in new[] { from, to })
+        {
+            if (string.CompareOrdinal(d, today) >= 0) continue;
+            var deny = await JournalPolicy.CheckAsync(db, cls.Id, subject, d, 1, isAdmin, skipConducted: true);
+            if (deny is not null) return deny;
+        }
+        if (isAdmin) return null;
+
+        if (string.CompareOrdinal(from, today) < 0 && string.CompareOrdinal(to, today) > 0)
+            return "O'tgan darsni kelajakka ko'chirib bo'lmaydi — o'tkazib yuborilgan darsni qayta o'tish kerak bo'lsa admin bilan bog'laning";
+
+        var p = await JournalPolicy.GetAsync(db);
+        if (p.SalaryRequireJournal && string.CompareOrdinal(from, today) < 0)
+        {
+            var cutoff = AppClock.Today.AddDays(-Math.Max(0, p.SalaryGraceDays)).ToString("yyyy-MM-dd");
+            if (string.CompareOrdinal(from, cutoff) <= 0)
+                return "Bu darsni belgilash muhlati o'tgan (maosh hisobida yopilgan) — ko'chirish uchun admin bilan bog'laning";
+        }
+        return null;
+    }
+
+    /// <summary>"2026-10-07" → "7-oktabr" (audit matni uchun).</summary>
+    private static string UzDay(string iso) =>
+        iso is { Length: >= 10 } && int.TryParse(iso[5..7], out var mm) && int.TryParse(iso[8..10], out var dd)
+            ? $"{dd}-{MessageTokenizer.MonthNameUz(mm)}"
+            : iso;
+
+    /// <summary>Guruhning bir kundagi jurnal yozuvlarini (JournalEntry + LessonNote + baholash MEZONI belgilari)
+    /// boshqa kunga ko'chiradi. ⚠️ Ilgari mezon belgilari (<see cref="CriterionGrade"/>) eski kunda qolib
+    /// ketardi — baholash taxtasida dars yo'q kunda osilib turar, yangi kunda esa bo'sh ko'rinardi.</summary>
     private static async Task MoveJournalDataAsync(IAppDbContext db, string classId, string fromDate, string toDate)
     {
         var entries = await db.JournalEntries.Where(e => e.ClassId == classId && e.Date == fromDate).ToListAsync();
         foreach (var e in entries) e.Date = toDate;
         var notes = await db.LessonNotes.Where(n => n.ClassId == classId && n.Date == fromDate).ToListAsync();
         foreach (var n in notes) n.Date = toDate;
+
+        // Mezon belgilari: (guruh, o'quvchi, mezon, sana) UNIKAL — yangi kunda xuddi shunday qator
+        // bo'lsa (eski qoldiq) ikkalasi birlashtiriladi, aks holda sana shunchaki almashadi.
+        var grades = await db.CriterionGrades.Where(g => g.GroupId == classId && g.Date == fromDate).ToListAsync();
+        if (grades.Count > 0)
+        {
+            var atTarget = (await db.CriterionGrades.Where(g => g.GroupId == classId && g.Date == toDate).ToListAsync())
+                .ToDictionary(g => (g.StudentId, g.CriterionId));
+            foreach (var g in grades)
+            {
+                if (atTarget.TryGetValue((g.StudentId, g.CriterionId), out var dst))
+                {
+                    dst.Done = dst.Done || g.Done;
+                    db.CriterionGrades.Remove(g);
+                }
+                else g.Date = toDate;
+            }
+        }
     }
 
     public static async Task<List<JournalEntryDto>> GetEntriesAsync(
         IAppDbContext db, string classId, string subjectId, int quarter) =>
         await db.JournalEntries
             .Where(e => e.ClassId == classId && e.SubjectId == subjectId && e.Quarter == quarter)
-            .Select(e => new JournalEntryDto(e.StudentId, e.Date, e.Period, e.Grade, e.ReasonId, e.Homework, e.Behavior, e.Mastery, e.Present))
+            .Select(e => new JournalEntryDto(e.StudentId, e.Date, e.Period, e.Grade, e.ReasonId, e.Homework, e.Behavior, e.Mastery, e.Present, e.GradeFromCriteria))
             .ToListAsync();
 
+    // ---------- A'ZOLIK DARVOZASI (kimga yozish mumkin) ----------
+
+    public const string NotMemberMessage = "O'quvchi bu guruhning a'zosi emas — jurnalga yozib bo'lmaydi";
+    public const string NotActiveMemberMessage =
+        "O'quvchi guruhda faol emas (muzlatilgan yoki chiqqan) — jurnalga yozib bo'lmaydi";
+    public const string ArchivedStudentMessage = "O'quvchi arxivlangan — jurnalga yozib bo'lmaydi";
+    public const string OutsideMembershipMessage =
+        "O'quvchi bu sanada guruhda bo'lmagan (muzlatilgan yoki chiqqan) — jurnalga yozib bo'lmaydi";
+    public const string BeforeMemberStartMessage =
+        "O'quvchi guruhga qo'shilgan/aktivlashtirilgan sanadan oldingi darsga ma'lumot kiritib bo'lmaydi";
+
     /// <summary>
-    /// Bitta katakni belgilash — baho yoki davomat sababi (mavjud bo'lsa ustiga yoziladi).
+    /// Shu o'quvchiga shu SANADAGI darsga jurnalda yozish mumkinmi (sof funksiya, testlangan).
+    /// null = mumkin, aks holda sabab.
+    /// <list type="bullet">
+    /// <item><b>a'zolik yo'q</b> — hech kim yoza olmaydi (ilgari "a'zolik topilmadi" = "cheklov yo'q"
+    ///   deb talqin qilinardi va API orqali begona o'quvchiga baho/davomat qo'yib bo'lardi);</item>
+    /// <item>a'zolik boshlanishidan (<see cref="MemberStart"/>) oldingi dars — hech kim;</item>
+    /// <item><b>o'qituvchi</b> (<paramref name="teacher"/>) — faqat FAOL, muzlatilmagan, arxivlanmagan
+    ///   a'zo (u jurnalida faqat shularni ko'radi);</item>
+    /// <item><b>admin</b> — muzlatilgan/chiqqan o'quvchini ham tuzata oladi, lekin faqat u guruhda
+    ///   BO'LGAN kunga (<see cref="StudentJournalBuilder.BoundsOf"/>: muzlatish/chiqish sanasigacha).
+    ///   Tugash sanasi noma'lum muzlatilgan/yopiq a'zolik — rad etiladi (qamrovni tekshirib bo'lmaydi).</item>
+    /// </list>
     /// </summary>
-    /// <summary>Bitta katakni belgilaydi (baho/davomat). Qaytaradi: davomat SABABI YANGI belgilandimi
-    /// (req.ReasonId != null va eski qiymatdan o'zgardi) — chaqiruvchi shunga qarab "darsga kelmadi"
-    /// avto-xabarini (attendance_absent) yuboradi.</summary>
+    public static string? MemberWriteError(StudentGroup? m, bool studentArchived, string date, bool teacher)
+    {
+        if (m is null) return NotMemberMessage;
+        var start = MemberStart(m);
+        if (start is not null && string.CompareOrdinal(date, start) < 0) return BeforeMemberStartMessage;
+        var frozen = string.Equals(m.Status, "frozen", StringComparison.Ordinal);
+        if (teacher)
+        {
+            if (!m.IsActive || frozen) return NotActiveMemberMessage;
+            if (studentArchived) return ArchivedStudentMessage;
+            return null;
+        }
+        if (m.IsActive && !frozen) return null;
+        // Muzlatilgan/chiqqan: faqat tugash sanasigacha (shu kun ham). Sana noma'lum — qamrovni bilib bo'lmaydi.
+        var end = StudentJournalBuilder.BoundsOf(m).MemberEnd;
+        if (end is null || string.CompareOrdinal(date, end) > 0) return OutsideMembershipMessage;
+        return null;
+    }
+
+    /// <summary>O'quvchining shu guruhdagi a'zoligi (bir nechta qator bo'lsa — FAOLI birinchi).</summary>
+    private static StudentGroup? PickMembership(IEnumerable<StudentGroup> rows) =>
+        rows.OrderByDescending(sg => sg.IsActive).ThenByDescending(sg => sg.LeftAt ?? "").FirstOrDefault();
+
+    /// <summary><see cref="MemberWriteError"/> ning bazadan o'qiydigan shakli (bitta o'quvchi).</summary>
+    public static async Task<string?> MemberWriteErrorAsync(
+        IAppDbContext db, string classId, string studentId, string date, bool teacher)
+    {
+        var m = PickMembership(await db.StudentGroups.AsNoTracking()
+            .Where(sg => sg.GroupId == classId && sg.StudentId == studentId).ToListAsync());
+        var archived = await db.Students.AsNoTracking().AnyAsync(s => s.Id == studentId && s.IsArchived);
+        return MemberWriteError(m, archived, date, teacher);
+    }
+
+    /// <summary>
+    /// Bitta katakni belgilaydi (baho/davomat). Qaytaradi: bu YANGI "darsga kelmadi" hodisasimi
+    /// (<see cref="AttendanceNotify.IsNewAbsence"/>: kech bo'lmagan sabab qo'yildi VA oldin "kelmadi"
+    /// emas edi) — chaqiruvchi faqat shunda <c>attendance_absent</c> avto-xabarini yuboradi.
+    /// <para><paramref name="teacher"/> — o'qituvchi yo'li: faqat faol, muzlatilmagan a'zoga
+    /// (<see cref="MemberWriteError"/>).</para>
+    /// </summary>
     public static async Task<bool> SetEntryAsync(
-        IAppDbContext db, SetJournalEntryRequest req, FcmService? fcm = null, AutoMessageService? autoMsg = null)
+        IAppDbContext db, SetJournalEntryRequest req, FcmService? fcm = null, AutoMessageService? autoMsg = null,
+        bool teacher = false)
     {
         // Guruhning StartDate'i tekshirish — undan oldin dars bo'lmaydi.
         var cls = await db.Classes.FindAsync(req.ClassId);
@@ -313,13 +479,11 @@ public static class JournalService
         if (string.Compare(req.Date, today) > 0)
             throw new InvalidOperationException("Kelasi kunlarga o'quvchi ma'lumoti kirita olmassin");
 
-        // O'quvchining shu guruhdagi a'zoligi boshlanishidan (aktivlashtirilgan bo'lsa ActivatedAt, aks holda
-        // JoinedAt) OLDINGI darslarga ma'lumot kiritilmaydi — yangi qo'shilgan o'quvchi orqadagi darslarga tushmasin.
-        var membership = await db.StudentGroups.FirstOrDefaultAsync(sg =>
-            sg.GroupId == req.ClassId && sg.StudentId == req.StudentId && sg.IsActive);
-        var memberStart = MemberStart(membership);
-        if (memberStart is not null && string.Compare(req.Date, memberStart) < 0)
-            throw new InvalidOperationException("O'quvchi guruhga qo'shilgan/aktivlashtirilgan sanadan oldingi darsga ma'lumot kiritib bo'lmaydi");
+        // A'ZOLIK: faqat shu guruh a'zosiga va u guruhda bo'lgan kunga (a'zolik boshlanishidan oldingi
+        // darsga ham emas). Qoida — MemberWriteError (o'qituvchi uchun qat'iyroq).
+        var memberError = await MemberWriteErrorAsync(db, req.ClassId, req.StudentId, req.Date, teacher);
+        if (memberError is not null)
+            throw new InvalidOperationException(memberError);
 
         var entry = await db.JournalEntries.FirstOrDefaultAsync(e =>
             e.ClassId == req.ClassId && e.SubjectId == req.SubjectId && e.Quarter == req.Quarter &&
@@ -343,6 +507,10 @@ public static class JournalService
             };
             db.JournalEntries.Add(entry);
         }
+        // BAHO EGASI: qo'lda O'ZGARTIRILGAN baho mezon sinxronining mulki bo'lishdan chiqadi (keyin mezon
+        // belgilari unga tegmaydi). Baho o'zgarmagan bo'lsa (masalan katakda faqat uy vazifa tahrirlandi)
+        // egasi o'zgarmaydi — aks holda mezon bahosi "qo'lda" bo'lib, ballda IKKI marta sanalardi.
+        if (req.Grade != entry.Grade || req.Grade is null) entry.GradeFromCriteria = false;
         entry.Grade = req.Grade;
         entry.ReasonId = req.ReasonId;
         // "Keldi" va "kelmadi (sabab)" bir vaqtda bo'lmaydi — sabab tanlangan bo'lsa Present o'chadi.
@@ -373,27 +541,34 @@ public static class JournalService
 
         await db.SaveChangesAsync();
 
-        // Avtomatik push: farzandi baho olsa yoki davomatda belgilansa, oila ilovasiga xabar.
-        await NotifyEntryAsync(db, fcm, autoMsg, req, student, cls, oldGrade, oldReason);
+        // YANGI "kelmadi" hodisasimi: "kech" — kelmadi EMAS; sababni almashtirish — yangi hodisa EMAS.
+        var newAbsence = req.ReasonId is not null
+            && AttendanceNotify.IsNewAbsence(oldReason, req.ReasonId, await AttendanceNotify.LateReasonIdsAsync(db));
 
-        // Davomat sababi YANGI belgilandimi (kelmadi) — chaqiruvchi avto-xabar yuborishi uchun.
-        return req.ReasonId is not null && req.ReasonId != oldReason;
+        // Avtomatik push: farzandi baho olsa yoki davomatda belgilansa, oila ilovasiga xabar.
+        await NotifyEntryAsync(db, fcm, autoMsg, req, student, cls, oldGrade, newAbsence);
+
+        return newAbsence;
     }
 
     /// <summary>Baho/davomat yozuvi o'zgarganda oila ilovasiga push yuboradi (fire-and-forget).
     /// BAHO: agar "grade_entered" avto-xabar qoidasi MAVJUD bo'lsa (yoqilgan-o'chirilganidan qat'i nazar) —
     /// yuborish to'liq <see cref="AutoMessageService"/>ga o'tadi (qoida o'chiq bo'lsa hech narsa yuborilmaydi);
     /// qoida UMUMAN yo'q bo'lsa — eski to'g'ridan-to'g'ri push saqlanadi (default-on, PaymentReminderService
-    /// patterni). Davomat (type "attendance") push'i o'zgarmagan.</summary>
+    /// patterni).
+    /// <para>DAVOMAT — AYNAN shu naqsh: faqat YANGI "kelmadi" (<paramref name="newAbsence"/>; "kech" HECH
+    /// QACHON) va faqat "attendance_absent" qoidasi UMUMAN yo'q bo'lsa. Qoida bor bo'lsa xabarni chaqiruvchi
+    /// (controller) dispatcher orqali yuboradi — ilgari ikkalasi BIRGA ketar va ota-ona bitta hodisa uchun
+    /// IKKI push olardi. Arxivlangan o'quvchiga hech narsa ketmaydi.</para></summary>
     private static async Task NotifyEntryAsync(
         IAppDbContext db, FcmService? fcm, AutoMessageService? autoMsg, SetJournalEntryRequest req,
-        Student? student, Group? group, int? oldGrade, string? oldReason)
+        Student? student, Group? group, int? oldGrade, bool newAbsence)
     {
         // Xabar KONTEKSTI — aynan shu dars guruhi ({guruh}, {oqituvchi}, {dars_*} tokenlari shundan).
         var groupName = group?.Name ?? "";
-        if (student is null) return;
+        if (student is null || student.IsArchived) return;
         var notifyGrade = req.Grade.HasValue && req.Grade != oldGrade;
-        var notifyAbsence = !notifyGrade && req.ReasonId is not null && req.ReasonId != oldReason;
+        var notifyAbsence = !notifyGrade && newAbsence;
         if (!notifyGrade && !notifyAbsence) return;
 
         // Baho — yangi yagona avto-xabar tizimi orqali (qoida mavjud bo'lsa).
@@ -411,6 +586,11 @@ public static class JournalService
                 }, group: group);
             return;
         }
+
+        // Davomat — "attendance_absent" qoidasi bor bo'lsa uni controller yuboradi (yuqoriga qarang).
+        if (notifyAbsence &&
+            await db.AutoMessageRules.AnyAsync(r => r.Trigger == AutoMessageTriggers.AttendanceAbsent))
+            return;
 
         if (student.UserId is null) return;
 
@@ -435,7 +615,6 @@ public static class JournalService
         await db.SaveChangesAsync();
 
         // Push (FCM sozlangan + token bor bo'lsa) — fire-and-forget, jurnal javobini bloklamaymiz.
-        var meta = await db.CenterMeta.FirstOrDefaultAsync();
         var json = AppSecrets.FcmServiceAccountJson;
         if (fcm is null || !FcmService.IsConfigured(json)) return;
         var tokens = await db.DeviceTokens.Where(d => d.UserId == student.UserId)
@@ -444,17 +623,34 @@ public static class JournalService
         _ = fcm.SendAsync(json, tokens, title, body);
     }
 
+    /// <summary>Ommaviy davomat natijasi.</summary>
+    /// <param name="AbsentReasonId">Haqiqatan ishlatilgan sabab (Absent=true bo'lganda), aks holda null.</param>
+    /// <param name="WrittenIds">Yozuv HAQIQATAN yozilgan o'quvchilar.</param>
+    /// <param name="NewlyAbsentIds">Shu so'rovda YANGI "kelmadi" bo'lganlar — "darsga kelmadi" xabari
+    /// FAQAT shularga (allaqachon kelmagan, chetlab o'tilgan, begona va "kech"lar KIRMAYDI).</param>
+    /// <param name="SkippedIds">Chetlab o'tilganlar (a'zo emas / a'zolik boshqa sanada / o'qituvchiga yopiq).</param>
+    public sealed record BulkAttendanceResult(
+        string? AbsentReasonId, IReadOnlyList<string> WrittenIds,
+        IReadOnlyList<string> NewlyAbsentIds, IReadOnlyList<string> SkippedIds);
+
     /// <summary>
-    /// Bitta dars (sana+dars raqami) uchun BARCHA berilgan o'quvchiga birdan davomat. <c>ReasonId == null</c> →
-    /// "hammasi keldi": mavjud davomat sabablari tozalanadi (baho saqlanadi). <c>ReasonId != null</c> →
+    /// Bitta dars (sana+dars raqami) uchun BARCHA berilgan o'quvchiga birdan davomat. <c>Absent == false</c> →
+    /// "hammasi keldi": mavjud davomat sabablari tozalanadi (baho saqlanadi). <c>Absent == true</c> →
     /// "hammasi kelmadi": har bir o'quvchiga shu sabab yoziladi. Ikkala holatda ham dars "o'tildi" (Conducted) bo'ladi.
+    /// <para>Shu guruhga yozib bo'lmaydigan o'quvchilar (<see cref="MemberWriteError"/>: a'zo emas, a'zoligi
+    /// keyin boshlangan, o'qituvchi yo'lida — muzlatilgan/chiqqan/arxivlangan) JIMGINA chetlab o'tiladi —
+    /// butun amal to'xtamaydi va ularga xabar ham ketmaydi.</para>
+    /// <para><paramref name="beforeSave"/> — natija tayyor bo'lgach, SaveChanges'dan OLDIN chaqiriladi:
+    /// davomat xabarlari navbati (<see cref="AttendanceNotify.EnqueueBulkAsync"/>) jurnal yozuvi bilan
+    /// BITTA tranzaksiyada saqlansin (jurnal yozildi = xabar navbatda; restart uni yo'qotmaydi).</para>
     /// </summary>
-    /// <summary>Qaytaradi: haqiqatan ishlatilgan davomat sababi id'si (Absent=true bo'lganda) — chaqiruvchi
-    /// shu bo'yicha "darsga kelmadi" avto-xabarini yuboradi. Absent=false (hammasi keldi) ⇒ null.</summary>
-    public static async Task<string?> BulkAttendanceAsync(IAppDbContext db, BulkAttendanceRequest req)
+    public static async Task<BulkAttendanceResult> BulkAttendanceAsync(
+        IAppDbContext db, BulkAttendanceRequest req, bool teacher = false,
+        Func<BulkAttendanceResult, Task>? beforeSave = null)
     {
         const int quarter = 1;
-        if (req.StudentIds.Count == 0) return null;
+        var empty = new BulkAttendanceResult(null, [], [], []);
+        if (req.StudentIds.Count == 0) return empty;
 
         // Guruhning StartDate'i tekshirish — undan oldin dars bo'lmaydi.
         var cls = await db.Classes.FindAsync(req.ClassId);
@@ -468,16 +664,26 @@ public static class JournalService
         if (string.Compare(req.Date, today) > 0)
             throw new InvalidOperationException("Kelasi kunlarga o'quvchi ma'lumoti kirita olmassin");
 
-        // A'zoligi shu sanadan KEYIN boshlangan o'quvchilarni chetlab o'tamiz (yangi qo'shilgan/aktivlashtirilgan
-        // o'quvchi orqadagi darsga belgilanmasin). Qolganlari odatdagidek belgilanadi.
-        var startById = (await db.StudentGroups
-                .Where(sg => sg.GroupId == req.ClassId && sg.IsActive && req.StudentIds.Contains(sg.StudentId))
+        // A'ZOLIK DARVOZASI har o'quvchi uchun (MemberWriteError). Ilgari faqat SHU guruhning faol
+        // a'zolari tekshirilar, lug'atda YO'Q id esa "cheklov yo'q" deb o'tib ketardi — so'rovdagi har
+        // qanday id (boshqa guruh o'quvchisi) uchun yozuv yaratilib, ota-onasiga SMS ketardi.
+        var requested = req.StudentIds.Distinct().ToList();
+        var memberships = (await db.StudentGroups.AsNoTracking()
+                .Where(sg => sg.GroupId == req.ClassId && requested.Contains(sg.StudentId))
                 .ToListAsync())
-            .ToDictionary(sg => sg.StudentId, MemberStart);
-        var studentIds = req.StudentIds
-            .Where(sid => !startById.TryGetValue(sid, out var st) || st is null || string.Compare(req.Date, st) >= 0)
-            .ToList();
-        if (studentIds.Count == 0) return null;
+            .GroupBy(sg => sg.StudentId)
+            .ToDictionary(g => g.Key, g => PickMembership(g));
+        var archived = (await db.Students.AsNoTracking()
+                .Where(s => requested.Contains(s.Id) && s.IsArchived).Select(s => s.Id).ToListAsync())
+            .ToHashSet();
+        var studentIds = new List<string>();
+        var skipped = new List<string>();
+        foreach (var sid in requested)
+        {
+            var err = MemberWriteError(memberships.GetValueOrDefault(sid), archived.Contains(sid), req.Date, teacher);
+            if (err is null) studentIds.Add(sid); else skipped.Add(sid);
+        }
+        if (studentIds.Count == 0) return empty with { SkippedIds = skipped };
 
         // Darsni "o'tildi" deb belgilash (LessonNote) + RASSMIY davomat olindi deb belgilash
         // (o'quvchi shaxsiy jurnalida standart "keldi" taxmini shu bayroqqa bog'liq).
@@ -513,17 +719,21 @@ public static class JournalService
                 absentReasonId = def.Id;
             }
         }
+        var lateIds = req.Absent ? await AttendanceNotify.LateReasonIdsAsync(db) : new HashSet<string>();
 
         var existing = await db.JournalEntries.Where(e =>
             e.ClassId == req.ClassId && e.SubjectId == req.SubjectId && e.Quarter == quarter &&
             e.Date == req.Date && e.Period == req.Period && studentIds.Contains(e.StudentId)).ToListAsync();
         var byStudent = existing.ToDictionary(e => e.StudentId);
 
+        var newlyAbsent = new List<string>();
         foreach (var sid in studentIds)
         {
             byStudent.TryGetValue(sid, out var entry);
             if (req.Absent)
             {
+                // YANGI "kelmadi" — saqlashdan OLDINGI holatga qarab (allaqachon kelmagan bo'lsa qayta xabar yo'q).
+                if (AttendanceNotify.IsNewAbsence(entry?.ReasonId, absentReasonId, lateIds)) newlyAbsent.Add(sid);
                 // Hammasi kelmadi — har bir o'quvchiga sabab yoziladi (mavjud baho saqlanadi).
                 if (entry is null)
                 {
@@ -557,8 +767,10 @@ public static class JournalService
             }
         }
 
+        var result = new BulkAttendanceResult(req.Absent ? absentReasonId : null, studentIds, newlyAbsent, skipped);
+        if (beforeSave is not null) await beforeSave(result);
         await db.SaveChangesAsync();
-        return req.Absent ? absentReasonId : null;
+        return result;
     }
 
     /// <summary>Shu darsda (guruh, fan, sana, dars raqami) ANIQ «keldi» (<c>Present</c>) deb yozilgan

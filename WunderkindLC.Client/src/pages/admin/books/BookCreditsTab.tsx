@@ -14,6 +14,7 @@ import { Modal } from '@/components/ui/Modal'
 import { Input } from '@/components/ui/Input'
 import { StatCard } from '@/components/ui/StatCard'
 import { apiErrorMessage, cn, formatMoney, maskPhone } from '@/lib/utils'
+import { localIsoDate } from '@/lib/localDate'
 
 interface Props {
   /** "To'landi" va "Qaytarish" tugmalari ko'rinadimi (books:edit ruxsati) */
@@ -44,7 +45,7 @@ function monthStart(): string {
   const d = new Date()
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`
 }
-const today = () => new Date().toISOString().slice(0, 10)
+const today = () => localIsoDate(new Date())
 
 /**
  * NASIYA — kitob berilgan, pul hali olinmagan sotuvlar.

@@ -3,13 +3,15 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using WunderkindLC.Infrastructure.Data;
 using WunderkindLC.Application.Dtos;
+using WunderkindLC.Application.Services;
 using WunderkindLC.Domain;
 
 namespace WunderkindLC.Server.Controllers;
 
 /// <summary>
 /// O'quv xonalari (auditoriyalar) — yaratish, tahrirlash, o'chirish (soft delete).
-/// Guruh Group.RoomId orqali xonaga bog'lanadi; xona o'chirilsa GroupId SET NULL bo'ladi.
+/// Guruh Group.RoomId orqali xonaga bog'lanadi. "O'chirish" = nofaol qilish (yozuv qoladi); faol
+/// guruhi bor xonani o'chirib bo'lmaydi (400, soni bilan). Har o'zgarish tarixga yoziladi ("Room").
 /// </summary>
 // "classes" — nav/route "Xonalar" ham shu perm bilan ochiladi (Guruhlar ostida); "settings" bo'lsa
 // Guruhlarni boshqaradigan xodim xona qo'sha olmas edi (frontend/backend ruxsat kaliti mos kelmasdi).
@@ -17,8 +19,14 @@ namespace WunderkindLC.Server.Controllers;
 [Authorize]
 [AdminPerm("classes.rooms")]
 [Route("api/admin/rooms")]
-public class RoomsController(AppDbContext db, WunderkindLC.Application.Services.RoomUtilizationService utilization) : ControllerBase
+public class RoomsController(AppDbContext db, RoomUtilizationService utilization, AuditService audit) : ControllerBase
 {
+    /// <summary>Tarixdagi tur — "Guruhlar" bo'limiga tushadi (<c>AuditSections</c>): xona ro'yxati,
+    /// bandlik hisoboti va guruh formasi xonalarga tayanadi.</summary>
+    private const string AuditRoom = "Room";
+
+    private static object Snapshot(Room r) => new { r.Name, r.Capacity, r.Building, r.Location, r.IsActive };
+
     [HttpGet]
     public async Task<List<RoomDto>> GetAll() =>
         (await db.Rooms
@@ -47,6 +55,8 @@ public class RoomsController(AppDbContext db, WunderkindLC.Application.Services.
             Location = req.Location?.Trim(),
         };
         db.Rooms.Add(room);
+        audit.Record(AuditRoom, room.Id, "create",
+            $"Xona qo'shildi: {room.Name} (sig'im {room.Capacity})", after: Snapshot(room));
         await db.SaveChangesAsync();
         return ToDto(room);
     }
@@ -63,15 +73,25 @@ public class RoomsController(AppDbContext db, WunderkindLC.Application.Services.
             return BadRequest(new { message = "Sig'im 1–1000 oralig'ida bo'lishi kerak" });
 
         var name = req.Name.Trim();
-        if (await db.Rooms.AnyAsync(r => r.IsActive && r.Id != id && r.Name.ToLower() == name.ToLower()))
+        // ⚠️ `IsActive` YUBORILMASA (null) — TEGILMAYDI. Ilgari maydon majburiy `bool` edi, klient uni
+        // yubormasdi va u `false` bo'lib bog'lanardi: sig'imni tuzatish xonani ro'yxatdan, guruh
+        // formasidan va bandlik hisobotidan yo'qotardi.
+        var isActive = RoomRules.ResolveIsActive(room.IsActive, req.IsActive);
+        // Nom noyobligi faqat FAOL xonalar orasida (nofaol xonaning nomi bo'shatilgan hisoblanadi).
+        if (isActive && await db.Rooms.AnyAsync(r => r.IsActive && r.Id != id && r.Name.ToLower() == name.ToLower()))
             return BadRequest(new { message = "Bu nomli faol xona allaqachon mavjud" });
+        if (room.IsActive && !isActive && await RoomRules.LiveGroupsAsync(db, id) is var live and > 0)
+            return BadRequest(new { message = $"Xonaga {live} ta faol guruh biriktirilgan — avval guruhlarni boshqa xonaga o'tkazing" });
 
+        var before = Snapshot(room);
         room.Name     = name;
         room.Capacity = req.Capacity;
         room.Building = req.Building?.Trim();
         room.Location = req.Location?.Trim();
-        room.IsActive = req.IsActive;
+        room.IsActive = isActive;
 
+        audit.Record(AuditRoom, room.Id, "update", $"Xona tahrirlandi: {room.Name}",
+            before: before, after: Snapshot(room));
         await db.SaveChangesAsync();
         return ToDto(room);
     }
@@ -82,7 +102,16 @@ public class RoomsController(AppDbContext db, WunderkindLC.Application.Services.
         var room = await db.Rooms.FindAsync(id);
         if (room is null) return NotFound();
 
-        // Soft delete — xona ma'lumoti saqlanadi, guruhlarda SET NULL (FK)
+        // Soft delete — xona yozuvi saqlanadi (guruhlarning o'tgan jadvali unga tayanadi). FAOL guruhi bor
+        // xona o'chirilmaydi: aks holda guruh "ko'rinmas" xonada qolardi — guruh formasida xona bo'sh
+        // ko'rinib, keyingi saqlashda jimgina tushib qolardi, to'qnashuv tekshiruvi ham chalg'irdi.
+        var live = await RoomRules.LiveGroupsAsync(db, id);
+        if (live > 0)
+            return BadRequest(new { message = $"Xonaga {live} ta faol guruh biriktirilgan — avval guruhlarni boshqa xonaga o'tkazing" });
+        if (!room.IsActive) return NoContent();
+
+        audit.Record(AuditRoom, room.Id, "delete", $"Xona o'chirildi (nofaol qilindi): {room.Name}",
+            before: Snapshot(room));
         room.IsActive = false;
         await db.SaveChangesAsync();
         return NoContent();
@@ -144,7 +173,7 @@ public class RoomsController(AppDbContext db, WunderkindLC.Application.Services.
             r.IsActive, r.CreatedAt.ToString("o"));
 
     private static RoomUtilizationDto ToUtilizationDto(
-        WunderkindLC.Application.Services.RoomUtilizationService.RoomUtilizationMetric m) =>
+        RoomUtilizationService.RoomUtilizationMetric m) =>
         new(m.RoomId, m.RoomName, m.Capacity, m.CurrentStudents,
             m.TotalSlots, m.Gap, m.ActiveGroupCount,
             m.OccupancyPercent, m.ActiveGroupCount, m.WeeklyActiveHours,

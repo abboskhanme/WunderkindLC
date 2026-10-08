@@ -1,6 +1,9 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+using WunderkindLC.Application.Abstractions;
 
 namespace WunderkindLC.Application.Services;
 
@@ -10,8 +13,15 @@ namespace WunderkindLC.Application.Services;
 /// bazada saqlanmaydi va UI'dan kiritilmaydi). Bitta Firebase loyiha ikkala app (parent/teacher) uchun ishlaydi — token o'zi
 /// to'g'ri ilovaga yetadi. OAuth access token xotirada keshlanadi (~1 soat).
 /// Tashqi paket talab qilmaydi (BCL: RSA + HttpClient).
+///
+/// <para>⚠️ <b>PUSH O'CHIRILGAN foydalanuvchiga yuborilmaydi</b> (ilova «Sozlamalar → Push
+/// bildirishnoma», <see cref="Domain.UserSettings.NotificationsEnabled"/>). Filtr SHU YERDA —
+/// yuboruvchilar (avto-xabar, to'lov eslatmasi, e'lon, jurnal, maxsus eslatma) ko'p va ular
+/// tokenlarni har biri o'zicha oladi; har birida takrorlansa biri albatta unutilardi (ilgari
+/// sozlama umuman hech qayerda o'qilmasdi). Ichki bildirishnoma tarixi (qo'ng'iroqcha) TEGILMAYDI.
+/// <paramref name="scopes"/> berilmasa (testlar) filtr ishlamaydi.</para>
 /// </summary>
-public class FcmService(IHttpClientFactory httpFactory, ILogger<FcmService> logger)
+public class FcmService(IHttpClientFactory httpFactory, ILogger<FcmService> logger, IServiceScopeFactory? scopes = null)
 {
     public readonly record struct Creds(string ClientEmail, string PrivateKey, string ProjectId);
 
@@ -55,6 +65,9 @@ public class FcmService(IHttpClientFactory httpFactory, ILogger<FcmService> logg
         if (!TryParse(serviceAccountJson, out var c) || tokens.Count == 0)
             return new SendResult(0, []);
 
+        tokens = await WithoutMutedAsync(tokens, ct);
+        if (tokens.Count == 0) return new SendResult(0, []);
+
         string accessToken;
         try { accessToken = await GetAccessTokenAsync(c, ct); }
         catch (Exception ex) { logger.LogWarning(ex, "FCM access token olishda xato"); return new SendResult(0, []); }
@@ -92,6 +105,46 @@ public class FcmService(IHttpClientFactory httpFactory, ILogger<FcmService> logg
             catch (Exception ex) { logger.LogWarning(ex, "FCM push yuborishda xato"); }
         }
         return new SendResult(sent, invalid);
+    }
+
+    /// <summary>
+    /// Push O'CHIRGAN foydalanuvchilarning tokenlari (<see cref="Domain.UserSettings.NotificationsEnabled"/>
+    /// = false). Sozlama qatori yo'q foydalanuvchi — standart (YOQILGAN). Sof so'rov, testlanadi.
+    /// </summary>
+    public static async Task<HashSet<string>> MutedTokensAsync(
+        IAppDbContext db, IReadOnlyCollection<string> tokens, CancellationToken ct = default)
+    {
+        var list = tokens.Where(t => !string.IsNullOrEmpty(t)).Distinct().ToList();
+        if (list.Count == 0) return new HashSet<string>(StringComparer.Ordinal);
+        var muted = await (
+                from d in db.DeviceTokens.AsNoTracking()
+                where list.Contains(d.Token)
+                join us in db.UserSettings.AsNoTracking() on d.UserId equals us.UserId
+                where !us.NotificationsEnabled
+                select d.Token)
+            .ToListAsync(ct);
+        return muted.ToHashSet(StringComparer.Ordinal);
+    }
+
+    /// <summary>Push o'chirilgan foydalanuvchilarning tokenlarini olib tashlaydi. Baza o'qilmasa —
+    /// tokenlar O'ZGARISHSIZ qaytadi (sozlama tekshiruvi xatosi butun push'ni to'xtatmasin).</summary>
+    private async Task<IReadOnlyCollection<string>> WithoutMutedAsync(
+        IReadOnlyCollection<string> tokens, CancellationToken ct)
+    {
+        if (scopes is null) return tokens;
+        try
+        {
+            using var scope = scopes.CreateScope();
+            var db = scope.ServiceProvider.GetService<IAppDbContext>();
+            if (db is null) return tokens;
+            var muted = await MutedTokensAsync(db, tokens, ct);
+            return muted.Count == 0 ? tokens : tokens.Where(t => !muted.Contains(t)).ToList();
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Push sozlamasini (NotificationsEnabled) o'qib bo'lmadi — filtrsiz yuboriladi");
+            return tokens;
+        }
     }
 
     /// <summary>

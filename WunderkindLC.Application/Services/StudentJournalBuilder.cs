@@ -79,6 +79,20 @@ public static class StudentJournalBuilder
     }
 
     /// <summary>
+    /// O'quvchi shu KUNDAGI darsda KUTILGANMI (davomat sanog'i uchun): a'zolik shu kunni qamraydi
+    /// (<see cref="BoundsOf"/>: boshlanishidan keyin, muzlatish/chiqish sanasigacha — jurnal katagi
+    /// "bloklangan" emas). Yopiq (<c>IsActive=false</c>) yoki muzlatilgan a'zolikda tugash sanasi noma'lum
+    /// bo'lsa — kutilmagan (eski yozuv; qamrovini bilib bo'lmaydi).
+    /// </summary>
+    public static bool ExpectedOn(StudentGroup m, string date)
+    {
+        var b = BoundsOf(m);
+        if (b.MemberStart is not null && string.CompareOrdinal(date, b.MemberStart) < 0) return false;
+        if (b.MemberEnd is not null) return string.CompareOrdinal(date, b.MemberEnd) <= 0;
+        return m.IsActive && !string.Equals(m.Status, "frozen", StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// Dars yozuvlarini SANA bo'yicha jamlaydi. Bir kunda bir nechta yozuv bo'lsa: "o'tildi" va
     /// "davomat olindi" — birortasida bo'lsa yetarli (yig'ma YOKI), mavzu/uyga vazifa esa birinchi
     /// (eng kichik <see cref="LessonNote.Period"/>) darsdan olinadi.

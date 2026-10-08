@@ -6,6 +6,7 @@ import { Loader } from '@/components/ui/Loader'
 import { TintedIconButton } from '@/components/ui/list/TintedIconButton'
 import { useAsync } from '@/hooks/useAsync'
 import { cn, formatMoney } from '@/lib/utils'
+import { localIsoDate } from '@/lib/localDate'
 
 /** Dushanbadan boshlanadigan hafta — edutizim kalendari shunday. */
 const WEEK = ['Dush', 'Sesh', 'Chor', 'Pay', 'Jum', 'Shan', 'Yak']
@@ -74,7 +75,8 @@ export function FinanceAnalyticsPage() {
   if (loading && !data) return <Loader className="min-h-[240px]" />
   if (error) return <p className="text-[13px] text-red-600">{error}</p>
 
-  const todayIso = new Date().toISOString().slice(0, 10)
+  // MAHALLIY sana (UTC+5) — `toISOString()` 00:00–05:00 orasida kechani berardi.
+  const todayIso = localIsoDate(new Date())
 
   return (
     <div className="grid gap-2.5 lg:grid-cols-[300px_1fr]">

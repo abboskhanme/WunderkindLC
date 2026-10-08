@@ -26,14 +26,37 @@ export async function getLeads(): Promise<Lead[]> {
  */
 export type LeadAnswersPayload = Record<string, string[]>
 
+/** Shu telefon raqamli MAVJUD lid — `POST /admin/leads` ning 409 (`duplicate_lead`) javobida. */
+export interface DuplicateLead {
+  id: string
+  fullName: string
+  /** Hozirgi bosqich nomi (ustun o'chirilgan bo'lsa bo'sh). */
+  stage: string
+  converted: boolean
+  lost: boolean
+}
+
+/** Xato 409 `duplicate_lead` bo'lsa — mavjud lidlar ro'yxati, aks holda `null`. */
+export function duplicateLeadsOf(err: unknown): DuplicateLead[] | null {
+  const r = (err as { response?: { status?: number; data?: { code?: string; leads?: DuplicateLead[] } } })
+    ?.response
+  return r?.status === 409 && r.data?.code === 'duplicate_lead' ? (r.data.leads ?? []) : null
+}
+
+/**
+ * ⚠️ Shu raqamli lid allaqachon bo'lsa server 409 (`duplicate_lead`) qaytaradi va lid YARATILMAYDI —
+ * `duplicateLeadsOf(err)` bilan o'qiladi. Foydalanuvchi «Baribir yaratish» ni bossa `force = true`.
+ */
 export async function createLead(
-  payload: LeadPayload, stage: string, answers: LeadAnswersPayload = {},
+  payload: LeadPayload, stage: string, answers: LeadAnswersPayload = {}, force = false,
 ): Promise<Lead> {
   if (USE_MOCK) {
     await delay(300)
     return { ...payload, id: uid(), stage }
   }
-  const { data } = await api.post<Lead>('/admin/leads', { ...payload, stage, answers })
+  const { data } = await api.post<Lead>('/admin/leads', { ...payload, stage, answers }, {
+    params: force ? { force: true } : undefined,
+  })
   return data
 }
 
@@ -129,15 +152,51 @@ export async function setTrialResult(trialId: string, result: TrialResult): Prom
 
 /* ---------- CRM: o'quvchiga aylantirish ---------- */
 
+/** Konversiya natijasi. */
+export interface ConvertLeadResult {
+  studentId: string
+  /** Guruh to'lgan — o'quvchi yaratildi, lekin guruhga QO'SHILMADI (ochiq ogohlantiriladi). */
+  groupFull: boolean
+  /** «Mavjud o'quvchiga bog'lash» da: o'quvchi allaqachon shu guruhda edi. */
+  alreadyMember: boolean
+  /** Yangi o'quvchi yaratilmadi — lid mavjud o'quvchiga bog'landi. */
+  linked: boolean
+  groupName?: string | null
+}
+
+/** Dublikat nomzod — konversiyaning 409 (`duplicate_student`) javobida (ism + telefon mos). */
+export interface DuplicateStudent {
+  id: string
+  fullName: string
+  className: string
+  phone: string
+  parentPhone: string
+}
+
+/** Xato 409 `duplicate_student` bo'lsa — nomzodlar, aks holda `null`. */
+export function duplicateStudentsOf(err: unknown): DuplicateStudent[] | null {
+  const r = (err as { response?: { status?: number; data?: { code?: string; candidates?: DuplicateStudent[] } } })
+    ?.response
+  return r?.status === 409 && r.data?.code === 'duplicate_student' ? (r.data.candidates ?? []) : null
+}
+
+/**
+ * Lidni o'quvchiga aylantirish. `opts.linkStudentId` — yangi o'quvchi o'rniga MAVJUDIGA bog'lash;
+ * `opts.force` — dublikat topilgan bo'lsa ham yangi o'quvchi yaratish.
+ */
 export async function convertLead(
   id: string,
   body: { enrollmentDate?: string; groupId?: string },
-): Promise<{ studentId: string }> {
+  opts: { force?: boolean; linkStudentId?: string } = {},
+): Promise<ConvertLeadResult> {
   if (USE_MOCK) {
     await delay(300)
-    return { studentId: uid() }
+    return { studentId: uid(), groupFull: false, alreadyMember: false, linked: false }
   }
-  const { data } = await api.post<{ studentId: string }>(`/admin/leads/${id}/convert`, body)
+  const params: Record<string, string> = {}
+  if (opts.force) params.force = 'true'
+  if (opts.linkStudentId) params.linkStudentId = opts.linkStudentId
+  const { data } = await api.post<ConvertLeadResult>(`/admin/leads/${id}/convert`, body, { params })
   return data
 }
 

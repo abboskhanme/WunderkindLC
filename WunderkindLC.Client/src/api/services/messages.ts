@@ -101,6 +101,8 @@ export interface SendPushReq {
   userIds?: string[]
   title: string
   body: string
+  /** parents uchun: faqat qarzdorlar (SMS/Telegram bilan bir xil — umumiy balans manfiy). */
+  onlyDebtors?: boolean
 }
 
 /** Firebase push sozlanganmi (service account bormi) */
@@ -168,6 +170,18 @@ export interface SmsProgress {
   done: number
   sent: number
   finished: boolean
+  /** Ilova qayta ishga tushgandan keyin partiya DAVOM ETTIRILGAN (allaqachon ketganlarga qayta yuborilmaydi). */
+  resumed?: boolean
+  /** Restartda partiya juda eski bo'lgani uchun qolgani BEKOR qilingan — `done < total` xato emas. */
+  interrupted?: boolean
+}
+
+/** Partiya holati matni (natija qatori uchun) — to'xtatilgan/davom ettirilgan holatlar OCHIQ aytiladi. */
+export function smsProgressText(p: SmsProgress): string {
+  if (p.interrupted)
+    return `to'xtatildi: ${p.sent}/${p.total} yuborildi — server qayta ishga tushgani uchun qolgan ${p.total - p.done} ta bekor qilindi`
+  if (p.finished) return `yuborildi ${p.sent}/${p.total}`
+  return `yuborilmoqda${p.resumed ? ' (uzilishdan keyin davom etmoqda)' : ''} ${p.done}/${p.total}`
 }
 export interface SmsLog {
   id: string

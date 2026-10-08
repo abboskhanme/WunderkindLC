@@ -125,7 +125,9 @@ public static class StudentPurge
     /// O'chirishni TAYYORLAYDI (saqlamaydi). O'quvchi topilmasa <c>null</c>. Tirik pul amali bo'lsa
     /// <see cref="InvalidOperationException"/> (matni — <see cref="BlockReason"/>), hech narsa o'zgarmaydi.
     /// </summary>
-    public static async Task<Result?> PurgeAsync(IAppDbContext db, string studentId, CancellationToken ct = default)
+    /// <param name="actorName">Amalni bajargan xodim (lid tarixidagi "kim yopdi" uchun); bo'sh — "Tizim".</param>
+    public static async Task<Result?> PurgeAsync(IAppDbContext db, string studentId, CancellationToken ct = default,
+                                                 string? actorName = null)
     {
         var s = await db.Students.FirstOrDefaultAsync(x => x.Id == studentId, ct);
         if (s is null) return null;
@@ -202,7 +204,15 @@ public static class StudentPurge
         foreach (var c in await db.Calls.Where(x => x.StudentId == id).ToListAsync(ct)) c.StudentId = null;
         foreach (var c in await db.CtiCallRecords.Where(x => x.StudentId == id).ToListAsync(ct)) c.StudentId = null;
         foreach (var b in await db.BookOrders.Where(x => x.StudentId == id).ToListAsync(ct)) b.StudentId = null;
-        foreach (var l in await db.Leads.Where(x => x.ConvertedStudentId == id).ToListAsync(ct)) l.ConvertedStudentId = null;
+        foreach (var l in await db.Leads.Where(x => x.ConvertedStudentId == id).ToListAsync(ct))
+        {
+            l.ConvertedStudentId = null;
+            // ⚠️ Lid YOPIQ qolsin: "ochiq lid" = aylantirilmagan VA yo'qotilmagan (bosh sahifa, KPI
+            // "eski ochiq lidlar", sinov eslatmasi, cheklist). Faqat ajratilsa lid jimgina QAYTA OCHILIB,
+            // operatorga "ishlanmagan lid" bo'lib tushardi. Shuning uchun YO'QOTILGAN deb belgilanadi
+            // (`LeadLoss` maydonlari, katalogdan tashqari sabab — snapshot matn).
+            if (!LeadLoss.IsLost(l)) MarkLeadClosedByPurge(db, l, s.FullName, actorName);
+        }
         foreach (var slot in await db.SupportSlots.Where(x => x.StudentId == id).ToListAsync(ct))
         {
             slot.StudentId = null;
@@ -248,6 +258,32 @@ public static class StudentPurge
             .Distinct()
             .ToList();
         return new Result(s.FullName, urls);
+    }
+
+    /// <summary>Lidni yo'qotilgan deb belgilashdagi sabab (katalogdan tashqari — snapshot matn).</summary>
+    public const string LeadLostReason = "O'quvchi o'chirildi";
+
+    /// <summary>
+    /// O'chirilgan o'quvchining lidi — YOPIQ qoladi (yo'qotilgan sifatida). `LeadLoss.MarkLostAsync` bilan
+    /// bir xil maydonlar + lid tarixiga hodisa; `LostReasonId` bo'sh (sabab katalogdagi emas, tizim yozgan).
+    /// Lid bosqichi TEGILMAYDI (`LeadLoss` qoidasi).
+    /// </summary>
+    private static void MarkLeadClosedByPurge(IAppDbContext db, Lead lead, string studentName, string? actorName)
+    {
+        var now = AppClock.Iso();
+        var actor = string.IsNullOrWhiteSpace(actorName) ? "Tizim" : actorName.Trim();
+        lead.LostAt = now;
+        lead.LostReasonId = null;
+        lead.LostReason = LeadLostReason;
+        lead.LostComment = $"O'quvchi ({studentName}) butunlay o'chirildi — lid qayta ochilmasligi uchun yopildi";
+        lead.LostByUserId = null;
+        lead.LostByName = actor;
+        db.LeadEvents.Add(new LeadEvent
+        {
+            LeadId = lead.Id, Type = LeadLoss.EventLost,
+            Text = $"Yo'qotildi: {LeadLostReason} ({studentName})",
+            ActorName = actor, CreatedAt = now, FromStage = lead.Stage ?? "",
+        });
     }
 
     /// <summary>

@@ -6,6 +6,7 @@ import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { cn } from '@/lib/utils'
+import { localIsoDate } from '@/lib/localDate'
 
 /**
  * SOZLAMALAR → O'ZGARISHLAR TARIXI — markazda kim, qachon, nimani o'zgartirgani.
@@ -35,7 +36,7 @@ const MAX = 500
 function daysAgo(days: number): string {
   const d = new Date()
   d.setDate(d.getDate() - days)
-  return d.toISOString().slice(0, 10)
+  return localIsoDate(d)
 }
 
 export function AuditLogPage() {

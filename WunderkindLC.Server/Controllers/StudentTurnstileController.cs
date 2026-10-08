@@ -54,7 +54,10 @@ public class StudentTurnstileController(
         return res;
     }
 
-    /// <summary>O'quvchiga turniket qurilma ID'sini (employeeNo) biriktiradi. Bo'sh = aloqani uzadi.</summary>
+    /// <summary>O'quvchiga turniket qurilma ID'sini (employeeNo) biriktiradi. Bo'sh = aloqani uzadi.
+    /// <para>⚠️ ID boshqa (arxivlanmagan) o'quvchi yoki o'qituvchida bo'lsa — 400 va KIMDA ekani
+    /// (<see cref="TurnstileService.DeviceConflict"/>): aks holda o'quvchining o'tishlari o'qituvchi
+    /// davomatiga (maosh, kechikish) yozilib ketardi.</para></summary>
     [HttpPut("device")]
     public async Task<IActionResult> SetDevice(SetStudentDeviceRequest req)
     {
@@ -62,7 +65,16 @@ public class StudentTurnstileController(
             return BadRequest(new { message = "O'quvchi ko'rsatilishi shart" });
         var s = await db.Students.FindAsync(req.StudentId);
         if (s is null) return NotFound();
-        s.DeviceUserId = (req.DeviceUserId ?? "").Trim();
+        var deviceId = (req.DeviceUserId ?? "").Trim();
+        if (deviceId.Length > 0)
+        {
+            var owners = await TurnstileService.DeviceOwnersAsync(db, [deviceId]);
+            owners.RemoveAll(o => o.Kind == "student" && o.Id == s.Id);
+            owners.Add(new TurnstileService.DeviceOwner("student", s.Id, s.FullName, deviceId));
+            if (TurnstileService.DeviceConflict(owners) is { } conflict)
+                return BadRequest(new { message = conflict });
+        }
+        s.DeviceUserId = deviceId;
         await db.SaveChangesAsync();
         return NoContent();
     }

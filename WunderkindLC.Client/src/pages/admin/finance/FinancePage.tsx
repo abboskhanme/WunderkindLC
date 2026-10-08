@@ -55,8 +55,10 @@ import { useAuth } from '@/context/auth-context'
 import { CashboxesPanel } from './CashboxesPanel'
 import { usePerm } from '@/lib/permissions'
 import { tabFromUrl } from '@/lib/tabParam'
+import { todayIso } from '@/lib/month'
 
-const todayStr = new Date().toISOString().slice(0, 10)
+// ⚠️ MAHALLIY sana (UTC+5): `toISOString()` UTC beradi — 00:00–05:00 orasida "kecha" chiqardi.
+const todayStr = todayIso()
 const yearOf = (d: string) => Number(d.slice(0, 4))
 
 /** "2026-02" → "2026-02-28" (oyning HAQIQIY oxirgi kuni — kabisa yili ham to'g'ri). */
@@ -102,6 +104,11 @@ function receiptCell(p: FinanceTransaction): string | null {
 function receiptNum(receiptNo: string | null | undefined): number | null {
   const digits = (receiptNo ?? '').replace(/\D/g, '')
   return digits.length > 0 ? Number(digits) : null
+}
+
+/** O'quvchi to'lovi (kirim + o'quv to'lovi + o'quvchi) — umumiy tahrirga yopiq (serverdagi `FinanceTxEdit` bilan bir xil). */
+function isStudentPayment(t: FinanceTransaction): boolean {
+  return t.direction === 'income' && t.category === 'tuition' && !!t.studentId
 }
 
 /** Qoldiq/qarz summasini belgisiga qarab ranglash */
@@ -233,8 +240,11 @@ export function FinancePage() {
     // mexanizmi orqali (o'quvchilar bo'limidagi to'lov kabi), oddiy xom yozuv emas.
     let newTxId: string | null = null
     if (!editing && values.direction === 'income' && values.category === 'tuition' && values.studentId) {
-      newTxId = await addPayment(values.studentId, values.amount, values.month, undefined, undefined, values.method,
-        undefined, { requestId: values.requestId, cashboxId: values.cashboxId })
+      // ⚠️ Formadagi GURUH, SANA va IZOH ham uzatiladi: ilgari ular `undefined` ketardi — 2 guruhli
+      // o'quvchida server "guruhni tanlang" deb rad etar (guruh tanlangan bo'lsa ham), bitta guruhlida
+      // esa to'lov BUGUNGI sana bilan yozilib, izoh yo'qolardi. Izoh — kassir izohi (`comment`).
+      newTxId = await addPayment(values.studentId, values.amount, values.month, values.groupId, values.note,
+        values.method, values.date, { requestId: values.requestId, cashboxId: values.cashboxId })
       toast.success("To'lov qabul qilindi", formatMoney(values.amount))
     } else if (editing) {
       await updateTransaction(editing.id, values)
@@ -262,6 +272,10 @@ export function FinancePage() {
 
   const handleDelete = (t: FinanceTransaction) => setDeleting(t)
 
+  /** Bo'lingan to'lov oilasimi (guruh almashtirishda ajralgan qism bor) — bekor qilish butun oilaga tegadi. */
+  const isSplitFamily = (t: FinanceTransaction) =>
+    !!t.splitFromId || [...payments, ...transactions].some((x) => x.splitFromId === t.id)
+
   // Promise QAYTARADI — `ReasonPromptModal` tugmani so'rov tugaguncha qulflab turadi, xatodan
   // keyin esa qayta yoqadi (ilgari xatodan keyin tugma abadiy o'chiq qolardi).
   const doDelete = (reasonId?: string) => {
@@ -278,13 +292,18 @@ export function FinancePage() {
 
   const handleAccrue = async () => {
     if (!confirm("Hisoblanmagan oylik to'lovlar barcha o'quvchilarga hisoblanadimi?")) return
-    const res = await accrueTuition()
-    alert(
-      res.count > 0
-        ? `${res.months.join(', ')} uchun ${res.count} ta o'quvchiga jami ${formatMoney(res.total)} hisoblandi.`
-        : "Yangi hisoblanadigan oy yo'q — hammasi hisoblangan.",
-    )
-    load()
+    try {
+      const res = await accrueTuition()
+      // `count`/`total` — shu bosishda YANGI yaratilgan hisoblar (server sanaydi).
+      alert(
+        res.count > 0
+          ? `${res.months.join(', ')} uchun ${res.count} ta yangi hisob yozildi, jami ${formatMoney(res.total)}.`
+          : "Yangi hisoblanadigan oy yo'q — hammasi hisoblangan.",
+      )
+      load()
+    } catch (e) {
+      alert(apiErrorMessage(e, "Oylik to'lovlarni hisoblab bo'lmadi"))
+    }
   }
 
   const handleExport = () => {
@@ -598,13 +617,19 @@ export function FinancePage() {
                   iconColor={summary.net >= 0 ? 'text-emerald-600' : 'text-red-600'}
                   hint="Kirim − Chiqim"
                 />
+                {/* Qarz — HAQIQIY debitorlik (arxivdagi o'quvchilar ham). Bosh sahifa faqat FAOL (arxivlanmagan)
+                    o'quvchilarni sanaydi — ikki raqam jimgina farq qilmasin, bo'linish ochiq yoziladi. */}
                 <StatCard
                   label="O'quvchilar qarzi"
                   value={formatMoney(summary.studentDebt)}
                   icon={AlertCircle}
                   iconBg="bg-amber-50"
                   iconColor="text-amber-600"
-                  hint={`Avans: ${formatMoney(summary.studentAdvance)}`}
+                  hint={
+                    (summary.studentDebtArchived ?? 0) > 0
+                      ? `Faol: ${formatMoney(summary.studentDebt - (summary.studentDebtArchived ?? 0))} · Arxivdagi: ${formatMoney(summary.studentDebtArchived ?? 0)} · Avans: ${formatMoney(summary.studentAdvance)}`
+                      : `Avans: ${formatMoney(summary.studentAdvance)}`
+                  }
                 />
               </div>
 
@@ -743,11 +768,25 @@ export function FinancePage() {
                                   KITOB
                                 </span>
                               )}
-                              {!t.isVoided && !t.bookOrderId && can('finance.main', 'edit') && (
+                              {/* O'QUVCHI TO'LOVI umumiy formadan tahrirlanmaydi (server rad etadi) — superadmin'ga
+                                  «To'lovlar»dagi tahrir oynasi ochiladi (balans, oy, guruh birga moslanadi). VOZVRAT
+                                  umumiy formada faqat sana/izoh bilan ochiladi (`TransactionFormModal`). */}
+                              {!t.isVoided && !t.bookOrderId && can('finance.main', 'edit') &&
+                                (!isStudentPayment(t) || isSuper) && (
                                 <button
                                   type="button"
-                                  title="Tahrirlash"
+                                  title={
+                                    isStudentPayment(t)
+                                      ? "Tahrirlash (balans va oylik hisob moslanadi)"
+                                      : t.category === 'refund'
+                                        ? 'Tahrirlash (vozvratda faqat sana va izoh)'
+                                        : 'Tahrirlash'
+                                  }
                                   onClick={() => {
+                                    if (isStudentPayment(t)) {
+                                      setEditPayment(t)
+                                      return
+                                    }
                                     setEditing(t)
                                     setFormOpen(true)
                                   }}
@@ -1431,6 +1470,9 @@ export function FinancePage() {
         message={
           deleting
             ? "Amal bekor qilinadi: balansga ta'siri qaytariladi, lekin yozuv o'chmaydi — ro'yxatda ustiga chizilgan holda «Bekor qilindi» bo'lib qoladi."
+              + (isSplitFamily(deleting)
+                ? " Bu to'lov guruh almashtirishda ikkiga bo'lingan — boshqa guruhga ko'chirilgan qismi ham BIRGA bekor qilinadi."
+                : '')
             : undefined
         }
         confirmLabel="Bekor qilish"

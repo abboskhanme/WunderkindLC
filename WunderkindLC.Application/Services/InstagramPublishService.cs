@@ -230,9 +230,73 @@ public sealed class InstagramPublishService(
 
     private sealed record PollState(DateTime StartedAt, DateTime NextPollAt, int PollCount);
 
-    /// <summary>Faqat testlar uchun: xotiradagi poll jadvalini tozalaydi (har test o'z bazasi
-    /// bilan ishlaydi, static holat esa testlar orasida oqib ketardi).</summary>
-    public static void ResetPollState() => Polls.Clear();
+    /// <summary>Faqat testlar uchun: xotiradagi poll jadvalini (va ulanish blokini) tozalaydi
+    /// (har test o'z bazasi bilan ishlaydi, static holat esa testlar orasida oqib ketardi).</summary>
+    public static void ResetPollState()
+    {
+        Polls.Clear();
+        _blockedKey = "";
+        _blockedUntil = DateTime.MinValue;
+        _blockedError = "";
+    }
+
+    /// <summary>
+    /// Boshqa oqim (controllerdagi tahrirlash/bekor qilish) ham AYNAN shu <see cref="Gate"/> ostida
+    /// ishlashi uchun. <b>Ichkarida holatni QAYTA o'qing</b>: navbat tsikli post holatini
+    /// o'zgartirib ulgurgan bo'lishi mumkin (masalan <c>scheduled</c> → <c>processing</c>).
+    ///
+    /// <para>🔴 Nega kerak: ilgari <c>PUT</c>/<c>DELETE content/posts</c> qulfsiz edi — worker postni
+    /// konteynerga olib ketayotgan paytda admin uni bekor qilsa, bekor qilingan post baribir
+    /// Instagram'ga chiqardi (chop etilgan postni esa API orqali o'chirib bo'lmaydi).</para>
+    ///
+    /// <para>⚠️ <see cref="PublishNowAsync"/> va <see cref="ProcessDueAsync"/> ichidan CHAQIRMANG —
+    /// ular qulfni o'zi oladi (SemaphoreSlim qayta kirishni qo'llamaydi).</para>
+    ///
+    /// <para>🔴 <b>KUTISH CHEKLANGAN</b> (<see cref="ExclusiveWait"/>, audit R3-8): worker qulfni BUTUN
+    /// tsikl davomida ushlaydi (Meta so'rovlari 100 soniyagacha + qayta urinishlar). Cheklovsiz kutish
+    /// HTTP so'rovni osib qo'yar va Cloudflare uni 524 bilan uzardi — admin "saqlandimi?" ni bilmasdi.
+    /// Qulf o'z vaqtida bo'shamasa <c>Acquired = false</c> qaytadi va chaqiruvchi 409 +
+    /// <see cref="GateBusyMessage"/> beradi (hech narsa o'zgartirilmagan — qayta urinish xavfsiz).</para>
+    /// </summary>
+    public static async Task<(bool Acquired, T? Result)> RunExclusiveAsync<T>(
+        Func<Task<T>> work, CancellationToken ct, TimeSpan? wait = null)
+    {
+        if (!await Gate.WaitAsync(wait ?? ExclusiveWait, ct)) return (false, default);
+        try { return (true, await work()); }
+        finally { Gate.Release(); }
+    }
+
+    /// <summary>HTTP so'rovi navbat qulfini ko'pi bilan shuncha kutadi (Cloudflare 100 s dan ancha kam).</summary>
+    public static readonly TimeSpan ExclusiveWait = TimeSpan.FromSeconds(10);
+
+    /// <summary>Qulf band — worker hozir navbatni Meta bilan ishlayapti (409 javobi matni).</summary>
+    public const string GateBusyMessage =
+        "Navbat band — Instagram'ga joylash davom etmoqda. Birozdan keyin qayta urinib ko'ring.";
+
+    /* ─────────────── ULANISH MUAMMOSI (token bekor qilingan / ruxsat yo'q) ─────────────── */
+
+    /// <summary>Ulanish muammosi bilan to'xtagan post <c>Error</c>ining PREFIKSI — "signal
+    /// allaqachon yuborilganmi" savoli BAZADAN shu bo'yicha aniqlanadi (restartdan keyin ham).</summary>
+    public const string ConnectionPrefix = "Ulanish muammosi: ";
+
+    /// <summary>Ulanish xatosidan keyin shu muddat davomida Meta'ga so'rov YUBORILMAYDI —
+    /// har 30 soniyada yaroqsiz token bilan so'rov yuborish faqat xato hisoblagichini oshirardi.</summary>
+    private const int ConnectionBlockMinutes = 30;
+
+    /// <summary>Blok kaliti (akkaunt id + token) — qayta ulansa yoki token yangilansa o'zgaradi
+    /// va blok O'Z-O'ZIDAN yechiladi. Faqat <see cref="Gate"/> ostida o'qiladi/yoziladi.</summary>
+    private static string _blockedKey = "";
+    private static DateTime _blockedUntil = DateTime.MinValue;
+    private static string _blockedError = "";
+
+    /// <summary>Joriy tsiklda ulanish muammosi topildimi (navbatning qolgani to'xtatiladi).</summary>
+    private string _connectionError = "";
+
+    /// <summary>Post ishlov boshlanganda ALLAQACHON ulanish muammosi bilan belgilangan edimi
+    /// (signalni takrorlamaslik uchun).</summary>
+    private bool _flaggedAtStart;
+
+    private static string BlockKey(IgAccount account) => account.Id + "|" + account.AccessToken;
 
     // =============================================================================================
     //  1) NAVBAT — worker har 30 soniyada chaqiradi
@@ -278,12 +342,28 @@ public sealed class InstagramPublishService(
                 return (false, 0, tokenProblem);
             }
 
+            // ── ULANISH BLOKI — yaqinda token/ruxsat xatosi bo'lgan bo'lsa Meta'ga chiqilmaydi ──
+            if (_blockedKey.Length > 0 && _blockedKey == BlockKey(account!) && now < _blockedUntil)
+            {
+                await MarkConnectionProblemAsync(queue, _blockedError, ct);
+                return (false, 0, _blockedError);
+            }
+
+            _connectionError = "";
             var processed = 0;
             foreach (var post in queue)
             {
                 if (ct.IsCancellationRequested) break;
+                // Oldingi post ulanish xatosini berdi — qolganlari ham xuddi shu tokenga
+                // tayanadi, ularni bekorga urinib ko'rish ma'nosiz.
+                if (_connectionError.Length > 0)
+                {
+                    await MarkConnectionProblemAsync([post], _connectionError, ct);
+                    continue;
+                }
                 try
                 {
+                    _flaggedAtStart = post.Error.StartsWith(ConnectionPrefix, StringComparison.Ordinal);
                     if (await RunOneAsync(post, account!, meta, ct)) processed++;
                 }
                 catch (Exception ex)
@@ -294,9 +374,68 @@ public sealed class InstagramPublishService(
                 }
             }
 
-            return (true, processed, "");
+            return _connectionError.Length > 0 ? (false, processed, _connectionError) : (true, processed, "");
         }
         finally { Gate.Release(); }
+    }
+
+    /// <summary>Navbatdagi postlarga ulanish xatosini YOZADI (holat va urinishlar O'ZGARMAYDI —
+    /// `processing` post ham o'z konteyneri bilan qoladi, faqat sabab ko'rinadi).</summary>
+    private async Task MarkConnectionProblemAsync(IEnumerable<IgScheduledPost> posts, string error, CancellationToken ct)
+    {
+        var changed = false;
+        foreach (var p in posts)
+        {
+            if (p.Error == error) continue;
+            p.Error = error;
+            changed = true;
+        }
+        if (changed) await db.SaveChangesAsync(ct);
+    }
+
+    /// <summary>
+    /// TOKEN BEKOR QILINGAN / RUXSAT YO'Q (<see cref="InstagramPublishContract.IsConnectionError"/>).
+    ///
+    /// <para>🔴 Post <c>failed</c> QILINMAYDI va urinish OSHMAYDI — sabab ULANISHDA (§18.4,
+    /// muddati o'tgan token bilan bir xil). Ilgari bekor qilingan (muddati o'tmagan) token
+    /// oddiy xato deb sanalib, post uch tsiklda navbatdan butunlay chiqib ketardi.</para>
+    ///
+    /// <para>Navbat <see cref="ConnectionBlockMinutes"/> daqiqaga to'xtaydi (shu akkaunt+token
+    /// uchun), adminlarga signal esa BIR MARTA ketadi: navbatda allaqachon shu sabab bilan
+    /// belgilangan post bo'lsa (bazadan, ya'ni restartdan keyin ham) qayta yuborilmaydi.</para>
+    /// </summary>
+    private async Task ConnectionProblemAsync(
+        IgScheduledPost post, IgAccount account, CenterMeta meta, string error, CancellationToken ct)
+    {
+        var text = InstagramContract.Trim(
+            ConnectionPrefix + error + " Akkaunt qayta ulanganda post navbatdan o'zi joylanadi.", 400);
+
+        var postId = post.Id;
+        var alreadyFlagged = _flaggedAtStart
+            || await db.IgScheduledPosts.AnyAsync(
+                p => p.Id != postId
+                     && (p.Status == IgPublishConst.StScheduled || p.Status == IgPublishConst.StProcessing)
+                     && p.Error.StartsWith(ConnectionPrefix), ct);
+
+        post.Status = IgPublishConst.StScheduled;
+        post.ContainerId = "";
+        post.ContainerStatus = "";
+        post.Error = text;
+        Polls.TryRemove(post.Id, out _);
+
+        _connectionError = text;
+        _blockedKey = BlockKey(account);
+        _blockedUntil = AppClock.Now.AddMinutes(ConnectionBlockMinutes);
+        _blockedError = text;
+
+        await db.SaveChangesAsync(ct);
+        logger.LogWarning("Instagram kontent navbati to'xtadi (ulanish muammosi, post {Id}): {Error}", post.Id, error);
+
+        if (!alreadyFlagged)
+            await NotifyAdminsAsync(meta,
+                $"🔌 Instagram: kontent joylash to'xtadi — {error}\n"
+                + "Marketing → Sozlamalar bo'limidan akkauntni QAYTA ULANG. Rejalashtirilgan postlar "
+                + "navbatda kutadi va ulangandan keyin o'zi joylanadi.", ct);
     }
 
     /// <summary>
@@ -350,7 +489,9 @@ public sealed class InstagramPublishService(
         if (meta is null || !meta.InstagramPublishEnabled)
             return (false, "Kontent joylash moduli o'chirilgan — avval uni Marketing → Sozlamalar bo'limida yoqing.");
 
-        await Gate.WaitAsync(ct);
+        // ⚠️ Kutish CHEKLANGAN (`RunExclusiveAsync` bilan bir xil sabab): qulf band bo'lsa
+        // `GateBusyMessage` qaytadi, controller uni 409 qiladi (urinish auditga yozilmaydi).
+        if (!await Gate.WaitAsync(ExclusiveWait, ct)) return (false, GateBusyMessage);
         try
         {
             var post = await db.IgScheduledPosts.FirstOrDefaultAsync(p => p.Id == postId, ct);
@@ -368,6 +509,9 @@ public sealed class InstagramPublishService(
             var tokenProblem = TokenProblem(account, now);
             if (tokenProblem.Length > 0) return (false, tokenProblem);
 
+            // Qo'lda urinish — oldingi ulanish bloki tekshirilmaydi (odam qayta ulagan bo'lishi
+            // mumkin), lekin ulanish xatosi takrorlansa signal QAYTA ketmasin.
+            _flaggedAtStart = post.Error.StartsWith(ConnectionPrefix, StringComparison.Ordinal);
             post.Attempts = 0;
             post.Error = "";
             post.ContainerId = "";
@@ -463,6 +607,13 @@ public sealed class InstagramPublishService(
             return false;
         }
 
+        if (!limitOk && InstagramPublishContract.IsConnectionError(api.LastErrorCode))
+        {
+            // Token bekor qilingan / ruxsat yo'q — konteyner yaratish ham baribir yiqiladi.
+            await ConnectionProblemAsync(post, account, meta, limitErr, ct);
+            return false;
+        }
+
         if (!limitOk)
         {
             // ⚠️ Limit so'rovi MASLAHAT xarakterida: javob olinmasa ish TO'XTAMAYDI va urinish
@@ -496,7 +647,10 @@ public sealed class InstagramPublishService(
                     account.IgUserId, account.AccessToken, childReq, ct);
                 if (!childOk)
                 {
-                    await FailAsync(post, meta, $"{i + 1}-element: {childErr}", hard: false, ct);
+                    if (InstagramPublishContract.IsConnectionError(api.LastErrorCode))
+                        await ConnectionProblemAsync(post, account, meta, childErr, ct);
+                    else
+                        await FailAsync(post, meta, $"{i + 1}-element: {childErr}", hard: false, ct);
                     return true;
                 }
                 childIds.Add(childId);
@@ -507,7 +661,10 @@ public sealed class InstagramPublishService(
                 account.IgUserId, account.AccessToken, parentReq, ct);
             if (!parentOk)
             {
-                await FailAsync(post, meta, parentErr, hard: false, ct);
+                if (InstagramPublishContract.IsConnectionError(api.LastErrorCode))
+                    await ConnectionProblemAsync(post, account, meta, parentErr, ct);
+                else
+                    await FailAsync(post, meta, parentErr, hard: false, ct);
                 return true;
             }
             containerId = parentId;
@@ -518,7 +675,10 @@ public sealed class InstagramPublishService(
             var (ok, id, err) = await api.CreateContainerAsync(account.IgUserId, account.AccessToken, req, ct);
             if (!ok)
             {
-                await FailAsync(post, meta, err, hard: false, ct);
+                if (InstagramPublishContract.IsConnectionError(api.LastErrorCode))
+                    await ConnectionProblemAsync(post, account, meta, err, ct);
+                else
+                    await FailAsync(post, meta, err, hard: false, ct);
                 return true;
             }
             containerId = id;
@@ -562,6 +722,13 @@ public sealed class InstagramPublishService(
 
         var (ok, code, statusText, err) = await api.GetContainerStatusAsync(
             post.ContainerId, account.AccessToken, ct);
+
+        if (!ok && InstagramPublishContract.IsConnectionError(api.LastErrorCode))
+        {
+            // Token bekor qilingan — konteyner baribir eskiradi; qayta ulangach YANGISI yaratiladi.
+            await ConnectionProblemAsync(post, account, meta, err, ct);
+            return true;
+        }
 
         if (!ok)
         {
@@ -633,6 +800,14 @@ public sealed class InstagramPublishService(
     {
         var (ok, mediaId, err) = await api.PublishAsync(
             account.IgUserId, account.AccessToken, post.ContainerId, ct);
+
+        if (!ok && InstagramPublishContract.IsConnectionError(api.LastErrorCode))
+        {
+            // ⚠️ Token/ruxsat xatosida Meta so'rovni AUTENTIFIKATSIYA bosqichida rad etadi — post
+            // joylanmagan, ya'ni dublikat xavfi yo'q: post navbatda kutadi.
+            await ConnectionProblemAsync(post, account, meta, err, ct);
+            return true;
+        }
 
         if (!ok)
         {

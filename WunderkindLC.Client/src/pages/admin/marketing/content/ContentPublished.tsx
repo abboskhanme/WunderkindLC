@@ -17,7 +17,7 @@
  * oshgani JIM tashlanmaydi, ro'yxat ostida ochiq yoziladi.
  */
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { useOutletContext } from 'react-router-dom'
+import { Link, useOutletContext } from 'react-router-dom'
 import { MonthDayStrip } from '@/components/ui/MonthDayStrip'
 import { currentMonth, monthRange } from '@/lib/month'
 import { usePerm } from '@/lib/permissions'
@@ -237,6 +237,9 @@ export function ContentPublished() {
  *
  * ⚠️ «Qayta urinish» faqat `failed` da va faqat yozish ruxsati bilan: joylangan postni qayta
  * joylash Instagram profilida DUBLIKAT yaratardi (backend ham buni to'sadi).
+ *
+ * «Tahrirlash» — xato bilan qolgan yoki bekor qilingan postda (saqlangach navbatga qaytadi).
+ * Ilgari bunday post boshi berk edi: xato matni "tahrirlab, qayta tanlang" desa ham tahrir yopiq edi.
  */
 function PostTile({
   post, canEdit, busy, onRetry,
@@ -298,8 +301,17 @@ function PostTile({
           )}
           {post.createdBy && <span className="field-hint" style={{ margin: 0 }}>{post.createdBy}</span>}
 
+          {(post.status === 'failed' || post.status === 'cancelled') && canEdit && (
+            <Link
+              className="btn btn-ghost btn-sm"
+              style={{ marginLeft: 'auto' }}
+              to={`/admin/marketing/kontent/post/${post.id}`}
+            >
+              <Icon name="edit" /> Tahrirlash
+            </Link>
+          )}
           {post.status === 'failed' && canEdit && (
-            <button className="btn btn-outline btn-sm" style={{ marginLeft: 'auto' }} onClick={onRetry} disabled={busy}>
+            <button className="btn btn-outline btn-sm" onClick={onRetry} disabled={busy}>
               <Icon name="refresh" /> {busy ? 'Yuborilmoqda…' : 'Qayta urinish'}
             </button>
           )}

@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using WunderkindLC.Application.Dtos;
 using WunderkindLC.Application.Services;
 using WunderkindLC.Domain;
+using WunderkindLC.Infrastructure.Auth;
 using WunderkindLC.Infrastructure.Data;
 
 namespace WunderkindLC.Server.Controllers;
@@ -200,7 +201,12 @@ public class AdminFaceController(
     }
 
     /// <summary>Ishonchli qurilmani BEKOR qiladi (telefon yo'qolganda) — o'sha qurilmada keyingi
-    /// kirishda yana selfi so'raladi. Yozuv O'CHIRILMAYDI: "qachon bekor qilingan" tarixi qolsin.</summary>
+    /// kirishda yana selfi so'raladi. Yozuv O'CHIRILMAYDI: "qachon bekor qilingan" tarixi qolsin.
+    /// <para>⚠️ O'quvchining OCHIQ SESSIYALARI ham tugatiladi (barcha refresh tokenlari bekor).
+    /// Busiz yo'qolgan telefondagi sessiya 30 kunlik sirpanuvchi refresh bilan ishlayverardi —
+    /// "qurilma bekor qilindi" faqat KEYINGI login'ga ta'sir qilardi. Refresh token qaysi qurilmaga
+    /// berilganini saqlamaydi, shuning uchun HAMMASI bekor qilinadi: boshqa (ishonchli) telefonda
+    /// o'quvchi bir marta qayta kiradi — selfi so'ralmaydi.</para></summary>
     [HttpPost("devices/{id}/revoke")]
     public async Task<IActionResult> RevokeDevice(string id, CancellationToken ct)
     {
@@ -214,8 +220,10 @@ public class AdminFaceController(
         var student = await db.Students.AsNoTracking()
             .FirstOrDefaultAsync(s => s.UserId == device.UserId, ct);
         var label = string.IsNullOrWhiteSpace(device.DeviceName) ? "qurilma" : device.DeviceName;
+        var ended = await RefreshTokenService.RevokeAllForUserAsync(db, device.UserId, ct: ct);
         audit.Record(FaceLoginService.AuditEntityDevice, device.Id, "update",
-            $"«{student?.FullName ?? "—"}» ning ishonchli qurilmasi bekor qilindi ({label})",
+            $"«{student?.FullName ?? "—"}» ning ishonchli qurilmasi bekor qilindi ({label})"
+                + (ended > 0 ? " — ochiq sessiyalari tugatildi" : ""),
             studentId: student?.Id);
         await db.SaveChangesAsync(ct);
         return Ok(new { message = "Qurilma bekor qilindi" });

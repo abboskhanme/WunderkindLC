@@ -56,12 +56,11 @@ services:
       # Eskiz — bo'sh: lokaldan HAQIQIY SMS ketib qolmasin (pul va mijozlar bezovtaligi).
       Eskiz__Email: ""
       Eskiz__Password: ""
-      # Telefoniya / turniket / kamera — lokal mashinadan real qurilma va bulutga ulanmasin.
-      MoiZvonki__Enabled: "false"
       # Instagram — bo'sh: webhook lokal manzilga baribir kelmaydi, imzo kaliti esa
       # prod bilan bir xil bo'lsa lokal urinish jonli akkauntga ta'sir qilardi.
       Instagram__AppSecret: ""
       Instagram__VerifyToken: ""
+      # Turniket / kamera — lokal mashinadan real qurilmaga ulanmasin.
       Turnstile__Enabled: "false"
       Camera__Enabled: "false"
       # Fon jadvallari (eslatma, AI tahlil, backup) — dev'da shovqin qilmasin.

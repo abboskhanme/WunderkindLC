@@ -471,8 +471,15 @@ public class InstagramWebhookController(
         // --- webhook obunasi (`IgConst.WebhookFields`: comments, messages) ---
         // Obuna bo'lmasa hodisalar UMUMAN kelmaydi, lekin akkaunt baribir saqlanadi: holat
         // Sozlamalar sahifasida qizil ko'rinadi va "Qayta ulash" bilan tuzatiladi.
-        var (okSub, errSub) = await api.SubscribeWebhookAsync(longToken, ct);
-        if (!okSub) logger.LogWarning("[instagram] webhook obunasi bo'lmadi: {Err}", errSub);
+        // 🔴 FAQAT AGENT YOQILGAN bo'lsa (audit R3-10): "agent o'chiq = webhook yo'q" qoidasi (§3,
+        // §22). Ilgari qayta ulash obunani agent o'chiq bo'lsa ham tiklardi — o'chiq agentga
+        // izoh/DM hodisalari yana yog'ila boshlardi. Agent keyin YOQILGANDA obuna `SaveSettings`
+        // da o'zi qilinadi.
+        var agentOn = meta?.InstagramEnabled == true;
+        var (okSub, errSub) = agentOn
+            ? await api.SubscribeWebhookAsync(longToken, ct)
+            : (false, "");
+        if (agentOn && !okSub) logger.LogWarning("[instagram] webhook obunasi bo'lmadi: {Err}", errSub);
 
         // --- saqlash: eskisi arxivga, yangisi faol ---
         var now = AppClock.Iso();
@@ -509,7 +516,7 @@ public class InstagramWebhookController(
         audit.Record(AuditEntity, account.Id, "create",
             $"Instagram akkaunti ulandi: @{account.Username} "
             + $"(ulagan: {(st.CreatedBy.Length > 0 ? st.CreatedBy : "noma'lum")}, "
-            + $"webhook obunasi: {(okSub ? "bor" : "YO'Q")})");
+            + $"webhook obunasi: {(okSub ? "bor" : agentOn ? "YO'Q" : "agent o'chiq — yoqilganda qilinadi")})");
         await db.SaveChangesAsync(ct);
 
         // 🔴 Yangi akkaunt ulandi — modul yoqilgan bo'lsa faol FAQ tugmalarini Meta'ga yuboramiz
@@ -550,6 +557,11 @@ public class InstagramWebhookController(
     /// <summary>REKLAMA LIDLARI webhook manzili — Meta'da <b>Page</b> obyektining «Callback URL»
     /// maydoniga qo'yiladi (izoh/DM manzilidan BOSHQA).</summary>
     public static string LeadgenUrl(HttpRequest req) => PublicBase(req) + "/api/public/instagram/leadgen";
+
+    /// <summary>Tashqi manzil ASOSI (<c>https://host</c>) — boshqa ochiq manzillar uchun (masalan
+    /// kontent media fayli, <c>InstagramController.Media</c>). Qoida webhook/callback bilan AYNAN
+    /// bir xil: avval <c>App:Host</c>, bo'lmasa so'rov hosti.</summary>
+    public static string PublicBaseUrl(HttpRequest req) => PublicBase(req);
 
     /// <summary>
     /// Tashqi manzil asosi — <b>birinchi navbatda <c>App:Host</c></b> (env <c>APP_HOST</c>),

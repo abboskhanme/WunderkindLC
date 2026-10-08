@@ -52,10 +52,25 @@ public class BackupSchedulerService(
         var nowMin = now.Hour * 60 + now.Minute;
         // Belgilangan vaqtga yetganda (10-daqiqali oyna ichida), kuniga bir marta.
         if (nowMin < target || nowMin >= target + 10) return;
+        // `_lastRun` faqat XOTIRADA — oyna ichida restart bo'lsa zaxira IKKINCHI marta ketardi. Shuning
+        // uchun bazadagi oxirgi yuborilgan vaqt ham tekshiriladi: bugun belgilangan vaqtdan KEYIN yuborilgan
+        // bo'lsa — takrorlanmaydi. (Ertalab qo'lda "Hozir yuborish" bosilgani kechki jadvalni BEKOR QILMAYDI.)
+        if (AlreadySentToday(meta.TelegramBackupLastSentAt, today, target))
+        {
+            _lastRun = today;
+            return;
+        }
 
         _lastRun = today;
         var (ok, msg) = await BackupService.SendAsync(db, telegram, logger, ct);
         if (ok) logger.LogInformation("Avtomatik backup yuborildi: {Msg}", msg);
         else logger.LogWarning("Avtomatik backup yuborilmadi: {Msg}", msg);
     }
+
+    /// <summary>Bugungi jadvaldagi zaxira allaqachon yuborilganmi: oxirgi yuborish BUGUN va belgilangan
+    /// daqiqadan (<paramref name="targetMinute"/>) keyin bo'lgan (sof funksiya, testlangan).</summary>
+    public static bool AlreadySentToday(DateTime? lastSentAt, DateOnly today, int targetMinute) =>
+        lastSentAt is { } last
+        && DateOnly.FromDateTime(last) == today
+        && last.Hour * 60 + last.Minute >= targetMinute;
 }

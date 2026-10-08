@@ -134,8 +134,13 @@ public static class IncomePlan
         // yozuvlarda sana bo'yicha olinadi, aks holda ular umuman tushib qolardi.
         var from = month + "-01";
         var to = month + "-31";
+        // ⚠️ Vozvrat — ALOHIDA toifa (`expense` + `refund`, `FinanceController.Refund`). Ilgari filtr faqat
+        // `Category == "tuition"` edi va qaytarilgan pul bu yerga umuman kirmasdi: "Shu oyda to'lagan summa"
+        // Moliya → «Vozvratlar» dagi qaytarishlarni ayirmay, ortiqcha ko'rsatardi.
         var payments = (await db.FinanceTransactions.AsNoTracking()
-                .Where(t => t.StudentId != null && t.Category == "tuition"
+                .Where(t => t.StudentId != null
+                            && ((t.Direction == "income" && t.Category == "tuition")
+                                || (t.Direction == "expense" && t.Category == "refund"))
                             && (t.Month == month
                                 || ((t.Month == null || t.Month == "")
                                     && t.Date.CompareTo(from) >= 0 && t.Date.CompareTo(to) <= 0)))

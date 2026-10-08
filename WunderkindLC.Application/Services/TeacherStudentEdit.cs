@@ -43,12 +43,12 @@ public static class TeacherStudentEdit
 
     /// <summary>
     /// O'zgarishni yozadi (<see cref="Validate"/> dan KEYIN chaqiriladi). SaveChanges QILMAYDI.
-    /// Ism qismlari (<c>LastName/FirstName/MiddleName</c>) TEGILMAYDI — admin formasidagi
-    /// "faqat FullName berilgan" tarmog'i bilan bir xil.
+    /// Ism QISMLARI (<c>LastName/FirstName/MiddleName</c>) ham yangi FullName'dan qayta bo'linadi
+    /// (<see cref="SetName"/>) — aks holda keyingi admin tahriri o'qituvchining tuzatishini bekor qilardi.
     /// </summary>
     public static void Apply(Student s, Input p, DateOnly today)
     {
-        s.FullName = CleanName(p.FullName);
+        SetName(s, p.FullName);
         // O'zgarmagan raqam AYNAN saqlangan ko'rinishida qoladi (eski formatni jimgina "tuzatmaymiz").
         if (!PhoneUnchanged(p.Phone, s.Phone)) s.Phone = PhoneUtil.Normalize(p.Phone ?? "");
 
@@ -67,6 +67,35 @@ public static class TeacherStudentEdit
     public static bool PhoneUnchanged(string? phone, string? currentPhone) =>
         !string.IsNullOrWhiteSpace(currentPhone)
         && string.Equals(PhoneUtil.Normalize(phone), PhoneUtil.Normalize(currentPhone), StringComparison.Ordinal);
+
+    /// <summary>
+    /// FullName'ni yozadi va uni ism QISMLARIGA admin bilan BIR XIL qoida bo'yicha bo'ladi:
+    /// 1-so'z — familiya, 2-so'z — ism, qolgani — sharif (klientdagi <c>splitFullName</c>).
+    ///
+    /// <para>⚠️ Nega SHART: admin formasi (`payloadFromStudent`) saqlangan QISMLARNI qayta yuboradi,
+    /// `StudentsController.Update` esa FullName'ni qismlardan YIG'ADI. Ilgari o'qituvchi faqat
+    /// FullName'ni tuzatar, qismlar eski qolardi — admin o'quvchini (masalan telefonini) tahrirlashi
+    /// bilan ism jimgina ESKI holiga qaytardi. Endi ikki tomon bir xil: qismlardan yig'ilgan nom =
+    /// o'qituvchi yozgan nom.</para>
+    /// </summary>
+    public static void SetName(Student s, string? fullName)
+    {
+        s.FullName = CleanName(fullName);
+        var (last, first, middle) = SplitName(s.FullName);
+        s.LastName = last;
+        s.FirstName = first;
+        s.MiddleName = middle;
+    }
+
+    /// <summary>"Familiya Ism Sharif ..." → (familiya, ism, sharif). Bo'sh qism — "".</summary>
+    public static (string Last, string First, string Middle) SplitName(string? fullName)
+    {
+        var parts = CleanName(fullName).Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        return (
+            parts.Length > 0 ? parts[0] : "",
+            parts.Length > 1 ? parts[1] : "",
+            parts.Length > 2 ? string.Join(' ', parts.Skip(2)) : "");
+    }
 
     /// <summary>Boshi/oxiri kesiladi, ichidagi ortiqcha bo'shliqlar bitta qilinadi.</summary>
     public static string CleanName(string? name) =>

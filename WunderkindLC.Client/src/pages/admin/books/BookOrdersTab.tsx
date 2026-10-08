@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useState } from 'react'
 import {
   Check, X, FileDown, Loader2, Search, ShoppingCart, ExternalLink, AlertTriangle, Receipt, Undo2,
+  Banknote, CreditCard, Ban,
 } from 'lucide-react'
 import type {
-  Book, BookOrder, BookOrderFilters, BookOrderStatusFilter,
+  Book, BookOrder, BookOrderFilters, BookOrderStatusFilter, BookSettleMethod,
 } from '@/api/services/books'
 import {
-  approveBookOrder, exportBookOrders, getBookOrders, getBooks, rejectBookOrder,
+  approveBookOrder, cancelBookOrder, exportBookOrders, getBookOrders, getBooks, payBookCredit,
+  rejectBookOrder,
 } from '@/api/services/books'
 import type { BookReturnTarget } from './BookReturnModal'
 import { BookReturnModal } from './BookReturnModal'
@@ -31,6 +33,9 @@ interface Props {
 const statusTabs: { value: BookOrderStatusFilter | ''; label: string }[] = [
   { value: 'pending', label: 'Kutilmoqda' },
   { value: 'approved', label: 'Tasdiqlangan' },
+  // "To'lov kutilmoqda" — HOLAT emas, kesim: botdan naqd buyurtma tasdiqlangan (kitob zaxirada),
+  // mijoz hali kelib olib ketmagan. Kassir shu yerdan «To'landi» yoki «Bekor qilish» qiladi.
+  { value: 'awaiting', label: "To'lov kutilmoqda" },
   { value: 'rejected', label: 'Rad etilgan' },
   // "Qaytarilgan" — HOLAT emas, kesim: qaytarilgan sotuv "Tasdiqlangan" bo'lib qolaveradi
   // (qaytarish qisman ham bo'ladi), shuning uchun uni alohida ko'rish uchun filtr kerak.
@@ -56,6 +61,15 @@ export function BookOrdersTab({ canDecide, canSell, onDecided }: Props) {
   const [returning, setReturning] = useState<BookReturnTarget | null>(null)
   /** Markazda qo'lda sotuv oynasi ("Kitob sotish"). */
   const [sellOpen, setSellOpen] = useState(false)
+  /** OLIB KETISHDA to'lov: mijoz keldi va pul berdi («To'landi»). */
+  const [paying, setPaying] = useState<BookOrder | null>(null)
+  const [payMethod, setPayMethod] = useState<BookSettleMethod>('cash')
+  const [cardLast4, setCardLast4] = useState('')
+  /** Mijoz kelmadi — zaxira bekor qilinadi. */
+  const [cancelling, setCancelling] = useState<BookOrder | null>(null)
+  const [cancelReason, setCancelReason] = useState('')
+  /** Oyna ichidagi xato — oyna yopilmaydi, kiritilgan qiymat qoladi. */
+  const [modalError, setModalError] = useState('')
 
   const [filters, setFilters] = useState<BookOrderFilters>({ status: 'pending' })
   // Qidiruv maydonini har harfda so'rov yubormasdan, "Qidirish" bosilganda qo'llaymiz.
@@ -86,7 +100,9 @@ export function BookOrdersTab({ canDecide, canSell, onDecided }: Props) {
         ? true
         : filters.status === 'returned'
           ? updated.returnedQty > 0
-          : filters.status === updated.status
+          : filters.status === 'awaiting'
+            ? awaitingPickup(updated)
+            : filters.status === updated.status
     setOrders((prev) =>
       stays
         ? prev.map((o) => (o.id === updated.id ? updated : o))
@@ -120,6 +136,43 @@ export function BookOrdersTab({ canDecide, canSell, onDecided }: Props) {
       setRejectReason('')
     } catch (err) {
       setError(apiErrorMessage(err, "Rad etib bo'lmadi"))
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  const confirmPay = async () => {
+    if (!paying || busyId) return
+    const digits = cardLast4.replace(/\D/g, '')
+    if (payMethod === 'card' && digits.length < 4) return
+    setBusyId(paying.id)
+    setModalError('')
+    try {
+      patch(await payBookCredit(paying.id, {
+        method: payMethod,
+        ...(payMethod === 'card' ? { cardLast4: digits.slice(-4) } : {}),
+      }))
+      setPaying(null)
+      setCardLast4('')
+    } catch (err) {
+      setModalError(apiErrorMessage(err, "To'lovni qayd etib bo'lmadi"))
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  const confirmCancel = async () => {
+    if (!cancelling || busyId) return
+    setBusyId(cancelling.id)
+    setModalError('')
+    try {
+      patch(await cancelBookOrder(cancelling.id, cancelReason.trim()))
+      setCancelling(null)
+      setCancelReason('')
+      // Zaxiradagi kitob omborga qaytdi — "omborda N dona" ham yangilansin.
+      getBooks().then(setBooks).catch(() => {})
+    } catch (err) {
+      setModalError(apiErrorMessage(err, "Bekor qilib bo'lmadi"))
     } finally {
       setBusyId(null)
     }
@@ -315,6 +368,13 @@ export function BookOrdersTab({ canDecide, canSell, onDecided }: Props) {
                       {/* Nasiyada eng muhim savol — pul olindimi yoki hali qarzmi.
                           To'liq qaytarilganda esa qarz ham qolmaydi — "qarz" deb yozib
                           qo'yish noto'g'ri bo'lardi. */}
+                      {/* Botdan naqd: kitob zaxirada, pul mijoz OLIB KETAYOTGANDA olinadi. */}
+                      {o.payAtPickup && o.status === 'approved' && (
+                        <div className={cn('mt-0.5 text-xs font-medium',
+                          o.isPaid ? 'text-emerald-600' : 'text-orange-600')}>
+                          {o.isPaid ? "to'landi" : "olib ketishda to'lanadi"}
+                        </div>
+                      )}
                       {o.paymentMethod === 'credit' && o.returnedQty < o.qty && (
                         <div
                           className={cn(
@@ -406,7 +466,29 @@ export function BookOrdersTab({ canDecide, canSell, onDecided }: Props) {
                       )}
                       {/* QAYTARISH — faqat TASDIQLANGAN sotuvda (kitob mijozga berilgan va
                           ombordan ayirilgan). Kutilayotgani "Rad etish" bilan yopiladi. */}
-                      {canDecide && o.status === 'approved' && o.qty > o.returnedQty && (
+                      {/* OLIB KETILMAGAN bot buyurtmasi: mijoz keldi → «To'landi», kelmadi → «Bekor qilish».
+                          Bunda «Qaytarish» YO'Q — kitob mijozga berilmagan, pul olinmagan. */}
+                      {canDecide && awaitingPickup(o) && (
+                        <div className="inline-flex gap-1.5">
+                          <Button
+                            variant="secondary"
+                            disabled={busyId === o.id}
+                            className="!bg-emerald-50 !text-emerald-700 hover:!bg-emerald-100"
+                            onClick={() => { setPaying(o); setPayMethod('cash'); setCardLast4(''); setModalError('') }}
+                          >
+                            <Check className="h-4 w-4" /> To'landi
+                          </Button>
+                          <Button
+                            variant="secondary"
+                            disabled={busyId === o.id}
+                            className="!bg-red-50 !text-red-700 hover:!bg-red-100"
+                            onClick={() => { setCancelling(o); setCancelReason(''); setModalError('') }}
+                          >
+                            <Ban className="h-4 w-4" /> Bekor qilish
+                          </Button>
+                        </div>
+                      )}
+                      {canDecide && o.status === 'approved' && !awaitingPickup(o) && o.qty > o.returnedQty && (
                         <Button
                           variant="secondary"
                           className="!bg-amber-50 !text-amber-700 hover:!bg-amber-100"
@@ -481,6 +563,110 @@ export function BookOrdersTab({ canDecide, canSell, onDecided }: Props) {
         </div>
       </Modal>
 
+      {/* ---- Olib ketishda to'lov qabul qilish ---- */}
+      <Modal
+        open={!!paying}
+        onClose={busyId ? () => {} : () => setPaying(null)}
+        size="sm"
+        title={`Buyurtma #${paying?.number} — to'lovni qabul qilish`}
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setPaying(null)} disabled={!!busyId}>
+              Bekor
+            </Button>
+            <Button
+              onClick={confirmPay}
+              disabled={!!busyId || (payMethod === 'card' && cardLast4.replace(/\D/g, '').length < 4)}
+            >
+              {busyId ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+              Tasdiqlash
+            </Button>
+          </>
+        }
+      >
+        {paying && (
+          <div className="space-y-4">
+            <div className="rounded-lg bg-slate-50 px-3 py-2.5 text-sm text-slate-600">
+              <b className="text-slate-800">{paying.customerName || "Noma'lum"}</b>
+              <div>
+                {paying.bookTitle} — {paying.qty - paying.returnedQty} dona ·{' '}
+                <b className="text-slate-800">{formatMoney(paying.netTotal)} so'm</b>
+              </div>
+            </div>
+            <p className="text-sm text-slate-600">
+              Mijoz kitobni olib ketmoqda va pulni berdi. Summa shu paytda <b>kassaga</b> kirim bo'ladi;
+              ombor tegilmaydi (kitob tasdiqlashda zaxiraga olingan).
+            </p>
+            <div className="grid grid-cols-2 gap-2">
+              {([
+                { value: 'cash' as const, label: 'Naqd', icon: Banknote },
+                { value: 'card' as const, label: 'Karta', icon: CreditCard },
+              ]).map((m) => (
+                <button
+                  key={m.value}
+                  type="button"
+                  onClick={() => setPayMethod(m.value)}
+                  className={cn(
+                    'flex items-center justify-center gap-2 rounded-lg border px-3 py-2.5 text-sm font-medium transition-colors',
+                    payMethod === m.value
+                      ? 'border-brand-400 bg-brand-50 text-brand-700'
+                      : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50',
+                  )}
+                >
+                  <m.icon className="h-4 w-4" /> {m.label}
+                </button>
+              ))}
+            </div>
+            {payMethod === 'card' && (
+              <Input
+                label="Karta (oxirgi 4 raqam)"
+                required
+                inputMode="numeric"
+                placeholder="1234"
+                value={cardLast4}
+                onChange={(e) => setCardLast4(e.target.value.replace(/\D/g, '').slice(-4))}
+              />
+            )}
+            {modalError && <p className="text-sm text-red-600">{modalError}</p>}
+          </div>
+        )}
+      </Modal>
+
+      {/* ---- Olib ketilmagan buyurtmani bekor qilish ---- */}
+      <Modal
+        open={!!cancelling}
+        onClose={busyId ? () => {} : () => setCancelling(null)}
+        size="sm"
+        title={`Buyurtma #${cancelling?.number} — bekor qilish`}
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setCancelling(null)} disabled={!!busyId}>
+              Yopish
+            </Button>
+            <Button variant="danger" onClick={confirmCancel} disabled={!!busyId}>
+              {busyId ? <Loader2 className="h-4 w-4 animate-spin" /> : <Ban className="h-4 w-4" />}
+              Bekor qilish
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-3">
+          <p className="text-sm text-slate-600">
+            Mijoz kitobni olib ketmadi: zaxiradagi {cancelling ? cancelling.qty - cancelling.returnedQty : 0} dona
+            omborga qaytadi, buyurtma «Rad etilgan» bo'ladi va mijozga botda xabar ketadi. Pul olinmagan —
+            kassaga hech narsa yozilmaydi.
+          </p>
+          <Textarea
+            label="Sabab (ixtiyoriy)"
+            rows={2}
+            placeholder="Masalan: Mijoz kelmadi"
+            value={cancelReason}
+            onChange={(e) => setCancelReason(e.target.value)}
+          />
+          {modalError && <p className="text-sm text-red-600">{modalError}</p>}
+        </div>
+      </Modal>
+
       {/* ---- Chek (rasm yoki PDF) ---- */}
       <Modal
         open={!!receipt}
@@ -549,4 +735,9 @@ export function BookOrdersTab({ canDecide, canSell, onDecided }: Props) {
       />
     </div>
   )
+}
+
+/** Tasdiqlangan, lekin mijoz hali OLIB KETMAGAN (to'lanmagan) bot buyurtmasi. */
+function awaitingPickup(o: BookOrder): boolean {
+  return !!o.payAtPickup && o.status === 'approved' && !o.isPaid
 }

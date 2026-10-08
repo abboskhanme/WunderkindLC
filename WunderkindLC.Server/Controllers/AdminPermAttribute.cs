@@ -145,11 +145,18 @@ public sealed class AdminPermAttribute(params string[] perms) : Attribute, IAuth
     /// Bo'lim bo'yicha TO'LIQ (barcha 4 amal) ruxsati bormi — GET bo'lgani uchun odatdagi
     /// <see cref="OnAuthorization"/> yo'li bilan tekshirilmaydigan, lekin nozik (parol eksporti
     /// kabi) amallar uchun ishlatiladi: admin/superadmin — har doim; xodim (staff) — faqat
-    /// yalang <c>section</c> (barcha amal) claim'i berilgan bo'lsa.
+    /// yalang kalit (barcha amal) berilgan bo'lsa.
+    ///
+    /// <para>⚠️ Qoida — <see cref="PermissionRules.HasFullSection"/> (testlangan): sahifa kaliti
+    /// (<c>"students.list"</c>) so'ralganda yalang BO'LIM kaliti (<c>"students"</c>) ham yetadi —
+    /// PASTGA meros (<c>permissions.md</c> §2, §8). Ilgari bu yerda faqat AYNAN tenglik turardi:
+    /// standart "Administrator" roli (yalang <c>students</c>, <c>teachers</c>) login/parol va
+    /// eksportda 403 olardi, torroq <c>students.list</c> esa o'tardi — ya'ni KENG ruxsat TOR ruxsatdan
+    /// kam huquq berardi. Yuqoriga (sahifadan bo'limga) meros bu yerda YO'Q.</para>
     /// </summary>
     public static bool HasFullAccess(ClaimsPrincipal user, string section) =>
         user.IsInRole(Roles.Admin) || user.IsInRole(Roles.SuperAdmin) ||
-        user.Claims.Any(c => c.Type == ClaimType && c.Value == section);
+        PermissionRules.HasFullSection(PermValues(user), section);
 
     /// <summary>
     /// SUPERADMIN yoki shu bo'lim ruxsati ANIQ berilgan xodim.

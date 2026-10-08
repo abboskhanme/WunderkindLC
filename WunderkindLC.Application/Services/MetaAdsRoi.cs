@@ -354,6 +354,11 @@ public static class MetaAdsRoi
         }
     }
 
+    /// <summary>CRM'ga kelgan reklama lid QATORI — Lead Ads formasi yoki click-to-DM
+    /// (<see cref="IgDmAdLeads"/>) bir xil shaklda yig'iladi.</summary>
+    private sealed record AdLeadRow(
+        string CampaignId, string AdsetId, string AdId, string LeadId, string Platform, string CreatedTime);
+
     private static Agg Bucket(Dictionary<string, Agg> map, string key)
     {
         if (!map.TryGetValue(key, out var agg)) map[key] = agg = new Agg();
@@ -447,10 +452,26 @@ public static class MetaAdsRoi
         // ⚠️ Lidlar AYNAN shu oraliqda kelganlari olinadi — CPL/CAC "oraliq xarajati / oraliq
         // lidlari" bo'lishi uchun. DAROMAD esa shu lidlarning BUTUN UMR to'lovi (§4.8).
         var toBound = DayEnd(to);
-        var leadRowsRaw = await db.IgAdLeads.AsNoTracking()
-            .Where(l => l.CreatedTime.CompareTo(from) >= 0 && l.CreatedTime.CompareTo(toBound) <= 0)
-            .Select(l => new { l.CampaignId, l.AdsetId, l.AdId, l.LeadId, l.Platform, l.CreatedTime })
-            .ToListAsync(ct);
+        var leadRowsRaw = (await db.IgAdLeads.AsNoTracking()
+                .Where(l => l.CreatedTime.CompareTo(from) >= 0 && l.CreatedTime.CompareTo(toBound) <= 0)
+                .Select(l => new { l.CampaignId, l.AdsetId, l.AdId, l.LeadId, l.Platform, l.CreatedTime })
+                .ToListAsync(ct))
+            .Select(l => new AdLeadRow(l.CampaignId ?? "", l.AdsetId ?? "", l.AdId ?? "",
+                                       l.LeadId ?? "", l.Platform ?? "", l.CreatedTime ?? ""))
+            .ToList();
+
+        // 🔴 «CLICK-TO-DIRECT» lidlari — Meta bergan ANIQ `referral.ad_id` (taxmin EMAS). Ilgari
+        // ROI faqat forma lidlarini (`IgAdLeads`) sanardi va "Xabar yuborish" kampaniyasi
+        // "pul sarflandi, lid yo'q" bo'lib ko'rinardi. Platforma — Instagram (Direct), sana —
+        // suhbatdagi BIRINCHI reklama xabari. Izohdagi TAXMINIY atributsiya bu yerga KIRMAYDI
+        // (§20.1). Bitta lid ikkala manbada bo'lsa konversiya baribir BIR marta sanaladi
+        // (`Agg.LeadIds` — to'plam).
+        var dmAdLeads = (await IgDmAdLeads.LoadAsync(db, ct))
+            .Where(d => d.CreatedAt.CompareTo(from) >= 0 && d.CreatedAt.CompareTo(toBound) <= 0)
+            .ToList();
+        foreach (var d in dmAdLeads)
+            leadRowsRaw.Add(new AdLeadRow(d.CampaignId, parentById.GetValueOrDefault(d.AdId, ""), d.AdId,
+                                          d.LeadId, LeadPlatformIg, d.CreatedAt));
 
         var leadRows = leadRowsRaw.Where(l => LeadMatchesPlatform(l.Platform, pf)).ToList();
 
@@ -588,6 +609,10 @@ public static class MetaAdsRoi
                   + "xarajat esa faqat tanlangan oraliqda. Ikkalasi bir xil davrni bildirmaydi.");
         notes.Add("Qamrov TAXMINIY: Meta kunlar va platformalar bo'yicha noyob odamlarni "
                   + "dedup qilmaydi, shuning uchun \"kamida\" va \"ko'pi bilan\" chegaralari beriladi.");
+        if (dmAdLeads.Count > 0)
+            notes.Add($"CRM lidlari ichida {dmAdLeads.Select(d => d.LeadId).Distinct().Count()} tasi «Click-to-Direct» "
+                      + "reklamasidan (DM) — Meta bergan aniq e'lon bo'yicha; Meta ularni lid emas, "
+                      + "«yozishma boshlandi» deb sanaydi.");
         if (totals.MetaLeads != totals.CrmLeads)
             notes.Add($"Meta lidlari {totals.MetaLeads} ta, CRM lidlari {totals.CrmLeads} ta. "
                       + "Farq odatiy: telefon dublikati, 90 kunlik oyna yoki token xatosi.");

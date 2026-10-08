@@ -220,8 +220,14 @@ export function InstagramSettings() {
         instagramReplyDelaySeconds: form.instagramReplyDelaySeconds ?? 0,
         instagramDailyReplyLimit: form.instagramDailyReplyLimit,
       })
-      setForm(next)
+      // `warning` — faqat javob maydoni: formaga (va keyingi saqlashga) qaytmasin.
+      const { warning, ...rest } = next
+      setForm(rest)
       setSaved('Sozlamalar saqlandi.')
+      // Sozlama saqlandi, lekin Meta tomonidagi qadam (webhook obunasi / FAQ tugmalari)
+      // bajarilmadi — jim qolmasin (qizil satr "saqlandi" xabarini yopadi, shuning uchun
+      // matnda ikkalasi ham aytiladi).
+      if (warning) setError(`Sozlamalar saqlandi. ⚠️ ${warning}`)
       setStatus(await getIgStatus())
     } catch (e) {
       setError(apiErrorMessage(e, "Saqlab bo'lmadi"))
@@ -263,7 +269,10 @@ export function InstagramSettings() {
       setSaved(
         next.webhookSubscribed
           ? `Ulandi: @${next.username}.`
-          : `Ulandi: @${next.username}, LEKIN webhook obunasi bo'lmadi — izoh/DM kelmaydi.`,
+          : !next.enabled
+            // Agent o'chiq — obuna ATAYIN qilinmadi, yoqilganda server o'zi obuna bo'ladi.
+            ? `Ulandi: @${next.username}. Agent yoqilganda webhook obunasi avtomatik qilinadi.`
+            : `Ulandi: @${next.username}, LEKIN webhook obunasi bo'lmadi — izoh/DM kelmaydi.`,
       )
     } catch (e) {
       setError(apiErrorMessage(e, "Token bilan ulab bo'lmadi"))
@@ -277,9 +286,11 @@ export function InstagramSettings() {
     setBusy('disconnect')
     setError('')
     try {
-      await disconnectIg()
+      const res = await disconnectIg()
       setStatus(await getIgStatus())
-      setSaved('Akkaunt uzildi.')
+      setSaved(res.message || 'Akkaunt uzildi.')
+      // Uzildi, lekin Meta'da webhook obunasi / FAQ tugmalari qolgan bo'lishi mumkin — sababi ko'rinsin.
+      if (res.warning) setError(`Akkaunt uzildi. ⚠️ ${res.warning}`)
     } catch (e) {
       setError(apiErrorMessage(e, "Uzib bo'lmadi"))
     } finally {
@@ -550,7 +561,15 @@ export function InstagramSettings() {
                 value={status.connected ? `${status.tokenDaysLeft} kun qoldi` : '—'}
                 hint={status.connected && status.tokenDaysLeft <= 15 ? 'Tez orada yangilanadi' : undefined}
               />
-              <MkStatusCard label="Webhook obunasi" ok={status.webhookSubscribed} value={status.webhookSubscribed ? 'Faol' : 'Yo‘q'} />
+              {/* Agent o'chiq bo'lsa obuna ATAYIN yo'q ("agent o'chiq = webhook yo'q") — qizil emas, sariq:
+                  agent yoqilganda server obunani o'zi qiladi. */}
+              <MkStatusCard
+                label="Webhook obunasi"
+                ok={status.webhookSubscribed}
+                warn={!status.webhookSubscribed && !status.enabled}
+                value={status.webhookSubscribed ? 'Faol' : 'Yo‘q'}
+                hint={!status.webhookSubscribed && !status.enabled ? 'Agent yoqilganda avtomatik obuna bo‘ladi' : undefined}
+              />
               <MkStatusCard label="INSTAGRAM_APP_SECRET" ok={status.appSecretSet} hint=".env fayldan o'qiladi" />
               <MkStatusCard label="INSTAGRAM_VERIFY_TOKEN" ok={status.verifyTokenSet} hint=".env fayldan o'qiladi" />
               <MkStatusCard label="App ID" ok={status.appIdSet} />

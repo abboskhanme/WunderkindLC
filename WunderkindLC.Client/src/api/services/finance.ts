@@ -12,6 +12,7 @@ import type { ReceiptData } from '@/lib/receipt'
 // Kassir kesimi turlari kassa servisida (yagona manba) — moliya jadvali ham shulardan foydalanadi.
 import type { CashierPayments, CashierSummary } from './kassa'
 import { delay, uid } from '@/lib/utils'
+import { localIsoDate } from '@/lib/localDate'
 import { api, USE_MOCK } from '../client'
 import { financeMock } from '../mock/finance'
 import { studentsMock } from '../mock/students'
@@ -704,7 +705,7 @@ export async function exportRetentionBonusReport(from?: string, to?: string): Pr
   const href = URL.createObjectURL(res.data as Blob)
   const a = document.createElement('a')
   a.href = href
-  a.download = match?.[1] ?? `bonus_moliya_${new Date().toISOString().slice(0, 10)}.xlsx`
+  a.download = match?.[1] ?? `bonus_moliya_${localIsoDate(new Date())}.xlsx`
   a.click()
   URL.revokeObjectURL(href)
 }

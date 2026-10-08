@@ -32,6 +32,7 @@ import { getClasses } from '@/api/services/classes'
 import { usePerm } from '@/lib/permissions'
 import { cn, formatMoney, apiErrorMessage } from '@/lib/utils'
 import { currentMonth, todayIso } from '@/lib/month'
+import { canCancelAssignment, cancelPlan, SUBSTITUTE_MAX_BACKDATE_DAYS } from '@/lib/substituteCancel'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
@@ -361,6 +362,9 @@ export function SubstituteTeachersPage() {
     }
   }
 
+  const cancelTarget = cancelTargetId ? assignments.find((a) => a.id === cancelTargetId) ?? null : null
+  const cancelPlanForTarget = cancelTarget ? cancelPlan(cancelTarget, today) : null
+
   const handleCancelAssignment = async () => {
     if (!cancelTargetId) return
     setCancelling(true)
@@ -615,7 +619,9 @@ export function SubstituteTeachersPage() {
                           )}
                         </td>
                         <td className="px-4 py-3 text-right">
-                          {item.isActive && canEdit && (
+                          {/* 14 kundan eski kunlar maosh hisobiga kirgan — hammasi eski bo'lsa
+                              tugma ko'rsatilmaydi (server baribir rad etadi, `lib/substituteCancel.ts`). */}
+                          {canEdit && canCancelAssignment(item, today) && (
                             <Button
                               variant="secondary"
                               onClick={() => {
@@ -896,6 +902,13 @@ export function SubstituteTeachersPage() {
             Ushbu o'rinbosar o'qituvchi biriktiruvini bekor qilmoqchimisiz? Bekor qilingandan so'ng
             o'rinbosar o'qituvchi ushbu guruh dars jurnali va darslariga kira olmaydi.
           </p>
+          {cancelTarget && cancelPlanForTarget && cancelPlanForTarget.locked.length > 0 && (
+            <div className="rounded-lg bg-amber-50 p-3 text-sm text-amber-800">
+              {SUBSTITUTE_MAX_BACKDATE_DAYS} kundan eski kunlar ({cancelPlanForTarget.locked.join(', ')})
+              maosh hisobiga kirgan — ular o'z kuchida qoladi. Faqat{' '}
+              {cancelPlanForTarget.removable.join(', ')} kunlari bekor qilinadi.
+            </div>
+          )}
           <div className="flex justify-end gap-2 pt-2">
             <Button variant="secondary" onClick={() => setCancelTargetId(null)} disabled={cancelling}>
               Orqaga

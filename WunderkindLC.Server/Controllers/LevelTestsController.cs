@@ -13,8 +13,12 @@ namespace WunderkindLC.Server.Controllers;
 [Authorize]
 [AdminPerm("schedule.levelTests")]
 [Route("api/admin/level-tests")]
-public class LevelTestsController(AppDbContext db, DataCache dataCache, IConfiguration config) : ControllerBase
+public class LevelTestsController(AppDbContext db, DataCache dataCache, IConfiguration config, AuditService audit) : ControllerBase
 {
+    /// <summary>Audit turi — <see cref="AuditSections"/> da "Lidlar" bo'limi (test lid ishlab chiqaradi,
+    /// `LeadForm` bilan bir xil).</summary>
+    public const string AuditEntity = "LevelTest";
+
     [HttpGet]
     public async Task<ActionResult<IEnumerable<LevelTestListDto>>> GetAll()
     {
@@ -59,6 +63,8 @@ public class LevelTestsController(AppDbContext db, DataCache dataCache, IConfigu
         db.LevelTests.Add(test);
         WriteQuestions(test.Id, p.Questions);
         WriteBands(test.Id, p.Bands);
+        audit.Record(AuditEntity, test.Id, "create", $"«{test.Title}» daraja testi yaratildi",
+            after: Snapshot(test));
         await db.SaveChangesAsync();
         return await LevelTestService.BuildDetailAsync(db, test);
     }
@@ -68,10 +74,15 @@ public class LevelTestsController(AppDbContext db, DataCache dataCache, IConfigu
     {
         var test = await db.LevelTests.FindAsync(id);
         if (test is null) return NotFound();
+        var before = Snapshot(test);
+        var wasActive = test.IsActive;
         test.Title = (p.Title ?? "").Trim();
         test.CourseId = p.CourseId ?? "";
         test.Intro = p.Intro ?? "";
         test.IsActive = p.IsActive;
+        audit.Record(AuditEntity, test.Id, "update",
+            $"«{test.Title}» daraja testi tahrirlandi" + ActiveChangeText(wasActive, test.IsActive),
+            before: before, after: Snapshot(test));
 
         // Savol va diapazonlar — to'liq almashtiriladi (oddiy va ishonchli).
         db.LevelTestQuestions.RemoveRange(db.LevelTestQuestions.Where(q => q.TestId == id));
@@ -82,19 +93,65 @@ public class LevelTestsController(AppDbContext db, DataCache dataCache, IConfigu
         return await LevelTestService.BuildDetailAsync(db, test);
     }
 
+    /// <summary>
+    /// Testni o'chiradi — FAQAT hech kim topshirmagan va taklif havolasi yuborilmagan bo'lsa.
+    ///
+    /// <para>⚠️ Topshiruv/taklif bor bo'lsa 400 (sonlari bilan) va «o'chirib qo'yish» taklif qilinadi
+    /// (CRM-7): topshiruvlar o'chsa lidlar KANALI "Daraja testi" dan "Boshqa" ga o'tib ketardi
+    /// (`LeadOrigins`), qabul cheklistining «Daraja testi» bandi belgisini yo'qotardi
+    /// (`StudentIntake`) va test statistikasi tarixi yo'qolardi. Ommaviy havolani to'xtatish uchun
+    /// test o'chirib qo'yiladi (<c>PATCH {id}/active</c>) — tarix joyida qoladi.</para>
+    /// </summary>
     [HttpDelete("{id}")]
     public async Task<IActionResult> Delete(string id)
     {
         var test = await db.LevelTests.FindAsync(id);
         if (test is null) return NotFound();
+        var subs = await db.LevelTestSubmissions.CountAsync(s => s.TestId == id);
+        var invites = await db.LevelTestInvites.CountAsync(i => i.TestId == id);
+        if (subs > 0 || invites > 0)
+            return BadRequest(new
+            {
+                message = $"Bu testni {subs} kishi topshirgan" + (invites > 0 ? $", {invites} ta taklif havolasi yuborilgan" : "")
+                          + " — o'chirib bo'lmaydi (lidlar kanali va qabul cheklisti shu natijalarga tayanadi). "
+                          + "Havolani to'xtatish uchun testni «O'chirib qo'yish» tugmasi bilan nofaol qiling.",
+                submissions = subs,
+                invites,
+            });
         db.LevelTestQuestions.RemoveRange(db.LevelTestQuestions.Where(q => q.TestId == id));
         db.LevelTestBands.RemoveRange(db.LevelTestBands.Where(b => b.TestId == id));
-        db.LevelTestSubmissions.RemoveRange(db.LevelTestSubmissions.Where(s => s.TestId == id));
-        db.LevelTestInvites.RemoveRange(db.LevelTestInvites.Where(i => i.TestId == id));
         db.LevelTests.Remove(test);
+        audit.Record(AuditEntity, id, "delete", $"«{test.Title}» daraja testi o'chirildi (topshiruvsiz)",
+            before: Snapshot(test));
         await db.SaveChangesAsync();
         return NoContent();
     }
+
+    /// <summary>
+    /// Testni YOQISH / O'CHIRIB QO'YISH (o'chirish o'rniga). O'chiq testning ommaviy havolasi
+    /// ishlamaydi (<c>LevelTestService.SubmitAsync</c> faqat <c>IsActive</c> testni qabul qiladi),
+    /// natijalar va lidlar esa joyida qoladi.
+    /// </summary>
+    [HttpPatch("{id}/active")]
+    public async Task<IActionResult> SetActive(string id, FormActiveRequest req)
+    {
+        var test = await db.LevelTests.FindAsync(id);
+        if (test is null) return NotFound();
+        if (test.IsActive != req.IsActive)
+        {
+            test.IsActive = req.IsActive;
+            audit.Record(AuditEntity, test.Id, "update",
+                $"«{test.Title}» daraja testi" + ActiveChangeText(!req.IsActive, req.IsActive));
+            await db.SaveChangesAsync();
+        }
+        return Ok(new { id = test.Id, isActive = test.IsActive });
+    }
+
+    private static string ActiveChangeText(bool before, bool after) =>
+        before == after ? "" : after ? " — YOQILDI" : " — O'CHIRIB QO'YILDI (havola to'xtatildi)";
+
+    /// <summary>Audit surati (savollar/kalit kiritilmaydi — faqat sozlama).</summary>
+    private static object Snapshot(LevelTest t) => new { t.Title, t.CourseId, t.IsActive };
 
     /// <summary>Bu testga yuborilgan bir martalik havolalar (invite) — lid + SMS holati + ishlangani.
     /// (Lidlarning ismi/telefoni qaytadi — o'qish darvozalangan.)</summary>

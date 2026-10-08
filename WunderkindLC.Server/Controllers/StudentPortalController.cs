@@ -435,6 +435,9 @@ public class StudentPortalController(
     /// <summary>
     /// O'quvchi davomati — chorak bo'yicha umumlashtirilgan ko'rsatkichlar + kunlik
     /// davomatsizlik/kech qolish yozuvlari ro'yxati.
+    /// <para>⚠️ Jamlanma ham, ro'yxat ham BIR XIL guruhlar to'plami bo'yicha
+    /// (<see cref="StudentReportBuilder.GroupsAsync"/> — barcha tirik a'zoliklar). Ilgari ro'yxat faqat
+    /// ASOSIY guruhdan olinardi: ikki guruhdagi o'quvchida sonlar va qatorlar bir-biriga mos kelmasdi.</para>
     /// </summary>
     [HttpGet("attendance")]
     public async Task<ActionResult<StudentAttendanceFullDto>> Attendance(
@@ -443,8 +446,8 @@ public class StudentPortalController(
         if (User.IsInRole("admin") && string.IsNullOrWhiteSpace(studentId)) return NeedStudentId();
         var s = await TargetAsync(studentId);
         if (s is null) return NotFound();
-        var cls = await PrimaryGroupAsync(s);
-        if (cls is null) return new StudentAttendanceFullDto(
+        var groupIds = (await StudentReportBuilder.GroupsAsync(db, s)).Select(g => g.Id).ToList();
+        if (groupIds.Count == 0) return new StudentAttendanceFullDto(
             new StudentAttendanceDto(new(), new(), new(), new(), new()),
             new List<StudentAbsenceRowDto>());
 
@@ -455,7 +458,7 @@ public class StudentPortalController(
         var reasons = reasonRows.ToDictionary(r => r.Id);
 
         var rowsQuery = db.JournalEntries
-            .Where(e => e.ClassId == cls.Id && e.StudentId == s.Id && e.ReasonId != null);
+            .Where(e => groupIds.Contains(e.ClassId) && e.StudentId == s.Id && e.ReasonId != null);
         if (quarter.HasValue) rowsQuery = rowsQuery.Where(e => e.Quarter == quarter.Value);
 
         var rows = (await rowsQuery.ToListAsync())
@@ -670,7 +673,9 @@ public class StudentPortalController(
         }
         else
         {
-            targetUid = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            // O'quvchi ham, ota-ona ham BITTA "oila" akkaunti sozlamasini ko'radi — push aynan shu
+            // identifikatorga boradi (`NotificationUserIdAsync`, `SaveSettings` izohi).
+            targetUid = await NotificationUserIdAsync();
         }
         if (string.IsNullOrWhiteSpace(targetUid))
             return new UserSettingsDto("uz", "system", true);
@@ -680,12 +685,18 @@ public class StudentPortalController(
             : new UserSettingsDto(us.Language, us.Theme, us.NotificationsEnabled);
     }
 
-    /// <summary>Sozlamani yangilash (qator yo'q bo'lsa yaratiladi). Faqat student rolida — o'ziniki.</summary>
+    /// <summary>Sozlamani yangilash (qator yo'q bo'lsa yaratiladi). O'quvchi va ota-ona — o'ziniki
+    /// (admin impersonate qila olmaydi).
+    /// <para>⚠️ Qator — BILDIRISHNOMA IDENTIFIKATORIDA (<see cref="NotificationUserIdAsync"/>: ota-ona
+    /// uchun farzandining akkaunti). Sabab: ota-onaning qurilma tokeni ham farzand akkauntiga
+    /// bog'lanadi va push o'sha yerga boradi; <c>NotificationsEnabled</c> esa push yuborishda
+    /// O'QILADI (<c>FcmService</c>). Ilgari bu endpoint faqat <c>student</c> ga ochiq edi — ota-ona
+    /// ilovada tugmani bosar, so'rov 403 bilan jim yiqilardi va push kelaverardi.</para></summary>
     [HttpPut("settings")]
-    [Authorize(Roles = "student")]
+    [Authorize(Roles = "student,parent")]
     public async Task<ActionResult<UserSettingsDto>> SaveSettings(SaveUserSettingsRequest req)
     {
-        var uid = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        var uid = await NotificationUserIdAsync();
         if (uid is null) return Unauthorized();
         var st = await db.UserSettings.FindAsync(uid);
         if (st is null)
@@ -705,6 +716,8 @@ public class StudentPortalController(
     /// O'quvchi/ota-ona ilova ichida o'z parolini almashtiradi. Joriy parol bilan tasdiqlanadi,
     /// yangi parol kamida 8 belgi. Faqat o'zinikiga (admin bu yerda impersonate qila olmaydi).
     /// Login (email) o'zgarmagani uchun joriy token amal qilaveradi — qayta kirish shart emas.
+    /// <para>⚠️ BOSHQA qurilmalardagi sessiyalar tugatiladi (yo'qolgan telefon, parolni bilib olgan
+    /// odam) — joriy sessiya saqlanadi (<see cref="AuthController.EndOtherSessionsAsync"/>).</para>
     /// </summary>
     [HttpPut("password")]
     [Authorize(Roles = "student,parent")]
@@ -723,6 +736,7 @@ public class StudentPortalController(
             return BadRequest(new { message = "Yangi parol kamida 8 belgidan iborat bo'lsin" });
 
         user.SetOwnPassword(newPwd);
+        await AuthController.EndOtherSessionsAsync(HttpContext, db, user.Id);
         await db.SaveChangesAsync();
         return Ok(new { message = "Parol almashtirildi" });
     }
@@ -1262,9 +1276,11 @@ public class StudentPortalController(
         var supIds = supports.Select(t => t.Id).ToList();
 
         // Bo'sh + bugundan keyingi slotlar (sana ISO bo'lgani uchun matn taqqoslash to'g'ri).
+        var now = AppClock.Now;
         var openSlots = (await db.SupportSlots
                 .Where(x => supIds.Contains(x.TeacherId) && x.Status == "open").ToListAsync())
-            .Where(x => string.CompareOrdinal(x.Date, today) >= 0)
+            // Bugungi, lekin boshlanib bo'lgan slotlar ham ko'rsatilmaydi (bron qilib bo'lmaydi).
+            .Where(x => string.CompareOrdinal(x.Date, today) >= 0 && !SupportService.IsPast(x, now))
             .OrderBy(x => x.Date).ThenBy(x => x.StartTime).ToList();
         var openByTeacher = openSlots.GroupBy(x => x.TeacherId).ToDictionary(g => g.Key, g => g.ToList());
 
@@ -1301,12 +1317,17 @@ public class StudentPortalController(
         return new StudentSupportDto(supDtos, myBookings);
     }
 
-    /// <summary>Bo'sh slotni bron qilish.</summary>
+    /// <summary>Bo'sh slotni bron qilish. ⚠️ Boshlanish vaqti o'tgan slot bron qilinmaydi; bron
+    /// support o'qituvchisiga (ilovasiga) bildiriladi.</summary>
     [HttpPost("support/slots/{id}/book")]
     public async Task<IActionResult> BookSupport(string id, [FromQuery] string? studentId = null)
     {
         var s = await TargetAsync(studentId);
         if (s is null) return NotFound();
+        var target = await db.SupportSlots.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id);
+        if (target is null) return NotFound();
+        if (SupportService.IsPast(target, AppClock.Now))
+            return BadRequest(new { message = "Bu vaqt o'tib ketgan — boshqa bo'sh vaqtni tanlang" });
         var bookedAt = AppClock.Now.ToString("yyyy-MM-ddTHH:mm:ss");
         // ATOMIK bron: faqat hali "open" va egasi yo'q slot yangilanadi. Ikki o'quvchi bir vaqtda bron
         // qilsa — faqat bittasi 1 qator yangilaydi, ikkinchisi 0 qator oladi → "band qilingan" (race-safe).
@@ -1320,6 +1341,10 @@ public class StudentPortalController(
             return await db.SupportSlots.AnyAsync(x => x.Id == id)
                 ? BadRequest(new { message = "Bu vaqt allaqachon band qilingan" })
                 : NotFound();
+        // O'qituvchiga bildirish — ilgari bron hech kimga ko'rinmasdi (o'qituvchi faqat ro'yxatni ochganda bilardi).
+        var teacher = await db.Teachers.AsNoTracking().FirstOrDefaultAsync(t => t.Id == target.TeacherId);
+        await SupportService.NotifyAsync(db, HttpContext.RequestServices.GetService<FcmService>(), teacher?.UserId,
+            "Yangi support bron", $"{s.FullName} {SupportService.When(target)} ga support darsini bron qildi.");
         return NoContent();
     }
 
@@ -1336,6 +1361,10 @@ public class StudentPortalController(
         slot.Status = "open";
         slot.BookedAt = null;
         await db.SaveChangesAsync();
+        // O'qituvchiga bildirish — u bo'shagan vaqtga o'quvchini kutib o'tirmasin.
+        var teacher = await db.Teachers.AsNoTracking().FirstOrDefaultAsync(t => t.Id == slot.TeacherId);
+        await SupportService.NotifyAsync(db, HttpContext.RequestServices.GetService<FcmService>(), teacher?.UserId,
+            "Support bron bekor qilindi", $"{s.FullName} {SupportService.When(slot)} dagi support bronini bekor qildi.");
         return NoContent();
     }
 

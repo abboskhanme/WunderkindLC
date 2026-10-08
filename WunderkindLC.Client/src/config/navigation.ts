@@ -307,7 +307,6 @@ export const navByRole: Record<Role, NavItem[]> = {
           children: [
             { label: 'Guruh chati', to: '/admin/chats', perm: 'messages.chat' },
             { label: 'Support Telegram', to: '/admin/support-telegram', perm: 'messages.support' },
-            { label: 'Call Center — Bulut', to: '/admin/calls', end: true, perm: 'calls.cloud' },
             { label: 'Call Center — Local Call', to: '/admin/calls/local', perm: 'calls.local' },
           ],
         },

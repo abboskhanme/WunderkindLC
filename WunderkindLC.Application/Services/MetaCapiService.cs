@@ -117,6 +117,32 @@ public sealed class MetaCapiService(
     }
 
     /// <summary>
+    /// CRM lidi shu REKLAMA LIDIDAN OLDIN o'quvchiga aylantirilganmi — SOF funksiya (testlangan).
+    ///
+    /// <para>Aylantirish kuni: <c>Lead.ClosedAt</c>, bo'lmasa (eski yozuv) birinchi <c>convert</c>
+    /// hodisasining sanasi. Reklama lidi kuni: <c>CreatedTime</c>, buzuq bo'lsa <c>ReceivedAt</c>.
+    /// Solishtirish KUN bo'yicha: o'sha kuni kelib o'sha kuni yozilgan o'quvchi — reklamaning
+    /// haqiqiy konversiyasi. Sanalardan biri noma'lum bo'lsa <c>false</c> (eski xatti-harakat
+    /// saqlanadi — tasdiqlab bo'lmagan narsa uchun hodisa kesilmaydi).</para>
+    /// </summary>
+    public static bool ConvertedBeforeAd(string? closedAt, string? convertEventAt, string? adCreatedTime, string? adReceivedAt)
+    {
+        var conv = DayOf(closedAt) ?? DayOf(convertEventAt);
+        var ad = DayOf(adCreatedTime) ?? DayOf(adReceivedAt);
+        return conv is not null && ad is not null && string.CompareOrdinal(conv, ad) < 0;
+    }
+
+    /// <summary>"yyyy-MM-dd..." → "yyyy-MM-dd" (haqiqiy sana bo'lsa), aks holda null.</summary>
+    private static string? DayOf(string? iso)
+    {
+        var v = (iso ?? "").Trim();
+        if (v.Length < 10) return null;
+        var day = v[..10];
+        return DateOnly.TryParseExact(day, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out _)
+            ? day : null;
+    }
+
+    /// <summary>
     /// Kanban bosqichi "sifatli lid" ma'nosini beradimi — SOF funksiya (testlangan).
     /// </summary>
     public static bool IsQualifiedStage(string? stageTitle)
@@ -180,6 +206,20 @@ public sealed class MetaCapiService(
         var leadIds = byLead.Keys.ToList();
         var outcome = await LeadOutcome.BuildAsync(db, leadIds);
 
+        // ── QACHON AYLANTIRILGAN (CRM-1) ──
+        // Reklama lidi faqat O'Z lidi reklamadan KEYIN aylantirilgan bo'lsa konversiya hisoblanadi.
+        // Eski yozuvlarda takroriy reklama lidi allaqachon yopilgan (o'quvchi bo'lgan) lidga
+        // biriktirilgan — aks holda Meta'ga darhol yolg'on "sifatli lid"/"to'lov" ketardi.
+        var closedAt = (await db.Leads.AsNoTracking()
+                .Where(l => leadIds.Contains(l.Id) && l.ConvertedStudentId != null)
+                .Select(l => new { l.Id, l.ClosedAt }).ToListAsync(ct))
+            .ToDictionary(l => l.Id, l => l.ClosedAt, StringComparer.Ordinal);
+        var convertEventAt = (await db.LeadEvents.AsNoTracking()
+                .Where(e => leadIds.Contains(e.LeadId) && e.Type == "convert")
+                .Select(e => new { e.LeadId, e.CreatedAt }).ToListAsync(ct))
+            .GroupBy(e => e.LeadId, StringComparer.Ordinal)
+            .ToDictionary(g => g.Key, g => g.Min(e => e.CreatedAt ?? ""), StringComparer.Ordinal);
+
         // ── DEDUP (birinchi qavat) ──
         // Kalit — (lid, hodisa nomi). ⚠️ `EventId` ga TAYANIB bo'lmaydi: unda vaqt bor va u
         // har kuni boshqacha chiqadi, ya'ni unikal indeks bir xil holatni har kuni qayta
@@ -201,6 +241,11 @@ public sealed class MetaCapiService(
         foreach (var leadId in leadIds)
         {
             var ad = byLead[leadId];
+
+            // Lid shu reklama lididan OLDIN o'quvchi bo'lgan — bu reklamaning konversiyasi EMAS.
+            if (closedAt.TryGetValue(leadId, out var closed)
+                && ConvertedBeforeAd(closed, convertEventAt.GetValueOrDefault(leadId), ad.CreatedTime, ad.ReceivedAt))
+                continue;
 
             // ── SIFATLI LID ──
             // Ikki manba: konvertatsiya (`ConvertedStudentId` to'ldi) YOKI kanban bosqichi.

@@ -482,7 +482,8 @@ public class MetaLeadgenPipelineTests
     }
 
     /// <summary>⚠️ MODUL O'CHIQ bo'lsa Meta'ga so'rov UMUMAN ketmaydi (darvoza qoidasi §3).
-    /// Sabab navbat yozuvida ochiq qoladi — jimgina yo'qolmaydi.</summary>
+    /// Sabab navbat yozuvida ochiq qoladi — jimgina yo'qolmaydi. 🔴 IG-2: pullik lid ham
+    /// YO'QOLMAYDI — `IgAdLead` qatori xato bilan saqlanadi (keyin «Qayta olish»).</summary>
     [Fact]
     public async Task Modul_ochiq_bolsa_tashqariga_sorov_ketmaydi()
     {
@@ -493,7 +494,10 @@ public class MetaLeadgenPipelineTests
         var (ev, handler) = await RunAsync(db, LeadgenJson());
 
         Assert.Empty(handler.Requests);
-        Assert.Empty(db.Context.IgAdLeads);
+        var row = Assert.Single(db.Context.IgAdLeads);
+        Assert.Equal("lg-777", row.LeadgenId);
+        Assert.Equal("", row.LeadId);
+        Assert.Equal(MetaLeadgenService.ModuleOffError, row.Error);
         Assert.Empty(db.Context.Leads);
         Assert.Contains("o'chirilgan", ev.Error);
     }

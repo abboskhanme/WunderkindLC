@@ -7,9 +7,10 @@ import {
 } from '@/api/services/instagram'
 import { ChannelIcon, Icon, MarketingPage, MkCard, MkEmpty, MkError, MkLoading, MkStat } from './mk'
 import { formatNumber } from '@/lib/numberFormat'
+import { localIsoDate } from '@/lib/localDate'
 
 /** Bugungi sana ("yyyy-MM-dd"). */
-const today = () => new Date().toISOString().slice(0, 10)
+const today = () => localIsoDate(new Date())
 
 /** Suhbat "qaynoq" hisoblanadigan ball chegarasi (backend bilan bir xil: `IgConst.HotLeadScore`). */
 const HOT_SCORE = 70

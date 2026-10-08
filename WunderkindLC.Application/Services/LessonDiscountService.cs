@@ -75,9 +75,11 @@ public static class LessonDiscountService
             effective = Math.Max(0m, charge.Amount - charge.Discount);
         else
         {
-            // Hisob hali yozilmagan oy — `EnsureChargeAsync` aynan shu summani yozadi.
+            // Hisob hali yozilmagan oy — `EnsureChargeAsync` aynan shu summani yozadi. ⚠️ AKTIVLASHTIRISH oyida u
+            // QISMAN hisob ochadi (audit R1-5) — to'liq oylikdan hisoblansa chegirma qisman hisobdan oshib ketardi.
             var book = await DiscountBook.LoadForStudentAsync(db, s.Id);
-            effective = Math.Max(0m, monthly - book.DiscountFor(s.Id, monthly, month, g.Id));
+            effective = await TuitionService.ActivationChargePreviewAsync(db, s, g, month)
+                ?? Math.Max(0m, monthly - book.DiscountFor(s.Id, monthly, month, g.Id));
         }
         var remaining = Math.Max(0m, effective - await PaidAsync(db, s.Id, g.Id, month, ct));
         return new Quote(g.Id, month, lessons, inMonth, lessonPrice, remaining, AmountFor(lessons, lessonPrice, remaining));
@@ -163,6 +165,56 @@ public static class LessonDiscountService
             .Select(x => x.Amount)
             .ToListAsync(ct);
         return amounts.Sum();
+    }
+
+    /// <summary>
+    /// HISOB QATORI NIMA UCHUN QULFLI — sof qoida. <paramref name="sameMonth"/> — shu (o'quvchi, guruh, oy)
+    /// ning BARCHA kelmagan darslar chegirmalari (bekor qilinganlari ham).
+    /// <list type="bullet">
+    ///   <item>amaldagi chegirma YO'Q yoki BIRINCHI chegirmadan oldin ham qulfli edi (<c>WasLocked</c>) —
+    ///     qulf QO'LDA TAHRIRDAN: <c>null</c> (qatorga tegilmaydi);</item>
+    ///   <item>aks holda qulf FAQAT shu chegirmalar tufayli: amaldagilar yig'indisi qaytadi — muzlatish/
+    ///     chiqish/aktivlashtirish qatorni QAYTA hisoblab, shu summani chegirmaga QO'SHADI
+    ///     (`StudentsController.EditCharge` dagi naqsh).</item>
+    /// </list>
+    /// <para>⚠️ NEGA KERAK: ilgari har qanday qulfli qator muzlatish/chiqish/aktivlashtirishda BUTUNLAY
+    /// o'tkazib yuborilardi — chegirma qo'yilgan oyda guruh almashtirilsa eski guruh TO'LIQ oylikni,
+    /// yangi guruh esa oyning qolgan qismini yozardi (IKKI MARTA hisob).</para>
+    /// </summary>
+    public static decimal? LockExtra(IReadOnlyCollection<LessonDiscount> sameMonth)
+    {
+        var active = sameMonth.Where(x => x.CancelledAt is null).ToList();
+        if (active.Count == 0) return null;
+        var first = sameMonth.OrderBy(x => x.CreatedAt, StringComparer.Ordinal).First();
+        if (first.WasLocked) return null;
+        return active.Sum(x => x.Amount);
+    }
+
+    /// <summary>
+    /// Qatorni hisob-kitob QAYTA hisoblay oladimi: qulfsiz — <c>0</c>; qulf faqat kelmagan darslar
+    /// chegirmasidan — amaldagi chegirmalar yig'indisi (qayta hisobda chegirmaga QO'SHILADI); qo'lda
+    /// tahrir qulfi — <c>null</c> (tegilmaydi). Qoida — <see cref="LockExtra"/>.
+    /// </summary>
+    public static async Task<decimal?> ReworkableExtraAsync(IAppDbContext db, MonthlyCharge row, CancellationToken ct = default)
+    {
+        if (!row.Locked) return 0m;
+        if (row.GroupId is null) return null; // chegirma faqat guruh hisobiga qo'yiladi — bu qo'lda tahrir
+        var sameMonth = await db.LessonDiscounts.AsNoTracking()
+            .Where(x => x.StudentId == row.StudentId && x.GroupId == row.GroupId && x.Month == row.Month)
+            .ToListAsync(ct);
+        return LockExtra(sameMonth);
+    }
+
+    /// <summary>Hisobi BEKOR qilinayotgan oyning amaldagi chegirmalarini yopadi (iz qoladi). Aks holda
+    /// chegirma "amaldagi" bo'lib qolib, keyin yoziladigan yangi hisobga <see cref="ActiveAmountAsync"/>
+    /// orqali yolg'on qo'shilardi, bekor qilish esa "hisob o'chirilgan" deb rad etilardi.</summary>
+    public static void CloseForDroppedCharge(IEnumerable<LessonDiscount> sameMonth, string reason)
+    {
+        foreach (var d in sameMonth.Where(x => x.CancelledAt is null))
+        {
+            d.CancelledAt = AppClock.Iso();
+            d.CancelledByName = reason;
+        }
     }
 
     /// <summary>Shu oyga (guruh bo'yicha) to'langan pul: o'quv to'lovi − vozvrat (to'lov oynasi bilan bir xil).</summary>

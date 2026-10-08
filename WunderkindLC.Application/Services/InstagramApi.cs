@@ -207,6 +207,21 @@ public sealed class InstagramApi(HttpClient http, ILogger<InstagramApi> logger)
         return (false, detail + $"O'tmadi: {string.Join("; ", failed)}. Birinchi xato: {err}");
     }
 
+    /// <summary>
+    /// [8c] Webhook obunasini BEKOR QILISH — <c>DELETE /me/subscribed_apps</c>.
+    ///
+    /// <para><b>Nega kerak:</b> akkaunt uzilganda yoki agent o'chirilganda obuna Meta'da faol
+    /// qolardi — izoh/DM hodisalari kelaverar, har biri esa (akkaunt uzilgan bo'lsa) adminlarga
+    /// "akkaunt ulanmagan" signali bo'lib tushardi. Chaqiruvchi xatoni KO'RSATADI (best-effort:
+    /// uzish amali bekor bo'lmaydi).</para>
+    /// </summary>
+    public async Task<(bool Ok, string Error)> UnsubscribeWebhookAsync(string token, CancellationToken ct)
+    {
+        var url = $"{IgConst.GraphBase}/me/subscribed_apps?access_token={Uri.EscapeDataString(token ?? "")}";
+        var (ok, _, err) = await SendAsync(() => new HttpRequestMessage(HttpMethod.Delete, url), ct);
+        return (ok, err);
+    }
+
     /// <summary>Obuna so'rovi (bitta maydon yoki vergul bilan ajratilgan ro'yxat uchun).</summary>
     private static HttpRequestMessage SubscribeRequest(string fields, string token) =>
         new(HttpMethod.Post,

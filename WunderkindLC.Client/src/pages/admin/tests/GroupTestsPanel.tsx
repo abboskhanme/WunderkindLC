@@ -15,6 +15,7 @@ import { Modal } from '@/components/ui/Modal'
 import { NumberInput } from '@/components/ui/NumberInput'
 import { apiErrorMessage, cn, formatDate } from '@/lib/utils'
 import { usePerm } from '@/lib/permissions'
+import { localIsoDate } from '@/lib/localDate'
 
 /**
  * Guruh testlari — YAGONA admin komponenti. Ikki joyda AYNAN bir xil ishlaydi:
@@ -33,7 +34,7 @@ import { usePerm } from '@/lib/permissions'
 const control =
   'w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-800 outline-none transition-colors focus:border-brand-400'
 
-const todayIso = () => new Date().toISOString().slice(0, 10)
+const todayIso = () => localIsoDate(new Date())
 
 /** Javob varianti harflari (A, B, C, ...). */
 const LETTERS = ['A', 'B', 'C', 'D', 'E', 'F']

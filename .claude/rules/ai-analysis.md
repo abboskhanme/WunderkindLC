@@ -38,7 +38,11 @@ paths:
   `react-refresh/only-export-components`) — shuning uchun funksiyalar `lib/ai.ts` da.
 
 - **Oltita tahlil:**
-  1. **Markaz** — `CenterAiAnalysisService` + `CenterAiSchedulerService` (har kuni ertalab avtomatik),
+  1. **Markaz** — `CenterAiAnalysisService` + `CenterAiSchedulerService` (har kuni ertalab avtomatik;
+     ⚠️ belgilangan soatdan KEYIN kun oxirigacha muvaffaqiyatgacha qayta urinadi — 30 daqiqa oraliq,
+     kuniga ≤ 8 marta. Ilgari "bajarildi" belgisi Gemini'dan OLDIN qo'yilardi va faqat 10 daqiqalik
+     oyna bor edi: o'sha paytda yiqilsa kunlik tahlil umuman yaratilmasdi. Takrordan bazadagi bugungi
+     yozuv tekshiruvi saqlaydi),
      `AiAnalysisController` (`api/admin/ai-analysis/center`). KIRISH: superadmin yoki "ai" ruxsatli
      xodim (oddiy admin KO'RMAYDI). Bosh sahifadagi `CenterAiAnalysisCard`.
   2. **O'quvchi** — `StudentsController` (`{id}/ai-analysis`, `{id}/ai-analyses`), ma'lumot manbai

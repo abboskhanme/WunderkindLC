@@ -1,10 +1,17 @@
 import { useEffect, useMemo, useState } from 'react'
-import { CalendarClock, CheckCircle2, GraduationCap, Receipt, Send } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { AlertTriangle, CalendarClock, CheckCircle2, GraduationCap, Link2, Receipt, Send } from 'lucide-react'
 import type { Group, Lead, LevelTestListItem, Teacher, TrialLesson } from '@/types'
 import { getPickableTemplates, sendLeadSms, type PickableTemplate } from '@/api/services/messages'
 import { getMessageTokens } from '@/api/services/autoMessages'
 import { getLevelTests, sendLeadTest } from '@/api/services/levelTests'
-import { convertLead, scheduleTrial } from '@/api/services/leads'
+import {
+  convertLead,
+  duplicateStudentsOf,
+  scheduleTrial,
+  type ConvertLeadResult,
+  type DuplicateStudent,
+} from '@/api/services/leads'
 import { MessageEditor, type TokenDef } from '@/components/messaging/MessageEditor'
 import { Button } from '@/components/ui/Button'
 import { Input, Select } from '@/components/ui/Input'
@@ -155,37 +162,83 @@ export function LeadLevelTestPanel({ lead, onSent }: { lead: Lead; onSent: () =>
 
 /* ------------------------------------------------------------------ O'quvchiga aylantirish */
 
+/**
+ * O'QUVCHIGA AYLANTIRISH. Server (`LeadConversion`) o'quvchini to'liq yaratadi (telefonlar,
+ * login, a'zolik, audit, avto-xabar). Bu panel uchta holatni OCHIQ ko'rsatadi:
+ *  - guruh TO'LGAN — o'quvchi yaratildi, lekin guruhga qo'shilmadi (ilgari "Aylantirilgan" deb
+ *    jimgina ko'rinardi va admin o'quvchi guruhda deb o'ylardi);
+ *  - DUBLIKAT (409) — shu odam allaqachon o'quvchi: «Mavjud o'quvchiga bog'lash» yoki
+ *    «Baribir yangi o'quvchi yaratish»;
+ *  - xato — panel ichida qizil satr (forma yopilmaydi, tanlov qoladi).
+ */
 export function LeadConvertPanel({
   lead,
   groups,
   teacherOptions,
+  canViewStudents = false,
   onConverted,
 }: {
   lead: Lead
   groups: Group[]
   teacherOptions: Teacher[]
+  /** O'quvchi profiliga havola ko'rsatilsinmi (`students.list` ko'rish ruxsati). */
+  canViewStudents?: boolean
   onConverted: (studentId: string) => void
 }) {
   const [teacherId, setTeacherId] = useState('')
   const [groupId, setGroupId] = useState('')
   const [date, setDate] = useState('')
   const [converting, setConverting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [duplicates, setDuplicates] = useState<DuplicateStudent[] | null>(null)
+  const [result, setResult] = useState<ConvertLeadResult | null>(null)
   const teacherGroups = useMemo(() => groups.filter((g) => g.teacherId === teacherId), [groups, teacherId])
 
-  const convert = async () => {
+  const convert = async (opts: { force?: boolean; linkStudentId?: string } = {}) => {
+    if (converting) return
     setConverting(true)
+    setError(null)
     try {
-      const { studentId } = await convertLead(lead.id, {
-        enrollmentDate: date || undefined,
-        groupId: groupId || undefined,
-      })
-      onConverted(studentId)
+      const r = await convertLead(lead.id, { enrollmentDate: date || undefined, groupId: groupId || undefined }, opts)
+      setDuplicates(null)
+      setResult(r)
+      onConverted(r.studentId)
     } catch (err: unknown) {
-      alert(errMessage(err, 'Aylantirishda xatolik yuz berdi'))
+      const dups = duplicateStudentsOf(err)
+      if (dups) setDuplicates(dups)
+      else setError(apiErrorMessage(err, 'Aylantirishda xatolik yuz berdi'))
     } finally {
       setConverting(false)
     }
   }
+
+  if (result)
+    return (
+      <div className="space-y-2">
+        <div className="inline-flex items-center gap-2 rounded-lg bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-700">
+          <CheckCircle2 className="h-4 w-4" />
+          {result.linked ? "Lid mavjud o'quvchiga bog'landi" : "O'quvchi yaratildi"}
+          {!result.groupFull && !result.alreadyMember && result.groupName ? ` — «${result.groupName}» guruhiga qo'shildi` : ''}
+        </div>
+        {result.groupFull && (
+          <p className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+            <span>
+              «{result.groupName}» guruhi TO'LGAN — o'quvchi guruhga <b>qo'shilmadi</b>. Uni o'quvchi profilidan
+              boshqa guruhga qo'shing (yoki guruh sig'imini oshiring).
+            </span>
+          </p>
+        )}
+        {result.alreadyMember && (
+          <p className="text-sm text-slate-500">O'quvchi allaqachon «{result.groupName}» guruhida edi.</p>
+        )}
+        {canViewStudents && (
+          <Link to={`/admin/students/${result.studentId}`} className="inline-block text-sm font-medium text-brand-600 hover:underline">
+            O'quvchi profilini ochish →
+          </Link>
+        )}
+      </div>
+    )
 
   if (lead.convertedStudentId)
     return (
@@ -226,7 +279,39 @@ export function LeadConvertPanel({
           onChange={(e) => setDate(e.target.value)}
         />
       </div>
-      <Button onClick={convert} disabled={converting}>
+
+      {duplicates && (
+        <div className="space-y-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+          <p className="font-semibold">Bu odam allaqachon o'quvchi sifatida bor (ism va telefon mos keldi)</p>
+          <ul className="space-y-1.5">
+            {duplicates.map((d) => (
+              <li key={d.id} className="flex flex-wrap items-center justify-between gap-2 rounded-md bg-white px-2.5 py-1.5">
+                <span className="min-w-0">
+                  <span className="font-medium text-slate-800">{d.fullName}</span>
+                  <span className="text-xs text-slate-500">
+                    {[d.className, d.phone ? formatPhone(d.phone) : '', d.parentPhone ? formatPhone(d.parentPhone) : '']
+                      .filter(Boolean)
+                      .map((x) => ` · ${x}`)
+                      .join('')}
+                  </span>
+                </span>
+                <Button className="px-2.5 py-1 text-xs" disabled={converting} onClick={() => convert({ linkStudentId: d.id })}>
+                  <Link2 className="h-3.5 w-3.5" /> Mavjud o'quvchiga bog'lash
+                </Button>
+              </li>
+            ))}
+          </ul>
+          <Button variant="secondary" className="text-xs" disabled={converting} onClick={() => convert({ force: true })}>
+            Baribir yangi o'quvchi yaratish
+          </Button>
+        </div>
+      )}
+
+      {error && (
+        <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[13px] text-red-700">{error}</p>
+      )}
+
+      <Button onClick={() => convert()} disabled={converting}>
         <GraduationCap className="h-4 w-4" />
         {converting ? 'Aylantirilmoqda...' : "O'quvchiga aylantirish"}
       </Button>
@@ -391,14 +476,20 @@ export function LeadTrialForm({
 
 /* ------------------------------------------------------------------ Sinov darsi: ro'yxat */
 
+/** "Tuzatish" ro'yxatidagi natijalar tartibi. */
+const TRIAL_RESULTS: TrialLesson['result'][] = ['pending', 'came', 'no_show', 'stayed', 'left']
+
 export function LeadTrialList({
   trials,
   onResult,
   onReceipt,
+  canEdit = true,
 }: {
   trials: TrialLesson[]
   onResult: (trialId: string, result: TrialLesson['result']) => void
   onReceipt: (trialId: string) => void
+  /** Natija belgilash/tuzatish (`leads.list:edit`) — bo'lmasa faqat ko'rinadi. */
+  canEdit?: boolean
 }) {
   if (trials.length === 0) return <p className="text-sm text-slate-400">Sinov darslari belgilanmagan.</p>
   return (
@@ -427,7 +518,7 @@ export function LeadTrialList({
             </button>
             {/* 1-QADAM — TASHRIF: "Keldi/Kelmadi" faqat natija hali belgilanmaganda.
                 Kelgan sana shu tugmadan yoziladi va KPI konversiyasi shundan hisoblanadi. */}
-            {t.result === 'pending' && (
+            {canEdit && t.result === 'pending' && (
               <>
                 <Button variant="secondary" className="px-2.5 py-1 text-xs" onClick={() => onResult(t.id, 'came')}>
                   Keldi
@@ -439,7 +530,7 @@ export function LeadTrialList({
             )}
             {/* 2-QADAM — NATIJA: "Qoldi/Ketdi" avvalgidek ishlaydi. Sinovga kelgani
                 belgilangandan keyin ham ko'rinadi (tashrifdan keyingi qaror). */}
-            {(t.result === 'pending' || t.result === 'came') && (
+            {canEdit && (t.result === 'pending' || t.result === 'came') && (
               <>
                 <Button variant="secondary" className="px-2.5 py-1 text-xs" onClick={() => onResult(t.id, 'stayed')}>
                   Qoldi
@@ -448,6 +539,26 @@ export function LeadTrialList({
                   Ketdi
                 </Button>
               </>
+            )}
+            {/* TUZATISH — xato bosilgan natija (masalan "Keldi" o'rniga "Kelmadi") qaytariladi.
+                Server "kelmagan" holatga o'tganda kelgan sanani o'chiradi (KPI ham shunga ergashadi). */}
+            {canEdit && t.result !== 'pending' && (
+              <select
+                aria-label="Natijani tuzatish"
+                value=""
+                onChange={(e) => {
+                  const next = e.target.value as TrialLesson['result']
+                  if (next) onResult(t.id, next)
+                }}
+                className="h-7 rounded-lg border border-slate-200 bg-white px-2 text-xs text-slate-600"
+              >
+                <option value="">Tuzatish…</option>
+                {TRIAL_RESULTS.filter((r) => r !== t.result).map((r) => (
+                  <option key={r} value={r}>
+                    {trialResultLabels[r]}
+                  </option>
+                ))}
+              </select>
             )}
           </div>
         </li>

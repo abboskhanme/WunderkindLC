@@ -141,24 +141,18 @@ public static class TeacherActivityReport
         var notes = await db.LessonNotes.ToListAsync();
         var entries = await db.JournalEntries.Where(e => e.Grade != null).ToListAsync();
 
-        // (ClassId, SubjectId=CourseId) -> TeacherId; va (ClassId, SubjectId) -> o'qituvchilar to'plami.
-        // Biriktirish endi to'g'ridan-to'g'ri guruhda: Group.TeacherId (o'qituvchi) + Group.CourseId (kurs).
-        var exact = new Dictionary<(string, string), string>();
-        var bySubject = new Dictionary<(string, string), HashSet<string>>();
-        foreach (var g in classes)
-        {
-            if (string.IsNullOrEmpty(g.TeacherId) || string.IsNullOrEmpty(g.CourseId)) continue;
-            exact[(g.Id, g.CourseId)] = g.TeacherId;
-            if (!bySubject.TryGetValue((g.Id, g.CourseId), out var set))
-                bySubject[(g.Id, g.CourseId)] = set = new();
-            set.Add(g.TeacherId);
-        }
+        // Dars/baho QAYSI o'qituvchiga yoziladi — guruh kursi bo'yicha (Group.CourseId) va o'sha SANADA
+        // guruhni o'qitgan o'qituvchi (GroupTeacherHistory). ⚠️ Audit C3: ilgari hozirgi Group.TeacherId
+        // olinardi — o'qituvchi almashsa eski o'qituvchining o'tgan oylardagi darslari ham yangisiga
+        // ko'chib, eskisining hisoboti bo'shab qolardi.
+        var classById = classes.ToDictionary(g => g.Id);
+        var own = await GroupOwnership.LoadAsync(db, classes);
 
-        string? Attribute(string classId, string subjectId)
+        string? Attribute(string classId, string subjectId, string date)
         {
-            if (exact.TryGetValue((classId, subjectId), out var t1)) return t1;
-            if (bySubject.TryGetValue((classId, subjectId), out var set) && set.Count == 1) return set.First();
-            return null;
+            if (!classById.TryGetValue(classId, out var g)) return null;
+            if (string.IsNullOrEmpty(g.CourseId) || g.CourseId != subjectId) return null;
+            return own.OwnerOn(classId, date);
         }
 
         var c = new Computed();
@@ -181,7 +175,7 @@ public static class TeacherActivityReport
         {
             if (string.CompareOrdinal(n.Date, today) > 0) continue; // kelajak dars — hali reja emas
             if (filterMonth != null && MonthOf(n.Date) != filterMonth) continue;
-            var teacher = Attribute(n.ClassId, n.SubjectId);
+            var teacher = Attribute(n.ClassId, n.SubjectId, n.Date);
             if (teacher is null) continue;
             Key(teacher, n.ClassId, n.SubjectId).Expected++;
         }
@@ -191,7 +185,7 @@ public static class TeacherActivityReport
         {
             if (!n.Conducted) continue;
             if (filterMonth != null && MonthOf(n.Date) != filterMonth) continue;
-            var teacher = Attribute(n.ClassId, n.SubjectId);
+            var teacher = Attribute(n.ClassId, n.SubjectId, n.Date);
             if (teacher is null) continue;
             var agg = Key(teacher, n.ClassId, n.SubjectId);
             agg.Conducted++;
@@ -204,7 +198,7 @@ public static class TeacherActivityReport
         foreach (var e in entries)
         {
             if (filterMonth != null && MonthOf(e.Date) != filterMonth) continue;
-            var teacher = Attribute(e.ClassId, e.SubjectId);
+            var teacher = Attribute(e.ClassId, e.SubjectId, e.Date);
             if (teacher is null) continue;
             Key(teacher, e.ClassId, e.SubjectId).Grades++;
             Touch(teacher, e.Date);
@@ -223,14 +217,19 @@ public static class TeacherActivityReport
         var memberships = await db.StudentGroups
             .Where(sg => nonArchivedGroupIds.Contains(sg.GroupId))
             .ToListAsync();
+        // Arxivlangan O'QUVCHI = ketgan (eski yozuvlarda a'zoligi hali tirik bo'lishi mumkin) — "Qolgan"
+        // (hozirgi aktiv) sanog'iga kirmasin.
+        var archivedStudents = (await db.Students.Where(s => s.IsArchived).Select(s => s.Id).ToListAsync()).ToHashSet();
 
         // --- Lifecycle: OQIM (shu oy) + QOLGAN (joriy aktiv) ---
         // Kelgan/Faol/Sinov/Muzlatilgan/Ketgan — TANLANGAN OYDAGI hodisalar (Umumiy = barcha oylar):
         //   Kelgan (Came)   = JoinedAt oyi   | Faol (Active) = ActivatedAt oyi (shu oyda aktivlashganlar)
         //   Muzlat (Frozen) = FrozenAt oyi   | Ketgan (Left) = LeftAt oyi
         //   Sinov  (Trial)  = max(0, Came − Active) (qo'shilib hali aktivlashmaganlar)
-        // Qolgan (Remaining) — HOZIRGI aktiv o'quvchilar (barcha guruhlarida, oy filtriga BOG'LIQ EMAS);
-        //   o'qituvchi profili/performance dagi "Faol" bilan AYNAN bir xil (MembershipLifecycle helperi).
+        // ⚠️ C3: har HODISA o'sha SANADA (oyda) guruhni o'qitgan o'qituvchiga yoziladi (tarix).
+        // Qolgan (Remaining) — HOZIRGI aktiv o'quvchilar (barcha guruhlarida, oy filtriga BOG'LIQ EMAS),
+        //   hozirgi o'qituvchiga; o'qituvchi profili/performance dagi "Faol" bilan AYNAN bir xil
+        //   (MembershipLifecycle helperi).
         var lifecycle = new Dictionary<string, LifecycleCounts>();
         var byTeacher = new Dictionary<string, List<(string Status, bool IsActive, string? LeftAt)>>();
         LifecycleCounts Lc(string tId)
@@ -241,24 +240,30 @@ public static class TeacherActivityReport
         foreach (var sg in memberships)
         {
             if (!groupTeacher.TryGetValue(sg.GroupId, out var tId)) continue;
-            var lc = Lc(tId);
 
-            // OQIM (event oyi bo'yicha)
+            // OQIM (event oyi bo'yicha, o'sha paytdagi o'qituvchiga)
             var joinedMonth = MonthOf(sg.JoinedAt);
-            if (filterMonth == null || joinedMonth == filterMonth) lc.Came++;
+            if ((filterMonth == null || joinedMonth == filterMonth)
+                && own.OwnerOn(sg.GroupId, sg.JoinedAt) is { } tCame) Lc(tCame).Came++;
             // Aktivlashish — yopilgan davrlar ham hisobga olinadi (qayta aktivlashtirilgan a'zolikda
             // joriy ActivatedAt eski hodisani ustidan yozib yuborardi).
-            if (filterMonth == null
-                ? MembershipLifecycle.FirstActivatedAt(sg).Length >= 7
-                : MembershipLifecycle.ActivatedInMonth(sg, filterMonth)) lc.Active++;
+            if (filterMonth == null)
+            {
+                var first = MembershipLifecycle.FirstActivatedAt(sg);
+                if (first.Length >= 7 && own.OwnerOn(sg.GroupId, first) is { } tAct) Lc(tAct).Active++;
+            }
+            else if (MembershipLifecycle.ActivatedInMonth(sg, filterMonth)
+                     && own.OwnerAtMonth(sg.GroupId, filterMonth) is { } tAct) Lc(tAct).Active++;
             var frozenMonth = MonthOf(sg.FrozenAt);
-            if (frozenMonth != "" && (filterMonth == null || frozenMonth == filterMonth)) lc.Frozen++;
+            if (frozenMonth != "" && (filterMonth == null || frozenMonth == filterMonth)
+                && own.OwnerOn(sg.GroupId, sg.FrozenAt) is { } tFr) Lc(tFr).Frozen++;
             var leftMonth = MonthOf(sg.LeftAt);
-            if (leftMonth != "" && (filterMonth == null || leftMonth == filterMonth)) lc.Left++;
+            if (leftMonth != "" && (filterMonth == null || leftMonth == filterMonth)
+                && own.OwnerOn(sg.GroupId, sg.LeftAt) is { } tLeft) Lc(tLeft).Left++;
 
-            // QOLGAN uchun a'zoliklarni yig'amiz (joriy suratkash)
+            // QOLGAN uchun a'zoliklarni yig'amiz (joriy suratkash, hozirgi o'qituvchi)
             if (!byTeacher.TryGetValue(tId, out var list)) byTeacher[tId] = list = new();
-            list.Add((sg.Status, sg.IsActive, sg.LeftAt));
+            list.Add((sg.Status, sg.IsActive && !archivedStudents.Contains(sg.StudentId), sg.LeftAt));
         }
         foreach (var lc in lifecycle.Values) lc.Trial = Math.Max(0, lc.Came - lc.Active);
         // Qolgan = hozirgi aktiv (performance bilan bir xil ta'rif)

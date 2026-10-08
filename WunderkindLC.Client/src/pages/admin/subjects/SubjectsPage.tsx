@@ -31,14 +31,19 @@ export function SubjectsPage() {
   const [editing, setEditing] = useState<Subject | null>(null)
   // Kursga biriktirilgan o'quv dasturlarini boshqarish modali
   const [curriculaFor, setCurriculaFor] = useState<Subject | null>(null)
-  // Narx o'zgarganda — yangi narxni bog'langan guruh o'quvchilariga qachondan qo'llashni so'rash uchun
+  // Narx o'zgarganda — yangi narxni bog'langan guruh o'quvchilariga qachondan qo'llashni so'rash uchun.
+  // ⚠️ Kurs formasi shu so'rov PAYTIDA OCHIQ qoladi: `settle` forma kutayotgan va'dani yakunlaydi —
+  // server rad etsa (masalan "… nomli kurs allaqachon mavjud") xato FORMA ICHIDA ko'rinadi va kiritilgan
+  // narxlar/sinf oraliqlari yo'qolmaydi. Ilgari forma so'rovdan OLDIN yopilar, xato esa alert bo'lib chiqardi.
   const [feePrompt, setFeePrompt] = useState<{
     id: string
     values: SubjectPayload
     oldPrice: number
     /** Sinf oraliqlari ham o'zgardimi (narx o'zgarmagan bo'lsa ham so'raladi). */
     bandsChanged: boolean
+    settle: { resolve: () => void; reject: (err: unknown) => void }
   } | null>(null)
+  const [feeBusy, setFeeBusy] = useState(false)
   // Kursni o'chirishni tasdiqlash (brauzer confirm o'rniga)
   const [deleting, setDeleting] = useState<Subject | null>(null)
   const [deleteBusy, setDeleteBusy] = useState(false)
@@ -51,38 +56,53 @@ export function SubjectsPage() {
       .finally(() => setLoading(false))
   }, [])
 
-  const applyUpdate = (id: string, values: SubjectPayload, applyFee?: boolean) =>
-    updateSubject(id, values, applyFee)
-      .then((u) => setSubjects((prev) => prev.map((s) => (s.id === u.id ? u : s))))
-      // KURS NARXI ham shu yo'ldan saqlanadi: xato yutilsa oyna yopilar, ro'yxatda eski narx
-      // turar va foydalanuvchi yangisi saqlangan deb o'ylardi.
-      .catch((err) => alert(apiErrorMessage(err, "Kursni saqlab bo'lmadi")))
-
-  const handleSubmit = (values: SubjectPayload) => {
+  // Xato (masalan "… nomli kurs allaqachon mavjud") SubjectFormModal'ga QAYTA OTILADI: oyna ochiq
+  // qoladi va sabab o'sha yerda ko'rinadi. Ilgari oyna so'rovdan OLDIN yopilar, kiritilgan narxlar yo'qolardi.
+  const handleSubmit = async (values: SubjectPayload) => {
     if (editing) {
       // ASOSIY narx o'zgargan bo'lsa — joriy oydan qo'llashni so'raymiz (Ha/Yo'q). SINF NARXLARI esa
       // so'ralmaydi: server ularni joriy oyga har doim darhol qo'llaydi (foydalanuvchi talabi).
       const bandsChanged = !sameBands(values.priceBands, editing.priceBands)
       if (values.price !== editing.price) {
-        setFeePrompt({ id: editing.id, values, oldPrice: editing.price, bandsChanged })
-        setFormOpen(false)
-        setEditing(null)
-        return
+        // Forma OCHIQ qoladi ("Saqlanmoqda...") — natija `resolveFeePrompt`da (yuqoridagi izoh).
+        const { id, price: oldPrice } = editing
+        return new Promise<void>((resolve, reject) =>
+          setFeePrompt({ id, values, oldPrice, bandsChanged, settle: { resolve, reject } }))
       }
-      applyUpdate(editing.id, values)
+      const u = await updateSubject(editing.id, values)
+      setSubjects((prev) => prev.map((s) => (s.id === u.id ? u : s)))
     } else {
-      // Xato jimgina yutilardi: kurs ro'yxatda paydo bo'lmasdi va sababi ko'rinmasdi.
-      createSubject(values)
-        .then((c) => setSubjects((prev) => [...prev, c]))
-        .catch((err) => alert(apiErrorMessage(err, "Kurs qo'shib bo'lmadi")))
+      const c = await createSubject(values)
+      setSubjects((prev) => [...prev, c])
     }
     setFormOpen(false)
     setEditing(null)
   }
 
-  const resolveFeePrompt = (applyFee: boolean) => {
-    if (!feePrompt) return
-    applyUpdate(feePrompt.id, feePrompt.values, applyFee)
+  const resolveFeePrompt = async (applyFee: boolean) => {
+    if (!feePrompt || feeBusy) return
+    const p = feePrompt
+    setFeeBusy(true)
+    try {
+      const u = await updateSubject(p.id, p.values, applyFee)
+      setSubjects((prev) => prev.map((s) => (s.id === u.id ? u : s)))
+      setFeePrompt(null)
+      setFormOpen(false)
+      setEditing(null)
+      p.settle.resolve()
+    } catch (err) {
+      // Xato forma ICHIDA (SubjectFormModal uni `apiErrorMessage` bilan ko'rsatadi) — forma va narxlar joyida.
+      setFeePrompt(null)
+      p.settle.reject(err)
+    } finally {
+      setFeeBusy(false)
+    }
+  }
+
+  /** So'rov oynasi yopildi (saqlanmadi) — kurs formasi ochiq qoladi, kiritilganlar joyida. */
+  const cancelFeePrompt = () => {
+    if (!feePrompt || feeBusy) return
+    feePrompt.settle.resolve()
     setFeePrompt(null)
   }
 
@@ -222,15 +242,15 @@ export function SubjectsPage() {
 
       <Modal
         open={!!feePrompt}
-        onClose={() => setFeePrompt(null)}
+        onClose={cancelFeePrompt}
         title="Kurs narxini o'quvchilarga qo'llash"
         size="sm"
         footer={
           <>
-            <Button variant="secondary" onClick={() => resolveFeePrompt(false)}>
+            <Button variant="secondary" disabled={feeBusy} onClick={() => resolveFeePrompt(false)}>
               Yo'q — keyingi oydan
             </Button>
-            <Button onClick={() => resolveFeePrompt(true)}>Ha — joriy oydan</Button>
+            <Button disabled={feeBusy} onClick={() => resolveFeePrompt(true)}>Ha — joriy oydan</Button>
           </>
         }
       >
@@ -296,7 +316,8 @@ export function SubjectsPage() {
           <p className="text-sm leading-relaxed text-slate-600">
             <b>"{deleting?.name}"</b> kursi o'chiriladi. Unga biriktirilgan o'quv dasturlari
             (mustaqil bo'lgani uchun) o'chirilmaydi — faqat bog'lanish uziladi. Bu amalni qaytarib
-            bo'lmaydi.
+            bo'lmaydi. Kursga guruh (arxivdagisi ham), sertifikat, bonus yozuvi yoki daraja testi
+            bog'langan bo'lsa — o'chirib bo'lmaydi.
           </p>
         </div>
         {/* Serverning rad etish sababi (masalan "kursning guruhlari bor") shu yerda ko'rinadi */}

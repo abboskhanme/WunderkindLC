@@ -1,15 +1,16 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Cloud, Loader2, Phone, Smartphone, User } from 'lucide-react'
-import { originateCall } from '@/api/services/calls'
+import { Loader2, Phone, User } from 'lucide-react'
 import { getCtiAgents, dialCtiAgent, type CtiAgent } from '@/api/services/cti'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
-import { cn } from '@/lib/utils'
+import { apiErrorMessage, cn } from '@/lib/utils'
 
 /* ============================================================
    CallPickerModal — istalgan joydan (lid, o'quvchi, ...) qo'ng'iroq qilish oynasi.
-   Oqim: [raqam tanlash (bir nechta bo'lsa)] → provayder tanlash
-   (Bulut MoiZvonki | Local Call) → Local bo'lsa agent tanlash → natija.
+   Oqim: [raqam tanlash (bir nechta bo'lsa)] → agent-telefon tanlash → natija.
+   Telefoniya YAGONA — Local Call (Android agent-telefon, `README-CTI.md`), shuning uchun
+   provayder tanlash bosqichi YO'Q. Qo'ng'iroq o'quvchiga server tomonda RAQAM bo'yicha
+   bog'lanadi (`CtiMobileController.MatchStudentIdAsync`) — bu yerdan id uzatish shart emas.
    ============================================================ */
 
 export interface CallOption {
@@ -22,7 +23,7 @@ const control =
   'w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 outline-none transition-colors focus:border-brand-400'
 
 export function CallPickerModal({
-  open, onClose, title, numbers, studentId,
+  open, onClose, title, numbers,
 }: {
   open: boolean
   onClose: () => void
@@ -30,12 +31,10 @@ export function CallPickerModal({
   title?: string
   /** Mavjud raqamlar (bo'shlari oldindan filtrlangan bo'lsin). Bitta bo'lsa raqam bosqichi o'tkaziladi. */
   numbers: CallOption[]
-  /** MoiZvonki tarixini o'quvchiga bog'lash uchun (ixtiyoriy) */
-  studentId?: string
 }) {
   const [number, setNumber] = useState<string | null>(null)
-  const [provider, setProvider] = useState<'cloud' | 'local' | null>(null)
   const [agents, setAgents] = useState<CtiAgent[] | null>(null)
+  const [agentsError, setAgentsError] = useState<string | null>(null)
   const [agentId, setAgentId] = useState('')
   const [calling, setCalling] = useState(false)
   const [result, setResult] = useState<{ ok: boolean; text: string } | null>(null)
@@ -44,41 +43,31 @@ export function CallPickerModal({
   useEffect(() => {
     if (!open) return
     setNumber(numbers.length === 1 ? numbers[0].number : null)
-    setProvider(null)
     setResult(null)
     setCalling(false)
   }, [open, numbers])
 
-  // Local tanlanganda agentlarni yuklaymiz (onlayn birinchisi avto tanlanadi).
+  // Oyna ochilganda agentlarni yuklaymiz (onlayn birinchisi avto tanlanadi).
   useEffect(() => {
-    if (!open || provider !== 'local' || agents !== null) return
+    if (!open || agents !== null) return
     getCtiAgents()
       .then((list) => {
         setAgents(list)
+        setAgentsError(null)
         const online = list.find((a) => a.isOnline && a.isActive)
         setAgentId(online?.id ?? list[0]?.id ?? '')
       })
-      .catch(() => setAgents([]))
-  }, [open, provider, agents])
+      .catch((err) => {
+        // Asosiy ma'lumot — sababi ko'rsatiladi (masalan Local Call ruxsati yo'q).
+        setAgentsError(apiErrorMessage(err, "Agent-telefonlarni yuklab bo'lmadi"))
+        setAgents([])
+      })
+  }, [open, agents])
 
   const sortedAgents = useMemo(
     () => (agents ? [...agents].sort((a, b) => Number(b.isOnline) - Number(a.isOnline)) : []),
     [agents],
   )
-
-  const callCloud = async () => {
-    if (!number || calling) return
-    setCalling(true)
-    setResult(null)
-    try {
-      await originateCall(studentId ? { studentId, phoneNumber: number } : { phoneNumber: number })
-      setResult({ ok: true, text: "Qo'ng'iroq boshlandi — operator telefoniga ulanadi (MoiZvonki)" })
-    } catch (err: any) {
-      setResult({ ok: false, text: err?.response?.data?.message || "Qo'ng'iroq qilib bo'lmadi (MoiZvonki sozlanmagan bo'lishi mumkin)" })
-    } finally {
-      setCalling(false)
-    }
-  }
 
   const callLocal = async () => {
     if (!number || !agentId || calling) return
@@ -91,8 +80,8 @@ export function CallPickerModal({
           ? { ok: true, text: "Buyruq agent telefoniga yuborildi — telefon terilmoqda" }
           : { ok: false, text: "Agent oflayn — push yuborildi, yetkazilmadi. Qayta urining" },
       )
-    } catch (err: any) {
-      setResult({ ok: false, text: err?.response?.data?.message || "Qo'ng'iroq qilishda xato" })
+    } catch (err) {
+      setResult({ ok: false, text: apiErrorMessage(err, "Qo'ng'iroq qilishda xato") })
     } finally {
       setCalling(false)
     }
@@ -140,7 +129,7 @@ export function CallPickerModal({
               {numbers.length > 1 && (
                 <button
                   type="button"
-                  onClick={() => { setNumber(null); setProvider(null); setResult(null) }}
+                  onClick={() => { setNumber(null); setResult(null) }}
                   className="text-xs font-semibold text-brand-600 hover:underline"
                 >
                   Boshqa raqam
@@ -148,66 +137,27 @@ export function CallPickerModal({
               )}
             </div>
 
-            {/* ---- 2-bosqich: provayder tanlash ---- */}
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
-              Qayerdan qo'ng'iroq qilamiz?
-            </p>
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() => { setProvider('cloud'); setResult(null) }}
-                className={cn(
-                  'rounded-xl border p-3 text-left transition-all',
-                  provider === 'cloud'
-                    ? 'border-brand-400 bg-brand-50 ring-2 ring-brand-100'
-                    : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50',
-                )}
-              >
-                <Cloud className={cn('h-5 w-5', provider === 'cloud' ? 'text-brand-600' : 'text-slate-400')} />
-                <div className={cn('mt-1.5 text-sm font-semibold', provider === 'cloud' ? 'text-brand-700' : 'text-slate-700')}>
-                  Bulut (MoiZvonki)
+            {/* ---- 2-bosqich: agent-telefon tanlash (Local Call) ---- */}
+            <div>
+              <label className="mb-1 block text-sm font-medium text-slate-600">Qaysi telefondan (Local Call agenti)</label>
+              {agents === null ? (
+                <div className="flex items-center gap-2 py-2 text-sm text-slate-400">
+                  <Loader2 className="h-4 w-4 animate-spin" /> Agentlar yuklanmoqda...
                 </div>
-                <p className="mt-0.5 text-xs text-slate-500">Operator telefoni orqali</p>
-              </button>
-              <button
-                type="button"
-                onClick={() => { setProvider('local'); setResult(null) }}
-                className={cn(
-                  'rounded-xl border p-3 text-left transition-all',
-                  provider === 'local'
-                    ? 'border-brand-400 bg-brand-50 ring-2 ring-brand-100'
-                    : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50',
-                )}
-              >
-                <Smartphone className={cn('h-5 w-5', provider === 'local' ? 'text-brand-600' : 'text-slate-400')} />
-                <div className={cn('mt-1.5 text-sm font-semibold', provider === 'local' ? 'text-brand-700' : 'text-slate-700')}>
-                  Local Call
-                </div>
-                <p className="mt-0.5 text-xs text-slate-500">Agent-telefon orqali</p>
-              </button>
+              ) : agentsError ? (
+                <p className="text-sm text-red-600">{agentsError}</p>
+              ) : agents.length === 0 ? (
+                <p className="text-sm text-amber-600">Agentlar yo'q — avval Local Call bo'limida agent qo'shing.</p>
+              ) : (
+                <select value={agentId} onChange={(e) => setAgentId(e.target.value)} className={control}>
+                  {sortedAgents.map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.isOnline ? '● ' : ''}{a.displayName} {a.isOnline ? '(onlayn)' : '(oflayn)'}
+                    </option>
+                  ))}
+                </select>
+              )}
             </div>
-
-            {/* ---- Local: agent tanlash ---- */}
-            {provider === 'local' && (
-              <div>
-                <label className="mb-1 block text-sm font-medium text-slate-600">Qaysi telefon (agent)</label>
-                {agents === null ? (
-                  <div className="flex items-center gap-2 py-2 text-sm text-slate-400">
-                    <Loader2 className="h-4 w-4 animate-spin" /> Agentlar yuklanmoqda...
-                  </div>
-                ) : agents.length === 0 ? (
-                  <p className="text-sm text-amber-600">Agentlar yo'q — avval Local Call bo'limida agent qo'shing.</p>
-                ) : (
-                  <select value={agentId} onChange={(e) => setAgentId(e.target.value)} className={control}>
-                    {sortedAgents.map((a) => (
-                      <option key={a.id} value={a.id}>
-                        {a.isOnline ? '● ' : ''}{a.displayName} {a.isOnline ? '(onlayn)' : '(oflayn)'}
-                      </option>
-                    ))}
-                  </select>
-                )}
-              </div>
-            )}
 
             {/* ---- Natija ---- */}
             {result && (
@@ -221,10 +171,7 @@ export function CallPickerModal({
 
             <div className="flex justify-end gap-2 pt-1">
               <Button variant="secondary" onClick={onClose}>Yopish</Button>
-              <Button
-                onClick={provider === 'local' ? callLocal : callCloud}
-                disabled={!provider || calling || (provider === 'local' && !agentId)}
-              >
+              <Button onClick={callLocal} disabled={calling || !agentId}>
                 {calling ? <Loader2 className="h-4 w-4 animate-spin" /> : <Phone className="h-4 w-4" />}
                 Qo'ng'iroq qil
               </Button>

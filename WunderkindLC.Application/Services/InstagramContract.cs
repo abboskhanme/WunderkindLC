@@ -289,6 +289,37 @@ public static class IgConst
     /// <summary>Bot oshkorligi matni sozlanmagan bo'lsa ishlatiladigan standart (Meta talabi).</summary>
     public const string DefaultGreeting =
         "🤖 Men markazning AI yordamchisiman. Operator kerak bo'lsa yozing — ulaymiz.";
+
+    /// <summary>Kalit so'z qoidasi javobining muallif PREFIKSI (<c>"Qoida: &lt;nom&gt;"</c>).
+    /// <para>⚠️ Bot javobini operator javobidan ajratish (<see cref="InstagramContract.IsBotOutbound"/>)
+    /// shu prefiksga tayanadi — pipeline ham, tekshiruv ham AYNAN shu konstantani o'qiydi.</para></summary>
+    public const string RuleActorPrefix = "Qoida: ";
+
+    /* ---- ESKI HODISA (navbatda kutib qolgan) — AVTOJAVOB YO'Q ----
+       Modul o'chiq turgan paytda webhook hodisalarni baribir navbatga yozadi (§3). Modul
+       yoqilganda bu "zaxira" bir zumda qayta ishlanib, bot ikki haftalik izohlarga OMMAVIY
+       javob yozib chiqardi. Eski hodisa SAQLANADI (tarix, telefon → lid), lekin unga
+       avtomatik javob YUBORILMAYDI. */
+
+    /// <summary>DM shundan eski bo'lsa avtojavob yo'q — Meta'ning 24 soatlik oynasi bilan bir xil.</summary>
+    public const int StaleDmHours = DmWindowHours;
+    /// <summary>Izoh shundan eski bo'lsa avtojavob yo'q (3 kun): izohda oyna yo'q, lekin
+    /// bir necha kunlik izohga birdan javob yozish ommaviy spamga o'xshaydi.</summary>
+    public const int StaleCommentHours = 72;
+
+    /// <summary>Meta vaqti shundan ko'proq KELAJAKDA bo'lsa — ishonmaymiz (server soati farqi).</summary>
+    public const int InboundFutureSkewMinutes = 60;
+    /// <summary>Meta vaqti shundan eski bo'lsa — buzuq deb hisoblaymiz (24 soatlik oynadan ancha keng).</summary>
+    public const int InboundMaxAgeDays = 30;
+
+    /* ---- OPERATOR JAVOBI rejimlari (`POST conversations/{id}/reply`, `mode`) ---- */
+
+    /// <summary>Shaxsiy xabar (DM) — standart.</summary>
+    public const string ReplyModeDm = "dm";
+    /// <summary>Izohga OCHIQ javob (post ostida hamma ko'radi).</summary>
+    public const string ReplyModeComment = "comment";
+    /// <summary>Izoh muallifiga YOPIQ javob (private reply) — 7 kun ichida, bir marta.</summary>
+    public const string ReplyModePrivate = "private_reply";
 }
 
 /// <summary>
@@ -475,9 +506,141 @@ public static class InstagramContract
         return diff < TimeSpan.FromHours(IgConst.HumanAgentWindowHours);
     }
 
-    /// <summary>Bot javob berishi mumkin bo'lgan suhbatmi (yopiq emas, pauzada emas).</summary>
+    /// <summary>Bot javob berishi mumkin bo'lgan suhbatmi (yopiq emas, pauzada emas).
+    /// <para>⚠️ Yopiq suhbatga mijoz YANGI xabar yozsa pipeline uni avval QAYTA OCHADI
+    /// (<see cref="ReopenOnInbound"/>) — ya'ni bu shart faqat "hozir yopiq turgan" holatni
+    /// ifodalaydi, yopilgan suhbat abadiy jim qolmaydi.</para></summary>
     public static bool BotMayReply(IgConversation c, DateTime now) =>
         c.Status != IgConst.StatusClosed && !OperatorPaused(c, now);
+
+    /// <summary>
+    /// YOPILGAN suhbatga mijoz YANGI xabar yozdi — suhbat qayta ochiladi (botga qaytadi).
+    ///
+    /// <para><b>🔴 Nega:</b> «Yopish» — "shu murojaat hal bo'ldi" degani, "bu odam bilan
+    /// boshqa gaplashmaymiz" emas. Ilgari yopilgan suhbat ABADIY jim qolardi: bot javob
+    /// bermasdi, "Operator kerak" va o'qilmagan sanoqlari ham yopiqlarni sanamasdi — qaytib
+    /// kelgan mijoz hech kimga ko'rinmasdi.</para>
+    ///
+    /// <para>⚠️ Operator pauzasi (<c>OperatorPausedUntil</c>) TEGILMAYDI: operator yaqinda
+    /// javob yozgan bo'lsa bot baribir jim turadi. <c>operator</c> holatidagi suhbat ham
+    /// o'zgarmaydi — faqat <c>closed</c>.</para>
+    /// </summary>
+    /// <returns>Suhbat qayta ochildimi.</returns>
+    public static bool ReopenOnInbound(IgConversation c)
+    {
+        if (c.Status != IgConst.StatusClosed) return false;
+        c.Status = IgConst.StatusBot;
+        return true;
+    }
+
+    /// <summary>
+    /// Chiquvchi xabar BOTNIKImi (AI, kalit so'z qoidasi yoki FAQ tugmasi) — operatorniki emasmi.
+    ///
+    /// <para><b>🔴 Nega kerak:</b> kunlik chegara va halqa avtomat o'chirgichi BOTNING
+    /// javoblarini sanashi kerak. Ilgari ular BARCHA chiquvchi qatorlarni sanardi — operator
+    /// Inbox'dan (yoki Instagram ilovasidan) yozgan javoblar ham botning limitini yeb, faol
+    /// ishlagan kuni bot sababsiz "chegara tugadi" deb to'xtab qolardi.</para>
+    ///
+    /// <para>Ajratish muallif bo'yicha: AI — <c>IsAi</c>; qoida — <c>"Qoida: …"</c> /
+    /// <see cref="IgConst.ActorRule"/>; FAQ — <see cref="IgConst.ActorFaq"/>. Operator qatorida
+    /// muallif — xodim ismi yoki <see cref="IgConst.ActorOperatorIg"/>.</para>
+    ///
+    /// <para>⚠️ SQL varianti — <see cref="BotOutboundExpr"/>; ikkisi AYNAN bir xil qoida.</para>
+    /// </summary>
+    public static bool IsBotOutbound(bool isAi, string? actorName)
+    {
+        if (isAi) return true;
+        var a = actorName ?? "";
+        return a == IgConst.ActorAi || a == IgConst.ActorRule || a == IgConst.ActorFaq
+               || a.StartsWith(IgConst.RuleActorPrefix, StringComparison.Ordinal);
+    }
+
+    /// <summary><see cref="IsBotOutbound"/> ning SQL'ga tarjima bo'ladigan ko'rinishi
+    /// (yo'nalish sharti bilan birga): faqat BOTNING chiquvchi qatorlari.</summary>
+    public static readonly System.Linq.Expressions.Expression<Func<IgMessage, bool>> BotOutboundExpr =
+        m => m.Direction == IgConst.DirOut
+             && (m.IsAi
+                 || m.ActorName == IgConst.ActorAi
+                 || m.ActorName == IgConst.ActorRule
+                 || m.ActorName == IgConst.ActorFaq
+                 || m.ActorName.StartsWith(IgConst.RuleActorPrefix));
+
+    /// <summary>
+    /// Meta bergan xabar vaqti ISHONCHLIMI (24 soatlik oyna shundan hisoblanadi).
+    ///
+    /// <para>Qabul qilinadi: kelajakda emas (soat farqiga <see cref="IgConst.InboundFutureSkewMinutes"/>
+    /// daqiqa yon beriladi) va <see cref="IgConst.InboundMaxAgeDays"/> kundan eski emas. Chegaradan
+    /// tashqarisi — buzuq ma'lumot yoki soat nosozligi: <c>null</c> qaytadi.</para>
+    /// </summary>
+    public static string? SaneInboundAt(string? sentAtIso, DateTime now)
+    {
+        if (!TryIso(sentAtIso, out var sent)) return null;
+        if (sent > now.AddMinutes(IgConst.InboundFutureSkewMinutes)) return null;
+        if (sent < now.AddDays(-IgConst.InboundMaxAgeDays)) return null;
+        return sentAtIso;
+    }
+
+    /// <summary>
+    /// ESKI HODISA — avtomatik javob berilmaydigan bo'lsa SABAB, aks holda bo'sh satr.
+    ///
+    /// <para><b>🔴 Muammo:</b> modul o'chiq paytda webhook hodisalarni baribir navbatga yozadi.
+    /// Ilgari navbat yozuvlari muddatsiz kutardi va modul yoqilgan zahoti bot ikki haftalik
+    /// izohlarga OMMAVIY javob yozib chiqardi, eski DM'lar esa har biri alohida Telegram
+    /// signali bilan eskalatsiya qilinardi.</para>
+    ///
+    /// <para><b>Yosh qayerdan:</b> bizning qabul vaqtimiz (<c>IgWebhookEvent.ReceivedAt</c>) va
+    /// Meta bergan vaqtning (agar ishonchli bo'lsa — <see cref="SaneInboundAt"/>) ESKIROG'I.
+    /// Ikkinchisi Meta 36 soat qayta yuborgan holatni ushlaydi: qabul vaqti yangi, xabarning
+    /// o'zi esa eski. Buzuq/ishonchsiz Meta vaqti hisobga OLINMAYDI — bot sababsiz jim
+    /// qolmasin.</para>
+    ///
+    /// <para>Chegara: DM — <see cref="IgConst.StaleDmHours"/>, izoh —
+    /// <see cref="IgConst.StaleCommentHours"/>.</para>
+    /// </summary>
+    public static string StaleReplyReason(string channel, string? receivedAtIso, string? sentAtIso, DateTime now)
+    {
+        DateTime? oldest = null;
+        if (TryIso(receivedAtIso, out var received)) oldest = received;
+        var sane = SaneInboundAt(sentAtIso, now);
+        if (sane is not null && TryIso(sane, out var sent) && (oldest is null || sent < oldest)) oldest = sent;
+        if (oldest is null) return "";
+
+        var hours = (now - oldest.Value).TotalHours;
+        var limit = channel == IgConst.ChannelComment ? IgConst.StaleCommentHours : IgConst.StaleDmHours;
+        if (hours < limit) return "";
+
+        var what = channel == IgConst.ChannelComment ? "Izoh" : "Xabar";
+        return $"{what} {(int)Math.Floor(hours)} soat oldin kelgan (navbatda kutib qolgan) — "
+               + "bot eski xabarga avtomatik javob bermadi, operator ko'rsin";
+    }
+
+    /// <summary>
+    /// BOT OSHKORLIGI (Meta talabi) — suhbatdagi BIRINCHI bot javobi oldiga
+    /// <c>CenterMeta.InstagramGreeting</c> qo'shiladi.
+    ///
+    /// <para><b>🔴 Nega kodda:</b> ilgari oshkorlik faqat AI promptida edi (8-qoida). FAQ
+    /// tugmasi va kalit so'z qoidasi javoblari AI'siz ketadi — ya'ni mijoz birinchi javobni
+    /// botdan olib, uning bot ekanini bilmasdi. Endi qaysi yo'ldan ketishidan qat'i nazar
+    /// (FAQ · qoida · AI) birinchi javob oshkorlik bilan boshlanadi.</para>
+    ///
+    /// <para>⚠️ Javobda matn ALLAQACHON bo'lsa (masalan model qo'shib qo'ygan) takrorlanmaydi.
+    /// Sozlanmagan bo'lsa — <see cref="IgConst.DefaultGreeting"/>.</para>
+    /// </summary>
+    public static string WithDisclosure(string reply, string? greeting, bool firstBotMessage)
+    {
+        var body = (reply ?? "").Trim();
+        if (!firstBotMessage || body.Length == 0) return body;
+        var hello = string.IsNullOrWhiteSpace(greeting) ? IgConst.DefaultGreeting : greeting.Trim();
+        if (body.Contains(hello, StringComparison.OrdinalIgnoreCase)) return body;
+        return hello + "\n\n" + body;
+    }
+
+    /// <summary>Signal qayta yuborilsinmi — oxirgisidan beri <paramref name="window"/> o'tganmi.
+    /// <para>Avtomat o'chirgich, kunlik chegara va "akkaunt ulanmagan" signallari HAR bloklangan
+    /// hodisada emas, oynada BIR MARTA ketadi — aks holda bitta halqa yoki uzilgan akkaunt
+    /// adminlarni yuzlab bir xil xabar bilan ko'mib tashlardi.</para></summary>
+    public static bool AlertDue(DateTime? lastSentAt, DateTime now, TimeSpan window) =>
+        lastSentAt is null || now - lastSentAt.Value >= window || now < lastSentAt.Value;
 
     /// <summary>
     /// Instagram Login tokeni (<c>IgAccount.AccessToken</c>) HOZIR kerak bo'ladigan modul

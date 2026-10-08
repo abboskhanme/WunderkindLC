@@ -21,6 +21,7 @@ import { PageHeader } from '@/components/ui/PageHeader'
 import { TablePagination, usePagination } from '@/components/ui/TablePagination'
 import { formatMonth, monthShortNames } from '@/config/constants'
 import { apiErrorMessage, cn, formatMoney } from '@/lib/utils'
+import { localIsoDate } from '@/lib/localDate'
 
 /**
  * CHEGIRMALAR HISOBOTI — "kimga qancha chegirma berilgan va u qayerda ketyapti".
@@ -46,7 +47,7 @@ const searchInput =
   'w-full rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-3 text-sm text-slate-700 outline-none focus:border-brand-400'
 
 /** Joriy oy ("yyyy-MM"). */
-const currentMonth = new Date().toISOString().slice(0, 7)
+const currentMonth = localIsoDate(new Date()).slice(0, 7)
 
 /** "yyyy-MM" ga oy qo'shish/ayirish (oy chegarasidan o'tishni Date o'zi normallashtiradi). */
 function addMonths(ym: string, delta: number): string {

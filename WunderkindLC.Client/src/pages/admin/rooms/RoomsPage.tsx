@@ -15,6 +15,7 @@ import { Loader } from '@/components/ui/Loader'
 import { Modal } from '@/components/ui/Modal'
 import { Input } from '@/components/ui/Input'
 import { NumberInput } from '@/components/ui/NumberInput'
+import { apiErrorMessage } from '@/lib/utils'
 
 // Sig'im maydoni tahrir paytida bo'sh bo'la oladi — saqlashda tekshiriladi.
 type RoomForm = Omit<CreateRoomPayload, 'capacity'> & { capacity: number | null }
@@ -34,6 +35,11 @@ export function RoomsPage() {
   const [form, setForm] = useState<RoomForm>(emptyForm)
   const [saving, setSaving] = useState(false)
   const [deleteConfirm, setDeleteConfirm] = useState<Room | null>(null)
+  const [deleting, setDeleting] = useState(false)
+  // Server rad etish sababi ("Bu nomli faol xona allaqachon mavjud", "Xonaga 3 ta faol guruh
+  // biriktirilgan") — oynaning O'ZIDA ko'rinadi, oyna yopilmaydi va kiritilgan matn qoladi.
+  const [formError, setFormError] = useState('')
+  const [deleteError, setDeleteError] = useState('')
   const [query, setQuery] = useState('')
 
   useEffect(() => {
@@ -45,6 +51,7 @@ export function RoomsPage() {
   const openCreate = () => {
     setEditing(null)
     setForm(emptyForm)
+    setFormError('')
     setFormOpen(true)
   }
 
@@ -56,6 +63,7 @@ export function RoomsPage() {
       building: room.building ?? '',
       location: room.location ?? '',
     })
+    setFormError('')
     setFormOpen(true)
   }
 
@@ -63,36 +71,47 @@ export function RoomsPage() {
     e.preventDefault()
     if (!form.name.trim()) return
     if (form.capacity === null || form.capacity <= 0) {
-      alert("Sig'imni kiriting (1–1000)")
+      setFormError("Sig'imni kiriting (1–1000)")
       return
     }
     const payload: CreateRoomPayload = { ...form, capacity: form.capacity }
     setSaving(true)
+    setFormError('')
     try {
       if (editing) {
-        const updated = await updateRoom(editing.id, payload)
+        // Faollik JORIY qiymati bilan yuboriladi — tahrir xonani hech qachon jimgina nofaol qilmasin.
+        const updated = await updateRoom(editing.id, { ...payload, isActive: editing.isActive })
         setRooms((prev) => prev.map((r) => (r.id === updated.id ? updated : r)))
       } else {
         const created = await createRoom(payload)
         setRooms((prev) => [...prev, created])
       }
       setFormOpen(false)
-    } catch {
-      alert("Xatolik yuz berdi. Qaytadan urinib ko'ring.")
+    } catch (err) {
+      setFormError(apiErrorMessage(err, "Xonani saqlab bo'lmadi. Qaytadan urinib ko'ring."))
     } finally {
       setSaving(false)
     }
   }
 
   const handleDelete = async (room: Room) => {
+    setDeleting(true)
+    setDeleteError('')
     try {
       await deleteRoom(room.id)
       setRooms((prev) => prev.filter((r) => r.id !== room.id))
-    } catch {
-      alert("O'chirib bo'lmadi — ehtimol xonaga guruhlar biriktirilgan.")
-    } finally {
       setDeleteConfirm(null)
+    } catch (err) {
+      // Server faol guruhi bor xonani o'chirmaydi va sababini (guruhlar soni bilan) qaytaradi.
+      setDeleteError(apiErrorMessage(err, "Xonani o'chirib bo'lmadi"))
+    } finally {
+      setDeleting(false)
     }
+  }
+
+  const closeDelete = () => {
+    setDeleteConfirm(null)
+    setDeleteError('')
   }
 
   const update = <K extends keyof RoomForm>(key: K, value: RoomForm[K]) =>
@@ -241,33 +260,47 @@ export function RoomsPage() {
             value={form.location ?? ''}
             onChange={(e) => update('location', e.target.value)}
           />
+          {formError && (
+            <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+              {formError}
+            </div>
+          )}
         </form>
       </Modal>
 
       {/* O'chirish tasdiqi */}
       <Modal
         open={deleteConfirm !== null}
-        onClose={() => setDeleteConfirm(null)}
+        onClose={closeDelete}
         title="Xonani o'chirish"
         size="sm"
         footer={
           <>
-            <Button variant="secondary" onClick={() => setDeleteConfirm(null)}>
+            <Button variant="secondary" onClick={closeDelete} disabled={deleting}>
               Bekor qilish
             </Button>
             <Button
               variant="danger"
+              disabled={deleting}
               onClick={() => deleteConfirm && handleDelete(deleteConfirm)}
             >
-              O'chirish
+              {deleting ? "O'chirilmoqda..." : "O'chirish"}
             </Button>
           </>
         }
       >
+        {/* Server xatti-harakati AYNAN shu: faol (arxivlanmagan) guruhi bor xona o'chirilmaydi;
+            guruhsiz xona ro'yxatdan olinadi, yozuvi esa tarix uchun saqlanadi. */}
         <p className="text-sm text-slate-600">
-          <strong>{deleteConfirm?.name}</strong> xonasini o'chirmoqchimisiz?
-          Agar xonaga guruhlar biriktirilgan bo'lsa, o'chirib bo'lmaydi.
+          <strong>{deleteConfirm?.name}</strong> xonasini o'chirmoqchimisiz? Xona ro'yxatdan olinadi
+          (o'tgan jadval uchun yozuvi saqlanadi). Faol guruh biriktirilgan xonani o'chirib bo'lmaydi —
+          avval guruhlarni boshqa xonaga o'tkazing.
         </p>
+        {deleteError && (
+          <div className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+            {deleteError}
+          </div>
+        )}
       </Modal>
     </div>
   )

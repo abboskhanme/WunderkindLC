@@ -46,7 +46,16 @@ export async function createRoom(payload: CreateRoomPayload): Promise<Room> {
   return data
 }
 
-export async function updateRoom(id: string, payload: CreateRoomPayload): Promise<Room> {
+/**
+ * Tahrir so'rovi. `isActive` ATAYIN yuboriladi (joriy qiymat): ilgari maydon yuborilmas edi va server
+ * uni `false` deb o'qib, sig'imni tuzatgan xonani nofaol qilib qo'yardi. Server endi `null` ni
+ * "tegilmaydi" deb tushunadi — ikkala tomon ham himoyalangan.
+ */
+export interface UpdateRoomPayload extends CreateRoomPayload {
+  isActive?: boolean
+}
+
+export async function updateRoom(id: string, payload: UpdateRoomPayload): Promise<Room> {
   const { data } = await api.put<Room>(`/admin/rooms/${id}`, payload)
   return data
 }

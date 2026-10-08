@@ -77,8 +77,13 @@ paths:
   `held = conducted ∩ (memberStart ≤ sana ≤ frozenAt)` — o'quvchi portali (`StudentAttendanceController`
   `memberEnd`) bilan bir xil.
 
-- **BALL (reyting bali)** = `Σ(jurnal baholari) + Σ(bajarilgan baholash mezonlari)` — guruh sahifasidagi
-  "Reyting" tabi bilan BIR XIL formula. Servis: `StudentBallService` (Application/Services):
+- **BALL (reyting bali)** = `Σ(QO'LDA qo'yilgan jurnal baholari) + Σ(bajarilgan baholash mezonlari)` — guruh
+  sahifasidagi "Reyting" tabi bilan BIR XIL formula (klient: `lib/studentBall.ts` → `ballGrade`; admin guruh
+  sahifasi ham, O'QITUVCHI ilovasining jurnal jami/saralashi va «Reyting» tabi ham — 2026-10-08 gacha o'qituvchi
+  ilovasi mezon bahosini ikki marta qo'shardi). Muzlatilganlar blokida esa ATAYIN `Σ grade`: baholash taxtasi
+  muzlatilganlarni bermaydi, ya'ni mezondan yozilgan baho u yerda mezon checklarining O'RNINI bosadi.
+  ⚠️ Mezondan avtomatik yozilgan jurnal bahosi (`JournalEntry.GradeFromCriteria = true`) ballga QO'SHILMAYDI —
+  o'sha checklar mezonlar qismida allaqachon sanaladi (ilgari ikki marta sanalardi). Batafsil: pastdagi §LRN-1. Servis: `StudentBallService` (Application/Services):
   `ComputeAsync(db, groupIds?)` (groupIds=null → markaz bo'yicha), `SchoolAsync`, `TeacherAsync`.
   Endpointlar: `GET /api/admin/students/balls` (`ClassAnalyticsController`, DataCache `ball:students`),
   `GET /api/admin/teachers/{id}/rating`, `GET /api/teacher/rating` → `TeacherRatingDto`(rows: rank, ball
@@ -103,3 +108,96 @@ umuman olmaydi), `FrozenAt` — oxirgi kuni, `Ended` — `"left"` (chiqarilgan/b
 `"completed"` (sertifikat bilan). Yorliq «Chiqgan»/«Tugatgan», «Muzlatilgan» EMAS.
 ⚠️ Ilgari faqat `IsActive` olinardi: chiqarilgan/o'tkazilgan o'quvchi o'qigan oylaridan ham yo'qolar,
 sertifikat bilan tugatilgan guruh jurnali bo'm-bo'sh ochilardi.
+
+## 2026-10-07 AUDIT — yozish darvozasi, davomat xabarlari, mezon bahosi, ko'chirish
+
+### A'zolik darvozasi — `JournalService.MemberWriteError` (LRN-3)
+
+Jurnalga (katak, ommaviy davomat, baholash mezoni) faqat SHU guruh a'zosiga yoziladi:
+
+| Kim | Kimga |
+|---|---|
+| O'qituvchi (`teacher: true`) | faqat FAOL, MUZLATILMAGAN, ARXIVLANMAGAN a'zo, a'zolik boshlangan kundan |
+| Admin | muzlatilgan/chiqqan o'quvchini ham tuzata oladi, lekin faqat u guruhda BO'LGAN kunga (`StudentJournalBuilder.BoundsOf`: muzlatish/chiqish sanasigacha). Tugash sanasi noma'lum yopiq a'zolik — rad |
+
+⚠️ Ilgari "a'zolik topilmadi" = "cheklov yo'q" deb talqin qilinardi: API orqali begona o'quvchiga baho qo'yib,
+ommaviy "hammasi kelmadi"da esa uning ota-onasiga SMS yuborib bo'lardi. Ommaviy amalda bunday id'lar JIMGINA
+chetlab o'tiladi (`BulkAttendanceResult.SkippedIds`) va ularga xabar ketmaydi. Baholash mezoni (`Done=true`) —
+o'qituvchi qoidasi bilan (muzlatilgan o'quvchi baholanmaydi), olib tashlash a'zolikka qaramaydi.
+
+### Davomat avto-xabarlari — `AttendanceNotify` (C8)
+
+- **"Kech" — kelmadi EMAS.** `IsLate` sabab hech qachon "darsga kelmadi" yubormaydi (o'quvchi darsda bo'lgan;
+  davomat foizida ham "kelgan"). "Keldi" xabari ham ketmaydi — u faqat aniq `Present` belgisiga bog'langan.
+- **Faqat O'TISHDA:** "kelmadi emas" (belgisiz yoki "kech") → "kelmadi". Sababni almashtirish (Sababsiz → Kasal)
+  yangi hodisa emas — ikkinchi SMS ketmaydi.
+- **Ommaviy** — faqat shu so'rovda YANGI kelmaganlarga (`NewlyAbsentIds`) va FONDA. Sabab: 25 ta SMS
+  bittalab ketsa so'rov Cloudflare'ning 100 soniyasidan oshar, o'qituvchi qayta bosar va hamma ota-ona xabarni
+  ikki marta olardi. Bitta katak — so'rov ichida (kutish xavfi yo'q).
+- ⚠️ **Ommaviy xabarlar navbati BAZADA (2026-10-08)** — `AttendanceNotifyItem` (har oluvchi — bitta qator).
+  Ilgari fon ishi xotirada edi (`Task.Run`): yuborish paytida deploy bo'lsa qolgan ota-onalar xabarni JIMGINA
+  olmasdi. Endi `AttendanceNotify.EnqueueBulkAsync` qatorlarni `JournalService.BulkAttendanceAsync` ning
+  `beforeSave` chaqiruvida qo'shadi — jurnal yozuvi bilan BITTA SaveChanges (jurnal saqlandi = xabar navbatda).
+  Ishchi — `AttendanceNotifyWorker` (singleton + fon xizmati, controller saqlagach `Wake()`, aks holda har
+  daqiqada o'zi tekshiradi): har oluvchi yuborishdan OLDIN `sending` deb band qilinadi (concurrency token),
+  restartda qolgan `pending` lar yuboriladi, aynan yuborish paytida uzilgani `unknown` (QAYTA yuborilmaydi —
+  `SmsQueueItem` bilan bir xil qoida). 6 soatdan eski qator yuborilmaydi (`expired` — kechagi "kelmadi"
+  ertasiga ketmasin). Qoida (trigger) yoqilmagan bo'lsa qator umuman yozilmaydi. Arxiv va joriy «keldi»
+  holati YUBORISH paytida qayta tekshiriladi. Yakunlangan qatorlar 7 kundan keyin tozalanadi.
+- **Bitta hodisa — bitta xabar:** eski to'g'ridan-to'g'ri "Davomat" push'i faqat `attendance_absent` qoidasi
+  UMUMAN yo'q bo'lsa (baho push'i bilan bir xil naqsh); qoida bor bo'lsa xabarni faqat dispatcher yuboradi.
+- Arxivlangan o'quvchiga (eski yozuvlarda a'zoligi tirik bo'lishi mumkin) hech qanday davomat/baho xabari ketmaydi.
+
+### Arxivlangan o'quvchi jurnalda (C1)
+
+Eski arxivdagilarda a'zolik hali TIRIK bo'lishi mumkin. Shuning uchun `GroupMonthAsync` JORIY oyda arxivlangan
+o'quvchining tirik a'zoligini ko'rsatmaydi (o'qituvchi uni belgilashga majbur bo'lmasin, tezkor davomat to'xtab
+qolmasin, ota-onaga SMS ketmasin). O'TGAN oylarda — o'qigan joyida ko'rinadi.
+
+### Qarz summasi o'qituvchiga berilmaydi (AUTH-8)
+
+`GroupJournalStudentDto.Debtor` (qarzdormi) + `DebtMonths`. O'qituvchi `journal/group` javobida `Balance` HAR
+DOIM 0 (o'rinbosarga ham) — teacher-portal.md §3, substitute-teachers.md §8. Admin jurnali summani ko'radi.
+
+### LRN-1 — MEZON BAHOSINING EGASI (`JournalEntry.GradeFromCriteria`)
+
+"Mezon checklari soni = jurnal bahosi" sinxroni (`GradingService.SyncJournalGradeAsync`) FAQAT o'z bahosiga tegadi:
+
+- katakda QO'LDA qo'yilgan baho bo'lsa — sinxron hech narsa qilmaydi (ilgari qo'lda 5 bitta check bilan 1 ga
+  aylanar, ommaviy "olib tashlash" kunning barcha qo'lda bahosini o'chirardi);
+- checklar bor — baho = son, `GradeFromCriteria = true`; checklar yo'q — o'z bahosi tozalanadi.
+- Katakda baho O'ZGARTIRILSA — u qo'lda bahoga aylanadi. Baho o'zgarmasa (faqat uy vazifa tahrirlandi) egasi
+  saqlanadi — aks holda ballda ikki marta sanalardi.
+- Mezon o'chirilsa / guruhdan ajratilsa — ta'sirlangan kataklar qayta sinxronlanadi (`ResyncAsync`, darsni
+  "o'tildi" qilmaydi), `ExecuteDeleteAsync` dan keyin kesh qo'lda yangilanadi.
+
+### LRN-4 — baholash taxtasi jurnal qoidalariga bo'ysunadi
+
+`GradingService.CheckGradableDateAsync`: kelajak sana — taqiq, guruh boshlanishidan oldin — taqiq, sana guruhning
+HAQIQIY dars kuni bo'lishi shart, `JournalPolicy.CheckAsync` (o'qituvchiga har doim, adminga "Adminlarga ham
+qo'llash" bo'yicha). O'qituvchi yo'lida: `journal` ruxsati shart, to'lov darvozasi yashirgan o'quvchi taxtada
+ko'rinmaydi, unga mezon qo'yib bo'lmaydi, ommaviy belgilashda chetlab o'tiladi. Sabab: mezon belgisi darsni
+"o'tildi" qiladi — bu MAOSH (`SalaryJournalStats`), ya'ni jurnalda yopiq kunni taxta orqali ochib bo'lmasin.
+
+### LRN-2 — darsni ko'chirish (`JournalService.CheckMoveAsync`)
+
+Ko'chirish oyning dars sonini va jurnal jarimasini o'zgartiradi (asl kun rejadan chiqadi), shuning uchun:
+
+- **o'rinbosar** qamragan kun hech kimga ko'chirilmaydi — avval tayinlovni o'zgartirish kerak (tayinlov SANAGA
+  bog'langan: haq va kirish huquqi dars yo'q kunda qolib ketardi);
+- jurnal siyosati ikkala sanaga ham (o'tgan bo'lsa);
+- **o'qituvchi**: o'tgan darsni KELAJAKKA ko'chira olmaydi; `SalaryRequireJournal` yoqiq bo'lsa maosh muhlati
+  (`SalaryGraceDays`) o'tgan darsni ham ko'chira olmaydi (ilgari dushanbadagi belgilanmagan darsni keyingi haftaga
+  ko'chirib jarimadan qutulish mumkin edi). Admin — mumkin ("qo'shimcha dars" uning qarori), lekin tarixga yoziladi;
+- bekor qilish ham shu qoidalarga bo'ysunadi; har amal `audit` (`Group`, guruh "Tarix" tabida);
+- mezon belgilari (`CriterionGrade`) ham yangi kunga ko'chadi (ilgari eski kunda qolib ketardi).
+
+### Boshqalar
+
+- **"Jurnal boshqaruvi" saqlanganda tarixga yoziladi** (`CenterMeta`, Sozlamalar bo'limi): maoshni jurnalga
+  bog'lash, muhlat, to'lamaganlarni yashirish — PULGA ta'sir qiluvchi sozlamalar (`SettingsController.LogSettings`
+  shakli: o'zgargan maydonlar nomi + oldin/keyin).
+- **Kunlik davomat sahifasi** (`StudentAttendanceController.Absent`) "kelganlar"ni faqat shu kuni darsda
+  KUTILGAN a'zolardan sanaydi (`StudentJournalBuilder.ExpectedOn`): muzlatilgan (muzlatish sanasidan keyin),
+  hali qo'shilmagan va arxivlangan o'quvchi "kelgan" bo'lib chiqmaydi.
+

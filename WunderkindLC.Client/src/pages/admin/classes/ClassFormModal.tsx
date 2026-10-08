@@ -107,7 +107,16 @@ export function ClassFormModal({ open, onClose, onSubmit, initial }: Props) {
   const update = <K extends keyof ClassForm>(key: K, value: ClassForm[K]) =>
     setForm((f) => ({ ...f, [key]: value }))
 
-  /** Kurs tanlanganda oylik narxni avtomatik to'ldirish (tahrirlash mumkin). */
+  /**
+   * Kurs tanlangan bo'lsa guruh oyligi KURS NARXI — server saqlashda baribir `MonthlyFee` ni kurs
+   * narxi bilan almashtiradi. Ilgari maydon tahrirlanadigan edi va kiritilgan son jimgina
+   * yo'qolardi; endi u faqat ko'rsatiladi (narx kursda o'zgartiriladi).
+   */
+  const selectedCourse = form.courseId ? subjects.find((s) => s.id === form.courseId) : undefined
+  const feeLockedByCourse = !!selectedCourse
+  const shownFee = selectedCourse ? selectedCourse.price : form.monthlyFee
+
+  /** Kurs tanlanganda oylik narx kurs narxidan olinadi (kurs olib tashlansa — oldingi qiymat qoladi). */
   const onCourseChange = (courseId: string) => {
     const course = subjects.find((s) => s.id === courseId)
     setForm((f) => ({
@@ -134,14 +143,19 @@ export function ClassFormModal({ open, onClose, onSubmit, initial }: Props) {
       alert("Guruhga o'qituvchi biriktirish majburiy")
       return
     }
+    if (form.endDate && form.startDate && form.endDate < form.startDate) {
+      alert("Tugash sanasi boshlanish sanasidan oldin bo'lmaydi")
+      return
+    }
     // Bo'sh narx jimgina 0 deb saqlanmaydi (bepul guruh bo'lsa 0 aniq yoziladi).
-    if (form.monthlyFee === null) {
+    if (shownFee === null || shownFee === undefined) {
       alert("Oylik narxni kiriting (bepul bo'lsa 0 yozing)")
       return
     }
     try {
-      // Sig'im bo'sh = 0 = cheksiz.
-      doSubmit({ ...form, monthlyFee: form.monthlyFee, capacity: form.capacity ?? 0 })
+      // Sig'im bo'sh = 0 = cheksiz. Kurs tanlangan bo'lsa narx — kurs narxi (server ham shuni yozadi),
+      // ya'ni "oylik o'zgardimi" so'rovi faqat HAQIQIY o'zgarishda chiqadi.
+      doSubmit({ ...form, monthlyFee: shownFee, capacity: form.capacity ?? 0 })
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message
       alert(msg ?? 'Saqlashda xatolik yuz berdi')
@@ -207,7 +221,15 @@ export function ClassFormModal({ open, onClose, onSubmit, initial }: Props) {
           />
         </EduField>
 
-        <EduField label="Guruh holati" required>
+        <EduField
+          label="Guruh holati"
+          required
+          hint={
+            // «Arxiv» bu yerda faqat YORLIQ edi (guruh arxivga tushmas, a'zoliklar muzlamas, oylik
+            // yozilaverardi) — server endi uni rad etadi. Arxivlash alohida amal.
+            "Guruhni arxivlash — guruhlar ro'yxatidagi «Arxivlash» yoki guruh sahifasidagi «Guruhni yopish» orqali (a'zoliklar shu sanadan muzlatiladi)."
+          }
+        >
           <select
             className={eduInputCls}
             value={form.status ?? 'active'}
@@ -215,7 +237,12 @@ export function ClassFormModal({ open, onClose, onSubmit, initial }: Props) {
           >
             <option value="active">Faol</option>
             <option value="full">To'lgan</option>
-            <option value="archived">Arxiv</option>
+            {/* Faqat allaqachon «Arxiv» yorlig'idagi guruh uchun ko'rinadi (tanlab bo'lmaydi). */}
+            {(initial?.status === 'archived' || initial?.isArchived) && (
+              <option value="archived" disabled>
+                Arxiv
+              </option>
+            )}
           </select>
         </EduField>
 
@@ -230,12 +257,18 @@ export function ClassFormModal({ open, onClose, onSubmit, initial }: Props) {
               ))}
             </select>
           </EduField>
-          <EduField label="Oylik narx (so'm)">
+          <EduField
+            label="Oylik narx (so'm)"
+            hint={feeLockedByCourse ? "Kurs narxidan olinadi — narx «Kurslar» bo'limida o'zgartiriladi" : undefined}
+          >
             <MoneyInput
               as="input"
-              className={eduInputCls}
-              value={form.monthlyFee}
-              onChange={(v) => update('monthlyFee', v)}
+              className={cn(eduInputCls, feeLockedByCourse && 'cursor-not-allowed opacity-70')}
+              value={shownFee}
+              readOnly={feeLockedByCourse}
+              onChange={(v) => {
+                if (!feeLockedByCourse) update('monthlyFee', v)
+              }}
             />
           </EduField>
         </div>
@@ -354,15 +387,28 @@ export function ClassFormModal({ open, onClose, onSubmit, initial }: Props) {
               onChange={(e) => update('startDate', e.target.value)}
             />
           </EduField>
-          <EduField label="Sig'im (0 = cheksiz)">
-            <NumberInput
-              as="input"
+          <EduField
+            label="Tugash sanasi"
+            hint="Bo'sh — guruh davom etadi. Shu sanadan keyin darslar jadvalda ko'rinmaydi."
+          >
+            <input
               className={eduInputCls}
-              value={form.capacity}
-              onChange={(v) => update('capacity', v)}
+              type="date"
+              value={form.endDate ?? ''}
+              min={form.startDate || undefined}
+              onChange={(e) => update('endDate', e.target.value)}
             />
           </EduField>
         </div>
+
+        <EduField label="Sig'im (0 = cheksiz)">
+          <NumberInput
+            as="input"
+            className={eduInputCls}
+            value={form.capacity}
+            onChange={(v) => update('capacity', v)}
+          />
+        </EduField>
 
         <EduField label="Izoh">
           <textarea

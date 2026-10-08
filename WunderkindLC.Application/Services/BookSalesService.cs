@@ -172,6 +172,30 @@ public static class BookSalesService
     /// <summary>Buyurtma nasiyaga sotilganmi.</summary>
     public static bool IsCredit(BookOrder o) => o.PaymentMethod == PayCredit;
 
+    // =============================================================================================
+    //  OLIB KETISHDA TO'LANADIGAN bot buyurtmasi (books.md §2.6)
+    // =============================================================================================
+
+    /// <summary>
+    /// Botdan NAQD tanlangan buyurtma — mijoz pulni kitobni OLIB KETAYOTGANDA beradi (botda shunday
+    /// deyiladi). Tasdiqlash bunday buyurtmada faqat ZAXIRA: qoldiq ayiriladi, lekin pul olinmagan.
+    /// </summary>
+    /// <remarks>
+    /// ⚠️ Ilgari tasdiqlash shu zahoti <c>PaidAt</c> qo'yib, KASSAGA kirim yozardi — mijoz kelmasa
+    /// kassada yo'q pul turar, uni faqat soxta «Qaytarish» bilan "chiqarish" mumkin edi.
+    /// Karta (chek bilan — pul oldindan o'tkazilgan) va qo'lda sotuv (pul kassir oldida) bunga KIRMAYDI.
+    /// </remarks>
+    public static bool ShouldPayAtPickup(BookOrder o) =>
+        o.Source != SourceManual && o.PaymentMethod == PayCash;
+
+    /// <summary>Pul KEYIN olinadigan buyurtma: nasiya yoki olib ketishda to'lanadigan bot buyurtmasi.
+    /// Ikkalasida ham pul <see cref="PayCreditAsync"/> («To'landi») bilan qabul qilinadi.</summary>
+    public static bool IsPayLater(BookOrder o) => IsCredit(o) || o.PayAtPickup;
+
+    /// <summary>Tasdiqlangan, lekin hali to'lanmagan (mijoz olib ketmagan) bot buyurtmasi.</summary>
+    public static bool AwaitingPickupPayment(BookOrder o) =>
+        o.PayAtPickup && o.Status == StatusApproved && o.PaidAt is null;
+
     /// <summary>
     /// PUL OLINGANMI. Naqd/karta sotuvda pul tasdiqlash paytida olinadi, ya'ni tasdiqlangan
     /// buyurtma = to'langan. Nasiyada esa pul KEYIN olinadi — <see cref="BookOrder.PaidAt"/>
@@ -182,7 +206,7 @@ public static class BookSalesService
     /// — migratsiyadagi to'ldirish bajarilmagan bazada ham hisobot to'g'ri chiqsin.</para>
     /// </summary>
     public static bool IsPaid(BookOrder o) =>
-        o.Status == StatusApproved && (!IsCredit(o) || o.PaidAt != null);
+        o.Status == StatusApproved && (!IsPayLater(o) || o.PaidAt != null);
 
     /// <summary>
     /// Pul QAYSI ko'rinishda olingani: naqd/kartada — o'sha turning o'zi, nasiyada — u qanday
@@ -190,7 +214,9 @@ public static class BookSalesService
     /// <see cref="PayCredit"/> qaytadi.
     /// </summary>
     public static string EffectiveMethod(BookOrder o) =>
-        IsCredit(o) ? (string.IsNullOrEmpty(o.SettledMethod) ? PayCredit : o.SettledMethod!) : o.PaymentMethod;
+        IsPayLater(o) && !string.IsNullOrEmpty(o.SettledMethod) ? o.SettledMethod!
+        : IsCredit(o) ? PayCredit
+        : o.PaymentMethod;
 
     /// <summary>
     /// MUDDATI O'TGAN nasiya: to'lanmagan va va'da qilingan sana <paramref name="today"/> dan
@@ -228,10 +254,14 @@ public static class BookSalesService
         IAppDbContext db, BookOrder order, string method, string? cardLast4, string paidBy,
         string? actorId = null, CancellationToken ct = default)
     {
-        if (!IsCredit(order)) return "Bu buyurtma nasiyaga sotilmagan — to'lov allaqachon olingan.";
+        // Olib ketishda to'lanadigan bot buyurtmasi ham AYNAN shu yo'l bilan to'lanadi (books.md §2.6).
+        if (!IsPayLater(order)) return "Bu buyurtma nasiyaga sotilmagan — to'lov allaqachon olingan.";
         if (order.Status != StatusApproved)
             return $"Buyurtma holati mos emas ({StatusLabel(order.Status)}).";
-        if (order.PaidAt is not null) return "Bu nasiya allaqachon to'langan deb belgilangan.";
+        if (order.PaidAt is not null)
+            return IsCredit(order)
+                ? "Bu nasiya allaqachon to'langan deb belgilangan."
+                : "Bu buyurtma allaqachon to'langan deb belgilangan.";
         // TO'LIQ QAYTARILGAN nasiyada olinadigan pul qolmaydi (qarz 0 ga tushgan) — "To'landi"
         // bosilsa summa tushumga qo'shilib, qaytarilgan kitob sotilgandek ko'rinardi.
         if (IsFullyReturned(order))
@@ -277,10 +307,13 @@ public static class BookSalesService
         order.RejectReason = string.Empty;
         order.DecidedAt = AppClock.Now;
         order.DecidedBy = decidedBy ?? string.Empty;
-        // Naqd/kartada pul shu paytda olinadi. NASIYADA esa yo'q — `PaidAt` bo'sh qoladi va
-        // buyurtma "qarz" bo'lib sanaladi (qarang: PayCreditAsync).
-        if (!IsCredit(order)) order.PaidAt = order.DecidedAt;
-        // KASSA: naqd/kartada pul hozir olindi — kitob kirimi (nasiyada null — pul keyin, `PayCreditAsync`).
+        // Botdan NAQD buyurtma — mijoz pulni OLIB KETAYOTGANDA beradi: bu yerda faqat ZAXIRA
+        // (qoldiq ayirildi), pul esa «To'landi» bosilganda (PayCreditAsync) — books.md §2.6.
+        if (ShouldPayAtPickup(order)) order.PayAtPickup = true;
+        // Qo'lda naqd/kartada va bot kartasida pul shu paytda (yoki oldindan) olingan. NASIYA va
+        // olib ketishda to'lanadiganda esa yo'q — `PaidAt` bo'sh qoladi (qarang: PayCreditAsync).
+        if (!IsPayLater(order)) order.PaidAt = order.DecidedAt;
+        // KASSA: pul hozir olingan bo'lsagina kitob kirimi (aks holda null — pul keyin, `PayCreditAsync`).
         var income = await BookFinance.AddSaleIncomeAsync(db, order, actorId, decidedBy, ct);
 
         try
@@ -302,6 +335,73 @@ public static class BookSalesService
             order.DecidedAt = null;
             order.DecidedBy = string.Empty;
             order.PaidAt = null;
+            order.PayAtPickup = false;
+            return "Qoldiq shu payt boshqa amalda o'zgardi — qaytadan urinib ko'ring.";
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// BEKOR QILISH darvozasi (sof): faqat tasdiqlangan, OLIB KETISHDA to'lanadigan va hali
+    /// to'lanmagan buyurtma. <c>null</c> — bekor qilsa bo'ladi; aks holda xato matni.
+    /// </summary>
+    public static string? CancelError(BookOrder order)
+    {
+        if (order.Status == StatusPending)
+            return "Kutilayotgan buyurtma «Rad etish» bilan yopiladi.";
+        if (order.Status != StatusApproved)
+            return $"Buyurtma holati mos emas ({StatusLabel(order.Status)}).";
+        if (!order.PayAtPickup)
+            return "Faqat olib ketishda to'lanadigan (botdan naqd) buyurtmani bekor qilish mumkin — "
+                   + "berilgan kitob «Qaytarish» bilan qaytariladi.";
+        if (order.PaidAt is not null)
+            return "Buyurtma allaqachon to'langan — kitob berilgan, «Qaytarish» dan foydalaning.";
+        return null;
+    }
+
+    /// <summary>
+    /// TASDIQLANGAN, lekin mijoz OLIB KETMAGAN (to'lanmagan) bot buyurtmasini BEKOR qiladi:
+    /// zaxiradagi kitob omborga qaytadi, holat <c>rejected</c> (sabab bilan) bo'ladi.
+    /// </summary>
+    /// <remarks>
+    /// <para>⚠️ PUL HARAKATI YO'Q: pul hech qachon olinmagan, ya'ni na kassaga chiqim, na
+    /// <c>RefundedAmount</c> yoziladi (ilgari yagona yo'l — soxta «Qaytarish» edi).</para>
+    /// <para>Ombor harakati sababi <see cref="ReasonReturn"/> — "kirim" (restock) EMAS: zaxiradan
+    /// qaytgan dona nashriyotdan kelgan kitob emas (analitikadagi "davr ichida kirim" shishmasin).</para>
+    /// </remarks>
+    /// <returns><c>null</c> — muvaffaqiyat; aks holda xato matni.</returns>
+    public static async Task<string?> CancelUnpaidAsync(
+        IAppDbContext db, BookOrder order, string reason, string decidedBy, CancellationToken ct = default)
+    {
+        if (CancelError(order) is { } error) return error;
+
+        var book = await db.Books.FirstOrDefaultAsync(x => x.Id == order.BookId, ct);
+        if (book is null) return "Kitob topilmadi (o'chirilgan bo'lishi mumkin).";
+
+        var qty = NetQty(order);
+        var why = (reason ?? string.Empty).Trim();
+        var move = Move(
+            book, qty, ReasonReturn,
+            $"Buyurtma #{order.Number} bekor qilindi (olib ketilmadi){(why.Length == 0 ? "" : $": {why}")}",
+            decidedBy, order.Id);
+        db.BookStockMoves.Add(move);
+
+        var prev = (order.Status, order.RejectReason, order.DecidedAt, order.DecidedBy);
+        order.Status = StatusRejected;
+        order.RejectReason = why.Length == 0 ? "Bekor qilindi (olib ketilmadi)" : $"Bekor qilindi: {why}";
+        order.DecidedAt = AppClock.Now;
+        order.DecidedBy = decidedBy ?? string.Empty;
+
+        try
+        {
+            await db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            // QOLDIQ POYGASI (`ApproveAsync` bilan bir xil) — bazaga hech narsa yozilmagan.
+            book.Stock -= qty;
+            db.BookStockMoves.Remove(move);
+            (order.Status, order.RejectReason, order.DecidedAt, order.DecidedBy) = prev;
             return "Qoldiq shu payt boshqa amalda o'zgardi — qaytadan urinib ko'ring.";
         }
         return null;
@@ -373,6 +473,10 @@ public static class BookSalesService
         if (order.Status != StatusApproved)
             return $"Faqat tasdiqlangan sotuvni qaytarish mumkin (hozirgi holat: {StatusLabel(order.Status)}). "
                    + "Kutilayotgan buyurtmani «Rad etish» bilan yoping.";
+        // Olib ketilmagan (to'lanmagan) bot buyurtmasida kitob mijozga BERILMAGAN — qaytariladigan
+        // narsa yo'q. U «Bekor qilish» bilan yopiladi (soxta qaytarish hisobotga tushmasin).
+        if (AwaitingPickupPayment(order))
+            return "Bu buyurtma hali olib ketilmagan (to'lanmagan) — qaytarish emas, «Bekor qilish» dan foydalaning.";
         if (qty <= 0) return "Qaytariladigan sonni kiriting (kamida 1 dona).";
 
         var left = ReturnableQty(order);
@@ -471,6 +575,18 @@ public static class BookSalesService
         lines.Add("\n📍 Kitobni markazdan olib ketishingiz mumkin. Savol bo'lsa administratorga yozing.");
         return string.Join("\n", lines);
     }
+
+    /// <summary>Mijozga (botga) — tasdiqlangan, lekin olib ketilmagan buyurtma BEKOR qilindi.</summary>
+    public static string CustomerCancelledText(BookOrder o) =>
+        string.Join("\n", new[]
+        {
+            "🚫 Buyurtmangiz bekor qilindi.",
+            "",
+            $"📕 {o.BookTitle} — {o.Qty} dona",
+            $"💬 {(string.IsNullOrWhiteSpace(o.RejectReason) ? "Kitob olib ketilmadi." : o.RejectReason)}",
+            "",
+            "Kitob kerak bo'lsa botdan qaytadan buyurtma bering yoki «✍️ Adminga murojaat» tugmasi orqali yozing.",
+        });
 
     public static string CustomerRejectedText(BookOrder o)
     {

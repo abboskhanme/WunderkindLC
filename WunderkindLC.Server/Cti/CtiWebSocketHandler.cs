@@ -73,8 +73,10 @@ public static class CtiWebSocketHandler
             {
                 case "ack":
                     var commandId = root.TryGetProperty("commandId", out var c) ? c.GetString() ?? "" : "";
+                    // commandId = CtiCommandLogs.Id (Dial/CtiSmsService AYNAN shuni yuboradi).
+                    // Faqat O'Z buyrug'ini tasdiqlay oladi.
                     if (commandId.Length > 0)
-                        await db.CtiCommandLogs.Where(l => l.Id == commandId)
+                        await db.CtiCommandLogs.Where(l => l.Id == commandId && l.AgentId == agentId)
                             .ExecuteUpdateAsync(up => up.SetProperty(l => l.Status, "acked"));
                     break;
                 case "presence":

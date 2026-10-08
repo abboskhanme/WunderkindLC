@@ -58,6 +58,18 @@ public class BotSupportController(AppDbContext db, TelegramService telegram) : C
 
         var user = await db.BotUsers.FirstOrDefaultAsync(u => u.ChatId == chatId);
         if (user is null) return NotFound();
+        if (!telegram.IsConfigured)
+            return BadRequest(new { message = "Telegram bot sozlanmagan (TELEGRAM_BOT_TOKEN) — javob yuborib bo'lmaydi." });
+
+        // ⚠️ AVVAL yuboriladi, YETIB BORGANDAGINA yoziladi. Ilgari natija e'tiborsiz qolardi: foydalanuvchi
+        // botni bloklagan/tarmoq uzilgan bo'lsa ham javob tarixda "yuborildi" bo'lib turardi — admin
+        // javob berdim deb o'ylar, ota-ona esa hech narsa olmasdi.
+        if (!await telegram.SendMessageAsync(chatId, text))
+            return BadRequest(new
+            {
+                message = "Javob Telegram'ga yetkazilmadi — foydalanuvchi botni bloklagan yoki to'xtatgan bo'lishi, "
+                          + "yoki tarmoq xatosi bo'lishi mumkin. Javob saqlanmadi, keyinroq qayta urinib ko'ring.",
+            });
 
         var msg = new BotSupportMessage
         {
@@ -68,8 +80,6 @@ public class BotSupportController(AppDbContext db, TelegramService telegram) : C
             CreatedAt = AppClock.Iso(),
         };
         db.BotSupportMessages.Add(msg);
-
-        await telegram.SendMessageAsync(chatId, text);
         await db.SaveChangesAsync();
 
         return new BotSupportMessageDto(msg.Id, msg.FromUser, msg.Text, msg.AdminName, msg.CreatedAt);

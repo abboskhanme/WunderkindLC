@@ -58,6 +58,12 @@ paths:
   tugagach ochiladi. Vaqtinchalik holat: `TestBotSession` (ChatId unikal).
   DIQQAT: `TestResultService.UpdateAsync`ga `Online` berilmasa rejim O'ZGARMAYDI (eski/qisqartirilgan
   forma onlayn testni oflaynga aylantirmasin).
+  **QAYTA BAHOLASH (2026-10-07):** kalit yoki savollar soni o'zgarsa javoblari saqlangan HAR natija
+  (`TestScore` ham, `ExternalTestScore` ham) yangi kalit bo'yicha qayta sanaladi; javobsiz (qo'lda qo'yilgan)
+  ball faqat `[0, MaxScore]` ga qisiladi (`TestResultService.Regrade`). Ball o'zgargan bo'lsa va test bo'yicha
+  sertifikat berilgan bo'lsa — sertifikatlar fonda QAYTA yaratiladi (`TestCertificateJobs`, idempotent).
+  ⚠️ Ilgari kalitdagi xato tuzatilsa ham hech kimning bali o'zgarmas, savollar 10 → 5 qilinsa "9/5 = 180%"
+  chiqardi (sertifikatda ham).
 
 - **TEST KODI + MARKAZDAN TASHQARI ISHTIROKCHILAR** (migratsiya `AddOnlineTestCodeAndExternalScores`):
   markazda O'QIMAYDIGAN odam ham onlayn testni ishlay oladi.
@@ -83,7 +89,10 @@ paths:
     ishlashi so'raladi, 0 bo'lsa **F.I.Sh** so'raladi (`TestBotSession.Stage="name"` +
     `ExternalName`) va keyin odatdagi PDF → javob kiritish oqimi. `SubmitAsync` `StudentId` bo'sh
     bo'lsa `ExternalTestScore` ga yozadi (telefon `BotUser.Phone` dan). O'rin (rank) markazdagi va
-    tashqi ballarni BIRGA sanaydi.
+    tashqi ballarni BIRGA sanaydi — qoida BITTA: `OnlineTestService.RankAmong` (bot ham, o'quvchi ilovasi ham;
+    ilgari ilova tashqilarni sanamasdi va bitta test ikki xil o'rin ko'rsatardi).
+    Natija xabarida "o'qituvchingizga yuborildi" DEYILMAYDI — o'qituvchiga hech narsa yuborilmaydi, natija
+    «Testlar natijalari» bo'limida ko'rinadi (matn shuni aytadi).
     MAJBURIY OBUNA bu yo'lda ham ishlaydi (`RequireSubscriptionAsync` — `/test` va `ocode` tugmasida).
     Klaviaturalar: «📝 Testni ishlash» endi `ContactKeyboard` va `GuestKeyboard` da ham bor
     (tashqi odam telefon ulashmasa ham testni ishlay olishi kerak).

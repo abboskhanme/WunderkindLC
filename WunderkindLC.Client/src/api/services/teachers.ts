@@ -11,6 +11,7 @@ import type {
   TeacherRating,
 } from '@/types'
 import { delay, uid } from '@/lib/utils'
+import { localIsoDate } from '@/lib/localDate'
 import { api, USE_MOCK } from '../client'
 import { teachersMock } from '../mock/teachers'
 import { financeMock } from '../mock/finance'
@@ -33,7 +34,7 @@ export async function downloadTeacherCredentials(): Promise<void> {
   a.href = url
   const cd = (res.headers['content-disposition'] as string | undefined) ?? ''
   const m = cd.match(/filename="?([^"]+)"?/)
-  a.download = m?.[1] ?? `oqituvchilar_${new Date().toISOString().slice(0, 10)}.xlsx`
+  a.download = m?.[1] ?? `oqituvchilar_${localIsoDate(new Date())}.xlsx`
   document.body.appendChild(a)
   a.click()
   a.remove()
@@ -121,22 +122,42 @@ export async function getArchivedTeachers(): Promise<Teacher[]> {
   return data
 }
 
-/** O'qituvchini arxivga ko'chirish (login bloklanadi) */
-export async function archiveTeacher(id: string, reason: string): Promise<void> {
-  if (USE_MOCK) {
-    await delay(200)
-    return
-  }
-  await api.post(`/admin/teachers/${id}/archive`, { reason })
+/**
+ * Arxivlash natijasi. Server FAOL guruhi bor o'qituvchini arxivlamaydi (400 + guruhlar ro'yxati),
+ * kelajakdagi o'rinbosarlik tayinlovlarini bekor qiladi va to'lanmagan maosh qoldig'i bo'lsa
+ * `warning` qaytaradi (hisob-kitobni yopish esdan chiqmasin).
+ */
+export type ArchiveTeacherResult = {
+  cancelledSubstitutions: number
+  unpaidSalary: number
+  warning: string | null
 }
 
-/** Arxivdan qaytarish — ixtiyoriy yangi parol bilan */
-export async function restoreTeacher(id: string, newPassword?: string): Promise<void> {
+/** O'qituvchini arxivga ko'chirish (login bloklanadi) */
+export async function archiveTeacher(id: string, reason: string): Promise<ArchiveTeacherResult> {
   if (USE_MOCK) {
     await delay(200)
-    return
+    return { cancelledSubstitutions: 0, unpaidSalary: 0, warning: null }
   }
-  await api.post(`/admin/teachers/${id}/restore`, { newPassword })
+  const { data } = await api.post<Partial<ArchiveTeacherResult> | ''>(`/admin/teachers/${id}/archive`, { reason })
+  return {
+    cancelledSubstitutions: (data && data.cancelledSubstitutions) || 0,
+    unpaidSalary: (data && data.unpaidSalary) || 0,
+    warning: (data && data.warning) || null,
+  }
+}
+
+/**
+ * Arxivdan qaytarish — ixtiyoriy yangi parol bilan. `loginBlocked: true` — parol arxivlashda
+ * o'chirilgan va yangisi berilmagan: o'qituvchi hali tizimga KIRA OLMAYDI.
+ */
+export async function restoreTeacher(id: string, newPassword?: string): Promise<{ loginBlocked: boolean }> {
+  if (USE_MOCK) {
+    await delay(200)
+    return { loginBlocked: !newPassword }
+  }
+  const { data } = await api.post<{ loginBlocked?: boolean } | ''>(`/admin/teachers/${id}/restore`, { newPassword })
+  return { loginBlocked: !!(data && data.loginBlocked) }
 }
 
 /**
@@ -188,7 +209,7 @@ export async function getSalaryLedger(id: string, from?: string, to?: string): P
     const teacher = teachersMock.find((t) => t.id === id)
     if (!teacher) throw new Error("O'qituvchi topilmadi")
     const periodFrom = (from ?? `${new Date().getFullYear()}-01-01`).slice(0, 7)
-    const toM = (to ?? new Date().toISOString().slice(0, 10)).slice(0, 7)
+    const toM = (to ?? localIsoDate(new Date())).slice(0, 7)
     // Oylik o'qituvchi boshlagan oydan hisoblanadi — undan oldingi oylar uchun qarz yozilmaydi.
     const fromM =
       teacher.salaryStartMonth && teacher.salaryStartMonth > periodFrom

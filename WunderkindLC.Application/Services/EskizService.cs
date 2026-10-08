@@ -31,6 +31,24 @@ public class EskizService(
     private static string Email => AppSecrets.EskizEmail;
     private static string Password => AppSecrets.EskizPassword;
 
+    /// <summary>
+    /// Eskiz yetkazish holati CALLBACK manzili (<c>/api/sms/callback</c>).
+    ///
+    /// <para>Manba — kanonik <c>App:Host</c> (env <c>APP_HOST</c>); sozlanmagan bo'lsa so'rov hosti
+    /// (<paramref name="requestScheme"/>/<paramref name="requestHost"/>). Fon xizmatlarida so'rov yo'q —
+    /// u yerda <c>App:Host</c> bo'sh bo'lsa <c>null</c> (callback'siz yuboriladi).</para>
+    ///
+    /// <para>⚠️ Ilgari avto-SMS'lar (eslatmalar, to'lov kvitansiyasi) callback'siz ketardi —
+    /// tarixda holati abadiy "Kutilmoqda" bo'lib qolardi. Endi qo'lda yuborish bilan AYNAN bir manzil.</para>
+    /// </summary>
+    public string? CallbackUrl(string? requestScheme = null, string? requestHost = null)
+    {
+        var configured = (config["App:Host"] ?? "").Trim();
+        if (configured.Length == 0 && string.IsNullOrWhiteSpace(requestHost)) return null;
+        return InstagramContract.PublicBase(configured, requestScheme ?? "https", requestHost ?? "")
+               + "/api/sms/callback";
+    }
+
     /// <summary>Login/parol .env'da berilganmi (parametr eski imzoni saqlash uchun — e'tiborsiz).</summary>
     public bool IsConfigured(CenterMeta? m = null) => AppSecrets.EskizConfigured;
 

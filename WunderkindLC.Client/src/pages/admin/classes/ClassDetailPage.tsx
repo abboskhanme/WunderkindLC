@@ -27,7 +27,9 @@ import { getGroupPayments, type GroupPaymentsReport } from '@/api/services/finan
 import { GroupTestsPanel } from '../tests/GroupTestsPanel'
 import { getSettings } from '@/api/services/settings'
 import { cn, formatMoney, formatDate, apiErrorMessage, gradeBadgeCls, balanceTextCls, balanceDotCls, balanceTitle, HEAVY_DEBT_MONTHS } from '@/lib/utils'
+import { ballGrade } from '@/lib/studentBall'
 import { backState, type BackState } from '@/lib/nav'
+import { localIsoDate } from '@/lib/localDate'
 import { Card } from '@/components/ui/Card'
 import { DropdownMenu } from '@/components/ui/DropdownMenu'
 import { AuditHistoryList } from '@/components/audit/AuditHistoryList'
@@ -423,7 +425,7 @@ export function ClassDetailPage() {
       return students.map((s, idx) => {
         const totalGrade = journal!.columns.reduce((sum, c) => {
           const e = entryMap.get(`${s.studentId}|${c.date}`)
-          return sum + (e?.grade ?? 0)
+          return sum + ballGrade(e)
         }, 0)
         return { ...s, journalTotal: totalGrade, gradingTotal: 0, combinedTotal: totalGrade, originalIndex: idx }
       })
@@ -434,7 +436,7 @@ export function ClassDetailPage() {
     return students.map((s, idx) => {
       const journalTotal = journal!.columns.reduce((sum, c) => {
         const e = entryMap.get(`${s.studentId}|${c.date}`)
-        return sum + (e?.grade ?? 0)
+        return sum + ballGrade(e)
       }, 0)
       const gs = gradingStudentMap.get(s.studentId)
       const doneKeys = new Set(gs?.doneKeys ?? [])
@@ -499,7 +501,7 @@ export function ClassDetailPage() {
   }, [journal, entryMap, reasonById])
 
   const g = journal?.group
-  const today = new Date().toISOString().slice(0, 10)
+  const today = localIsoDate(new Date())
 
   const handleSave = async (
     grade: number | null,
@@ -798,7 +800,9 @@ export function ClassDetailPage() {
                         Ilgari bu oynaga faqat pastdagi kulrang "Boshqarish" (tishli g'ildirak)
                         tugmasi va "⋮ → Yangi talaba qo'shish" orqali kirilardi — ya'ni guruh
                         ichidagi yo'l ro'yxatdagi bilan bir xil ko'rinmasdi. */}
-                    {can('classes.list', 'create') && (
+                    {/* ARXIVDAGI (yopilgan/tugatilgan) guruhda ko'rsatilmaydi: server u yerga qo'shish va
+                        aktivlashtirishni rad etadi (yopiq guruhdan oylik yozilmasin). */}
+                    {can('classes.list', 'create') && !group?.isArchived && (
                       <button
                         type="button"
                         title="Talabalarni boshqarish — qo'shish, aktivlashtirish, muzlatish"
@@ -818,7 +822,7 @@ export function ClassDetailPage() {
                         // muzlatish / aktivlashtirish" bandlari ham bor edi — OLIB TASHLANDI:
                         // ular oynadagi checkbox bilan bir xil ishni qilar, lekin TANLOVSIZ
                         // ("hammasi") bo'lgani uchun xavfliroq va ikkinchi, boshqacha yo'l edi.
-                        ...(can('classes.list', 'create')
+                        ...(can('classes.list', 'create') && !group?.isArchived
                           ? [{
                               label: 'Talabalarni boshqarish', icon: Users,
                               onClick: () => setMembersOpen(true),
@@ -1319,6 +1323,9 @@ export function ClassDetailPage() {
                           </td>
                         </tr>
                         {frozenVisible && frozenStudents.map((st) => {
+                          // ATAYIN `ballGrade` EMAS: baholash taxtasi muzlatilganlarni bermaydi (mezon qismi
+                          // yo'q), shuning uchun mezondan yozilgan baho shu yerda mezon checklarining O'RNINI
+                          // bosadi — ikki marta sanalmaydi (faol qatorlarda esa checklar `gradingTotal` da).
                           const totalGrade = journal!.columns.reduce((sum, c) => {
                             const e = entryMap.get(`${st.studentId}|${c.date}`)
                             return sum + (e?.grade ?? 0)
@@ -1857,6 +1864,7 @@ export function ClassDetailPage() {
           studentName={rosterTarget.fullName}
           fromGroupId={id}
           fromGroupName={g?.name ?? ''}
+          memberStatus={rosterTarget.status}
           onDone={() => {
             setRosterTransferOpen(false)
             setRosterTarget(null)
@@ -2095,7 +2103,7 @@ function GroupPaymentsTab({
   months: string[]
   defaultMonth: string
 }) {
-  const fallbackMonth = new Date().toISOString().slice(0, 7)
+  const fallbackMonth = localIsoDate(new Date()).slice(0, 7)
   const [month, setMonth] = useState(defaultMonth || months[months.length - 1] || fallbackMonth)
   const [report, setReport] = useState<GroupPaymentsReport | null>(null)
   const [loading, setLoading] = useState(true)
@@ -2556,7 +2564,8 @@ function RatingsTab({ data, loading }: { data: RatingMonthData[]; loading: boole
           const entryMap = new Map((journal.entries ?? []).map((e) => [`${e.studentId}|${e.date}`, e]))
           for (const col of journal.columns) {
             const e = entryMap.get(`${studentId}|${col.date}`)
-            if (e?.grade) journalTotal += e.grade
+            // Mezondan yozilgan baho qo'shilmaydi — checklar pastda `done` da (server bilan bir xil).
+            journalTotal += ballGrade(e)
           }
         }
         if (grading) {

@@ -17,6 +17,7 @@ import { StudentPhotoDialog } from './StudentPhotoDialog'
 import { PhoneDupeModal } from './PhoneDupeModal'
 import { findPhoneDupes, joinName, payloadFromStudent } from './studentFormModel'
 import { SCHOOL_GRADE_OPTIONS } from '@/lib/schoolGrades'
+import { localIsoDate } from '@/lib/localDate'
 
 interface Props {
   open: boolean
@@ -42,7 +43,7 @@ const empty: StudentPayload = {
   motherPhone: '',
   className: '',
   schoolGrade: null,
-  enrollmentDate: new Date().toISOString().slice(0, 10),
+  enrollmentDate: localIsoDate(new Date()),
   discountPct: 0,
   discountAmount: 0,
   discountNote: '',

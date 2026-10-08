@@ -242,7 +242,10 @@ public class InstagramPipelineTests
 
         Assert.Equal(IgConst.EvDone, done.Status);
         var outbound = Assert.Single(db.Context.IgMessages.Where(m => m.Direction == IgConst.DirOut).ToList());
-        Assert.Equal("Narxlar: IELTS — 700 000 so'm/oy.", outbound.Text);
+        // Suhbatdagi BIRINCHI bot javobi — oshkorlik bilan boshlanadi (Meta talabi, IG-7):
+        // qoida javobi AI'siz ketadi, ilgari oshkorliksiz yuborilardi.
+        Assert.StartsWith(IgConst.DefaultGreeting, outbound.Text);
+        Assert.EndsWith("Narxlar: IELTS — 700 000 so'm/oy.", outbound.Text);
         Assert.Equal("Qoida: Narx savoli", outbound.ActorName);
         Assert.False(outbound.IsAi);
         Assert.Equal("", outbound.Error);
@@ -447,11 +450,12 @@ public class InstagramPipelineTests
         {
             Title = "Narx", Keywords = "narx", ReplyText = "Narxlar: …", StopAi = true, IsActive = true,
         });
-        // Bugun allaqachon bitta javob ketgan (chegara = 1).
+        // Bugun allaqachon bitta BOT javobi ketgan (chegara = 1). ⚠️ Chegara faqat bot qatorlarini
+        // sanaydi (IG-8) — shuning uchun qator AI javobi sifatida belgilangan.
         db.Context.IgMessages.Add(new IgMessage
         {
             ConversationId = "boshqa-suhbat", Direction = IgConst.DirOut, Channel = IgConst.ChannelDm,
-            Text = "oldingi javob", CreatedAt = AppClock.Iso(),
+            Text = "oldingi javob", ActorName = IgConst.ActorAi, IsAi = true, CreatedAt = AppClock.Iso(),
         });
         var ev = Event(DmJson());
         db.Context.IgWebhookEvents.Add(ev);
@@ -874,7 +878,9 @@ public class InstagramPipelineTests
 
         Assert.Equal(IgConst.EvDone, done.Status);
         var outbound = Assert.Single(db.Context.IgMessages.Where(m => m.Direction == IgConst.DirOut).ToList());
-        Assert.Equal("Narxlar: IELTS — 700 000 so'm/oy.", outbound.Text);
+        // Birinchi bot javobi — oshkorlik bilan (IG-7); saqlangan javob o'zgarmagan holda oxirida.
+        Assert.StartsWith(IgConst.DefaultGreeting, outbound.Text);
+        Assert.EndsWith("Narxlar: IELTS — 700 000 so'm/oy.", outbound.Text);
         Assert.Equal(IgConst.ActorFaq, outbound.ActorName);
         Assert.False(outbound.IsAi);
         Assert.Equal("", outbound.Error);

@@ -70,9 +70,67 @@ public class NvrArchiveService(ILogger<NvrArchiveService> log)
         }
         if (proc is null) return (null, "ffmpeg ishga tushmadi.");
 
+        // stderr DARHOL o'qila boshlaydi: (1) bufer to'lib ffmpeg qotib qolmasin, (2) xato bo'lsa
+        // SABAB shu yerdan olinadi. ⚠️ Matnda `login:parol@` bor — faqat RedactText bilan chiqadi.
+        var stderr = proc.StandardError.ReadToEndAsync();
+        var safeUrl = HikvisionNvr.Redact(url);
+
+        // ⚠️ BIRINCHI BO'LAK kutiladi, keyin javob boshlanadi. Ilgari oqim darhol `File()` ga
+        // berilardi: ffmpeg ulana olmasa (yoki argument xato bo'lsa) javob allaqachon "200 OK"
+        // bo'lib ketgan, klient esa 0 baytlik MP4 olib, sababni hech qachon ko'rmasdi.
+        var first = new byte[64 * 1024];
+        // ⚠️ Kutish `Task.WhenAny` bilan: quvur (pipe) o'qishini bekor qilish tokeni har platformada
+        // ham hurmat qilinmaydi — vaqt tugasa jarayon O'LDIRILADI, o'qish shundan keyin o'zi tugaydi.
+        var read = proc.StandardOutput.BaseStream.ReadAsync(first, 0, first.Length);
+        var winner = await Task.WhenAny(read, Task.Delay(FirstChunkTimeout, ct));
+        if (winner != read)
+        {
+            Kill(proc);
+            try { await read; } catch (Exception) { /* jarayon o'ldirildi — o'qish xatosi kutilgan */ }
+            var reason = ct.IsCancellationRequested
+                ? "So'rov bekor qilindi."
+                : $"NVR {(int)FirstChunkTimeout.TotalSeconds} soniyada video bermadi "
+                  + "(manzil/port serverdan ko'rinmayapti yoki shu vaqtda yozuv yo'q).";
+            log.LogWarning("[nvr] klip: birinchi bo'lak kelmadi {Url}", safeUrl);
+            proc.Dispose();
+            return (null, reason);
+        }
+        int n;
+        try { n = await read; }
+        catch (IOException) { n = 0; }
+
+        if (n == 0)
+        {
+            // Oqim BO'SH tugadi — ffmpeg xato bilan chiqib ketgan. Sabab stderr'dan (tozalangan).
+            string err;
+            try
+            {
+                await proc.WaitForExitAsync(CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(5));
+                err = await stderr.WaitAsync(TimeSpan.FromSeconds(2));
+            }
+            catch (TimeoutException) { Kill(proc); err = ""; }
+            catch (IOException) { err = ""; }
+            int? code = proc.HasExited ? proc.ExitCode : null;
+            var safeErr = HikvisionNvr.RedactText(err);
+            log.LogWarning("[nvr] ffmpeg video bermadi (kod {Code}) {Url}: {Err}",
+                code, safeUrl, safeErr.Length > 500 ? safeErr[..500] : safeErr);
+            proc.Dispose();
+            return (null, HikvisionNvr.ClipFailureReason(err, code));
+        }
+
         // ⚠️ Buferga YIG'MAYMIZ: 1 soatlik klip yuzlab MB bo'lishi mumkin va 1 GB RAM'li
-        // serverni yiqitardi. Oqim to'g'ridan-to'g'ri javobga ulanadi.
-        return (new FfmpegStream(proc, HikvisionNvr.Redact(url), FfmpegTimeout(durationSec), log), null);
+        // serverni yiqitardi. Birinchi bo'lakdan keyin oqim to'g'ridan-to'g'ri javobga ulanadi.
+        return (new FfmpegStream(proc, first.AsMemory(0, n), stderr, safeUrl, FfmpegTimeout(durationSec), log), null);
+    }
+
+    /// <summary>ffmpeg birinchi video bo'lagini shuncha vaqt ichida bermasa — xato (RTSP
+    /// kutish vaqti 15 s + zaxira).</summary>
+    private static readonly TimeSpan FirstChunkTimeout = TimeSpan.FromSeconds(25);
+
+    private static void Kill(Process proc)
+    {
+        try { if (!proc.HasExited) proc.Kill(entireProcessTree: true); }
+        catch (InvalidOperationException) { /* jarayon allaqachon yo'q */ }
     }
 
     /// <summary>
@@ -130,12 +188,15 @@ public class NvrArchiveService(ILogger<NvrArchiveService> log)
     /// <remarks>
     /// ⚠️ Alohida sinf kerak, chunki oddiy <c>proc.StandardOutput.BaseStream</c> qaytarilsa
     /// klient ulanishni uzganda ffmpeg <b>yetim</b> qolib, serverda to'planib ketardi
-    /// (har biri RTSP oqimini tortib turadi).
+    /// (har biri RTSP oqimini tortib turadi). Avval oldindan o'qilgan BIRINCHI bo'lak beriladi.
     /// </remarks>
-    private sealed class FfmpegStream(Process proc, string safeUrl, TimeSpan timeout, ILogger log) : Stream
+    private sealed class FfmpegStream(
+        Process proc, ReadOnlyMemory<byte> prefix, Task<string> stderr, string safeUrl, TimeSpan timeout, ILogger log)
+        : Stream
     {
         private readonly Stream inner = proc.StandardOutput.BaseStream;
         private readonly CancellationTokenSource life = new(timeout);
+        private ReadOnlyMemory<byte> pending = prefix;
         private bool closed;
 
         public override bool CanRead => true;
@@ -147,12 +208,30 @@ public class NvrArchiveService(ILogger<NvrArchiveService> log)
         public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
         public override void SetLength(long value) => throw new NotSupportedException();
         public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
-        public override int Read(byte[] buffer, int offset, int count) => inner.Read(buffer, offset, count);
+
+        public override int Read(byte[] buffer, int offset, int count)
+        {
+            if (TakePending(buffer.AsSpan(offset, count)) is var k and > 0) return k;
+            return inner.Read(buffer, offset, count);
+        }
 
         public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken ct = default)
         {
+            if (TakePending(buffer.Span) is var k and > 0) return k;
             using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, life.Token);
             return await inner.ReadAsync(buffer, linked.Token);
+        }
+
+        public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken ct) =>
+            ReadAsync(buffer.AsMemory(offset, count), ct).AsTask();
+
+        private int TakePending(Span<byte> dest)
+        {
+            if (pending.IsEmpty || dest.IsEmpty) return 0;
+            var k = Math.Min(dest.Length, pending.Length);
+            pending.Span[..k].CopyTo(dest);
+            pending = pending[k..];
+            return k;
         }
 
         protected override void Dispose(bool disposing)
@@ -168,7 +247,10 @@ public class NvrArchiveService(ILogger<NvrArchiveService> log)
                     }
                     else if (proc.ExitCode != 0)
                     {
-                        var err = proc.StandardError.ReadToEnd();
+                        // ⚠️ stderr'da `login:parol@` bor — logga faqat tozalangan holda.
+                        var err = "";
+                        try { if (stderr.Wait(TimeSpan.FromSeconds(1))) err = HikvisionNvr.RedactText(stderr.Result); }
+                        catch (AggregateException) { /* stderr o'qilmadi — sababsiz log */ }
                         log.LogWarning("[nvr] ffmpeg xato (kod {Code}) {Url}: {Err}",
                             proc.ExitCode, safeUrl, err.Length > 500 ? err[..500] : err);
                     }

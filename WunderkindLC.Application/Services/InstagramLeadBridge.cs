@@ -28,16 +28,28 @@ namespace WunderkindLC.Application.Services;
 /// o'zi hisoblaydi.</para>
 ///
 /// <para>⚠️ <c>SaveChangesAsync</c> chaqirilmaydi — yozuvlar chaqiruvchining (pipeline)
-/// tranzaksiyasida saqlanadi.</para>
+/// tranzaksiyasida saqlanadi. ISTISNO: YANGI lidga <c>lead_new</c> avto-SMS'i
+/// (<c>autoMsg</c> berilsa) — u yuborilgan SMS jurnalini o'zi saqlaydi.</para>
+///
+/// <para>⚠️ <b>Aylantirilgan lid</b> (o'quvchi bo'lgan) qayta ishlatilmaydi — suhbat unga bog'langan
+/// bo'lsa ham YANGI lid ochiladi ("Avval o'quvchi bo'lgan" izohi bilan) — CRM-1,
+/// <see cref="LeadIntake.FindByPhoneAsync"/>. Izoh telefon bo'yicha, telefon bo'lmasa — suhbat
+/// bog'langan aylantirilgan lid bo'yicha (<see cref="IgLeadLinks.FormerStudentNoteAsync"/>).</para>
+///
+/// <para>⚠️ <c>conv.LeadId</c> FAQAT <see cref="IgLeadLinks.RelinkAsync"/> orqali almashtiriladi:
+/// eski lid tarixga (<see cref="IgConversation.PastLeadIds"/>) yoziladi, aks holda Instagram va
+/// reklama atributsiyasi pul to'lagan eski liddan yangi lidga ko'chib ketardi (audit R2-2).</para>
 /// </summary>
 public static class InstagramLeadBridge
 {
     public const string ActorName = "Instagram AI agenti";
 
     /// <summary>Suhbatdan lid yaratadi yoki mavjudini yangilaydi. Qaytaradi: lid id va yangimi.</summary>
+    /// <param name="autoMsg">Berilsa — YANGI, telefoni bor lidga <c>lead_new</c> avto-SMS'i yuboriladi
+    /// (lid formasi/landing bilan bir xil qoida; CRM-9). <c>null</c> — yuborilmaydi (testlar, eski chaqiruvchi).</param>
     public static async Task<(string LeadId, bool IsNew)> UpsertAsync(
         IAppDbContext db, IgConversation conv, IgAgentOutput output, string sourceName,
-        CancellationToken ct = default)
+        CancellationToken ct = default, AutoMessageService? autoMsg = null)
     {
         var now = AppClock.Iso();
         var source = string.IsNullOrWhiteSpace(sourceName) ? "Instagram" : sourceName.Trim();
@@ -46,8 +58,9 @@ public static class InstagramLeadBridge
 
         // (1) Suhbat allaqachon lidga bog'langan — yangisi ochilmaydi.
         Lead? lead = null;
+        // ⚠️ O'quvchiga AYLANTIRILGAN lid qayta ishlatilmaydi (CRM-1): bu yangi murojaat.
         if (!string.IsNullOrWhiteSpace(conv.LeadId))
-            lead = await db.Leads.FirstOrDefaultAsync(l => l.Id == conv.LeadId, ct);
+            lead = await db.Leads.FirstOrDefaultAsync(l => l.Id == conv.LeadId && l.ConvertedStudentId == null, ct);
 
         // (2) Telefon bo'yicha mavjud lid (lid formasi/daraja testi bilan yagona qoida).
         lead ??= await LeadIntake.FindByPhoneAsync(db, phone, ct);
@@ -58,7 +71,9 @@ public static class InstagramLeadBridge
             if (string.IsNullOrWhiteSpace(lead.Phone) && phone.Length > 0) lead.Phone = phone;
             if (string.IsNullOrWhiteSpace(lead.InterestSubject) && output.LeadProductInterest.Length > 0)
                 lead.InterestSubject = output.LeadProductInterest;
-            if (string.IsNullOrWhiteSpace(lead.FullName) && output.LeadName.Length > 0)
+            // Vaqtinchalik ism ("ali_v (Instagram)", "Instagram mijozi", "Noma'lum…") haqiqiy ism bilan
+            // ALMASHTIRILADI (IG-4); menejer yozgan ism tegilmaydi.
+            if (LeadIntake.IsPlaceholderName(lead.FullName) && output.LeadName.Length > 0)
                 lead.FullName = output.LeadName;
             lead.Note = ((lead.Note ?? "").TrimEnd() + "\n" + note).Trim();
             lead.RepeatCount += 1;
@@ -80,7 +95,7 @@ public static class InstagramLeadBridge
                 Text = string.Join(" · ", again),
             });
 
-            conv.LeadId = lead.Id;
+            await IgLeadLinks.RelinkAsync(db, conv, lead.Id, ct);
             return (lead.Id, false);
         }
 
@@ -88,7 +103,9 @@ public static class InstagramLeadBridge
         var stage = await LeadIntake.FirstStageIdAsync(db, ct);
         var name = output.LeadName.Length > 0
             ? output.LeadName
-            : (string.IsNullOrWhiteSpace(conv.Username) ? "Instagram mijozi" : $"{conv.Username.Trim().TrimStart('@')} (Instagram)");
+            : (string.IsNullOrWhiteSpace(conv.Username)
+                ? LeadIntake.InstagramAnonymousName
+                : LeadIntake.InstagramUsernameName(conv.Username));
 
         var fresh = new Lead
         {
@@ -100,6 +117,16 @@ public static class InstagramLeadBridge
             Stage = stage,
             CreatedAt = now,
         };
+        // Shu telefon bilan avval o'quvchi bo'lgan bo'lsa — kartada ochiq ko'rinsin (CRM-1).
+        await LeadIntake.MarkFormerStudentAsync(db, fresh, phone, ct);
+        // Telefon yozilmagan bo'lsa ham: suhbat AYLANTIRILGAN lidga bog'langan edi — bu qaytgan
+        // o'quvchi. Izoh telefon bo'yicha allaqachon qo'shilgan bo'lsa takrorlanmaydi.
+        if (!(fresh.Note ?? "").Contains("Avval o'quvchi bo'lgan", StringComparison.Ordinal))
+        {
+            var former = await IgLeadLinks.FormerStudentNoteAsync(db, conv.LeadId, ct);
+            if (former.Length > 0)
+                fresh.Note = string.IsNullOrWhiteSpace(fresh.Note) ? former : $"{fresh.Note!.TrimEnd()}\n{former}";
+        }
         db.Leads.Add(fresh);
         db.LeadEvents.Add(new LeadEvent
         {
@@ -113,7 +140,10 @@ public static class InstagramLeadBridge
             ToStage = stage,
         });
 
-        conv.LeadId = fresh.Id;
+        await IgLeadLinks.RelinkAsync(db, conv, fresh.Id, ct);
+        // «Yangi lid kelganda» avto-SMS'i — lid formasi va landing bilan bir xil (CRM-9). Telefonsiz
+        // lidga yuborilmaydi; telefon keyin kelsa u allaqachon MAVJUD lid bo'ladi (takroriyga SMS yo'q).
+        await LeadIntake.DispatchLeadNewAsync(db, autoMsg, fresh, isNewLead: true, ct);
         return (fresh.Id, true);
     }
 
@@ -145,7 +175,7 @@ public static class InstagramLeadBridge
         if (string.IsNullOrWhiteSpace(lead.InterestSubject) && output.LeadProductInterest.Length > 0)
             lead.InterestSubject = output.LeadProductInterest;
         if (output.LeadName.Length > 0
-            && (string.IsNullOrWhiteSpace(lead.FullName) || allowNameOverwrite))
+            && (LeadIntake.IsPlaceholderName(lead.FullName) || allowNameOverwrite))
             lead.FullName = output.LeadName;
 
         // AI xulosasi izohga QO'SHILADI — telefon bo'yicha yozilgan qatorda u yo'q edi, karta esa

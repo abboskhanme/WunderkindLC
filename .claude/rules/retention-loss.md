@@ -34,9 +34,18 @@ Ta'rif QAYTA YOZILMAGAN: `DashboardSummary.LeftEvents` — «Ketgan o'quvchilar�
 shunday qatorga **«Boshqa guruhda o'qiyapti»** belgisi chiqadi (`StillStudying`) — o'quvchi
 markazdan emas, faqat shu kursdan ketgan.
 
-⚠️ MUZLATISH ketish EMAS (oraliq ochiq qoladi). O'quvchini ARXIVLASH ham a'zolikni yopmaydi —
-guruhdan chiqarilmagan arxivdagi o'quvchi bu yerga tushmaydi (kartochka bilan bir xil). Arxiv
-sababi faqat SABAB manbai sifatida ishlatiladi (§3, 4-qadam).
+⚠️ MUZLATISH ketish EMAS (oraliq ochiq qoladi).
+
+⚠️ **O'quvchini ARXIVLASH = KETISH (2026-10-07 dan, audit C1).** Arxivlash har tirik a'zolikni
+«Guruhdan chiqarish» bilan AYNAN bir xil yopadi (`StudentArchiving.LeaveAllGroupsAsync`: chiqish
+sanasi = arxiv sanasi) va `remove` sabab yozuvini ARXIV SABABI bilan qo'shadi — ya'ni bu hisobotga
+arxiv sababi bilan ketish bo'lib tushadi (kartochka bilan bir xil, chunki u ham `LeftAt` ga qaraydi).
+Ilgari arxivlash a'zolikka tegmasdi: arxivdagi o'quvchi bu yerga umuman tushmasdi, arxivdan qaytsa
+esa arxiv oylari birdaniga hisoblanardi.
+
+⚠️ ESKI arxivdagilar (2026-10-07 gacha arxivlangan, a'zoligi hamon tirik) — tiklanganda yoki
+guruhga qo'shilganda a'zolik ARXIV SANASIDA yopiladi (sabab — arxiv sababi). Ungacha ular bu yerga
+tushmaydi; sababi esa 4-qadam orqali topiladi.
 
 ⚠️ `YearFreeze` bu yerda TEKSHIRILMAYDI (`year-freeze.md` §1).
 
@@ -60,8 +69,7 @@ Sanoq birligi — **ketish** (har (o'quvchi, kurs) ketishi alohida): diagramma, 
 
 Ilgari sabab FAQAT audit matnida edi («… — sabab: X»). Endi tuzilgan yozuv ham bor:
 **`MembershipReasonLog`** (`StudentId`, `GroupId`, `Action`, `Date`, `ReasonId`, `ReasonLabel`
-surati, `CreatedAt`). Yagona yozuvchi — `MembershipReasons.Record`, chaqiriladigan joylar
-(hammasi `ClassesController`):
+surati, `CreatedAt`). Yagona yozuvchi — `MembershipReasons.Record`, chaqiriladigan joylar:
 
 | Amal | `Action` | `Date` |
 |---|---|---|
@@ -69,23 +77,39 @@ surati, `CreatedAt`). Yagona yozuvchi — `MembershipReasons.Record`, chaqirilad
 | Guruh almashtirish, eski tomoni (`TransferMember`) | `transfer` | eski guruhdan chiqish sanasi |
 | Muzlatish, yakka va ommaviy (`FreezeCoreAsync`) | `freeze` | muzlatish sanasi |
 | Guruhni yopish (`Close` → `CloseMembersAsync`) | `close` | yopish sanasi |
+| O'quvchini ARXIVLASH (`StudentsController.Archive` → `StudentArchiving`) | `remove` | arxiv sanasi (sabab — arxiv sababi) |
+| ESKI arxivni yopish (tiklash · guruhga qo'shish → `CloseLegacyMembershipsAsync`) | `remove` | `ArchivedAt` (sabab — arxiv sababi) |
+| «Tugatish»da kursni TUGATMAGAN (sinov/muzlatilgan) a'zo | `close` | yopish sanasi — TIZIM sababi `MembershipReasons.CompletedNotFinishedLabel` |
 
 - **Sababsiz amal YOZILMAYDI** (qator yo'q). Yozuv chaqiruvchining tranzaksiyasida (audit naqshi).
 - Qator o'zgarmaydi/o'chirilmaydi — tarix. A'zolikka (`StudentGroup`) ustun qo'shilmagani
   ATAYIN: bitta a'zolik muzlatilib keyin chiqariladi (ikki sabab) yoki qayta qo'shilib yana
   chiqariladi — bitta ustun eski sababni yolg'on qoldirardi.
-- Arxivlash (`Archive`), sertifikat bilan tugatish, sinovga qaytarish — yozilmaydi (ketish emas
+- Sertifikat bilan tugatish (kursni TUGATGAN aktiv a'zo), sinovga qaytarish — yozilmaydi (ketish emas
   yoki sabab boshqa joyda).
+- Arxivlash `remove` bilan yoziladi (alohida `archive` amali ATAYIN ochilmadi): ketish bu — 1-qadam
+  uni o'zgarishsiz topadi, KPI/AI esa audit matnidan («Guruhdan chiqarildi … — sabab: X») o'qiydi.
+- ⚠️ **«Tugatish»da sinov/muzlatilgan a'zo — KETISH (2026-10-07):** ilgari ular ham `completed` +
+  sertifikat bilan yopilib "bitiruvchi" (churn emas) bo'lib sanalardi, holbuki kursni tugatmagan.
+  Endi ular ODDIY CHIQISH bilan yopiladi (holat o'zgarmaydi, `LeftAt`) va ketish bo'lib sanaladi;
+  sababsiz "noma'lum" bo'lib KPI jarimasiga tushmasin deb tizim sababi yoziladi (yuqoridagi jadval).
 
 **Aniqlash tartibi** (birinchi topilgani):
 
-1. tuzilgan yozuv `remove`/`transfer`/`close`, sanasi **AYNAN** chiqish sanasi;
+1. tuzilgan yozuv `remove`/`transfer`/`close`, sanasi **AYNAN** chiqish sanasi.
+   ⚠️ U TIZIM sababi (`CompletedNotFinishedLabel`, `ReasonId` bo'sh) bo'lsa va a'zolik chiqishda
+   MUZLATILGAN bo'lsa — avval MUZLATISH sababi (2-qadamdagi yozuv, keyin eski audit matni), tizim
+   yorlig'i faqat ZAXIRA (2026-10-08, audit R1-4). Aks holda «Ko'chib ketdi» bilan muzlatilib, keyin
+   «Tugatish»da chiqqan o'quvchi KPI'da NAZORATDAGI ketish bo'lib sanalar va hisobotda tizim yorlig'i
+   ko'rinardi;
 2. a'zolik chiqishda MUZLATILGAN bo'lsa (`FrozenAt ≤ LeftAt`) — `freeze`/`close` yozuvi, sanasi
    AYNAN `FrozenAt` (muzlatilib, keyin sababsiz chiqarilgan holat);
 3. audit matni (shu jadvaldan OLDINGI tarix): chiqishdan keyingi ENG OXIRGI «Guruhdan
    chiqarildi»/«Guruh almashtirildi» yozuvi — u sababsiz bo'lsa ESKIROQLARIGA qaralmaydi; keyin
    xuddi shunday «Muzlatildi»/«Aktiv muzlatildi»;
-4. o'quvchi chiqqandan KEYIN arxivlangan bo'lsa — `Student.ArchiveReason`;
+4. o'quvchi chiqqan KUNI yoki undan keyin arxivlangan bo'lsa (`ArchivedAt >= LeftAt`, hali arxivda) —
+   `Student.ArchiveReason`. ⚠️ `>=` ATAYIN: arxivlash a'zolikni o'sha kuni yopadi, ya'ni sanalar teng.
+   Yangi arxivlashda bu qadamga yetib kelinmaydi (1-qadam topadi); u ESKI tarix uchun;
 5. topilmasa — «Sabab ko'rsatilmagan».
 
 ⚠️ Sana bo'yicha AYNAN moslik ATAYIN: "eng oxirgi sababli yozuv" olinsa, bugungi sababsiz
@@ -95,9 +119,10 @@ chiqishga o'tgan yilgi sabab yopishib qolardi.
 `ReasonId` bo'yicha, id yo'q bo'lsa (eski tarix) NOM bo'yicha (registrsiz). Bayroq JONLI o'qiladi —
 sozlamada o'zgartirilsa hisobot ham o'zgaradi.
 
-⚠️ KPI (`KpiMetricsService.LeaversAsync`) va AI tahlil quruvchilari (`GroupSnapshotBuilder`,
-`TeacherSnapshotBuilder`) hamon faqat audit matnini o'qiydi — ular TEGILMAGAN. Ularni shu
-manbaga o'tkazish alohida ish (bu qoidaga tayanadi).
+✅ KPI (`KpiMetricsService.LeaversAsync`) 2026-10-07 dan AYNAN shu `Resolve` ni va `LeftEvents` ni
+ishlatadi (audit SAL-3, `kpi.md` §10). AI tahlil quruvchilari (`GroupSnapshotBuilder`,
+`TeacherSnapshotBuilder`) hamon audit matnini o'qiydi (endi «Muzlatildi» bilan birga «Aktiv
+muzlatildi» ham) — ularni shu manbaga o'tkazish alohida ish.
 
 ## 4. Ruxsat
 

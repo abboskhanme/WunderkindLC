@@ -13,8 +13,20 @@ namespace WunderkindLC.Application.Services;
 /// kunida, belgilangan soatda) bo'yicha push (FCM) + Telegram orqali avtomatik yuboriladigan qoida
 /// (<see cref="WunderkindLC.Domain.AutoMessageRule"/>, Trigger==<see cref="AutoMessageTriggers.CustomSchedule"/>).
 ///
-/// Jadval aniq daqiqa talab qilgani uchun sikl HAR 1 DAQIQADA uyg'onadi; bitta qoida bitta kunga bir
-/// marta yuborilishi uchun xotirada (ruleId, sana) kaliti bilan "yuborildi" belgisi saqlanadi.
+/// Jadval aniq daqiqa talab qilgani uchun sikl HAR 1 DAQIQADA uyg'onadi (10 daqiqalik oyna).
+///
+/// <para>⚠️ "Bugun yuborildi" belgisi BAZADA (<see cref="JobRunMarker"/>) — ilgari xotiradagi
+/// <c>_sent</c> to'plami edi va oyna ichida deploy/restart bo'lsa qoida HAMMAGA qayta yuborilardi.
+/// Endi: har oluvchi yuborishdan OLDIN band qilinadi (<c>custom_schedule:{ruleId}:{s|t}:{id}</c>),
+/// qoida to'liq tugagach <c>custom_schedule:{ruleId}</c> belgisi qo'yiladi. Yarmida yiqilsa —
+/// oyna ichidagi keyingi daqiqada qolganlarga davom etadi, olganlarga takror ketmaydi.</para>
+///
+/// <para>⚠️ Oylik qoida 29–31-sanaga qo'yilgan bo'lsa, qisqa oyda OYNING OXIRGI KUNI yuboriladi
+/// (<see cref="IsScheduledDay"/>) — ilgari fevral/aprel kabi oylarda umuman o'tkazib yuborilardi.</para>
+///
+/// <para>Auditoriya: <c>students</c> — o'quvchining O'Z raqamiga (SMS); <c>parents</c> — ota-ona
+/// raqamiga; <c>teachers</c> — o'qituvchilarga. Push/Telegram o'quvchi akkaunti/chatiga (o'quvchi va
+/// ota-ona bitta akkauntdan foydalanadi). Ilgari "students" ham ota-ona raqamiga ketardi.</para>
 /// </summary>
 public class CustomReminderService(
     IServiceProvider services,
@@ -24,8 +36,19 @@ public class CustomReminderService(
     CtiSmsService ctiSms,
     ILogger<CustomReminderService> logger) : BackgroundService
 {
-    private readonly HashSet<string> _sent = new();
-    private DateOnly _sentDate = DateOnly.MinValue;
+    /// <summary>Belgi kaliti prefiksi: qoida — <c>custom_schedule:{ruleId}</c>, oluvchi —
+    /// <c>custom_schedule:{ruleId}:{s|t}:{id}</c>.</summary>
+    public const string JobKey = AutoMessageTriggers.CustomSchedule;
+
+    /// <summary>Qoida shu kuni yuborilishi kerakmi. Oylik qoida 29–31-sanaga qo'yilgan bo'lsa
+    /// qisqa oyda OYNING OXIRGI KUNI yuboriladi (o'tkazib yuborilmaydi).</summary>
+    public static bool IsScheduledDay(AutoMessageRule rule, DateOnly today)
+    {
+        if (rule.ScheduleType != "monthly") return true;
+        var dim = DateTime.DaysInMonth(today.Year, today.Month);
+        var day = Math.Clamp(rule.ScheduleDayOfMonth, 1, 31);
+        return today.Day == Math.Min(day, dim);
+    }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -48,11 +71,6 @@ public class CustomReminderService(
     private async Task TickAsync(CancellationToken ct)
     {
         var today = AppClock.Today;
-        if (_sentDate != today)
-        {
-            _sentDate = today;
-            _sent.Clear();
-        }
 
         using var scope = services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<IAppDbContext>();
@@ -70,19 +88,22 @@ public class CustomReminderService(
 
         foreach (var rule in rules)
         {
-            if (rule.ScheduleType == "monthly" && today.Day != rule.ScheduleDayOfMonth) continue;
+            if (!IsScheduledDay(rule, today)) continue;
             if (!TimeSpan.TryParse(rule.ScheduleTime, out var target)) continue;
 
             var elapsed = now.TimeOfDay - target;
             // 10 daqiqalik oyna — servis biroz kechiksa ham eslatma o'tkazib yuborilmasin.
             if (elapsed < TimeSpan.Zero || elapsed > TimeSpan.FromMinutes(10)) continue;
 
-            var key = $"{rule.Id}:{today}";
-            if (!_sent.Add(key)) continue;
+            // Qoida bugun TO'LIQ yuborilganmi (bazadagi belgi — restartdan keyin ham saqlanadi).
+            var ruleKey = JobRunMarker.For(JobKey, rule.Id);
+            if (await JobRunMarker.IsDoneAsync(db, ruleKey, today, ct)) continue;
 
             try
             {
-                await SendAsync(db, rule, centerName, fcmJson, pushReady, meta, ct);
+                await SendAsync(db, rule, today, centerName, fcmJson, pushReady, meta, ct);
+                await JobRunMarker.TryClaimAsync(db, ruleKey, today, ct);
+                await JobRunMarker.PruneAsync(db, ruleKey + ":", today.AddDays(-2), ct);
             }
             catch (Exception ex)
             {
@@ -92,9 +113,10 @@ public class CustomReminderService(
     }
 
     private async Task SendAsync(
-        IAppDbContext db, AutoMessageRule rule, string centerName, string fcmJson, bool pushReady,
+        IAppDbContext db, AutoMessageRule rule, DateOnly today, string centerName, string fcmJson, bool pushReady,
         CenterMeta? meta, CancellationToken ct)
     {
+        var ruleKey = JobRunMarker.For(JobKey, rule.Id);
         var title = string.IsNullOrWhiteSpace(rule.Name) ? "Eslatma" : rule.Name;
         var deadTokens = new List<string>();
 
@@ -104,9 +126,12 @@ public class CustomReminderService(
             var teachers = await db.Teachers.Where(t => !t.IsArchived && (t.UserId != null || rule.SendSms)).ToListAsync(ct);
             foreach (var t in teachers)
             {
+                // OLUVCHI BELGISI — yuborishdan OLDIN (restartdan keyin takror ketmasin).
+                if (!await JobRunMarker.TryClaimAsync(db, $"{ruleKey}:t:{t.Id}", today, ct)) continue;
                 var body = MessageTokenizer.Teacher(rule.Template, t, centerName);
                 await DeliverAsync(db, rule, t.UserId, t.Id, isTeacher: true, t.Phone, t.FullName, title, body,
                     fcmJson, pushReady, meta, deadTokens, ct);
+                await db.SaveChangesAsync(ct);
             }
         }
         else
@@ -122,14 +147,16 @@ public class CustomReminderService(
             var teacherNames = await MessageTokenizer.TeacherNamesByIdAsync(db, ct);
             foreach (var s in students)
             {
-                var phone = !string.IsNullOrWhiteSpace(s.ParentPhone) ? s.ParentPhone
-                    : !string.IsNullOrWhiteSpace(s.FatherPhone) ? s.FatherPhone
-                    : !string.IsNullOrWhiteSpace(s.MotherPhone) ? s.MotherPhone : s.Phone;
+                if (!await JobRunMarker.TryClaimAsync(db, $"{ruleKey}:s:{s.Id}", today, ct)) continue;
+                // AUDITORIYA: "students" — o'quvchining O'Z raqami birinchi, "parents" — ota-ona raqami
+                // (ilgari ikkalasi ham ota-onaga ketardi).
+                var phone = MessagingAudience.StudentPhone(s, rule.Audience);
                 var grp = groupByName.GetValueOrDefault(s.ClassName ?? "");
                 var body = MessageTokenizer.Student(rule.Template, s, s.ParentFullName, phone, centerName,
                     group: grp, teacherName: MessageTokenizer.TeacherNameOf(grp, teacherNames));
                 await DeliverAsync(db, rule, s.UserId, s.Id, isTeacher: false, phone, s.FullName, title, body,
                     fcmJson, pushReady, meta, deadTokens, ct);
+                await db.SaveChangesAsync(ct);
             }
         }
 

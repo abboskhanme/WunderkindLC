@@ -30,16 +30,12 @@ public class SettingsController(AppDbContext db, TelegramService telegram, IWebH
     /// <para>Maxfiy qiymatlar (bot tokeni, API kalitlari) bazada UMUMAN saqlanmaydi — ular
     /// <c>.env</c> da (qarang: CLAUDE.md "KALITLAR"), demak bu yerga ham tushmaydi. Baribir
     /// ehtiyot uchun faqat maydon NOMLARI yoziladi, qiymatlari emas.</para>
+    ///
+    /// <para>Mantiqning O'ZI endi <see cref="SettingsAudit"/> da — boshqa controllerlardagi sozlamalar
+    /// (bonus, AI tekshiruv, landing) ham AYNAN shu yo'l bilan yoziladi.</para>
     /// </summary>
-    private void LogSettings(string what)
-    {
-        var changed = db.ChangeTracker.Entries<CenterMeta>()
-            .SelectMany(e => e.Properties.Where(p => e.State == EntityState.Added || p.IsModified))
-            .Select(p => p.Metadata.Name)
-            .Distinct().Order().ToList();
-        var detail = changed.Count > 0 ? $" ({string.Join(", ", changed)})" : "";
-        audit.Record("CenterMeta", "center", "update", $"Sozlama o'zgartirildi — {what}{detail}");
-    }
+    private void LogSettings(string what) =>
+        SettingsAudit.Record<CenterMeta>(audit, db.ChangeTracker, what);
 
     [HttpGet]
     public async Task<ActionResult<SchoolSettingsDto>> Get()
@@ -405,16 +401,35 @@ public class SettingsController(AppDbContext db, TelegramService telegram, IWebH
     public async Task<ActionResult<LocalSmsSettingsDto>> GetLocalSms()
     {
         var m = await db.CenterMeta.FirstOrDefaultAsync();
-        return new LocalSmsSettingsDto(m?.LocalSmsEnabled ?? false, m?.LocalSmsDefaultAgentId, m?.LocalSmsDelaySeconds ?? 0);
+        return await LocalSmsDtoAsync(m);
+    }
+
+    /// <summary>Local SMS sozlamasi + standart agent MUAMMOSI (banner): o'chirilgan/topilmagan/tanlanmagan
+    /// standart agent barcha avtomatik Local SMS'ni jimgina to'xtatardi (<see cref="LocalSmsDefaultAgent"/>).
+    /// Server hisoblaydi — agentlar ro'yxati (GET api/cti/agents) oddiy xodimga faqat O'Z agentlarini beradi.</summary>
+    private async Task<LocalSmsSettingsDto> LocalSmsDtoAsync(CenterMeta? m)
+    {
+        var enabled = m?.LocalSmsEnabled ?? false;
+        var agentId = m?.LocalSmsDefaultAgentId;
+        var agent = enabled && !string.IsNullOrWhiteSpace(agentId)
+            ? await db.CtiAgents.AsNoTracking().FirstOrDefaultAsync(a => a.Id == agentId)
+            : null;
+        return new LocalSmsSettingsDto(enabled, agentId, m?.LocalSmsDelaySeconds ?? 0,
+            LocalSmsDefaultAgent.Problem(enabled, agentId, agent));
     }
 
     [HttpPut("local-sms")]
     [AdminPerm("settings.channels")]
     public async Task<ActionResult<LocalSmsSettingsDto>> SaveLocalSms(SaveLocalSmsRequest req)
     {
-        if (!string.IsNullOrWhiteSpace(req.DefaultAgentId)
-            && await db.CtiAgents.FindAsync(req.DefaultAgentId) is null)
-            return BadRequest(new { message = "Tanlangan agent topilmadi" });
+        if (!string.IsNullOrWhiteSpace(req.DefaultAgentId))
+        {
+            var defaultAgent = await db.CtiAgents.FindAsync(req.DefaultAgentId);
+            if (defaultAgent is null) return BadRequest(new { message = "Tanlangan agent topilmadi" });
+            // O'chirilgan agent standart bo'la olmaydi — avto-xabarlar baribir yuborilmasdi (CtiSmsService).
+            if (!defaultAgent.IsActive)
+                return BadRequest(new { message = "Tanlangan agent o'chirilgan — avval uni Call Center → Local Call → Agentlar da faollashtiring yoki boshqasini tanlang" });
+        }
         if (req.DelaySeconds < 0 || req.DelaySeconds > 300)
             return BadRequest(new { message = "Kutish vaqti 0-300 soniya oralig'ida bo'lishi kerak" });
 
@@ -425,7 +440,7 @@ public class SettingsController(AppDbContext db, TelegramService telegram, IWebH
         m.LocalSmsDelaySeconds = req.DelaySeconds;
         LogSettings("Local SMS");
         await db.SaveChangesAsync();
-        return new LocalSmsSettingsDto(m.LocalSmsEnabled, m.LocalSmsDefaultAgentId, m.LocalSmsDelaySeconds);
+        return await LocalSmsDtoAsync(m);
     }
 
     // ---------- Ilova (APK) — Telegram bot ro'yxatdan o'tganga yuboradi ----------
@@ -563,9 +578,29 @@ public class SettingsController(AppDbContext db, TelegramService telegram, IWebH
         if (req.Teachers is not null)
         {
             var byId = await db.Teachers.ToDictionaryAsync(t => t.Id);
+            var changedIds = new HashSet<string>(StringComparer.Ordinal);
             foreach (var map in req.Teachers)
                 if (byId.TryGetValue(map.TeacherId, out var te))
-                    te.DeviceUserId = (map.DeviceUserId ?? "").Trim();
+                {
+                    var next = (map.DeviceUserId ?? "").Trim();
+                    if (next.Length > 0 && next != te.DeviceUserId) changedIds.Add(next);
+                    te.DeviceUserId = next;
+                }
+
+            // ⚠️ YANGI berilgan ID band bo'lmasin — boshqa o'qituvchida ham, o'quvchida ham (AUTH-7):
+            // aks holda bir odamning o'tishi ikkinchisining davomatiga (maosh, kechikish) yozilardi.
+            // Faqat O'ZGARGAN ID'lar tekshiriladi — eski (allaqachon bor) to'qnashuv boshqa
+            // sozlamani (ish vaqti, manzil) saqlashni to'smasin. Rad etilsa hech narsa saqlanmaydi.
+            if (changedIds.Count > 0)
+            {
+                var owners = byId.Values
+                    .Where(t => !t.IsArchived && changedIds.Contains(t.DeviceUserId))
+                    .Select(t => new TurnstileService.DeviceOwner("teacher", t.Id, t.FullName, t.DeviceUserId))
+                    .Concat(await TurnstileService.DeviceOwnersAsync(db, changedIds, teachers: false))
+                    .ToList();
+                if (TurnstileService.DeviceConflict(owners) is { } conflict)
+                    return BadRequest(new { message = conflict });
+            }
         }
         LogSettings("Turniket integratsiyasi");
         await db.SaveChangesAsync();
@@ -669,16 +704,52 @@ public class SettingsController(AppDbContext db, TelegramService telegram, IWebH
     [AdminPerm("settings.reasons")]
     public async Task<IActionResult> SaveAbsenceReasons(SaveAbsenceReasonsRequest req)
     {
-        // Mavjud id'larni saqlab qolamiz (jurnal yozuvlari reasonId orqali bog'langan).
-        db.AbsenceReasons.RemoveRange(db.AbsenceReasons);
-        db.AbsenceReasons.AddRange(req.AbsenceReasons.Select(r => new AbsenceReason
+        var incoming = (req.AbsenceReasons ?? new())
+            .Where(r => !string.IsNullOrWhiteSpace(r.Name))
+            .Select(r => r with
+            {
+                Id = string.IsNullOrWhiteSpace(r.Id) ? Guid.NewGuid().ToString() : r.Id.Trim(),
+                Name = r.Name.Trim(),
+                Short = (r.Short ?? "").Trim(),
+            })
+            .GroupBy(r => r.Id).Select(g => g.First())
+            .ToList();
+
+        // ⚠️ Jurnalda ISHLATILGAN sababni olib tashlash va uning «kech keldi» belgisini almashtirish RAD
+        // ETILADI (sanoq bilan) — ilgari butun ro'yxat almashtirilar, jurnal yozuvlari yetim qolar va
+        // o'tgan kechikishlar yo'qlikka aylanib ketardi (AbsenceReasonRules izohi).
+        if (await AbsenceReasonRules.ValidateReplaceAsync(db, incoming) is { } error)
+            return BadRequest(new { message = error });
+
+        // Joyida yangilash (upsert) — id'lar saqlanadi (jurnal yozuvlari reasonId orqali bog'langan).
+        var existing = await db.AbsenceReasons.ToListAsync();
+        var byId = existing.ToDictionary(r => r.Id, StringComparer.Ordinal);
+        var keep = incoming.Select(r => r.Id).ToHashSet(StringComparer.Ordinal);
+        var changes = new List<string>();
+        foreach (var r in existing.Where(r => !keep.Contains(r.Id)))
         {
-            Id = string.IsNullOrWhiteSpace(r.Id) ? Guid.NewGuid().ToString() : r.Id,
-            Name = r.Name,
-            Short = r.Short,
-            IsLate = r.IsLate,
-        }));
-        LogSettings("Davomat sabablari");
+            changes.Add($"o'chirildi «{r.Name}»");
+            db.AbsenceReasons.Remove(r);
+        }
+        foreach (var r in incoming)
+        {
+            if (byId.TryGetValue(r.Id, out var row))
+            {
+                if (row.Name != r.Name) changes.Add($"«{row.Name}» → «{r.Name}»");
+                if (row.Short != r.Short) changes.Add($"«{r.Name}» qisqa nomi: {row.Short} → {r.Short}");
+                if (row.IsLate != r.IsLate) changes.Add($"«{r.Name}»: kech keldi {(r.IsLate ? "yoqildi" : "o'chirildi")}");
+                row.Name = r.Name;
+                row.Short = r.Short;
+                row.IsLate = r.IsLate;
+            }
+            else
+            {
+                changes.Add($"qo'shildi «{r.Name}»" + (r.IsLate ? " (kech keldi)" : ""));
+                db.AbsenceReasons.Add(new AbsenceReason { Id = r.Id, Name = r.Name, Short = r.Short, IsLate = r.IsLate });
+            }
+        }
+        audit.Record("AbsenceReason", "absence-reasons", "update",
+            "Davomat sabablari o'zgartirildi" + (changes.Count > 0 ? ": " + string.Join("; ", changes) : " (o'zgarish yo'q)"));
         await db.SaveChangesAsync();
         return NoContent();
     }

@@ -60,6 +60,10 @@ public class ContactsController(
     /// bosilsa ham so'rov cheksiz o'smasin).</summary>
     private const int MaxBulk = ContactQueueService.MaxBulk;
 
+    /// <summary>Navbat ro'yxatida OCHIQ talablarning xavfsizlik chegarasi (amalda hammasi qaytadi —
+    /// `limit` faqat yopilganlarga tegishli, qarang <see cref="List"/>).</summary>
+    private const int MaxOpenRows = 5000;
+
     /* =========================================================================================
      *  KATALOG + SANOQLAR
      * ====================================================================================== */
@@ -210,12 +214,25 @@ public class ContactsController(
 
         // Tartib: eng shoshilinch yuqorida — muddati o'tganlar, so'ng muddati yaqinlar, so'ng yangilar.
         // `DueDate` bo'sh bo'lgan (new) yozuvlar ostida qolmasin uchun avval holat bo'yicha saralaymiz.
-        var items = await query
+        //
+        // ⚠️ CHEGARA FAQAT YOPILGANLARGA: ochiq (new/callback) talablar HAR DOIM to'liq qaytadi
+        // (xavfsizlik chegarasi — `MaxOpenRows`). Ilgari bitta umumiy `Take(500)` bor edi: "Bosqich"
+        // rejimi ("hammasi") yopilganlar bilan to'lib, ESKI ochiq talablarni taxtadan jimgina
+        // tushirib qoldirardi — operator ularni hech qachon ko'rmasdi. `limit` endi yopilganlar uchun.
+        var ordered = query
             .OrderBy(c => c.Status == ContactStatuses.Callback ? 0 : 1)
             .ThenBy(c => c.DueDate)
-            .ThenByDescending(c => c.CreatedAt)
+            .ThenByDescending(c => c.CreatedAt);
+        var openItems = await ordered
+            .Where(c => c.Status == ContactStatuses.New || c.Status == ContactStatuses.Callback)
+            .Take(MaxOpenRows)
+            .ToListAsync();
+        var closedItems = await query
+            .Where(c => c.Status != ContactStatuses.New && c.Status != ContactStatuses.Callback)
+            .OrderByDescending(c => c.ClosedAt).ThenByDescending(c => c.CreatedAt)
             .Take(Math.Clamp(limit, 1, 500))
             .ToListAsync();
+        var items = openItems.Concat(closedItems).ToList();
 
         var phones = await PhonesAsync(items.Select(i => i.StudentId).Distinct().ToList());
         return items.Select(c => ToDto(c, today, phones)).ToList();
@@ -643,24 +660,33 @@ public class ContactsController(
      * ====================================================================================== */
 
     /// <summary>O'quvchi id → bog'lanish uchun raqamlar (o'zi + ota-ona), takrorsiz va bo'shsiz.</summary>
-    private async Task<Dictionary<string, List<string>>> PhonesAsync(List<string> studentIds)
+    /// <summary>Kartaga kerak bo'lgan o'quvchi ma'lumoti: telefonlar va ARXIVDAMI.</summary>
+    private sealed record StudentContacts(Dictionary<string, List<string>> Phones, HashSet<string> Archived)
     {
-        if (studentIds.Count == 0) return new Dictionary<string, List<string>>();
+        public List<string>? GetValueOrDefault(string studentId) => Phones.GetValueOrDefault(studentId);
+    }
+
+    private async Task<StudentContacts> PhonesAsync(List<string> studentIds)
+    {
+        if (studentIds.Count == 0) return new StudentContacts(new(), new());
         var rows = await db.Students.AsNoTracking()
             .Where(s => studentIds.Contains(s.Id))
-            .Select(s => new { s.Id, s.Phone, s.ParentPhone, s.FatherPhone, s.MotherPhone })
+            .Select(s => new { s.Id, s.Phone, s.ParentPhone, s.FatherPhone, s.MotherPhone, s.IsArchived })
             .ToListAsync();
-        return rows.ToDictionary(
-            r => r.Id,
-            r => new[] { r.Phone, r.ParentPhone, r.FatherPhone, r.MotherPhone }
-                .Where(p => !string.IsNullOrWhiteSpace(p))
-                .Select(p => p!.Trim())
-                .Distinct()
-                .ToList());
+        return new StudentContacts(
+            rows.ToDictionary(
+                r => r.Id,
+                r => new[] { r.Phone, r.ParentPhone, r.FatherPhone, r.MotherPhone }
+                    .Where(p => !string.IsNullOrWhiteSpace(p))
+                    .Select(p => p!.Trim())
+                    .Distinct()
+                    .ToList()),
+            // ARXIVDAGI o'quvchi — talab yopilmaydi (win-back qo'ng'irog'i qonuniy), lekin kartada belgi.
+            rows.Where(r => r.IsArchived).Select(r => r.Id).ToHashSet());
     }
 
     private static ContactRequestDto ToDto(
-        ContactRequest c, string today, Dictionary<string, List<string>> phones,
+        ContactRequest c, string today, StudentContacts phones,
         List<ContactAttempt>? history = null) =>
         new(
             c.Id, c.StudentId, c.StudentName,
@@ -674,7 +700,8 @@ public class ContactsController(
                 a.Id, a.Type, a.Result, ContactService.ResultLabel(a.Result), a.Response,
                 a.NextStatus, ContactService.StatusLabel(a.NextStatus), a.DueDate,
                 a.ActorName, a.CreatedAt)).ToList(),
-            c.StageId);
+            c.StageId,
+            phones.Archived.Contains(c.StudentId));
 
     /* =========================================================================================
      *  KANBAN USTUNLARI (ContactStage)

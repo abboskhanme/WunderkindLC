@@ -59,6 +59,7 @@ import { CredentialsBox } from '@/components/ui/CredentialsBox'
 import { AuditHistoryList } from '@/components/audit/AuditHistoryList'
 import { useAuth } from '@/context/auth-context'
 import { usePerm } from '@/lib/permissions'
+import { localIsoDate } from '@/lib/localDate'
 import { TeacherRetentionCard } from '@/components/teachers/TeacherRetentionCard'
 import { PhotoDialog } from '@/components/media/PhotoDialog'
 import { TeacherBonusPanel } from '@/components/retention/TeacherBonusPanel'
@@ -71,6 +72,18 @@ import {
 } from '@/api/services/retentionBonus'
 
 type Tab = 'info' | 'groups' | 'rating' | 'salary' | 'bonus' | 'performance' | 'fikrlar' | 'ai'
+
+/**
+ * Kirish ma'lumotlari holati — `StudentViewModal` dagi bilan bir xil UCHTA holat.
+ * ⚠️ `null` ni "yuklanmoqda" deb bo'lmaydi: `GET {id}/credentials` faqat TO'LIQ huquqli
+ * foydalanuvchiga ochiq va boshqalarga 403 qaytaradi — ilgari 403 ham `null` bo'lib, karta
+ * MANGU "Yuklanmoqda..." ko'rsatardi.
+ */
+type CredLoad =
+  | { kind: 'loading' }
+  | { kind: 'ok'; value: Credentials }
+  | { kind: 'forbidden' }
+  | { kind: 'error'; message: string }
 
 const weekdayShort = ['Du', 'Se', 'Cho', 'Pa', 'Ju', 'Sha', 'Ya']
 
@@ -185,7 +198,7 @@ export function TeacherDetailPage() {
   const [payMonth, setPayMonth] = useState(currentMonthKey)
   const [payInfo, setPayInfo] = useState<MonthSalary | null>(null)
   const [payInfoLoading, setPayInfoLoading] = useState(false)
-  const [payDate, setPayDate] = useState(() => new Date().toISOString().slice(0, 10))
+  const [payDate, setPayDate] = useState(() => localIsoDate(new Date()))
   const [payNote, setPayNote] = useState('')
   const [payBusy, setPayBusy] = useState(false)
   const [payError, setPayError] = useState<string | null>(null)
@@ -290,7 +303,7 @@ export function TeacherDetailPage() {
     setPayInfo(selMonthData)
     setPayType('all')
     setPayAmount(Math.max(0, selMonthData?.remaining ?? 0))
-    setPayDate(new Date().toISOString().slice(0, 10))
+    setPayDate(localIsoDate(new Date()))
     setPayNote(salaryNoteFor(selMonth, 'all'))
     setPayError(null)
     setPayCashbox(null)
@@ -410,7 +423,7 @@ export function TeacherDetailPage() {
   const [bonusLoading, setBonusLoading] = useState(false)
 
   // Credentials
-  const [credentials, setCredentials] = useState<Credentials | null>(null)
+  const [cred, setCred] = useState<CredLoad>({ kind: 'loading' })
 
   // Mount — BITTA to'lqin: standart «Ma'lumot» tabi ko'rsatadigan hamma narsa birga so'raladi.
   // Kredensiallar ilgari `teacher` kelgandan KEYIN so'ralardi, ya'ni sahifa ochilishi ikkita
@@ -425,8 +438,16 @@ export function TeacherDetailPage() {
       getTeacher(id).catch(() => null),
       getClasses(true, id),
       getSubjects(),
-      // Xato (masalan o'qituvchi topilmadi) butun to'lqinni yiqitmasin — avvalgidek `null`.
-      getTeacherCredentials(id).catch(() => null),
+      // Xato butun to'lqinni yiqitmasin — lekin JIM ham qolmasin: 403 (ruxsat yo'q) va boshqa
+      // xato alohida holat bo'lib ko'rsatiladi.
+      getTeacherCredentials(id)
+        .then((value): CredLoad => ({ kind: 'ok', value }))
+        .catch((e): CredLoad => {
+          const status = (e as { response?: { status?: number } })?.response?.status
+          return status === 403
+            ? { kind: 'forbidden' }
+            : { kind: 'error', message: apiErrorMessage(e, "Kirish ma'lumotlarini yuklab bo'lmadi") }
+        }),
     ])
       .then(([t, classes, subs, creds]) => {
         setTeacher(t)
@@ -434,7 +455,7 @@ export function TeacherDetailPage() {
         setGroups(classes.filter((c) => !c.isArchived))
         setArchivedGroups(classes.filter((c) => c.isArchived))
         setSubjects(subs)
-        setCredentials(creds)
+        setCred(creds)
       })
       .finally(() => setLoading(false))
   }, [id])
@@ -720,13 +741,30 @@ export function TeacherDetailPage() {
           </Card>
 
           <Card title="Tizim akkaunti">
-            <CredentialsBox
-              credentials={credentials}
-              onReset={async () => {
-                const c = await resetTeacherPassword(teacher.id)
-                setCredentials(c)
-              }}
-            />
+            {cred.kind === 'forbidden' ? (
+              // RUXSAT YO'Q — "yuklanmoqda" bo'lib turmaydi va parol tugmasi ham ko'rsatilmaydi
+              // (u baribir 403 bilan yiqilardi).
+              <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-500">
+                <p className="font-semibold text-slate-600">Tizimga kirish ma'lumotlari</p>
+                <p className="mt-0.5">
+                  Sizda bu ma'lumotni ko'rish huquqi yo'q — login/parolni to'liq huquqli admin ko'rsata oladi.
+                </p>
+              </div>
+            ) : cred.kind === 'error' ? (
+              <div className="mt-4 rounded-xl border border-red-100 bg-red-50 p-4 text-sm text-red-700">
+                <p className="font-semibold">Kirish ma'lumotlari yuklanmadi</p>
+                <p className="mt-0.5 text-red-600">{cred.message}</p>
+              </div>
+            ) : (
+              <CredentialsBox
+                credentials={cred.kind === 'ok' ? cred.value : null}
+                loading={cred.kind === 'loading'}
+                onReset={async () => {
+                  const c = await resetTeacherPassword(teacher.id)
+                  setCred({ kind: 'ok', value: c })
+                }}
+              />
+            )}
           </Card>
         </div>
       )}

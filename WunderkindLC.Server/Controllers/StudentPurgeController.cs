@@ -55,7 +55,8 @@ public class StudentPurgeController(AppDbContext db, AuditService audit, ILogger
         StudentPurge.Result? result;
         try
         {
-            result = await StudentPurge.PurgeAsync(db, id, ct);
+            result = await StudentPurge.PurgeAsync(db, id, ct,
+                actorName: User.FindFirst(System.Security.Claims.ClaimTypes.Name)?.Value);
         }
         catch (InvalidOperationException ex)
         {

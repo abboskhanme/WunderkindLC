@@ -4,12 +4,13 @@ import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { addContactAttempt, type ContactMeta, type ContactRequestItem } from '@/api/services/contacts'
 import { apiErrorMessage, cn } from '@/lib/utils'
+import { localIsoDate } from '@/lib/localDate'
 
 /** "YYYY-MM-DD" — bugundan `days` kun keyin. */
 function inDays(days: number): string {
   const d = new Date()
   d.setDate(d.getDate() + days)
-  return d.toISOString().slice(0, 10)
+  return localIsoDate(d)
 }
 
 /** Keyingi qadam variantlari — server `ContactService.CanTransitionTo` bilan AYNAN bir xil. */

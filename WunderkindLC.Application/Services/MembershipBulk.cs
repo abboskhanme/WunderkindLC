@@ -37,4 +37,26 @@ public static class MembershipBulk
         freeze
             ? status is "active" or "trial"
             : status != "active";
+
+    /// <summary>Arxivdagi guruh — sabab matni (javobda ko'rsatiladi).</summary>
+    public const string GroupArchivedReason = "guruh arxivda";
+
+    /// <summary>Arxivdagi o'quvchi — sabab matni.</summary>
+    public const string StudentArchivedReason = "o'quvchi arxivda";
+
+    /// <summary>
+    /// AKTIVLASHTIRISH bu a'zolikka TAQIQLANGANmi — sabab matni yoki <c>null</c> (sof funksiya).
+    /// <list type="bullet">
+    ///   <item><b>Guruh arxivda</b> (yopilgan/tugatilgan): sentabrdagi ommaviy aktivlashtirish
+    ///     o'quvchining ESKI yopilgan guruhdagi muzlatilgan a'zoligini ham uyg'otib, ikki guruhdan
+    ///     birdan oylik yozardi. Guruhni qayta ochish — ataylab «Arxivdan chiqarish».</item>
+    ///   <item><b>O'quvchi arxivda</b>: ro'yxatlarda ko'rinmaydigan odamga oylik yozila boshlardi.</item>
+    /// </list>
+    /// ⚠️ Faqat aktivlashtirishga tegishli — muzlatish pul yozmaydi va arxiv guruhda ham ruxsat.
+    /// Yakka amal 400 bilan, ommaviy amal "o'tkazib yuborildi" (sabab bilan) qilib qaytaradi.
+    /// </summary>
+    public static string? ActivationBlockReason(bool groupArchived, bool studentArchived) =>
+        groupArchived ? GroupArchivedReason
+        : studentArchived ? StudentArchivedReason
+        : null;
 }

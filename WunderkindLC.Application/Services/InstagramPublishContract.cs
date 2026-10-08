@@ -274,6 +274,17 @@ public static class InstagramPublishContract
         return IgPublishConst.StScheduled;
     }
 
+    /// <summary>
+    /// Post TAHRIRLANADIMI — hali Instagram'ga chiqmagan va Meta'da konteyneri yo'q holatlar:
+    /// <c>scheduled</c>, <c>failed</c>, <c>cancelled</c>. Tahrirdan keyin post navbatga qaytadi.
+    /// <para>⚠️ <c>processing</c> (konteyner Meta'da) va <c>published</c> (API tahrirni qo'llamaydi)
+    /// — YO'Q. Klientdagi <c>isEditable</c> AYNAN shu ro'yxat.</para>
+    /// <para>⚠️ Buzuq/noma'lum holat <c>false</c> (NormalizeStatus'dan farqli — tahrirni noma'lum
+    /// holatda ochib qo'yish xavfli).</para>
+    /// </summary>
+    public static bool IsEditableStatus(string? status) =>
+        status is IgPublishConst.StScheduled or IgPublishConst.StFailed or IgPublishConst.StCancelled;
+
     /// <summary>Meta'dan kelgan <c>status_code</c> ni kanonik shaklga keltiradi (noma'lum → <c>IN_PROGRESS</c>).
     /// <para>⚠️ Noma'lum kod ATAYIN <c>IN_PROGRESS</c> ga tushadi, <c>ERROR</c> ga emas: yangi/kutilmagan
     /// qiymat tufayli tayyor bo'layotgan post o'chirilib ketmasin — poll baribir 10 daqiqada to'xtaydi.</para></summary>
@@ -808,6 +819,23 @@ public static class InstagramPublishContract
         quotaTotal > 0 ? $"{quotaUsage} / {quotaTotal}" : $"{quotaUsage} / noma'lum";
 
     /* ═════════════════════════ 7) Xato kodlari (§5.8) ═════════════════════════ */
+
+    /// <summary>
+    /// Meta xato KODI ULANISH muammosini bildiradimi — token bekor qilingan/yaroqsiz yoki
+    /// ruxsat olib qo'yilgan.
+    ///
+    /// <para><b>🔴 Nega alohida:</b> bunday xato POSTDA emas, ULANISHDA. Ilgari u oddiy
+    /// "vaqtinchalik xato" deb sanalardi: post uch tsiklda <c>failed</c> bo'lib, navbatdan
+    /// butunlay chiqib ketardi (muddati o'tgan tokenda esa — §18.4 — navbat KUTARDI). Endi
+    /// ikkala holat bir xil: post <c>scheduled</c> da qoladi, urinishlar oshmaydi, sabab
+    /// ko'rinadi va admin qayta ulaganda navbat o'zi davom etadi.</para>
+    ///
+    /// <para>Kodlar: <c>190</c> (OAuthException — token yaroqsiz/bekor qilingan), <c>102</c>
+    /// (sessiya), <c>10</c> va <c>200–299</c> (ruxsat). Qaror KOD bo'yicha — matn shartnoma
+    /// emas (<c>MetaInsightsService.Classify</c> bilan bir xil yondashuv).</para>
+    /// </summary>
+    public static bool IsConnectionError(int metaCode) =>
+        metaCode is 190 or 102 or 10 || metaCode is >= 200 and <= 299;
 
     /// <summary>
     /// Instagram publishing xato kodini O'ZBEKCHA matnga aylantiradi.

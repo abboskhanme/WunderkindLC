@@ -70,8 +70,12 @@ export async function updateStaff(id: string, payload: CreateStaffWithTemplatePa
   return data
 }
 
-export async function deleteStaff(id: string, reasonId?: string): Promise<void> {
-  await api.delete(`/admin/staff/${id}`, { params: reasonId ? { reasonId } : undefined })
+/** `warning` — xodimning agenti STANDART Local SMS agenti edi: avtomatik Local SMS'lar to'xtadi. */
+export async function deleteStaff(id: string, reasonId?: string): Promise<{ warning?: string }> {
+  const { data } = await api.delete<{ warning?: string } | ''>(`/admin/staff/${id}`, {
+    params: reasonId ? { reasonId } : undefined,
+  })
+  return data || {}
 }
 
 export async function getStaffCredentials(id: string): Promise<Credentials> {

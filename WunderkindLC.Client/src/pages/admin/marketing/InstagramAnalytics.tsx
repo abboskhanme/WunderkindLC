@@ -6,6 +6,7 @@ import { apiErrorMessage } from '@/lib/utils'
 import { getIgAnalytics, type IgAnalytics, type IgBreakdown } from '@/api/services/instagram'
 import { Icon, MarketingPage, MkCard, MkEmpty, MkError, MkLoading, MkStat } from './mk'
 import { formatNumber } from '@/lib/numberFormat'
+import { localIsoDate } from '@/lib/localDate'
 
 /**
  * GRAFIK RANGLARI — TEKSHIRILGAN (`.claude/rules/course-analytics.md`).
@@ -15,13 +16,13 @@ const C_IN = '#0284c7'   // kelgan hodisalar
 const C_OUT = '#e11d48'  // yuborilgan javoblar
 const C_SINGLE = '#6366f1' // yakka seriya (lidlar)
 
-const today = () => new Date().toISOString().slice(0, 10)
+const today = () => localIsoDate(new Date())
 
 /** Bugundan N kun oldin ("yyyy-MM-dd"). */
 function daysAgo(n: number): string {
   const d = new Date()
   d.setDate(d.getDate() - n)
-  return d.toISOString().slice(0, 10)
+  return localIsoDate(d)
 }
 
 /** "2026-08-12" → "12.08" (grafik o'qi uchun qisqa yorliq). */

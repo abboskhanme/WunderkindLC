@@ -554,7 +554,7 @@ public class JournalDbTests
         var used = await JournalService.BulkAttendanceAsync(db.Context, new BulkAttendanceRequest(
             g.Id, g.CourseId, Day(-1), 1, new List<string> { s.Id }, null));
 
-        Assert.Null(used);
+        Assert.Null(used.AbsentReasonId);
         var entry = await db.Context.JournalEntries.SingleAsync();
         Assert.Null(entry.ReasonId);      // sabab tozalandi
         Assert.True(entry.Present);
@@ -574,7 +574,7 @@ public class JournalDbTests
         var used = await JournalService.BulkAttendanceAsync(db.Context, new BulkAttendanceRequest(
             g.Id, g.CourseId, Day(-1), 1, new List<string> { s.Id }, null, Absent: true));
 
-        Assert.NotNull(used);
+        Assert.NotNull(used.AbsentReasonId);
         var reason = await db.Context.AbsenceReasons.SingleAsync();
         Assert.Equal("Sababsiz", reason.Name);
         var entry = await db.Context.JournalEntries.SingleAsync();
@@ -660,31 +660,9 @@ public class JournalDbTests
     }
 
     [Fact]
-    public async Task Grading_AJRATILGANmezonHAMsanaladi_ORTACHA1danOSHADI_HOZIRGIXULQ()
-    {
-        // HOZIRGI xulqni muzlatadi — pastdagi Skip'li test to'g'ri xulqni tasvirlaydi.
-        using var db = TestDb.Sqlite();
-        var g = AddGroup(db);
-        var s = AddStudent(db, g, "Ali");
-        var c1 = AddCriterion(db, g, "Uy vazifa");
-        var c2 = AddCriterion(db, g, "Faollik");
-        var eski = AddCriterion(db, null, "Guruhdan AJRATILGAN mezon");
-        MarkDone(db, g, s, c1);
-        MarkDone(db, g, s, c2);
-        MarkDone(db, g, s, eski);
-
-        var rows = await GradingService.CalculateStudentTotalsAsync(
-            db.Context, g.Id, AppClock.Today.ToString("yyyy-MM"));
-
-        Assert.Equal(2, rows[0].CriteriaCount);
-        Assert.Equal(3, rows[0].TotalScore);      // 3 > 2
-        Assert.Equal(1.5, rows[0].AverageScore);  // 150%
-    }
-
-    [Fact(Skip = "XATO (GradingService.cs:45-48,74): ajratilgan mezon ham sanaladi — o'rtacha 1 dan oshadi")]
     public async Task Grading_AJRATILGANmezon_SANALMASLIGIKERAK()
     {
-        // XATO (GradingService.cs:45-48,74): `grades` so'rovi faqat GroupId/Done/oy bo'yicha
+        // TUZATILDI (2026-10-07 audit) — ilgari XATO edi (GradingService.cs:45-48,74): `grades` so'rovi faqat GroupId/Done/oy bo'yicha
         // filtrlanadi, `critIds` bo'yicha EMAS. Mezon guruhdan olib tashlansa (yoki umuman
         // boshqa guruhga tegishli bo'lsa) uning eski "bajardi" belgilari sanalishda qoladi —
         // TotalScore CriteriaCount dan oshib ketadi va AverageScore 1 dan katta bo'ladi
@@ -751,27 +729,9 @@ public class JournalDbTests
     }
 
     [Fact]
-    public async Task Update_SavollarSoniKAMAYTIRILSA_ESKIBALLQOLADI_HOZIRGIXULQ()
-    {
-        // HOZIRGI xulqni muzlatadi — pastdagi Skip'li test to'g'ri xulqni tasvirlaydi.
-        using var db = TestDb.Sqlite();
-        var g = AddGroup(db);
-        var s = AddStudent(db, g, "Ali");
-        var t = AddOnlineTest(db, g, "ABCDABCDAB");   // 10 savol
-        db.Context.TestScores.Add(new TestScore { TestResultId = t.Id, StudentId = s.Id, Score = 9 });
-        await db.Context.SaveChangesAsync();
-
-        await TestResultService.UpdateAsync(db.Context, t.Id, "Unit 1", Day(0), 10, Online("ABCDA"));
-
-        var fresh = await db.Context.TestResults.SingleAsync();
-        Assert.Equal(5, fresh.MaxScore);
-        Assert.Equal(9, (await db.Context.TestScores.SingleAsync()).Score);   // 9/5 = 180%
-    }
-
-    [Fact(Skip = "XATO (TestResultService.cs:160-190): savollar soni kamaytirilsa eski ballar clamp qilinmaydi")]
     public async Task Update_SavollarSoniKAMAYTIRILSA_BALLARCLAMPQILINISHIKERAK()
     {
-        // XATO (TestResultService.cs:160-190): ApplyOnline `t.MaxScore = count` deb yangi maksimalni
+        // TUZATILDI (2026-10-07 audit) — ilgari XATO edi (TestResultService.cs:160-190): ApplyOnline `t.MaxScore = count` deb yangi maksimalni
         // yozadi, lekin ALLAQACHON qo'yilgan TestScore.Score qiymatlariga tegmaydi. Natijada
         // "9/5 = 180%" kabi natijalar chiqadi va o'rtacha ball/reyting buziladi.
         // To'g'risi: MaxScore kamayganda mavjud ballar yangi maksimalga qisilishi kerak
@@ -828,24 +788,9 @@ public class JournalDbTests
     }
 
     [Fact]
-    public async Task Bulk_BOSHQAguruhOquvchisi_YOZUVYARATILADI_HOZIRGIXULQ()
-    {
-        // HOZIRGI xulqni muzlatadi — pastdagi Skip'li test to'g'ri xulqni tasvirlaydi.
-        using var db = TestDb.Sqlite();
-        var g = AddGroup(db, startDate: Day(-60));
-        var boshqa = AddGroup(db, "Boshqa guruh", startDate: Day(-60));
-        var begona = AddStudent(db, boshqa, "Begona", activatedAt: Day(-30));
-
-        await JournalService.BulkAttendanceAsync(db.Context, new BulkAttendanceRequest(
-            g.Id, g.CourseId, Day(-1), 1, new List<string> { begona.Id }, null));
-
-        Assert.Equal(1, await db.Context.JournalEntries.CountAsync());
-    }
-
-    [Fact(Skip = "XATO (JournalService.cs:432-439): BulkAttendanceAsync guruh a'zoligini TEKSHIRMAYDI")]
     public async Task Bulk_BOSHQAguruhOquvchisi_CHETLABOTILISHIKERAK()
     {
-        // XATO (JournalService.cs:432-439): `startById` faqat SHU guruhning a'zolaridan quriladi,
+        // TUZATILDI (2026-10-07 audit) — ilgari XATO edi (JournalService.cs:432-439): `startById` faqat SHU guruhning a'zolaridan quriladi,
         // keyin esa `!startById.TryGetValue(...)` sharti "lug'atda yo'q" ni "cheklov yo'q" deb
         // talqin qiladi. Natijada so'rovda kelgan HAR QANDAY studentId (boshqa guruh o'quvchisi,
         // hatto o'chirilgan id) uchun jurnal yozuvi yaratiladi — o'qituvchi API orqali begona
@@ -860,19 +805,6 @@ public class JournalDbTests
             g.Id, g.CourseId, Day(-1), 1, new List<string> { begona.Id }, null));
 
         Assert.Empty(db.Context.JournalEntries);
-    }
-
-    [Fact]
-    public async Task SetEntry_CHIQARILGANoquvchigaYOZILADI_HOZIRGIXULQ()
-    {
-        // HOZIRGI xulqni muzlatadi — pastdagi Skip'li test to'g'ri xulqni tasvirlaydi.
-        using var db = TestDb.Sqlite();
-        var g = AddGroup(db, startDate: Day(-60));
-        var s = AddStudent(db, g, "Chiqarilgan", activatedAt: Day(-30), isActive: false);
-
-        await JournalService.SetEntryAsync(db.Context, Entry(g, s, Day(0), grade: 5));
-
-        Assert.Equal(1, await db.Context.JournalEntries.CountAsync());
     }
 
     [Fact]
@@ -1004,10 +936,10 @@ public class JournalDbTests
         return (g, ids);
     }
 
-    [Fact(Skip = "XATO (JournalService.cs:277-281): muzlatilgan/chiqarilgan o'quvchiga yozish ochiq")]
+    [Fact]
     public async Task SetEntry_CHIQARILGANoquvchiga_TAQIQLANISHIKERAK()
     {
-        // XATO (JournalService.cs:277-281): a'zolik `sg.IsActive` sharti bilan qidiriladi. Guruhdan
+        // TUZATILDI (2026-10-07 audit) — ilgari XATO edi (JournalService.cs:277-281): a'zolik `sg.IsActive` sharti bilan qidiriladi. Guruhdan
         // CHIQARILGAN (IsActive=false) yoki MUZLATILGAN (Status="frozen") o'quvchida so'rov null
         // qaytaradi, `memberStart` esa null bo'lib "cheklov yo'q" degan ma'noni beradi — natijada
         // eng qattiq holat eng OCHIQ holatga aylanadi va guruhda ko'rinmaydigan o'quvchiga baho

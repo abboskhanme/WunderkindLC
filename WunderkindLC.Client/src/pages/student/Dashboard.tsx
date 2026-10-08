@@ -13,7 +13,7 @@ import {
 } from '@/api/services/studentPortal'
 import { useAuth } from '@/context/auth-context'
 import { Icon, fmtDate, fmtMoney, fmtTime, gradeColor } from '@/pages/student/lib'
-import { telegramUrl, openTelegram } from '@/lib/utils'
+import { telegramUrl, openTelegram, apiErrorMessage } from '@/lib/utils'
 
 const NOTIF_ICON: Record<string, string> = {
   grade: 'chart',
@@ -46,6 +46,9 @@ export function StudentDashboardScreen() {
   const [notifs, setNotifs] = useState<NotificationsResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [notifOpen, setNotifOpen] = useState(false)
+  /** "Tasdiqlash" yuborilayotgan e'lon va uning xatosi (bildirishnoma ostida ko'rsatiladi). */
+  const [confirming, setConfirming] = useState<string | null>(null)
+  const [confirmError, setConfirmError] = useState<{ id: string; message: string } | null>(null)
 
   useEffect(() => {
     let on = true
@@ -78,9 +81,20 @@ export function StudentDashboardScreen() {
   }
 
   // "Tasdiqlash" tugmasi (admin e'loni uchun) — admin shu holatni ko'radi.
-  const confirmNotif = (id: string) => {
-    confirmStudentNotification(id).catch(() => {})
-    setNotifs((p) => (p ? { ...p, items: p.items.map((i) => (i.id === id ? { ...i, confirmed: true } : i)) } : p))
+  // ⚠️ "Tasdiqlandi" belgisi FAQAT server qabul qilgandan KEYIN qo'yiladi: ilgari oldindan qo'yilib,
+  // xato yutilardi — o'quvchi "tasdiqladim" deb o'ylar, admin esa tasdiqlanmagan deb ko'rardi.
+  const confirmNotif = async (id: string) => {
+    if (confirming) return
+    setConfirming(id)
+    setConfirmError(null)
+    try {
+      await confirmStudentNotification(id)
+      setNotifs((p) => (p ? { ...p, items: p.items.map((i) => (i.id === id ? { ...i, confirmed: true } : i)) } : p))
+    } catch (e) {
+      setConfirmError({ id, message: apiErrorMessage(e, "Tasdiqlab bo'lmadi. Qayta urinib ko'ring.") })
+    } finally {
+      setConfirming(null)
+    }
   }
 
   const fullName = dash?.profile?.fullName || user?.fullName || "O'quvchi"
@@ -292,13 +306,21 @@ export function StudentDashboardScreen() {
                             <Icon name="checkCircle" size={14} color="var(--green)" /> Tasdiqlandi
                           </div>
                         ) : (
-                          <button
-                            className="press"
-                            onClick={() => confirmNotif(n.id)}
-                            style={{ marginTop: 8, padding: '7px 16px', borderRadius: 10, background: 'var(--accent)', color: '#fff', fontSize: 13, fontWeight: 700 }}
-                          >
-                            Tasdiqlash
-                          </button>
+                          <>
+                            <button
+                              className="press"
+                              onClick={() => confirmNotif(n.id)}
+                              disabled={confirming === n.id}
+                              style={{ marginTop: 8, padding: '7px 16px', borderRadius: 10, background: 'var(--accent)', color: '#fff', fontSize: 13, fontWeight: 700, opacity: confirming === n.id ? 0.6 : 1 }}
+                            >
+                              {confirming === n.id ? 'Yuborilmoqda...' : 'Tasdiqlash'}
+                            </button>
+                            {confirmError?.id === n.id && (
+                              <div role="alert" style={{ marginTop: 6, color: 'var(--red)', fontSize: 12, fontWeight: 600 }}>
+                                {confirmError.message}
+                              </div>
+                            )}
+                          </>
                         ))}
                     </div>
                   </div>

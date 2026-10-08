@@ -177,9 +177,13 @@ public static class ChecklistAutoCheck
     /// qo'ng'iroq uchun o'sha raqamga KEYINROQ chiquvchi qo'ng'iroq bo'lganmi.
     /// </summary>
     /// <remarks>
-    /// ⚠️ Xodim kesimida EMAS, MARKAZ bo'yicha: javobsiz kiruvchi qo'ng'iroqda operator
-    /// umuman yo'q (hech kim ko'tarmagan), ya'ni uni kimgadir biriktirib bo'lmaydi. Band
-    /// «kechagi javobsizlar qaytarildimi» degan JAMOA intizomi haqida.
+    /// Manba — Local Call (<c>CtiCallRecord</c>, <see cref="KpiCallSource"/>): javobsiz =
+    /// <c>Direction == "missed"</c>, qaytarish = undan KEYINGI <c>"outgoing"</c>.
+    ///
+    /// ⚠️ Xodim kesimida EMAS, MARKAZ bo'yicha: javobsiz kiruvchi qo'ng'iroqni hech kim
+    /// ko'tarmagan, ya'ni uni kimgadir biriktirib bo'lmaydi; qaytarish ham ISTALGAN agent
+    /// telefonidan bo'lishi mumkin. Band «kechagi javobsizlar qaytarildimi» degan JAMOA
+    /// intizomi haqida.
     ///
     /// ⚠️ Raqamlar <c>PhoneUtil.Key</c> (oxirgi 9 raqam) bilan solishtiriladi — bazada
     /// formatlar aralash ("+998 90 …", "998…", "90…").
@@ -190,23 +194,22 @@ public static class ChecklistAutoCheck
         var from = prev.ToDateTime(TimeOnly.MinValue);
         var to = day.AddDays(1).ToDateTime(TimeOnly.MinValue);   // kecha + bugun
 
-        var calls = await db.Calls
+        var calls = await db.CtiCallRecords
             .Where(c => c.StartedAt >= from && c.StartedAt < to)
-            .Select(c => new { c.Direction, c.Status, c.PhoneNumber, c.StartedAt })
+            .Select(c => new { c.Direction, c.RemoteNumber, c.StartedAt })
             .ToListAsync(ct);
 
         var missed = calls
-            .Where(c => c.Direction == "inbound" && c.Status == "no_answer"
-                        && DateOnly.FromDateTime(c.StartedAt) == prev)
+            .Where(c => c.Direction == KpiCallSource.Missed && DateOnly.FromDateTime(c.StartedAt) == prev)
             .ToList();
         if (missed.Count == 0) return true;
 
-        var outbound = calls.Where(c => c.Direction == "outbound").ToList();
+        var outgoing = calls.Where(c => c.Direction == KpiCallSource.Outgoing).ToList();
         foreach (var m in missed)
         {
-            var key = PhoneUtil.Key(m.PhoneNumber);
+            var key = PhoneUtil.Key(m.RemoteNumber);
             if (key.Length == 0) continue;   // raqamsiz yozuv bo'yicha hukm chiqarmaymiz
-            var returned = outbound.Any(o => o.StartedAt > m.StartedAt && PhoneUtil.Key(o.PhoneNumber) == key);
+            var returned = outgoing.Any(o => o.StartedAt > m.StartedAt && PhoneUtil.Key(o.RemoteNumber) == key);
             if (!returned) return false;
         }
         return true;
@@ -217,10 +220,15 @@ public static class ChecklistAutoCheck
     /// kamida 90% i <see cref="AnswerSpeedSeconds"/> soniya ichida ko'tarilganmi.
     /// </summary>
     /// <remarks>
-    /// ⚠️ Xodimga biriktirilgan qo'ng'iroqlar VA operatori KO'RSATILMAGANLAR birga olinadi:
-    /// kiruvchi qo'ng'iroq ko'pincha operator id'siz keladi (kim ko'targani provayder
-    /// hodisasidan har doim ham aniqlanmaydi). Faqat "o'zinikini" sanasak, ro'yxat deyarli
-    /// har doim bo'sh bo'lib, tekshiruv ma'nosini yo'qotardi.
+    /// Manba — Local Call (<c>CtiCallRecord</c>): <c>Direction == "incoming"</c> va
+    /// <c>AnsweredAt</c> bor; tezlik = <c>AnsweredAt − StartedAt</c> (qo'ng'iroq jiringlay
+    /// boshlagan paytdan).
+    ///
+    /// ⚠️ Xodimning O'Z agent(lar)i VA hech kimga BIRIKTIRILMAGAN agentlar (yoki agent qatori
+    /// topilmagan yozuvlar) birga olinadi — boshqa XODIMGA biriktirilgan agentlarniki
+    /// chiqariladi. Umumiy (masalan qabulxona) telefoni ko'pincha hech kimga biriktirilmaydi;
+    /// faqat "o'zinikini" sanasak, ro'yxat deyarli har doim bo'sh bo'lib, tekshiruv ma'nosini
+    /// yo'qotardi.
     ///
     /// ⚠️ JAVOB BERILMAGAN qo'ng'iroqlar maxrajga KIRMAYDI — ular boshqa bandning
     /// (<see cref="CallsMissedReturned"/>) mavzusi; bu yerda "qanchalik TEZ ko'tarildi"
@@ -232,10 +240,16 @@ public static class ChecklistAutoCheck
         var from = day.ToDateTime(TimeOnly.MinValue);
         var to = day.AddDays(1).ToDateTime(TimeOnly.MinValue);
 
-        var rows = await db.Calls
-            .Where(c => c.Direction == "inbound" && c.AnsweredAt != null
+        // Boshqa xodimlarga biriktirilgan agentlar — ularning qo'ng'iroqlari bu xodimniki emas.
+        var otherAgentIds = await db.CtiAgents
+            .Where(a => a.StaffUserId != null && a.StaffUserId != "" && a.StaffUserId != userId)
+            .Select(a => a.Id)
+            .ToListAsync(ct);
+
+        var rows = await db.CtiCallRecords
+            .Where(c => c.Direction == KpiCallSource.Incoming && c.AnsweredAt != null
                         && c.StartedAt >= from && c.StartedAt < to
-                        && (c.OperatorUserId == userId || c.OperatorUserId == null || c.OperatorUserId == ""))
+                        && !otherAgentIds.Contains(c.AgentId))
             .Select(c => new { c.StartedAt, c.AnsweredAt })
             .ToListAsync(ct);
 

@@ -6,9 +6,14 @@ import { getSubjects } from '@/api/services/subjects'
 import type { Subject } from '@/types'
 import posthog from '@/lib/posthog'
 import { formatNumber } from '@/lib/numberFormat'
+import { apiErrorMessage } from '@/lib/utils'
+import { todayIso } from '@/lib/month'
 
-/** "YYYY-MM-DD" bugungi sana */
-const today = () => new Date().toISOString().slice(0, 10)
+/** "YYYY-MM-DD" bugungi sana (brauzer mintaqasida — `toISOString` UTC'da kunni surib yuborardi). */
+const today = todayIso
+
+/** Guruh nomlarini solishtirish kaliti — serverdagi `GroupNames.Normalize` bilan bir xil. */
+const nameKey = (v: string) => v.trim().split(/\s+/).filter(Boolean).join(' ').toLowerCase()
 
 export function CompleteAndTransferModal({
   open,
@@ -60,10 +65,17 @@ export function CompleteAndTransferModal({
   const selectedCourse = courses.find((c) => c.id === targetCourseId)
   const resolvedNewName = newGroupName.trim() || currentGroupName
   const datesInvalid = !closeDate || (autoEnroll && activateInNew && (!activateDate || activateDate < closeDate))
+  // Guruh nomlari TAKRORLANMAYDI (chat nom bilan bog'langan) — eski guruh shu nom bilan arxivda
+  // qoladi, ya'ni yangi guruhga boshqa nom SHART. Boshqa guruhlar bilan to'qnashuvni server aytadi.
+  const nameMissing = !newGroupName.trim() || nameKey(newGroupName) === nameKey(currentGroupName)
 
   async function handleSubmit() {
     if (datesInvalid) {
       setError("Aktivlashtirish sanasi yopish sanasidan oldin bo'lmasligi kerak")
+      return
+    }
+    if (nameMissing) {
+      setError(`Yangi guruh uchun boshqa nom kiriting — «${currentGroupName}» nomi eski (arxivdagi) guruhda qoladi`)
       return
     }
     setLoading(true)
@@ -85,8 +97,8 @@ export function CompleteAndTransferModal({
       })
       onSuccess?.(result)
       onClose()
-    } catch (err: any) {
-      setError(err?.response?.data?.message || err?.message || 'Xatolik yuz berdi')
+    } catch (err) {
+      setError(apiErrorMessage(err, 'Xatolik yuz berdi'))
     } finally {
       setLoading(false)
     }
@@ -211,13 +223,13 @@ export function CompleteAndTransferModal({
           <label
             style={{ fontSize: 12, fontWeight: 700, color: 'var(--mute)', display: 'block', marginBottom: 6 }}
           >
-            YANGI GURUH NOMI (ixtiyoriy)
+            YANGI GURUH NOMI *
           </label>
           <input
             type="text"
             value={newGroupName}
             onChange={(e) => setNewGroupName(e.target.value)}
-            placeholder={`Default: ${currentGroupName}`}
+            placeholder={`Masalan: ${currentGroupName} — 2-bosqich`}
             maxLength={120}
             style={{
               width: '100%',
@@ -231,7 +243,7 @@ export function CompleteAndTransferModal({
             }}
           />
           <div style={{ fontSize: 11, color: 'var(--mute)', marginTop: 4 }}>
-            Bo'sh qolsa: <strong>{currentGroupName}</strong>
+            Guruh nomlari takrorlanmaydi: <strong>{currentGroupName}</strong> nomi eski (arxivdagi) guruhda qoladi
           </div>
         </div>
 
@@ -383,13 +395,16 @@ export function CompleteAndTransferModal({
         >
           <div style={{ fontWeight: 700, marginBottom: 4 }}>Nima bo'ladi?</div>
           <ul style={{ margin: '4px 0 0 16px', padding: 0 }}>
-            <li>Barcha faol a'zolar sertifikat oladi (eski kurs uchun)</li>
+            <li>Faqat <strong>aktiv</strong> a'zolar kursni tugatgan hisoblanadi va sertifikat oladi (eski kurs uchun)</li>
             <li>
-              A'zoliklar <strong>{closeDate || '—'}</strong> sanasidan muzlatiladi — shu sanagacha
+              Ularning hisobi <strong>{closeDate || '—'}</strong> sanasigacha yopiladi — shu sanagacha
               o'qilgan darslar uchun oylik <strong>eski guruhga</strong> yoziladi, keyingi oylar
               hisobi bekor qilinadi
             </li>
-            <li>Sinovdagi a'zoliklar yakunlanadi (ularda hisob ochilmagan)</li>
+            <li>
+              Sinovdagi va muzlatilgan a'zolar kursni tugatmagan — sertifikatsiz, oddiy «guruhdan chiqdi»
+              bo'lib yopiladi (ketish sabablarida ko'rinadi)
+            </li>
             <li>Eski guruh arxivga o'tadi (o'quvchilar arxivlanmaydi, to'lov qabul qilinaveradi)</li>
             <li>
               {selectedCourse
@@ -402,7 +417,7 @@ export function CompleteAndTransferModal({
                 <li>
                   Yangi guruhga <strong>faqat aktiv a'zolar</strong> ({activeCount} ta) ko'chiriladi
                   {inactiveCount > 0 && (
-                    <> — sinovdagi/muzlatilgan {inactiveCount} ta a'zo ko'chirilmaydi (eski guruhda yakunlanadi)</>
+                    <> — sinovdagi/muzlatilgan {inactiveCount} ta a'zo ko'chirilmaydi (eski guruhdan chiqadi)</>
                   )}
                 </li>
                 {activateInNew
@@ -418,7 +433,7 @@ export function CompleteAndTransferModal({
           <Button variant="ghost" onClick={onClose} style={{ flex: 1 }} disabled={loading}>
             Bekor qilish
           </Button>
-          <Button onClick={handleSubmit} style={{ flex: 1 }} disabled={loading || datesInvalid}>
+          <Button onClick={handleSubmit} style={{ flex: 1 }} disabled={loading || datesInvalid || nameMissing}>
             {loading ? 'Yuklanmoqda...' : 'Tugatish'}
           </Button>
         </div>

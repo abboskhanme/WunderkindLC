@@ -12,6 +12,7 @@ import { apiErrorMessage, formatMoney } from '@/lib/utils'
 import posthog from '@/lib/posthog'
 import { toast } from '@/lib/toast'
 import { newRequestId } from '@/lib/requestId'
+import { todayIso } from '@/lib/month'
 
 interface Props {
   /** Vozvrat qilinadigan o'quvchi to'lovi (income + tuition) */
@@ -20,7 +21,8 @@ interface Props {
   onSaved: () => void
 }
 
-const today = () => new Date().toISOString().slice(0, 10)
+/** Bugun — MAHALLIY sana (UTC+5). `toISOString()` UTC beradi: 00:00–05:00 orasida "kecha" chiqardi. */
+const today = () => todayIso()
 
 /**
  * O'quvchi to'lovidan pul qaytarish (VOZVRAT) — FAQAT superadmin.

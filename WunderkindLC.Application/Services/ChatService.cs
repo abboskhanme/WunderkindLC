@@ -30,7 +30,7 @@ public class ChatService(IAppDbContext db, IHubContext<ChatHub> hub)
 
     /// <summary>
     /// Foydalanuvchi a'zo bo'lgan chat kanallari (nomlari). admin/superadmin = barcha guruhlar + xodimlar;
-    /// o'qituvchi = guruh rahbarligi + dars beradigan guruhlar + xodimlar; o'quvchi = O'Z GURUHLARI (a'zolik bo'yicha, bittadan ko'p bo'lishi mumkin).
+    /// o'qituvchi = dars beradigan guruhlar (<see cref="TeacherGroupAccess"/>) + xodimlar; o'quvchi = O'Z GURUHLARI (a'zolik bo'yicha, bittadan ko'p bo'lishi mumkin).
     /// "Xodimlar" (<see cref="StaffChannel"/>) — barcha o'qituvchi va adminlar uchun umumiy kanal.
     /// </summary>
     public async Task<List<string>> ClassNamesForUserAsync(string userId, string role)
@@ -65,7 +65,10 @@ public class ChatService(IAppDbContext db, IHubContext<ChatHub> hub)
                     var t = await db.Teachers.FirstOrDefaultAsync(x => x.UserId == userId);
                     if (t is null) return new();
                     var names = new HashSet<string>(StringComparer.Ordinal);
-                    if (!string.IsNullOrEmpty(t.HomeroomClass)) names.Add(t.HomeroomClass);
+                    // ⚠️ Eski `Teacher.HomeroomClass` (guruh rahbarligi NOMI) chatga kirish BERMAYDI: u UI'da
+                    // tahrirlanmaydi va o'qituvchi almashtirilganda tozalanmaydi — almashtirilgan o'qituvchi
+                    // eski guruh chatini (ota-onalar yozishmalarini) o'qib-yozib yuraverardi. Kirish FAQAT
+                    // `TeacherGroupAccess` dan (portal guruhlar ro'yxati bilan bir xil — `TaughtClassIdsAsync`).
 
                     // Dars beradigan guruhlar — guruhga biriktirilgan o'qituvchi (Group.TeacherId).
                     // Ko'rinish qoidasi guruhlar ro'yxati bilan BITTA manbadan (TeacherGroupAccess):

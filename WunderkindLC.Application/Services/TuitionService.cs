@@ -100,19 +100,36 @@ public static class TuitionService
     /// ustidan yozilib, o'quvchiga o'qimagan darslari uchun qarz tushardi. <c>null</c> — eski xatti-harakat.</param>
     /// <param name="oldPricing">ESKI oraliqlar (kurs oraliqlari tahrirlanayotganda). <c>null</c> — <paramref name="pricing"/>.</param>
     /// <param name="oldCourseId">ESKI kurs (guruh kursi almashtirilayotganda). <c>null</c> — <paramref name="courseId"/>.</param>
+    /// <param name="audit">Berilsa — balansi o'zgargan HAR o'quvchi uchun tarixga BITTA qator yoziladi
+    /// (<see cref="GradeRepricing"/> naqshi, `StudentDiscount` turi — o'quvchining to'lov tarixi panelida
+    /// ko'rinadi). Ilgari kurs/guruh narxi o'zgarganda balanslar JIMGINA o'zgarardi: o'quvchi tarixida
+    /// "qarzim nega oshdi" savoliga javob yo'q edi. SaveChanges — chaqiruvchida.</param>
+    /// <remarks>
+    /// ⚠️ <b>JORIY va KEYINGI (oldindan to'langan) oylar</b> qayta hisoblanadi (2026-10-07): ilgari faqat
+    /// joriy oy tegilardi va avans bilan oldindan ochilgan kelgusi oy hisobi ESKI narxda qolib ketardi
+    /// (<see cref="ApplyGradeChangeAsync"/> esa kelgusi oylarni allaqachon qayta hisoblardi). O'tgan oylar
+    /// tegilmaydi. Qaytaradi: hisobi o'zgargan o'quvchilar SONI (qatorlar emas).
+    /// </remarks>
     public static async Task<int> ApplyGroupFeeToCurrentMonthAsync(IAppDbContext db, string groupId, string groupName, decimal newFee,
                                                                    PricingBook? pricing = null, string? courseId = null,
                                                                    decimal? oldFee = null, PricingBook? oldPricing = null,
-                                                                   string? oldCourseId = null)
+                                                                   string? oldCourseId = null, AuditService? audit = null)
     {
         var month = CurrentMonth();
-        var applied = 0;
+        // O'quvchi → (oy, eski effektiv, yangi effektiv) — audit uchun.
+        var changed = new Dictionary<string, (Student S, List<(string Month, decimal Old, decimal New)> Rows)>(StringComparer.Ordinal);
+        void Track(Student s, string m, decimal oldEff, decimal newEff)
+        {
+            if (!changed.TryGetValue(s.Id, out var e)) changed[s.Id] = e = (s, new());
+            e.Rows.Add((m, oldEff, newEff));
+        }
 
-        // (1) Shu GURUHGA a'zo o'quvchilarning shu oy per-guruh hisobi (GroupId == groupId).
+        // (1) Shu GURUHGA a'zo o'quvchilarning per-guruh hisobi (GroupId == groupId) — joriy va kelgusi oylar.
         if (!string.IsNullOrWhiteSpace(groupId))
         {
-            var groupCharges = await db.MonthlyCharges
-                .Where(c => c.GroupId == groupId && c.Month == month).ToListAsync();
+            var groupCharges = (await db.MonthlyCharges
+                    .Where(c => c.GroupId == groupId && string.Compare(c.Month, month) >= 0).ToListAsync())
+                .OrderBy(c => c.Month, StringComparer.Ordinal).ToList();
             if (groupCharges.Count > 0)
             {
                 var sids = groupCharges.Select(c => c.StudentId).Distinct().ToList();
@@ -131,14 +148,16 @@ public static class TuitionService
                 {
                     var st = byId.GetValueOrDefault(charge.StudentId);
                     if (st is null) continue;
-                    var fee = pricing.Resolve(courseId, newFee, st, month).Monthly;
+                    var fee = pricing.Resolve(courseId, newFee, st, charge.Month).Monthly;
                     if (oldFee is { } of)
                     {
-                        var oldResolved = oldPricing.Resolve(oldCourseId, of, st, month).Monthly;
+                        var oldResolved = oldPricing.Resolve(oldCourseId, of, st, charge.Month).Monthly;
                         if (oldResolved == fee) continue;            // shu o'quvchining narxi o'zgarmadi
                         if (charge.Amount != oldResolved) continue;  // qisman / qo'lda o'zgartirilgan oy
                     }
-                    if (ApplyFeeToCharge(charge, st, fee, book)) applied++;
+                    var oldEff = Math.Max(0m, charge.Amount - charge.Discount);
+                    if (ApplyFeeToCharge(charge, st, fee, book))
+                        Track(st, charge.Month, oldEff, Math.Max(0m, charge.Amount - charge.Discount));
                 }
             }
         }
@@ -150,19 +169,32 @@ public static class TuitionService
             if (nameStudents.Count > 0)
             {
                 var ids = nameStudents.Select(s => s.Id).ToList();
-                var nameCharges = await db.MonthlyCharges
-                    .Where(c => c.GroupId == null && c.Month == month && ids.Contains(c.StudentId)).ToListAsync();
+                var nameCharges = (await db.MonthlyCharges
+                        .Where(c => c.GroupId == null && ids.Contains(c.StudentId) && string.Compare(c.Month, month) >= 0)
+                        .ToListAsync())
+                    .OrderBy(c => c.Month, StringComparer.Ordinal).ToList();
                 var byId = nameStudents.ToDictionary(s => s.Id);
                 var book = await DiscountBook.LoadAsync(db, ids);
                 foreach (var charge in nameCharges)
                 {
                     // Qisman oy hisobi to'liq oylik bilan ustidan yozilmasin (yuqoridagi bilan bir xil qoida).
                     if (oldFee is { } of && (of == newFee || charge.Amount != of)) continue;
-                    if (ApplyFeeToCharge(charge, byId.GetValueOrDefault(charge.StudentId), newFee, book)) applied++;
+                    var st = byId.GetValueOrDefault(charge.StudentId);
+                    var oldEff = Math.Max(0m, charge.Amount - charge.Discount);
+                    if (ApplyFeeToCharge(charge, st, newFee, book))
+                        Track(st!, charge.Month, oldEff, Math.Max(0m, charge.Amount - charge.Discount));
                 }
             }
         }
-        return applied;
+
+        if (audit is not null)
+            foreach (var (s, rows) in changed.Values)
+                audit.Record(AuditService.EntityStudentDiscount, s.Id, "update",
+                    $"Oylik guruh/kurs narxi o'zgargani uchun qayta hisoblandi: {groupName}, "
+                    + string.Join("; ", rows.Select(r => $"{r.Month} — {AuditService.Money(r.Old)} → {AuditService.Money(r.New)} so'm"))
+                    + $" — {s.FullName}",
+                    studentId: s.Id);
+        return changed.Count;
     }
 
     /// <summary>Sinf o'zgarishi tufayli qayta hisoblangan bitta oy (audit uchun).</summary>
@@ -249,6 +281,9 @@ public static class TuitionService
     public static IEnumerable<string> MonthRange(string fromMonth, string toMonth)
     {
         if (string.IsNullOrEmpty(fromMonth) || string.IsNullOrEmpty(toMonth)) yield break;
+        // Buzuq oy ("2026", "abcd-ef", "2026-13") — bo'sh oraliq: ilgari `NextMonth` istisno berib butun
+        // so'rov 500 bilan yiqilardi (yoki cheksiz siklga tushardi). Oy AYNAN "yyyy-MM" (`PaymentFields.IsMonth`).
+        if (!PaymentFields.IsMonth(fromMonth) || !PaymentFields.IsMonth(toMonth)) yield break;
         var m = fromMonth;
         // XAVFSIZLIK CHEGARASI: NextMonth oyni normallashtirmaydi ("2026-13" → "2026-14" → ...),
         // shuning uchun BUZUQ oy bilan shart hech qachon buzilmas va sikl abadiy davom etardi
@@ -380,6 +415,30 @@ public static class TuitionService
         return count;
     }
 
+    /// <summary>Aktivlashtirilgan oyning QISMAN to'lovi (chegirmasiz) — <see cref="ChargeActivationProrateAsync"/>
+    /// yozadigan summaning O'ZI, hech narsa yozmasdan. <c>Monthly</c> — shu oy uchun o'quvchining oyligi
+    /// (sinf oralig'i bo'yicha), <c>Gross</c> — qolgan darslar bo'yicha qisman summa (0 — narx yo'q, sana
+    /// buzuq, shu oyda dars yo'q yoki sana oyning oxirgi darsidan keyin).</summary>
+    private static async Task<(decimal Monthly, decimal Gross)> ActivationGrossAsync(
+        IAppDbContext db, Student s, Group cls, string dateIso, decimal? lessonFee, PricingBook? pricing)
+    {
+        if (dateIso.Length < 10 || !DateOnly.TryParse(dateIso, out var d)) return (0m, 0m);
+        // SINFGA QARAB NARX (`TuitionPricing`): oraliq topilsa uning oyligi va bir dars narxi.
+        var (monthly, bandLesson) = (pricing ?? await PricingBook.LoadForCourseAsync(db, cls.CourseId))
+            .Resolve(cls, s, dateIso[..7]);
+        if (monthly <= 0) return (monthly, 0m);
+        var monthStart = new DateOnly(d.Year, d.Month, 1);
+        var monthEnd = new DateOnly(d.Year, d.Month, DateTime.DaysInMonth(d.Year, d.Month));
+        var totalInMonth = LessonsInRange(cls.Days, monthStart, monthEnd);
+        var remaining = LessonsInRange(cls.Days, d, monthEnd);
+        if (totalInMonth <= 0 || remaining <= 0) return (monthly, 0m); // shu oyda dars yo'q — qisman to'lov yo'q
+
+        // Formula: birinchi darsdan (remaining == jami) → to'liq oylik; aks holda qolgan dars ×
+        // kursning bir dars yaxlit narxi (LessonPrice; kiritilmagan bo'lsa eski pro-rata).
+        var fee = bandLesson ?? lessonFee ?? await LessonFeeForCourseAsync(db, cls.CourseId);
+        return (monthly, ProratedLessonCharge(monthly, fee, remaining, totalInMonth));
+    }
+
     /// <summary>Aktivlashtirilgan oyning QISMAN to'lovini hisoblab o'quvchiga yozadi (balans kamayadi,
     /// shu oy MonthlyCharge'iga qo'shiladi yoki yaratiladi). Formula (<see cref="ProratedLessonCharge"/>):
     /// oyning BIRINCHI darsidan aktivlashtirilgan (qolgan == jami) → TO'LIQ oylik narx; aks holda
@@ -402,22 +461,10 @@ public static class TuitionService
     {
         try
         {
-            if (dateIso.Length < 10 || !DateOnly.TryParse(dateIso, out var d)) return;
-            // SINFGA QARAB NARX (`TuitionPricing`): oraliq topilsa uning oyligi va bir dars narxi.
-            var (monthly, bandLesson) = (pricing ?? await PricingBook.LoadForCourseAsync(db, cls.CourseId))
-                .Resolve(cls, s, dateIso[..7]);
-            if (monthly <= 0) return;
-            var monthStart = new DateOnly(d.Year, d.Month, 1);
-            var monthEnd = new DateOnly(d.Year, d.Month, DateTime.DaysInMonth(d.Year, d.Month));
-            var totalInMonth = LessonsInRange(cls.Days, monthStart, monthEnd);
-            var remaining = LessonsInRange(cls.Days, d, monthEnd);
-            if (totalInMonth <= 0 || remaining <= 0) return; // shu oyda dars yo'q — qisman to'lov yo'q
-
-        // Yangi formula: birinchi darsdan (remaining == jami) yoki 12+ dars qolgan → to'liq oylik;
-        // 12 tadan kam qolgan → qolgan dars × kursning bir dars yaxlit narxi (LessonPrice).
-        var fee = bandLesson ?? lessonFee ?? await LessonFeeForCourseAsync(db, cls.CourseId);
-        var gross = ProratedLessonCharge(monthly, fee, remaining, totalInMonth);
-        if (gross <= 0) return;
+            // Summa hisobi — `ActivationGrossAsync` (YAGONA joy: `EnsureChargeAsync` ning aktivlashtirish
+            // oyi shoxobchasi va kelmagan darslar chegirmasi previewi ham AYNAN shuni ishlatadi).
+            var (monthly, gross) = await ActivationGrossAsync(db, s, cls, dateIso, lessonFee, pricing);
+            if (gross <= 0) return; // narx yo'q / shu oyda dars yo'q / oyning oxirgi darsidan keyin
 
         var month = dateIso[..7];
         // Chegirma REGISTRDAN — shu o'quvchining qatorlari (aktivlashtirish bitta o'quvchi uchun,
@@ -457,7 +504,11 @@ public static class TuitionService
         }
         else
         {
-            if (existing.Locked) return; // qo'lda tahrirlangan — tegmaymiz.
+            // Qo'lda tahrirlangan (qulfli) qatorga tegmaymiz. ⚠️ Qulf FAQAT kelmagan darslar
+            // chegirmasidan bo'lsa — qator qayta hisoblanadi va o'sha chegirmalar QO'SHILADI
+            // (`LessonDiscountService.LockExtra`), aks holda yangi segment hech qachon yozilmasdi.
+            var lessonExtra = await LessonDiscountService.ReworkableExtraAsync(db, existing);
+            if (lessonExtra is not { } extra) return;
             var oldEffective = Math.Max(0m, existing.Amount - existing.Discount);
             if (addSegment)
             {
@@ -465,7 +516,7 @@ public static class TuitionService
                 // segment. Yangi segment (shu sanadan oy oxirigacha) USTIGA QO'SHILADI — gap (muzlatish↔qayta
                 // aktiv) hisoblanmaydi, studied portion yo'qolmaydi. Yig'indi to'liq oylikdan oshmaydi.
                 var newAmount = Math.Min(existing.Amount + gross, monthly);
-                var newDiscount = book.DiscountFor(s.Id, newAmount, month, cls.Id);
+                var newDiscount = Math.Min(newAmount, book.DiscountFor(s.Id, newAmount, month, cls.Id) + extra);
                 existing.Amount = newAmount;
                 existing.Discount = newDiscount;
                 existing.Date = dateIso;
@@ -475,10 +526,11 @@ public static class TuitionService
             {
                 // IDEMPOTENT: birinchi aktivlashtirish (eski to'liq AccrueMonth qatori ustidan) yoki ikki marta
                 // bosish — ALMASHTIRAMIZ (ikki marta yozilmasin).
+                var newDiscount = Math.Min(gross, discount + extra);
                 existing.Amount = gross;
-                existing.Discount = discount;
+                existing.Discount = newDiscount;
                 existing.Date = dateIso;
-                s.Balance += oldEffective - effective;
+                s.Balance += oldEffective - (gross - newDiscount);
             }
         }
         }
@@ -571,7 +623,6 @@ public static class TuitionService
         // Chegirma REGISTRDAN (qarang: ChargeActivationProrateAsync).
         var book = await DiscountBook.LoadForStudentAsync(db, s.Id);
         var discount = totalGross > 0 ? book.DiscountFor(s.Id, totalGross, month, cls.Id) : 0m;
-        var effective = totalGross - discount;
 
         if (existing is null)
         {
@@ -580,42 +631,59 @@ public static class TuitionService
             {
                 StudentId = s.Id, GroupId = cls.Id, Month = month, Amount = totalGross, Discount = discount, Date = freezeDateIso,
             });
-            s.Balance -= effective;
+            s.Balance -= totalGross - discount;
         }
         else
         {
-            if (existing.Locked) return; // qo'lda tahrirlangan — tegmaymiz.
+            // Qo'lda tahrirlangan (qulfli) qatorga tegmaymiz. ⚠️ Qulf FAQAT kelmagan darslar chegirmasidan
+            // bo'lsa — oy BARIBIR qisqartiriladi va amaldagi chegirmalar yangi summaga QO'SHILADI (qirqib):
+            // ilgari bunday qator butunlay o'tkazib yuborilardi va oy o'rtasida guruh almashtirilsa eski
+            // guruh TO'LIQ oylikni, yangi guruh oyning qolgan qismini yozardi (IKKI MARTA hisob).
+            var lessonExtra = await LessonDiscountService.ReworkableExtraAsync(db, existing);
+            if (lessonExtra is not { } extra) return;
+            discount = Math.Min(totalGross, discount + extra);
             var oldEffective = Math.Max(0m, existing.Amount - existing.Discount);
             existing.Amount = totalGross;
             existing.Discount = discount;
             existing.Date = freezeDateIso;
-            s.Balance += oldEffective - effective;
+            s.Balance += oldEffective - (totalGross - discount);
         }
     }
 
     /// <summary>Bitta oy uchun hisoblash (PER-GURUH). Har FAOL a'zolik uchun alohida hisob qatori
     /// (StudentId, GroupId, Month); guruhsiz (eski ClassName) o'quvchiga GroupId=null. Allaqachon hisoblangan
-    /// (o'quvchi, guruh) juftliklari o'tkazib yuboriladi — idempotent.</summary>
+    /// (o'quvchi, guruh) juftliklari o'tkazib yuboriladi — idempotent.
+    /// <para>⚠️ BITTA O'QUVCHINING XATOSI BUTUN YUGURISHNI TO'XTATMAYDI (audit R1-6): saqlash
+    /// (<see cref="DbUpdateException"/> — masalan parallel yo'l AYNI (o'quvchi, guruh, oy) hisobini
+    /// yaratib unikal indeks rad etdi) shu o'quvchining yozuvlari kontekstdan ajratiladi, logga yoziladi va
+    /// keyingi o'quvchiga o'tiladi. Ilgari istisno butun yugurishni uzar, ALLAQACHON saqlangan hisoblar
+    /// uchun "oylik hisoblandi" xabari ketmas (<c>Created</c> yo'qolardi), qolganlari 12 soat kutardi.
+    /// <c>Count</c>/<c>Total</c>/<c>Created</c> — faqat HAQIQATAN saqlanganlar.</para></summary>
+    /// <param name="log">Ixtiyoriy — o'tkazib yuborilgan o'quvchi sababini yozish uchun (fon xizmati beradi).</param>
     public static async Task<(int Count, decimal Total, List<(string StudentId, decimal Amount)> Created)> AccrueMonth(
-        IAppDbContext db, string month)
+        IAppDbContext db, string month, ILogger? log = null)
     {
         var created = new List<(string StudentId, decimal Amount)>();
-        var classList = await db.Classes.ToListAsync();
+        // Faqat O'QILADI (AsNoTracking) — har o'quvchi alohida saqlangani uchun ChangeTracker kichik qolsin.
+        var classList = await db.Classes.AsNoTracking().ToListAsync();
         var groupsById = classList.ToDictionary(c => c.Id);
         // SINFGA QARAB NARX — barcha kurslar oraliqlari BIR MARTA (`TuitionPricing`).
         var pricing = await PricingBook.LoadAsync(db);
         var feesByName = classList.GroupBy(c => c.Name).ToDictionary(g => g.Key, g => g.First().MonthlyFee);
         // Barcha a'zoliklar (holat bilan). Oylik to'lov faqat FAOL (active) a'zolikka — aktivlashtirilgan
         // oydan KEYINGI oylar uchun (aktiv oyi qisman to'lov bilan alohida yozilgan) va muzlatish oyidan OLDIN.
-        var membershipsByStudent = (await db.StudentGroups.ToListAsync())
+        var membershipsByStudent = (await db.StudentGroups.AsNoTracking().ToListAsync())
             .GroupBy(sg => sg.StudentId)
             .ToDictionary(g => g.Key, g => g.ToList());
         // Idempotentlik PER-GURUH: (o'quvchi, guruh) juftligi shu oyda allaqachon hisoblangan bo'lsa o'tkazamiz.
         var already = (await db.MonthlyCharges.Where(c => c.Month == month)
                 .Select(c => new { c.StudentId, c.GroupId }).ToListAsync())
             .Select(x => (x.StudentId, x.GroupId)).ToHashSet();
-        // Arxivlangan o'quvchilarga oylik hisoblanmaydi.
-        var students = await db.Students.Where(s => !s.IsArchived).ToListAsync();
+        // Arxivlangan o'quvchilarga oylik hisoblanmaydi. ⚠️ Ro'yxat faqat REJA uchun (AsNoTracking): balans
+        // quyida har o'quvchi QULFI ostida bazadan QAYTA o'qiladi — fon xizmati ro'yxatni bir marta yuklab,
+        // oylar bo'yicha aylanib, oxirida ESKI balans ustidan yozardi va shu orada kelgan to'lov ta'siri
+        // jimgina yo'qolardi (`PaymentIntake` dagi "balans qulf ichida qayta o'qiladi" naqshi).
+        var students = await db.Students.AsNoTracking().Where(s => !s.IsArchived).ToListAsync();
         // ⚠️ CHEGIRMA KITOBI — BIR MARTA, BARCHA o'quvchilar uchun. Ikki sabab:
         //  (1) N+1 bo'lmasin (bu yerda minglab o'quvchi × a'zolik aylanadi);
         //  (2) `AccrueDue` har startupda va har 12 soatda BUTUN TARIXNI qayta skanerlaydi —
@@ -627,6 +695,8 @@ public static class TuitionService
         decimal total = 0;
         foreach (var s in students)
         {
+            // 1) REJA (sof): shu o'quvchiga shu oy qaysi (guruh, narx) hisoblari yoziladi.
+            var plan = new List<(string? GroupId, decimal Fee)>();
             if (membershipsByStudent.TryGetValue(s.Id, out var mships) && mships.Count > 0)
             {
                 // DIQQAT: bu yerda EnrollmentDate bo'yicha filtr QO'YILMAYDI. A'zoligi bor o'quvchida haqiqat
@@ -644,10 +714,7 @@ public static class TuitionService
                     if (already.Contains((s.Id, (string?)m.GroupId))) continue;
                     var gfee = groupsById.TryGetValue(m.GroupId, out var grp) ? pricing.MonthlyFee(grp, s, month) : 0m;
                     if (gfee <= 0) continue;
-                    var eff = AccrueOne(db, s, book.For(s.Id), m.GroupId, month, gfee);
-                    total += eff;
-                    count++;
-                    created.Add((s.Id, eff));
+                    plan.Add((m.GroupId, gfee));
                 }
             }
             else
@@ -660,32 +727,74 @@ public static class TuitionService
                 if (already.Contains((s.Id, (string?)null))) continue;
                 var nfee = feesByName.TryGetValue(s.ClassName, out var nf) ? nf : 0m;
                 if (nfee <= 0) continue;
-                var eff = AccrueOne(db, s, book.For(s.Id), null, month, nfee);
-                total += eff;
-                count++;
-                created.Add((s.Id, eff));
+                plan.Add((null, nfee));
+            }
+            if (plan.Count == 0) continue;
+
+            // 2) YOZISH — o'quvchi QULFI ostida (to'lov/vozvrat/bekor qilish bilan BIR navbatda), balans
+            // bazadan QAYTA o'qiladi va har o'quvchi ALOHIDA saqlanadi: oylar bo'yicha uzoq aylanish
+            // davomida kelgan to'lov ta'siri eski balans bilan ustidan yozilmasin.
+            using (await PaymentIdempotency.LockAsync("student:" + s.Id))
+            {
+                // ⚠️ QULF ICHIDA QAYTA TEKSHIRUV: `already` butun oy uchun QULFDAN TASHQARIDA bir marta
+                // o'qilgan. Shu orada to'lov (`EnsureChargeAsync`), aktivlashtirish (`AccrueCatchUpAsync`) va
+                // h.k. AYNI (o'quvchi, guruh, oy) hisobini yozgan bo'lishi mumkin — usiz ikkinchi qator unikal
+                // indeksga urilardi.
+                var nowCharged = (await db.MonthlyCharges.AsNoTracking()
+                        .Where(c => c.StudentId == s.Id && c.Month == month)
+                        .Select(c => c.GroupId).ToListAsync())
+                    .ToHashSet();
+                var todo = plan.Where(p => !nowCharged.Contains(p.GroupId)).ToList();
+                if (todo.Count == 0) continue;
+
+                var tracked = await db.Students.FirstOrDefaultAsync(x => x.Id == s.Id);
+                if (tracked is null) continue;
+                await StudentBalanceSync.ReloadAsync(db, tracked);
+                var rows = todo.Select(p => AccrueOne(db, tracked, book.For(s.Id), p.GroupId, month, p.Fee)).ToList();
+                try
+                {
+                    await db.SaveChangesAsync();
+                }
+                catch (DbUpdateException ex)
+                {
+                    // Shu o'quvchining saqlanmagan yozuvlari kontekstdan AJRATILADI — aks holda keyingi
+                    // o'quvchining SaveChanges'i ularni qayta yubormoqchi bo'lib yana yiqilardi.
+                    foreach (var r in rows) db.MonthlyCharges.Entry(r).State = EntityState.Detached;
+                    db.Students.Entry(tracked).State = EntityState.Detached;
+                    log?.LogWarning(ex, "Oylik hisob {Month}: o'quvchi {StudentId} o'tkazib yuborildi (keyingi yugurishda qayta urinadi)",
+                        month, s.Id);
+                    continue;
+                }
+                foreach (var r in rows)
+                {
+                    var eff = r.Amount - r.Discount;
+                    total += eff;
+                    count++;
+                    created.Add((s.Id, eff));
+                }
             }
         }
 
-        if (count > 0) await db.SaveChangesAsync();
         return (count, total, created);
     }
 
     /// <summary>Bitta (o'quvchi, guruh, oy) hisob qatorini yozadi va balansni effektiv miqdorda kamaytiradi.
-    /// Amount = to'liq narx; Discount = chegirma; effektiv = Amount − Discount. Effektiv qaytariladi.
-    /// Effektiv 0 (100% chegirma) bo'lsa ham qator qoldiriladi — hisobotda ko'rinsin. SaveChanges — chaqiruvchida.</summary>
-    private static decimal AccrueOne(
+    /// Amount = to'liq narx; Discount = chegirma; effektiv = Amount − Discount.
+    /// Effektiv 0 (100% chegirma) bo'lsa ham qator qoldiriladi — hisobotda ko'rinsin. SaveChanges — chaqiruvchida.
+    /// Qaytaradi: qo'shilgan qator (effektiv = Amount − Discount).</summary>
+    private static MonthlyCharge AccrueOne(
         IAppDbContext db, Student s, IReadOnlyList<StudentDiscount> discounts,
         string? groupId, string month, decimal fee)
     {
         var discount = DiscountForMonth(discounts, fee, month, groupId);
         var effective = fee - discount;
-        db.MonthlyCharges.Add(new MonthlyCharge
+        var row = new MonthlyCharge
         {
             StudentId = s.Id, GroupId = groupId, Month = month, Amount = fee, Discount = discount, Date = $"{month}-01",
-        });
+        };
+        db.MonthlyCharges.Add(row);
         s.Balance -= effective;
-        return effective;
+        return row;
     }
 
     /// <summary>Shu a'zolik uchun <paramref name="month"/> oyiga TO'LIQ oylik hisob yozilishi kerakmi.
@@ -792,19 +901,56 @@ public static class TuitionService
     /// <summary>AVANS uchun: berilgan (o'quvchi, guruh, oy) hisobi mavjudligini ta'minlaydi — yo'q bo'lsa
     /// to'liq oylik narxda yaratadi (balans effektiv miqdorda kamayadi). Kassir kelajak oyga to'lasa, o'sha
     /// oy hisobi shu zahoti ochiladi. Mavjud bo'lsa tegmaydi (idempotent). null narx/guruh bo'lsa — hech narsa.
-    /// SaveChanges — chaqiruvchida. Qaytaradi: yangi hisob yaratildimi.</summary>
+    /// SaveChanges — chaqiruvchida. Qaytaradi: yangi hisob yaratildimi.
+    /// <para>⚠️ <b>FAQAT accrual YOZADIGAN oyga</b> (2026-10-07): hisob <see cref="AccrueMonth"/> bilan AYNAN
+    /// bir xil shartda ochiladi — a'zolik <c>active</c> + <c>IsActive</c> va oy <see cref="AccruableMonth"/>
+    /// (aktivlashtirish oyidan KEYIN, muzlatish oyidan OLDIN). Ilgari a'zolik holatiga qaralmasdi: SINOVDAGI
+    /// o'quvchiga to'lov guruhsiz TO'LIQ hisob ochardi (aktivlashtirish uni hech qachon o'chirmasdi), kech
+    /// aktivlashtirilgan oyga (qisman hisobi yo'q) esa to'liq oylik yozilardi. Shart bajarilmasa pul shunchaki
+    /// AVANS bo'lib qoladi (balansda) — aktivlashtirilganda/accrual'da odatdagidek hisobga o'tadi.</para>
+    /// <para>Guruhsiz (<paramref name="groupId"/> = null) hisob faqat a'zoligi UMUMAN yo'q eski (ClassName)
+    /// o'quvchiga va qabul oyidan boshlab — <see cref="AccrueMonth"/> ning guruhsiz shoxobchasi bilan bir xil.</para>
+    /// <para>⚠️ <b>AKTIVLASHTIRISH OYI, hisobi YO'Q</b> (2026-10-08, audit R1-5): o'quvchi yaratish/importda
+    /// "active" tanlangan a'zolik (<c>StudentsController.AddMembershipRow</c>) aktivlashtirish oyiga ATAYIN
+    /// hisob yozmaydi (`membership-periods.md` §9), accrual esa bu oyni olmaydi (<see cref="AccruableMonth"/>).
+    /// Shu oyga to'lov kelsa hisob ochilmay, pul AVANS bo'lib keyingi oy hisobini yopardi — ya'ni bitta oy
+    /// TEKIN qolardi. Endi to'lov kelganda o'sha oyga <see cref="ChargeActivationProrateAsync"/> yozadigan
+    /// QISMAN hisob (ActivatedAt sanasidan, chegirma bilan) ochiladi. Qisman summa 0 bo'lsa (oyning oxirgi
+    /// darsidan keyin aktivlashtirilgan) — hisob ochilmaydi, pul avans bo'lib qoladi.</para></summary>
     public static async Task<bool> EnsureChargeAsync(IAppDbContext db, Student s, string? groupId, string month)
     {
-        if (month.Length < 7) return false;
+        if (!PaymentFields.IsMonth(month)) return false;
+        if (s.IsArchived) return false; // accrual arxivdagilarga hisob yozmaydi
         var existing = await db.MonthlyCharges
             .FirstOrDefaultAsync(c => c.StudentId == s.Id && c.GroupId == groupId && c.Month == month);
         if (existing is not null) return false;
 
         decimal fee;
         if (groupId is null)
+        {
+            if (await db.StudentGroups.AnyAsync(sg => sg.StudentId == s.Id)) return false;
+            if (s.EnrollmentDate.Length >= 7 && string.CompareOrdinal(s.EnrollmentDate[..7], month) > 0) return false;
             fee = (await db.Classes.FirstOrDefaultAsync(c => c.Name == s.ClassName))?.MonthlyFee ?? 0m;
+        }
         else
         {
+            var memberships = await db.StudentGroups
+                .Where(sg => sg.StudentId == s.Id && sg.GroupId == groupId).ToListAsync();
+            if (!memberships.Any(m => m.Status == "active" && m.IsActive && AccruableMonth(m, month)))
+            {
+                // Aktivlashtirish oyi (hisobi yo'q) — QISMAN hisob (yuqoridagi izoh). Boshqa holat — avans.
+                var act = ActivationMonthMembership(memberships, month);
+                if (act is null) return false;
+                var cls = await db.Classes.AsNoTracking().FirstOrDefaultAsync(c => c.Id == groupId);
+                if (cls is null) return false;
+                await ChargeActivationProrateAsync(db, s, cls, act.ActivatedAt[..10]);
+                // Bazada shu kalitli qator yo'q edi (yuqorida tekshirildi) — lokal qator bo'lsa, u hozir yozildi.
+                return db.MonthlyCharges.Local.Any(c => c.StudentId == s.Id && c.GroupId == groupId && c.Month == month);
+            }
+            // Aktivlashtirish oyi hisobsiz qolgan bo'lsa (yaratish/importda `active` — qisman oylik ATAYIN
+            // yozilmaydi, `membership-periods.md` §9) va oila KEYINGI oyni to'layotgan bo'lsa, aktivlashtirish
+            // oyi ham qisman hisoblanadi — aks holda u hech qachon hisoblanmay, birinchi oy tekin qolardi.
+            await EnsureRecentActivationChargeAsync(db, s, groupId, memberships, month);
             var g = await db.Classes.Where(c => c.Id == groupId)
                 .Select(c => new { c.CourseId, c.MonthlyFee }).FirstOrDefaultAsync();
             fee = g is null ? 0m
@@ -814,6 +960,99 @@ public static class TuitionService
 
         var discounts = (await DiscountBook.LoadForStudentAsync(db, s.Id)).For(s.Id);
         AccrueOne(db, s, discounts, groupId, month, fee);
+        return true;
+    }
+
+    /// <summary>
+    /// To'lov KEYINGI oy uchun kelganda, hisobsiz qolgan AKTIVLASHTIRISH oyini qisman hisob bilan ochadi
+    /// (<see cref="ChargeActivationProrateAsync"/> — qolgan darslar bo'yicha). Faqat YAQIN oy (joriy yoki
+    /// o'tgan): eski tarixga (admin o'chirgan yoki ataylab yozilmagan oylarga) orqaga hisob yozilmasin.
+    /// Shu oyga qator bo'lsa (0 so'mlik tahrir ham) — tegilmaydi.
+    /// </summary>
+    private static async Task EnsureRecentActivationChargeAsync(IAppDbContext db, Student s, string groupId,
+        List<Domain.StudentGroup> memberships, string paidMonth)
+    {
+        var floor = AppClock.Today.AddMonths(-1).ToString("yyyy-MM");
+        foreach (var m in memberships)
+        {
+            if (m.ActivatedAt.Length < 10) continue;
+            var actMonth = m.ActivatedAt[..7];
+            if (string.CompareOrdinal(actMonth, paidMonth) >= 0 || string.CompareOrdinal(actMonth, floor) < 0) continue;
+            if (ActivationMonthMembership(new[] { m }, actMonth) is null) continue;
+            var has = db.MonthlyCharges.Local.Any(c => c.StudentId == s.Id && c.GroupId == groupId && c.Month == actMonth)
+                      || await db.MonthlyCharges.AnyAsync(c => c.StudentId == s.Id && c.GroupId == groupId && c.Month == actMonth);
+            if (has) continue;
+            var cls = await db.Classes.AsNoTracking().FirstOrDefaultAsync(c => c.Id == groupId);
+            if (cls is null) return;
+            await ChargeActivationProrateAsync(db, s, cls, m.ActivatedAt[..10]);
+        }
+    }
+
+    /// <summary>Shu oy aynan JORIY faol davrning AKTIVLASHTIRISH oyi bo'lgan a'zolik (faol, tirik, sana haqiqiy,
+    /// shu oyda muzlatilmagan) — <see cref="EnsureChargeAsync"/> ning qisman hisob shoxobchasi uchun. Sof.</summary>
+    public static Domain.StudentGroup? ActivationMonthMembership(IEnumerable<Domain.StudentGroup> memberships, string month) =>
+        memberships.FirstOrDefault(m => m.Status == "active" && m.IsActive
+            && m.ActivatedAt.Length >= 10 && m.ActivatedAt[..7] == month
+            && DateOnly.TryParse(m.ActivatedAt[..10], out _)
+            && (m.FrozenAt.Length < 7 || string.CompareOrdinal(month, m.FrozenAt[..7]) < 0));
+
+    /// <summary>
+    /// <see cref="EnsureChargeAsync"/> AKTIVLASHTIRISH OYIDA (hisobi yo'q) qancha EFFEKTIV hisob yozishini
+    /// oldindan aytadi — hech narsa yozmasdan. <c>null</c> — bu shoxobcha qo'llanmaydi (to'liq oylik yoki
+    /// umuman hisob yo'q holati — chaqiruvchi o'z hisobini qiladi); <c>0</c> — hisob ochilmaydi (avans).
+    /// <para>Nega kerak: kelmagan darslar chegirmasi (`LessonDiscountService.QuoteAsync`) hisobi hali yo'q
+    /// oyda "qancha to'lanmagan" ni shu summadan oladi — to'liq oylikdan olsa, qisman oyga undan KATTA
+    /// chegirma yozilib, balansga hech qachon yechilmagan pul qo'shilardi.</para>
+    /// </summary>
+    public static async Task<decimal?> ActivationChargePreviewAsync(IAppDbContext db, Student s, Group cls, string month)
+    {
+        if (!PaymentFields.IsMonth(month) || s.IsArchived) return null;
+        var memberships = await db.StudentGroups.AsNoTracking()
+            .Where(sg => sg.StudentId == s.Id && sg.GroupId == cls.Id).ToListAsync();
+        if (memberships.Any(m => m.Status == "active" && m.IsActive && AccruableMonth(m, month))) return null;
+        var act = ActivationMonthMembership(memberships, month);
+        if (act is null) return null;
+        var (_, gross) = await ActivationGrossAsync(db, s, cls, act.ActivatedAt[..10], null, null);
+        if (gross <= 0) return 0m;
+        var book = await DiscountBook.LoadForStudentAsync(db, s.Id);
+        return Math.Max(0m, gross - book.DiscountFor(s.Id, gross, month, cls.Id));
+    }
+
+    /// <summary>
+    /// AVANS HISOBINI QAYTARISH — <see cref="EnsureChargeAsync"/> ning teskarisi. KELAJAK oy (joriy oydan
+    /// keyingi) hisobini faqat avans to'lov ochadi (<see cref="AccrueMonth"/> kelajakni yozmaydi), ya'ni
+    /// o'sha oyga TIRIK to'lov qolmasa (bekor qilindi, to'liq qaytarildi yoki boshqa oy/guruhga ko'chirildi)
+    /// hisob ham o'chiriladi va effektiv summa balansga QAYTADI. Usiz o'quvchi hali boshlanmagan oy uchun
+    /// "qarzdor" bo'lib, ota-onaga to'lov eslatmasi SMS'i ketardi. Oy kelganda (a'zolik hamon faol bo'lsa)
+    /// accrual uni odatdagidek yozadi — balans izchil qoladi.
+    /// <para>Tegilmaydi: joriy/o'tgan oylar (ular haqiqiy o'quv oyi), <c>Locked</c> qator (qo'lda tahrir yoki
+    /// kelmagan darslar chegirmasi — ataylab qo'yilgan), shu (guruh, oy) ga boshqa to'lov qolgan hisob.</para>
+    /// SaveChanges — chaqiruvchida. Qaytaradi: hisob o'chirildimi.
+    /// </summary>
+    /// <param name="ignoreTxIds">Hali saqlanmagan o'zgarish: bekor qilinayotgan / boshqa oyga ko'chirilayotgan
+    /// tranzaksiyalar — bazada ular hamon shu oyda turibdi, shuning uchun sanalmaydi.</param>
+    /// <param name="pendingNet">Hali saqlanmagan qo'shimcha harakat (masalan shu so'rovdagi vozvrat: −summa).</param>
+    public static async Task<bool> DropOrphanAdvanceChargeAsync(IAppDbContext db, Student s, string? groupId, string? month,
+                                                               IReadOnlyCollection<string>? ignoreTxIds = null, decimal pendingNet = 0m)
+    {
+        if (!PaymentFields.IsMonth(month) || string.CompareOrdinal(month, CurrentMonth()) <= 0) return false;
+        var charge = await db.MonthlyCharges
+            .FirstOrDefaultAsync(c => c.StudentId == s.Id && c.GroupId == groupId && c.Month == month);
+        if (charge is null || charge.Locked) return false;
+
+        var rows = await db.FinanceTransactions.AsNoTracking()
+            .Where(t => t.StudentId == s.Id && t.GroupId == groupId && t.Month == month
+                        && ((t.Direction == "income" && t.Category == "tuition")
+                            || (t.Direction == "expense" && t.Category == "refund")))
+            .Select(t => new { t.Id, t.Direction, t.Amount })
+            .ToListAsync();
+        var net = pendingNet + rows
+            .Where(t => ignoreTxIds is null || !ignoreTxIds.Contains(t.Id))
+            .Sum(t => t.Direction == "expense" ? -t.Amount : t.Amount);
+        if (net > 0m) return false;
+
+        s.Balance += Math.Max(0m, charge.Amount - charge.Discount);
+        db.MonthlyCharges.Remove(charge);
         return true;
     }
 
@@ -837,13 +1076,25 @@ public static class TuitionService
     {
         if (month.Length < 7) return (0m, []);
         var m0 = month[..7];
-        var rows = (await db.MonthlyCharges
+        var candidates = (await db.MonthlyCharges
                 .Where(c => c.StudentId == s.Id && c.GroupId == groupId)
                 .ToListAsync())
-            .Where(c => !c.Locked && c.Month.Length >= 7
+            .Where(c => c.Month.Length >= 7
                         && (inclusive
                             ? string.CompareOrdinal(c.Month[..7], m0) >= 0
                             : string.CompareOrdinal(c.Month[..7], m0) > 0))
+            .ToList();
+        if (candidates.Count == 0) return (0m, []);
+
+        // ⚠️ QULFLI qator: qo'lda tahrirlangani tegilmaydi; qulfi FAQAT kelmagan darslar chegirmasidan bo'lsa
+        // (`LessonDiscountService.LockExtra`) — u ham BEKOR qilinadi va shu oyning chegirmalari yopiladi.
+        // Ilgari bunday kelgusi oy hisobi muzlatish/chiqishdan keyin ham qarz bo'lib qolardi.
+        var lessonDiscounts = candidates.Any(c => c.Locked)
+            ? await db.LessonDiscounts.Where(x => x.StudentId == s.Id && x.GroupId == groupId).ToListAsync()
+            : [];
+        var rows = candidates
+            .Where(c => !c.Locked || LessonDiscountService.LockExtra(
+                lessonDiscounts.Where(x => x.Month == c.Month).ToList()) is not null)
             .ToList();
 
         var restored = 0m;
@@ -854,6 +1105,9 @@ public static class TuitionService
             s.Balance += effective;   // yaratilganda yechilgan effektivni qaytaramiz
             restored += effective;
             months.Add(row.Month[..7]);
+            if (row.Locked)
+                LessonDiscountService.CloseForDroppedCharge(
+                    lessonDiscounts.Where(x => x.Month == row.Month), "Tizim: oy hisobi bekor qilindi (muzlatish/chiqish)");
             db.MonthlyCharges.Remove(row);
         }
         return (restored, months);
@@ -936,6 +1190,10 @@ public static class TuitionService
                 else
                 {
                     // Qisman ortiqcha — to'lov ikkiga bo'linadi (asl yozuv eski guruhda kamayadi).
+                    // ⚠️ Yangi qator ASL to'lovga BOG'LANADI (`SplitFromId` — oila ildizi) va uning kassir/
+                    // kvitansiya/karta/usul/kassa maydonlarini oladi: ilgari bog'lanmagan "yetim" qator bo'lib,
+                    // asl to'lov bekor qilinganda faqat bir qismi bekor bo'lar, kassir hisobotida esa bo'lingan
+                    // qism "kim kiritgani noma'lum" bo'lib qolardi (`PaymentSplits`).
                     tx.Amount -= take;
                     tx.Note = $"{tx.Note} [{AuditService.Money(take)} so'm {toGroup.Name} guruhiga ko'chirildi]".Trim();
                     db.FinanceTransactions.Add(new FinanceTransaction
@@ -943,14 +1201,20 @@ public static class TuitionService
                         Date = tx.Date,
                         Direction = tx.Direction,
                         Category = tx.Category,
+                        TypeId = tx.TypeId,
                         Amount = take,
                         StudentId = tx.StudentId,
                         GroupId = toGroup.Id,
                         Month = tx.Month,
                         Method = tx.Method,
                         Comment = tx.Comment,
+                        ReceiptNo = tx.ReceiptNo,
+                        PaidTime = tx.PaidTime,
+                        CardLast4 = tx.CardLast4,
                         CreatedBy = tx.CreatedBy,
+                        CreatedById = tx.CreatedById,
                         CashboxId = tx.CashboxId, // pul o'sha kassada turibdi — faqat guruh tegi o'zgaradi
+                        SplitFromId = tx.SplitFromId ?? tx.Id,
                         Note = $"O'quvchi to'lovi ({tx.Month}) [{toGroup.Name}] {mark}",
                     });
                 }
@@ -970,11 +1234,12 @@ public static class TuitionService
     /// va oraliqdagi "tushib qolgan" oylar to'ldiriladi (avvalgi xulq faqat oxirgi oydan
     /// keyingi oylarni qo'shardi — yangi/eski o'quvchilar 0 bo'lib qolardi).
     /// </summary>
+    /// <param name="log">Ixtiyoriy — o'tkazib yuborilgan o'quvchilar sababi uchun (<see cref="AccrueMonth"/>).</param>
     public static async Task<(List<string> Months, List<(string StudentId, string Month, decimal Amount)> Created)> AccrueDue(
-        IAppDbContext db)
+        IAppDbContext db, ILogger? log = null)
     {
         // Avval eski aggregate (GroupId=null) + per-guruh dublikat hisoblarni tozalaymiz (o'z-o'zini tuzatish).
-        await PurgeDuplicateAggregateChargesAsync(db);
+        await PurgeDuplicateAggregateChargesAsync(db, log);
 
         var cur = CurrentMonth();
         var start = await AcademicYearStartMonthAsync(db);
@@ -996,7 +1261,7 @@ public static class TuitionService
         var created = new List<(string StudentId, string Month, decimal Amount)>();
         foreach (var month in MonthRange(start, cur))
         {
-            var (count, _, monthCreated) = await AccrueMonth(db, month);
+            var (count, _, monthCreated) = await AccrueMonth(db, month, log);
             if (count > 0) accrued.Add(month);
             foreach (var (sid, amount) in monthCreated)
                 created.Add((sid, month, amount));
@@ -1084,9 +1349,12 @@ public static class TuitionService
         db.MonthlyCharges.Remove(nullRow);
     }
 
-    public static async Task<int> PurgeDuplicateAggregateChargesAsync(IAppDbContext db)
+    public static async Task<int> PurgeDuplicateAggregateChargesAsync(IAppDbContext db, ILogger? log = null)
     {
-        var all = await db.MonthlyCharges.ToListAsync();
+        // AsNoTracking: butun jadval ChangeTracker'ga yuklanmasin — keyingi `AccrueMonth` har o'quvchini
+        // alohida saqlaydi va har saqlashda kuzatilayotgan BARCHA qatorlar tekshirilardi. O'chiriladiganlari
+        // `Remove` bilan biriktiriladi (EF ajratilgan qatorni Deleted holatida qo'shadi).
+        var all = await db.MonthlyCharges.AsNoTracking().ToListAsync();
         var dupNullRows = all
             .GroupBy(c => (c.StudentId, c.Month))
             .Where(g => g.Any(c => c.GroupId == null) && g.Any(c => c.GroupId != null))
@@ -1094,16 +1362,40 @@ public static class TuitionService
             .ToList();
         if (dupNullRows.Count == 0) return 0;
 
-        var ids = dupNullRows.Select(c => c.StudentId).Distinct().ToList();
-        var students = (await db.Students.Where(s => ids.Contains(s.Id)).ToListAsync())
-            .ToDictionary(s => s.Id);
-        foreach (var row in dupNullRows)
+        // Har o'quvchi o'z QULFI ostida, balans bazadan QAYTA o'qilib, alohida saqlanadi (`AccrueMonth` bilan
+        // bir xil sabab: fon xizmati eski balans ustidan yozib, parallel to'lov ta'sirini yo'qotmasin).
+        var purged = 0;
+        foreach (var byStudent in dupNullRows.GroupBy(c => c.StudentId))
         {
-            if (students.TryGetValue(row.StudentId, out var s))
-                s.Balance += Math.Max(0m, row.Amount - row.Discount); // yaratilganda yechilgan effektivni qaytaramiz
-            db.MonthlyCharges.Remove(row);
+            using (await PaymentIdempotency.LockAsync("student:" + byStudent.Key))
+            {
+                var s = await db.Students.FirstOrDefaultAsync(x => x.Id == byStudent.Key);
+                if (s is not null) await StudentBalanceSync.ReloadAsync(db, s);
+                var removed = new List<MonthlyCharge>();
+                foreach (var row in byStudent)
+                {
+                    if (s is not null)
+                        s.Balance += Math.Max(0m, row.Amount - row.Discount); // yaratilganda yechilgan effektivni qaytaramiz
+                    // Shu qator kontekstda allaqachon kuzatilayotgan bo'lsa — o'sha nusxa o'chiriladi.
+                    var target = db.MonthlyCharges.Local.FirstOrDefault(c => c.Id == row.Id) ?? row;
+                    db.MonthlyCharges.Remove(target);
+                    removed.Add(target);
+                }
+                try
+                {
+                    await db.SaveChangesAsync();
+                    purged += removed.Count;
+                }
+                catch (DbUpdateException ex)
+                {
+                    // Qator shu orada boshqa yo'l bilan o'chirilgan bo'lishi mumkin — bitta o'quvchi tufayli
+                    // butun oylik hisob (`AccrueDue`) to'xtamasin (`AccrueMonth` dagi bilan bir xil naqsh).
+                    foreach (var r in removed) db.MonthlyCharges.Entry(r).State = EntityState.Detached;
+                    if (s is not null) db.Students.Entry(s).State = EntityState.Detached;
+                    log?.LogWarning(ex, "Dublikat aggregate hisob: o'quvchi {StudentId} o'tkazib yuborildi", byStudent.Key);
+                }
+            }
         }
-        await db.SaveChangesAsync();
-        return dupNullRows.Count;
+        return purged;
     }
 }

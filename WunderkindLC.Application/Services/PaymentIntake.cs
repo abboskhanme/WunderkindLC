@@ -39,10 +39,13 @@ public static class PaymentIntake
         else if (parsedDate > AppClock.Today)
             return PaymentIntakeResult.Invalid("To'lov sanasi kelajakda bo'lishi mumkin emas");
 
-        // OY MAJBURIY — to'lov har doim aniq oyga bog'lanadi (per-guruh billing).
+        // OY MAJBURIY — to'lov har doim aniq oyga bog'lanadi (per-guruh billing). Ko'rinishi AYNAN "yyyy-MM":
+        // to'liq sana ("2026-08-15") boshqa kalit bo'lib, bir oyga ikkinchi hisob ochardi (`PaymentFields.IsMonth`).
         var month = (req.Month ?? "").Trim();
-        if (month.Length < 7)
+        if (month.Length == 0)
             return PaymentIntakeResult.Invalid("To'lov qaysi oy uchun ekanini tanlang");
+        if (!PaymentFields.IsMonth(month))
+            return PaymentIntakeResult.Invalid("Oy noto'g'ri (kutilgan ko'rinish: yyyy-MM)");
 
         // KARTA to'lovining haqiqiy vaqti ("HH:mm") — kiritilgan bo'lsa formati tekshiriladi.
         if (!PaymentFields.TryNormalizeTime(req.PaidTime, out var paidTime))
@@ -76,21 +79,14 @@ public static class PaymentIntake
         //   (1) boshqa faol guruhi bor o'quvchida — 400 "To'lov qaysi guruh uchun ekanini tanlang"
         //       (tanlangan eski guruh ro'yxatda yo'q edi);
         //   (2) faol guruhi BITTA bo'lsa — to'lov jimgina O'SHA (noto'g'ri) guruhga teglanardi.
-        var billableGroups = await db.StudentGroups
-            .Where(sg => sg.StudentId == student.Id && sg.Status != "trial")
-            .Select(sg => sg.GroupId).Distinct().ToListAsync();
-
-        var groupId = string.IsNullOrWhiteSpace(req.GroupId) ? null : req.GroupId.Trim();
-        if (billableGroups.Count >= 2)
-        {
-            // Bir nechta guruh — guruh MAJBURIY va o'quvchining billable guruhi bo'lishi shart.
-            if (groupId is null || !billableGroups.Contains(groupId))
-                return PaymentIntakeResult.Invalid("To'lov qaysi guruh uchun ekanini tanlang");
-        }
-        else if (billableGroups.Count == 1)
-            groupId = billableGroups[0]; // yagona guruh — avtomatik
-        else
-            groupId = null; // guruhsiz (eski ClassName) o'quvchi
+        var memberships = await db.StudentGroups.AsNoTracking()
+            .Where(sg => sg.StudentId == student.Id)
+            .Select(sg => new { sg.GroupId, sg.Status, sg.IsActive })
+            .ToListAsync();
+        var (groupId, groupError) = ResolveGroup(
+            memberships.Select(m => (m.GroupId, m.Status, m.IsActive)).ToList(), req.GroupId);
+        if (groupError is not null)
+            return PaymentIntakeResult.Invalid(groupError);
 
         // ⚠️ QULF: tekshiruv (kalit + oxirgi soniyalar) va yozish KETMA-KET bo'lishi shart. Qulfsiz
         // bir zumda kelgan ikki so'rov ikkalasi ham "dublikat yo'q" deb ko'rib, IKKI to'lov yozardi
@@ -99,9 +95,9 @@ public static class PaymentIntake
 
         // ⚠️ Balans QULF ICHIDA qayta o'qiladi: `student` controllerda qulfdan OLDIN yuklangan. Shu
         // o'quvchiga parallel boshqa pul amali (to'lov, vozvrat, o'chirish) saqlangan bo'lsa, eski
-        // qiymat ustidan yozib uning ta'sirini JIMGINA yo'qotardi.
-        student.Balance = await db.Students.AsNoTracking()
-            .Where(x => x.Id == student.Id).Select(x => x.Balance).FirstOrDefaultAsync();
+        // qiymat ustidan yozib uning ta'sirini JIMGINA yo'qotardi. `StudentBalanceSync` EF snapshot'ini ham
+        // yangilaydi — aks holda "yangi balans + to'lov" eski snapshot'ga teng chiqsa UPDATE ketmasdi.
+        await StudentBalanceSync.ReloadAsync(db, student);
 
         // So'rov kaliti — shu oynadan allaqachon yozilgan to'lov bo'lsa, o'shani qaytaramiz.
         var reqKey = PaymentIdempotency.Key("student:" + student.Id, req.RequestId);
@@ -127,6 +123,8 @@ public static class PaymentIntake
 
         // AVANS: to'lov tushadigan (guruh, oy) hisobi hali yo'q bo'lsa — shu zahoti ochamiz
         // (kelajak oyga oldindan to'lov; balans hisob miqdorida kamayadi, to'lov esa oshiradi).
+        // ⚠️ SINOVDAGI guruhga (yoki accrual yozmaydigan oyga) hisob OCHILMAYDI — pul guruh+oy tegi bilan
+        // AVANS bo'lib turadi va aktivlashtirilganda odatdagidek hisobga o'tadi (`EnsureChargeAsync`).
         await TuitionService.EnsureChargeAsync(db, student, groupId, month);
 
         student.Balance += req.Amount;
@@ -197,6 +195,42 @@ public static class PaymentIntake
 
         // Chek (kvitansiya) uchun yaratilgan tranzaksiya id'si.
         return PaymentIntakeResult.Saved(tx.Id);
+    }
+
+    /// <summary>
+    /// To'lov QAYSI GURUHGA teglanadi — sof qoida (testlangan: <c>AuditFixT3Tests</c>).
+    /// <para>Nomzodlar: sinovdan boshqa BARCHA a'zoliklar (chiqarilgan/muzlatilgan/tugatgan ham — eski qarz
+    /// keyin ham to'lanadi) <b>+ FAOL sinov a'zoliklari</b> (sinovdagi o'quvchi oldindan to'lashi mumkin —
+    /// pul o'sha guruhga AVANS bo'lib teglanadi, hisob ochilmaydi).</para>
+    /// <list type="bullet">
+    ///   <item>guruh YUBORILGAN va nomzodlar ichida — AYNAN o'sha (sinov ham);</item>
+    ///   <item>yuborilgan, lekin o'quvchining guruhi emas — XATO (jimgina boshqa guruhga tushirilmaydi);</item>
+    ///   <item>yuborilmagan: nomzod bitta — o'sha; 2+ — XATO "tanlang"; umuman yo'q — guruhsiz (eski ClassName).</item>
+    /// </list>
+    /// <para>⚠️ Ilgari sinov a'zoliklari umuman sanalmasdi: sinov + bitta ESKI guruhi bor o'quvchining to'lovi
+    /// tanlangan guruhdan qat'i nazar JIMGINA eski guruhga teglanar, faqat sinovdagi o'quvchiga esa guruhsiz
+    /// TO'LIQ hisob ochilardi (aktivlashtirish uni hech qachon o'chirmasdi).</para>
+    /// <para>A'zoligi UMUMAN yo'q (eski guruhsiz) o'quvchida yuborilgan guruh e'tiborsiz — eski xatti-harakat
+    /// (Moliya formasi bunday o'quvchiga `ClassName` bo'yicha guruhni yuborishi mumkin).</para>
+    /// </summary>
+    public static (string? GroupId, string? Error) ResolveGroup(
+        IReadOnlyCollection<(string GroupId, string Status, bool IsActive)> memberships, string? requestedGroupId)
+    {
+        if (memberships.Count == 0) return (null, null);
+        var candidates = memberships
+            .Where(m => m.Status != "trial" || m.IsActive)
+            .Select(m => m.GroupId).Distinct().ToList();
+        var requested = string.IsNullOrWhiteSpace(requestedGroupId) ? null : requestedGroupId.Trim();
+        if (requested is not null)
+            return candidates.Contains(requested)
+                ? (requested, null)
+                : (null, "Tanlangan guruh bu o'quvchiga tegishli emas — guruhni qayta tanlang");
+        return candidates.Count switch
+        {
+            0 => (null, null),
+            1 => (candidates[0], null),
+            _ => (null, "To'lov qaysi guruh uchun ekanini tanlang"),
+        };
     }
 }
 

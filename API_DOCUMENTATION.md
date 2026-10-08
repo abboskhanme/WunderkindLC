@@ -42,8 +42,7 @@ Admin controllerlar `[AdminPerm("<kalit>")]` bilan himoyalangan:
 
 ### 1.4. Ochiq (autentifikatsiyasiz) endpointlar
 `[AllowAnonymous]`: `POST /api/auth/login`, ommaviy test/brending (`/api/public/*`), landing lid
-(`/api/public/landing-lead`), SMS callback (`/api/sms/callback`), telefoniya webhook
-(`/api/telephony/moizvonki/{secret}` — maxfiy segment bilan), sertifikat tekshiruvi.
+(`/api/public/landing-lead`), SMS callback (`/api/sms/callback`), sertifikat tekshiruvi.
 
 ---
 
@@ -649,27 +648,13 @@ staff'ga GET har doim ochiq bo'lgani uchun mavjud endpointlar ishlatiladi.
 
 ---
 
-## 9. Qo'ng'iroqlar (Call Center va CTI)
+## 9. Qo'ng'iroqlar (Call Center — Local Call / CTI)
 
-### CallsController
-`api/admin/calls` · Ruxsat: `[Authorize]` + `[AdminPerm("calls")]` (`telephony/subscribe` — superadmin). Call Center — MoiZvonki (bulut) chiquvchi qo'ng'iroq + jurnal (transkript + AI).
-
-| Metod | Yo'l | Vazifasi |
-|---|---|---|
-| GET | /api/admin/calls/config | Modul holati + provayder. |
-| POST | /api/admin/calls/telephony/subscribe | (superadmin) MoiZvonki webhook obunasi. |
-| POST | /api/admin/calls/originate | Chiquvchi qo'ng'iroq (studentId yoki phoneNumber). |
-| POST | /api/admin/calls/telephony/sync | Tarixni provayderdan sinxronlaydi. |
-| GET | /api/admin/calls | Barcha qo'ng'iroqlar (filtr, sahifalash). |
-| GET | /api/admin/calls/by-number | Raqam bo'yicha guruhlangan tarix. |
-| GET | /api/admin/calls/{id}/detail | Bitta qo'ng'iroq (transkript + AI). |
-| POST | /api/admin/calls/{id}/transcribe | Yozuvni Azure bilan matnga. |
-| POST | /api/admin/calls/{id}/analyze | Transkriptni Gemini AI tahlili. |
-| GET | /api/admin/calls/student/{studentId} | O'quvchi qo'ng'iroqlari. |
-| GET | /api/admin/calls/{id}/recording | Suhbat yozuvi (provayderdan proxy). |
+Telefoniya — FAQAT Local Call (CTI). Eski bulutli telefoniya (`api/admin/calls`,
+`api/telephony`) 2026-10-08 da olib tashlandi; uning `Calls` jadvali faqat tarix sifatida qoldi.
 
 ### CtiController
-`api/cti` · Ruxsat: `[Authorize]` + `[AdminPerm("calls")]`. CTI (Local Call) OPERATOR API — agentlar, tarix, click-to-call.
+`api/cti` · Ruxsat: `[Authorize]` + `[AdminPerm("calls.local")]`; har xodim FAQAT o'ziga biriktirilgan agent(lar)ni ko'radi/eshitadi (superadmin — hammasini). CTI (Local Call) OPERATOR API — agentlar, tarix, click-to-call.
 
 | Metod | Yo'l | Vazifasi |
 |---|---|---|
@@ -694,13 +679,6 @@ staff'ga GET har doim ochiq bo'lgani uchun mavjud endpointlar ishlatiladi.
 | POST | /api/mobile/calls/{serverCallId}/events | Hodisa (ringing/answered/ended) + yozuvni yangilaydi. |
 | POST | /api/mobile/agents/heartbeat | Agent tirikligi (onlayn + faollik vaqti). |
 | POST | /api/mobile/agents/fcm-token | FCM qurilma tokenini yangilaydi. |
-
-### TelephonyWebhookController
-`api/telephony` · Ruxsat: `[AllowAnonymous]` — auth URL'dagi maxfiy segment orqali (JWT emas). MoiZvonki webhook qabul qiluvchi.
-
-| Metod | Yo'l | Vazifasi |
-|---|---|---|
-| POST | /api/telephony/moizvonki/{secret} | MoiZvonki hodisalarini qabul qiladi (start/answer/finish) + SignalR broadcast. |
 
 ---
 

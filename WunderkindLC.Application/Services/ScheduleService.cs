@@ -71,9 +71,9 @@ public class ScheduleService(IAppDbContext db)
         var (lessons, skipped) = await LoadLessonsAsync();
         var groupIds = lessons.Select(l => l.GroupId).Distinct().ToList();
 
-        // A'zolar — sig'im bilan BIR XIL ta'rif: o'rin band qilganlar (faol + sinov, muzlatilgan emas).
-        var members = await db.StudentGroups
-            .Where(MembershipLifecycle.OccupiesSeatExpr)
+        // A'zolar — sig'im bilan BIR XIL ta'rif: o'rin band qilganlar (faol + sinov, muzlatilgan emas,
+        // arxivdagi o'quvchi emas) — `MembershipLifecycle.SeatHolders`.
+        var members = await MembershipLifecycle.SeatHolders(db.StudentGroups, db.Students)
             .Where(sg => groupIds.Contains(sg.GroupId))
             .GroupBy(sg => sg.GroupId)
             .Select(g => new { g.Key, N = g.Count() })

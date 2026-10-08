@@ -380,10 +380,16 @@ function MonthlyGrid() {
     })
     // Ilgari xatoda taxta JIMGINA qayta yuklanardi — butun kun belgisi "o'z-o'zidan" qaytib,
     // sabab ko'rinmasdi (yuqoridagi `cycle` dagi bilan bir xil naqsh).
-    setTeacherAttendanceDay(date, makePresent ? 'present' : null).catch((e) => {
-      load(month)
-      alert(apiErrorMessage(e, 'Kun davomatini saqlashda xatolik'))
-    })
+    // Muvaffaqiyatdan keyin ham qayta yuklanadi: server TURNIKET yozuvlariga (qurilma dalili) va
+    // arxivdagi o'qituvchilarga tegmaydi — ekran haqiqiy holatni ko'rsatsin.
+    setTeacherAttendanceDay(date, makePresent ? 'present' : null)
+      // Jim (fon) qayta o'qish — loader ko'rsatilmaydi; xato bo'lsa optimistik holat qoladi va keyingi
+      // to'liq yuklashda tuzaladi (yozuvning o'zi muvaffaqiyatli bo'lgan).
+      .then(() => getTeacherAttendance(month).then(setBoard).catch(() => {}))
+      .catch((e) => {
+        load(month)
+        alert(apiErrorMessage(e, 'Kun davomatini saqlashda xatolik'))
+      })
   }
 
   const counts = (teacherId: string) => {

@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using WunderkindLC.Infrastructure.Data;
 using WunderkindLC.Application.Dtos;
+using WunderkindLC.Application.Services;
 using WunderkindLC.Domain;
 
 namespace WunderkindLC.Server.Controllers;
@@ -15,8 +16,17 @@ namespace WunderkindLC.Server.Controllers;
 [Authorize]
 [AdminPerm("settings.reasons")]
 [Route("api/admin/action-reasons")]
-public class ActionReasonsController(AppDbContext db) : ControllerBase
+public class ActionReasonsController(AppDbContext db, AuditService audit) : ControllerBase
 {
+    /// <summary>
+    /// Tarixdagi tur — "Sozlamalar" bo'limiga tushadi (<c>AuditSections</c>). ⚠️ Sabab katalogi
+    /// HISOBOTLARNI o'zgartiradi: <c>OutOfControl</c> bayrog'i KPI jarimasi va ketish hisobotida JONLI
+    /// o'qiladi (o'tgan oylar ham qayta hisoblanadi) — shuning uchun har yaratish/tahrir/o'chirish yoziladi.
+    /// </summary>
+    private const string AuditReason = "ActionReason";
+
+    private static object Snapshot(ActionReason r) => new { r.Category, r.Label, r.OutOfControl };
+
     /// <summary>
     /// Ruxsat etilgan kategoriyalar — <b>TARTIB MUHIM</b>: "Sabablar" sahifasi kartochkalarni
     /// shu tartibda chiqaradi.
@@ -83,6 +93,10 @@ public class ActionReasonsController(AppDbContext db) : ControllerBase
             OutOfControl = p.OutOfControl,
         };
         db.ActionReasons.Add(reason);
+        audit.Record(AuditReason, reason.Id, "create",
+            $"Sabab qo'shildi ({reason.Category}): «{reason.Label}»"
+            + (reason.OutOfControl ? " — nazoratdan tashqari" : ""),
+            after: Snapshot(reason));
         await db.SaveChangesAsync();
         return new ActionReasonDto(reason.Id, reason.Category, reason.Label, reason.Order, reason.OutOfControl);
     }
@@ -93,10 +107,21 @@ public class ActionReasonsController(AppDbContext db) : ControllerBase
         var reason = await db.ActionReasons.FindAsync(id);
         if (reason is null) return NotFound();
         if (string.IsNullOrWhiteSpace(p.Label)) return BadRequest(new { message = "Sabab nomini kiriting" });
+        var before = Snapshot(reason);
+        var oldLabel = reason.Label;
+        var oldFlag = reason.OutOfControl;
         reason.Label = p.Label.Trim();
         // ⚠️ null = "tegilmadi": faqat nomni yuboradigan eski chaqiruvchi bayroqni jimgina
         // o'chirib yubormasin (bayroq bir marta qo'yilib, keyin nom tahrirlanganda yo'qolardi).
         if (p.OutOfControl is { } flag) reason.OutOfControl = flag;
+        var changes = new List<string>();
+        if (oldLabel != reason.Label) changes.Add($"«{oldLabel}» → «{reason.Label}»");
+        if (oldFlag != reason.OutOfControl)
+            changes.Add(reason.OutOfControl ? "nazoratdan tashqari deb belgilandi" : "nazoratdan tashqari belgisi olindi");
+        if (changes.Count > 0)
+            audit.Record(AuditReason, reason.Id, "update",
+                $"Sabab tahrirlandi ({reason.Category}): «{reason.Label}» — {string.Join("; ", changes)}",
+                before: before, after: Snapshot(reason));
         await db.SaveChangesAsync();
         return NoContent();
     }
@@ -106,6 +131,10 @@ public class ActionReasonsController(AppDbContext db) : ControllerBase
     {
         var reason = await db.ActionReasons.FindAsync(id);
         if (reason is null) return NotFound();
+        audit.Record(AuditReason, reason.Id, "delete",
+            $"Sabab o'chirildi ({reason.Category}): «{reason.Label}»"
+            + (reason.OutOfControl ? " — nazoratdan tashqari edi (KPI/ketish hisobotida endi hisobga olinmaydi)" : ""),
+            before: Snapshot(reason));
         db.ActionReasons.Remove(reason);
         await db.SaveChangesAsync();
         return NoContent();

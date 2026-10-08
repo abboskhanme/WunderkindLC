@@ -206,9 +206,16 @@ export const IG_POST_STATUSES: ReadonlyArray<{ id: IgPostStatus; label: string }
   { id: 'cancelled', label: 'Bekor qilingan' },
 ]
 
-/** Faqat `scheduled` post tahrirlanadi (backend ham 400 qaytaradi, §5.9). */
+/**
+ * Post TAHRIRLANADIMI — hali Instagram'ga chiqmagan va konteyneri yo'q holatlar: `scheduled`,
+ * `failed`, `cancelled` (oxirgi ikkisi tahrirdan keyin NAVBATGA qaytadi). Serverdagi
+ * `InstagramPublishContract.IsEditableStatus` bilan AYNAN bir xil ro'yxat.
+ * ⚠️ `published` (API tahrirni qo'llamaydi) va `processing` (konteyner Meta'da) — YO'Q.
+ * Ilgari faqat `scheduled` edi va xato bilan qolgan post BOSHI BERK bo'lardi, holbuki xato
+ * matnlari "postni tahrirlab, qayta tanlang" derdi.
+ */
 export function isEditable(post: IgPost): boolean {
-  return post.status === 'scheduled'
+  return post.status === 'scheduled' || post.status === 'failed' || post.status === 'cancelled'
 }
 
 /** Media turi post turiga qarab: reels/video — video, qolgani rasm (story ikkalasi ham bo'ladi). */

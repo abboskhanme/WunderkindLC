@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { getStudentSettings, saveStudentSettings } from '@/api/services/studentPortal'
 import { getStudentTheme, setStudentTheme } from '@/components/layout/StudentMobileLayout'
 import { Icon } from '@/pages/student/lib'
+import { apiErrorMessage } from '@/lib/utils'
 
 /* ============================================================
    O'quvchi portali — SOZLAMALAR.
@@ -16,14 +17,63 @@ const LANGS: [string, string][] = [
 ]
 
 function getPush(): boolean {
-  return localStorage.getItem('student_push') !== 'off'
+  // localStorage — faqat birinchi chizish uchun taxmin; haqiqiy qiymat serverdan keladi.
+  try {
+    return localStorage.getItem('student_push') !== 'off'
+  } catch {
+    return true
+  }
 }
+
+function rememberPush(on: boolean) {
+  try {
+    localStorage.setItem('student_push', on ? 'on' : 'off')
+  } catch {
+    /* brauzer xotirasi yopiq (maxfiy rejim) — server qiymati baribir asosiy */
+  }
+}
+
+/** Komponent TASHQARIDA — render ichida yaratilsa har chizishda qayta tug'ilardi (`react-hooks/static-components`). */
+const IconBox = ({ icon, color }: { icon: string; color: string }) => (
+  <div
+    style={{
+      width: 32,
+      height: 32,
+      borderRadius: 9,
+      background: color + '22',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      flex: 'none',
+    }}
+  >
+    <Icon name={icon} size={17} color={color} />
+  </div>
+)
+
+const Group = ({ title, children }: { title: string; children: React.ReactNode }) => (
+  <div style={{ marginBottom: 18 }}>
+    <div
+      className="muted"
+      style={{ fontSize: 13, fontWeight: 800, letterSpacing: '.3px', padding: '0 4px 8px' }}
+    >
+      {title.toUpperCase()}
+    </div>
+    <div className="card" style={{ padding: 4, borderRadius: 18 }}>
+      {children}
+    </div>
+  </div>
+)
 
 export function StudentSettingsScreen() {
   const nav = useNavigate()
   const [dark, setDark] = useState<boolean>(() => getStudentTheme() === 'dark')
   const [lang, setLang] = useState<string>('uz')
   const [push, setPush] = useState<boolean>(getPush)
+  /** Saqlash xatosi — JIM QOLMAYDI: ilgari tugma "o'chdi" ko'rinardi, server esa eski holatda
+   *  qolardi (push kelaverardi). Xato bo'lsa tugma ham orqaga qaytariladi. */
+  const [saveError, setSaveError] = useState('')
+  const [saving, setSaving] = useState(false)
 
   useEffect(() => {
     let alive = true
@@ -33,9 +83,10 @@ export function StudentSettingsScreen() {
         if (s?.language) setLang(s.language)
         if (typeof s?.notificationsEnabled === 'boolean') {
           setPush(s.notificationsEnabled)
-          localStorage.setItem('student_push', s.notificationsEnabled ? 'on' : 'off')
+          rememberPush(s.notificationsEnabled)
         }
       })
+      // Fon O'QISH: xato bo'lsa sahifa standart qiymatlar bilan ishlayveradi (saqlash xatosi alohida ko'rsatiladi).
       .catch(() => {})
     return () => {
       alive = false
@@ -48,48 +99,41 @@ export function StudentSettingsScreen() {
     setStudentTheme(next ? 'dark' : 'light')
   }
 
-  const pickLang = (l: string) => {
+  // OPTIMISTIK yangilash — xato bo'lsa ESKI holatga qaytariladi va sabab ko'rsatiladi
+  // (`.claude/rules/error-visibility.md` §3).
+  const pickLang = async (l: string) => {
+    if (saving || l === lang) return
+    const prev = lang
     setLang(l)
-    saveStudentSettings({ language: l }).catch(() => {})
+    setSaveError('')
+    setSaving(true)
+    try {
+      await saveStudentSettings({ language: l })
+    } catch (e) {
+      setLang(prev)
+      setSaveError(apiErrorMessage(e, "Tilni saqlab bo'lmadi"))
+    } finally {
+      setSaving(false)
+    }
   }
 
-  const togglePush = () => {
+  const togglePush = async () => {
+    if (saving) return
+    const prev = push
     const next = !push
     setPush(next)
-    localStorage.setItem('student_push', next ? 'on' : 'off')
-    saveStudentSettings({ notificationsEnabled: next }).catch(() => {})
+    setSaveError('')
+    setSaving(true)
+    try {
+      await saveStudentSettings({ notificationsEnabled: next })
+      rememberPush(next)
+    } catch (e) {
+      setPush(prev)
+      setSaveError(apiErrorMessage(e, "Bildirishnoma sozlamasini saqlab bo'lmadi"))
+    } finally {
+      setSaving(false)
+    }
   }
-
-  const IconBox = ({ icon, color }: { icon: string; color: string }) => (
-    <div
-      style={{
-        width: 32,
-        height: 32,
-        borderRadius: 9,
-        background: color + '22',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        flex: 'none',
-      }}
-    >
-      <Icon name={icon} size={17} color={color} />
-    </div>
-  )
-
-  const Group = ({ title, children }: { title: string; children: React.ReactNode }) => (
-    <div style={{ marginBottom: 18 }}>
-      <div
-        className="muted"
-        style={{ fontSize: 13, fontWeight: 800, letterSpacing: '.3px', padding: '0 4px 8px' }}
-      >
-        {title.toUpperCase()}
-      </div>
-      <div className="card" style={{ padding: 4, borderRadius: 18 }}>
-        {children}
-      </div>
-    </div>
-  )
 
   return (
     <div className="screen">
@@ -105,6 +149,11 @@ export function StudentSettingsScreen() {
       </div>
 
       <div className="scroll pad" style={{ paddingBottom: 24 }}>
+        {saveError && (
+          <div role="alert" style={{ color: 'var(--red)', fontSize: 13, fontWeight: 600, margin: '0 4px 14px' }}>
+            {saveError}
+          </div>
+        )}
         {/* Ko'rinish */}
         <Group title="Ko'rinish">
           <div className="row gap12" style={{ padding: '12px 11px' }}>
@@ -149,7 +198,7 @@ export function StudentSettingsScreen() {
             <div style={{ flex: 1 }}>
               <div style={{ fontSize: 14.5, fontWeight: 700 }}>Push bildirishnoma</div>
               <div className="muted" style={{ fontSize: 12 }}>
-                Yangi baho va xabar
+                {push ? 'Yangi baho va xabar' : "O'chirilgan — telefonga push kelmaydi"}
               </div>
             </div>
             <div className={'switch press' + (push ? ' on' : '')} onClick={togglePush}>

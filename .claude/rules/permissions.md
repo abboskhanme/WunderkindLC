@@ -151,7 +151,7 @@ turmaydi.
 | `messages` | `.broadcast` `.chat` `.support` | `MessagesController` (+ `chat` metodi) · `AutoMessagesController` · `BotSupportController` |
 | `app` | `.aiCheck` `.support` `.locations` `.parents` `.teachers` | `AiCheckController` · `SupportController` · `LocationsController` · `ParentsController` · `AppTeachersController` |
 | `finance` | `.main` `.bonus` `.discounts` | `FinanceController` · `RetentionBonusController` · `DiscountReportController` |
-| `calls` | `.cloud` `.local` | `CallsController` · `Cti/CtiController` |
+| `calls` | `.local` | `Cti/CtiController` (bulutli `.cloud` 2026-10-08 da modul bilan birga olib tashlandi — `README-CTI.md`) |
 | `tasks` | `.board` `.dashboard` `.settings` | `WorkTasksController` (metod darajasida) |
 | `kpi` | `.today` `.month` `.tickets` `.close` `.rules` | `KpiController` (metod darajasida) |
 | `settings` | `.school` `.landing` `.reasons` `.channels` `.backup` `.apk` `.azure-speech` `.gemini` `.check` `.turnstile` `.cameras` `.posthog` `.archive` | `SettingsController` (metod darajasida) · `LandingCmsController` · `ActionReasonsController` · `LeadSourcesController` · `ArchiveController` |
@@ -174,8 +174,13 @@ jadvalda controller ko'rsatilmagan).
   KO'RMAYDI, faqat superadmin va ANIQ ruxsat berilgan xodim. Sahifa kalitlari bu yerda
   ishlatilmaydi (bo'lim ham, sahifa ham emas — bitta yalang kalit).
 - **`HasFullAccess` / `HasFullSection`** — faqat YALANG kalit (barcha amallar): parol eksporti,
-  xodim ruxsatini o'zgartirish. Bo'limdan sahifaga meros bu yerda ham ishlaydi
-  (`students` → `students.list`), lekin sahifadan bo'limga YO'Q.
+  login/parolni ko'rish, parolni tiklash/o'rnatish, xodim ruxsatini o'zgartirish. Bo'limdan
+  sahifaga meros bu yerda ham ishlaydi (`students` → `students.list`), lekin sahifadan bo'limga YO'Q.
+  ⚠️ 2026-10-07 gacha `AdminPermAttribute.HasFullAccess` faqat AYNAN tenglikni tekshirardi (meros
+  faqat shu hujjatda bor edi): standart "Administrator" roli (yalang `students`, `teachers`)
+  login/parol va eksportda 403 olardi, torroq `students.list` esa o'tardi. Endi u
+  `PermissionRules.HasFullSection` ni chaqiradi (testlangan). Klientdagi nusxa:
+  `StaffPage.canTeacherCreds`.
 
 ## 9. Nima O'ZGARDI (2026-08-19)
 

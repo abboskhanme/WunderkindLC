@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
-import { MessageSquareWarning, Lightbulb, CheckCircle2, GraduationCap, Users, Inbox } from 'lucide-react'
+import { MessageSquareWarning, Lightbulb, CheckCircle2, GraduationCap, Users, Inbox, RotateCcw } from 'lucide-react'
 import type { Feedback } from '@/types'
-import { getFeedback, resolveFeedback } from '@/api/services/feedback'
-import { formatDate, cn } from '@/lib/utils'
+import { getFeedback, reopenFeedback, resolveFeedback } from '@/api/services/feedback'
+import { formatDate, cn, apiErrorMessage } from '@/lib/utils'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
@@ -20,18 +20,38 @@ export function FeedbackPage() {
   const [type, setType] = useState<TypeFilter>('')
   const [status, setStatus] = useState<StatusFilter>('')
 
+  const [error, setError] = useState('')
+  const [busyId, setBusyId] = useState<string | null>(null)
+
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- filtr o'zgarganda qayta yuklash (maqsadli)
     setLoading(true)
+    setError('')
     getFeedback(type, status)
       .then(setItems)
+      .catch((err) => setError(apiErrorMessage(err, "Murojaatlarni yuklab bo'lmadi")))
       .finally(() => setLoading(false))
   }, [type, status])
 
-  const resolve = (id: string) => {
-    resolveFeedback(id).then(() =>
-      setItems((p) => p.map((f) => (f.id === id ? { ...f, status: 'resolved' } : f))),
-    )
+  /** Holatni o'zgartirish — ekran FAQAT muvaffaqiyatdan keyin yangilanadi (yolg'on "hal qilindi"
+   *  ko'rinmasin); xato bo'lsa sabab ochiq ko'rsatiladi (error-visibility.md). */
+  const setFeedbackStatus = async (id: string, next: 'resolved' | 'new') => {
+    if (busyId) return
+    setBusyId(id)
+    try {
+      if (next === 'resolved') await resolveFeedback(id)
+      else await reopenFeedback(id)
+      setItems((p) =>
+        // Holat filtri yoqilgan bo'lsa, o'zgargan murojaat ro'yxatdan chiqadi.
+        status && status !== next
+          ? p.filter((f) => f.id !== id)
+          : p.map((f) => (f.id === id ? { ...f, status: next } : f)),
+      )
+    } catch (err) {
+      alert(apiErrorMessage(err, next === 'resolved' ? "Belgilab bo'lmadi" : "Qayta ochib bo'lmadi"))
+    } finally {
+      setBusyId(null)
+    }
   }
 
   return (
@@ -90,6 +110,10 @@ export function FeedbackPage() {
         </div>
       </div>
 
+      {error && (
+        <div className="mb-3 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
+      )}
+
       {loading ? (
         <Card>
           <Loader label="Yuklanmoqda..." />
@@ -137,8 +161,13 @@ export function FeedbackPage() {
                   )}
                 </div>
                 {f.status === 'new' && can('feedback', 'edit') && (
-                  <Button variant="secondary" onClick={() => resolve(f.id)}>
+                  <Button variant="secondary" disabled={busyId === f.id} onClick={() => setFeedbackStatus(f.id, 'resolved')}>
                     <CheckCircle2 className="h-4 w-4" /> Hal qilindi
+                  </Button>
+                )}
+                {f.status === 'resolved' && can('feedback', 'edit') && (
+                  <Button variant="secondary" disabled={busyId === f.id} onClick={() => setFeedbackStatus(f.id, 'new')}>
+                    <RotateCcw className="h-4 w-4" /> Qayta ochish
                   </Button>
                 )}
               </div>

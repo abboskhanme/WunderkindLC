@@ -54,6 +54,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options)
     public DbSet<GroupGradingCriterion> GroupGradingCriteria => Set<GroupGradingCriterion>();
     public DbSet<CriterionGrade> CriterionGrades => Set<CriterionGrade>();
     public DbSet<StudentBallAdjustment> StudentBallAdjustments => Set<StudentBallAdjustment>();
+    public DbSet<LessonReminderMark> LessonReminderMarks => Set<LessonReminderMark>();
     public DbSet<FinanceTransaction> FinanceTransactions => Set<FinanceTransaction>();
     public DbSet<TransactionType> TransactionTypes => Set<TransactionType>();
     public DbSet<PlannedExpense> PlannedExpenses => Set<PlannedExpense>();
@@ -163,11 +164,17 @@ public class AppDbContext(DbContextOptions<AppDbContext> options)
     public DbSet<SmsBatch> SmsBatches => Set<SmsBatch>();
     public DbSet<SmsLog> SmsLogs => Set<SmsLog>();
     public DbSet<SmsTemplate> SmsTemplates => Set<SmsTemplate>();
+    // Ommaviy SMS navbati (bazada) + kunlik fon ishlari belgisi (MessagingJobEntities.cs)
+    public DbSet<SmsQueueJob> SmsQueueJobs => Set<SmsQueueJob>();
+    public DbSet<SmsQueueItem> SmsQueueItems => Set<SmsQueueItem>();
+    public DbSet<BackgroundJobRun> BackgroundJobRuns => Set<BackgroundJobRun>();
+    // Ommaviy davomat xabarlari navbati (bazada — restartda qolgani yuboriladi). Entities.AttendanceNotify.cs
+    public DbSet<AttendanceNotifyItem> AttendanceNotifyItems => Set<AttendanceNotifyItem>();
 
     // Avto-xabarlar (yagona model: SMS+Push+Telegram)
     public DbSet<AutoMessageRule> AutoMessageRules => Set<AutoMessageRule>();
 
-    // Call Center — qo'ng'iroqlar jurnali
+    // Eski bulutli telefoniya qo'ng'iroqlari — FAQAT TARIX (endi yozilmaydi; jonli — CtiCallRecords)
     public DbSet<Call> Calls => Set<Call>();
 
     // CTI (Local Call) — Android agent-ilovalar (xodim telefonlari) bilan lokal call-center
@@ -331,6 +338,9 @@ public class AppDbContext(DbContextOptions<AppDbContext> options)
         // Kitob sotuvidan avtomatik yozilgan kirim/qaytarish — buyurtma bo'yicha topiladi (`BookFinance`).
         b.Entity<FinanceTransaction>().Property(x => x.BookOrderId).HasMaxLength(200);
         b.Entity<FinanceTransaction>().HasIndex(x => x.BookOrderId);
+        // Bo'lingan to'lov oilasi (guruh almashtirishdagi avans bo'linishi) — ildiz bo'yicha topiladi (`PaymentSplits`).
+        b.Entity<FinanceTransaction>().Property(x => x.SplitFromId).HasMaxLength(200);
+        b.Entity<FinanceTransaction>().HasIndex(x => x.SplitFromId);
         // KASSADAN KASSAGA KO'CHIRISH — kirim/chiqim EMAS, alohida jadval (`FinanceEntities.cs` izohi).
         // Bekor qilingani qoldiqqa kirmaydi (FinanceTransaction bilan bir xil global filtr).
         b.Entity<CashboxTransfer>().Property(x => x.Id).HasMaxLength(200);
@@ -444,6 +454,11 @@ public class AppDbContext(DbContextOptions<AppDbContext> options)
         b.Entity<GroupGradingCriterion>().HasIndex(g => new { g.GroupId, g.CriterionId }).IsUnique();
         b.Entity<CriterionGrade>().HasIndex(g => new { g.GroupId, g.StudentId, g.CriterionId, g.Date }).IsUnique();
         b.Entity<CriterionGrade>().HasIndex(g => new { g.GroupId, g.Date });
+        // Davomat eslatmasi belgisi: kalit UNIKAL — ikki nusxa (yoki qayta yuklash) bir eslatmani ikki marta yubormasin.
+        b.Entity<LessonReminderMark>().Property(m => m.Key).HasMaxLength(300);
+        b.Entity<LessonReminderMark>().HasIndex(m => m.Key).IsUnique();
+        b.Entity<LessonReminderMark>().Property(m => m.Date).HasMaxLength(10);
+        b.Entity<LessonReminderMark>().HasIndex(m => m.Date);
         // Ballni qo'lda tuzatish: hisob HAR DOIM (o'quvchi, guruh) kesimida o'qiladi.
         b.Entity<StudentBallAdjustment>().Property(a => a.StudentId).HasMaxLength(200);
         b.Entity<StudentBallAdjustment>().Property(a => a.GroupId).HasMaxLength(200);
@@ -650,7 +665,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options)
         b.Entity<CenterAiAnalysis>().HasIndex(a => a.Date);
         b.Entity<SmsLog>().HasIndex(s => s.RequestId);
         b.Entity<SmsLog>().HasIndex(s => s.BatchId);
-        // Call Center: o'quvchi tarixi, raqam bo'yicha moslash, "eng oxirgisi tepada" ro'yxat.
+        // Eski bulutli telefoniya tarixi (Calls): o'quvchi tarixi, raqam bo'yicha moslash, vaqt.
         b.Entity<Call>().HasIndex(c => c.StudentId);
         b.Entity<Call>().HasIndex(c => c.PhoneNumber);
         b.Entity<Call>().HasIndex(c => c.StartedAt);
@@ -1070,6 +1085,32 @@ public class AppDbContext(DbContextOptions<AppDbContext> options)
         b.Entity<StudentExtension>().Property(x => x.Date).HasMaxLength(32);
         b.Entity<StudentExtension>().HasIndex(x => x.StudentId);
         b.Entity<StudentExtension>().HasIndex(x => x.Date);
+
+        // Kunlik fon ishlari belgisi — kalit PK, sana concurrency token (atomik "band qilish":
+        // ikki nusxa bir vaqtda yuborishni boshlasa faqat bittasi o'tadi). MessagingJobEntities.cs.
+        b.Entity<BackgroundJobRun>().HasKey(x => x.Key);
+        b.Entity<BackgroundJobRun>().Property(x => x.Key).HasMaxLength(200);
+        b.Entity<BackgroundJobRun>().Property(x => x.LastRunDate).HasMaxLength(10).IsConcurrencyToken();
+
+        // Ommaviy SMS navbati — restartda tugamagan partiya davom ettiriladi.
+        b.Entity<SmsQueueJob>().HasKey(x => x.BatchId);
+        b.Entity<SmsQueueJob>().Property(x => x.BatchId).HasMaxLength(200);
+        b.Entity<SmsQueueJob>().Property(x => x.State).HasMaxLength(32);
+        b.Entity<SmsQueueJob>().HasIndex(x => x.State);
+        b.Entity<SmsQueueItem>().Property(x => x.BatchId).HasMaxLength(200);
+        b.Entity<SmsQueueItem>().Property(x => x.Status).HasMaxLength(32).IsConcurrencyToken();
+        b.Entity<SmsQueueItem>().HasIndex(x => new { x.BatchId, x.Seq });
+
+        // Ommaviy davomat xabarlari navbati — jurnal yozuvi bilan BITTA SaveChanges da yoziladi,
+        // fon ishchisi `pending` larni yuboradi (Status — concurrency token: band qilish atomik).
+        b.Entity<AttendanceNotifyItem>().Property(x => x.Kind).HasMaxLength(16);
+        b.Entity<AttendanceNotifyItem>().Property(x => x.ClassId).HasMaxLength(200);
+        b.Entity<AttendanceNotifyItem>().Property(x => x.SubjectId).HasMaxLength(200);
+        b.Entity<AttendanceNotifyItem>().Property(x => x.Date).HasMaxLength(10);
+        b.Entity<AttendanceNotifyItem>().Property(x => x.ReasonId).HasMaxLength(200);
+        b.Entity<AttendanceNotifyItem>().Property(x => x.StudentId).HasMaxLength(200);
+        b.Entity<AttendanceNotifyItem>().Property(x => x.Status).HasMaxLength(16).IsConcurrencyToken();
+        b.Entity<AttendanceNotifyItem>().HasIndex(x => new { x.Status, x.CreatedAt });
     }
 
     // ==================== Saqlashdan oldingi normalizatsiya ====================

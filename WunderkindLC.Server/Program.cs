@@ -458,16 +458,9 @@ builder.Services.AddSingleton<FcmService>();
 builder.Services.AddSingleton<EskizService>();
 // YAGONA avto-xabar dispatcheri (SMS+Push+Telegram) — Eskiz/Fcm/Telegram singletonlariga tayanadi.
 builder.Services.AddSingleton<AutoMessageService>();
-// MoiZvonki (bulutli telefoniya — operator telefoni orqali) — YAGONA telefoniya provayderi.
-// REST mijoz + webhook avto-obuna. Sozlanmagan bo'lsa Call Center moduli o'chiq (CallsController.Provider).
-builder.Services.AddSingleton<MoiZvonkiService>();
-builder.Services.AddHostedService<MoiZvonkiSetupService>();
-// Qo'ng'iroqlar TARIXI sinxroni (calls.list) — webhook'siz ham tarix to'ladi; singleton
-// sifatida ham ro'yxatda (controller qo'lda "Yangilash"da SyncOnceAsync'ni chaqiradi).
-builder.Services.AddSingleton<MoiZvonkiCallSyncService>();
-builder.Services.AddHostedService(sp => sp.GetRequiredService<MoiZvonkiCallSyncService>());
-
-// CTI (Local Call) — Android agent WebSocket ulanishlarini boshqaruvchi (jonli onlayn + dial buyruq).
+// CTI (Local Call) — YAGONA telefoniya: Android agent WebSocket ulanishlarini boshqaruvchi
+// (jonli onlayn + dial buyruq). Eski bulutli telefoniya 2026-10-08 da butunlay olib tashlandi
+// (README-CTI.md); uning `Calls` jadvali faqat TARIX sifatida qoldi.
 builder.Services.AddSingleton<CtiConnectionManager>();
 // Local SMS — agent telefonining SIM-kartasidan (send_sms) — Eskiz'ga muqobil provider sifatida
 // MessagesController/AutoMessageService/CtiController tomonidan ishlatiladi.
@@ -478,6 +471,10 @@ builder.Services.AddSingleton<CtiSmsService>();
 // nusxa: controller unga navbatga qo'yadi, ishchi esa bittalab yuboradi.
 builder.Services.AddSingleton<SmsQueueService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<SmsQueueService>());
+// OMMAVIY DAVOMAT XABARLARI — navbat BAZADA (AttendanceNotifyItem), ishchi restartdan keyin qolganini
+// yuboradi. Singleton + fon ishchisi bir xil nusxa: jurnal controllerlari saqlagach `Wake()` qiladi.
+builder.Services.AddSingleton<WunderkindLC.Application.Services.AttendanceNotifyWorker>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<WunderkindLC.Application.Services.AttendanceNotifyWorker>());
 
 // O'zgarishlar tarixi (audit) — joriy foydalanuvchini aniqlash uchun HttpContext kerak
 builder.Services.AddHttpContextAccessor();
@@ -523,6 +520,9 @@ builder.Services.AddScoped<WunderkindLC.Application.Services.ScheduleService>();
 
 // Kamera (videokuzatuv) media-shlyuzi (MediaMTX) bilan ishlash
 builder.Services.AddHttpClient<WunderkindLC.Application.Services.CameraGateway>();
+// Kameralarni shlyuzga startupda va har 10 daqiqada QAYTA yuborish — MediaMTX yo'llari faqat uning
+// xotirasida, shlyuz qayta ishga tushsa 24/7 yozuv jimgina to'xtardi (cameras.md §2.5).
+builder.Services.AddHostedService<WunderkindLC.Application.Services.CameraResyncService>();
 // NVR arxivi — o'z HttpClient'ini ichida yaratadi (Digest auth uchun NetworkCredential kerak,
 // turniketdagi naqsh bilan bir xil), shuning uchun oddiy singleton.
 builder.Services.AddSingleton<WunderkindLC.Application.Services.NvrArchiveService>();
@@ -792,6 +792,20 @@ try
 catch (Exception ex)
 {
     app.Logger.LogWarning(ex, "[seed] moslashuv katalogi seed qilinmadi (migratsiya qo'llanmagan bo'lsa normal)");
+}
+
+// ARXIV SURATLARIDAGI MAXFIY MAYDONLAR — eski (2026-10-07 gacha) xodim suratlarida parol xeshi va OCHIQ
+// dastlabki parol turardi, ular tungi JSON zaxirasiga ham tushardi (`ArchiveService.StripSecrets`).
+// IDEMPOTENT: tozalangan yozuv qayta topilmaydi. TRY-CATCH: jadval yo'q bo'lsa logga yozib o'tadi.
+try
+{
+    var scrubbed = await ArchiveService.ScrubStoredSecretsAsync(db);
+    if (scrubbed > 0)
+        app.Logger.LogInformation("[seed] {Count} ta arxiv suratidan parol/token maydonlari olib tashlandi", scrubbed);
+}
+catch (Exception ex)
+{
+    app.Logger.LogWarning(ex, "[seed] arxiv suratlari tozalanmadi");
 }
 
 // KASSALAR — «Asosiy kassa» (zaxira kassa, `Id = "main"`) HAR DOIM bo'lsin: mas'uli yo'q to'lov shu
@@ -1345,6 +1359,17 @@ app.Map("/ws", wsApp => wsApp.Run(async ctx =>
     {
         ctx.Response.StatusCode = StatusCodes.Status401Unauthorized;
         return;
+    }
+    // ⚠️ Token imzosi yetmaydi: o'chirilgan agent 12 soatlik token bilan qayta ulanib
+    // dial/SMS buyruqlarini olaverardi. Bazadagi holat tekshiriladi.
+    using (var agentScope = ctx.RequestServices.CreateScope())
+    {
+        var agentDb = agentScope.ServiceProvider.GetRequiredService<AppDbContext>();
+        if (!await agentDb.CtiAgents.AsNoTracking().AnyAsync(a => a.Id == agentId && a.IsActive))
+        {
+            ctx.Response.StatusCode = StatusCodes.Status401Unauthorized;
+            return;
+        }
     }
 
     var manager = ctx.RequestServices.GetRequiredService<CtiConnectionManager>();

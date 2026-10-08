@@ -4,6 +4,7 @@ import { Wallet } from 'lucide-react'
 import { getGroupPayments, type GroupPaymentsReport } from '@/api/services/finance'
 import { cn, formatMoney, apiErrorMessage } from '@/lib/utils'
 import type { BackState } from '@/lib/nav'
+import { localIsoDate } from '@/lib/localDate'
 import { Card } from '@/components/ui/Card'
 import { Loader } from '@/components/ui/Loader'
 import { monthLabel } from './shared'
@@ -36,7 +37,7 @@ export function GroupPaymentsTab({
   months: string[]
   defaultMonth: string
 }) {
-  const fallbackMonth = new Date().toISOString().slice(0, 7)
+  const fallbackMonth = localIsoDate(new Date()).slice(0, 7)
   const [month, setMonth] = useState(defaultMonth || months[months.length - 1] || fallbackMonth)
   const [report, setReport] = useState<GroupPaymentsReport | null>(null)
   const [loading, setLoading] = useState(true)

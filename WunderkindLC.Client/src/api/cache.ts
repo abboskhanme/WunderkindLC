@@ -191,9 +191,12 @@ const CROSS_INVALIDATION: Record<string, string[]> = {
   '/admin/rooms': ['/admin/classes', '/admin/schedule'],
 
   /* ─────────── LID · MARKETING ─────────── */
-  // `POST /admin/leads/{id}/convert` lidni O'QUVCHIGA aylantiradi.
+  // `POST /admin/leads/{id}/convert` lidni O'QUVCHIGA aylantiradi — o'quvchi + guruh a'zoligi
+  // (jurnal ro'yxati, qabul cheklisti, kurs analitikasi) ham o'zgaradi; lid o'chirilsa Instagram
+  // suhbati/reklama lidining lid bog'lanishi tozalanadi.
   '/admin/leads': ['/admin/students', '/admin/classes', '/admin/lead-forms', '/admin/lead-sources',
-    '/admin/lead-stages', '/admin/level-tests'],
+    '/admin/lead-stages', '/admin/level-tests', '/admin/student-intake', '/admin/journal',
+    '/admin/course-analytics', '/admin/instagram'],
   // Bosqich/manba nomlari lid qatorlariga denormalizatsiya qilingan.
   '/admin/lead-stages': ['/admin/leads', '/admin/lead-forms'],
   '/admin/lead-sources': ['/admin/leads', '/admin/lead-forms'],
@@ -209,9 +212,9 @@ const CROSS_INVALIDATION: Record<string, string[]> = {
   '/admin/contacts': ['/admin/students'],
   // O'qituvchi jurnaldan navbatga yuboradi — natija FAQAT admin modulida ko'rinadi (§3.7).
   '/teacher/groups': ['/admin/contacts', '/admin/students', '/admin/classes'],
-  // Qo'ng'iroqlar: `/cti` — o'sha yozuvlarga IKKINCHI eshik.
-  '/admin/calls': ['/admin/students', '/admin/contacts'],
-  '/cti': ['/admin/calls', '/admin/students', '/admin/contacts'],
+  // Qo'ng'iroqlar (Local Call): o'quvchi profilining qo'ng'iroqlar tarixi, «Bog'lanish kerak» va
+  // KPI sifat namunasi (transkript/AI tahlil) shu yozuvlarni o'qiydi.
+  '/cti': ['/admin/students', '/admin/contacts', '/admin/kpi'],
   // Xabar/SMS/push yuborilishi qabul qiluvchining portal ro'yxatlarida ko'rinadi.
   '/admin/messages': ['/admin/students', '/admin/notifications', '/student', '/teacher'],
   '/admin/reminders': ['/admin/messages'],

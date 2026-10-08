@@ -322,6 +322,8 @@ export interface LocalSmsConfig {
   defaultAgentId: string | null
   /** Massaviy yuborishda ikkita SMS orasidagi kutish (soniya). 0 = kutishsiz. */
   delaySeconds: number
+  /** Standart agent o'chirilgan/topilmagan/tanlanmagan — avtomatik Local SMS'lar to'xtagan (banner matni). */
+  defaultAgentProblem?: string | null
 }
 export async function getLocalSmsSettings(): Promise<LocalSmsConfig> {
   if (USE_MOCK) {

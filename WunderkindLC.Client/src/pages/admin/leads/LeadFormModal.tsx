@@ -1,11 +1,12 @@
-import { Children, type ReactNode } from 'react'
+import { Children, useState, type ReactNode } from 'react'
+import { Link } from 'react-router-dom'
 import type { Lead } from '@/types'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Input, Select, Textarea } from '@/components/ui/Input'
 import { PhoneInput } from '@/components/ui/PhoneInput'
 import { genderOptions } from '@/config/constants'
-import type { LeadAnswersPayload } from '@/api/services/leads'
+import { duplicateLeadsOf, type DuplicateLead, type LeadAnswersPayload } from '@/api/services/leads'
 import { LeadCustomAnswer } from './LeadCustomAnswer'
 import { leadErrorText, useLeadEntryForm, type LeadFormValues } from './useLeadEntryForm'
 
@@ -19,7 +20,7 @@ interface Props {
    * xatoda esa OCHIQ qoladi va xato matnini ko'rsatadi (ilgari xato umuman ko'rinmasdi:
    * menejer "saqlandi" deb o'ylab ketardi, lid esa yozilmagan bo'lardi).
    */
-  onSubmit: (values: LeadFormValues, answers: LeadAnswersPayload) => Promise<void>
+  onSubmit: (values: LeadFormValues, answers: LeadAnswersPayload, opts?: { force?: boolean }) => Promise<void>
   /** Tahrirlash uchun mavjud lid, qo'shish uchun null */
   initial?: Lead | null
 }
@@ -48,9 +49,15 @@ export function LeadFormModal({ open, onClose, onSubmit, initial }: Props) {
     form, update, sourceOptions, courseOptions, fields, answers,
     setAnswer, toggleAnswer, show, req, validate, saving, setSaving, error, setError,
   } = useLeadEntryForm(open, initial)
+  /** Shu raqamli MAVJUD lid(lar) — server 409 qaytarsa (CRM-6). «Baribir yaratish» — `force`. */
+  const [duplicates, setDuplicates] = useState<DuplicateLead[] | null>(null)
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
+  const close = () => {
+    setDuplicates(null)
+    onClose()
+  }
+
+  const submit = async (force: boolean) => {
     if (saving) return
     const problem = validate()
     if (problem) {
@@ -60,24 +67,31 @@ export function LeadFormModal({ open, onClose, onSubmit, initial }: Props) {
     setError(null)
     setSaving(true)
     try {
-      await onSubmit(form, answers)
-      onClose()
+      await onSubmit(form, answers, { force })
+      close()
     } catch (err) {
       // Modal OCHIQ qoladi — kiritilgan ma'lumot yo'qolmasin, xato esa tepada ko'rinadi.
-      setError(leadErrorText(err))
+      const dups = duplicateLeadsOf(err)
+      if (dups) setDuplicates(dups)
+      else setError(leadErrorText(err))
     } finally {
       setSaving(false)
     }
   }
 
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    void submit(false)
+  }
+
   return (
     <Modal
       open={open}
-      onClose={onClose}
+      onClose={close}
       title={initial ? 'Lidni tahrirlash' : 'Yangi lid'}
       footer={
         <>
-          <Button variant="secondary" onClick={onClose} disabled={saving}>
+          <Button variant="secondary" onClick={close} disabled={saving}>
             Bekor qilish
           </Button>
           <Button type="submit" form="lead-form" disabled={saving}>
@@ -91,6 +105,29 @@ export function LeadFormModal({ open, onClose, onSubmit, initial }: Props) {
           <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
             {error}
           </p>
+        )}
+        {duplicates && (
+          <div className="space-y-1.5 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+            <p className="font-semibold">Bu raqamli lid allaqachon bor</p>
+            <ul className="space-y-0.5">
+              {duplicates.map((d) => (
+                <li key={d.id}>
+                  <Link to={`/admin/leads/${d.id}`} className="font-medium text-brand-600 hover:underline">
+                    {d.fullName || 'Ismsiz lid'}
+                  </Link>
+                  <span className="text-xs text-slate-500">
+                    {d.converted ? " · o'quvchiga aylantirilgan" : d.lost ? " · yo'qotilgan" : d.stage ? ` · ${d.stage}` : ''}
+                  </span>
+                </li>
+              ))}
+            </ul>
+            <p className="text-xs text-amber-800">
+              Boshqa odam bo'lsa (masalan aka-uka bir raqamda) — baribir yaratishingiz mumkin.
+            </p>
+            <Button type="button" variant="secondary" className="text-xs" disabled={saving} onClick={() => void submit(true)}>
+              Baribir yaratish
+            </Button>
+          </div>
         )}
         {/* F.I.SH — sozlamada yashirib ham, ixtiyoriy qilib ham bo'lmaydi (`locked`). */}
         <Input

@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.Filters;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using WunderkindLC.Application.Dtos;
@@ -21,8 +22,35 @@ namespace WunderkindLC.Server.Controllers.Cti;
 [Route("api/mobile")]
 [Authorize(Roles = Roles.CtiAgent)]
 public class CtiMobileController(
-    AppDbContext db, JwtTokenService jwt, IConfiguration config, IWebHostEnvironment env) : ControllerBase
+    AppDbContext db, JwtTokenService jwt, IConfiguration config, IWebHostEnvironment env)
+    : ControllerBase, IAsyncActionFilter
 {
+    /// <summary>
+    /// HAR so'rovda (login'dan tashqari) agent hali FAOLmi — tekshiriladi.
+    /// </summary>
+    /// <remarks>
+    /// ⚠️ Token 12 soat yashaydi: ilgari agent o'chirilsa ham u token bilan qo'ng'iroq/audio
+    /// yuklash, heartbeat va FCM token yangilash ishlayverardi. O'chirilgan (yoki o'chirib
+    /// yuborilgan) agent <b>401</b> oladi — ilova login ekraniga qaytadi.
+    /// </remarks>
+    [NonAction]
+    public async Task OnActionExecutionAsync(ActionExecutingContext context, ActionExecutionDelegate next)
+    {
+        var anonymous = context.ActionDescriptor.EndpointMetadata
+            .OfType<Microsoft.AspNetCore.Authorization.IAllowAnonymous>().Any();
+        if (!anonymous)
+        {
+            var id = AgentId;
+            var active = id.Length > 0 && await db.CtiAgents.AsNoTracking().AnyAsync(a => a.Id == id && a.IsActive);
+            if (!active)
+            {
+                context.Result = Unauthorized(new { message = "Agent o'chirilgan — administratorga murojaat qiling." });
+                return;
+            }
+        }
+        await next();
+    }
+
     /// <summary>Ruxsat etilgan audio kengaytmalar (Guid asosli fayl nomi — path-traversal xavfi yo'q).</summary>
     private static readonly HashSet<string> AllowedAudioExt =
         new(StringComparer.OrdinalIgnoreCase) { ".mp3", ".m4a", ".amr", ".wav", ".ogg", ".aac", ".3gp" };

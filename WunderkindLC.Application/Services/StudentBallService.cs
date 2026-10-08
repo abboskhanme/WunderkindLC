@@ -26,6 +26,13 @@ namespace WunderkindLC.Application.Services;
 ///
 /// Manbalar: <see cref="JournalEntry.Grade"/> (jurnal bahosi), <see cref="CriterionGrade"/>
 /// (<c>Done=true</c> belgilangan baholash mezonlari) va <see cref="StudentBallAdjustment"/>.
+///
+/// <para>⚠️ <b>BIR CHECK — BIR MARTA.</b> Mezon belgilansa jurnal bahosi ham avtomatik yoziladi
+/// (checklar soni, <see cref="JournalEntry.GradeFromCriteria"/> = true). Bunday baho "Σ jurnal
+/// baholari"ga QO'SHILMAYDI — o'sha checklar "Σ mezonlar"da allaqachon bor. Ilgari ikkalasi ham
+/// sanalardi va mezon ishlatadigan guruh o'quvchilari reytingda IKKI barobar ball olardi. Qo'lda
+/// qo'yilgan baho (<c>GradeFromCriteria = false</c>) odatdagidek qo'shiladi. Klient (guruh
+/// "Reyting" tabi, <c>lib/studentBall.ts</c>) AYNAN shu qoidada.</para>
 /// </summary>
 public static class StudentBallService
 {
@@ -75,8 +82,9 @@ public static class StudentBallService
         // Bo'sh satr = filtr yo'q (Umumiy) — controllerdan "?month=" bo'sh kelsa ham to'g'ri ishlasin.
         var m = string.IsNullOrEmpty(month) ? null : month;
 
-        // Jurnal baholari — GURUH (ClassId) ham guruhlash kalitida.
-        var jq = db.JournalEntries.AsNoTracking().Where(e => e.Grade != null);
+        // Jurnal baholari — GURUH (ClassId) ham guruhlash kalitida. Mezondan avtomatik yozilgan baho
+        // KIRMAYDI (u checklar sifatida pastda sanaladi — ikki marta emas).
+        var jq = db.JournalEntries.AsNoTracking().Where(e => e.Grade != null && !e.GradeFromCriteria);
         if (groupIds is not null) jq = jq.Where(e => groupIds.Contains(e.ClassId));
         if (m is not null) jq = jq.Where(e => e.Date.StartsWith(m));
         var journal = await jq

@@ -41,7 +41,9 @@ public static class AutoMessageSmsSender
         }
         else
         {
-            var r = await eskiz.SendSmsAsync(db, phone, message, callbackUrl: null, ct);
+            // Callback — qo'lda yuborish bilan bir xil manzil (App:Host): aks holda yetkazish holati
+            // tarixda abadiy "Kutilmoqda" bo'lib qolardi.
+            var r = await eskiz.SendSmsAsync(db, phone, message, callbackUrl: eskiz.CallbackUrl(), ct);
             ok = r.Ok; status = r.Ok ? r.Status : (r.Error ?? "error"); requestId = r.RequestId;
             db.SmsLogs.Add(new SmsLog
             {

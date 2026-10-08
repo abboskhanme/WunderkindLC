@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using WunderkindLC.Infrastructure.Data;
 using WunderkindLC.Application.Dtos;
+using WunderkindLC.Application.Services;
 using WunderkindLC.Domain;
 
 namespace WunderkindLC.Server.Controllers;
@@ -13,13 +14,19 @@ namespace WunderkindLC.Server.Controllers;
 /// (AdminPerm GET'ni bloklamaydi), yozish — "settings" ruxsati bilan.
 /// Manba lidga NOMI bilan yoziladi (<see cref="Lead.Source"/>), shuning uchun nomni o'zgartirish
 /// eski lidlarni ko'chirmaydi — bu holda eski lidlarning manbasi ham yangilanadi.
+///
+/// <para>⚠️ Har o'zgarish AUDITGA yoziladi (tur <c>LeadSource</c> → "Lidlar" bo'limi): qayta nomlash
+/// eski lidlarning <c>Source</c> ini ham ko'chiradi va manba kesimidagi hisobotlarni o'zgartiradi (ADM-6).</para>
 /// </summary>
 [ApiController]
 [Authorize]
 [AdminPerm("settings.reasons")]
 [Route("api/admin/lead-sources")]
-public class LeadSourcesController(AppDbContext db) : ControllerBase
+public class LeadSourcesController(AppDbContext db, AuditService audit) : ControllerBase
 {
+    /// <summary>Audit turi — <see cref="AuditSections"/> da "Lidlar" bo'limi.</summary>
+    public const string AuditEntity = "LeadSource";
+
     [HttpGet]
     public async Task<ActionResult<IEnumerable<LeadSourceDto>>> GetAll() =>
         await db.LeadSources.AsNoTracking()
@@ -38,6 +45,7 @@ public class LeadSourcesController(AppDbContext db) : ControllerBase
         var order = (await db.LeadSources.MaxAsync(s => (int?)s.Order) ?? -1) + 1;
         var src = new LeadSource { Name = name, Order = order };
         db.LeadSources.Add(src);
+        audit.Record(AuditEntity, src.Id, "create", $"Lid manbasi qo'shildi: «{src.Name}»");
         await db.SaveChangesAsync();
         return new LeadSourceDto(src.Id, src.Name, src.Order);
     }
@@ -59,6 +67,9 @@ public class LeadSourcesController(AppDbContext db) : ControllerBase
         {
             var leads = await db.Leads.Where(l => l.Source == old).ToListAsync();
             foreach (var l in leads) l.Source = name;
+            audit.Record(AuditEntity, src.Id, "update",
+                $"Lid manbasi qayta nomlandi: «{old}» → «{name}» ({leads.Count} ta lid ko'chirildi)",
+                before: new { Name = old }, after: new { Name = name });
         }
         await db.SaveChangesAsync();
         return NoContent();
@@ -71,6 +82,8 @@ public class LeadSourcesController(AppDbContext db) : ControllerBase
         var src = await db.LeadSources.FindAsync(id);
         if (src is null) return NotFound();
         db.LeadSources.Remove(src);
+        audit.Record(AuditEntity, src.Id, "delete",
+            $"Lid manbasi ro'yxatdan o'chirildi: «{src.Name}» (eski lidlardagi matn saqlandi)");
         await db.SaveChangesAsync();
         return NoContent();
     }

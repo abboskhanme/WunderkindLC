@@ -549,13 +549,15 @@ public class KpiController(AppDbContext db, AuditService audit) : ControllerBase
 
     /// <summary>Haftalik sifat nazorati uchun kamida <c>count</c> ta TASODIFIY qo'ng'iroq.</summary>
     /// <remarks>
-    /// ⚠️ Filtr ATAYIN qattiq: oxirgi 7 kun, YOZUVI BOR va 60 soniyadan uzun. Qisqa/yozuvsiz
-    /// qo'ng'iroqni tinglab bo'lmaydi — namunaga tushsa rahbar uni o'tkazib yuborar va nazorat
-    /// aslida bo'lmasdi.
+    /// ⚠️ Manba — Local Call (<c>CtiCallRecord</c>): xodimning agent(lar)i
+    /// (<c>CtiAgent.StaffUserId</c>) qo'ng'iroqlari. Filtr ATAYIN qattiq: oxirgi 7 kun, YOZUVI
+    /// SERVERDA va 60 soniyadan uzun (<see cref="KpiCallSource.SampleCandidatesAsync"/>).
+    /// Qisqa/yozuvsiz qo'ng'iroqni tinglab bo'lmaydi — namunaga tushsa rahbar uni o'tkazib
+    /// yuborar va nazorat aslida bo'lmasdi.
     ///
-    /// ⚠️ Yozuv FAYLI manzili qaytmaydi (faqat <c>HasRecording</c> bayrog'i): fayl
-    /// avtorizatsiyalangan qo'ng'iroqlar bo'limidan tinglanadi
-    /// (<c>.claude/rules/uploads-security.md</c> printsipi).
+    /// ⚠️ Yozuv FAYLI manzili qaytmaydi (faqat <c>HasRecording</c> bayrog'i): fayl Local Call'ning
+    /// avtorizatsiyalangan audio endpointidan tinglanadi (<c>GET /api/cti/calls/{id}/audio</c>,
+    /// <c>.claude/rules/uploads-security.md</c> printsipi).
     /// </remarks>
     [HttpGet("tickets/calls")]
     [AdminPerm("kpi.tickets", ReadRequiresPerm = true)]
@@ -566,15 +568,7 @@ public class KpiController(AppDbContext db, AuditService audit) : ControllerBase
         var take = Math.Clamp(count, 1, 25);
         var since = AppClock.Now.AddDays(-7);
 
-        var rows = await db.Calls.AsNoTracking()
-            .Where(c => c.OperatorUserId == uid && c.StartedAt >= since
-                        && c.DurationSeconds > 60 && c.RecordingFile != "")
-            .Select(c => new
-            {
-                c.Id, c.PhoneNumber, c.Direction, c.StartedAt, c.DurationSeconds,
-                c.RecordingFile, c.Transcript, c.AiAnalysis,
-            })
-            .ToListAsync(ct);
+        var rows = await KpiCallSource.SampleCandidatesAsync(db, uid, since, ct);
 
         // TASODIFIY tanlov XOTIRADA: `ORDER BY random()` indeksdan foydalana olmaydi va bu
         // yerda ro'yxat baribir kichik (bir xodimning haftalik qo'ng'iroqlari).
@@ -582,12 +576,6 @@ public class KpiController(AppDbContext db, AuditService audit) : ControllerBase
         return rows
             .OrderBy(_ => rnd.Next())
             .Take(take)
-            .Select(c => new KpiCallSampleDto(
-                c.Id, c.PhoneNumber, c.Direction,
-                c.StartedAt.ToString("yyyy-MM-ddTHH:mm:ss"), c.DurationSeconds,
-                HasRecording: true,
-                string.IsNullOrWhiteSpace(c.Transcript) ? null : c.Transcript,
-                string.IsNullOrWhiteSpace(c.AiAnalysis) ? null : c.AiAnalysis))
             .ToList();
     }
 

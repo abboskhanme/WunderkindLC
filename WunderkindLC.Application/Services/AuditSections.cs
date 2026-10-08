@@ -61,6 +61,9 @@ public static class AuditSections
         // tushmasin — `.claude/rules/audit.md` "Maxfiy qiymat yozilmaydi" qoidasi).
         // "StudentBall" — reyting balini QO'LDA tuzatish (qo'shish / 0 ga tushirish).
         // O'quvchilar bo'limida: amal aynan bitta o'quvchining reytingdagi o'rniga tegishli.
+        // ⚠️ Hozir bu turni YOZADIGAN endpoint YO'Q (`StudentBallAdjustments` ga yozuvchi ham yo'q) —
+        // xarita ATAYIN qoldirildi: bazada eski qatorlar bo'lishi mumkin va ular "Boshqa"ga tushib
+        // qolmasin; qo'lda tuzatish qaytarilsa, yozuv AYNAN shu tur bilan qilinsin.
         ["StudentBall"] = "students",
         ["StudentFaceProfile"] = "students",
         ["TrustedDevice"] = "students",
@@ -109,6 +112,9 @@ public static class AuditSections
         // "LeadForm" — ijtimoiy tarmoq formalari (yaratish/tahrir/nusxa/o'chirish). Lidlar
         // bo'limida, chunki forma AYNAN lid ishlab chiqaradi.
         ["LeadForm"] = "leads",
+        ["LevelTest"] = "leads",   // daraja testi (lid ishlab chiqaradi) — yaratish/tahrir/yoqish-o'chirish/o'chirish
+        ["LeadStage"] = "leads",   // kanban ustunlari — voronka va CAPI bosqich nomiga tayanadi
+        ["LeadSource"] = "leads",  // lid manbalari — qayta nomlash eski lidlarni ham ko'chiradi
         // --- Marketing (Instagram AI agenti) ---
         // "Instagram" — BUTUN modulning yagona turi: akkauntni ulash/uzish, sozlamalar, kalit so'z
         // qoidalari, bilim bazasi, operator javobi va suhbatni lidga aylantirish. Bo'lim kaliti
@@ -122,6 +128,9 @@ public static class AuditSections
         ["Contract"] = "contracts",
         ["Vacancy"] = "vacancies",
         ["JobApplication"] = "vacancies",
+        // Taklif/shikoyat holati (hal qilindi / qayta ochildi). Murojaat o'quvchi (ota-onasi)
+        // nomidan keladi — "O'quvchilar" bo'limida va o'quvchi tarixida (studentId) ko'rinadi.
+        ["Feedback"] = "students",
         // MOSLASHUV (onboarding) — yangi xodimning 30 kunlik cheklisti va uning qadamlar katalogi.
         // Vakansiyalar bo'limida: moslashuv ishga qabul voronkasining DAVOMI (ariza "Ishga qabul
         // qilindi" bo'lganda avtomatik boshlanadi), ruxsati ham shu bo'limda (`vacancies.onboarding`).
@@ -141,6 +150,18 @@ public static class AuditSections
         ["ChecklistTemplateItem"] = "staff",// kunlik cheklist bandini tahrirlash
         ["CenterMeta"] = "settings",
         ["CertificateTemplate"] = "settings",
+
+        // --- KATALOGLAR (hisobotlarni o'zgartiradigan ma'lumotnomalar) ---
+        // "ActionReason" — amal sabablari: `OutOfControl` bayrog'i KPI jarimasi va ketish hisobotida
+        // JONLI o'qiladi. "AbsenceReason" — davomat sabablari ("kech keldi" belgisi davomat foiziga ta'sir
+        // qiladi). "Branch" — filiallar. Hammasi "Sozlamalar" sahifalarida boshqariladi.
+        ["ActionReason"] = "settings",
+        ["AbsenceReason"] = "settings",
+        ["Branch"] = "settings",
+        // "Room" — xonalar (Guruhlar → Xonalar sahifasi, ruxsat `classes.rooms`).
+        ["Room"] = "classes",
+        // "StudentAiAccess" — bitta o'quvchiga AI tekshiruv limiti/premium/blok (pulli API sarfi).
+        ["StudentAiAccess"] = "students",
     };
 
     /// <summary>Yozuv qaysi bo'limga tegishli (noma'lum tur → <see cref="Other"/>).</summary>

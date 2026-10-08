@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import {
-  Plus, Pencil, Trash2, Link2, Copy, Check, Users, Eye, ExternalLink, ClipboardList, Files,
+  Plus, Pencil, Trash2, Link2, Copy, Check, Users, Eye, ExternalLink, ClipboardList, Files, Power,
 } from 'lucide-react'
 import {
-  getLeadForms, createLeadForm, deleteLeadForm, duplicateLeadForm,
+  getLeadForms, createLeadForm, deleteLeadForm, duplicateLeadForm, setLeadFormActive,
   getLeadFormSources, emptySocials,
   type LeadFormListItem,
 } from '@/api/services/leadForms'
@@ -102,19 +102,28 @@ export function FormsPage() {
     }
   }
 
+  // Faqat ARIZASIZ forma o'chiriladi — arizasi borini server rad etadi (lidlarning kanali va forma
+  // statistikasi shu arizalarga tayanadi). Undaylarni «O'chirib qo'yish».
   const handleDelete = async (f: LeadFormListItem) => {
-    if (
-      !confirm(
-        `"${f.title}" formasini o'chirasizmi?\n\n` +
-          `${f.submissionCount} ta ariza tarixi ham o'chadi. Ular yaratgan LIDLAR CRM'da qoladi.`,
-      )
-    )
-      return
+    if (!confirm(`"${f.title}" formasini o'chirasizmi?`)) return
     try {
       await deleteLeadForm(f.id)
       setForms((prev) => prev.filter((x) => x.id !== f.id))
     } catch (err) {
       alert(apiErrorMessage(err, "O'chirib bo'lmadi"))
+    }
+  }
+
+  /** Yoqish / o'chirib qo'yish — ro'yxat SERVER javobidan keyin yangilanadi (optimistik emas). */
+  const handleToggle = async (f: LeadFormListItem) => {
+    const next = !f.isActive
+    if (!next && !confirm(`"${f.title}" formasini o'chirib qo'yasizmi? Havola ariza qabul qilmay qoladi, arizalar saqlanadi.`))
+      return
+    try {
+      await setLeadFormActive(f.id, next)
+      setForms((prev) => prev.map((x) => (x.id === f.id ? { ...x, isActive: next } : x)))
+    } catch (err) {
+      alert(apiErrorMessage(err, "Holatni o'zgartirib bo'lmadi"))
     }
   }
 
@@ -229,7 +238,23 @@ export function FormsPage() {
                     <Files className="h-4 w-4" />
                   </button>
                 )}
-                {can('leads.forms', 'delete') && (
+                {can('leads.forms', 'edit') && (
+                  <button
+                    type="button"
+                    onClick={() => handleToggle(f)}
+                    title={f.isActive ? "O'chirib qo'yish (havola to'xtaydi, arizalar qoladi)" : 'Yoqish'}
+                    className={cn(
+                      'rounded-lg p-2 transition-colors',
+                      f.isActive
+                        ? 'text-emerald-600 hover:bg-amber-50 hover:text-amber-600'
+                        : 'text-slate-400 hover:bg-emerald-50 hover:text-emerald-600',
+                    )}
+                  >
+                    <Power className="h-4 w-4" />
+                  </button>
+                )}
+                {/* Arizasi bor forma O'CHIRILMAYDI (server ham rad etadi) — o'rniga o'chirib qo'yiladi. */}
+                {can('leads.forms', 'delete') && f.submissionCount === 0 && (
                   <button
                     type="button"
                     onClick={() => handleDelete(f)}

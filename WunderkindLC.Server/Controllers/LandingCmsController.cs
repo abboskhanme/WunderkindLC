@@ -2,13 +2,31 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using WunderkindLC.Infrastructure.Data;
+using WunderkindLC.Application.Services;
 using WunderkindLC.Domain;
 
 namespace WunderkindLC.Server.Controllers;
 
 [ApiController]
-public class LandingCmsController(AppDbContext db, ILogger<LandingCmsController> logger) : ControllerBase
+public class LandingCmsController(AppDbContext db, ILogger<LandingCmsController> logger, AuditService audit) : ControllerBase
 {
+    /// <summary>Landing sozlamalari (ommaviy saytdagi aloqa ma'lumotlari) tarixda o'zbekcha nom bilan.
+    /// Qiymatlar ommaviy (saytda ko'rinadi) — "eski → yangi" yoziladi.</summary>
+    private static readonly Dictionary<string, string> LandingLabels = new()
+    {
+        [nameof(CenterMeta.TelegramUrl)] = "Telegram",
+        [nameof(CenterMeta.InstagramUrl)] = "Instagram",
+        [nameof(CenterMeta.YoutubeUrl)] = "YouTube",
+        [nameof(CenterMeta.FacebookUrl)] = "Facebook",
+        [nameof(CenterMeta.CenterEmail)] = "Email",
+        [nameof(CenterMeta.AppStoreUrl)] = "App Store",
+        [nameof(CenterMeta.PlayMarketUrl)] = "Play Market",
+        [nameof(CenterMeta.ContactPhone)] = "Telefon",
+        [nameof(CenterMeta.CenterAddress)] = "Manzil",
+        [nameof(CenterMeta.WorkingHours)] = "Ish vaqti",
+        [nameof(CenterMeta.MapIframeUrl)] = "Xarita",
+    };
+
     /// <summary>Landing CMS "Sozlamalar" bo'limining bir qismi — nav (`/admin/landing`) va marshrut
     /// darvozasi (`RequirePerm perm="settings"`) bilan AYNAN bir xil kalit.</summary>
     private const string SectionPerm = "settings.landing";
@@ -204,6 +222,8 @@ public class LandingCmsController(AppDbContext db, ILogger<LandingCmsController>
             meta.WorkingHours = MergeText(input?.WorkingHours, meta.WorkingHours);
         }
 
+        SettingsAudit.Record<CenterMeta>(audit, db.ChangeTracker, "Landing: aloqa va ijtimoiy tarmoqlar",
+            withValues: true, labels: LandingLabels);
         await db.SaveChangesAsync();
         var updated = allMetas.First();
         return Ok(new { ok = true, socials = new {
@@ -309,6 +329,8 @@ public class LandingCmsController(AppDbContext db, ILogger<LandingCmsController>
         // Yuborilmagan (null) — tegilmaydi; bo'sh satr ATAYIN tozalash (ommaviy javobda sukut
         // xarita ko'rsatiladi). Farqi UpdateSocials dagi bilan bir xil.
         meta.MapIframeUrl = MergeText(input?.MapUrl, meta.MapIframeUrl ?? "");
+        SettingsAudit.Record<CenterMeta>(audit, db.ChangeTracker, "Landing: xarita",
+            withValues: true, labels: LandingLabels);
         await db.SaveChangesAsync();
         return Ok(new { ok = true, mapUrl = meta.MapIframeUrl });
     }

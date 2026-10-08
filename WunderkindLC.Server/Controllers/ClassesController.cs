@@ -35,6 +35,39 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
     private bool MaySetYearFreeze => User.IsInRole(Roles.SuperAdmin);
 
     /// <summary>
+    /// GURUHNI YOPISH / ARXIVLASH / ARXIVDAN CHIQARISH — UI'dagi darvoza bilan AYNAN bir xil:
+    /// <c>can('classes.list','delete')</c> (admin/superadmin yoki «O'chirish» ruxsati berilgan xodim).
+    /// <para>⚠️ NEGA QO'LDA: bu amallar POST, <c>[AdminPerm]</c> esa POST'ni <c>create</c> deb
+    /// tekshiradi — ya'ni faqat "qo'shish" ruxsati bor xodim API'ni to'g'ridan-to'g'ri chaqirib
+    /// butun guruhni yopib, barcha a'zolarni muzlatib yubora olardi (tugma unga ko'rinmasa ham).
+    /// Naqsh — <c>StudentPurgeController.MayPurge</c>.</para>
+    /// </summary>
+    private bool MayCloseGroups =>
+        User.IsInRole(Roles.Admin) || User.IsInRole(Roles.SuperAdmin) ||
+        (User.IsInRole(Roles.Staff) && PermissionRules.CanWrite(
+            User.Claims.Where(c => c.Type == AdminPermAttribute.ClaimType).Select(c => c.Value),
+            "classes.list", "DELETE"));
+
+    private ObjectResult CloseForbidden() =>
+        StatusCode(403, new { message = "Guruhni yopish/arxivlash uchun «Guruhlar» bo'limida «O'chirish» ruxsati kerak" });
+
+    /// <summary>«TUGATISH (sertifikat bilan)» — FAQAT superadmin (UI ham faqat superadmin'ga
+    /// ko'rsatadi). HARD rol: <c>[AdminPerm]</c> admin'ni ham o'tkazib yuborardi
+    /// (<c>.claude/rules/year-freeze.md</c> §3 dagi sabab).</summary>
+    private bool MayCompleteGroups => User.IsInRole(Roles.SuperAdmin);
+
+    /// <summary>Guruh tugash sanasini normallashtiradi: bo'sh → <c>null</c>, aks holda "yyyy-MM-dd".
+    /// <c>false</c> — sana buzuq (chaqiruvchi 400 qaytaradi).</summary>
+    private static bool TryNormalizeDate(string? raw, out string? value)
+    {
+        value = null;
+        if (string.IsNullOrWhiteSpace(raw)) return true;
+        if (!DateOnly.TryParse(raw.Trim(), out var d)) return false;
+        value = d.ToString("yyyy-MM-dd");
+        return true;
+    }
+
+    /// <summary>
     /// Faol (arxivlanmagan) guruhlar. <paramref name="includeArchived"/>=true bo'lsa hammasi.
     /// <para><paramref name="teacherId"/> berilsa — FAQAT o'sha o'qituvchining guruhlari.
     /// ⚠️ ATAYIN qo'shildi: o'qituvchi sahifasi markazning BARCHA guruhlarini tortib, keyin
@@ -79,8 +112,27 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
         // Guruhga o'qituvchi biriktirish MAJBURIY (foizli maosh va jurnal shunga tayanadi).
         if (string.IsNullOrWhiteSpace(p.TeacherId))
             return BadRequest(new { message = "Guruhga o'qituvchi biriktirish majburiy" });
-        if (await db.Teachers.FindAsync(p.TeacherId) is null)
+        var teacher = await db.Teachers.FindAsync(p.TeacherId);
+        if (teacher is null)
             return BadRequest(new { message = "Tanlangan o'qituvchi topilmadi" });
+        // ARXIVDAGI (ishdan ketgan) o'qituvchi — faol guruhga biriktirilmaydi: darslar maoshda hech kimga
+        // yozilmasdi (arxiv davri `InactivePeriods`), jurnalni ham hech kim yuritmasdi (audit R1-10).
+        if (teacher.IsArchived)
+            return BadRequest(new { message = ArchivedTeacherMessage(teacher) });
+
+        // NOM — bo'shliqsiz, BARCHA guruhlar (arxivdagilar ham) orasida takrorlanmaydi: guruh chati
+        // nom bilan bog'langan, bir xil nomli yangi guruh eski guruhning yozishmasini meros olardi.
+        var name = GroupNames.Clean(p.Name);
+        if (name.Length == 0) return BadRequest(new { message = "Guruh nomini kiriting" });
+        if (await GroupNames.IsTakenAsync(db, name, null))
+            return BadRequest(new { message = GroupNames.TakenMessage });
+        // «Arxiv» holati faqat yorliq edi (guruh arxivga TUSHMASDI) — arxivlash alohida amal.
+        if (p.Status == "archived")
+            return BadRequest(new { message = "Guruhni arxivlash uchun «Arxivlash» amalidan foydalaning" });
+        if (!TryNormalizeDate(p.EndDate, out var endDate))
+            return BadRequest(new { message = "Tugash sanasi noto'g'ri" });
+        if (endDate is not null && DateOnly.TryParse(p.StartDate, out var startD) && DateOnly.Parse(endDate) < startD)
+            return BadRequest(new { message = "Tugash sanasi boshlanish sanasidan oldin bo'lmaydi" });
 
         // RoomId berilsa — xona nomini DB dan olish (Room string field uchun).
         string? resolvedRoomName = p.Room;
@@ -107,7 +159,7 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
 
         var cls = new Group
         {
-            Name = p.Name,
+            Name = name,
             Grade = p.Grade,
             Language = p.Language,
             MonthlyFee = p.MonthlyFee,
@@ -115,7 +167,7 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
             RoomId = string.IsNullOrWhiteSpace(p.RoomId) ? null : p.RoomId,
             Status = string.IsNullOrWhiteSpace(p.Status) ? "active" : p.Status!,
             StartDate = p.StartDate,
-            EndDate = p.EndDate,
+            EndDate = endDate,
             Capacity = p.Capacity,
             CourseId = p.CourseId ?? "",
             TeacherId = p.TeacherId ?? "",
@@ -170,6 +222,27 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
         var newTeacher = await db.Teachers.FindAsync(p.TeacherId);
         if (newTeacher is null)
             return BadRequest(new { message = "Tanlangan o'qituvchi topilmadi" });
+        // Faol guruhga ARXIVDAGI o'qituvchi biriktirilmaydi (Create bilan bir xil, audit R1-10). Arxivdagi
+        // (yopilgan) guruhni tahrirlash bloklanmaydi — u yerda dars yo'q.
+        if (newTeacher.IsArchived && !cls.IsArchived)
+            return BadRequest(new { message = ArchivedTeacherMessage(newTeacher) });
+
+        // NOM — faqat O'ZGARGANDA tekshiriladi (prod'dagi eski dublikatli guruhning boshqa maydonini
+        // tahrirlash bloklanmasin). Registrsiz, arxivdagi guruhlar bilan ham solishtiriladi.
+        var name = GroupNames.Clean(p.Name);
+        if (name.Length == 0) return BadRequest(new { message = "Guruh nomini kiriting" });
+        var renamed = !string.Equals(name, cls.Name, StringComparison.Ordinal);
+        if (!GroupNames.SameName(name, cls.Name) && await GroupNames.IsTakenAsync(db, name, cls.Id))
+            return BadRequest(new { message = GroupNames.TakenMessage });
+        // «Arxiv» holati faqat YORLIQ edi — guruh arxivga tushmas, a'zoliklar muzlamas, oylik
+        // yozilaverardi. Arxivlash — alohida amal («Arxivlash» / «Guruhni yopish»). Eski
+        // yozuvdagi shu yorliq saqlanaveradi (o'zgarish emas).
+        if (p.Status == "archived" && cls.Status != "archived" && !cls.IsArchived)
+            return BadRequest(new { message = "Guruhni arxivlash uchun «Arxivlash» amalidan foydalaning" });
+        if (!TryNormalizeDate(p.EndDate, out var endDate))
+            return BadRequest(new { message = "Tugash sanasi noto'g'ri" });
+        if (endDate is not null && DateOnly.TryParse(p.StartDate, out var startD) && DateOnly.Parse(endDate) < startD)
+            return BadRequest(new { message = "Tugash sanasi boshlanish sanasidan oldin bo'lmaydi" });
 
         // RoomId berilsa — xona nomini DB dan olish (Room string field uchun).
         string? resolvedRoomName = p.Room;
@@ -195,7 +268,15 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
         var oldName = cls.Name;   // o'quvchilar hozir shu nom bilan biriktirilgan
         var oldCourseId = cls.CourseId;  // kurs o'zgarishni kuzatamiz
         var oldTeacherId = cls.TeacherId;   // o'qituvchi almashuvi — tarixda NOM bilan yoziladi
-        cls.Name = p.Name;
+
+        // O'QITUVCHI ALMASHDI — bugundan keyingi o'rinbosar sanalari YANGI egaga moslanadi (ushlanma
+        // haqiqiy egadan; yangi ega o'zi o'rinbosar bo'lsa o'sha sanalar olib tashlanadi). Guruh
+        // maydonlari o'zgarishidan OLDIN: eski (sanalarsiz) tayinlov ESKI jadval bo'yicha yoyiladi.
+        if (!string.Equals(oldTeacherId, p.TeacherId, StringComparison.Ordinal))
+            await SubstituteGroupLifecycle.OnTeacherChangedAsync(
+                db, audit, cls, p.TeacherId!, AppClock.Today.ToString("yyyy-MM-dd"), Actor);
+
+        cls.Name = name;
         cls.Grade = p.Grade;
         cls.Language = p.Language;
         cls.MonthlyFee = p.MonthlyFee;
@@ -203,7 +284,8 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
         cls.RoomId = string.IsNullOrWhiteSpace(p.RoomId) ? null : p.RoomId;
         if (!string.IsNullOrWhiteSpace(p.Status)) cls.Status = p.Status!;
         cls.StartDate = p.StartDate;
-        cls.EndDate = p.EndDate;
+        // Bo'sh tugash sanasi — `null` ("" emas): jadval/maosh "tugash sanasi yo'q" deb o'qisin.
+        cls.EndDate = endDate;
         cls.Capacity = p.Capacity;
         cls.CourseId = p.CourseId ?? "";
         cls.TeacherId = p.TeacherId ?? "";
@@ -263,7 +345,7 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
         {
             var bandApplied = await TuitionService.ApplyGroupFeeToCurrentMonthAsync(
                 db, cls.Id, oldName, cls.MonthlyFee, await PricingBook.LoadAsync(db),
-                courseId: cls.CourseId, oldFee: oldFee, oldCourseId: oldCourseId ?? "");
+                courseId: cls.CourseId, oldFee: oldFee, oldCourseId: oldCourseId ?? "", audit: audit);
             if (bandApplied > 0)
                 audit.Record(AuditService.EntityClassFee, cls.Id, "update",
                     $"Guruh kursi almashdi — sinf narxlari joriy oydan {bandApplied} o'quvchiga qo'llandi ({cls.Name})");
@@ -278,7 +360,7 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
                 // «Yo'q» + kurs almashuvi: joriy oyda asosiy narx eskisi, sinf narxlari — yangi kursniki.
                 applied = await TuitionService.ApplyGroupFeeToCurrentMonthAsync(
                     db, cls.Id, oldName, applyFee ? cls.MonthlyFee : oldFee, await PricingBook.LoadAsync(db),
-                    courseId: cls.CourseId, oldFee: oldFee, oldCourseId: oldCourseId ?? "");
+                    courseId: cls.CourseId, oldFee: oldFee, oldCourseId: oldCourseId ?? "", audit: audit);
 
             var summary = $"Oylik to'lov o'zgartirildi: {AuditService.Money(oldFee)} → {AuditService.Money(cls.MonthlyFee)} so'm ({cls.Name})";
             summary += applyFee
@@ -314,6 +396,21 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
                 $"{await CourseNameAsync(oldCourseId)} → {await CourseNameAsync(cls.CourseId)}");
         }
 
+        // QAYTA NOMLASH — guruh chati, «asosiy guruh» yorlig'i va eski rahbarlik NOM bilan bog'langan:
+        // yangi nomga ko'chirilmasa chat tarixi "yo'qolar", o'quvchilar esa nomi yo'q guruhda qolardi.
+        // Yozuvlar kuzatiladi — guruh bilan BITTA SaveChanges'da saqlanadi.
+        if (renamed)
+        {
+            var moved = await GroupNames.MigrateRenameAsync(db, cls, oldName, cls.Name);
+            var parts = new List<string>();
+            if (moved.ChatMessages > 0) parts.Add($"{moved.ChatMessages} ta chat xabari");
+            if (moved.Students > 0) parts.Add($"{moved.Students} ta o'quvchi yorlig'i");
+            if (moved.Teachers > 0) parts.Add($"{moved.Teachers} ta o'qituvchi rahbarligi");
+            audit.Record(AuditService.EntityGroup, cls.Id, "update",
+                $"Guruh nomi o'zgardi: «{oldName}» → «{cls.Name}»"
+                + (parts.Count > 0 ? $" — {string.Join(", ", parts)} yangi nomga ko'chirildi" : ""));
+        }
+
         // Guruh maydonlari o'zgarganda — "kim o'zgartirdi" audit izi (oylik to'lov moliyaviy audit'dan alohida).
         var afterGroup = AuditService.GroupSnapshot(cls);
         if (System.Text.Json.JsonSerializer.Serialize(beforeGroup) != System.Text.Json.JsonSerializer.Serialize(afterGroup))
@@ -325,14 +422,30 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
         return cls;
     }
 
+    /// <summary>
+    /// Guruhni BUTUNLAY o'chirish (xato ochilgan guruh). Pul tarixi bor guruh O'CHIRILMAYDI — arxivlanadi.
+    /// <list type="bullet">
+    ///   <item>faol (arxivda bo'lmagan) o'quvchi bo'lsa — 400;</item>
+    ///   <item>guruhga teglangan to'lov/vozvrat (yoki eski teglanmagan to'lovning shu guruhga tushadigan
+    ///     ulushi) bo'lsa — 400 "arxivlang" (<see cref="GroupDeletion.MoneyBlockReasonAsync"/>). Ilgari
+    ///     hisoblar TO'LANGANIGA qaramay balansga qaytarilib, o'quvchilarda soxta avans paydo bo'lardi;</item>
+    ///   <item>faqat TO'LANMAGAN hisoblar bo'lsa — ular balansga qaytariladi (soxta qarz qolmasin);</item>
+    ///   <item>guruhning o'quv/yordamchi ma'lumoti (baholar, ball, testlar va ularning fayllari,
+    ///     dars ko'chirishlari, dastur, o'rinbosarlar, o'qituvchi tarixi, chat …) — o'sha tranzaksiyada
+    ///     (<see cref="GroupDeletion.PurgeLearningDataAsync"/>).</item>
+    /// </list>
+    /// </summary>
     [HttpDelete("{id}")]
-    public async Task<IActionResult> Delete(string id, [FromQuery] string? reasonId = null)
+    public async Task<IActionResult> Delete(string id, [FromServices] IWebHostEnvironment env, [FromQuery] string? reasonId = null)
     {
         var cls = await db.Classes.FindAsync(id);
         if (cls is null) return NotFound();
         // Faol o'quvchi bo'lsa — ClassName bo'yicha YOKI faol a'zolik (M2M) bo'yicha — o'chirib bo'lmaydi.
+        // ARXIVDAGI o'quvchining (eski ma'lumotda qolib ketgan) tirik a'zoligi "faol o'quvchi" emas.
         var byName = await db.Students.CountAsync(s => s.ClassName == cls.Name && !s.IsArchived);
-        var activeMembers = await db.StudentGroups.CountAsync(sg => sg.GroupId == id && sg.IsActive);
+        var activeMembers = await db.StudentGroups
+            .CountAsync(sg => sg.GroupId == id && sg.IsActive
+                              && db.Students.Any(s => s.Id == sg.StudentId && !s.IsArchived));
         if (byName > 0 || activeMembers > 0)
             return BadRequest(new
             {
@@ -340,12 +453,15 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
                           "Avval o'quvchilarni chiqaring yoki arxivlang.",
             });
 
-        // ⚠️ HAMMASI BITTA TRANZAKSIYADA. `ExecuteDeleteAsync`/`ExecuteUpdateAsync` o'z SQL'ini
-        // DARHOL yuboradi va `SaveChangesAsync` ni KUTMAYDI — ya'ni oldingi kodda (izohida
-        // "atomic" deb yozilgan bo'lsa ham) o'chirishlar allaqachon bajarilib, keyingi
-        // `SaveChangesAsync` yiqilsa BALANS TUZATISHLARI yo'qolardi va o'quvchilarda
-        // tushuntirib bo'lmaydigan qarz qolib ketardi. Endi atomiklik HAQIQATAN ta'minlanadi.
-        await using var trx = await db.Database.BeginTransactionAsync();
+        // PUL TARIXI BOR GURUH O'CHIRILMAYDI (to'lov/vozvrat) — arxivlanadi.
+        if (await GroupDeletion.MoneyBlockReasonAsync(db, id) is { } moneyBlock)
+            return BadRequest(new { message = moneyBlock });
+
+        // ⚠️ HAMMASI BITTA `SaveChangesAsync` DA (u o'zi tranzaksiya). Ilgari ommaviy `Execute*`
+        // o'chirish/yangilashlari o'z SQL'ini DARHOL yuborardi va qo'lda ochilgan tranzaksiya bilan
+        // o'ralgan edi — lekin `EnableRetryOnFailure` (Program.cs) qo'lda ochilgan tranzaksiyani
+        // execution strategy'siz RAD ETADI, ya'ni guruhni o'chirish har safar 500 bilan yiqilardi.
+        // Endi barcha o'chirish/teg tozalash KUZATILADIGAN amal: atomiklik ham, qayta urinish ham saqlanadi.
 
         // Bog'liq qatorlar orphan qolmasin: a'zoliklar (o'tganlar ham), jurnal yozuvlari, dars eslatmalari,
         // shu guruhga tegishli per-guruh oylik hisoblar (aks holda ledger yo'q guruhni hisoblardi).
@@ -353,25 +469,37 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
         // ⚠️ HISOBLAR SHUNCHAKI O'CHIRILMAYDI — avval BALANSGA QAYTARILADI. Har hisob yaratilganda
         // `Student.Balance` effektiv miqdorda kamaygan (`TuitionService.AccrueOne`); qatorni
         // balansga tegmasdan o'chirish o'quvchida MANGU soxta qarz qoldirardi (sabab va batafsil
-        // izoh: `MembershipBilling.CreditAndDropGroupChargesAsync`).
+        // izoh: `MembershipBilling.CreditAndDropGroupChargesAsync`). Yuqoridagi pul himoyasi tufayli
+        // bu yerga faqat TO'LANMAGAN hisoblar yetib keladi.
         var credit = await MembershipBilling.CreditAndDropGroupChargesAsync(db, id);
-        var chargesDeleted = credit.Rows;
 
-        var sgDeleted = await db.StudentGroups
-            .Where(sg => sg.GroupId == id)
-            .ExecuteDeleteAsync();
+        // O'quv/yordamchi ma'lumot (baholar, ball, testlar, dastur, chat …) va o'rinbosarlar — kuzatiladi,
+        // pastdagi SaveChanges bilan saqlanadi (kesh ham o'z-o'zidan yangilanadi).
+        var purge = await GroupDeletion.PurgeLearningDataAsync(db, cls, Actor);
+        var subsRemoved = await SubstituteGroupLifecycle.RemoveAllAsync(db, audit, cls);
 
-        var jeDeleted = await db.JournalEntries
-            .Where(e => e.ClassId == id)
-            .ExecuteDeleteAsync();
+        // Arxivdagi o'quvchining «asosiy guruh» yorlig'i yo'q guruhda qolmasin: u arxivdan qaytarilsa
+        // eski nom bo'yicha guruhsiz hisob (va SMS) boshlanib ketardi. (Faol o'quvchi yuqorida rad etilgan.)
+        if (!await db.Classes.AnyAsync(c => c.Id != id && c.Name == cls.Name))
+            foreach (var st in await db.Students.Where(s => s.ClassName == cls.Name && s.IsArchived).ToListAsync())
+                st.ClassName = "";
 
-        var lnDeleted = await db.LessonNotes
-            .Where(n => n.ClassId == id)
-            .ExecuteDeleteAsync();
+        var memberships = await db.StudentGroups.Where(sg => sg.GroupId == id).ToListAsync();
+        db.StudentGroups.RemoveRange(memberships);
 
-        // Moliya tarixi SAQLANADI, lekin yo'q guruhga ishora qilmasin — GroupId tozalanadi (to'lov qoladi).
-        var untagged = await db.FinanceTransactions.Where(t => t.GroupId == id)
-            .ExecuteUpdateAsync(s => s.SetProperty(t => t.GroupId, (string?)null));
+        var journal = await db.JournalEntries.Where(e => e.ClassId == id).ToListAsync();
+        db.JournalEntries.RemoveRange(journal);
+        var jeDeleted = journal.Count;
+
+        var notes = await db.LessonNotes.Where(n => n.ClassId == id).ToListAsync();
+        db.LessonNotes.RemoveRange(notes);
+        var lnDeleted = notes.Count;
+
+        // Moliya tarixi SAQLANADI, lekin yo'q guruhga ishora qilmasin — GroupId tozalanadi (yozuv qoladi).
+        // Bu yerga faqat o'qish to'lovi/vozvrat BO'LMAGAN va BEKOR QILINGAN qatorlar yetadi (pul himoyasi).
+        var tagged = await db.FinanceTransactions.IgnoreQueryFilters().Where(t => t.GroupId == id).ToListAsync();
+        foreach (var t in tagged) t.GroupId = null;
+        var untagged = tagged.Count;
 
         db.Classes.Remove(cls);
 
@@ -379,17 +507,34 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
         var actor = User.FindFirst(System.Security.Claims.ClaimTypes.Name)?.Value ?? "Admin";
         ArchiveService.Snapshot(db, "group", cls.Id, cls.Name, "", cls,
             reason.Length > 0 ? reason : null, actor);
+        var removed = new List<string>();
+        if (jeDeleted + lnDeleted > 0) removed.Add($"jurnal: {jeDeleted + lnDeleted}");
+        if (purge.Grades > 0) removed.Add($"baholar/ball: {purge.Grades}");
+        if (purge.Tests > 0) removed.Add($"testlar: {purge.Tests}");
+        if (purge.Journal > 0) removed.Add($"dars ko'chirish/dastur: {purge.Journal}");
+        if (subsRemoved > 0) removed.Add($"o'rinbosar tayinlovi: {subsRemoved}");
+        if (purge.DiscountsCancelled > 0) removed.Add($"bekor qilingan chegirma: {purge.DiscountsCancelled}");
         audit.Record("Group", id, "delete",
-            $"Guruh o'chirildi ({cls.Name})" + (reason.Length > 0 ? $" — sabab: {reason}" : ""));
+            $"Guruh o'chirildi ({cls.Name})"
+            + (removed.Count > 0 ? $" — o'chirildi: {string.Join(", ", removed)}" : "")
+            + (reason.Length > 0 ? $" — sabab: {reason}" : ""));
         // PUL HARAKATI TARIXDA QOLSIN: nechta hisob bekor qilindi, kimlarga qancha qaytarildi va
         // nechta to'lov guruh tegisiz qoldi. Usiz "balansim nega o'zgardi" savoli javobsiz qolardi.
         if (credit.Rows > 0 || untagged > 0)
             audit.Record(AuditService.EntityClassFee, id, "delete",
-                $"Guruh o'chirildi ({cls.Name}) — {credit.Rows} ta oylik hisob bekor qilindi, " +
-                $"{credit.Students} ta o'quvchi balansiga {AuditService.Money(credit.Credited)} so'm qaytarildi" +
-                (untagged > 0 ? $"; {untagged} ta to'lov guruh tegisiz qoldi" : ""));
+                $"Guruh o'chirildi ({cls.Name}) — {credit.Rows} ta to'lanmagan oylik hisob bekor qilindi, " +
+                $"{credit.Students} ta o'quvchi qarzidan {AuditService.Money(credit.Credited)} so'm olib tashlandi" +
+                (untagged > 0 ? $"; {untagged} ta moliya yozuvi guruh tegisiz qoldi" : ""));
         await db.SaveChangesAsync();
-        await trx.CommitAsync();
+
+        // Fayllar — baza saqlangandan KEYIN (saqlash yiqilsa fayl yo'qolib qolmasin). `StudentPurge` naqshi.
+        foreach (var url in purge.FileUrls)
+        {
+            var path = StudentPurge.ResolveUploadPath(env.ContentRootPath, url);
+            if (path is null || !System.IO.File.Exists(path)) continue;
+            try { System.IO.File.Delete(path); }
+            catch (Exception ex) { logger.LogWarning(ex, "O'chirilgan guruh faylini o'chirib bo'lmadi: {File}", Path.GetFileName(path)); }
+        }
         return NoContent();
     }
 
@@ -416,11 +561,16 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
     [HttpPost("{id}/archive")]
     public async Task<IActionResult> Archive(string id)
     {
+        if (!MayCloseGroups) return CloseForbidden();
         var cls = await db.Classes.FindAsync(id);
         if (cls is null) return NotFound();
         if (cls.IsArchived) return BadRequest(new { message = "Guruh allaqachon arxivda" });
 
         var today = AppClock.Today.ToString("yyyy-MM-dd");
+
+        // O'rinbosar sanalari bugundan KEYIN qolmasin (guruh yopiq — dars yo'q, haq ham yo'q).
+        // ⚠️ Guruh maydonlari o'zgarishidan OLDIN (eski tayinlov guruh umri bo'yicha yoyiladi).
+        await SubstituteGroupLifecycle.TrimAfterAsync(db, audit, cls, today, "guruh arxivlandi");
 
         // ⚠️ TARTIB: avval a'zoliklar yopiladi, KEYIN guruh arxivga olinadi — «Guruhni yopish»
         // dagi bilan aynan bir xil (pul hisobi guruhning arxiv bayrog'iga bog'liq bo'lib
@@ -456,10 +606,24 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
     [HttpPost("{id}/unarchive")]
     public async Task<IActionResult> Unarchive(string id)
     {
+        if (!MayCloseGroups) return CloseForbidden();
         var cls = await db.Classes.FindAsync(id);
         if (cls is null) return NotFound();
         if (!cls.IsArchived) return BadRequest(new { message = "Guruh arxivda emas" });
+        // Qayta ochilgan guruhning o'qituvchisi ARXIVDA bo'lsa — darslar hech kimga yozilmasdi (audit R1-10).
+        if (!string.IsNullOrWhiteSpace(cls.TeacherId)
+            && await db.Teachers.AsNoTracking().FirstOrDefaultAsync(t => t.Id == cls.TeacherId) is { IsArchived: true } archivedTeacher)
+            return BadRequest(new { message = ArchivedTeacherMessage(archivedTeacher) +
+                " Avval o'qituvchini arxivdan qaytaring yoki guruhga boshqa o'qituvchi biriktiring." });
 
+        // «Guruhni yopish»/«Tugatish» qo'ygan TUGASH SANASI tozalanadi — aks holda qayta ochilgan
+        // guruhning darslari jadvaldan, o'qituvchi ilovasidan va «Davomat olinmagan» monitoridan
+        // yo'qolar, o'quvchilarga esa oylik yozilaverardi. Kelajakdagi (rejalashtirilgan) tugash
+        // sanasi tegilmaydi; kerak bo'lsa guruh formasidan tahrirlanadi.
+        var newEnd = GroupLifecycleRules.EndDateOnUnarchive(cls.EndDate, cls.ArchivedAt);
+        var endCleared = newEnd is null && !string.IsNullOrWhiteSpace(cls.EndDate);
+        var groupArchivedAt = cls.ArchivedAt;
+        cls.EndDate = newEnd;
         cls.IsArchived = false;
         cls.ArchivedAt = null;
         // "Guruhni yopish" Status'ni "archived" qilgan bo'lsa — qaytarganda yana faol holatga o'tkazamiz
@@ -473,6 +637,13 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
         var students = await db.Students
             .Where(s => s.IsArchived && s.ArchivedWithClass
                         && (memberIds.Contains(s.Id) || s.ClassName == cls.Name)).ToListAsync();
+
+        // ⚠️ ESKI yozuvlarda bu o'quvchilarning a'zoligi `active` qolgan: o'quvchi qaytgach 12 soatlik
+        // AccrueDue arxivda turgan HAR OYGA orqaga qarz (va SMS) yozardi. A'zolik o'quvchi arxivlangan
+        // sanadan MUZLATILGAN holatda tiklanadi — davom ettirish ongli «Aktivlashtirish» bilan
+        // (GroupUnarchive). ⚠️ Arxiv maydonlari tozalanishidan OLDIN (sana `ArchivedAt` dan olinadi).
+        var revivedFrozen = await GroupUnarchive.FreezeRevivedMembershipsAsync(db, audit, cls, groupArchivedAt, students);
+
         foreach (var s in students)
         {
             s.IsArchived = false;
@@ -482,7 +653,9 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
         }
 
         audit.Record(AuditService.EntityClassFee, cls.Id, "update",
-            $"Guruh arxivdan chiqarildi ({cls.Name}) — {students.Count} ta o'quvchi bilan");
+            $"Guruh arxivdan chiqarildi ({cls.Name}) — {students.Count} ta o'quvchi bilan"
+            + (revivedFrozen > 0 ? $" ({revivedFrozen} ta a'zolik muzlatilgan holatda tiklandi — arxivdagi oylar hisoblanmaydi)" : "")
+            + (endCleared ? "; tugash sanasi tozalandi" : ""));
         await db.SaveChangesAsync();
         return Ok(new { restoredStudents = students.Count });
     }
@@ -544,9 +717,11 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
     [HttpGet("{id}/members")]
     public async Task<ActionResult<IEnumerable<GroupMemberDto>>> Members(string id)
     {
+        // ⚠️ ARXIVDAGI o'quvchining tirik a'zoligi (eski ma'lumot — ilgari arxivlash a'zolikka
+        // tegmasdi) "hozirgi a'zo" emas: ro'yxatga tushmaydi. Chiqqan (tarixdagi) a'zoligi esa ko'rinadi.
         var rows = await (from sg in db.StudentGroups
                           join s in db.Students on sg.StudentId equals s.Id
-                          where sg.GroupId == id
+                          where sg.GroupId == id && !(sg.IsActive && s.IsArchived)
                           orderby sg.IsActive descending, s.FullName
                           select new GroupMemberDto(s.Id, s.FullName, sg.JoinedAt, sg.LeftAt, sg.IsActive,
                               sg.Status, sg.ActivatedAt, sg.FrozenAt, s.Balance, sg.YearFreeze))
@@ -572,9 +747,10 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
     [HttpGet("{id}/sms-recipients")]
     public async Task<ActionResult<IEnumerable<GroupSmsRecipientDto>>> SmsRecipients(string id)
     {
+        // Arxivdagi o'quvchiga guruh SMS'i ketmaydi (tirik a'zoligi eski ma'lumotda qolgan bo'lsa ham).
         var rows = await (from sg in db.StudentGroups
                           join s in db.Students on sg.StudentId equals s.Id
-                          where sg.GroupId == id && sg.IsActive
+                          where sg.GroupId == id && sg.IsActive && !s.IsArchived
                           orderby s.FullName
                           select new GroupSmsRecipientDto(s.Id, s.FullName, s.Phone, s.ParentPhone,
                               s.FatherPhone, s.MotherPhone, sg.Status, 0m))
@@ -601,7 +777,8 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
 
         var rows = await (from sg in db.StudentGroups.AsNoTracking()
                           join s in db.Students.AsNoTracking() on sg.StudentId equals s.Id
-                          where sg.GroupId == id
+                          // Arxivdagi o'quvchining tirik a'zoligi — hozirgi a'zo emas (Members bilan bir xil).
+                          where sg.GroupId == id && !(sg.IsActive && s.IsArchived)
                           orderby sg.IsActive descending, s.FullName
                           select new
                           {
@@ -683,6 +860,8 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
         var rows = await (from sg in db.StudentGroups.AsNoTracking()
                           where sg.IsActive
                           join s in db.Students.AsNoTracking() on sg.StudentId equals s.Id
+                          // Arxivdagi o'quvchi "hozir kim qayerda" ro'yxatiga (va sanoqlariga) kirmaydi.
+                          where !s.IsArchived
                           join g in db.Classes.AsNoTracking() on sg.GroupId equals g.Id
                           join t in db.Teachers.AsNoTracking() on g.TeacherId equals t.Id into tj
                           from t in tj.DefaultIfEmpty()
@@ -705,8 +884,22 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
     {
         var cls = await db.Classes.FindAsync(id);
         if (cls is null) return NotFound(new { message = "Guruh topilmadi" });
+        // ARXIVDAGI (yopilgan/tugatilgan) guruhga o'quvchi qo'shilmaydi — u yerda dars yo'q, a'zolik
+        // esa keyin aktivlashtirilib yopiq guruhdan oylik yozilardi. Avval «Arxivdan chiqarish».
+        if (cls.IsArchived)
+            return BadRequest(new { message = "Guruh arxivda — o'quvchi qo'shib bo'lmaydi. Avval guruhni arxivdan chiqaring." });
         var s = await db.Students.FindAsync(req.StudentId);
         if (s is null) return NotFound(new { message = "O'quvchi topilmadi" });
+
+        // ESKI ARXIV (audit C1, `StudentArchiving`): 2026-10-07 dan oldin arxivlangan o'quvchida a'zoliklar
+        // hamon TIRIK — arxivdan chiqarishdan OLDIN ular ARXIV SANASIDA yopiladi, aks holda arxivda o'tgan
+        // oylar birdaniga hisoblanib SMS ketardi. Yangi arxivda tirik a'zolik yo'q — hech narsa qilinmaydi.
+        using var legacyGate = s.IsArchived ? await PaymentIdempotency.LockAsync("student:" + s.Id) : null;
+        if (s.IsArchived)
+        {
+            await StudentBalanceSync.ReloadAsync(db, s);
+            await StudentArchiving.CloseLegacyMembershipsAsync(db, audit, s);
+        }
 
         var existing = await db.StudentGroups
             .FirstOrDefaultAsync(sg => sg.StudentId == req.StudentId && sg.GroupId == id);
@@ -716,10 +909,10 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
         if (cls.Capacity > 0)
         {
             // Sig'imni FAQAT o'rin band qilganlar to'ldiradi (active + trial) — MUZLATILGAN
-            // a'zolik o'rin egallamaydi (MembershipLifecycle.OccupiesSeat — yagona ta'rif).
-            var enrolled = await db.StudentGroups
-                .Where(sg => sg.GroupId == id)
-                .CountAsync(MembershipLifecycle.OccupiesSeatExpr);
+            // a'zolik va ARXIVDAGI o'quvchi o'rin egallamaydi (MembershipLifecycle.SeatHolders).
+            var enrolled = await MembershipLifecycle
+                .SeatHolders(db.StudentGroups.Where(sg => sg.GroupId == id), db.Students)
+                .CountAsync();
             if (enrolled >= cls.Capacity)
                 return BadRequest(new { message = $"Guruh to'lgan ({cls.Capacity} o'rin)" });
         }
@@ -774,16 +967,25 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
 
         audit.Record("Membership", $"{id}:{req.StudentId}", "create",
             $"Guruhga qo'shildi: {s.FullName} → {cls.Name} (sinov, {joinedAt})" +
-            (existing is not null ? " — qayta qo'shildi" : ""),
+            (existing is not null ? " — qayta qo'shildi" : "") +
+            (restored ? " — o'quvchi arxivdan qaytarildi" : ""),
             studentId: s.Id);
 
         await db.SaveChangesAsync();
+        // Qulf SAQLASHDAN KEYIN darhol bo'shatiladi (`PaymentIntake` naqshi) — avto-xabar (SMS/Telegram)
+        // sekin bo'lishi mumkin, shu o'quvchining (va shu qulf bo'lagidagi boshqalarning) to'lovi uni
+        // kutmasin (audit R1-11). `Dispose` ikki marta chaqirilsa zarar yo'q.
+        legacyGate?.Dispose();
 
         // Avto xabar — o'quvchi guruhga qo'shilganda ota-onaga ("O'quvchi guruhga qo'shilganda" hodisasi).
         await autoMsg.DispatchStudentAsync(db, AutoMessageTriggers.StudentAdded, s,
             new Dictionary<string, string> { ["{guruh}"] = cls.Name }, group: cls);
         return Ok(new { ok = true, restored });
     }
+
+    /// <summary>Arxivdagi o'qituvchini faol guruhga biriktirib bo'lmasligi sababi (400).</summary>
+    private static string ArchivedTeacherMessage(Teacher t) =>
+        $"O'qituvchi {t.FullName} arxivda (ishdan ketgan) — faol guruhga biriktirib bo'lmaydi.";
 
     /// <summary>Amal sababini (ActionReason) id bo'yicha matnga aylantiradi — yo'q/bo'sh bo'lsa "".</summary>
     private async Task<string> ReasonLabelAsync(string? reasonId)
@@ -829,7 +1031,7 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
             // Bir o'quvchining pul amallari bir navbatda (to'lov/vozvrat bilan bir qulf) — balans
             // qulf ICHIDA qayta o'qiladi (parallel to'lov ta'siri eski qiymat ustidan yozilmasin).
             using var gate = await PaymentIdempotency.LockAsync("student:" + studentId);
-            student.Balance = await db.Students.AsNoTracking().Where(x => x.Id == studentId).Select(x => x.Balance).FirstAsync();
+            await StudentBalanceSync.ReloadAsync(db, student);
             restored = (await MembershipBilling.LeaveGroupAsync(db, student, cls, sg, leftAt)).Restored;
             await ReleasePrimaryGroupNameAsync(student, cls);
             await RecordRemovalAsync();
@@ -916,13 +1118,32 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
         {
             var cls = await db.Classes.FindAsync(id);
             if (cls is null) return NotFound(new { message = "Guruh topilmadi" });
-            var date = string.IsNullOrWhiteSpace(req.Date) ? AppClock.Today.ToString("yyyy-MM-dd") : req.Date!.Trim();
+            // Sana tekshiriladi (ommaviy amaldagi kabi): buzuq sana `ActivatedAt` ga tushib, keyin
+            // oylar oralig'ini hisoblashda cheksiz siklga olib borardi (membership-periods.md §3).
+            if (!TryNormalizeDate(req.Date, out var parsed))
+                return BadRequest(new { message = "Sana noto'g'ri (yyyy-MM-dd)" });
+            var date = parsed ?? AppClock.Today.ToString("yyyy-MM-dd");
 
             // Refresh'langan ma'lumot bilan oqiylik (dirty-read oldini olish).
             var sg = await db.StudentGroups
                 .FirstOrDefaultAsync(x => x.GroupId == id && x.StudentId == studentId && x.IsActive);
             if (sg is null)
                 return NotFound(new { message = "Faol a'zolik topilmadi" });
+
+            // ARXIVDAGI guruhda (yoki arxivdagi o'quvchida) aktivlashtirish yo'q — yopiq guruhdan oylik
+            // yozila boshlardi. Sabab ochiq aytiladi (MembershipBulk.ActivationBlockReason — yagona qoida).
+            if (sg.Status != "active")
+            {
+                var studentArchived = await db.Students.AsNoTracking()
+                    .Where(x => x.Id == studentId).Select(x => x.IsArchived).FirstOrDefaultAsync();
+                switch (MembershipBulk.ActivationBlockReason(cls.IsArchived, studentArchived))
+                {
+                    case MembershipBulk.GroupArchivedReason:
+                        return BadRequest(new { message = "Guruh arxivda — aktivlashtirib bo'lmaydi. Avval guruhni arxivdan chiqaring yoki o'quvchini faol guruhga o'tkazing." });
+                    case MembershipBulk.StudentArchivedReason:
+                        return BadRequest(new { message = "O'quvchi arxivda — avval o'quvchini arxivdan qaytaring." });
+                }
+            }
 
             var r = await ActivateCoreAsync(cls, sg, date, req.RetentionBonus);
             // Allaqachon faol bo'lsa — qayta aktivlashtirish kerak emas (ikki marta hisoblamaslik uchun).
@@ -1065,7 +1286,11 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
         if (req.YearFreeze == true && !MaySetYearFreeze)
             return StatusCode(403, new { message = "«Aktiv muzlatish» faqat superadmin uchun" });
 
-        var date = string.IsNullOrWhiteSpace(req.Date) ? AppClock.Today.ToString("yyyy-MM-dd") : req.Date!.Trim();
+        // Sana — ommaviy muzlatishdagi bilan AYNAN bir xil tekshiruv (buzuq sana `FrozenAt` ga tushib,
+        // qisman oylik va keyingi oylarni bekor qilish jimgina noto'g'ri ishlardi).
+        if (!TryNormalizeDate(req.Date, out var parsed))
+            return BadRequest(new { message = "Sana noto'g'ri (yyyy-MM-dd)" });
+        var date = parsed ?? AppClock.Today.ToString("yyyy-MM-dd");
 
         var cls = await db.Classes.FindAsync(id);
         if (cls is null) return NotFound(new { message = "Guruh topilmadi" });
@@ -1230,10 +1455,12 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
         var keys = all.Where(x => MembershipBulk.IsEligible(x.Status, freeze)).ToList();
         var skippedNotEligible = all.Count - keys.Count;
 
-        var names = await db.Students.AsNoTracking()
+        var studentRows = await db.Students.AsNoTracking()
             .Where(s => ids.Contains(s.Id))
-            .Select(s => new { s.Id, s.FullName })
-            .ToDictionaryAsync(x => x.Id, x => x.FullName);
+            .Select(s => new { s.Id, s.FullName, s.IsArchived })
+            .ToListAsync();
+        var names = studentRows.ToDictionary(x => x.Id, x => x.FullName);
+        var archivedStudents = studentRows.Where(x => x.IsArchived).Select(x => x.Id).ToHashSet();
 
         var reasonLabel = await ReasonLabelAsync(req.ReasonId);
 
@@ -1272,6 +1499,10 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
 
         var changed = 0;
         var skipped = skippedNotEligible;
+        // Aktivlashtirish TAQIQLANGAN a'zoliklar (arxivdagi guruh / arxivdagi o'quvchi) — "allaqachon
+        // shu holatda" (`skipped`) bilan ARALASHMASIN: sababi alohida sanaladi va nomma-nom qaytadi.
+        var skippedArchived = 0;
+        var skipNotes = new List<string>();
         var failed = 0;
         var restored = 0m;
         var movedAdvance = 0m;
@@ -1317,6 +1548,14 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
                     }
                     else
                     {
+                        // Sentabrdagi ommaviy aktivlashtirish ESKI yopilgan guruhdagi muzlatilgan
+                        // a'zolikni ham uyg'otib, ikki guruhdan oylik yozardi — yakka amaldagi bilan bir qoida.
+                        if (MembershipBulk.ActivationBlockReason(cls.IsArchived, archivedStudents.Contains(key.StudentId)) is { } block)
+                        {
+                            skippedArchived++;
+                            if (skipNotes.Count < MaxBulkErrors) skipNotes.Add($"{who} ({cls.Name}): {block}");
+                            continue;
+                        }
                         var r = await ActivateCoreAsync(cls, sg, date, req.RetentionBonus, FeeFor(cls.CourseId), pricing);
                         if (r.Already) { skipped++; continue; }
                         movedAdvance += r.MovedAdvance;
@@ -1363,7 +1602,9 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
             Restored: restored,
             MovedAdvance: movedAdvance,
             CatchUpMonths: catchUpMonths,
-            Errors: errors.ToArray()));
+            Errors: errors.ToArray(),
+            SkippedArchived: skippedArchived,
+            SkipNotes: skipNotes.ToArray()));
     }
 
     /// <summary>
@@ -1390,6 +1631,9 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
         if (fromGroup is null) return NotFound(new { message = "Joriy guruh topilmadi" });
         var toGroup = await db.Classes.FindAsync(req.ToGroupId);
         if (toGroup is null) return NotFound(new { message = "Maqsad guruh topilmadi" });
+        // Arxivdagi (yopilgan) guruhga o'tkazish = yopiq guruhda aktivlashtirish (oylik yoziladi, dars yo'q).
+        if (toGroup.IsArchived)
+            return BadRequest(new { message = "Maqsad guruh arxivda — unga o'tkazib bo'lmaydi" });
 
         var fromSg = await db.StudentGroups
             .FirstOrDefaultAsync(x => x.GroupId == id && x.StudentId == studentId && x.IsActive);
@@ -1397,13 +1641,19 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
 
         var s = await db.Students.FindAsync(studentId);
         if (s is null) return NotFound(new { message = "O'quvchi topilmadi" });
+        // ARXIVDAGI o'quvchi (eski arxivning tirik a'zoligi) — yangi guruhda AKTIVLASHTIRILMAYDI:
+        // aktivlashtirish/qo'shish bilan bir xil qoida (`MembershipBulk.ActivationBlockReason`). Aks holda
+        // ro'yxatlarda ko'rinmaydigan odamga qisman oy + orqaga oylar yozilardi (audit R1-9).
+        if (MembershipBulk.ActivationBlockReason(toGroup.IsArchived, s.IsArchived) == MembershipBulk.StudentArchivedReason)
+            return BadRequest(new { message = "O'quvchi arxivda — avval o'quvchini arxivdan qaytaring, keyin guruhga qo'shing." });
 
         if (toGroup.Capacity > 0)
         {
-            // Sig'im — faqat o'rin band qilganlar (active + trial); muzlatilganlar SANALMAYDI.
-            var enrolled = await db.StudentGroups
-                .Where(x => x.GroupId == req.ToGroupId)
-                .CountAsync(MembershipLifecycle.OccupiesSeatExpr);
+            // Sig'im — faqat o'rin band qilganlar (active + trial); muzlatilganlar va arxivdagi
+            // o'quvchilar SANALMAYDI (MembershipLifecycle.SeatHolders).
+            var enrolled = await MembershipLifecycle
+                .SeatHolders(db.StudentGroups.Where(x => x.GroupId == req.ToGroupId), db.Students)
+                .CountAsync();
             if (enrolled >= toGroup.Capacity)
                 return BadRequest(new { message = $"Maqsad guruh to'lgan ({toGroup.Capacity} o'rin)" });
         }
@@ -1427,6 +1677,10 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
             return BadRequest(new { message = "Sana noto'g'ri" });
         if (ac < fz)
             return BadRequest(new { message = "Yangi guruhda aktivlashtirish sanasi eski guruhdan chiqish sanasidan oldin bo'lmaydi" });
+        // Chiqish — guruhdan chiqarishdagi (`RemoveMember`) bilan bir xil: kelajak sana bo'lmaydi
+        // (ertangi chiqish bugun yozilsa, oradagi darslar ikkala guruhda ham yo'qolardi).
+        if (fz > AppClock.Today)
+            return BadRequest(new { message = "Eski guruhdan chiqish sanasi kelajakda bo'lishi mumkin emas" });
         freezeDate = fz.ToString("yyyy-MM-dd");
         activateDate = ac.ToString("yyyy-MM-dd");
 
@@ -1480,10 +1734,18 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
         // Jurnalda MemberStart bilan RecordedAt orasidagi, allaqachon davomati olingan darslar
         // avto-"keldi" ✓ bo'lib to'lib qolmasin (AddMember/ActivateMember bilan bir xil qoida).
         toSg.RecordedAt = AppClock.Today.ToString("yyyy-MM-dd");
+        // CHEGIRMA: eski guruhga qaratilgan amaldagi chegirma (bir xil fan bo'lsa) yangi guruhga
+        // ko'chadi — eski guruh chiqish hisobi (1) da allaqachon yozilgan, yangi guruhniki pastda shu
+        // chegirma bilan yoziladi (DiscountTransfer — tartib izohi o'sha yerda).
+        var discountMove = await DiscountTransfer.MoveGroupScopedAsync(db, audit, s, fromGroup, toGroup, activateDate);
+
         // O'quvchi shu OYDA chiqqan guruhiga qaytsa (masalan xato o'tkazishni tuzatish) — o'sha oydagi
         // oldingi segment saqlanib, yangisi USTIGA qo'shiladi (ActivateCoreAsync bilan bir xil qoida).
         await TuitionService.ChargeActivationProrateAsync(db, s, toGroup, activateDate,
             addSegment: MembershipLifecycle.ClosedPeriodEndsInMonth(toSg, activateDate));
+        // ORQAGA SANALGAN aktivlashtirish: oraliq oylar DARHOL to'liq oylik bilan (yakka
+        // «Aktivlashtirish» dagi kabi) — aks holda 12 soatlik fon xizmatini kutib qarz kam ko'rinardi.
+        var catchUpMonths = await TuitionService.AccrueCatchUpAsync(db, s, toGroup, activateDate, toSg);
 
         // 4) AVANSNI KO'CHIRISH: o'quvchi shu oy uchun ESKI guruhga allaqachon to'lagan bo'lsa, muzlatish
         //    qisman hisobidan ORTIB QOLGAN summa yangi guruhga qayta teglanadi. Aks holda to'lagan o'quvchi
@@ -1506,11 +1768,12 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
         audit.Record("Membership", $"{id}:{studentId}", "update",
             $"Guruh almashtirildi: {fromGroup.Name} → {toGroup.Name} (eski guruhdan chiqdi {freezeDate}, aktivlashtirish {activateDate})"
                 + (movedAdvance > 0 ? $" — {AuditService.Money(movedAdvance)} so'm to'lov yangi guruhga ko'chirildi" : "")
+                + (catchUpMonths > 0 ? $" — {catchUpMonths} oy uchun oylik yozildi (orqaga sanalgan)" : "")
                 + (reason.Length > 0 ? $" — sabab: {reason}" : ""),
             studentId: studentId);
 
         await db.SaveChangesAsync();
-        return Ok(new { ok = true, movedAdvance });
+        return Ok(new { ok = true, movedAdvance, catchUpMonths, discountMoved = discountMove.Moved });
     }
 
     /// <summary>
@@ -1580,6 +1843,42 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
 
         await db.SaveChangesAsync();
         return Ok(new { ok = true });
+    }
+
+    /// <summary>
+    /// O'quvchining SHU GURUHDAN yozilgan uzaytirish hodisalari (qo'lda ham, «Tugatish» yozgani ham) —
+    /// «Uzaytirish qaydi» oynasida ro'yxat va xatoni bekor qilish uchun. Eng yangisi tepada.
+    /// </summary>
+    [HttpGet("{id}/members/{studentId}/extensions")]
+    public async Task<ActionResult<IEnumerable<StudentExtensionDto>>> Extensions(string id, string studentId) =>
+        await db.StudentExtensions.AsNoTracking()
+            .Where(x => x.StudentId == studentId && x.FromGroupId == id)
+            .OrderByDescending(x => x.Date).ThenByDescending(x => x.CreatedAt)
+            .Select(x => new StudentExtensionDto(x.Id, x.FromGroupName, x.ToGroupId, x.ToGroupName, x.Date,
+                x.ByUserName, x.Note ?? "", x.CreatedAt))
+            .ToListAsync();
+
+    /// <summary>
+    /// XATO yozilgan uzaytirishni BEKOR QILISH — qator o'chiriladi (u faqat hodisa qaydi: a'zolik va
+    /// pulga tegmaydi), KPI «Bonus B» sanog'i o'z-o'zidan kamayadi. Ilgari yozilgan uzaytirishni
+    /// qaytarishning yo'li yo'q edi.
+    /// <para>Ruxsat — sinf darvozasi (<c>classes.list</c>, DELETE → <c>delete</c> amali). Audit —
+    /// yaratishdagi bilan bir xil tur va <c>EntityId</c> (guruh/o'quvchi tarixida ko'rinadi).</para>
+    /// </summary>
+    [HttpDelete("{id}/members/{studentId}/extensions/{extensionId}")]
+    public async Task<IActionResult> DeleteExtension(string id, string studentId, string extensionId)
+    {
+        var ext = await db.StudentExtensions
+            .FirstOrDefaultAsync(x => x.Id == extensionId && x.StudentId == studentId && x.FromGroupId == id);
+        if (ext is null) return NotFound(new { message = "Uzaytirish qaydi topilmadi (allaqachon o'chirilgan bo'lishi mumkin)" });
+
+        db.StudentExtensions.Remove(ext);
+        audit.Record("StudentExtension", $"{id}:{studentId}", "delete",
+            $"Uzaytirish bekor qilindi: {ext.StudentName} — «{ext.FromGroupName}» → «{ext.ToGroupName}», sana {ext.Date}" +
+            (string.IsNullOrWhiteSpace(ext.ByUserName) ? "" : $" (yozgan: {ext.ByUserName})"),
+            studentId: studentId);
+        await db.SaveChangesAsync();
+        return NoContent();
     }
 
     /// <summary>
@@ -1665,13 +1964,16 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
             .OrderBy(c => c.Grade).ThenBy(c => c.Name).ToListAsync();
         // "Band o'rin" = active + trial (MembershipLifecycle.OccupiesSeat). Muzlatilgan a'zolik
         // o'rin egallamaydi — aks holda hisobot bo'sh guruhni "to'lgan" deb ko'rsatardi.
-        var counts = (await db.StudentGroups.Where(MembershipLifecycle.OccupiesSeatExpr)
+        // Arxivdagi o'quvchining (eski ma'lumotda qolgan) tirik a'zoligi ham o'rin egallamaydi.
+        var counts = (await MembershipLifecycle.SeatHolders(db.StudentGroups, db.Students)
                 .GroupBy(sg => sg.GroupId)
                 .Select(g => new { GroupId = g.Key, Count = g.Count() }).ToListAsync())
             .ToDictionary(x => x.GroupId, x => x.Count);
         // Joriy MUZLATILGAN a'zoliklar — o'rin egallamaydi, lekin Guruhlar ro'yxatidagi
         // "Muzlatilgan o'quvchilar soni" uchun alohida sanaladi.
-        var frozen = (await db.StudentGroups.Where(sg => sg.IsActive && sg.Status == "frozen")
+        var frozen = (await db.StudentGroups
+                .Where(sg => sg.IsActive && sg.Status == "frozen"
+                             && db.Students.Any(s => s.Id == sg.StudentId && !s.IsArchived))
                 .GroupBy(sg => sg.GroupId)
                 .Select(g => new { GroupId = g.Key, Count = g.Count() }).ToListAsync())
             .ToDictionary(x => x.GroupId, x => x.Count);
@@ -1687,30 +1989,29 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
     /// <summary>
     /// Guruhni YAKUNLAB ARXIVLAYDI va YANGI guruh ochadi (Hybrid — "Tugatish (sertifikat bilan)").
     /// <list type="bullet">
-    ///   <item><b>Eski guruh HISOBI YOPILADI:</b> har bir FAOL a'zolik <c>CloseDate</c> sanasidan
-    ///     muzlatiladi — oddiy "Muzlatish" va "Guruhni yopish" bilan AYNAN bir xil hisob
-    ///     (<see cref="MembershipBilling.SettleFreezeAsync"/>): shu oyda yopish SANASIGACHA (shu sana
-    ///     ham) qatnashgan darslar uchun ESKI GURUHGA qisman oylik yoziladi, yopish oyidan KEYINGI
-    ///     oylar hisobi esa bekor qilinadi. Ilgari bu YO'Q edi: a'zolik shunchaki "completed" bo'lib
-    ///     yopilar, oyning allaqachon yozilgan TO'LIQ oyligi kamaymas, hisob umuman bo'lmagan holatda
-    ///     esa oy "to'langan" bo'lib ko'rinardi.</item>
-    ///   <item>A'zoliklar Status="completed", IsActive=false, LeftAt=FrozenAt=<c>CloseDate</c>
-    ///     (eski guruhda tarix saqlanadi; <c>FrozenAt</c> — hisob-kitob chegarasi).</item>
-    ///   <item>Eski guruh IsArchived=true, Status="archived", ArchivedAt=<c>CloseDate</c>
-    ///     (o'quvchilar arxivlanmaydi).</item>
-    ///   <item>Asl kurs uchun sertifikat yaratiladi.</item>
-    ///   <item>TargetCourseId ko'rsatilsa SHU kurs bilan, aks holda eski guruh kursi bilan YANGI guruh yaratiladi.</item>
-    ///   <item><c>autoEnrollNewGroup</c>=true — yangi guruhga FAQAT eski guruhda <b>Status=="active"</b>
-    ///     bo'lgan a'zolar ko'chiriladi. SINOVDAGI (trial) va MUZLATILGAN (frozen) a'zolar
-    ///     ko'chirilmaydi: ular eski guruhda "completed" bo'lib qoladi (tarix saqlanadi), yangi
-    ///     guruhga qo'lda qo'shiladi. Sabab: sinovda tashlab ketgan yoki muzlatilgan (ta'tilga
-    ///     chiqqan) o'quvchi kursni tugatmagan — uni avtomatik ko'chirish yangi guruh ro'yxatini,
-    ///     jurnalni va guruh to'ldirilishini soxta ko'rsatardi.</item>
-    ///   <item><c>activateInNewGroup</c>=true bo'lsa (standart) ko'chirilganlar <c>ActivateDate</c>
-    ///     sanasidan DARHOL aktivlashtiriladi (yangi guruhga qisman oylik shu sanadan yoziladi, eski
-    ///     guruhda ortib qolgan avans yangi guruhga ko'chiriladi —
-    ///     <see cref="TuitionService.CarryGroupAdvanceAsync"/>). false bo'lsa ular yangi guruhga
-    ///     "sinov" statusida qo'shiladi (to'lov hisoblanmaydi).</item>
+    ///   <item><b>FAQAT superadmin</b> (<see cref="MayCompleteGroups"/>) — UI bilan bir xil darvoza.</item>
+    ///   <item><b>BITTA TRANZAKSIYA</b>: eski guruhni yopish, yangi guruh, ko'chirish, sertifikatlar va
+    ///     audit — yo hammasi, yo hech narsa. Ilgari oraliq <c>SaveChanges</c> lar alohida edi: o'rtada
+    ///     xato bo'lsa eski guruh yopilib, yangi guruh ochilmay qolardi.</item>
+    ///   <item><b>KURSNI TUGATGANLAR</b> (<see cref="GroupCompletionRules.Completes"/> — faqat
+    ///     <c>active</c> a'zolar): hisob <c>CloseDate</c> gacha yopiladi
+    ///     (<see cref="MembershipBilling.SettleFreezeAsync"/>), a'zolik <c>Status="completed"</c>,
+    ///     <c>IsActive=false</c>, <c>LeftAt=FrozenAt=CloseDate</c>, SERTIFIKAT beriladi.</item>
+    ///   <item><b>SINOVDAGI va MUZLATILGAN</b> a'zolar kursni TUGATMAGAN — ular ODDIY CHIQISH bilan
+    ///     yopiladi (<see cref="MembershipBilling.LeaveGroupAsync"/>: <c>LeftAt</c>, holat o'zgarmaydi),
+    ///     sertifikat OLMAYDI, sabab jurnaliga tizim sababi yoziladi
+    ///     (<see cref="MembershipReasons.CompletedNotFinishedLabel"/>). Ilgari ular ham "completed" va
+    ///     sertifikat olib, hisobotlarda bitiruvchi bo'lib ko'rinardi.</item>
+    ///   <item>Eski guruh IsArchived=true, Status="archived", ArchivedAt=<c>CloseDate</c>; yopish
+    ///     kunidan keyingi o'rinbosar sanalari olib tashlanadi.</item>
+    ///   <item>YANGI guruh — nomi NOYOB (<see cref="GroupNames"/>), o'qituvchi tarixi ochiladi
+    ///     (<see cref="GroupTeacherHistory.AssignAsync"/>, boshlanishi = aktivlashtirish sanasi).</item>
+    ///   <item><c>autoEnrollNewGroup</c>=true — yangi guruhga FAQAT kursni tugatganlar ko'chiriladi;
+    ///     <c>activateInNewGroup</c>=true bo'lsa <c>ActivateDate</c> dan aktivlashtiriladi (qisman oylik,
+    ///     catch-up, eski guruhda ortib qolgan avans va bir xil fandagi chegirma yangi guruhga ko'chadi).</item>
+    ///   <item>Ko'chirilMAGAN a'zolarning «asosiy guruh» yorlig'i (<c>Student.ClassName</c>) bo'shatiladi
+    ///     (aks holda ular nom orqali YANGI guruh chatiga kirib qolardi).</item>
+    ///   <item>Audit: har a'zoga alohida <c>Membership</c> qatori + yig'ma qator — SAQLASHDAN OLDIN.</item>
     /// </list>
     /// </summary>
     [HttpPost("{id}/complete-and-transfer")]
@@ -1718,6 +2019,9 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
     public async Task<ActionResult<CompleteAndTransferResultDto>> CompleteAndTransfer(
         string id, CompleteAndTransferRequest req)
     {
+        if (!MayCompleteGroups)
+            return StatusCode(403, new { message = "Guruhni tugatish (sertifikat bilan) faqat superadmin uchun" });
+
         var group = await db.Classes.FindAsync(id);
         if (group is null) return NotFound(new { message = "Guruh topilmadi" });
         if (group.IsArchived) return BadRequest(new { message = "Guruh allaqachon arxivda" });
@@ -1760,246 +2064,345 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
         if (!string.IsNullOrWhiteSpace(req.TargetCourseId) && targetCourse is null)
             return BadRequest(new { message = "Tanlangan kurs topilmadi" });
 
+        // YANGI GURUH NOMI — NOYOB (arxivdagi eski guruh ham shu nomda qoladi, ya'ni eski nomni
+        // takrorlash mumkin emas): chat nom bilan bog'langan, yangi guruh eski guruhning (ko'chirilmagan
+        // o'quvchilar ham yozgan) yozishmasini meros olmasin.
+        var newGroupName = GroupNames.Clean(!string.IsNullOrWhiteSpace(req.NewGroupName) ? req.NewGroupName : group.Name);
+        if (await GroupNames.IsTakenAsync(db, newGroupName, null))
+            return BadRequest(new
+            {
+                message = $"{GroupNames.TakenMessage} — yangi guruh uchun boshqa nom kiriting (eski guruh «{group.Name}» nomi bilan arxivda qoladi)",
+            });
+
         var memberStudentIds = activeMembers.Select(m => m.StudentId).Distinct().ToList();
         var students = (await db.Students.Where(s => memberStudentIds.Contains(s.Id)).ToListAsync())
             .ToDictionary(s => s.Id);
+        // Eski ma'lumotda arxivlangan o'quvchining a'zoligi tirik qolgan bo'lishi mumkin — u kursni
+        // tugatmagan (sertifikat ham, ko'chirish ham yo'q), oddiy chiqish bilan yopiladi.
+        var archivedIds = students.Values.Where(s => s.IsArchived).Select(s => s.Id).ToHashSet();
 
-        // YANGI GURUHGA KO'CHADIGANLAR — qoida YAGONA manbada (GroupCompletionRules): faqat eski
-        // guruhda Status=="active" bo'lganlar. Sinov/muzlatilgan a'zolar ko'chirilmaydi.
+        // KURSNI TUGATGANLAR = YANGI GURUHGA KO'CHADIGANLAR — qoida YAGONA manbada
+        // (GroupCompletionRules): faqat eski guruhda Status=="active" bo'lganlar.
         // DIQQAT: ro'yxat quyidagi (1) sikldan OLDIN olinadi — u yerda Status "completed"ga
         // o'zgaradi va keyin "kim aktiv edi" degan ma'lumot yo'qoladi.
-        var transferIds = GroupCompletionRules.TransferableStudentIds(activeMembers);
-        // Ko'chirilmaydiganlar soni (natija/audit uchun) — a'zoligi bor, lekin aktiv emas.
+        var transferIds = GroupCompletionRules.TransferableStudentIds(activeMembers, archivedIds);
+        var completedIds = transferIds.ToHashSet();
+        // Ko'chirilmaydiganlar soni (natija/audit uchun) — a'zoligi bor, lekin kursni tugatmagan.
         var skippedNotActive = memberStudentIds.Count - transferIds.Count;
 
-        // 1. ESKI GURUH HISOBINI YOPAMIZ, so'ng a'zoliklarni "completed" qilamiz (tarix saqlanadi).
-        //    Hisob "Muzlatish"/"Guruhni yopish" bilan bitta manbadan (MembershipBilling) — o'quvchi
-        //    yopish sanasigacha o'qigan darslari uchun AYNAN ESKI GURUHGA qarzdor bo'lib qoladi.
-        var chargedOldGroup = 0;
-        var restored = 0m;
-        foreach (var m in activeMembers)
+        // ⚠️ TRANZAKSIYA — EXECUTION STRATEGY ICHIDA. `EnableRetryOnFailure` (Program.cs) qo'lda
+        // ochilgan tranzaksiyani faqat shu yo'l bilan qabul qiladi; aks holda birinchi so'rovdayoq
+        // InvalidOperationException (500) — amal UMUMAN ishlamasdi. Vaqtinchalik uzilishdan keyingi
+        // QAYTA URINISHDA kuzatuvdagi o'zgarishlar tashlanadi va holat bazadan QAYTA o'qiladi: birinchi
+        // urinishda xotirada "completed" bo'lib qolgan a'zolik ikkinchi marta noto'g'ri hisoblanmasin.
+        var strategy = db.Database.CreateExecutionStrategy();
+        var attempt = 0;
+        return await strategy.ExecuteAsync<ActionResult<CompleteAndTransferResultDto>>(async () =>
         {
-            if (m.Status == "active")
+            if (attempt++ > 0)
             {
-                if (students.TryGetValue(m.StudentId, out var s))
-                {
-                    var settle = await MembershipBilling.SettleFreezeAsync(
-                        db, s, group, m.ActivatedAt, closeDate, membership: m);
-                    if (settle.Charged) chargedOldGroup++;
-                    restored += settle.Restored;
-                }
-                // Hisob-kitob chegarasi (StudentGroupLedger, GroupBalanceService, SalaryLedger,
-                // RetentionBonusService hammasi FrozenAt'ga qaraydi) — "Guruhni yopish" bilan bir xil.
-                m.FrozenAt = closeDate;
+                db.ChangeTracker.Clear();
+                group = await db.Classes.FindAsync(id)
+                        ?? throw new InvalidOperationException("Guruh topilmadi");
+                activeMembers = await db.StudentGroups
+                    .Where(sg => sg.GroupId == id && sg.IsActive)
+                    .ToListAsync();
+                memberStudentIds = activeMembers.Select(m => m.StudentId).Distinct().ToList();
+                students = (await db.Students.Where(s => memberStudentIds.Contains(s.Id)).ToListAsync())
+                    .ToDictionary(s => s.Id);
+                archivedIds = students.Values.Where(s => s.IsArchived).Select(s => s.Id).ToHashSet();
+                transferIds = GroupCompletionRules.TransferableStudentIds(activeMembers, archivedIds);
+                completedIds = transferIds.ToHashSet();
+                skippedNotActive = memberStudentIds.Count - transferIds.Count;
             }
-            // SINOV a'zoligida hisob umuman ochilmagan — qisman to'lov ham yozilmaydi.
 
-            m.Status = "completed";
-            m.IsActive = false;
-            m.LeftAt = closeDate;
-        }
+            await using var trx = await db.Database.BeginTransactionAsync();
 
-        // 2. Eski guruhni arxivlaymiz (o'quvchilar arxivlanmaydi — faqat guruh).
-        group.IsArchived = true;
-        group.ArchivedAt = closeDate;
-        group.Status = "archived";
-        if (string.IsNullOrWhiteSpace(group.EndDate)) group.EndDate = closeDate;
+            // 0. O'rinbosarlar: yopish kunidan KEYINGI sanalar olib tashlanadi (guruh maydonlari
+            //    o'zgarishidan OLDIN — eski tayinlov guruh umri bo'yicha yoyiladi).
+            await SubstituteGroupLifecycle.TrimAfterAsync(db, audit, group, closeDate, "guruh tugatildi");
 
-        await db.SaveChangesAsync();   // Hisob + completed + archive atomically
-
-        // 3. Sertifikatlar — eski kurs bo'yicha (eski kurs yo'q bo'lsa targetCourseId ishlatiladi).
-        var certCount = 0;
-        var certCourseId = !string.IsNullOrEmpty(oldCourseId) ? oldCourseId : targetCourseId;
-        if (!string.IsNullOrEmpty(certCourseId))
-        {
-            var teacherName = string.IsNullOrEmpty(group.TeacherId)
-                ? null
-                : await db.Teachers
-                    .Where(t => t.Id == group.TeacherId)
-                    .Select(t => t.FullName)
-                    .FirstOrDefaultAsync();
-
-            logger.LogInformation("CompleteAndTransfer: {Count} o'quvchi uchun sertifikat yaratish boshlanmoqda (kurs={CourseId})", activeMembers.Count, certCourseId);
-
+            // 1. ESKI GURUH: kursni tugatganlarning hisobi yopiladi va a'zoligi "completed"; qolganlari
+            //    (sinov/muzlatilgan/arxivdagi) ODDIY CHIQISH bilan yopiladi.
+            var chargedOldGroup = 0;
+            var restored = 0m;
+            var leftNotFinished = 0;
             foreach (var m in activeMembers)
             {
-                try
+                students.TryGetValue(m.StudentId, out var s);
+                if (GroupCompletionRules.Completes(m, archivedIds))
                 {
-                    await certSvc.GenerateCertificateAsync(
-                        m.StudentId, certCourseId, req.CompletionNotes,
-                        teacherName: teacherName);
-                    certCount++;
-                    logger.LogInformation("Sertifikat yaratildi: student={S}", m.StudentId);
+                    if (s is not null)
+                    {
+                        var settle = await MembershipBilling.SettleFreezeAsync(
+                            db, s, group, m.ActivatedAt, closeDate, membership: m);
+                        if (settle.Charged) chargedOldGroup++;
+                        restored += settle.Restored;
+                    }
+                    // Hisob-kitob chegarasi (StudentGroupLedger, GroupBalanceService, SalaryLedger,
+                    // RetentionBonusService hammasi FrozenAt'ga qaraydi) — "Guruhni yopish" bilan bir xil.
+                    m.FrozenAt = closeDate;
+                    m.Status = "completed";
+                    m.IsActive = false;
+                    m.LeftAt = closeDate;
+                    audit.Record("Membership", $"{id}:{m.StudentId}", "update",
+                        $"Kursni tugatdi (sertifikat bilan): {s?.FullName ?? m.StudentId} — {group.Name} ({closeDate})",
+                        studentId: m.StudentId);
+                    continue;
                 }
-                catch (Exception ex)
+
+                var status = m.Status;
+                if (s is not null)
+                    restored += (await MembershipBilling.LeaveGroupAsync(db, s, group, m, closeDate)).Restored;
+                else
                 {
-                    logger.LogWarning(ex, "Sertifikat yaratishda xato: student={S}, course={C}: {Msg}", m.StudentId, certCourseId, ex.Message);
+                    m.IsActive = false;
+                    m.LeftAt = closeDate;
                 }
+                leftNotFinished++;
+                MembershipReasons.Record(db, m.StudentId, id, MembershipReasons.ActionClose, closeDate,
+                    null, MembershipReasons.CompletedNotFinishedLabel);
+                var statusLabel = status == "frozen" ? "muzlatilgan" : status == "trial" ? "sinovdagi" : status;
+                audit.Record("Membership", $"{id}:{m.StudentId}", "delete",
+                    $"Guruh tugatildi — guruhdan chiqdi ({statusLabel}, {closeDate}, guruh: {group.Name}): " +
+                    $"kursni tugatmagan, sertifikat berilmadi" + (archivedIds.Contains(m.StudentId) ? " (o'quvchi arxivda)" : ""),
+                    studentId: m.StudentId);
             }
-            logger.LogInformation("CompleteAndTransfer: {CertCount}/{Total} sertifikat yaratildi", certCount, activeMembers.Count);
-        }
-        else
-        {
-            logger.LogWarning("CompleteAndTransfer: guruhda kurs (CourseId) yo'q — sertifikat yaratilmadi (groupId={GroupId})", id);
-        }
 
-        // 4. YANGI guruh — maqsad kurs + eski guruh o'qituvchi/xona/kunlar/vaqt.
-        var newGroupName = !string.IsNullOrWhiteSpace(req.NewGroupName)
-            ? req.NewGroupName!.Trim()
-            : group.Name;
+            // 2. Eski guruhni arxivlaymiz (o'quvchilar arxivlanmaydi — faqat guruh).
+            group.IsArchived = true;
+            group.ArchivedAt = closeDate;
+            group.Status = "archived";
+            if (string.IsNullOrWhiteSpace(group.EndDate)) group.EndDate = closeDate;
 
-        // Yangi guruh oyligi: maqsad kurs narxidan olinadi; kurs yo'q bo'lsa eski narx.
-        var newMonthlyFee = targetCourse?.Price ?? group.MonthlyFee;
+            await db.SaveChangesAsync();   // tranzaksiya ichida — bekor qilingan oylar keyingi so'rovlarga ko'rinsin
 
-        var newGroup = new Group
-        {
-            Name = newGroupName,
-            Grade = group.Grade,
-            Language = group.Language,
-            MonthlyFee = newMonthlyFee,
-            Room = group.Room,
-            Status = "active",
-            StartDate = activateDate,
-            EndDate = null,
-            Capacity = group.Capacity,
-            CourseId = targetCourseId,
-            TeacherId = group.TeacherId,
-            Note = group.Note,
-            Days = new List<int>(group.Days),
-            StartTime = group.StartTime,
-            EndTime = group.EndTime,
-            IsArchived = false,
-        };
-        db.Classes.Add(newGroup);
-        await db.SaveChangesAsync();   // newGroup.Id assigned
+            // 3. YANGI guruh — maqsad kurs + eski guruh o'qituvchi/xona/kunlar/vaqt.
+            // Yangi guruh oyligi: maqsad kurs narxidan olinadi; kurs yo'q bo'lsa eski narx.
+            var newMonthlyFee = targetCourse?.Price ?? group.MonthlyFee;
 
-        // 5. Auto-enroll — FAQAT eski guruhda AKTIV bo'lgan a'zolar (`transferIds`); sinovdagi va
-        //    muzlatilganlar ko'chirilmaydi. `activateInNewGroup` yoqilgan bo'lsa ular DARHOL
-        //    aktivlashtiriladi — "Guruh almashtirish" (TransferMember) bilan AYNAN bir xil: qisman
-        //    oylik `activateDate`dan YANGI guruhga yoziladi, orqaga sanalgan bo'lsa oraliq oylar
-        //    to'ldiriladi va ESKI guruhda ortib qolgan (avans) pul yangi guruhga qayta teglanadi.
-        //    Yoqilmagan bo'lsa — yangi guruhga "sinov" statusida qo'shiladi (to'lov hisoblanmaydi).
-        var enrolledCount = 0;
-        var activatedInNew = 0;
-        var extensionCount = 0;
-        var movedAdvance = 0m;
-        var recordedAt = AppClock.Today.ToString("yyyy-MM-dd");
-        if (req.AutoEnrollNewGroup)
-        {
-            foreach (var sid in transferIds)
+            var newGroup = new Group
             {
-                var activate = req.ActivateInNewGroup;
-                var sg = new StudentGroup
-                {
-                    StudentId = sid,
-                    GroupId = newGroup.Id,
-                    JoinedAt = activate ? activateDate : recordedAt,
-                    IsActive = true,
-                    Status = activate ? "active" : "trial",
-                    ActivatedAt = activate ? activateDate : string.Empty,
-                    // Jurnaldagi avto-"keldi" qoidasi HAQIQIY bugungi sanadan boshlanadi — activateDate
-                    // orqaga sanalgan bo'lsa, allaqachon o'tilgan darslar avto-"keldi" bo'lib to'lib
-                    // qolmasin (AddMember/ActivateMember/TransferMember bilan bir xil qoida).
-                    RecordedAt = recordedAt,
-                };
-                db.StudentGroups.Add(sg);
-                enrolledCount++;
+                Name = newGroupName,
+                Grade = group.Grade,
+                Language = group.Language,
+                MonthlyFee = newMonthlyFee,
+                Room = group.Room,
+                RoomId = group.RoomId,
+                Status = "active",
+                StartDate = activateDate,
+                EndDate = null,
+                Capacity = group.Capacity,
+                CourseId = targetCourseId,
+                TeacherId = group.TeacherId,
+                Note = group.Note,
+                Days = new List<int>(group.Days),
+                StartTime = group.StartTime,
+                EndTime = group.EndTime,
+                IsArchived = false,
+            };
+            db.Classes.Add(newGroup);
+            // O'QITUVCHI TARIXI — yangi guruh "kim qachondan o'qitadi" bilan ochiladi (aks holda keyingi
+            // o'qituvchi almashuvida bonus/ketish hisobotlari va maosh o'tgan oylarni noto'g'ri odamga
+            // yozardi). Boshlanishi — guruhning o'zi boshlangan (aktivlashtirish) sana.
+            await GroupTeacherHistory.AssignAsync(db, newGroup.Id, newGroup.TeacherId, Actor);
+            foreach (var a in db.GroupTeacherAssignments.Local.Where(a => a.GroupId == newGroup.Id && a.ToDate == null))
+                a.FromDate = activateDate;
+            audit.Record(AuditService.EntityGroup, newGroup.Id, "create",
+                $"Guruh yaratildi ({newGroup.Name}) — «{group.Name}» tugatilib, uning davomi sifatida",
+                after: AuditService.GroupSnapshot(newGroup));
+            await db.SaveChangesAsync();
 
-                if (!activate || !students.TryGetValue(sid, out var st)) continue;
-
-                await TuitionService.ChargeActivationProrateAsync(db, st, newGroup, activateDate);
-                await TuitionService.AccrueCatchUpAsync(db, st, newGroup, activateDate);
-                // Eski guruhga to'langan, ammo yopish hisobidan ORTIB QOLGAN summa yangi guruhga
-                // ko'chadi (aks holda to'lagan o'quvchi yangi guruhda "qarzdor" bo'lib ko'rinardi).
-                // Eski guruhdagi bekor qilingan oylar (1) da allaqachon bazaga yozilgan, shuning
-                // uchun `zeroOwedMonths` kerak emas.
-                if (closeDate.Length >= 7)
-                    movedAdvance += await TuitionService.CarryGroupAdvanceAsync(
-                        db, st, group, newGroup, closeDate[..7]);
-                activatedInNew++;
-            }
-
-            // Student.ClassName ("asosiy guruh" yorlig'i) — FAQAT ko'chirilganlarga. Ko'chirilmagan
-            // (sinov/muzlatilgan) o'quvchi o'zi a'zo bo'lmagan guruh nomini olib yurmasligi kerak.
-            foreach (var sid in transferIds)
-                if (students.TryGetValue(sid, out var s)) s.ClassName = newGroupName;
-
-            // UZAYTIRISH HODISALARI (`StudentExtension`) — chiquvchi adminning "Bonus B" manbai.
-            //
-            // ⚠️ SHART: maqsad kurs ESKI kursdan BOSHQA bo'lishi kerak. "Uzaytirish" = o'quvchi
-            // kursning bir bosqichini TUGATIB keyingisini boshladi. AYNI kurs ichida guruh
-            // almashtirish (jadval mos kelmadi, o'qituvchi o'zgardi, guruh bo'lindi) uzaytirish
-            // EMAS — uni sanasak bonus har guruh yopilishida to'lanib, ko'rsatkich ma'nosini
-            // yo'qotardi.
-            //
-            // ⚠️ Faqat HAQIQATDA ko'chgan VA yangi guruhda AKTIVLASHTIRILGAN o'quvchi sanaladi:
-            // "sinov" statusida qo'shilgan odam hali keyingi bosqichni boshlagani yo'q.
-            //
-            // Nomlar SNAPSHOT sifatida yoziladi (`ContactRequest` naqshi — `.claude/rules/contacts.md`
-            // §3): guruh keyin arxivlansa yoki qayta nomlansa ham o'tgan oyning tasdiqlangan
-            // hisoboti "noma'lum guruh" bo'lib qolmasin.
-            if (req.ActivateInNewGroup && !string.IsNullOrEmpty(targetCourseId)
-                && !string.Equals(targetCourseId, oldCourseId, StringComparison.Ordinal))
+            // 4. Auto-enroll — FAQAT kursni tugatganlar (`transferIds`). `activateInNewGroup` yoqilgan
+            //    bo'lsa ular DARHOL aktivlashtiriladi — "Guruh almashtirish" (TransferMember) bilan AYNAN
+            //    bir xil: chegirma (bir xil fan bo'lsa) ko'chadi, qisman oylik `activateDate`dan YANGI
+            //    guruhga yoziladi, orqaga sanalgan bo'lsa oraliq oylar to'ldiriladi va ESKI guruhda ortib
+            //    qolgan (avans) pul yangi guruhga qayta teglanadi. Aks holda — "sinov" (to'lov yo'q).
+            var enrolledCount = 0;
+            var activatedInNew = 0;
+            var extensionCount = 0;
+            var discountsMoved = 0;
+            var movedAdvance = 0m;
+            var recordedAt = AppClock.Today.ToString("yyyy-MM-dd");
+            var moved = new HashSet<string>();
+            if (req.AutoEnrollNewGroup)
             {
                 foreach (var sid in transferIds)
                 {
-                    if (!students.TryGetValue(sid, out var st)) continue;
-                    db.StudentExtensions.Add(new StudentExtension
+                    var activate = req.ActivateInNewGroup;
+                    var sg = new StudentGroup
                     {
                         StudentId = sid,
-                        StudentName = st.FullName,
-                        FromGroupId = id,
-                        FromGroupName = group.Name,
-                        ToGroupId = newGroup.Id,
-                        ToGroupName = newGroupName,
-                        CourseId = targetCourseId,
-                        Date = activateDate,
-                        ByUserId = ActorId,
-                        ByUserName = Actor,
-                        Note = "Guruhni tugatib keyingi bosqichga o'tkazish",
-                        CreatedAt = AppClock.Iso(),
-                    });
-                    extensionCount++;
+                        GroupId = newGroup.Id,
+                        JoinedAt = activate ? activateDate : recordedAt,
+                        IsActive = true,
+                        Status = activate ? "active" : "trial",
+                        ActivatedAt = activate ? activateDate : string.Empty,
+                        // Jurnaldagi avto-"keldi" qoidasi HAQIQIY bugungi sanadan boshlanadi — activateDate
+                        // orqaga sanalgan bo'lsa, allaqachon o'tilgan darslar avto-"keldi" bo'lib to'lib
+                        // qolmasin (AddMember/ActivateMember/TransferMember bilan bir xil qoida).
+                        RecordedAt = recordedAt,
+                    };
+                    db.StudentGroups.Add(sg);
+                    enrolledCount++;
+                    moved.Add(sid);
+                    if (!students.TryGetValue(sid, out var st)) continue;
+
+                    audit.Record("Membership", $"{newGroup.Id}:{sid}", "create",
+                        $"Guruhga qo'shildi: {st.FullName} → {newGroup.Name} " +
+                        (activate ? $"(aktiv, {activateDate})" : $"(sinov, {recordedAt})") +
+                        $" — «{group.Name}» tugatilib ko'chirildi",
+                        studentId: sid);
+
+                    // Chegirma — eski guruh hisobi (1) da yopilgandan KEYIN, yangi guruh hisobidan OLDIN.
+                    discountsMoved += (await DiscountTransfer.MoveGroupScopedAsync(
+                        db, audit, st, group, newGroup, activate ? activateDate : recordedAt)).Moved;
+
+                    // «Asosiy guruh» yorlig'i — faqat u eski guruh (yoki bo'sh) bo'lsa: o'quvchining boshqa
+                    // guruhdagi yorlig'i jimgina almashib ketmasin (TransferMember bilan bir xil).
+                    if (string.IsNullOrWhiteSpace(st.ClassName) || st.ClassName == group.Name) st.ClassName = newGroupName;
+
+                    if (!activate) continue;
+
+                    await TuitionService.ChargeActivationProrateAsync(db, st, newGroup, activateDate);
+                    await TuitionService.AccrueCatchUpAsync(db, st, newGroup, activateDate);
+                    // Eski guruhga to'langan, ammo yopish hisobidan ORTIB QOLGAN summa yangi guruhga
+                    // ko'chadi (aks holda to'lagan o'quvchi yangi guruhda "qarzdor" bo'lib ko'rinardi).
+                    // Eski guruhdagi bekor qilingan oylar (1) da allaqachon bazaga yozilgan, shuning
+                    // uchun `zeroOwedMonths` kerak emas.
+                    if (closeDate.Length >= 7)
+                        movedAdvance += await TuitionService.CarryGroupAdvanceAsync(
+                            db, st, group, newGroup, closeDate[..7]);
+                    activatedInNew++;
                 }
-                if (extensionCount > 0)
-                    // ⚠️ `EntityId` — `Membership` naqshida "{groupId}:{studentId}"; bu yerda BITTA
-                    // yig'ma yozuv, shuning uchun guruhning o'zi (tugatilgan guruh sahifasidagi
-                    // "Tarix" tabida ko'rinadi).
-                    audit.Record("StudentExtension", id, "create",
-                        $"Uzaytirish (kurs bosqichi tugadi): {extensionCount} o'quvchi " +
-                        $"«{group.Name}» → «{newGroupName}», yangi kurs: {targetCourse?.Name ?? targetCourseId}, sana {activateDate}");
+
+                // UZAYTIRISH HODISALARI (`StudentExtension`) — chiquvchi adminning "Bonus B" manbai.
+                //
+                // ⚠️ SHART: maqsad kurs ESKI kursdan BOSHQA bo'lishi kerak. "Uzaytirish" = o'quvchi
+                // kursning bir bosqichini TUGATIB keyingisini boshladi. AYNI kurs ichida guruh
+                // almashtirish (jadval mos kelmadi, o'qituvchi o'zgardi, guruh bo'lindi) uzaytirish
+                // EMAS — uni sanasak bonus har guruh yopilishida to'lanib, ko'rsatkich ma'nosini
+                // yo'qotardi.
+                //
+                // ⚠️ Faqat HAQIQATDA ko'chgan VA yangi guruhda AKTIVLASHTIRILGAN o'quvchi sanaladi:
+                // "sinov" statusida qo'shilgan odam hali keyingi bosqichni boshlagani yo'q.
+                //
+                // Nomlar SNAPSHOT sifatida yoziladi (`ContactRequest` naqshi — `.claude/rules/contacts.md`
+                // §3): guruh keyin arxivlansa yoki qayta nomlansa ham o'tgan oyning tasdiqlangan
+                // hisoboti "noma'lum guruh" bo'lib qolmasin.
+                if (req.ActivateInNewGroup && !string.IsNullOrEmpty(targetCourseId)
+                    && !string.Equals(targetCourseId, oldCourseId, StringComparison.Ordinal))
+                {
+                    foreach (var sid in transferIds)
+                    {
+                        if (!students.TryGetValue(sid, out var st)) continue;
+                        db.StudentExtensions.Add(new StudentExtension
+                        {
+                            StudentId = sid,
+                            StudentName = st.FullName,
+                            FromGroupId = id,
+                            FromGroupName = group.Name,
+                            ToGroupId = newGroup.Id,
+                            ToGroupName = newGroupName,
+                            CourseId = targetCourseId,
+                            Date = activateDate,
+                            ByUserId = ActorId,
+                            ByUserName = Actor,
+                            Note = "Guruhni tugatib keyingi bosqichga o'tkazish",
+                            CreatedAt = AppClock.Iso(),
+                        });
+                        extensionCount++;
+                    }
+                    if (extensionCount > 0)
+                        // ⚠️ `EntityId` — `Membership` naqshida "{groupId}:{studentId}"; bu yerda BITTA
+                        // yig'ma yozuv, shuning uchun guruhning o'zi (tugatilgan guruh sahifasidagi
+                        // "Tarix" tabida ko'rinadi).
+                        audit.Record("StudentExtension", id, "create",
+                            $"Uzaytirish (kurs bosqichi tugadi): {extensionCount} o'quvchi " +
+                            $"«{group.Name}» → «{newGroupName}», yangi kurs: {targetCourse?.Name ?? targetCourseId}, sana {activateDate}");
+                }
             }
 
+            // 5. Ko'chirilMAGAN a'zolarning «asosiy guruh» yorlig'i eski (endi arxiv) guruh nomida qolmasin —
+            //    boshqa tirik guruhi bo'lsa o'sha, bo'lmasa bo'sh (RemoveMember bilan bir xil qoida).
+            foreach (var sid in memberStudentIds.Where(x => !moved.Contains(x)))
+                if (students.TryGetValue(sid, out var st))
+                    await ReleasePrimaryGroupNameAsync(st, group);
+
             await db.SaveChangesAsync();
-        }
 
-        // 6. Audit log.
-        var targetCourseName = targetCourse?.Name ?? "";
-        audit.Record(
-            "Group", id, "complete-and-transfer",
-            $"Guruh yakunlandi va arxivlandi ({group.Name}, yopish sanasi {closeDate}): {activeMembers.Count} a'zo, " +
-            $"sertifikat={certCount}, eski guruhga qisman oylik yozildi={chargedOldGroup}" +
-            (restored > 0 ? $", keyingi oylar hisobi bekor qilindi: {AuditService.Money(restored)} so'm" : "") +
-            $". Yangi guruh: {newGroup.Id} ({newGroupName}), kurs: {targetCourseName}, enrolled={enrolledCount}" +
-            (activatedInNew > 0 ? $", {activateDate} sanasidan aktivlashtirildi={activatedInNew}" : "") +
-            (skippedNotActive > 0 ? $", ko'chirilmadi (aktiv emas)={skippedNotActive}" : "") +
-            (extensionCount > 0 ? $", uzaytirish yozildi={extensionCount}" : "") +
-            (movedAdvance > 0 ? $", avans ko'chirildi: {AuditService.Money(movedAdvance)} so'm" : ""));
+            // 6. Sertifikatlar — FAQAT kursni tugatganlarga, eski kurs bo'yicha (eski kurs yo'q bo'lsa
+            //    targetCourseId). Servis o'zi saqlaydi — o'sha tranzaksiya ichida.
+            var certCount = 0;
+            var certCourseId = !string.IsNullOrEmpty(oldCourseId) ? oldCourseId : targetCourseId;
+            if (!string.IsNullOrEmpty(certCourseId) && completedIds.Count > 0)
+            {
+                var teacherName = string.IsNullOrEmpty(group.TeacherId)
+                    ? null
+                    : await db.Teachers
+                        .Where(t => t.Id == group.TeacherId)
+                        .Select(t => t.FullName)
+                        .FirstOrDefaultAsync();
 
-        return Ok(new CompleteAndTransferResultDto(
-            Ok: true,
-            ArchivedGroupId: id,
-            NewGroupId: newGroup.Id,
-            CertificatesGenerated: certCount,
-            EnrolledInNew: enrolledCount,
-            TargetCourseName: targetCourseName,
-            CloseDate: closeDate,
-            ActivateDate: activatedInNew > 0 ? activateDate : "",
-            ChargedOldGroup: chargedOldGroup,
-            RestoredCharges: restored,
-            ActivatedInNew: activatedInNew,
-            MovedAdvance: movedAdvance,
-            SkippedNotActive: skippedNotActive));
+                logger.LogInformation("CompleteAndTransfer: {Count} o'quvchi uchun sertifikat yaratish boshlanmoqda (kurs={CourseId})", completedIds.Count, certCourseId);
+
+                foreach (var sid in completedIds)
+                {
+                    try
+                    {
+                        await certSvc.GenerateCertificateAsync(
+                            sid, certCourseId, req.CompletionNotes,
+                            teacherName: teacherName);
+                        certCount++;
+                    }
+                    catch (Exception ex)
+                    {
+                        // Saqlanmay qolgan sertifikat qatori keyingi saqlashni ham yiqitmasin.
+                        foreach (var e in db.ChangeTracker.Entries<StudentCertificate>()
+                                     .Where(e => e.State == EntityState.Added).ToList())
+                            e.State = EntityState.Detached;
+                        logger.LogWarning(ex, "Sertifikat yaratishda xato: student={S}, course={C}: {Msg}", sid, certCourseId, ex.Message);
+                    }
+                }
+                logger.LogInformation("CompleteAndTransfer: {CertCount}/{Total} sertifikat yaratildi", certCount, completedIds.Count);
+            }
+            else if (string.IsNullOrEmpty(certCourseId))
+            {
+                logger.LogWarning("CompleteAndTransfer: guruhda kurs (CourseId) yo'q — sertifikat yaratilmadi (groupId={GroupId})", id);
+            }
+
+            // 7. YIG'MA AUDIT — saqlashdan OLDIN (ilgari oxirgi SaveChanges'dan KEYIN yozilib, bazaga
+            //    umuman tushmasdi).
+            var targetCourseName = targetCourse?.Name ?? "";
+            audit.Record(
+                "Group", id, "complete-and-transfer",
+                $"Guruh yakunlandi va arxivlandi ({group.Name}, yopish sanasi {closeDate}): {activeMembers.Count} a'zo, " +
+                $"kursni tugatdi={completedIds.Count}, sertifikat={certCount}, eski guruhga qisman oylik yozildi={chargedOldGroup}" +
+                (leftNotFinished > 0 ? $", kursni tugatmay chiqdi (sinov/muzlatilgan)={leftNotFinished}" : "") +
+                (restored > 0 ? $", keyingi oylar hisobi bekor qilindi: {AuditService.Money(restored)} so'm" : "") +
+                $". Yangi guruh: «{newGroupName}», kurs: {(targetCourseName.Length > 0 ? targetCourseName : "—")}, ko'chirildi={enrolledCount}" +
+                (activatedInNew > 0 ? $", {activateDate} sanasidan aktivlashtirildi={activatedInNew}" : "") +
+                (extensionCount > 0 ? $", uzaytirish yozildi={extensionCount}" : "") +
+                (discountsMoved > 0 ? $", chegirma ko'chirildi={discountsMoved}" : "") +
+                (movedAdvance > 0 ? $", avans ko'chirildi: {AuditService.Money(movedAdvance)} so'm" : ""));
+            await db.SaveChangesAsync();
+            await trx.CommitAsync();
+
+            return Ok(new CompleteAndTransferResultDto(
+                Ok: true,
+                ArchivedGroupId: id,
+                NewGroupId: newGroup.Id,
+                CertificatesGenerated: certCount,
+                EnrolledInNew: enrolledCount,
+                TargetCourseName: targetCourseName,
+                CloseDate: closeDate,
+                ActivateDate: activatedInNew > 0 ? activateDate : "",
+                ChargedOldGroup: chargedOldGroup,
+                RestoredCharges: restored,
+                ActivatedInNew: activatedInNew,
+                MovedAdvance: movedAdvance,
+                SkippedNotActive: skippedNotActive));
+        });
     }
 
     /// <summary>
@@ -2055,6 +2458,12 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
         var trialClosed = 0;
         var restored = 0m;
 
+        // «Asosiy guruh» yorlig'i (Student.ClassName) yopilayotgan guruh nomida qolmasin — boshqa tirik
+        // guruhi bo'lsa o'sha, bo'lmasa bo'sh. Aks holda o'quvchi nom orqali shu guruh chatida, ro'yxat
+        // belgisida "qolib ketardi" (RemoveMember / Tugatish bilan bir xil qoida).
+        foreach (var st in students.Values)
+            await ReleasePrimaryGroupNameAsync(st, group);
+
         foreach (var m in members)
         {
             if (m.Status == "frozen") { alreadyFrozen++; continue; }
@@ -2097,6 +2506,7 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
     [Authorize]
     public async Task<ActionResult<CloseGroupResultDto>> Close(string id, CloseGroupRequest req)
     {
+        if (!MayCloseGroups) return CloseForbidden();
         var group = await db.Classes.FindAsync(id);
         if (group is null) return NotFound(new { message = "Guruh topilmadi" });
         if (group.IsArchived) return BadRequest(new { message = "Guruh allaqachon arxivda" });
@@ -2105,6 +2515,9 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
             ? AppClock.Today.ToString("yyyy-MM-dd") : req.Date!.Trim();
         if (date.Length < 10 || !DateOnly.TryParse(date, out _))
             return BadRequest(new { message = "Sana noto'g'ri (YYYY-MM-DD)" });
+
+        // Yopish kunidan KEYINGI o'rinbosar sanalari olib tashlanadi (guruh maydonlari o'zgarishidan OLDIN).
+        await SubstituteGroupLifecycle.TrimAfterAsync(db, audit, group, date, "guruh yopildi");
 
         // Sabab AVVAL o'qiladi — u har yopilgan a'zolikka ham tuzilgan yozuv bo'lib tushadi.
         var reason = await ReasonLabelAsync(req.ReasonId);

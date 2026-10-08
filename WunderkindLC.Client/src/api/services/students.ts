@@ -1,5 +1,6 @@
 ﻿import type { Credentials, MonthStatus, Student, StudentBall, StudentLedger } from '@/types'
 import { delay, uid } from '@/lib/utils'
+import { localIsoDate } from '@/lib/localDate'
 import { api, USE_MOCK } from '../client'
 import { studentsMock } from '../mock/students'
 import { classesMock } from '../mock/classes'
@@ -28,7 +29,7 @@ export async function downloadStudentCredentials(): Promise<void> {
   a.href = url
   const cd = (res.headers['content-disposition'] as string | undefined) ?? ''
   const m = cd.match(/filename="?([^"]+)"?/)
-  a.download = m?.[1] ?? `oquvchilar_${new Date().toISOString().slice(0, 10)}.xlsx`
+  a.download = m?.[1] ?? `oquvchilar_${localIsoDate(new Date())}.xlsx`
   document.body.appendChild(a)
   a.click()
   a.remove()
@@ -48,7 +49,7 @@ export async function downloadSelectedStudents(studentIds: string[]): Promise<vo
   a.href = url
   const cd = (res.headers['content-disposition'] as string | undefined) ?? ''
   const m = cd.match(/filename="?([^"]+)"?/)
-  a.download = m?.[1] ?? `oquvchilar_tanlangan_${new Date().toISOString().slice(0, 10)}.xlsx`
+  a.download = m?.[1] ?? `oquvchilar_tanlangan_${localIsoDate(new Date())}.xlsx`
   document.body.appendChild(a)
   a.click()
   a.remove()
@@ -291,22 +292,62 @@ export async function getArchivedStudents(): Promise<Student[]> {
   return data
 }
 
-/** O'quvchini arxivga ko'chirish (sabab yoki reasonId bilan). Login bloklanadi. */
-export async function archiveStudent(id: string, reason?: string, reasonId?: string): Promise<void> {
-  if (USE_MOCK) {
-    await delay(150)
-    return
-  }
-  await api.post(`/admin/students/${id}/archive`, { reason, reasonId })
+/** Arxivlash natijasi — o'quvchi qaysi guruhlardan chiqarildi (arxiv = ketdi). */
+export interface ArchiveStudentResult {
+  closedMemberships: number
+  /** Keyingi oylar hisobi bekor qilinib balansga qaytgan summa. */
+  restored: number
+  groups: string[]
 }
 
-/** Arxivdan qaytarish. Ixtiyoriy yangi parol bilan (parol bo'sh = login bloklangicha qoladi). */
-export async function restoreStudent(id: string, newPassword?: string): Promise<void> {
+/**
+ * O'quvchini arxivga ko'chirish (sabab yoki reasonId bilan). Login bloklanadi va o'quvchi BARCHA
+ * guruhlaridan «Guruhdan chiqarish» bilan bir xil chiqariladi (server: `StudentArchiving`).
+ */
+export async function archiveStudent(id: string, reason?: string, reasonId?: string): Promise<ArchiveStudentResult> {
   if (USE_MOCK) {
     await delay(150)
-    return
+    return { closedMemberships: 0, restored: 0, groups: [] }
   }
-  await api.post(`/admin/students/${id}/restore`, { newPassword: newPassword ?? null })
+  const { data } = await api.post<ArchiveStudentResult>(`/admin/students/${id}/archive`, { reason, reasonId })
+  return data ?? { closedMemberships: 0, restored: 0, groups: [] }
+}
+
+/**
+ * Arxivdan qaytarish. Ixtiyoriy yangi parol bilan (parol bo'sh = login bloklangicha qoladi).
+ * ⚠️ Guruhlar TIKLANMAYDI — `message` foydalanuvchiga aytiladi ("guruhga qo'shing").
+ */
+export async function restoreStudent(id: string, newPassword?: string): Promise<{ message?: string }> {
+  if (USE_MOCK) {
+    await delay(150)
+    return {}
+  }
+  const { data } = await api.post<{ message?: string }>(`/admin/students/${id}/restore`, { newPassword: newPassword ?? null })
+  return data ?? {}
+}
+
+/* ---------- Telegram ulanishlari (ota-ona boti) ---------- */
+
+/** O'quvchiga bog'langan Telegram chat (bot xabarlari va kirish kodi shu chatga ketadi). */
+export interface StudentTelegramLink {
+  id: string
+  /** Telegram'dagi ism (kontakt ulashgan odam). */
+  parentName: string
+  phone: string
+  createdAt: string
+  /** `false` — raqami o'quvchining joriy raqamlaridan hech biriga mos emas (eskirgan ulanish). */
+  phoneMatches: boolean
+}
+
+export async function getStudentTelegramLinks(id: string): Promise<StudentTelegramLink[]> {
+  if (USE_MOCK) return []
+  const { data } = await api.get<StudentTelegramLink[]>(`/admin/students/${id}/telegram-links`)
+  return data
+}
+
+/** Ulanishni uzish — shu chat endi bu o'quvchi bo'yicha xabar va kirish kodi olmaydi. */
+export async function unlinkStudentTelegram(id: string, linkId: string): Promise<void> {
+  await api.delete(`/admin/students/${id}/telegram-links/${linkId}`)
 }
 
 export async function createStudent(payload: StudentPayload): Promise<Student> {
@@ -314,7 +355,7 @@ export async function createStudent(payload: StudentPayload): Promise<Student> {
     await delay(300)
     // Kelgan oyidan joriy oygacha har oy uchun qarz: balans = -fee * oylar soni
     const fee = classesMock.find((c) => c.name === payload.className)?.monthlyFee ?? 0
-    const cur = new Date().toISOString().slice(0, 7)
+    const cur = localIsoDate(new Date()).slice(0, 7)
     const enr = (payload.enrollmentDate || cur).slice(0, 7)
     let months = 0
     if (enr <= cur) {

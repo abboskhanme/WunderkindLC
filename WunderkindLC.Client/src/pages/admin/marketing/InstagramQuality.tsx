@@ -5,6 +5,7 @@ import {
 } from '@/api/services/instagramQuality'
 import { Icon, MarketingPage, MkCard, MkEmpty, MkError, MkLoading, MkStat } from './mk'
 import { formatNumber } from '@/lib/numberFormat'
+import { localIsoDate } from '@/lib/localDate'
 
 /** Yakka seriya rangi — `course-analytics.md`: yashil/qizil juftlik ISHLATILMAYDI. */
 const C_BAR = '#0284c7'
@@ -30,13 +31,13 @@ const CHANNEL_LABEL: Record<string, string> = {
 /** Lentada matn shuncha belgidan uzun bo'lsa qisqartiriladi (bosilganda to'liq ochiladi). */
 const SNIP = 260
 
-const today = () => new Date().toISOString().slice(0, 10)
+const today = () => localIsoDate(new Date())
 
 /** Bugundan N kun oldin ("yyyy-MM-dd"). */
 function daysAgo(n: number): string {
   const d = new Date()
   d.setDate(d.getDate() - n)
-  return d.toISOString().slice(0, 10)
+  return localIsoDate(d)
 }
 
 /**

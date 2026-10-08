@@ -566,6 +566,9 @@ public class MarketingPublicMediaTests
         Assert.True(InstagramPublishContract.IsJpegUrl(url));
 
         // Manzil qurish usuli manba matnida ham qulflanadi (nisbiy manzilga qaytib ketmasin).
-        Assert.Contains("Request.Scheme}://{Request.Host}", MediaControllerSource());
+        // ⚠️ Host — `App:Host` dan (webhook/OAuth bilan bir manba), so'rov hostidan EMAS.
+        Assert.Contains("InstagramWebhookController.PublicBaseUrl(Request)}{MarketingPublicMedia.RequestPath}",
+            MediaControllerSource());
+        Assert.DoesNotContain("Request.Scheme}://{Request.Host}", MediaControllerSource());
     }
 }

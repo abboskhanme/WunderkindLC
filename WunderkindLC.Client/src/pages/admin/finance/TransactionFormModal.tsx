@@ -29,6 +29,7 @@ import { MoneyInput } from '@/components/ui/NumberInput'
 import { balanceTextCls, formatMoney, cn, apiErrorMessage } from '@/lib/utils'
 import { newRequestId } from '@/lib/requestId'
 import { cashboxOptionLabel, showCashboxPicker, useCashboxOptions } from '@/hooks/useCashboxOptions'
+import { todayIso } from '@/lib/month'
 
 interface Props {
   open: boolean
@@ -46,7 +47,8 @@ interface Props {
   title?: string
 }
 
-const today = () => new Date().toISOString().slice(0, 10)
+/** Bugun — MAHALLIY sana (UTC+5). `toISOString()` UTC beradi: 00:00–05:00 orasida "kecha" chiqardi. */
+const today = () => todayIso()
 
 /** Shu yo'nalish+toifa "oylik maosh chiqimi"mi? */
 const isSalaryCat = (direction: FinanceDirection, category: string) =>
@@ -115,9 +117,17 @@ export function TransactionFormModal({ open, onClose, onSubmit, initial, preset,
   const requestIdRef = useRef(newRequestId())
 
   const typeOptions = txTypes.filter((t) => t.direction === form.direction)
-  /** Tanlanmagan holatda ko'rsatiladigan tur — joriy toifaga mos birinchisi. */
+  /**
+   * Tanlanmagan holatda ko'rsatiladigan tur — joriy toifaga mos birinchisi. ⚠️ TAHRIRDA toifaga mos tur
+   * bo'lmasa BOSHQA toifaning turi qo'yilmaydi: ilgari yozuvga zaxira sifatida "Arenda" yozilib qolardi.
+   */
   const fallbackType =
-    typeOptions.find((t) => t.baseCategory === form.category) ?? typeOptions[0]
+    typeOptions.find((t) => t.baseCategory === form.category) ?? (initial ? undefined : typeOptions[0])
+  /**
+   * VOZVRAT qatori — faqat SANA va IZOH tahrirlanadi (summa, tur, o'quvchi, kassa server tomonidan
+   * qulflangan: aks holda tahrir qaytarilgan pulni o'quvchi balansiga qaytarib berardi).
+   */
+  const isRefundEdit = !!initial && initial.direction === 'expense' && initial.category === 'refund'
 
   const isSalaryExpense = isSalaryCat(form.direction, form.category)
   const isTuitionIncome = form.direction === 'income' && form.category === 'tuition'
@@ -268,6 +278,8 @@ export function TransactionFormModal({ open, onClose, onSubmit, initial, preset,
                 : undefined),
             method: initial.method,
             cashboxId: initial.cashboxId ?? undefined,
+            // TUR saqlanadi — ilgari qaytarilmagani uchun har tahrir uni zaxira tur bilan almashtirardi.
+            typeId: initial.typeId ?? undefined,
           }
         : preset
           ? {
@@ -465,7 +477,8 @@ export function TransactionFormModal({ open, onClose, onSubmit, initial, preset,
       requestId: requestIdRef.current,
       // Tur EKRANDA ko'ringani bilan yoziladi: foydalanuvchi tegmagan bo'lsa ham zaxira tur
       // saqlanadi, aks holda jadvalda nom bo'sh chiqardi (`fallbackType` izohiga qarang).
-      typeId: form.typeId ?? fallbackType?.id,
+      // Vozvratda tur yuborilmaydi (server uni o'zgartirmaydi).
+      typeId: isRefundEdit ? undefined : form.typeId ?? fallbackType?.id,
       note: form.note?.trim() || undefined,
       // teacherId faqat oylik maosh chiqimida; studentId faqat o'quvchi to'lovida saqlanadi
       teacherId: isSalaryExpense ? form.teacherId : undefined,
@@ -516,7 +529,13 @@ export function TransactionFormModal({ open, onClose, onSubmit, initial, preset,
         {error && (
           <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>
         )}
-        {!lockedDirection && (
+        {isRefundEdit && (
+          <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">
+            Vozvratda faqat <b>sana</b> va <b>izoh</b> tuzatiladi. Summa noto'g'ri bo'lsa — vozvratni bekor qilib,
+            to'lovdan qaytadan qaytaring (o'quvchi balansi va kassa birga moslanadi).
+          </p>
+        )}
+        {!lockedDirection && !isRefundEdit && (
           <DrawerField label="Yo'nalish">
             <DrawerSelect
               value={form.direction}
@@ -527,6 +546,11 @@ export function TransactionFormModal({ open, onClose, onSubmit, initial, preset,
             </DrawerSelect>
           </DrawerField>
         )}
+        {isRefundEdit ? (
+          <DrawerField label="Turi">
+            <DrawerInput value="Vozvrat" disabled readOnly />
+          </DrawerField>
+        ) : (
         <DrawerField label={lockedDirection ? 'Tranzaksiya' : 'Turi'}>
           {/*
             Markazning O'Z turlari («Arenda», «Kanstovar») — Moliya → «Tranzaksiya turi»
@@ -560,6 +584,7 @@ export function TransactionFormModal({ open, onClose, onSubmit, initial, preset,
             </DrawerSelect>
           )}
         </DrawerField>
+        )}
         {/* Kitob kirimi: «Kitoblar sotuvi»dagi sotuv kassaga O'ZI yoziladi (`BookFinance`) — bu yerda
             qayta kiritilsa pul IKKI marta sanalardi. */}
         {form.direction === 'income' && form.category === 'book' && (
@@ -801,11 +826,12 @@ export function TransactionFormModal({ open, onClose, onSubmit, initial, preset,
           <MoneyInput
             as={DrawerInput}
             required
+            disabled={isRefundEdit}
             value={form.amount}
             onChange={(v) => update('amount', v)}
           />
         </DrawerField>
-        {form.direction === 'income' && (
+        {form.direction === 'income' && !isRefundEdit && (
           <DrawerField label="To'lov turi" group>
             <DrawerChoice
               options={paymentMethods}
@@ -814,7 +840,7 @@ export function TransactionFormModal({ open, onClose, onSubmit, initial, preset,
             />
           </DrawerField>
         )}
-        {showCashboxPicker(cashboxes) && (
+        {showCashboxPicker(cashboxes) && !isRefundEdit && (
           <DrawerField label={form.direction === 'income' ? 'Kassa (qaysi kassaga)' : 'Kassa (qaysi kassadan)'}>
             <DrawerSelect value={cashboxId} onChange={(e) => update('cashboxId', e.target.value)}>
               {archivedCashbox && <option value={archivedCashbox.id}>{archivedCashbox.name}</option>}

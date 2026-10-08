@@ -1,4 +1,5 @@
 ﻿import { api } from '../client'
+import { localIsoDate } from '@/lib/localDate'
 
 /**
  * KITOBLAR SOTUVI — "O'quv bo'limi → Kitoblar sotuvi" bo'limi API'si.
@@ -18,9 +19,10 @@ export type BookOrderStatus = 'pending' | 'approved' | 'rejected'
 /**
  * Ro'yxat filtri: holatlar + `returned` — QAYTARILGAN sotuvlar kesimi.
  * `returned` holat EMAS: qaytarish buyurtmani "approved" holida qoldiradi (qisman ham bo'ladi),
- * shuning uchun bu faqat filtr qiymati.
+ * shuning uchun bu faqat filtr qiymati. `awaiting` — tasdiqlangan, lekin mijoz hali OLIB
+ * KETMAGAN (to'lanmagan) bot buyurtmalari (books.md §2.6).
  */
-export type BookOrderStatusFilter = BookOrderStatus | 'returned'
+export type BookOrderStatusFilter = BookOrderStatus | 'returned' | 'awaiting'
 /** Buyurtma manbai: botdan tushgan yoki markazda qo'lda sotilgan. */
 export type BookOrderSource = 'bot' | 'manual'
 /** Ombor harakati turi: boshlang'ich qoldiq | kirim | sotuv | QAYTARISH | qo'lda korreksiya */
@@ -121,6 +123,11 @@ export interface BookOrder {
   refundedAmount: number
   /** SOF summa = total − qaytarilganlar qiymati. Hisobotlarda AYNAN shu ishlatiladi. */
   netTotal: number
+  /**
+   * Botdan NAQD buyurtma: tasdiqlanganda kitob faqat ZAXIRAGA olinadi, pul mijoz OLIB
+   * KETAYOTGANDA olinadi («To'landi»). Kelmasa — «Bekor qilish» (qoldiq qaytadi, pul harakati yo'q).
+   */
+  payAtPickup?: boolean
 }
 
 /** Qo'lda sotuv oynasidagi o'quvchi qidiruvi natijasi. */
@@ -413,6 +420,8 @@ export interface BookBadges {
   count: number
   credits: number
   overdue: number
+  /** Tasdiqlangan, lekin hali olib ketilmagan (to'lanmagan) bot buyurtmalari. */
+  pickup?: number
 }
 
 export async function getBookBadges(): Promise<BookBadges> {
@@ -429,6 +438,15 @@ export async function approveBookOrder(id: string): Promise<BookOrder> {
 /** Rad etish: sabab mijozga botda yuboriladi. */
 export async function rejectBookOrder(id: string, reason: string): Promise<BookOrder> {
   const { data } = await api.post<BookOrder>(`/admin/books/orders/${id}/reject`, { reason })
+  return data
+}
+
+/**
+ * OLIB KETILMAGAN (to'lanmagan) bot buyurtmasini BEKOR qilish: zaxiradagi kitob omborga qaytadi,
+ * holat "rad etilgan" bo'ladi, mijozga botda xabar ketadi. Pul harakati YO'Q (olinmagan edi).
+ */
+export async function cancelBookOrder(id: string, reason: string): Promise<BookOrder> {
+  const { data } = await api.post<BookOrder>(`/admin/books/orders/${id}/cancel`, { reason })
   return data
 }
 
@@ -461,8 +479,8 @@ export async function getBookCredits(
   return data
 }
 
-/** "Pulini oldim" → nasiya to'langan deb belgilanadi va summa tushumga qo'shiladi.
- *  Ombor TEGILMAYDI — kitob sotuv paytida berilgan. */
+/** "Pulini oldim" → nasiya (yoki olib ketishda to'lanadigan bot buyurtmasi) to'langan deb
+ *  belgilanadi va summa tushumga/kassaga qo'shiladi. Ombor TEGILMAYDI — kitob allaqachon ayirilgan. */
 export async function payBookCredit(id: string, payload: BookCreditPayPayload): Promise<BookOrder> {
   const { data } = await api.post<BookOrder>(`/admin/books/orders/${id}/pay`, payload)
   return data
@@ -501,7 +519,7 @@ async function download(url: string, params: object, fallbackName: string) {
   URL.revokeObjectURL(href)
 }
 
-const today = () => new Date().toISOString().slice(0, 10)
+const today = () => localIsoDate(new Date())
 
 export const exportBookOrders = (filters: BookOrderFilters = {}) =>
   download('/admin/books/orders/export', filters, `kitob_sotuvlari_${today()}.xlsx`)

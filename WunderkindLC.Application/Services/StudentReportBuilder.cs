@@ -12,21 +12,31 @@ namespace WunderkindLC.Application.Services;
 /// </summary>
 public static class StudentReportBuilder
 {
+    /// <summary>
+    /// Hisobot QAMROVIDAGI guruhlar: o'quvchining tirik a'zoliklari, a'zolik umuman bo'lmasa — eski
+    /// <see cref="Student.ClassName"/> bo'yicha guruh (orqaga moslik).
+    /// <para>⚠️ O'quvchi portalidagi davomat ro'yxati (`GET /student/attendance`) ham AYNAN shu
+    /// to'plamdan olinadi — ilgari jamlanma barcha guruhlar bo'yicha, ro'yxat esa faqat asosiy guruh
+    /// bo'yicha edi va "jami 5 ta qoldirgan, ro'yxatda 2 ta" chiqardi.</para>
+    /// </summary>
+    public static async Task<List<Group>> GroupsAsync(
+        IAppDbContext db, Student st, IReadOnlyCollection<StudentGroup>? memberships = null)
+    {
+        memberships ??= await StudentMembershipView.LiveMembershipsAsync(db, st.Id);
+        var memberGroupIds = memberships.Select(sg => sg.GroupId).Distinct().ToList();
+        if (memberGroupIds.Count > 0)
+            return await db.Classes.AsNoTracking().Where(c => memberGroupIds.Contains(c.Id)).ToListAsync();
+        var byName = await db.Classes.AsNoTracking().FirstOrDefaultAsync(c => c.Name == st.ClassName);
+        return byName is null ? new List<Group>() : new List<Group> { byName };
+    }
+
     public static async Task<StudentReportDto> BuildAsync(IAppDbContext db, Student st)
     {
         // O'quvchining FAOL guruh(lar)i (M2M) bo'yicha — yo'q bo'lsa ClassName bo'yicha (orqaga moslik).
         // Faqat-o'qish hisobot generatori — barcha ro'yxatlar AsNoTracking (tracking overhead va
         // lug'atlarni (Subjects/AbsenceReasons) har chaqiruvda identity-map'ga yig'ishni oldini oladi).
         var memberships = await StudentMembershipView.LiveMembershipsAsync(db, st.Id);
-        var memberGroupIds = memberships.Select(sg => sg.GroupId).Distinct().ToList();
-        List<Group> groups;
-        if (memberGroupIds.Count > 0)
-            groups = await db.Classes.AsNoTracking().Where(c => memberGroupIds.Contains(c.Id)).ToListAsync();
-        else
-        {
-            var byName = await db.Classes.AsNoTracking().FirstOrDefaultAsync(c => c.Name == st.ClassName);
-            groups = byName is null ? new List<Group>() : new List<Group> { byName };
-        }
+        var groups = await GroupsAsync(db, st, memberships);
         var classIds = groups.Select(g => g.Id).ToHashSet();
         var allSubjects = await db.Subjects.AsNoTracking().ToListAsync();
         var assignedSubjectIds = groups

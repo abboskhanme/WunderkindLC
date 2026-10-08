@@ -177,7 +177,12 @@ public static class InstagramAgentService
         // (mijoz uchun xavf), Instagram esa bunday izohlarni spam deb belgilaydi.
         sb.Append("   • OCHIQ IZOHda raqam SO'RAMA — u hamma ko'radigan joyga tushib qolardi. ")
           .Append("Izohda faqat DM'ga taklif qil, so'rashni DM'da davom ettir.\n");
-        sb.Append("8. BOT EKANINGNI YASHIRMA. Suhbatning BIRINCHI javobiga shu matnni qo'sh: «").Append(hello).Append("»\n");
+        // ⚠️ Oshkorlik matnini endi KOD qo'shadi (`InstagramContract.WithDisclosure`, HAR yo'lda —
+        // FAQ va qoida javoblarida ham). Model ham qo'shsa (ayniqsa tarjima qilib) mijoz uni IKKI
+        // marta ko'rardi — shuning uchun modelga "yozma, lekin yashirma ham" deyiladi.
+        sb.Append("8. BOT EKANINGNI YASHIRMA. Suhbatning birinchi javobi oldiga tizim o'zi shu matnni qo'shadi: «")
+          .Append(hello)
+          .Append("» — uni o'zing QAYTA YOZMA, lekin hech qachon «men odamman» yoki «bot emasman» dema.\n");
         sb.Append("9. LEAD BAHOSI (`lead_score`): 0–30 salom-alik/spam/mavzudan tashqari; ")
           .Append("40–60 qiziqish bor (kurs haqida so'rayapti); ")
           .Append("70–100 xarid niyati (narx so'radi, «yozilaman», «kelaman», kontakt qoldirdi).\n");

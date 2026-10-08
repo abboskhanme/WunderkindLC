@@ -107,31 +107,49 @@ public class TeacherAttendanceController(
     }
 
     /// <summary>Bitta kun uchun barcha faol o'qituvchini belgilash: status berilsa hammasi shu holatga,
-    /// bo'sh/noto'g'ri bo'lsa o'sha kun belgilari to'liq o'chiriladi. Sarlavhani bosish (toggle) uchun.</summary>
+    /// bo'sh/noto'g'ri bo'lsa o'sha kunning QO'LDA qo'yilgan belgilari o'chiriladi. Sarlavhani bosish (toggle) uchun.</summary>
+    /// <remarks>
+    /// ⚠️ Ommaviy amal FAQAT faol (arxivlanmagan) o'qituvchilarning QO'LDA qo'yilgan (<c>Source = "manual"</c>)
+    /// yozuvlariga tegadi. TURNIKET yozuvlari (kelgan/ketgan vaqti bilan) qurilma dalili — ular na
+    /// o'chiriladi, na ustidan yoziladi (ustidan yozilsa "manual" bo'lib, keyingi sinxronlash ularni
+    /// boshqa yangilamasdi). Arxivdagi o'qituvchining tarixi ham tegilmaydi (u jadvalda ko'rinmaydi —
+    /// ko'rinmagan narsani jimgina o'chirish xato edi). Bitta katakni tuzatish — <see cref="Set"/>.
+    /// </remarks>
     [HttpPut("day")]
     public async Task<IActionResult> SetDay(SetTeacherAttendanceDayRequest req)
     {
         if (string.IsNullOrEmpty(req.Date) || req.Date.Length < 10)
             return BadRequest(new { message = "Sana ko'rsatilishi shart" });
 
-        var existing = await db.TeacherAttendances.Where(a => a.Date == req.Date).ToListAsync();
+        var teachers = await db.Teachers.Where(t => !t.IsArchived).ToListAsync();
+        var activeIds = teachers.Select(t => t.Id).ToHashSet();
+        var existing = (await db.TeacherAttendances.Where(a => a.Date == req.Date).ToListAsync())
+            .Where(a => activeIds.Contains(a.TeacherId))
+            .ToList();
         var status = req.Status ?? "";
 
         if (!Valid.Contains(status))
         {
-            db.TeacherAttendances.RemoveRange(existing);
+            db.TeacherAttendances.RemoveRange(existing.Where(a => a.Source != "turnstile"));
         }
         else
         {
-            var byTeacher = existing.ToDictionary(a => a.TeacherId);
-            var teachers = await db.Teachers.Where(t => !t.IsArchived).ToListAsync();
+            var byTeacher = existing.GroupBy(a => a.TeacherId).ToDictionary(g => g.Key, g => g.First());
             foreach (var te in teachers)
             {
                 // Ishga kirgan sanadan oldingi kun bo'lsa — o'tkazib yuboramiz.
                 var start = TeacherSalaryCalc.StartDateOf(te);
                 if (start is not null && string.CompareOrdinal(req.Date, start) < 0) continue;
-                if (byTeacher.TryGetValue(te.Id, out var a)) a.Status = status;
-                else db.TeacherAttendances.Add(new TeacherAttendance { TeacherId = te.Id, Date = req.Date, Status = status });
+                if (byTeacher.TryGetValue(te.Id, out var a))
+                {
+                    if (a.Source == "turnstile") continue;   // qurilma yozuvi — tegilmaydi
+                    a.Status = status;
+                    a.Source = "manual";
+                }
+                else db.TeacherAttendances.Add(new TeacherAttendance
+                {
+                    TeacherId = te.Id, Date = req.Date, Status = status, Source = "manual",
+                });
             }
         }
 

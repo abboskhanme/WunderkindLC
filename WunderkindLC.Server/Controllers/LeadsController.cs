@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using WunderkindLC.Infrastructure.Auth;
 using WunderkindLC.Infrastructure.Data;
 using WunderkindLC.Application.Dtos;
 using WunderkindLC.Application.Services;
@@ -251,9 +252,14 @@ public class LeadsController(
     /// bo'sh bo'lsa lid SAQLANMAYDI va 400 qaytadi. Tekshiruv AYNAN shu endpointda — ommaviy
     /// forma, daraja testi, landing, Instagram va Meta leadgen o'z qoidalari bilan ishlaydi
     /// (aks holda sozlama tashqi kanallardan kelayotgan lidlarni jimgina rad etardi).</para>
+    ///
+    /// <para>⚠️ TELEFON DUBLIKATI (CRM-6): shu raqam bilan lid allaqachon bo'lsa 409 qaytadi
+    /// (<c>code = "duplicate_lead"</c>, mavjud lid(lar) — id, ism, bosqich, holati) va lid
+    /// YARATILMAYDI. Klient "Bu raqamli lid allaqachon bor" deb havola ko'rsatadi; foydalanuvchi
+    /// «Baribir yaratish» ni bossa — <c>?force=true</c> bilan qayta yuboriladi (aka-uka bir raqamda).</para>
     /// </summary>
     [HttpPost]
-    public async Task<ActionResult<Lead>> Create(LeadCreateRequest p)
+    public async Task<ActionResult<Lead>> Create(LeadCreateRequest p, [FromQuery] bool force = false)
     {
         var lead = new Lead
         {
@@ -283,6 +289,40 @@ public class LeadsController(
             db, lead, p.Answers ?? new Dictionary<string, List<string>>());
         if (entryError is not null) return BadRequest(new { message = entryError });
         lead.AnswersJson = answersJson ?? "";
+
+        // TELEFON DUBLIKATI — tekshiruv ham `Add` dan OLDIN (rad etilgan lid kontekstda qolmasin).
+        var phoneKey = PhoneUtil.Key(lead.Phone);
+        if (!force && phoneKey.Length >= 7)
+        {
+            var same = await db.Leads.AsNoTracking()
+                .Where(l => l.PhoneKey == phoneKey)
+                .OrderBy(l => l.CreatedAt)
+                .Select(l => new { l.Id, l.FullName, l.Stage, l.ConvertedStudentId, l.LostAt })
+                .Take(5)
+                .ToListAsync();
+            if (same.Count > 0)
+            {
+                var stageIds = same.Select(x => x.Stage).Distinct().ToList();
+                var titles = await db.LeadStages.AsNoTracking()
+                    .Where(st => stageIds.Contains(st.Id))
+                    .ToDictionaryAsync(st => st.Id, st => st.Title);
+                return Conflict(new
+                {
+                    message = "Bu raqamli lid allaqachon bor",
+                    code = "duplicate_lead",
+                    leads = same.Select(x => new
+                    {
+                        id = x.Id,
+                        fullName = x.FullName,
+                        stage = titles.GetValueOrDefault(x.Stage ?? "", ""),
+                        converted = x.ConvertedStudentId != null,
+                        lost = x.LostAt != null,
+                    }).ToList(),
+                });
+            }
+        }
+        // Baribir yaratilsa va shu raqam bilan o'quvchi bo'lgan lid bor bo'lsa — izohda ko'rinsin.
+        await LeadIntake.MarkFormerStudentAsync(db, lead, lead.Phone);
 
         db.Leads.Add(lead);
         // Voronka uchun: lid QAYSI bosqichda tug'ilgani ham tarixga tushadi (FromStage yo'q).
@@ -382,20 +422,23 @@ public class LeadsController(
         return NoContent();
     }
 
+    /// <summary>
+    /// Lidni o'chiradi (arxivga surat bilan — "Arxiv" bo'limidan tiklanadi). Ma'lumot qismi —
+    /// <see cref="LeadRemoval.RemoveAsync"/>: aylantirilgan lid O'CHIRILMAYDI (400, CRM-5), hodisalar va
+    /// sinovlar alohida <c>lead_history</c> arxiv yozuviga olinadi (CRM-4), Instagram suhbati / reklama
+    /// lidi bog'lanishlari tozalanadi (CRM-3).
+    /// </summary>
     [HttpDelete("{id}")]
     public async Task<IActionResult> Delete(string id, [FromQuery] string? reasonId = null)
     {
         var lead = await db.Leads.FindAsync(id);
         if (lead is null) return NotFound();
-        db.LeadEvents.RemoveRange(db.LeadEvents.Where(e => e.LeadId == id));
-        db.TrialLessons.RemoveRange(db.TrialLessons.Where(t => t.LeadId == id));
-        db.Leads.Remove(lead);
 
         var reason = string.IsNullOrWhiteSpace(reasonId) ? ""
             : (await db.ActionReasons.Where(r => r.Id == reasonId).Select(r => r.Label).FirstOrDefaultAsync() ?? "");
         var actor = User.FindFirst(System.Security.Claims.ClaimTypes.Name)?.Value ?? "Admin";
-        ArchiveService.Snapshot(db, "lead", lead.Id, lead.FullName, lead.Phone ?? "", lead,
-            reason.Length > 0 ? reason : null, actor);
+        var refused = await LeadRemoval.RemoveAsync(db, lead, reason.Length > 0 ? reason : null, actor);
+        if (refused is not null) return BadRequest(new { message = refused });
         audit.Record("Lead", id, "delete",
             $"Lid o'chirildi ({lead.FullName})" + (reason.Length > 0 ? $" — sabab: {reason}" : ""));
         await db.SaveChangesAsync();
@@ -442,7 +485,13 @@ public class LeadsController(
     [HttpPost("{id}/trials")]
     public async Task<IActionResult> ScheduleTrial(string id, ScheduleTrialRequest req)
     {
-        if (await db.Leads.FindAsync(id) is null) return NotFound();
+        var lead = await db.Leads.FindAsync(id);
+        if (lead is null) return NotFound();
+        // Sinov darsi — OCHIQ lidning ishi: o'quvchi bo'lgan odam guruhga to'g'ridan-to'g'ri qo'shiladi,
+        // yo'qotilgan lid esa avval tiklanadi (aks holda KPI "sinovga keldi" yopiq lidlarga yozilardi).
+        if (!string.IsNullOrWhiteSpace(lead.ConvertedStudentId))
+            return BadRequest(new { message = "Lid allaqachon o'quvchi — sinov darsi o'rniga uni guruhga qo'shing." });
+        if (LeadLoss.IsLost(lead)) return BadRequest(new { message = LeadLoss.TrialLockedMessage });
         // ⚠️ GURUH va SANA tekshiriladi: ilgari tekshiruv umuman yo'q edi va mavjud bo'lmagan
         // guruh id'si ham, buzuq sana ham JIMGINA yozilib ketardi — sinov darsi ro'yxatda
         // guruhsiz/vaqtsiz bo'lib chiqar, sababi esa hech qayerda ko'rinmasdi.
@@ -513,17 +562,21 @@ public class LeadsController(
         var result = (req.Result ?? "").Trim();
         if (!TrialResults.Contains(result))
             return BadRequest(new { message = "Noma'lum natija" });
+        if (trial.Result == result) return Ok(new { ok = true }); // o'zgarish yo'q — tarixga qator tushmaydi
+        var previous = trial.Result;
         trial.Result = result;
-
         // ⚠️ KPI konversiyasi "sinovga YOZILDI" emas, "sinovga KELDI" bo'yicha o'lchanadi
-        // (kiruvchi adminning asosiy ko'rsatkichi — `KPI-SPEC.md` §8, `trialCame`). Shuning
-        // uchun KELGANLIK fakti alohida SANA bilan yoziladi: sinov bir oyda belgilanib,
-        // keyingi oyda bo'lishi mumkin — natija esa qaysi OYda kelgani bo'yicha sanaladi.
-        // "stayed"/"left" ham KELGAN hisoblanadi: ular tashrifdan KEYINGI qaror.
-        if ((result is "came" or "stayed" or "left") && string.IsNullOrWhiteSpace(trial.AttendedAt))
-            trial.AttendedAt = AppClock.Today.ToString("yyyy-MM-dd");
+        // (`KPI-SPEC.md` §8, `trialCame`) — sana qoidasi `LeadTrialRules.ApplyAttendance` da.
+        // NATIJANI TUZATISH mumkin (masalan xato "Keldi" → "Kelmadi"): kelmagan holatga
+        // qaytarilganda kelgan sana TOZALANADI, aks holda KPI uni baribir "keldi" deb sanardi.
+        LeadTrialRules.ApplyAttendance(trial, result, AppClock.Today);
 
-        AddEvent(trial.LeadId, "trial", $"Sinov darsi natijasi: {TrialResultLabel(result)}");
+        // Odatdagi oqim (kutilmoqda → …, keldi → qoldi/ketdi) — oddiy yozuv; qolgani TUZATISH.
+        var normalStep = previous is "pending" or null or ""
+                         || (previous == "came" && result is "stayed" or "left");
+        AddEvent(trial.LeadId, "trial", normalStep
+            ? $"Sinov darsi natijasi: {TrialResultLabel(result)}"
+            : $"Sinov darsi natijasi tuzatildi: {TrialResultLabel(previous)} → {TrialResultLabel(result)}");
         await db.SaveChangesAsync();
         await LeadNotifier.SyncCardAsync(db, telegram, trial.LeadId, logger: logger);
         return Ok(new { ok = true });
@@ -543,10 +596,28 @@ public class LeadsController(
 
     // ---------- Konversiya (lid -> o'quvchi) ----------
 
-    /// <summary>Lidni o'quvchiga aylantirish: yangi Student yaratiladi, lid yopiladi (ConvertedStudentId).
-    /// GroupId berilsa o'quvchi shu guruhga (StudentGroup) qo'shiladi.</summary>
+    /// <summary>
+    /// Lidni o'quvchiga aylantirish — yangi o'quvchi YARATILADI (yoki mavjudiga bog'lanadi), lid
+    /// yopiladi. Butun mantiq <see cref="LeadConversion"/> da: o'quvchi yozuvi
+    /// <c>StudentsController.AddStudent</c> bilan, a'zolik <c>ClassesController.AddMember</c> bilan
+    /// AYNAN bir xil qoidalarda (audit C5).
+    ///
+    /// <list type="bullet">
+    ///   <item><b>Ruxsat:</b> sinf darajasidagi <c>leads.list:create</c> + <c>students.list:create</c>
+    ///     (o'quvchi yaratish huquqi — aks holda faqat lid ruxsati bor operator bu yo'l bilan
+    ///     o'quvchilar bazasiga yozib qo'yardi).</item>
+    ///   <item><b>Dublikat:</b> shu odam (ism + telefon, <see cref="StudentImportPlan"/> qoidasi) allaqachon
+    ///     o'quvchi bo'lsa — <b>409</b> (<c>code = "duplicate_student"</c>, nomzodlar bilan). Klient
+    ///     «Mavjud o'quvchiga bog'lash» (<c>?linkStudentId=</c>) yoki «Baribir yangi yaratish»
+    ///     (<c>?force=true</c>) ni taklif qiladi.</item>
+    ///   <item><b>Guruh to'lgan:</b> o'quvchi yaratiladi, a'zolik va <c>ClassName</c> YO'Q,
+    ///     javobda <c>groupFull = true</c> — klient buni OCHIQ ogohlantiradi.</item>
+    /// </list>
+    /// </summary>
     [HttpPost("{id}/convert")]
-    public async Task<IActionResult> Convert(string id, ConvertLeadRequest req)
+    public async Task<IActionResult> Convert(
+        string id, ConvertLeadRequest req,
+        [FromQuery] bool force = false, [FromQuery] string? linkStudentId = null)
     {
         var lead = await db.Leads.FindAsync(id);
         if (lead is null) return NotFound();
@@ -554,47 +625,51 @@ public class LeadsController(
             return BadRequest(new { message = "Lid allaqachon o'quvchiga aylantirilgan" });
         // Bitta lid bir vaqtda "yo'qotilgan" va "o'quvchi" bo'lib qolmasin — avval tiklanadi.
         if (LeadLoss.IsLost(lead)) return BadRequest(new { message = LeadLoss.ConvertLockedMessage });
-
-        var today = AppClock.Today.ToString("yyyy-MM-dd");
-        var enrollment = string.IsNullOrWhiteSpace(req.EnrollmentDate) ? today : req.EnrollmentDate!;
-        Group? group = string.IsNullOrWhiteSpace(req.GroupId) ? null : await db.Classes.FindAsync(req.GroupId);
-
-        var student = new Student
-        {
-            FullName = lead.FullName,
-            Gender = lead.Gender,
-            BirthDate = lead.BirthDate,
-            // Student'da bitta ota-ona maydoni bor — otani asosiy qilamiz (bo'lmasa ona).
-            ParentFullName = !string.IsNullOrWhiteSpace(lead.FatherFullName) ? lead.FatherFullName : lead.MotherFullName,
-            ParentPhone = !string.IsNullOrWhiteSpace(lead.FatherPhone) ? lead.FatherPhone : lead.MotherPhone,
-            EnrollmentDate = enrollment,
-            ClassName = group?.Name ?? "",
-        };
-        db.Students.Add(student);
-
-        // Sig'im tekshiruvi — ClassesController.AddMember bilan bir xil qoida: Capacity>0 va
-        // O'RIN BAND QILGANLAR soni (active + trial, MUZLATILGANLAR sanalmaydi —
-        // MembershipLifecycle.OccupiesSeat) yetib borgan bo'lsa, guruhga QO'SHILMAYDI
-        // (lekin o'quvchi baribir yaratiladi).
-        var groupFull = false;
-        if (group is not null)
-        {
-            if (group.Capacity > 0 &&
-                await db.StudentGroups.Where(sg => sg.GroupId == group.Id)
-                    .CountAsync(MembershipLifecycle.OccupiesSeatExpr) >= group.Capacity)
+        if (!MayCreateStudents())
+            return StatusCode(StatusCodes.Status403Forbidden, new
             {
-                groupFull = true;
-            }
-            else
+                message = "O'quvchiga aylantirish uchun «O'quvchilar» bo'limida qo'shish ruxsati kerak.",
+            });
+
+        if (!LeadConversion.TryEnrollmentDate(req.EnrollmentDate, AppClock.Today, out var enrollment))
+            return BadRequest(new { message = "Qabul sanasi noto'g'ri (yyyy-MM-dd ko'rinishida bo'lsin)." });
+
+        Group? group = null;
+        if (!string.IsNullOrWhiteSpace(req.GroupId))
+        {
+            group = await db.Classes.FindAsync(req.GroupId);
+            // Ilgari topilmagan guruh JIMGINA e'tiborsiz qolardi — o'quvchi guruhsiz yaratilib,
+            // foydalanuvchi "qo'shildi" deb o'ylardi.
+            if (group is null) return BadRequest(new { message = "Guruh topilmadi." });
+            if (group.IsArchived) return BadRequest(new { message = "Guruh arxivlangan — boshqa guruhni tanlang." });
+        }
+
+        var actor = new LeadConversion.Actor(Actor(), UserId());
+        LeadConversion.Result result;
+        if (!string.IsNullOrWhiteSpace(linkStudentId))
+        {
+            // «MAVJUD O'QUVCHIGA BOG'LASH» — yangi o'quvchi yaratilmaydi.
+            var existing = await db.Students.FindAsync(linkStudentId);
+            if (existing is null) return NotFound(new { message = "O'quvchi topilmadi" });
+            if (existing.IsArchived)
+                return BadRequest(new { message = "O'quvchi arxivda — avval uni arxivdan tiklang, keyin bog'lang." });
+            result = await LeadConversion.LinkAsync(db, audit, lead, existing, group, enrollment, actor);
+        }
+        else
+        {
+            if (!force)
             {
-                db.StudentGroups.Add(new StudentGroup
-                {
-                    StudentId = student.Id, GroupId = group.Id, JoinedAt = enrollment, IsActive = true,
-                    // Jurnaldagi avto-"keldi" qoidasi shu sanadan (enrollment orqaga sanalgan
-                    // bo'lishi mumkin — undan oldingi darslar bo'sh qolishi kerak).
-                    RecordedAt = AppClock.Today.ToString("yyyy-MM-dd"),
-                });
+                var duplicates = await LeadConversion.FindDuplicateStudentsAsync(db, lead);
+                if (duplicates.Count > 0)
+                    return Conflict(new
+                    {
+                        message = "Bu odam allaqachon o'quvchi sifatida bor (ism va telefon mos keldi).",
+                        code = LeadConversion.DuplicateStudentCode,
+                        candidates = duplicates,
+                    });
             }
+            result = await LeadConversion.ConvertAsync(db, audit, lead, group, enrollment,
+                fullName => AccountFactory.CreateAccountFor(db, "student", fullName).Id, actor);
         }
 
         // Poyga holati (race condition) tekshiruvi: shu lid ustida parallel yuborilgan boshqa
@@ -607,23 +682,35 @@ public class LeadsController(
         if (alreadyConverted is not null)
             return BadRequest(new { message = "Lid allaqachon o'quvchiga aylantirilgan" });
 
-        lead.ConvertedStudentId = student.Id;
-        // SHARTNOMA IMZOLANDI. Lidni o'quvchiga aylantirish — kiruvchi admin uchun "shartnoma"
-        // hodisasining YAGONA manbai (`KPI-SPEC.md` §8, `contracts`): boshqa hech qayerda
-        // "shartnoma tuzildi" fakti yozilmaydi. Sana ATAYIN "yyyy-MM-dd" — KPI oy bo'yicha
-        // guruhlaydi, soat/daqiqa kerak emas.
-        lead.ClosedByUserId = UserId();
-        lead.ClosedAt = today;
-        // Mas'ul biriktirilmagan bo'lsa (bot yaratgan va hech kim ko'chirmagan lid) — shartnomani
-        // yopgan odam ayni paytda uni ishlagan odam hisoblanadi.
-        if (string.IsNullOrWhiteSpace(lead.AssigneeUserId)) lead.AssigneeUserId = UserId();
-        AddEvent(id, "convert", $"O'quvchiga aylantirildi ({lead.FullName})" + (group is not null
-            ? (groupFull ? $" — guruh to'lgan, qo'shilmadi: {group.Name}" : $" — guruh: {group.Name}")
-            : ""));
         await db.SaveChangesAsync();
+
+        // Avto xabar — o'quvchi guruhga qo'shilganda ota-onaga ("O'quvchi guruhga qo'shilganda"
+        // hodisasi), `AddStudent`/`AddMember` bilan bir xil. Guruh to'lgan bo'lsa — yuborilmaydi.
+        if (group is not null && result.MembershipAdded)
+            await autoMsg.DispatchStudentAsync(db, AutoMessageTriggers.StudentAdded, result.Student,
+                new Dictionary<string, string> { ["{guruh}"] = group.Name }, group: group);
         // Kartada "✅ O'quvchi bo'ldi" qatori paydo bo'ladi.
         await LeadNotifier.SyncCardAsync(db, telegram, id, logger: logger);
-        return Ok(new { studentId = student.Id, groupFull });
+        return Ok(new
+        {
+            studentId = result.Student.Id,
+            groupFull = result.Membership == LeadConversion.MembershipOutcome.GroupFull,
+            alreadyMember = result.Membership == LeadConversion.MembershipOutcome.AlreadyMember,
+            linked = !result.Created,
+            groupName = group?.Name,
+        });
+    }
+
+    /// <summary>
+    /// O'quvchi YARATISH huquqi — <c>StudentsController.Create</c> (<c>[AdminPerm("students.list")]</c>,
+    /// POST → <c>create</c>) bilan bir xil qoida: admin/superadmin har doim; xodim — yalang
+    /// <c>students</c>/<c>students.list</c> yoki <c>…:create</c>.
+    /// </summary>
+    private bool MayCreateStudents()
+    {
+        if (User.IsInRole(Roles.Admin) || User.IsInRole(Roles.SuperAdmin)) return true;
+        var claims = User.Claims.Where(c => c.Type == AdminPermAttribute.ClaimType).Select(c => c.Value).ToList();
+        return PermissionRules.CanWrite(claims, "students.list", HttpMethods.Post);
     }
 
     // ---------- CRM statistikasi ----------
@@ -765,16 +852,25 @@ public class LeadsController(
         var testIds = (await db.LevelTestSubmissions.AsNoTracking()
                 .Where(x => x.LeadId != "").Select(x => x.LeadId).Distinct().ToListAsync())
             .Where(idSet.Contains).ToHashSet(StringComparer.Ordinal);
-        var igIds = (await db.IgConversations.AsNoTracking()
-                .Where(x => x.LeadId != null).Select(x => x.LeadId!).Distinct().ToListAsync())
+        // Instagram — joriy bog'lanish VA tarix (`IgLeadLinks`, `LeadCrmOverview` bilan bir manba):
+        // suhbat qaytgan o'quvchining yangi lidiga ko'chsa ham eski lid kanalini yo'qotmaydi.
+        var igIds = (await IgLeadLinks.LinkedLeadIdsAsync(db))
+            .Where(idSet.Contains).ToHashSet(StringComparer.Ordinal);
+        // REKLAMA (Meta Lead Ads) — `LeadCrmOverview` bilan AYNAN bir xil: ilgari bu yerda uzatilmasdi
+        // va reklama lidlari CRM statistikasida "Boshqa" ga tushardi — ikki sahifa, ikki raqam (CRM-2).
+        // Manba — `IgDmAdLeads.AdsLeadIdsAsync` (Lead Ads + click-to-DM reklama suhbatlari), ya'ni
+        // `LeadCrmOverview` ishlatadigan AYNAN o'sha to'plam.
+        var adsIds = (await IgDmAdLeads.AdsLeadIdsAsync(db))
             .Where(idSet.Contains).ToHashSet(StringComparer.Ordinal);
 
         var leads = inRange
             .Select(l => new LeadAnalytics.LeadRow(
                 l.Id, l.Stage ?? "", l.Source ?? "", l.ConvertedStudentId != null, l.CreatedAt ?? "",
                 Paid: outcome.HasPaid(l.Id),
-                Revenue: outcome.PaidTotal(l.Id),
-                Origin: LeadOrigins.Classify(l.Id, manualIds, formIds, testIds, igIds)))
+                // Tushum — faqat MUSBAT sof summa (`LeadCrmOverview` bilan bir xil): to'liq qaytarilgan
+                // pul kanal/menejerning "daromadi" emas va jami summani kamaytirib yubormasin.
+                Revenue: Math.Max(0m, outcome.PaidTotal(l.Id)),
+                Origin: LeadOrigins.Classify(l.Id, manualIds, formIds, testIds, igIds, adsIds)))
             .ToList();
 
         // Faqat bosqich/konversiyaga oid hodisalar kerak (izoh/qo'ng'iroq/sinov — voronkaga aloqasiz).

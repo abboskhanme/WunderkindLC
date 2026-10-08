@@ -168,6 +168,22 @@ server bir so'rovda faqat bitta guruhni qaytara oladi (`?due=`), ya'ni olti ustu
 so'rov bo'lardi. **Serverdagi qoida o'zgarsa shu faylni ham o'zgartiring** —
 `lib/__tests__/contactDue.test.ts` ikkisining bir xilligini qulflaydi.
 
+### ⚠️ Ro'yxat chegarasi FAQAT YOPILGANLARGA (2026-10-07)
+
+`GET /contacts?limit=` endi faqat YOPILGAN (done/failed) talablarni qirqadi (eng yangi `ClosedAt`
+bo'yicha, ko'pi bilan 500); OCHIQ (new/callback) talablar HAR DOIM hammasi keladi (xavfsizlik
+chegarasi `MaxOpenRows` = 5000). Ilgari bitta umumiy `Take(500)` bor edi: "Bosqich" rejimi
+("hammasi" qamrovi) yopilganlar bilan to'lib, ESKI ochiq talablarni taxtadan JIMGINA tushirib
+qoldirardi — operator ularni hech qachon ko'rmasdi. Taxta ostidagi ogohlantirish ham endi faqat
+yopilganlar chegaraga yetganda chiqadi.
+
+### ARXIVDAGI o'quvchi — `isArchived` belgisi (2026-10-07)
+
+O'quvchi arxivlansa uning ochiq talabi AVTOMATIK YOPILMAYDI — qaytarish (win-back) qo'ng'irog'i
+qonuniy ish. Lekin karta endi `isArchived` bilan keladi (`ContactRequestDto.IsArchived`) va
+kartada qora **«Arxivda»** belgisi turadi: operator ketgan o'quvchining oilasiga qo'ng'iroq
+qilayotganini darhol ko'radi (ilgari belgisiz "Bugun qilish kerak" da oddiy talab bo'lib turardi).
+
 ### Filtrlar — bittadan boshqasi KLIENTDA
 
 Serverga faqat **QAMROV** (`status` = ochiqlar / hammasi) va kalendar OYI uzatiladi. Qidiruv,
@@ -288,6 +304,10 @@ ko'rib chiqilsin.
 
 ⚠️ **O'chirish**: tizim ustuni — 400; ichida talab bor ustun — 400 (soni bilan). Lidlardagi
 "jimgina yetim qoldirish va keyingi restartda tuzatish" bu yerda **ATAYIN qilinmadi**.
+
+⚠️ **Ustunlar tartibi (chapga/o'ngga)** — optimistik, lekin xatoda ESKI tartib qaytadi va `alert`
+bilan sabab chiqadi; so'rov `setStages` updater'i ICHIDA chaqirilmaydi (StrictMode uni ikki marta
+bajarardi) — `error-visibility.md` §3.
 
 Qoidalarning sof qismi — `ContactService` (`SystemStages`, `CanAnchorTo`, `StageMatches`,
 `SafeColor`), testlari `ContactServiceTests` da; klient tomoni `lib/contactDue.ts`

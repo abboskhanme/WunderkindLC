@@ -1,5 +1,6 @@
 import type { BadgeTone } from '@/components/ui/Badge'
 import type { ApplicationStatus, CareerStage, EmploymentType, Vacancy } from '@/api/services/career'
+import { localIsoDate } from '@/lib/localDate'
 
 /**
  * KARYERA bo'limining yagona yorliq/rang jadvallari — vakansiya kartalari, arizalar ro'yxati
@@ -111,6 +112,6 @@ export function salaryText(v: Pick<Vacancy, 'salaryFrom' | 'salaryTo' | 'salaryN
 /** "yyyy-MM-dd" muddat o'tib ketganmi. */
 export function isExpired(deadline: string): boolean {
   if (!deadline || deadline.length !== 10) return false
-  const today = new Date().toISOString().slice(0, 10)
+  const today = localIsoDate(new Date())
   return deadline < today
 }

@@ -185,8 +185,12 @@ public class LeadFormsController(
     }
 
     /// <summary>
-    /// Formani o'chiradi. Arizalar tarixi ham o'chadi — LEKIN ular yaratgan LIDLAR CRM'da QOLADI
-    /// (mijoz yo'qolmasin). Shuning uchun tasodifan bosilmasin: UI tasdiq so'raydi.
+    /// Formani o'chiradi — FAQAT arizasi YO'Q bo'lsa.
+    ///
+    /// <para>⚠️ Ariza bor bo'lsa 400 (soni bilan) va «o'chirib qo'yish» taklif qilinadi (CRM-7):
+    /// arizalar o'chsa ular yaratgan lidlarning KANALI "Lid formasi" dan "Boshqa" ga o'tib ketardi
+    /// (`LeadOrigins` — CRM statistikasi, voronka) va forma statistikasining tarixi yo'qolardi.
+    /// Havolani to'xtatish uchun forma o'chirib qo'yiladi (<c>PATCH {id}/active</c>).</para>
     /// </summary>
     [HttpDelete("{id}")]
     public async Task<IActionResult> Delete(string id)
@@ -194,13 +198,40 @@ public class LeadFormsController(
         var form = await db.LeadForms.FindAsync(id);
         if (form is null) return NotFound();
         var subs = await db.LeadFormSubmissions.CountAsync(s => s.FormId == id);
+        if (subs > 0)
+            return BadRequest(new
+            {
+                message = $"Bu formada {subs} ta ariza bor — o'chirib bo'lmaydi (lidlarning kanali va forma "
+                          + "statistikasi shu arizalarga tayanadi). Havolani to'xtatish uchun formani "
+                          + "«O'chirib qo'yish» tugmasi bilan nofaol qiling.",
+                submissions = subs,
+            });
         db.LeadFormFields.RemoveRange(db.LeadFormFields.Where(f => f.FormId == id));
-        db.LeadFormSubmissions.RemoveRange(db.LeadFormSubmissions.Where(s => s.FormId == id));
         db.LeadForms.Remove(form);
-        audit.Record("LeadForm", id, "delete",
-            $"«{form.Title}» lid formasi o'chirildi ({subs} ta ariza tarixi bilan; lidlar saqlandi)");
+        audit.Record("LeadForm", id, "delete", $"«{form.Title}» lid formasi o'chirildi (arizasiz)");
         await db.SaveChangesAsync();
         return NoContent();
+    }
+
+    /// <summary>
+    /// Formani YOQISH / O'CHIRIB QO'YISH (o'chirish o'rniga). O'chiq formaning ommaviy havolasi
+    /// ariza qabul qilmaydi, arizalar va lidlar joyida qoladi. Ruxsat — PATCH = <c>edit</c>.
+    /// </summary>
+    [HttpPatch("{id}/active")]
+    public async Task<IActionResult> SetActive(string id, FormActiveRequest req)
+    {
+        var form = await db.LeadForms.FindAsync(id);
+        if (form is null) return NotFound();
+        if (form.IsActive != req.IsActive)
+        {
+            var before = Snapshot(form);
+            form.IsActive = req.IsActive;
+            audit.Record("LeadForm", form.Id, "update",
+                $"«{form.Title}» lid formasi " + (req.IsActive ? "YOQILDI" : "O'CHIRIB QO'YILDI (havola to'xtatildi)"),
+                before: before, after: Snapshot(form));
+            await db.SaveChangesAsync();
+        }
+        return Ok(new { id = form.Id, isActive = form.IsActive });
     }
 
     // ==================== Arizalar va statistika ====================

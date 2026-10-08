@@ -65,7 +65,15 @@ public static class GroupSnapshotBuilder
 
         // ---------- 2. A'zolik oqimi ----------
         var memberships = await db.StudentGroups.AsNoTracking().Where(sg => sg.GroupId == gid).ToListAsync(ct);
-        var tally = MembershipLifecycle.Tally(memberships.Select(m => (m.Status, m.IsActive, m.LeftAt)));
+        // Arxivlangan O'QUVCHI = ketgan (eski yozuvlarda a'zoligi tirik bo'lishi mumkin) — joriy holatda
+        // faol/sinov/muzlatilgan bo'lib sanalmasin (pastdagi o'quvchilar ro'yxati alohida o'qiladi).
+        var memberIds = memberships.Select(m => m.StudentId).Distinct().ToList();
+        var archivedMembers = memberIds.Count == 0
+            ? new HashSet<string>()
+            : (await db.Students.AsNoTracking().Where(s => memberIds.Contains(s.Id) && s.IsArchived)
+                .Select(s => s.Id).ToListAsync(ct)).ToHashSet();
+        var tally = MembershipLifecycle.Tally(memberships.Select(m =>
+            (m.Status, m.IsActive && !archivedMembers.Contains(m.StudentId), m.LeftAt)));
         var flow = months.Select(m => new GroupFlowPointDto(
             m,
             memberships.Count(x => MonthOf(x.JoinedAt) == m),
@@ -399,7 +407,10 @@ public static class GroupSnapshotBuilder
         foreach (var raw in logs)
         {
             var s = raw ?? "";
-            if (!s.StartsWith("Guruhdan chiqarildi") && !s.StartsWith("Muzlatildi")) continue;
+            // ⚠️ «Aktiv muzlatildi» (yangi o'quv yili, `year-freeze.md` §6) ham muzlatish — ilgari faqat
+            // "Muzlatildi" prefiksi tutilib, bu sabablar AI tahlilidan tushib qolardi.
+            if (!s.StartsWith("Guruhdan chiqarildi") && !s.StartsWith("Muzlatildi")
+                && !s.StartsWith("Aktiv muzlatildi")) continue;
             const string marker = "sabab: ";
             var i = s.IndexOf(marker, StringComparison.Ordinal);
             Add(i < 0 ? null : s[(i + marker.Length)..]);

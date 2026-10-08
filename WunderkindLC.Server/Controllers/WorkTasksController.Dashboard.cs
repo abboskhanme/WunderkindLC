@@ -24,8 +24,11 @@ public partial class WorkTasksController
 
         var doneCols = (await db.WorkTaskColumns.Where(c => c.IsDone).Select(c => c.Id).ToListAsync())
             .ToHashSet();
-        var open = await db.WorkTasks.Where(t => !t.IsArchived && t.AssigneeId != "")
-            .Select(t => new { t.AssigneeId, t.ColumnId, t.DueDate }).ToListAsync();
+        // Arxivlangan doskadagi topshiriqlar "band"likka kirmaydi (ular hech qayerda ko'rinmaydi).
+        var archivedBoards = await ArchivedBoardIdsAsync();
+        var open = (await db.WorkTasks.Where(t => !t.IsArchived && t.AssigneeId != "")
+            .Select(t => new { t.AssigneeId, t.ColumnId, t.DueDate, t.BoardId }).ToListAsync())
+            .Where(t => !archivedBoards.Contains(t.BoardId)).ToList();
 
         var linked = (await db.TelegramRegistrations.Where(r => r.UserId != null && r.UserId != "")
                 .Select(r => r.UserId!).ToListAsync())
@@ -69,6 +72,15 @@ public partial class WorkTasksController
         var q = db.WorkTasks.Where(t => !t.IsArchived);
         if (!string.IsNullOrWhiteSpace(boardId)) q = q.Where(t => t.BoardId == boardId);
         var tasks = await q.ToListAsync();
+        // ⚠️ Doska tanlanmagan (umumiy) ko'rinishda ARXIVLANGAN doskalarning topshiriqlari
+        // sanalmaydi: ular hech qayerda ko'rinmaydi, lekin "kechikkan" raqamini shishirardi
+        // (kunlik eslatma ham ularni chiqarib tashlaydi — `WorkTaskFlow.DueForReminderAsync`).
+        // Arxivlangan doskaning O'ZI tanlansa — uning raqamlari ko'rsatiladi.
+        if (string.IsNullOrWhiteSpace(boardId))
+        {
+            var archivedBoards = await ArchivedBoardIdsAsync();
+            tasks = tasks.Where(t => !archivedBoards.Contains(t.BoardId)).ToList();
+        }
 
         var doneCols = (await db.WorkTaskColumns.Where(c => c.IsDone).Select(c => c.Id).ToListAsync())
             .ToHashSet();
@@ -150,9 +162,29 @@ public partial class WorkTasksController
         meta.WorkTaskReminderEnabled = req.Enabled;
         meta.WorkTaskReminderHour = Math.Clamp(req.Hour, 0, 23);
         meta.WorkTaskReminderMinute = Math.Clamp(req.Minute, 0, 59);
+        LogSettings("Topshiriqlar — kunlik eslatma");
         await db.SaveChangesAsync();
         return NoContent();
     }
+
+    /// <summary>
+    /// Sozlama o'zgarishi auditi — <c>SettingsController.LogSettings</c> bilan AYNAN bir xil naqsh
+    /// (tur <c>CenterMeta</c> → "Sozlamalar" bo'limi): qaysi maydonlar o'zgargani yoziladi.
+    /// Hech narsa o'zgarmagan bo'lsa yozilmaydi (bo'sh saqlash tarixni to'ldirmasin).
+    /// </summary>
+    private void LogSettings(string what)
+    {
+        var changed = db.ChangeTracker.Entries<CenterMeta>()
+            .SelectMany(e => e.Properties.Where(p => e.State == EntityState.Added || p.IsModified))
+            .Select(p => p.Metadata.Name)
+            .Distinct().Order().ToList();
+        if (changed.Count == 0) return;
+        audit.Record("CenterMeta", "center", "update",
+            $"Sozlama o'zgartirildi — {what} ({string.Join(", ", changed)})");
+    }
+
+    private async Task<HashSet<string>> ArchivedBoardIdsAsync() =>
+        (await db.WorkTaskBoards.Where(b => b.IsArchived).Select(b => b.Id).ToListAsync()).ToHashSet();
 
     /// <summary>"yyyy-MM-dd" → sana (noto'g'ri/bo'sh — null).
     /// ⚠️ <see cref="AppClock.Today"/> — <c>DateOnly</c>, shuning uchun bu yerda ham

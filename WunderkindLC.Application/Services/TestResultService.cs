@@ -139,8 +139,29 @@ public static class TestResultService
         IAppDbContext db, string id, string name, string date, decimal maxScore,
         OnlineTestDto? online = null, bool certificateEnabled = false, string? certificateTemplateId = null)
     {
+        var r = await UpdateDetailedAsync(db, id, name, date, maxScore, online, certificateEnabled, certificateTemplateId);
+        return (r.Ok, r.Error);
+    }
+
+    /// <summary>Tahrirlash natijasi. <paramref name="Regraded"/> — bali O'ZGARGAN natijalar soni
+    /// (markazdagi + tashqi) — chaqiruvchi shunga qarab sertifikatlarni qayta yaratadi.</summary>
+    public sealed record TestUpdateResult(bool Ok, string? Error, int Regraded = 0);
+
+    /// <summary>
+    /// <see cref="UpdateAsync"/> ning to'liq shakli. Kalit yoki savollar soni o'zgarsa topshirilgan
+    /// javoblar QAYTA BAHOLANADI (<see cref="Regrade"/>), maksimal ball kamaysa qo'lda qo'yilgan ballar
+    /// yangi maksimalga QISILADI. ⚠️ Ilgari eski ball qolardi: kalitdagi xato tuzatilsa ham hech kimning
+    /// bali o'zgarmas, savollar 10 → 5 qilinsa "9/5 = 180%" chiqardi (sertifikatda ham).
+    /// </summary>
+    public static async Task<TestUpdateResult> UpdateDetailedAsync(
+        IAppDbContext db, string id, string name, string date, decimal maxScore,
+        OnlineTestDto? online = null, bool certificateEnabled = false, string? certificateTemplateId = null)
+    {
         var t = await db.TestResults.FindAsync(id);
-        if (t is null) return (false, "Test topilmadi");
+        if (t is null) return new(false, "Test topilmadi");
+        var oldKey = t.AnswerKey;
+        var oldCount = t.QuestionCount;
+        var oldMode = t.Mode;
 
         t.Name = (name ?? "").Trim();
         if (!string.IsNullOrWhiteSpace(date)) t.Date = date.Trim();
@@ -148,13 +169,52 @@ public static class TestResultService
         t.CertificateEnabled = certificateEnabled;
         t.CertificateTemplateId = certificateEnabled ? (certificateTemplateId ?? "").Trim() : "";
         var applyErr = await ApplyOnlineAsync(db, t, online);
-        if (applyErr != null) return (false, applyErr);
+        if (applyErr != null) return new(false, applyErr);
         var err = Validate(t.Name, t.MaxScore);
-        if (err != null) return (false, err);
+        if (err != null) return new(false, err);
+
+        var keyChanged = t.Mode == "online"
+            && (oldMode != "online" || oldKey != t.AnswerKey || oldCount != t.QuestionCount);
+        var regraded = await RegradeAsync(db, t, keyChanged);
 
         await db.SaveChangesAsync();
-        return (true, null);
+        return new(true, null, regraded);
     }
+
+    /// <summary>
+    /// QAYTA BAHOLASH qoidasi (sof funksiya, testlangan). Javoblari saqlangan natija (bot/ilova) —
+    /// yangi kalit bo'yicha qayta sanaladi (<see cref="OnlineTestBotService.CountCorrect"/>; savollar
+    /// ko'paygan bo'lsa javobsizlari xato, kamaygan bo'lsa ortiqchasi tashlanadi). Javobsiz (qo'lda
+    /// qo'yilgan) ball — faqat <c>[0, MaxScore]</c> oralig'iga qisiladi.
+    /// </summary>
+    public static decimal Regrade(decimal score, string? answers, TestResult t, bool keyChanged)
+    {
+        if (keyChanged && t.Mode == "online" && !string.IsNullOrEmpty(answers))
+            return OnlineTestBotService.CountCorrect(answers, t.AnswerKey);
+        return Math.Clamp(score, 0, Math.Max(0, t.MaxScore));
+    }
+
+    /// <summary>Testning BARCHA natijalariga (<see cref="TestScore"/> + <see cref="ExternalTestScore"/>)
+    /// <see cref="Regrade"/> ni qo'llaydi. Qaytaradi: bali o'zgarganlar soni.</summary>
+    private static async Task<int> RegradeAsync(IAppDbContext db, TestResult t, bool keyChanged)
+    {
+        var changed = 0;
+        foreach (var sc in await db.TestScores.Where(x => x.TestResultId == t.Id).ToListAsync())
+        {
+            var next = Regrade(sc.Score, sc.Answers, t, keyChanged);
+            if (next != sc.Score) { sc.Score = next; changed++; }
+        }
+        foreach (var ex in await db.ExternalTestScores.Where(x => x.TestResultId == t.Id).ToListAsync())
+        {
+            var next = Regrade(ex.Score, ex.Answers, t, keyChanged);
+            if (next != ex.Score) { ex.Score = next; changed++; }
+        }
+        return changed;
+    }
+
+    /// <summary>Test bo'yicha sertifikat berilganmi (qayta baholashdan keyin yangilash kerakmi).</summary>
+    public static Task<bool> HasCertificatesAsync(IAppDbContext db, string testId) =>
+        db.TestCertificates.AsNoTracking().AnyAsync(c => c.TestResultId == testId);
 
     /// <summary>Onlayn sozlamalarni entity'ga yozadi va tekshiradi. null qaytsa — hammasi joyida.
     /// <paramref name="online"/> berilmasa yoki Mode!="online" bo'lsa test OFLAYN (eski xatti-harakat).

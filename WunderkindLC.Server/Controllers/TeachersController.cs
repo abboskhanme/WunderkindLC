@@ -16,6 +16,8 @@ namespace WunderkindLC.Server.Controllers;
 public class TeachersController(AppDbContext db, AuditService audit, IConfiguration config) : ControllerBase
 {
     private const int MinPasswordLength = 8;
+    /// <summary><see cref="Teacher.InactivePeriods"/> ro'yxatining chegarasi (eng eskilari tushadi).</summary>
+    private const int MaxInactivePeriods = 50;
     private const string WeakPasswordMessage = "Parol kamida 8 belgidan iborat bo'lsin";
 
     /// <summary>
@@ -180,10 +182,14 @@ public class TeachersController(AppDbContext db, AuditService audit, IConfigurat
         {
             var pwd = p.NewPassword.Trim();
             if (pwd.Length < MinPasswordLength) return BadRequest(new { message = WeakPasswordMessage });
+            // Parol o'rnatish = akkauntga kirish — `ResetPassword`/`Credentials` bilan BIR XIL darvoza (AUTH-4).
+            if (!AdminPermAttribute.HasFullAccess(User, "teachers.list"))
+                return StatusCode(StatusCodes.Status403Forbidden, new { message = PasswordForbiddenMessage });
             // Akkaunt yo'q bo'lsa — yaratib biriktiramiz.
             user ??= AccountFactory.CreateAccountFor(db, Roles.Teacher, teacher.FullName);
             teacher.UserId = user.Id;
             user.SetInitialPassword(pwd);
+            await RefreshTokenService.RevokeAllForUserAsync(db, user.Id); // eski sessiyalar tugaydi (AUTH-1)
         }
         if (user is not null)
         {
@@ -252,9 +258,7 @@ public class TeachersController(AppDbContext db, AuditService audit, IConfigurat
         var teacher = await db.Teachers.FindAsync(id);
         if (teacher is null) return NotFound();
         // O'qituvchi guruhda MAJBURIY — faol guruhga biriktirilgan bo'lsa o'chirib bo'lmaydi (yetim TeacherId oldini olish).
-        var owns = await db.Classes.CountAsync(c => c.TeacherId == id && !c.IsArchived);
-        if (owns > 0)
-            return BadRequest(new { message = $"Bu o'qituvchi {owns} ta faol guruhga biriktirilgan — avval guruhga boshqa o'qituvchi tayinlang yoki guruhni arxivlang." });
+        if (await ActiveGroupsGuardAsync(id, "o'chirib") is { } blocked) return blocked;
         var reason = string.IsNullOrWhiteSpace(reasonId) ? "" : (await db.ActionReasons.Where(r => r.Id == reasonId).Select(r => r.Label).FirstOrDefaultAsync() ?? "");
         // Biriktirilgan tizim akkauntini ham o'chiramiz.
         if (teacher.UserId is not null)
@@ -278,12 +282,26 @@ public class TeachersController(AppDbContext db, AuditService audit, IConfigurat
     /// O'qituvchini arxivga ko'chirish: <c>IsArchived=true</c>, sana/sabab saqlanadi, akkaunt
     /// login bloklanadi (PasswordHash bo'shaltiriladi). Tarixiy ma'lumotlar (jurnal, hisobot) saqlanadi.
     /// </summary>
+    /// <remarks>
+    /// <para>⚠️ <b>ARXIV = ISHDAN KETDI (audit SAL-2)</b> — ilgari faqat bayroq qo'yilardi:</para>
+    /// <list type="bullet">
+    /// <item>FAOL guruhi bor o'qituvchi arxivlanmaydi (<c>Delete</c> bilan bir xil darvoza) — 400 va
+    ///   qaysi guruhlarga boshqa o'qituvchi tayinlash kerakligi ro'yxati. Aks holda guruh "egasiz"
+    ///   qolib, jurnal/maosh arxivdagi odamga yozilaverardi;</item>
+    /// <item>KELAJAKDAGI o'rinbosarlik tayinlovlari (o'rinbosar ham, asosiy o'qituvchi ham bo'lgan)
+    ///   bekor qilinadi — har biriga audit qatori (<see cref="SubstituteTeacherService.CancelFutureForTeacherAsync"/>);</item>
+    /// <item>qat'iy oylik arxiv KUNIDA to'xtaydi (<see cref="WunderkindLC.Application.Services.SalaryLedger.MonthFraction"/>, C4);</item>
+    /// <item>maosh varaqasida to'lanmagan QOLDIQ bo'lsa — javobda ogohlantirish (<c>unpaidSalary</c>):
+    ///   ketgan xodim bilan hisob-kitobni yopish esdan chiqmasin.</item>
+    /// </list>
+    /// </remarks>
     [HttpPost("{id}/archive")]
     public async Task<IActionResult> Archive(string id, ArchiveTeacherRequest req)
     {
         var teacher = await db.Teachers.FindAsync(id);
         if (teacher is null) return NotFound();
         if (teacher.IsArchived) return BadRequest(new { message = "O'qituvchi allaqachon arxivda" });
+        if (await ActiveGroupsGuardAsync(id, "arxivlab") is { } blocked) return blocked;
 
         teacher.IsArchived = true;
         teacher.ArchivedAt = AppClock.Today.ToString("yyyy-MM-dd");
@@ -293,16 +311,57 @@ public class TeachersController(AppDbContext db, AuditService audit, IConfigurat
         if (teacher.UserId is not null)
         {
             var user = await db.Users.FindAsync(teacher.UserId);
-            if (user is not null) user.BlockLogin();
+            if (user is not null)
+            {
+                user.BlockLogin();
+                // Ochiq sessiyalar ham yopiladi: aks holda tiklangandan keyin arxivdan OLDINGI
+                // refresh tokenlar yana ishlab ketardi (`auth-sessions.md`).
+                await RefreshTokenService.RevokeAllForUserAsync(db, user.Id);
+            }
         }
+
+        var cancelledSubs = await SubstituteTeacherService.CancelFutureForTeacherAsync(
+            db, teacher.Id, audit, $"o'qituvchi {teacher.FullName} arxivlandi");
 
         audit.Record(AuditService.EntityTeacherSalary, teacher.Id, "update",
             $"O'qituvchi arxivga ko'chirildi ({teacher.FullName})"
-                + (string.IsNullOrWhiteSpace(teacher.ArchiveReason) ? "" : $": \"{teacher.ArchiveReason}\""),
+                + (string.IsNullOrWhiteSpace(teacher.ArchiveReason) ? "" : $": \"{teacher.ArchiveReason}\"")
+                + (cancelledSubs > 0 ? $" — {cancelledSubs} ta o'rinbosarlik tayinlovining kelajakdagi kunlari bekor qilindi" : ""),
             teacherId: teacher.Id);
 
         await db.SaveChangesAsync();
-        return NoContent();
+
+        // To'lanmagan maosh qoldig'i — arxiv sanasigacha hisoblangan (C4: qat'iy oylik shu kunda to'xtagan).
+        var ledger = await WunderkindLC.Application.Services.SalaryLedger.BuildAsync(db, teacher, null, null);
+        var unpaid = ledger.Remaining > 0.5m ? decimal.Round(ledger.Remaining, 2) : 0m;
+        return Ok(new
+        {
+            ok = true,
+            cancelledSubstitutions = cancelledSubs,
+            unpaidSalary = unpaid,
+            warning = unpaid > 0
+                ? $"Diqqat: {teacher.FullName} uchun {AuditService.Money(unpaid)} so'm to'lanmagan maosh qoldig'i bor — " +
+                  "hisob-kitobni yopish uchun o'qituvchi sahifasidagi «Maosh» bo'limiga qarang."
+                : null,
+        });
+    }
+
+    /// <summary>
+    /// O'qituvchining FAOL (arxivlanmagan) guruhlari bo'lsa — 400 va guruhlar NOMLARI (avval boshqa
+    /// o'qituvchi tayinlansin yoki guruh arxivlansin). <c>Delete</c> va <c>Archive</c> uchun BITTA darvoza.
+    /// </summary>
+    private async Task<IActionResult?> ActiveGroupsGuardAsync(string teacherId, string verb)
+    {
+        var names = await db.Classes.AsNoTracking()
+            .Where(c => c.TeacherId == teacherId && !c.IsArchived)
+            .OrderBy(c => c.Name).Select(c => c.Name).ToListAsync();
+        if (names.Count == 0) return null;
+        return BadRequest(new
+        {
+            message = $"Bu o'qituvchi {names.Count} ta faol guruhga biriktirilgan ({string.Join(", ", names)}) — " +
+                      $"{verb} bo'lmaydi. Avval guruhga boshqa o'qituvchi tayinlang yoki guruhni arxivlang.",
+            groups = names,
+        });
     }
 
     /// <summary>
@@ -315,6 +374,13 @@ public class TeachersController(AppDbContext db, AuditService audit, IConfigurat
         var teacher = await db.Teachers.FindAsync(id);
         if (teacher is null) return NotFound();
         if (!teacher.IsArchived) return BadRequest(new { message = "O'qituvchi arxivda emas" });
+
+        // ⚠️ Arxivda turgan davr maosh tarixida QOLADI: `ArchivedAt` tozalanadi, shuning uchun u
+        // `InactivePeriods` ga yoziladi — aks holda qaytarilgan o'qituvchiga arxivdagi oylar uchun ham
+        // qat'iy oylik (va guruh ulushi) qaytadan "hisoblanib" qolardi.
+        var gap = WunderkindLC.Application.Services.SalaryLedger.InactivePeriodFor(teacher.ArchivedAt, AppClock.Today);
+        if (gap is not null && !teacher.InactivePeriods.Contains(gap))
+            teacher.InactivePeriods = teacher.InactivePeriods.Append(gap).TakeLast(MaxInactivePeriods).ToList();
 
         teacher.IsArchived = false;
         teacher.ArchivedAt = null;
@@ -329,12 +395,21 @@ public class TeachersController(AppDbContext db, AuditService audit, IConfigurat
             teacher.UserId = user.Id;
             user.SetInitialPassword(newPwd);
         }
+        // Arxivdan OLDINGI sessiyalar (30 kunlik sirpanuvchi refresh) qayta TIRILMASIN (R2-6) — yangi parol
+        // berilsa ham, berilmasa ham (eski arxivlashda sessiyalar bekor qilinmagan bo'lishi mumkin).
+        if (teacher.UserId is not null) await RefreshTokenService.RevokeAllForUserAsync(db, teacher.UserId);
 
         audit.Record(AuditService.EntityTeacherSalary, teacher.Id, "update",
-            $"O'qituvchi arxivdan qaytarildi ({teacher.FullName})", teacherId: teacher.Id);
+            $"O'qituvchi arxivdan qaytarildi ({teacher.FullName})"
+                + (gap is null ? "" : $" — arxivda turgan davr ({gap.Replace("|", " — ")}) maosh hisoblanmaydigan davr bo'lib qoldi"),
+            teacherId: teacher.Id);
 
         await db.SaveChangesAsync();
-        return NoContent();
+        // ⚠️ Arxivlashda parol O'CHIRILGAN (BlockLogin) — yangi parol berilmagan bo'lsa o'qituvchi hamon
+        // tizimga KIRA OLMAYDI. Klient shu bayroq bo'yicha ogohlantiradi va parol yaratishni taklif qiladi.
+        var loginUser = teacher.UserId is null ? null : await db.Users.AsNoTracking()
+            .FirstOrDefaultAsync(u => u.Id == teacher.UserId);
+        return Ok(new { ok = true, loginBlocked = loginUser is null || string.IsNullOrEmpty(loginUser.PasswordHash) });
     }
 
     /// <summary>
@@ -415,11 +490,20 @@ public class TeachersController(AppDbContext db, AuditService audit, IConfigurat
         return new CredentialsDto(user.Email, user.InitialPassword ?? "", user.Role);
     }
 
-    /// <summary>O'qituvchiga yangi tasodifiy parol generatsiya qiladi va BIR MARTA qaytaradi
-    /// (DB'da faqat hash saqlanadi).</summary>
+    /// <summary>Parolni o'rnatish/qayta yaratish huquqi yo'q xodimga (403) ko'rsatiladigan sabab.</summary>
+    private const string PasswordForbiddenMessage =
+        "Parol o'rnatish uchun «O'qituvchilar» bo'limiga to'liq ruxsat kerak";
+
+    /// <summary>O'qituvchiga yangi tasodifiy parol generatsiya qiladi va qaytaradi.
+    /// <para>⚠️ Darvoza <see cref="Credentials"/> bilan BIR XIL (<c>HasFullAccess</c>): yangi parol
+    /// QAYTARILADI, ya'ni bu o'qituvchi akkauntiga kirish. Ilgari <c>teachers.list:create</c> yetardi.</para>
+    /// <para>Yangi parol <c>InitialPassword</c> ga ham yoziladi (<c>SetInitialPassword</c>) — «Login/parol»,
+    /// Excel eksport va botdagi login xabari yangi parolni ko'rsatsin. Eski sessiyalar tugatiladi.</para></summary>
     [HttpPost("{id}/reset-password")]
     public async Task<ActionResult<CredentialsDto>> ResetPassword(string id)
     {
+        if (!AdminPermAttribute.HasFullAccess(User, "teachers.list"))
+            return StatusCode(StatusCodes.Status403Forbidden, new { message = PasswordForbiddenMessage });
         var teacher = await db.Teachers.FindAsync(id);
         if (teacher is null) return NotFound();
         var user = teacher.UserId is null ? null : await db.Users.FindAsync(teacher.UserId);
@@ -433,7 +517,8 @@ public class TeachersController(AppDbContext db, AuditService audit, IConfigurat
         // (xodimlar bo'limidagi qoida bilan bir xil).
         audit.Record(AuditService.EntityTeacherSalary, teacher.Id, "update",
             $"O'qituvchi paroli qayta yaratildi: {teacher.FullName}", teacherId: teacher.Id);
-        user.PasswordHash = PasswordHasher.Hash(pwd);
+        user.SetInitialPassword(pwd);
+        await RefreshTokenService.RevokeAllForUserAsync(db, user.Id);
         await db.SaveChangesAsync();
         return new CredentialsDto(user.Email, pwd, user.Role);
     }
@@ -486,9 +571,15 @@ public class TeachersController(AppDbContext db, AuditService audit, IConfigurat
             .Select(c => c.Id)
             .ToListAsync();
 
+        // Arxivlangan O'QUVCHI = ketgan (eski yozuvlarda a'zoligi tirik bo'lishi mumkin) — "faol" emas.
         var memberships = await db.StudentGroups
             .Where(sg => groups.Contains(sg.GroupId))
-            .Select(sg => new { sg.Status, sg.IsActive, sg.LeftAt })
+            .Select(sg => new
+            {
+                sg.Status,
+                IsActive = sg.IsActive && !db.Students.Any(st => st.Id == sg.StudentId && st.IsArchived),
+                sg.LeftAt,
+            })
             .ToListAsync();
 
         // YAGONA hisoblagich — o'qituvchilar hisoboti (TeacherActivityReport) bilan raqamlar aynan bir xil.
@@ -526,9 +617,15 @@ public class TeachersController(AppDbContext db, AuditService audit, IConfigurat
 
         var groupIds = groups.Select(g => g.Id).ToList();
 
+        // Arxivlangan O'QUVCHI = ketgan (eski yozuvlarda a'zoligi tirik bo'lishi mumkin) — "faol" emas.
         var memberships = await db.StudentGroups
             .Where(sg => groupIds.Contains(sg.GroupId))
-            .Select(sg => new { sg.GroupId, sg.Status, sg.IsActive, sg.LeftAt })
+            .Select(sg => new
+            {
+                sg.GroupId, sg.Status,
+                IsActive = sg.IsActive && !db.Students.Any(st => st.Id == sg.StudentId && st.IsArchived),
+                sg.LeftAt,
+            })
             .ToListAsync();
 
         // groupId → teacherId xaritasi
@@ -641,6 +738,17 @@ public class TeachersController(AppDbContext db, AuditService audit, IConfigurat
             .Where(c => c.TeacherId == id && ids.Contains(c.Id))
             .ToListAsync();
         var byId = groups.ToDictionary(g => g.Id);
+
+        // Foiz 0..100, summa manfiy emas — ilgari 150% ham jimgina saqlanardi (maosh tushumdan oshib ketardi).
+        var bad = items.FirstOrDefault(i => i.Mode == "percent" && i.Percent is < 0 or > 100);
+        if (bad is not null)
+            return BadRequest(new
+            {
+                message = $"Maosh foizi 0 dan 100 gacha bo'lishi kerak" +
+                          (byId.TryGetValue(bad.GroupId, out var bg) ? $" («{bg.Name}»: {bad.Percent}%)" : $" ({bad.Percent}%)"),
+            });
+        if (items.Any(i => i.Mode == "fixed" && i.Fixed < 0))
+            return BadRequest(new { message = "Qat'iy maosh summasi manfiy bo'lishi mumkin emas" });
 
         var changed = new List<string>();
         foreach (var it in items)

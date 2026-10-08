@@ -44,6 +44,10 @@ public class BookSalesTests
         Total = book.Price * qty,
         PaymentMethod = BookSalesService.PayCash,
         Status = status,
+        // ⚠️ Bu yordamchi "PUL OLINGAN naqd sotuv"ni nazarda tutadi (tasdiqlash = to'lov). Botdan
+        // NAQD buyurtma esa endi tasdiqlashda TO'LANMAYDI — pul olib ketishda olinadi (books.md §2.6,
+        // `AuditFixT11Tests`). Shu sabab manba — qo'lda sotuv (pul kassir oldida).
+        Source = BookSalesService.SourceManual,
     };
 
     /// <summary>

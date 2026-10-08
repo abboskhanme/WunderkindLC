@@ -103,7 +103,35 @@ Barcha bayroqlar **default `false`** (entity default'i ham, migratsiya default'i
 - `CenterMeta.InstagramEnabled == false` → `InstagramWorkerService` navbatni umuman
   qayta ishlamaydi, ya'ni **Graph API'ga ham, Gemini'ga ham** so'rov ketmaydi.
 - Webhook baribir hodisani **qabul qilib navbatga yozadi** (Meta obunani o'chirib
-  qo'ymasin) — u yerda turadi va 30 kunda tozalanadi.
+  qo'ymasin) — u yerda turadi va 30 kunda tozalanadi (`CleanupAsync` — `pending` ham;
+  reklama lidi bo'lsa avval `IgAdLead` ga xato bilan ko'chiriladi, §16.3).
+- ⚠️ Agent O'CHIRILGANDA (yoki akkaunt uzilganda) izoh/DM webhook obunasi va FAQ tugmalari
+  Meta'dan BEKOR qilinadi (§22) — o'chiq davrdagi izoh/DM umuman kelmaydi; qayta yoqilganda obuna
+  tiklanadi. Bekor qilish yiqilgan bo'lsa hodisalar navbatga tushaveradi (yuqoridagi qoida).
+- 🔴 **Agent o'chiq paytda akkauntni (qayta) ULASH ham obuna QILMAYDI** (OAuth callback va
+  `connect-token`, audit R3-10). Ilgari ulash obunani shartsiz tiklardi — "agent o'chiq = webhook
+  yo'q" qoidasi qayta ulash bilan jimgina buzilardi. Obuna agent YOQILGANDA `SaveSettings` da
+  qilinadi; Sozlamalar sahifasida bu holat qizil emas, SARIQ ("agent yoqilganda obuna bo'ladi").
+
+### 3.1. 🔴 ESKI HODISAGA AVTOJAVOB YO'Q (audit 2026-10-07, IG-1)
+
+Ilgari navbatdagi `pending` yozuvlar MUDDATSIZ kutardi: modul yoqilgan zahoti bot ikki haftalik
+izohlarga **ommaviy** javob yozib chiqardi, eski DM'lar esa har biri alohida Telegram signali
+bilan eskalatsiya bo'lardi. Endi `InstagramContract.StaleReplyReason` (sof, testlangan):
+
+| Kanal | Avtojavob chegarasi | Nega |
+|---|---|---|
+| DM | **24 soat** (`StaleDmHours`) | Meta oynasi bilan bir xil |
+| Izoh | **72 soat** (`StaleCommentHours`) | izohda oyna yo'q, lekin bir necha kunlik izohga birdan javob — spam |
+
+Yosh = `IgWebhookEvent.ReceivedAt` va (ishonchli bo'lsa) Meta bergan vaqtning **eskirog'i** —
+Meta 36 soat qayta yuborgan eski xabar ham ushlanadi. Eski hodisa **saqlanadi** (tarix,
+telefon → lid §6.3 baribir ishlaydi), suhbat "Operator kerak" bo'ladi, lekin javob ham, Telegram
+signali ham **ketmaydi**; navbat yozuvi `skipped` + sabab. Tekshiruv avtojavob/pauza
+darvozalaridan KEYIN — avtojavob o'chiq bo'lsa eski xabar ham yangisidek jim yoziladi.
+
+⚠️ `LastInboundAt` zaxirasi — joriy vaqt EMAS, **qabul vaqti** (`ReceivedAt`): 30 kundan eski
+hodisa "hozir yozildi" deb DM oynasini ochib qo'ymasin. Qiymat faqat OLDINGA suriladi.
 
 ⚠️ Yangi tashqi chaqiruv qo'shsangiz — u ham shu darvozadan o'tsin. "Kichkina bitta so'rov"
 sozlanmagan markazda kutilmagan xabar yuborilishiga olib keladi.
@@ -119,6 +147,15 @@ deb hisoblaydi → yana javob yozadi → **cheksiz halqa** → akkaunt spam sifa
 | 2. Dedup | bir xil `EventKey` ikkinchi marta ishlanmaydi + `IgMessages` dagi `mid`/`comment_id` | `AlreadyHandledAsync` |
 | 3. Avtomat o'chirgich | post bo'yicha **8/10daq** · global **30/10daq** | `InstagramContract.BurstBlockReason` |
 | 4. Kunlik chegara | `InstagramDailyReplyLimit` (default 200) | pipeline §4 |
+
+⚠️ **3- va 4-qavat FAQAT BOTNING javoblarini sanaydi** (`InstagramContract.BotOutboundExpr` /
+`IsBotOutbound`: `IsAi`, `"Qoida: …"`, `Avto-qoida`, `FAQ tugmasi`). Ilgari operator Inbox'dan
+yoki Instagram ilovasidan yozgan javoblar ham sanalardi va faol kuni bot sababsiz "chegara
+tugadi" deb to'xtardi (IG-8). Qoida muallifi prefiksi — `IgConst.RuleActorPrefix` (yagona manba).
+
+⚠️ **Signal oynada BIR MARTA** (`AlertDue`): avtomat o'chirgich — 10 daqiqada, kunlik chegara va
+"akkaunt ulanmagan" — kuniga bir marta. Halqa ayni shu paytda o'nlab hodisa yaratadi; har biriga
+signal adminlarni ko'mib tashlardi. Belgi pipeline xotirasida (restartda ko'pi bilan bitta ortiqcha).
 
 ⚠️ **3-qavat 4-qavatning o'rnini BOSMAYDI va aksincha.** Kunlik chegara uzoq muddatli to'siq:
 halqa daqiqalar ichida yuzlab javob yozadi va Instagram akkauntni 200 ga yetmasdan spam deb
@@ -180,6 +217,9 @@ konversiya allaqachon bor). Parallel `InstagramLead` jadvali ham **yaratilmaydi*
 | `Lead.PhoneKey` | **qo'lda yozilmaydi** — `AppDbContext.SaveChanges` o'zi to'ldiradi (`crm-leads.md`) |
 | Telefonsiz qaynoq lid | baribir yoziladi: `FullName = "username (Instagram)"` (**`@` YO'Q** — §6.2) |
 | Har suhbat lid bo'lmaydi | `InstagramContract.ShouldCreateLead` = `IsHot || kontakt bor`. Salom-alik va spam CRM'ni ifloslantirmaydi |
+| **Vaqtinchalik ism ALMASHADI** | `"username (Instagram)"`, `"Instagram mijozi"`, `"Reklama lidi (ismsiz)"`, `"Noma'lum…"` — `LeadIntake.IsPlaceholderName`. Keyin AI, forma, daraja testi, landing yoki reklama formasi haqiqiy ism bersa — o'sha yoziladi; menejer yozgan ism TEGILMAYDI (2026-10-07, IG-4: ilgari faqat `"Noma'lum…"` tanilardi va `"ali_v (Instagram)"` abadiy qolardi) |
+| **O'quvchiga aylantirilgan lid** | qayta ishlatilmaydi — `conv.LeadId` unga bog'langan bo'lsa ham YANGI lid ochiladi ("Avval o'quvchi bo'lgan: <ism>" izohi bilan — telefon bo'yicha, telefon bo'lmasa suhbat bog'langan aylantirilgan lid bo'yicha), suhbat yangi lidga ulanadi (CRM-1, `crm-leads.md`). Eski lid **TARIXGA** yoziladi — §6.4 |
+| **`lead_new` avto-SMS** | YANGI, telefoni bor lidga — lid formasi va landing bilan bir xil (`LeadIntake.DispatchLeadNewAsync`, CRM-9). Telefonsiz lidga ketmaydi; telefon keyin kelsa lid allaqachon MAVJUD — takroriyga SMS yo'q |
 
 ### 6.1. 🔴 TELEGRAM GURUHIGA KARTA — Instagram YAGONA ISTISNO edi
 
@@ -199,6 +239,14 @@ kiritish) `NotifyNewLeadAsync` ni chaqiradi; nosozlik jimgina edi.
 `ShouldCreateLead` qaynoq suhbatda HAR xabarda rost bo'ladi (telefon allaqachon berilgan), ya'ni
 har «rahmat» ga ham guruhga signal ketardi va karta shovqinga aylanardi. Bayroq `UpsertAsync` dan
 **OLDIN** o'qiladi (`conv.LeadId` bo'shmi) — u chaqiruv ichida to'ldirib qo'yiladi.
+
+⚠️ **Bog'langan lid CRM'dan O'CHIRILGAN yoki o'quvchiga AYLANTIRILGAN bo'lsa — "birinchi
+bog'lanish"** (`IgLeadLinks.HasLiveLeadAsync` — pipeline ham, Inbox'dagi «Lidga aylantirish» ham
+SHUNI chaqiradi): aks holda qayta yaratilgan (yoki qaytgan o'quvchi uchun ochilgan) lid guruhga
+hech qachon e'lon qilinmasdi. Ustiga: **YANGI lid (`isNew`) bayroqdan qat'i nazar e'lon qilinadi** —
+uning kartasi hali yo'q, `SyncCardAsync` esa kartasiz lidga hech narsa yubormaydi (audit R2-1: qaytgan
+o'quvchi aynan shu yo'l bilan guruhdan "yo'qolardi"). Inbox'da tugma `detail.lead` bo'yicha
+chiziladi (`conv.leadId` emas) va bog'langan lid `converted` bo'lsa ham ko'rinadi.
 
 ⚠️ Darvoza — `CenterMeta.InstagramNotifyTelegram` (reklama lidlaridagi bilan bir xil). Toggle
 izohi shu sababdan yangilangan: u endi faqat "admin ogohlantirishi" emas, guruhdagi lid kartasini
@@ -284,6 +332,31 @@ tushardi. Topilmasa lid baribir yoziladi, nomi `username (Instagram)`, keyin AI 
 
 ⚠️ **Modul BUTUNLAY o'chiq bo'lsa lid ham yozilmaydi** — master darvoza hamma narsadan yuqori.
 
+### 6.4. 🔴 SUHBAT ↔ LID TARIXI — `IgConversation.PastLeadIds` (audit R2-2)
+
+Qaytgan o'quvchi yozsa suhbat YANGI lidga ko'chadi (§6). Ilgari `conv.LeadId` shunchaki ustidan
+yozilardi va eski lidning izi qolmasdi: kanal tahlili PUL TO'LAGAN eski lidni "Boshqa" deb sanar,
+«Click-to-Direct» reklamasi atributsiyasi (ROI) esa eski liddan YANGI, hali to'lamagan lidga ko'chib
+ketardi — reklama keltirgan tushum hisobotdan yo'qolardi.
+
+Endi `IgLeadLinks.RelinkAsync` (YAGONA yozish yo'li — `InstagramLeadBridge` chaqiradi) eski lidni
+`"leadId|tugash"` qatori bilan `PastLeadIds` ga yozadi. **`tugash` — eski lidning `convert`
+hodisasi vaqti** (topilmasa ko'chirish payti): shu paytgacha kelgan xabar eski lidniki, keyingisi
+yangisiniki (`IgLeadLinks.OwnerAt`, chegara qat'iy `<`).
+
+| Kim o'qiydi | Nima |
+|---|---|
+| `IgLeadLinks.LinkedLeadIdsAsync` | "Instagram" kanali = joriy bog'lanish **+ tarix** (`LeadCrmOverview` va CRM statistikasi — ikkalasi SHU funksiya) |
+| `IgDmAdLeads.LoadAsync` | reklama DM'i xabar KELGAN paytdagi lidga yoziladi; bitta (suhbat, lid) — bitta qator. Bazada yo'q lidga qator chiqmaydi |
+
+⚠️ JORIY lid ro'yxatda YO'Q (u `LeadId` da). Tarix bo'sh bo'lsa hamma natija AYNAN eskisi (mavjud
+qatorlarda bo'sh — backfill kerak emas: ko'chirish shu ish bilan paydo bo'ldi). Chegara
+`MaxPastLeads = 20` (to'lsa yangi qator qo'shilmaydi — birinchi teginish qadrliroq).
+
+⚠️ `conv.LeadId` ni boshqa joyda QO'LDA almashtirmang — tarix jimgina uzilardi. Yagona istisno —
+lid o'chirilganda bog'lanish TOZALANADI (`LeadRemoval`, tarixga yozilmaydi); o'chgan id tarixda qolsa
+ham o'qiydigan joylar uni mavjud lidlar bilan kesishtiradi.
+
 ## 7. TOKEN VA MAXFIY QIYMATLAR
 
 | Qiymat | Qayerda | Nega |
@@ -327,7 +400,8 @@ tashqaridan bu "Meta tasdiqlamayapti" bo'lib ko'rinadi. `EnvKeysWiringTests` shu
 | **Qo'lda token (zaxira)** | `POST /connect-token` (`marketing.settings`) | OAuth yurmasa: `Invalid redirect_uri`, domen hali ochilmagan, yoki token Meta konsolidagi «Generate token» dan olingan |
 
 ⚠️ **Ikkalasi ham AYNAN bir xil ketma-ketlikni bajaradi** — `me` → uzoq muddatliga aylantirish →
-webhook obunasi → eski akkauntni arxivlash (tokenini tozalash bilan) → yangi `IgAccount`.
+webhook obunasi (**faqat agent yoqilgan bo'lsa**, §3) → eski akkauntni arxivlash (tokenini
+tozalash bilan) → yangi `IgAccount`.
 Qo'lda kiritilgan token **ishonch bilan saqlanmaydi**: `MeAsync` yiqilsa hech narsa yozilmaydi.
 
 ⚠️ **NEGA token yolg'iz yoziladigan maydon EMAS.** Halqa himoyasi (§4) **uchala**
@@ -345,6 +419,10 @@ tokenini TOZALASIN (uzilgan akkaunt tokeni bazada qolib ketmasin).
 **Token hayoti:** uzoq token ~60 kun; `InstagramWorkerService` kuniga bir marta tekshiradi
 va muddatiga **< 15 kun** qolganda (`IgConst.TokenRefreshDays = 45`) yangilaydi.
 Muvaffaqiyatsiz bo'lsa — **Telegram alert**, jim yiqilmaydi.
+
+⚠️ Alert `InstagramPipeline.NotifyTokenAdminsAsync` orqali — darvozasi `NeedsLoginToken`
+(`NotifyAdminsAsync` EMAS: u `InstagramEnabled` ga bog'langan va faqat kontent joylashni
+yoqqan markazda "tokenni yangilab bo'lmadi" signali jimgina yo'qolardi, IG-6).
 
 🔴 **Token yangilash darvozasi — `InstagramContract.NeedsLoginToken`, `InstagramEnabled` YOLG'IZ
 EMAS.** Instagram Login tokenini **ikkita** modul ishlatadi: izoh/DM agenti (`InstagramEnabled`)
@@ -397,6 +475,9 @@ o'chirish, bilim bazasini saqlash, **operator javobi**, qo'lda lidga aylantirish
 ⚠️ Yangi `audit.Record` qo'shsangiz — savol: *"bu amaldan keyin tarixda BITTA qator paydo
 bo'ladimi — har doim?"* (`audit.md` §3.5).
 
+Operator javobi auditida KANAL ham yoziladi («suhbatiga javob» / «izohiga ochiq javob» /
+«izohiga yopiq javob»), matn — yo'q.
+
 **ATAYIN yozilmaydi:** botning avtomatik javoblari — ular `IgMessage` sifatida suhbat
 lentasida allaqachon ko'rinadi va har javobni auditga yozish tarixni ko'mib tashlardi.
 
@@ -411,7 +492,7 @@ kalit = yangi billing). Model — `CenterMeta.InstagramAiModel`, bo'sh bo'lsa lo
 | **Til va yozuv** | mijoz qaysi tilda va **yozuvda** yozsa AYNAN o'shanda javob (kirill/lotin/rus/ingliz) |
 | **Spamga qarshi xilma-xillik** | bir xil shablon takrorlansa Instagram uni **spam** deb belgilaydi |
 | **Operatorga o'tish** | "operator"/"odam" so'ralsa darhol eskalatsiya; majburlash **taqiqlangan** (platforma talabi) |
-| **Bot oshkorligi** | birinchi xabarga `CenterMeta.InstagramGreeting` qo'shiladi (Meta talabi) |
+| **Bot oshkorligi** | SHAXSIY yozishmadagi (DM + izohga yopiq javob) birinchi bot javobiga `CenterMeta.InstagramGreeting` — **KOD qo'shadi** (`InstagramContract.WithDisclosure`), HAR yo'lda: FAQ · qoida · AI. Yuborilmagan javob hisobga olinmaydi. Ilgari faqat promptda edi va FAQ/qoida javoblari oshkorliksiz ketardi (IG-7). Promptdagi 8-qoida endi "tizim qo'shadi, QAYTA yozma" deydi — tarjima qilingan ikkinchi nusxa chiqmasin. 🔴 **OCHIQ IZOH javobiga QO'SHILMAYDI** (`InstagramPipeline.DisclosureApplies`, audit R3-9): u har yangi izohchining birinchi javobiga tushib, post ostida bir xil uzun matn qatorlashardi — spamga o'xshardi; Meta talabi esa XABAR almashish (messaging) uchun |
 | Uzunlik | ochiq izohga 1–2 gap (+ `move_to_dm`); DM'da batafsilroq |
 | **Ism va raqam so'rash** | alohida 7-qoida — §11.2 |
 
@@ -432,7 +513,7 @@ ko'ra operatorga signal berish yaxshiroq.
 |---|---|---|
 | 1 | `hub.mode` da **nuqta** bor — model binding ololmaydi | `Request.Query["hub.mode"]` bilan **qo'lda** o'qiladi; javob **`text/plain`** xom challenge (JSON emas) |
 | 2 | DM hodisasi `changes[]` da EMAS | `entry[].messaging[]`; ikkala massiv bitta `entry` ichida bo'lishi mumkin — parser **ikkalasini** ko'radi |
-| 3 | **24 soat oynasi** | `DmWindowOpen` yuborishdan OLDIN. Yopiq bo'lsa so'rov ketmaydi, `NeedsOperator = true` + sabab. ⚠️ **Operatorda oyna UZUNROQ:** `HumanAgentWindowOpen` — 7 kun, Meta'ning `messaging_type=MESSAGE_TAG` · `tag=HUMAN_AGENT` tegi bilan (`SendDmAsync(..., humanAgent: true)`). 🔴 Teg **BOTGA berilmaydi** — avtomatik javobni "odam yozdi" deb belgilash Meta siyosatini buzadi va akkauntga cheklov keltiradi |
+| 3 | **24 soat oynasi** | `DmWindowOpen` yuborishdan OLDIN. Yopiq bo'lsa so'rov ketmaydi, `NeedsOperator = true` + sabab. ⚠️ **Operatorda oyna UZUNROQ:** `HumanAgentWindowOpen` — 7 kun, Meta'ning `messaging_type=MESSAGE_TAG` · `tag=HUMAN_AGENT` tegi bilan (`SendDmAsync(..., humanAgent: true)`). 🔴 Teg **BOTGA berilmaydi** — avtomatik javobni "odam yozdi" deb belgilash Meta siyosatini buzadi va akkauntga cheklov keltiradi. Detal DTO'da `humanAgentWindowOpen` — Inbox banneri 24 soatdan keyin "operator javobi hali mumkin" deydi, "yopildi" faqat 7 kundan keyin |
 | 4 | **Private reply — 7 kun, BIR MARTA** | takroriy yuborish xato beradi; yuborilgani `IgMessage` (`Channel="private_reply"`) sifatida yoziladi |
 | 5 | **Echo = operator pauzasi** | `is_echo` — javob berish uchun emas, botni **jim qildirish** uchun. Iz topilmasa → odam yozgan → `OperatorPausedUntil` (`IgConst.OperatorPauseMinutes` = **720 daqiqa = 12 soat**, yagona manba). Muddat tugasa bot O'ZI qaytadi; darhol qaytarish — «Botga qaytarish» tugmasi |
 | 6 | Webhook'da DM'da **username YO'Q** | faqat `sender.id`. Username `InstagramApi.GetUserProfileAsync` (`GET /{igsid}?fields=name,username`) bilan olinadi — pipeline'da **suhbatga bir marta**, natija `IgConversation.Username` da saqlanadi. Darvoza `InstagramEnabled` (§3), xato **jim yutiladi** (username — qulaylik, xabar emas). Usiz Inbox'da DM suhbati `@1784140…` degan RAQAM bo'lib turardi |
@@ -442,7 +523,7 @@ ko'ra operatorga signal berish yaxshiroq.
 | 10 | `redirect_uri` | Meta'dagi bilan **harfma-harf** bir xil, oxirida `/` yo'q; `[2]` va `[4]` da ham bir xil |
 | 11 | Kod javobi `data[]` massivida | `ExchangeCodeAsync` parseri — obyekt emas, massiv |
 | 12 | `DateTime.Now` | **TAQIQLANGAN** — `AppClock.Now` / `AppClock.Iso()` |
-| 14 | **24 soatlik oyna MIJOZ yozgan vaqtdan** | `IgIncomingEvent.SentAtIso` (Meta bergan vaqt), qayta ishlangan vaqtdan EMAS — navbat kechiksa oyna "ochiq" ko'rinib, Instagram javobni rad etardi. Vaqt mantiqsiz bo'lsa (kelajak / 30 kundan eski) joriy vaqtga qaytiladi |
+| 14 | **24 soatlik oyna MIJOZ yozgan vaqtdan** | `IgIncomingEvent.SentAtIso` (Meta bergan vaqt), qayta ishlangan vaqtdan EMAS — navbat kechiksa oyna "ochiq" ko'rinib, Instagram javobni rad etardi. Vaqt mantiqsiz bo'lsa (kelajak / 30 kundan eski) **qabul vaqtiga** (`ReceivedAt`) qaytiladi — joriy vaqtga EMAS (§3.1) |
 | 15 | **Javob kechikishi navbatda kutgan vaqtni HISOBGA oladi** | aks holda ketma-ket siklda 10 hodisa × 5 soniya = bitta tsiklga 50+ soniya qo'shilardi |
 | 16 | Chiquvchi xabarga **`MediaId` yoziladi** | halqa avtomat o'chirgichi "shu post ostida nechta javob" ni AYNAN shu ustundan sanaydi |
 | 13 | Telegram bildirishnomasi | xatosi **jim yutiladi** (`LeadNotifier`/`BookSalesService` bilan bir xil siyosat) — bildirishnoma javobni buzmasin |
@@ -563,6 +644,16 @@ YUBORILMAYDI (`visibilitychange`), ochiq suhbat esa operator **matn yozayotganda
 yangilanmaydi (lenta pastga sakrab yozuvni chalg'itardi).
 API klienti — `src/api/services/instagram.ts` (`books.ts` uslubida).
 
+⚠️ **OPERATOR JAVOBI — UCH REJIM** (`POST conversations/{id}/reply`, `mode`): `dm` (standart) ·
+`comment` (izohga OCHIQ javob, post ostida) · `private_reply` (izoh muallifiga yopiq javob — 7 kun
+ichida, BIR marta; server oldindan tekshiradi). Izoh rejimida maqsad — `commentId` yoki suhbatdagi
+eng oxirgi kiruvchi izoh. Ilgari javob har doim DM edi: izoh yozgan, lekin DM ochmagan odamga
+javob umuman yetib bormasdi (IG-9). Rejim tanlagich faqat izohi bor suhbatda chiziladi.
+
+⚠️ **YOPILGAN SUHBAT** — mijoz yangi xabar yozsa O'ZI qayta ochiladi (`ReopenOnInbound`, botga
+qaytadi; operator pauzasi tegilmaydi). Qo'lda — «Qayta ochish» (`POST conversations/{id}/reopen`).
+Ilgari yopiq suhbat abadiy jim edi: bot javob bermasdi, sanoqlar ham uni ko'rmasdi (IG-3).
+
 ⚠️ **Sozlamalar sahifasi maxfiy qiymatni KO'RSATMAYDI** — faqat "sozlangan / sozlanmagan".
 Webhook URL va Callback URL **nusxa olish** tugmasi bilan turadi (Meta'ga qo'lda kiritiladi,
 harfma-harf mos bo'lishi shart).
@@ -575,7 +666,7 @@ grafikda **ikki y-o'q bilan ko'rsatilmaydi**.
 
 | Talab | Bajarilishi |
 |---|---|
-| Bot ekanini oshkor qilish | birinchi xabarga `InstagramGreeting` |
+| Bot ekanini oshkor qilish | birinchi bot javobiga `InstagramGreeting` — kod qo'shadi, HAR yo'lda (§10) |
 | Operatorga o'tish yo'li | "operator"/"odam" → darhol eskalatsiya |
 | Maxfiylik siyosati | **ochiq** (login talab qilmaydigan) marshrut `/privacy` |
 | Ma'lumotni o'chirish | **ochiq** marshrut `/data-deletion` |
@@ -609,6 +700,8 @@ boshqaning ma'lumotini so'rab olishi mumkin bo'lardi.
 | `InstagramAgentServiceTests` | `ParseOutput` — markdown fence, buzuq JSON, noma'lum enum |
 | `InstagramLeadBridgeTests` | yangi lid, mavjud lid (**first-touch**: `Source`/`Stage` o'zgarmaydi), telefonsiz qaynoq lid, `conv.LeadId` bo'lsa takror yaratmaslik |
 | `InstagramPipelineTests` | soxta webhook uchdan-uchgacha |
+| `AuditFixFx3Tests` | post-merge revyu: qaytgan o'quvchining yangi lidi guruhga tushishi, suhbat↔lid tarixi va atributsiyaning eski lidda qolishi, navbat qulfining cheklangan kutishi (409), ochiq izohda oshkorlik yo'qligi, agent o'chiq paytda ulash obuna qilmasligi |
+| `AuditFixT9Tests` | audit 2026-10-07: eski hodisaga avtojavob yo'qligi va navbat tozalanishi, modul o'chiq paytdagi reklama lidining saqlanishi, yopiq suhbatning qayta ochilishi, `190` da postning navbatda qolishi, bot chegarasi operator qatorlarini sanamasligi, FAQ birinchi javobidagi oshkorlik, click-to-DM lidining ROI/kanalga tushishi, tahrirlanadigan holatlar, kunlik AI tahlil qayta urinishi |
 
 ⚠️ Sof funksiyalar (`InstagramContract`, `InstagramSignature`, `InstagramEventParser`,
 `BuildSystemPrompt`, `ParseOutput`) ATAYIN HTTP va DB'dan ajratilgan — aynan shular
@@ -661,6 +754,12 @@ bilan tuzatadi. Meta lidni **~90 kun** saqlaydi.
 `CenterMeta.InstagramLeadAdsEnabled` (default **false**) — `InstagramEnabled` dan **AYRI**:
 markaz AI agentini ishlatmasdan ham reklama lidlarini olishi mumkin (va aksincha).
 
+🔴 **Modul o'chiq paytda kelgan reklama lidi YO'QOLMAYDI** (IG-2): `MetaLeadgenService` Meta'ga
+so'rov yubormaydi, lekin `IgAdLead` qatorini `ModuleOffError` bilan SAQLAYDI — modul yoqilgach
+«Qayta olish» ism/telefonni oladi (~90 kun). Ilgari AI agenti yoqilgan, reklama lidlari o'chiq
+markazda navbat yozuvi `done` bo'lar, qator esa umuman yaratilmasdi. 30 kun qayta ishlanmay
+yotgan `pending` leadgen hodisasi ham tozalanishdan oldin shu yo'l bilan saqlanadi.
+
 ⚠️ `InstagramWorkerService` navbatni **ikkalasidan BIRORTASI** yoqilganda qayta ishlaydi.
 Faqat `InstagramEnabled` ga qaralsa, AI agentini ishlatmaydigan markazda reklama lidlari
 navbatda **turib qolardi** va sababi hech qayerda ko'rinmasdi. Token yangilash esa faqat
@@ -697,11 +796,30 @@ ikki joyda ikki xil qoida bo'lsa CRM'da bitta odam **ikkita kartochka** bo'lib q
 
 ⚠️ **Telefonsiz lid ham YOZILADI** (`"Reklama lidi (ismsiz)"`): Meta formasida telefon majburiy
 bo'lmasligi mumkin va jimgina tashlansa markaz **pul to'lagan** murojaatdan xabar topmasdi.
+Bu nom VAQTINCHALIK (`LeadIntake.IsPlaceholderName`) — keyin haqiqiy ism kelsa almashadi.
+
+⚠️ **YANGI reklama lidiga `lead_new` avto-SMS'i ketadi** (telefoni bo'lsa) — `MetaLeadBridge`
+ichida (`autoMsg` parametri; chaqiruvchilar `MetaLeadgenService` va «Qayta olish»). Ilgari
+bu kanal (va Instagram) tanishuv SMS'ini umuman olmasdi — markaz qoidani yoqib qo'ygan bo'lsa
+ham (CRM-9). Takroriy reklama lidiga ketmaydi. ⚠️ Dispatcher yuborilgan SMS jurnalini O'ZI
+saqlaydi, ya'ni ko'prik "SaveChanges qilmaydi" qoidasining yagona istisnosi shu.
+
+⚠️ **O'quvchiga aylantirilgan lidga YOPISHMAYDI** (CRM-1) — `FindByPhoneAsync` uni qaytarmaydi,
+yangi lid ochiladi. **CAPI** ham shunga mos: reklama lidi faqat O'Z lidi reklamadan KEYIN (o'sha
+kuni yoki keyin) aylantirilgan bo'lsa konversiya hisoblanadi (`MetaCapiService.ConvertedBeforeAd`)
+— eski yozuvlardagi "allaqachon o'quvchi bo'lgan lidga yopishgan reklama lidi" Meta'ga yolg'on
+"sifatli lid"/"to'lov" yubormaydi.
 
 ⚠️ **Kanal tasnifi:** `LeadOrigins.Ads` (`"ads"`, «Instagram reklamasi») — DM/izoh lididan
 ATAYIN ajratilgan, aks holda "Instagram" degan bitta qator reklama byudjeti qancha lid
 berganini ko'rsatmasdi. `Classify` da **reklama Instagram'dan OLDIN** tekshiriladi (birinchi
 teginish).
+
+⚠️ **Reklama kanali = Lead Ads + «Click-to-Direct»** — `IgDmAdLeads.AdsLeadIdsAsync` (YAGONA manba,
+IG-10): DM'da Meta bergan ANIQ `referral.ad_id` (`IgMessage.AdId`, `Channel = dm`) bo'lgan suhbatning
+lidi ham reklama. Izohdagi TAXMINIY atributsiya (§20.1) bu yerga KIRMAYDI. Kanal kesimini hisoblaydigan
+HAR joy (`LeadCrmOverview`, CRM statistikasi) shu funksiyani chaqirishi kerak — aks holda ikki
+sahifa ikki xil son ko'rsatadi.
 
 ### 16.6. Sozlash — HAMMASI Marketing bo'limidan
 
@@ -730,7 +848,7 @@ mavjud token saqlanadi (Page ID'ni tahrirlash uchun tokenni qayta yozish shart e
 | `GET /ads/status` | Diagnostika (modul/sahifa/token/obuna/sanoq) | `marketing` (RRP) |
 | `PUT \| DELETE /ads/page` | Sahifani ulash / uzish | `marketing.settings` |
 | `GET /ads/leads` | Ro'yxat + jamlanma + forma/kampaniya kesimi | `marketing` (RRP) |
-| `POST /ads/leads/{id}/retry` | Xato bilan qolgan lidni qayta olish | `marketing.settings` |
+| `POST /ads/leads/{id}/retry` | Xato bilan qolgan lidni qayta olish — webhook yo'li bilan AYNAN bir xil: CRM lidi + **Telegram kartasi** (`NotifyNewLeadAsync`), lid yaratilmasa xato qatorda qoladi (CRM-8) | `marketing.settings` |
 
 Sahifa ruxsati — **`marketing.leadads`** (bo'lim kaliti `marketing` o'zgarmagan, faqat sahifa
 kaliti qo'shilgan — §8 dagi naqsh).
@@ -934,6 +1052,7 @@ qamrov emas. Ikki **halol chegara** beriladi: `Reach` = **MAX** (quyi), `ReachUp
 | To'liq qaytarilgan to'lov | `Math.Max(0, …)` — daromadga **manfiy qo'shilmaydi** (`LeadFormService.Funnel` bilan bir xil qoida) |
 | "To'ladi" = faqat `tuition` | Kitob savdosi `FinanceTransaction` ga yozilmaydi (`books.md` §7) |
 | Manba — **`LeadOutcome`** | "To'ladi" so'zi lid formalari, daraja testi va shu hisobotda BIR XIL ma'no anglatishi shart |
+| CRM lidlari = Lead Ads **+ «Click-to-Direct»** (`IgDmAdLeads.LoadAsync`) | DM'dagi aniq `referral.ad_id` — platforma Instagram, sana suhbatdagi birinchi reklama xabari, e'lon → adset/kampaniya iyerarxiyadan. Ilgari "Xabar yuborish" kampaniyasi "pul sarflandi, lid yo'q" ko'rinardi (IG-10). `Notes` da alohida aytiladi; kesh bog'liqligiga `IgConversation` qo'shilgan. ⚠️ Lid — xabar KELGAN paytdagi lid (§6.4 tarix): qaytgan o'quvchi uchun suhbat yangi lidga ko'chsa ham reklama tushumi pul to'lagan ESKI lidda qoladi (audit R2-2) |
 | Nomi topilmagan tugun | id'ning O'ZI chiziladi — sun'iy "Noma'lum" bazadagi haqiqiy tugundan ajratib bo'lmasdi, id esa Ads Manager'da qidirsa bo'ladigan qiymat |
 | `Platform == "all"` qatorlar platforma tanlanganda **KIRMAYDI** | "Instagram sarfi" deb Facebook pulini qo'shish hisobotni yolg'on qilardi; natijasi `Notes` da aytiladi |
 | `DayEnd(day)` = `"…T23:59:59.999"` | `IgAdLead.CreatedTime` zona qo'shimchasi bilan kelishi mumkin (`…+0000`) va oddiy `T23:59:59` chegarasida oxirgi soniya tushib qolardi |
@@ -1042,7 +1161,7 @@ Chop etilgan IG media'ni API orqali **tahrirlab ham, o'chirib ham bo'lmaydi**. S
 | Himoya | Nima bo'lardi busiz |
 |---|---|
 | `PublishAsync(retry: false)` | Meta postni joylab, javobni yetkaza olmasa (5xx/timeout) takror **IKKINCHI POST** yaratardi — profilda abadiy qoladigan dublikat |
-| `SemaphoreSlim Gate` (jarayon ichida) | Worker tsikli va «Hoziroq joylash» bir vaqtda bir postni ko'rsa **ikkita konteyner** yaratilib, post ikki marta chiqardi |
+| `SemaphoreSlim Gate` (jarayon ichida) | Worker tsikli va «Hoziroq joylash» bir vaqtda bir postni ko'rsa **ikkita konteyner** yaratilib, post ikki marta chiqardi. ⚠️ HTTP so'rovlari (tahrir · bekor · «Hoziroq joylash») qulfni ko'pi bilan **10 soniya** kutadi (`ExclusiveWait`), band bo'lsa **409** + `GateBusyMessage` — worker qulfni butun tsikl (Meta so'rovlari 100 s gacha) ushlaydi va cheklovsiz kutish so'rovni Cloudflare 524 gacha osib qo'yardi (audit R3-8). Worker o'zi cheklovsiz kutadi (fon) |
 | Konteyner `PUBLISHED` bo'lsa **qayta chop etilmaydi** | Avvalgi urinishda javob yo'qolgan bo'lishi mumkin; ikkinchi marta chop etish dublikat berardi. Holat `published` deb yopiladi va sabab ochiq yoziladi |
 
 Noaniq holatda post `failed` bo'ladi va xato matnida **"Instagram'da tekshiring"** deyiladi —
@@ -1059,6 +1178,7 @@ tsiklda darhol so'raladi (eng yomon oqibat: bitta ortiqcha so'rov). Haqiqiy hola
 |---|---|---|
 | Modul o'chiq | tegilmaydi | Tashqariga hech qanday so'rov ketmaydi |
 | **Token o'lgan / akkaunt ulanmagan** | `failed` EMAS — sabab `Error` ga yoziladi, navbat to'xtaydi | Sabab ULANISHDA, postda emas. Admin qayta ulaganda navbat o'zi davom etadi. ⚠️ Jimgina "hech narsa bo'lmayapti" holati eng yomoni — shuning uchun sabab ro'yxatda ko'rinadi |
+| **Token BEKOR qilingan / ruxsat yo'q** (Meta kodi `190`, `102`, `10`, `200–299` — `IsConnectionError`) | xuddi yuqoridagidek: `scheduled`, `Attempts` OSHMAYDI, `Error` = `"Ulanish muammosi: …"` | Ilgari oddiy xato deb uch tsiklda `failed` bo'lardi (IG-5). Qaror Meta KODI bo'yicha (`InstagramPublishApi.LastErrorCode`). Navbat shu akkaunt+token uchun **30 daqiqa** Meta'ga chiqmaydi; signal **BIR MARTA** — navbatda shu prefiksli post bo'lsa (bazadan, restartdan keyin ham) qayta yuborilmaydi. `media_publish` dagi 190 ham shu yo'l: autentifikatsiyada rad etilgan post joylanmagan, dublikat xavfi yo'q |
 | **Kunlik limit to'lgan** | `scheduled` bo'lib qoladi, `Attempts` **oshmaydi** | Limit sutkalik va o'zi bo'shaydi; aks holda post uch tsiklda "xato" bo'lib yonardi |
 | Limit so'rovi **javob bermadi** | ish TO'XTAMAYDI, urinish "kuymaydi" | Limit tekshiruvi MASLAHAT xarakterida — haqiqiy limitni Meta `media_publish` da o'zi tekshiradi (`2207042`) |
 | Validatsiya / buzuq `MediaJson` | DARHOL `failed` (`hard`) | Qayta urinishdan o'zi tuzalmaydi. ⚠️ Tarmoqqa **umuman chiqilmaydi** |
@@ -1119,6 +1239,10 @@ manzilimiz "begona sxema" deb rad etilardi va **o'chirish umuman ishlamasdi** �
 bu sezilmasdi (u yerda `/…` absolut URI emas). Shuning uchun `SafeStoredName` da avval
 **`"://"` borligi** tekshiriladi.
 
+⚠️ **Media manzili hosti — `App:Host` dan** (`InstagramWebhookController.PublicBaseUrl`, webhook/OAuth
+bilan bitta manba), so'rov hostidan EMAS: admin CRM'ni IP yoki vaqtinchalik domen bilan ochsa post
+media manzili o'sha host bilan saqlanib, post faqat joylash paytida yiqilardi.
+
 ⚠️ Dev muhitida (http) manzil HTTPS bo'lmaydi va `ValidateMediaUrl` uni **ATAYIN rad etadi** —
 "lokalda ishladi, serverda ishlamadi" holatini jimgina yaratmaslik uchun.
 
@@ -1128,8 +1252,14 @@ bu sezilmasdi (u yerda `/…` absolut URI emas). Shuning uchun `SafeStoredName` 
 |---|---|---|
 | `GET content/posts`, `content/posts/{id}` | klass | Jamlanma **BUTUN topilma** bo'yicha (ko'rinadigan sahifadan emas); noma'lum `status` filtri **qo'llanmaydi** (ro'yxat bo'shab qolmasin). ⚠️ `totals` filtr QO'LLANGANDAN KEYIN hisoblanadi — shu sababdan klient `status` ni serverga umuman yubormaydi (§18.11). ⚠️ Ikkilamchi tartiblovchi YO'Q (`.ThenByDescending(p => p.Id)` — ochiq ish) |
 | `POST content/posts` | `marketing.content` | ⚠️ Validatsiya **SAQLASHDA** — aks holda xato 10 daqiqalik poll'dan keyin ko'rinardi |
-| `PUT content/posts/{id}` | `marketing.content` | **FAQAT `scheduled`** holatida |
+| `PUT content/posts/{id}` | `marketing.content` | Hali joylanmagan post: `scheduled` · `failed` · `cancelled` (`IsEditableStatus`). Oxirgi ikkisi saqlangach **navbatga qaytadi** (`scheduled`, urinishlar 0, konteyner tozalanadi) — ilgari ular boshi berk edi, server matnlari esa "tahrirlang" derdi |
 | `DELETE content/posts/{id}` | `marketing.content` | `scheduled` → **bekor**; `published` → faqat CRM yozuvi (⚠️ javobda OCHIQ yoziladi); `processing` → rad |
+
+⚠️ **`PUT`/`DELETE` worker bilan BITTA qulf ostida** (`InstagramPublishService.RunExclusiveAsync`,
+§18.3 `Gate`) va holat qulf ICHIDA qayta o'qiladi: worker postni konteynerga olib ketayotgan paytda
+bekor qilish endi poyga yutmaydi — bekor qilingan post hech qachon joylanmaydi. Qulf 10 soniyada
+bo'shamasa — **409** «Navbat band…» (post TEGILMAGAN, qayta urinish xavfsiz); «Hoziroq joylash»
+ham shunday (auditga yozilmaydi — urinish boshlanmagan).
 | `POST content/posts/{id}/publish` | `marketing.content` | Kutmaydi; audit **har doim** yoziladi (xatoda ham) |
 | `GET content/limit`, `content/status` | klass | `total=0` → `unknown=true`; `ScopeGranted` ATAYIN **`null`** |
 | `POST\|DELETE content/media` | `marketing.content` | Ochiq papkaga yuklash/o'chirish (§18.9) |
@@ -2023,6 +2153,7 @@ yozmasdan bosadi).
 | **Payload prefiksi `FAQ:`** | Yagona manba `IgConst.FaqPayloadPrefix`; qurish/o'qish FAQAT `InstagramContract.FaqPayload` / `FaqIdFromPayload`. Prefikssiz postback FAQ emas — oddiy qoida→AI oqimiga tushadi, jimgina tashlanmaydi |
 | **Sinxron BEST-EFFORT** | Har CRUD mutatsiyasidan keyin `POST /me/messenger_profile` (bo'sh ro'yxatda `DELETE` — Meta bo'sh massivni rad etadi). Yiqilsa CRUD **bekor bo'lmaydi**: xato `IgAccount.FaqSyncError` da va javobdagi `sync.ok=false` da ochiq; `FaqSyncedAt` xatoda O'CHMAYDI (oxirgi muvaffaqiyat vaqti diagnostika). Qo'lda qayta yuborish — `POST /faq/sync` |
 | **Modul o'chiq → tashqariga so'rov YO'Q** | Sinxron ham §3 darvozasidan o'tadi (akkaunt ulanmagan holat ham `sync.ok=false` + CRUD muvaffaqiyatli) |
+| **Uzish / agentni o'chirish → Meta'dan ham uziladi** | `Disconnect` (token tozalanishidan OLDIN) va `SaveSettings` (yoqilgan→o'chiq) — `DELETE /me/subscribed_apps` + tugmalar `DELETE`. BEST-EFFORT: yiqilsa amal bekor bo'lmaydi, sabab javobda (`warning` / `IgSettingsDto.Warning`) va UI'da qizil satrda. Qayta yoqilganda obuna tiklanadi. Ilgari obuna va tugmalar faol qolar, uzilgan akkauntda har xabar "akkaunt ulanmagan" signali berardi |
 | **`messaging_postbacks` obunasi** | `IgConst.WebhookFields` ga qo'shilgan; FAQ sinxroni obunani ham best-effort yangilaydi (eski ulangan akkauntga tugma bosilgani KELMASDI). Parser postback'ni to'liq ishlaydi — §11 tuzoq 8 sharti bajarilgan |
 | **Postback = alohida tur** | `InstagramEventParser.KindPostback`, dedup kaliti `postback:{mid}` (`dm:` bilan aralashsa unikal indeks uni takror deb rad etardi). Matn — tugma SARLAVHASI (payload texnik qiymat, lentaga chiqmaydi) |
 | **Darvozalar FAQ uchun ham amal qiladi** | Avto-javob o'chiq / operator pauzasi / kunlik-burst chegarasi — tugma javobi ham AVTOMATIK javob. O'chirilgan tugma bosilsa (eski suhbat) — qoida→AI oqimi |

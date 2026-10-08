@@ -411,20 +411,45 @@ public static class StudentDiscountService
     /// </summary>
     public static async Task<bool> ReapplyCurrentMonthAsync(IAppDbContext db, Student student)
     {
-        var applied = false;
         var current = TuitionService.CurrentMonth();
+        return await ReapplyAsync(db, student, m => m == current) > 0;
+    }
+
+    /// <summary>
+    /// KELGUSI oylarning (joriy oydan KEYINGI) hisoblarida chegirmani QAYTA hisoblaydi — ular faqat AVANS
+    /// to'lov bilan oldindan ochilgan bo'ladi (`TuitionService.EnsureChargeAsync`).
+    ///
+    /// <para>⚠️ <c>applyCurrentMonth</c> dan QAT'I NAZAR chaqiriladi: "keyingi oydan amal qiladi" tanlansa
+    /// ham oldindan to'langan kelgusi oy aynan o'sha "keyingi oy". Ilgari bunday hisob YARATILGAN paytdagi
+    /// chegirma bilan qotib qolardi — chegirma berilsa o'quvchi oldindan to'lagan oyi uchun ORTIQCHA,
+    /// bekor qilinsa KAM to'lagan bo'lib qolardi (`GradeRepricing` esa kelgusi oylarni allaqachon
+    /// qayta hisoblardi). Qoidalar <see cref="ReapplyCurrentMonthAsync"/> bilan bir xil: <c>Locked</c>
+    /// qator va <c>Amount</c> tegilmaydi.</para>
+    /// <para>Qaytaradi: nechta hisob qatori o'zgardi. <c>SaveChanges</c> — chaqiruvchida.</para>
+    /// </summary>
+    public static Task<int> ReapplyFutureMonthsAsync(IAppDbContext db, Student student)
+    {
+        var current = TuitionService.CurrentMonth();
+        return ReapplyAsync(db, student, m => string.CompareOrdinal(m, current) > 0);
+    }
+
+    private static async Task<int> ReapplyAsync(IAppDbContext db, Student student, Func<string, bool> monthFilter)
+    {
+        var applied = 0;
         var book = await DiscountBook.LoadForStudentAsync(db, student.Id);
-        var monthCharges = await db.MonthlyCharges
-            .Where(c => c.StudentId == student.Id && c.Month == current && !c.Locked)
-            .ToListAsync();
-        foreach (var charge in monthCharges)
+        var charges = (await db.MonthlyCharges
+                .Where(c => c.StudentId == student.Id && !c.Locked)
+                .ToListAsync())
+            .Where(c => monthFilter(c.Month))
+            .ToList();
+        foreach (var charge in charges)
         {
-            var newDiscount = book.DiscountFor(student.Id, charge.Amount, current, charge.GroupId);
+            var newDiscount = book.DiscountFor(student.Id, charge.Amount, charge.Month, charge.GroupId);
             if (newDiscount == charge.Discount) continue;
             // Effektiv farq: (Amount − yangiD) − (Amount − eskiD) = eskiD − yangiD.
             student.Balance -= charge.Discount - newDiscount;
             charge.Discount = newDiscount;
-            applied = true;
+            applied++;
         }
         return applied;
     }

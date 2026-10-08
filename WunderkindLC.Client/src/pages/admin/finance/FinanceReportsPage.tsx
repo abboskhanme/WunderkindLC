@@ -18,9 +18,12 @@ import { FilterInput } from '@/components/ui/list/FilterGrid'
 import { useAsync } from '@/hooks/useAsync'
 import { financeCategoryLabel, paymentMethodLabel } from '@/config/constants'
 import { cn, formatMoney } from '@/lib/utils'
+import { localIsoDate } from '@/lib/localDate'
 
 const COLORS = ['#00D66F', '#3D68FF', '#FBC400', '#DE4141', '#9747FF', '#019EF7', '#1D1D1D', '#BDBDBD']
 
+// ⚠️ Faqat UTC'da qurilgan sanalar uchun (`previousPeriod`: `new Date("yyyy-MM-dd")` — UTC yarim tun), ya'ni
+// arifmetika ham, formatlash ham UTC'da — izchil. "Bugun" uchun `localIsoDate` (UTC+5 da 00:00–05:00 kechani berardi).
 function isoDay(d: Date): string {
   return d.toISOString().slice(0, 10)
 }
@@ -48,7 +51,7 @@ export function FinanceReportsPage() {
     const d = new Date()
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`
   })
-  const [to, setTo] = useState(() => isoDay(new Date()))
+  const [to, setTo] = useState(() => localIsoDate(new Date()))
   const [side, setSide] = useState<'income' | 'expense'>('income')
   const [breakdown, setBreakdown] = useState<'category' | 'method'>('category')
 

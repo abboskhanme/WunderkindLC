@@ -93,7 +93,10 @@ public class CtiController(
     }
 
     /// <summary>Agentni tahrirlaydi (parol bo'sh/null bo'lsa o'zgarmaydi) — faqat SuperAdmin yoki shu
-    /// agentning egasi. Xodimga biriktirishni faqat SuperAdmin o'zgartira oladi.</summary>
+    /// agentning egasi. Xodimga biriktirishni faqat SuperAdmin o'zgartira oladi.
+    /// <para>⚠️ STANDART Local SMS agenti o'chirilsa — javobda <c>warning</c>: barcha avtomatik Local SMS
+    /// endi yuborilmaydi (<see cref="LocalSmsDefaultAgent"/>). Amal BLOKLANMAYDI — ishdan ketgan xodimning
+    /// telefonini darhol uzish muhimroq; lekin jimgina ham bo'lmaydi.</para></summary>
     [HttpPut("agents/{id}")]
     public async Task<ActionResult> UpdateAgent(string id, CtiAgentUpdateRequest req)
     {
@@ -101,14 +104,26 @@ public class CtiController(
         if (agent is null) return NotFound();
         if (!SeesAll && agent.StaffUserId != Uid) return Forbid();
 
+        var deactivated = agent.IsActive && !req.IsActive;
         agent.DisplayName = (req.DisplayName ?? "").Trim();
         agent.IsActive = req.IsActive;
         if (!string.IsNullOrWhiteSpace(req.Password))
             agent.PasswordHash = PasswordHasher.Hash(req.Password);
         if (SeesAll)
             agent.StaffUserId = string.IsNullOrWhiteSpace(req.StaffUserId) ? null : req.StaffUserId;
+        if (deactivated) { agent.IsOnline = false; agent.FcmToken = ""; }
+        var stoppedDefault = deactivated
+            && await LocalSmsDefaultAgent.DefaultAmongAsync(db, new[] { agent.Id }) is not null;
         await db.SaveChangesAsync();
-        return Ok();
+
+        // ⚠️ O'CHIRILGAN agent DARHOL uziladi: ilgari faqat yangi login to'silardi, jonli ulanish
+        // (va 12 soatlik token) esa ishlayverardi — ishdan ketgan xodimning telefoni qo'ng'iroq
+        // qilish va ota-onalarga SMS yuborishda davom etardi. FCM tokeni ham tozalanadi —
+        // o'chirilgan telefonni push bilan uyg'otishga urinilmasin.
+        if (deactivated) await conn.DisconnectAsync(agent.Id);
+        return stoppedDefault
+            ? Ok(new { warning = LocalSmsDefaultAgent.StoppedWarning(LocalSmsDefaultAgent.NameOf(agent)) })
+            : Ok();
     }
 
     /// <summary>
@@ -121,13 +136,17 @@ public class CtiController(
         var agent = await db.CtiAgents.FirstOrDefaultAsync(a => a.Id == id);
         if (agent is null) return NotFound();
         if (!SeesAll && agent.StaffUserId != Uid) return Forbid();
+        if (!agent.IsActive) return BadRequest(new { message = InactiveAgentMessage(agent) });
         var number = NormalizePhone(req.Number ?? "");
         if (number.Length == 0) return BadRequest(new { message = "Raqam bo'sh" });
 
-        var commandId = Guid.NewGuid().ToString();
         var cmd = new CtiCommandLog { AgentId = id, Action = "dial", Payload = number, Status = "pending" };
         db.CtiCommandLogs.Add(cmd);
         await db.SaveChangesAsync();
+        // ⚠️ Ilovaga AYNAN jurnal yozuvining id'si yuboriladi — ilova `ack` da shu id'ni qaytaradi va
+        // `CtiWebSocketHandler` uni `CtiCommandLogs.Id` bo'yicha "acked" qiladi. Ilgari alohida
+        // GUID yuborilardi va hech bir ack jurnalga mos kelmasdi.
+        var commandId = cmd.Id;
 
         object DialMsg() => new { action = "dial", number, commandId };
 
@@ -181,6 +200,7 @@ public class CtiController(
         var agent = await db.CtiAgents.FindAsync(id);
         if (agent is null) return NotFound();
         if (!SeesAll && agent.StaffUserId != Uid) return Forbid();
+        if (!agent.IsActive) return BadRequest(new { message = InactiveAgentMessage(agent) });
         if (string.IsNullOrWhiteSpace(req.Number)) return BadRequest(new { message = "Raqam bo'sh" });
         var text = (req.Text ?? "").Trim();
         if (text.Length == 0) return BadRequest(new { message = "SMS matni bo'sh" });
@@ -189,6 +209,9 @@ public class CtiController(
         var r = await ctiSms.SendSmsAsync(db, id, req.Number, text, ct: HttpContext.RequestAborted);
         return new CtiSmsResponse(r.CommandId, r.Ok);
     }
+
+    private static string InactiveAgentMessage(CtiAgent a) =>
+        $"Agent \"{(a.DisplayName.Length > 0 ? a.DisplayName : a.Login)}\" o'chirilgan — avval uni faollashtiring.";
 
     // ---------- Qo'ng'iroqlar tarixi ----------
 

@@ -4,6 +4,7 @@ import { getMyKassaPayments, type CashierPayments } from '@/api/services/kassa'
 import { ReceiptModal } from '@/components/finance/ReceiptModal'
 import { formatMoney, formatDate, formatTime, cn } from '@/lib/utils'
 import { paymentMethodLabel, formatMonth } from '@/config/constants'
+import { localIsoDate, shiftLocalDay } from '@/lib/localDate'
 
 /** Davr: aniq KUN (kalendardan tanlanadi) yoki tez tanlov — 7 kun / shu oy. */
 type Period = 'day' | 'week' | 'month'
@@ -11,15 +12,10 @@ type Period = 'day' | 'week' | 'month'
 /** To'lov usuli filtri. */
 type MethodFilter = 'all' | 'cash' | 'card' | 'bank'
 
-const iso = (d: Date) => d.toISOString().slice(0, 10)
-const today = () => iso(new Date())
-
-/** Kunni siljitish ("2026-07-28" + 1 kun). */
-function shiftDay(day: string, delta: number): string {
-  const d = new Date(`${day}T00:00:00`)
-  d.setDate(d.getDate() + delta)
-  return iso(d)
-}
+// ⚠️ MAHALLIY sana (`lib/localDate.ts`): `toISOString()` UTC beradi — UTC+5 da ◀ ▶ strelkalari bir kun
+// surilib, "7 kun" 8 kun bo'lib qolardi va kassirning kunlik hisobi boshqa kunni ko'rsatardi.
+const today = () => localIsoDate(new Date())
+const shiftDay = shiftLocalDay
 
 /**
  * "To'lovlarim" — kassir O'ZI kiritgan to'lovlar va jami. Server faqat token egasining

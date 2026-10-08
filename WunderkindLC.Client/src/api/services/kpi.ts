@@ -370,11 +370,12 @@ export interface KpiTicketMetaDto {
   staff: KpiStaffDto[]
 }
 
-/** Haftalik sifat nazorati uchun tasodifiy qo'ng'iroq namunasi. */
+/** Haftalik sifat nazorati uchun tasodifiy qo'ng'iroq namunasi — Local Call (CTI) yozuvidan. */
 export interface KpiCallSampleDto {
+  /** `CtiCallRecord.Id` — yozuv `fetchCtiCallAudioUrl(callId)` bilan tinglanadi. */
   callId: string
   phoneNumber: string
-  /** `Call` entity'sidagi NATIV qiymatlar — qisqartirilmaydi. */
+  /** Server CTI qiymatini o'giradi: incoming/missed → `inbound`, outgoing → `outbound`. */
   direction: 'inbound' | 'outbound'
   startedAt: string
   durationSeconds: number

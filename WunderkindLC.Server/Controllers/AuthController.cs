@@ -109,10 +109,11 @@ public class AuthController(
         await face.TouchAsync(user.Id, req.DeviceId, HttpContext.RequestAborted);
         await db.SaveChangesAsync();
 
-        var token = jwt.CreateToken(user);
         // DUAL-MODE: token + refresh JSON body'da qaytadi (mobil), QO'SHIMCHA `at`/`csrf`/`rt` cookie
         // ham qo'yiladi (web HttpOnly cookie rejimi). Orqaga moslik buzilmaydi.
+        // Refresh AVVAL chiqariladi — uning nasli (sessiya) access tokenga yoziladi (`SessionClaimType`).
         var rt = await refreshTokens.IssueAsync(user.Id, ip: ip, ua: UserAgent(), ct: HttpContext.RequestAborted);
+        var token = jwt.CreateToken(user, rt.FamilyId);
         IssueAuthCookies(token, rt.RawToken, rt.ExpiresUtc);
         return new LoginResponse(token, new UserDto(
             user.Id, user.FullName, user.Role, user.Email, user.AvatarUrl, await PermsFor(user)),
@@ -171,9 +172,9 @@ public class AuthController(
         await db.SaveChangesAsync();
 
         logger.LogInformation("OTP orqali login: userId={UserId}, IP={IP}", user.Id, ip);
-        var token = jwt.CreateToken(user);
         // DUAL-MODE: `Login` bilan bir xil — body'da token + refresh, `at`/`csrf`/`rt` cookie.
         var rt = await refreshTokens.IssueAsync(user.Id, ip: ip, ua: UserAgent(), ct: HttpContext.RequestAborted);
+        var token = jwt.CreateToken(user, rt.FamilyId);
         IssueAuthCookies(token, rt.RawToken, rt.ExpiresUtc);
         return new LoginResponse(token, new UserDto(
             user.Id, user.FullName, user.Role, user.Email, user.AvatarUrl, await PermsFor(user)),
@@ -251,6 +252,22 @@ public class AuthController(
     internal const string TeacherBlockedMessage =
         "Hisobingiz vaqtincha faol emas. Administratorga murojaat qiling.";
 
+    /// <summary>
+    /// O'Z PAROLINI almashtirganda — BOSHQA qurilmalardagi sessiyalarni tugatadi, joriysini saqlaydi.
+    /// Joriy sessiya: web'da `rt` cookie, mobil ilovada access tokendagi sessiya claim'i
+    /// (<see cref="JwtTokenService.SessionClaimType"/>). Aniqlanmasa (claim'siz eski token) —
+    /// HAMMASI bekor qilinadi (xavfsiz tomon: foydalanuvchi yangi parol bilan qayta kiradi).
+    /// SaveChanges QILMAYDI.
+    /// <para>`StudentPortalController.ChangePassword` ham shuni chaqiradi — qoida bitta joyda.</para>
+    /// </summary>
+    internal static async Task EndOtherSessionsAsync(HttpContext http, AppDbContext db, string userId)
+    {
+        var raw = http.Request.Cookies[WunderkindLC.Server.AuthCookies.RtCookie];
+        var claim = http.User.FindFirst(JwtTokenService.SessionClaimType)?.Value;
+        var keep = await RefreshTokenService.CurrentFamilyAsync(db, userId, raw, claim, http.RequestAborted);
+        await RefreshTokenService.RevokeAllForUserAsync(db, userId, keep, http.RequestAborted);
+    }
+
     /// <summary>Akkaunt arxivlangan (o'qituvchi/o'quvchi) bo'lsa true — login va token rad etiladi.</summary>
     private async Task<bool> IsBlockedAsync(AppUser user) => user.Role switch
     {
@@ -303,7 +320,9 @@ public class AuthController(
     }
 
     /// <summary>Joriy foydalanuvchi o'z login (email) va/yoki parolini o'zgartiradi.
-    /// Joriy parol bilan tasdiqlanadi. Email/Id o'zgarmagani uchun token amal qilaveradi.</summary>
+    /// Joriy parol bilan tasdiqlanadi. Email/Id o'zgarmagani uchun token amal qilaveradi.
+    /// <para>⚠️ Parol almashtirilsa BOSHQA qurilmalardagi sessiyalar tugatiladi (refresh tokenlari
+    /// bekor), joriy sessiya esa tirik qoladi — qarang <see cref="EndOtherSessionsAsync"/>.</para></summary>
     [HttpPut("account")]
     [Authorize]
     public async Task<ActionResult<UserDto>> UpdateAccount(UpdateAccountRequest req)
@@ -328,6 +347,7 @@ public class AuthController(
             if (req.NewPassword.Length < 8)
                 return BadRequest(new { message = "Yangi parol kamida 8 belgidan iborat bo'lsin" });
             user.SetOwnPassword(req.NewPassword);
+            await EndOtherSessionsAsync(HttpContext, db, user.Id);
         }
 
         // Telefon — berilsa yangilaymiz (admin/xodim botda yangi lid xabarnomasini olishi uchun).

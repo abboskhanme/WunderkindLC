@@ -22,6 +22,11 @@ public static class MembershipReasons
     /// <summary>Sabab topilmagan ketishning yorlig'i (hisobot va diagrammada).</summary>
     public const string NoReasonLabel = "Sabab ko'rsatilmagan";
 
+    /// <summary>«Tugatish (sertifikat bilan)» da KURSNI TUGATMAGAN (sinov/muzlatilgan) a'zoning
+    /// chiqish sababi — tizim yozadi (<c>close</c> amali, <c>ReasonId</c> bo'sh). Usiz ular
+    /// «Sabab ko'rsatilmagan» bo'lib, KPI'da noma'lum sabab jarimasiga tushardi.</summary>
+    public const string CompletedNotFinishedLabel = "Guruh tugatildi — kursni tugatmagan (sinov/muzlatilgan)";
+
     /// <summary>
     /// Tanlangan sababni yozadi. Sabab tanlanmagan (yorliq bo'sh) bo'lsa — HECH NARSA yozilmaydi.
     /// <para><c>SaveChangesAsync</c> QILMAYDI — yozuv chaqiruvchining tranzaksiyasiga qo'shiladi
@@ -65,7 +70,9 @@ public static class MembershipReasons
     ///
     /// <para><b>Tartib</b> (birinchi topilgani olinadi):</para>
     /// <list type="number">
-    /// <item>tuzilgan yozuv: chiqarish/almashtirish/yopish, sanasi AYNAN <paramref name="leftAt"/>;</item>
+    /// <item>tuzilgan yozuv: chiqarish/almashtirish/yopish, sanasi AYNAN <paramref name="leftAt"/>.
+    ///   ⚠️ U TIZIM sababi (<see cref="CompletedNotFinishedLabel"/>) bo'lsa va a'zolik chiqishda
+    ///   muzlatilgan bo'lsa — avval MUZLATISH sababi (yozuv, keyin audit), tizim yorlig'i zaxira;</item>
     /// <item>a'zolik chiqish paytida MUZLATILGAN bo'lsa — muzlatish/yopish yozuvi, sanasi AYNAN
     ///   <paramref name="frozenAt"/> (muzlatilgan o'quvchi keyinroq sababsiz chiqarilgan holat:
     ///   haqiqiy sabab muzlatishda aytilgan);</item>
@@ -88,10 +95,20 @@ public static class MembershipReasons
         var frozenAtLeave = frozen.Length == 10 && left.Length == 10 && string.CompareOrdinal(frozen, left) <= 0;
         var logList = logs as IList<MembershipReasonLog> ?? logs.ToList();
 
+        var auditList = audits as IList<AuditRow> ?? audits.ToList();
+
         // 1) Tuzilgan yozuv — chiqish amalining o'zi.
         var exit = Latest(logList.Where(l =>
             (l.Action is ActionRemove or ActionTransfer or ActionClose) && Day(l.Date) == left));
-        if (exit is not null) return new Resolved(exit.ReasonId, exit.ReasonLabel, "log");
+        if (exit is not null && !IsSystemLabel(exit)) return new Resolved(exit.ReasonId, exit.ReasonLabel, "log");
+
+        // ⚠️ TIZIM sababi («Tugatish»da kursni tugatmagan) — faqat ZAXIRA (audit R1-4): a'zolik chiqishda
+        // MUZLATILGAN bo'lsa HAQIQIY sabab muzlatishda aytilgan («Ko'chib ketdi» — nazoratdan tashqari).
+        // Tizim yorlig'i birinchi topilsa u KPI'da NAZORATDAGI ketish bo'lib sanalar va hisobotda
+        // haqiqiy sabab o'rniga ko'rinardi.
+        if (exit is not null)
+            return FreezeReason(logList, auditList, frozen, frozenAtLeave)
+                   ?? new Resolved(exit.ReasonId, exit.ReasonLabel, "log");
 
         // 2) Tuzilgan yozuv — chiqishdan oldingi muzlatish.
         if (frozenAtLeave)
@@ -102,7 +119,6 @@ public static class MembershipReasons
         }
 
         // 3) Eski tarix — audit matni.
-        var auditList = audits as IList<AuditRow> ?? audits.ToList();
         var exitAudit = auditList
             .Where(a => IsExitSummary(a.Summary) && string.CompareOrdinal(Day(a.Timestamp), left) >= 0)
             .OrderByDescending(a => a.Timestamp, StringComparer.Ordinal)
@@ -127,6 +143,29 @@ public static class MembershipReasons
             return new Resolved(null, archive.Reason!.Trim(), "archive");
 
         return new Resolved(null, "", "");
+    }
+
+    /// <summary>Tizim yozgan sabab (admin tanlamagan): <see cref="CompletedNotFinishedLabel"/>, <c>ReasonId</c> bo'sh.</summary>
+    private static bool IsSystemLabel(MembershipReasonLog l) =>
+        string.IsNullOrEmpty(l.ReasonId) && l.ReasonLabel == CompletedNotFinishedLabel;
+
+    /// <summary>Chiqishdan oldingi MUZLATISH sababi — tuzilgan yozuv, bo'lmasa (eski tarix) audit matni.
+    /// Tizim yorlig'i hisobga olinmaydi. A'zolik chiqishda muzlatilmagan bo'lsa <c>null</c>.</summary>
+    private static Resolved? FreezeReason(
+        IList<MembershipReasonLog> logs, IList<AuditRow> audits, string frozen, bool frozenAtLeave)
+    {
+        if (!frozenAtLeave) return null;
+        var freeze = Latest(logs.Where(l =>
+            (l.Action is ActionFreeze or ActionClose) && Day(l.Date) == frozen && !IsSystemLabel(l)));
+        if (freeze is not null) return new Resolved(freeze.ReasonId, freeze.ReasonLabel, "log");
+        var freezeAudit = audits
+            .Where(a => IsFreezeSummary(a.Summary) && string.CompareOrdinal(Day(a.Timestamp), frozen) >= 0)
+            .OrderByDescending(a => a.Timestamp, StringComparer.Ordinal)
+            .Select(a => (AuditRow?)a)
+            .FirstOrDefault();
+        return freezeAudit is { } fa && ReasonFromAuditSummary(fa.Summary) is { } r
+            ? new Resolved(null, r, "audit")
+            : null;
     }
 
     /// <summary>Audit izohidan «… — sabab: X» qismini ajratadi (sabab doim izohning OXIRIDA yoziladi).</summary>

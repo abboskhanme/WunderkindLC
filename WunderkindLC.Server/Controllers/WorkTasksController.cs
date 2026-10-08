@@ -23,7 +23,7 @@ namespace WunderkindLC.Server.Controllers;
 [Authorize]
 [AdminPerm("tasks")]
 [Route("api/admin/work-tasks")]
-public partial class WorkTasksController(AppDbContext db, TelegramService telegram) : ControllerBase
+public partial class WorkTasksController(AppDbContext db, TelegramService telegram, AuditService audit) : ControllerBase
 {
     private string Uid => User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? "";
     private static string Today => AppClock.Today.ToString("yyyy-MM-dd");
@@ -164,9 +164,18 @@ public partial class WorkTasksController(AppDbContext db, TelegramService telegr
             && !await db.WorkTaskColumns.AnyAsync(x => x.BoardId == c.BoardId && x.Id != id && x.IsDone))
             return BadRequest(new { message = "Doskada kamida bitta «bajarildi» ustuni qolishi kerak" });
 
+        var doneChanged = c.IsDone != input.IsDone;
         c.Title = input.Title.Trim();
         c.Color = Color(input.Color, c.Color);
         c.IsDone = input.IsDone;
+
+        // ⚠️ Ustun "yopiluvchi" bo'lsa/bo'lmay qolsa ichidagi topshiriqlarning `CompletedAt` i ham
+        // moslanadi (yopiladi + takroriysi tug'iladi / qayta ochiladi). Aks holda statistika va
+        // botdagi "allaqachon bajarilgan" tekshiruvi ustun bilan ziddiyatga tushardi.
+        if (doneChanged)
+            foreach (var t in await db.WorkTasks.Where(t => t.ColumnId == id).ToListAsync())
+                await WorkTaskFlow.SyncCompletionAsync(db, t, c.IsDone, Uid);
+
         await db.SaveChangesAsync();
         return NoContent();
     }
@@ -201,10 +210,17 @@ public partial class WorkTasksController(AppDbContext db, TelegramService telegr
         var rest = await db.WorkTaskColumns.Where(x => x.BoardId == c.BoardId && x.Id != id)
             .OrderBy(x => x.Order).ToListAsync();
         if (rest.Count == 0) return BadRequest(new { message = "Oxirgi ustunni o'chirib bo'lmaydi" });
+        // `UpdateColumn` dagi qoida bilan bir xil: doskada kamida bitta YOPILUVCHI ustun qolsin.
+        if (c.IsDone && !rest.Any(x => x.IsDone))
+            return BadRequest(new { message = "Doskada kamida bitta «bajarildi» ustuni qolishi kerak" });
 
         var target = rest[0];
         foreach (var t in await db.WorkTasks.Where(t => t.ColumnId == id).ToListAsync())
+        {
             t.ColumnId = target.Id;
+            // Yopiluvchi ustundan oddiy ustunga tushgan topshiriq qayta ochiladi (va aksincha).
+            await WorkTaskFlow.SyncCompletionAsync(db, t, target.IsDone, Uid);
+        }
         db.WorkTaskColumns.Remove(c);
         await db.SaveChangesAsync();
         return NoContent();
@@ -336,6 +352,8 @@ public partial class WorkTasksController(AppDbContext db, TelegramService telegr
     [AdminPerm("tasks.board")]
     public async Task<ActionResult<WorkTaskDto>> Update(string id, WorkTaskInput input)
     {
+        // Ustun ham o'zgarishi mumkin (yopish → takroriy nusxa) — bot bilan BIR QULF ostida.
+        using var gate = await PaymentIdempotency.LockAsync(WorkTaskFlow.LockKey(id));
         var t = await db.WorkTasks.FindAsync(id);
         if (t is null) return NotFound();
         if (string.IsNullOrWhiteSpace(input.Title))
@@ -397,6 +415,9 @@ public partial class WorkTasksController(AppDbContext db, TelegramService telegr
     [AdminPerm("tasks.board")]
     public async Task<ActionResult<WorkTaskDto>> Move(string id, WorkTaskMoveInput input)
     {
+        // POYGA: ikki tab / bot "Bajardim" bilan bir vaqtda yopilsa takroriy nusxa IKKI marta
+        // tug'ilardi — topshiriq QULF ICHIDA o'qiladi (`WorkTaskFlow.LockKey`).
+        using var gate = await PaymentIdempotency.LockAsync(WorkTaskFlow.LockKey(id));
         var t = await db.WorkTasks.FindAsync(id);
         if (t is null) return NotFound();
         var ok = await ApplyMoveAsync(t, input.ColumnId, input.Order);

@@ -22,7 +22,8 @@ namespace WunderkindLC.Application.Services;
 ///
 /// <para>⚠️ <c>SaveChangesAsync</c> chaqirilmaydi — yozuvlar chaqiruvchining (pipeline)
 /// tranzaksiyasida saqlanadi. <see cref="Lead.PhoneKey"/> ham QO'LDA yozilmaydi
-/// (<c>AppDbContext.SaveChanges</c> o'zi hisoblaydi).</para>
+/// (<c>AppDbContext.SaveChanges</c> o'zi hisoblaydi). ISTISNO: YANGI lidga <c>lead_new</c>
+/// avto-SMS'i (<c>autoMsg</c> berilsa) — u yuborilgan SMS jurnalini o'zi saqlaydi.</para>
 /// </summary>
 public static class MetaLeadBridge
 {
@@ -37,9 +38,12 @@ public static class MetaLeadBridge
     /// </summary>
     /// <param name="adLead">Bazaga yozilayotgan reklama lidi (maydonlari to'ldirilgan).</param>
     /// <param name="sourceName">`CenterMeta.InstagramAdsLeadSource` — lid manbasining NOMI.</param>
+    /// <param name="autoMsg">Berilsa — YANGI, telefoni bor lidga <c>lead_new</c> avto-SMS'i yuboriladi
+    /// (lid formasi/landing bilan bir xil qoida; CRM-9).</param>
     /// <returns>Lid id va u YANGI yaratildimi.</returns>
     public static async Task<(string LeadId, bool IsNew)> UpsertAsync(
-        IAppDbContext db, IgAdLead adLead, string sourceName, CancellationToken ct = default)
+        IAppDbContext db, IgAdLead adLead, string sourceName, CancellationToken ct = default,
+        AutoMessageService? autoMsg = null)
     {
         var now = AppClock.Iso();
         var source = string.IsNullOrWhiteSpace(sourceName) ? DefaultSource : sourceName.Trim();
@@ -52,7 +56,9 @@ public static class MetaLeadBridge
         if (lead is not null)
         {
             if (string.IsNullOrWhiteSpace(lead.Phone) && phone.Length > 0) lead.Phone = phone;
-            if (string.IsNullOrWhiteSpace(lead.FullName) && name.Length > 0) lead.FullName = name;
+            // Vaqtinchalik ism (masalan "Reklama lidi (ismsiz)", "ali_v (Instagram)") haqiqiy ism bilan
+            // almashtiriladi (IG-4); menejer yozgan ism tegilmaydi.
+            if (LeadIntake.IsPlaceholderName(lead.FullName) && name.Length > 0) lead.FullName = name;
             if (string.IsNullOrWhiteSpace(lead.InterestSubject) && interest.Length > 0)
                 lead.InterestSubject = interest;
             lead.Note = ((lead.Note ?? "").TrimEnd() + "\n" + note).Trim();
@@ -78,7 +84,7 @@ public static class MetaLeadBridge
         var stage = await LeadIntake.FirstStageIdAsync(db, ct);
         var fresh = new Lead
         {
-            FullName = name.Length > 0 ? name : "Reklama lidi (ismsiz)",
+            FullName = name.Length > 0 ? name : LeadIntake.AdAnonymousName,
             Phone = phone,
             Source = source,
             InterestSubject = interest,
@@ -86,6 +92,8 @@ public static class MetaLeadBridge
             Stage = stage,
             CreatedAt = now,
         };
+        // Shu telefon bilan avval o'quvchi bo'lgan bo'lsa — kartada ochiq ko'rinsin (CRM-1).
+        await LeadIntake.MarkFormerStudentAsync(db, fresh, phone, ct);
         db.Leads.Add(fresh);
         db.LeadEvents.Add(new LeadEvent
         {
@@ -97,6 +105,8 @@ public static class MetaLeadBridge
             ToStage = stage,
         });
 
+        // «Yangi lid kelganda» avto-SMS'i — lid formasi va landing bilan bir xil (CRM-9).
+        await LeadIntake.DispatchLeadNewAsync(db, autoMsg, fresh, isNewLead: true, ct);
         return (fresh.Id, true);
     }
 

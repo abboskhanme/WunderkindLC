@@ -18,7 +18,7 @@ namespace WunderkindLC.Server.Controllers;
 /// </list>
 /// </summary>
 [ApiController]
-public class CertificatesController(AppDbContext db, CertificateService certService) : ControllerBase
+public class CertificatesController(AppDbContext db, CertificateService certService, AuditService audit) : ControllerBase
 {
     // ─────────────────────────── STUDENT PORTAL ───────────────────────────
 
@@ -182,12 +182,16 @@ public class CertificatesController(AppDbContext db, CertificateService certServ
             HtmlTemplate = req.HtmlTemplate,
             ValidityDays = 0,
         };
+        var courseName = string.IsNullOrEmpty(tpl.CourseId)
+            ? ""
+            : await db.Subjects.Where(s => s.Id == tpl.CourseId).Select(s => s.Name).FirstOrDefaultAsync() ?? "";
         db.CertificateTemplates.Add(tpl);
+        // Andoza o'quvchiga beriladigan HUJJATNING ko'rinishini belgilaydi — kim qo'shgani tarixda bo'lsin
+        // (HTML matnning o'zi yozilmaydi: katta va tarix ro'yxatida o'qilmaydi).
+        audit.Record(AuditService.EntityTemplate, tpl.Id, "create",
+            $"Sertifikat andozasi qo'shildi: {tpl.Name}" + (courseName.Length > 0 ? $" (kurs: {courseName})" : ""),
+            after: new { tpl.Name, tpl.CourseId });
         await db.SaveChangesAsync();
-
-        var courseName = tpl.CourseId is not null
-            ? await db.Subjects.Where(s => s.Id == tpl.CourseId).Select(s => s.Name).FirstOrDefaultAsync() ?? ""
-            : "";
 
         return StatusCode(201, ToTemplateDto(tpl, courseName));
     }
@@ -252,6 +256,8 @@ public class CertificatesController(AppDbContext db, CertificateService certServ
     {
         var tpl = await db.CertificateTemplates.FindAsync(id);
         if (tpl is null) return NotFound();
+        audit.Record(AuditService.EntityTemplate, tpl.Id, "delete", $"Sertifikat andozasi o'chirildi: {tpl.Name}",
+            before: new { tpl.Name, tpl.CourseId });
         db.CertificateTemplates.Remove(tpl);
         await db.SaveChangesAsync();
         return NoContent();

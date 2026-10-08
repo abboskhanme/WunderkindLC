@@ -168,9 +168,12 @@ public class TurnstileService
     public async Task<int> IngestAsync(IAppDbContext db, List<RawEvent> raw)
     {
         if (raw.Count == 0) return 0;
+        // ARXIVLANMAGAN o'qituvchi birinchi: arxivdagi o'qituvchining eski ID'si yangi odamga
+        // berilgan bo'lsa (yagonalik faqat faollar orasida tekshiriladi), hodisa faolga tushsin.
         var deviceMap = (await db.Teachers.Where(t => t.DeviceUserId != "")
-                .Select(t => new { t.Id, t.DeviceUserId }).ToListAsync())
-            .GroupBy(x => x.DeviceUserId).ToDictionary(g => g.Key, g => g.First().Id);
+                .Select(t => new { t.Id, t.DeviceUserId, t.IsArchived }).ToListAsync())
+            .GroupBy(x => x.DeviceUserId)
+            .ToDictionary(g => g.Key, g => g.OrderBy(x => x.IsArchived).First().Id);
 
         var existing = (await db.TurnstileEvents
                 .Where(e => e.EventAt != "").Select(e => e.DeviceUserId + "|" + e.EventAt).ToListAsync())
@@ -311,6 +314,58 @@ public class TurnstileService
     {
         if (!TimeOnly.TryParse(fromHhmm, out var a) || !TimeOnly.TryParse(toHhmm, out var b)) return 0;
         return (int)(b.ToTimeSpan() - a.ToTimeSpan()).TotalMinutes;
+    }
+
+    // ---------- Qurilma ID (employeeNo) — YAGONALIK ----------
+
+    /// <summary>Qurilma ID egasi: <c>Kind</c> = "student" | "teacher".</summary>
+    public readonly record struct DeviceOwner(string Kind, string Id, string Name, string DeviceUserId);
+
+    /// <summary>
+    /// Bir xil qurilma ID'si bir nechta odamga (o'quvchi YOKI o'qituvchi) biriktirilganmi — birinchi
+    /// to'qnashuv uchun o'zbekcha sabab, aks holda <c>null</c>. Sof funksiya (testlanadi).
+    ///
+    /// <para>⚠️ Nega SHART: qurilma hodisasi faqat ID bilan keladi. ID o'quvchi va o'qituvchida bir
+    /// xil bo'lsa, o'quvchining HAR o'tishi o'qituvchining kelgan/ketgan vaqti bo'lib yozilardi
+    /// (<see cref="IngestAsync"/> hodisani o'qituvchiga bog'laydi) — maosh va kechikish jarimasiga ta'sir
+    /// qiladi; o'quvchi tarixida esa begona o'tishlar ko'rinardi. Bo'sh ID tekshirilmaydi.</para>
+    /// </summary>
+    public static string? DeviceConflict(IEnumerable<DeviceOwner> owners)
+    {
+        var dup = owners
+            .Where(o => !string.IsNullOrWhiteSpace(o.DeviceUserId))
+            .GroupBy(o => o.DeviceUserId.Trim(), StringComparer.Ordinal)
+            .FirstOrDefault(g => g.Select(o => o.Kind + ":" + o.Id).Distinct().Count() > 1);
+        if (dup is null) return null;
+        var who = string.Join(", ", dup
+            .GroupBy(o => o.Kind + ":" + o.Id).Select(g => g.First())
+            .Select(o => (o.Kind == "teacher" ? "o'qituvchi" : "o'quvchi") + $" «{o.Name}»"));
+        return $"Qurilma ID «{dup.Key}» bir nechta odamga biriktirilmoqda: {who}. "
+               + "Har bir o'quvchi va o'qituvchiga alohida ID bering.";
+    }
+
+    /// <summary>
+    /// Berilgan ID'lar kimda turibdi — ARXIVLANMAGAN o'quvchi va o'qituvchilar (arxivdagini admin
+    /// tahrirlay olmaydi, shuning uchun uning eski ID'si yangi odamga berilishini to'smaydi).
+    /// </summary>
+    public static async Task<List<DeviceOwner>> DeviceOwnersAsync(
+        IAppDbContext db, IReadOnlyCollection<string> deviceIds, bool students = true, bool teachers = true,
+        CancellationToken ct = default)
+    {
+        var ids = deviceIds.Select(x => (x ?? "").Trim()).Where(x => x.Length > 0).Distinct().ToList();
+        var result = new List<DeviceOwner>();
+        if (ids.Count == 0) return result;
+        if (students)
+            result.AddRange((await db.Students.AsNoTracking()
+                    .Where(s => !s.IsArchived && ids.Contains(s.DeviceUserId))
+                    .Select(s => new { s.Id, s.FullName, s.DeviceUserId }).ToListAsync(ct))
+                .Select(s => new DeviceOwner("student", s.Id, s.FullName, s.DeviceUserId)));
+        if (teachers)
+            result.AddRange((await db.Teachers.AsNoTracking()
+                    .Where(t => !t.IsArchived && ids.Contains(t.DeviceUserId))
+                    .Select(t => new { t.Id, t.FullName, t.DeviceUserId }).ToListAsync(ct))
+                .Select(t => new DeviceOwner("teacher", t.Id, t.FullName, t.DeviceUserId)));
+        return result;
     }
 
     // ---------- Hikvision ISAPI (AcsEvent) ----------

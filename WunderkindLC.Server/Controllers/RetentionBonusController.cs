@@ -171,6 +171,14 @@ public class RetentionBonusController(AppDbContext db, AuditService audit) : Con
     public async Task<ActionResult<TeacherRetentionSummaryDto>> ForTeacher(string id, CancellationToken ct) =>
         await RetentionBonusService.ForTeacherAsync(db, id, ct);
 
+    /// <summary>Bonus sozlamalari tarixda o'zbekcha nom bilan ko'rinsin.</summary>
+    private static readonly Dictionary<string, string> RetentionSettingLabels = new()
+    {
+        [nameof(CenterMeta.RetentionMonthsRequired)] = "Talab qilinadigan oylar",
+        [nameof(CenterMeta.RetentionMaxGapMonths)] = "Ruxsat etilgan tanaffus (oy)",
+        [nameof(CenterMeta.RetentionDefaultAmount)] = "Standart summa",
+    };
+
     /// <summary>Sozlamalar (<c>CenterMeta</c>): necha oy talab qilinadi, ruxsat etilgan tanaffus, standart summa.</summary>
     [HttpGet("settings")]
     public async Task<ActionResult<RetentionSettingsDto>> GetSettings(CancellationToken ct) =>
@@ -192,6 +200,9 @@ public class RetentionBonusController(AppDbContext db, AuditService audit) : Con
         meta.RetentionMonthsRequired = req.MonthsRequired;
         meta.RetentionMaxGapMonths = req.MaxGapMonths;
         meta.RetentionDefaultAmount = req.DefaultAmount;
+        // PULGA ta'sir qiladi (bonus summasi va unga yetish sharti) — "eski → yangi" QIYMATLARI bilan tarixga.
+        SettingsAudit.Record<CenterMeta>(audit, db.ChangeTracker, "Ushlab turish bonusi", withValues: true,
+            labels: RetentionSettingLabels);
         await db.SaveChangesAsync(ct);
 
         return RetentionBonusService.Settings(meta);

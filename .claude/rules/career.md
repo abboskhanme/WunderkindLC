@@ -137,7 +137,9 @@ to'xtab rad etilganlar), **FromPrevPct** / **FromStartPct** (pastga yaxlitlangan
 - `GET vacancies?status=` vergul bilan bir nechta holat qabul qiladi; noma'lum qiymat tashlanadi.
 
 **Bosqich o'zgarganda** (`CareerService.SetStatusAsync`): yozuv yangilanadi + `JobApplicationEvent`
-qo'shiladi + nomzodga **karyera botida** avtomatik xabar ketadi. Admin kiritgan izoh
+qo'shiladi + nomzodga **karyera botida** avtomatik xabar ketadi. ⚠️ Xabar `SetStatusAsync` ichida
+EMAS — controller **SaveChanges muvaffaqiyatli bo'lgach** `NotifyCandidateAsync` ni chaqiradi
+(ilgari saqlashdan oldin ketardi: saqlash yiqilsa nomzod yolg'on "keyingi bosqich" xabarini olardi). Admin kiritgan izoh
 (`StatusNote`) NOMZODGA KO'RINADI (suhbat vaqti, rad sababi); faqat ichki eslatma uchun
 alohida `AdminNote` maydoni bor va u hech qachon yuborilmaydi.
 
@@ -161,6 +163,9 @@ alohida `AdminNote` maydoni bor va u hech qachon yuborilmaydi.
   `applications` (GET ro'yxat/filtr, `/{id}` tarixi bilan, `/{id}/status`, `/{id}/note`, DELETE) ·
   `stages` · `stats`.
   Ariza tushgan vakansiyani **o'chirib bo'lmaydi** — arxivlanadi (tarix buzilmasin).
+  ⚠️ **Ariza o'chirilganda CV FAYLI ham o'chadi** (saqlangandan keyin; boshqa ariza ham o'sha faylga
+  ishora qilsa — tegilmaydi). Ilgari rezyume `/uploads` da qolib, manzilni bilgan har kim uni
+  olaverardi (`uploads-security.md`).
 - **Mini App:** `api/career` — `[AllowAnonymous]`, initData bilan.
   `bootstrap` (BIR so'rovda: about + faol vakansiyalar + o'z arizalari + bosqichlar) ·
   `cv` (FAQAT `.pdf`, 10 MB, `public-lead` rate-limit) · `apply` (`public-lead` rate-limit).

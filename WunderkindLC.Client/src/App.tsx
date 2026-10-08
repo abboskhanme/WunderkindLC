@@ -14,7 +14,6 @@ import { Loader } from '@/components/ui/Loader'
 // har bir sahifa o'z chunk'ida faqat ochilganda yuklanadi.
 const LoginPage = lazy(() => import('@/pages/LoginPage').then((m) => ({ default: m.LoginPage })))
 const AdminDashboard = lazy(() => import('@/pages/admin/AdminDashboard').then((m) => ({ default: m.AdminDashboard })))
-const CallCenterPage = lazy(() => import('@/pages/admin/calls/CallCenterPage').then((m) => ({ default: m.CallCenterPage })))
 const LocalCallPage = lazy(() => import('@/pages/admin/calls/local/LocalCallPage').then((m) => ({ default: m.LocalCallPage })))
 const GroupStudentsListPage = lazy(() => import('@/pages/admin/classes/GroupStudentsPage').then((m) => ({ default: m.GroupStudentsPage })))
 const TransactionTypesPage = lazy(() => import('@/pages/admin/finance/TransactionTypesPage').then((m) => ({ default: m.TransactionTypesPage })))
@@ -280,7 +279,8 @@ export default function App() {
             {/* edutizim: "Birinchi darsga yozilganlar" va lid sahifasi (`/orders/info/:id`). */}
             <Route path="leads/birinchi-dars" element={<RequirePerm perm="leads.list"><FirstLessonLeadsPage /></RequirePerm>} />
             <Route path="leads/:id" element={<RequirePerm perm="leads.list"><LeadDetailPage /></RequirePerm>} />
-            <Route path="calls" element={<RequirePerm perm="calls.cloud"><CallCenterPage /></RequirePerm>} />
+            {/* Bulutli Call Center olib tashlandi (2026-10-08) — eski havola/xatcho'p Local Call'ga tushadi. */}
+            <Route path="calls" element={<Navigate to="/admin/calls/local" replace />} />
             <Route path="calls/local" element={<RequirePerm perm="calls.local"><LocalCallPage /></RequirePerm>} />
             {/* HISOBOTLAR hub — barcha analitika/hisobotlar ro'yxati (`config/reports.ts`).
                 `RequirePerm` ATAYIN YO'Q: sahifa har bir havolani O'ZI ruxsat bo'yicha

@@ -87,8 +87,9 @@ public class PublicLandingController(AppDbContext db, TelegramService telegram, 
             if (string.IsNullOrWhiteSpace(lead.InterestSubject) && chosenSubject.Length > 0)
                 lead.InterestSubject = chosenSubject;
 
-            // Ismi umuman yo'q (yoki "Noma'lum...") lid saytdan kelgan ism bilan to'ldiriladi.
-            if (string.IsNullOrWhiteSpace(lead.FullName) || lead.FullName.StartsWith("Noma'lum"))
+            // Ismi umuman yo'q yoki VAQTINCHALIK ("Noma'lum…", "ali_v (Instagram)", "Reklama lidi
+            // (ismsiz)") lid saytdan kelgan ism bilan to'ldiriladi (`LeadIntake.IsPlaceholderName`).
+            if (LeadIntake.IsPlaceholderName(lead.FullName))
                 lead.FullName = fullName;
 
             var subjectText = chosenSubject.Length > 0 ? chosenSubject : "fan ko'rsatilmagan";
@@ -120,6 +121,8 @@ public class PublicLandingController(AppDbContext db, TelegramService telegram, 
                 Note = note,
                 CreatedAt = now,
             };
+            // Shu telefon bilan avval o'quvchi bo'lgan bo'lsa (aka-uka, qayta ariza) — izohda ko'rinsin.
+            await LeadIntake.MarkFormerStudentAsync(db, lead, normalizedPhone);
             db.Leads.Add(lead);
             db.LeadEvents.Add(new LeadEvent
             {
@@ -152,7 +155,9 @@ public class PublicLandingController(AppDbContext db, TelegramService telegram, 
             Console.WriteLine($"[PublicLandingController] Bildirishnoma xatosi: {ex.Message}");
         }
 
-        return Ok(new { ok = true, id = lead.Id });
+        // ⚠️ Lid ID'si anonim chaqiruvchiga QAYTARILMAYDI — u ichki identifikator (landing uni
+        // ishlatmaydi: `landing.js` faqat `response.ok` ga qaraydi).
+        return Ok(new { ok = true });
     }
 
     /// <summary>Manba nomini <c>LeadSource</c> katalogidan oladi (registr farqisiz), topilmasa

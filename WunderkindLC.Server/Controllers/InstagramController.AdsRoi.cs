@@ -51,6 +51,8 @@ public partial class InstagramController
     {
         nameof(IgAdAccount), nameof(IgAdInsight), nameof(IgAdEntity), nameof(IgAdLead),
         nameof(Lead), nameof(LeadStage), nameof(StudentGroup), nameof(FinanceTransaction),
+        // «Click-to-Direct» lidlari suhbat orqali bog'lanadi (`IgConversation.LeadId`, `IgDmAdLeads`).
+        nameof(IgConversation),
     };
 
     // ═══════════════════════════════════════════════════════════════════════════════════

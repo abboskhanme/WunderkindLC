@@ -13,6 +13,7 @@ import {
   sendPush,
   sendBroadcast,
   watchSmsProgress,
+  smsProgressText,
   type SmsProvider,
   type SmsRecipient,
   type SmsTeacherRecipient,
@@ -298,6 +299,8 @@ export function UnifiedComposer({
           userIds: audience === 'selected' ? [...selPushUsers] : undefined,
           title: title.trim(),
           body: text.trim(),
+          // "Faqat qarzdorlar" push'ga ham tegishli (ilgari e'tiborsiz qolardi — qarz matni hammaga ketardi).
+          onlyDebtors: (audience === 'parents' || audience === 'group') && onlyDebtors,
         })
         out.push({
           channel: 'Push',
@@ -355,7 +358,7 @@ export function UnifiedComposer({
         setResults((prev) =>
           prev.map((r) =>
             r.channel === 'SMS'
-              ? { ...r, text: p.finished ? `yuborildi ${p.sent}/${p.total}` : `yuborilmoqda ${p.done}/${p.total}` }
+              ? { ...r, ok: !p.interrupted, text: smsProgressText(p) }
               : r,
           ),
         ),

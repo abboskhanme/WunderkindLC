@@ -43,7 +43,8 @@ public static class KpiMetricsService
     private const string LinkFinance = "/admin/finance";
     private const string LinkClasses = "/admin/classes";
     private const string LinkTasks = "/admin/topshiriqlar";
-    private const string LinkCalls = "/admin/calls";
+    /// <summary>Qo'ng'iroqlar isboti — Local Call bo'limi (yagona telefoniya, <see cref="KpiCallSource"/>).</summary>
+    private const string LinkCalls = KpiCallSource.Link;
     private const string LinkTickets = "/admin/boshqaruv/kpi/tiketlar";
     private const string LinkToday = "/admin/boshqaruv/kpi/bugun";
     private const string LinkHistory = "/admin/settings/history";
@@ -302,9 +303,9 @@ public static class KpiMetricsService
     {
         var win = Window(month);
 
-        var profQuery = db.KpiProfiles.AsNoTracking().Where(p => p.IsActive);
-        if (onlyUserId is not null) profQuery = db.KpiProfiles.AsNoTracking().Where(p => p.UserId == onlyUserId);
-        var profiles = await profQuery.ToListAsync(ct);
+        var profiles = onlyUserId is not null
+            ? await db.KpiProfiles.AsNoTracking().Where(p => p.UserId == onlyUserId).ToListAsync(ct)
+            : await ProfilesForMonthAsync(db, win.Month, ct);
 
         var userIds = profiles.Select(p => p.UserId).Distinct().ToList();
         var names = await db.Users.AsNoTracking()
@@ -346,6 +347,43 @@ public static class KpiMetricsService
             Results = results.ToDictionary(r => r.UserId, StringComparer.Ordinal),
             Snapshots = snapshots, Intake = intake, Center = center, Effort = effort,
         };
+    }
+
+    /// <summary>
+    /// «Oy» / «Yopish» / eksport jadvalining XODIMLARI — so'ralgan OY uchun.
+    /// </summary>
+    /// <remarks>
+    /// ⚠️ Audit SAL-5: ilgari faqat HOZIR faol profillar olinardi — ishdan ketgan (profili
+    /// faolsizlantirilgan yoki o'chirilgan) xodimning O'TGAN oyi «Yopish» va eksportdan yo'qolardi,
+    /// holbuki tasdiqlangan natija va oklad tarixi ATAYIN saqlanadi (<c>DeleteProfile</c> izohi).
+    /// Endi oyda qatnashgan har kim: hozir faol profil + o'sha oyga <see cref="KpiMonthResult"/> bor
+    /// + o'sha oyga shaxsiy oy boshi snapshoti bor (<see cref="KpiSnapshotService"/> uni faqat FAOL
+    /// profillar uchun 1–5-kunlari yozadi, ya'ni u "shu oyda faol edi" isboti). Profili o'chirilgan
+    /// xodim natija/snapshot qatoridagi rol bilan tiklanadi.
+    /// </remarks>
+    private static async Task<List<KpiProfile>> ProfilesForMonthAsync(IAppDbContext db, string month, CancellationToken ct)
+    {
+        var all = await db.KpiProfiles.AsNoTracking().ToListAsync(ct);
+        var fromResults = await db.KpiMonthResults.AsNoTracking()
+            .Where(r => r.Month == month && r.UserId != "")
+            .Select(r => new { r.UserId, r.RoleCode }).ToListAsync(ct);
+        var fromSnaps = await db.KpiMonthSnapshots.AsNoTracking()
+            .Where(x => x.Month == month && x.UserId != "")
+            .Select(x => new { x.UserId, x.RoleCode }).ToListAsync(ct);
+        var seenInMonth = fromResults.Concat(fromSnaps).ToList();
+        var wasThere = seenInMonth.Select(x => x.UserId).ToHashSet(StringComparer.Ordinal);
+
+        var profiles = all.Where(p => p.IsActive || wasThere.Contains(p.UserId))
+            .GroupBy(p => p.UserId).Select(g => g.First()).ToList();
+        var have = profiles.Select(p => p.UserId).ToHashSet(StringComparer.Ordinal);
+        foreach (var x in seenInMonth)
+            if (have.Add(x.UserId))
+                profiles.Add(new KpiProfile
+                {
+                    UserId = x.UserId, RoleCode = x.RoleCode, StartMonth = month, IsActive = false,
+                    Note = "Profil o'chirilgan — oy natijasi/snapshotidan tiklandi",
+                });
+        return profiles;
     }
 
     private static string SnapKey(string role, string userId) => $"{role}|{userId}";
@@ -785,115 +823,122 @@ public static class KpiMetricsService
     /// KETGANLAR: nazorat ostidagi sabab bilan ketganlar va SABABI YOZILMAGANLAR.
     /// </summary>
     /// <remarks>
-    /// ⚠️ <b>GURUH ALMASHTIRISH KETISH EMAS.</b> Bitta a'zolik yopilib, o'quvchi boshqa guruhda
-    /// qolgan bo'lsa (daraja tugadi, jadval mos kelmadi) u markazni TASHLAB KETMAGAN. Shuning
-    /// uchun oy oxirida hamon faol a'zoligi bor o'quvchi sanoqdan chiqariladi — aks holda har
-    /// guruh almashtirish "ketdi" bo'lib ko'rinib, ketish foizi qo'rquvli, ammo YOLG'ON chiqardi
-    /// (aynan shu xato <c>.claude/rules/course-analytics.md</c> §1 da tasvirlangan).
+    /// ⚠️ <b>"KETDI" TA'RIFI QAYTA YOZILMAGAN</b> — <see cref="DashboardSummary.LeftEvents"/> (bosh
+    /// sahifa kartochkasi va «Ketish sabablari» hisoboti bilan AYNAN bir xil, audit SAL-3): (o'quvchi,
+    /// kurs) oraliqlari birlashtiriladi, ya'ni <b>sertifikat bilan TUGATISH ketish EMAS</b> va kurs
+    /// ichida guruh almashtirish ketish EMAS. Faqat <b>AKTIVDAN</b> ketganlar (<c>EverActive</c>) —
+    /// hech qachon aktivlashmagan sinovdagi o'quvchi ushlab qolish xodimining churn'iga kirmaydi.
+    /// Ilgari <c>LeftAt</c> qo'yilgan HAR a'zolik sanalardi: tugatganlar va sinovdan ketganlar ham
+    /// "ketdi" bo'lib, har biri uchun "sababsiz ketish" jarimasi ham yozilardi.
     ///
-    /// ⚠️ <b>SABAB AUDIT MATNIDAN o'qiladi.</b> Ketish sababi <c>StudentGroup</c> da SAQLANMAYDI —
-    /// u <c>audit.Record("Membership", ...)</c> ning izoh matniga «… — sabab: X» ko'rinishida
-    /// tushadi (<c>ClassesController.RemoveMember</c>). Boshqa manba yo'q, shuning uchun matn
-    /// shu yerda parse qilinadi va <c>ActionReason.OutOfControl</c> bilan solishtiriladi.
-    /// Sabab topilmasa — "noma'lum" (jarima), <b>nazoratdan tashqari EMAS</b>: sababsiz ketish
-    /// modulning butun ma'nosini (nima tuzatish kerakligini) yo'q qiladi.
+    /// ⚠️ <b>GURUH ALMASHTIRISH KETISH EMAS (markaz darajasida).</b> Boshqa KURSGA o'tib, oy oxirida
+    /// hamon faol a'zoligi bor o'quvchi ham sanoqdan chiqariladi — u markazni TASHLAB KETMAGAN
+    /// (<c>.claude/rules/course-analytics.md</c> §1).
+    ///
+    /// ⚠️ <b>SABAB — <see cref="MembershipReasons.Resolve"/></b> («Ketish sabablari» bilan bir xil):
+    /// tuzilgan yozuv → audit matni → o'quvchi ARXIV sababi (arxivlash o'quvchini guruhlardan
+    /// chiqaradi — u ketish, sababi arxiv sababi; jarima EMAS). Sabab topilmasa — "noma'lum"
+    /// (jarima), <b>nazoratdan tashqari EMAS</b>: sababsiz ketish modulning butun ma'nosini (nima
+    /// tuzatish kerakligini) yo'q qiladi.
     /// </remarks>
     private static async Task<(int Controlled, int Unknown)> LeaversAsync(
         IAppDbContext db, StudentBase b, MonthWindow win, CancellationToken ct)
     {
-        var left = await db.StudentGroups.AsNoTracking()
-            .Where(m => m.LeftAt != null
-                        && string.Compare(m.LeftAt, win.FirstIso) >= 0
-                        && string.Compare(m.LeftAt, win.LastIso) <= 0)
-            .Select(m => new { m.StudentId, m.GroupId })
-            .ToListAsync(ct);
+        var known = b.StudentIds.ToHashSet(StringComparer.Ordinal);
+        var memberships = (await db.StudentGroups.AsNoTracking().ToListAsync(ct))
+            .Where(m => known.Contains(m.StudentId)).ToList();
+        var courseByGroup = (await db.Classes.AsNoTracking()
+                .Select(g => new { g.Id, g.CourseId }).ToListAsync(ct))
+            .ToDictionary(g => g.Id, g => g.CourseId ?? "", StringComparer.Ordinal);
 
-        // Oy oxirida hamon FAOL a'zoligi borlar — guruh almashtirgan, ketmagan.
-        var stillHere = left
-            .Select(x => x.StudentId)
-            .Distinct()
-            .Where(sid => b.Members.GetValueOrDefault(sid)?.Any(r => WasActive(r, win.AsOfEndIso)) == true)
-            .ToHashSet(StringComparer.Ordinal);
+        var events = DashboardSummary.LeftEvents(memberships, courseByGroup,
+                end => string.CompareOrdinal(end, win.FirstIso) >= 0 && string.CompareOrdinal(end, win.LastIso) <= 0)
+            .Where(e => e.EverActive)
+            .ToList();
 
-        var leavers = left.Where(x => !stillHere.Contains(x.StudentId)).ToList();
+        // Oy oxirida hamon FAOL a'zoligi borlar — boshqa guruh/kursda o'qiyapti, ketmagan.
+        var leavers = events
+            .Where(e => b.Members.GetValueOrDefault(e.StudentId)?.Any(r => WasActive(r, win.AsOfEndIso)) != true)
+            .ToList();
         if (leavers.Count == 0) return (0, 0);
 
-        // Nazoratdan TASHQARI sabablarning yorliqlari (ko'chish, sog'liq, oila).
-        var outOfControl = await db.ActionReasons.AsNoTracking()
-            .Where(r => r.OutOfControl)
-            .Select(r => r.Label)
-            .ToListAsync(ct);
+        var studentIds = leavers.Select(e => e.StudentId).Distinct().ToList();
+        var pairKeys = leavers.Select(e => $"{e.GroupId}:{e.StudentId}").Distinct().ToList();
 
-        var nextMonthIso = win.First.AddMonths(1).ToString("yyyy-MM-dd");
-        var logs = await db.AuditLogs.AsNoTracking()
-            .Where(l => l.EntityType == "Membership"
-                        && string.Compare(l.Timestamp, win.FirstIso) >= 0
-                        && string.Compare(l.Timestamp, nextMonthIso) < 0)
-            .Select(l => new { l.EntityId, l.Summary })
-            .ToListAsync(ct);
+        var logs = (await db.MembershipReasonLogs.AsNoTracking()
+                .Where(l => studentIds.Contains(l.StudentId)).ToListAsync(ct))
+            .GroupBy(l => $"{l.GroupId}:{l.StudentId}", StringComparer.Ordinal)
+            .ToDictionary(g => g.Key, g => g.ToList(), StringComparer.Ordinal);
+        var audits = (await db.AuditLogs.AsNoTracking()
+                .Where(a => a.EntityType == "Membership" && pairKeys.Contains(a.EntityId))
+                .Select(a => new { a.EntityId, a.Timestamp, a.Summary }).ToListAsync(ct))
+            .GroupBy(a => a.EntityId, StringComparer.Ordinal)
+            .ToDictionary(g => g.Key,
+                g => g.Select(a => new MembershipReasons.AuditRow(a.Timestamp ?? "", a.Summary ?? "")).ToList(),
+                StringComparer.Ordinal);
+        var archive = await db.Students.AsNoTracking()
+            .Where(s => studentIds.Contains(s.Id))
+            .Select(s => new { s.Id, s.IsArchived, s.ArchivedAt, s.ArchiveReason })
+            .ToDictionaryAsync(s => s.Id, ct);
 
-        // EntityId = "{groupId}:{studentId}" — `Membership` naqshi.
-        var reasonByPair = new Dictionary<string, string>(StringComparer.Ordinal);
-        foreach (var l in logs)
-        {
-            var reason = ReasonFromSummary(l.Summary);
-            if (reason is null) continue;
-            reasonByPair[l.EntityId] = reason;
-        }
+        // «Nazoratdan TASHQARI» sabablar (ko'chish, sog'liq, oila) — avval id, bo'lmasa nom bo'yicha.
+        var reasons = await db.ActionReasons.AsNoTracking().ToListAsync(ct);
+        var oocById = reasons.ToDictionary(r => r.Id, r => r.OutOfControl, StringComparer.Ordinal);
+        var oocLabels = reasons.Where(r => r.OutOfControl)
+            .Select(r => r.Label.Trim()).ToHashSet(StringComparer.OrdinalIgnoreCase);
 
         int controlled = 0, unknown = 0;
-        foreach (var studentId in leavers.Select(x => x.StudentId).Distinct())
+        foreach (var group in leavers.GroupBy(e => e.StudentId))
         {
-            // O'quvchi bir vaqtda bir NECHTA guruhdan chiqarilgan bo'lishi mumkin — sabab
-            // birortasidan topilsa yetadi (odam bitta marta ketadi).
-            var reason = leavers
-                .Where(x => x.StudentId == studentId)
-                .Select(x => reasonByPair.GetValueOrDefault($"{x.GroupId}:{studentId}"))
-                .FirstOrDefault(r => !string.IsNullOrWhiteSpace(r));
+            // O'quvchi bir vaqtda bir NECHTA kursdan ketgan bo'lishi mumkin — sabab birortasidan
+            // topilsa yetadi (odam bitta marta ketadi).
+            MembershipReasons.Resolved? found = null;
+            foreach (var e in group)
+            {
+                var st = archive.GetValueOrDefault(e.StudentId);
+                var r = MembershipReasons.Resolve(
+                    e.Date, e.Closing?.FrozenAt,
+                    logs.GetValueOrDefault($"{e.GroupId}:{e.StudentId}") ?? [],
+                    audits.GetValueOrDefault($"{e.GroupId}:{e.StudentId}") ?? [],
+                    new MembershipReasons.ArchiveInfo(st?.IsArchived ?? false, st?.ArchivedAt, st?.ArchiveReason));
+                if (r.Label.Length > 0) { found = r; break; }
+            }
 
-            if (string.IsNullOrWhiteSpace(reason)) { unknown++; controlled++; continue; }
-            if (outOfControl.Any(o => string.Equals(o, reason, StringComparison.OrdinalIgnoreCase))) continue;
+            if (found is not { } reason) { unknown++; controlled++; continue; }
+            var ooc = reason.ReasonId is not null && oocById.TryGetValue(reason.ReasonId, out var flag)
+                ? flag
+                : oocLabels.Contains(reason.Label.Trim());
+            if (ooc) continue;
             controlled++;
         }
         return (controlled, unknown);
     }
 
-    /// <summary>Audit izohidan «… — sabab: X» qismini ajratadi (boshqa manba yo'q).</summary>
-    private static string? ReasonFromSummary(string? summary)
-    {
-        if (string.IsNullOrEmpty(summary)) return null;
-        const string marker = "sabab: ";
-        var i = summary.IndexOf(marker, StringComparison.Ordinal);
-        if (i < 0) return null;
-        var value = summary[(i + marker.Length)..].Trim();
-        return value.Length == 0 ? null : value;
-    }
-
     /// <summary>
     /// KURSI SHU OYDA TUGAGANLAR — uzaytirish foizining MAXRAJI.
     /// </summary>
-    /// <remarks>⚠️ Faqat AKTIVLASHTIRILGAN a'zolik sanaladi (<c>ActivatedAt</c> bo'sh emas):
-    /// sinovda kelib qolgan odam "kursni tugatgan" emas, ya'ni undan uzaytirish kutilmaydi va
-    /// maxrajga qo'shilsa uzaytirish foizi soxta pasayardi.</remarks>
-    private static async Task<int> CourseFinishedAsync(
+    /// <remarks>
+    /// Manba — <b>sertifikat bilan TUGATILGAN a'zoliklar</b> (<c>StudentGroup.Status == "completed"</c>,
+    /// «Tugatish — sertifikat bilan»), tugatish sanasi (<c>LeftAt</c>) oy ichida; takrorsiz o'quvchilar.
+    /// <para>⚠️ Audit SAL-3: ilgari <c>Group.Status == "completed"</c> tekshirilardi — buni hech narsa
+    /// qo'ymaydi (tugatilgan guruh <c>"archived"</c> bo'ladi), ikkinchi shart esa (guruh <c>EndDate</c>
+    /// oy ichida) guruhda HECH QACHON aktivlashgan har bir a'zoni — yillar oldin ketganlarni ham —
+    /// sanab, maxrajni shishirardi. Tugatish faqat AKTIV a'zolikka qo'llanadi, ya'ni sinovdagilar
+    /// o'z-o'zidan kirmaydi.</para>
+    /// </remarks>
+    private static Task<int> CourseFinishedAsync(
         IAppDbContext db, StudentBase b, MonthWindow win, CancellationToken ct)
     {
-        var groupIds = await db.Classes.AsNoTracking()
-            .Where(g => g.Status == "completed"
-                        || (g.EndDate != null
-                            && string.Compare(g.EndDate, win.FirstIso) >= 0
-                            && string.Compare(g.EndDate, win.LastIso) <= 0))
-            .Select(g => g.Id)
-            .ToListAsync(ct);
-        if (groupIds.Count == 0) return 0;
-
-        var set = groupIds.ToHashSet(StringComparer.Ordinal);
-        return b.Members.Values
+        var count = b.Members.Values
             .SelectMany(rows => rows)
-            .Where(r => set.Contains(r.GroupId) && r.ActivatedAt.Length >= 10)
+            .Where(r => r.Status == "completed"
+                        && r.LeftAt is { Length: >= 10 }
+                        && string.CompareOrdinal(r.LeftAt[..10], win.FirstIso) >= 0
+                        && string.CompareOrdinal(r.LeftAt[..10], win.LastIso) <= 0)
             .Select(r => r.StudentId)
             .Distinct()
             .Count();
+        return Task.FromResult(count);
     }
 
     /* =========================================================================================
@@ -972,14 +1017,15 @@ public static class KpiMetricsService
                 "Faol a'zolik + oxirgi 30 kunda darsga kelgan + 45 kundan eski qarzi yo'q + arxivda emas",
                 LinkStudents, Auto: true));
             inputs.Insert(3, new KpiInputDto("leftControlled", "Ketganlar (nazorat ostidagi sabab)", c.LeftControlled,
-                "Guruhdan chiqarilgan va oy oxirida boshqa guruhda ham qolmagan o'quvchilar; "
+                "AKTIVDAN ketgan va oy oxirida boshqa guruhda ham qolmagan o'quvchilar (sertifikat bilan "
+                + "tugatganlar, sinovdan ketganlar va kurs ichida guruh almashtirganlar KIRMAYDI); "
                 + "sababi «nazoratdan tashqari» belgilanganlari CHIQARILADI",
                 LinkHistory, Auto: true));
             inputs.Insert(4, new KpiInputDto("unknownReasonLeft", "Ketish sababi yozilmaganlar", c.UnknownReasonLeft,
-                "Chiqarish yozuvida sabab ko'rsatilmagan holatlar (O'zgarishlar tarixi)",
+                "Ketishda sabab ko'rsatilmagan holatlar (chiqarish/muzlatish sababi ham, arxiv sababi ham yo'q)",
                 LinkHistory, Auto: true));
             inputs.Insert(5, new KpiInputDto("courseFinished", "Kursi tugaganlar", c.CourseFinished,
-                "Guruhi «tugatilgan» yoki tugash sanasi oy ichida bo'lgan guruhlarning aktivlashtirilgan a'zolari",
+                "Sertifikat bilan tugatilgan a'zoliklar («Tugatish — sertifikat bilan»), tugatish sanasi oy ichida",
                 LinkClasses, Auto: true));
             inputs.Insert(6, new KpiInputDto("extended", "Uzaytirganlar", c.Extended,
                 "Uzaytirish hodisalari (StudentExtension), sanasi oy ichida", LinkClasses, Auto: true));
@@ -1192,25 +1238,24 @@ public static class KpiMetricsService
         var contracts = await db.Leads.AsNoTracking()
             .CountAsync(l => l.ClosedAt == dayIso && l.ClosedByUserId == userId, ct);
 
-        // Qo'ng'iroqlar — `Call` da vaqtlar `DateTime` (boshqa entitylardan FARQLI).
+        // Qo'ng'iroqlar — Local Call (`CtiCallRecord`), xodimning agent(lar)i bo'yicha.
+        // Vaqtlar `DateTime` (boshqa entitylardan FARQLI). «Teginish» — kiruvchi + chiquvchi,
+        // javobsiz kiruvchi KIRMAYDI (`KpiCallSource.IsTouch`).
         var from = (ParseDate(dayIso) ?? AppClock.Today).ToDateTime(TimeOnly.MinValue);
         var to = from.AddDays(1);
-        var calls = await db.Calls.AsNoTracking()
-            .Where(c => c.OperatorUserId == userId && c.StartedAt >= from && c.StartedAt < to)
-            .Select(c => c.DurationSeconds)
-            .ToListAsync(ct);
+        var (touches, talkSeconds) = await KpiCallSource.DailyTotalsAsync(db, userId, from, to, ct);
 
         return
         [
             new KpiNormDto("leads", "Yangi lid", leads, DailyLeads(rules), "ta", false, LinkLeads,
                 "Bugun yaratilgan lidlar (mas'ul — siz yoki biriktirilmagan)"),
-            new KpiNormDto("touches", "Teginish (qo'ng'iroq/xabar)", calls.Count, DailyTouches(rules), "ta",
+            new KpiNormDto("touches", "Teginish (qo'ng'iroq/xabar)", touches, DailyTouches(rules), "ta",
                 false, LinkCalls, $"Bitta lidga {rules.TouchesPerLead:0.##} teginish rejasi"),
             new KpiNormDto("trialCame", "Sinovga kelgan", trials, DailyTrials(rules), "ta", false, LinkLeads,
                 "Bugun sinov darsiga KELGANLAR (markaz bo'yicha)"),
             new KpiNormDto("contracts", "Shartnoma", contracts, DailyContracts(rules), "ta", false, LinkLeads,
                 "Siz yopgan shartnomalar"),
-            new KpiNormDto("talkTime", "Muloqot vaqti", Math.Round(calls.Sum() / 3600.0, 2),
+            new KpiNormDto("talkTime", "Muloqot vaqti", Math.Round(talkSeconds / 3600.0, 2),
                 DailyTalkHoursNorm, "soat", false, LinkCalls, "Bugungi qo'ng'iroqlar davomiyligi"),
         ];
     }

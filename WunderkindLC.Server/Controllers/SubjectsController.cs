@@ -59,13 +59,32 @@ public class SubjectsController(AppDbContext db, AuditService audit) : Controlle
     /// ESKI yozuvlar o'sha joyda qoladi (bazadagi qatorlar qayta yozilmaydi).</summary>
     private const string AuditCourse = "Course";
 
+    /// <summary>
+    /// Nom tekshiruvi: bo'sh emas va NOYOB (registr/bo'shliq/apostrofdan qat'i nazar —
+    /// <see cref="CourseCatalog.NameKey"/>). Ilgari ikki kurs bir xil nomda bo'la olardi va birini qayta
+    /// nomlash ikkinchisining lidlarini ham ko'chirib yuborardi (lid kursni NOM bilan saqlaydi).
+    /// <paramref name="currentName"/> — tahrirda joriy nom: nom (kalit bo'yicha) o'zgarmagan bo'lsa
+    /// tekshirilmaydi, ya'ni qoidadan OLDIN paydo bo'lgan takror nomli kursning narxini tahrirlash bloklanmaydi.
+    /// </summary>
+    private async Task<string?> NameError(string name, string? exceptId, string? currentName = null)
+    {
+        if (name.Length == 0) return "Kurs nomini kiriting";
+        if (name.Length > 200) return "Kurs nomi juda uzun (200 belgigacha)";
+        if (currentName is not null && CourseCatalog.NameKey(currentName) == CourseCatalog.NameKey(name)) return null;
+        return await CourseCatalog.NameTakenByAsync(db, name, exceptId) is { } taken
+            ? $"«{taken}» nomli kurs allaqachon mavjud — boshqa nom tanlang"
+            : null;
+    }
+
     [HttpPost]
     public async Task<ActionResult<CourseWithBandsDto>> Create(SubjectPayload payload)
     {
+        var name = CourseCatalog.CleanName(payload.Name);
+        if (await NameError(name, null) is { } nameError) return BadRequest(new { message = nameError });
         var bands = ToBands(payload.PriceBands ?? []);
         if (BandsError(bands, payload.Price) is { } bandError) return BadRequest(new { message = bandError });
 
-        var subject = new Subject { Name = payload.Name, Price = payload.Price, LessonPrice = payload.LessonPrice };
+        var subject = new Subject { Name = name, Price = payload.Price, LessonPrice = payload.LessonPrice };
         db.Subjects.Add(subject);
         var rows = ToRows(subject.Id, bands);
         db.SubjectPriceBands.AddRange(rows);
@@ -93,6 +112,8 @@ public class SubjectsController(AppDbContext db, AuditService audit) : Controlle
     {
         var subject = await db.Subjects.FindAsync(id);
         if (subject is null) return NotFound();
+        var newName = CourseCatalog.CleanName(payload.Name);
+        if (await NameError(newName, id, subject.Name) is { } nameError) return BadRequest(new { message = nameError });
 
         // SINF ORALIQLARI (`TuitionPricing`): null — tegilmaydi (eski mijoz), aks holda to'liq almashtiriladi.
         var oldRows = await db.SubjectPriceBands.Where(b => b.SubjectId == id).ToListAsync();
@@ -111,7 +132,7 @@ public class SubjectsController(AppDbContext db, AuditService audit) : Controlle
 
         var oldPrice = subject.Price;
         var oldName = subject.Name;
-        subject.Name = payload.Name;
+        subject.Name = newName;
         subject.Price = payload.Price;
         subject.LessonPrice = payload.LessonPrice;
         var priceChanged = oldPrice != payload.Price;
@@ -133,7 +154,7 @@ public class SubjectsController(AppDbContext db, AuditService audit) : Controlle
                 var currentFee = applyFee ? g.MonthlyFee : gOld;
                 if ((applyFee && gOld != g.MonthlyFee) || bandsChanged)
                     appliedTotal += await TuitionService.ApplyGroupFeeToCurrentMonthAsync(
-                        db, g.Id, g.Name, currentFee, pricing, courseId: id, oldFee: gOld, oldPricing: oldPricing);
+                        db, g.Id, g.Name, currentFee, pricing, courseId: id, oldFee: gOld, oldPricing: oldPricing, audit: audit);
             }
 
             var tail = $" ({subject.Name}) — {groups.Count} ta guruhga"
@@ -152,31 +173,46 @@ public class SubjectsController(AppDbContext db, AuditService audit) : Controlle
                     before: new { PriceBands = BandsText(oldBands) }, after: new { PriceBands = BandsText(newBands) });
         }
 
-        if (oldName != payload.Name)
+        if (oldName != newName)
+        {
+            // Kurs NOMI o'zgarsa — lidlarning "Qiziqqan fani" (Lead.InterestSubject kurs NOMINI saqlaydi)
+            // ham ko'chiriladi, aks holda CRM statistikasida eski nom alohida qator bo'lib qolardi
+            // (lid manbasi — LeadSource — bilan bir xil konvensiya). Endi o'sha SaveChanges ICHIDA
+            // (bitta tranzaksiya, `Lead` keshi avtomatik yangilanadi) — ilgari commit'dan KEYIN edi.
+            var relabeled = await CourseCatalog.RelabelLeadsAsync(db, id, oldName, newName);
             audit.Record(AuditCourse, subject.Id, "update",
-                $"Kurs nomi o'zgartirildi: {oldName} → {payload.Name}",
+                $"Kurs nomi o'zgartirildi: {oldName} → {newName}"
+                + (relabeled > 0 ? $" ({relabeled} ta lidning qiziqqan kursi ham ko'chirildi)" : ""),
                 before: new { Name = oldName }, after: new { subject.Name });
+        }
 
         await db.SaveChangesAsync();
-
-        // Kurs NOMI o'zgarsa — lidlarning "Qiziqqan fani" (Lead.InterestSubject kurs NOMINI saqlaydi)
-        // ham ko'chiriladi, aks holda CRM statistikasida eski nom alohida qator bo'lib qolardi
-        // (lid manbasi — LeadSource — bilan bir xil konvensiya).
-        if (!string.IsNullOrWhiteSpace(oldName) && oldName != payload.Name)
-            await db.Leads.Where(l => l.InterestSubject == oldName)
-                .ExecuteUpdateAsync(s => s.SetProperty(l => l.InterestSubject, payload.Name));
-
         return ToDto(subject, rows);
     }
 
+    /// <summary>
+    /// Kursni o'chirish. ⚠️ Kursga guruh (ARXIVDAGISI ham), sertifikat/andoza, bonus yozuvi, daraja testi
+    /// yoki uzaytirish yozuvi bog'langan bo'lsa — 400 (sanoqlar bilan): ilgari kurs jimgina o'char,
+    /// sinf narxlari kaskad bilan yo'qolib o'quvchilarga keyingi oydan ASOSIY narx yozilar, guruhlar kurs
+    /// analitikasidan tushib qolar, sertifikat bo'lsa esa 500 qaytardi (dastur bog'lanishlari esa allaqachon
+    /// o'chirilgan bo'lardi). Endi barcha o'chirishlar BITTA SaveChanges (tranzaksiya) ichida.
+    /// </summary>
     [HttpDelete("{id}")]
     public async Task<IActionResult> Delete(string id)
     {
         var subject = await db.Subjects.FindAsync(id);
         if (subject is null) return NotFound();
+
+        var refs = await CourseCatalog.CountReferencesAsync(db, id);
+        if (refs.BlockMessage() is { } blocked) return BadRequest(new { message = blocked });
+
         // O'quv dasturlari mustaqil (Curriculum) — o'chirilmaydi, faqat biriktirilgan holat tozalanadi.
-        await db.SubjectCurricula.Where(sc => sc.SubjectId == id).ExecuteDeleteAsync();
-        audit.Record(AuditCourse, subject.Id, "delete", $"Kurs o'chirildi: {subject.Name}");
+        var (curricula, teachers) = await CourseCatalog.DetachForDeleteAsync(db, id);
+        audit.Record(AuditCourse, subject.Id, "delete",
+            $"Kurs o'chirildi: {subject.Name}"
+            + (curricula > 0 ? $"; {curricula} ta o'quv dasturi bog'lanishi uzildi" : "")
+            + (teachers > 0 ? $"; {teachers} ta o'qituvchining fanlar ro'yxatidan olindi" : ""),
+            before: new { subject.Name, subject.Price });
         db.Subjects.Remove(subject);
         await db.SaveChangesAsync();
         return NoContent();

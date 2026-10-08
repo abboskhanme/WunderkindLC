@@ -86,11 +86,13 @@ public class StudentDiscountsController(AppDbContext db, AuditService audit) : C
         var before = Snapshot(student);
         var row = await StudentDiscountService.ApplyAsync(db, student, spec, Actor, ActorId);
         var applied = applyCurrentMonth && await StudentDiscountService.ReapplyCurrentMonthAsync(db, student);
+        // Oldindan to'langan (avans) kelgusi oylar — HAR DOIM (`ReapplyFutureMonthsAsync` izohi).
+        var future = await StudentDiscountService.ReapplyFutureMonthsAsync(db, student);
 
         // ⚠️ audit.Record SaveChanges QILMAYDI — chaqiruvchining tranzaksiyasiga qo'shiladi
         // (.claude/rules/audit.md §1), shuning uchun SaveChangesAsync dan OLDIN chaqiriladi.
         audit.Record(AuditService.EntityStudentDiscount, student.Id, "create",
-            $"Chegirma berildi: {Describe(row!)}{AppliedSuffix(applied)} ({student.FullName})",
+            $"Chegirma berildi: {Describe(row!)}{AppliedSuffix(applied)}{FutureSuffix(future)} ({student.FullName})",
             before: before, after: Snapshot(student), studentId: student.Id);
 
         await db.SaveChangesAsync();
@@ -136,9 +138,10 @@ public class StudentDiscountsController(AppDbContext db, AuditService audit) : C
         if (!await StudentDiscountService.UpdateAsync(db, student, row, spec, Actor))
             return BadRequest(new { message = "Tarixiy chegirmani tahrirlab bo'lmaydi" });
         var applied = applyCurrentMonth && await StudentDiscountService.ReapplyCurrentMonthAsync(db, student);
+        var future = await StudentDiscountService.ReapplyFutureMonthsAsync(db, student);
 
         audit.Record(AuditService.EntityStudentDiscount, student.Id, "update",
-            $"Chegirma tahrirlandi: {Describe(row)}{AppliedSuffix(applied)} ({student.FullName})",
+            $"Chegirma tahrirlandi: {Describe(row)}{AppliedSuffix(applied)}{FutureSuffix(future)} ({student.FullName})",
             before: before, after: Snapshot(student), studentId: student.Id);
 
         await db.SaveChangesAsync();
@@ -164,10 +167,11 @@ public class StudentDiscountsController(AppDbContext db, AuditService audit) : C
         if (!await StudentDiscountService.CancelAsync(db, student, row, reason, Actor))
             return BadRequest(new { message = "Bu chegirma allaqachon yopilgan — bekor qilib bo'lmaydi" });
         var applied = applyCurrentMonth && await StudentDiscountService.ReapplyCurrentMonthAsync(db, student);
+        var future = await StudentDiscountService.ReapplyFutureMonthsAsync(db, student);
 
         var why = reason.Length == 0 ? "" : $" (sabab: {reason})";
         audit.Record(AuditService.EntityStudentDiscount, student.Id, "update",
-            $"Chegirma bekor qilindi{why}: {Describe(row)}{AppliedSuffix(applied)} ({student.FullName})",
+            $"Chegirma bekor qilindi{why}: {Describe(row)}{AppliedSuffix(applied)}{FutureSuffix(future)} ({student.FullName})",
             before: before, after: Snapshot(student), studentId: student.Id);
 
         await db.SaveChangesAsync();
@@ -220,6 +224,10 @@ public class StudentDiscountsController(AppDbContext db, AuditService audit) : C
     /// matn bilan bir xil ohang).</summary>
     private static string AppliedSuffix(bool applied) =>
         applied ? " — joriy oy hisobi to'g'rilandi" : " — keyingi oydan amal qiladi";
+
+    /// <summary>Oldindan to'langan (avans) kelgusi oy hisoblari ham qayta hisoblangan bo'lsa — tarixda ko'rinsin.</summary>
+    private static string FutureSuffix(int months) =>
+        months > 0 ? $"; oldindan ochilgan {months} ta kelgusi oy hisobi ham to'g'rilandi" : "";
 
     /// <summary>Audit Before/After uchun chegirma KO'ZGUSINING snapshot'i.
     /// ⚠️ Bu maydonlar endi pul manbai EMAS (registr manba) — snapshot faqat "asosiy chegirma

@@ -45,6 +45,17 @@ public static class PaymentFields
     }
 
     /// <summary>
+    /// OY kaliti AYNAN "yyyy-MM" ko'rinishidami (oy 01..12). To'lov, hisob, accrual va hisobot — oy qabul
+    /// qiladigan HAR joy shuni tekshiradi.
+    /// <para>⚠️ Ilgari faqat <c>Length &lt; 7</c> tekshirilardi: "2026-08-15" (to'liq sana) OY sifatida
+    /// qabul qilinib "2026-08" dan BOSHQA kalit bo'lardi — bir oyga ikkita hisob qatori ochilib, o'quvchi
+    /// ikki marta qarzdor bo'lardi; "2026-13" esa <c>MonthRange</c> da cheksiz siklga olib borardi.</para>
+    /// </summary>
+    public static bool IsMonth(string? month) =>
+        month is { Length: 7 } && month[4] == '-'
+        && DateOnly.TryParseExact(month + "-01", "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out _);
+
+    /// <summary>
     /// To'lov vaqtini ("HH:mm") tekshiradi va normallashtiradi. Bo'sh bo'lsa — true + null
     /// (vaqt ixtiyoriy). Format noto'g'ri bo'lsa — false (chaqiruvchi 400 qaytaradi).
     /// </summary>

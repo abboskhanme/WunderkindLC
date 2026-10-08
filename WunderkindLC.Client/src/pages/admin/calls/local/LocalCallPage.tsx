@@ -1258,10 +1258,12 @@ function AgentFormModal({
     setSaving(true)
     try {
       if (editing) {
-        await updateCtiAgent(editing.id, {
+        const res = await updateCtiAgent(editing.id, {
           displayName: displayName.trim(), isActive, password,
           staffUserId: isSuperAdmin ? (staffUserId || null) : undefined,
         })
+        // Standart Local SMS agenti o'chirildi — avtomatik SMS'lar to'xtadi: jimgina emas.
+        if (res.warning) alert(res.warning)
       } else {
         await createCtiAgent({
           login: login.trim(), password, displayName: displayName.trim(),

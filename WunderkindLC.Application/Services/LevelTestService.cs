@@ -296,9 +296,9 @@ public static class LevelTestService
             existing.Note = ((existing.Note ?? "").TrimEnd() + "\n" + noteLine).Trim();
             if (string.IsNullOrWhiteSpace(existing.InterestSubject))
                 existing.InterestSubject = string.IsNullOrEmpty(courseName) ? test.Title : courseName;
-            // Ism oldin bo'sh/"Noma'lum" bo'lib, endi kiritilgan bo'lsa — to'ldiramiz.
-            if (!string.IsNullOrWhiteSpace(req.FullName)
-                && (string.IsNullOrWhiteSpace(existing.FullName) || existing.FullName.StartsWith("Noma'lum")))
+            // Ism oldin bo'sh/vaqtinchalik ("Noma'lum…", "ali_v (Instagram)", "Reklama lidi (ismsiz)")
+            // bo'lib, endi kiritilgan bo'lsa — to'ldiramiz (`LeadIntake.IsPlaceholderName`, IG-4).
+            if (!string.IsNullOrWhiteSpace(req.FullName) && LeadIntake.IsPlaceholderName(existing.FullName))
                 existing.FullName = req.FullName.Trim();
             // TAKRORIY MUROJAAT belgisi (lid formasi bilan bir xil qoida): bosqich o'zgarmaydi,
             // lekin kanban kartasida "yana murojaat qildi" ko'rinib turadi.
@@ -317,7 +317,7 @@ public static class LevelTestService
             var firstStage = await LeadIntake.FirstStageIdAsync(db);
             lead = new Lead
             {
-                FullName = string.IsNullOrWhiteSpace(req.FullName) ? "Noma'lum (daraja testi)" : req.FullName.Trim(),
+                FullName = string.IsNullOrWhiteSpace(req.FullName) ? LeadIntake.LevelTestAnonymousName : req.FullName.Trim(),
                 Phone = phone,
                 Source = "Daraja testi",
                 InterestSubject = string.IsNullOrEmpty(courseName) ? test.Title : courseName,
@@ -325,6 +325,8 @@ public static class LevelTestService
                 Stage = firstStage,
                 CreatedAt = now,
             };
+            // Shu telefon bilan avval o'quvchi bo'lgan bo'lsa (aka-uka, qayta ariza) — izohda ko'rinsin (CRM-1).
+            await LeadIntake.MarkFormerStudentAsync(db, lead, req.Phone);
             db.Leads.Add(lead);
             db.LeadEvents.Add(new LeadEvent
             {
@@ -349,21 +351,7 @@ public static class LevelTestService
             await LeadNotifier.NotifyNewLeadAsync(db, telegram, lead, submission, test.Title, isNewLead,
                 createdBy: "Daraja testi (o'quvchi o'zi topshirdi)");
         // Avto xabar — "Test natijasi" hodisasiga yoqilgan qoidalar bo'yicha abituriyentga (lidga) SMS.
-        // {natija}/{daraja}/{ball}/{foiz} tokenlari test natijasi bilan to'ldiriladi.
-        if (autoMsg is not null)
-        {
-            var natija = total > 0
-                ? $"{score}/{total} ({percent}%)" + (string.IsNullOrEmpty(level) ? "" : $" — {level}")
-                : "";
-            await autoMsg.DispatchLeadAsync(db, AutoMessageTriggers.TestResult, lead, extraTokens:
-                new Dictionary<string, string>
-                {
-                    ["{natija}"] = natija,
-                    ["{daraja}"] = level ?? "",
-                    ["{ball}"] = total > 0 ? $"{score}/{total}" : "",
-                    ["{foiz}"] = total > 0 ? $"{percent}%" : "",
-                });
-        }
+        await DispatchTestResultAsync(db, autoMsg, lead, score, total, percent, level);
 
         var msg = total == 0
             ? "Rahmat! Ma'lumotlaringiz qabul qilindi — tez orada bog'lanamiz."
@@ -371,6 +359,33 @@ public static class LevelTestService
               + (string.IsNullOrEmpty(level) ? "." : $". Sizning darajangiz: {level}.")
               + " Tez orada siz bilan bog'lanamiz.";
         return new TestResultDto(score, total, percent, level, msg);
+    }
+
+    /// <summary>
+    /// «Test natijasi» (<c>test_result</c>) avto-xabari — ikkala topshirish yo'li (ommaviy havola va
+    /// bir martalik taklif) AYNAN shuni chaqiradi, ya'ni tokenlar ikki joyda ayri ketmaydi.
+    /// {natija}/{daraja}/{ball}/{foiz} tokenlari test natijasi bilan to'ldiriladi.
+    /// </summary>
+    public static async Task DispatchTestResultAsync(
+        IAppDbContext db, AutoMessageService? autoMsg, Lead lead, int score, int total, int percent, string? level)
+    {
+        if (autoMsg is null) return;
+        await autoMsg.DispatchLeadAsync(db, AutoMessageTriggers.TestResult, lead, extraTokens: TestResultTokens(score, total, percent, level));
+    }
+
+    /// <summary><c>test_result</c> tokenlari (sof — testlanadi).</summary>
+    public static Dictionary<string, string> TestResultTokens(int score, int total, int percent, string? level)
+    {
+        var natija = total > 0
+            ? $"{score}/{total} ({percent}%)" + (string.IsNullOrEmpty(level) ? "" : $" — {level}")
+            : "";
+        return new Dictionary<string, string>
+        {
+            ["{natija}"] = natija,
+            ["{daraja}"] = level ?? "",
+            ["{ball}"] = total > 0 ? $"{score}/{total}" : "",
+            ["{foiz}"] = total > 0 ? $"{percent}%" : "",
+        };
     }
 
     // ==================== Bir martalik havola (invite) ====================
@@ -464,6 +479,10 @@ public static class LevelTestService
         if (telegram is not null && lead is not null)
             await LeadNotifier.NotifyNewLeadAsync(db, telegram, lead, submission, test.Title, isNewLead: false,
                 createdBy: "Daraja testi (taklif havolasi)");
+        // "Test natijasi" avto-SMS'i — ommaviy havoladagi topshirish bilan AYNAN bir xil (LRN-7: ilgari
+        // taklif havolasi orqali ishlagan abituriyentga natija SMS'i umuman ketmasdi).
+        if (lead is not null)
+            await DispatchTestResultAsync(db, autoMsg, lead, score, total, percent, level);
 
         var msg = total == 0
             ? "Rahmat! Javoblaringiz qabul qilindi."

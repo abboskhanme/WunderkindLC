@@ -1,14 +1,20 @@
 import { useEffect, useMemo, useState } from 'react'
-import { GraduationCap } from 'lucide-react'
+import { GraduationCap, Trash2 } from 'lucide-react'
 import type { Group, Teacher } from '@/types'
-import { addMemberExtension, getClasses } from '@/api/services/classes'
+import {
+  addMemberExtension,
+  deleteMemberExtension,
+  getClasses,
+  getMemberExtensions,
+  type MemberExtension,
+} from '@/api/services/classes'
 import { getTeachers } from '@/api/services/teachers'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Input, Select, Textarea } from '@/components/ui/Input'
-import { apiErrorMessage } from '@/lib/utils'
-
-const today = () => new Date().toISOString().slice(0, 10)
+import { apiErrorMessage, formatDate } from '@/lib/utils'
+import { todayIso } from '@/lib/month'
+import { usePerm } from '@/lib/permissions'
 
 interface Props {
   open: boolean
@@ -37,20 +43,53 @@ interface Props {
 export function ExtensionModal({
   open, onClose, studentId, studentName, fromGroupId, fromGroupName, onDone,
 }: Props) {
+  const { can } = usePerm()
+  // Bekor qilish — sinf darvozasi: DELETE → «O'chirish» ruxsati (server bilan bir xil).
+  const canDelete = can('classes.list', 'delete')
   const [groups, setGroups] = useState<Group[]>([])
   const [teachers, setTeachers] = useState<Teacher[]>([])
+  const [existing, setExisting] = useState<MemberExtension[]>([])
   const [teacherId, setTeacherId] = useState('')
   const [toGroupId, setToGroupId] = useState('')
-  const [date, setDate] = useState(today())
+  const [date, setDate] = useState(todayIso())
   const [note, setNote] = useState('')
   const [saving, setSaving] = useState(false)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
   const [error, setError] = useState('')
+
+  // Shu o'quvchining shu guruhdan YOZILGAN uzaytirishlari — xato yozilganini bekor qilish uchun.
+  // Ikkilamchi ma'lumot: yuklanmasa yangi qayd baribir yoziladi (ro'yxat bo'sh ko'rinadi).
+  useEffect(() => {
+    if (!open || !studentId) return
+    let alive = true
+    getMemberExtensions(fromGroupId, studentId)
+      .then((rows) => alive && setExisting(rows))
+      .catch(() => alive && setExisting([]))
+    return () => {
+      alive = false
+    }
+  }, [open, fromGroupId, studentId])
+
+  const handleDelete = async (ext: MemberExtension) => {
+    if (deletingId) return
+    if (!confirm(`«${ext.fromGroupName}» → «${ext.toGroupName}» (${formatDate(ext.date)}) uzaytirish qaydini bekor qilasizmi?`)) return
+    setDeletingId(ext.id)
+    setError('')
+    try {
+      await deleteMemberExtension(fromGroupId, studentId, ext.id)
+      setExisting((list) => list.filter((x) => x.id !== ext.id))
+    } catch (err) {
+      setError(apiErrorMessage(err, "Uzaytirish qaydini bekor qilib bo'lmadi"))
+    } finally {
+      setDeletingId(null)
+    }
+  }
 
   useEffect(() => {
     if (!open) return
     // ⚠️ setState effekt ICHIDA emas, javob kelgach chaqiriladi (`react-hooks/set-state-in-effect`).
     let alive = true
-    Promise.all([getClasses(), getTeachers()])
+    Promise.all([getClasses(true), getTeachers()])
       .then(([gs, ts]) => {
         if (!alive) return
         // Arxivlangan guruh ham QOLADI: o'tmishdagi uzaytirishni keyinchalik yozish uchun
@@ -155,6 +194,39 @@ export function ExtensionModal({
           onChange={(e) => setNote(e.target.value)}
           placeholder="Ixtiyoriy"
         />
+
+        {existing.length > 0 && (
+          <div>
+            <span className="mb-1 block text-sm font-medium text-slate-600">Yozilgan uzaytirishlar</span>
+            <ul className="divide-y divide-slate-100 rounded-lg border border-slate-200">
+              {existing.map((x) => (
+                <li key={x.id} className="flex items-center gap-2 px-3 py-2 text-sm">
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-slate-800">
+                      → {x.toGroupName} · {formatDate(x.date)}
+                    </div>
+                    <div className="truncate text-xs text-slate-400">
+                      {x.byUserName || '—'}
+                      {x.note ? ` · ${x.note}` : ''}
+                    </div>
+                  </div>
+                  {canDelete && (
+                    <button
+                      type="button"
+                      title="Bekor qilish (xato yozilgan bo'lsa)"
+                      aria-label="Uzaytirishni bekor qilish"
+                      disabled={deletingId === x.id}
+                      onClick={() => handleDelete(x)}
+                      className="rounded-md p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
 
         {error && <div className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}
       </div>

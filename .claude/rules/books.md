@@ -36,9 +36,11 @@ Controller ham, bot ham faqat shu orqali ishlaydi, aks holda "qoldiq qanday o'zg
 ```
 Bot: buyurtma yaratildi  →  Stock TEGILMAYDI  (Status=pending)
 Admin: Tasdiqlash        →  Move(book, -Qty, "sale", …)  →  Stock ayiriladi
+                            (botdan NAQD bo'lsa — faqat ZAXIRA, pul olib ketishda: §2.6)
 Admin: Rad etish         →  Stock TEGILMAYDI, mijozga sabab yuboriladi
 Qo'lda sotuv             →  pending yaratiladi + DARHOL ApproveAsync (bitta SaveChanges)
 Admin: Qaytarish         →  Move(book, +qty, "return", …) →  Stock QAYTADI (§2.5)
+Admin: Bekor qilish      →  faqat olib ketilmagan bot naqd buyurtmasi: Stock QAYTADI, pul YO'Q (§2.6)
 ```
 
 - `Move(book, qty, reason, note, createdBy, orderId?)` — `Stock`ni o'zgartiradi va `BookStockMove`
@@ -99,6 +101,32 @@ odatiy "qaytadan urinib ko'ring" xatosi qaytadi.
 
 Mijozga (bot buyurtmasi bo'lsa) `CustomerReturnedText` yuboriladi; qo'lda sotuvda `ChatId=0` —
 xabar yo'q. Audit: `BookOrder` / `update` — "Kitob qaytarildi: … pul qaytarildi | qarz kamaydi".
+
+## 2.6 BOTDAN NAQD — tasdiqlash = ZAXIRA, pul OLIB KETISHDA (`BookOrder.PayAtPickup`)
+
+Botda naqd tanlagan mijozga "to'lovni kitobni olib ketayotganda kassaga topshirasiz" deyiladi.
+⚠️ Ilgari tasdiqlash shu zahoti `PaidAt` qo'yib **kassaga kirim** yozardi — pul hali olinmagan,
+mijoz kelmasa esa kassada yo'q pul qolar va uni faqat **soxta «Qaytarish»** bilan chiqarish mumkin
+edi. Bu §7 dagi o'z printsipimizga ("pul HAQIQATAN olingan paytda") zid edi.
+
+```
+Tasdiqlash (bot + naqd)  →  qoldiq AYIRILADI (zaxira), PayAtPickup=true, PaidAt=NULL, kirim YO'Q
+Mijoz keldi: «To'landi»  →  PayCreditAsync (nasiya bilan BIR yo'l): PaidAt, naqd/karta, KIRIM
+Mijoz kelmadi: «Bekor qilish» → CancelUnpaidAsync: qoldiq QAYTADI ("return" harakati),
+                            Status=rejected (sabab bilan), mijozga botda xabar, PUL HARAKATI YO'Q
+```
+
+- Qoida: `ShouldPayAtPickup` = manba qo'lda EMAS + naqd. Karta (chek bilan — pul oldindan) va qo'lda
+  sotuv (pul kassir oldida) **kirmaydi**. "To'landimi" — avvalgidek `IsPaid` (`IsPayLater` =
+  nasiya yoki `PayAtPickup`).
+- ⚠️ **Eski qatorlarda `PayAtPickup=false`** (migratsiya defaulti) — ular avvalgidek "tasdiqlangan =
+  to'langan" bo'lib qoladi, backfill YO'Q.
+- Olib ketilmagan buyurtmaga **«Qaytarish» yopiq** (`ReturnError`) — kitob mijozga berilmagan;
+  to'langanini esa **bekor qilib bo'lmaydi** (`CancelError`) — u yerda kitob berilgan, «Qaytarish».
+- Ro'yxatda filtr **«To'lov kutilmoqda»** (`status=awaiting`), tab belgisida `pickup` soni.
+- Analitika (sotuv) avvalgidek tasdiqlangan kun bo'yicha: olib ketilmagan buyurtma naqd sotuv bo'lib
+  turadi, bekor qilinsa (`rejected`) chiqib ketadi. KASSA esa faqat «To'landi» da (§7).
+- Testlar: `AuditFixT11Tests` (Bot_naqd…, Olib_ketilmagan…).
 
 ## 2.4 NASIYA — kitob berildi, pul keyin (migratsiya `AddBookCreditSales`)
 
@@ -247,7 +275,9 @@ YO'Q, chunki pul kassirning oldida to'langan. Normalizatsiya moliya bo'limi bila
   va eski xabardagi `kb:` tugmasi bosilganda ikkalasida ham tekshiriladi.
 - Chek (rasm/hujjat) `TelegramBotService.HandleFileAsync`da qabul qilinadi — avval
   `AwaitingReceiptAsync` tekshiriladi, keyin `HandleReceiptAsync` faylni `/uploads/…` ga ko'chiradi.
-- `CreateOrderAsync` qoldiqni **yana bir bor** tekshiradi (boshqa mijoz oldin olgan bo'lishi mumkin).
+- `CreateOrderAsync` qoldiqni **yana bir bor** tekshiradi (boshqa mijoz oldin olgan bo'lishi mumkin)
+  va kitob hali **sotuvdami** (`IsActive`) — sessiya davomida sotuvdan olingan kitobga eski tugma
+  orqali buyurtma o'tmaydi (qo'lda sotuvdagi `ManualSaleBookError` bilan bir xil qoida).
 - Karta rekvizitlari kiritilmagan bo'lsa `ChooseCardAsync` mijozga "sozlanmagan, naqdni tanlang"
   deydi — sessiya bosqichi o'zgarmaydi.
 - **Kitob sotuvi HAMMAGA ochiq** — sotib olish uchun markazda o'qish shart emas. Markaz ro'yxatida
@@ -279,11 +309,12 @@ Sozlamalar `CenterMeta`da (maxfiy EMAS — mijozga baribir ko'rsatiladi, `.env` 
 | `GET /orders`, `GET /orders/pending-count` | Buyurtmalar + tab belgilari (`count` kutilmoqda, `credits` to'lanmagan nasiya, `overdue`). `status=returned` — QAYTARILGANLAR kesimi (holat emas) |
 | `POST /orders/{id}/return` | QAYTARISH: `qty` dona omborga qaytadi, summa sof bo'ladi (§2.5) |
 | `GET /credits`, `GET /credits/export` | NASIYA: to'lanmaganlar (yoki davrda to'langanlari) + qarzdorlar kesimi + jamlanma |
-| `POST /orders/{id}/pay` | NASIYA to'lovini qabul qilish (`method` naqd/karta) — ombor tegilmaydi |
+| `POST /orders/{id}/pay` | NASIYA (yoki olib ketishda to'lanadigan bot buyurtmasi, §2.6) to'lovini qabul qilish (`method` naqd/karta) — ombor tegilmaydi; auditda SOF summa (`NetTotal`) |
 | `POST /orders/manual` | QO'LDA SOTUV — yaratadi va darhol tasdiqlaydi (§2.1) |
 | `GET /students?q=` | Qo'lda sotuv uchun o'quvchi qidiruvi (min 2 belgi, max 20) |
 | `GET /card-payments` | KARTA to'lovlari + jamlanma (tasdiqlangan/kutilayotgan summa) va karta rekvizitlari |
-| `POST /orders/{id}/approve`, `/reject` | `BookSalesService` orqali; muvaffaqiyatda mijozga xabar |
+| `POST /orders/{id}/approve`, `/reject` | `BookSalesService` orqali; muvaffaqiyatda mijozga xabar. Ikkalasi ham BIR qulf ostida (`PaymentIdempotency`, holat qulf ichida qayta o'qiladi) |
+| `POST /orders/{id}/cancel` | Olib ketilmagan bot naqd buyurtmasini BEKOR qilish (§2.6) — qoldiq qaytadi, pul harakati yo'q |
 | `GET /analytics` | Tushum (naqd/karta), sotilgan soni, qoldiq, kunlik va kitob kesimi — **hammasi SOF** (qaytarilgani ayirilgan) + qaytarish raqamlari |
 | `GET /orders/export`, `/stock-moves/export`, `/analytics/export` | .xlsx (analitika — 3 varaq) |
 | `GET|PUT /settings` | Bot sozlamalari (yuqoridagi 4 maydon) |
@@ -309,6 +340,10 @@ kamayadimi** ni ochiq yozadi. Ro'yxatlarda soni/summa SOF ko'rsatiladi, xomi tag
 ya'ni "nega raqam kamaydi" savoli qolmaydi. Analitika lentasi esa XOM qiymatni saqlaydi (u hodisa
 tarixi) va yonida "N qaytarildi" belgisi chiqadi.
 
+**OLIB KETISHDA TO'LOV** (§2.6): "Buyurtmalar" tabida «To'lov kutilmoqda» filtri; tasdiqlangan,
+lekin to'lanmagan bot naqd buyurtmasi qatorida «To'landi» (naqd/karta oynasi — nasiyadagi bilan bir
+xil) va «Bekor qilish» (sabab ixtiyoriy) tugmalari — «Qaytarish» u yerda ko'rsatilmaydi.
+
 Yozish amallari `can('books','edit')` bilan darvozalangan. API qatlami
 `api/services/books.ts`, yorliqlar `bookLabels.ts` (status/to'lov/sabab matnlari — komponentda xom
 satr yozilmasin).
@@ -321,9 +356,11 @@ KASSAGA yoziladi — pul HAQIQATAN olingan/qaytarilgan paytda, `BookSalesService
 
 | Hodisa | Moliya yozuvi |
 |---|---|
-| Naqd/karta sotuv tasdiqlandi (`ApproveAsync`, qo'lda sotuv ham) | kirim, toifa **`book`**, summa = sotuv |
+| Qo'lda naqd/karta sotuv yoki bot KARTA buyurtmasi tasdiqlandi (`ApproveAsync`) | kirim, toifa **`book`**, summa = sotuv |
+| Bot NAQD buyurtmasi tasdiqlandi | — (faqat zaxira, pul olib ketishda — §2.6) |
 | Nasiya sotildi | — (pul olinmagan) |
-| Nasiya «To'landi» (`PayCreditAsync`) | kirim `book`, summa = o'sha paytdagi SOF (`NetTotal`) |
+| Nasiya / olib ketishda «To'landi» (`PayCreditAsync`) | kirim `book`, summa = o'sha paytdagi SOF (`NetTotal`) |
+| Olib ketilmagan buyurtma bekor qilindi (`CancelUnpaidAsync`) | — (pul hech qachon olinmagan) |
 | Qaytarishda pul berildi (`ReturnAsync`, `RefundFor > 0`) | chiqim `book`, sotuv kirimi tushgan KASSADAN |
 
 - ⚠️ **`tuition` EMAS, `StudentId` YOZILMAYDI** — asl xavotir ("o'quv to'lovi hisobotlarini kitob

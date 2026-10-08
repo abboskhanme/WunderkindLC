@@ -47,16 +47,9 @@ public class WorkTaskReminderService(
                      + Math.Clamp(meta.WorkTaskReminderMinute, 0, 59);
         if (now.Hour * 60 + now.Minute < target) return;   // hali eslatish vaqti kelmagan
 
-        // Yopiluvchi ustunlar — bajarilgan topshiriq haqida eslatilmaydi.
-        var doneCols = (await db.WorkTaskColumns.Where(c => c.IsDone).Select(c => c.Id).ToListAsync(ct))
-            .ToHashSet();
-
-        var due = await db.WorkTasks
-            .Where(t => !t.IsArchived && t.AssigneeId != "" && t.DueDate != null
-                        && t.DueDate.CompareTo(today) <= 0
-                        && (t.ReminderSentDate == null || t.ReminderSentDate != today))
-            .ToListAsync(ct);
-        due = due.Where(t => !doneCols.Contains(t.ColumnId)).ToList();
+        // Ochiq (yopiluvchi ustunda emas), arxivlanmagan va ARXIVLANGAN DOSKADA bo'lmagan
+        // topshiriqlar — tanlov qoidasi bitta joyda (`WorkTaskFlow.DueForReminderAsync`).
+        var due = await WorkTaskFlow.DueForReminderAsync(db, today, ct);
         if (due.Count == 0) return;
 
         var chatsByUser = (await db.TelegramRegistrations

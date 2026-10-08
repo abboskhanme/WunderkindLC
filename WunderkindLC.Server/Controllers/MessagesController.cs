@@ -73,7 +73,6 @@ public class MessagesController(
         // Chat kanallari ro'yxati (oxirgi xabar vaqti bilan) — chat darvozasi ostida.
         if (!CanUseChat()) return Forbid();
         var classes = await db.Classes.OrderBy(c => c.Grade).ThenBy(c => c.Name).ToListAsync();
-        var students = await db.Students.Select(s => new { s.Id, s.ClassName }).ToListAsync();
         var regs = await db.TelegramRegistrations.Select(r => new { r.StudentId, r.ChatId }).ToListAsync();
         var lastByClass = (await db.ChatMessages
                 .GroupBy(m => m.ClassName)
@@ -81,34 +80,23 @@ public class MessagesController(
                 .ToListAsync())
             .ToDictionary(x => x.Name, x => x.Last);
 
-        // O'QUVCHI → GURUH NOMLARI: TIRIK a'zoliklardan (bir o'quvchi bir nechta guruhda bo'lishi
-        // mumkin), a'zoligi yo'q eski yozuvlarda — `ClassName` zaxirasi.
-        // ⚠️ Ilgari o'quvchi FAQAT `ClassName` guruhiga tegishli deb sanalardi va Telegram chatlar
-        // sanog'ida yalang `.First()` turardi: ikkinchi guruhda o'qiyotgan o'quvchi u guruhning
-        // sanog'iga umuman kirmasdi (eski, muzlatilgan guruhga esa kirib turardi).
-        var groupNameById = classes.ToDictionary(c => c.Id, c => c.Name);
-        var liveMemberships = await db.StudentGroups.AsNoTracking().Where(m => m.IsActive)
-            .Select(m => new { m.StudentId, m.GroupId }).ToListAsync();
-        var namesByStudent = liveMemberships
-            .Where(m => groupNameById.ContainsKey(m.GroupId))
-            .GroupBy(m => m.StudentId)
-            .ToDictionary(g => g.Key, g => g.Select(m => groupNameById[m.GroupId]).Distinct().ToList());
-        foreach (var s2 in students)
-        {
-            if (namesByStudent.ContainsKey(s2.Id) || string.IsNullOrEmpty(s2.ClassName)) continue;
-            namesByStudent[s2.Id] = new List<string> { s2.ClassName };
-        }
+        // GURUH → O'QUVCHILAR: e'lon/SMS/push YUBORISHDA ishlatiladigan AYNAN o'sha qoida
+        // (`MessagingAudience.GroupAudienceByNameAsync`: tirik a'zolik, arxivdagilarsiz, a'zoligi
+        // umuman yo'q eski yozuvlarda — `ClassName` zaxirasi). Ya'ni ko'rsatilgan son = oluvchilar.
+        // ⚠️ Ilgari sanoq a'zolikdan, yuborish esa eskirgan `ClassName` dan olinardi — ikkinchi
+        // guruhdagi o'quvchi sanalar, lekin xabar olmasdi.
+        var audienceByName = await MessagingAudience.GroupAudienceByNameAsync(db);
+        var chatsByStudent = regs.GroupBy(r => r.StudentId)
+            .ToDictionary(g => g.Key, g => g.Select(x => x.ChatId).ToList());
 
-        var studentCountByClass = namesByStudent.SelectMany(kv => kv.Value)
-            .GroupBy(n => n).ToDictionary(g => g.Key, g => g.Count());
+        var studentCountByClass = audienceByName.ToDictionary(kv => kv.Key, kv => kv.Value.Count);
         // Har guruh bo'yicha alohida (distinct) Telegram chatlar soni — e'lon oluvchilar.
         // (O'quvchi ikki guruhda bo'lsa uning chati IKKALASIDA ham sanaladi — u ikkalasidan ham
         // e'lon oladi.)
-        var parentChatsByClass = regs
-            .Where(r => namesByStudent.ContainsKey(r.StudentId))
-            .SelectMany(r => namesByStudent[r.StudentId].Select(n => new { Name = n, r.ChatId }))
-            .GroupBy(x => x.Name)
-            .ToDictionary(g => g.Key, g => g.Select(x => x.ChatId).Distinct().Count());
+        var parentChatsByClass = audienceByName.ToDictionary(
+            kv => kv.Key,
+            kv => kv.Value.SelectMany(sid => chatsByStudent.GetValueOrDefault(sid) ?? new List<long>())
+                .Distinct().Count());
 
         return classes.Select(c => new ChatClassDto(
             c.Name, c.Grade,
@@ -184,6 +172,7 @@ public class MessagesController(
             ? (req.TeacherIds ?? new()).Where(x => !string.IsNullOrWhiteSpace(x)).Distinct().ToList()
             : new List<string>();
         string audience;
+        string? groupScope = null;   // "Guruh" qamrovi — token konteksti ({guruh}, dars jadvali) shu guruhdan
         switch (scope)
         {
             case "selected":
@@ -198,8 +187,11 @@ public class MessagesController(
             default: // class
                 var cn = req.ClassName?.Trim() ?? "";
                 if (cn.Length == 0) return BadRequest(new { message = "Guruh kerak" });
-                studentsQ = studentsQ.Where(s => s.ClassName == cn);
+                // A'ZOLIK bo'yicha (eskirgan `ClassName` emas) — guruhlar ro'yxatidagi sanoq bilan bir xil.
+                var memberIds = await MessagingAudience.GroupAudienceAsync(db, cn);
+                studentsQ = studentsQ.Where(s => memberIds.Contains(s.Id));
                 audience = cn;
+                groupScope = cn;
                 break;
         }
 
@@ -236,11 +228,13 @@ public class MessagesController(
         var groupByName = await GroupByNameAsync();
         var teacherNames = await TeacherNamesAsync();
         var sent = 0;
+        var scopeGroup = groupScope is null ? null : groupByName.GetValueOrDefault(groupScope);
+        var scopedText = GroupScoped(text, groupScope);
         foreach (var r in regs)
         {
             if (!byId.TryGetValue(r.StudentId, out var s)) continue;
-            var grp = groupByName.GetValueOrDefault(s.ClassName ?? "");
-            var message = $"📢 Markaz e'loni\n\n{Personalize(text, s, r, centerName, grp, MessageTokenizer.TeacherNameOf(grp, teacherNames))}";
+            var grp = scopeGroup ?? groupByName.GetValueOrDefault(s.ClassName ?? "");
+            var message = $"📢 Markaz e'loni\n\n{Personalize(scopedText, s, r, centerName, grp, MessageTokenizer.TeacherNameOf(grp, teacherNames))}";
             if (await telegram.SendMessageAsync(r.ChatId, message)) sent++;
         }
         foreach (var r in teacherRegs)
@@ -279,6 +273,12 @@ public class MessagesController(
     private async Task<Dictionary<string, string>> TeacherNamesAsync() =>
         await MessageTokenizer.TeacherNamesByIdAsync(db);
 
+    /// <summary>"Guruh" qamrovida {guruh} tokeni TANLANGAN guruh nomi bilan to'ladi (o'quvchining
+    /// eskirgan <c>ClassName</c>i bilan emas — u ikkinchi guruhda o'qishi mumkin).</summary>
+    private static string GroupScoped(string text, string? groupName) =>
+        string.IsNullOrEmpty(groupName) ? text
+            : MessageTokenizer.ApplyExtra(text, new Dictionary<string, string> { ["{guruh}"] = groupName });
+
     /// <summary>E'lon matnini shu o'quvchi/ota-ona ma'lumotiga moslab almashtiradi.</summary>
     private static string Personalize(string template, Student s, TelegramRegistration reg, string centerName,
         Group? group = null, string? teacherName = null) =>
@@ -299,7 +299,12 @@ public class MessagesController(
     public async Task<ActionResult<IEnumerable<TelegramParentDto>>> Registrations([FromQuery] string? className)
     {
         var studentsQ = db.Students.AsQueryable();
-        if (!string.IsNullOrEmpty(className)) studentsQ = studentsQ.Where(s => s.ClassName == className);
+        if (!string.IsNullOrEmpty(className))
+        {
+            // Guruh a'zoligi bo'yicha — e'lon oluvchilari bilan bir xil ro'yxat (eskirgan ClassName emas).
+            var memberIds = await MessagingAudience.GroupAudienceAsync(db, className);
+            studentsQ = studentsQ.Where(s => memberIds.Contains(s.Id));
+        }
         var students = await studentsQ.ToListAsync();
         var byId = students.ToDictionary(s => s.Id);
         var ids = students.Select(s => s.Id).ToList();
@@ -450,6 +455,7 @@ public class MessagesController(
 
         List<string> userIds;
         string label;
+        string? groupScope = null;   // "Guruh" tanlangan bo'lsa — token konteksti shu guruhdan
         if (audience == "selected")
         {
             userIds = (req.UserIds ?? new()).Where(x => !string.IsNullOrWhiteSpace(x)).Distinct().ToList();
@@ -464,16 +470,15 @@ public class MessagesController(
         }
         else
         {
-            var q = db.Students.Where(s => !s.IsArchived && s.UserId != null);
             var cn = req.ClassName?.Trim() ?? "";
-            if (cn.Length > 0) { q = q.Where(s => s.ClassName == cn); label = $"O'quvchilar — {cn}"; }
+            if (cn.Length > 0) { label = $"O'quvchilar — {cn}"; groupScope = cn; }
             else label = "O'quvchilar (o'quvchi/ota-ona ilovasi)";
-            // Guruhi YOPILGAN/TUGATILGAN o'quvchilarga ommaviy push yuborilmaydi.
-            var closed = await MessagingAudience.ClosedGroupStudentIdsAsync(db);
-            userIds = (await q.Select(s => new { s.Id, UserId = s.UserId! }).ToListAsync())
-                .Where(x => !closed.Contains(x.Id))
-                .Select(x => x.UserId)
-                .ToList();
+            if (req.OnlyDebtors) label += " — qarzdorlar";
+            // Guruh — A'ZOLIK bo'yicha (eskirgan `ClassName` emas, guruhlar ro'yxatidagi sanoq bilan bir xil);
+            // "Faqat qarzdorlar" — SMS/Telegram bilan bir xil qoida (ilgari push uchun e'tiborsiz edi:
+            // "{qarzdorlik} qarzingiz bor" HAMMA ota-onaga "0 so'm" bilan ketardi); arxivdagi va guruhi
+            // YOPILGAN/TUGATILGAN o'quvchilar chiqariladi.
+            userIds = await MessagingAudience.ParentPushUserIdsAsync(db, cn, req.OnlyDebtors);
         }
 
         // Per-oluvchi moslash uchun: foydalanuvchi → o'quvchi/o'qituvchi + uning tokenlari.
@@ -490,6 +495,9 @@ public class MessagesController(
         var centerName = meta?.Name ?? "";
         var groupByName = await GroupByNameAsync();
         var teacherNames = await TeacherNamesAsync();
+        var scopeGroup = groupScope is null ? null : groupByName.GetValueOrDefault(groupScope);
+        title = GroupScoped(title, groupScope);
+        body = GroupScoped(body, groupScope);
         var recipientCount = tokensByUser.Sum(kv => kv.Value.Count);
         var sent = 0;
         var deadTokens = new List<string>();
@@ -500,7 +508,7 @@ public class MessagesController(
             var b = body;
             if (studentByUser.TryGetValue(userId, out var st))
             {
-                var grp = groupByName.GetValueOrDefault(st.ClassName ?? "");
+                var grp = scopeGroup ?? groupByName.GetValueOrDefault(st.ClassName ?? "");
                 var tn = MessageTokenizer.TeacherNameOf(grp, teacherNames);
                 t = PersonalizePush(title, st, centerName, grp, tn);
                 b = PersonalizePush(body, st, centerName, grp, tn);
@@ -525,7 +533,7 @@ public class MessagesController(
         {
             var t = title;
             var b = body;
-            if (studentByUser.TryGetValue(userId, out var stn)) { var grp = groupByName.GetValueOrDefault(stn.ClassName ?? ""); var tn = MessageTokenizer.TeacherNameOf(grp, teacherNames); t = PersonalizePush(title, stn, centerName, grp, tn); b = PersonalizePush(body, stn, centerName, grp, tn); }
+            if (studentByUser.TryGetValue(userId, out var stn)) { var grp = scopeGroup ?? groupByName.GetValueOrDefault(stn.ClassName ?? ""); var tn = MessageTokenizer.TeacherNameOf(grp, teacherNames); t = PersonalizePush(title, stn, centerName, grp, tn); b = PersonalizePush(body, stn, centerName, grp, tn); }
             else if (teacherByUser.TryGetValue(userId, out var tchn)) { t = PersonalizeTeacherPush(title, tchn, centerName); b = PersonalizeTeacherPush(body, tchn, centerName); }
             NotificationStore.Add(db, userId, t, b, "announcement", pushId);
         }
@@ -576,12 +584,12 @@ public class MessagesController(
     [HttpGet("sms/{id}/progress")]
     public async Task<ActionResult<SmsProgressDto>> SmsProgress(string id)
     {
-        if (smsQueue.Get(id) is { } live)
-            return new SmsProgressDto(id, live.Total, live.Done, live.Sent, live.Finished);
-        var batch = await db.SmsBatches.AsNoTracking().FirstOrDefaultAsync(b => b.Id == id);
-        if (batch is null) return NotFound();
-        var done = await db.SmsLogs.CountAsync(l => l.BatchId == id);
-        return new SmsProgressDto(id, batch.RecipientCount, done, batch.SentCount, true);
+        // Avval xotira (jonli), keyin BAZA: navbat qatorlari bazada — restartdan keyin tugamagan partiya
+        // "tugadi 40/300" bo'lib KO'RINMAYDI (Finished=false — davom ettirilmoqda), juda eskisi bekor
+        // qilingan bo'lsa Interrupted=true bilan ochiq aytiladi.
+        var p = smsQueue.Get(id) ?? await SmsQueueService.ProgressFromDbAsync(db, id);
+        if (p is null) return NotFound();
+        return new SmsProgressDto(id, p.Total, p.Done, p.Sent, p.Finished, p.Resumed, p.Interrupted);
     }
 
     /// <summary>Bitta SMS partiyasi bo'yicha raqamlar va yetkazib berish holati.</summary>
@@ -660,6 +668,7 @@ public class MessagesController(
             // O'quvchilar to'plami (parents/students/selected).
             var q = db.Students.Where(s => !s.IsArchived);
             var teacherIds = new List<string>();
+            string? groupScope = null;
             if (audience == "selected")
             {
                 var ids = (req.StudentIds ?? new()).Where(x => !string.IsNullOrWhiteSpace(x)).Distinct().ToList();
@@ -671,7 +680,14 @@ public class MessagesController(
             else
             {
                 var cn = req.ClassName?.Trim() ?? "";
-                if (cn.Length > 0) { q = q.Where(s => s.ClassName == cn); label = cn; }
+                if (cn.Length > 0)
+                {
+                    // A'ZOLIK bo'yicha (eskirgan `ClassName` emas) — guruhlar ro'yxatidagi sanoq bilan bir xil.
+                    var memberIds = await MessagingAudience.GroupAudienceAsync(db, cn);
+                    q = q.Where(s => memberIds.Contains(s.Id));
+                    label = cn;
+                    groupScope = cn;
+                }
                 else label = "Barcha guruhlar";
             }
             var students = await q.ToListAsync();
@@ -685,6 +701,8 @@ public class MessagesController(
             }
             var groupByName = await GroupByNameAsync();
             var teacherNames = await TeacherNamesAsync();
+            var scopeGroup = groupScope is null ? null : groupByName.GetValueOrDefault(groupScope);
+            var scopedText = GroupScoped(text, groupScope);
 
             // O'quvchining o'z raqami: audience=="students" YOKI "selected" + ToParent=false. Aks holda ota-ona.
             var toStudentPhone = audience == "students" || (audience == "selected" && !req.ToParent);
@@ -695,8 +713,8 @@ public class MessagesController(
                     : (!string.IsNullOrWhiteSpace(s.ParentPhone) ? s.ParentPhone
                         : !string.IsNullOrWhiteSpace(s.FatherPhone) ? s.FatherPhone : s.MotherPhone);
                 if (string.IsNullOrWhiteSpace(phone)) continue;
-                var grp = groupByName.GetValueOrDefault(s.ClassName ?? "");
-                targets.Add((phone, s.FullName, MessageTokenizer.Student(text, s, s.ParentFullName, phone, centerName,
+                var grp = scopeGroup ?? groupByName.GetValueOrDefault(s.ClassName ?? "");
+                targets.Add((phone, s.FullName, MessageTokenizer.Student(scopedText, s, s.ParentFullName, phone, centerName,
                     null, grp, MessageTokenizer.TeacherNameOf(grp, teacherNames))));
             }
             label = toStudentPhone ? $"O'quvchilar — {label}" : $"Ota-onalar — {label}";
@@ -758,12 +776,14 @@ public class MessagesController(
         db.SmsBatches.Add(batch);
         await db.SaveChangesAsync();
 
-        var callbackUrl = $"{Request.Scheme}://{Request.Host}/api/sms/callback";
+        // Callback — avto-SMS'lar bilan AYNAN bir manzil (kanonik App:Host, bo'lmasa so'rov hosti).
+        var callbackUrl = eskiz.CallbackUrl(Request.Scheme, Request.Host.ToString());
         var job = new SmsQueueService.Job(
             batch.Id, provider, agentId, callbackUrl, queueTargets, leadNote, senderName);
 
         var queued = SmsQueueService.ShouldQueue(queueTargets.Count);
-        if (queued) smsQueue.Enqueue(job);
+        // Navbat BAZAGA yoziladi — yuborish paytida restart bo'lsa partiya davom ettiriladi.
+        if (queued) await smsQueue.EnqueueAsync(db, job);
         else await smsQueue.RunInlineAsync(db, job);   // SentCount'ni o'zi yangilab saqlaydi
 
         return new SmsBatchDto(batch.Id, batch.Audience, batch.Message, batch.SenderName,

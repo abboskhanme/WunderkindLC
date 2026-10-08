@@ -25,8 +25,18 @@ public class JwtTokenService(JwtOptions options)
 {
     private readonly JwtOptions _o = options;
 
-    /// <summary>Foydalanuvchi uchun token.</summary>
-    public string CreateToken(AppUser user)
+    /// <summary>
+    /// SESSIYA claim'i — access token qaysi refresh token NASLIGA (<c>RefreshToken.FamilyId</c>)
+    /// tegishli. Foydalanuvchi O'Z parolini almashtirganda shu sessiya tirik qoladi, qolgan
+    /// qurilmalardagi sessiyalar esa bekor qilinadi (<c>RefreshTokenService.RevokeAllForUserAsync</c>).
+    /// Mobil ilova refresh tokenni cookie'da emas, body'da saqlaydi — ya'ni "hozirgi sessiya"ni
+    /// faqat shu claim orqali bilish mumkin.
+    /// </summary>
+    public const string SessionClaimType = "sfam";
+
+    /// <summary>Foydalanuvchi uchun token. <paramref name="sessionFamilyId"/> — refresh token nasli
+    /// (<see cref="SessionClaimType"/>); berilmasa claim yozilmaydi.</summary>
+    public string CreateToken(AppUser user, Guid? sessionFamilyId = null)
     {
         var claims = new List<Claim>
         {
@@ -36,6 +46,7 @@ public class JwtTokenService(JwtOptions options)
             new(ClaimTypes.Email, user.Email),
             new(ClaimTypes.Role, user.Role),
         };
+        if (sessionFamilyId is { } family) claims.Add(new Claim(SessionClaimType, family.ToString()));
         // Access token QISQA (AccessMinutes, standart 60 daq) — refresh oqimi bilan uzaytiriladi.
         return Write(claims, TimeSpan.FromMinutes(_o.AccessMinutes));
     }

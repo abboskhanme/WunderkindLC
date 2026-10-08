@@ -189,8 +189,11 @@ public static class TeacherHomeService
             .Where(sg => groupIds.Contains(sg.GroupId) && sg.IsActive)
             .ToListAsync();
         var studentIds = memberships.Select(m => m.StudentId).Distinct().ToList();
+        // ⚠️ ARXIVDAGI o'quvchi KO'RINMAYDI — eski (2026-10 gacha) arxivlashlar a'zolikni yopmagan,
+        // ya'ni `IsActive` qator qolgan bo'lishi mumkin. Busiz arxivdagi bola o'qituvchining
+        // ro'yxati/sanoqlarida turib qolardi (arxiv = o'quvchi ketgan).
         var students = await db.Students.AsNoTracking()
-            .Where(s => studentIds.Contains(s.Id))
+            .Where(s => studentIds.Contains(s.Id) && !s.IsArchived)
             .ToDictionaryAsync(s => s.Id);
 
         var policy = await JournalPolicy.GetAsync(db);
@@ -385,9 +388,14 @@ public static class TeacherHomeService
     {
         if (ownedGroupIds.Count == 0) return new TeacherDebtSummaryDto(0, 0m);
         var ids = ownedGroupIds.ToList();
-        var memberships = await db.StudentGroups.AsNoTracking()
-            .Where(sg => ids.Contains(sg.GroupId) && sg.IsActive && sg.Status != "trial")
-            .Select(sg => new { sg.GroupId, sg.StudentId })
+        // Arxivdagi o'quvchi qarzdor sifatida SANALMAYDI (eski arxivlashlarda tirik a'zolik qolgan —
+        // `VisibleMembersAsync` dagi izoh); o'qituvchi uni "yopishi" kerak bo'lgan qarz emas.
+        var memberships = await (
+                from sg in db.StudentGroups.AsNoTracking()
+                where ids.Contains(sg.GroupId) && sg.IsActive && sg.Status != "trial"
+                join st in db.Students.AsNoTracking() on sg.StudentId equals st.Id
+                where !st.IsArchived
+                select new { sg.GroupId, sg.StudentId })
             .ToListAsync();
         var debtors = new HashSet<string>(StringComparer.Ordinal);
         var total = 0m;

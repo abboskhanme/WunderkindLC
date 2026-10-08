@@ -27,6 +27,24 @@ export interface Camera {
    * ⚠️ Klientda qayta hisoblamang: qoida serverda (`CameraRules.ArchiveSource`).
    */
   archiveSource: 'nvr' | 'local' | 'none'
+  /**
+   * Faqat saqlash (create/update) javobida: media-shlyuz kamerani qabul qilmagan bo'lsa — SABAB.
+   * Kamera bazada saqlangan, tizim uni 10 daqiqada avtomatik qayta yuboradi.
+   */
+  warning?: string | null
+}
+
+/** «Kamera kuzatuvini yoqish» holati (Sozlamalar → Kamera integratsiya). */
+export interface CameraStatus {
+  enabled: boolean
+  /** O'chiq bo'lsa — nima qilish kerakligi. */
+  message: string
+}
+
+/** Kuzatuv yoqilganmi — o'chiq bo'lsa jonli ko'rish va arxiv server tomonida yopiq. */
+export async function getCameraStatus(): Promise<CameraStatus> {
+  const { data } = await api.get<CameraStatus>('/admin/cameras/status')
+  return data
 }
 
 export interface SaveCameraPayload {

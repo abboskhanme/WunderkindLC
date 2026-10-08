@@ -1191,6 +1191,9 @@ export interface JournalEntry {
   /** ANIQ "keldi (bor)" belgisi — "Keldi" tugmasi yoki "hammasi keldi" bosilganda.
    *  presentDefaultFrom cheklovidan qat'i nazar katak yashil ✓ ko'rsatiladi. */
   present?: boolean
+  /** Baho baholash MEZONLARIDAN avtomatik yozilgan (checklar soni). Ball hisobida qayta qo'shilmaydi —
+   *  o'sha checklar mezonlar qismida allaqachon sanaladi (`lib/studentBall.ts`, server bilan bir xil). */
+  gradeFromCriteria?: boolean
 }
 
 /** Dars ma'lumoti (sana + dars raqami bo'yicha): mavzu, uyga vazifa, o'tildi */
@@ -1294,6 +1297,11 @@ export interface FinanceTransaction {
   /** KARTA raqamining oxirgi 4 raqami (karta to'lovida kiritiladi) — jadvalda "•••• 1234".
    *  Faqat oxirgi 4 raqam saqlanadi (to'liq karta raqami hech qachon saqlanmaydi). */
   cardLast4?: string | null
+  /** Markaz katalogidagi TUR id'si — tahrir formasi uni QAYTARIB yuboradi (tur jimgina almashmasin). */
+  typeId?: string | null
+  /** BO'LINGAN to'lov (guruh almashtirishda ortiqcha qism yangi guruhga ko'chgan) — oila ildizi (asl to'lov id'si).
+   *  Bekor qilish butun oilani birga bekor qiladi. */
+  splitFromId?: string | null
 }
 
 /** Vozvrat (pul qaytarish) yozuvi — "Vozvratlar tarixi" uchun, asl to'lov ma'lumoti bilan. */
@@ -1333,6 +1341,10 @@ export interface FinanceSummary {
   /** O'quvchilar jami avansi (musbat balanslar yig'indisi) */
   studentAdvance: number
   transactionsCount: number
+  /** `studentDebt` ning ARXIVDAGI o'quvchilarga tegishli qismi (bosh sahifa arxivdagilarni sanamaydi). */
+  studentDebtArchived?: number
+  /** `studentAdvance` ning arxivdagi o'quvchilarga tegishli qismi. */
+  studentAdvanceArchived?: number
 }
 
 export interface FinanceMonthly {

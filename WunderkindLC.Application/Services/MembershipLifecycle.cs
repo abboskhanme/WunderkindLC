@@ -60,6 +60,20 @@ public static class MembershipLifecycle
     public static System.Linq.Expressions.Expression<Func<Domain.StudentGroup, bool>> OccupiesSeatExpr { get; } =
         sg => sg.IsActive && sg.Status != "frozen";
 
+    /// <summary>
+    /// O'RIN BAND QILGAN a'zoliklar — <see cref="OccupiesSeatExpr"/> + o'quvchi ARXIVDA EMAS.
+    /// <para>⚠️ ARXIVDAGI o'quvchi o'rin egallamaydi: eski ma'lumotda arxivlangan o'quvchining
+    /// a'zoligi tirik qolgan bo'lishi mumkin (ilgari arxivlash a'zolikka tegmasdi) — u darsga
+    /// kelmaydi, lekin guruhni "to'lgan" qilib, yangi o'quvchini qo'shishga to'sqinlik qilardi.
+    /// Sig'im/to'ldirish hisoblari (<c>ClassesController.AddMember/TransferMember/Fill</c>) shu
+    /// yerdan sanaydi. <c>StudentGroup</c> da navigatsiya yo'q, shuning uchun o'quvchilar to'plami
+    /// alohida uzatiladi (SQL'da <c>EXISTS</c> bo'lib tarjima qilinadi).</para>
+    /// </summary>
+    public static IQueryable<Domain.StudentGroup> SeatHolders(
+        IQueryable<Domain.StudentGroup> memberships, IQueryable<Domain.Student> students) =>
+        memberships.Where(OccupiesSeatExpr)
+            .Where(sg => students.Any(s => s.Id == sg.StudentId && !s.IsArchived));
+
     // ==================== O'QUVCHI DARAJASIDAGI HOLAT (JAMLAMA) ====================
 
     /// <summary>

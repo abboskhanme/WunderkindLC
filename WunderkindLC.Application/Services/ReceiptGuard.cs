@@ -24,8 +24,14 @@ public static class ReceiptGuard
     {
         if (string.IsNullOrWhiteSpace(receiptNo)) return null;
 
+        // Tahrirda yozuvning O'ZI va uning BO'LINGAN oilasi (guruh almashtirishda ajralgan qator — u ham
+        // o'sha qog'oz kvitansiyani ko'taradi, `PaymentSplits`) dublikat hisoblanmaydi.
+        var familyRoot = excludeTxId is null ? null
+            : await db.FinanceTransactions.AsNoTracking().Where(t => t.Id == excludeTxId)
+                .Select(t => t.SplitFromId ?? t.Id).FirstOrDefaultAsync() ?? excludeTxId;
         var tx = await db.FinanceTransactions.AsNoTracking()
-            .Where(t => t.ReceiptNo == receiptNo && (excludeTxId == null || t.Id != excludeTxId))
+            .Where(t => t.ReceiptNo == receiptNo
+                        && (familyRoot == null || (t.Id != excludeTxId && t.Id != familyRoot && t.SplitFromId != familyRoot)))
             .OrderBy(t => t.CreatedAt)
             .FirstOrDefaultAsync();
         if (tx is null) return null;

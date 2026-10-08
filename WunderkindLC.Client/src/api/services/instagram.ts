@@ -107,6 +107,12 @@ export interface IgSettings {
    * QAYTA ulangan bo'lishi va media ochiq HTTPS manzilda turishi kerak.
    */
   instagramPublishEnabled: boolean
+  /**
+   * FAQAT JAVOBDA: sozlama saqlandi, lekin Meta tomonidagi qadam (agent o'chirilganda webhook
+   * obunasini bekor qilish / FAQ tugmalarini olib tashlash, yoqilganda obunani tiklash)
+   * bajarilmadi. Bo'sh bo'lmasa ko'rsatilishi SHART.
+   */
+  warning?: string | null
 }
 
 /**
@@ -239,6 +245,12 @@ export interface IgLeadBrief {
   phone: string
   stage: string
   source: string
+  /**
+   * Lid o'quvchiga AYLANTIRILGAN. Inbox «Lidga aylantirish» tugmasini QAYTARADI: aylantirilgan lid
+   * qayta ishlatilmaydi — qaytgan o'quvchining yangi murojaati YANGI lid bo'ladi (CRM-1).
+   * Eski server javobida yo'q bo'lishi mumkin — `undefined` = aylantirilmagan.
+   */
+  converted?: boolean
 }
 
 /** Bitta suhbat + xabarlar lentasi (oxirgi 200 ta). */
@@ -246,9 +258,24 @@ export interface IgConversationDetail {
   conversation: IgConversation
   messages: IgMessage[]
   lead?: IgLeadBrief | null
-  /** DM 24 soat oynasi hozir ochiqmi (yopiq bo'lsa operator javob yubora olmaydi). */
+  /** DM 24 soat oynasi hozir ochiqmi. */
   dmWindowOpen: boolean
+  /**
+   * Operator 24 soatdan keyin ham 7 kun ichida `HUMAN_AGENT` tegi bilan DM yoza oladimi.
+   * ⚠️ `dmWindowOpen=false` bo'lsa ham `true` bo'lishi mumkin — banner "yopildi" deb yolg'on
+   * gapirmasin (server shu oynada javobni teg bilan yuboradi).
+   */
+  humanAgentWindowOpen: boolean
+  /** Suhbatdagi eng oxirgi KIRUVCHI izoh id'si (bo'sh — izoh yo'q, izohga javob rejimi yo'q). */
+  latestCommentId: string
+  /** O'sha izohga yopiq javob (private reply) hali mumkinmi (7 kun ichida, bir marta). */
+  privateReplyAvailable: boolean
+  /** Yopiq javob nega mumkin emas (bo'sh — mumkin yoki izoh yo'q). */
+  privateReplyBlockedReason: string
 }
+
+/** Operator javobi turi: DM · izohga ochiq javob · izohga yopiq javob. */
+export type IgReplyMode = 'dm' | 'comment' | 'private_reply'
 
 /** Suhbatlar ro'yxati + umumiy soni (sahifalash uchun). */
 export interface IgConversationList {
@@ -496,9 +523,14 @@ export async function connectIgWithToken(accessToken: string): Promise<IgStatus>
   return data
 }
 
-/** Akkauntni uzish — token tozalanadi, jonli javob to'xtaydi. */
-export async function disconnectIg(): Promise<void> {
-  await api.post('/admin/instagram/disconnect')
+/**
+ * Akkauntni uzish — token tozalanadi, jonli javob to'xtaydi; webhook obunasi va FAQ tugmalari
+ * Meta'dan ham olib tashlanadi. `warning` bo'sh bo'lmasa Meta tomonidagi qadam bajarilmagan —
+ * chaqiruvchi uni KO'RSATISHI shart (uzish baribir bajarilgan).
+ */
+export async function disconnectIg(): Promise<{ message: string; warning: string }> {
+  const { data } = await api.post<{ message: string; warning?: string }>('/admin/instagram/disconnect')
+  return { message: data?.message ?? '', warning: data?.warning ?? '' }
 }
 
 /** Uzoq muddatli tokenni qo'lda yangilash. */
@@ -524,11 +556,18 @@ export async function getIgConversation(id: string): Promise<IgConversationDetai
 }
 
 /**
- * Operator javobi (DM). 24 soat oynasi yopiq bo'lsa server **400** qaytaradi —
+ * Operator javobi. `mode`: `dm` (standart) · `comment` (izohga OCHIQ javob, post ostida) ·
+ * `private_reply` (izoh muallifiga yopiq javob — 7 kun ichida, bir marta). Izoh rejimida
+ * `commentId` berilmasa suhbatdagi eng oxirgi izohga javob yoziladi.
+ * DM oynasi (7 kun) yopiq bo'lsa yoki yopiq javob mumkin bo'lmasa server **400** qaytaradi —
  * chaqiruvchi xato matnini foydalanuvchiga ko'rsatishi shart.
  */
-export async function replyIgConversation(id: string, text: string): Promise<IgMessage> {
-  const { data } = await api.post<IgMessage>(`/admin/instagram/conversations/${id}/reply`, { text })
+export async function replyIgConversation(
+  id: string, text: string, mode: IgReplyMode = 'dm', commentId?: string,
+): Promise<IgMessage> {
+  const { data } = await api.post<IgMessage>(`/admin/instagram/conversations/${id}/reply`, {
+    text, mode, commentId: commentId || undefined,
+  })
   return data
 }
 
@@ -546,6 +585,12 @@ export async function releaseIgConversation(id: string): Promise<IgConversation>
 
 export async function closeIgConversation(id: string): Promise<IgConversation> {
   const { data } = await api.post<IgConversation>(`/admin/instagram/conversations/${id}/close`)
+  return data
+}
+
+/** Yopilgan suhbatni qayta ochish (botga qaytadi). ⚠️ Mijoz yangi xabar yozsa server buni O'ZI qiladi. */
+export async function reopenIgConversation(id: string): Promise<IgConversation> {
+  const { data } = await api.post<IgConversation>(`/admin/instagram/conversations/${id}/reopen`)
   return data
 }
 

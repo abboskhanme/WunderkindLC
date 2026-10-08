@@ -7,6 +7,7 @@ import { FilterInput } from '@/components/ui/list/FilterGrid'
 import { useAsync } from '@/hooks/useAsync'
 import { financeCategoryLabel } from '@/config/constants'
 import { formatMoney, cn } from '@/lib/utils'
+import { localIsoDate } from '@/lib/localDate'
 
 /** Diagramma ranglari — edutizimdagidek yorqin, ketma-ket takrorlanadi. */
 const COLORS = ['#00D66F', '#3D68FF', '#FBC400', '#DE4141', '#9747FF', '#019EF7', '#1D1D1D', '#BDBDBD']
@@ -18,7 +19,7 @@ function monthStart(): string {
 }
 
 function today(): string {
-  return new Date().toISOString().slice(0, 10)
+  return localIsoDate(new Date()) // MAHALLIY (UTC+5), toISOString emas
 }
 
 /**

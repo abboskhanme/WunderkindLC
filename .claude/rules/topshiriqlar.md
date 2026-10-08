@@ -65,6 +65,18 @@ yopiluvchi ustundan chiqdi →  CompletedAt = null  ("qayta ochildi")
 Panel ham, Telegram bot ham shundan foydalanadi; nusxa ko'chirilsa botda yopilgan takroriy
 topshiriq keyingi nusxasini tug'dirmasdan qolib ketardi.
 
+⚠️ **Nusxa tug'ilishi IDEMPOTENT** (2026-10): zanjirda (ildiz yoki `RepeatOfId` bir xil nusxalar)
+shu KEYINGI muddatli topshiriq allaqachon bo'lsa — yangisi tug'ilmaydi. Ilgari "yopish → qayta ochish →
+yopish", "✅ Bajardim" ni ikki marta bosish va ikkinchi yopiluvchi ustun har safar YANA bitta nusxa
+tug'dirardi. Poyga uchun panelning `Move`/`Update` i va botning "Bajardim" i topshiriqni BIR qulf
+(`PaymentIdempotency.LockAsync(WorkTaskFlow.LockKey(id))`) ostida o'qiydi va saqlaydi.
+
+⚠️ **Ustunning `IsDone` bayrog'i almashsa yoki ustun o'chirilsa** ichidagi topshiriqlarning
+`CompletedAt` i `WorkTaskFlow.SyncCompletionAsync` bilan moslanadi (yopiluvchi bo'ldi → yopiladi +
+takroriysi tug'iladi; yopiluvchi emas → qayta ochiladi). Ilgari `CompletedAt` o'zgarmay qolib,
+statistika va bot ustun bilan ziddiyatga tushardi. Yopiluvchi ustunni o'chirishda ham "kamida bitta
+yopiluvchi ustun qolsin" qoidasi tekshiriladi.
+
 Har o'zgarish `WorkTaskEvent` ga yoziladi ("kim, qachon, nimani") — nazorat bo'limining dalili.
 
 ## 4. Telegram oqimi
@@ -77,10 +89,16 @@ Har o'zgarish `WorkTaskEvent` ga yoziladi ("kim, qachon, nimani") — nazorat bo
 
 - Matn/tugmalar — `WorkTaskTelegram` da (YAGONA joy — tugmalar ikki joyda ayrilib ketmasin).
 - Callback: **`wtdone:{taskId}`**. Faqat topshiriq **MAS'ULI** o'z chatidan belgilay oladi.
+  "Allaqachon bajarilgan" — topshiriq HAR QANDAY yopiluvchi ustunda tursa (ilgari faqat birinchisi
+  tekshirilardi).
 - Eslatma idempotent: `WorkTask.ReminderSentDate` — bir kunda bir marta. Bog'lanmagan xodim uchun
   ham belgilab qo'yiladi (aks holda u botga ulangan kuni bir yillik "qarz" yog'ilardi).
 - Vaqt sozlamasi: `CenterMeta.WorkTaskReminderEnabled/Hour/Minute` (default 09:30) — UI'da
-  "Doska sozlamalari" oynasida.
+  "Doska sozlamalari" oynasida. Saqlash **auditga yoziladi** (`CenterMeta` → "Sozlamalar" bo'limi,
+  `SettingsController.LogSettings` naqshi — qaysi maydon o'zgargani bilan).
+- ⚠️ **ARXIVLANGAN DOSKA** topshiriqlari eslatmaga TUSHMAYDI (tanlov — `WorkTaskFlow.DueForReminderAsync`)
+  va nazorat paneli / mas'ullar ro'yxatidagi "ochiq/kechikkan" sanoqlarga kirmaydi (doska tanlanmagan
+  ko'rinishda). Ilgari doska arxivlansa ham har kuni eslatma ketaverardi.
 
 ## 5. Ruxsatlar
 

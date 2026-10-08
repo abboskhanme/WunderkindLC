@@ -399,7 +399,6 @@ export function StudentAbsencePage() {
         open={!!callStudent}
         onClose={() => setCallStudent(null)}
         title={callStudent?.fullName}
-        studentId={callStudent?.studentId}
         numbers={
           callStudent
             ? dedupeCallOptions([

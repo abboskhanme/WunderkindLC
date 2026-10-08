@@ -25,7 +25,13 @@ public class TuitionAccrualService(IServiceProvider services, ILogger<TuitionAcc
                 }
                 using var scope = services.CreateScope();
                 var db = scope.ServiceProvider.GetRequiredService<IAppDbContext>();
-                var (accrued, created) = await TuitionService.AccrueDue(db);
+                // KESH bump'lari TO'PLANADI (`DataCache.BeginBatch`): accrual har o'quvchini ALOHIDA saqlaydi,
+                // ya'ni usiz har o'quvchida MonthlyCharge/Student'ga bog'liq og'ir keshlar (bosh sahifa,
+                // moliya, reyting) qayta-qayta eskirardi. Bump blok oxirida BIR marta bo'ladi.
+                List<string> accrued;
+                List<(string StudentId, string Month, decimal Amount)> created;
+                using (scope.ServiceProvider.GetService<DataCache>()?.BeginBatch())
+                    (accrued, created) = await TuitionService.AccrueDue(db, logger);
                 if (accrued.Count > 0)
                     logger.LogInformation("Oylik to'lov hisoblandi: {Months}", string.Join(", ", accrued));
                 // Avto xabar — har YANGI hisob uchun ota-onaga ("Oylik hisob yaratilganda" hodisasi).

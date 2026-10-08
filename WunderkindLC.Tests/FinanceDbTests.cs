@@ -328,10 +328,13 @@ public class FinanceDbTests
     [Fact]
     public async Task EnsureCharge_kelajak_oy_hisobini_ochadi_va_IDEMPOTENT()
     {
+        // Hisob faqat FAOL a'zolikning accrual yozadigan oyiga ochiladi (2026-10-07, FIN-5) — shuning
+        // uchun o'quvchi guruhda aktiv (ilgari a'zoliksiz o'quvchiga ham guruh hisobi ochilardi).
         using var db = TestDb.Sqlite();
         var ctx = db.Context;
         var g = AddGroup(ctx, 600_000m);
         var s = AddStudent(ctx);
+        AddMembership(ctx, s, g, activatedAt: $"{M(-2)}-01");
         await ctx.SaveChangesAsync();
 
         Assert.True(await TuitionService.EnsureChargeAsync(ctx, s, g.Id, M(2)));
@@ -359,18 +362,17 @@ public class FinanceDbTests
         Assert.Equal(0m, s.Balance);
     }
 
-    [Fact(Skip = "XATO (TuitionService.EnsureChargeAsync:529-531 va PaymentIntake.cs:43-45): oy formati tekshirilmaydi")]
+    [Fact]
     public async Task EnsureCharge_toliq_sana_berilsa_ayni_oy_ikki_marta_hisoblanmasligi_kerak()
     {
-        // XATO: tekshiruv faqat `month.Length < 7`. Klient/kassir "2026-08-15" (to'liq sana) yuborsa
-        // u OY sifatida qabul qilinadi va "2026-08" dan BOSHQA kalit bo'lib qoladi → bir oy uchun
-        // IKKITA hisob qatori ochiladi va o'quvchi ikki marta qarzdor bo'ladi.
-        // KUTILGAN: format "yyyy-MM" ga keltiriladi (yoki rad etiladi) — ikkinchi chaqiriq yangi
-        // qator ochmaydi.
+        // TUZATILDI (2026-10-07): tekshiruv faqat `month.Length < 7` edi — "2026-08-15" (to'liq sana)
+        // OY sifatida qabul qilinib "2026-08" dan BOSHQA kalit bo'lardi va bir oyga IKKITA hisob ochilardi.
+        // Endi oy AYNAN "yyyy-MM" bo'lishi shart (`PaymentFields.IsMonth`) — boshqa ko'rinish rad etiladi.
         using var db = TestDb.Sqlite();
         var ctx = db.Context;
         var g = AddGroup(ctx, 600_000m);
         var s = AddStudent(ctx);
+        AddMembership(ctx, s, g, activatedAt: $"{M(-2)}-01");
         await ctx.SaveChangesAsync();
 
         Assert.True(await TuitionService.EnsureChargeAsync(ctx, s, g.Id, M(0)));
@@ -910,12 +912,12 @@ public class FinanceDbTests
         Assert.Equal("2026-08-01", tx.Date);
     }
 
-    [Fact(Skip = "XATO (SalaryLedger.cs:228): expected==0 va paid>0 bo'lganda holat 'unpaid'")]
+    [Fact]
     public async Task SalaryLedger_hisoblanmagan_oyga_tolov_qilinsa_holat_unpaid_bolmasligi_kerak()
     {
-        // XATO: `status = remaining <= 0 ? (expected <= 0 ? "unpaid" : "paid") : ...` — o'qituvchiga
-        // hisoblanmagan (expected = 0) oy uchun avans/qo'shimcha to'lov berilsa, holat "unpaid"
-        // (to'lanmagan) bo'lib chiqadi, garchi PUL berilgan bo'lsa ham.
+        // TUZATILDI (audit T4): `status = remaining <= 0 ? (expected <= 0 ? "unpaid" : "paid") : ...` —
+        // o'qituvchiga hisoblanmagan (expected = 0) oy uchun avans/qo'shimcha to'lov berilsa, holat
+        // "unpaid" (to'lanmagan) bo'lib chiqardi, garchi PUL berilgan bo'lsa ham.
         // KUTILGAN: to'lov bor va qarz yo'q → "paid".
         using var db = TestDb.Sqlite();
         var ctx = db.Context;

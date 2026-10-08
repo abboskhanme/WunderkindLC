@@ -41,7 +41,11 @@ const CONTACT_TABS = ['navbat', 'hisobot'] as const
 
 type GroupBy = 'due' | 'status'
 
-/** Serverning bir so'rovdagi chegarasi (`ContactsController`: `Math.Clamp(limit, 1, 500)`). */
+/**
+ * Serverning YOPILGAN talablar chegarasi (`ContactsController`: `Math.Clamp(limit, 1, 500)`).
+ * ⚠️ Ochiq talablar chegarasiz HAMMASI keladi — "Bosqich" rejimida eski ochiq talab yopilganlar
+ * ortidan taxtadan tushib qolmasin (ilgari bitta umumiy 500 chegara shunday qilardi).
+ */
 const MAX_ROWS = 500
 
 /** Ustunlarni toraytiradigan "fokus" tugmalari — sahifadagi eng katta raqamlar. */
@@ -205,6 +209,11 @@ export function ContactQueuePage() {
     [meta.counts],
   )
   const openCount = useMemo(() => countOf('new') + countOf('callback'), [countOf])
+  /** Kelgan YOPILGAN talablar soni — server faqat shularni `MAX_ROWS` bilan qirqadi. */
+  const closedCount = useMemo(
+    () => items.filter((r) => r.status !== 'new' && r.status !== 'callback').length,
+    [items],
+  )
 
   /** "Yuborgan" ro'yxati — kelgan ma'lumotdan (alohida so'rov kerak emas). */
   const authors = useMemo(
@@ -365,17 +374,27 @@ export function ContactQueuePage() {
     }
   }
 
-  const moveStageColumn = (col: BoardColumn, dir: -1 | 1) => {
-    setStages((prev) => {
-      const idx = prev.findIndex((s) => s.id === col.key)
-      const j = idx + dir
-      if (idx < 0 || j < 0 || j >= prev.length) return prev
-      const next = [...prev]
-      ;[next[idx], next[j]] = [next[j], next[idx]]
-      reorderContactStages(next.map((s) => s.id)).catch((e) =>
-        setError(apiErrorMessage(e, "Tartibni saqlab bo'lmadi")))
-      return next
-    })
+  /**
+   * Ustunni chapga/o'ngga surish — optimistik, lekin XATODA ORQAGA QAYTADI.
+   *
+   * ⚠️ So'rov `setStages` updater'i ICHIDA emas (StrictMode updater'ni ikki marta bajaradi —
+   * so'rov ham ikki marta ketardi) va xato bo'lsa eski tartib tiklanadi: aks holda ekranda yangi
+   * tartib, bazada eskisi qolardi (`.claude/rules/error-visibility.md` §3).
+   */
+  const moveStageColumn = async (col: BoardColumn, dir: -1 | 1) => {
+    const prev = stages
+    const idx = prev.findIndex((s) => s.id === col.key)
+    const j = idx + dir
+    if (idx < 0 || j < 0 || j >= prev.length) return
+    const next = [...prev]
+    ;[next[idx], next[j]] = [next[j], next[idx]]
+    setStages(next)
+    try {
+      await reorderContactStages(next.map((s) => s.id))
+    } catch (e) {
+      setStages(prev)
+      alert(apiErrorMessage(e, "Tartibni saqlab bo'lmadi"))
+    }
   }
 
   const openDetail = async (r: ContactRequestItem) => {
@@ -661,15 +680,15 @@ export function ContactQueuePage() {
                   setStageFormOpen(true)
                 },
                 onDelete: (col) => void removeStage(col),
-                onMove: moveStageColumn,
+                onMove: (col, dir) => void moveStageColumn(col, dir),
               } : undefined}
             />
           )}
 
-          {/* Chegaraga yetildi — jimgina qirqib qo'ymaymiz */}
-          {!loading && items.length >= MAX_ROWS && (
+          {/* Chegaraga yetildi — jimgina qirqib qo'ymaymiz (faqat YOPILGANLAR qirqiladi) */}
+          {!loading && closedCount >= MAX_ROWS && (
             <p className="text-center text-xs text-slate-400">
-              Eng so'nggi {MAX_ROWS} ta talab ko'rsatildi — qolganini ko'rish uchun filtrdan foydalaning.
+              Yopilgan talablardan eng so'nggi {MAX_ROWS} tasi ko'rsatildi — ochiq talablar hammasi ko'rinadi.
             </p>
           )}
 

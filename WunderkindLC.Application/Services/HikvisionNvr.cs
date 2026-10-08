@@ -64,6 +64,25 @@ public static class HikvisionNvr
     }
 
     /// <summary>
+    /// ERKIN MATNdagi (masalan ffmpeg stderr) BARCHA manzillarning login/parolini tozalaydi.
+    /// </summary>
+    /// <remarks>
+    /// ⚠️ <see cref="Redact"/> faqat BITTA manzilni (matn boshidagi) tozalaydi, ffmpeg esa xato
+    /// matnida manzilni istalgan joyda va bir necha marta yozadi
+    /// (<c>[rtsp @ 0x..] ... rtsp://admin:parol@10.0.0.5:554/...: Connection refused</c>).
+    /// Tozalanmasa parol log fayliga va foydalanuvchi ekraniga chiqib ketardi.
+    /// </remarks>
+    public static string RedactText(string? text)
+    {
+        if (string.IsNullOrEmpty(text)) return text ?? "";
+        return CredentialInUrl.Replace(text, "${scheme}://***:***@");
+    }
+
+    private static readonly System.Text.RegularExpressions.Regex CredentialInUrl =
+        new(@"(?<scheme>[a-zA-Z][a-zA-Z0-9+.\-]*)://[^\s/@]+@",
+            System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    /// <summary>
     /// ISAPI qidiruv so'rovi (CMSearchDescription) — "shu kanalda shu oraliqda yozuv bormi".
     /// </summary>
     /// <param name="searchId">Har so'rovda YANGI GUID. Hikvision bir xil id bilan kelgan
@@ -131,6 +150,45 @@ public static class HikvisionNvr
         parent?.Descendants().FirstOrDefault(e => e.Name.LocalName == name)?.Value;
 
     /// <summary>
+    /// ffmpeg xato matnidan (stderr) foydalanuvchiga ko'rsatiladigan SABAB yasaydi.
+    /// </summary>
+    /// <remarks>
+    /// ⚠️ Sabab OCHIQ aytilishi shart (<c>cameras.md</c> §8): ilgari xato faqat logga tushar,
+    /// foydalanuvchi esa bo'sh (0 bayt) MP4 olib "video ochilmayapti" deb o'ylardi. Matn
+    /// <see cref="RedactText"/> dan o'tadi — ichida <c>login:parol@</c> qolmaydi.
+    /// </remarks>
+    public static string ClipFailureReason(string? stderr, int? exitCode)
+    {
+        var safe = RedactText(stderr).Trim();
+        var lower = safe.ToLowerInvariant();
+        // ⚠️ Birinchi: "Unrecognized option 'stimeout'" ichida "timeout", "Option not found" ichida
+        // "not found" so'zlari bor — tartib boshqacha bo'lsa noto'g'ri sabab chiqardi.
+        if (lower.Contains("unrecognized option") || lower.Contains("option not found"))
+            return "ffmpeg versiyasi mos emas (server obrazini tekshiring): " + FirstLine(safe);
+        // Faqat MATN bo'yicha: "401"/"404" raqamlari manzildagi kanal id'sida ham uchraydi ("tracks/401").
+        if (lower.Contains("unauthorized"))
+            return "NVR login/parolni qabul qilmadi (.env dagi NVR_USERNAME / NVR_PASSWORD ni tekshiring).";
+        if (lower.Contains("not found"))
+            return "NVR bu kanal yoki vaqt uchun yozuv bermadi (kanal raqami va vaqtni tekshiring — "
+                 + "«Yozuvni tekshirish» bilan aniqlang).";
+        if (lower.Contains("connection refused") || lower.Contains("no route") || lower.Contains("timed out")
+            || lower.Contains("timeout") || lower.Contains("network is unreachable"))
+            return "NVR'ga ulanib bo'lmadi (manzil yoki RTSP porti serverdan ko'rinmayapti).";
+        if (safe.Length == 0)
+            return exitCode is { } c
+                ? $"NVR'dan video olinmadi (ffmpeg {c} kod bilan to'xtadi, xabar yo'q)."
+                : "NVR'dan video olinmadi.";
+        return "NVR'dan video olinmadi: " + FirstLine(safe);
+    }
+
+    private static string FirstLine(string s)
+    {
+        var line = s.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .LastOrDefault() ?? s;      // ffmpeg eng aniq sababni OXIRGI qatorda yozadi
+        return line.Length > 300 ? line[..300] : line;
+    }
+
+    /// <summary>
     /// ffmpeg argumentlari: RTSP arxiv oqimini <b>qayta kodlamasdan</b> (remux) MP4 ga o'girish.
     /// </summary>
     /// <remarks>
@@ -142,12 +200,16 @@ public static class HikvisionNvr
     /// klipni diskka yig'ish kerak bo'lardi.</para>
     /// <para>⚠️ <c>-rtsp_transport tcp</c> — UDP da uzoq masofada paketlar yo'qolib, video
     /// "to'kilib" chiqardi.</para>
+    /// <para>⚠️ <c>-timeout</c> (mikrosoniya), <c>-stimeout</c> EMAS: <c>-stimeout</c> ffmpeg 5.0 da
+    /// OLIB TASHLANGAN, obrazda esa Debian 12 ning ffmpeg 5.1 i turibdi — eski variant bilan
+    /// ffmpeg "Unrecognized option" deb DARHOL chiqib ketardi va har klip bo'sh qaytardi.
+    /// 5.x da RTSP uchun <c>-timeout</c> aynan soket o'qish/ulanish kutish vaqti.</para>
     /// </remarks>
     public static string[] FfmpegArgs(string url, int durationSec) =>
     [
         "-hide_banner", "-loglevel", "error",
         "-rtsp_transport", "tcp",
-        "-stimeout", "15000000",          // ulanish/o'qish kutish vaqti (mikrosoniya) = 15 s
+        "-timeout", "15000000",           // ulanish/o'qish kutish vaqti (mikrosoniya) = 15 s
         "-i", url,
         "-t", durationSec.ToString(),
         "-c", "copy",

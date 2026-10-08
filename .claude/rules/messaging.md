@@ -34,7 +34,19 @@ paths:
     xodim guruhga biriktirilmaydi, `ClassNamesForUserAsync` "staff" uchun bo'sh qaytaradi);
   • o'qituvchi/o'quvchi bu endpointga umuman kirmaydi — ular o'z portalidan A'ZOLIK tekshiruvi
     bilan kiradi (`ChatService.CanAccessAsync` — `TeacherPortalController`/o'quvchi portali).
+    ⚠️ O'qituvchining chat kanallari FAQAT `TeacherGroupAccess` dan (dars beradigan, ko'rinadigan
+    guruhlar). Eski `Teacher.HomeroomClass` (guruh rahbarligi nomi) 2026-10-07 dan kirish BERMAYDI: u
+    UI'da tahrirlanmaydi va almashtirishda tozalanmaydi — almashtirilgan o'qituvchi eski guruh chatini
+    o'qib-yozib yuraverardi (portal guruhlar ro'yxatidan xuddi shu yo'l avvalroq olib tashlangan).
   ⚠️ Yangi chat endpointi qo'shilsa — shu darvozani ham qo'shish SHART.
+- **GURUH CHATI NOM BILAN BOG'LANGAN → GURUH NOMI NOYOB (2026-10-07, `GroupNames`).** Chat kaliti
+  `ChatMessage.ClassName` = guruh NOMI. Shuning uchun nom BARCHA guruhlar (arxivdagilar ham) orasida
+  bo'shliqsiz va registrsiz takrorlanmaydi — yaratish, qayta nomlash va «Tugatish»dagi yangi guruh 400
+  "Bu nomli guruh allaqachon bor" oladi (aks holda yangi guruh eski guruhning yozishmasini meros olardi).
+  QAYTA NOMLASHDA chat xabarlari, `Student.ClassName` yorlig'i va `Teacher.HomeroomClass` yangi nomga
+  ko'chiriladi (shu nomli boshqa — eski dublikat — guruh bo'lsa chat ko'chmaydi, yorliq faqat shu guruh
+  a'zolarida). Guruh O'CHIRILGANDA chati ham o'chadi. ⚠️ Bazada unikal indeks YO'Q (prod'da eski
+  dublikatlar bo'lishi mumkin) — tekshiruv faqat nom O'ZGARGANDA.
 
 - **PUSH VA O'QUVCHI ILOVASI — BITTA AKKAUNT, BITTA QURILMA.** O'quvchi ilovasidan O'QUVCHI ham,
   OTA-ONA ham foydalanadi (ota-ona uchun alohida ilova YO'Q). Shuning uchun:
@@ -51,6 +63,13 @@ paths:
     (ilgari xato "Ota-ona" deb yozilgan edi) — ALOHIDA ota-ona oluvchisi yo'q va kerak emas.
   ⚠️ Ilova tomonda FCM: `ilova/student/lib/services/push.dart` (o'qituvchi ilovasidagi bilan bir
   xil naqsh). Ilgari ilovada FCM kodi UMUMAN yo'q edi — token serverga bormas, push ishlamasdi.
+  • **«Push bildirishnoma» o'chirilgan bo'lsa push YUBORILMAYDI** (`UserSettings.NotificationsEnabled`,
+    ilova Sozlamalari). Filtr YUBORUVCHIDA emas, `FcmService.SendAsync` ning O'ZIDA (`MutedTokensAsync`):
+    yuboruvchilar ko'p (avto-xabar, to'lov eslatmasi, jurnal, e'lon, maxsus eslatma) — har birida
+    takrorlansa biri unutilardi (ilgari sozlama HECH QAYERDA o'qilmasdi). Ichki bildirishnoma tarixi
+    (qo'ng'iroqcha) va SMS/Telegram TEGILMAYDI. Sozlama qatori BILDIRISHNOMA IDENTIFIKATORIDA
+    (`NotificationUserIdAsync` — ota-ona uchun farzand akkaunti): `GET/PUT /api/student/settings`
+    ota-onaga ham ochiq va ikkalasi BITTA qatorni o'qiydi/yozadi (qurilma tokeni ham shu akkauntda).
 
 - **KALITLAR .env DA:** Telegram bot tokeni (`TELEGRAM_BOT_TOKEN`), FCM service account
   (`FCM_SERVICE_ACCOUNT_JSON`), Eskiz login/paroli (`ESKIZ_EMAIL`/`ESKIZ_PASSWORD`) — hammasi
@@ -67,6 +86,10 @@ paths:
   test_link, test_result, lesson_attendance, custom_schedule, **grade_entered** (baho qo'yilganda),
   **attendance_present** (2026-10-07: "Farzandingiz darsga keldi" — `DispatchNewlyPresentAsync`, har dars
   uchun BIR MARTA: saqlashdan OLDIN «keldi» bo'lganlarga qayta ketmaydi; qoida yoqilmasa hech narsa o'qilmaydi).
+  **`lead_new`** — FAQAT YANGI, telefonli lidga: qo'lda kiritish, ommaviy forma, landing, **Instagram va
+  Meta reklama lidlari** (2026-10-07 gacha oxirgi ikkisida umuman ketmasdi; `LeadIntake.DispatchLeadNewAsync`).
+  **`test_result`** — daraja testining IKKALA yo'lida ham (ommaviy havola + bir martalik taklif havolasi;
+  `LevelTestService.DispatchTestResultAsync`).
   `lesson_attendance` «lesson_start» rejimida `OffsetMinutes` MANFIY bo'lishi mumkin (−180..180): darsdan
   OLDIN eslatma (uchrashuv talabi: "darsdan 1–1,5 soat oldin davomat olishni unutmang"); UI'da
   «Qachon: darsdan oldin / dars boshlangach» + daqiqa.
@@ -86,7 +109,8 @@ paths:
   `MessageTokenizer.GroupTeacherNameAsync(db, group, student)` (bitta xabar) yoki
   `TeacherNamesByIdAsync` + `TeacherNameOf(group, names)` (ro'yxat — N+1 bo'lmasin) orqali beradi.
   Guruh KONTEKSTI ({guruh}/{oqituvchi}/{dars_*}) — hodisa guruhi: `DispatchStudentAsync(..., group:)`
-  ga student_added (guruhga qo'shish + yangi o'quvchi), grade_entered va attendance_absent
+  ga student_added (guruhga qo'shish + yangi o'quvchi + **lidni o'quvchiga aylantirish**, faqat
+  a'zolik haqiqatan yaratilganda), grade_entered va attendance_absent
   (`DispatchAttendanceAbsentAsync(..., group)`) ham guruhni UZATADI; berilmasa o'quvchining asosiy
   (ClassName) guruhi olinadi. `PaymentReminderService`/`CustomReminderService` ommaviy sikllarda
   guruh+o'qituvchi lug'ati BIR MARTA yuklanadi (ilgari bu ikkisida {dars_*} bo'sh chiqardi).
@@ -107,8 +131,34 @@ paths:
   TASHQARI: u yerda admin kimni tanlasa o'shanga ketadi). Muzlatilgan, lekin guruhi FAOL o'quvchi
   xabar olaveradi (ta'til). A'zoligi umuman yo'q (eski ClassName) o'quvchilar tegilmaydi.
   Hodisaga JAVOB bo'lgan xabarlar (masalan "to'lov qabul qilindi") filtrlanmaydi — yopilgan guruh
-  qarzini to'lagan ota-ona tasdiq oladi. O'qituvchiga dars eslatmasi allaqachon arxiv guruhlarni
-  hisobga olmasdi (`LessonAttendanceReminderService` — `!g.IsArchived`).
+  qarzini to'lagan ota-ona tasdiq oladi. O'qituvchiga dars eslatmasi (`LessonAttendanceReminderService`)
+  kunning HAQIQIY darslariga ketadi — `AttendanceWatch.LessonsOn` (ko'chirilgan dars yangi kunida va yangi
+  vaqtida, guruh umri, arxiv/BLOKLANGAN guruh yo'q) va shu kuni darsni O'TADIGAN odamga (o'rinbosar bo'lsa —
+  o'rinbosarga). "Yuborildi" belgisi BAZADA (`LessonReminderMark`, unikal kalit) — deploy/qayta yuklash
+  eslatmani takrorlamaydi (ilgari xotiradagi `HashSet` edi).
+- **DAVOMAT XABARLARI (`attendance_absent`) — qachon ketadi:** `.claude/rules/journal.md` §C8 — "kech" hech
+  qachon "kelmadi" emas, faqat "kelmadi emas → kelmadi" o'tishida, ommaviy davomatda faqat YANGI kelmaganlarga
+  va FONDA — BAZADAGI navbat orqali (`AttendanceNotifyItem` + `AttendanceNotifyWorker`, restartda yo'qolmaydi);
+  eski "Davomat" push'i faqat qoida umuman yo'q bo'lsa (bitta hodisa — bitta xabar).
+
+- **ARXIVDAGI O'QUVCHI (2026-10-07) — `AutoMessageTriggers.ReachesArchived`.** Arxiv = o'quvchi
+  markazdan KETDI. `DispatchStudentAsync` arxivdagi o'quvchiga FAQAT `payment_received` (to'lov
+  kvitansiyasi — eski qarzini to'lagan ota-ona tasdiq olsin) yuboradi; davomat (kelmadi/keldi), baho,
+  guruhga qo'shilish va boshqa hodisalar — YO'Q. Sabab: eski arxivlarda a'zolik tirik qolgan va
+  jurnal ularni hali ko'rsatishi mumkin — har darsda ota-onaga "darsga kelmadi" ketardi.
+
+- **GURUH AUDITORIYASI — A'ZOLIK bo'yicha (`MessagingAudience.GroupAudienceByNameAsync`).**
+  "Guruh" tanlangan e'lon (Telegram), push va SMS oluvchilari eskirgan `Student.ClassName` bo'yicha
+  EMAS (u faqat BIRINCHI guruhda yoziladi): shu guruhda TIRIK a'zoligi bor (`IsActive` + guruh
+  arxivlanmagan, muzlatilgan ham) o'quvchilar + a'zoligi UMUMAN yo'q eski yozuvlar (`ClassName`
+  zaxirasi). Arxivdagi o'quvchi hech qachon kirmaydi. ⚠️ Guruhlar ro'yxatidagi SANOQ
+  (`GET messages/classes` — o'quvchilar va Telegram chatlari) AYNAN shu funksiyadan — ko'rsatilgan
+  son = oluvchilar. Ilgari sanoq a'zolikdan, yuborish `ClassName` dan edi: ikkinchi guruhdagi
+  o'quvchi sanalar, lekin xabar olmasdi; guruh nomi o'zgarsa guruhga umuman hech narsa ketmasdi.
+  Guruh qamrovida `{guruh}` tokeni ham TANLANGAN guruh nomi bilan to'ladi.
+  **Push "Faqat qarzdorlar"** — `SendPushRequest.OnlyDebtors` (SMS/Telegram bilan bir xil qoida,
+  `MessagingAudience.ParentPushUserIdsAsync`). Ilgari push uchun bu bayroq yo'q edi va
+  "{qarzdorlik} qarzingiz bor" HAMMA ota-onaga "0 so'm" bilan ketardi.
 
 - **Lidlarga ommaviy SMS:** `POST /api/admin/messages/sms/lead-bulk` `{leadIds:string[], text}` →
   `{sent,failed,noPhone}` (bitta SmsBatch, har lidga LeadEvent; `SendOneLeadSmsAsync` helper — sms/lead
@@ -148,6 +198,14 @@ paths:
   SMS yubora olishi kerak (Server'dan Application'ga bog'liqlik yo'nalishi noto'g'ri bo'lardi).
   `AutoMessageRule.SmsProvider` — har qoida mustaqil Eskiz/Local tanlaydi (`AutoMessageSmsSender` —
   umumiy yordamchi, provider bo'yicha branch qiladi, `SmsLog`/`SmsBatch` yozadi).
+  ⚠️ **STANDART AGENT O'CHSA — JIMGINA EMAS (2026-10-08, `LocalSmsDefaultAgent`).** `CtiSmsService` o'chirilgan
+  agentni ishlatmaydi, ya'ni standart agentni o'chirish (Local Call → Agentlar) yoki uning XODIMINI o'chirish
+  (agent ham o'chadi — `StaffRelease`) BARCHA avtomatik Local SMS'ni to'xtatadi. Amal bloklanmaydi (ishdan
+  ketgan xodimning telefonini darhol uzish muhimroq), lekin: `PUT api/cti/agents/{id}` va
+  `DELETE api/admin/staff/{id}` javobida `warning` (klient `alert` qiladi), xodim o'chirish audit matnida
+  eslatma, `GET/PUT settings/local-sms` javobida `defaultAgentProblem` — SMS sozlamalarida doimiy banner
+  (o'chirilgan / topilmagan / tanlanmagan; faqat Local SMS yoqiq bo'lsa). Banner SERVERDA hisoblanadi: agentlar
+  ro'yxati oddiy xodimga faqat O'Z agentlarini beradi.
 
 - **OMMAVIY SMS — SO'ROV ICHIDA EMAS, FONDA** (`SmsQueueService`, Application/Services; singleton +
   `AddHostedService`). SMS'lar bittalab ketadi: Eskiz'da har raqamga alohida HTTP so'rov (~0.5–1.5 s),
@@ -162,14 +220,29 @@ paths:
   • ⚠️ **HAR SMS'dan keyin saqlanadi** (`SmsLog` + `SmsBatch.SentCount`). Ilgari barcha `SmsLog`
     faqat siklning OXIRIDA saqlanardi: ulanish uzilsa (`HttpContext.RequestAborted`) sikl o'lar,
     **pul ketgan, SMS borgan, tarix esa bo'sh** qolardi — admin xatoni ko'rib qayta yuborardi;
-  • holat: `GET sms/{id}/progress` — avval xotiradagi navbatdan, u yerda bo'lmasa (ilova qayta ishga
-    tushgan) bazadagi `SmsLog` sonidan tiklanadi. Frontendda `watchSmsProgress` (har 2 s) — modal
-    "Yuborilmoqda: 12/300" deb ko'rsatadi va oyna yopilsa ham yuborish davom etadi;
-  • lid tarixi (`LeadEvent`) ham navbatda yoziladi — `Job.LeadNote` + `Target.LeadId`.
-  Testlar: `WunderkindLC.Tests/SmsQueueTests.cs`.
+  • ⚠️ **NAVBAT BAZADA (2026-10-07)** — `SmsQueueJob` (partiya) + `SmsQueueItem` (har oluvchi, holati
+    bilan). Ilgari navbat faqat xotirada edi: yuborish paytida deploy bo'lsa qolgan 260 ta JIMGINA
+    tushib qolar, progress esa "tugadi 40/300" ko'rsatardi. Endi `SmsQueueService.EnqueueAsync`
+    partiyani bazaga yozadi; ilova ishga tushganda (`ResumePendingAsync`) tugamagan partiya DAVOM
+    ETTIRILADI — faqat `pending` oluvchilarga. Har oluvchi yuborishdan OLDIN `sending` deb band qilinadi
+    (concurrency token); aynan yuborish paytida uzilgani `unknown` bo'ladi va QAYTA YUBORILMAYDI (SMS
+    ketgan bo'lishi mumkin — takror pul/xabardan bitta yo'qotish arzon). ⚠️ Ishga tushishda `sending` ning
+    HAMMASI `unknown` bo'ladi (yoshidan qat'i nazar — bu paytda hali hech bir ishchi ishlamayapti). Ilgari
+    faqat 2 daqiqadan eskilari olinardi: tez restartdan keyin qator abadiy `sending` qolar, partiya
+    sanog'i hech qachon tugamasdi. `ResumeWindow` (12 soat) dan
+    eski partiya davom ettirilmaydi — `interrupted` deb yopiladi (kechagi e'lon bugun ketmasin);
+  • holat: `GET sms/{id}/progress` — avval xotiradan, bo'lmasa BAZADAN (`ProgressFromDbAsync`):
+    tugamagan partiya `finished=false` (davom ettirilmoqda), `resumed`/`interrupted` bayroqlari bilan;
+    `done` ga bekor qilinganlar KIRMAYDI ("total − done" = yuborilmay qolganlar). Frontendda
+    `watchSmsProgress` (har 2 s) + matn `smsProgressText` (to'xtatilgan/davom etayotgani OCHIQ aytiladi);
+  • lid tarixi (`LeadEvent`) ham navbatda yoziladi — `Job.LeadNote` + `Target.LeadId`;
+  • **CALLBACK** — `EskizService.CallbackUrl` (kanonik `App:Host`, bo'lmasa so'rov hosti). Avto-SMS'lar
+    (`AutoMessageSmsSender`) ham AYNAN shu manzil bilan ketadi — ilgari callback'siz edi va holati
+    tarixda abadiy "Kutilmoqda" bo'lib qolardi (fon xizmatida `App:Host` bo'sh bo'lsa — callback'siz).
+  Testlar: `WunderkindLC.Tests/SmsQueueTests.cs`, `AuditFixT6Tests.cs`.
 
-- **To'lov eslatmasi:** mavjud `MessagesController` broadcast `OnlyDebtors=true` (Telegram +
-  `{qarzdorlik}` tokenlari). Avtomatik (hisob yaratilganda) trigger — hali yo'q (kelajak).
+- **To'lov eslatmasi:** mavjud `MessagesController` broadcast/SMS/push `OnlyDebtors=true` (+
+  `{qarzdorlik}` tokenlari). Avtomatik eslatma — `payment_debt` (pastdagi «QARZDORLIK ESLATMASI»).
 
 - **Lidni Telegram guruhga avto-yuborish:** Bot GURUHGA qo'shilsa (`my_chat_member` yangilanishi —
   `TelegramService.GetUpdatesAsync` allowed_updates'ga qo'shilgan) — `TelegramGroup` entity'ga yoziladi
@@ -205,6 +278,9 @@ yuborish esa guruhni «o'zgardi / yana o'zgardi» oqimiga aylantirardi.
 
 **Oluvchilar:** faol GURUH(lar) + **FAQAT superadmin**(lar)ning shaxsiy chati
 (`LeadNotifier.ShouldNotify` — oddiy admin/xodimga shaxsiy xabar ketmaydi).
+⚠️ `SyncCardAsync` ham shaxsiy chat egasining **JORIY** rolini tekshiradi (2026-10-07): oddiy adminga
+tushirilgan yoki o'chirilgan superadminning chatidagi karta (izohlari bilan!) endi yangilanmaydi.
+Ilgari "registratsiyasi bor" kifoya edi.
 
 ### 🔴 GURUHGA IZOH MATNI CHIQMAYDI — IKKI XIL MATN, IKKI XIL XESH
 
@@ -587,14 +663,108 @@ matni QISQARTIRILGAN («F.I.Sh — Kurs bo'yicha qarzdorlik: summa» + bitta ilt
 `Student.ClassName` dan olinardi (u faqat BIRINCHI guruhda yoziladi va yangilanmaydi —
 `StudentMembershipView` izohi), ya'ni guruh almashtirgan o'quvchida yolg'on ma'lumot chiqardi.
 
-⚠️ **ZAXIRA YO'L o'zgarmagan:** a'zoligi yo'q (eski `ClassName` modeli) qarzdorga avvalgidek
-BITTA xabar — qarz `Student.Balance` dan. U yerda fan kesimi umuman ma'lum emas.
+⚠️ **TUGAGAN a'zoliklar HAM hisoblanadi (2026-10-07):** guruh almashtirgan o'quvchining ESKI
+guruhdagi qoldiq qarzi o'sha FAN nomi bilan keladi (`StudentGroupLedger` chiqish oyida to'xtaydi).
+
+⚠️ **ZAXIRA YO'L FAQAT a'zoligi UMUMAN YO'Q o'quvchiga** (eski `ClassName` modeli): BITTA xabar,
+qarz `Student.Balance` dan. Ilgari a'zoligi bor-u faol guruhlarida qarzi chiqmagan o'quvchiga ham
+ishlardi va eski guruhning qarzini YANGI guruh nomi bilan yozib yuborardi. A'zoligi bor, lekin hech
+bir guruh bo'yicha qarzi chiqmagan (manfiy balans guruhga bog'lanmagan eski hisoblardan) qarzdorga
+KURS NOMISIZ bitta umumiy eslatma ketadi ("<ism> bo'yicha qarzdorlik: X") — noto'g'ri guruh nomi
+yolg'on bo'lardi, jim o'tkazib yuborish esa qarzni unuttirardi.
+
+⚠️ **AUDITORIYA — har qoidaning o'zidan** (ilgari umuman o'qilmasdi, hamma qoida ota-onaga ketardi):
+`parents` — ota-ona raqami birinchi; `students` — o'quvchining O'Z raqami birinchi
+(`MessagingAudience.StudentPhone`); `teachers` — SHU FAN guruhining o'qituvchisiga (raqami, ilovasi,
+Telegrami; o'qituvchisiz guruh/zaxira yo'lda o'tkazib yuboriladi). Har qoida o'z kanallari bilan
+ALOHIDA yetkaziladi (`DispatchStudentAsync` bilan bir xil model). `custom_schedule` da ham
+`students` endi o'quvchi raqamiga ketadi.
 
 ⚠️ Qarzi YO'Q fan uchun xabar TUZILMAYDI; bitta guruhda bir nechta a'zolik qatori bo'lsa ham
-xabar BITTA (`MembershipLifecycle.PrimaryMembership`).
+xabar BITTA (`MembershipLifecycle.PrimaryMembership`, tirigi bo'lmasa — eng oxirgi tugagani).
 
 ⚠️ Yuborish yo'lida SMS **dedupe YO'Q** (`SmsLog` faqat jurnal, `AutoMessageSmsSender` har
 chaqiruvda yangi `SmsBatch` yozadi) — bir raqamga ketma-ket ikki SMS yutilmaydi. Matnlar ham fan
 nomi bilan har xil. Log qatori qarzdor sonini va XABAR sonini ALOHIDA yozadi.
 
 Testlar: `WunderkindLC.Tests/AutoMessageTests.cs` (§7 «Qarzdorlik eslatmasi»).
+
+## KUNLIK FON ISHLARI — "BUGUN ISHLADIMI" BAZADA (2026-10-07)
+
+`PaymentReminderService` · `BirthdaySmsService` · `TrialReminderService` · `CustomReminderService`.
+Entity — `BackgroundJobRun` (`Key` PK · `LastRunDate` "yyyy-MM-dd" — concurrency token · `UpdatedAt`),
+yagona yozuvchi — `JobRunMarker` (Application/Services).
+
+🔴 **NEGA:** "bugun ishladim" belgisi XOTIRADA edi. Har deploy/restart (09:00 dan keyin) belgini
+o'chirar va BUTUN ro'yxat QAYTA yuborilardi — har qarzdorga yana SMS (pul) + Telegram + push,
+tug'ilgan kun va sinov darsi SMS'lari ham. Erkin eslatmada (`_sent`) oyna ichidagi restart xuddi shunday.
+
+**Ikki daraja:**
+
+| Kalit | Qachon | Nima beradi |
+|---|---|---|
+| `payment_debt:{studentId}` · `birthday:{studentId}` · `trial_reminder:{trialId}` · `custom_schedule:{ruleId}:{s\|t}:{id}` | yuborishdan OLDIN, atomik (`TryClaimAsync`) | ish yarmida yiqilsa — olganlarga TAKROR yo'q, qolganlarga keyingi uyg'onishda yetadi; ikki nusxa poygasida faqat bittasi yuboradi |
+| `payment_debt` · `birthday` · `trial_reminder` · `custom_schedule:{ruleId}` | ish TO'LIQ tugagach | keyingi uyg'onish (restart ham) ishni umuman qayta boshlamaydi |
+
+- ⚠️ Belgi yuborishdan OLDIN qo'yiladi: aynan yuborish paytida yiqilish bo'lsa o'sha BITTA oluvchi
+  o'tkazib yuboriladi — takror SMS (pul, ota-ona g'ashi) dan arzon. ATAYIN shunday.
+- ⚠️ Ish yarmida xato bo'lsa ish belgisi QO'YILMAYDI — keyingi soatda qayta boshlanadi (oluvchi
+  belgilari takrorni ushlaydi). Ya'ni vaqtinchalik xato endi kunni butunlay o'tkazib yubormaydi.
+- ⚠️ `JobRunMarker.TryClaimAsync` o'z `SaveChanges`ini chaqiradi (Application qatlamida
+  `ExecuteUpdate` yo'q) — kontekstda saqlanmagan boshqa o'zgarish bo'lmasin. Shuning uchun xizmatlar
+  HAR OLUVCHIDAN KEYIN saqlaydi (ilova tarixi/SMS jurnali yiqilishda yo'qolmaydi ham).
+- ⚠️ **"Band" — FAQAT haqiqiy poyga (2026-10-08).** Dispatcher o'z saqlash xatosini yutadi
+  (`DispatchStudentAsync`) va kontekstda "buzuq" qatorlar qolardi; band qilishning `SaveChanges`i shu tufayli
+  yiqilar va "boshqa nusxa band qildi" deb o'qilardi — qolgan HAMMA oluvchi jimgina o'tkazib yuborilib, kun
+  "bajarildi" deb belgilanardi. Endi: band qilishdan OLDIN qoldiq hal qilinadi
+  (`JobRunMarker.SettleLeftoversAsync` — yana bir bor saqlab ko'radi, bo'lmasa kuzatuvdan chiqaradi; asl xato
+  o'z joyida loglangan), `false` faqat concurrency/PK poygasida (qator bazada SHU sana bilan bor), boshqa
+  xato TASHQARIGA chiqadi — xizmat loglaydi va kunlik ish belgisi qo'yilmaydi.
+  `LessonAttendanceReminderService.TryMarkAsync` ham xuddi shunday (va har yetkazishdan keyin saqlaydi).
+- Oluvchi qatorlari faqat O'Z sanasida ma'noli — ish tugagach 2 kundan eskilari tozalanadi
+  (`PruneAsync`), jadval o'smaydi.
+- Sinov darsi ko'chirilsa — yangi sana arafasida eslatma yana ketadi (belgi sana bilan).
+- ⚠️ `TrialLesson.ReminderSentAt` kabi har jadvalga ustun qo'shilmadi ATAYIN: bitta jadval + bitta
+  yordamchi to'rtala xizmatni qoplaydi va ko'chirilgan sinovni o'z-o'zidan to'g'ri hal qiladi.
+- **Oylik erkin eslatma 29–31-sanaga** qo'yilgan bo'lsa qisqa oyda OYNING OXIRGI KUNI yuboriladi
+  (`CustomReminderService.IsScheduledDay`) — ilgari fevral/aprelda umuman o'tkazib yuborilardi.
+- `LessonAttendanceReminderService` (o'qituvchiga "davomatni kiriting") o'z belgisini bazada
+  saqlaydi — `LessonReminderMark` (dars kaliti bo'yicha UNIQUE), ya'ni restartdan keyin ham
+  takrorlanmaydi (`journal.md`).
+
+Yangi kunlik fon ishi yozsangiz — "bugun bajarildimi" ni xotirada SAQLAMANG, `JobRunMarker` dan
+foydalaning. Testlar: `WunderkindLC.Tests/AuditFixT6Tests.cs`.
+
+## SUPPORT — bot murojaati va support darslari (2026-10-07)
+
+- **Bot "Adminga murojaat" xabarnomasi** (ota-ona ismi, TELEFONI, matni) faqat admin/superadmin va
+  `messages.support` ruxsati bor XODIMGA ketadi (`SupportService.ReceivesBotSupport`,
+  `PermissionRules.HasSection`). Ilgari botga ulangan HAR xodim (kassir, turniket operatori) olardi.
+- **Javob (`POST support/threads/{chatId}/reply`)** avval Telegram'ga yuboriladi, YETIB BORGANDAGINA
+  tarixga yoziladi; yetmasa 400 + sabab (bot bloklangan / tarmoq). Ilgari natija e'tiborsiz qolardi —
+  javob "yuborildi" bo'lib turar, ota-ona esa hech narsa olmasdi.
+- **Support darslari:** bron (o'quvchi) → o'qituvchiga, bronni bekor qilish (o'quvchi) → o'qituvchiga,
+  band slotni o'chirish (o'qituvchi) → o'quvchiga BILDIRISHNOMA (`SupportService.NotifyAsync`: ilova
+  tarixi + push). Boshlanish vaqti o'tgan slot bron qilinmaydi (400) va ro'yxatda ko'rsatilmaydi
+  (`SupportService.IsPast`).
+
+## TELEGRAM ULANISHINI UZISH (2026-10-07, audit MSG-1)
+
+Bot ota-ona ulanishini (`TelegramRegistration`) faqat QO'SHADI (`TelegramBotService.CompleteAsync` —
+kontakt raqami o'quvchining raqamiga mos kelsa). Ilgari uni olib tashlashning yo'li yo'q edi: ota-ona
+raqami tuzatilsa ham ESKI chat qarz/davomat/baho xabarlarini olaverar va o'quvchi akkaunti uchun
+bir martalik kirish kodini so'ray olardi. Qoida — `TelegramLinks` (Application, `AuditFixT2Tests`).
+
+- **Avtomatik:** o'quvchining raqamlari (o'zi, asosiy ota-ona, ota, ona) O'ZGARGANDA — admin tahriri
+  (`StudentsController.Update`) ham, o'qituvchi tahriri (`TeacherPortalController.UpdateGroupStudent`) ham
+  — raqami HECH BIRIGA mos kelmaydigan ulanishlar o'chiriladi. Solishtiruv `PhoneUtil.Key` (oxirgi 9 raqam):
+  faqat FORMAT o'zgarishi ("+998 90…" ↔ "90…") o'zgarish EMAS.
+- ⚠️ Raqami NOMA'LUM (bo'sh/qisqa) eski ulanish taxmin bilan UZILMAYDI — profilda "Raqam mos emas"
+  bo'lib ko'rinadi, admin qo'lda uzadi.
+- ⚠️ Faqat raqam O'ZGARGANDA tozalanadi (har saqlashda emas) — oddiy tahrir kutilmagan uzilish bermasin.
+- **Qo'lda:** o'quvchi profili → «Aloqa» → «Telegram ulanishlari» → «Uzish»
+  (`GET/DELETE api/admin/students/{id}/telegram-links[/{regId}]`). O'qish — `students.list` bo'limi ruxsati
+  (`ReadRequiresPerm`: ota-onaning Telegram ismi va raqami); uzish — `students.list` DELETE amali
+  (`AdminPerm` fe'l→amal xaritasi: DELETE = `delete`; klientda `can('students.list','delete')`).
+- Har uzilish — `Student` turidagi audit qatori ("Telegram ulanishi uzildi …"), `studentId` bilan.
+- Ota-ona qayta ulanishi uchun botga to'g'ri raqamni yuboradi (oddiy ro'yxatdan o'tish).

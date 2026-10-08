@@ -24,6 +24,7 @@ import { toast } from '@/lib/toast'
 import { newRequestId } from '@/lib/requestId'
 import { LessonDiscountPanel } from './LessonDiscountPanel'
 import { cashboxOptionLabel, showCashboxPicker, useCashboxOptions } from '@/hooks/useCashboxOptions'
+import { currentMonth as localCurrentMonth, shiftMonth, todayIso } from '@/lib/month'
 
 interface Props {
   student: Student | null
@@ -61,10 +62,14 @@ interface Props {
 /** Oy qatori (guruh yoki aggregate hisobdan normallashtirilgan) */
 type Row = { month: string; remaining: number; status: MonthStatus }
 
-/** "YYYY-MM" joriy oy */
-const currentMonth = () => new Date().toISOString().slice(0, 7)
-/** "YYYY-MM-DD" bugungi sana */
-const today = () => new Date().toISOString().slice(0, 10)
+/** "YYYY-MM" joriy oy — MAHALLIY (UTC+5). ⚠️ `toISOString()` UTC beradi: oy boshida 00:00–05:00 orasida
+ *  O'TGAN oy tanlanib, to'lov noto'g'ri oyga yozilardi. */
+const currentMonth = () => localCurrentMonth()
+/** "YYYY-MM-DD" bugungi sana — MAHALLIY (UTC+5). */
+const today = () => todayIso()
+/** SINOV a'zoligi uchun tanlanadigan oylar: joriy + keyingi 3 (hisob yo'q — to'lov AVANS bo'lib turadi). */
+const TRIAL_ADVANCE_MONTHS = 3
+const trialMonths = () => Array.from({ length: TRIAL_ADVANCE_MONTHS + 1 }, (_, i) => shiftMonth(currentMonth(), i))
 /** "HH:mm" hozirgi vaqt (karta to'lovi vaqti uchun standart qiymat) */
 const nowTime = () => {
   const d = new Date()
@@ -90,11 +95,13 @@ const pickDefault = (rows: Row[]): { month: string; amount: number | null } => {
 
 /** Guruh tanlovidagi izoh: muzlatilgan / guruhdan chiqarilgan a'zolik ekani ko'rinib tursin. */
 const membershipNote = (g: StudentGroupMembership): string =>
-  g.status === 'frozen'
-    ? ` — muzlatilgan${g.frozenAt ? ` ${g.frozenAt}` : ''}`
-    : !g.isActive
-      ? ' — chiqarilgan'
-      : ''
+  g.status === 'trial'
+    ? ' — sinovda (avans)'
+    : g.status === 'frozen'
+      ? ` — muzlatilgan${g.frozenAt ? ` ${g.frozenAt}` : ''}`
+      : !g.isActive
+        ? ' — chiqarilgan'
+        : ''
 
 export function PaymentModal({
   student,
@@ -200,7 +207,11 @@ export function PaymentModal({
         // To'lov qilish mumkin bo'lgan a'zoliklar: SINOVDAN boshqa hammasi — MUZLATILGAN va guruhi
         // YOPILGAN (arxivdagi) a'zoliklar ham. Ular bo'yicha qarz muzlatish sanasigacha hisoblangan
         // bo'lishi mumkin — kassir keyin ham to'lovni qabul qila olishi kerak.
-        const billable = allGroups.filter((g) => g.status !== 'trial')
+        // ⚠️ + FAOL SINOV a'zoliklari: sinovdagi o'quvchi oldindan to'lashi mumkin — pul o'sha guruhga
+        // AVANS bo'lib teglanadi (hisob ochilmaydi, aktivlashtirilganda hisobga o'tadi). Ilgari ular
+        // ro'yxatda yo'q edi: sinov + bitta eski guruhi bor o'quvchining to'lovi JIMGINA eski guruhga
+        // tushardi (serverdagi `PaymentIntake.ResolveGroup` bilan bir xil qoida).
+        const billable = allGroups.filter((g) => g.status !== 'trial' || g.isActive)
         if (reqRef.current !== req) return
         setGroups(billable)
         if (billable.length === 0) {
@@ -268,6 +279,8 @@ export function PaymentModal({
 
   // Bir nechta guruh bo'lsa — guruh tanlanishi SHART.
   const needGroup = groups.length > 1
+  /** Tanlangan guruhda o'quvchi SINOVDA — hisob yo'q, oylar ro'yxati bo'sh keladi; to'lov avans bo'ladi. */
+  const trialSelected = !!groupId && groups.some((g) => g.groupId === groupId && g.status === 'trial')
   /**
    * Oylarni ko'rsatish: guruh tanlangan bo'lsa, YOKI o'quvchi HAQIQATAN guruhsiz bo'lsa
    * (aggregate hisob). ⚠️ Guruhlar so'rovi YIQILGANDA ko'rsatilmaydi: u holda "guruhsiz"
@@ -354,7 +367,7 @@ export function PaymentModal({
 
   const selected = rows.find((r) => r.month === month)
   const newBalance = student ? student.balance + balanceAdj + (amount ?? 0) : 0
-  const monthOptions = rows.length > 0 ? rows.map((r) => r.month) : [currentMonth()]
+  const monthOptions = rows.length > 0 ? rows.map((r) => r.month) : trialSelected ? trialMonths() : [currentMonth()]
   const isOpen = open ?? !!student
   const saveDisabled =
     !student || (amount ?? 0) <= 0 || !month || (needGroup && !groupId) || loading || loadingMonths || submitting || blocked
@@ -514,7 +527,12 @@ export function PaymentModal({
                 <DrawerField
                   label="Qaysi oy uchun"
                   hint={
-                    selected && month > currentMonth() ? (
+                    trialSelected ? (
+                      <span className="text-violet-700">
+                        O'quvchi bu guruhda sinovda — hisob yozilmaydi. To'lov shu guruhga AVANS bo'lib turadi va
+                        aktivlashtirilganda oylikka o'tadi. Summani qo'lda kiriting.
+                      </span>
+                    ) : selected && month > currentMonth() ? (
                       <span className="text-amber-600">Kelajak oy — to'lov avans sifatida hisobga olinadi.</span>
                     ) : selected && selected.remaining <= 0 ? (
                       <span className="text-amber-600">

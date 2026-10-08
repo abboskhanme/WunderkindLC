@@ -83,8 +83,10 @@ export function ArchivePage() {
   const handleRestore = async (id: string) => {
     setBusyId(id)
     try {
-      await restoreArchive(id)
+      const res = await restoreArchive(id)
       await refresh()
+      // Tiklashdan keyingi qadam (guruhga qo'shish, parol/rol berish) — server aytadi.
+      if (res.message) alert(res.message)
     } catch (err) {
       // Tiklash yiqilsa ro'yxat shunchaki o'zgarmasdi — foydalanuvchi tiklandi deb o'ylardi.
       alert(apiErrorMessage(err, "Tiklab bo'lmadi"))

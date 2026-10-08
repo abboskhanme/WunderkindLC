@@ -196,8 +196,7 @@ public class StudentFaceController(
         // (admin modulni o'chirib qo'yganda ilovada "selfi" ekrani osilib qolmasin).
         if (!settings.Enabled)
         {
-            var fullToken = jwt.CreateToken(user);
-            var rt0 = await IssueSessionAsync(user.Id, fullToken, ct);   // refresh + DUAL-MODE cookie
+            var (fullToken, rt0) = await IssueSessionAsync(user, ct);   // refresh + DUAL-MODE cookie
             return new FaceVerifyResponse(true, FaceLoginService.StatusApproved, "", null,
                 FaceLoginService.MaxAttemptsPerHour, fullToken, RefreshToken: rt0);
         }
@@ -272,24 +271,24 @@ public class StudentFaceController(
         logger.LogInformation(
             "Yuz tasdiqlandi: studentId={StudentId}, ball={Score}, etalon={Enrolled}",
             me.Id, result.Score, result.Enrolled);
-        var token = jwt.CreateToken(user);
-        var rt = await IssueSessionAsync(user.Id, token, ct);   // refresh + DUAL-MODE cookie
+        var (token, rt) = await IssueSessionAsync(user, ct);   // refresh + DUAL-MODE cookie
         return new FaceVerifyResponse(true, result.Status, "", result.Score, result.AttemptsLeft,
             token, result.Enrolled, RefreshToken: rt);
     }
 
-    /// <summary>To'liq sessiya chiqaradi: refresh token (30 kun) yaratadi va `at`/`csrf`/`rt`
-    /// cookie'larni qo'yadi (token/refresh JSON'da ham qaytadi — mobil uchun). Xom refresh tokenni
-    /// qaytaradi.</summary>
-    private async Task<string> IssueSessionAsync(string userId, string token, CancellationToken ct)
+    /// <summary>To'liq sessiya chiqaradi: refresh token (30 kun) yaratadi, access tokenga uning
+    /// naslini (sessiya claim'i) yozadi va `at`/`csrf`/`rt` cookie'larni qo'yadi (token/refresh
+    /// JSON'da ham qaytadi — mobil uchun). (access token, xom refresh token) qaytaradi.</summary>
+    private async Task<(string Token, string RefreshToken)> IssueSessionAsync(AppUser user, CancellationToken ct)
     {
-        var expiresUtc = new System.IdentityModel.Tokens.Jwt.JwtSecurityTokenHandler()
-            .ReadJwtToken(token).ValidTo; // UTC
         var ua = Request.Headers.UserAgent.ToString();
         var rt = await refreshTokens.IssueAsync(
-            userId, ip: ClientIp(), ua: string.IsNullOrWhiteSpace(ua) ? null : ua, ct: ct);
+            user.Id, ip: ClientIp(), ua: string.IsNullOrWhiteSpace(ua) ? null : ua, ct: ct);
+        var token = jwt.CreateToken(user, rt.FamilyId);
+        var expiresUtc = new System.IdentityModel.Tokens.Jwt.JwtSecurityTokenHandler()
+            .ReadJwtToken(token).ValidTo; // UTC
         WunderkindLC.Server.AuthCookies.Issue(HttpContext, token, expiresUtc, rt.RawToken, rt.ExpiresUtc);
-        return rt.RawToken;
+        return (token, rt.RawToken);
     }
 
     private void DeleteFiles(IReadOnlyList<string> urls)

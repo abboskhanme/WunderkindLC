@@ -36,6 +36,7 @@ import {
 import type { CenterAiRecord, CenterPoint } from '@/types'
 import { useAuth } from '@/context/auth-context'
 import { cn, formatMoney, formatDate } from '@/lib/utils'
+import { localIsoDate } from '@/lib/localDate'
 
 const PIE_COLORS = ['#6d5ef8', '#10b981', '#f59e0b', '#ef4444', '#3b82f6', '#14b8a6', '#ec4899']
 
@@ -88,7 +89,7 @@ export function CenterAiAnalysisCard() {
     }
   }
 
-  const today = new Date().toISOString().slice(0, 10)
+  const today = localIsoDate(new Date())
   const isToday = rec?.date === today
 
   return (

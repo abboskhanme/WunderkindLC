@@ -346,11 +346,17 @@ public class BooksController(AppDbContext db, TelegramService telegram, IWebHost
     /// (qaytarish buyurtma holatini o'zgartirmaydi — qarang: <see cref="BookSalesService.ReturnAsync"/>).</summary>
     private const string StatusFilterReturned = "returned";
 
+    /// <summary>Ro'yxat filtridagi maxsus qiymat: tasdiqlangan, lekin OLIB KETILMAGAN (to'lanmagan)
+    /// bot buyurtmalari — kassir mijoz kelganda «To'landi», kelmasa «Bekor qilish» qiladi (books.md §2.6).</summary>
+    private const string StatusFilterAwaiting = "awaiting";
+
     private async Task<List<BookOrder>> FilteredOrdersAsync(
         string? status, string? from, string? to, string? bookId, string? method, string? q)
     {
         var query = db.BookOrders.AsNoTracking().AsQueryable();
         if (status == StatusFilterReturned) query = query.Where(o => o.ReturnedQty > 0);
+        else if (status == StatusFilterAwaiting)
+            query = query.Where(o => o.PayAtPickup && o.Status == BookSalesService.StatusApproved && o.PaidAt == null);
         else if (!string.IsNullOrWhiteSpace(status)) query = query.Where(o => o.Status == status);
         if (!string.IsNullOrWhiteSpace(bookId)) query = query.Where(o => o.BookId == bookId);
         if (!string.IsNullOrWhiteSpace(method)) query = query.Where(o => o.PaymentMethod == method);
@@ -390,7 +396,8 @@ public class BooksController(AppDbContext db, TelegramService telegram, IWebHost
             BookSalesService.IsOverdue(o, today),
             o.PaidAt?.ToString("yyyy-MM-ddTHH:mm:ss"), o.PaidBy, o.SettledMethod,
             o.ReturnedQty, o.ReturnedAt?.ToString("yyyy-MM-ddTHH:mm:ss"), o.ReturnedBy,
-            o.ReturnReason, o.RefundedAmount, BookSalesService.NetTotal(o))).ToList();
+            o.ReturnReason, o.RefundedAmount, BookSalesService.NetTotal(o),
+            o.PayAtPickup)).ToList();
     }
 
     /// <summary>Tab belgilari uchun sanoqlar: kutilayotgan buyurtmalar va to'lanmagan nasiyalar
@@ -412,6 +419,9 @@ public class BooksController(AppDbContext db, TelegramService telegram, IWebHost
             count = await db.BookOrders.CountAsync(o => o.Status == BookSalesService.StatusPending),
             credits = unpaid.Count,
             overdue = unpaid.Count(d => d is { } due && due.Date < today),
+            // Tasdiqlangan, lekin mijoz hali olib ketmagan (to'lanmagan) bot buyurtmalari.
+            pickup = await db.BookOrders.CountAsync(o => o.PayAtPickup
+                && o.Status == BookSalesService.StatusApproved && o.PaidAt == null),
         });
     }
 
@@ -435,7 +445,9 @@ public class BooksController(AppDbContext db, TelegramService telegram, IWebHost
         // alohida saqlaymiz (aks holda u hech qachon bazaga tushmasdi).
         audit.Record("BookOrder", order.Id, "update",
             $"Buyurtma tasdiqlandi: {order.BookTitle} x {order.Qty} dona — " +
-            $"{AuditService.Money(order.Total)} so'm ({order.CustomerName})", studentId: order.StudentId);
+            $"{AuditService.Money(order.Total)} so'm ({order.CustomerName})" +
+            (order.PayAtPickup ? " — kitob zaxiraga olindi, to'lov olib ketishda" : ""),
+            studentId: order.StudentId);
         await db.SaveChangesAsync();
 
         // Qo'lda sotilgan buyurtmada Telegram chat yo'q (ChatId=0) — xabar yuborilmaydi.
@@ -448,10 +460,14 @@ public class BooksController(AppDbContext db, TelegramService telegram, IWebHost
     [HttpPost("orders/{id}/reject")]
     public async Task<ActionResult<BookOrderDto>> Reject(string id, BookRejectPayload payload)
     {
-        var order = await db.BookOrders.FirstOrDefaultAsync(o => o.Id == id);
-        if (order is null) return NotFound();
         if (string.IsNullOrWhiteSpace(payload.Reason))
             return BadRequest(new { message = "Rad etish sababini kiriting" });
+        // POYGA: tasdiqlash bilan BIR QULF ostida — aks holda bir vaqtda bosilgan "Tasdiqlash"
+        // va "Rad etish" ikkalasi ham "pending" ni ko'rib, sotilgan (qoldiq ayirilgan, kassaga
+        // kirim yozilgan) buyurtma "rad etilgan" bo'lib qolardi. Holat QULF ICHIDA o'qiladi.
+        using var gate = await PaymentIdempotency.LockAsync("book-order:" + id);
+        var order = await db.BookOrders.FirstOrDefaultAsync(o => o.Id == id);
+        if (order is null) return NotFound();
 
         var error = await BookSalesService.RejectAsync(db, order, payload.Reason, Actor);
         if (error is not null) return BadRequest(new { message = error });
@@ -463,6 +479,35 @@ public class BooksController(AppDbContext db, TelegramService telegram, IWebHost
 
         if (order.ChatId != 0)
             await telegram.SendMessageAsync(order.ChatId, BookSalesService.CustomerRejectedText(order));
+        return (await ToOrderDtosAsync(new List<BookOrder> { order }))[0];
+    }
+
+    /// <summary>
+    /// TASDIQLANGAN, lekin mijoz OLIB KETMAGAN (to'lanmagan) bot buyurtmasini BEKOR qilish:
+    /// zaxiradagi kitob omborga qaytadi, holat "rad etilgan" (sabab bilan) bo'ladi, mijozga
+    /// botda xabar ketadi. PUL HARAKATI YO'Q — pul hech qachon olinmagan (books.md §2.6).
+    /// </summary>
+    [HttpPost("orders/{id}/cancel")]
+    public async Task<ActionResult<BookOrderDto>> CancelUnpaid(string id, BookCancelPayload payload)
+    {
+        using var gate = await PaymentIdempotency.LockAsync("book-order:" + id);
+        var order = await db.BookOrders.FirstOrDefaultAsync(o => o.Id == id);
+        if (order is null) return NotFound();
+
+        var reason = (payload.Reason ?? "").Trim();
+        var error = await BookSalesService.CancelUnpaidAsync(db, order, reason, Actor);
+        if (error is not null) return BadRequest(new { message = error });
+
+        // DIQQAT: CancelUnpaidAsync O'ZI SaveChanges qiladi — audit yozuvi alohida saqlanadi.
+        audit.Record("BookOrder", order.Id, "update",
+            $"Buyurtma bekor qilindi (olib ketilmadi): {order.BookTitle} x {order.Qty} dona " +
+            $"(buyurtma #{order.Number}" + (order.CustomerName.Length > 0 ? $", {order.CustomerName}" : "") +
+            ") — kitob omborga qaytdi, pul olinmagan edi" + (reason.Length > 0 ? $", sabab: {reason}" : ""),
+            studentId: order.StudentId);
+        await db.SaveChangesAsync();
+
+        if (order.ChatId != 0)
+            await telegram.SendMessageAsync(order.ChatId, BookSalesService.CustomerCancelledText(order));
         return (await ToOrderDtosAsync(new List<BookOrder> { order }))[0];
     }
 
@@ -789,9 +834,12 @@ public class BooksController(AppDbContext db, TelegramService telegram, IWebHost
 
         // DIQQAT: PayCreditAsync O'ZI SaveChanges qiladi — audit yozuvi alohida saqlanadi
         // (aks holda u bazaga umuman tushmasdi).
+        // Summa — SOF (`NetTotal`): to'lashdan oldin qaytarilgan kitobning puli olinmagan, kassaga
+        // ham aynan SOF summa kirgan (`BookFinance`). Xom `Total` yozilsa tarix kassadan farq qilardi.
         audit.Record("BookOrder", order.Id, "update",
-            $"Nasiya to'lovi qabul qilindi: {order.BookTitle} x {order.Qty} dona — " +
-            $"{AuditService.Money(order.Total)} so'm ({BookSalesService.PaymentLabel(method)})" +
+            (BookSalesService.IsCredit(order) ? "Nasiya to'lovi qabul qilindi: " : "Buyurtma to'lovi qabul qilindi (olib ketishda): ") +
+            $"{order.BookTitle} x {BookSalesService.NetQty(order)} dona — " +
+            $"{AuditService.Money(BookSalesService.NetTotal(order))} so'm ({BookSalesService.PaymentLabel(method)})" +
             (order.CustomerName.Length > 0 ? $", {order.CustomerName}" : ""),
             studentId: order.StudentId);
         await db.SaveChangesAsync();
@@ -1029,7 +1077,9 @@ public class BooksController(AppDbContext db, TelegramService telegram, IWebHost
             AuditService.Money(o.Total),
             BookSalesService.PaymentLabel(o.PaymentMethod),
             // Nasiyada eng muhim ustun: pul olindimi yoki hali qarzmi.
-            o.PaymentMethod != BookSalesService.PayCredit ? "" : o.IsPaid ? "To'langan" : "Qarz",
+            o.PayAtPickup && o.Status == BookSalesService.StatusApproved
+                ? (o.IsPaid ? "To'langan" : "Olib ketishda to'lanadi")
+                : o.PaymentMethod != BookSalesService.PayCredit ? "" : o.IsPaid ? "To'langan" : "Qarz",
             o.DueDate ?? "",
             o.PaidAt?.Replace('T', ' ') ?? "",
             BookSalesService.StatusLabel(o.Status),

@@ -37,7 +37,7 @@ import {
 } from '@/api/services/classes'
 import { getClassesStats, type ClassStats, getAllGroupsGradingStats, type GradingGroupStats } from '@/api/services/classPerformance'
 import { getTeachers } from '@/api/services/teachers'
-import { formatMoney, formatDate, cn, gradeTextCls, exportToCsv } from '@/lib/utils'
+import { formatMoney, formatDate, cn, gradeTextCls, exportToCsv, apiErrorMessage } from '@/lib/utils'
 import {
   WEEKDAYS,
   dayKind,
@@ -47,6 +47,7 @@ import {
   lessonCovers,
   notAttendedGroupIds,
 } from '@/lib/groupDisplay'
+import { localIsoDate } from '@/lib/localDate'
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
 import { Textarea } from '@/components/ui/Input'
@@ -292,8 +293,8 @@ export function ClassesPage() {
         return true
       })
       .catch((e: unknown) => {
-        const msg = (e as { response?: { data?: { message?: string } } })?.response?.data?.message
-        alert(msg ?? 'Saqlashda xatolik yuz berdi')
+        // Server sababi aynan ko'rsatiladi ("Bu nomli guruh allaqachon bor", "Tugash sanasi …").
+        alert(apiErrorMessage(e, 'Saqlashda xatolik yuz berdi'))
         return false
       })
   }
@@ -303,11 +304,12 @@ export function ClassesPage() {
 
   const handleSubmit = (values: ClassPayload) => {
     if (editing) {
-      // Oylik to'lov o'zgargan bo'lsa — o'quvchilarga qo'llashni so'raymiz (Ha/Yo'q)
+      // Oylik to'lov HAQIQATAN o'zgargan bo'lsa — o'quvchilarga qo'llashni so'raymiz (Ha/Yo'q).
+      // Forma kurs tanlanganda KURS NARXINI yuboradi (server ham shuni yozadi) — ya'ni "o'zgardimi"
+      // savoli faqat haqiqiy o'zgarishda chiqadi. Forma OCHIQ qoladi: saqlash xato bersa (masalan
+      // nom band) kiritilgan ma'lumot yo'qolmasin; muvaffaqiyatda `saveClass` o'zi yopadi.
       if (values.monthlyFee !== editing.monthlyFee) {
         setFeePrompt({ id: editing.id, values, oldFee: editing.monthlyFee })
-        setFormOpen(false)
-        setEditing(null)
         return
       }
       // DIQQAT: formani DARHOL yopmaymiz — konflikt bo'lsa ma'lumot yo'qolmasligi uchun.
@@ -334,16 +336,23 @@ export function ClassesPage() {
     setFeePrompt(null)
   }
 
+  /**
+   * Guruhni o'chirish. Server SABABNI matn bilan qaytaradi va u AYNAN ko'rsatiladi: to'lovi bor
+   * guruh o'chirilmaydi ("Bu guruhda to'lovlar bor — o'chirib bo'lmaydi. Guruhni arxivlang."),
+   * faol o'quvchisi bor guruh ham. Promise qaytariladi — xatodan keyin tugma qayta yoqiladi.
+   */
   const doDeleteGroup = (reasonId: string | undefined) => {
     const c = deletingGroup
     if (!c) return
-    deleteClass(c.id, reasonId)
+    return deleteClass(c.id, reasonId)
       .then(() => {
         setClasses((prev) => prev.filter((x) => x.id !== c.id))
         setArchived((prev) => prev.filter((x) => x.id !== c.id))
         setDeletingGroup(null)
+        // Guruh to'ldirish jadvali ham shu guruhsiz bo'lsin.
+        getGroupFill().then(setFill).catch(() => {})
       })
-      .catch((e) => alert(e?.response?.data?.message ?? "Guruhni o'chirib bo'lmadi"))
+      .catch((e) => alert(apiErrorMessage(e, "Guruhni o'chirib bo'lmadi")))
   }
 
   /**
@@ -369,7 +378,7 @@ export function ClassesPage() {
         const extra = r.trialClosed > 0 ? `, ${r.trialClosed} ta sinovdagi a'zolik guruhdan chiqarildi` : ''
         alert(`"${c.name}" arxivlandi — ${r.frozenMembers} ta a'zolik muzlatildi${extra}. O'quvchilar arxivlanmadi.`)
       })
-      .catch((e) => alert(e?.response?.data?.message ?? 'Arxivlashda xatolik'))
+      .catch((e) => alert(apiErrorMessage(e, 'Arxivlashda xatolik')))
   }
 
   /**
@@ -395,7 +404,7 @@ export function ClassesPage() {
           `"${c.name}" arxivdan chiqarildi.${extra} A'zoliklar muzlatilganicha qoldi — kerak bo'lsa qo'lda aktivlashtiring.`,
         )
       })
-      .catch((e) => alert(e?.response?.data?.message ?? 'Arxivdan chiqarishda xatolik'))
+      .catch((e) => alert(apiErrorMessage(e, 'Arxivdan chiqarishda xatolik')))
   }
 
   /** Vaqtincha bloklash — guruh o'qituvchida ko'rinmay qoladi (admin ro'yxatida qoladi). */
@@ -403,7 +412,7 @@ export function ClassesPage() {
     const c = blockTarget
     if (!c) return
     const note = blockNote.trim()
-    const today = new Date().toISOString().slice(0, 10)
+    const today = localIsoDate(new Date())
     blockClass(c.id, note)
       .then(() => {
         setClasses((prev) =>
@@ -431,7 +440,7 @@ export function ClassesPage() {
 
   /** Joriy (filtrlangan) ro'yxatni CSV'ga — ustunlar jadvaldagidek. */
   const exportList = () => {
-    const today = new Date().toISOString().slice(0, 10)
+    const today = localIsoDate(new Date())
     exportToCsv(
       `guruhlar-${showArchived ? 'arxiv-' : ''}${today}.csv`,
       ['№', 'Guruh nomi', 'Kurs', 'Darajasi', 'Kun', 'Dars vaqti', 'Guruh vaqti', "O'quvchilar", "O'qituvchi", 'Xona'],

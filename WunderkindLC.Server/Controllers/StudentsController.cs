@@ -636,6 +636,16 @@ public class StudentsController(
         // ⚠️ Nom bo'yicha qidiruvda ARXIVLANMAGAN guruh ustun: «Tugatish (sertifikat bilan)» yangi guruhga
         // eski nomni beradi, ya'ni bir xil nomli arxiv guruh ham bo'ladi — o'quvchi o'shanga tushib qolardi.
         var cls = await db.Classes.Where(c => c.Name == p.ClassName).OrderBy(c => c.IsArchived).FirstOrDefaultAsync();
+        // ARXIVDAGI (yopilgan/tugatilgan) guruhga yangi o'quvchi QO'SHILMAYDI — `AddMember` bilan bir xil
+        // qoida: u yerda dars yo'q, a'zolik esa keyin oylik hisobga tushib yopiq guruhdan qarz yozilardi
+        // (audit R1-1). Nom noyob bo'lgani uchun eski nom endi faqat arxiv guruhniki bo'lishi mumkin.
+        if (cls is { IsArchived: true })
+            return BadRequest(new { message = ArchivedGroupMessage(cls) + " — boshqa guruh tanlang yoki guruhsiz saqlang" });
+        // SIG'IM — guruh sahifasidagi «Guruhga qo'shish» (AddMember) bilan BIR XIL qoida: to'lgan
+        // guruhga yangi (sinov) a'zo qo'shilmaydi. Rad etiladi (400) — forma ochiq qoladi va admin
+        // boshqa guruh tanlaydi yoki guruhsiz saqlaydi; jimgina "guruhsiz yaratildi" bo'lib qolmasin.
+        if (cls is not null && cls.Capacity > 0 && !GroupSeats.HasRoom(cls, await GroupSeats.OccupiedAsync(db, cls.Id)))
+            return BadRequest(new { message = $"{GroupSeats.FullMessage(cls)} — boshqa guruh tanlang yoki guruhsiz saqlang" });
         var student = AddStudent(p, cls);
         // CHEGIRMA REGISTRI: o'quvchi chegirma bilan YARATILSA registrda qator ochiladi —
         // «BARCHA GURUHLAR» qamrovida (`groupId: null`). ⚠️ Bu ATAYIN qoldirilgan: import va eski
@@ -754,7 +764,14 @@ public class StudentsController(
         // Oylik to'lov DARROV yozilmaydi — a'zolik AKTIVLASHTIRILGANDA boshlanadi
         // (qisman birinchi oy + keyingi to'liq oylar; muzlatilsa to'xtaydi).
         if (cls is not null)
+        {
             AddMembershipRow(student.Id, cls, status, enrollment);
+            // A'zolik audit qatori — guruh sahifasining «Tarix» tabida ham ko'rinsin (AddMember naqshi,
+            // `EntityId = "{groupId}:{studentId}"`). Ilgari bu yo'l a'zolikni izsiz yaratardi.
+            audit.Record("Membership", $"{cls.Id}:{student.Id}", "create",
+                $"Guruhga qo'shildi (o'quvchi yaratildi): {student.FullName} → {cls.Name} ({NormalizeStatus(status)}, {enrollment})",
+                studentId: student.Id);
+        }
 
         // Chegirma berilgan bo'lsa — audit yozuvi.
         if (student.DiscountPct > 0 || student.DiscountAmount > 0)
@@ -810,6 +827,8 @@ public class StudentsController(
         if (!SchoolGradeOk(p.SchoolGrade)) return BadRequest(new { message = SchoolGradeInvalid });
 
         var beforeProfile = AuditService.StudentProfileSnapshot(student);
+        // Telegram ulanishlari — raqamlar o'zgarsa eskirganlari uziladi (pastda, saqlashdan oldin).
+        var phonesBefore = TelegramLinks.PhonesSignature(student);
 
         var oldClassName = student.ClassName;
 
@@ -858,7 +877,20 @@ public class StudentsController(
         // o'quvchi formasida esa bunday o'quvchiga guruh tanlagichi umuman ko'rsatilmaydi.
         var hasLiveMembership = await db.StudentGroups
             .AnyAsync(sg => sg.StudentId == student.Id && sg.IsActive);
-        if (!hasLiveMembership) student.ClassName = p.ClassName;
+        // ⚠️ ARXIVDAGI o'quvchiga bu yo'ldan guruh BERILMAYDI (arxiv = ketdi, `StudentArchiving`): aks holda
+        // pastda arxivdagi o'quvchiga a'zolik (yoki guruhsiz oylik hisob) ochilib qolardi. Guruhga qaytarish —
+        // arxivdan tiklash yoki «Guruhga qo'shish» (AddMember u o'quvchini arxivdan o'zi chiqaradi).
+        // ARXIVDAGI guruh tanlansa — rad etiladi (Create bilan bir xil, audit R1-1): a'zolik baribir ochilmasdi,
+        // lekin yorliq yopiq guruhga yozilib, pastdagi guruhsiz hisob bloki undan oylik yozardi.
+        if (!hasLiveMembership && !student.IsArchived && !string.IsNullOrWhiteSpace(p.ClassName)
+            && !string.Equals(oldClassName, p.ClassName, StringComparison.Ordinal))
+        {
+            var target = await db.Classes.AsNoTracking().Where(c => c.Name == p.ClassName)
+                .OrderBy(c => c.IsArchived).FirstOrDefaultAsync();
+            if (target is { IsArchived: true })
+                return BadRequest(new { message = ArchivedGroupMessage(target) + " — boshqa guruh tanlang" });
+        }
+        if (!hasLiveMembership && !student.IsArchived) student.ClassName = p.ClassName;
         var (oldGrade, oldGradeYear) = (student.SchoolGrade, student.SchoolGradeYear);
         ApplySchoolGrade(student, p.SchoolGrade);
         // Sinf o'zgarsa — kurs SINF NARXI bo'lgan guruhlarda joriy oylik DARHOL moslanadi.
@@ -901,10 +933,14 @@ public class StudentsController(
         {
             var pwd = p.NewPassword.Trim();
             if (pwd.Length < MinPasswordLength) return BadRequest(new { message = WeakPasswordMessage });
+            // Parol o'rnatish = akkauntga kirish — `ResetPassword`/`Credentials` bilan BIR XIL darvoza (AUTH-4).
+            if (!AdminPermAttribute.HasFullAccess(User, "students.list"))
+                return StatusCode(StatusCodes.Status403Forbidden, new { message = PasswordForbiddenMessage });
             // Akkaunt yo'q bo'lsa — yaratib biriktiramiz.
             user ??= AccountFactory.CreateAccountFor(db, "student", student.FullName);
             student.UserId = user.Id;
             user.SetInitialPassword(pwd);
+            await RefreshTokenService.RevokeAllForUserAsync(db, user.Id); // eski sessiyalar tugaydi (AUTH-1)
         }
         if (user is not null) user.FullName = student.FullName;
 
@@ -1039,6 +1075,11 @@ public class StudentsController(
             audit.Record(AuditService.EntityStudent, student.Id, "update",
                 $"O'quvchi ma'lumoti tahrirlandi ({student.FullName})",
                 before: beforeProfile, after: afterProfile, studentId: student.Id);
+
+        // TELEGRAM: ota-ona (yoki o'quvchi) raqami tuzatilgan bo'lsa ESKI raqam bilan ulangan chat
+        // endi qarz/davomat xabarlarini olmasin va kirish kodini so'ray olmasin (`TelegramLinks`).
+        if (TelegramLinks.PhonesChanged(phonesBefore, student))
+            await TelegramLinks.PruneStaleAsync(db, audit, student, "raqam o'zgardi");
 
         await db.SaveChangesAsync();
         return NoContent();
@@ -1188,6 +1229,12 @@ public class StudentsController(
         var actor = User.FindFirst(System.Security.Claims.ClaimTypes.Name)?.Value ?? "Admin";
         ArchiveService.Snapshot(db, "student", student.Id, student.FullName,
             student.Phone ?? student.ClassName ?? "", student, reason.Length > 0 ? reason : null, actor);
+        // "Kim, qachon o'chirdi" — ilgari bu amal tarixda IZ QOLDIRMASDI. `studentId` ATAYIN beriladi:
+        // o'quvchi «Arxiv (barcha turdagi)» dan tiklansa, bu qator uning tarixida ko'rinadi.
+        audit.Record(AuditService.EntityStudent, student.Id, "delete",
+            $"O'quvchi o'chirildi (o'chirilganlar arxiviga ko'chirildi): {student.FullName}"
+                + (reason.Length > 0 ? $" — sabab: {reason}" : ""),
+            before: AuditService.StudentProfileSnapshot(student), studentId: student.Id);
         db.Students.Remove(student);
         await db.SaveChangesAsync();
         return NoContent();
@@ -1233,9 +1280,15 @@ public class StudentsController(
     }
 
     /// <summary>
-    /// O'quvchini arxivga ko'chirish: <c>IsArchived=true</c>, sana saqlanadi, sabab yoziladi,
-    /// akkaunt login bloklanadi (PasswordHash bo'shaltiriladi). Tarixiy ma'lumotlar saqlanadi.
+    /// O'quvchini arxivga ko'chirish = O'QUVCHI KETDI: <c>IsArchived=true</c>, sana va sabab yoziladi,
+    /// akkaunt login bloklanadi (PasswordHash bo'shaltiriladi) va HAR tirik a'zolik «Guruhdan chiqarish»
+    /// bilan aynan bir xil yopiladi (<see cref="StudentArchiving.LeaveAllGroupsAsync"/>: hisob, sabab
+    /// yozuvi, a'zolik audit qatori, «asosiy guruh» yorlig'i). Tarixiy ma'lumotlar saqlanadi.
     /// ReasonId berilsa, ActionReason.Label yoziladi; aks holda Reason suz berilsa yoziladi.
+    ///
+    /// <para>⚠️ Ilgari a'zoliklar TIRIK qolardi: arxivdagi o'quvchi jurnalda, guruh SMS'larida va o'rin
+    /// sanog'ida turar, arxivdan qaytarilganda esa arxivda o'tgan har oy birdaniga hisoblanib, har oy
+    /// uchun SMS ketardi (audit C1).</para>
     /// </summary>
     [HttpPost("{id}/archive")]
     public async Task<IActionResult> Archive(string id, ArchiveStudentRequest req)
@@ -1245,13 +1298,19 @@ public class StudentsController(
         if (student.IsArchived)
             return BadRequest(new { message = "O'quvchi allaqachon arxivda" });
 
-        student.IsArchived = true;
-        student.ArchivedAt = AppClock.Today.ToString("yyyy-MM-dd");
+        // Bir o'quvchining pul amallari bir navbatda (RemoveMember bilan bir xil qulf) — balans qulf
+        // ICHIDA qayta o'qiladi (parallel to'lov ta'siri eski qiymat ustidan yozilmasin).
+        using var gate = await PaymentIdempotency.LockAsync("student:" + id);
+        await StudentBalanceSync.ReloadAsync(db, student);
+
+        var today = AppClock.Today.ToString("yyyy-MM-dd");
 
         // Sabab: ReasonId bo'lsa undan Label, aks holda Reason suz
+        string? reasonId = null;
         if (!string.IsNullOrWhiteSpace(req.ReasonId))
         {
             var reason = await db.ActionReasons.FindAsync(req.ReasonId);
+            reasonId = reason?.Id;
             student.ArchiveReason = reason?.Label ?? (req.Reason ?? "").Trim();
         }
         else
@@ -1259,26 +1318,45 @@ public class StudentsController(
             student.ArchiveReason = (req.Reason ?? "").Trim();
         }
 
+        // ARXIV = KETDI: a'zoliklar arxiv sanasida yopiladi (o'quvchi qulfi ostida — pul o'zgaradi).
+        var leave = await StudentArchiving.LeaveAllGroupsAsync(db, audit, student, today,
+            reasonId, student.ArchiveReason, "o'quvchi arxivlandi");
+
+        student.IsArchived = true;
+        student.ArchivedAt = today;
+
         // Login bloklash — PasswordHash bo'shaltiriladi (login imkonsiz bo'ladi).
         if (student.UserId is not null)
         {
             var user = await db.Users.FindAsync(student.UserId);
             if (user is not null)
+            {
                 user.BlockLogin();
+                // Ochiq sessiyalar ham yopiladi: aks holda tiklangandan keyin arxivdan OLDINGI
+                // refresh tokenlar yana ishlab ketardi (`auth-sessions.md`).
+                await RefreshTokenService.RevokeAllForUserAsync(db, user.Id);
+            }
         }
 
         audit.Record(AuditService.EntityStudentDiscount, student.Id, "update",
             $"O'quvchi arxivga ko'chirildi ({student.FullName})"
+                + (leave.Closed > 0 ? $" — {leave.Closed} ta guruhdan chiqarildi: {string.Join(", ", leave.GroupNames)}" : "")
                 + (string.IsNullOrWhiteSpace(student.ArchiveReason) ? "" : $": \"{student.ArchiveReason}\""),
             studentId: student.Id);
 
         await db.SaveChangesAsync();
-        return NoContent();
+        return Ok(new { closedMemberships = leave.Closed, restored = leave.Restored, groups = leave.GroupNames });
     }
 
     /// <summary>
     /// Arxivdan qaytarish: <c>IsArchived=false</c>, arxiv maydonlari tozalanadi. Ixtiyoriy
     /// <c>NewPassword</c> berilsa akkauntga yangi parol o'rnatiladi (aks holda parol bloklangicha qoladi).
+    ///
+    /// <para>⚠️ A'ZOLIKLAR TIKLANMAYDI — o'quvchi GURUHSIZ qaytadi (arxivlashda u guruhlardan chiqqan),
+    /// admin kerakli guruhga qo'shadi; javobdagi <c>message</c> buni aytadi. ESKI arxivdagi o'quvchida
+    /// (bu tuzatishdan oldin arxivlangan) a'zoliklar hamon tirik — ular avval ARXIV SANASIDA yopiladi
+    /// (<see cref="StudentArchiving.CloseLegacyMembershipsAsync"/>), aks holda arxivda o'tgan har oy
+    /// qaytarilishi bilanoq hisoblanib, ota-onaga har oy uchun SMS ketardi.</para>
     /// </summary>
     [HttpPost("{id}/restore")]
     public async Task<IActionResult> Restore(string id, RestoreStudentRequest req)
@@ -1288,31 +1366,78 @@ public class StudentsController(
         if (!student.IsArchived)
             return BadRequest(new { message = "O'quvchi arxivda emas" });
 
+        var newPwd = (req?.NewPassword ?? "").Trim();
+        if (newPwd.Length > 0 && newPwd.Length < MinPasswordLength)
+            return BadRequest(new { message = WeakPasswordMessage });
+
+        using var gate = await PaymentIdempotency.LockAsync("student:" + id);
+        await StudentBalanceSync.ReloadAsync(db, student);
+
+        // ESKI ARXIV: tirik a'zoliklar arxiv sanasida yopiladi (yangi arxivda ular yo'q — hech narsa
+        // qilinmaydi). `IsArchived` hali true — yopish uni bilishi shart emas, lekin sana undan olinadi.
+        var legacy = await StudentArchiving.CloseLegacyMembershipsAsync(db, audit, student);
+
         student.IsArchived = false;
         student.ArchivedAt = null;
         student.ArchiveReason = null;
         student.ArchivedWithClass = false;
 
-        var newPwd = (req?.NewPassword ?? "").Trim();
-        if (!string.IsNullOrEmpty(newPwd))
+        if (!string.IsNullOrEmpty(newPwd) && student.UserId is not null)
         {
-            if (newPwd.Length < MinPasswordLength) return BadRequest(new { message = WeakPasswordMessage });
-            if (student.UserId is not null)
+            var user = await db.Users.FindAsync(student.UserId);
+            if (user is null)
             {
-                var user = await db.Users.FindAsync(student.UserId);
-                if (user is null)
-                {
-                    user = AccountFactory.CreateAccountFor(db, "student", student.FullName);
-                    student.UserId = user.Id;
-                }
-                user.SetInitialPassword(newPwd);
+                user = AccountFactory.CreateAccountFor(db, "student", student.FullName);
+                student.UserId = user.Id;
             }
+            user.SetInitialPassword(newPwd);
         }
+        // Arxivdan OLDINGI sessiyalar (30 kunlik sirpanuvchi refresh) qayta TIRILMASIN (R2-6) — yangi parol
+        // berilsa ham, berilmasa ham (eski arxivlashda sessiyalar bekor qilinmagan bo'lishi mumkin).
+        if (student.UserId is not null) await RefreshTokenService.RevokeAllForUserAsync(db, student.UserId);
 
         audit.Record(AuditService.EntityStudentDiscount, student.Id, "update",
-            $"O'quvchi arxivdan qaytarildi ({student.FullName})",
+            $"O'quvchi arxivdan qaytarildi ({student.FullName}) — guruhsiz"
+                + (legacy.Closed > 0 ? $"; eski arxivdagi {legacy.Closed} ta a'zolik arxiv sanasida yopildi" : ""),
             studentId: student.Id);
 
+        await db.SaveChangesAsync();
+        return Ok(new { message = StudentArchiving.RestoredWithoutGroupsMessage, closedLegacy = legacy.Closed });
+    }
+
+    // ---------- TELEGRAM ULANISHLARI (ota-ona boti) — `TelegramLinks` ----------
+
+    /// <summary>
+    /// O'quvchiga bog'langan Telegram chatlari (bot xabarlari va kirish kodi shu chatlarga ketadi).
+    /// <c>phoneMatches=false</c> — ulanish raqami o'quvchining joriy raqamlaridan hech biriga mos emas
+    /// (eskirgan, uzish tavsiya etiladi). <c>ReadRequiresPerm</c> — ota-onaning Telegram ismi va raqami
+    /// faqat o'quvchilar bo'limi ruxsati bor xodimga.
+    /// </summary>
+    [HttpGet("{id}/telegram-links")]
+    [AdminPerm("students.list", ReadRequiresPerm = true)]
+    public async Task<ActionResult<List<TelegramLinks.LinkDto>>> TelegramLinksList(string id)
+    {
+        var s = await db.Students.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id);
+        if (s is null) return NotFound(new { message = "O'quvchi topilmadi" });
+        return await TelegramLinks.ListAsync(db, s);
+    }
+
+    /// <summary>
+    /// Telegram ulanishini QO'LDA uzish (masalan telefon begona odamga o'tgan). Shu chat endi bu o'quvchi
+    /// bo'yicha xabar olmaydi va kirish kodini so'ray olmaydi; ota-ona qayta ulanishi uchun botga to'g'ri
+    /// raqamni yuboradi. Ruxsat — sinf darajasidagi <c>students.list</c> (DELETE → o'chirish amali).
+    /// </summary>
+    [HttpDelete("{id}/telegram-links/{regId}")]
+    public async Task<IActionResult> UnlinkTelegram(string id, string regId)
+    {
+        var s = await db.Students.FindAsync(id);
+        if (s is null) return NotFound(new { message = "O'quvchi topilmadi" });
+        var reg = await db.TelegramRegistrations.FirstOrDefaultAsync(r => r.Id == regId && r.StudentId == id);
+        if (reg is null) return NotFound(new { message = "Ulanish topilmadi — allaqachon uzilgan bo'lishi mumkin" });
+        db.TelegramRegistrations.Remove(reg);
+        audit.Record(AuditService.EntityStudent, id, "update",
+            $"Telegram ulanishi qo'lda uzildi: {TelegramLinks.Describe(reg)} ({s.FullName})",
+            studentId: id);
         await db.SaveChangesAsync();
         return NoContent();
     }
@@ -1396,11 +1521,23 @@ public class StudentsController(
         return new CredentialsDto(user.Email, user.InitialPassword ?? "", user.Role);
     }
 
-    /// <summary>O'quvchiga yangi tasodifiy parol generatsiya qiladi va BIR MARTA qaytaradi
-    /// (DB'da faqat hash saqlanadi).</summary>
+    /// <summary>Parolni o'rnatish/qayta yaratish huquqi yo'q xodimga (403) ko'rsatiladigan sabab.</summary>
+    private const string PasswordForbiddenMessage =
+        "Parol o'rnatish uchun «O'quvchilar» bo'limiga to'liq ruxsat kerak";
+
+    /// <summary>O'quvchiga yangi tasodifiy parol generatsiya qiladi va qaytaradi.
+    /// <para>⚠️ Darvoza <see cref="Credentials"/> bilan BIR XIL (<c>HasFullAccess</c>): yangi parol
+    /// QAYTARILADI, ya'ni bu o'quvchi akkauntiga kirish. Ilgari faqat sinf darajasidagi
+    /// <c>students.list:create</c> yetardi — parolni KO'RISH huquqi yo'q xodim uni qayta yaratib
+    /// olardi (xodimlardagi `StaffController.ResetPassword` bilan bir xil sabab).</para>
+    /// <para>Yangi parol <c>InitialPassword</c> ga ham yoziladi (<c>SetInitialPassword</c>) — aks holda
+    /// «Login/parol», Excel eksport va botdagi login xabari ESKI (yaroqsiz) parolni ko'rsatardi.
+    /// Eski sessiyalar tugatiladi (yo'qolgan telefon / parolni bilib olgan odam chiqib ketadi).</para></summary>
     [HttpPost("{id}/reset-password")]
     public async Task<ActionResult<CredentialsDto>> ResetPassword(string id)
     {
+        if (!AdminPermAttribute.HasFullAccess(User, "students.list"))
+            return StatusCode(StatusCodes.Status403Forbidden, new { message = PasswordForbiddenMessage });
         var student = await db.Students.FindAsync(id);
         if (student is null) return NotFound();
         var user = student.UserId is null ? null : await db.Users.FindAsync(student.UserId);
@@ -1410,7 +1547,12 @@ public class StudentsController(
             student.UserId = user.Id;
         }
         var pwd = AccountFactory.GeneratePassword();
-        user.PasswordHash = PasswordHasher.Hash(pwd);
+        // Parolning O'ZI hech qachon tarixga yozilmaydi — faqat "almashtirildi" fakti
+        // (o'qituvchi/xodimdagi qoida bilan bir xil). Tur — login amallari bilan bir joyda.
+        audit.Record(AuditService.EntityStudentDiscount, student.Id, "update",
+            $"O'quvchi paroli qayta yaratildi ({student.FullName})", studentId: student.Id);
+        user.SetInitialPassword(pwd);
+        await RefreshTokenService.RevokeAllForUserAsync(db, user.Id);
         await db.SaveChangesAsync();
         return new CredentialsDto(user.Email, pwd, user.Role);
     }
@@ -1562,8 +1704,9 @@ public class StudentsController(
             // taqsimoti (maosh, per-guruh balans, kurs moliyasi) esa uni "pullik" deb
             // olardi — bir guruhning puli ikkinchisining o'qituvchisiga bo'linib ketardi.
             // Endi sana = qabul sanasi: "active" tanlansa hisob shu sanadan yuritiladi
-            // (qabul oyining O'ZI qisman hisobsiz qoladi — u faqat «Aktivlashtirish»
-            // oynasida yoziladi), "frozen" tanlansa esa a'zolik boshidanoq to'xtatilgan.
+            // (qabul oyining O'ZI bu yerda hisoblanmaydi — qisman oylik «Aktivlashtirish» oynasida,
+            // yoki shu oyga TO'LOV kelganda `TuitionService.EnsureChargeAsync` orqali yoziladi;
+            // aks holda birinchi oy bepul qolardi), "frozen" tanlansa esa a'zolik boshidanoq to'xtatilgan.
             //
             // ⚠️ ORQAGA SANALGAN QABUL SANASI QIRQILADI (`MembershipLifecycle.ActivationStartForCreate`). Sabab:
             // `AccrueDue` har 12 soatda butun tarixni skanerlaydi, ya'ni eski `enrollment`
@@ -1584,6 +1727,9 @@ public class StudentsController(
         });
     }
 
+    /// <summary>Arxivdagi guruhga a'zo qo'shib bo'lmasligi sababi (yaratish 400, import ogohlantirishi).</summary>
+    private static string ArchivedGroupMessage(Group cls) => $"«{cls.Name}» guruhi arxivda (yopilgan)";
+
     // Guruh bo'yicha status mapping (guruh berilgan bo'lsa status to'ldirish uchun).
     private static string NormalizeGroupStatus(Group? cls, string statusFromRow)
     {
@@ -1600,7 +1746,8 @@ public class StudentsController(
     [HttpGet("import-template")]
     public async Task<IActionResult> ImportTemplate()
     {
-        var groupNames = await db.Classes.OrderBy(c => c.Name).Select(c => c.Name).ToListAsync();
+        // Faqat ARXIVLANMAGAN guruhlar — arxivdagi (yopilgan) guruhga import o'quvchi qo'shmaydi.
+        var groupNames = await db.Classes.Where(c => !c.IsArchived).OrderBy(c => c.Name).Select(c => c.Name).ToListAsync();
         var statuses = new[] { "trial", "active", "frozen" };
 
         var info = new List<IReadOnlyList<string>>
@@ -1694,6 +1841,19 @@ public class StudentsController(
         int created = 0, skipped = 0, existingCount = 0, addedToGroups = 0;
         var createdByIndex = new Dictionary<int, Student>();
 
+        // SIG'IM (`GroupSeats`, AddMember bilan bir xil qoida) — import ham guruhni to'ldirib yubormasin.
+        // Band o'rinlar guruh bo'yicha BIR MARTA o'qiladi va shu importda qo'shilganlar bilan oshiriladi
+        // (hammasi bitta SaveChanges bilan saqlanadi — bazadan qayta sanab bo'lmaydi).
+        var seatsUsed = new Dictionary<string, int>(StringComparer.Ordinal);
+        async Task<bool> TakeSeatAsync(Group g, string memberStatus)
+        {
+            if (g.Capacity <= 0 || !GroupSeats.TakesSeat(memberStatus)) return true;
+            if (!seatsUsed.TryGetValue(g.Id, out var used)) used = await GroupSeats.OccupiedAsync(db, g.Id);
+            if (!GroupSeats.HasRoom(g, used)) { seatsUsed[g.Id] = used; return false; }
+            seatsUsed[g.Id] = used + 1;
+            return true;
+        }
+
         foreach (var step in steps)
         {
             var r = step.Source;
@@ -1706,6 +1866,26 @@ public class StudentsController(
 
                 case StudentImportPlan.Kind.Create:
                 {
+                    // Holat — faqat guruh bo'lsa qo'llaniladi
+                    var status = cls is not null ? NormalizeGroupStatus(cls, r.Status.Trim()) : "";
+                    // Guruh ARXIVDA (yopilgan) bo'lsa — o'quvchi baribir yaratiladi, lekin GURUHSIZ (audit R1-1):
+                    // yopiq guruhdagi a'zolik oylik hisobga tushib qarz yozardi. `AddMember` bilan bir xil qoida.
+                    if (cls is { IsArchived: true })
+                    {
+                        warnings.Add(new StudentImportRowErrorDto(step.ExcelRow,
+                            $"{ArchivedGroupMessage(cls)} — o'quvchi guruhsiz yaratildi"));
+                        cls = null;
+                        status = "";
+                    }
+                    // Guruh TO'LGAN bo'lsa o'quvchi baribir yaratiladi (qator yo'qolmasin), lekin GURUHSIZ —
+                    // natija oynasida ogohlantirish bilan (admin boshqa guruhga qo'shadi).
+                    if (cls is not null && !await TakeSeatAsync(cls, status))
+                    {
+                        warnings.Add(new StudentImportRowErrorDto(step.ExcelRow,
+                            $"{GroupSeats.FullMessage(cls)}: \"{cls.Name}\" — o'quvchi guruhsiz yaratildi"));
+                        cls = null;
+                        status = "";
+                    }
                     var payload = new StudentPayload(
                         FullName: StudentImportPlan.CleanName(r.FullName),
                         BirthDate: NormalizeDate(r.BirthDate),
@@ -1721,8 +1901,6 @@ public class StudentsController(
                         MotherFullName: r.MotherName.Trim().Length > 0 ? r.MotherName.Trim() : null,
                         MotherPhone: r.MotherPhone.Trim().Length > 0 ? PhoneUtil.Normalize(r.MotherPhone) : null,
                         SchoolGrade: step.Grade);
-                    // Holat — faqat guruh bo'lsa qo'llaniladi
-                    var status = cls is not null ? NormalizeGroupStatus(cls, r.Status.Trim()) : "";
                     createdByIndex[step.NewIndex!.Value] = AddStudent(payload, cls, status);
                     created++;
                     if (step.Warning is not null) warnings.Add(new StudentImportRowErrorDto(step.ExcelRow, step.Warning));
@@ -1750,16 +1928,36 @@ public class StudentsController(
                         await GradeRepricing.ApplyAsync(db, audit, student, oldGrade, oldGradeYear);
                     }
 
-                    if (step.Kind == StudentImportPlan.Kind.Join && cls is not null)
+                    // Guruhga qo'shilmadi (arxiv/sig'im) — «… guruhiga qo'shildi» degan reja matni yozilmasin.
+                    var joinRefused = false;
+                    if (step.Kind == StudentImportPlan.Kind.Join && cls is { IsArchived: true })
                     {
-                        AddMembershipRow(student.Id, cls, NormalizeGroupStatus(cls, r.Status.Trim()),
-                            AppClock.Today.ToString("yyyy-MM-dd"));
-                        audit.Record("Membership", $"{cls.Id}:{student.Id}", "create",
-                            $"Guruhga qo'shildi (Excel importi): {student.FullName} → {cls.Name}",
-                            studentId: student.Id);
-                        addedToGroups++;
+                        // Arxivdagi (yopilgan) guruhga qo'shilmaydi — yaratishdagi bilan bir xil (audit R1-1).
+                        warnings.Add(new StudentImportRowErrorDto(step.ExcelRow,
+                            $"{ArchivedGroupMessage(cls)} — {student.FullName} guruhga qo'shilmadi"));
+                        joinRefused = true;
                     }
-                    warnings.Add(new StudentImportRowErrorDto(step.ExcelRow, step.Message ?? ""));
+                    else if (step.Kind == StudentImportPlan.Kind.Join && cls is not null)
+                    {
+                        var joinStatus = NormalizeGroupStatus(cls, r.Status.Trim());
+                        if (!await TakeSeatAsync(cls, joinStatus))
+                        {
+                            warnings.Add(new StudentImportRowErrorDto(step.ExcelRow,
+                                $"{GroupSeats.FullMessage(cls)}: \"{cls.Name}\" — {student.FullName} guruhga qo'shilmadi"));
+                            joinRefused = true;
+                        }
+                        else
+                        {
+                            AddMembershipRow(student.Id, cls, joinStatus, AppClock.Today.ToString("yyyy-MM-dd"));
+                            audit.Record("Membership", $"{cls.Id}:{student.Id}", "create",
+                                $"Guruhga qo'shildi (Excel importi): {student.FullName} → {cls.Name}",
+                                studentId: student.Id);
+                            addedToGroups++;
+                        }
+                    }
+                    warnings.Add(new StudentImportRowErrorDto(step.ExcelRow, joinRefused
+                        ? $"\"{student.FullName}\" allaqachon bor — yangi o'quvchi yaratilmadi"
+                        : step.Message ?? ""));
                     break;
                 }
 
@@ -1949,8 +2147,9 @@ public class StudentsController(
 
     /// <summary>
     /// O'quvchining Local Call (CTI) qo'ng'iroqlari tarixi — StartedAt bo'yicha kamayish, max 100 ta.
-    /// Faqat metadata (audio playback yo'q — u "calls" ruxsati bilan Local Call modulida). MoiZvonki
-    /// bulut qo'ng'iroqlari bu ro'yxatga KIRMAYDI (foydalanuvchi talabi bo'yicha faqat Local).
+    /// Faqat metadata (audio playback yo'q — u "calls.local" ruxsati bilan Local Call modulida).
+    /// Eski bulutli telefoniya tarixi (`Calls` jadvali) bu ro'yxatga KIRMAYDI — jonli telefoniya
+    /// faqat Local Call.
     /// </summary>
     [HttpGet("{id}/calls")]
     public async Task<ActionResult<List<StudentCallDto>>> GetCalls(string id)

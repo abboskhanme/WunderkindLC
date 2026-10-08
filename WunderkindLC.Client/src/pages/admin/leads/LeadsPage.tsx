@@ -93,6 +93,8 @@ export function LeadsPage() {
   const [leads, setLeads] = useState<Lead[]>([])
   const [stages, setStages] = useState<Stage[]>([])
   const [loading, setLoading] = useState(true)
+  /** Ro'yxat/ustunlar yuklanmasa — sababi ko'rinadi (aks holda "lid yo'q" deb o'ylanardi). */
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [activeId, setActiveId] = useState<string | null>(null)
   const [sources, setSources] = useState<LeadSource[]>([])
   const [courseNames, setCourseNames] = useState<string[]>([])
@@ -121,6 +123,8 @@ export function LeadsPage() {
         setLeads(l)
         setStages(s)
       })
+      // Sahifaning ASOSIY ma'lumoti — xato yutilmaydi (`error-visibility.md` §4).
+      .catch((err) => setLoadError(apiErrorMessage(err, "Lidlarni yuklab bo'lmadi")))
       .finally(() => setLoading(false))
     getLeadSources().then(setSources).catch(() => setSources([]))
     getLeadCourses().then(setCourseNames).catch(() => setCourseNames([]))
@@ -212,9 +216,12 @@ export function LeadsPage() {
    * oyna ochiq qoladi va xato ko'rinadi. Ro'yxat SERVER JAVOBIDAN KEYIN yangilanadi (optimistik
    * emas). Tahrirlash endi lid SAHIFASIDA (`LeadDetailPage`).
    */
-  const handleLeadSubmit = async (values: LeadFormValues, answers: LeadAnswersPayload) => {
+  const handleLeadSubmit = async (
+    values: LeadFormValues, answers: LeadAnswersPayload, opts?: { force?: boolean },
+  ) => {
     const stageId = stages[0]?.id ?? 'new'
-    const lead = await createLead(values, stageId, answers)
+    // Shu raqamli lid bo'lsa server 409 qaytaradi — modal "Bu raqamli lid allaqachon bor" ni ko'rsatadi.
+    const lead = await createLead(values, stageId, answers, opts?.force ?? false)
     setLeads((prev) => [lead, ...prev])
   }
 
@@ -495,6 +502,9 @@ export function LeadsPage() {
 
   return (
     <div>
+      {loadError && (
+        <p className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{loadError}</p>
+      )}
       <ListToolbar
         left={
           <>

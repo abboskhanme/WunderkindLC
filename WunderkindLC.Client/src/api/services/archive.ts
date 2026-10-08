@@ -15,9 +15,13 @@ export async function getArchiveCounts(): Promise<Record<string, number>> {
   return data
 }
 
-/** Yozuvni tiklash. */
-export async function restoreArchive(id: string): Promise<void> {
-  await api.post(`/admin/archive/${id}/restore`)
+/**
+ * Yozuvni tiklash. `message` — tiklangandan keyin nima qilish kerakligi (masalan o'quvchi guruhsiz
+ * qaytdi, xodimga parol va rol qayta beriladi) — foydalanuvchiga ko'rsatiladi.
+ */
+export async function restoreArchive(id: string): Promise<{ message?: string | null }> {
+  const { data } = await api.post<{ ok: boolean; message?: string | null }>(`/admin/archive/${id}/restore`)
+  return data ?? {}
 }
 
 /** Yozuvni butunlay o'chirish. */

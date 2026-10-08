@@ -112,13 +112,17 @@ OYLIK = Oklad + ( Shartnoma × 35 000 × Konv.koef ) × Samar.koef − Tiket × 
 | Imzolangan shartnoma | QISMAN | `Lead.ConvertedStudentId`, `Contract.Status`, `StudentGroup.ActivatedAt`, `LeadOutcome.PayByStudent` | Hodisa bor, **kim yopgani** yo'q (`Contract.CreatedBy` yo'q). Vaqtincha `AuditLog.ActorId`; to'g'risi `Lead.ClosedByUserId` |
 | Samaradorlik | BOR | `WorkTask.DueDate/DueTime/CompletedAt/AssigneeId`, `WorkTasksController.Dashboard` | Excel «amoCRM» = bizda Topshiriqlar. Muddatida yopilgan / muddati kelgan |
 | Tiket | YO'Q | — | `KpiTicket` |
-| 3 gudokgacha javob | BOR | `Call.StartedAt`, `Call.AnsweredAt`, `Status=no_answer` (MoiZvonki) | 3 gudok ≈ 12–15 s |
-| Javobsizni 15 daq. ichida qaytarish | BOR | `Call.Direction/Status/PhoneNumber` | Kiruvchi `no_answer` → shu raqamga chiquvchi qo'ng'iroq |
+| 3 gudokgacha javob | BOR | `CtiCallRecord.StartedAt`, `AnsweredAt`, `Direction=incoming` (Local Call) | 3 gudok ≈ 12–15 s |
+| Javobsizni 15 daq. ichida qaytarish | BOR | `CtiCallRecord.Direction/RemoteNumber` | `missed` → shu raqamga keyingi `outgoing` |
 | DM javob 15 daq. | QISMAN | `IgConversation.LastInboundAt/LastOutboundAt`, `NeedsOperator` | Instagram bor. Telegram: `LeadTelegramMessage` da «kim javob berdi» yo'q |
 | Ehtiyoj maydonlari 95% | BOR | `Lead.AnswersJson`, `LeadEntryField` (majburiy) | |
-| Muloqot 2 soat+ | BOR | `Call.DurationSeconds` sum, `OperatorUserId` bo'yicha | |
+| Muloqot 2 soat+ | BOR | `CtiCallRecord.DurationSec` sum, xodimning agent(lar)i (`CtiAgent.StaffUserId`) bo'yicha | |
 | Kechikkan vazifa / vazifasiz sdelka = 0 | BOR | `WorkTask` + `Lead` | Vazifasiz sdelka = ochiq lid, ustida ochiq topshiriq yo'q |
 | Lidni ishlagan operator / yopgan admin | YO'Q | `LeadEvent.ActorUserId` faqat harakat | `Lead.AssigneeUserId` + `Lead.ClosedByUserId` |
+
+⚠️ 2026-10-08 dan qo'ng'iroq ko'rsatkichlarining manbai — **Local Call** (`CtiCallRecord`): bulutli
+telefoniya olib tashlandi, xodim qo'ng'iroqqa agent-telefoni (`CtiAgent.StaffUserId`) orqali
+bog'lanadi. Batafsil — `.claude/rules/kpi.md` §11.1.
 
 ### 3.2 Chiquvchi admin
 
@@ -191,8 +195,8 @@ tasdiqlangan oylik natija.
 - «Shu tezlikda davom etsa oy oxirida…»
 
 **KPI → Tiketlar**
-- Haftalik sifat nazorati: 5 ta tasodifiy qo'ng'iroq (`Call.RecordingFile` bor)
-- 13 mezon bo'yicha baholash; Gemini taklifi (`Call.AiAnalysis` bor) — rahbar tasdiqlaydi
+- Haftalik sifat nazorati: 5 ta tasodifiy qo'ng'iroq (Local Call yozuvi — `CtiCallRecord.AudioPath` bor)
+- 13 mezon bo'yicha baholash; Gemini taklifi (`CtiCallRecord.AiAnalysis` bor) — rahbar tasdiqlaydi
 - Tiket: sabab, mezon, qo'ng'iroq havolasi, xodim e'tirozi
 
 **KPI → Yopish**
@@ -290,7 +294,7 @@ Excel'da nazorat qo'lda («09:00 raqamlar aytiladi», «kun oxirida Telegramga»
 | **Har kuni 09:00** | Kunlik norma: «bugun 4 sinov, 3–4 shartnoma, 40 qo'ng'iroq; tunda 6 DM javobsiz, 2 qaytarilmagan qo'ng'iroq». Chiquvchiga: «3 dars kelmagan 4 o'quvchi, bugun to'lov muddati 11 kishi, 3 hafta ichida tugaydigan 2 guruh» | Xodim (Telegram + «Bugun») | `KpiDailyDigest` — `TelegramService`/`BotUser`; `WorkTaskReminderService` naqshi |
 | **Kun davomida** | Auto-bandlar belgilanadi. Signal: DM 15 daq. oshdi, kiruvchi qo'ng'iroq javobsiz, kechikkan vazifa | Xodim; rahbarga faqat qizil | `ChecklistAutoCheck` (10 daq.), `UserNotification`/`FcmService` |
 | **Har kuni 18:00** | Kunlik raqamlar avtomatik (Excel'dagi «Kunlik raqamlar» bloki). Xodim qo'lda yubormaydi, faqat izoh. Cheklist to'ldirilmagan kun — «bajarilmagan» | Xodim + rahbar (Telegram guruh) | `KpiDailyDigest`, `TelegramGroup` |
-| **Har hafta** | Sifat nazorati: har xodimdan 5 tasodifiy qo'ng'iroq (yozuvi bor, >60 s). Gemini 13 mezonga dastlabki baho (`Call.Transcript` + `AiAnalysis` bor). Rahbar tasdiqlaydi → tiket. 10/10 — geymifikatsiya | Rahbar (Tiketlar) | `CallsController /{id}/analyze` + 13-mezon prompti; `KpiTicket` |
+| **Har hafta** | Sifat nazorati: har xodimdan 5 tasodifiy qo'ng'iroq (yozuvi bor, >60 s). Gemini 13 mezonga dastlabki baho (`CtiCallRecord.Transcript` + `AiAnalysis` bor). Rahbar tasdiqlaydi → tiket. 10/10 — geymifikatsiya | Rahbar (Tiketlar) | `CtiController calls/{id}/analyze` + 13-mezon prompti; `KpiTicket` |
 | **Oyning 1-kuni** | Snapshot: faol soni, qarz summasi, ochiq lidlar — har xodim uchun. O'tgan oy «Yopish»da qoralama | Rahbar | `KpiSnapshotService` |
 | **Oyning 1–3 kuni** | Rahbar har xodim natijasini ko'radi (har kirish raqami manbaga havola bilan), koeffitsientlar, jarimalar, kafolat, chegara. Xodim ko'radi, e'tiroz bildiradi. Tasdiq → muzlanadi → Excel → maosh to'lovi (`FinanceTransaction expense/salary`; KPI pul chiqarmaydi, summani aytadi) | Rahbar + xodim | `KpiMonthResult`, `ExcelExport` |
 | **Har 2 oy (kalibrovka)** | «Qoidalar»da haqiqiy taqsimot (ketish % qaysi pog'onaga tushdi, konversiya qayerda) — rahbar pog'onalarni yangi versiya qilib saqlaydi, keyingi oydan. Kafolat `KpiProfile.GuaranteeUntilMonth` da tugaydi | Rahbar | `KpiRuleSet.EffectiveFrom` |
@@ -364,5 +368,5 @@ dekabrdan shkala tizimda sozlanadi.
 `kpi/Kunlik cheklist Kiruvchi admin.xlsx`, `kpi/Kunlik cheklist ChiquvchiAdmin.xlsx`,
 `kpi/Kiruvchi admin qabul qilish skripti.doc`. Kod: `Domain/Entities.cs`, `Application/Services`
 (LeadAnalytics, LeadOutcome, ContactReport, RetentionBonusService, CenterAiAnalysisService,
-MembershipLifecycle, SalaryLedger), `Server/Controllers` (Leads, Calls, WorkTasks, ActionReasons,
+MembershipLifecycle, SalaryLedger), `Server/Controllers` (Leads, Cti, WorkTasks, ActionReasons,
 Students, Classes), `RETENTION-BONUS-PLAN.md`.*

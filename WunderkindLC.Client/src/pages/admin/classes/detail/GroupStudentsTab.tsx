@@ -24,6 +24,7 @@ import { apiErrorMessage, cn, exportToCsv, formatDate, formatMoney } from '@/lib
 import { formatPhone } from '@/lib/numberFormat'
 import type { BackState } from '@/lib/nav'
 import { membershipBadge } from '@/lib/groupDisplay'
+import { localIsoDate } from '@/lib/localDate'
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
 import { ReasonPromptModal } from '@/components/ui/ReasonPromptModal'
@@ -131,7 +132,7 @@ export function GroupStudentsTab({
 
   const confirmBulk = async (reasonId: string | undefined, date?: string, retentionBonus?: boolean) => {
     if (!bulk || busy) return
-    const day = date ?? new Date().toISOString().slice(0, 10)
+    const day = date ?? localIsoDate(new Date())
     setBusy(true)
     try {
       const freezing = bulk === 'freeze' || bulk === 'yearFreeze'

@@ -201,11 +201,16 @@ public sealed record KpiCriterionDto(int No, string Label);
 public sealed record KpiStaffDto(string UserId, string UserName, string RoleCode, string RoleLabel);
 
 /// <summary>
-/// Haftalik sifat nazorati uchun TASODIFIY qo'ng'iroq namunasi.
+/// Haftalik sifat nazorati uchun TASODIFIY qo'ng'iroq namunasi — Local Call (CTI) yozuvidan.
 /// </summary>
-/// <remarks>⚠️ Yozuv FAYLI manzili qaytmaydi (<c>HasRecording</c> — faqat bayroq): fayl
-/// avtorizatsiyalangan qo'ng'iroqlar bo'limi orqali tinglanadi
-/// (<c>.claude/rules/uploads-security.md</c> printsipi).</remarks>
+/// <remarks>
+/// <c>CallId</c> = <c>CtiCallRecord.Id</c>. <c>Direction</c> — <c>"inbound"</c>/<c>"outbound"</c>
+/// (CTI ning incoming/missed/outgoing qiymatlari <see cref="KpiCallSource.SampleDirection"/>
+/// bilan o'giriladi — klient shartnomasi o'zgarmadi).
+/// ⚠️ Yozuv FAYLI manzili qaytmaydi (<c>HasRecording</c> — faqat bayroq): fayl Local Call'ning
+/// avtorizatsiyalangan audio endpointi (<c>GET /api/cti/calls/{id}/audio</c>) orqali tinglanadi
+/// (<c>.claude/rules/uploads-security.md</c> printsipi).
+/// </remarks>
 public sealed record KpiCallSampleDto(
     string CallId, string PhoneNumber, string Direction, string StartedAt, int DurationSeconds,
     bool HasRecording, string? Transcript, string? AiAnalysis);

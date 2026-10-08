@@ -741,7 +741,7 @@ public class OnlineTestBotService(TelegramService telegram, IHostEnvironment env
         var extScores = await db.ExternalTestScores.AsNoTracking()
             .Where(s => s.TestResultId == test.Id).Select(s => s.Score).ToListAsync(ct);
         var all = scores.Concat(extScores).ToList();
-        var rank = all.Count(x => x > correct) + 1;
+        var rank = OnlineTestService.RankAmong(correct, all);
 
         await telegram.SendMessageAsync(chatId,
             BuildResultText(test, answers, correct, takerName, submittedAt, rank, all.Count,
@@ -779,7 +779,9 @@ public class OnlineTestBotService(TelegramService telegram, IHostEnvironment env
         {
             sb.Append($"\n⏳ Batafsil tahlil test yakunlangach ({Clock(test.EndAt)}) ko'rsatiladi.\n");
         }
-        sb.Append("\nNatijangiz o'qituvchingizga ham yuborildi.");
+        // ⚠️ Ilgari "Natijangiz o'qituvchingizga ham yuborildi" deyilardi — o'qituvchiga hech narsa
+        // YUBORILMAYDI, natija faqat "Testlar natijalari" bo'limida ko'rinadi. Matn shuni aytadi.
+        sb.Append("\nNatijangiz markazning «Testlar natijalari» bo'limiga yozildi — o'qituvchi uni ko'radi.");
         return sb.ToString();
     }
 

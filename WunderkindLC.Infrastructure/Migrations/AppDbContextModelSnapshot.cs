@@ -241,6 +241,62 @@ namespace WunderkindLC.Infrastructure.Migrations
                     b.ToTable("ArchivedRecords");
                 });
 
+            modelBuilder.Entity("WunderkindLC.Domain.AttendanceNotifyItem", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasColumnType("text");
+
+                    b.Property<string>("ClassId")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<string>("Date")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<int>("Period")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("ReasonId")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("Status")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<string>("StudentId")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("SubjectId")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Status", "CreatedAt");
+
+                    b.ToTable("AttendanceNotifyItems");
+                });
+
             modelBuilder.Entity("WunderkindLC.Domain.AuditLog", b =>
                 {
                     b.Property<string>("Id")
@@ -363,6 +419,26 @@ namespace WunderkindLC.Infrastructure.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("AutoMessageRules");
+                });
+
+            modelBuilder.Entity("WunderkindLC.Domain.BackgroundJobRun", b =>
+                {
+                    b.Property<string>("Key")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("LastRunDate")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.HasKey("Key");
+
+                    b.ToTable("BackgroundJobRuns");
                 });
 
             modelBuilder.Entity("WunderkindLC.Domain.Book", b =>
@@ -497,6 +573,9 @@ namespace WunderkindLC.Infrastructure.Migrations
 
                     b.Property<string>("PaidTime")
                         .HasColumnType("text");
+
+                    b.Property<bool>("PayAtPickup")
+                        .HasColumnType("boolean");
 
                     b.Property<string>("PaymentMethod")
                         .IsRequired()
@@ -3035,6 +3114,10 @@ namespace WunderkindLC.Infrastructure.Migrations
                     b.Property<string>("RefundOfId")
                         .HasColumnType("text");
 
+                    b.Property<string>("SplitFromId")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
                     b.Property<string>("StudentId")
                         .HasColumnType("text");
 
@@ -3063,6 +3146,8 @@ namespace WunderkindLC.Infrastructure.Migrations
                     b.HasIndex("CashboxId");
 
                     b.HasIndex("Date");
+
+                    b.HasIndex("SplitFromId");
 
                     b.HasIndex("StudentId");
 
@@ -3948,6 +4033,10 @@ namespace WunderkindLC.Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<List<string>>("PastLeadIds")
+                        .IsRequired()
+                        .HasColumnType("text[]");
+
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasColumnType("text");
@@ -4432,6 +4521,9 @@ namespace WunderkindLC.Infrastructure.Migrations
 
                     b.Property<int?>("Grade")
                         .HasColumnType("integer");
+
+                    b.Property<bool>("GradeFromCriteria")
+                        .HasColumnType("boolean");
 
                     b.Property<int>("Homework")
                         .HasColumnType("integer");
@@ -5516,6 +5608,34 @@ namespace WunderkindLC.Infrastructure.Migrations
                     b.ToTable("LessonNotes");
                 });
 
+            modelBuilder.Entity("WunderkindLC.Domain.LessonReminderMark", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<string>("Date")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)");
+
+                    b.Property<string>("Key")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Date");
+
+                    b.HasIndex("Key")
+                        .IsUnique();
+
+                    b.ToTable("LessonReminderMarks");
+                });
+
             modelBuilder.Entity("WunderkindLC.Domain.LessonReschedule", b =>
                 {
                     b.Property<string>("Id")
@@ -6442,6 +6562,94 @@ namespace WunderkindLC.Infrastructure.Migrations
                     b.HasIndex("RequestId");
 
                     b.ToTable("SmsLogs");
+                });
+
+            modelBuilder.Entity("WunderkindLC.Domain.SmsQueueItem", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasColumnType("text");
+
+                    b.Property<string>("BatchId")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("LeadId")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Message")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Phone")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int>("Seq")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Status")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BatchId", "Seq");
+
+                    b.ToTable("SmsQueueItems");
+                });
+
+            modelBuilder.Entity("WunderkindLC.Domain.SmsQueueJob", b =>
+                {
+                    b.Property<string>("BatchId")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("ActorName")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("AgentId")
+                        .HasColumnType("text");
+
+                    b.Property<string>("CallbackUrl")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<DateTime?>("FinishedAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<string>("LeadNote")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Provider")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int>("ResumeCount")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("State")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.HasKey("BatchId");
+
+                    b.HasIndex("State");
+
+                    b.ToTable("SmsQueueJobs");
                 });
 
             modelBuilder.Entity("WunderkindLC.Domain.SmsTemplate", b =>
@@ -7452,6 +7660,10 @@ namespace WunderkindLC.Infrastructure.Migrations
                     b.Property<string>("HomeroomClass")
                         .IsRequired()
                         .HasColumnType("text");
+
+                    b.Property<List<string>>("InactivePeriods")
+                        .IsRequired()
+                        .HasColumnType("text[]");
 
                     b.Property<bool>("IsArchived")
                         .HasColumnType("boolean");

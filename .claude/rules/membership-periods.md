@@ -170,5 +170,73 @@ qo'riqlaydi.
 ⚠️ Haqiqatan o'tmishdagi sanadan aktivlashtirish kerak bo'lsa — **«Aktivlashtirish» oynasi**:
 u qisman oylikni to'g'ri yozadi va catch-up ni ONGLI chaqiradi (`AccrueCatchUpAsync`).
 
+⚠️ **AKTIVLASHTIRISH OYIGA TO'LOV KELSA — QISMAN hisob ochiladi** (2026-10-08, audit R1-5). Bu yo'l
+aktivlashtirish oyiga hisob yozmaydi, accrual esa bu oyni olmaydi (§4 `AccruableInPeriod`) — shu oyga
+to'lov AVANS bo'lib keyingi oy hisobini yopar, ya'ni bitta oy TEKIN qolardi. Endi `EnsureChargeAsync`
+(to'lov, to'lov tahriri, kelmagan darslar chegirmasi) hisobi YO'Q aktivlashtirish oyida
+`ChargeActivationProrateAsync` yozadigan qisman hisobni (ActivatedAt dan, chegirma bilan) ochadi;
+qisman summa 0 bo'lsa (oyning oxirgi darsidan keyin) — pul avans bo'lib qoladi. `AddMembershipRow`
+O'ZGARMADI: to'lov kelmasa oy hisobsiz qoladi (SMS to'lqini xavfi yo'q — faqat to'lov hisob ochadi).
+Testlar: `AuditFixFx2Tests`.
+
 Mavjud qatorlar TEGILMAGAN (backfill YO'Q) — deploy paytida bironta ham yangi hisob paydo
 bo'lmaydi. Testlar: `FinanceLogicTests` → `ActivationStart_*` (4 ta).
+
+## 10. O'QUVCHINI ARXIVLASH = GURUHDAN CHIQISH (2026-10-07, audit C1)
+
+Qaror: **arxiv = o'quvchi ketdi.** Qoida — `StudentArchiving` (Application, testlar:
+`AuditFixT2Tests`).
+
+- `StudentsController.Archive` har TIRIK a'zolikni «Guruhdan chiqarish» (`RemoveMember`) bilan AYNAN
+  bir xil yopadi: `MembershipBilling.LeaveGroupAsync` (aktivda chiqish oyi qisman, keyingi oylar bekor),
+  `MembershipReasons` (`remove`, arxiv sababi), `Membership` audit qatori, «asosiy guruh» yorlig'i
+  (`ClassName`) bo'shatiladi. O'quvchi qulfi (`PaymentIdempotency`, `student:{id}`) ostida, balans qulf
+  ichida qayta o'qiladi.
+- ⚠️ **Ilgari a'zolik TIRIK qolardi** — `AccrueMonth` arxivdagini o'tkazib yuborardi, lekin arxivdan
+  qaytarilishi bilan `AccrueDue` (butun tarix) arxivda o'tgan HAR oyni yozib, har oy uchun SMS yuborardi;
+  arxivdagi o'quvchi jurnalda, guruh SMS'larida, o'rin sanog'ida qolardi.
+- **Arxivdan qaytarish a'zolikni TIKLAMAYDI** — o'quvchi guruhsiz qaytadi (javobda `message`), admin
+  kerakli guruhga qo'shadi (`AddMember` — sinov, oddiy yo'l).
+- ⚠️ **ESKI ARXIV** (shu kundan oldin arxivlanganlar) — a'zoligi hamon tirik. Tiklashda (`Restore`) va
+  guruhga qo'shilganda (`AddMember` arxivdan chiqaradi) avval `CloseLegacyMembershipsAsync`: a'zolik
+  **`ArchivedAt` sanasida** (orqaga) yopiladi. Muzlatilgan/sinovdagi a'zolikda ham arxiv oyidan KEYINGI
+  hisoblar bekor qilinadi — o'quvchi arxivda turganda guruh yopilsa a'zolik o'shanda muzlatilib, hech
+  o'qimagan oy uchun qisman oylik yozilgan bo'lishi mumkin.
+- ⚠️ **A'zoligi umuman yo'q (guruhsiz, eski) o'quvchida** ham `ClassName` bo'shatiladi: aks holda
+  `AccrueMonth` ning guruhsiz shoxobchasi (faqat `EnrollmentDate` ga qaraydi) tiklangan o'quvchiga yorliq
+  narxi bilan arxivdagi HAR oyni yozardi. Yopilgan a'zoligi bor o'quvchi bu shoxobchaga tushmaydi
+  (a'zolik QATORI bor — `IsActive=false` ham).
+- Chiqish sanasi a'zolik qo'shilgan kundan oldin bo'lmaydi (`LeaveDateFor`) — teskari oraliq yasalmaydi.
+- ARXIVDAGI o'quvchiga o'quvchi formasidan (`StudentsController.Update`) guruh BERILMAYDI — u yerda
+  a'zolik (yoki guruhsiz oylik) ochilib, "arxiv = ketdi" buzilardi. Qaytarish — tiklash yoki AddMember.
+- `PastPeriods` ga qator QO'SHILMAYDI (§3: chiqishda joriy davr `ActivatedAt` + `LeftAt` bilan o'qiladi).
+
+⚠️ `ClassesController.Unarchive` (guruh) dagi `ArchivedWithClass` tarmog'i (2026-09-10 dan oldingi
+ma'lumot) — §11: u bilan qaytgan o'quvchilarning tirik a'zoliklari arxiv sanasidan MUZLATILADI
+(`GroupUnarchive`), ya'ni bu yerda ham arxiv oylari orqaga hisoblanmaydi.
+
+## 11. Guruh/o'quvchi ARXIVI va a'zolik (2026-10-07)
+
+- **Arxivdagi guruhda aktivlashtirish YO'Q** (yakka, ommaviy, qo'shish, o'tkazish maqsadi) —
+  `MembershipBulk.ActivationBlockReason`; yopilgan guruhning muzlatilgan a'zoligi uyg'onib ikki guruhdan
+  oylik yozilmasin. Qayta ochish — ataylab «Arxivdan chiqarish» (u yopish qo'ygan `EndDate` ni ham
+  tozalaydi — `GroupLifecycleRules.EndDateOnUnarchive`).
+- **O'quvchi YARATISH va Excel IMPORTI ham arxivdagi guruhga a'zo qo'shmaydi** (2026-10-08, audit R1-1):
+  forma (`POST /students`, tahrirdagi guruh tanlovi) — 400; import — o'quvchi GURUHSIZ yaratiladi (mavjudi
+  guruhga qo'shilmaydi), qatorda ogohlantirish; shablondagi «Mavjud guruhlar» — faqat faollari. Sabab:
+  `AccrueMonth` guruhning `IsArchived` bayrog'iga qaramaydi — `active` holatda yaratilgan a'zolik yopiq
+  guruhdan har oy qarz yozardi. Guruh nomi noyob bo'lgani uchun eski nom endi faqat arxiv guruhniki.
+- **Arxivdagi o'quvchini guruh almashtirish bilan ko'chirib bo'lmaydi** (`TransferMember`, audit R1-9) —
+  yangi guruhda aktivlashtirish + qisman oy + catch-up yozilardi. Avval arxivdan qaytarish.
+- **Arxivdagi o'quvchining tirik a'zoligi** (eski ma'lumot — ilgari arxivlash a'zolikka tegmasdi)
+  "hozirgi a'zo" emas: o'rin egallamaydi (`MembershipLifecycle.SeatHolders`), guruh ro'yxatlari, SMS
+  qabul qiluvchilari va «Guruh o'quvchilari» sanoqlariga kirmaydi, aktivlashtirilmaydi, «Tugatish»da
+  sertifikat olmaydi. Guruhga qayta QO'SHILSA arxivdan qaytariladi (audit ikkala qatorda aytadi).
+- Guruh arxivdan chiqarilganda u bilan qaytadigan ESKI arxivlangan o'quvchilarning (`ArchivedWithClass`)
+  tirik `active` a'zoliklari o'quvchi arxivlangan sanadan MUZLATILADI (`GroupUnarchive`) — aks holda
+  `AccrueDue` arxivda turgan oylarning hammasiga orqaga qarz yozardi (§6 dagi xavf).
+- `MembershipBilling.LeaveGroupAsync` allaqachon chiqqan (`IsActive=false`) a'zolikka TEGMAYDI (chiqish
+  sanasi ustidan yozilmaydi) — o'quvchini arxivlash ham shu yo'lni chaqiradi.
+- «Tugatish»da faqat `active` a'zo `completed` bo'ladi; sinov/muzlatilgani `LeaveGroupAsync` bilan
+  chiqadi (§3: bu yerda ham davr qatori YOZILMAYDI — joriy davr `ActivatedAt`+`FrozenAt`/`LeftAt` dan o'qiladi).
+

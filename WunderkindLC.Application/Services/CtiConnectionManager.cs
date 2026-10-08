@@ -45,6 +45,39 @@ public class CtiConnectionManager
     public bool IsConnected(string agentId) =>
         _sockets.TryGetValue(agentId, out var s) && s.State == WebSocketState.Open;
 
+    /// <summary>
+    /// Agentni MAJBURAN uzadi: ilovaga <c>{action:"logout"}</c> yuboriladi (ilova tokenini o'chirib,
+    /// login ekraniga qaytadi), so'ng ulanish yopiladi va ro'yxatdan olinadi.
+    /// </summary>
+    /// <remarks>
+    /// ⚠️ Agent o'chirilganda (<c>CtiController.UpdateAgent</c>) chaqiriladi. Ilgari o'chirish faqat
+    /// YANGI loginni to'sardi — ishdan ketgan xodimning telefoni jonli ulanish (va 12 soatlik JWT)
+    /// bilan qo'ng'iroq qilishda va ota-onalarga SMS yuborishda davom etardi.
+    /// </remarks>
+    public async Task<bool> DisconnectAsync(string agentId, string reason = "deactivated")
+    {
+        if (!_sockets.TryGetValue(agentId, out var socket)) return false;
+        await SendAsync(agentId, new { action = "logout", reason });
+        _sockets.TryRemove(agentId, out _);
+        try
+        {
+            // CloseOutputAsync — faqat yopish kadrini yuboradi (handler'ning kutib turgan
+            // ReceiveAsync'i bilan to'qnashmaydi). Ilova javob bermasa 5 s dan keyin uziladi.
+            if (socket.State == WebSocketState.Open)
+            {
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+                await socket.CloseOutputAsync(WebSocketCloseStatus.PolicyViolation, reason, cts.Token);
+                _ = Task.Delay(TimeSpan.FromSeconds(5)).ContinueWith(_ =>
+                {
+                    try { if (socket.State != WebSocketState.Closed) socket.Abort(); } catch { }
+                }, TaskScheduler.Default);
+            }
+            else socket.Abort();
+        }
+        catch { try { socket.Abort(); } catch { } }
+        return true;
+    }
+
     /// <summary>Agentga JSON xabar (text frame) yuboradi. Xato bo'lsa — false + ulanishni tozalaydi.</summary>
     public async Task<bool> SendAsync(string agentId, object payload)
     {

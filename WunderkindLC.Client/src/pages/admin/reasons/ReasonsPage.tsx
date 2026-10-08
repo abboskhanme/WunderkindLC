@@ -122,6 +122,14 @@ export function ReasonsPage({ embedded = false }: { embedded?: boolean } = {}) {
       // `try` umuman yo'q edi: xatoda tugma abadiy "Saqlanmoqda..." holatida qotib qolardi.
       setAbsStatus('idle')
       alert(apiErrorMessage(err, "Sabablarni saqlab bo'lmadi"))
+      // Server jurnalda ISHLATILGAN sababni o'chirishni rad etadi — ekrandan olib tashlangan qatorlar
+      // QAYTARILADI (boshqa tahrirlar o'z joyida qoladi), aks holda ro'yxat serverdagidan farq qilib
+      // qolar va keyingi saqlash ham yiqilardi. Fon o'qish: xatosi yutiladi (asosiy xabar yuqorida).
+      getSettings()
+        .then((s) =>
+          setAbsence((cur) => [...cur, ...s.absenceReasons.filter((r) => !cur.some((c) => c.id === r.id))]),
+        )
+        .catch(() => {})
     }
   }
 

@@ -58,6 +58,10 @@ public static class LeadLoss
     public const string ConvertLockedMessage =
         "Lid yo'qotilganlar ro'yxatida — o'quvchiga aylantirish uchun avval uni tiklang.";
 
+    /// <summary>Yo'qotilgan lidga sinov darsi belgilashga urinilganda javob (sinov — faol ish).</summary>
+    public const string TrialLockedMessage =
+        "Lid yo'qotilganlar ro'yxatida — sinov darsiga yozish uchun avval uni tiklang.";
+
     /// <summary>Lid yo'qotilganmi (bitta ta'rif — hamma joy shundan foydalanadi).</summary>
     public static bool IsLost(Lead lead) => !string.IsNullOrWhiteSpace(lead.LostAt);
 

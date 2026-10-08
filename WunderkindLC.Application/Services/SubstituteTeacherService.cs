@@ -199,14 +199,33 @@ public static class SubstituteTeacherService
     /// Tayinlovning DARS SANALARI: <see cref="SubstituteTeacherAssignment.SelectedDates"/> bor bo'lsa
     /// AYNAN o'sha (yagona haqiqat manbai), aks holda <c>Date</c>..<c>EndDate</c> oralig'idagi
     /// guruh dars kunlari.
+    /// <para>Guruh berilsa — PUL uchun: guruh umridan tashqaridagi sanalar tushadi, ko'chirilgan darsning
+    /// eski sanasi yangisiga almashadi. ⚠️ Saqlangan sanalarni O'ZGARTIRISH (qirqish/bo'lish/bekor qilish)
+    /// uchun bu ishlatilMAYDI — <see cref="SummaryDates"/> (saqlangan xom sanalar).</para>
     /// </summary>
     public static List<string> EffectiveDates(
         SubstituteTeacherAssignment a, Group? group = null,
         IReadOnlyList<JournalService.LessonMove>? moves = null)
     {
         if (a.SelectedDates is { Count: > 0 })
-            return a.SelectedDates.Where(d => !string.IsNullOrWhiteSpace(d)).Select(d => d.Trim())
-                    .Distinct().OrderBy(d => d, StringComparer.Ordinal).ToList();
+        {
+            var picked = SelectedOf(a);
+            if (group is null) return picked;
+
+            // ⚠️ Audit SAL-1: saqlangan sanadan faqat HAQIQATAN dars bo'lmagan kunlar olib tashlanadi —
+            // (1) guruh UMRIDAN tashqaridagilar (`StartDate` .. `LessonEnd(EndDate, ArchivedAt)`): 6 darsdan
+            // 3 tasidan keyin guruh yopilsa o'rinbosarga hovuzning 2 baravari to'lanar, asosiy o'qituvchidan
+            // esa butun ulushi ayrilib 0 qolardi; (2) KO'CHIRILGAN darsning ESKI sanasi — o'rniga YANGI
+            // sanasi sanaladi (o'sha dars, boshqa kunda).
+            // ⚠️ HOZIRGI hafta kunlari bilan KESISHTIRILMAYDI (audit R1-2): guruh jadvali oktabrda
+            // o'zgarsa sentabrdagi o'tilgan o'rinbosar darslari allaqachon to'langan maosh oyidan
+            // jimgina yo'qolardi. Sana yaratishda guruhning o'sha paytdagi dars kuni ekani tekshirilgan
+            // (`ValidateAsync`).
+            var moved = MoveTargets(moves);
+            var result = new SortedSet<string>(StringComparer.Ordinal);
+            foreach (var d in picked) result.Add(FollowMoves(d, moved));
+            return ClipToGroupLifetime(group, result.ToList());
+        }
 
         if (!DateOnly.TryParse(a.Date, out var start)) return new();
         var end = start;
@@ -214,6 +233,33 @@ public static class SubstituteTeacherService
             end = pe;
         return ScheduledDatesBetween(group, start, end, moves);
     }
+
+    /// <summary>Ko'chirishlar xaritasi: asl kun → yangi kun (birinchi yozuv g'olib).</summary>
+    private static Dictionary<string, string> MoveTargets(IReadOnlyList<JournalService.LessonMove>? moves)
+    {
+        var map = new Dictionary<string, string>(StringComparer.Ordinal);
+        if (moves is null) return map;
+        foreach (var mv in moves)
+            if (!string.IsNullOrWhiteSpace(mv.FromDate) && !string.IsNullOrWhiteSpace(mv.ToDate))
+                map.TryAdd(mv.FromDate.Trim(), mv.ToDate.Trim());
+        return map;
+    }
+
+    /// <summary>Sana ko'chirilgan bo'lsa — darsning YANGI sanasi. Zanjir odatda yig'ilgan
+    /// (<see cref="JournalService.RescheduleLessonAsync"/>), eski yozuvlar uchun bir necha qadam
+    /// kuzatiladi (aylanma yozuvda ham sikl tugaydi).</summary>
+    private static string FollowMoves(string date, Dictionary<string, string> moved)
+    {
+        var cur = date;
+        for (var hop = 0; hop < 8 && moved.TryGetValue(cur, out var next) && next != date; hop++)
+            cur = next;
+        return cur;
+    }
+
+    /// <summary>Saqlangan sanalar — tozalangan, takrorsiz, tartiblangan (guruh bilan KESISHTIRILMAGAN).</summary>
+    private static List<string> SelectedOf(SubstituteTeacherAssignment a) =>
+        (a.SelectedDates ?? new List<string>()).Where(d => !string.IsNullOrWhiteSpace(d)).Select(d => d.Trim())
+            .Distinct().OrderBy(d => d, StringComparer.Ordinal).ToList();
 
     /// <summary>
     /// Tayinlov shu SANANI qamrab oladimi — <b>kirish huquqining yagona qoidasi</b>.
@@ -272,8 +318,9 @@ public static class SubstituteTeacherService
         if (month is null || month.Length < 7) return 0;
         var m7 = month[..7];
 
+        // SAL-1: guruh umridan tashqaridagi va ko'chirilgan (eski) sanalar tushadi (EffectiveDates).
         if (a.SelectedDates is { Count: > 0 })
-            return a.SelectedDates.Count(d => d is { Length: >= 7 } && d[..7] == m7);
+            return EffectiveDates(a, group, moves).Count(d => d.Length >= 7 && d[..7] == m7);
 
         var end = MonthEndDate(m7);
         if (end is null) return 0;
@@ -436,31 +483,58 @@ public static class SubstituteTeacherService
         var groups = await db.Classes.AsNoTracking()
             .Where(g => groupIds.Contains(g.Id)).ToDictionaryAsync(g => g.Id, ct);
 
-        var teacherIds = groups.Values.Select(g => g.TeacherId)
-            .Where(id => !string.IsNullOrEmpty(id)).Distinct().ToList();
+        // ⚠️ Audit C3: "asosiy o'qituvchi" (legacy rejimlarda hovuz uning sozlamasidan) — HOZIRGI
+        // `Group.TeacherId` emas, shu OYDA guruhni o'qitgan o'qituvchi (tarix). Narx ikkala tomon uchun
+        // ham shu jadvaldan o'qilgani sababli nol yig'indililik baribir saqlanadi.
+        var history = await GroupTeacherHistory.LoadAsync(db, groupIds, ct);
+        var ownMoves = await MovesByGroupAsync(db, groupIds, ct);
+        var own = new GroupOwnership(groups.Values, history, ownMoves);
+
+        var ownerByKey = new Dictionary<(string, string), string?>();
+        foreach (var (groupId, monthRaw) in keys.Distinct())
+            if (monthRaw is { Length: >= 7 } && groups.ContainsKey(groupId))
+                ownerByKey[(groupId, monthRaw[..7])] = own.OwnerAtMonth(groupId, monthRaw[..7]);
+
+        var teacherIds = ownerByKey.Values.Where(id => !string.IsNullOrEmpty(id)).Select(id => id!)
+            .Concat(groups.Values.Select(g => g.TeacherId).Where(id => !string.IsNullOrEmpty(id)))
+            .Distinct().ToList();
         var teachers = await db.Teachers.AsNoTracking()
             .Where(t => teacherIds.Contains(t.Id)).ToDictionaryAsync(t => t.Id, ct);
 
         // Legacy-QAT'IY rejim uchun asosiy o'qituvchining BARCHA guruhlari kerak (qat'iy oylik
-        // shular orasida bo'linadi). Faqat kerak bo'lganda yuklanadi.
-        var legacyFixedTeachers = teachers.Values
-            .Where(t => t.SalaryMode != "percent")
-            .Select(t => t.Id)
-            .Where(id => groups.Values.Any(g => g.TeacherId == id && g.TeacherSalaryMode is not ("percent" or "fixed")))
-            .ToList();
-        var siblingGroups = legacyFixedTeachers.Count == 0
-            ? new List<Group>()
-            : await db.Classes.AsNoTracking().Where(g => legacyFixedTeachers.Contains(g.TeacherId)).ToListAsync(ct);
-
-        var allGroupIds = groupIds.Concat(siblingGroups.Select(g => g.Id)).Distinct().ToList();
-        var moves = await MovesByGroupAsync(db, allGroupIds, ct);
+        // shular orasida bo'linadi) — hozirgi va TARIXDAGI guruhlari, faqat o'zi o'qitgan kunlari.
+        var legacyFixedTeachers = ownerByKey
+            .Where(kv => kv.Value is not null
+                         && teachers.TryGetValue(kv.Value, out var ot) && ot.SalaryMode != "percent"
+                         && groups[kv.Key.Item1].TeacherSalaryMode is not ("percent" or "fixed"))
+            .Select(kv => kv.Value!).Distinct().ToList();
+        var allGroups = new Dictionary<string, Group>(groups);
+        if (legacyFixedTeachers.Count > 0)
+        {
+            var siblingIds = (await db.Classes.AsNoTracking()
+                    .Where(g => legacyFixedTeachers.Contains(g.TeacherId)).Select(g => g.Id).ToListAsync(ct))
+                .Concat(await db.GroupTeacherAssignments.AsNoTracking()
+                    .Where(a => legacyFixedTeachers.Contains(a.TeacherId)).Select(a => a.GroupId).ToListAsync(ct))
+                .Distinct().Where(id => !allGroups.ContainsKey(id)).ToList();
+            if (siblingIds.Count > 0)
+            {
+                foreach (var sib in await db.Classes.AsNoTracking().Where(g => siblingIds.Contains(g.Id)).ToListAsync(ct))
+                    allGroups[sib.Id] = sib;
+                foreach (var (gid, rows) in await GroupTeacherHistory.LoadAsync(db, siblingIds, ct)) history[gid] = rows;
+                foreach (var (gid, mv) in await MovesByGroupAsync(db, siblingIds, ct)) ownMoves[gid] = mv;
+                own = new GroupOwnership(allGroups.Values, history, ownMoves);
+            }
+        }
+        var siblingsOf = legacyFixedTeachers.ToDictionary(t => t, t => allGroups.Values
+            .Where(g => g.TeacherId == t || history.GetValueOrDefault(g.Id)?.Any(a => a.TeacherId == t) == true)
+            .Select(g => g.Id).ToList());
 
         // Foizli rejimlar uchun YIG'ILGAN pul — SalaryLedger bilan AYNAN bir xil taqsimot qoidasi
         // (teglangan to'lov 100% guruhga, teglanmagani MonthlyFee nisbatida). Faqat kerak bo'lsa.
-        var needCollected = groups.Values.Any(g =>
-            g.TeacherSalaryMode == "percent" ||
-            (g.TeacherSalaryMode is not ("percent" or "fixed")
-             && teachers.GetValueOrDefault(g.TeacherId)?.SalaryMode == "percent"));
+        var needCollected = groups.Values.Any(g => g.TeacherSalaryMode == "percent")
+            || ownerByKey.Any(kv => groups[kv.Key.Item1].TeacherSalaryMode is not ("percent" or "fixed")
+                                    && kv.Value is not null
+                                    && teachers.GetValueOrDefault(kv.Value)?.SalaryMode == "percent");
         var collected = needCollected
             ? await SalaryLedger.CollectedForGroupsAsync(db, groupIds, months[0], months[^1])
             : new Dictionary<(string month, string groupId), decimal>();
@@ -473,15 +547,16 @@ public static class SubstituteTeacherService
             var month = monthRaw[..7];
             var g = groups.GetValueOrDefault(groupId);
 
-            var monthLessons = ScheduledLessonsInMonth(g, month, moves.GetValueOrDefault(groupId));
+            var monthLessons = g is null ? 0 : own.LessonDates(groupId, month).Count;
+            var ownerId = ownerByKey.GetValueOrDefault((groupId, month));
             var legacyTotal = 0;
-            if (g is not null && !string.IsNullOrEmpty(g.TeacherId))
-                foreach (var sib in siblingGroups.Where(s => s.TeacherId == g.TeacherId))
-                    legacyTotal += ScheduledLessonsInMonth(sib, month, moves.GetValueOrDefault(sib.Id));
+            if (ownerId is not null && siblingsOf.TryGetValue(ownerId, out var sibs))
+                foreach (var sib in sibs)
+                    legacyTotal += own.LessonDates(sib, month).Count(d => own.OwnerOn(sib, d) == ownerId);
 
             result[(groupId, month)] = PerLesson(new SalaryContext(
                 Group: g,
-                OriginalTeacher: g is null ? null : teachers.GetValueOrDefault(g.TeacherId),
+                OriginalTeacher: ownerId is null ? null : teachers.GetValueOrDefault(ownerId),
                 MonthLessons: monthLessons,
                 CollectedInMonth: collected.GetValueOrDefault((month, groupId), 0m),
                 LegacyTotalLessons: legacyTotal,
@@ -511,8 +586,11 @@ public static class SubstituteTeacherService
         IAppDbContext db, IReadOnlyCollection<string> groupIds, CancellationToken ct = default)
     {
         if (groupIds.Count == 0) return new();
+        // ⚠️ Arxivlangan o'quvchi sanalmaydi (arxiv = o'quvchi ketdi; eski yozuvlarda a'zoligi hali tirik
+        // bo'lishi mumkin) — aks holda "faol o'quvchi yo'q" ogohlantirishi chiqmay qolardi.
         return await db.StudentGroups.AsNoTracking()
-            .Where(sg => groupIds.Contains(sg.GroupId) && sg.IsActive)
+            .Where(sg => groupIds.Contains(sg.GroupId) && sg.IsActive
+                         && !db.Students.Any(st => st.Id == sg.StudentId && st.IsArchived))
             .GroupBy(sg => sg.GroupId)
             .ToDictionaryAsync(g => g.Key, g => g.Count(), ct);
     }
@@ -567,6 +645,13 @@ public static class SubstituteTeacherService
 
         if (list.Count == 0) return (new(), total);
 
+        return (await ToDtosAsync(db, list, ct), total);
+    }
+
+    /// <summary>Tayinlovlar → DTO (guruh/o'qituvchi nomlari, darslar soni, ommaviy narx hisobi).</summary>
+    private static async Task<List<SubstituteTeacherAssignmentDto>> ToDtosAsync(
+        IAppDbContext db, List<SubstituteTeacherAssignment> list, CancellationToken ct)
+    {
         var groupIds = list.Select(a => a.GroupId).Distinct().ToList();
         var teacherIds = list.SelectMany(a => new[] { a.OriginalTeacherId, a.SubstituteTeacherId }).Distinct().ToList();
 
@@ -635,7 +720,54 @@ public static class SubstituteTeacherService
                 StudentCount: studentCount));
         }
 
-        return (resultList, total);
+        return resultList;
+    }
+
+    /// <summary>
+    /// O'QITUVCHI ILOVASI uchun ro'yxat (<c>GET /api/teacher/substitutions</c>): o'qituvchi O'RINBOSAR
+    /// bo'lgan tayinlovlar + o'qituvchi qamralgan SANADA guruhning EGASI bo'lgan tayinlovlar
+    /// (<see cref="GroupOwnership.OwnerOn"/>, tarix bo'yicha).
+    /// <para>⚠️ Audit C3: ilgari saqlangan <c>OriginalTeacherId</c> bo'yicha filtrlanardi — guruh
+    /// o'qituvchisi almashgach yangi egasi o'z guruhidagi o'rinbosarlikni (va undan ushlanadigan summani)
+    /// ko'rmas, eski o'qituvchi esa endi o'ziga tegishli bo'lmagan yozuvni ko'rib turardi. Maosh varaqasi
+    /// (<see cref="SalaryLedger"/>) ushlanmani aynan shu egadan oladi — ro'yxat u bilan bir xil bo'lsin.</para>
+    /// <para>Egasi sifatida ko'rgan qatorda "asosiy o'qituvchi" — shu o'qituvchining o'zi.</para>
+    /// </summary>
+    public static async Task<List<SubstituteTeacherAssignmentDto>> ForTeacherAsync(
+        IAppDbContext db, Teacher teacher, bool activeOnly = true, CancellationToken ct = default)
+    {
+        var groupIds = await GroupOwnership.GroupIdsOfTeacherAsync(db, teacher.Id, ct);
+        var rows = await db.SubstituteTeacherAssignments.AsNoTracking()
+            .Where(a => (!activeOnly || a.IsActive)
+                        && (a.SubstituteTeacherId == teacher.Id || groupIds.Contains(a.GroupId)))
+            .OrderByDescending(a => a.CreatedAt)
+            .Take(MaxRows)
+            .ToListAsync(ct);
+        if (rows.Count == 0) return new();
+
+        var involved = rows.Select(a => a.GroupId).Distinct().ToList();
+        var groups = await db.Classes.AsNoTracking().Where(g => involved.Contains(g.Id)).ToListAsync(ct);
+        var own = await GroupOwnership.LoadAsync(db, groups, ct);
+
+        var asOwner = new HashSet<string>(StringComparer.Ordinal);
+        var list = new List<SubstituteTeacherAssignment>();
+        foreach (var a in rows)
+        {
+            if (a.SubstituteTeacherId == teacher.Id) { list.Add(a); continue; }
+            var g = own.Group(a.GroupId);
+            if (EffectiveDates(a, g, own.Moves(a.GroupId)).Any(d => own.OwnerOn(a.GroupId, d) == teacher.Id))
+            {
+                list.Add(a);
+                asOwner.Add(a.Id);
+            }
+        }
+        if (list.Count == 0) return new();
+
+        return (await ToDtosAsync(db, list, ct))
+            .Select(d => asOwner.Contains(d.Id)
+                ? d with { OriginalTeacherId = teacher.Id, OriginalTeacherName = teacher.FullName }
+                : d)
+            .ToList();
     }
 
     /// <summary>Ro'yxatning qisqa shakli (jami son kerak bo'lmagan joylar uchun).</summary>
@@ -1015,9 +1147,21 @@ public static class SubstituteTeacherService
     /// <para>Audit `action` = <c>delete</c>: ruxsat etilgan to'rt qiymatdan ("cancel" YO'Q) shu
     /// mos keladi — foydalanuvchi uchun bu tayinlovni BEKOR QILISH, ya'ni o'chirish amali
     /// (yozuv bazada qoladi, lekin hech qanday kunda kuchga ega emas). Endpoint ham HTTP DELETE.</para>
+    ///
+    /// <para>⚠️ <b>O'TMISH OYNASI (audit SAL-4).</b> Yaratishdagi <see cref="MaxBackdateDays"/> qoidasi
+    /// bekor qilishga ham qo'llanadi: <c>bugun − 14</c> kundan ESKI sanalar o'zgartirilmaydi — ular
+    /// yopilgan oy maoshiga kirgan (o'rinbosarga to'langan, asosiydan ushlangan). Ilgari bekor qilish
+    /// tayinlovni butunlay o'chirib, to'langan oylarni orqaga qarab jimgina qayta yozardi.</para>
+    /// <list type="bullet">
+    /// <item>hamma sana oyna ichida — tayinlov to'liq bekor qilinadi (avvalgidek, <c>delete</c>);</item>
+    /// <item>bir qismi eski — faqat oyna ichidagi va kelajakdagi sanalar olib tashlanadi, eskilari
+    ///   o'z kuchida qoladi (<c>update</c>, jumlada ikkalasi ham aytiladi);</item>
+    /// <item>hammasi eski — 400 (sabab bilan).</item>
+    /// </list>
+    /// Chegara yaratishdagi bilan AYNAN bir xil (14 kun) — "nima o'zgartirsa bo'ladi" qoidasi bitta.
     /// </summary>
     public static async Task<(bool Ok, string Message)> CancelAssignmentAsync(
-        IAppDbContext db, string id, AuditService? audit = null, CancellationToken ct = default)
+        IAppDbContext db, string id, AuditService? audit = null, DateOnly? today = null, CancellationToken ct = default)
     {
         var item = await db.SubstituteTeacherAssignments.FindAsync(new object[] { id }, ct);
         if (item is null)
@@ -1026,18 +1170,110 @@ public static class SubstituteTeacherService
         if (!item.IsActive)
             return (false, "Tayinlov allaqachon bekor qilingan");
 
-        item.IsActive = false;
-
         var group = await db.Classes.AsNoTracking().FirstOrDefaultAsync(g => g.Id == item.GroupId, ct);
         var subTeacher = await db.Teachers.AsNoTracking().FirstOrDefaultAsync(t => t.Id == item.SubstituteTeacherId, ct);
+        var moves = (await MovesByGroupAsync(db, new[] { item.GroupId }, ct)).GetValueOrDefault(item.GroupId);
 
-        audit?.Record(AuditEntityType, AuditEntityId(item), "delete", CancelSummary(item, group, subTeacher),
+        var now = today ?? AppClock.Today;
+        var cutoff = now.AddDays(-MaxBackdateDays).ToString("yyyy-MM-dd");
+        var dates = SummaryDates(item, group, moves);
+        var locked = dates.Where(d => string.CompareOrdinal(d, cutoff) < 0).ToList();
+        var removable = dates.Where(d => string.CompareOrdinal(d, cutoff) >= 0).ToList();
+
+        if (locked.Count > 0 && removable.Count == 0)
+            return (false, $"Tayinlovning barcha sanalari {MaxBackdateDays} kundan eski " +
+                           $"({FormatDates(locked)}) — o'sha oylar maoshi allaqachon hisoblangan, " +
+                           "bekor qilib bo'lmaydi.");
+
+        if (locked.Count == 0)
+        {
+            item.IsActive = false;
+            audit?.Record(AuditEntityType, AuditEntityId(item), "delete", CancelSummary(item, group, subTeacher),
+                teacherId: item.SubstituteTeacherId);
+            await db.SaveChangesAsync(ct);
+            return (true, "O'rinbosar o'qituvchi tayinlovi bekor qilindi");
+        }
+
+        TrimTo(item, locked);
+        audit?.Record(AuditEntityType, AuditEntityId(item), "update",
+            PartialCancelSummary(group, subTeacher, removable, locked,
+                $"{MaxBackdateDays} kundan eski sanalar maosh hisobiga kirgan"),
             teacherId: item.SubstituteTeacherId);
-
         await db.SaveChangesAsync(ct);
-
-        return (true, "O'rinbosar o'qituvchi tayinlovi bekor qilindi");
+        return (true, $"Faqat {FormatDates(removable)} kunlari bekor qilindi; {FormatDates(locked)} " +
+                      $"({MaxBackdateDays} kundan eski — maosh hisoblangan) o'z kuchida qoldi");
     }
+
+    /// <summary>
+    /// O'qituvchi ARXIVLANGANDA (ishdan ketdi) uning KELAJAKDAGI o'rinbosarlik tayinlovlarini bekor
+    /// qiladi — o'rinbosar sifatida ham, asosiy o'qituvchi sifatida ham (audit SAL-2). Bugundan
+    /// (bugun ham) keyingi sanalar olib tashlanadi; o'tgan sanalar maosh tarixi bo'lib qoladi.
+    /// <para><c>SaveChangesAsync</c> QILMAYDI — chaqiruvchining tranzaksiyasiga qo'shiladi (audit naqshi).
+    /// Har o'zgargan tayinlovga bitta audit qatori.</para>
+    /// </summary>
+    /// <returns>O'zgargan tayinlovlar soni.</returns>
+    public static async Task<int> CancelFutureForTeacherAsync(
+        IAppDbContext db, string teacherId, AuditService? audit, string why,
+        DateOnly? today = null, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(teacherId)) return 0;
+        var todayStr = (today ?? AppClock.Today).ToString("yyyy-MM-dd");
+
+        var rows = await db.SubstituteTeacherAssignments
+            .Where(a => a.IsActive
+                        && (a.SubstituteTeacherId == teacherId || a.OriginalTeacherId == teacherId)
+                        && string.Compare(a.EndDate ?? a.Date, todayStr) >= 0)
+            .ToListAsync(ct);
+        if (rows.Count == 0) return 0;
+
+        var groupIds = rows.Select(a => a.GroupId).Distinct().ToList();
+        var groups = await db.Classes.AsNoTracking().Where(g => groupIds.Contains(g.Id)).ToDictionaryAsync(g => g.Id, ct);
+        var subIds = rows.Select(a => a.SubstituteTeacherId).Distinct().ToList();
+        var teachers = await db.Teachers.AsNoTracking().Where(t => subIds.Contains(t.Id)).ToDictionaryAsync(t => t.Id, ct);
+        var moves = await MovesByGroupAsync(db, groupIds, ct);
+
+        var changed = 0;
+        foreach (var a in rows)
+        {
+            var g = groups.GetValueOrDefault(a.GroupId);
+            var sub = teachers.GetValueOrDefault(a.SubstituteTeacherId);
+            var dates = SummaryDates(a, g, moves.GetValueOrDefault(a.GroupId));
+            var future = dates.Where(d => string.CompareOrdinal(d, todayStr) >= 0).ToList();
+            if (future.Count == 0) continue;
+            var past = dates.Where(d => string.CompareOrdinal(d, todayStr) < 0).ToList();
+
+            if (past.Count == 0)
+            {
+                a.IsActive = false;
+                audit?.Record(AuditEntityType, AuditEntityId(a), "delete",
+                    CancelSummary(a, g, sub) + $" — {why}", teacherId: a.SubstituteTeacherId);
+            }
+            else
+            {
+                TrimTo(a, past);
+                audit?.Record(AuditEntityType, AuditEntityId(a), "update",
+                    PartialCancelSummary(g, sub, future, past, why), teacherId: a.SubstituteTeacherId);
+            }
+            changed++;
+        }
+        return changed;
+    }
+
+    /// <summary>Tayinlovni faqat <paramref name="keep"/> sanalariga qisqartiradi (indeks maydonlari ham).</summary>
+    private static void TrimTo(SubstituteTeacherAssignment a, List<string> keep)
+    {
+        a.SelectedDates = keep.ToList();
+        a.Date = keep[0];
+        a.EndDate = keep[^1];
+    }
+
+    /// <summary>Tayinlovning SANALARI (saqlangani; eski oraliqli yozuvda — guruh dars kunlari).
+    /// Audit jumlasi, bekor qilish va guruh hayoti o'zgarishi (<see cref="SubstituteGroupLifecycle"/>)
+    /// shu ro'yxat bilan ishlaydi (guruh bilan kesishtirilmagan — admin tanlagan kunlar aytilsin va
+    /// qirqishda pul uchun filtrlangan ro'yxat yozib qo'yilib, haqiqiy sanalar jimgina o'chib ketmasin).</summary>
+    public static List<string> SummaryDates(
+        SubstituteTeacherAssignment a, Group? group, IReadOnlyList<JournalService.LessonMove>? moves = null) =>
+        a.SelectedDates is { Count: > 0 } ? SelectedOf(a) : EffectiveDates(a, group, moves);
 
     // =============================================================================================
     //  AUDIT — `EntityId` va JUMLA (foydalanuvchi tarixda FAQAT shuni o'qiydi, GUID yozilmaydi!)
@@ -1070,7 +1306,7 @@ public static class SubstituteTeacherService
     /// <summary>Tayinlash jumlasi: guruh NOMI, o'qituvchilar F.I.SH, SANALAR va sabab (GUID emas).</summary>
     public static string CreateSummary(SubstituteTeacherAssignment a, Group? group, Teacher? subTeacher)
     {
-        var dates = EffectiveDates(a, group);
+        var dates = SummaryDates(a, group);
         var reason = string.IsNullOrWhiteSpace(a.Reason) ? "sabab ko'rsatilmagan" : $"sabab: {a.Reason.Trim()}";
         return $"\"{group?.Name ?? "Noma'lum guruh"}\" guruhiga {FormatDates(dates)} kunlari uchun " +
                $"({dates.Count} dars) o'rinbosar o'qituvchi {subTeacher?.FullName ?? "Noma'lum o'qituvchi"} " +
@@ -1080,9 +1316,16 @@ public static class SubstituteTeacherService
     /// <summary>Bekor qilish jumlasi.</summary>
     public static string CancelSummary(SubstituteTeacherAssignment a, Group? group, Teacher? subTeacher)
     {
-        var dates = EffectiveDates(a, group);
+        var dates = SummaryDates(a, group);
         return $"\"{group?.Name ?? "Noma'lum guruh"}\" guruhidagi o'rinbosar o'qituvchi " +
                $"{subTeacher?.FullName ?? "Noma'lum o'qituvchi"} tayinlovi bekor qilindi " +
                $"({FormatDates(dates)} kunlari)";
     }
+
+    /// <summary>Qisman bekor qilish jumlasi: qaysi kunlar olib tashlandi, qaysilari NEGA qoldi.</summary>
+    public static string PartialCancelSummary(
+        Group? group, Teacher? subTeacher, IReadOnlyList<string> removed, IReadOnlyList<string> kept, string why) =>
+        $"\"{group?.Name ?? "Noma'lum guruh"}\" guruhidagi o'rinbosar o'qituvchi " +
+        $"{subTeacher?.FullName ?? "Noma'lum o'qituvchi"} tayinlovidan {FormatDates(removed)} kunlari " +
+        $"bekor qilindi; {FormatDates(kept)} kunlari o'z kuchida qoldi ({why})";
 }

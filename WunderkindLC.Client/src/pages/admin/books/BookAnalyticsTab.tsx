@@ -14,6 +14,7 @@ import { Loader } from '@/components/ui/Loader'
 import { Input } from '@/components/ui/Input'
 import { StatCard } from '@/components/ui/StatCard'
 import { apiErrorMessage, cn, formatMoney } from '@/lib/utils'
+import { localIsoDate } from '@/lib/localDate'
 import { paymentLabel, paymentPillCls } from './bookLabels'
 import type { BookReturnTarget } from './BookReturnModal'
 import { BookReturnModal } from './BookReturnModal'
@@ -30,7 +31,7 @@ function monthStart(): string {
   const d = new Date()
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`
 }
-const today = () => new Date().toISOString().slice(0, 10)
+const today = () => localIsoDate(new Date())
 
 const WEEKDAYS = ['yakshanba', 'dushanba', 'seshanba', 'chorshanba', 'payshanba', 'juma', 'shanba']
 
@@ -121,8 +122,8 @@ export function BookAnalyticsTab({ canReturn, onReturned }: Props) {
     const end = new Date()
     const start = new Date()
     start.setDate(start.getDate() - days + 1)
-    setFrom(start.toISOString().slice(0, 10))
-    setTo(end.toISOString().slice(0, 10))
+    setFrom(localIsoDate(start))
+    setTo(localIsoDate(end))
   }
 
   return (

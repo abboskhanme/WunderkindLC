@@ -12,7 +12,7 @@ namespace WunderkindLC.Server.Controllers;
 [Authorize]
 [AdminPerm("finance.main")]
 [Route("api/admin/finance")]
-public class FinanceController(AppDbContext db, AuditService audit, AutoMessageService autoMsg) : ControllerBase
+public class FinanceController(AppDbContext db, AuditService audit, AutoMessageService autoMsg, DataCache dataCache) : ControllerBase
 {
     private async Task<Dictionary<string, string>> StudentNames() =>
         await db.Students.ToDictionaryAsync(s => s.Id, s => s.FullName);
@@ -47,7 +47,9 @@ public class FinanceController(AppDbContext db, AuditService audit, AutoMessageS
             t.IsVoided, t.VoidedAt, t.VoidedBy, t.VoidReason,
             t.CashboxId,
             t.CashboxId is not null && cashboxNames is not null && cashboxNames.TryGetValue(t.CashboxId, out var cb) ? cb : null,
-            t.BookOrderId);
+            t.BookOrderId,
+            t.TypeId,
+            t.SplitFromId);
 
     /// <summary>
     /// KITOB SOTUVIDAN yozilgan qator Moliyada o'zgartirilmaydi (`BookFinance`): summasi kitob
@@ -148,6 +150,12 @@ public class FinanceController(AppDbContext db, AuditService audit, AutoMessageS
             return BadRequest(new { message = "To'lov vaqti noto'g'ri (HH:mm)" });
         if (!PaymentFields.TryNormalizeCardLast4(p.CardLast4, out var newCardLast4))
             return BadRequest(new { message = "Karta raqamining oxirgi 4 raqamini kiriting" });
+        // "Qaysi oy uchun" (maosh / o'quvchi to'lovi) — kiritilgan bo'lsa AYNAN "yyyy-MM".
+        if (!string.IsNullOrWhiteSpace(p.Month) && !PaymentFields.IsMonth(p.Month.Trim()))
+            return BadRequest(new { message = "Oy noto'g'ri (kutilgan ko'rinish: yyyy-MM)" });
+        // Vozvrat faqat to'lovning «Pul qaytarish» tugmasi orqali (asl to'lovga bog'lanadi, chegarasi tekshiriladi).
+        if (p.Direction == "expense" && p.Category == "refund")
+            return BadRequest(new { message = "Vozvrat faqat to'lov yonidagi «Pul qaytarish» tugmasi orqali yoziladi" });
 
         // QOG'OZ KVITANSIYA raqami BIR MARTA ishlatiladi (StudentsController.AddPayment bilan bir xil qoida).
         var newReceiptNo = PaymentFields.NormalizeReceiptNo(p.ReceiptNo);
@@ -290,6 +298,22 @@ public class FinanceController(AppDbContext db, AuditService audit, AutoMessageS
         if (p.Amount <= 0)
             return BadRequest(new { message = "Summa musbat bo'lishi kerak" });
 
+        // ⚠️ O'quvchi to'lovi va vozvrat bu yerdan o'zgarmaydi (balansga tegadi) — `FinanceTxEdit` izohi.
+        if (FinanceTxEdit.EditError(tx, p, AppClock.Today.ToString("yyyy-MM-dd")) is { } editError)
+            return BadRequest(new { message = editError });
+
+        // VOZVRAT — faqat sana/izoh (o'quvchi, summa, tur, kassa tegilmaydi → balans o'zgarmaydi).
+        if (FinanceTxEdit.IsRefund(tx))
+        {
+            var refundBefore = AuditService.Snapshot(tx);
+            var refundChanges = FinanceTxEdit.ApplyRefundSafe(tx, p);
+            audit.Record(AuditService.EntityFinanceTransaction, tx.Id, "update",
+                refundChanges.Count > 0 ? "Vozvrat tahrirlandi: " + string.Join(", ", refundChanges) : "Vozvrat tahrirlandi",
+                before: refundBefore, after: AuditService.Snapshot(tx), studentId: tx.StudentId);
+            await db.SaveChangesAsync();
+            return ToDto(tx, await StudentNames(), await TeacherNames(), typeNames: await TypeNames());
+        }
+
         // Kvitansiya raqami boshqa YOZUVDA band bo'lmasin (o'zining raqami — dublikat emas).
         if (p.ReceiptNo is not null && !p.ForceReceipt)
         {
@@ -306,35 +330,16 @@ public class FinanceController(AppDbContext db, AuditService audit, AutoMessageS
 
         var before = AuditService.Snapshot(tx);
         // Eski balans ta'sirini (eski o'quvchida) hisoblab olamiz — tahrirdan keyin delta qo'llaymiz.
+        // (Yuqoridagi tekshiruvdan keyin bu yerga faqat balansga TA'SIRSIZ qatorlar keladi — himoya qatlami.)
         var oldEffect = StudentBalanceEffect(tx);
         var oldStudentId = tx.StudentId;
-        var changes = new List<string>();
-        if (tx.Amount != p.Amount)
-            changes.Add($"summa {AuditService.Money(tx.Amount)} → {AuditService.Money(p.Amount)} so'm");
-        if (tx.Date != p.Date) changes.Add($"sana {tx.Date} → {p.Date}");
-        if (tx.Direction != p.Direction) changes.Add($"yo'nalish {tx.Direction} → {p.Direction}");
-        if (tx.Category != p.Category) changes.Add($"toifa {tx.Category} → {p.Category}");
-        if (tx.Note != p.Note) changes.Add("izoh o'zgartirildi");
-        if (newCashboxId is not null)
-        {
-            changes.Add($"kassa {await CashboxLabel(tx.CashboxId)} → {await CashboxLabel(newCashboxId)}");
-            tx.CashboxId = newCashboxId;
-        }
+        string? boxNote = newCashboxId is null ? null
+            : $"kassa {await CashboxLabel(tx.CashboxId)} → {await CashboxLabel(newCashboxId)}";
+        if (newCashboxId is not null) tx.CashboxId = newCashboxId;
 
-        tx.Date = p.Date;
-        tx.Direction = p.Direction;
-        tx.Category = p.Category;
-        tx.TypeId = string.IsNullOrWhiteSpace(p.TypeId) ? null : p.TypeId;
-        tx.Amount = p.Amount;
-        tx.Note = p.Note;
-        tx.StudentId = p.StudentId;
-        tx.TeacherId = p.TeacherId;
-        // Oy/guruh teglarini SAQLAB QOLAMIZ: tahrir formasi ularni yubormasa (bo'sh kelsa) eski qiymat qoladi —
-        // aks holda tuition to'lovni tahrirlaganda Month/GroupId yo'qolib, foizli maosh + per-guruh hisobot buzilardi.
-        if (!string.IsNullOrWhiteSpace(p.Month)) tx.Month = p.Month;
-        if (!string.IsNullOrWhiteSpace(p.GroupId)) tx.GroupId = p.GroupId;
-        if (p.Comment is not null) tx.Comment = p.Comment;
-        if (!string.IsNullOrWhiteSpace(p.Method)) tx.Method = p.Method.Trim().ToLowerInvariant();
+        // Forma yubormagan bog'lanishlar (o'quvchi/o'qituvchi/tur) toifa o'zgarmasa SAQLANADI.
+        var changes = FinanceTxEdit.ApplyGeneric(tx, p);
+        if (boxNote is not null) changes.Add(boxNote);
         // Kvitansiya raqami / to'lov vaqti — forma yubormasa (null) eski qiymat saqlanadi.
         if (p.ReceiptNo is not null) tx.ReceiptNo = PaymentFields.NormalizeReceiptNo(p.ReceiptNo);
         if (p.PaidTime is not null && PaymentFields.TryNormalizeTime(p.PaidTime, out var upPaidTime))
@@ -439,13 +444,7 @@ public class FinanceController(AppDbContext db, AuditService audit, AutoMessageS
     /// <summary>Tranzaksiyaning o'quvchi BALANSIGA ta'siri: o'quvchiga bog'langan tuition KIRIMI balansni
     /// shu summaga oshiradi (qarzni kamaytiradi); VOZVRAT (expense+refund) esa shu summaga KAMAYTIRADI
     /// (avansni qaytaradi) — o'chirilganda teskarisi qo'llanadi. Boshqa turdagilar (maosh/guruhsiz) — 0.</summary>
-    private static decimal StudentBalanceEffect(FinanceTransaction tx)
-    {
-        if (string.IsNullOrEmpty(tx.StudentId)) return 0m;
-        if (tx.Direction == "income" && tx.Category == "tuition") return tx.Amount;
-        if (tx.Direction == "expense" && tx.Category == "refund") return -tx.Amount;
-        return 0m;
-    }
+    private static decimal StudentBalanceEffect(FinanceTransaction tx) => FinanceTxEdit.StudentBalanceEffect(tx);
 
     private async Task ApplyBalanceAsync(string? studentId, decimal delta)
     {
@@ -455,9 +454,10 @@ public class FinanceController(AppDbContext db, AuditService audit, AutoMessageS
     }
 
     /// <summary>
-    /// O'QUVCHI TO'LOVINI tahrirlash ("To'lovlar" bo'limidagi qalam tugmasi) — "Moliya" ruxsati
-    /// (tahrir amali) kerak; superadmin/admin har doim, xodim faqat shu ruxsat berilgan bo'lsa.
+    /// O'QUVCHI TO'LOVINI tahrirlash ("To'lovlar" bo'limidagi qalam tugmasi; «Amallar» dagi qalam ham o'quvchi
+    /// to'lovida SHU oynani ochadi) — <b>FAQAT superadmin</b> (hard rol, 2026-10-07 dan serverda ham).
     /// Sana, summa, qaysi oy uchun, qaysi guruh, to'lov usuli va kassir izohi o'zgartiriladi.
+    /// Summa allaqachon qaytarilgan (vozvrat) summadan kam bo'lmaydi.
     ///
     /// Tahrir HAMMA bog'liq joyni moslaydi:
     ///   • <b>Balans</b> — summa farqi (yangi − eski) o'quvchi balansiga qo'llanadi;
@@ -471,10 +471,19 @@ public class FinanceController(AppDbContext db, AuditService audit, AutoMessageS
     /// O'quvchini almashtirish bu yerda MUMKIN EMAS (o'chirib qaytadan kiritiladi).
     /// Eski oyning hisobi (agar to'lov boshqa oyga ko'chirilsa) AVTOMATIK o'chirilmaydi — u
     /// o'quvchining haqiqiy o'quv oyi bo'lishi mumkin; kerak bo'lsa qo'lda tahrirlanadi.
+    /// ISTISNO — eski oy KELAJAK oy bo'lsa va unga boshqa to'lov qolmasa: u hisobni faqat shu avans
+    /// ochgan, shuning uchun qaytariladi (<see cref="TuitionService.DropOrphanAdvanceChargeAsync"/>).
     /// </summary>
     [HttpPut("payments/{id}")]
     public async Task<ActionResult<FinanceTransactionDto>> UpdatePayment(string id, PaymentEditPayload p)
     {
+        // ⚠️ FAQAT SUPERADMIN (HARD rol — `AdminPerm` admin'ni ham o'tkazib yuborardi, `year-freeze.md` §3).
+        // Klient tugmani faqat superadmin'ga ko'rsatar va "backend ham shuni talab qiladi" deb yozilgan edi,
+        // server esa `finance.main:edit` bilan har kimga ochiq edi.
+        if (!User.IsInRole(Roles.SuperAdmin))
+            return StatusCode(StatusCodes.Status403Forbidden,
+                new { message = "O'quvchi to'lovini faqat superadmin tahrirlay oladi" });
+
         // QULF (o'quvchi bo'yicha) — balans delta'si parallel to'lov/vozvrat/o'chirish bilan
         // ustma-ust tushib, biri ikkinchisining ta'sirini jimgina yo'qotmasin (PaymentIdempotency).
         var owner = await db.FinanceTransactions.AsNoTracking()
@@ -492,6 +501,14 @@ public class FinanceController(AppDbContext db, AuditService audit, AutoMessageS
 
         if (p.Amount <= 0) return BadRequest(new { message = "Summa musbat bo'lishi kerak" });
 
+        // Summa allaqachon QAYTARILGANidan kam bo'lmaydi: aks holda vozvrat "to'lovdan ko'p" bo'lib,
+        // o'quvchi hech qachon to'lamagan pulni qaytarib olgan bo'lardi (balans va kassa ayrilardi).
+        var refundedSoFar = await db.FinanceTransactions
+            .Where(r => r.Direction == "expense" && r.Category == "refund" && r.RefundOfId == id)
+            .SumAsync(r => (decimal?)r.Amount) ?? 0m;
+        if (p.Amount < refundedSoFar)
+            return BadRequest(new { message = $"Bu to'lovdan {AuditService.Money(refundedSoFar)} so'm qaytarilgan — summa undan kam bo'lishi mumkin emas" });
+
         var date = (p.Date ?? "").Trim();
         if (!DateOnly.TryParse(date, out var parsed))
             return BadRequest(new { message = "Sana noto'g'ri" });
@@ -500,8 +517,8 @@ public class FinanceController(AppDbContext db, AuditService audit, AutoMessageS
             return BadRequest(new { message = "Kelajak sanaga to'lov kiritib bo'lmaydi" });
 
         var month = (p.Month ?? "").Trim();
-        if (month.Length < 7) return BadRequest(new { message = "To'lov qaysi oy uchun ekanini tanlang" });
-        month = month[..7];
+        if (month.Length == 0) return BadRequest(new { message = "To'lov qaysi oy uchun ekanini tanlang" });
+        if (!PaymentFields.IsMonth(month)) return BadRequest(new { message = "Oy noto'g'ri (kutilgan ko'rinish: yyyy-MM)" });
 
         // Guruh: bo'sh = guruhsiz. Aks holda o'quvchining a'zoligi bo'lishi (yoki eski tegi) shart.
         var groupId = string.IsNullOrWhiteSpace(p.GroupId) ? null : p.GroupId.Trim();
@@ -555,6 +572,7 @@ public class FinanceController(AppDbContext db, AuditService audit, AutoMessageS
             + (tx.GroupId is null ? "" : $" [{GName(tx.GroupId)}]")
             + $" — {student.FullName}";
         var wasAutoNote = string.IsNullOrWhiteSpace(tx.Note) || tx.Note == oldAutoNote;
+        var (oldGroupId, oldMonth) = (tx.GroupId, tx.Month);
 
         tx.Date = date;
         tx.Amount = p.Amount;
@@ -571,8 +589,13 @@ public class FinanceController(AppDbContext db, AuditService audit, AutoMessageS
                 + (groupId is null ? "" : $" [{GName(groupId)}]")
                 + $" — {student.FullName}";
 
-        // 3) OYLIK HISOB — yangi (guruh, oy) hisobi yo'q bo'lsa ochamiz (to'lov qabul qilishdagi avans mantiqi).
+        // 3) OYLIK HISOB — yangi (guruh, oy) hisobi yo'q bo'lsa ochamiz (to'lov qabul qilishdagi avans mantiqi;
+        // sinov/accrual yozmaydigan oyga ochilmaydi — `EnsureChargeAsync`).
         await TuitionService.EnsureChargeAsync(db, student, groupId, month);
+        // ESKI (guruh, oy) KELAJAK oy bo'lsa va uni faqat shu avans ochgan bo'lsa — endi u yerda to'lov
+        // qolmadi: hisob ham qaytariladi (aks holda hali boshlanmagan oyga yolg'on qarz qolardi).
+        if (oldGroupId != groupId || oldMonth != month)
+            await TuitionService.DropOrphanAdvanceChargeAsync(db, student, oldGroupId, oldMonth, ignoreTxIds: [tx.Id]);
 
         audit.Record(AuditService.EntityFinanceTransaction, tx.Id, "update",
             changes.Count > 0
@@ -634,10 +657,24 @@ public class FinanceController(AppDbContext db, AuditService audit, AutoMessageS
             .Where(r => r.Direction == "expense" && r.Category == "refund" && r.RefundOfId == id)
             .SumAsync(r => (decimal?)r.Amount) ?? 0m;
         var refundable = tx.Amount - already;
+        // BO'LINGAN to'lov: guruh almashtirishda bir qismi yangi guruhga ALOHIDA qator bo'lib ko'chgan bo'lsa,
+        // o'sha qism shu qatordan qaytarilmaydi — o'z qatoridan (o'z guruhi/oyi bilan). Xabar uni ko'rsatadi.
+        var splitChildren = await PaymentSplits.ChildrenAsync(db, tx.Id);
+        var splitHint = "";
+        if (splitChildren.Count > 0)
+        {
+            var childGroupIds = splitChildren.Where(x => x.GroupId != null).Select(x => x.GroupId!).ToList();
+            var childGroups = await db.Classes.AsNoTracking()
+                .Where(c => childGroupIds.Contains(c.Id))
+                .ToDictionaryAsync(c => c.Id, c => c.Name);
+            splitHint = " — qolgan " + string.Join(", ", splitChildren.Select(c =>
+                    $"{AuditService.Money(c.Amount)} so'm «{(c.GroupId is null ? "guruhsiz" : childGroups.GetValueOrDefault(c.GroupId, "?"))}» guruhiga"))
+                + " ko'chirilgan (alohida qator): uni «To'lovlar» ro'yxatidagi o'sha qatordan qaytaring";
+        }
         if (refundable <= 0)
-            return BadRequest(new { message = "Bu to'lov to'liq qaytarilgan" });
+            return BadRequest(new { message = "Bu to'lov to'liq qaytarilgan" + splitHint });
         if (p.Amount > refundable)
-            return BadRequest(new { message = $"Ko'pi bilan {AuditService.Money(refundable)} so'm qaytarish mumkin" });
+            return BadRequest(new { message = $"Ko'pi bilan {AuditService.Money(refundable)} so'm qaytarish mumkin" + splitHint });
 
         var date = string.IsNullOrWhiteSpace(p.Date) ? AppClock.Today.ToString("yyyy-MM-dd") : p.Date.Trim();
         if (!DateOnly.TryParse(date, out var parsed)) return BadRequest(new { message = "Sana noto'g'ri" });
@@ -672,10 +709,15 @@ public class FinanceController(AppDbContext db, AuditService audit, AutoMessageS
         // Balans: vozvrat to'lovga TESKARI — muzlatishdan hosil bo'lgan avansni qaytaradi (balans kamayadi).
         // (`student` qulf ICHIDA yuklangan — balans eskirgan emas.)
         student.Balance -= p.Amount;
+        // KELAJAK oy avansi to'liq qaytarilsa — o'sha oy uchun faqat shu avans ochgan hisob ham qaytadi
+        // (aks holda hali boshlanmagan oyga yolg'on qarz va to'lov eslatmasi SMS'i qolardi).
+        var droppedAdvance = await TuitionService.DropOrphanAdvanceChargeAsync(
+            db, student, tx.GroupId, tx.Month, pendingNet: -p.Amount);
 
         audit.Record(AuditService.EntityFinanceTransaction, refund.Id, "create",
             $"Vozvrat qaytarildi ({student.FullName}): {AuditService.Money(p.Amount)} so'm"
-                + (reason is null ? "" : $" — sabab: {reason}"),
+                + (reason is null ? "" : $" — sabab: {reason}")
+                + (droppedAdvance ? $" — {tx.Month} oyi uchun oldindan ochilgan hisob ham bekor qilindi" : ""),
             after: AuditService.Snapshot(refund), studentId: tx.StudentId);
 
         await db.SaveChangesAsync();
@@ -739,32 +781,59 @@ public class FinanceController(AppDbContext db, AuditService audit, AutoMessageS
         if (tx is null) return NotFound(new { message = "Bu amal allaqachon bekor qilingan" });
         if (tx.BookOrderId is not null) return BadRequest(new { message = BookLinkedMessage });
 
+        // BO'LINGAN TO'LOV OILASI (guruh almashtirishda ikkiga bo'lingan to'lov) — jismonan BITTA to'lov,
+        // shuning uchun BIRGA bekor qilinadi (`PaymentSplits` izohi). Bo'linmagan yozuvda — faqat o'zi.
+        var family = FinanceTxEdit.IsStudentPayment(tx) ? await PaymentSplits.FamilyAsync(db, tx) : [tx];
+        var familyIds = family.Select(f => f.Id).ToList();
+
         // ⚠️ VOZVRATI BOR to'lov bekor qilinmaydi. Bekor qilinsa to'lov summasi balansdan to'liq
         // ayriladi, vozvrat esa kuchda qolib, qaytarilgan pul balansdan IKKINCHI marta ayrilgan
         // bo'lardi (o'quvchiga hech qachon bo'lmagan qarz). Avval vozvrat(lar) bekor qilinadi.
         var refundCount = await db.FinanceTransactions
-            .CountAsync(r => r.RefundOfId == id && r.Direction == "expense" && r.Category == "refund");
+            .CountAsync(r => r.RefundOfId != null && familyIds.Contains(r.RefundOfId) && r.Direction == "expense" && r.Category == "refund");
         if (refundCount > 0)
-            return BadRequest(new { message = $"Bu to'lovdan {refundCount} ta vozvrat qilingan — avval vozvrat(lar)ni bekor qiling" });
+            return BadRequest(new
+            {
+                message = family.Count > 1
+                    ? $"Bu to'lov (va undan guruh almashtirishda bo'lingan qism) bo'yicha {refundCount} ta vozvrat qilingan — avval vozvrat(lar)ni bekor qiling"
+                    : $"Bu to'lovdan {refundCount} ta vozvrat qilingan — avval vozvrat(lar)ni bekor qiling",
+            });
 
         var reason = string.IsNullOrWhiteSpace(reasonId) ? "" : (await db.ActionReasons.Where(r => r.Id == reasonId).Select(r => r.Label).FirstOrDefaultAsync() ?? "");
         var dir = tx.Direction == "income" ? "Kirim" : "Chiqim";
         var actor = User.FindFirst(System.Security.Claims.ClaimTypes.Name)?.Value ?? "Admin";
+        var actorId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
         var sName = tx.StudentId is null ? null : await db.Students.Where(s => s.Id == tx.StudentId).Select(s => s.FullName).FirstOrDefaultAsync();
-        audit.Record(AuditService.EntityFinanceTransaction, tx.Id, "delete",
-            $"Bekor qilindi: {dir} {tx.Category} — {AuditService.Money(tx.Amount)} so'm"
-                + (sName is null ? "" : $" ({sName})")
-                + (reason.Length > 0 ? $" — sabab: {reason}" : ""),
-            before: AuditService.Snapshot(tx), studentId: tx.StudentId, teacherId: tx.TeacherId);
+        var student = tx.StudentId is null ? null : await db.Students.FindAsync(tx.StudentId);
 
-        // Balansga qo'shilgan (yoki vozvratda ayrilgan) summa QAYTARILADI — qarz/avans tiklanadi.
-        await ApplyBalanceAsync(tx.StudentId, -StudentBalanceEffect(tx));
-        // Qator O'CHIRILMAYDI — bekor qilingan deb belgilanadi (tarix va nazorat uchun).
-        tx.IsVoided = true;
-        tx.VoidedAt = AppClock.Iso();
-        tx.VoidedBy = actor;
-        tx.VoidedById = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
-        tx.VoidReason = reason.Length > 0 ? reason : null;
+        // Bitta yozuvni bekor qilish: balans ta'siri QAYTARILADI, qator O'CHIRILMAYDI (tarix va nazorat).
+        async Task<bool> VoidOne(FinanceTransaction tx)
+        {
+            await ApplyBalanceAsync(tx.StudentId, -StudentBalanceEffect(tx));
+            tx.IsVoided = true;
+            tx.VoidedAt = AppClock.Iso();
+            tx.VoidedBy = actor;
+            tx.VoidedById = actorId;
+            tx.VoidReason = reason.Length > 0 ? reason : null;
+            // KELAJAK oy AVANSI bekor qilinsa — o'sha oy hisobini faqat shu avans ochgan: unga boshqa to'lov
+            // qolmasa hisob ham qaytariladi (aks holda yolg'on qarz + to'lov eslatmasi SMS'i).
+            return student is not null && FinanceTxEdit.IsStudentPayment(tx)
+                   && await TuitionService.DropOrphanAdvanceChargeAsync(db, student, tx.GroupId, tx.Month, ignoreTxIds: familyIds);
+        }
+
+        foreach (var member in family)
+        {
+            var memberBefore = AuditService.Snapshot(member);
+            var dropped = await VoidOne(member);
+            var part = member.Id == tx.Id ? "" : " [shu to'lovdan guruh almashtirishda bo'lingan qism — birga bekor qilindi]";
+            audit.Record(AuditService.EntityFinanceTransaction, member.Id, "delete",
+                $"Bekor qilindi: {dir} {member.Category} — {AuditService.Money(member.Amount)} so'm"
+                    + (sName is null ? "" : $" ({sName})")
+                    + (reason.Length > 0 ? $" — sabab: {reason}" : "")
+                    + part
+                    + (dropped ? $" — {member.Month} oyi uchun oldindan ochilgan hisob ham bekor qilindi" : ""),
+                before: memberBefore, studentId: member.StudentId, teacherId: member.TeacherId);
+        }
         await db.SaveChangesAsync();
         return NoContent();
     }
@@ -848,7 +917,9 @@ public class FinanceController(AppDbContext db, AuditService audit, AutoMessageS
     [HttpGet("income-plan")]
     public async Task<ActionResult<IncomePlan.Result>> IncomePlanReport([FromQuery] string? month = null)
     {
-        var m = string.IsNullOrWhiteSpace(month) ? TuitionService.CurrentMonth() : month;
+        var m = string.IsNullOrWhiteSpace(month) ? TuitionService.CurrentMonth() : month.Trim();
+        if (!PaymentFields.IsMonth(m))
+            return BadRequest(new { message = "Oy noto'g'ri (kutilgan ko'rinish: yyyy-MM)" });
         // Reja qatorining yorlig'i — edutizimdagidek TANLANGAN KUN (bugun yoki oyning 1-kuni).
         var today = AppClock.Today;
         var label = today.ToString("yyyy-MM") == m
@@ -911,15 +982,20 @@ public class FinanceController(AppDbContext db, AuditService audit, AutoMessageS
             .Select(g => new CategoryAmountDto(g.Key, g.Sum(x => x.Amount)))
             .OrderByDescending(c => c.Amount).ToList();
 
-        var balances = await db.Students.Select(s => s.Balance).ToListAsync();
-        var studentDebt = balances.Where(b => b < 0).Sum(b => -b);
-        var studentAdvance = balances.Where(b => b > 0).Sum();
+        // O'quvchilar qarzi — HAQIQIY debitorlik (arxivdagilar ham: ular hamon qarzdor). Bosh sahifa esa faqat
+        // arxivlanmaganlarni sanaydi — ikki sahifa jimgina farq qilmasin, arxivdagi qism ALOHIDA qaytariladi.
+        var balances = await db.Students.Select(s => new { s.Balance, s.IsArchived }).ToListAsync();
+        var studentDebt = balances.Where(b => b.Balance < 0).Sum(b => -b.Balance);
+        var studentAdvance = balances.Where(b => b.Balance > 0).Sum(b => b.Balance);
+        var archivedDebt = balances.Where(b => b.IsArchived && b.Balance < 0).Sum(b => -b.Balance);
+        var archivedAdvance = balances.Where(b => b.IsArchived && b.Balance > 0).Sum(b => b.Balance);
 
         return new FinanceSummaryDto(
             totalIncome, totalExpense, totalIncome - totalExpense,
             tuition, totalIncome - tuition,
             incomeByCat, expenseByCat,
-            studentDebt, studentAdvance, txs.Count);
+            studentDebt, studentAdvance, txs.Count,
+            archivedDebt, archivedAdvance);
     }
 
     /// <summary>Kurs/guruh kesimida moliyaviy hisobot: qaysi kurs ko'p daromad keltiradi,
@@ -990,28 +1066,36 @@ public class FinanceController(AppDbContext db, AuditService audit, AutoMessageS
         return await CashierReport.AuthorsAsync(db, from ?? "", to ?? "");
     }
 
-    /// <summary>Oylik to'lovni qo'lda hisoblash. month berilmasa — hisoblanmagan barcha oylar.</summary>
+    /// <summary>Oylik to'lovni qo'lda hisoblash. month berilmasa — hisoblanmagan barcha oylar.
+    /// <para>Javobdagi <c>Count</c>/<c>Total</c> — shu bosishda YANGI yaratilgan hisoblar (ilgari umumiy
+    /// rejimda oylardagi BARCHA hisoblar sanalardi va "N ta hisoblandi" yolg'on chiqardi).</para>
+    /// <para>⚠️ KELAJAK oy rad etiladi: oy boshlanmasdan butun markazga oylik yozilib, ota-onalarga
+    /// "oylik hisoblandi" xabari ketardi (avtomatik accrual ham faqat joriy oygacha yozadi).</para></summary>
     [HttpPost("accrue")]
     public async Task<ActionResult<AccrueResultDto>> Accrue([FromQuery] string? month)
     {
         if (!string.IsNullOrEmpty(month))
         {
-            var (count, total, created) = await TuitionService.AccrueMonth(db, month);
+            month = month.Trim();
+            if (!PaymentFields.IsMonth(month))
+                return BadRequest(new { message = "Oy noto'g'ri (kutilgan ko'rinish: yyyy-MM)" });
+            if (string.CompareOrdinal(month, TuitionService.CurrentMonth()) > 0)
+                return BadRequest(new { message = "Kelajak oy uchun oylik hisoblab bo'lmaydi — oy boshlanganda avtomatik yoziladi" });
+            // Har o'quvchi alohida saqlanadi — kesh har birida emas, oxirida BIR marta yangilansin.
+            (int count, decimal total, List<(string StudentId, decimal Amount)> created) r;
+            using (dataCache.BeginBatch()) r = await TuitionService.AccrueMonth(db, month);
+            var (count, total, created) = r;
             // Avto xabar — har YANGI hisob uchun ota-onaga ("Oylik hisob yaratilganda" hodisasi).
             await autoMsg.DispatchMonthlyChargesAsync(db,
                 created.Select(c => (c.StudentId, month, c.Amount)).ToList());
             return new AccrueResultDto([month], count, total);
         }
 
-        var (accrued, createdDue) = await TuitionService.AccrueDue(db);
+        List<string> accrued;
+        List<(string StudentId, string Month, decimal Amount)> createdDue;
+        using (dataCache.BeginBatch()) (accrued, createdDue) = await TuitionService.AccrueDue(db);
         await autoMsg.DispatchMonthlyChargesAsync(db, createdDue);
-        var sum = accrued.Count == 0
-            ? 0m
-            : await db.MonthlyCharges.Where(c => accrued.Contains(c.Month)).SumAsync(c => c.Amount);
-        var cnt = accrued.Count == 0
-            ? 0
-            : await db.MonthlyCharges.CountAsync(c => accrued.Contains(c.Month));
-        return new AccrueResultDto(accrued, cnt, sum);
+        return new AccrueResultDto(accrued, createdDue.Count, createdDue.Sum(c => c.Amount));
     }
 
     /// <summary>Bir yil bo'yicha oylik kirim/chiqim (grafik uchun, 12 oy).</summary>

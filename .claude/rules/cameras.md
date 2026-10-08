@@ -22,6 +22,20 @@ o'chirishning yo'li yo'q edi (kamerani butunlay o'chirishdan boshqa). Endi ikkig
 ⚠️ **Yozuv o'chirilganda kamera baribir jonli ko'rinaveradi.** Bu ikkisini aralashtirish eng
 ko'p uchraydigan tushunmovchilik — UI matnlarida ham har safar shu aytiladi.
 
+### 1.1. «Kamera kuzatuvini yoqish» (`CameraEnabled`) — KO'RISH darvozasi
+
+⚠️ Ilgari bu kalitni **hech narsa o'qimasdi** — admin "o'chirdim" deb o'ylar, kameralar esa
+ko'rinaverardi. Endi `CamerasController` da u **o'chiq bo'lsa** (yoki `CenterMeta` qatori yo'q —
+fail-closed): jonli HLS (`index.m3u8` + segmentlar), arxiv klipi (`clip`) va NVR qidiruvi YOPIQ,
+sabab matni bilan (`ViewingDisabledMessage`). Kameralar sahifasi `GET status` dan holatni oladi va
+pleyerlar o'rniga ogohlantirish + sozlamaga havola ko'rsatadi.
+
+- **Ro'yxat va CRUD OCHIQ** — kameralarni modul yoqilishidan oldin sozlab qo'yish mumkin.
+- ⚠️ **24/7 YOZUV bu kalitga BOG'LIQ EMAS** — o'z bosh kaliti bor (§2). Ko'rishni yopish yozuvni
+  jimgina to'xtatmasin; yozuvni to'xtatish uchun «24/7 yozib borish» o'chiriladi.
+- ⚠️ Deploydan keyin: prod'da kalit `false` bo'lsa Kameralar sahifasi "o'chirilgan" deb ko'rsatadi —
+  Sozlamalar → Kamera integratsiya da yoqish kerak (yoki `.env` → `CAMERA_ENABLED=true`).
+
 ## 2. Yozuv QACHON bo'ladi — `CameraRules.ShouldRecord`
 
 ```
@@ -51,6 +65,21 @@ bilan to'ldirilsa admin bosh kalitni yoqib, "yoqdim — baribir yozilmayapti" ho
 ⚠️ **NVR HAMMASIDAN USTUN.** Kameraning `NvrChannel > 0` bo'lsa (va NVR sozlangan bo'lsa) u
 bosh kalit yoqilgan bo'lsa ham **shlyuzda yozilmaydi** — `CameraRules.ShouldRecordWithNvr`.
 Sabab §8 da. Kod har doim shu funksiyani chaqiradi, `ShouldRecord` ni to'g'ridan-to'g'ri emas.
+
+## 2.5. SHLYUZGA QAYTA YUBORISH — `CameraResyncService`
+
+⚠️ Kamera yo'llari (paths) **faqat MediaMTX xotirasida** turadi. Shlyuz konteyneri qayta ishga
+tushsa hammasi yo'qoladi — 24/7 YOZUV JIMGINA TO'XTAYDI (kimdir jonli ochmaguncha). Ilova ham
+startupda hech narsa yubormasdi, env'dagi `Camera:RecordEnabled` (env-wins) esa bazani o'zgartirib
+shlyuzni eski holatda qoldirardi.
+
+Endi fon xizmati **startupdan 30 s keyin va har 10 daqiqada** BARCHA kameralarni `CamerasController`
+bilan AYNAN bir qoida (`CameraRules.ShouldRecordWithNvr`) bo'yicha qayta yuboradi (`add`→`patch`
+idempotent, ishlab turgan oqim uzilmaydi). Holat bazadan — restart ham, takroriy sikl ham zararsiz.
+
+⚠️ `CameraGateway.EnsureAsync` endi xatoni **yutmaydi**: sabab qaytadi (`string?`), kamera
+saqlanganda javobda `CameraDto.Warning` bo'lib chiqadi va UI uni ko'rsatadi ("saqlandi, lekin shlyuz
+qabul qilmadi"). Sabab matnida RTSP manzili (login/parol) BO'LMAYDI — faqat HTTP holati.
 
 ## 3. `sourceOnDemand` — bu optimizatsiya EMAS
 
@@ -89,6 +118,17 @@ aytiladi, aks holda "yoqdim, lekin kechagi yozuv yo'q" savoli chiqardi.
 
 ⚠️ **Bu volume tungi zaxiraga KIRMAYDI** (`backup` servisi faqat `uploads` va
 `cti-recordings` ni oladi) — ATAYIN: hajmi bilan zaxira arxivini yo'q qilardi.
+
+### 5.0. Yozuvlar QACHON o'chadi
+
+| Holat | Nima bo'ladi |
+|---|---|
+| Kamera yozilmoqda | MediaMTX o'zi o'chiradi (`recordDeleteAfter` = saqlash muddati) |
+| Yozuv **o'chirildi** (kamera/bosh kalit/NVR ulandi) | ⚠️ MediaMTX tozalovchisi faqat YOZILAYOTGAN yo'lda ishlaydi — eski arxiv abadiy qolardi. Endi `CameraResyncService` har siklda `CameraGateway.PruneAsync` bilan **saqlash muddatidan eski** segmentlarni o'chiradi: arxiv odatdagi muddati tugaguncha ko'rinadi, keyin o'chadi. `RetentionDays = 0` (cheksiz) — tegilmaydi |
+| Kamera **o'chirildi** | Shlyuzdagi yo'l VA **barcha** segmentlari o'chadi (`RemoveAsync`) — kamerasiz yozuvga hech qanday yo'l qolmaydi (klip endpointi kamerani talab qiladi), lekin disk abadiy band bo'lardi |
+
+O'chirish MediaMTX API'si orqali (`/v3/recordings/get`, `/v3/recordings/deletesegment`) — fayllar
+shlyuz konteynerida, ilovaga volume ulanmagan. Shlyuz javob bermasa — jim, keyingi siklda qayta.
 
 ### 5.1. Google Drive'ga yozib olish — NEGA to'g'ridan-to'g'ri BO'LMAYDI
 
@@ -162,6 +202,14 @@ yo'qolgandek bo'lardi.
 - ⚠️ **Login/parol manzil ICHIDA** (Hikvision boshqa yo'lni qabul qilmaydi) — shuning uchun
   log va xato matnlarida **`HikvisionNvr.Redact` MAJBURIY**. Xato xabari NVR manzilini o'z
   ichiga oladi (diagnostika uchun kerak), ya'ni tozalanmasa parol ekranga chiqib ketardi.
+- ⚠️ **`-timeout` (mikrosoniya), `-stimeout` EMAS.** `-stimeout` ffmpeg 5.0 da olib tashlangan, obrazda
+  Debian 12 ning ffmpeg 5.1 i — eski opsiya bilan ffmpeg darhol chiqib ketar va HAR klip bo'sh qaytardi.
+- ⚠️ **Birinchi bo'lak kutiladi** (25 s), keyin javob boshlanadi. Ilgari oqim darhol `File()` ga
+  berilardi: ffmpeg yiqilsa javob allaqachon "200 OK" bo'lib, klient **0 baytlik MP4** olardi va
+  sabab faqat logda qolardi. Endi xato → **502 + SABAB** (`HikvisionNvr.ClipFailureReason`: login/parol ·
+  ulanib bo'lmadi · yozuv/kanal topilmadi · ffmpeg versiyasi).
+- ⚠️ **ffmpeg stderr'ida ham `login:parol@` bor** — logga ham, sababga ham faqat
+  `HikvisionNvr.RedactText` (matndagi BARCHA manzillarni tozalaydi) orqali chiqadi.
 - **ffmpeg remux:** `-c copy` (qayta kodlash YO'Q — 1 GB RAM serverni ushlab qolardi),
   `-movflags frag_keyframe+empty_moov` (oddiy MP4 da indeks fayl OXIRIDA yoziladi, ya'ni
   javobni boshlashdan oldin butun klipni yig'ish kerak bo'lardi), `-rtsp_transport tcp`

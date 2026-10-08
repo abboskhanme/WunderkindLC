@@ -12,8 +12,10 @@ namespace WunderkindLC.Application.Services;
 ///     (Meta 5 soniya kutadi), haqiqiy ish shu yerda bajariladi.</item>
 ///   <item><b>Token:</b> kuniga bir marta — muddatiga 15 kundan kam qolgan tokenni yangilaydi
 ///     (60 kunlik token amalda 45-kunda yangilanadi). Muvaffaqiyatsiz bo'lsa Telegram signali.</item>
-///   <item><b>Tozalash:</b> kuniga bir marta — 30 kundan eski <c>done</c>/<c>skipped</c>
-///     hodisalar o'chiriladi (jadval cheksiz o'smasin).</item>
+///   <item><b>Tozalash:</b> kuniga bir marta — 30 kundan eski <c>done</c>/<c>skipped</c> va
+///     qayta ishlanmay qolgan <c>pending</c> hodisalar o'chiriladi (jadval cheksiz o'smasin,
+///     modul yoqilganda eski "zaxira" qayta ishlanmasin; reklama lidi esa avval
+///     <c>IgAdLead</c> ga ko'chiriladi).</item>
 /// </list>
 ///
 /// <para><b>⚠️ IKKALA bayroq ham o'chiq bo'lsa (<c>CenterMeta.InstagramEnabled</c> — avtojavob,
@@ -170,7 +172,11 @@ public class InstagramWorkerService(
 
         // Tozalash HAR DOIM bajariladi — navbat jadvali qaysi modul yoqilganidan qat'i nazar
         // o'sadi (webhook hodisani modul o'chiq bo'lsa ham qabul qiladi).
-        try { await CleanupAsync(db, ct); }
+        try
+        {
+            var removed = await CleanupAsync(db, ct);
+            if (removed > 0) logger.LogInformation("Instagram navbatidan {Count} ta eski hodisa tozalandi", removed);
+        }
         catch (Exception ex) { logger.LogError(ex, "Instagram navbatini tozalashda xatolik"); }
 
         // YETIM MEDIA FAYLLARI — `uploads/marketing-public/` da hech qaysi postda ishlatilmayotgan
@@ -267,7 +273,10 @@ public class InstagramWorkerService(
             else
             {
                 logger.LogWarning("Instagram tokenini yangilab bo'lmadi (@{User}): {Err}", acc.Username, err);
-                await InstagramPipeline.NotifyAdminsAsync(db, telegram, meta,
+                // ⚠️ `NotifyTokenAdminsAsync` — `NeedsLoginToken` darvozasi bilan: faqat kontent
+                // joylashni yoqqan markazda ham signal YETIB BORADI (`NotifyAdminsAsync` uni
+                // `InstagramEnabled` o'chiq bo'lgani uchun jimgina yutardi).
+                await InstagramPipeline.NotifyTokenAdminsAsync(db, telegram, meta,
                     $"🔑 Instagram: tokenni yangilab bo'lmadi (@{acc.Username}). {err}\n" +
                     "Marketing → Sozlamalar bo'limidan akkauntni QAYTA ULANG.", ct);
             }
@@ -276,18 +285,42 @@ public class InstagramWorkerService(
 
     /* ═════════════════════════ 3) Tozalash ═════════════════════════ */
 
-    private async Task CleanupAsync(IAppDbContext db, CancellationToken ct)
+    /// <summary>
+    /// 30 kundan eski navbat yozuvlarini o'chiradi: <c>done</c>/<c>skipped</c> VA <b>qayta
+    /// ishlanmay qolgan <c>pending</c></b>.
+    ///
+    /// <para>🔴 Ilgari faqat <c>done</c>/<c>skipped</c> o'chirilardi — modul o'chiq paytda
+    /// to'plangan <c>pending</c> hodisalar ABADIY kutardi va modul yoqilgan zahoti bot
+    /// haftalab eski izohlarga ommaviy javob yozardi (hujjatda esa "30 kunda tozalanadi"
+    /// deyilgan edi). Eski hodisaga javob baribir yuborilmaydi
+    /// (<see cref="InstagramContract.StaleReplyReason"/>), ya'ni yozuvni saqlashdan foyda yo'q.</para>
+    ///
+    /// <para>⚠️ <b>Reklama lidi</b> (leadgen) bo'lgan <c>pending</c> yozuv o'chirishdan OLDIN
+    /// <see cref="IgAdLead"/> qatoriga XATO bilan ko'chiriladi
+    /// (<see cref="MetaLeadgenService.SaveUnprocessedAsync"/>, tashqariga so'rov YO'Q) —
+    /// to'langan reklamadan kelgan murojaat izsiz yo'qolmasin.</para>
+    /// </summary>
+    internal static async Task<int> CleanupAsync(IAppDbContext db, CancellationToken ct)
     {
         var cutoff = AppClock.Now.AddDays(-IgConst.EventRetentionDays).ToString("yyyy-MM-ddTHH:mm:ss");
         var old = await db.IgWebhookEvents
-            .Where(e => (e.Status == IgConst.EvDone || e.Status == IgConst.EvSkipped)
+            .Where(e => (e.Status == IgConst.EvDone || e.Status == IgConst.EvSkipped || e.Status == IgConst.EvPending)
                         && e.ReceivedAt.CompareTo(cutoff) < 0)
             .Take(1000)   // bir kunda 1000 tadan — katta jadvalda ham xotira shishmasin
             .ToListAsync(ct);
-        if (old.Count == 0) return;
+        if (old.Count == 0) return 0;
+
+        foreach (var e in old.Where(e => e.Status == IgConst.EvPending))
+        {
+            var leadgen = MetaLeadgenParser.Parse(e.RawJson);
+            if (leadgen.Count > 0)
+                await MetaLeadgenService.SaveUnprocessedAsync(db, leadgen,
+                    "Reklama lidi navbatda 30 kun qayta ishlanmay qoldi (modul o'chiq edi) — "
+                    + "ism va telefon olinmagan. Modulni yoqib, «Qayta olish» tugmasini bosing.", ct);
+        }
 
         db.IgWebhookEvents.RemoveRange(old);
         await db.SaveChangesAsync(ct);
-        logger.LogInformation("Instagram navbatidan {Count} ta eski hodisa tozalandi", old.Count);
+        return old.Count;
     }
 }

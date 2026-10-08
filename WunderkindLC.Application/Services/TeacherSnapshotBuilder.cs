@@ -47,12 +47,22 @@ public static class TeacherSnapshotBuilder
         var months = TuitionService.MonthRange(fromMonth, curMonth).ToList();
 
         // ---------- 1. Guruhlar ----------
-        var groups = await db.Classes.AsNoTracking()
-            .Where(c => c.TeacherId == teacher.Id)
+        // ⚠️ Audit C3: o'qituvchi HOZIR o'qitayotgan guruhlar (ro'yxat, joriy holat) + TARIXDA o'qitgan
+        // guruhlar (o'tgan oylardagi hodisalar, jurnal, baholar, testlar). Har HODISA o'sha SANADA guruhni
+        // o'qitgan o'qituvchiga yoziladi (GroupTeacherHistory) — ilgari hozirgi Group.TeacherId olinardi va
+        // o'qituvchi almashsa eski o'qituvchining butun tarixi yangisiga ko'chardi.
+        var everIds = await GroupOwnership.GroupIdsOfTeacherAsync(db, teacher.Id, ct);
+        var everGroups = await db.Classes.AsNoTracking()
+            .Where(c => everIds.Contains(c.Id))
             .ToListAsync(ct);
+        var own = await GroupOwnership.LoadAsync(db, everGroups, ct);
+        bool Mine(string groupId, string? date) => own.OwnerOn(groupId, date) == teacher.Id;
+
+        var groups = everGroups.Where(g => g.TeacherId == teacher.Id).ToList();
         var activeGroups = groups.Where(g => !g.IsArchived).ToList();
-        var groupIds = groups.Select(g => g.Id).ToList();
+        var groupIds = everGroups.Select(g => g.Id).ToList();
         var activeGroupIds = activeGroups.Select(g => g.Id).ToHashSet();
+        var nonArchivedIds = everGroups.Where(g => !g.IsArchived).Select(g => g.Id).ToHashSet();
         var courseNames = await db.Subjects.AsNoTracking().ToDictionaryAsync(s => s.Id, s => s.Name, ct);
 
         // ---------- 2. A'zoliklar (o'quvchi oqimi) ----------
@@ -61,37 +71,59 @@ public static class TeacherSnapshotBuilder
         var memberships = groupIds.Count == 0
             ? new List<StudentGroup>()
             : await db.StudentGroups.AsNoTracking().Where(sg => groupIds.Contains(sg.GroupId)).ToListAsync(ct);
-        var liveMembers = memberships.Where(m => activeGroupIds.Contains(m.GroupId)).ToList();
-        var tally = MembershipLifecycle.Tally(liveMembers.Select(m => (m.Status, m.IsActive, m.LeftAt)));
+        // Arxivlangan O'QUVCHI = ketgan (eski yozuvlarda a'zoligi tirik bo'lishi mumkin) — joriy holatda
+        // faol/sinov/muzlatilgan bo'lib sanalmasin.
+        var archivedStudents = (await db.Students.AsNoTracking().Where(s => s.IsArchived)
+            .Select(s => s.Id).ToListAsync(ct)).ToHashSet();
+        (string Status, bool IsActive, string? LeftAt) TallyRow(StudentGroup m) =>
+            (m.Status, m.IsActive && !archivedStudents.Contains(m.StudentId), m.LeftAt);
 
+        var liveMembers = memberships.Where(m => activeGroupIds.Contains(m.GroupId)).ToList();
+        var tally = MembershipLifecycle.Tally(liveMembers.Select(TallyRow));
+
+        // OQIM — arxivlanmagan guruhlardagi hodisalar, o'sha sanada guruh shu o'qituvchiniki bo'lsa.
+        var flowMembers = memberships.Where(m => nonArchivedIds.Contains(m.GroupId)).ToList();
         var flow = months.Select(m => new TeacherFlowPointDto(
             m,
-            liveMembers.Count(x => MonthOf(x.JoinedAt) == m),
+            flowMembers.Count(x => MonthOf(x.JoinedAt) == m && Mine(x.GroupId, x.JoinedAt)),
             // Yopilgan davrlar ham: qayta aktivlashtirilgan a'zolikda eski aktivlashish
             // hodisasi yo'qolib, grafikda keyingi oyga ko'chib ketardi.
-            liveMembers.Count(x => MembershipLifecycle.ActivatedInMonth(x, m)),
-            liveMembers.Count(x => MonthOf(x.FrozenAt) == m),
-            liveMembers.Count(x => MonthOf(x.LeftAt) == m))).ToList();
+            flowMembers.Count(x => MembershipLifecycle.ActivatedInMonth(x, m) && own.OwnerAtMonth(x.GroupId, m) == teacher.Id),
+            flowMembers.Count(x => MonthOf(x.FrozenAt) == m && Mine(x.GroupId, x.FrozenAt)),
+            flowMembers.Count(x => MonthOf(x.LeftAt) == m && Mine(x.GroupId, x.LeftAt)))).ToList();
 
         var myStudentIds = memberships.Select(m => m.StudentId).ToHashSet();
 
         // ---------- 3. Ketish sabablari ----------
-        var reasons = await DepartureReasonsAsync(db, groupIds, myStudentIds, fromDate, ct);
+        var reasons = await DepartureReasonsAsync(db, groupIds, myStudentIds, fromDate, Mine, ct);
 
         // ---------- 4. Jurnal intizomi (reja / o'tilgan / o'tkazib yuborilgan) ----------
+        // Arxivlanmagan guruhlar, faqat o'qituvchiga TEGISHLI sanalar (boshqa o'qituvchi o'qitgan kunlar
+        // rejadan chiqariladi — uning darsi uchun bu o'qituvchi "belgilamadi" bo'lib qolmasin).
         var policy = await JournalPolicy.GetAsync(db);
         var startDate = TeacherSalaryCalc.StartDateOf(teacher);
-        var lessonStats = activeGroups.Count == 0
+        var journalGroups = everGroups.Where(g => !g.IsArchived).ToList();
+        var notMine = new Dictionary<string, HashSet<string>>();
+        foreach (var g in journalGroups)
+            foreach (var m in months)
+                foreach (var d in own.NotOwnedDates(g.Id, m, teacher.Id))
+                {
+                    if (!notMine.TryGetValue(g.Id, out var set)) notMine[g.Id] = set = new HashSet<string>();
+                    set.Add(d);
+                }
+        var lessonStats = journalGroups.Count == 0
             ? new Dictionary<(string Month, string GroupId), SalaryJournalStats.Stat>()
             : await SalaryJournalStats.BuildAsync(db,
-                activeGroups.Select(g => new SalaryJournalStats.GroupInfo(g.Id, g.Name, g.Days, g.StartDate, g.EndDate)).ToList(),
-                fromMonth, curMonth, policy.SalaryGraceDays, startDate);
+                journalGroups.Select(g => new SalaryJournalStats.GroupInfo(g.Id, g.Name, g.Days, g.StartDate, g.EndDate)).ToList(),
+                fromMonth, curMonth, policy.SalaryGraceDays, startDate,
+                notMine.Count > 0 ? notMine : null);
 
         var notes = groupIds.Count == 0
             ? new List<LessonNote>()
-            : await db.LessonNotes.AsNoTracking()
+            : (await db.LessonNotes.AsNoTracking()
                 .Where(n => groupIds.Contains(n.ClassId) && string.Compare(n.Date, fromDate) >= 0)
-                .ToListAsync(ct);
+                .ToListAsync(ct))
+                .Where(n => Mine(n.ClassId, n.Date)).ToList();
         var conductedNotes = notes.Where(n => n.Conducted).ToList();
 
         var gradeRows = groupIds.Count == 0
@@ -100,6 +132,7 @@ public static class TeacherSnapshotBuilder
                 .Where(e => groupIds.Contains(e.ClassId) && e.Grade != null && string.Compare(e.Date, fromDate) >= 0)
                 .Select(e => new { e.Date, e.ClassId, e.Grade })
                 .ToListAsync(ct))
+                .Where(e => Mine(e.ClassId, e.Date))
                 .Select(e => (e.Date, e.ClassId, Grade: e.Grade!.Value)).ToList();
 
         double AvgGradeIn(IEnumerable<(string Date, string ClassId, int Grade)> rows)
@@ -131,7 +164,7 @@ public static class TeacherSnapshotBuilder
             .SelectMany(kv => kv.Value.MissedDates.Select(d => (Date: d, Group: kv.Key.GroupId)))
             .OrderByDescending(x => x.Date, StringComparer.Ordinal)
             .Take(15)
-            .Select(x => $"{x.Date} ({groups.FirstOrDefault(g => g.Id == x.Group)?.Name ?? "—"})")
+            .Select(x => $"{x.Date} ({everGroups.FirstOrDefault(g => g.Id == x.Group)?.Name ?? "—"})")
             .ToList();
 
         // ---------- 5. Rivojlanish: ball, davomat, testlar ----------
@@ -141,9 +174,10 @@ public static class TeacherSnapshotBuilder
 
         var tests = groupIds.Count == 0
             ? new List<TestResult>()
-            : await db.TestResults.AsNoTracking()
+            : (await db.TestResults.AsNoTracking()
                 .Where(t => groupIds.Contains(t.GroupId) && string.Compare(t.Date, fromDate) >= 0)
-                .ToListAsync(ct);
+                .ToListAsync(ct))
+                .Where(t => Mine(t.GroupId, t.Date)).ToList();
         var testIds = tests.Select(t => t.Id).ToList();
         var testScores = testIds.Count == 0
             ? new List<TestScore>()
@@ -190,7 +224,7 @@ public static class TeacherSnapshotBuilder
         var groupStats = groups.Select(g =>
         {
             var mem = memberships.Where(m => m.GroupId == g.Id).ToList();
-            var t = MembershipLifecycle.Tally(mem.Select(m => (m.Status, m.IsActive, m.LeftAt)));
+            var t = MembershipLifecycle.Tally(mem.Select(TallyRow));
             var st = lessonStats.Where(kv => kv.Key.GroupId == g.Id).ToList();
             return new TeacherGroupStatDto(
                 g.Id, g.Name, courseNames.GetValueOrDefault(g.CourseId, ""), g.IsArchived,
@@ -294,7 +328,8 @@ public static class TeacherSnapshotBuilder
     /// manba: markazdan butunlay arxivlangan o'quvchilar (<see cref="ArchivedRecord.Reason"/>).
     /// </summary>
     private static async Task<List<CenterPointDto>> DepartureReasonsAsync(
-        IAppDbContext db, List<string> groupIds, HashSet<string> studentIds, string fromDate, CancellationToken ct)
+        IAppDbContext db, List<string> groupIds, HashSet<string> studentIds, string fromDate,
+        Func<string, string?, bool> mine, CancellationToken ct)
     {
         var counts = new Dictionary<string, int>();
         void Add(string? label)
@@ -308,16 +343,21 @@ public static class TeacherSnapshotBuilder
             var groupSet = groupIds.ToHashSet();
             var logs = await db.AuditLogs.AsNoTracking()
                 .Where(a => a.EntityType == "Membership" && string.Compare(a.Timestamp, fromDate) >= 0)
-                .Select(a => new { a.EntityId, a.Summary })
+                .Select(a => new { a.EntityId, a.Summary, a.Timestamp })
                 .ToListAsync(ct);
             foreach (var log in logs)
             {
                 // EntityId = "{groupId}:{studentId}"
                 var sep = log.EntityId.IndexOf(':');
                 if (sep <= 0 || !groupSet.Contains(log.EntityId[..sep])) continue;
+                // C3: o'sha kuni guruh shu o'qituvchiniki bo'lgan hodisalargina.
+                if (!mine(log.EntityId[..sep], log.Timestamp)) continue;
                 var s = log.Summary ?? "";
                 // Faqat KETISH hodisalari (chiqarish/muzlatish) — qo'shish/aktivlashtirish emas.
-                if (!s.StartsWith("Guruhdan chiqarildi") && !s.StartsWith("Muzlatildi")) continue;
+                // ⚠️ «Aktiv muzlatildi» (yangi o'quv yili, `year-freeze.md` §6) ham muzlatish — ilgari
+                // faqat "Muzlatildi" prefiksi tutilib, bu sabablar AI tahlilidan tushib qolardi.
+                if (!s.StartsWith("Guruhdan chiqarildi") && !s.StartsWith("Muzlatildi")
+                    && !s.StartsWith("Aktiv muzlatildi")) continue;
                 const string marker = "sabab: ";
                 var i = s.IndexOf(marker, StringComparison.Ordinal);
                 Add(i < 0 ? null : s[(i + marker.Length)..]);

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Bot, Phone, Plus, Shuffle, Trash2 } from 'lucide-react'
+import { Bot, Loader2, Phone, Play, Plus, Shuffle, Square, Trash2 } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
@@ -21,6 +21,7 @@ import {
   type KpiTicketDto,
   type KpiTicketMetaDto,
 } from '@/api/services/kpi'
+import { fetchCtiCallAudioUrl } from '@/api/services/cti'
 import {
   TICKET_STATUSES,
   callDirectionLabel,
@@ -561,6 +562,11 @@ function TicketModal({
  * <p>Har qatorda yozuv, transkript va (bo'lsa) AI tahlili ochiladi — rahbar tinglab,
  * darhol tiket qo'yishi mumkin. Tanlash TASODIFIY: xodim qaysi qo'ng'iroq tekshirilishini
  * oldindan bilmasligi kerak.</p>
+ *
+ * <p>Qo'ng'iroqlar — Local Call (CTI) yozuvlari. Yozuv Local Call'ning avtorizatsiyalangan audio
+ * endpointidan (`GET /cti/calls/{id}/audio`) blob qilib tinglanadi — fayl manzili javobda YO'Q.
+ * ⚠️ U endpoint Local Call qoidasiga bo'ysunadi: agentning O'Z xodimi va superadmin eshitadi,
+ * boshqalarga 403 — bu holat ochiq yoziladi (jim "ishlamadi" emas).</p>
  */
 function CallSamplesModal({
   open,
@@ -582,6 +588,38 @@ function CallSamplesModal({
   const [openId, setOpenId] = useState<string | null>(null)
   const [tick, setTick] = useState(0)
   const [requested, setRequested] = useState(false)
+  // Tinglanayotgan yozuv (blob URL) — bir vaqtda bittasi.
+  const [audio, setAudio] = useState<{ id: string; url: string } | null>(null)
+  const [audioLoading, setAudioLoading] = useState<string | null>(null)
+  const [audioError, setAudioError] = useState<{ id: string; text: string } | null>(null)
+
+  // Blob URL'ni bo'shatish: boshqa yozuv ochilganda (eski qiymat) va oyna yopilganda.
+  useEffect(() => () => {
+    if (audio) URL.revokeObjectURL(audio.url)
+  }, [audio])
+
+  const listen = async (id: string) => {
+    if (audio?.id === id) {
+      setAudio(null)
+      return
+    }
+    setAudioLoading(id)
+    setAudioError(null)
+    try {
+      setAudio({ id, url: await fetchCtiCallAudioUrl(id) })
+    } catch (err) {
+      const status = (err as { response?: { status?: number } })?.response?.status
+      setAudioError({
+        id,
+        text:
+          status === 403
+            ? "Bu yozuvni tinglash uchun «Local Call» ruxsati va shu agent-telefon sizga biriktirilgan bo'lishi kerak (superadmin hammasini eshitadi)."
+            : apiErrorMessage(err, "Yozuvni yuklab bo'lmadi"),
+      })
+    } finally {
+      setAudioLoading(null)
+    }
+  }
 
   useEffect(() => {
     if (!requested || !userId) return
@@ -648,7 +686,7 @@ function CallSamplesModal({
       ) : calls.length === 0 ? (
         <EmptyState
           title="Bu xodimda tekshiriladigan qo'ng'iroq topilmadi"
-          hint="Qo'ng'iroqlar Qo'ng'iroqlar bo'limidan olinadi — yozuv bo'lmasa tekshirish uchun namuna ham bo'lmaydi."
+          hint="Qo'ng'iroqlar Local Call'dan olinadi (xodimga biriktirilgan agent-telefon, oxirgi 7 kun, yozuvi bor, 60 soniyadan uzun) — agent biriktirilmagan yoki yozuv yuklanmagan bo'lsa namuna ham bo'lmaydi."
         />
       ) : (
         <div className="divide-y divide-slate-100 rounded-xl border border-slate-200">
@@ -679,6 +717,22 @@ function CallSamplesModal({
                   </div>
                 </div>
                 <div className="flex shrink-0 gap-1.5">
+                  {c.hasRecording && (
+                    <Button
+                      variant="ghost"
+                      onClick={() => listen(c.callId)}
+                      disabled={audioLoading === c.callId}
+                    >
+                      {audioLoading === c.callId ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : audio?.id === c.callId ? (
+                        <Square className="h-4 w-4" />
+                      ) : (
+                        <Play className="h-4 w-4" />
+                      )}
+                      {audio?.id === c.callId ? "To'xtatish" : 'Tinglash'}
+                    </Button>
+                  )}
                   {(c.transcript || c.aiAnalysis) && (
                     <Button
                       variant="ghost"
@@ -692,6 +746,13 @@ function CallSamplesModal({
                   </Button>
                 </div>
               </div>
+
+              {audio?.id === c.callId && (
+                <audio className="mt-3 w-full" controls autoPlay src={audio.url} />
+              )}
+              {audioError?.id === c.callId && (
+                <p className="mt-2 text-[12.5px] font-medium text-red-600">{audioError.text}</p>
+              )}
 
               {openId === c.callId && (
                 <div className="mt-3 space-y-3">

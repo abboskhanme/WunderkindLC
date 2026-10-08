@@ -4,8 +4,9 @@ import { usePerm } from '@/lib/permissions'
 import { apiErrorMessage } from '@/lib/utils'
 import {
   closeIgConversation, createIgLead, getIgConversation, getIgConversations,
-  markIgConversationRead, releaseIgConversation, replyIgConversation, takeoverIgConversation,
-  type IgConversation, type IgConversationDetail, type IgConversationStatus,
+  markIgConversationRead, releaseIgConversation, reopenIgConversation, replyIgConversation,
+  takeoverIgConversation,
+  type IgConversation, type IgConversationDetail, type IgConversationStatus, type IgReplyMode,
 } from '@/api/services/instagram'
 import { ChannelIcon, Icon, MarketingPage, MkEmpty, MkError, MkLoading } from './mk'
 import { formatPhone } from '@/lib/numberFormat'
@@ -40,6 +41,24 @@ const CHANNEL_LABEL: Record<string, string> = {
   private_reply: 'Izohga shaxsiy javob',
 }
 
+/**
+ * OPERATOR JAVOBI rejimlari. Izoh suhbatida operator izohga OCHIQ (post ostida) yoki YOPIQ
+ * (private reply) javob ham yoza oladi — ilgari javob har doim DM bo'lib ketardi va DM ochmagan
+ * odamga umuman yetib bormasdi.
+ */
+const REPLY_MODES: { id: IgReplyMode; label: string }[] = [
+  { id: 'dm', label: 'Shaxsiy xabar (DM)' },
+  { id: 'comment', label: 'Izohga javob (ochiq)' },
+  { id: 'private_reply', label: 'Izohga shaxsiy javob' },
+]
+
+/** Suhbat ochilganda standart rejim: oxirgi kiruvchi xabar izoh bo'lsa — izohga javob. */
+function defaultReplyMode(d: IgConversationDetail): IgReplyMode {
+  if (!d.latestCommentId) return 'dm'
+  const lastIn = [...d.messages].reverse().find((m) => m.direction === 'in')
+  return lastIn?.channel === 'comment' ? 'comment' : 'dm'
+}
+
 /** ISO vaqtdan "HH:mm" (satrni to'g'ridan-to'g'ri o'qiymiz — vaqt mintaqasi siljitmasin). */
 function timeOf(iso: string): string {
   const m = /T(\d{2}):(\d{2})/.exec(iso ?? '')
@@ -58,9 +77,9 @@ function stampOf(iso: string): string {
  * Chapda ro'yxat (qidiruv, holat filtri, o'qilmagan belgisi, «Operator kerak» qizil chipi),
  * o'ngda xabarlar lentasi va operator javobi.
  *
- * ⚠️ DM'ga javob Instagram qoidasi bo'yicha mijozning oxirgi xabaridan keyingi **24 soat**
- * ichida yuboriladi. Oyna yopilgan bo'lsa server 400 qaytaradi — xato matni AYNAN
- * ko'rsatiladi, jimgina yutilmaydi.
+ * ⚠️ DM'ga javob mijozning oxirgi xabaridan keyingi **24 soat** ichida oddiy, **7 kungacha**
+ * esa `HUMAN_AGENT` tegi bilan yuboriladi (server o'zi tanlaydi). 7 kundan keyin server 400
+ * qaytaradi — xato matni AYNAN ko'rsatiladi, jimgina yutilmaydi. Izohga javobda oyna yo'q.
  */
 export function InstagramInbox() {
   const { can } = usePerm()
@@ -89,6 +108,10 @@ export function InstagramInbox() {
   const textRef = useRef('')
   textRef.current = text
   const [sending, setSending] = useState(false)
+  const [mode, setMode] = useState<IgReplyMode>('dm')
+  // Rejim FAQAT boshqa suhbat ochilganda tiklanadi — 15 soniyalik avtoyangilanish operator
+  // tanlagan rejimni qaytarib yubormasin.
+  const modeConvRef = useRef('')
   const [sendError, setSendError] = useState('')
   const [actionError, setActionError] = useState('')
   const bodyRef = useRef<HTMLDivElement>(null)
@@ -123,6 +146,10 @@ export function InstagramInbox() {
     getIgConversation(id)
       .then((d) => {
         setDetail(d)
+        if (modeConvRef.current !== d.conversation.id) {
+          modeConvRef.current = d.conversation.id
+          setMode(defaultReplyMode(d))
+        }
         if (d.conversation.unread) {
           markIgConversationRead(id)
             .then(() => setItems((xs) => xs.map((x) => (x.id === id ? { ...x, unread: false } : x))))
@@ -177,12 +204,14 @@ export function InstagramInbox() {
     setSending(true)
     setSendError('')
     try {
-      const msg = await replyIgConversation(detail.conversation.id, text.trim())
+      const msg = await replyIgConversation(detail.conversation.id, text.trim(), mode)
       setDetail({ ...detail, messages: [...detail.messages, msg] })
       setText('')
       loadList()
+      // Yopiq javob bir marta — holat (va boshqa bayroqlar) serverdan yangilansin.
+      if (mode !== 'dm') openConv(detail.conversation.id)
     } catch (e) {
-      // 24 soat oynasi yopiq bo'lsa server aniq sabab qaytaradi — shuni ko'rsatamiz.
+      // Oyna yopiq / yopiq javob ishlatilgan bo'lsa server aniq sabab qaytaradi — shuni ko'rsatamiz.
       setSendError(apiErrorMessage(e, "Javob yuborilmadi"))
     } finally {
       setSending(false)
@@ -201,6 +230,14 @@ export function InstagramInbox() {
   }
 
   const conv = detail?.conversation
+  // Joriy rejimda yuborish mumkinmi (server ham baribir tekshiradi — bu faqat oldindan aytish).
+  const modeBlocked = !detail
+    ? true
+    : mode === 'dm'
+      ? !detail.humanAgentWindowOpen
+      : mode === 'private_reply'
+        ? !detail.latestCommentId || !detail.privateReplyAvailable
+        : !detail.latestCommentId
 
   return (
     <MarketingPage title="Inbox" sub={`Instagram suhbatlari${total ? ` · ${total} ta` : ''}`}>
@@ -341,23 +378,31 @@ export function InstagramInbox() {
                 </div>
                 {canEdit && (
                   <div className="chat-actions">
-                    {conv.status !== 'operator'
-                      ? (
-                        <button className="btn btn-outline btn-sm" onClick={() => runAction(() => takeoverIgConversation(conv.id), "Botni to'xtatib bo'lmadi")}>
-                          <Icon name="users" /> Botni to'xtatish
-                        </button>
-                      )
-                      : (
-                        <button className="btn btn-outline btn-sm" onClick={() => runAction(() => releaseIgConversation(conv.id), "Botga qaytarib bo'lmadi")}>
-                          <Icon name="zap" /> Botga qaytarish
-                        </button>
-                      )}
+                    {/* Yopilgan suhbat — faqat «Qayta ochish» (mijoz yangi yozsa server o'zi ochadi). */}
+                    {conv.status === 'closed' && (
+                      <button className="btn btn-outline btn-sm" onClick={() => runAction(() => reopenIgConversation(conv.id), "Qayta ochib bo'lmadi")}>
+                        <Icon name="refresh" /> Qayta ochish
+                      </button>
+                    )}
+                    {conv.status === 'bot' && (
+                      <button className="btn btn-outline btn-sm" onClick={() => runAction(() => takeoverIgConversation(conv.id), "Botni to'xtatib bo'lmadi")}>
+                        <Icon name="users" /> Botni to'xtatish
+                      </button>
+                    )}
+                    {conv.status === 'operator' && (
+                      <button className="btn btn-outline btn-sm" onClick={() => runAction(() => releaseIgConversation(conv.id), "Botga qaytarib bo'lmadi")}>
+                        <Icon name="zap" /> Botga qaytarish
+                      </button>
+                    )}
                     {conv.status !== 'closed' && (
                       <button className="btn btn-outline btn-sm" onClick={() => runAction(() => closeIgConversation(conv.id), "Yopib bo'lmadi")}>
                         <Icon name="check" /> Yopish
                       </button>
                     )}
-                    {!conv.leadId && (
+                    {/* ⚠️ `detail.lead` bo'yicha (`conv.leadId` EMAS): bog'langan lid CRM'dan
+                        o'chirilgan bo'lsa ham tugma qaytadi. O'quvchiga AYLANTIRILGAN lid ham
+                        "bog'lanmagan" — qaytgan o'quvchi uchun YANGI lid ochiladi (CRM-1). */}
+                    {(!detail?.lead || detail.lead.converted) && (
                       <button className="btn btn-primary btn-sm" onClick={() => runAction(() => createIgLead(conv.id), "Lid yaratilmadi")}>
                         <Icon name="user" /> Lidga aylantirish
                       </button>
@@ -402,8 +447,17 @@ export function InstagramInbox() {
                     <div className="mk-alert" style={{ borderColor: 'var(--success)', background: 'var(--success-soft)', color: '#0d6b4b', marginBottom: 10 }}>
                       <Icon name="user" style={{ width: 18, height: 18, flexShrink: 0 }} />
                       <div style={{ flex: 1 }}>
-                        <div className="mk-alert-title">Lidga bog'langan: {detail.lead.fullName}</div>
+                        <div className="mk-alert-title">
+                          Lidga bog'langan: {detail.lead.fullName}
+                          {detail.lead.converted && <> · o'quvchiga aylantirilgan</>}
+                        </div>
                         <div>{detail.lead.phone ? formatPhone(detail.lead.phone) : 'Telefon yo‘q'} · manba: {detail.lead.source || '—'}</div>
+                        {detail.lead.converted && (
+                          <div style={{ marginTop: 4, fontSize: 12 }}>
+                            Yangi murojaat bo'lsa «Lidga aylantirish» YANGI lid ochadi — eski lid va uning
+                            tarixi o'zgarmaydi.
+                          </div>
+                        )}
                       </div>
                     </div>
                   )}
@@ -433,25 +487,82 @@ export function InstagramInbox() {
                 <div style={{ padding: '0 18px 10px' }}><MkError text={sendError} /></div>
               )}
 
-              {detail && !detail.dmWindowOpen && (
+              {/* JAVOB OYNASI — rejimga qarab. ⚠️ 24 soatdan keyin ham 7 kun ichida operator
+                  HUMAN_AGENT tegi bilan yoza oladi (server o'zi qo'yadi) — "yopildi" faqat 7 kundan keyin. */}
+              {detail && mode === 'dm' && !detail.dmWindowOpen && (
                 <div style={{ padding: '0 18px 10px' }}>
                   <div className="mk-alert" style={{ marginBottom: 0 }}>
                     <Icon name="clock" style={{ width: 18, height: 18, flexShrink: 0 }} />
                     <div style={{ flex: 1 }}>
-                      <div className="mk-alert-title">24 soat oynasi yopilgan</div>
-                      <div>
-                        Instagram qoidasi bo'yicha mijozning oxirgi xabaridan 24 soat o'tgach unga
-                        yozib bo'lmaydi. Mijoz yana yozsa oyna qayta ochiladi.
-                      </div>
+                      {detail.humanAgentWindowOpen
+                        ? (
+                          <>
+                            <div className="mk-alert-title">24 soat o'tdi — operator javobi hali mumkin</div>
+                            <div>
+                              Mijoz yozganidan 24 soat o'tdi: bot endi javob bermaydi, lekin sizning javobingiz
+                              7 kun ichida «odam javobi» (HUMAN_AGENT) belgisi bilan yetkaziladi.
+                            </div>
+                          </>
+                        )
+                        : (
+                          <>
+                            <div className="mk-alert-title">Javob oynasi yopilgan (7 kun)</div>
+                            <div>
+                              Mijozning oxirgi xabaridan 7 kundan ko'p vaqt o'tdi — Instagram shaxsiy xabarga
+                              ruxsat bermaydi. Mijoz yana yozsa oyna qayta ochiladi
+                              {detail.latestCommentId ? '; izohiga esa ochiq javob yozish mumkin.' : '.'}
+                            </div>
+                          </>
+                        )}
                     </div>
                   </div>
+                </div>
+              )}
+              {detail && mode === 'comment' && (
+                <div style={{ padding: '0 18px 10px' }}>
+                  <div className="field-hint" style={{ margin: 0 }}>
+                    Javob mijozning oxirgi izohi ostida <b>ochiq</b> chiqadi — uni hamma ko'radi. Telefon
+                    yoki shaxsiy ma'lumot yozmang.
+                  </div>
+                </div>
+              )}
+              {detail && mode === 'private_reply' && (
+                <div style={{ padding: '0 18px 10px' }}>
+                  {detail.privateReplyAvailable
+                    ? (
+                      <div className="field-hint" style={{ margin: 0 }}>
+                        Izoh muallifiga shaxsiy xabar boradi. Instagram har izohga faqat <b>bir marta</b> va
+                        7 kun ichida ruxsat beradi.
+                      </div>
+                    )
+                    : <MkError text={detail.privateReplyBlockedReason || "Bu izohga yopiq javob yuborib bo'lmaydi."} />}
+                </div>
+              )}
+
+              {/* Izoh suhbatida — javob turini tanlash (DM ochmagan odamga ham javob yetib borsin). */}
+              {detail?.latestCommentId && canEdit && conv.status !== 'closed' && (
+                <div className="conv-filters" style={{ padding: '0 18px 8px' }}>
+                  {REPLY_MODES.map((m) => (
+                    <button
+                      key={m.id}
+                      className={'conv-filter ' + (mode === m.id ? 'active' : '')}
+                      onClick={() => { setMode(m.id); setSendError('') }}
+                      title={m.id === 'private_reply' && !detail.privateReplyAvailable
+                        ? detail.privateReplyBlockedReason
+                        : undefined}
+                    >{m.label}</button>
+                  ))}
                 </div>
               )}
 
               <div className="chat-input-bar">
                 <input
                   className="chat-input"
-                  placeholder={canEdit ? 'Javob yozing…' : "Yozish uchun ruxsat yo'q"}
+                  placeholder={!canEdit
+                    ? "Yozish uchun ruxsat yo'q"
+                    : conv.status === 'closed'
+                      ? 'Suhbat yopilgan — «Qayta ochish» bosing'
+                      : mode === 'comment' ? 'Izohga ochiq javob…' : mode === 'private_reply' ? 'Izohga shaxsiy javob…' : 'Javob yozing…'}
                   value={text}
                   disabled={!canEdit || sending || conv.status === 'closed'}
                   onChange={(e) => setText(e.target.value)}
@@ -460,7 +571,7 @@ export function InstagramInbox() {
                 <button
                   className="btn btn-primary btn-icon-only"
                   style={{ padding: 11 }}
-                  disabled={!canEdit || sending || !text.trim() || conv.status === 'closed'}
+                  disabled={!canEdit || sending || !text.trim() || conv.status === 'closed' || modeBlocked}
                   onClick={send}
                   title="Yuborish"
                 >

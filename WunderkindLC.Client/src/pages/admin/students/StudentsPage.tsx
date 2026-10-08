@@ -31,6 +31,8 @@ import {
 import { getTeachers } from '@/api/services/teachers'
 import { genderLabels } from '@/config/constants'
 import { formatDate, formatMoney, exportToCsv, cn, apiErrorMessage } from '@/lib/utils'
+import { todayIso } from '@/lib/month'
+import { bulkArchiveMessage, splitBulkArchive } from './bulkArchive'
 import { formatPhone } from '@/lib/numberFormat'
 import { studentDiscountLabel } from './discountLabel'
 import { useAuth } from '@/context/auth-context'
@@ -329,7 +331,7 @@ export function StudentsPage() {
     return c
   }, [source])
   // "Bugun tug'ilgan kun" filtri uchun — yilsiz "MM-DD" solishtirish.
-  const todayMonthDay = new Date().toISOString().slice(5, 10)
+  const todayMonthDay = todayIso().slice(5, 10)
 
   // Qarz oralig'i chegarasi: bo'sh/xato qiymat = chegara YO'Q (`null`).
   // Bo'sh joylar olib tashlanadi — "1 000 000" deb yopishtirilgan summa ham ishlasin.
@@ -670,12 +672,15 @@ export function StudentsPage() {
     const s = archiveTarget
     archiveStudent(s.id, undefined, reasonId)
       .then(() => {
-        // Faol ro'yxatdan olib tashlab, arxivga qo'shamiz.
+        // Faol ro'yxatdan olib tashlab, arxivga qo'shamiz. Arxiv = ketdi: server o'quvchini BARCHA
+        // guruhlaridan chiqargan (balans ham o'zgargan bo'lishi mumkin) — arxiv ro'yxati serverdan
+        // qayta olinadi, lokal yamoq faqat darhol ko'rinish uchun.
         const updated: Student = {
           ...s,
           isArchived: true,
-          archivedAt: new Date().toISOString().slice(0, 10),
+          archivedAt: todayIso(),
           archiveReason: reasonId ? undefined : null, // Sabab label backend'dan qaytaradi
+          className: '',
         }
         setStudents((prev) => prev.filter((x) => x.id !== s.id))
         setArchived((prev) => [updated, ...prev])
@@ -685,8 +690,10 @@ export function StudentsPage() {
           return next
         })
         setArchiveTarget(null)
+        // Fon yangilash — muvaffaqiyatsiz bo'lsa lokal yamoq qoladi (asosiy amal allaqachon bajarilgan).
+        getArchivedStudents().then(setArchived).catch(() => {})
       })
-      .catch((e) => alert(e?.response?.data?.message ?? "Arxivlashda xatolik"))
+      .catch((e) => alert(apiErrorMessage(e, "Arxivlashda xatolik")))
   }
 
   /** Tanlanganlarni arxivga ko'chirish — ReasonPromptModal ochadi. */
@@ -694,22 +701,30 @@ export function StudentsPage() {
     const toArchive = selectedStudents
     if (toArchive.length === 0) return
     setArchivingSelected(true)
-    Promise.all(toArchive.map((s) => archiveStudent(s.id, undefined, reasonId)))
-      .then(() => {
-        // Barcha tanlanganlarni arxivga ko'chirish
-        const now = new Date().toISOString().slice(0, 10)
-        const archived = toArchive.map((s) => ({
-          ...s,
-          isArchived: true,
-          archivedAt: now,
-          archiveReason: reasonId ? undefined : null,
-        }))
-        setStudents((prev) => prev.filter((s) => !toArchive.some((x) => x.id === s.id)))
+    // `allSettled` — bittasi rad etilsa qolganlari baribir hisobga olinadi (`bulkArchive.ts` izohi).
+    Promise.allSettled(toArchive.map((s) => archiveStudent(s.id, undefined, reasonId)))
+      .then((results) => {
+        const outcome = splitBulkArchive(toArchive, results, (e) => apiErrorMessage(e, 'Arxivlashda xatolik'))
+        const ok = new Set(outcome.okIds)
+        const now = todayIso()
+        const archived = toArchive
+          .filter((s) => ok.has(s.id))
+          .map((s) => ({
+            ...s,
+            isArchived: true,
+            archivedAt: now,
+            archiveReason: reasonId ? undefined : null,
+            className: '',
+          }))
+        setStudents((prev) => prev.filter((s) => !ok.has(s.id)))
         setArchived((prev) => [...archived, ...prev])
-        setSelected(new Set())
+        // Tanlovda faqat arxivlanMAGANLAR qoladi — qayta urinish shu o'quvchilar uchun.
+        setSelected(new Set(outcome.failed.map((f) => f.id)))
         setArchiveReasonModal(false)
+        if (ok.size > 0) getArchivedStudents().then(setArchived).catch(() => {})
+        const msg = bulkArchiveMessage(outcome)
+        if (msg) alert(msg)
       })
-      .catch((e) => alert(e?.response?.data?.message ?? "Arxivlashda xatolik"))
       .finally(() => setArchivingSelected(false))
   }
   /** Login'ni cheklash/ochish — tasdiq bilan. */
@@ -767,7 +782,7 @@ export function StudentsPage() {
       return
     }
     // Sana modaldan keladi (`showDate`); zaxira sifatida bugungi kun — server sanasiz ishlamaydi.
-    const day = date || new Date().toISOString().slice(0, 10)
+    const day = date || todayIso()
     setMembershipBusy(true)
     // «Aktiv muzlatish» — AYNAN o'sha endpoint, farqi faqat `yearFreeze` bayrog'ida
     // (hisob-kitob, holat va natija xabari oddiy muzlatish bilan bir xil).
@@ -796,12 +811,15 @@ export function StudentsPage() {
 
   /** Arxivdan qaytarish. */
   const handleRestore = (s: Student) => {
-    if (!confirm(`"${s.fullName}" o'quvchini arxivdan qaytarish? Login bloklangicha qoladi — keyin parol generatsiya qiling.`)) return
+    if (!confirm(`"${s.fullName}" o'quvchini arxivdan qaytarish? U GURUHSIZ qaytadi (arxivlashda guruhlardan chiqqan) — keyin kerakli guruhga qo'shing. Login bloklangicha qoladi — parol generatsiya qiling.`)) return
     restoreStudent(s.id)
-      .then(() => {
-        const updated: Student = { ...s, isArchived: false, archivedAt: null, archiveReason: null }
+      .then((res) => {
+        const updated: Student = { ...s, isArchived: false, archivedAt: null, archiveReason: null, className: '' }
         setArchived((prev) => prev.filter((x) => x.id !== s.id))
         setStudents((prev) => [updated, ...prev])
+        // Eski arxivdagi a'zoliklar server tomonda yopilgan bo'lishi mumkin (balans/holat) — faol ro'yxat qayta olinadi.
+        getStudents().then(setStudents).catch(() => {})
+        if (res.message) alert(res.message)
       })
       // Ilgari so'rov JIM yiqilardi: o'quvchi arxivda qolar, sababi aytilmasdi.
       .catch((e) => alert(apiErrorMessage(e, "Arxivdan qaytarib bo'lmadi")))
@@ -1542,7 +1560,6 @@ export function StudentsPage() {
         open={!!callStudent}
         onClose={() => setCallStudent(null)}
         title={callStudent?.fullName}
-        studentId={callStudent?.id}
         numbers={
           callStudent
             ? dedupeCallOptions([
@@ -1658,7 +1675,7 @@ export function StudentsPage() {
         title="O'quvchini arxivga ko'chirish"
         message={
           archiveTarget
-            ? `"${archiveTarget.fullName}" o'quvchini arxivga ko'chirasiz. Tarixiy ma'lumotlar (jurnal, davomat, to'lovlar) saqlanadi, lekin faol ro'yxatdan yashirinadi, oylik to'lov hisoblanmaydi va login bloklanadi.`
+            ? `"${archiveTarget.fullName}" o'quvchini arxivga ko'chirasiz. U BARCHA guruhlaridan chiqariladi (joriy oy qatnashgan darslar bo'yicha yopiladi) — arxivdan qaytarilsa guruhga qayta qo'shiladi. Tarixiy ma'lumotlar (jurnal, davomat, to'lovlar) saqlanadi, oylik to'lov hisoblanmaydi va login bloklanadi.`
             : undefined
         }
         confirmLabel="Arxivga ko'chirish"
@@ -1667,24 +1684,14 @@ export function StudentsPage() {
         onClose={() => setArchiveTarget(null)}
       />
 
-      {/* Tanlanganlarni arxivga ko'chirish — sabab bilan ReasonPromptModal */}
+      {/* Tanlanganlarni arxivga ko'chirish — sabab bilan modali.
+          ⚠️ Ilgari shu yerda IKKITA modal bir xil holat bilan ochilardi (ikkinchisi "o'chirish"
+          sabablari bilan) — ustma-ust ikki oyna chiqardi. Arxiv sabablari katalogi — `archive_student`. */}
       <ReasonPromptModal
         open={archiveReasonModal}
         category="archive_student"
         title="Tanlanganlarni arxivga ko'chirish"
-        message={`${selectedStudents.length} ta o'quvchini arxivga ko'chirasiz.`}
-        confirmLabel="Arxivga ko'chirish"
-        tone="red"
-        onConfirm={handleArchiveSelected}
-        onClose={() => setArchiveReasonModal(false)}
-      />
-
-      {/* Tanlanganlarni arxivga ko'chirish — sabab bilan modali */}
-      <ReasonPromptModal
-        open={archiveReasonModal}
-        category="student_delete"
-        title="Tanlanganlarni arxivga ko'chirish"
-        message={`${selected.size} ta o'quvchini arxivga ko'chirasiz. Tarixiy ma'lumotlar (jurnal, davomat, to'lovlar) saqlanadi, lekin faol ro'yxatdan yashirinadi va oylik to'lov hisoblanmaydi.`}
+        message={`${selectedStudents.length} ta o'quvchini arxivga ko'chirasiz. Har biri BARCHA guruhlaridan chiqariladi (joriy oy qatnashgan darslar bo'yicha yopiladi). Tarixiy ma'lumotlar (jurnal, davomat, to'lovlar) saqlanadi, oylik to'lov hisoblanmaydi va login bloklanadi.`}
         confirmLabel={archivingSelected ? "Arxivga ko'chirilyapti…" : "Arxivga ko'chirish"}
         tone="red"
         onConfirm={handleArchiveSelected}

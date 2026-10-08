@@ -24,13 +24,17 @@ public class AutoMessageService(
     /// <summary>O'quvchi (ota-ona) uchun avto-xabar — SMS + Push + Telegram (qoidada yoqilganiga qarab).
     /// <paramref name="group"/> — hodisa QAYSI guruhga tegishli (masalan to'lov shu guruh uchun qilindi).
     /// Berilmasa o'quvchining asosiy (ClassName) guruhi olinadi. Guruh dars jadvali tokenlariga
-    /// ({dars_kunlari}...) va "o'qituvchiga yuborish" auditoriyasiga ta'sir qiladi.</summary>
+    /// ({dars_kunlari}...) va "o'qituvchiga yuborish" auditoriyasiga ta'sir qiladi.
+    /// <para>⚠️ ARXIVDAGI o'quvchiga faqat <see cref="AutoMessageTriggers.ReachesArchived"/> hodisalari
+    /// (to'lov kvitansiyasi) ketadi — davomat/baho/qo'shilish xabarlari YUBORILMAYDI (arxiv = o'quvchi
+    /// ketdi; eski arxivlarda a'zolik tirik qolgan, jurnal ularni hali ko'rsatishi mumkin).</para></summary>
     public async Task DispatchStudentAsync(
         IAppDbContext db, string trigger, Student s,
         Dictionary<string, string>? extraTokens = null, Group? group = null, CancellationToken ct = default)
     {
         try
         {
+            if (s.IsArchived && !AutoMessageTriggers.ReachesArchived(trigger)) return;
             var rules = await RulesAsync(db, trigger, ct);
             if (rules.Count == 0) return;
 
@@ -230,9 +234,11 @@ public class AutoMessageService(
                 }, group: cls, ct: ct);
             }
         }
-        catch (Exception)
+        catch (Exception ex)
         {
-            // Avto-xabar davomatni to'xtatmaydi (SMS/Telegram nosozligi jurnal xatosi emas).
+            // Avto-xabar davomatni to'xtatmaydi (SMS/Telegram nosozligi jurnal xatosi emas) — lekin JIM
+            // emas: ilgari xato umuman yozilmas, "keldi" xabari nega ketmagani hech qayerda ko'rinmasdi.
+            logger.LogWarning(ex, "Avto-xabar (attendance_present) guruh {ClassId} {Date} — xatolik", classId, dateIso);
         }
     }
 

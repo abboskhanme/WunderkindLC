@@ -161,6 +161,18 @@ endpointdan chaqirilishini hisobga olsak, bu tashqaridan boshqariladigan og'irli
 > landing) va telefon tahrirlanadi ham — beshinchi joy qo'shilganda unutilsa, o'sha lid qidiruvdan
 > tushib qolar va **unga dublikat lid ochilardi**. Migratsiya mavjud qatorlarni SQL bilan to'ldiradi.
 
+⚠️ **O'QUVCHIGA AYLANTIRILGAN lid QIDIRUVGA KIRMAYDI** (2026-10-07, CRM-1). Ilgari aka-uka yoki
+qayta ariza eski — allaqachon yopilgan — lidga "takroriy" bo'lib yopishardi: ochiq lid ochilmas,
+`lead_new` SMS ketmas, Meta CAPI esa darhol yolg'on "sifatli lid" yuborardi. Endi bunday murojaat
+YANGI lid ochadi va unga **"Avval o'quvchi bo'lgan: <ism>"** izohi qo'shiladi
+(`LeadIntake.MarkFormerStudentAsync` — lid yaratadigan HAR joyda: forma, daraja testi, landing,
+Instagram, Meta, qo'lda kiritish).
+
+⚠️ **VAQTINCHALIK ISM ALMASHADI** — `LeadIntake.IsPlaceholderName`: `"Noma'lum…"`,
+`"username (Instagram)"`, `"Instagram mijozi"`, `"Reklama lidi (ismsiz)"`. Takroriy arizada kelgan
+haqiqiy ism shularning o'rniga yoziladi; boshqa (menejer yozgan) ism TEGILMAYDI. Yangi placeholder
+qo'shsangiz — shu funksiyaga ham qo'shing (aks holda u abadiy almashmay qoladi, IG-4).
+
 ⚠️ **TAKRORIY ariza mavjud lidning MANBASINI O'ZGARTIRMAYDI** (first-touch): odamni BIRINCHI
 qaysi kanal olib kelgani saqlanadi. Forma kesimidagi hisobot baribir to'g'ri — topshiruv o'z
 `FormId` si bilan yoziladi. Takroriy arizada lidga `LeadEvent` (izoh) qo'shiladi va
@@ -177,6 +189,10 @@ tizim o'zgartirib yubormasin.
 
 ⚠️ **Avto-xabar (`lead_new`) FAQAT yangi lidga** yuboriladi — takroriy arizaga tanishuv SMS'i
 qayta ketmasin. Telegram xabarnomasi esa ikkalasida ham ketadi (sarlavha "mavjud lid yangilandi").
+2026-10-07 dan Instagram va Meta reklama lidlari ham shu qoidada (`LeadIntake.DispatchLeadNewAsync`,
+CRM-9). Daraja testidan kelgan YANGI lidga esa `lead_new` emas, **`test_result`** ketadi (bitta
+odamga ikkita SMS bo'lmasin) — ommaviy havolada ham, bir martalik TAKLIF havolasida ham
+(`LevelTestService.DispatchTestResultAsync`; ilgari taklif havolasida umuman ketmasdi — LRN-7).
 
 ## 4.5. OMMAVIY SAHIFA — TELEFON BIRINCHI
 
@@ -428,8 +444,18 @@ Admin controller `[AdminPerm("leads.forms", ReadRequiresPerm = true)]` — javob
 telefon raqamlari bor, shuning uchun GET ham darvozalangan (odatdagi bo'limlararo o'qish
 istisnosi bu yerda ochiq qolmaydi).
 
-**Formani o'chirish** arizalar tarixini ham o'chiradi, LEKIN ular yaratgan **lidlar CRM'da
-qoladi** (mijoz yo'qolmasin) — UI tasdiqda shu aytiladi.
+**Formani o'chirish — FAQAT ARIZASIZ forma** (2026-10-07, CRM-7). Arizasi bor forma `400` (soni
+bilan) qaytaradi: arizalar o'chsa ular yaratgan lidlarning KANALI "Lid formasi" dan "Boshqa" ga
+o'tib ketardi (`LeadOrigins` — CRM statistikasi) va forma statistikasining tarixi yo'qolardi.
+O'rniga **«O'chirib qo'yish»** — `PATCH /{id}/active` `{ isActive }` (ruxsat: `edit`, auditga
+yoziladi): havola ariza qabul qilmaydi, arizalar va lidlar joyida. Ro'yxatda arizasi bor formada
+"o'chirish" tugmasi ko'rinmaydi, faqat yoqish/o'chirib qo'yish.
+
+**Daraja testi ham xuddi shunday** (`LevelTestsController`): topshiruvi YOKI taklif havolasi bor
+test o'chirilmaydi (400 + sonlar) — topshiruv o'chsa qabul cheklistining «Daraja testi» bandi
+belgisini yo'qotardi (`StudentIntake`). `PATCH api/admin/level-tests/{id}/active` bilan o'chirib
+qo'yiladi. Test yaratish/tahrir/yoqish-o'chirish/o'chirish endi AUDITGA yoziladi (tur `LevelTest`
+→ "Lidlar" bo'limi).
 
 ## 8. Audit
 

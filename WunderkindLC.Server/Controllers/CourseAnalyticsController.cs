@@ -42,7 +42,8 @@ public class CourseAnalyticsController(DataCache dataCache) : ControllerBase
         var n = Math.Clamp(months <= 0 ? DefaultMonths : months, 1, MaxMonths);
         return await dataCache.GetOrCreateAsync(
             $"courses:analytics:{n}",
-            new[] { nameof(StudentGroup), nameof(Group), nameof(Subject), nameof(Teacher) },
+            // Student — arxivlash (IsArchived) joriy sanoqlarni o'zgartiradi.
+            new[] { nameof(StudentGroup), nameof(Group), nameof(Subject), nameof(Teacher), nameof(Student) },
             TimeSpan.FromMinutes(10),
             db => BuildAsync(db, n));
     }
@@ -70,6 +71,12 @@ public class CourseAnalyticsController(DataCache dataCache) : ControllerBase
             .ToListAsync();
 
         var groupById = groups.ToDictionary(g => g.Id);
+        // ⚠️ Arxivlangan O'QUVCHI = ketgan (arxiv = o'quvchi ketdi; eski yozuvlarda a'zoligi hali tirik
+        // bo'lishi mumkin). U JORIY sanoqlarga (faol/sinov/muzlatilgan/hozir) va KESISHUVGA kirmaydi.
+        // Kutilayotgan TUSHUM esa tegilmaydi — u a'zolik narxidan, haqiqiy pul kabi (`docs/ASSUMPTIONS.md`).
+        var archivedStudents = (await db.Students.AsNoTracking().Where(s => s.IsArchived)
+            .Select(s => s.Id).ToListAsync()).ToHashSet();
+        bool Live(CourseAnalytics.MembershipRow r) => r.IsActive && !archivedStudents.Contains(r.StudentId);
 
         // A'zoliklarni KURS bo'yicha guruhlaymiz. Kursi yo'q guruh (CourseId bo'sh) analitikaga
         // kirmaydi — u kurs kesimida ma'noga ega emas (guruh sanog'ida ham ko'rinmaydi).
@@ -100,10 +107,10 @@ public class CourseAnalyticsController(DataCache dataCache) : ControllerBase
 
             // JORIY holat — takrorsiz O'QUVCHILAR bo'yicha (bir o'quvchi shu kursning ikki guruhida
             // bo'lsa ham bitta sanaladi).
-            var active = all.Where(r => r.IsActive && r.Status == "active").Select(r => r.StudentId).Distinct().Count();
-            var trial = all.Where(r => r.IsActive && r.Status == "trial").Select(r => r.StudentId).Distinct().Count();
-            var frozen = all.Where(r => r.IsActive && r.Status == "frozen").Select(r => r.StudentId).Distinct().Count();
-            var current = all.Where(r => r.IsActive).Select(r => r.StudentId).Distinct().Count();
+            var active = all.Where(r => Live(r) && r.Status == "active").Select(r => r.StudentId).Distinct().Count();
+            var trial = all.Where(r => Live(r) && r.Status == "trial").Select(r => r.StudentId).Distinct().Count();
+            var frozen = all.Where(r => Live(r) && r.Status == "frozen").Select(r => r.StudentId).Distinct().Count();
+            var current = all.Where(Live).Select(r => r.StudentId).Distinct().Count();
 
             // Kutilayotgan oylik tushum — FAOL a'zoliklar (a'zolik bo'yicha, o'quvchi bo'yicha emas:
             // ikki guruhda o'qiydigan o'quvchi ikki marta to'laydi).
@@ -130,7 +137,7 @@ public class CourseAnalyticsController(DataCache dataCache) : ControllerBase
         foreach (var (courseId, byStudent) in rowsByCourse)
             foreach (var (studentId, list) in byStudent)
             {
-                if (!list.Any(r => r.IsActive && r.Status == "active")) continue;
+                if (!list.Any(r => Live(r) && r.Status == "active")) continue;
                 if (!activeByStudent.TryGetValue(studentId, out var set))
                     activeByStudent[studentId] = set = new HashSet<string>();
                 set.Add(courseId);

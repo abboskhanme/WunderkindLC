@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { Plus, Pencil, Trash2, Link2, Copy, Check, Users, ListChecks, ExternalLink, GraduationCap } from 'lucide-react'
+import { Plus, Pencil, Trash2, Link2, Copy, Check, Users, ListChecks, ExternalLink, GraduationCap, Power } from 'lucide-react'
 import type { LevelTestListItem, Subject } from '@/types'
-import { getLevelTests, createLevelTest, deleteLevelTest } from '@/api/services/levelTests'
+import { getLevelTests, createLevelTest, deleteLevelTest, setLevelTestActive } from '@/api/services/levelTests'
 import { getSubjects } from '@/api/services/subjects'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
@@ -82,13 +82,28 @@ export function LevelTestsPage() {
     }
   }
 
+  // Faqat HECH KIM topshirmagan test o'chiriladi — topshiruv/taklifi bor testni server rad etadi
+  // (lidlar kanali va qabul cheklisti shu natijalarga tayanadi). Undaylarni «O'chirib qo'yish».
   const handleDelete = async (t: LevelTestListItem) => {
-    if (!confirm(`"${t.title}" testini o'chirasizmi? Natijalar ham o'chadi (lidlar qoladi).`)) return
+    if (!confirm(`"${t.title}" testini o'chirasizmi?`)) return
     try {
       await deleteLevelTest(t.id)
       setTests((prev) => prev.filter((x) => x.id !== t.id))
     } catch (err) {
       alert(apiErrorMessage(err, "O'chirib bo'lmadi"))
+    }
+  }
+
+  /** Yoqish / o'chirib qo'yish — ro'yxat SERVER javobidan keyin yangilanadi (optimistik emas). */
+  const handleToggle = async (t: LevelTestListItem) => {
+    const next = !t.isActive
+    if (!next && !confirm(`"${t.title}" testini o'chirib qo'yasizmi? Ommaviy havola ishlamay qoladi, natijalar saqlanadi.`))
+      return
+    try {
+      await setLevelTestActive(t.id, next)
+      setTests((prev) => prev.map((x) => (x.id === t.id ? { ...x, isActive: next } : x)))
+    } catch (err) {
+      alert(apiErrorMessage(err, "Holatni o'zgartirib bo'lmadi"))
     }
   }
 
@@ -178,14 +193,30 @@ export function LevelTestsPage() {
                 </Button>
                 <button
                   type="button"
-                  onClick={() => handleDelete(t)}
-                  title="O'chirish"
+                  onClick={() => handleToggle(t)}
+                  title={t.isActive ? "O'chirib qo'yish (havola to'xtaydi, natijalar qoladi)" : 'Yoqish'}
                   className={cn(
-                    'rounded-lg p-2 text-slate-400 transition-colors hover:bg-red-50 hover:text-red-600',
+                    'rounded-lg p-2 transition-colors',
+                    t.isActive
+                      ? 'text-emerald-600 hover:bg-amber-50 hover:text-amber-600'
+                      : 'text-slate-400 hover:bg-emerald-50 hover:text-emerald-600',
                   )}
                 >
-                  <Trash2 className="h-4 w-4" />
+                  <Power className="h-4 w-4" />
                 </button>
+                {/* Topshirilgan test O'CHIRILMAYDI (server ham rad etadi) — o'rniga o'chirib qo'yiladi. */}
+                {t.submissionCount === 0 && (
+                  <button
+                    type="button"
+                    onClick={() => handleDelete(t)}
+                    title="O'chirish"
+                    className={cn(
+                      'rounded-lg p-2 text-slate-400 transition-colors hover:bg-red-50 hover:text-red-600',
+                    )}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                )}
               </div>
             </Card>
           ))}

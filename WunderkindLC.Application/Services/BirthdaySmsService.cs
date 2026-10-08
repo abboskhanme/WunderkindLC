@@ -11,7 +11,9 @@ namespace WunderkindLC.Application.Services;
 /// Tug'ilgan kun avto-SMS (fon xizmati). Har kuni ~09:00 (Toshkent) da tug'ilgan kuni BUGUN
 /// bo'lgan (arxivlanmagan) o'quvchilarga "Tug'ilgan kun" hodisasiga belgilangan andoza bo'yicha
 /// tabrik SMS yuboradi. Andoza yo'q / Eskiz sozlanmagan bo'lsa — jim o'tadi.
-/// Kuniga bir marta ishlaydi (oxirgi ishlagan sana xotirada).
+/// <para>⚠️ Kuniga bir marta — belgi BAZADA (<see cref="JobRunMarker"/>): har o'quvchi yuborishdan
+/// OLDIN band qilinadi (<c>birthday:{studentId}</c>), ish tugagach <c>birthday</c> belgisi qo'yiladi.
+/// Ilgari belgi xotirada edi va har deploy (09:00 dan keyin) tabrik SMS'ini qayta yuborardi.</para>
 /// </summary>
 public class BirthdaySmsService(
     IServiceProvider services,
@@ -19,7 +21,12 @@ public class BirthdaySmsService(
     ILogger<BirthdaySmsService> logger) : BackgroundService
 {
     private const int SendHour = 9;
-    private DateOnly _lastRun = DateOnly.MinValue;
+
+    /// <summary>Ish darajasidagi belgi kaliti (oluvchi kaliti — <c>birthday:{studentId}</c>).</summary>
+    public const string JobKey = AutoMessageTriggers.Birthday;
+
+    /// <summary>Shu jarayonda bugun tekshirildimi — faqat TEZLIK uchun (haqiqiy belgi bazada).</summary>
+    private DateOnly _checked = DateOnly.MinValue;
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -27,14 +34,9 @@ public class BirthdaySmsService(
         {
             try
             {
-                var now = AppClock.Now;
-                var today = DateOnly.FromDateTime(now);
-                if (now.Hour >= SendHour && _lastRun != today)
-                {
-                    _lastRun = today;
-                    await RunAsync(today, stoppingToken);
-                }
+                await TickAsync(AppClock.Now, stoppingToken);
             }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { break; }
             catch (Exception ex)
             {
                 logger.LogError(ex, "Tug'ilgan kun SMS siklida xatolik");
@@ -43,6 +45,26 @@ public class BirthdaySmsService(
             try { await Task.Delay(TimeSpan.FromHours(1), stoppingToken); }
             catch (TaskCanceledException) { break; }
         }
+    }
+
+    /// <summary>09:00 dan keyin, bugungi ish bazada bajarilmagan bo'lsa — yuboradi va belgilaydi.</summary>
+    private async Task TickAsync(DateTime now, CancellationToken ct)
+    {
+        var today = DateOnly.FromDateTime(now);
+        if (now.Hour < SendHour || _checked == today) return;
+        using (var scope = services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<IAppDbContext>();
+            if (await JobRunMarker.IsDoneAsync(db, JobKey, today, ct)) { _checked = today; return; }
+        }
+        await RunAsync(today, ct);
+        using (var scope = services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<IAppDbContext>();
+            await JobRunMarker.TryClaimAsync(db, JobKey, today, ct);
+            await JobRunMarker.PruneAsync(db, JobKey + ":", today.AddDays(-2), ct);
+        }
+        _checked = today;
     }
 
     private async Task RunAsync(DateOnly today, CancellationToken ct)
@@ -63,6 +85,8 @@ public class BirthdaySmsService(
         {
             if (!IsBirthdayToday(s.BirthDate, today)) continue;
             if (closedGroupStudents.Contains(s.Id)) continue;
+            // OLUVCHI BELGISI — yuborishdan OLDIN (restart/ikkinchi nusxa takror tabriklamasin).
+            if (!await JobRunMarker.TryClaimAsync(db, JobRunMarker.For(JobKey, s.Id), today, ct)) continue;
             await autoMsg.DispatchStudentAsync(db, AutoMessageTriggers.Birthday, s, ct: ct);
             sent++;
         }

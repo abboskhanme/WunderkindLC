@@ -90,8 +90,10 @@ Yozuv oddiy muzlatishnikidek `Membership` turida (`EntityId = "{groupId}:{studen
 lekin matni boshqacha: **«Aktiv muzlatildi (yangi o'quv yili) …»**. Shu sababdan
 "O'zgarishlar tarixi"da ikki xil muzlatishni matn bo'yicha ajratish mumkin.
 
-⚠️ `GroupSnapshotBuilder` sabablarni audit matnidan `"Muzlatildi"` prefiksi bo'yicha ajratib
-oladi — yangi matn qo'shilganda o'sha joyni ham tekshiring.
+⚠️ `GroupSnapshotBuilder` va `TeacherSnapshotBuilder` sabablarni audit matnidan prefiks bo'yicha
+ajratib oladi — ikkalasi ham `"Muzlatildi"` VA `"Aktiv muzlatildi"` ni qabul qiladi (2026-10-07 gacha
+faqat birinchisi — yangi o'quv yili sabablari AI tahlilidan tushib qolardi). Yangi matn qo'shilganda
+o'sha joylarni ham tekshiring (`MembershipReasons.IsFreezeSummary` ham).
 
 ## 7. Yangi ko'rsatkich qo'shsangiz
 

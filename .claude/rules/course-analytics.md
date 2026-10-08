@@ -43,6 +43,11 @@ Bir o'quvchi bir kursning ikki guruhida bo'lsa ham **bitta** sanaladi (kurs bo'y
 **ISTISNO — pul:** `MonthlyRevenue` a'zoliklar bo'yicha yig'iladi, chunki ikki guruhda o'qiydigan
 o'quvchi ikki marta to'laydi.
 
+⚠️ **Arxivlangan O'QUVCHI joriy sanoqlarga KIRMAYDI** (faol/sinov/muzlatilgan/hozir va kesishuv,
+2026-10-07): arxiv = o'quvchi ketdi, eski yozuvlarda esa a'zoligi hali tirik bo'lishi mumkin.
+`MonthlyRevenue` TEGILMAYDI (a'zolik narxi — haqiqiy pul). Shu sabab keshning bog'liq turlariga
+`Student` ham qo'shilgan (arxivlash sanoqni o'zgartiradi).
+
 ## 4. Kesishuv (kurslar birga olinishi)
 
 FAQAT **faol** a'zoliklar (`Status == "active"`) bo'yicha — savol "kim haqiqatan bir nechta kursda
@@ -57,7 +62,7 @@ o'qiyapti". Sinovdagi va muzlatilganlar kirmaydi.
   yo'qolmasin. "Guruhlar soni" esa faqat arxivlanmaganlardan sanaladi.
 - `CourseId` bo'sh guruhlar analitikaga umuman kirmaydi (kurs kesimida ma'nosi yo'q).
 - Natija `DataCache` da (`courses:analytics:{oylar}`), bog'liq turlar: `StudentGroup`, `Group`,
-  `Subject`, `Teacher`. A'zolik o'zgarsa kesh AVTOMATIK yangilanadi, TTL (10 daq) faqat zaxira.
+  `Subject`, `Teacher`, `Student`. A'zolik o'zgarsa kesh AVTOMATIK yangilanadi, TTL (10 daq) faqat zaxira.
 
 ## 6. Grafik ranglari — TEKSHIRILGAN
 

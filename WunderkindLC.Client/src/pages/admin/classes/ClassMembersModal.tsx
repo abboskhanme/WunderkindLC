@@ -20,6 +20,7 @@ import { Loader } from '@/components/ui/Loader'
 import { ReasonPromptModal } from '@/components/ui/ReasonPromptModal'
 import { formatDate, formatMoney, cn, apiErrorMessage } from '@/lib/utils'
 import { useSuperOrGranted } from '@/lib/permissions'
+import { localIsoDate } from '@/lib/localDate'
 import { useAuth } from '@/context/auth-context'
 import { StudentFormModal } from '../students/StudentFormModal'
 import { TransferGroupModal } from './TransferGroupModal'
@@ -197,7 +198,7 @@ Kerak bo'lsa "Parolni tiklash" orqali yangi parol bering.`)
   }
 
   const openActivate = (m: GroupMember) => {
-    setActionDate(new Date().toISOString().slice(0, 10))
+    setActionDate(localIsoDate(new Date()))
     setActionBonus(false)
     setDateAction({ kind: 'activate', m })
   }
@@ -228,7 +229,7 @@ Kerak bo'lsa "Parolni tiklash" orqali yangi parol bering.`)
     try {
       // «Aktiv muzlatish» — AYNAN o'sha endpoint, farq faqat bayroqda.
       if (kind === 'freeze' || kind === 'yearFreeze')
-        await freezeMember(group.id, m.studentId, date ?? new Date().toISOString().slice(0, 10), reasonId, kind === 'yearFreeze')
+        await freezeMember(group.id, m.studentId, date ?? localIsoDate(new Date()), reasonId, kind === 'yearFreeze')
       else if (kind === 'remove') await removeGroupMember(group.id, m.studentId, reasonId, date)
       else await returnMemberToTrial(group.id, m.studentId, reasonId)
       const fresh = await getGroupMembers(group.id)
@@ -254,7 +255,7 @@ Kerak bo'lsa "Parolni tiklash" orqali yangi parol bering.`)
     if (!group || !bulkAction || busy) return
     const action = bulkAction
     const ids = selectedIds
-    const day = date ?? new Date().toISOString().slice(0, 10)
+    const day = date ?? localIsoDate(new Date())
     setBusy(true)
     try {
       // Bonus maydoni ruxsati yo'q bo'lsa umuman yuborilmaydi (server ham shu qoidani tekshiradi).
@@ -731,6 +732,7 @@ Kerak bo'lsa "Parolni tiklash" orqali yangi parol bering.`)
           studentName={transferMemberTarget?.fullName ?? ''}
           fromGroupId={group.id}
           fromGroupName={group.name}
+          memberStatus={transferMemberTarget?.status}
           onDone={async () => {
             const fresh = await getGroupMembers(group.id)
             setMembers(fresh)

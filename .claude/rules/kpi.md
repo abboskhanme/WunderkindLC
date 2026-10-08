@@ -14,7 +14,7 @@ Migratsiya: `AddKpiModule`. Manba — `kpi/` papkasidagi 5 fayl, tahlil va reja 
 
 ## 1. ENG MUHIM — KPI hech narsa YARATMAYDI, faqat O'QIYDI
 
-Lid — Lidlarda, to'lov — Kassada, davomat — Jurnalda, qo'ng'iroq — Qo'ng'iroqlarda qoladi.
+Lid — Lidlarda, to'lov — Kassada, davomat — Jurnalda, qo'ng'iroq — Local Call'da (CTI) qoladi.
 KPI moduli o'ziga tegishli **beshta** narsanigina yozadi:
 
 | Yozuv | Nima uchun |
@@ -186,8 +186,11 @@ chunki raqamning ma'nosi shu ta'riflarga bog'liq.
 | **A'zolik holati** (faol o'quvchi 1-sharti) | `CourseAnalytics.WasActiveAt` — SANALARDAN tiklanadi, `Status` dan EMAS | `Status` JORIY holat: bugun muzlatilgan a'zolik o'tgan oyda faol bo'lgan bo'lishi mumkin (`.claude/rules/course-analytics.md` §2). `PastPeriods` ham shu yo'l bilan hisobga olinadi |
 | **Samaradorlik** manbai | Avval **cheklist** (`na` maxrajga KIRMAYDI), bo'lmasa **`WorkTask`**, ikkalasi ham bo'lmasa **1.0 + ochiq `Warning`** | Nol qaytarilsa har bir xodim o'lchanmagan narsa uchun eng past pog'onaga (0.75) tushib qolardi. Ikkala xom raqam alohida `KpiInputDto` bo'lib qaytadi — hech narsa yashirilmaydi |
 | **Shartnoma** hodisasi | `Lead.ClosedByUserId` + `ClosedAt` (faqat `LeadsController.Convert` yozadi) | `LeadStage` da "yutuq" bayrog'i YO'Q; o'quvchiga aylantirish — yagona ishonchli hodisa |
-| **Ketish sababi** | `AuditLog` matnidan `"— sabab: X"` ajratib olinadi va `ActionReason.OutOfControl` bilan solishtiriladi | `StudentGroup` da sabab USTUNI yo'q; `GroupSnapshotBuilder` ham shu usulni ishlatadi. Sabab topilmasa — HAM `leftControlled`, HAM `unknownReasonLeft` ga kiradi (jarima aynan shuning uchun) |
-| **Guruh almashtirish ketish EMAS** | Oy oxirida boshqa guruhda hali FAOL bo'lgan o'quvchi ketganlar soniga KIRMAYDI | `.claude/rules/course-analytics.md` §1 bilan bir xil printsip — aks holda guruh almashtirish "ketdi" bo'lib, qo'rqinchli, ammo YOLG'ON churn ko'rsatardi |
+| **"Ketdi" (2026-10-07, audit SAL-3)** | `DashboardSummary.LeftEvents` — bosh sahifa va «Ketish sabablari» bilan AYNAN bir xil; faqat **AKTIVDAN** ketganlar (`EverActive`) | Ilgari `LeftAt` qo'yilgan HAR a'zolik sanalardi: sertifikat bilan TUGATGANLAR va faqat SINOVda bo'lganlar ham "ketdi" bo'lib, har biriga "sababsiz ketish" jarimasi yozilardi |
+| **Ketish sababi** | `MembershipReasons.Resolve` («Ketish sabablari» bilan bir xil): tuzilgan yozuv → audit matni → o'quvchi ARXIV sababi (arxiv kuni ketish kuniga teng yoki keyin); `ActionReason.OutOfControl` — avval id, bo'lmasa nom bo'yicha | Arxivlash o'quvchini guruhlardan chiqaradi — bu ketish, sababi arxiv sababi (jarima EMAS). Sabab topilmasa — HAM `leftControlled`, HAM `unknownReasonLeft` ga kiradi (jarima aynan shuning uchun) |
+| **Guruh almashtirish ketish EMAS** | Kurs ichida — `LeftEvents` o'zi birlashtiradi; boshqa KURSGA o'tib oy oxirida hali FAOL bo'lgan o'quvchi ham ketganlar soniga KIRMAYDI (markaz darajasi) | `.claude/rules/course-analytics.md` §1 bilan bir xil printsip — aks holda guruh almashtirish "ketdi" bo'lib, qo'rqinchli, ammo YOLG'ON churn ko'rsatardi |
+| **Kursi tugaganlar** (uzaytirish maxraji) | `StudentGroup.Status == "completed"` (sertifikat bilan tugatish), `LeftAt` oy ichida, takrorsiz o'quvchilar | Ilgari `Group.Status == "completed"` tekshirilardi — buni HECH NARSA qo'ymaydi; `EndDate` sharti esa guruhda yillar oldin o'qiganlarni ham sanardi |
+| **«Oy»/«Yopish»/eksport xodimlari** (audit SAL-5) | So'ralgan oy uchun: hozir faol profil + o'sha oyga `KpiMonthResult` bor + o'sha oyga shaxsiy oy boshi snapshoti bor (`KpiSnapshotService` faqat FAOL profilga yozadi — "shu oyda faol edi" isboti). O'chirilgan profil natija/snapshot qatoridagi rol bilan tiklanadi | Ilgari faqat hozir faol profillar olinardi — ishdan ketgan xodimning o'tgan (hatto tasdiqlangan) oyi «Yopish» va eksportdan yo'qolardi |
 | **Biriktirilmagan lidlar** | Har intake xodimning HAM `leads`, HAM `trialCame` soniga qo'shiladi; `leadsUnassigned` alohida qator bo'lib ogohlantiradi | Konversiya kasrining ikkala tomonida bir xil populyatsiya bo'lishi shart, aks holda nisbat ma'nosini yo'qotadi. Ikki intake admin bo'lsa ikkalasiga sanaladi — shu sabab ogohlantirish |
 
 ## 11. Cheklistni AVTOMATIK belgilash — `ChecklistAutoCheck`
@@ -210,6 +213,37 @@ ustun YO'Q (yagona imkoniyat — lid Id'si `WorkTask.Tags` ichida). Agar xodimni
 topshiriqlaridan birortasi ham uning ochiq lidlariga ishora qilmasa, bog'lanish
 "ishlatilmayapti" deb hisoblanadi va band O'TADI. Aks holda tekshiruv HAR KUNI HAMMAGA
 "bajarilmadi" berib, bonusni jimgina kesib turardi.
+
+## 11.1. QO'NG'IROQLAR MANBAI — Local Call (`KpiCallSource`, 2026-10-08)
+
+Bulutli telefoniya olib tashlangach (`README-CTI.md`) KPI'ning BARCHA qo'ng'iroq ko'rsatkichlari
+**`CtiCallRecord`** dan o'qiladi. Qoida bitta joyda — `Application/Services/Kpi/KpiCallSource.cs`
+(testlar: `ChecklistAutoCheckTests` + bulut olib tashlanishini qulflovchi test fayli).
+
+⚠️ **Xodim ↔ qo'ng'iroq — AGENT orqali** (`CtiAgent.StaffUserId`): CTI yozuvida xodim id'si YO'Q.
+Telefoni (agenti) xodimga BIRIKTIRILMAGAN bo'lsa, uning qo'ng'iroqlari hech kimning normasiga
+tushmaydi — bu xato emas, sozlama (Local Call → Agentlar).
+
+| Joy | Nima sanaladi | Nega |
+|---|---|---|
+| «Teginish» (kunlik norma) | xodim agent(lar)ining `incoming` + `outgoing` (javobsiz chiquvchi ham) | Chiquvchi — URINISH. ⚠️ `missed` (javobsiz kiruvchi) KIRMAYDI: operator hech kimga tegmagan, sanalsa bo'sh kun "bajarilgan" ko'rinardi |
+| «Muloqot vaqti» | o'sha yozuvlarning `DurationSec` yig'indisi | javobsizniki baribir 0 |
+| `calls.missed_returned` | KECHAGI `missed` → undan KEYIN shu raqamga (`PhoneUtil.Key`) `outgoing` bormi; MARKAZ bo'yicha, istalgan agentdan | Javobsiz qo'ng'iroqni hech kim ko'tarmagan — egasi yo'q. Mijozning o'zi qayta qilgani (`incoming`) "qaytarish" EMAS |
+| `calls.answer_speed` | `incoming` + `AnsweredAt` bor; xodimning O'Z agentlari VA hech kimga biriktirilmagan (umumiy) agentlar; boshqa XODIMGA biriktirilganlari chiqariladi | Umumiy (qabulxona) telefoni odatda biriktirilmaydi — faqat "o'zinikini" sanasak tekshiruv deyarli doim bo'sh bo'lardi |
+| Haftalik sifat namunasi (`tickets/calls`) | xodim agent(lar)i, 7 kun, `AudioUploaded` + `AudioPath`, `DurationSec > 60` | Yozuvsiz/qisqa qo'ng'iroqni tinglab baholab bo'lmaydi |
+
+- Namunadagi `direction` shartnomasi O'ZGARMADI: `incoming`/`missed` → `inbound`, `outgoing` →
+  `outbound` (`KpiCallSource.SampleDirection`) — klient `callDirectionLabel` shuni kutadi.
+- Yozuv TINGLASH — Local Call'ning audio endpointi (`GET /api/cti/calls/{id}/audio`), fayl manzili
+  javobda YO'Q. ⚠️ U Local Call egalik qoidasiga bo'ysunadi (agentning o'z xodimi + superadmin);
+  boshqasiga 403 va UI buni OCHIQ yozadi. KPI uchun alohida "hammasini eshitish" eshigi ATAYIN
+  ochilmadi — Local Call'dagi "faqat o'zinikini" qarori chetlab o'tilardi.
+- Isbot havolasi (`KpiNormDto.Link`) — `/admin/calls/local` (`KpiCallSource.Link`).
+- `KpiTicket.CallId` endi `CtiCallRecord.Id`; ESKI tiketlarda tarixiy `Call.Id` qolishi mumkin.
+- ⚠️ Eski `Calls` jadvali (bulut tarixi) KPI'da ISHLATILMAYDI — yangi ko'rsatkichni unga qurmang.
+- Seed matni (kiruvchi cheklist 3-band) yangilandi, lekin `KpiSeedService` mavjud bandni faqat
+  `No` bo'yicha qo'shadi — bazadagi ESKI matn o'z-o'zidan o'zgarmaydi (qoidalar sahifasidan
+  tahrirlanadi; admin tahririni jimgina bosib ketmaslik uchun avtomatik yangilanmaydi).
 
 ## 12. Oy boshi snapshoti — `KpiSnapshotService`
 

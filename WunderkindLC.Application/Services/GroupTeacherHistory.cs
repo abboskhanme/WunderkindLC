@@ -47,6 +47,36 @@ public static class GroupTeacherHistory
         if (!string.IsNullOrWhiteSpace(teacherId) && open.Count == 1 && open[0].TeacherId == teacherId)
             return false;
 
+        // ⚠️ TARIXSIZ GURUH (backfilldan keyin yaratilgan, masalan «Tugatish — sertifikat bilan»
+        // yangi guruhi) o'qituvchisi almashsa — ESKI o'qituvchining davri yo'qolmasin. Ilgari bu
+        // yerda faqat YANGI o'qituvchiga bugundan qator ochilardi va undan oldingi barcha oylar
+        // (maosh, hisobotlar) "birinchi qator egasi"ga — ya'ni YANGI o'qituvchiga — yozilib qolardi.
+        // Bazadagi (hali saqlanmagan o'zgarishsiz) qiymat AsNoTracking so'rov bilan o'qiladi:
+        // chaqiruvchi `Group.TeacherId` ni allaqachon yangisiga almashtirgan bo'ladi.
+        if (open.Count == 0 && !await db.GroupTeacherAssignments.AnyAsync(a => a.GroupId == groupId, ct))
+        {
+            var stored = await db.Classes.AsNoTracking()
+                .Where(c => c.Id == groupId)
+                .Select(c => new { c.TeacherId, c.StartDate })
+                .FirstOrDefaultAsync(ct);
+            if (stored is not null && !string.IsNullOrWhiteSpace(stored.TeacherId) && stored.TeacherId != teacherId)
+            {
+                var from = stored.StartDate is { Length: >= 10 } sd ? sd[..10] : null;
+                from ??= await db.StudentGroups.AsNoTracking()
+                    .Where(sg => sg.GroupId == groupId && sg.JoinedAt != "")
+                    .Select(sg => sg.JoinedAt).OrderBy(j => j).FirstOrDefaultAsync(ct);
+                if (from is not { Length: >= 10 } || string.CompareOrdinal(from[..10], today) > 0) from = today;
+                db.GroupTeacherAssignments.Add(new GroupTeacherAssignment
+                {
+                    GroupId = groupId,
+                    TeacherId = stored.TeacherId,
+                    FromDate = from[..10],
+                    ToDate = today,
+                    CreatedBy = actor,
+                });
+            }
+        }
+
         // Eski ochiq qator(lar)ni bugungi sana bilan yopamiz. Bir kunda qayta biriktirilsa
         // FromDate == ToDate bo'ladi — bu "shu kuni almashdi" degani, TeacherAt oxirgisini oladi.
         foreach (var a in open) a.ToDate = today;
@@ -112,5 +142,103 @@ public static class GroupTeacherHistory
             best = a;   // ro'yxat FromDate bo'yicha tartiblangan → oxirgi moslik qoladi
         }
         return best?.TeacherId;
+    }
+
+    /* =========================================================================================
+     *  DARS SANASI BO'YICHA EGALIK — maosh va hisobotlar "o'tgan oyni KIM o'qitgan" savoliga
+     *  hozirgi Group.TeacherId bilan emas, TARIX bilan javob beradi (audit C3).
+     * ====================================================================================== */
+
+    /// <summary>
+    /// Guruhning SHU SANADAGI asosiy o'qituvchisi (<paramref name="date"/> — "yyyy-MM-dd").
+    /// <list type="bullet">
+    /// <item>Tarix umuman yo'q — <paramref name="fallbackTeacherId"/> (<see cref="Group.TeacherId"/>);</item>
+    /// <item>sanani qamragan biriktirish — o'sha (almashuv kuni ikkalasi ham qamraydi → YANGISI,
+    ///   <see cref="TeacherAtMonth"/> bilan bir xil tamoyil);</item>
+    /// <item>sana BIRINCHI qatordan OLDIN — birinchi qator egasi (backfill taxmini: "hozirgi o'qituvchi
+    ///   guruh boshidan o'qitgan"; yangi guruhda qator yaratilgan KUNDAN boshlanadi, guruh esa
+    ///   o'tmishdagi <c>StartDate</c> bilan ochilgan bo'lishi mumkin);</item>
+    /// <item>o'qituvchi olib tashlangan oraliq (qatorlar yopiq, yangisi yo'q) — <c>null</c>: hech kim.</item>
+    /// </list>
+    /// </summary>
+    public static string? TeacherOnDate(List<GroupTeacherAssignment>? history, string? date, string? fallbackTeacherId)
+    {
+        var fallback = string.IsNullOrWhiteSpace(fallbackTeacherId) ? null : fallbackTeacherId;
+        if (history is null || history.Count == 0) return fallback;
+        if (date is not { Length: >= 10 }) return fallback;
+        var d = date[..10];
+
+        var ordered = Ordered(history);
+        GroupTeacherAssignment? best = null;
+        foreach (var a in ordered)
+        {
+            if (a.FromDate is { Length: >= 10 } && string.CompareOrdinal(a.FromDate[..10], d) > 0) continue;
+            if (a.ToDate is { Length: >= 10 } && string.CompareOrdinal(a.ToDate[..10], d) < 0) continue;
+            best = a;
+        }
+        if (best is not null) return string.IsNullOrWhiteSpace(best.TeacherId) ? null : best.TeacherId;
+
+        var first = ordered[0];
+        if (first.FromDate is { Length: >= 10 } && string.CompareOrdinal(d, first.FromDate[..10]) < 0)
+            return string.IsNullOrWhiteSpace(first.TeacherId) ? null : first.TeacherId;
+        return null;
+    }
+
+    /// <summary>
+    /// (guruh, oy) → har o'qituvchining shu oydagi ULUSHI (0..1): guruhning shu oydagi REJADAGI dars
+    /// sanalaridan (<paramref name="lessonDates"/> — ko'chirishlar va guruh umri bilan,
+    /// <see cref="SubstituteTeacherService.LessonDatesInMonth"/>) qanchasi kimga tegishli.
+    ///
+    /// <para>⚠️ NEGA KUN BO'YICHA: oy o'rtasida o'qituvchi almashsa guruhning oylik maosh ulushi ikkala
+    /// o'qituvchi orasida o'tgan darslari NISBATIDA bo'linadi — ikkala varaqaning yig'indisi bitta
+    /// o'qituvchi bo'lgandagi summaga TENG (markaz ortiqcha ham, kam ham to'lamaydi).</para>
+    ///
+    /// <para>Tarix yo'q — hammasi <paramref name="fallbackTeacherId"/> ga (1.0). Oyda dars sanasi yo'q
+    /// (guruh umridan tashqari) — oyni qamragan oxirgi biriktirish (<see cref="TeacherAtMonth"/>).
+    /// Egasiz sanalar (o'qituvchi olib tashlangan) hech kimga yozilmaydi.</para>
+    /// </summary>
+    public static Dictionary<string, decimal> SharesInMonth(
+        List<GroupTeacherAssignment>? history, IReadOnlyCollection<string> lessonDates, string month,
+        string? fallbackTeacherId)
+    {
+        var result = new Dictionary<string, decimal>(StringComparer.Ordinal);
+        if (history is null || history.Count == 0)
+        {
+            if (!string.IsNullOrWhiteSpace(fallbackTeacherId)) result[fallbackTeacherId] = 1m;
+            return result;
+        }
+
+        if (lessonDates.Count == 0)
+        {
+            var ordered = Ordered(history);
+            var owner = TeacherAtMonth(ordered, month);
+            if (owner is null && month.Length >= 7 && ordered[0].FromDate is { Length: >= 7 } f
+                && string.CompareOrdinal(month[..7], f[..7]) < 0)
+                owner = ordered[0].TeacherId;
+            if (!string.IsNullOrWhiteSpace(owner)) result[owner] = 1m;
+            return result;
+        }
+
+        var counts = new Dictionary<string, int>(StringComparer.Ordinal);
+        foreach (var d in lessonDates)
+        {
+            var t = TeacherOnDate(history, d, fallbackTeacherId: null);
+            if (t is null) continue;
+            counts[t] = counts.GetValueOrDefault(t) + 1;
+        }
+        foreach (var (t, n) in counts)
+            result[t] = (decimal)n / lessonDates.Count;
+        return result;
+    }
+
+    /// <summary>Tarix qatorlari <c>FromDate</c> bo'yicha tartiblangan (LoadAsync allaqachon tartiblaydi;
+    /// testda qo'lda yasalgan ro'yxat uchun himoya).</summary>
+    private static List<GroupTeacherAssignment> Ordered(List<GroupTeacherAssignment> history)
+    {
+        for (var i = 1; i < history.Count; i++)
+            if (string.CompareOrdinal(history[i - 1].FromDate, history[i].FromDate) > 0)
+                return history.OrderBy(a => a.FromDate, StringComparer.Ordinal)
+                    .ThenBy(a => a.ToDate ?? "￿", StringComparer.Ordinal).ToList();
+        return history;
     }
 }

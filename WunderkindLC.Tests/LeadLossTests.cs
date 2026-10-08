@@ -582,7 +582,8 @@ public class LeadLossTests
         Assert.Contains("LeadLoss.IsLost(lead)", patch);
 
         var convert = src[src.IndexOf("[HttpPost(\"{id}/convert\")]", StringComparison.Ordinal)..];
-        convert = convert[..convert.IndexOf("new Student", StringComparison.Ordinal)];
+        // O'quvchi endi `LeadConversion` da yaratiladi (audit C5) — tekshiruv undan OLDIN turishi shart.
+        convert = convert[..convert.IndexOf("LeadConversion.", StringComparison.Ordinal)];
         Assert.Contains("LeadLoss.IsLost(lead)", convert);
 
         // «Birinchi darsga yozilganlar» — ochiq lid ta'rifi yo'qotilganni chiqarib tashlaydi.

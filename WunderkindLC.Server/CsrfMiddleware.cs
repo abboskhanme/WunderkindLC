@@ -149,7 +149,6 @@ public sealed class CsrfMiddleware(RequestDelegate next)
                                             // (rt cookie o'zi cross-site forge'dan himoyalangan: Path cheklovi + HttpOnly)
         "/api/public/instagram/webhook",    // Meta webhook (tashqi, cookie yubormaydi)
         "/api/public/instagram/leadgen",    // Meta lead webhook
-        "/api/telephony/",                  // telefoniya webhook (moizvonki/{secret})
         "/api/sms/callback",                // SMS provayder callback
         "/hubs",                            // SignalR (WebSocket handshake)
     };

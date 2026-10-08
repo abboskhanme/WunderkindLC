@@ -104,11 +104,14 @@ public sealed class InstagramPipeline(IServiceProvider services, ILogger<Instagr
             }
 
             var problems = new List<string>();
+            // ESKI hodisalar (avtojavobsiz saqlangan) — sababi navbat yozuvida ko'rinsin.
+            var staleNotes = new List<string>();
             foreach (var inc in incoming)
             {
                 try
                 {
-                    await HandleOneAsync(db, api, telegram, config, meta, account, inc, ev.ReceivedAt, ct);
+                    var stale = await HandleOneAsync(db, api, telegram, config, meta, account, inc, ev.ReceivedAt, ct);
+                    if (stale.Length > 0) staleNotes.Add(stale);
                 }
                 catch (Exception ex)
                 {
@@ -117,8 +120,12 @@ public sealed class InstagramPipeline(IServiceProvider services, ILogger<Instagr
                 }
             }
 
-            ev.Status = IgConst.EvDone;
-            ev.Error = problems.Count == 0 ? "" : InstagramContract.Trim(string.Join(" | ", problems), 500);
+            // ⚠️ HAMMASI eski bo'lsa — `skipped` (sababi bilan): hodisa SAQLANDI, lekin unga javob
+            // ataylab yuborilmadi. Aralash bo'lsa `done`, eski qismining sababi esa izohda.
+            var allStale = problems.Count == 0 && staleNotes.Count > 0 && staleNotes.Count == incoming.Count;
+            ev.Status = allStale ? IgConst.EvSkipped : IgConst.EvDone;
+            var notes = problems.Concat(staleNotes.Distinct()).ToList();
+            ev.Error = notes.Count == 0 ? "" : InstagramContract.Trim(string.Join(" | ", notes), 500);
             ev.ProcessedAt = AppClock.Iso();
             await db.SaveChangesAsync(ct);
         }
@@ -133,9 +140,35 @@ public sealed class InstagramPipeline(IServiceProvider services, ILogger<Instagr
         }
     }
 
+    /* ═════════════════════════ Signallar chastotasi ═════════════════════════ */
+
+    /// <summary>
+    /// Takrorlanuvchi signallar (avtomat o'chirgich, kunlik chegara, "akkaunt ulanmagan")
+    /// oxirgi marta QACHON yuborilgani. Singleton ichida — <b>xotirada</b>: restartdan keyin
+    /// eng yomon holatda bitta ortiqcha signal ketadi (bu kunlik ish emas, faqat shovqin
+    /// to'sig'i). Kalit — signal turi.
+    /// </summary>
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, DateTime> _alertedAt = new();
+
+    /// <summary>
+    /// Signal shu oynada hali yuborilmaganmi — yuborilmagan bo'lsa belgilab qo'yadi.
+    /// <para>🔴 Ilgari halqa avtomat o'chirgichi HAR bloklangan hodisada alohida Telegram signali
+    /// yuborardi: halqa ayni shu holatda o'nlab hodisa yaratadi, ya'ni adminlar o'nlab bir xil
+    /// xabar olardi. Endi oynada BIR MARTA.</para>
+    /// </summary>
+    private bool TakeAlertSlot(string key, TimeSpan window, DateTime now)
+    {
+        var last = _alertedAt.TryGetValue(key, out var at) ? at : (DateTime?)null;
+        if (!InstagramContract.AlertDue(last, now, window)) return false;
+        _alertedAt[key] = now;
+        return true;
+    }
+
     /* ═════════════════════════ Bitta hodisa ═════════════════════════ */
 
-    private async Task HandleOneAsync(
+    /// <returns>Hodisa ESKI bo'lgani uchun avtojavobsiz qoldirilgan bo'lsa — sababi;
+    /// aks holda bo'sh satr.</returns>
+    private async Task<string> HandleOneAsync(
         IAppDbContext db, InstagramApi api, TelegramService telegram, IConfiguration config,
         CenterMeta? meta, IgAccount? account, IgIncomingEvent inc, string receivedAtIso, CancellationToken ct)
     {
@@ -147,7 +180,7 @@ public sealed class InstagramPipeline(IServiceProvider services, ILogger<Instagr
         if (inc.Kind == InstagramEventParser.KindPolicy)
         {
             await HandlePolicyAsync(db, telegram, meta, inc, ct);
-            return;
+            return "";
         }
 
         // ── 0.1) MIJOZ XABARNI O'CHIRDI (E6.4) ──
@@ -157,7 +190,7 @@ public sealed class InstagramPipeline(IServiceProvider services, ILogger<Instagr
         if (inc.Kind == InstagramEventParser.KindDeleted || inc.IsDeleted)
         {
             await HandleDeletedAsync(db, inc, ct);
-            return;
+            return "";
         }
 
         // ── 0) HODISA DARAJASIDAGI DEDUP (navbat kalitidan MUSTAQIL) ──
@@ -165,7 +198,7 @@ public sealed class InstagramPipeline(IServiceProvider services, ILogger<Instagr
         {
             logger.LogInformation(
                 "Instagram: hodisa allaqachon qayta ishlangan — o'tkazib yuborildi ({Key})", inc.EventKey);
-            return;
+            return "";
         }
 
         var conv = await db.IgConversations.FirstOrDefaultAsync(c => c.IgUserId == inc.SenderId, ct);
@@ -174,7 +207,7 @@ public sealed class InstagramPipeline(IServiceProvider services, ILogger<Instagr
         if (inc.IsEcho)
         {
             await HandleEchoAsync(db, conv, inc, now, nowIso, ct);
-            return;
+            return "";
         }
 
         if (conv is null)
@@ -192,6 +225,13 @@ public sealed class InstagramPipeline(IServiceProvider services, ILogger<Instagr
         {
             conv.Username = inc.Username;   // DM'da username kelmaydi, izohda keladi
         }
+
+        // ── 0.3) YOPILGAN SUHBATGA YANGI XABAR → QAYTA OCHILADI ──
+        // «Yopish» — "shu murojaat hal bo'ldi", "bu odamga boshqa javob yo'q" EMAS. Ilgari yopiq
+        // suhbat abadiy jim qolardi (bot javob bermasdi, sanoqlar ham uni ko'rmasdi) — qaytib
+        // kelgan mijoz hech kimga ko'rinmasdi. Qoida — `InstagramContract.ReopenOnInbound`.
+        if (conv is not null && InstagramContract.ReopenOnInbound(conv))
+            logger.LogInformation("Instagram: yopilgan suhbatga yangi xabar — qayta ochildi (@{User})", conv.Username);
 
         // ── 0.4) USERNAME'NI PROFIL SO'ROVIDAN ANIQLASH (DM uchun) ──
         //
@@ -281,18 +321,38 @@ public sealed class InstagramPipeline(IServiceProvider services, ILogger<Instagr
         //
         // ⚠️ Lekin Meta vaqti KO'R-KO'RONA ishonilmaydi: server soati oldinga surilgan yoki
         // payload buzuq bo'lsa bot BUTUNLAY jim bo'lib qolardi (eng yomon nosozlik — sababsiz
-        // sukut). Shuning uchun faqat "mantiqiy" oraliqdagi vaqt qabul qilinadi, aks holda
-        // joriy vaqt (eski xulq).
-        conv.LastInboundAt = SaneInboundAt(inc.SentAtIso, now) ?? nowIso;
+        // sukut). Shuning uchun faqat "mantiqiy" oraliqdagi vaqt qabul qilinadi.
+        //
+        // 🔴 Zaxira — joriy vaqt EMAS, BIZ QABUL QILGAN vaqt (`ReceivedAt`). Ilgari 30 kundan eski
+        // hodisa "joriy vaqt" deb yozilardi: navbatda oylab yotgan DM oynasi "ochiq" bo'lib
+        // ko'rinardi. Qabul vaqti esa bizning soatimiz — ishonchli.
+        //
+        // ⚠️ Faqat OLDINGA suriladi: Meta 36 soat qayta yuborgan eski xabar yangisidan keyin
+        // qayta ishlansa ham oyna orqaga yopilib qolmasin.
+        var inboundAt = InstagramContract.SaneInboundAt(inc.SentAtIso, now)
+                        ?? (InstagramContract.TryIso(receivedAtIso, out _) ? receivedAtIso : nowIso);
+        if (!InstagramContract.TryIso(conv.LastInboundAt, out var prevInbound)
+            || !InstagramContract.TryIso(inboundAt, out var newInbound)
+            || newInbound >= prevInbound)
+            conv.LastInboundAt = inboundAt;
         conv.LastMessageText = InstagramContract.Trim(storedText, 300);
         conv.MessageCount += 1;
         conv.Unread = true;
+
+        // ── 1.5) ESKI HODISA — saqlanadi, lekin AVTOJAVOB YO'Q ──
+        // Modul o'chiq paytda webhook hodisalarni baribir navbatga yozadi; yoqilganda "zaxira"
+        // bir zumda qayta ishlanib, bot ikki haftalik izohlarga OMMAVIY javob yozardi, eski
+        // DM'lar esa har biri alohida Telegram signali bilan eskalatsiya bo'lardi. Endi eski
+        // hodisa tarixga yoziladi va telefon → lid qadami (§3.1) baribir ishlaydi, lekin
+        // javob yuborilmaydi va Telegram signali KETMAYDI — operator Inbox'da ko'radi.
+        var stale = InstagramContract.StaleReplyReason(channel, receivedAtIso, inc.SentAtIso, now);
 
         // ── 2) MATNSIZ xabar (rasm/stiker/ovoz) — jimgina yo'qolmaydi ──
         // (Postback bu yerga tushmaydi: `inboundText` 0.45-qadamda har doim to'ldiriladi.)
         if (string.IsNullOrWhiteSpace(inboundText))
         {
-            Escalate(conv, "Matnsiz xabar keldi (rasm/stiker/ovozli xabar) — AI javob bera olmaydi"
+            Escalate(conv, (stale.Length > 0 ? stale + ". " : "")
+                           + "Matnsiz xabar keldi (rasm/stiker/ovozli xabar) — AI javob bera olmaydi"
                            + (context.Length > 0 ? " " + context : ""));
             // Konteksti bor bo'lsa (story mention, ulashilgan post) operator ro'yxatda AYNAN
             // nima kelganini ko'rsin — "[matnsiz xabar]" dan foydaliroq.
@@ -300,14 +360,16 @@ public sealed class InstagramPipeline(IServiceProvider services, ILogger<Instagr
                 ? InstagramContract.Trim(context, 300)
                 : "[matnsiz xabar]";
             await db.SaveChangesAsync(ct);
-            await NotifyAdminsAsync(db, telegram, meta,
-                $"📎 Instagram: mijoz matnsiz xabar yubordi — operator ko'rsin.\n"
-                + $"👤 {InstagramContract.ProfileRef(conv.Username)}", ct);
-            return;
+            // ⚠️ Eski hodisada signal YO'Q — "zaxira" yuzlab signal bo'lib yog'ilmasin.
+            if (stale.Length == 0)
+                await NotifyAdminsAsync(db, telegram, meta,
+                    $"📎 Instagram: mijoz matnsiz xabar yubordi — operator ko'rsin.\n"
+                    + $"👤 {InstagramContract.ProfileRef(conv.Username)}", ct);
+            return stale;
         }
 
         // ── 3) DARVOZALAR: shu yerdan keyin tashqi so'rov ketishi mumkin ──
-        if (meta is null || !meta.InstagramEnabled) { await db.SaveChangesAsync(ct); return; }
+        if (meta is null || !meta.InstagramEnabled) { await db.SaveChangesAsync(ct); return ""; }
 
         // ── 3.1) 🔴 TELEFON RAQAMI → LID (AI'ga ham, javob oqimiga ham BOG'LIQ EMAS) ──
         //
@@ -344,13 +406,17 @@ public sealed class InstagramPipeline(IServiceProvider services, ILogger<Instagr
                 // Ism — AI'siz, ehtiyotkor taxmin (`ExtractLeadName`). Topilmasa lid baribir
                 // yoziladi, nomi «username (Instagram)» bo'ladi va AI kelganda aniqlashadi.
                 var guessedName = InstagramContract.ExtractLeadName(inc.Text);
-                var firstPhoneLink = string.IsNullOrWhiteSpace(conv.LeadId);
+                // ⚠️ Bog'langan lid CRM'dan O'CHIRILGAN yoki o'quvchiga AYLANTIRILGAN bo'lsa —
+                // bog'lanish YO'Q deb qaraladi: aks holda qayta yaratilgan (yoki qaytgan o'quvchi
+                // uchun ochilgan) lid guruhga "yangi lid" bo'lib hech qachon e'lon qilinmasdi
+                // (Upsert yangisini ochadi, karta esa jim — audit R2-1).
+                var firstPhoneLink = !await IgLeadLinks.HasLiveLeadAsync(db, conv.LeadId, ct);
                 var phoneSource = string.IsNullOrWhiteSpace(meta.InstagramLeadSource) ? "Instagram" : meta.InstagramLeadSource;
 
                 var (pid, pIsNew) = await InstagramLeadBridge.UpsertAsync(
                     db, conv,
                     InstagramContract.PhoneOnlyOutput(inboundPhone, guessedName, conv.Language),
-                    phoneSource, ct);
+                    phoneSource, ct, autoMsg: services.GetService<AutoMessageService>());
 
                 // Kontakt qoldirgan odam ta'rifga ko'ra qaynoq — Inbox'da ham shunday ko'rinsin.
                 conv.LeadScore = Math.Max(conv.LeadScore, IgConst.HotLeadScore);
@@ -362,7 +428,9 @@ public sealed class InstagramPipeline(IServiceProvider services, ILogger<Instagr
 
                 // Telegram kartasi shu yerda yuboriladi — §9.1 ga yetib bormaydigan yo'llar bor.
                 // Keyin AI xulosasi qo'shilsa karta JOYIDA tahrirlanadi (`SyncCardAsync`).
-                if (firstPhoneLink && meta.InstagramNotifyTelegram)
+                // ⚠️ YANGI lidning kartasi hali YO'Q — `SyncCardAsync` unga hech narsa yubormasdi,
+                // shuning uchun yangi lid HAR DOIM e'lon qilinadi (bayroqdan qat'i nazar).
+                if ((firstPhoneLink || pIsNew) && meta.InstagramNotifyTelegram)
                 {
                     var phoneLead = await db.Leads.FirstOrDefaultAsync(l => l.Id == pid, ct);
                     if (phoneLead is not null)
@@ -386,29 +454,48 @@ public sealed class InstagramPipeline(IServiceProvider services, ILogger<Instagr
                 Escalate(conv, "Mijoz telefon qoldirdi, lekin lid yozilmadi — operator qo'lda kiritsin");
             }
         }
-        if (channel == IgConst.ChannelComment && !meta.InstagramAutoReplyComments) { await db.SaveChangesAsync(ct); return; }
-        if (channel == IgConst.ChannelDm && !meta.InstagramAutoReplyDm) { await db.SaveChangesAsync(ct); return; }
-        if (!InstagramContract.BotMayReply(conv, now)) { await db.SaveChangesAsync(ct); return; }
+        if (channel == IgConst.ChannelComment && !meta.InstagramAutoReplyComments) { await db.SaveChangesAsync(ct); return ""; }
+        if (channel == IgConst.ChannelDm && !meta.InstagramAutoReplyDm) { await db.SaveChangesAsync(ct); return ""; }
+        if (!InstagramContract.BotMayReply(conv, now)) { await db.SaveChangesAsync(ct); return ""; }
+
+        // ── 3.5) ESKI HODISA — bot javob bermaydi (§1.5). Darvozalardan KEYIN: avtojavob
+        // o'chiq yoki operator pauzasida bo'lsa eski xabar ham yangisidek jim yoziladi.
+        // Telegram signali YO'Q — Inbox'dagi "Operator kerak" chipi yetarli (zaxira yuzlab
+        // hodisa bo'lishi mumkin).
+        if (stale.Length > 0)
+        {
+            Escalate(conv, stale);
+            await db.SaveChangesAsync(ct);
+            logger.LogInformation("Instagram: eski hodisa avtojavobsiz saqlandi ({Key}): {Reason}", inc.EventKey, stale);
+            return stale;
+        }
 
         if (account is null || string.IsNullOrWhiteSpace(account.AccessToken))
         {
             Escalate(conv, "Instagram akkaunt ulanmagan yoki token yo'q — javob yuborilmadi");
             await db.SaveChangesAsync(ct);
-            await NotifyAdminsAsync(db, telegram, meta, "⚠️ Instagram: akkaunt ulanmagan — mijozga javob yuborilmadi.", ct);
-            return;
+            // ⚠️ Kuniga BIR MARTA: akkaunt uzilgan, webhook esa (obunani bekor qilib bo'lmagan
+            // bo'lsa) kelaveradi — har xabarda signal adminlarni ko'mib tashlardi.
+            if (TakeAlertSlot("no-account", TimeSpan.FromHours(24), now))
+                await NotifyAdminsAsync(db, telegram, meta, "⚠️ Instagram: akkaunt ulanmagan — mijozga javob yuborilmadi.", ct);
+            return "";
         }
 
         // ── 4) KUNLIK LIMIT (halqa/hujum himoyasi) ──
+        // ⚠️ Faqat BOTNING javoblari sanaladi (`BotOutboundExpr`): operator Inbox'dan yoki
+        // Instagram ilovasidan yozgan javoblar botning limitini yemaydi.
         var today = now.ToString("yyyy-MM-dd");
         var limit = Math.Max(1, meta.InstagramDailyReplyLimit);
         var sentToday = await db.IgMessages
-            .CountAsync(m => m.Direction == IgConst.DirOut && m.CreatedAt.StartsWith(today), ct);
+            .Where(InstagramContract.BotOutboundExpr)
+            .CountAsync(m => m.CreatedAt.StartsWith(today), ct);
         if (sentToday >= limit)
         {
             Escalate(conv, $"Kunlik javob chegarasi tugadi ({limit}) — javob yuborilmadi");
             await db.SaveChangesAsync(ct);
-            await NotifyAdminsAsync(db, telegram, meta, $"🚦 Instagram: kunlik javob chegarasi ({limit}) tugadi.", ct);
-            return;
+            if (TakeAlertSlot("daily-limit:" + today, TimeSpan.FromHours(24), now))
+                await NotifyAdminsAsync(db, telegram, meta, $"🚦 Instagram: kunlik javob chegarasi ({limit}) tugadi.", ct);
+            return "";
         }
 
         // ── 4.5) HALQA AVTOMAT O'CHIRGICHI (qisqa oyna) ──
@@ -416,22 +503,25 @@ public sealed class InstagramPipeline(IServiceProvider services, ILogger<Instagr
         // Kunlik chegara (200) — uzoq muddatli to'siq. Cheksiz halqa esa DAQIQALAR ichida yuzlab
         // javob yozadi va Instagram akkauntni 200 ga yetmasdan spam deb belgilaydi. Shuning uchun
         // 10 daqiqalik oynada ikkita qo'shimcha chegara: bitta post ostida 8, umumiy 30.
+        // ⚠️ Bu yerda ham faqat BOT qatorlari: halqa — botning o'ziga javobi; operatorning
+        // tez-tez yozishi halqa emas.
         var burstSince = now.AddMinutes(-IgConst.BurstWindowMinutes).ToString("yyyy-MM-ddTHH:mm:ss");
-        var globalRecent = await db.IgMessages
-            .CountAsync(m => m.Direction == IgConst.DirOut && m.CreatedAt.CompareTo(burstSince) >= 0, ct);
+        var botOut = db.IgMessages.Where(InstagramContract.BotOutboundExpr);
+        var globalRecent = await botOut.CountAsync(m => m.CreatedAt.CompareTo(burstSince) >= 0, ct);
         var perPostRecent = inc.MediaId.Length == 0
             ? 0
-            : await db.IgMessages.CountAsync(
-                m => m.Direction == IgConst.DirOut && m.MediaId == inc.MediaId
-                     && m.CreatedAt.CompareTo(burstSince) >= 0, ct);
+            : await botOut.CountAsync(
+                m => m.MediaId == inc.MediaId && m.CreatedAt.CompareTo(burstSince) >= 0, ct);
 
         var burst = InstagramContract.BurstBlockReason(perPostRecent, globalRecent);
         if (burst.Length > 0)
         {
             Escalate(conv, burst);
             await db.SaveChangesAsync(ct);
-            await NotifyAdminsAsync(db, telegram, meta, $"🛑 Instagram: {burst}. Operator tekshirsin.", ct);
-            return;
+            // ⚠️ Oynada BIR MARTA: halqa aynan shu paytda o'nlab hodisa yaratadi.
+            if (TakeAlertSlot("burst", TimeSpan.FromMinutes(IgConst.BurstWindowMinutes), now))
+                await NotifyAdminsAsync(db, telegram, meta, $"🛑 Instagram: {burst}. Operator tekshirsin.", ct);
+            return "";
         }
 
         // ── 4.7) FAQ TUGMASI (ice breaker postback) — qoidadan ham, AI'dan ham OLDIN ──
@@ -470,7 +560,7 @@ public sealed class InstagramPipeline(IServiceProvider services, ILogger<Instagr
             {
                 matched.MatchCount += 1;
                 reply = matched.ReplyText;
-                actor = matched.Title.Length > 0 ? $"Qoida: {matched.Title}" : IgConst.ActorRule;
+                actor = matched.Title.Length > 0 ? IgConst.RuleActorPrefix + matched.Title : IgConst.ActorRule;
             }
         }
 
@@ -510,15 +600,31 @@ public sealed class InstagramPipeline(IServiceProvider services, ILogger<Instagr
                 await NotifyAdminsAsync(db, telegram, meta,
                     $"🤖 Instagram: AI javob bera olmadi. Sabab: {aiErr}\n"
                     + $"👤 {InstagramContract.ProfileRef(conv.Username)}", ct);
-                return;
+                return "";
             }
         }
 
-        if (string.IsNullOrWhiteSpace(reply)) { await db.SaveChangesAsync(ct); return; }
+        if (string.IsNullOrWhiteSpace(reply)) { await db.SaveChangesAsync(ct); return ""; }
         // Belgi bo'yicha MO'LJAL (AI javobi juda uzun bo'lsa qisqartiriladi), so'ng BAYT
         // bo'yicha haqiqiy chegara — Meta aynan baytni sanaydi (`IgConst.MaxReplyBytes`).
+        reply = InstagramContract.Trim(reply, IgConst.MaxReplyLength);
+
+        // ── 6.5) BOT OSHKORLIGI (Meta talabi) — HAR yo'lda (FAQ · qoida · AI) ──
+        // Ilgari oshkorlik faqat AI promptida edi: FAQ tugmasi va kalit so'z qoidasi javoblari
+        // AI'siz ketgani uchun mijoz birinchi javobni bot ekanini bilmasdan olardi. Endi SHAXSIY
+        // yozishmadagi (DM + yopiq javob) BIRINCHI bot javobi oldiga `InstagramGreeting`
+        // qo'shiladi (allaqachon matnda bo'lsa takrorlanmaydi). Bayt chegarasi KEYIN qo'llanadi —
+        // oshkorlik qirqilmaydi.
+        // 🔴 OCHIQ IZOH JAVOBIGA QO'SHILMAYDI (audit R3-9): u har yangi izohchining birinchi
+        // javobiga tushar edi — post ostida bir xil uzun matn qatorlashib, SPAM bo'lib ko'rinardi
+        // (Instagram buni o'zi ham spam deb belgilashi mumkin). Meta talabi esa XABAR almashish
+        // (messaging) uchun: izohdan keyingi yopiq javob (private reply) baribir oshkorlik oladi.
+        var greeting = meta.InstagramGreeting;
+        var firstInChannel = DisclosureApplies(channel)
+                             && await FirstBotMessageAsync(db, conv.Id, commentFamily: false, ct);
+        var baseReply = reply;
         reply = InstagramContract.TrimBytes(
-            InstagramContract.Trim(reply, IgConst.MaxReplyLength), IgConst.MaxReplyBytes);
+            InstagramContract.WithDisclosure(baseReply, greeting, firstInChannel), IgConst.MaxReplyBytes);
 
         // ── 7) TABIIY KECHIKISH (bir zumda kelgan javob spamga o'xshaydi) ──
         //
@@ -554,8 +660,13 @@ public sealed class InstagramPipeline(IServiceProvider services, ILogger<Instagr
                     m => m.CommentId == inc.CommentId && m.Channel == IgConst.ChannelPrivateReply, ct);
                 if (!already)
                 {
-                    var pr = await api.SendPrivateReplyAsync(inc.CommentId, reply, account.AccessToken, ct);
-                    AddOutbound(db, conv, IgConst.ChannelPrivateReply, reply, actor, isAi, output,
+                    // Yopiq javob — SHAXSIY yozishma oilasi: oshkorlik o'sha oilada birinchi bo'lsa.
+                    var privateText = InstagramContract.TrimBytes(
+                        InstagramContract.WithDisclosure(baseReply, greeting,
+                            await FirstBotMessageAsync(db, conv.Id, commentFamily: false, ct)),
+                        IgConst.MaxReplyBytes);
+                    var pr = await api.SendPrivateReplyAsync(inc.CommentId, privateText, account.AccessToken, ct);
+                    AddOutbound(db, conv, IgConst.ChannelPrivateReply, privateText, actor, isAi, output,
                         inc.CommentId, inc.MediaId, AppClock.Iso(), pr.Ok ? "" : pr.Error);
                 }
             }
@@ -570,7 +681,7 @@ public sealed class InstagramPipeline(IServiceProvider services, ILogger<Instagr
                 await NotifyAdminsAsync(db, telegram, meta,
                     $"⏰ Instagram: 24 soatlik oyna yopiq — javob yuborilmadi.\n"
                     + $"👤 {InstagramContract.ProfileRef(conv.Username)}", ct);
-                return;
+                return "";
             }
 
             var res = await api.SendDmAsync(account.IgUserId, conv.IgUserId, reply, account.AccessToken, ct);
@@ -623,10 +734,13 @@ public sealed class InstagramPipeline(IServiceProvider services, ILogger<Instagr
                     // ⚠️ Suhbat lidga BIRINCHI marta bog'lanyaptimi — Upsert'dan OLDIN o'qiladi
                     // (u `conv.LeadId` ni to'ldirib qo'yadi). Telegram kartasi shu bilan hal
                     // qilinadi, pastdagi §9.1 ga qarang.
-                    firstLink = string.IsNullOrWhiteSpace(conv.LeadId);
+                    // ⚠️ O'chirilgan yoki AYLANTIRILGAN lidga bog'langan suhbat ham "birinchi
+                    // bog'lanish" (§3.1 dagi bilan bir xil sabab): yangi lid e'lon qilinsin.
+                    firstLink = !await IgLeadLinks.HasLiveLeadAsync(db, conv.LeadId, ct);
 
                     var source = string.IsNullOrWhiteSpace(meta.InstagramLeadSource) ? "Instagram" : meta.InstagramLeadSource;
-                    var (leadId, isNew) = await InstagramLeadBridge.UpsertAsync(db, conv, output, source, ct);
+                    var (leadId, isNew) = await InstagramLeadBridge.UpsertAsync(
+                        db, conv, output, source, ct, autoMsg: services.GetService<AutoMessageService>());
                     cardLeadId = leadId;
                     cardIsNewLead = isNew;
                     logger.LogInformation("Instagram lid {State} ({LeadId})", isNew ? "yaratildi" : "yangilandi", leadId);
@@ -667,7 +781,8 @@ public sealed class InstagramPipeline(IServiceProvider services, ILogger<Instagr
         // ⚠️ Xatosi JIM yutiladi (`LeadNotifier` siyosati) — xabarnoma javobni buzmaydi.
         if (cardLeadId.Length > 0)
         {
-            if (firstLink && meta.InstagramNotifyTelegram)
+            // YANGI lid (`cardIsNewLead`) — kartasi yo'q, ya'ni har doim e'lon qilinadi (§3.1 bilan bir xil).
+            if ((firstLink || cardIsNewLead) && meta.InstagramNotifyTelegram)
             {
                 var lead = await db.Leads.FirstOrDefaultAsync(l => l.Id == cardLeadId, ct);
                 if (lead is not null)
@@ -686,6 +801,30 @@ public sealed class InstagramPipeline(IServiceProvider services, ILogger<Instagr
             alert = BuildHotAlert(conv, output);
         if (alert.Length > 0)
             await NotifyAdminsAsync(db, telegram, meta, alert, ct);
+        return "";
+    }
+
+    /// <summary>
+    /// Bot oshkorligi (<see cref="InstagramContract.WithDisclosure"/>) shu kanal javobiga
+    /// qo'shiladimi. FAQAT shaxsiy yozishma oilasi (DM va izohga yopiq javob) — ochiq izoh
+    /// javobida YO'Q: post ostida har izohchiga bir xil uzun matn spamga o'xshardi (audit R3-9).
+    /// </summary>
+    public static bool DisclosureApplies(string channel) => channel != IgConst.ChannelComment;
+
+    /// <summary>
+    /// Suhbat kanal OILASIDA hali BOTNING muvaffaqiyatli javobi yo'qmi (bot oshkorligi uchun).
+    /// <para>Oila: ochiq izoh (<c>comment</c>) yoki shaxsiy yozishma (<c>dm</c> + <c>private_reply</c>).
+    /// Yuborilmagan (xato bilan qolgan) javob hisobga OLINMAYDI — mijoz uni ko'rmagan.</para>
+    /// </summary>
+    private static async Task<bool> FirstBotMessageAsync(
+        IAppDbContext db, string convId, bool commentFamily, CancellationToken ct)
+    {
+        var q = db.IgMessages.Where(InstagramContract.BotOutboundExpr)
+            .Where(m => m.ConversationId == convId && m.Error == "");
+        q = commentFamily
+            ? q.Where(m => m.Channel == IgConst.ChannelComment)
+            : q.Where(m => m.Channel != IgConst.ChannelComment);
+        return !await q.AnyAsync(ct);
     }
 
     /* ═════════════════════════ AI uchun suhbat tarixi ═════════════════════════ */
@@ -1129,26 +1268,8 @@ public sealed class InstagramPipeline(IServiceProvider services, ILogger<Instagr
         });
     }
 
-    /// <summary>
-    /// Meta bergan xabar vaqti ISHONCHLIMI (24 soatlik oyna shundan hisoblanadi).
-    ///
-    /// <para>Qabul qilinadi: kelajakda emas (soat farqiga <see cref="InboundFutureSkewMinutes"/>
-    /// daqiqa yon beriladi) va <see cref="InboundMaxAgeDays"/> kundan eski emas. Chegaradan
-    /// tashqarisi — buzuq ma'lumot yoki soat nosozligi: bunda <c>null</c> qaytadi va chaqiruvchi
-    /// joriy vaqtga qaytadi.</para>
-    /// </summary>
-    private static string? SaneInboundAt(string sentAtIso, DateTime now)
-    {
-        if (!InstagramContract.TryIso(sentAtIso, out var sent)) return null;
-        if (sent > now.AddMinutes(InboundFutureSkewMinutes)) return null;
-        if (sent < now.AddDays(-InboundMaxAgeDays)) return null;
-        return sentAtIso;
-    }
-
-    /// <summary>Meta vaqti shundan ko'proq KELAJAKDA bo'lsa — ishonmaymiz (server soati farqi).</summary>
-    private const int InboundFutureSkewMinutes = 60;
-    /// <summary>Meta vaqti shundan eski bo'lsa — buzuq deb hisoblaymiz (24 soatlik oynadan ancha keng).</summary>
-    private const int InboundMaxAgeDays = 30;
+    // ⚠️ Meta vaqtining ishonchliligi (`SaneInboundAt`) va ESKI hodisa qoidasi
+    // (`StaleReplyReason`) — `InstagramContract` da (sof funksiyalar, testlangan).
 
     /// <summary>Suhbatni "operator kerak" holatiga qo'yadi (sabab bilan) — inbox'da qizil chip.</summary>
     private static void Escalate(IgConversation conv, string reason)
@@ -1184,12 +1305,37 @@ public sealed class InstagramPipeline(IServiceProvider services, ILogger<Instagr
     public static async Task NotifyAdminsAsync(
         IAppDbContext db, TelegramService telegram, CenterMeta? meta, string text, CancellationToken ct)
     {
+        // ⚠️ MASTER DARVOZA: modul o'chiq bo'lsa bu yerdan ham tashqariga hech narsa ketmaydi.
+        // (Matnsiz xabar signali `InstagramEnabled` tekshiruvidan OLDIN turadi — darvoza shu
+        // yerda bo'lmasa o'chirilgan modul baribir Telegram'ga yozib turardi.)
+        if (meta is null || !meta.InstagramEnabled || !meta.InstagramNotifyTelegram) return;
+        await SendToAdminsAsync(db, telegram, text, ct);
+    }
+
+    /// <summary>
+    /// INSTAGRAM LOGIN TOKENI haqidagi signal (yangilab bo'lmadi va h.k.).
+    ///
+    /// <para>🔴 <see cref="NotifyAdminsAsync"/> bu yerda YARAMAYDI: u <c>InstagramEnabled</c>
+    /// (AI agenti) bilan darvozalangan, tokenni esa kontent joylash moduli ham ishlatadi. Faqat
+    /// kontent modulini yoqqan markazda "tokenni yangilab bo'lmadi" signali JIMGINA yo'qolardi
+    /// va 60 kundan keyin postlar sababsiz yiqila boshlardi. Darvoza —
+    /// <see cref="InstagramContract.NeedsLoginToken"/> (token yangilash bilan AYNAN bir xil).</para>
+    /// </summary>
+    public static async Task NotifyTokenAdminsAsync(
+        IAppDbContext db, TelegramService telegram, CenterMeta? meta, string text, CancellationToken ct)
+    {
+        if (meta is null || !meta.InstagramNotifyTelegram) return;
+        if (!InstagramContract.NeedsLoginToken(meta.InstagramEnabled, meta.InstagramPublishEnabled)) return;
+        await SendToAdminsAsync(db, telegram, text, ct);
+    }
+
+    /// <summary>Admin/superadminlarning Telegram chatlariga yuborish (bir chatga bir marta).
+    /// Darvozani CHAQIRUVCHI tekshiradi. Xato JIM yutiladi.</summary>
+    private static async Task SendToAdminsAsync(
+        IAppDbContext db, TelegramService telegram, string text, CancellationToken ct)
+    {
         try
         {
-            // ⚠️ MASTER DARVOZA: modul o'chiq bo'lsa bu yerdan ham tashqariga hech narsa ketmaydi.
-            // (Matnsiz xabar signali `InstagramEnabled` tekshiruvidan OLDIN turadi — darvoza shu
-            // yerda bo'lmasa o'chirilgan modul baribir Telegram'ga yozib turardi.)
-            if (meta is null || !meta.InstagramEnabled || !meta.InstagramNotifyTelegram) return;
             if (!telegram.IsConfigured) return;
 
             var regs = await db.TelegramRegistrations

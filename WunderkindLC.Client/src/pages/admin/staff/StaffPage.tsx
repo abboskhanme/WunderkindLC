@@ -80,8 +80,11 @@ export function StaffPage() {
   const canAddTeacher = can('teachers.list', 'create')
   const canAddStaff = can('staff', 'create') && canRoles
   // Login/parol — serverdagi `HasFullAccess` bilan bir xil (aks holda "saqlandi" dan keyin 403).
+  // Yalang BO'LIM kaliti (`teachers`) ham yetadi — pastga meros (`PermissionRules.HasFullSection`).
   const canTeacherCreds =
-    user?.role === 'superadmin' || user?.role === 'admin' || !!user?.permissions?.includes('teachers.list')
+    user?.role === 'superadmin' ||
+    user?.role === 'admin' ||
+    !!user?.permissions?.some((p) => p === 'teachers.list' || p === 'teachers')
 
   const [staff, setStaff] = useState<Staff[]>([])
   const [teachers, setTeachers] = useState<Teacher[]>([])
@@ -271,10 +274,12 @@ export function StaffPage() {
     const s = deleting
     if (!s) return
     return deleteStaff(s.id, reasonId)
-      .then(() => {
+      .then((res) => {
         toast.success("Xodim o'chirildi", s.fullName)
         setDeleting(null)
         setTick((x) => x + 1)
+        // Xodimning telefoni standart Local SMS agenti edi — avtomatik SMS'lar to'xtadi (jimgina emas).
+        if (res.warning) alert(res.warning)
       })
       .catch((e) => alert(apiErrorMessage(e, "O'chirib bo'lmadi")))
   }

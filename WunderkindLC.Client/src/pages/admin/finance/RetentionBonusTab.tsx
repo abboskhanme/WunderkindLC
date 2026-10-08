@@ -10,6 +10,7 @@ import { Badge } from '@/components/ui/Badge'
 import { Loader } from '@/components/ui/Loader'
 import { StatCard } from '@/components/ui/StatCard'
 import { TablePagination, usePagination } from '@/components/ui/TablePagination'
+import { localIsoDate } from '@/lib/localDate'
 
 /**
  * MOLIYA → "BONUS" — o'quvchini ushlab turish bonuslarining HISOBOTI (faqat o'qish).
@@ -29,7 +30,7 @@ const searchInput =
   'w-full rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-3 text-sm text-slate-700 outline-none focus:border-brand-400'
 
 /** Joriy oy ("YYYY-MM") — standart davr oxiri. */
-const currentMonth = new Date().toISOString().slice(0, 7)
+const currentMonth = localIsoDate(new Date()).slice(0, 7) // MAHALLIY (UTC+5), toISOString emas
 /** Joriy yil boshi ("YYYY-01") — standart davr boshi (backend ham shu davrni oladi). */
 const yearStartMonth = `${currentMonth.slice(0, 4)}-01`
 

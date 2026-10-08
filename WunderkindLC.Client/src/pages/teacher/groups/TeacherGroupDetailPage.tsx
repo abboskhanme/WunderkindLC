@@ -15,7 +15,7 @@ import {
 } from '@/api/services/teacher'
 import type { GroupJournal } from '@/api/services/journal'
 import type { GroupCurriculum } from '@/api/services/curriculum'
-import { cn, formatDate, apiErrorMessage, gradeBadgeCls, balanceTextCls, balanceDotCls, balanceTitle, HEAVY_DEBT_MONTHS } from '@/lib/utils'
+import { cn, formatDate, apiErrorMessage, gradeBadgeCls, balanceTextCls, balanceDotCls, HEAVY_DEBT_MONTHS } from '@/lib/utils'
 import { Card } from '@/components/ui/Card'
 import { GradingSection } from '@/components/grading/GradingSection'
 import type { GradingBoard } from "@/api/services/grading"
@@ -26,8 +26,10 @@ import { Modal } from '@/components/ui/Modal'
 import { PhotoViewerModal } from '@/components/ui/PhotoViewerModal'
 import { Button } from '@/components/ui/Button'
 import { JournalCellModal } from '@/pages/admin/journal/JournalCellModal'
+import { localIsoDate } from '@/lib/localDate'
 import { TeacherGroupTestsPanel } from '@/pages/teacher/tests/TeacherGroupTestsPanel'
 import { TeacherGroupStudentsTab } from './TeacherGroupStudentsTab'
+import { ballGrade } from '@/lib/studentBall'
 
 const weekdayShort = ['Du', 'Se', 'Cho', 'Pa', 'Ju', 'Sha', 'Ya']
 const uzMonths = [
@@ -36,6 +38,16 @@ const uzMonths = [
 ]
 const monthLabel = (m: string) =>
   m && m.length >= 7 ? `${uzMonths[Number(m.slice(5, 7)) - 1] ?? m} ${m.slice(0, 4)}` : m
+
+/** O'qituvchi javobida qarz SUMMASI yo'q (server `balance`ni 0 qaytaradi — teacher-portal.md §3):
+ *  rang shkalasi uchun faqat ishora (-1 = qarzdor), izoh matnida ham summa ko'rsatilmaydi. */
+const debtSign = (s: { debtor?: boolean; balance: number }) => (s.debtor || s.balance < 0 ? -1 : 0)
+const debtTitle = (s: { debtor?: boolean; balance: number; debtMonths: number }) =>
+  s.debtMonths >= HEAVY_DEBT_MONTHS
+    ? `${s.debtMonths} oylik qarz (shu guruh)`
+    : debtSign(s) < 0
+      ? 'Qarzdor (shu guruh)'
+      : "Shu guruh uchun to'langan"
 
 
 /** Mastery darajasi — rangi va yorlig'i */
@@ -151,7 +163,7 @@ export function TeacherGroupDetailPage() {
       return students.map((s, idx) => {
         const totalGrade = journal!.columns.reduce((sum, c) => {
           const e = entryMap.get(`${s.studentId}|${c.date}`)
-          return sum + (e?.grade ?? 0)
+          return sum + ballGrade(e)
         }, 0)
         return { ...s, journalTotal: totalGrade, gradingTotal: 0, combinedTotal: totalGrade, originalIndex: idx }
       })
@@ -162,7 +174,8 @@ export function TeacherGroupDetailPage() {
     return students.map((s, idx) => {
       const journalTotal = journal!.columns.reduce((sum, c) => {
         const e = entryMap.get(`${s.studentId}|${c.date}`)
-        return sum + (e?.grade ?? 0)
+        // Mezondan yozilgan baho qo'shilmaydi — checklar `gradingTotal` da (server / admin bilan bir xil).
+        return sum + ballGrade(e)
       }, 0)
       const gs = gradingStudentMap.get(s.studentId)
       const doneKeys = new Set(gs?.doneKeys ?? [])
@@ -184,7 +197,7 @@ export function TeacherGroupDetailPage() {
   )
 
   const g = journal?.group
-  const today = new Date().toISOString().slice(0, 10)
+  const today = localIsoDate(new Date())
   const absentReasons = useMemo(() => reasons.filter((r) => !r.isLate), [reasons])
   // "Kech qoldi" sabablari davomat foiziga hisoblanmaydi (JournalCellModal/DashboardController bilan bir xil).
   const lateReasonIds = useMemo(
@@ -207,7 +220,7 @@ export function TeacherGroupDetailPage() {
       }
       const present = total - absences
       const percent = total > 0 ? Math.round((present / total) * 100) : 0
-      return { studentId: st.studentId, fullName: st.fullName, photoUrl: st.photoUrl ?? '', balance: st.balance, debtMonths: st.debtMonths, total, present, absences, percent }
+      return { studentId: st.studentId, fullName: st.fullName, photoUrl: st.photoUrl ?? '', balance: st.balance, debtor: st.debtor, debtMonths: st.debtMonths, total, present, absences, percent }
     })
   }, [journalStudents, journal, entryMap, lateReasonIds])
 
@@ -584,9 +597,9 @@ export function TeacherGroupDetailPage() {
                               }
                               className={cn(
                                 'block w-32 whitespace-normal break-words text-left text-sm font-medium leading-snug hover:underline',
-                                balanceTextCls(st.balance, st.debtMonths),
+                                balanceTextCls(debtSign(st), st.debtMonths),
                               )}
-                              title={`${balanceTitle(st.balance, st.debtMonths)} — rasmni ko'rish uchun bosing`}
+                              title={`${debtTitle(st)} — rasmni ko'rish uchun bosing`}
                             >
                               {st.fullName}
                               {st.photoUrl && (
@@ -718,9 +731,9 @@ export function TeacherGroupDetailPage() {
                               onClick={() => setPhotoOf({ fullName: r.fullName, photoUrl: r.photoUrl })}
                               className={cn(
                                 'text-left text-sm font-medium hover:underline',
-                                balanceTextCls(r.balance, r.debtMonths),
+                                balanceTextCls(debtSign(r), r.debtMonths),
                               )}
-                              title={`${balanceTitle(r.balance, r.debtMonths)} — rasmni ko'rish uchun bosing`}
+                              title={`${debtTitle(r)} — rasmni ko'rish uchun bosing`}
                             >
                               {r.fullName}
                               {r.photoUrl && (
@@ -1181,7 +1194,8 @@ function RatingsTab({
       let total = 0
       for (const col of d.journal.columns) {
         const e = entryMap.get(`${studentId}|${col.date}`)
-        if (e?.grade) total += e.grade
+        // Mezondan yozilgan baho qo'shilmaydi — checklar pastda `doneTotalByStudent` da.
+        total += ballGrade(e)
       }
       if (total > 0) journalTotalByStudent.set(studentId, (journalTotalByStudent.get(studentId) ?? 0) + total)
     }

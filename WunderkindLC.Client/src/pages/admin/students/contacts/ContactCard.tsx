@@ -2,7 +2,7 @@ import { useDraggable } from '@dnd-kit/core'
 import { CSS } from '@dnd-kit/utilities'
 import { Link } from 'react-router-dom'
 import {
-  AlertTriangle, CalendarClock, Clock, History, MessageSquarePlus, Phone, PhoneCall,
+  AlertTriangle, Archive, CalendarClock, Clock, History, MessageSquarePlus, Phone, PhoneCall,
   RotateCcw, Sun, Trash2, UserPlus,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
@@ -152,6 +152,16 @@ export function ContactCardContent({
 
       {/* Muddat + urinishlar + kutish */}
       <div className="flex flex-wrap items-center gap-1.5">
+        {/* ARXIVDAGI o'quvchi — talab yopilmaydi (qaytarish qo'ng'irog'i qonuniy), lekin operator
+            kimga qo'ng'iroq qilayotganini darhol ko'rishi kerak. */}
+        {r.isArchived && (
+          <span
+            title="O'quvchi arxivda (markazdan ketgan) — qaytarish qo'ng'irog'i"
+            className="inline-flex items-center gap-1 rounded-full bg-slate-700 px-2 py-0.5 text-[10.5px] font-semibold text-white"
+          >
+            <Archive className="h-3 w-3" /> Arxivda
+          </span>
+        )}
         <span className={cn('inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10.5px] font-semibold', t.chip)}>
           <Icon className="h-3 w-3" />
           {t.label}

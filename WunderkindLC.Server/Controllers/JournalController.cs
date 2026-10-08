@@ -13,23 +13,13 @@ namespace WunderkindLC.Server.Controllers;
 [Authorize]
 [AdminPerm("classes.list")]
 [Route("api/admin/journal")]
-public class JournalController(AppDbContext db, FcmService fcm, AutoMessageService autoMsg) : ControllerBase
+public class JournalController(
+    AppDbContext db, FcmService fcm, AutoMessageService autoMsg, AuditService audit,
+    AttendanceNotifyWorker notifyWorker) : ControllerBase
 {
-    /// <summary>"Darsga kelmadi" avto-xabari (attendance_absent) — berilgan o'quvchi(lar)ga guruh+sabab bilan.
-    /// Exception yutiladi (jurnal javobini bloklamaydi). Ketma-ket await — bulk'da ham xavfsiz.</summary>
-    private async Task DispatchAbsencesAsync(string classId, string date, string? reasonId, IEnumerable<string> studentIds)
-    {
-        if (string.IsNullOrWhiteSpace(reasonId)) return;
-        var cls = await db.Classes.FindAsync(classId);
-        var groupName = cls?.Name ?? "";
-        var reasonName = (await db.AbsenceReasons.FindAsync(reasonId))?.Name ?? "Sababsiz";
-        foreach (var sid in studentIds.Distinct())
-        {
-            var s = await db.Students.FindAsync(sid);
-            if (s is not null)
-                await autoMsg.DispatchAttendanceAbsentAsync(db, s, groupName, reasonName, date, cls);
-        }
-    }
+    /// <summary>Bu controller — ADMIN jurnali (xodim ham shu yerdan yozadi): jurnal siyosati faqat
+    /// "Adminlarga ham qo'llash" yoqilganda cheklaydi (<see cref="JournalPolicy.CheckAsync"/>).</summary>
+    private const bool IsAdminPath = true;
 
     /// <summary>Fanning chorakdagi darslari (sana + dars raqami). Bir kunda bir fan bir necha marta bo'lishi mumkin.</summary>
     [HttpGet("columns")]
@@ -95,10 +85,13 @@ public class JournalController(AppDbContext db, FcmService fcm, AutoMessageServi
         {
             return BadRequest(new { message = ex.Message });
         }
+        // Bitta o'quvchi — so'rov ichida (kutish xavfi yo'q). Faqat YANGI "kelmadi" ("kech" emas).
         if (newAbsence)
-            await DispatchAbsencesAsync(req.ClassId, req.Date, req.ReasonId, one);
+            await AttendanceNotify.DispatchAbsencesAsync(db, autoMsg, req.ClassId, req.Date, req.ReasonId, one);
+        // Arxivlangan o'quvchiga (eski yozuvlarda a'zoligi tirik bo'lishi mumkin) "keldi" ham ketmaydi.
         if (req.Present)
-            await autoMsg.DispatchNewlyPresentAsync(db, req.ClassId, req.SubjectId, req.Date, req.Period, one, wasPresent);
+            await autoMsg.DispatchNewlyPresentAsync(db, req.ClassId, req.SubjectId, req.Date, req.Period,
+                await AttendanceNotify.NotArchivedAsync(db, one), wasPresent);
         return NoContent();
     }
 
@@ -114,19 +107,23 @@ public class JournalController(AppDbContext db, FcmService fcm, AutoMessageServi
         var wasPresent = !req.Absent
             ? await JournalService.PresentStudentIdsAsync(db, req.ClassId, req.SubjectId, req.Date, req.Period, req.StudentIds)
             : new HashSet<string>();
-        string? absentReasonId;
+        // Ommaviy davomat xabarlari — FONDA, BAZADAGI NAVBAT orqali (AttendanceNotify.EnqueueBulkAsync →
+        // AttendanceNotifyWorker): "kelmadi" faqat shu so'rovda YANGI kelmaganlarga, "keldi" faqat yangi
+        // kelganlarga (wasPresent — saqlashdan oldingi holat). Navbat jurnal yozuvi bilan BITTA SaveChanges
+        // da yoziladi (beforeSave). O'qituvchi ilovasi ham aynan shunday.
+        // ⚠️ So'rov ichida yuborilmaydi: 25 ta SMS bittalab ketsa so'rov Cloudflare'ning 100 soniyasidan
+        // oshar, foydalanuvchi qayta bosar va ota-onalar xabarni ikki marta olardi. ⚠️ Xotiradagi fon
+        // vazifasi (Task.Run) ham EMAS: yuborish paytida deploy bo'lsa qolganlar jimgina yo'qolardi.
         try
         {
-            absentReasonId = await JournalService.BulkAttendanceAsync(db, req);
+            await JournalService.BulkAttendanceAsync(db, req,
+                beforeSave: r => AttendanceNotify.EnqueueBulkAsync(db, req, r, wasPresent));
         }
         catch (InvalidOperationException ex)
         {
             return BadRequest(new { message = ex.Message });
         }
-        if (absentReasonId is not null)
-            await DispatchAbsencesAsync(req.ClassId, req.Date, absentReasonId, req.StudentIds);
-        if (!req.Absent)
-            await autoMsg.DispatchNewlyPresentAsync(db, req.ClassId, req.SubjectId, req.Date, req.Period, req.StudentIds, wasPresent);
+        notifyWorker.Wake();
         return NoContent();
     }
 
@@ -153,7 +150,8 @@ public class JournalController(AppDbContext db, FcmService fcm, AutoMessageServi
         try
         {
             var actor = User.FindFirst(System.Security.Claims.ClaimTypes.Name)?.Value;
-            var rec = await JournalService.RescheduleLessonAsync(db, req.ClassId, req.FromDate, req.ToDate, req.Time, actor);
+            var rec = await JournalService.RescheduleLessonAsync(
+                db, req.ClassId, req.FromDate, req.ToDate, req.Time, actor, isAdmin: IsAdminPath, audit);
             return new LessonRescheduleDto(rec.Id, rec.FromDate, rec.ToDate, rec.Time);
         }
         catch (InvalidOperationException ex)
@@ -166,7 +164,14 @@ public class JournalController(AppDbContext db, FcmService fcm, AutoMessageServi
     [HttpDelete("reschedule/{id}")]
     public async Task<IActionResult> CancelReschedule(string id)
     {
-        await JournalService.CancelRescheduleAsync(db, id);
+        try
+        {
+            await JournalService.CancelRescheduleAsync(db, id, isAdmin: IsAdminPath, audit);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
         return NoContent();
     }
 
@@ -177,9 +182,25 @@ public class JournalController(AppDbContext db, FcmService fcm, AutoMessageServi
     public async Task<ActionResult<JournalPolicyDto>> GetPolicy() => await JournalPolicy.GetAsync(db);
 
     /// <summary>Jurnal siyosatini saqlaydi (noto'g'ri qiymatlar xavfsiz defaultga tushiriladi).</summary>
+    /// <para>⚠️ Bu sozlamalar PULGA ta'sir qiladi (maoshni jurnalga bog'lash, muhlat, to'lamaganlarni
+    /// yashirish) — shuning uchun har saqlash "O'zgarishlar tarixi"ga yoziladi (Sozlamalar bo'limi,
+    /// <c>SettingsController.LogSettings</c> bilan bir xil shakl).</para>
     [HttpPut("policy")]
-    public async Task<ActionResult<JournalPolicyDto>> SavePolicy(JournalPolicyDto req) =>
-        await JournalPolicy.SaveAsync(db, req);
+    public async Task<ActionResult<JournalPolicyDto>> SavePolicy(JournalPolicyDto req)
+    {
+        var before = await JournalPolicy.GetAsync(db);
+        var meta = await JournalPolicy.ApplyAsync(db, req);
+        var changed = db.ChangeTracker.Entries<WunderkindLC.Domain.CenterMeta>()
+            .SelectMany(e => e.Properties.Where(p => e.State == EntityState.Added || p.IsModified))
+            .Select(p => p.Metadata.Name)
+            .Distinct().Order().ToList();
+        if (changed.Count > 0)
+            audit.Record("CenterMeta", "center", "update",
+                $"Sozlama o'zgartirildi — Jurnal boshqaruvi ({string.Join(", ", changed)})",
+                before: before, after: JournalPolicy.FromMeta(meta));
+        await db.SaveChangesAsync();
+        return await JournalPolicy.GetAsync(db);
+    }
 
     /* ---------- Mavzu va uyga vazifa ---------- */
 

@@ -123,10 +123,13 @@ public class ClassAnalyticsController(AppDbContext db, DataCache dataCache) : Co
         await dataCache.GetOrCreateAsync(
             "ball:students",
             // O'rtacha ball (AvgBall) endi A'ZOLIKKA ham bog'liq — StudentGroup/Group ham deps'da.
+            // LessonNote/AbsenceReason — "rating:school" bilan bir xil to'plam: dars ko'chirish/davomat
+            // sababi katalogi o'zgarsa ham eskirgan natija 10 daqiqa osilib turmasin.
             new[]
             {
                 nameof(JournalEntry), nameof(CriterionGrade), nameof(Student),
                 nameof(StudentGroup), nameof(Group), nameof(StudentBallAdjustment),
+                nameof(LessonNote), nameof(AbsenceReason),
             },
             TimeSpan.FromMinutes(10),
             db2 => StudentBallService.SchoolAsync(db2));

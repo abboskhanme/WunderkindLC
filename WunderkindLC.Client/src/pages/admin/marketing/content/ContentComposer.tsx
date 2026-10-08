@@ -697,7 +697,8 @@ export function ContentComposer() {
   }
 
   /**
-   * ⚠️ Faqat «Rejalashtirilgan» post tahrirlanadi (§5.9). Backend ham 400 qaytaradi, LEKIN
+   * ⚠️ Faqat hali joylanmagan post tahrirlanadi (§5.9: rejalashtirilgan, xato bilan qolgan,
+   * bekor qilingan — `isEditable`). Backend ham 400 qaytaradi, LEKIN
    * foydalanuvchi buni SAQLASH tugmasini bosishdan OLDIN bilishi kerak — aks holda u butun
    * formani to'ldirib, oxirida xato olardi.
    */
@@ -714,7 +715,8 @@ export function ContentComposer() {
             <div className="mk-alert-title">Bu postni endi o‘zgartirib bo‘lmaydi</div>
             Postning holati — <b>{post.statusLabel}</b>. Instagram API’si joylangan (yoki joylanayotgan)
             postni tahrirlashni qo‘llab-quvvatlamaydi: matnni ham, rasmni ham faqat <b>Instagram
-            ilovasidan</b> o‘zgartirish mumkin. Tahrirlash faqat <b>«Rejalashtirilgan»</b> holatda ochiq.
+            ilovasidan</b> o‘zgartirish mumkin. Tahrirlash faqat hali <b>joylanmagan</b> postda ochiq
+            (rejalashtirilgan, xato bilan qolgan yoki bekor qilingan).
             <div style={{ marginTop: 14 }}>
               <button className="btn btn-primary btn-sm" onClick={() => navigate(QUEUE)}>
                 <Icon name="arrowLeft" /> Navbatga qaytish
@@ -1379,7 +1381,8 @@ function StepReview({
           <div className="mk-alert-title">Joylangan postni CRM’dan o‘zgartirib bo‘lmaydi</div>
           Instagram API’si joylangan postni tahrirlashni ham, o‘chirishni ham qo‘llab-quvvatlamaydi —
           matnni ham, rasmni ham faqat <b>Instagram ilovasidan</b> o‘zgartirish mumkin. Shu sababli
-          tahrirlash faqat <b>«Rejalashtirilgan»</b> postlarda ochiq. Joylangan postni navbatdan
+          tahrirlash faqat hali <b>joylanmagan</b> postlarda ochiq (xato bilan qolgan yoki bekor qilingan
+          post saqlangach navbatga qaytadi). Joylangan postni navbatdan
           o‘chirsangiz — <b>faqat CRM yozuvi</b> o‘chadi, Instagram’dagi post o‘z joyida qoladi.
         </div>
       </div>

@@ -99,12 +99,14 @@ export async function createCtiAgent(req: {
   return data
 }
 
-/** Agentni tahrirlash — parol bo'sh qoldirilsa o'zgarmaydi. staffUserId faqat SuperAdmin uchun ishlaydi. */
+/** Agentni tahrirlash — parol bo'sh qoldirilsa o'zgarmaydi. staffUserId faqat SuperAdmin uchun ishlaydi.
+ *  `warning` — STANDART Local SMS agenti o'chirildi: avtomatik Local SMS'lar to'xtadi (ko'rsatilishi SHART). */
 export async function updateCtiAgent(
   id: string,
   req: { displayName: string; isActive: boolean; password: string; staffUserId?: string | null },
-): Promise<void> {
-  await api.put(`/cti/agents/${id}`, req)
+): Promise<{ warning?: string }> {
+  const { data } = await api.put<{ warning?: string } | ''>(`/cti/agents/${id}`, req)
+  return data || {}
 }
 
 /** Click-to-call — agentga push orqali buyruq (agent oflayn bo'lsa delivered=false). */

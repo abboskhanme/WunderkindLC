@@ -27,19 +27,9 @@ public partial class TeacherPortalController(
 {
     /// <summary>"Darsga kelmadi" avto-xabari (attendance_absent) — o'quvchi(lar)ga guruh+sabab bilan.
     /// Exception yutiladi (jurnal javobini bloklamaydi).</summary>
-    private async Task DispatchAbsencesAsync(string classId, string date, string? reasonId, IEnumerable<string> studentIds)
-    {
-        if (string.IsNullOrWhiteSpace(reasonId)) return;
-        var cls = await db.Classes.FindAsync(classId);
-        var groupName = cls?.Name ?? "";
-        var reasonName = (await db.AbsenceReasons.FindAsync(reasonId))?.Name ?? "Sababsiz";
-        foreach (var sid in studentIds.Distinct())
-        {
-            var s = await db.Students.FindAsync(sid);
-            if (s is not null)
-                await autoMsg.DispatchAttendanceAbsentAsync(db, s, groupName, reasonName, date, cls);
-        }
-    }
+    private Task DispatchAbsencesAsync(string classId, string date, string? reasonId, IEnumerable<string> studentIds) =>
+        // Qoida (arxivlangan o'quvchi chetlab o'tiladi va h.k.) — AttendanceNotify'da, admin jurnali bilan BITTA.
+        AttendanceNotify.DispatchAbsencesAsync(db, autoMsg, classId, date, reasonId, studentIds);
 
     /// <summary>Tokendagi foydalanuvchi id'si bo'yicha joriy o'qituvchini topadi.</summary>
     private async Task<Teacher?> Me()
@@ -284,7 +274,9 @@ public partial class TeacherPortalController(
 
         // FAQAT FAOL tayinlovlar: bekor qilingani o'qituvchida "menda dars bor" bo'lib
         // ko'rinib turardi (ro'yxatda holat ustuni ham yo'q).
-        var list = await SubstituteTeacherService.GetAssignmentsAsync(db, teacherId: t.Id, isActive: true);
+        // ⚠️ Asosiy o'qituvchi tomoni — qamralgan SANADA guruh egasi (tarix), saqlangan OriginalTeacherId
+        // emas: guruh o'qituvchisi almashgach yangi egasi o'z guruhidagi o'rinbosarlikni ko'rmasdi.
+        var list = await SubstituteTeacherService.ForTeacherAsync(db, t, activeOnly: true);
 
         if (!t.Permissions.Contains(TeacherPermissions.Salary))
             list = list.Select(x => x with
@@ -366,7 +358,19 @@ public partial class TeacherPortalController(
         var wasPresent = req.Present
             ? await JournalService.PresentStudentIdsAsync(db, req.ClassId, req.SubjectId, req.Date, req.Period, one)
             : new HashSet<string>();
-        var newAbsence = await JournalService.SetEntryAsync(db, req, fcm, autoMsg);
+        // teacher: true — faqat FAOL, muzlatilmagan a'zoga (JournalService.MemberWriteError). SABAB matn
+        // bilan qaytsin: ushlanmagan InvalidOperationException 500 bo'lib, sabab yo'qolardi (admin jurnali
+        // bilan bir xil — error-visibility.md §5).
+        bool newAbsence;
+        try
+        {
+            newAbsence = await JournalService.SetEntryAsync(db, req, fcm, autoMsg, teacher: true);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+        // Faqat YANGI "kelmadi" ("kech" — kelmadi emas; sabab almashishi — yangi hodisa emas).
         if (newAbsence)
             await DispatchAbsencesAsync(req.ClassId, req.Date, req.ReasonId, one);
         if (req.Present)
@@ -389,6 +393,9 @@ public partial class TeacherPortalController(
         var hidden = await JournalPolicy.PaymentHiddenStudentsAsync(db, classId, new[] { studentId });
         if (hidden.Contains(studentId))
             return BadRequest(new { message = JournalPolicy.PaymentHiddenMessage });
+        // O'qituvchi faqat o'z jurnalida KO'RADIGAN (faol, muzlatilmagan) a'zoning yozuvini tozalaydi.
+        var memberError = await JournalService.MemberWriteErrorAsync(db, classId, studentId, date, teacher: true);
+        if (memberError is not null) return BadRequest(new { message = memberError });
         await JournalService.ClearEntryAsync(db, classId, subjectId, quarter, studentId, date, period);
         return NoContent();
     }
@@ -469,6 +476,9 @@ public partial class TeacherPortalController(
                 Students = result.Students.Where(s => !hiddenIds.Contains(s.StudentId)).ToList(),
                 Entries = result.Entries.Where(e => !hiddenIds.Contains(e.StudentId)).ToList(),
             };
+        // QARZ SUMMASI o'qituvchiga (o'rinbosarga ham) BERILMAYDI — faqat "qarzdor" belgisi (Debtor) va
+        // qarzdor oylar soni (teacher-portal.md §3, substitute-teachers.md §8). Admin jurnali summani ko'radi.
+        result = result with { Students = result.Students.Select(s => s with { Balance = 0 }).ToList() };
         return result;
     }
 
@@ -499,11 +509,19 @@ public partial class TeacherPortalController(
         var wasPresent = !req.Absent
             ? await JournalService.PresentStudentIdsAsync(db, req.ClassId, req.SubjectId, req.Date, req.Period, req.StudentIds)
             : new HashSet<string>();
-        var absentReasonId = await JournalService.BulkAttendanceAsync(db, req);
-        if (absentReasonId is not null)
-            await DispatchAbsencesAsync(req.ClassId, req.Date, absentReasonId, req.StudentIds);
-        if (!req.Absent)
-            await autoMsg.DispatchNewlyPresentAsync(db, req.ClassId, req.SubjectId, req.Date, req.Period, req.StudentIds, wasPresent);
+        // teacher: true — faol bo'lmagan / begona / arxivlangan id'lar JIMGINA chetlab o'tiladi (ularga xabar ham yo'q).
+        // Xabarlar FONDA va faqat YANGI kelmagan/kelganlarga (admin jurnali bilan bitta yo'l): navbat
+        // jurnal yozuvi bilan BITTA SaveChanges da yoziladi — restart xabarni yo'qotmaydi.
+        try
+        {
+            await JournalService.BulkAttendanceAsync(db, req, teacher: true,
+                beforeSave: r => AttendanceNotify.EnqueueBulkAsync(db, req, r, wasPresent));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+        HttpContext.RequestServices.GetRequiredService<AttendanceNotifyWorker>().Wake();
         return NoContent();
     }
 
@@ -521,7 +539,10 @@ public partial class TeacherPortalController(
         try
         {
             var actor = User.FindFirst(System.Security.Claims.ClaimTypes.Name)?.Value;
-            var rec = await JournalService.RescheduleLessonAsync(db, req.ClassId, req.FromDate, req.ToDate, req.Time, actor);
+            // isAdmin: false — jurnal siyosati, maosh muhlati va "o'tgan darsni kelajakka" taqig'i
+            // (JournalService.CheckMoveAsync); amal tarixga yoziladi.
+            var rec = await JournalService.RescheduleLessonAsync(
+                db, req.ClassId, req.FromDate, req.ToDate, req.Time, actor, isAdmin: false, audit);
             return new LessonRescheduleDto(rec.Id, rec.FromDate, rec.ToDate, rec.Time);
         }
         catch (InvalidOperationException ex)
@@ -542,7 +563,14 @@ public partial class TeacherPortalController(
         if (g is null) return NotFound(new { message = "Guruh topilmadi" });
         // O'RINBOSARGA YOPIQ — ko'chirishni qo'yish bilan bir xil sabab (yuqoriga qarang).
         if (!owns) return Forbid();
-        await JournalService.CancelRescheduleAsync(db, id);
+        try
+        {
+            await JournalService.CancelRescheduleAsync(db, id, isAdmin: false, audit);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
         return NoContent();
     }
 
@@ -553,10 +581,17 @@ public partial class TeacherPortalController(
     {
         var (t, g, owns, isSub) = await ResolveOwnedGroup(groupId);
         if (t is null) return NotFound();
+        // Baholash — jurnalning bir qismi: "Jurnal" ruxsati olib qo'yilgan o'qituvchiga yopiq (ilgari
+        // taxta bu tekshiruvsiz ochilardi va jurnal bahosini ham o'zgartirardi).
+        if (!t.Permissions.Contains(TeacherPermissions.Journal)) return Forbid();
         if (g is null) return NotFound();
         // O'RINBOSARGA OCHIQ (o'qish): baho qo'yish uchun mezonlar taxtasini ko'rish shart.
         if (!owns && !isSub) return Forbid();
-        return await GradingController.BuildBoardAsync(db, g, month);
+        var board = await GradingController.BuildBoardAsync(db, g, month);
+        // TO'LOV "DARVOZASI" — jurnaldagi kabi: yashirilgan o'quvchi taxtada ham ko'rinmaydi.
+        var hidden = await JournalPolicy.PaymentHiddenStudentsAsync(db, groupId, board.Students.Select(s => s.StudentId));
+        return hidden.Count == 0 ? board
+            : board with { Students = board.Students.Where(s => !hidden.Contains(s.StudentId)).ToList() };
     }
 
     /// <summary>O'quvchining bitta mezon bahosini saqlash — FAQAT o'z guruhi uchun.</summary>
@@ -565,14 +600,19 @@ public partial class TeacherPortalController(
     {
         var (t, g, owns, _) = await ResolveOwnedGroup(req.GroupId);
         if (t is null) return NotFound();
+        if (!t.Permissions.Contains(TeacherPermissions.Journal)) return Forbid();
         if (g is null) return NotFound();
         // O'RINBOSARGA OCHIQ (yozish) — o'zi o'tgan darsning bahosi aynan uning ishi, FAQAT
         // req.Date kuni (tuzatish oynasi bilan).
         if (!owns && !await SubstituteWrite(t.Id, req.GroupId, req.Date)) return Forbid();
+        // To'lov "darvozasi": o'qituvchi ko'rmayotgan o'quvchini baholab ham bo'lmaydi.
+        var hidden = await JournalPolicy.PaymentHiddenStudentsAsync(db, req.GroupId, new[] { req.StudentId });
+        if (hidden.Contains(req.StudentId))
+            return BadRequest(new { message = JournalPolicy.PaymentHiddenMessage });
         try
         {
-            await GradingController.UpsertGradeAsync(db, req);
-            await db.SaveChangesAsync();
+            // isAdmin: false — jurnal siyosati (sana oynasi), kelajak sana, dars kuni va a'zolik qoidalari.
+            await GradingService.UpsertGradeAsync(db, req, isAdmin: false);
             return Ok(new { ok = true });
         }
         catch (InvalidOperationException ex)
@@ -587,11 +627,22 @@ public partial class TeacherPortalController(
     {
         var (t, g, owns, _) = await ResolveOwnedGroup(req.GroupId);
         if (t is null) return NotFound();
+        if (!t.Permissions.Contains(TeacherPermissions.Journal)) return Forbid();
         if (g is null) return NotFound();
         // O'RINBOSARGA OCHIQ (yozish), FAQAT req.Date kuni — yakka baho bilan bir xil qoida.
         if (!owns && !await SubstituteWrite(t.Id, req.GroupId, req.Date)) return Forbid();
-        await GradingController.BulkGradeAsync(db, g, req.CriterionId, req.Date, req.Done);
-        await db.SaveChangesAsync();
+        // To'lov "darvozasi": yashirilgan o'quvchilar CHETLAB O'TILADI (bulk-attendance bilan bir xil).
+        var memberIds = await db.StudentGroups.AsNoTracking()
+            .Where(sg => sg.GroupId == req.GroupId && sg.IsActive).Select(sg => sg.StudentId).ToListAsync();
+        var hidden = await JournalPolicy.PaymentHiddenStudentsAsync(db, req.GroupId, memberIds);
+        try
+        {
+            await GradingService.BulkGradeAsync(db, g, req.CriterionId, req.Date, req.Done, isAdmin: false, exclude: hidden);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
         return Ok(new { ok = true });
     }
 
@@ -783,19 +834,15 @@ public partial class TeacherPortalController(
     // O'qituvchi LMS kontentini yaratmaydi (uni admin qiladi); faqat o'zi dars beradigan
     // (yoki rahbarlik qiladigan) guruhlarning materialini va o'quvchilar tugatishini ko'radi.
 
-    /// <summary>O'qituvchi dars beradigan/rahbarlik qiladigan guruhlar id'lari (jadval + rahbarlik).</summary>
+    /// <summary>O'qituvchi dars beradigan guruhlar id'lari — FAQAT joriy <c>Group.TeacherId</c>.
+    /// <para>⚠️ Eski <c>Teacher.HomeroomClass</c> (matnli "guruh rahbarligi") bu yerda ATAYIN
+    /// hisobga OLINMAYDI: u UI'da tahrirlanmaydi va guruhga boshqa o'qituvchi tayinlangandan keyin
+    /// ham eskisida qolib, almashtirilgan o'qituvchiga guruh ma'lumotini ochib qo'yardi.</para></summary>
     private async Task<HashSet<string>> TaughtClassIdsAsync(Teacher t)
     {
-        var ids = new HashSet<string>(StringComparer.Ordinal);
         var groupIds = await db.Classes.Where(c => c.TeacherId == t.Id)
             .Select(c => c.Id).ToListAsync();
-        foreach (var gid in groupIds) ids.Add(gid);
-        if (!string.IsNullOrEmpty(t.HomeroomClass))
-        {
-            var hc = await db.Classes.FirstOrDefaultAsync(c => c.Name == t.HomeroomClass);
-            if (hc is not null) ids.Add(hc.Id);
-        }
-        return ids;
+        return groupIds.ToHashSet(StringComparer.Ordinal);
     }
 
     // ---------- Support (bo'sh vaqt slotlari + bron) ----------
@@ -899,7 +946,9 @@ public partial class TeacherPortalController(
 
     private static string Fmt(int total) => $"{total / 60:D2}:{total % 60:D2}";
 
-    /// <summary>Slotni o'chirish (o'tilgan darsdan tashqari). Bron qilingan bo'lsa ham o'chiriladi.</summary>
+    /// <summary>Slotni o'chirish (o'tilgan darsdan tashqari). Bron qilingan bo'lsa ham o'chiriladi —
+    /// ⚠️ o'shanda bron qilgan o'quvchiga (ilovasiga) DARS BEKOR QILINGANI bildiriladi: ilgari u hech
+    /// narsa bilmay, o'chirilgan darsga kelib turardi.</summary>
     [HttpDelete("support/slots/{id}")]
     public async Task<IActionResult> DeleteSupportSlot(string id)
     {
@@ -908,8 +957,15 @@ public partial class TeacherPortalController(
         var slot = await db.SupportSlots.FindAsync(id);
         if (slot is null || slot.TeacherId != me.Id) return NotFound();
         if (slot.Status == "done") return BadRequest(new { message = "O'tilgan darsni o'chirib bo'lmaydi" });
+        var bookedBy = slot.StudentId;
         db.SupportSlots.Remove(slot);
         await db.SaveChangesAsync();
+        if (!string.IsNullOrEmpty(bookedBy) && !SupportService.IsPast(slot, AppClock.Now))
+        {
+            var student = await db.Students.AsNoTracking().FirstOrDefaultAsync(x => x.Id == bookedBy);
+            await SupportService.NotifyAsync(db, fcm, student?.UserId, "Support darsi bekor qilindi",
+                $"{me.FullName} {SupportService.When(slot)} dagi support darsini bekor qildi. Boshqa bo'sh vaqtni bron qilishingiz mumkin.");
+        }
         return NoContent();
     }
 
@@ -1015,10 +1071,18 @@ public partial class TeacherPortalController(
         var groupId = await TestResultService.GroupIdOfAsync(db, id);
         if (groupId is null) return NotFound();
         if (!await OwnsGroup(groupId)) return Forbid();
-        var (ok, err) = await TestResultService.UpdateAsync(
+        var r = await TestResultService.UpdateDetailedAsync(
             db, id, req.Name, req.Date, req.MaxScore, req.Online,
             req.CertificateEnabled, req.CertificateTemplateId);
-        return ok ? NoContent() : BadRequest(new { message = err });
+        if (!r.Ok) return BadRequest(new { message = r.Error });
+        // Kalit/savollar soni o'zgarib ballar QAYTA HISOBLANGAN bo'lsa — berilgan sertifikatlar ham
+        // yangi ball bilan qayta yaratiladi (fonda, idempotent).
+        if (r.Regraded > 0 && await TestResultService.HasCertificatesAsync(db, id))
+        {
+            var me = await Me();
+            await testCertJobs.StartAsync(db, testCerts, id, me?.FullName ?? "O'qituvchi");
+        }
+        return NoContent();
     }
 
     /// <summary>Testni o'chirish.</summary>

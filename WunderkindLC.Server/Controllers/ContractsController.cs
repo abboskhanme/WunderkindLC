@@ -162,17 +162,19 @@ public class ContractsController(
         }
 
         var ctx = await LoadCtxAsync();
-        var number = (await db.Contracts.AnyAsync() ? await db.Contracts.MaxAsync(c => c.Number) : 0) + 1;
         var today = AppClock.Now.ToString("dd.MM.yyyy", CultureInfo.InvariantCulture);
 
         string recipientName;
         Dictionary<string, string> tokens;
+        int number;
         var target = req.Target == "staff" ? "staff" : "parent";
         if (target == "staff")
         {
             var t = await db.Teachers.FindAsync(req.RecipientKey);
             if (t is null) return NotFound(new { message = "Xodim topilmadi" });
             recipientName = t.FullName;
+            // Raqam oluvchi TOPILGANDAN keyin olinadi — 404 da raqam bekorga "kuymasin".
+            number = await ContractService.NextNumberAsync(db);
             tokens = StaffTokens(t, ctx, number, today);
         }
         else
@@ -180,6 +182,7 @@ public class ContractsController(
             var s = await db.Students.FindAsync(req.RecipientKey);
             if (s is null) return NotFound(new { message = "O'quvchi topilmadi" });
             recipientName = s.FullName;
+            number = await ContractService.NextNumberAsync(db);
             tokens = StudentTokens(s, ctx, number, today);
         }
 
@@ -191,7 +194,7 @@ public class ContractsController(
         // Word nusxa saqlanadi — admin uni keyin qayta yuklab olib, yakunlab, PDF qilib qaytadan yuklaydi.
         var docxUrl = await contracts.SaveUploadAsync(filled, ".docx");
 
-        db.Contracts.Add(new Contract
+        var contract = new Contract
         {
             Target = target,
             RecipientKey = req.RecipientKey,
@@ -204,7 +207,13 @@ public class ContractsController(
             DocxUrl = docxUrl,
             FileName = $"Shartnoma № {number}",
             TemplateName = tpl.Name,
-        });
+        };
+        db.Contracts.Add(contract);
+        // Audit — fayl MANZILISIZ (uploads-security.md: tarixni ko'rgan har kim faylni olib qolmasin).
+        audit.Record("Contract", contract.Id, "create",
+            $"Shartnoma tuzildi (yuklab olindi): № {number} — {recipientName} ({tpl.Name})",
+            studentId: target == "parent" ? req.RecipientKey : null,
+            teacherId: target == "staff" ? req.RecipientKey : null);
         await db.SaveChangesAsync();
 
         return File(filled, DocxMime, $"shartnoma-{number}.docx");
@@ -234,7 +243,6 @@ public class ContractsController(
         }
 
         var ctx = await LoadCtxAsync();
-        var number = await db.Contracts.AnyAsync() ? await db.Contracts.MaxAsync(c => c.Number) : 0;
         var today = AppClock.Now.ToString("dd.MM.yyyy", CultureInfo.InvariantCulture);
         var results = new List<SendResultDto>();
         var keys = req.RecipientKeys.Distinct().ToList();
@@ -250,11 +258,12 @@ public class ContractsController(
                     .Where(r => r.TeacherId == t.Id).Select(r => r.ChatId).Distinct().ToListAsync();
                 if (chatIds.Count == 0) { results.Add(new(key, false, null, "Telegramda ro'yxatdan o'tmagan")); continue; }
 
-                number++;
+                // Raqam NAVBAT orqali (parallel "tuzish"/"yuborish" bilan takrorlanmasin).
+                var number = await ContractService.NextNumberAsync(db);
                 var filled = Render(StaffTokens(t, ctx, number, today));
                 var ok = await DeliverAsync(chatIds, filled, number);
                 var docxUrl = await contracts.SaveUploadAsync(filled, ".docx");
-                db.Contracts.Add(new Contract
+                var contract = new Contract
                 {
                     Target = "staff",
                     RecipientKey = t.Id,
@@ -266,7 +275,11 @@ public class ContractsController(
                     DocxUrl = docxUrl,
                     FileName = $"Shartnoma № {number}",
                     TemplateName = tpl.Name,
-                });
+                };
+                db.Contracts.Add(contract);
+                audit.Record("Contract", contract.Id, "create",
+                    $"Shartnoma Telegram orqali {(ok ? "yuborildi" : "YUBORILMADI")}: № {number} — {t.FullName} ({tpl.Name})",
+                    teacherId: t.Id);
                 results.Add(new(key, ok, number, ok ? "Yuborildi" : "Yuborilmadi"));
             }
         }
@@ -282,11 +295,11 @@ public class ContractsController(
                     .Where(r => r.StudentId == s.Id).Select(r => r.ChatId).Distinct().ToListAsync();
                 if (chatIds.Count == 0) { results.Add(new(key, false, null, "Telegramda ro'yxatdan o'tmagan")); continue; }
 
-                number++;
+                var number = await ContractService.NextNumberAsync(db);
                 var filled = Render(StudentTokens(s, ctx, number, today));
                 var ok = await DeliverAsync(chatIds, filled, number);
                 var docxUrl = await contracts.SaveUploadAsync(filled, ".docx");
-                db.Contracts.Add(new Contract
+                var contract = new Contract
                 {
                     Target = "parent",
                     RecipientKey = s.Id,
@@ -298,7 +311,11 @@ public class ContractsController(
                     DocxUrl = docxUrl,
                     FileName = $"Shartnoma № {number}",
                     TemplateName = tpl.Name,
-                });
+                };
+                db.Contracts.Add(contract);
+                audit.Record("Contract", contract.Id, "create",
+                    $"Shartnoma Telegram orqali {(ok ? "yuborildi" : "YUBORILMADI")}: № {number} — {s.FullName} ({tpl.Name})",
+                    studentId: s.Id);
                 results.Add(new(key, ok, number, ok ? "Yuborildi" : "Yuborilmadi"));
             }
         }

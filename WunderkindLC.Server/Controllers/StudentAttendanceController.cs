@@ -59,10 +59,24 @@ public class StudentAttendanceController(AppDbContext db) : ControllerBase
             .Where(s => studentIds.Contains(s.Id) && !s.IsArchived).ToListAsync();
         var studentById = students.ToDictionary(s => s.Id);
 
-        // Davomat olingan o'quvchilar soni (o'tilgan darsdagi faol a'zolar) — "N tadan M tasi kelmadi".
-        var markedStudents = conductedGroupIds.Count == 0 ? 0 : await db.StudentGroups.AsNoTracking()
-            .Where(sg => conductedGroupIds.Contains(sg.GroupId) && sg.IsActive)
-            .Select(sg => sg.StudentId).Distinct().CountAsync();
+        // Davomat olingan o'quvchilar soni — "N tadan M tasi kelmadi". Faqat shu KUNI darsda KUTILGANLAR
+        // (StudentJournalBuilder.ExpectedOn — jurnal katagi bilan bir xil chegaralar): muzlatilgan (muzlatish
+        // sanasidan keyin), hali qo'shilmagan va arxivlangan o'quvchi "keldi" sanog'iga kirmaydi. Ilgari
+        // guruhning BARCHA faol a'zolari sanalar va ular ayirmada "kelganlar" bo'lib chiqardi.
+        var markedStudents = 0;
+        if (conductedGroupIds.Count > 0)
+        {
+            var memberRows = await db.StudentGroups.AsNoTracking()
+                .Where(sg => conductedGroupIds.Contains(sg.GroupId))
+                .ToListAsync();
+            var memberIds = memberRows.Select(m => m.StudentId).Distinct().ToList();
+            var archivedIds = (await db.Students.AsNoTracking()
+                    .Where(s => s.IsArchived && memberIds.Contains(s.Id)).Select(s => s.Id).ToListAsync())
+                .ToHashSet();
+            markedStudents = memberRows
+                .Where(m => !archivedIds.Contains(m.StudentId) && StudentJournalBuilder.ExpectedOn(m, day))
+                .Select(m => m.StudentId).Distinct().Count();
+        }
 
         var rows = new List<AbsentStudentDto>();
         foreach (var e in entries)

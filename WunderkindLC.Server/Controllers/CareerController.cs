@@ -34,7 +34,7 @@ namespace WunderkindLC.Server.Controllers;
 // Nomzod tomoni (Mini App) bunga bog'liq EMAS — u alohida `api/career` ([AllowAnonymous]) da.
 [AdminPerm("vacancies.list", ReadRequiresPerm = true)]
 [Route("api/admin/career")]
-public class CareerController(AppDbContext db, CareerService career, AuditService audit) : ControllerBase
+public class CareerController(AppDbContext db, CareerService career, AuditService audit, IWebHostEnvironment env) : ControllerBase
 {
     private string Actor => User.FindFirst(ClaimTypes.Name)?.Value ?? "Admin";
 
@@ -367,6 +367,8 @@ public class CareerController(AppDbContext db, CareerService career, AuditServic
         }
 
         await db.SaveChangesAsync();
+        // Nomzodga xabar FAQAT saqlangandan keyin — yiqilgan saqlashda yolg'on xabar ketmasin.
+        await career.NotifyCandidateAsync(a);
         return ToDto(a, null);
     }
 
@@ -395,7 +397,28 @@ public class CareerController(AppDbContext db, CareerService career, AuditServic
         audit.Record("JobApplication", a.Id, "delete", $"Ariza o'chirildi: #{a.Number} ({a.FullName})");
         db.JobApplications.Remove(a);
         await db.SaveChangesAsync();
+
+        // ⚠️ CV FAYLI ham o'chadi (saqlangandan KEYIN — yozuv o'chmasa fayl qolsin). Ilgari ariza
+        // o'chsa ham rezyume `/uploads` da qolib, manzilni bilgan har kim uni yuklab olaverardi
+        // (uploads-security.md). Boshqa ariza ham shu faylga ishora qilsa (nomzod bitta CV bilan
+        // ikki vakansiyaga topshirgan) — tegilmaydi.
+        if (!string.IsNullOrWhiteSpace(a.CvUrl)
+            && !await db.JobApplications.AnyAsync(x => x.CvUrl == a.CvUrl))
+            DeleteUploadedCv(a.CvUrl);
         return NoContent();
+    }
+
+    /// <summary>`/uploads/{nom}.pdf` faylini o'chiradi. Faqat fayl NOMI olinadi (yo'l bilan
+    /// `uploads` dan tashqariga chiqib bo'lmaydi); xato arizani o'chirishga to'sqinlik qilmaydi.</summary>
+    private void DeleteUploadedCv(string cvUrl)
+    {
+        if (!cvUrl.StartsWith("/uploads/", StringComparison.Ordinal)) return;
+        var name = Path.GetFileName(cvUrl);
+        if (string.IsNullOrEmpty(name)) return;
+        var path = Path.Combine(env.ContentRootPath, "uploads", name);
+        try { if (System.IO.File.Exists(path)) System.IO.File.Delete(path); }
+        catch (IOException) { /* fayl band — yozuv baribir o'chdi */ }
+        catch (UnauthorizedAccessException) { }
     }
 
     /// <summary>Bo'lim tepasidagi jamlanma — bosqich bo'yicha arizalar soni.</summary>

@@ -4,6 +4,7 @@ import { getActionReasons } from '@/api/services/actionReasons'
 import { Modal } from './Modal'
 import { Button } from './Button'
 import { cn } from '@/lib/utils'
+import { localIsoDate } from '@/lib/localDate'
 
 interface Props {
   open: boolean
@@ -52,7 +53,7 @@ export function ReasonPromptModal({
     inFlightRef.current = false
     setSubmitting(false)
     setRetentionBonus(false)
-    setDate(defaultDate ?? new Date().toISOString().slice(0, 10))
+    setDate(defaultDate ?? localIsoDate(new Date()))
     getActionReasons()
       .then((all) => setReasons(all.filter((r) => r.category === category)))
       .catch(() => setReasons([]))

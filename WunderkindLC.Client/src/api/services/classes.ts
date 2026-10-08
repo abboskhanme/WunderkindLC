@@ -359,9 +359,12 @@ export async function freezeMember(
 }
 
 /**
- * O'quvchini boshqa guruhga o'tkazish: joriy guruh a'zoligi `freezeDate`dan muzlatiladi,
- * maqsad guruh (`toGroupId`) `activateDate`dan aktivlashtiriladi (ikkalasi ham qisman oy
- * to'lovi bilan — oddiy muzlatish/aktivlashtirish bilan bir xil hisob-kitob).
+ * O'quvchini boshqa guruhga o'tkazish: o'quvchi joriy guruhdan `freezeDate`da CHIQADI (hisob shu
+ * sanagacha), maqsad guruh (`toGroupId`) `activateDate`dan aktivlashtiriladi (qisman oy, orqaga
+ * sanalgan bo'lsa oraliq oylar ham). Bir xil fandagi chegirma yangi guruhga o'zi ko'chadi.
+ *
+ * `reasonId` — eski guruhdan chiqish SABABI («Ketish sabablari» hisoboti shundan oladi; boshqa
+ * kursga o'tish kurs kesimida ketish bo'lib sanaladi). Ixtiyoriy.
  */
 export async function transferMember(
   fromGroupId: string,
@@ -369,6 +372,7 @@ export async function transferMember(
   toGroupId: string,
   freezeDate: string,
   activateDate: string,
+  reasonId?: string,
 ): Promise<void> {
   if (USE_MOCK) {
     await delay(150)
@@ -378,6 +382,7 @@ export async function transferMember(
     toGroupId,
     freezeDate,
     activateDate,
+    reasonId,
   })
 }
 
@@ -410,6 +415,37 @@ export async function addMemberExtension(
   })
 }
 
+/** Bitta uzaytirish hodisasi (server `StudentExtensionDto`) — nomlar yozilgan paytdagi SNAPSHOT. */
+export interface MemberExtension {
+  id: string
+  fromGroupName: string
+  toGroupId: string
+  toGroupName: string
+  date: string
+  byUserName: string
+  note: string
+  createdAt: string
+}
+
+/** O'quvchining SHU GURUHDAN yozilgan uzaytirishlari (eng yangisi tepada). */
+export async function getMemberExtensions(fromGroupId: string, studentId: string): Promise<MemberExtension[]> {
+  if (USE_MOCK) {
+    await delay(100)
+    return []
+  }
+  const { data } = await api.get<MemberExtension[]>(`/admin/classes/${fromGroupId}/members/${studentId}/extensions`)
+  return data
+}
+
+/** XATO yozilgan uzaytirishni bekor qilish (qator o'chadi, KPI «Bonus B» sanog'i kamayadi). */
+export async function deleteMemberExtension(fromGroupId: string, studentId: string, extensionId: string): Promise<void> {
+  if (USE_MOCK) {
+    await delay(100)
+    return
+  }
+  await api.delete(`/admin/classes/${fromGroupId}/members/${studentId}/extensions/${extensionId}`)
+}
+
 /**
  * OMMAVIY (bir paytda ko'p o'quvchi) muzlatish/aktivlashtirish natijasi.
  * Amal BITTA xato tufayli TO'XTAMAYDI — shuning uchun javob "nima bo'ldi" ni to'liq ochib beradi.
@@ -433,11 +469,15 @@ export interface BulkMembershipResult {
   movedAdvance: number
   catchUpMonths: number
   errors: string[]
+  /** Aktivlashtirish TAQIQLANGANI uchun o'tkazilganlar — guruh yoki o'quvchi arxivda (`skipped` ga kirmaydi). */
+  skippedArchived?: number
+  /** O'sha a'zoliklar nomma-nom, sababi bilan ("Ali (A1): guruh arxivda"). */
+  skipNotes?: string[] | null
 }
 
 const EMPTY_BULK: BulkMembershipResult = {
   requested: 0, memberships: 0, changed: 0, students: 0, skipped: 0, failed: 0,
-  noMembership: 0, restored: 0, movedAdvance: 0, catchUpMonths: 0, errors: [],
+  noMembership: 0, restored: 0, movedAdvance: 0, catchUpMonths: 0, errors: [], skippedArchived: 0, skipNotes: [],
 }
 
 /**
@@ -498,9 +538,12 @@ export function bulkMembershipSummary(r: BulkMembershipResult, action: 'freeze' 
   const verb = action === 'freeze' ? 'muzlatildi' : 'aktivlashtirildi'
   const parts = [`${r.changed} ta a'zolik ${verb}` + (r.students && r.students !== r.changed ? ` (${r.students} ta o'quvchi)` : '')]
   if (r.skipped > 0) parts.push(`${r.skipped} tasi allaqachon shu holatda edi`)
+  if ((r.skippedArchived ?? 0) > 0) parts.push(`${r.skippedArchived} tasi o'tkazib yuborildi (guruh yoki o'quvchi arxivda)`)
   if (r.noMembership > 0) parts.push(`${r.noMembership} tasida mos a'zolik topilmadi`)
   if (r.failed > 0) parts.push(`${r.failed} tasida xato`)
   let text = parts.join(', ') + '.'
+  const notes = r.skipNotes ?? []
+  if (notes.length > 0) text += `\n\n${notes.join('\n')}`
   if (r.errors.length > 0) text += `\n\n${r.errors.join('\n')}`
   return text
 }

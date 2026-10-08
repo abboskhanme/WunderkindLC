@@ -74,7 +74,7 @@ WunderkindLC.slnx
 - **Moliya / Kassa** — kirim/chiqim, oylik hisoblash, **kurs/guruh bo'yicha daromad hisoboti**
 - **Maosh** — qat'iy yoki guruhdan yig'ilgan to'lovning foizi
 - **Xabarlar** — SMS (Eskiz yoki Local SIM) · Telegram · Push, avto-xabar qoidalari (13 trigger)
-- **Call Center** — Bulut (MoiZvonki) va **Local Call** (Android agent-telefonlar, `README-CTI.md`)
+- **Call Center** — **Local Call** (Android agent-telefonlar, `README-CTI.md`) — yagona telefoniya
 - **Marketing — Instagram AI agenti** — izoh/DM ga avtojavob, inbox, javob qoidalari,
   bilim bazasi, avtomatik lid yaratish (`instagram/`)
 - **Daraja testi** + **onlayn test** (Telegram bot orqali PDF, avtomatik baholash)
@@ -115,7 +115,7 @@ Batafsil: [`.claude/rules/billing.md`](.claude/rules/billing.md)
 ## 🔐 Maxfiy kalitlar — faqat `.env`
 
 Barcha maxfiy qiymatlar (Telegram bot tokeni, FCM service account JSON, Gemini/Azure kaliti,
-Eskiz login/paroli, turniket login/paroli, MoiZvonki) **`.env` dan** o'qiladi — yagona joy
+Eskiz login/paroli, turniket login/paroli) **`.env` dan** o'qiladi — yagona joy
 `AppSecrets` (Application/Services). Ular **bazada saqlanmaydi** va Sozlamalar sahifasidan
 kiritilmaydi: sahifada faqat "sozlangan / sozlanmagan" holati va qo'shiladigan `.env` qatori
 ko'rinadi. Sabab — baza dump'i yoki Telegram'ga yuboriladigan zaxira nusxa ichida kalit sizib

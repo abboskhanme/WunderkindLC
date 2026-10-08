@@ -12,7 +12,11 @@ namespace WunderkindLC.Application.Services;
 /// (Result=="pending") sinov darslari uchun lidga "Sinov darsi eslatmasi" hodisasiga belgilangan
 /// andoza bo'yicha SMS yuboradi. {dars_sana}/{dars_vaqti} sinov darsi vaqtidan, {dars_kunlari}
 /// (bo'lsa) guruh kunlaridan to'ladi. Andoza yo'q / Eskiz sozlanmagan bo'lsa — jim o'tadi.
-/// Kuniga bir marta ishlaydi (oxirgi ishlagan sana xotirada) — har sinov uchun bir marta (bir kun avval).
+/// <para>⚠️ Har sinov uchun bir marta (bir kun avval) — belgi BAZADA (<see cref="JobRunMarker"/>):
+/// har sinov yuborishdan OLDIN band qilinadi (<c>trial_reminder:{trialId}</c>), ish tugagach
+/// <c>trial_reminder</c> belgisi qo'yiladi. Ilgari belgi xotirada edi va har deploy (09:00 dan
+/// keyin) eslatma SMS'ini qayta yuborardi. Sinov boshqa kunga ko'chirilsa — yangi sana uchun
+/// belgi yana bo'sh, ya'ni eslatma o'sha kunning arafasida yana ketadi.</para>
 /// </summary>
 public class TrialReminderService(
     IServiceProvider services,
@@ -20,7 +24,12 @@ public class TrialReminderService(
     ILogger<TrialReminderService> logger) : BackgroundService
 {
     private const int SendHour = 9;
-    private DateOnly _lastRun = DateOnly.MinValue;
+
+    /// <summary>Ish darajasidagi belgi kaliti (oluvchi kaliti — <c>trial_reminder:{trialId}</c>).</summary>
+    public const string JobKey = AutoMessageTriggers.TrialReminder;
+
+    /// <summary>Shu jarayonda bugun tekshirildimi — faqat TEZLIK uchun (haqiqiy belgi bazada).</summary>
+    private DateOnly _checked = DateOnly.MinValue;
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -28,14 +37,9 @@ public class TrialReminderService(
         {
             try
             {
-                var now = AppClock.Now;
-                var today = DateOnly.FromDateTime(now);
-                if (now.Hour >= SendHour && _lastRun != today)
-                {
-                    _lastRun = today;
-                    await RunAsync(today, stoppingToken);
-                }
+                await TickAsync(AppClock.Now, stoppingToken);
             }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { break; }
             catch (Exception ex)
             {
                 logger.LogError(ex, "Sinov darsi eslatma SMS siklida xatolik");
@@ -44,6 +48,26 @@ public class TrialReminderService(
             try { await Task.Delay(TimeSpan.FromHours(1), stoppingToken); }
             catch (TaskCanceledException) { break; }
         }
+    }
+
+    /// <summary>09:00 dan keyin, bugungi ish bazada bajarilmagan bo'lsa — yuboradi va belgilaydi.</summary>
+    private async Task TickAsync(DateTime now, CancellationToken ct)
+    {
+        var today = DateOnly.FromDateTime(now);
+        if (now.Hour < SendHour || _checked == today) return;
+        using (var scope = services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<IAppDbContext>();
+            if (await JobRunMarker.IsDoneAsync(db, JobKey, today, ct)) { _checked = today; return; }
+        }
+        await RunAsync(today, ct);
+        using (var scope = services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<IAppDbContext>();
+            await JobRunMarker.TryClaimAsync(db, JobKey, today, ct);
+            await JobRunMarker.PruneAsync(db, JobKey + ":", today.AddDays(-2), ct);
+        }
+        _checked = today;
     }
 
     private async Task RunAsync(DateOnly today, CancellationToken ct)
@@ -73,6 +97,8 @@ public class TrialReminderService(
             // YO'QOTILGAN lid ham faol ish emas — "bormayman" degan odamga eslatma SMS ketmasin
             // (tiklansa sinov yozuvi joyida, eslatma yana ishlaydi).
             if (LeadLoss.IsLost(lead)) continue;
+            // OLUVCHI BELGISI — yuborishdan OLDIN (restart/ikkinchi nusxa takror SMS yubormasin).
+            if (!await JobRunMarker.TryClaimAsync(db, JobRunMarker.For(JobKey, trial.Id), today, ct)) continue;
             var group = string.IsNullOrWhiteSpace(trial.GroupId) ? null
                 : await db.Classes.FirstOrDefaultAsync(c => c.Id == trial.GroupId, ct);
             await autoMsg.DispatchLeadAsync(db, AutoMessageTriggers.TrialReminder, lead,

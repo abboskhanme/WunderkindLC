@@ -60,8 +60,10 @@ public static class MembershipBilling
     /// <param name="pricing">Kurslarning sinf oraliqlari, OLDINDAN yuklangan bo'lsa (ommaviy amal —
     /// <paramref name="lessonFee"/> bilan bir xil sabab). <c>null</c> — yakka so'rov, natija bir xil.</param>
     /// <summary>
-    /// A'zolik GURUHDAN CHIQADI — YAGONA yo'l: guruhdan chiqarish (<c>ClassesController.RemoveMember</c>)
-    /// va guruh almashtirishning ESKI tomoni (<c>TransferMember</c>) AYNAN shuni chaqiradi.
+    /// A'zolik GURUHDAN CHIQADI — YAGONA yo'l: guruhdan chiqarish (<c>ClassesController.RemoveMember</c>),
+    /// guruh almashtirishning ESKI tomoni (<c>TransferMember</c>), «Tugatish»da kursni tugatmagan
+    /// (sinov/muzlatilgan) a'zolar (<c>CompleteAndTransfer</c>) va o'quvchini arxivlash AYNAN shuni
+    /// chaqiradi. Uchala holat (<c>active</c>/<c>trial</c>/<c>frozen</c>) ham to'g'ri yopiladi.
     /// <list type="bullet">
     ///   <item>AKTIV a'zolikda hisob muzlatishdagi kabi yopiladi (<see cref="SettleFreezeAsync"/>):
     ///     chiqish oyi faqat <paramref name="leftAt"/> gacha qatnashilgan darslar uchun, keyingi
@@ -77,6 +79,10 @@ public static class MembershipBilling
     public static async Task<FreezeSettlement> LeaveGroupAsync(
         IAppDbContext db, Student student, Group group, StudentGroup membership, string leftAt)
     {
+        // Allaqachon chiqqan a'zolik — qayta "chiqarilmaydi": chiqish sanasi (va u bilan bog'liq
+        // hisob chegarasi) ustidan yozilmasin. O'quvchini arxivlash (`StudentsController.Archive`)
+        // ham shu yo'lni chaqiradi — u faqat tirik a'zoliklarni uzatadi, lekin himoya shu yerda.
+        if (!membership.IsActive) return new FreezeSettlement(false, 0m, new List<string>());
         var settlement = membership.Status == "active"
             ? await SettleFreezeAsync(db, student, group, membership.ActivatedAt, leftAt, membership: membership)
             : new FreezeSettlement(false, 0m, new List<string>());

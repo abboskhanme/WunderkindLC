@@ -311,8 +311,9 @@ public static class LeadFormService
             lead.Note = ((lead.Note ?? "").TrimEnd() + "\n" + noteLine).Trim();
             if (string.IsNullOrWhiteSpace(lead.InterestSubject) && courseName.Length > 0)
                 lead.InterestSubject = courseName;
-            if (!string.IsNullOrWhiteSpace(fullName)
-                && (string.IsNullOrWhiteSpace(lead.FullName) || lead.FullName.StartsWith("Noma'lum")))
+            // Vaqtinchalik ism (Instagram/reklama/daraja testi placeholder'i) haqiqiy ism bilan
+            // almashtiriladi — `LeadIntake.IsPlaceholderName` (IG-4).
+            if (!string.IsNullOrWhiteSpace(fullName) && LeadIntake.IsPlaceholderName(lead.FullName))
                 lead.FullName = fullName;
             if (string.IsNullOrWhiteSpace(lead.FatherPhone) && parentPhone.Length > 0)
                 lead.FatherPhone = parentPhone;
@@ -341,6 +342,8 @@ public static class LeadFormService
                 Stage = firstStage,
                 CreatedAt = now,
             };
+            // Shu telefon bilan avval o'quvchi bo'lgan bo'lsa (aka-uka, qayta ariza) — izohda ko'rinsin.
+            await LeadIntake.MarkFormerStudentAsync(db, lead, req.Phone);
             db.Leads.Add(lead);
             db.LeadEvents.Add(new LeadEvent
             {

@@ -4,6 +4,7 @@ import { Loader } from '@/components/ui/Loader'
 import { FilterInput } from '@/components/ui/list/FilterGrid'
 import { useAsync } from '@/hooks/useAsync'
 import { formatMoney } from '@/lib/utils'
+import { localIsoDate } from '@/lib/localDate'
 
 /** "yyyy-MM-dd" → "yyyy-MM" (oy kaliti). */
 function monthOf(day: string): string {
@@ -18,7 +19,8 @@ function monthOf(day: string): string {
  * ikki xil son ko'rsatmasin.
  */
 export function IncomePlanPage() {
-  const [day, setDay] = useState(() => new Date().toISOString().slice(0, 10))
+  // MAHALLIY sana (UTC+5) — `toISOString()` oy boshida 00:00–05:00 orasida O'TGAN oyni berardi.
+  const [day, setDay] = useState(() => localIsoDate(new Date()))
   const { data, loading, error } = useAsync(() => getIncomePlan(monthOf(day)), [day])
 
   if (loading && !data) return <Loader className="min-h-[240px]" />

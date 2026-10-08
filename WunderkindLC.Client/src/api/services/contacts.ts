@@ -57,6 +57,11 @@ export interface ContactRequestItem {
    * (tizim ustunining id'si holat kalitining o'zi), ya'ni karta hech qachon yo'qolmaydi.
    */
   stageId?: string
+  /**
+   * O'quvchi ARXIVDA (markazdan ketgan). Talab avtomatik yopilmaydi — qaytarish (win-back)
+   * qo'ng'irog'i qonuniy ish, lekin operator kimga qo'ng'iroq qilayotganini bilishi kerak.
+   */
+  isArchived?: boolean
 }
 
 /** Navbatning MUDDAT guruhlari — "bugun kimga qo'ng'iroq qilish kerak?". */
@@ -148,7 +153,8 @@ export async function getContactRequests(params: {
   /** ANIQ kun ("yyyy-MM-dd") — "yaqin kunlar" chizig'idan tanlanganda. */
   dueDate?: string
   /**
-   * Ko'pi bilan nechta qator (server: 1..500, standart 200).
+   * Ko'pi bilan nechta YOPILGAN (done/failed) qator (server: 1..500, standart 200).
+   * ⚠️ OCHIQ talablar chegarasiz HAMMASI qaytadi — eski ochiq talab taxtadan tushib qolmasin.
    *
    * Kanban taxtasi BUTUN navbatni bir so'rovda oladi va ustunlarga o'zi bo'ladi
    * (`lib/contactDue.ts`), shuning uchun u chegarani maksimumga qo'yadi.

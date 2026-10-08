@@ -41,6 +41,23 @@ public sealed class InstagramPublishApi(HttpClient http, ILogger<InstagramPublis
     private static DateTime _lastSentUtc = DateTime.MinValue;
     private static readonly TimeSpan MinInterval = TimeSpan.FromSeconds(1);
 
+    /// <summary>
+    /// OXIRGI muvaffaqiyatsiz so'rovning Meta xato KODI (<c>error.code</c>), muvaffaqiyatda va
+    /// tarmoq xatosida <c>0</c>.
+    ///
+    /// <para><b>Nega kerak:</b> <c>Error</c> — foydalanuvchiga ko'rsatiladigan O'ZBEKCHA matn, uni
+    /// tahrirlash normal ish; qaror esa (masalan "token bekor qilingan — post yiqilmasin")
+    /// matnga emas, Meta bilan SHARTNOMA bo'lgan kodga tayanadi
+    /// (<see cref="InstagramPublishContract.IsConnectionError"/>; <c>MetaInsightsApi.LastErrorCode</c>
+    /// bilan bir xil naqsh).</para>
+    /// <para>⚠️ Instansiya darajasida: mijoz scoped xizmat ichida ishlatiladi, har so'rov boshida
+    /// nolga tushiriladi.</para>
+    /// </summary>
+    public int LastErrorCode { get; private set; }
+
+    /// <summary>Oxirgi xatoning <c>error_subcode</c> qiymati (bo'lmasa 0).</summary>
+    public int LastErrorSubcode { get; private set; }
+
     /* ═════════════════════════ 1) Konteyner yaratish ═════════════════════════ */
 
     /// <summary>
@@ -274,6 +291,8 @@ public sealed class InstagramPublishApi(HttpClient http, ILogger<InstagramPublis
     {
         var maxAttempts = retry ? MaxAttempts : 1;
         var delayMs = 1000;
+        LastErrorCode = 0;
+        LastErrorSubcode = 0;
 
         for (var attempt = 1; ; attempt++)
         {
@@ -286,6 +305,8 @@ public sealed class InstagramPublishApi(HttpClient http, ILogger<InstagramPublis
                 if (resp.IsSuccessStatusCode) return (true, body, "");
 
                 var (code, sub, msg) = ParseError(body);
+                LastErrorCode = code;
+                LastErrorSubcode = sub;
                 // ⚠️ Manzil LOGGA YOZILMAYDI — GET so'rovlarida access_token query'da ketadi.
                 logger.LogWarning("Instagram publish API xato ({Status}/{Code}/{Sub}): {Msg}",
                     (int)resp.StatusCode, code, sub, msg);

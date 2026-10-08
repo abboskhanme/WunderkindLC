@@ -193,6 +193,34 @@ bilmasdan barcha fanlarga chegirma berib yuborardi.
 (istisno) hozircha YO'Q. Buning o'rniga har fanga alohida qator beriladi. Kerak bo'lsa bu
 ALOHIDA ish sifatida ko'rib chiqilsin (bu qoidaga tayanadi, uni almashtirmaydi).
 
+## 5.5. GURUH ALMASHGANDA CHEGIRMA KO'CHADI — `DiscountTransfer` (2026-10-07)
+
+«Guruh almashtirish» (`TransferMember`) va «Tugatish (sertifikat bilan)» da eski guruhga qaratilgan,
+o'tkazish oyidan boshlab hali kuchdagi (`EndMonth` bo'sh yoki ≥ oy) AMALDAGI qator **IKKIGA BO'LINADI**
+(2026-10-08, audit R1-3): eski qamrovdagi qator `EndMonth = o'tkazish oyi` bilan yopiladi (holati `active`
+qoladi), yangi guruhga qaratilgan YANGI qator o'tkazish oyidan ochiladi (qiymat, sabab, muddat oxiri va
+chegirmani BERGAN odam o'sha-o'sha). O'tkazish oyida IKKALASI ham amalda — har biri O'Z guruhining
+hisobiga. Ko'zgu qayta quriladi, audit `StudentDiscount` — ikki qator (`update` yakunlash + `create`).
+Ilgari yangi guruh to'liq narxda hisoblanar, profil esa chegirmani hamon "amalda" deb ko'rsatardi.
+
+- ⚠️ **NEGA JOYIDA ko'chirilmaydi:** o'sha oyda keyin chegirma tahrirlansa yoki sinf o'zgarsa
+  (`ReapplyCurrentMonthAsync`, `GradeRepricing`) eski guruhning qisman oy hisobi chegirmasiz qayta
+  hisoblanib, o'quvchiga YOLG'ON QARZ yozilardi (qator endi boshqa guruhga qaratilgan edi).
+- Chegirma o'tkazish oyida hali BOSHLANMAGAN bo'lsa (`StartMonth` keyin) — bo'linmaydi, joyida qayta
+  qaratiladi (eski guruhga u hech qachon tushmagan).
+- To'qnashuv (`DiscountTransfer.BlocksTarget`) — yangi guruh qamrovida o'tkazish oyidan KEYIN ham kuchda
+  bo'ladigan qator. O'sha oyda/oldin tugaydigani (A→B→A qaytishi) to'siq EMAS; joriy oydan oldin tugagani
+  `replaced` qilinadi (qamrovda bitta amaldagi qator qolsin), joriy oyda tugaydigani o'z oyi uchun qoladi.
+
+- ⚠️ **FAQAT BIR XIL FAN (kurs)** — boshqa fan = boshqa qoida (yuqoridagi "zarar teng emas" sababi):
+  matematikaga berilgan chegirma ingliz tiliga jimgina o'tmaydi; ko'chirilmagani auditda aytiladi.
+  Ikkala guruh ham kurssiz bo'lsa — boshqa fan ekaniga dalil yo'q, ko'chadi.
+- Yangi guruhda o'tkazish oyidan keyin ham kuchda bo'ladigan chegirma bo'lsa — ko'chirilmaydi (invariant buzilmasin).
+- ⚠️ TARTIB: eski guruhning chiqish (qisman) hisobi yozilgandan KEYIN, yangi guruh aktivlashtirish
+  hisobidan OLDIN — ikkalasi ham chegirmani shu paytdagi qamrovdan oladi.
+- Eski guruh oylarining hisobi `MonthlyCharge.Discount` da yozilgan — tarix buzilmaydi.
+- Guruh O'CHIRILGANDA unga qaratilgan amaldagi chegirma `cancelled` bo'ladi ("Guruh o'chirildi").
+
 ## 6. Eski o'quvchi formasi chegirmani ENDI YOZMAYDI
 
 Foydalanuvchi aniq aytdi: chegirma o'quvchini tahrirlash formasidan emas, profildagi
@@ -234,6 +262,14 @@ bu XATO emas.
 
 ⚠️ `Locked` (superadmin qo'lda tahrirlagan) qatorlar TEGILMAYDI va `Amount` (narx) hech qachon
 o'zgarmaydi — faqat `Discount`. O'TGAN oylar ham tegilmaydi: ular tarix.
+
+⚠️ **KELGUSI (oldindan to'langan) oylar HAR DOIM qayta hisoblanadi (2026-10-07)** —
+`ReapplyFutureMonthsAsync`, `applyCurrentMonth` dan QAT'I NAZAR (berish, tahrirlash, bekor qilish).
+Bunday hisobni faqat avans to'lov ochadi (`EnsureChargeAsync`), "keyingi oydan amal qiladi" esa aynan
+o'sha oy. Ilgari u YARATILGAN paytdagi chegirma bilan qotib qolardi: chegirma berilsa o'quvchi oldindan
+to'lagan oyi uchun ortiqcha, bekor qilinsa kam to'lagan bo'lib qolardi (sinf narxi esa —
+`GradeRepricing` — kelgusi oylarni allaqachon qayta hisoblardi). Auditda "oldindan ochilgan N ta
+kelgusi oy hisobi ham to'g'rilandi" deb yoziladi.
 
 ⚠️ Chegirma o'zgarishi **balansni** o'zgartiradi — klient amaldan keyin o'quvchi ma'lumotini
 qayta yuklaydi.
@@ -346,10 +382,29 @@ qo'shiladi. Shuning uchun `DiscountBook`/`Resolve` uni bilmaydi va bilmasligi ke
 ⚠️ **To'liq to'langan oyga QO'LLANMAYDI** (400). Aks holda chegirma jimgina "avans" bo'lib
 qolardi; to'langan pulni qaytarish — «Vozvrat». Qisman to'langan oyda faqat QOLDIQ ayriladi.
 
-⚠️ **Hisob qatori `Locked = true` bo'ladi** — narxni joriy oyga qo'llash, `ReapplyCurrentMonthAsync`,
-muzlatishdagi purge va h.k. qulfsiz qatorning `Discount` ini qayta hisoblab chegirmani jimgina
-o'chirib yuborardi. Qo'lda oylik tahriri (§8.5) esa registr chegirmasiga AMALDAGI darslar
+⚠️ **Hisob qatori `Locked = true` bo'ladi** — narxni joriy oyga qo'llash va `ReapplyCurrentMonthAsync`
+qulfsiz qatorning `Discount` ini qayta hisoblab chegirmani jimgina o'chirib yuborardi; ular qulfli
+qatorga tegmaydi. Qo'lda oylik tahriri (§8.5) esa registr chegirmasiga AMALDAGI darslar
 chegirmalarini QO'SHADI (`LessonDiscountService.ActiveAmountAsync`).
+
+⚠️ **MUZLATISH / CHIQISH / GURUH ALMASHTIRISH / AKTIVLASHTIRISH qulfli qatorni O'TKAZIB YUBORMAYDI
+(2026-10-07, avval hujjat va kod bir-biriga zid edi).** Ilgari bu yo'llar har qanday `Locked` qatorni
+butunlay tashlab ketardi: chegirma qo'yilgan oyda 15-sanada muzlatilsa oy TO'LIQ qolardi, guruh
+almashtirilsa esa yangi guruh oyning qolgan qismini ham yozardi — IKKI MARTA hisob. Endi qulf sababi
+ajratiladi (`LessonDiscountService.LockExtra`, sof funksiya):
+
+| Qulf | Nima bo'ladi |
+|---|---|
+| FAQAT kelmagan darslar chegirmasidan (birinchi chegirmaning `WasLocked = false`, amaldagisi bor) | qator odatdagidek QAYTA hisoblanadi (qisman oy), amaldagi chegirmalar yig'indisi chegirmaga QO'SHILADI (yangi summaga qirqilib) — `EditCharge` naqshi; qulf qoladi |
+| Qo'lda tahrir (`WasLocked = true` yoki amaldagi chegirma yo'q) | avvalgidek TEGILMAYDI |
+
+- Muzlatish/chiqishdan KEYINGI oyning shunday qatori ham BEKOR qilinadi (`PurgeChargesAfterMonthAsync`)
+  va o'sha oyning chegirmalari yopiladi (`CancelledAt`, "Tizim: oy hisobi bekor qilindi") — aks holda
+  "amaldagi" chegirma keyin yoziladigan yangi hisobga yolg'on qo'shilardi.
+- ⚠️ Ma'lum chekka holat: chegirmadan KEYIN qo'lda oylik tahriri qilingan qator "chegirma qulfi" deb
+  ko'rinadi (tahrir `WasLocked` ni yozmaydi) va muzlatishda qisqaradi.
+- Testlar: `AuditFixT3Tests` (`Chegirma_qulflagan_oy_MUZLATISHDA_qisqaradi…`, `QOLDA_tahrirlangan…`,
+  `Chegirmali_KELGUSI_oy…`).
 
 **Bekor qilish** (oynadagi «Bekor qilish»): summa hisobga va qarzga QAYTADI, qator iz sifatida
 qoladi (`CancelledAt`). Qulf: shu oyda boshqa amaldagi chegirma bo'lsa qoladi, aks holda
@@ -357,7 +412,12 @@ BIRINCHI chegirmadan oldingi holat (`WasLocked`) tiklanadi — avval qo'lda tahr
 qulfsiz bo'lib qolmasin.
 
 - Hisobi hali yozilmagan oy (masalan kelgusi oy) — hisob avans to'lovdagi kabi yaratiladi
-  (`EnsureChargeAsync`), keyin chegirma qo'llanadi.
+  (`EnsureChargeAsync`), keyin chegirma qo'llanadi. ⚠️ `EnsureChargeAsync` faqat accrual yozadigan oyga
+  hisob ochadi (`billing.md` «AVANS HISOBI»): sinovdagi a'zolikka chegirma qo'yib bo'lmaydi — "hisob
+  yaratib bo'lmadi" xatosi. ⚠️ Hisobi YO'Q aktivlashtirish oyida (2026-10-08, audit R1-5) esa QISMAN hisob
+  ochiladi va preview (`QuoteAsync`) "to'lanmagan qoldiq"ni AYNAN shu qisman summadan oladi
+  (`TuitionService.ActivationChargePreviewAsync`) — to'liq oylikdan olsa chegirma qisman hisobdan oshib,
+  balansga hech qachon yechilmagan pul qo'shilardi.
 - Maosh foizi bazasi (`Amount`) O'ZGARMAYDI — oddiy chegirma kabi markaz ko'taradi.
 - Chegirmalar hisobotiga (§9) o'z-o'zidan tushadi — u `MonthlyCharge.Discount` dan yig'iladi.
 

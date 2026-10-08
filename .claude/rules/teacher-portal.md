@@ -63,6 +63,15 @@ Qoidalar QAYTA YOZILMAGAN, chaqiriladi:
 - davomat foizi — `StudentJournalBuilder.BuildCells` (o'quvchi portali bilan bir xil); kech kelgan KELGAN.
 
 ⚠️ "O'quvchilarim" da balans SUMMASI va telefon YO'Q — faqat qarzdor oylar soni (belgi uchun).
+⚠️ ARXIVDAGI o'quvchi ro'yxatda ham, sanoq/qarzdorlarda ham YO'Q (`VisibleMembersAsync`,
+`DebtSummaryAsync` — `!Student.IsArchived`): eski arxivlashlar a'zolikni yopmagan, `IsActive`
+qator qolgan bo'lishi mumkin (arxiv = o'quvchi ketgan).
+⚠️ Eski `Teacher.HomeroomClass` (matnli "guruh rahbarligi") guruhga KIRISH bermaydi — u UI'da
+tahrirlanmaydi va o'qituvchi almashgandan keyin ham qolardi. Kirish — `Group.TeacherId`
+(`TaughtClassIdsAsync`) va o'rinbosar sanalari. Guruh chati (`ChatService`) ham shu qoidaga
+o'tkazildi — kanallar faqat `TeacherGroupAccess` dan.
+⚠️ Guruh JURNALI (`journal/group`) da ham summa YO'Q (2026-10-07): `Balance` = 0, rang `Debtor` bayrog'i va
+`DebtMonths` dan (o'rinbosarga ham). Ilgari har o'quvchining qarz summasi jurnal javobida kelardi.
 ⚠️ Qarzdorlar xulosasi (`TeacherHomeService.DebtSummaryAsync`, `overview` ichida ham) — faqat
 YIG'INDI: nechta o'quvchi va jami qancha. Har o'quvchining summasi baribir berilmaydi. Manba —
 `GroupBalanceService` (guruh balansi bilan bir xil), faqat faol, sinovda bo'lmagan a'zolar; ikki
@@ -87,6 +96,11 @@ telefonini** tuzata olsin (asosan Telegram Mini App ichida). Qo'shish/chiqarish 
 - Darvoza: `journal` ruxsati + guruh EGASI (`TeacherGroupAccess.OwnedBy`) + o'quvchi shu guruhning
   `IsActive` a'zosi va arxivda emas. ⚠️ **O'rinbosar tahrirlay OLMAYDI** (u vaqtincha keladi).
 - Login akkauntidagi ism ham yangilanadi; audit — `Student/update`, ActorName = o'qituvchi.
+- ⚠️ Ism QISMLARI (`LastName/FirstName/MiddleName`) ham yangi FullName'dan qayta bo'linadi
+  (`TeacherStudentEdit.SetName`: 1-so'z familiya, 2-so'z ism, qolgani sharif — klientdagi
+  `splitFullName` bilan bir xil). Sabab: admin formasi saqlangan qismlarni qayta yuboradi va
+  `StudentsController.Update` FullName'ni ulardan YIG'ADI — ilgari o'qituvchining tuzatishi
+  adminning keyingi (istalgan) tahririda jimgina bekor bo'lardi.
 - ⚠️ **O'qituvchi portalida a'zo qo'shish/chiqarish/muzlatish YO'Q va bo'lmaydi** — test
   (`Oqituvchi_portalida_azo_QOSHISH_CHIQARISH_yoli_YOQ`) bunday endpoint paydo bo'lsa qizaradi.
 - Klient: `pages/teacher/groups/TeacherGroupStudentsTab.tsx` — qator butunlay bosiladi, maydonlar
@@ -95,7 +109,8 @@ telefonini** tuzata olsin (asosan Telegram Mini App ichida). Qo'shish/chiqarish 
 ## 4. TEZKOR DAVOMAT (`/teacher/attendance?group=&date=`)
 
 Yozish mavjud `POST journal/bulk-attendance` orqali — server siyosat/o'rinbosar sanasi/to'lov
-darvozasini O'ZI tekshiradi, baho/uy vazifa TEGILMAYDI.
+darvozasini O'ZI tekshiradi, baho/uy vazifa TEGILMAYDI. Faol bo'lmagan / begona / arxivlangan id'lar jimgina
+chetlab o'tiladi; "Kech" — "kelmadi" xabari EMAS; xabarlar FONDA va faqat yangi kelmaganlarga (journal.md §C8).
 
 ⚠️ FAQAT O'ZGARGAN qatorlar yuboriladi: har "kelmadi" yozuvi ota-onaga avto-xabar jo'natadi —
 hammasini qayta yuborsak, har saqlashda xabar takrorlanardi.

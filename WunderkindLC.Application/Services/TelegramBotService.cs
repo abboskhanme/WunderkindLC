@@ -538,6 +538,10 @@ public class TelegramBotService(
         using var scope = sp.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<IAppDbContext>();
 
+        // POYGA: "Bajardim" ikki marta tez bosilsa (yoki panelda shu payt ko'chirilsa) ikkala
+        // so'rov ham "ochiq" ni ko'rib, takroriy nusxa IKKI marta tug'ilardi — panel bilan BIR qulf.
+        using var gate = await PaymentIdempotency.LockAsync(WorkTaskFlow.LockKey(taskId));
+
         var t = await db.WorkTasks.FirstOrDefaultAsync(x => x.Id == taskId, ct);
         if (t is null) return;
 
@@ -545,16 +549,20 @@ public class TelegramBotService(
             r => r.ChatId == chatId && r.UserId == t.AssigneeId, ct);
         if (!owns) return;
 
-        var doneCol = await db.WorkTaskColumns
-            .Where(c => c.BoardId == t.BoardId && c.IsDone)
-            .OrderBy(c => c.Order).FirstOrDefaultAsync(ct);
-        if (doneCol is null) return;
-
-        if (t.ColumnId == doneCol.Id)
+        // ⚠️ "Allaqachon bajarilgan" — HAR QANDAY yopiluvchi ustun bo'yicha. Ilgari faqat BIRINCHI
+        // yopiluvchi ustun tekshirilardi: ikkinchi "bajarildi" ustunidagi topshiriq qayta "yopilib",
+        // takroriy nusxa yana tug'ilardi (nusxa tug'ilishining o'zi ham endi idempotent).
+        var inDoneColumn = await db.WorkTaskColumns.AnyAsync(c => c.Id == t.ColumnId && c.IsDone, ct);
+        if (inDoneColumn)
         {
             await telegram.SendMessageAsync(chatId, $"✅ «{t.Title}» allaqachon bajarilgan.", null, ct);
             return;
         }
+
+        var doneCol = await db.WorkTaskColumns
+            .Where(c => c.BoardId == t.BoardId && c.IsDone)
+            .OrderBy(c => c.Order).FirstOrDefaultAsync(ct);
+        if (doneCol is null) return;
 
         t.ColumnId = doneCol.Id;
         t.CompletedAt = AppClock.Now;
@@ -1164,6 +1172,10 @@ public class TelegramBotService(
                 "✅ Murojaatingiz qabul qilindi. Administrator tez orada javob beradi.", null, ct);
 
             // Adminlarga Telegram xabarnoma.
+            // ⚠️ FAQAT admin/superadmin va "messages.support" ruxsati bor xodimga — xabarda ota-onaning
+            // ismi, TELEFONI va murojaat matni bor. Ilgari botga ulangan HAR bir xodim (kassir,
+            // turniket operatori ham) olardi — panelda shu ruxsatsiz u "Support Telegram"ni ocha
+            // olmasa ham. Qoida panel darvozasi bilan bir xil (`PermissionRules.HasSection`).
             var regs = await db.TelegramRegistrations
                 .Where(r => r.UserId != null && r.UserId != "").ToListAsync(ct);
             if (regs.Count > 0)
@@ -1173,7 +1185,9 @@ public class TelegramBotService(
                     .Where(u => userIds.Contains(u.Id) &&
                                 (u.Role == Roles.Admin || u.Role == Roles.SuperAdmin || u.Role == Roles.Staff))
                     .ToListAsync(ct);
-                var adminUserIds = adminUsers.Select(u => u.Id).ToHashSet();
+                var adminUserIds = adminUsers
+                    .Where(u => SupportService.ReceivesBotSupport(u.Role, u.Permissions))
+                    .Select(u => u.Id).ToHashSet();
 
                 var nameTag = botUser.Name.Length > 0 ? botUser.Name : "Noma'lum";
                 var phoneTag = botUser.Phone.Length > 0 ? $" ({botUser.Phone})" : "";

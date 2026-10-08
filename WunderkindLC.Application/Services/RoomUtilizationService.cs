@@ -53,9 +53,12 @@ public class RoomUtilizationService(IAppDbContext db)
                 (g.Room != null && g.Room != "")))
             .ToListAsync();
 
-        // Faol a'zoliklar: StudentId + GroupId (frozen emas)
+        // Faol a'zoliklar: StudentId + GroupId (frozen emas). ⚠️ ARXIVLANGAN o'quvchi sanalmaydi — eski
+        // arxivlanganlarda a'zolik hamon "faol" turgan bo'lishi mumkin (arxiv = ketdi: o'rin/bandlik
+        // sanoqlari `Student.IsArchived` ni ham himoya sifatida tekshiradi).
         var activeMembers = await db.StudentGroups
-            .Where(sg => sg.IsActive && sg.Status != "frozen")
+            .Where(sg => sg.IsActive && sg.Status != "frozen"
+                         && db.Students.Any(st => st.Id == sg.StudentId && !st.IsArchived))
             .Select(sg => new { sg.GroupId, sg.StudentId })
             .ToListAsync();
 
@@ -173,7 +176,8 @@ public class RoomUtilizationService(IAppDbContext db)
         var groupIds = groups.Select(g => g.Id).ToHashSet();
 
         var membersByGroup = await db.StudentGroups
-            .Where(sg => groupIds.Contains(sg.GroupId) && sg.IsActive && sg.Status != "frozen")
+            .Where(sg => groupIds.Contains(sg.GroupId) && sg.IsActive && sg.Status != "frozen"
+                         && db.Students.Any(st => st.Id == sg.StudentId && !st.IsArchived))
             .Select(sg => new { sg.GroupId, sg.StudentId })
             .ToListAsync();
 
@@ -228,7 +232,8 @@ public class RoomUtilizationService(IAppDbContext db)
         var groupIds = groups.Select(g => g.Id).ToHashSet();
 
         var membersByGroup = await db.StudentGroups
-            .Where(sg => groupIds.Contains(sg.GroupId) && sg.IsActive && sg.Status != "frozen")
+            .Where(sg => groupIds.Contains(sg.GroupId) && sg.IsActive && sg.Status != "frozen"
+                         && db.Students.Any(st => st.Id == sg.StudentId && !st.IsArchived))
             .Select(sg => new { sg.GroupId, sg.StudentId })
             .ToListAsync();
 

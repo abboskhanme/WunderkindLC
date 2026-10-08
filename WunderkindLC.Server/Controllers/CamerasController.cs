@@ -19,10 +19,36 @@ namespace WunderkindLC.Server.Controllers;
 [Route("api/admin/cameras")]
 public class CamerasController(AppDbContext db, CameraGateway gateway, NvrArchiveService nvr) : ControllerBase
 {
-    private static CameraDto Dto(Camera c, CenterMeta? m) =>
+    private static CameraDto Dto(Camera c, CenterMeta? m, string? warning = null) =>
         new(c.Id, c.Name, c.Location, c.RtspUrl, c.RtspSubUrl, c.RetentionDays, c.IsActive, c.Note,
             c.RecordEnabled, c.NvrChannel,
-            CameraRules.ArchiveSource(NvrArchiveService.IsConfigured(m), m?.CameraRecordEnabled ?? false, c));
+            CameraRules.ArchiveSource(NvrArchiveService.IsConfigured(m), m?.CameraRecordEnabled ?? false, c),
+            warning);
+
+    /// <summary>
+    /// «Kamera kuzatuvini yoqish» (<see cref="CenterMeta.CameraEnabled"/>) o'chiq bo'lsa — KO'RISH
+    /// (jonli HLS, arxiv klipi, NVR qidiruvi) yopiq. Ilgari bu kalitni HECH NARSA o'qimasdi:
+    /// admin "o'chirdim" deb o'ylar, kameralar esa ko'rinaverardi.
+    /// </summary>
+    /// <remarks>
+    /// ⚠️ Ro'yxat va CRUD OCHIQ qoladi — admin kameralarni modul yoqilishidan OLDIN sozlab
+    /// qo'ya olsin. ⚠️ 24/7 YOZUV bu kalitga bog'liq EMAS (o'z bosh kaliti bor,
+    /// <see cref="CenterMeta.CameraRecordEnabled"/>) — cameras.md §1.
+    /// Qator yo'q bo'lsa — yopiq (fail-closed).
+    /// </remarks>
+    public const string ViewingDisabledMessage =
+        "Kamera kuzatuvi o'chirilgan — Sozlamalar → Kamera integratsiya da «Kamera kuzatuvini yoqish»ni yoqing.";
+
+    private static bool ViewingEnabled(CenterMeta? m) => m?.CameraEnabled == true;
+
+    /// <summary>Kuzatuv yoqilganmi — sahifa jonli pleyerlarni chizishdan oldin so'raydi.</summary>
+    [HttpGet("status")]
+    public async Task<ActionResult<CameraStatusDto>> Status()
+    {
+        var m = await MetaAsync();
+        var on = ViewingEnabled(m);
+        return new CameraStatusDto(on, on ? "" : ViewingDisabledMessage);
+    }
 
     /// <summary>Markaz sozlamalari. ⚠️ Qator yo'q bo'lsa — yozuv ham, NVR ham O'CHIQ
     /// (fail-closed): "sozlanmagan" holat jimgina 24/7 yozuvni yoqib yubormasin.</summary>
@@ -32,7 +58,8 @@ public class CamerasController(AppDbContext db, CameraGateway gateway, NvrArchiv
     /// Kamerani shlyuzga (qayta) yuboradi.
     /// ⚠️ NVR sozlangan kamerani BIZ yozmaymiz — arxiv NVR'da (takroriy nusxa kerak emas).
     /// </summary>
-    private async Task SyncAsync(Camera c, CenterMeta? m) =>
+    /// <returns><c>null</c> — shlyuz qabul qildi; aks holda SABAB (saqlashda foydalanuvchiga ko'rsatiladi).</returns>
+    private async Task<string?> SyncAsync(Camera c, CenterMeta? m) =>
         await gateway.EnsureAsync(c, CameraRules.ShouldRecordWithNvr(
             NvrArchiveService.IsConfigured(m), m?.CameraRecordEnabled ?? false, c));
 
@@ -63,8 +90,9 @@ public class CamerasController(AppDbContext db, CameraGateway gateway, NvrArchiv
         db.Cameras.Add(c);
         await db.SaveChangesAsync();
         var meta = await MetaAsync();
-        await SyncAsync(c, meta);
-        return Dto(c, meta);
+        // ⚠️ Shlyuz xatosi saqlashni BEKOR QILMAYDI (kamera bazada), lekin JIM ham qolmaydi —
+        // ogohlantirish javobda qaytadi; `CameraResyncService` 10 daqiqada qayta urinadi.
+        return Dto(c, meta, await SyncAsync(c, meta));
     }
 
     [HttpPut("{id}")]
@@ -85,10 +113,11 @@ public class CamerasController(AppDbContext db, CameraGateway gateway, NvrArchiv
         c.NvrChannel = req.NvrChannel < 0 ? 0 : req.NvrChannel;
         await db.SaveChangesAsync();
         var meta = await MetaAsync();
-        await SyncAsync(c, meta);
-        return Dto(c, meta);
+        return Dto(c, meta, await SyncAsync(c, meta));
     }
 
+    /// <summary>Kamerani o'chirish — shlyuzdagi yo'li VA diskdagi yozuvlari ham o'chadi
+    /// (<see cref="CameraGateway.RemoveAsync"/>): kamerasiz yozuvga hech qanday yo'l qolmaydi.</summary>
     [HttpDelete("{id}")]
     public async Task<IActionResult> Delete(string id)
     {
@@ -106,7 +135,9 @@ public class CamerasController(AppDbContext db, CameraGateway gateway, NvrArchiv
     {
         var c = await db.Cameras.FindAsync(id);
         if (c is null) return NotFound();
-        await SyncAsync(c, await MetaAsync());
+        var meta = await MetaAsync();
+        if (!ViewingEnabled(meta)) return BadRequest(new { message = ViewingDisabledMessage });
+        await SyncAsync(c, meta);
         return await ProxyAsync(await gateway.HlsAsync(id, "index.m3u8" + Request.QueryString.Value),
             "application/vnd.apple.mpegurl");
     }
@@ -117,6 +148,7 @@ public class CamerasController(AppDbContext db, CameraGateway gateway, NvrArchiv
     {
         if (!file.EndsWith(".ts") && !file.EndsWith(".m3u8") && !file.EndsWith(".mp4"))
             return NotFound();
+        if (!ViewingEnabled(await MetaAsync())) return BadRequest(new { message = ViewingDisabledMessage });
         return await ProxyAsync(await gateway.HlsAsync(id, file + Request.QueryString.Value), null);
     }
 
@@ -140,6 +172,7 @@ public class CamerasController(AppDbContext db, CameraGateway gateway, NvrArchiv
         if (duration > NvrArchiveService.MaxClipSeconds) duration = NvrArchiveService.MaxClipSeconds;
 
         var meta = await MetaAsync();
+        if (!ViewingEnabled(meta)) return BadRequest(new { message = ViewingDisabledMessage });
         var source = CameraRules.ArchiveSource(
             NvrArchiveService.IsConfigured(meta), meta?.CameraRecordEnabled ?? false, c);
         var fileName = $"{c.Name}_{start.Replace(":", "-")}_{duration}s.mp4";
@@ -184,6 +217,7 @@ public class CamerasController(AppDbContext db, CameraGateway gateway, NvrArchiv
         if (c is null) return NotFound();
         var meta = await MetaAsync();
 
+        if (!ViewingEnabled(meta)) return new NvrSearchDto(false, ViewingDisabledMessage, []);
         if (!NvrArchiveService.IsConfigured(meta))
             return new NvrSearchDto(false,
                 "NVR sozlanmagan: Sozlamalar → Kamera integratsiya da manzilni kiriting va "

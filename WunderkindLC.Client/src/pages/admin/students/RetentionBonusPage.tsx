@@ -25,6 +25,7 @@ import {
 } from '@/api/services/retentionBonus'
 import { apiErrorMessage, cn, formatMoney } from '@/lib/utils'
 import { usePerm } from '@/lib/permissions'
+import { localIsoDate } from '@/lib/localDate'
 import { Card } from '@/components/ui/Card'
 import { Badge, type BadgeTone } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
@@ -455,7 +456,7 @@ function RestartCycleModal({
   onClose: () => void
   onSaved: () => void
 }) {
-  const [month, setMonth] = useState(row.startMonth || new Date().toISOString().slice(0, 7))
+  const [month, setMonth] = useState(row.startMonth || localIsoDate(new Date()).slice(0, 7))
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 

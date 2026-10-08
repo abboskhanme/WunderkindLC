@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Check, CheckCircle2, MessageSquareText, XCircle } from 'lucide-react'
+import { AlertTriangle, Check, CheckCircle2, MessageSquareText, XCircle } from 'lucide-react'
 import { getLocalSmsSettings, saveLocalSmsSettings } from '@/api/services/settings'
 import { getCtiAgents, type CtiAgent } from '@/api/services/cti'
 import { Card } from '@/components/ui/Card'
@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/Button'
 import { Select } from '@/components/ui/Input'
 import { Loader } from '@/components/ui/Loader'
 import { NumberInput } from '@/components/ui/NumberInput'
+import { apiErrorMessage } from '@/lib/utils'
 
 /**
  * Local SMS — Eskiz'ga muqobil kanal: SMS Local Call CTI agent-telefonining SIM-kartasidan
@@ -18,6 +19,9 @@ export function LocalSmsSettings() {
   const [enabled, setEnabled] = useState(false)
   const [defaultAgentId, setDefaultAgentId] = useState('')
   const [delaySeconds, setDelaySeconds] = useState<number | null>(0)
+  // Standart agent muammosi (server hisoblaydi): o'chirilgan/topilmagan/tanlanmagan bo'lsa barcha
+  // avtomatik Local SMS'lar JIMGINA to'xtagan bo'ladi — shuning uchun doimiy banner.
+  const [agentProblem, setAgentProblem] = useState<string | null>(null)
   const [agents, setAgents] = useState<CtiAgent[]>([])
   const [loading, setLoading] = useState(true)
   const [status, setStatus] = useState<'idle' | 'saving' | 'saved'>('idle')
@@ -29,8 +33,11 @@ export function LocalSmsSettings() {
         setEnabled(cfg.enabled)
         setDefaultAgentId(cfg.defaultAgentId ?? '')
         setDelaySeconds(cfg.delaySeconds)
+        setAgentProblem(cfg.defaultAgentProblem ?? null)
         setAgents(ag)
       })
+      // Sahifaning ASOSIY ma'lumoti — xato ko'rsatiladi (aks holda bo'sh forma "sozlanmagan" bo'lib ko'rinardi).
+      .catch((e) => setError(apiErrorMessage(e, "Sozlamani yuklab bo'lmadi.")))
       .finally(() => setLoading(false))
   }, [])
 
@@ -44,6 +51,7 @@ export function LocalSmsSettings() {
       setEnabled(saved.enabled)
       setDefaultAgentId(saved.defaultAgentId ?? '')
       setDelaySeconds(saved.delaySeconds)
+      setAgentProblem(saved.defaultAgentProblem ?? null)
       setStatus('saved')
       setTimeout(() => setStatus('idle'), 2000)
     } catch (e: unknown) {
@@ -80,6 +88,13 @@ export function LocalSmsSettings() {
         yuborishlarda (va barcha avtomatik xabarlarda) ishlatiladi.
       </p>
 
+      {agentProblem && (
+        <div className="mb-4 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+          <span>{agentProblem}</span>
+        </div>
+      )}
+
       <form onSubmit={onSubmit} className="space-y-4">
         <label className="flex items-center gap-2.5">
           <input
@@ -103,7 +118,7 @@ export function LocalSmsSettings() {
               {agents.map((a) => (
                 <option key={a.id} value={a.id}>
                   {a.isOnline ? '● ' : ''}
-                  {a.displayName} {a.isOnline ? '(onlayn)' : '(oflayn)'}
+                  {a.displayName} {!a.isActive ? "(o'chirilgan)" : a.isOnline ? '(onlayn)' : '(oflayn)'}
                 </option>
               ))}
             </Select>

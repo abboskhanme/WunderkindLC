@@ -368,7 +368,9 @@ public record SetStudentDeviceRequest(string StudentId, string? DeviceUserId);
 public record CameraDto(
     string Id, string Name, string Location, string RtspUrl, string RtspSubUrl,
     int RetentionDays, bool IsActive, string Note, bool RecordEnabled,
-    int NvrChannel, string ArchiveSource);
+    int NvrChannel, string ArchiveSource,
+    // Saqlashda media-shlyuz kamerani qabul qilmagan bo'lsa — SABAB (jim muvaffaqiyat o'rniga).
+    string? Warning = null);
 public record SaveCameraRequest(
     string Name, string? Location, string RtspUrl, string? RtspSubUrl,
     int RetentionDays = 7, bool IsActive = true, string? Note = null,
@@ -418,30 +420,6 @@ public record SaveAutoMessageRuleRequest(
     string ScheduleType = "daily", string ScheduleTime = "09:00", int ScheduleDayOfMonth = 1,
     string SmsProvider = "eskiz");
 
-/* ---------- Call Center (MoiZvonki) ---------- */
-
-/// <summary>Chiquvchi qo'ng'iroq so'rovi: studentId YOKI phoneNumber (dialpad'dan qo'lda) beriladi.</summary>
-public record OriginateCallRequest(string? StudentId, string? PhoneNumber, string? OperatorExtension);
-/// <summary>Qo'ng'iroq qatori (ro'yxat/tarix uchun) — sanalar ISO string.</summary>
-public record CallDto(
-    string Id, string? StudentId, string StudentName, string PhoneNumber, string Direction,
-    string Status, string StartedAt, string? AnsweredAt, string? EndedAt, int DurationSeconds,
-    string OperatorName, bool HasRecording, string Note);
-/// <summary>Sahifalangan qo'ng'iroqlar ro'yxati.</summary>
-public record CallListDto(int Total, List<CallDto> Items);
-/// <summary>Raqam bo'yicha guruhlangan qator — "Yozuvlar tarixi"da bitta raqam = bitta qator,
-/// ichiga kirilganda shu raqam bilan barcha suhbatlar ochiladi.</summary>
-public record CallGroupDto(
-    string PhoneNumber, string? StudentId, string StudentName, int CallsCount, int AnsweredCount,
-    int TotalDurationSeconds, string LastCallAt, string LastStatus, string LastDirection);
-/// <summary>Sahifalangan raqam-guruhlar ro'yxati.</summary>
-public record CallGroupListDto(int Total, List<CallGroupDto> Items);
-/// <summary>Bitta qo'ng'iroqning TO'LIQ tafsiloti (detal oynasi) — jurnal maydonlari +
-/// so'zma-so'z transkript + AI tahlil.</summary>
-public record CallDetailDto(
-    string Id, string? StudentId, string StudentName, string PhoneNumber, string Direction,
-    string Status, string StartedAt, string? AnsweredAt, string? EndedAt, int DurationSeconds,
-    string OperatorName, bool HasRecording, string Note, string Transcript, string AiAnalysis);
 /// <summary>Moliyada o'quvchi qatori. Charged = jami to'liq oylik (chegirmasiz);
 /// Discount = jami berilgan chegirma; Paid = haqiqiy naqd to'lovlar yig'indisi (turli oylar uchun);
 /// Debt / Advance — joriy holatdan (balans). DiscountPct/Amount — qoidani ko'rsatish uchun.</summary>
@@ -530,8 +508,9 @@ public record CtiNoteRequest(string Note);
 /// ko'rsatish uchun (SmsLog'dan, Eskiz+Local ikkalasi ham). Provider: eskiz|local.</summary>
 public record CtiSmsHistoryDto(string Id, string Message, string Status, string Provider, string CreatedAt);
 
-/// <summary>O'quvchi profilidagi qo'ng'iroq (MoiZvonki + Local birlashgan). Source: "cloud"|"local".
-/// Direction: "incoming"|"outgoing" (javobsiz = Answered=false). Handler: operator yoki agent nomi.</summary>
+/// <summary>O'quvchi profilidagi qo'ng'iroq (Local Call / CTI). Source: hozir doim "local" (maydon
+/// klient bilan kelishuv uchun qoldi). Direction: "incoming"|"outgoing" (javobsiz = Answered=false).
+/// Handler: agent nomi.</summary>
 public record StudentCallDto(
     string Id, string Source, string Direction, string PhoneNumber,
     string StartedAt, int DurationSec, bool Answered, bool HasAudio, string Handler);
@@ -653,9 +632,13 @@ public record BulkMembershipRequest(
 /// <param name="MovedAdvance">Aktivlashtirishda boshqa guruhdan ko'chirilgan avans summasi.</param>
 /// <param name="CatchUpMonths">Orqaga sanalgan aktivlashtirishda yozilgan oylar soni (jami).</param>
 /// <param name="Errors">Qisqa xato xabarlari (ko'pi bilan 20 ta; qolganlari serverda logda).</param>
+/// <param name="SkippedArchived">Aktivlashtirish TAQIQLANGANI uchun o'tkazilganlar — guruh yoki o'quvchi
+/// arxivda (<c>MembershipBulk.ActivationBlockReason</c>). <see cref="Skipped"/> ga kirmaydi.</param>
+/// <param name="SkipNotes">O'sha a'zoliklar nomma-nom, sababi bilan ("Ali (A1): guruh arxivda"; ko'pi bilan 20 ta).</param>
 public record BulkMembershipResultDto(
     int Requested, int Memberships, int Changed, int Students, int Skipped, int Failed,
-    int NoMembership, decimal Restored, decimal MovedAdvance, int CatchUpMonths, string[] Errors);
+    int NoMembership, decimal Restored, decimal MovedAdvance, int CatchUpMonths, string[] Errors,
+    int SkippedArchived = 0, string[]? SkipNotes = null);
 /* ---------- DARS JADVALI (ScheduleService / ScheduleRules) ---------- */
 
 /// <summary>Jadvaldagi bitta dars (guruh × hafta kuni).</summary>
@@ -1144,9 +1127,11 @@ public record TopicImportRowErrorDto(int Row, string Reason);
 public record TopicImportResultDto(int Imported, int Skipped, int Errors, List<TopicImportRowErrorDto> RowErrors);
 /// <summary>Present — ANIQ "keldi (bor)" belgisi (RecordedAt/PresentDefaultFrom cheklovidan qat'i nazar
 /// yashil ✓); Homework: 0=belgilanmagan, 1=qildi, 2=qilmadi, 3=chala qildi.</summary>
+/// <para><c>GradeFromCriteria</c> — baho baholash mezonlaridan avtomatik yozilgan (BALL hisobida
+/// qayta qo'shilmaydi: o'sha checklar allaqachon sanalgan; `.claude/rules/journal.md`).</para>
 public record JournalEntryDto(
     string StudentId, string Date, int Period, int? Grade, string? ReasonId,
-    int Homework, int Behavior, MasteryLevel? Mastery, bool Present);
+    int Homework, int Behavior, MasteryLevel? Mastery, bool Present, bool GradeFromCriteria = false);
 public record SetJournalEntryRequest(
     string ClassId, string SubjectId, int Quarter, string StudentId, string Date, int Period,
     int? Grade, string? ReasonId, int Homework = 0, int Behavior = 0, MasteryLevel? Mastery = null,
@@ -1185,7 +1170,10 @@ public record GroupJournalStudentDto(
     // Guruhdan CHIQQAN qator: "" — a'zo, "left" — chiqarilgan/boshqa guruhga o'tgan, "completed" —
     // sertifikat bilan tugatgan. Bunday qator `Status="frozen"` bilan (faqat ko'rish) keladi,
     // `FrozenAt` — oxirgi kuni; yorliq shu maydondan ("Chiqgan"/"Tugatgan").
-    string Ended = "");
+    string Ended = "",
+    // SHU GURUH bo'yicha qarzdormi (Balance < 0). O'QITUVCHI javobida `Balance` 0 ga tozalanadi
+    // (summa o'qituvchiga berilmaydi — teacher-portal.md §3), rang/belgi shu bayroq + DebtMonths dan.
+    bool Debtor = false);
 /// <summary>Guruhning bitta oylik jurnali: ustunlar guruh dars kunlari bo'yicha avtomatik, qatorlar — faol o'quvchilar.
 /// <see cref="ConductedDates"/> — "o'tildi" deb belgilangan dars sanalari (sababsiz o'quvchi shu kunda KELDI = yashil).</summary>
 public record GroupJournalDto(
@@ -1675,7 +1663,12 @@ public record FinanceTransactionDto(
     // Qaysi kassa (id + nomi; nomi faqat ro'yxat endpointida to'ldiriladi).
     string? CashboxId = null, string? CashboxName = null,
     // Kitob sotuvidan avtomatik yozilgan bo'lsa — buyurtma id'si (Moliyada tahrir/bekor qilish YO'Q).
-    string? BookOrderId = null);
+    string? BookOrderId = null,
+    // Markaz katalogidagi TUR id'si — tahrir formasi uni QAYTARIB yuboradi (ilgari qaytarilmagani uchun
+    // har tahrir turni forma zaxirasi bilan almashtirardi: vozvrat "Arenda", maosh turisiz qolardi).
+    string? TypeId = null,
+    // Bo'lingan to'lov (guruh almashtirish) — oila ildizi (`FinanceTransaction.SplitFromId`).
+    string? SplitFromId = null);
 
 /// <summary>
 /// "Kiritgan" filtri uchun bitta variant — TO'LOV KIRITA OLADIGAN xodim/admin. Ro'yxatga
@@ -1741,7 +1734,10 @@ public record FinanceSummaryDto(
     decimal TotalIncome, decimal TotalExpense, decimal Net,
     decimal TuitionIncome, decimal OtherIncome,
     List<CategoryAmountDto> IncomeByCategory, List<CategoryAmountDto> ExpenseByCategory,
-    decimal StudentDebt, decimal StudentAdvance, int TransactionsCount);
+    decimal StudentDebt, decimal StudentAdvance, int TransactionsCount,
+    // `StudentDebt` ning ARXIVDAGI o'quvchilarga tegishli qismi — bosh sahifa arxivdagilarni sanamaydi,
+    // Moliya esa haqiqiy debitorlikni (hammasini) ko'rsatadi; kartada ikkalasi ochiq yoziladi.
+    decimal StudentDebtArchived = 0m, decimal StudentAdvanceArchived = 0m);
 public record FinanceMonthlyDto(string Month, decimal Income, decimal Expense);
 public record AccrueResultDto(List<string> Months, int Count, decimal Total);
 
@@ -2037,9 +2033,11 @@ public record TelegramTeacherDto(
 
 /// <summary>
 /// Ilovaga push yuborish so'rovi. Audience: "parents" (ClassName ixtiyoriy) | "teachers" |
-/// "selected" (UserIds tanlangan foydalanuvchilar).
+/// "selected" (UserIds tanlangan foydalanuvchilar). OnlyDebtors — "parents" da faqat qarzdorlar
+/// (SMS/Telegram bilan bir xil qoida — umumiy balans manfiy).
 /// </summary>
-public record SendPushRequest(string Audience, string? ClassName, List<string>? UserIds, string Title, string Body);
+public record SendPushRequest(string Audience, string? ClassName, List<string>? UserIds, string Title, string Body,
+    bool OnlyDebtors = false);
 /// <summary>Push uchun tanlanadigan oluvchi. UserId — akkaunt id; HasDevice = qurilma ulangan (push yetadi).</summary>
 public record PushRecipientDto(string UserId, string Name, string Group, string Detail, bool HasDevice);
 /// <summary>Yuborilgan push (tarix). CreatedAt — ISO. ConfirmedCount/TargetCount — tasdiqlash holati.</summary>
@@ -2065,8 +2063,11 @@ public record SendSmsRequest(string Audience, string? ClassName, bool OnlyDebtor
 public record SmsBatchDto(
     string Id, string Audience, string Message, string SenderName, string CreatedAt,
     int RecipientCount, int SentCount, string Provider, bool Queued = false);
-/// <summary>Ommaviy SMS partiyasining jonli holati: jami / ishlangan / yuborilgan + tugaganmi.</summary>
-public record SmsProgressDto(string Id, int Total, int Done, int Sent, bool Finished);
+/// <summary>Ommaviy SMS partiyasining jonli holati: jami / ishlangan / yuborilgan + tugaganmi.
+/// <paramref name="Resumed"/> — ilova qayta ishga tushgandan keyin DAVOM ETTIRILGAN;
+/// <paramref name="Interrupted"/> — restartda juda eski bo'lgani uchun qolgani BEKOR qilingan.</summary>
+public record SmsProgressDto(string Id, int Total, int Done, int Sent, bool Finished,
+    bool Resumed = false, bool Interrupted = false);
 /// <summary>Bitta SMS jurnali (raqam bo'yicha) — partiya tafsilotida ko'rsatiladi. Provider: eskiz|local.</summary>
 public record SmsLogDto(string Id, string PhoneNumber, string RecipientName, string Status, string CreatedAt, string Provider);
 /// <summary>SMS holati — admin UI uchun: Eskiz sozlangan/sender/balans + Local SMS yoqilganmi/standart agent.</summary>
@@ -2099,8 +2100,9 @@ public record EskizSettingsDto(
 /// <summary>SMS (Eskiz) login/parol/sender saqlash so'rovi (bo'sh qoldirilsa eski saqlanadi).</summary>
 public record SaveEskizRequest(string? Email, string? Password, string? From);
 /// <summary>Local SMS (CTI agent telefonidan) sozlamasi holati. DelaySeconds — massaviy yuborishda
-/// ikkita SMS orasidagi kutish (soniya).</summary>
-public record LocalSmsSettingsDto(bool Enabled, string? DefaultAgentId, int DelaySeconds);
+/// ikkita SMS orasidagi kutish (soniya). <c>DefaultAgentProblem</c> — standart agent
+/// o'chirilgan/topilmagan/tanlanmagan bo'lsa banner matni (avtomatik Local SMS'lar to'xtagan), aks holda null.</summary>
+public record LocalSmsSettingsDto(bool Enabled, string? DefaultAgentId, int DelaySeconds, string? DefaultAgentProblem = null);
 /// <summary>Local SMS sozlamasini saqlash — DefaultAgentId bo'sh/null bo'lsa standart agent tozalanadi.</summary>
 public record SaveLocalSmsRequest(bool Enabled, string? DefaultAgentId, int DelaySeconds);
 /// <summary>
@@ -2193,8 +2195,9 @@ public record RoomUtilizationDto(
 /// <summary>Xona yaratish so'rovi.</summary>
 public record CreateRoomRequest(string Name, int Capacity, string? Building, string? Location);
 
-/// <summary>Xona tahrirlash so'rovi (IsActive bilan — faollashtirish/o'chirish).</summary>
-public record UpdateRoomRequest(string Name, int Capacity, string? Building, string? Location, bool IsActive);
+/// <summary>Xona tahrirlash so'rovi. <c>IsActive = null</c> — faollik TEGILMAYDI (ilgari majburiy
+/// <c>bool</c> edi: yubormagan klient xonani jimgina nofaol qilardi).</summary>
+public record UpdateRoomRequest(string Name, int Capacity, string? Building, string? Location, bool? IsActive = null);
 
 /// <summary>
 /// Xona sig'im samaradorligi — Total Slots = Capacity × GroupCount,
@@ -3439,7 +3442,9 @@ public record BookOrderDto(
     // Mijozga haqiqatan qaytarilgan pul (to'lanmagan nasiyada 0 — u yerda qarz kamaygan).
     decimal RefundedAmount = 0m,
     // SOF summa = Total − qaytarilganlarning qiymati. Hisobotlarda AYNAN shu ishlatiladi.
-    decimal NetTotal = 0m);
+    decimal NetTotal = 0m,
+    // Botdan NAQD buyurtma: tasdiqlangach pul OLIB KETISHDA olinadi (books.md §2.6).
+    bool PayAtPickup = false);
 
 /// <summary>Buyurtmani rad etish sababi.</summary>
 public record BookRejectPayload(string Reason);
@@ -3832,7 +3837,10 @@ public record ContactRequestDto(
     List<string> Phones,
     List<ContactAttemptDto>? History = null,
     /// <summary>Kanban ustuni. Bo'sh — talab o'z holatining TIZIM ustunida.</summary>
-    string StageId = "");
+    string StageId = "",
+    /// <summary>O'quvchi ARXIVDA (markazdan ketgan). Talab avtomatik yopilmaydi — qaytarish
+    /// (win-back) qo'ng'irog'i qonuniy ish, lekin operator buni kartada ko'rishi kerak.</summary>
+    bool IsArchived = false);
 
 /// <summary>Bosqich/natija KATALOGI + navbat sanoqlari (sahifa bir so'rovda to'liq ochilsin).</summary>
 /// <param name="Due">MUDDAT bo'yicha kesim — "bugun nechta odamga bog'lanish kerak".</param>

@@ -116,13 +116,6 @@ services:
       Turnstile__Port: "${TURNSTILE_PORT:-}"
       Turnstile__Username: "${TURNSTILE_USERNAME:-}"
       Turnstile__Password: "${TURNSTILE_PASSWORD:-}"
-      # Call Center — MoiZvonki (bulutli telefoniya: operator telefonidagi ilova + SIM).
-      # Webhook avto-obuna APP_HOST orqali.
-      MoiZvonki__Enabled: "${MOIZVONKI_ENABLED:-false}"
-      MoiZvonki__Domain: "${MOIZVONKI_DOMAIN:-}"
-      MoiZvonki__UserName: "${MOIZVONKI_USERNAME:-}"
-      MoiZvonki__ApiKey: "${MOIZVONKI_API_KEY:-}"
-      MoiZvonki__WebhookSecret: "${MOIZVONKI_WEBHOOK_SECRET:-}"
       # Instagram AI agenti (Marketing) — ikkalasi ham MAXFIY. Bo'sh bo'lsa modul FAIL-CLOSED:
       # Meta'ning webhook tasdig'i ham (GET), hodisalari ham (POST) 403 bilan rad etiladi.
       # Qolgan Instagram sozlamalari (App ID, bayroqlar) — bazada, UI'dan. marketing-instagram.md §7.

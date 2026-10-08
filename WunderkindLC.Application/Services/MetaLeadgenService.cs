@@ -13,8 +13,9 @@ namespace WunderkindLC.Application.Services;
 /// ham, 24 soatlik oyna ham yo'q). Pipeline faqat hodisani shu yerga uzatadi.</para>
 ///
 /// <para><b>Darvoza:</b> <c>CenterMeta.InstagramLeadAdsEnabled == false</c> bo'lsa Graph API'ga
-/// so'rov UMUMAN ketmaydi (modul o'chiq — tashqariga hech narsa chiqmaydi qoidasi). Hodisa
-/// navbatda `skipped` bo'lib qoladi va sababi yozib qo'yiladi.</para>
+/// so'rov UMUMAN ketmaydi (modul o'chiq — tashqariga hech narsa chiqmaydi qoidasi). Lekin
+/// <see cref="IgAdLead"/> qatori XATO bilan SAQLANADI (<see cref="ModuleOffError"/>) — modul
+/// yoqilgach «Qayta olish» uni tiklaydi; pullik lid izsiz yo'qolmaydi.</para>
 ///
 /// <para>DI: <c>builder.Services.AddScoped&lt;MetaLeadgenService&gt;();</c></para>
 /// </summary>
@@ -22,7 +23,8 @@ public sealed class MetaLeadgenService(
     IAppDbContext db,
     MetaAdsApi api,
     TelegramService telegram,
-    ILogger<MetaLeadgenService> logger)
+    ILogger<MetaLeadgenService> logger,
+    AutoMessageService? autoMsg = null)
 {
     /// <summary>Bitta webhook yozuvidagi BARCHA reklama lidlarini qayta ishlaydi.</summary>
     /// <returns>Qayta ishlashda chiqqan muammolar (bo'sh = hammasi joyida).</returns>
@@ -34,7 +36,18 @@ public sealed class MetaLeadgenService(
 
         if (meta is null || !meta.InstagramLeadAdsEnabled)
         {
-            problems.Add("Reklama lidlari moduli o'chirilgan — hodisa qayta ishlanmadi.");
+            // 🔴 PULLIK LID YO'QOLMAYDI. Ilgari bu yerda faqat sabab qaytarilardi: AI agenti
+            // yoqilgan, reklama lidlari esa o'chiq markazda navbat yozuvi `done` bo'lib yopilar,
+            // `IgAdLead` qatori esa UMUMAN yaratilmasdi — ya'ni «Qayta olish» tugmasi ham
+            // ko'rinmasdi va to'langan reklamadan kelgan murojaat izsiz yo'qolardi.
+            // Endi qator XATO bilan saqlanadi (tashqariga so'rov KETMAYDI — darvoza buzilmaydi):
+            // modul yoqilgach admin «Qayta olish» bilan ism/telefonni Meta'dan oladi (~90 kun).
+            var saved = await SaveUnprocessedAsync(db, events, ModuleOffError, ct);
+            if (saved > 0) await db.SaveChangesAsync(ct);
+            problems.Add(saved > 0
+                ? $"Reklama lidlari moduli o'chirilgan — {saved} ta lid «Reklama lidlari» ro'yxatiga xato bilan "
+                  + "yozildi (modulni yoqib «Qayta olish» bosing)."
+                : "Reklama lidlari moduli o'chirilgan — hodisa qayta ishlanmadi.");
             return problems;
         }
 
@@ -54,6 +67,47 @@ public sealed class MetaLeadgenService(
         }
 
         return problems;
+    }
+
+    /// <summary>Modul o'chiq paytda kelgan reklama lidining xato matni (ro'yxatda ko'rinadi).</summary>
+    public const string ModuleOffError =
+        "Reklama lidlari moduli o'chiq paytda keldi — ism va telefon olinmagan. "
+        + "Modulni yoqib, «Qayta olish» tugmasini bosing.";
+
+    /// <summary>
+    /// Qayta ishlanmagan reklama lidlarini <see cref="IgAdLead"/> qatori sifatida XATO bilan
+    /// qo'shadi (tashqariga so'rov YO'Q). Allaqachon bor <c>LeadgenId</c> o'tkazib yuboriladi.
+    ///
+    /// <para><b>SaveChanges QILMAYDI</b> — chaqiruvchi saqlaydi. Ikki joy chaqiradi: modul o'chiq
+    /// paytda kelgan hodisa (<see cref="HandleAsync"/>) va navbat tozalanishi
+    /// (<c>InstagramWorkerService.CleanupAsync</c> — 30 kun qayta ishlanmay yotgan hodisa
+    /// o'chirilishidan OLDIN, pullik lid izsiz yo'qolmasin).</para>
+    /// </summary>
+    /// <returns>Nechta yangi qator qo'shildi.</returns>
+    public static async Task<int> SaveUnprocessedAsync(
+        IAppDbContext db, IReadOnlyList<IgLeadgenEvent> events, string error, CancellationToken ct)
+    {
+        var added = 0;
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var ev in events)
+        {
+            if (string.IsNullOrWhiteSpace(ev.LeadgenId) || !seen.Add(ev.LeadgenId)) continue;
+            if (await db.IgAdLeads.AnyAsync(l => l.LeadgenId == ev.LeadgenId, ct)) continue;
+
+            db.IgAdLeads.Add(new IgAdLead
+            {
+                LeadgenId = ev.LeadgenId,
+                PageId = ev.PageId,
+                FormId = ev.FormId,
+                AdId = ev.AdId,
+                AdsetId = ev.AdgroupId,
+                CreatedTime = ev.CreatedTimeIso.Length > 0 ? ev.CreatedTimeIso : AppClock.Iso(),
+                ReceivedAt = AppClock.Iso(),
+                Error = error,
+            });
+            added++;
+        }
+        return added;
     }
 
     private async Task HandleOneAsync(IgLeadgenEvent ev, CenterMeta meta, IgAdPage? page, CancellationToken ct)
@@ -119,7 +173,7 @@ public sealed class MetaLeadgenService(
         // ── 3) CRM LIDI ──
         try
         {
-            var (leadId, isNew) = await MetaLeadBridge.UpsertAsync(db, row, meta.InstagramAdsLeadSource, ct);
+            var (leadId, isNew) = await MetaLeadBridge.UpsertAsync(db, row, meta.InstagramAdsLeadSource, ct, autoMsg);
             row.LeadId = leadId;
             row.IsNewLead = isNew;
         }

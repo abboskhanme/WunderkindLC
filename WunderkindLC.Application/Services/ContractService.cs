@@ -1,5 +1,7 @@
 using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Wordprocessing;
+using Microsoft.EntityFrameworkCore;
+using WunderkindLC.Application.Abstractions;
 using WunderkindLC.Application.Dtos;
 using WunderkindLC.Domain;
 
@@ -13,6 +15,43 @@ namespace WunderkindLC.Application.Services;
 /// </summary>
 public class ContractService(IWebHostEnvironment env)
 {
+    /// <summary>
+    /// SHARTNOMA RAQAMI NAVBATI — bir vaqtda faqat BITTA chaqiruv raqam oladi
+    /// (<c>BookSalesService.NumberGate</c> bilan bir xil yondashuv).
+    /// </summary>
+    /// <remarks>
+    /// ⚠️ Raqam <c>MAX(Number)+1</c> bo'lib beriladi, olingandan keyin esa yozilgunicha bir necha
+    /// <c>await</c> bor (andoza to'ldirish, faylni saqlash, Telegram'ga yuborish). Ikki admin bir
+    /// vaqtda tuzsa (yoki "yuklab olish" bilan ommaviy yuborish ustma-ust tushsa) IKKI shartnoma bir
+    /// xil raqam olardi. Unikal indeks ATAYIN qo'yilmagan — prod'da eski takrorlar bo'lishi mumkin.
+    /// Ilova bitta nusxada ishlagani uchun jarayon ichidagi navbat yetarli.
+    /// </remarks>
+    private static readonly SemaphoreSlim NumberGate = new(1, 1);
+
+    /// <summary>Shu jarayonda oxirgi BERILGAN (hali saqlanmagan bo'lishi mumkin) raqam.</summary>
+    private static int _lastIssuedNumber;
+
+    /// <summary>Keyingi shartnoma raqami (navbat ostida). Raqam olingach shartnoma yozilmasa —
+    /// u "kuyadi" (ro'yxatda bo'shliq) — takrordan ko'ra zararsizroq.</summary>
+    public static async Task<int> NextNumberAsync(IAppDbContext db, CancellationToken ct = default)
+    {
+        await NumberGate.WaitAsync(ct);
+        try
+        {
+            var max = await db.Contracts.MaxAsync(c => (int?)c.Number, ct) ?? 0;
+            var next = Math.Max(max, _lastIssuedNumber) + 1;
+            _lastIssuedNumber = next;
+            return next;
+        }
+        finally
+        {
+            NumberGate.Release();
+        }
+    }
+
+    /// <summary>FAQAT TESTLAR uchun: navbatning xotiradagi belgisini nolga qaytaradi.</summary>
+    public static void ResetNumberSequence() => _lastIssuedNumber = 0;
+
     /// <summary>Andoza faylini "/uploads/..." manzilidan o'qiydi (topilmasa null).</summary>
     public byte[]? ReadTemplate(string fileUrl)
     {

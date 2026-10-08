@@ -60,6 +60,8 @@ public interface IAppDbContext
     DbSet<CriterionGrade> CriterionGrades { get; }
     /// <summary>Ballni qo'lda tuzatish yozuvlari (per-guruh, faqat admin/superadmin).</summary>
     DbSet<StudentBallAdjustment> StudentBallAdjustments { get; }
+    /// <summary>"Davomat kiriting" eslatmasi yuborilgani belgisi (qayta yuklashda takrorlanmasin).</summary>
+    DbSet<LessonReminderMark> LessonReminderMarks { get; }
     DbSet<FinanceTransaction> FinanceTransactions { get; }
     DbSet<TransactionType> TransactionTypes { get; }
     DbSet<PlannedExpense> PlannedExpenses { get; }
@@ -191,11 +193,17 @@ public interface IAppDbContext
     DbSet<SmsBatch> SmsBatches { get; }
     DbSet<SmsLog> SmsLogs { get; }
     DbSet<SmsTemplate> SmsTemplates { get; }
+    // Ommaviy SMS navbati — bazada (restartda davom ettiriladi) + kunlik fon ishlari belgisi
+    DbSet<SmsQueueJob> SmsQueueJobs { get; }
+    DbSet<SmsQueueItem> SmsQueueItems { get; }
+    DbSet<BackgroundJobRun> BackgroundJobRuns { get; }
+    // Ommaviy davomat xabarlari navbati — restartda qolgani yuboriladi (AttendanceNotifyWorker)
+    DbSet<AttendanceNotifyItem> AttendanceNotifyItems { get; }
 
     // Avto-xabarlar (yagona model: SMS+Push+Telegram) — Xabarlar → Avto xabarlar
     DbSet<AutoMessageRule> AutoMessageRules { get; }
 
-    // Call Center — qo'ng'iroqlar jurnali
+    // Eski bulutli telefoniya qo'ng'iroqlari — FAQAT TARIX (endi yozilmaydi; jonli — CtiCallRecords)
     DbSet<Call> Calls { get; }
 
     // CTI (Local Call) — Android agent-ilovalar bilan lokal call-center

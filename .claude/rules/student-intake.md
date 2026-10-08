@@ -42,6 +42,10 @@ yoziladi (`StudentIntakeMark`). **Bajarilgan = avtomatik YOKI qo'lda.**
 ⚠️ Shu sabab avtomatik holat **o'z-o'zidan yangilanadi**: to'lov kiritilsa, shartnoma tuzilsa,
 ota-ona botga ulansa — cheklist keyingi so'rovda o'zgaradi, hech kim hech narsa "belgilamaydi".
 
+⚠️ **`levelTest` bandining manbalari endi o'chirilmaydi** (2026-10-07): o'quvchiga aylantirilgan
+LID (`LeadsController.Delete` → 400) va topshiruvi bor DARAJA TESTI (`LevelTestsController.Delete` →
+400, o'rniga «o'chirib qo'yish») — ilgari ikkalasi ham o'chirilib, band jimgina "bajarilmagan"ga qaytardi.
+
 ⚠️ **Avtomatik holatni qo'lda O'CHIRIB bo'lmaydi.** Qo'lda belgi faqat "bajarildi" qo'shadi;
 uni olib tashlash avtomatik aniqlangan bandni "bajarilmagan" qilmaydi (u yozuvlardan keladi).
 

@@ -79,7 +79,7 @@ public static class KpiChecklistSeed
         [
             new( 1, "Yo'riqnoma va Telegram Updates kanali o'qildi", "Ishga chiqishdan oldin", null, null, null),
             new( 2, "Bugungi raqam olindi (lid / sinov / shartnoma)", "Har kuni", null, null, "auto:kpi.today_numbers"),
-            new( 3, "CRM ulangani tekshirildi, MoiZvonki sozlandi", "Ish boshlashdan oldin", null, null, null),
+            new( 3, "CRM ulangani tekshirildi, Local Call agent-telefoni onlayn", "Ish boshlashdan oldin", null, null, null),
         ]),
         new("09:15 – 09:45  TUNGI OQIM",
         [

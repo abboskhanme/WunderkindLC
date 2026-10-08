@@ -234,10 +234,21 @@ public static class LeadNotifier
                 .Select(g => new { g.ChatId, g.IsActive }).ToListAsync(ct);
             var knownGroups = groups.Select(g => g.ChatId).ToHashSet();
             var allowed = groups.Where(g => g.IsActive).Select(g => g.ChatId).ToHashSet();
-            foreach (var id in await db.TelegramRegistrations.AsNoTracking()
-                         .Where(r => r.UserId != null && r.UserId != "" && chatIds.Contains(r.ChatId))
-                         .Select(r => r.ChatId).ToListAsync(ct))
-                allowed.Add(id);
+            // ⚠️ Shaxsiy chat — faqat egasi HOZIR HAM superadmin bo'lsa (`ShouldNotify`, yangi karta
+            // yuborishdagi bilan bir xil darvoza). Ilgari "registratsiyasi bor" kifoya edi: oddiy adminga
+            // tushirilgan yoki o'chirilgan superadminning chatida karta (izohlari bilan) yangilanib turardi.
+            var regRows = await db.TelegramRegistrations.AsNoTracking()
+                .Where(r => r.UserId != null && r.UserId != "" && chatIds.Contains(r.ChatId))
+                .Select(r => new { r.ChatId, UserId = r.UserId! }).ToListAsync(ct);
+            if (regRows.Count > 0)
+            {
+                var regUserIds = regRows.Select(r => r.UserId).Distinct().ToList();
+                var superUsers = (await db.Users.AsNoTracking()
+                        .Where(u => regUserIds.Contains(u.Id)).ToListAsync(ct))
+                    .Where(ShouldNotify).Select(u => u.Id).ToHashSet();
+                foreach (var r in regRows)
+                    if (superUsers.Contains(r.UserId)) allowed.Add(r.ChatId);
+            }
 
             // Kartada oxirgi daraja testi natijasi ham turadi — u lidning JORIY holatining bir qismi
             // (aks holda birinchi tahrirdanoq test bloki kartadan yo'qolardi).

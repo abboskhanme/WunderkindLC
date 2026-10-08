@@ -14,12 +14,14 @@ import {
   validateBands,
   type BandDraft,
 } from '@/lib/priceBands'
-import { uid } from '@/lib/utils'
+import { apiErrorMessage, uid } from '@/lib/utils'
 
 interface Props {
   open: boolean
   onClose: () => void
-  onSubmit: (values: SubjectPayload) => void
+  /** Promise rad etilsa — server sababi ("… nomli kurs allaqachon mavjud") oynada ko'rinadi va oyna
+   *  YOPILMAYDI (kiritilgan narxlar qoladi). */
+  onSubmit: (values: SubjectPayload) => void | Promise<void>
   initial?: Subject | null
 }
 
@@ -32,6 +34,7 @@ export function SubjectFormModal({ open, onClose, onSubmit, initial }: Props) {
   /** Sinf oraliqlari — o'quvchi oyligi uning joriy sinfiga qarab (server `TuitionPricing`). */
   const [bands, setBands] = useState<BandRow[]>([])
   const [error, setError] = useState('')
+  const [saving, setSaving] = useState(false)
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- modal ochilganda formani initial bilan sinxronlash (maqsadli)
@@ -62,9 +65,9 @@ export function SubjectFormModal({ open, onClose, onSubmit, initial }: Props) {
       return [...prev, { key: uid(), gradeFrom: from, gradeTo: from, price: null, lessonPrice: null }]
     })
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!name.trim()) return
+    if (!name.trim() || saving) return
     if (price === null) {
       setError("Oylik narxni kiriting (bepul bo'lsa 0 yozing)")
       return
@@ -80,7 +83,14 @@ export function SubjectFormModal({ open, onClose, onSubmit, initial }: Props) {
       return
     }
     setError('')
-    onSubmit({ name: name.trim(), price, lessonPrice: lessonPrice ?? 0, priceBands: toPayloadBands(bands) })
+    setSaving(true)
+    try {
+      await onSubmit({ name: name.trim(), price, lessonPrice: lessonPrice ?? 0, priceBands: toPayloadBands(bands) })
+    } catch (err) {
+      setError(apiErrorMessage(err, "Kursni saqlab bo'lmadi"))
+    } finally {
+      setSaving(false)
+    }
   }
 
   const hasBands = bands.length > 0
@@ -96,8 +106,8 @@ export function SubjectFormModal({ open, onClose, onSubmit, initial }: Props) {
           <Button variant="secondary" onClick={onClose}>
             Bekor qilish
           </Button>
-          <Button type="submit" form="subject-form">
-            Saqlash
+          <Button type="submit" form="subject-form" disabled={saving}>
+            {saving ? 'Saqlanmoqda...' : 'Saqlash'}
           </Button>
         </>
       }

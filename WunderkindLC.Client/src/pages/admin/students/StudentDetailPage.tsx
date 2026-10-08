@@ -94,6 +94,7 @@ import { StudentFormModal } from './StudentFormModal'
 import { DiscountSection } from './DiscountSection'
 import { studentDiscountLabel } from './discountLabel'
 import { ProfileCard } from './profile/ProfileCard'
+import { TelegramLinksSection } from './profile/TelegramLinksSection'
 import { IntakeChecklistCard } from '@/components/students/IntakeChecklistCard'
 import { SmsModal } from './SmsModal'
 import { CallPickerModal, type CallOption } from '@/components/CallPickerModal'
@@ -678,9 +679,23 @@ export function StudentDetailPage() {
     getStudentGroups(id).then(setGroups).catch(() => {})
   }
 
+  /**
+   * A'zolik amalidan (muzlatish/aktivlashtirish/chiqarish/sinovga qaytarish) keyin: guruhlar VA profil
+   * kartasidagi BALANS. ⚠️ Bu amallar pulga tegadi (qisman oy yoziladi, keyingi oylar bekor qilinadi),
+   * ilgari faqat guruhlar yangilanib, kartada eski balans qolardi. Profil JIM yuklanadi (`setLoading`
+   * siz — sahifa yuklovchiga almashmasin); keshlangan to'liq Student obyektlari ham eskirdi.
+   */
+  const reloadAfterMembership = () => {
+    if (!id) return
+    reloadGroups()
+    getStudentNotebook(id).then(setData).catch(() => {})
+    setCallTarget(null)
+    setPaymentTarget(null)
+  }
+
   /** Guruh kartasidagi "⋮" menyu — amal boshlanishidan oldin qaysi a'zolikka tegishli ekanini belgilaydi. */
   const openGroupModal = (gr: StudentGroupMembership) => {
-    setGroupActionDate(new Date().toISOString().slice(0, 10))
+    setGroupActionDate(todayIso())
     setGroupModal(gr)
   }
 
@@ -711,7 +726,7 @@ export function StudentDetailPage() {
       } else {
         await returnMemberToTrial(groupModal.groupId, id, reasonId)
       }
-      reloadGroups()
+      reloadAfterMembership()
       setGroupReasonAction(null)
       setGroupModal(null)
     } catch (err) {
@@ -725,7 +740,7 @@ export function StudentDetailPage() {
   const openAddGroup = () => {
     setAddGroupTeacherId('')
     setAddGroupId('')
-    setAddGroupDate(new Date().toISOString().slice(0, 10))
+    setAddGroupDate(todayIso())
     setAddGroupOpen(true)
   }
 
@@ -752,7 +767,8 @@ export function StudentDetailPage() {
     setAddGroupBusy(true)
     try {
       await addGroupMember(addGroupId, id, addGroupDate)
-      reloadGroups()
+      // Arxivdagi o'quvchi qo'shilsa u arxivdan chiqadi (eski arxivda a'zoliklar yopiladi) — profil ham.
+      reloadAfterMembership()
       setAddGroupOpen(false)
     } catch (err) {
       alert(apiErrorMessage(err, "Guruhga qo'shib bo'lmadi"))
@@ -834,7 +850,7 @@ export function StudentDetailPage() {
     )
     data.marksTrend.forEach((m) => present.add(m.month))
     const enroll = data.enrollmentDate && data.enrollmentDate.length >= 7 ? data.enrollmentDate.slice(0, 7) : ''
-    const cur = new Date().toISOString().slice(0, 7)
+    const cur = currentMonth()
     const sorted = [...present].sort()
     const from = [enroll, sorted[0]].filter(Boolean).sort()[0] ?? cur
     const to = [sorted[sorted.length - 1] ?? '', cur].filter(Boolean).sort().slice(-1)[0] ?? from
@@ -1417,6 +1433,11 @@ export function StudentDetailPage() {
       </Section>
       )}
 
+      {/* Telegram ulanishlari (ota-ona boti) — kim ulangan, eskirganini «Uzish» (`TelegramLinks`). */}
+      {tab === 'aloqa' && id && (
+        <TelegramLinksSection studentId={id} canUnlink={can('students.list', 'delete')} />
+      )}
+
       {/* Tugatgan kurslar va sertifikatlar */}
       {tab === 'sertifikatlar' && (
       <Section
@@ -1893,7 +1914,6 @@ export function StudentDetailPage() {
         open={callOpen}
         onClose={() => setCallOpen(false)}
         title={data.fullName}
-        studentId={data.id}
         numbers={
           callTarget
             ? dedupeCallOptions([
@@ -2028,7 +2048,8 @@ export function StudentDetailPage() {
           onDone={() => {
             setGroupTransferOpen(false)
             setGroupModal(null)
-            reloadGroups()
+            // Guruh almashtirish ham pulga tegadi (eski guruh oyi yopiladi, avans ko'chadi) — balans ham.
+            reloadAfterMembership()
           }}
         />
       )}

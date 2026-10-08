@@ -120,6 +120,8 @@ export function LeadDetailPage() {
   const { can } = usePerm()
   const canEdit = can('leads.list', 'edit')
   const canDelete = can('leads.list', 'delete')
+  // Aylantirish O'QUVCHI yaratadi — server lid ruxsatidan tashqari o'quvchi qo'shish huquqini ham talab qiladi.
+  const canConvert = can('leads.list', 'create') && can('students.list', 'create')
 
   const [lead, setLead] = useState<Lead | null>(null)
   // Forma MANBASI alohida: bosqich/aylantirish kabi o'zgarishlarda `lead` yangilanadi, lekin
@@ -223,6 +225,8 @@ export function LeadDetailPage() {
 
   /* ---------- Yo'qotilgan (lost) ---------- */
   const lost = isLeadLost(lead)
+  /** OCHIQ lid = aylantirilmagan va yo'qotilmagan — sinov darsi faqat shunga belgilanadi (server ham rad etadi). */
+  const isOpen = !lead.convertedStudentId && !lost
   /** Server qaytargan holat — FAQAT muvaffaqiyatdan keyin qo'llanadi (optimistik emas). */
   const applyLossState = (st: LeadLossState) => {
     setLead((l) =>
@@ -292,19 +296,32 @@ export function LeadDetailPage() {
     }
   }
 
-  const doDelete = (reasonId: string | undefined) => {
-    deleteLead(lead.id, reasonId).then(() => navigate('/admin/leads', { replace: true }))
+  // ⚠️ Promise QAYTARADI — `ReasonPromptModal` tugmani so'rov tugaguncha qulflaydi; xato bo'lsa
+  // sababi ko'rsatiladi (ilgari xato jimgina yutilardi va oyna "osilib" qolardi).
+  const doDelete = async (reasonId: string | undefined) => {
+    try {
+      await deleteLead(lead.id, reasonId)
+      navigate('/admin/leads', { replace: true })
+    } catch (err) {
+      alert(apiErrorMessage(err, "Lidni o'chirib bo'lmadi"))
+    }
   }
 
   const handleTrialResult = async (trialId: string, result: TrialLesson['result']) => {
-    await setTrialResult(trialId, result)
-    activity.refresh()
+    try {
+      await setTrialResult(trialId, result)
+    } catch (err) {
+      alert(apiErrorMessage(err, "Sinov natijasini saqlab bo'lmadi"))
+    } finally {
+      activity.refresh()
+    }
   }
 
   const menu: DropdownMenuItem[] = [
-    { label: 'Sinov darsiga yozish', icon: CalendarClock, onClick: () => setModal('trial') },
+    // Sinov darsi — faqat OCHIQ lidga (o'quvchi bo'lgan yoki yo'qotilgan lidga server ham rad etadi).
+    ...(isOpen ? [{ label: 'Sinov darsiga yozish', icon: CalendarClock, onClick: () => setModal('trial') }] : []),
     // Yo'qotilgan lidni aylantirib bo'lmaydi (server ham rad etadi) — avval tiklanadi.
-    ...(lead.convertedStudentId || lost
+    ...(!isOpen || !canConvert
       ? []
       : [{ label: "O'quvchiga aylantirish", icon: GraduationCap, onClick: () => setModal('convert') }]),
     { label: 'SMS yuborish', icon: MessageSquare, onClick: () => setModal('sms') },
@@ -315,7 +332,10 @@ export function LeadDetailPage() {
         ? [{ label: 'Tiklash (faol ishga qaytarish)', icon: RotateCcw, onClick: () => void doRestore() }]
         : [{ label: "Yo'qotilgan deb belgilash", icon: UserX, danger: true, onClick: () => setLosing(true) }]
       : []),
-    ...(canDelete ? [{ label: "Lidni o'chirish", icon: Trash2, danger: true, onClick: () => setDeleting(true) }] : []),
+    // Aylantirilgan lid O'CHIRILMAYDI (server 400): KPI "shartnoma", sotuv tushumi va qabul cheklisti unga tayanadi.
+    ...(canDelete && !lead.convertedStudentId
+      ? [{ label: "Lidni o'chirish", icon: Trash2, danger: true, onClick: () => setDeleting(true) }]
+      : []),
   ]
 
   const modalTitle: Record<Exclude<ActionModal, null>, string> = {
@@ -450,7 +470,7 @@ export function LeadDetailPage() {
                 havola turadi (⋮ menyudagi band bilan BITTA amal).
               */}
               <FieldRow label="Guruh">
-                {lead.groupName ? (
+                {lead.groupName || !isOpen ? (
                   <ReadValue>{lead.groupName}</ReadValue>
                 ) : (
                   <button
@@ -715,15 +735,18 @@ export function LeadDetailPage() {
           <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
             <LeadTrialList
               trials={activity.trials}
+              canEdit={canEdit}
               onResult={handleTrialResult}
               onReceipt={(tid) => {
                 setReceiptAuto(false)
                 setReceiptTrial(tid)
               }}
             />
-            <Button variant="secondary" onClick={() => setModal('trial')}>
-              <CalendarClock className="h-4 w-4" /> Sinov darsiga yozish
-            </Button>
+            {isOpen && (
+              <Button variant="secondary" onClick={() => setModal('trial')}>
+                <CalendarClock className="h-4 w-4" /> Sinov darsiga yozish
+              </Button>
+            )}
           </div>
         )}
       </section>
@@ -737,6 +760,8 @@ export function LeadDetailPage() {
             lead={lead}
             groups={groups}
             teacherOptions={teacherOptions}
+            canViewStudents={can('students.list', 'view')}
+            // Oyna OCHIQ qoladi: natija (guruh to'lgani yoki bog'langani) panelda ko'rinsin.
             onConverted={(studentId) => {
               setLead({ ...lead, convertedStudentId: studentId })
               activity.refresh()

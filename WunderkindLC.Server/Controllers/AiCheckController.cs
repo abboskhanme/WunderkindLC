@@ -22,8 +22,19 @@ namespace WunderkindLC.Server.Controllers;
 // talab bilan bir xil (nav: perm 'app').
 [AdminPerm("app.aiCheck", ReadRequiresPerm = true)]
 [Route("api/admin/ai-check")]
-public class AiCheckController(AppDbContext db) : ControllerBase
+public class AiCheckController(AppDbContext db, AuditService audit) : ControllerBase
 {
+    /// <summary>AI tekshiruv limitlari tarixda o'zbekcha nom bilan ko'rinsin. Limit — PULLI API
+    /// (Gemini/Azure) sarfini boshqaradi, shuning uchun "eski → yangi" qiymati bilan yoziladi.</summary>
+    private static readonly Dictionary<string, string> AiLabels = new()
+    {
+        [nameof(CenterMeta.AiCheckDailyLimit)] = "Kunlik limit (standart)",
+        [nameof(CenterMeta.AiCheckEnabled)] = "Bo'lim ilovada ochiq",
+        [nameof(StudentAiAccess.DailyLimit)] = "Kunlik limit",
+        [nameof(StudentAiAccess.IsPremium)] = "Premium",
+        [nameof(StudentAiAccess.IsBlocked)] = "Bloklangan",
+    };
+
     /// <summary>
     /// BARCHA (arxivlanmagan) o'quvchilar ro'yxati — FISH + guruh + kim necha marta (speaking/writing)
     /// ishlatgani, bugungi foydalanish va limit/premium/blok holati. Foydalanmaganlar ham chiqadi
@@ -79,6 +90,7 @@ public class AiCheckController(AppDbContext db) : ControllerBase
         var meta = await db.CenterMeta.FirstOrDefaultAsync();
         if (meta is null) { meta = new CenterMeta(); db.CenterMeta.Add(meta); }
         meta.AiCheckDailyLimit = Math.Clamp(req.DailyLimit, 0, 1000);
+        SettingsAudit.Record<CenterMeta>(audit, db.ChangeTracker, "AI tekshiruv", withValues: true, labels: AiLabels);
         await db.SaveChangesAsync();
         return NoContent();
     }
@@ -92,6 +104,7 @@ public class AiCheckController(AppDbContext db) : ControllerBase
         var meta = await db.CenterMeta.FirstOrDefaultAsync();
         if (meta is null) { meta = new CenterMeta(); db.CenterMeta.Add(meta); }
         meta.AiCheckEnabled = req.Enabled;
+        SettingsAudit.Record<CenterMeta>(audit, db.ChangeTracker, "AI tekshiruv", withValues: true, labels: AiLabels);
         await db.SaveChangesAsync();
         return NoContent();
     }
@@ -100,7 +113,8 @@ public class AiCheckController(AppDbContext db) : ControllerBase
     [HttpPut("access/{studentId}")]
     public async Task<IActionResult> SaveAccess(string studentId, SaveAiAccessRequest req)
     {
-        if (!await db.Students.AnyAsync(s => s.Id == studentId)) return NotFound();
+        var studentName = await db.Students.Where(s => s.Id == studentId).Select(s => s.FullName).FirstOrDefaultAsync();
+        if (studentName is null) return NotFound();
         var access = await db.StudentAiAccesses.FirstOrDefaultAsync(a => a.StudentId == studentId);
         if (access is null)
         {
@@ -110,7 +124,13 @@ public class AiCheckController(AppDbContext db) : ControllerBase
         access.DailyLimit = Math.Clamp(req.DailyLimit, 0, 1000);
         access.IsPremium = req.IsPremium;
         access.IsBlocked = req.IsBlocked;
+        // Faqat qiymat O'ZGARGAN bo'lsa yoziladi (UpdatedAt har saqlashda o'zgaradi — u hisobga olinmaydi).
+        var changedAccess = SettingsAudit.ChangedFields<StudentAiAccess>(db.ChangeTracker)
+            .Any(f => AiLabels.ContainsKey(f));
         access.UpdatedAt = AppClock.Now.ToString("yyyy-MM-ddTHH:mm:ss");
+        if (changedAccess)
+            SettingsAudit.Record<StudentAiAccess>(audit, db.ChangeTracker, $"AI tekshiruv ruxsati: {studentName}",
+                withValues: true, labels: AiLabels, entityType: "StudentAiAccess", entityId: studentId, studentId: studentId);
         await db.SaveChangesAsync();
         return NoContent();
     }

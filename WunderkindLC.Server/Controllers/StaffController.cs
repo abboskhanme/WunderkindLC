@@ -288,6 +288,8 @@ public class StaffController(AppDbContext db, AuditService audit) : ControllerBa
             if (req.NewPassword.Trim().Length < MinPasswordLength)
                 return BadRequest(new { message = WeakPasswordMessage });
             user.SetInitialPassword(req.NewPassword.Trim());
+            // Yangi parol = eski sessiyalar tugaydi (yo'qolgan telefon / ishdan ketgan odam chiqib ketsin).
+            await RefreshTokenService.RevokeAllForUserAsync(db, user.Id);
         }
         audit.Record("Staff", user.Id, "update",
             $"Xodim tahrirlandi: {user.FullName}" +
@@ -307,11 +309,34 @@ public class StaffController(AppDbContext db, AuditService audit) : ControllerBa
         if (user is null || user.Role != Roles.Staff) return NotFound();
         var reason = string.IsNullOrWhiteSpace(reasonId) ? "" : (await db.ActionReasons.Where(r => r.Id == reasonId).Select(r => r.Label).FirstOrDefaultAsync() ?? "");
         var actor = User.FindFirst(System.Security.Claims.ClaimTypes.Name)?.Value ?? "Admin";
-        ArchiveService.Snapshot(db, "staff", user.Id, user.FullName, user.Email ?? "", user, reason.Length > 0 ? reason : null, actor);
+        var actorId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? "";
+        // Arxiv suratiga PAROL XESHI ham, ochiq dastlabki parol ham TUSHMAYDI (surat kunlik Telegram
+        // zaxirasiga ham kiradi). Tiklangan akkaunt parolsiz bo'ladi — admin yangisini yaratadi.
+        ArchiveService.Snapshot(db, "staff", user.Id, user.FullName, user.Email ?? "",
+            (object?)SecretScrub.ToScrubbedNode(user) ?? new { user.Id, user.FullName },
+            reason.Length > 0 ? reason : null, actor);
+        // Jonli havolalar (KPI profili, ochiq lidlar, kassa, topshiriqlar, CTI agent, Telegram) — o'sha
+        // tranzaksiyada bo'shatiladi; nima bo'shatilgani shu BITTA audit qatorida yoziladi.
+        // CTI agent id'lari OLDINDAN olinadi: bo'shatish agentning xodim bog'lanishini tozalaydi.
+        var agentIds = await db.CtiAgents.Where(a => a.StaffUserId == user.Id).Select(a => a.Id).ToListAsync();
+        var released = await StaffRelease.ReleaseAsync(db, user.Id, user.FullName, actorId);
         audit.Record("Staff", user.Id, "delete",
-            $"Xodim o'chirildi: {user.FullName}" + (reason.Length > 0 ? $" — sabab: {reason}" : ""));
+            $"Xodim o'chirildi: {user.FullName}" + (reason.Length > 0 ? $" — sabab: {reason}" : "")
+            + (released.Any ? $" — {released.Summary()}" : ""));
         db.Users.Remove(user);
         await db.SaveChangesAsync();
+
+        // ⚠️ O'chirilgan agentning JONLI ulanishi DARHOL uziladi (`CtiController.UpdateAgent` bilan bir xil):
+        // aks holda ishdan ketgan xodimning telefoni ochiq WebSocket va 12 soatlik token bilan qo'ng'iroq
+        // qilish/SMS yuborishda davom etardi.
+        if (agentIds.Count > 0)
+        {
+            var conn = HttpContext.RequestServices.GetRequiredService<CtiConnectionManager>();
+            foreach (var agentId in agentIds) await conn.DisconnectAsync(agentId);
+        }
+        // Standart Local SMS agenti o'chgan bo'lsa — avtomatik SMS'lar to'xtadi: javobda OCHIQ aytiladi.
+        if (released.DefaultSmsAgentName is { } agentName)
+            return Ok(new { warning = LocalSmsDefaultAgent.StoppedWarning(agentName) });
         return NoContent();
     }
 
@@ -354,6 +379,9 @@ public class StaffController(AppDbContext db, AuditService audit) : ControllerBa
         // Parolning O'ZI hech qachon tarixga yozilmaydi — faqat "almashtirildi" faktI.
         audit.Record("Staff", user.Id, "update", $"Xodim paroli qayta yaratildi: {user.FullName}");
         user.SetInitialPassword(pwd);
+        // Eski sessiyalar tugaydi — aks holda parol tiklangan akkauntga eski telefon/brauzer
+        // 30 kunlik sirpanuvchi refresh bilan kirib yuraverardi.
+        await RefreshTokenService.RevokeAllForUserAsync(db, user.Id);
         await db.SaveChangesAsync();
         return new CredentialsDto(user.Email, pwd, user.Role);
     }

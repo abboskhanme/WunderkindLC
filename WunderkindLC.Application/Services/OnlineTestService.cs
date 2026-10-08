@@ -113,7 +113,12 @@ public static class OnlineTestService
             .ToListAsync();
         var mine = all.FirstOrDefault(s => s.StudentId == studentId);
         var submitted = mine is not null && IsStudentSubmission(mine.Source);
-        var rank = mine is null ? 0 : all.Count(x => x.Score > mine.Score) + 1;
+        // O'RIN — bot bilan BITTA qoida (RankAmong): markazdagi VA markazdan tashqari ishtirokchilar birga.
+        // Ilgari ilova tashqilarni sanamasdi — bitta test ilovada "2-o'rin", botda "5-o'rin" ko'rinardi.
+        var extScores = await db.ExternalTestScores.AsNoTracking()
+            .Where(x => x.TestResultId == t.Id).Select(x => x.Score).ToListAsync();
+        var everyone = all.Select(x => x.Score).Concat(extScores).ToList();
+        var rank = mine is null ? 0 : RankAmong(mine.Score, everyone);
 
         var groupName = await db.Classes.AsNoTracking()
             .Where(g => g.Id == t.GroupId).Select(g => g.Name).FirstOrDefaultAsync() ?? "";
@@ -123,8 +128,17 @@ public static class OnlineTestService
             t.QuestionCount, t.OptionCount, StartOf(t), EndOf(t),
             t.PdfUrl, t.PdfName, StateOf(t, submitted),
             mine?.Score, mine?.Answers ?? "", mine?.SubmittedAt ?? "",
-            IsFinished(t) ? t.AnswerKey : "", rank, all.Count);
+            IsFinished(t) ? t.AnswerKey : "", rank, everyone.Count);
     }
+
+    /// <summary>
+    /// O'RIN QOIDASI — ilova ham, bot ham shuni ishlatadi: o'zidan YUQORI ball olganlar soni + 1
+    /// (teng ballilar bir xil o'rinda). <paramref name="scores"/> — testning BARCHA natijalari:
+    /// markazdagilar (<see cref="TestScore"/>) VA markazdan tashqari ishtirokchilar
+    /// (<see cref="ExternalTestScore"/>) BIRGA (`.claude/rules/tests.md`). Admin/o'qituvchi tafsilotidagi
+    /// ikki ro'yxat (<see cref="TestResultService.DetailAsync"/>) bundan mustaqil — ular o'z ichida saralanadi.
+    /// </summary>
+    public static int RankAmong(decimal score, IEnumerable<decimal> scores) => scores.Count(x => x > score) + 1;
 
     /// <summary>Javoblarni qabul qiladi va avtomatik tekshiradi.
     /// Xato bo'lsa <c>Error</c> to'ldiriladi (foydalanuvchiga ko'rsatiladigan matn).</summary>

@@ -757,6 +757,15 @@ public class Teacher
     public string? ArchiveReason { get; set; }
 
     /// <summary>
+    /// ARXIVDA TURGAN (ishlamagan) davrlar — har biri <c>"boshlanish|tugash"</c> (ikkalasi ISO
+    /// "YYYY-MM-DD", IKKALASI HAM KIRADI): arxiv kunidan KEYINGI kun .. qaytarilgan kundan OLDINGI kun.
+    /// Arxivdan qaytarishda (<c>TeachersController.Restore</c>) qo'shiladi, chunki o'sha paytda
+    /// <see cref="ArchivedAt"/> tozalanadi va iz qolmasdi. <c>SalaryLedger</c> bu kunlar uchun qat'iy
+    /// oylik ham, guruh ulushi ham HISOBLAMAYDI. Bo'sh — hech qachon arxivda bo'lmagan.
+    /// </summary>
+    public List<string> InactivePeriods { get; set; } = new();
+
+    /// <summary>
     /// VAQTINCHA AKTIV EMAS (ta'til, to'xtatib turish, intizomiy chora) — o'qituvchi tizimga
     /// KIRA OLMAYDI (login ham, eski token ham rad etiladi), lekin ro'yxatdan yo'qolmaydi:
     /// guruhlari, maoshi, jurnali va butun tarixi joyida qoladi.
@@ -1538,6 +1547,11 @@ public class JournalEntry
     /// <summary>Shu darsni o'zlashtirish darajasi (MasteryLevel enum). null = belgilanmagan.
     /// EF Core database savni int sifatida saqlaydi va enum qiymatiga o'zgartiradi.</summary>
     public MasteryLevel? Mastery { get; set; }
+    /// <summary><see cref="Grade"/> BAHOLASH MEZONLARIDAN (checklar soni) avtomatik yozilganmi.
+    /// true — baho mezon sinxronining "mulki": mezon belgilansa/olinsa u yangilanadi/tozalanadi,
+    /// BALL hisobida esa qayta qo'shilmaydi (o'sha checklar allaqachon sanalgan). false — QO'LDA
+    /// qo'yilgan baho: mezon sinxroni unga HECH QACHON tegmaydi (`.claude/rules/journal.md`).</summary>
+    public bool GradeFromCriteria { get; set; }
 }
 
 /// <summary>Dars mavzusi va uyga vazifa (sana bo'yicha).</summary>
@@ -1835,6 +1849,12 @@ public class FinanceTransaction
     /// Bunday yozuv Moliyada TAHRIRLANMAYDI va bekor qilinmaydi — summasi kitob bo'limida (qaytarish)
     /// o'zgaradi (`BookFinance`). null — oddiy tranzaksiya.</summary>
     public string? BookOrderId { get; set; }
+
+    /// <summary>BO'LINGAN TO'LOV: guruh almashtirishda ortiqcha qism yangi guruhga ko'chirilib, to'lov ikkiga
+    /// bo'linsa (`TuitionService.CarryGroupAdvanceAsync`) — yangi qator qaysi ASL to'lovdan ajralgani (oilaning
+    /// ILDIZI: ko'p marta bo'linsa ham hammasi birinchi to'lovga bog'lanadi). Bekor qilish butun oilani birga
+    /// bekor qiladi, vozvrat esa har qatordan alohida (`PaymentSplits`). null — bo'linmagan oddiy yozuv.</summary>
+    public string? SplitFromId { get; set; }
 }
 
 /// <summary>
@@ -3482,10 +3502,16 @@ public class StaffRoleTemplate
 
 
 /// <summary>
-/// Call Center qo'ng'irog'i (provayder telefoniya orqali). O'quvchi topilsa StudentId to'ladi
-/// (qo'lda terilgan/notanish raqamda null). Operator = CRM foydalanuvchisi (Users).
-/// AsteriskUniqueId — provayder hodisalarini (ringing/answer/finish) shu yozuvga bog'lash kaliti.
+/// ESKI bulutli telefoniya qo'ng'irog'i — FAQAT TARIX. O'quvchi topilsa StudentId
+/// to'ladi (qo'lda terilgan/notanish raqamda null). Operator = CRM foydalanuvchisi (Users).
 /// </summary>
+/// <remarks>
+/// ⚠️ 2026-10-08 dan bu jadvalga HECH NARSA YOZILMAYDI: bulutli integratsiya olib tashlandi,
+/// jonli telefoniya — faqat Local Call (<see cref="CtiCallRecord"/>). Jadval va qatorlar ATAYIN
+/// qoldirildi (o'chirish — ma'lumot yo'qotish, egasining tasdig'i kerak); ularni faqat o'quvchini
+/// tozalash (`StudentPurge`) va zaxira nusxa o'qiydi. Yangi ko'rsatkich uchun bu jadvalga
+/// TAYANMANG — `CtiCallRecord` dan foydalaning (`.claude/rules/kpi.md` §11.1).
+/// </remarks>
 public class Call
 {
     public string Id { get; set; } = Guid.NewGuid().ToString();
@@ -3504,18 +3530,16 @@ public class Call
     public DateTime? EndedAt { get; set; }
     /// <summary>Gaplashuv davomiyligi soniyada (javobdan tugashgacha; javobsiz — 0).</summary>
     public int DurationSeconds { get; set; }
-    /// <summary>Provayder qo'ng'iroq id'si: MoiZvonki event_pbx_call_id —
-    /// jonli hodisalarni shu yozuvga bog'lash kaliti. (Maydon nomi tarixiy sabab bilan qoldi.)</summary>
+    /// <summary>Eski provayderning qo'ng'iroq id'si (tarixiy maydon, endi yozilmaydi).</summary>
     public string AsteriskUniqueId { get; set; } = string.Empty;
-    /// <summary>MoiZvonki db_call_id — calls.list sinxronizatsiyasida takrorlanmaslik kaliti
-    /// (webhook call.finish ham to'ldiradi). Bo'sh — sinxron qilinmagan/boshqa provayder.</summary>
+    /// <summary>Eski provayderning tarix sinxroni kaliti (tarixiy maydon, endi yozilmaydi).</summary>
     public string ProviderDbId { get; set; } = string.Empty;
     /// <summary>Suhbatning SO'ZMA-SO'Z transkripti (Azure Speech, hech qanday moslashtirishsiz).
     /// Bo'sh — hali transkript qilinmagan ("Transkriptga o'girish" tugmasi bilan yaratiladi).</summary>
     public string Transcript { get; set; } = string.Empty;
     /// <summary>Transkript bo'yicha Gemini AI tahlili (operator nima deyishi mumkin edi, tavsiyalar).</summary>
     public string AiAnalysis { get; set; } = string.Empty;
-    /// <summary>Suhbat yozuvi: provayder yozuv URL'i (MoiZvonki) yoki lokal fayl nomi. Bo'sh — yozuv yo'q.</summary>
+    /// <summary>Suhbat yozuvi: eski provayderning yozuv URL'i (tarixiy). Bo'sh — yozuv yo'q.</summary>
     public string RecordingFile { get; set; } = string.Empty;
     /// <summary>Operator izohi (ixtiyoriy).</summary>
     public string Note { get; set; } = string.Empty;
@@ -3755,6 +3779,16 @@ public class BookOrder
     /// <summary>NASIYA qanday yopilgani: "cash" | "card". Nasiya bo'lmagan yoki hali
     /// to'lanmagan buyurtmada bo'sh. Karta bo'lsa <see cref="CardLast4"/> ham to'ldiriladi.</summary>
     public string? SettledMethod { get; set; }
+
+    /// <summary>
+    /// OLIB KETISHDA TO'LANADI: botdan NAQD tanlangan buyurtma tasdiqlanganda <c>true</c> bo'ladi —
+    /// kitob zaxiraga olinadi (qoldiqdan ayiriladi), lekin pul mijoz kelib olib ketganda olinadi
+    /// (kassir «To'landi» bosadi, <c>BookSalesService.PayCreditAsync</c>). Shu paytgacha
+    /// <see cref="PaidAt"/> bo'sh va KASSAGA kirim yozilmaydi; mijoz kelmasa buyurtma bekor
+    /// qilinadi (qoldiq qaytadi, soxta "qaytarish" emas). Eski qatorlarda <c>false</c> — ular
+    /// avvalgidek "tasdiqlangan = to'langan" (books.md §2.6).
+    /// </summary>
+    public bool PayAtPickup { get; set; }
 
     // -------------------------------------------------------------------------------------
     //  QAYTARISH (vozvrat) — mijoz kitobni qaytarib berdi
@@ -4528,6 +4562,17 @@ public class IgConversation
     /// Bu — modulda YAGONA nullable maydon: "lid yo'q" holati mazmunan mavjud va
     /// `""` bilan chalkashtirilmasligi kerak.</summary>
     public string? LeadId { get; set; }
+
+    /// <summary>OLDIN bog'langan (keyin almashtirilgan) lidlar: har biri <c>"leadId|tugash"</c>
+    /// (tugash — ISO vaqt: o'sha lid davri qachon tugagani, odatda o'quvchiga AYLANTIRILGAN payt).
+    /// <para>JORIY lid bu ro'yxatda YO'Q — u <see cref="LeadId"/> da. Qator faqat suhbat BOSHQA
+    /// lidga ko'chirilganda qo'shiladi (aylantirilgan lid qayta ishlatilmaydi — qaytgan o'quvchi
+    /// yangi lid bo'ladi, CRM-1).</para>
+    /// <para>NEGA KERAK: ko'chirishda eski lid izsiz yo'qolar va Instagram/reklama atributsiyasi
+    /// (kanal tahlili, ROI) PUL TO'LAGAN eski liddan yangi, to'lamagan lidga ko'chib ketardi.
+    /// Batafsil: <c>IgLeadLinks</c>, <c>.claude/rules/marketing-instagram.md</c> §6.</para>
+    /// <para>Mavjud qatorlarda BO'SH — backfill kerak emas (ko'chirish shu tuzatish bilan paydo bo'ldi).</para></summary>
+    public List<string> PastLeadIds { get; set; } = new();
 
     /// <summary>Suhbat REKLAMA izohidan boshlangan bo'lsa — o'sha e'lonning id'si. Bo'sh = organik.
     /// <para><b>Nega kerak?</b> ROI hisobotida reklama faqat forma lidini emas, izoh orqali kelgan
@@ -5592,7 +5637,8 @@ public class KpiTicket
     public string ReasonCode { get; set; } = string.Empty;
     /// <summary>Yashirin mijoz auditining 13 mezonidan biri (1..13). null = mezonga bog'liq emas.</summary>
     public int? CriterionNo { get; set; }
-    /// <summary>Dalil bo'lgan qo'ng'iroq (<see cref="Call"/>.Id) — bo'sh bo'lishi mumkin.</summary>
+    /// <summary>Dalil bo'lgan qo'ng'iroq — Local Call yozuvi (<see cref="CtiCallRecord"/>.Id; eski
+    /// tiketlarda tarixiy <see cref="Call"/>.Id bo'lishi mumkin). Bo'sh bo'lishi mumkin.</summary>
     public string? CallId { get; set; }
     public string? Note { get; set; }
     /// <summary>proposed | confirmed | disputed | cancelled (`KpiConst`). Oylikka FAQAT

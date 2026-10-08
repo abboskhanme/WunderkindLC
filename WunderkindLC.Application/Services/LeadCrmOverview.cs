@@ -45,12 +45,13 @@ public static class LeadCrmOverview
         var testIds = (await db.LevelTestSubmissions.AsNoTracking()
                 .Where(x => x.LeadId != "").Select(x => x.LeadId).Distinct().ToListAsync(ct))
             .ToHashSet(StringComparer.Ordinal);
-        var igIds = (await db.IgConversations.AsNoTracking()
-                .Where(x => x.LeadId != null).Select(x => x.LeadId!).Distinct().ToListAsync(ct))
-            .ToHashSet(StringComparer.Ordinal);
-        var adsIds = (await db.IgAdLeads.AsNoTracking()
-                .Where(x => x.LeadId != "").Select(x => x.LeadId).Distinct().ToListAsync(ct))
-            .ToHashSet(StringComparer.Ordinal);
+        // ⚠️ Joriy bog'lanish VA tarix (`IgLeadLinks`): qaytgan o'quvchi uchun suhbat yangi lidga
+        // ko'chganda pul to'lagan ESKI lid "Instagram" kanalidan chiqib ketmasin (audit R2-2).
+        var igIds = await IgLeadLinks.LinkedLeadIdsAsync(db, ct);
+        // ⚠️ Reklama kanali = Lead Ads formasi + «Click-to-Direct» reklamasidan kelgan DM (Meta
+        // bergan ANIQ `referral.ad_id`). Ilgari ikkinchisi "Instagram (izoh/DM)" ga tushardi va
+        // reklama byudjeti keltirgan lidlar kam ko'rinardi. Manba — `IgDmAdLeads` (yagona).
+        var adsIds = await IgDmAdLeads.AdsLeadIdsAsync(db, ct);
 
         var rows = leads.Select(l => new LeadAnalytics.LeadRow(
             l.Id, l.Stage ?? "", "", l.ConvertedStudentId != null, l.CreatedAt ?? "",

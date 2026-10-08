@@ -5,7 +5,8 @@
  *
  * ⚠️ ASOSIY TUZOQLAR (§5.9 — ekranda ham OCHIQ yozilgan, olib tashlanmaydi):
  * 1. <b>Joylangan postni CRM'dan tahrirlab ham, o'chirib ham bo'lmaydi</b> — Instagram API'si
- *    buni qo'llab-quvvatlamaydi. Shuning uchun «Tahrirlash» faqat `scheduled` holatda ochiq,
+ *    buni qo'llab-quvvatlamaydi. Shuning uchun «Tahrirlash» faqat hali joylanmagan postda ochiq
+ *    (`scheduled` · `failed` · `cancelled` — `isEditable`),
  *    o'chirish esa joylangan postda FAQAT CRM yozuvini o'chiradi (Instagram'dagi post qoladi).
  * 2. <b>Ro'yxat OY bo'yicha to'liq yuklanadi</b> (`status: 'all'`), kun ham, HOLAT ham
  *    KLIENTDA filtrlanadi: kalendar katagidagi son va ostidagi ro'yxat AYNAN bitta manbadan
@@ -249,7 +250,8 @@ export function ContentQueue() {
           <div style={{ fontSize: 12.5, lineHeight: 1.5 }}>
             Instagram API’si joylangan postni tahrirlashni ham, o‘chirishni ham qo‘llab-quvvatlamaydi —
             matnni ham, rasmni ham faqat <b>Instagram ilovasidan</b> o‘zgartirish mumkin. Shu sababli
-            tahrirlash tugmasi faqat <b>«Rejalashtirilgan»</b> postlarda ochiq. Joylangan postni bu yerda
+            tahrirlash tugmasi faqat hali <b>joylanmagan</b> postlarda ochiq (rejalashtirilgan, xato bilan
+            qolgan yoki bekor qilingan — saqlangach post navbatga qaytadi). Joylangan postni bu yerda
             o‘chirsangiz — <b>faqat CRM yozuvi</b> o‘chadi, Instagram’dagi post o‘z joyida qoladi.
           </div>
         </div>
@@ -455,7 +457,9 @@ function PostRow({
               <button
                 className="btn btn-outline btn-sm"
                 disabled
-                title="Faqat «Rejalashtirilgan» post tahrirlanadi — joylangan postni Instagram API’si o‘zgartirishga ruxsat bermaydi"
+                title={post.status === 'processing'
+                  ? 'Post hozir joylanmoqda — natijasi chiqquncha tahrirlab bo‘lmaydi'
+                  : 'Joylangan postni Instagram API’si o‘zgartirishga ruxsat bermaydi — matnni Instagram ilovasidan o‘zgartiring'}
               >
                 <Icon name="edit" /> Tahrirlash
               </button>

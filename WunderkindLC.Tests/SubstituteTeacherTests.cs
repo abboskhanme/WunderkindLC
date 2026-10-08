@@ -512,7 +512,7 @@ public class SubstituteTeacherTests
 
         // Bekor qilingan tayinlov joyni BAND QILMAYDI.
         var band = await ctx.SubstituteTeacherAssignments.FirstAsync(x => x.SubstituteTeacherId == sub1.Id);
-        await SubstituteTeacherService.CancelAssignmentAsync(ctx, band.Id, audit);
+        await SubstituteTeacherService.CancelAssignmentAsync(ctx, band.Id, audit, today: Bugun);
         var (ok4, _, _) = await SubstituteTeacherService.CreateAssignmentAsync(ctx,
             new CreateSubstituteAssignmentRequest(g.Id, sub2.Id, new List<string> { "2026-08-19" }),
             "Admin", null, audit, Bugun);
@@ -854,7 +854,7 @@ public class SubstituteTeacherTests
         }
 
         // Bekor qilish ham yoziladi — `action` = "delete" ("cancel" ruxsat etilmagan qiymat edi).
-        var (okCancel, _) = await SubstituteTeacherService.CancelAssignmentAsync(ctx, entity!.Id, audit);
+        var (okCancel, _) = await SubstituteTeacherService.CancelAssignmentAsync(ctx, entity!.Id, audit, today: Bugun);
         Assert.True(okCancel);
 
         using (var ctx3 = db.NewContext())

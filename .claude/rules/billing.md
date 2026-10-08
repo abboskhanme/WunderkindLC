@@ -30,8 +30,8 @@ paths:
 
 - **Maosh QO'LDA, 2 rejim** (`Teacher.SalaryMode`): **"fixed"** — admin `Teacher.Salary` qat'iy summasini
   kiritadi; **"percent"** — o'qituvchi guruh(lar)idan **SHU OY UCHUN** yig'ilgan tuition to'lovining
-  `Teacher.SalaryPercent` foizi. Hisob: `SalaryLedger.CollectedPerGroupAsync` — guruh =
-  `Group.TeacherId`; to'lov `FinanceTransaction.GroupId` tegiga ega bo'lsa 100% o'sha guruhga,
+  `Teacher.SalaryPercent` foizi. Hisob: `SalaryLedger.CollectedPerGroupAsync` — guruh = o'sha OYDA
+  guruhni o'qitgan o'qituvchi (tarix bo'yicha, darslar ulushida — pastda «O'TGAN OY KIMNIKI»); to'lov `FinanceTransaction.GroupId` tegiga ega bo'lsa 100% o'sha guruhga,
   **teglanmagan** to'lov esa o'quvchining shu oydagi billable guruhlari `MonthlyFee` nisbatida
   taqsimlanadi. Frontend `TeacherSalaryPage` (rejim toggle + foiz).
 
@@ -106,7 +106,9 @@ o'quvchi kunlar nisbatida hisoblanadi (dars kunlari bo'yicha emas).
   `TuitionService.ProratedLessonCharge` ni ishlatadi.
   **ORQAGA SANALGAN muzlatishda muzlatish oyidan KEYINGI hisoblar BEKOR qilinadi**
   (`TuitionService.PurgeChargesAfterMonthAsync`, javobda `restored`) — o'quvchi o'qimagan oylar uchun
-  qarzdor bo'lib qolmasin; `Locked` qatorlar tegilmaydi. Bu AKTIVLASHTIRISHNING teskarisi va uchala
+  qarzdor bo'lib qolmasin; `Locked` (qo'lda tahrirlangan) qatorlar tegilmaydi — ⚠️ qulfi FAQAT kelmagan
+  darslar chegirmasidan bo'lgan qator bundan MUSTASNO: u qisqartiriladi/bekor qilinadi (`discounts.md`
+  §13, 2026-10-07). Bu AKTIVLASHTIRISHNING teskarisi va uchala
   yo'lda ham bir xil: **muzlatish**, **guruh almashtirish** (`transfer`) va **guruhni yopish** (`close`).
   Muzlatish sanasi AKTIVLASHTIRISH sanasidan oldin bo'lsa (umuman o'qimagan) — qisman to'lov ham
   yozilmaydi va aktivlashtirish oyi hisobi ham bekor qilinadi (`inclusive: true`).
@@ -220,8 +222,9 @@ o'quvchi kunlar nisbatida hisoblanadi (dars kunlari bo'yicha emas).
   To'lovlar bo'limida qo'shimcha filtrlar: **to'lov usuli** (naqd/karta/bank — chipda o'sha usul
   jami summasi) va **kvitansiya** (raqami bor / raqami yo'q).
 
-- **ESKI / ARXIV GURUHGA TO'LOV QABUL QILINADI** (`PaymentIntake.AddAsync`): "billable guruhlar"
-  ro'yxatida `sg.IsActive` sharti **YO'Q** — faqat `Status != "trial"`. Guruhdan CHIQARILGAN,
+- **ESKI / ARXIV GURUHGA TO'LOV QABUL QILINADI** (`PaymentIntake.AddAsync` → `ResolveGroup`): nomzod
+  guruhlar ro'yxatida `sg.IsActive` sharti **YO'Q** — sinovdan boshqa HAMMASI **+ FAOL sinov a'zoliklari**
+  (2026-10-07, quyida «SINOVDAGI O'QUVCHI TO'LOVI»). Guruhdan CHIQARILGAN,
   "tugatgan" (sertifikat bilan yopilgan guruh) va MUZLATILGAN a'zoliklarda ham qarz qolishi mumkin,
   kassir uni keyin ham qabul qila olishi shart. UI allaqachon shunday ishlaydi (`PaymentModal`
   sinovdan boshqa BARCHA a'zoliklarni ko'rsatadi, "— chiqarilgan" yorlig'i bilan; Kassa esa arxiv
@@ -253,8 +256,11 @@ o'quvchi kunlar nisbatida hisoblanadi (dars kunlari bo'yicha emas).
   Shu bilan birga (tekshiruvda topilgan, 2026-10-06):
   - chiqarishda o'quvchining «asosiy guruh» yorlig'i (`ClassName`) chiqqan guruhda qolmaydi (boshqa tirik
     guruhi yoki bo'sh) — aks holda portal chati, ro'yxat belgisi va guruhni o'chirish uni guruhda deb bilardi;
-  - o'tkazishda sanalar tekshiriladi (aktivlashtirish chiqishdan OLDIN bo'lmaydi); maqsad guruhda o'quvchi
-    MUZLATILGAN bo'lsa — o'tkazish emas, «Aktivlashtirish» (sabab matni bilan 400);
+  - o'tkazishda sanalar tekshiriladi (aktivlashtirish chiqishdan OLDIN bo'lmaydi; chiqish KELAJAKDA
+    bo'lmaydi — `RemoveMember` bilan bir xil); maqsad guruhda o'quvchi MUZLATILGAN bo'lsa — o'tkazish emas,
+    «Aktivlashtirish» (sabab matni bilan 400); maqsad guruh ARXIVDA bo'lsa — 400. Orqaga sanalgan
+    aktivlashtirishda oraliq oylar DARHOL yoziladi (`AccrueCatchUpAsync`, yakka aktivlashtirishdagi kabi).
+    Oynada eski guruhdan chiqish SABABI tanlanadi (`remove_*` kategoriyasi, «Ketish sabablari» uchun);
   - qo'lda «chiqarish + qo'shish + aktivlashtirish» oqimida avans shu oyda CHIQQAN a'zolikdan ham ko'chadi.
 - ⚠️ **HECH aktivlashtirilmagan (sinov) a'zolik muzlatilsa oylik YOZILMAYDI** (`SettleFreezeAsync`):
   ilgari bo'sh `ActivatedAt` "oy boshidan faol" deb olinib, ommaviy muzlatishda sinovdagilarga oyning
@@ -305,13 +311,27 @@ o'quvchi kunlar nisbatida hisoblanadi (dars kunlari bo'yicha emas).
   shunga qaraydi), sertifikat beriladi, guruh `IsArchived`+`Status="archived"` bo'ladi, yangi guruhda
   esa eski guruhda FAOL bo'lganlar `activateDate`dan aktivlashtiriladi
   (`ChargeActivationProrateAsync` + `AccrueCatchUpAsync` + `CarryGroupAdvanceAsync` — eski guruhda
-  ortib qolgan avans yangi guruhga ko'chadi). Sinov/muzlatilgan a'zolar yangi guruhda "sinov"da qoladi.
+  ortib qolgan avans yangi guruhga ko'chadi). Sinov/muzlatilgan a'zolar yangi guruhga ko'chirilmaydi.
   ⚠️ Ilgari bu endpoint hisobga UMUMAN tegmasdi: a'zolik shunchaki "completed" bo'lib yopilar,
   yopish oyining allaqachon yozilgan TO'LIQ oyligi kamaymas, hisob umuman bo'lmagan holatda esa oy
   "to'langan" bo'lib ko'rinardi va eski guruhga qarz yozilmasdi.
   Javob: `CloseDate/ActivateDate/ChargedOldGroup/RestoredCharges/ActivatedInNew/MovedAdvance`.
   `StudentGroupLedger` ham chiqish oyini endi QISMAN ko'rsatadi (`!IsActive && LeftAt` shu oyda →
   `FreezeGross`), to'liq oylik emas — hisob qatori hali yozilmagan holatda ham.
+  ⚠️ **2026-10-07 dan (audit MEM-2):**
+  - **FAQAT AKTIV a'zo kursni tugatadi** (`GroupCompletionRules.Completes`): sertifikat + `completed`
+    faqat unga. SINOVDAGI va MUZLATILGAN (va arxivdagi o'quvchining) a'zoligi ODDIY CHIQISH bilan
+    yopiladi (`LeaveGroupAsync`: `LeftAt`, holat o'zgarmaydi, sertifikat YO'Q) va sabab jurnaliga tizim
+    sababi tushadi (`retention-loss.md` §3). Ilgari ular ham "bitiruvchi" bo'lib sertifikat olardi.
+  - **BITTA TRANZAKSIYA** — yopish, yangi guruh, ko'chirish, sertifikatlar va audit: yo hammasi, yo
+    hech narsa. Har a'zoga alohida `Membership` audit qatori + yig'ma qator SAQLASHDAN OLDIN (ilgari
+    yig'ma qator oxirgi `SaveChanges`dan keyin yozilib, bazaga tushmasdi).
+  - Yangi guruhga **o'qituvchi tarixi** ochiladi (`GroupTeacherHistory.AssignAsync`, boshlanishi =
+    aktivlashtirish sanasi); yangi guruh nomi NOYOB bo'lishi shart (eski nom arxivdagi guruhda qoladi).
+  - Ko'chirilmaganlarning `Student.ClassName` yorlig'i bo'shatiladi (`ReleasePrimaryGroupNameAsync`);
+    ko'chirilganniki faqat u eski guruh nomi (yoki bo'sh) bo'lsa yangi nomga o'tadi. Bir xil fandagi
+    chegirma yangi guruhga ko'chadi (`discounts.md` §5.5). Yopish kunidan keyingi o'rinbosar sanalari
+    olib tashlanadi (`substitute-teachers.md` §9). Ruxsat — **FAQAT superadmin** (HARD rol, UI bilan bir xil).
 
 - **GURUHNI YOPISH** (`POST /api/admin/classes/{id}/close`, guruh sahifasi "⋮" → "Guruhni yopish"):
   berilgan sanadan guruhning BARCHA faol a'zoliklari muzlatiladi (har biriga oddiy muzlatish bilan bir
@@ -327,6 +347,29 @@ o'quvchi kunlar nisbatida hisoblanadi (dars kunlari bo'yicha emas).
   **YOPISH bilan AYNAN bir xil yadro** (`ClassesController.CloseMembersAsync`), sana — BUGUN, sabab
   so'ralmaydi. Ya'ni a'zoliklar muzlatiladi + qisman to'lov + keyingi oylar hisobi bekor qilinadi.
 
+  ⚠️ **RUXSAT (2026-10-07):** yopish, arxivlash va arxivdan chiqarish serverda ham
+  `classes.list:delete` talab qiladi (`MayCloseGroups`, UI'dagi `can('classes.list','delete')` bilan bir
+  xil) — ilgari POST bo'lgani uchun faqat "qo'shish" ruxsati yetardi. Yopish/arxivlashda a'zolarning
+  `Student.ClassName` yorlig'i bo'shatiladi va yopish kunidan keyingi o'rinbosar sanalari olib tashlanadi.
+
+  ⚠️ **ARXIVDAGI O'QITUVCHI faol guruhga biriktirilmaydi** (2026-10-08, audit R1-10): guruh yaratish,
+  tahrirlash (faol guruh) va arxivdan chiqarish — 400 sabab bilan. Aks holda darslar maoshda hech kimga
+  yozilmasdi (arxiv davri `InactivePeriods`) va jurnalni hech kim yuritmasdi. Arxivdagi (yopilgan)
+  guruhni tahrirlash bloklanmaydi.
+
+  ⚠️ **ARXIVDAN CHIQARISHDA TUGASH SANASI TOZALANADI** (`GroupLifecycleRules.EndDateOnUnarchive`):
+  yopish qo'ygan (arxiv kunidan kech bo'lmagan) `EndDate` olib tashlanadi — aks holda qayta ochilgan
+  guruhning darslari jadvaldan, o'qituvchi ilovasidan va «Davomat olinmagan» monitoridan yo'qolar, oylik
+  esa yozilaverardi. Kelajakdagi (rejalashtirilgan) sana qoladi; guruh formasida «Tugash sanasi» maydoni
+  bor (bo'sh — davom etadi).
+
+  ⚠️ **ARXIVDAGI GURUHDA AKTIVLASHTIRISH YO'Q** (`MembershipBulk.ActivationBlockReason`): yakka
+  aktivlashtirish, guruhga qo'shish va boshqa guruhga o'tkazishning maqsadi arxivdagi guruh bo'lsa — 400
+  (sabab bilan); OMMAVIY aktivlashtirishda bunday a'zolik o'tkazib yuboriladi va javobda alohida
+  (`skippedArchived` + `skipNotes`, "guruh arxivda"). Sabab: sentabrdagi ommaviy aktivlashtirish eski
+  yopilgan guruhdagi muzlatilgan a'zolikni ham uyg'otib, ikki guruhdan oylik yozardi. Arxivdagi O'QUVCHI
+  ham shunday (u ro'yxatlarda ko'rinmaydi). Guruh sahifasida «Talabalarni boshqarish» arxiv guruhda yo'q.
+
   ⚠️ **O'QUVCHILAR ARXIVLANMAYDI (2026-09-10 dan).** Ilgari arxivlash shu guruhdagi (va boshqa
   arxivlanmagan guruhda o'qimaydigan) o'quvchilarni `Student.IsArchived = true` qilardi — ular
   o'quvchilar ro'yxatidan butunlay yo'qolib, faqat «Arxiv» tabida qolardi. Foydalanuvchi talabi:
@@ -340,10 +383,36 @@ o'quvchi kunlar nisbatida hisoblanadi (dars kunlari bo'yicha emas).
   ⚠️ `StudentMembershipView.ArchivableWithGroupAsync` **O'CHIRILDI** — endi hech kim o'quvchini
   guruh bilan birga arxivlamaydi. `Unarchive` dagi `ArchivedWithClass` tiklash tarmog'i esa
   QOLDIRILDI: u eski ma'lumotdagi (bu o'zgarishdan OLDIN arxivlangan) o'quvchilarni qaytaradi.
+  ⚠️ **Ular ORQAGA HISOBLANMAYDI (2026-10-07, `GroupUnarchive`):** eski arxivlash a'zolikni `active`
+  qoldirgan — o'quvchi qaytgach 12 soatlik `AccrueDue` u arxivda turgan HAR OYGA qarz (va "oylik
+  hisoblandi" SMS) yozardi. Endi qaytarilgan o'quvchining BARCHA tirik `active` a'zoliklari o'quvchi
+  arxivlangan sanadan **MUZLATILGAN** holatda tiklanadi (pulga tegilmaydi, har biriga audit qatori);
+  davom ettirish — ongli «Aktivlashtirish». Qayta faollashtirishni avtomatik qilish ATAYIN tanlanmadi:
+  oyning qolganini hisobsiz qoldirardi yoki qisman oylikni ikki marta yozardi, guruhning qolgan
+  a'zoliklari ham arxivdan chiqqanda baribir "muzlatilganicha qoladi".
 
   ⚠️ Arxivdan chiqarilganda a'zoliklar **muzlatilganicha qoladi** (yopishdagi bilan bir xil) —
   avtomatik aktivlashtirish qisman oylikni ikki marta yozib yuborardi; kerak bo'lsa qo'lda
   aktivlashtiriladi.
+
+- **O'QUVCHINI ARXIVLASH = GURUHDAN CHIQISH** (`POST /api/admin/students/{id}/archive`, 2026-10-07):
+  har tirik a'zolik «Guruhdan chiqarish» bilan AYNAN bir xil yopiladi (`MembershipBilling.LeaveGroupAsync`
+  — chiqish oyi qisman, keyingi oylar bekor). Arxivdan qaytarish a'zolikni TIKLAMAYDI (guruhsiz qaytadi);
+  ESKI arxivdagilar tiklanganda a'zolik ARXIV SANASIDA yopiladi — arxiv oylari orqaga hisoblanmaydi.
+  Batafsil: `.claude/rules/membership-periods.md` §10.
+- **GURUHNI O'CHIRISH** (`DELETE /api/admin/classes/{id}`, faqat xato ochilgan guruh uchun; 2026-10-07):
+  ⚠️ **Pul tarixi bor guruh O'CHIRILMAYDI** — guruhga teglangan (bekor qilinmagan) o'qish to'lovi yoki
+  vozvrat, yoki eski teglanmagan to'lovning shu guruhga tushadigan ulushi (per-guruh balans qoidasi)
+  bo'lsa 400 "Bu guruhda to'lovlar bor — o'chirib bo'lmaydi. Guruhni arxivlang."
+  (`GroupDeletion.MoneyBlockReasonAsync`). Ilgari hisoblar TO'LANGANIGA qaramay balansga qaytarilardi:
+  9 oy to'lagan o'quvchi 2,7 mln "avans" olar, to'lovlar esa guruh tegisiz qolib boshqa guruhlar
+  o'qituvchilariga taqsimlanardi. Faqat TO'LANMAGAN hisoblar qolgan guruhda ular balansdan olib tashlanadi.
+  O'quv/yordamchi ma'lumot ham o'sha tranzaksiyada o'chadi (`GroupDeletion.PurgeLearningDataAsync`):
+  mezonli baholar, ball tuzatishlari, guruh mezonlari, dars ko'chirishlari, dastur o'tilishi, guruh
+  testlari (ballar, tashqi natijalar, sertifikatlar va FAYLLARI), o'rinbosarlar, o'qituvchi tarixi, AI
+  tahlillari, «Chegirma (kelmagan darslar)», ketish sabablari jurnali, guruh CHATI (nom boshqa guruhda
+  bo'lmasa); amaldagi guruh chegirmalari bekor qilinadi. QOLADI: o'qituvchi haqidagi fikrlar, lid sinov
+  darslari, uzaytirish hodisalari (snapshot), o'quvchining mashq urinishlari, xabar tarixi, audit.
 
 - **PER-GURUH BALANS (qizil/yashil):** guruh kontekstidagi ro'yxatlar (jurnal qatorlari, guruh a'zolari —
   admin ham, o'qituvchi ilovasi ham) `Student.Balance` (UMUMIY) emas, `GroupBalanceService.ForGroupAsync`
@@ -405,6 +474,54 @@ o'quvchi kunlar nisbatida hisoblanadi (dars kunlari bo'yicha emas).
   qatori (faqat `PotentialExpected > Expected` bo'lganda). **Per-guruh maosh sozlagichi endi
   ARXIVLANGAN guruhlarni ham ko'rsatadi** ("Yopilgan" belgisi bilan) — ilgari yagona guruhi
   yopilgan o'qituvchida bo'lim butunlay yo'qolib "Guruh biriktirilmagan" chiqardi.
+
+- **O'TGAN OY KIMNIKI — TARIX, HOZIRGI `Group.TeacherId` EMAS (audit C3, 2026-10-07, migratsiya KERAK EMAS):**
+  maosh varaqasi (`SalaryLedger`) o'qituvchi HOZIR va TARIXDA (`GroupTeacherAssignment`) o'qitgan guruhlarni
+  oladi; har (guruh, oy) ulushi = o'sha oyning REJADAGI dars sanalaridan (`SubstituteTeacherService
+  .LessonDatesInMonth` — ko'chirishlar + guruh umri) qanchasi shu o'qituvchiga tegishli
+  (`GroupTeacherHistory.TeacherOnDate`/`SharesInMonth`, yuklovchi — `GroupOwnership`). Almashuv kuni —
+  YANGI o'qituvchiniki; tarixning birinchi qatoridan oldingi sana — birinchi o'qituvchiniki; tarix
+  umuman yo'q — hammasi `Group.TeacherId` ga (ilgarigi xulq).
+  ⚠️ Ilgari guruh `Group.TeacherId` bo'yicha tanlanardi: o'qituvchi almashsa guruhning BUTUN o'tmishi
+  (to'langan oylar ham) yangisiga ko'chib, eskisi "ortiqcha olgan", yangisi "olmagan" bo'lib ko'rinardi
+  (ikki marta to'lashga undardi). Endi ikki varaqaning yig'indisi bitta o'qituvchidagiga TENG
+  (`AuditFixT4Tests`). Foiz bazasi, qat'iy summa, jurnal jarimasi (faqat O'Z sanalari — boshqa
+  o'qituvchining darsi rejadan chiqariladi) va o'rinbosar ushlanmasi (qamralgan SANA egasidan, saqlangan
+  `OriginalTeacherId` dan emas) — hammasi shu ulush bilan. Xuddi shu qoida: `CourseFinanceReport`
+  (o'qituvchi kesimi), `TeacherActivityReport`, `TeacherSnapshotBuilder`, o'rinbosar narxidagi "asosiy
+  o'qituvchi" (`PerLessonBatchAsync`, oy egasi).
+  ⚠️ `GroupTeacherHistory.AssignAsync`: tarixsiz guruhda o'qituvchi almashsa, avval ESKI o'qituvchining
+  qatori guruh boshidan (StartDate → eng erta JoinedAt) bugungacha yoziladi — aks holda o'tmish
+  yangi o'qituvchiga "birinchi qator egasi" sifatida yozilib qolardi.
+  ⚠️ Per-guruh maosh sozlamasi hamon VERSIYALANMAYDI: guruh yangi o'qituvchida boshqa foizga o'tkazilsa,
+  eski o'qituvchining o'tgan oylari ham yangi foizda ko'rinadi (avvaldan shunday).
+
+- **QAT'IY SUMMA FAQAT AMAL QILGAN DAVRDA (audit C4):** `SalaryLedger.MonthFraction(oy, dan, gacha)` —
+  oyning shu oraliqqa tushgan kunlar ulushi, IKKALA chekka oy qisman. Guruh qat'iy summasi —
+  `[StartDate (yo'q bo'lsa tarixdagi birinchi biriktirish), LessonEnd(EndDate, ArchivedAt)]` ∩
+  o'qituvchining `[ishga kirgan kun, arxivlangan kun]`; o'qituvchi qat'iy oyligi (`Teacher.Salary`) —
+  ishga kirgan kundan `Teacher.ArchivedAt` gacha. ⚠️ Ilgari koeffitsient faqat BOSHLANISH oyini
+  qisqartirardi: yopilgan guruhning summasi va arxivdagi o'qituvchining oyligi har oy yozilib, qoldiq
+  o'sib borar edi; oktyabrda ochilgan qat'iy guruh o'tgan oylarga ham qo'shilardi.
+  ⚠️ **ARXIVDA TURGAN DAVR DOIM HISOBLANMAYDI** (migratsiya: `Teachers.InactivePeriods`, `text[]`):
+  arxivdan qaytarishda (`Restore`) `ArchivedAt` tozalanadi, shuning uchun davr `Teacher.InactivePeriods`
+  ga yoziladi — `"arxiv kunidan keyingi kun|qaytarilgan kundan oldingi kun"` (ikkala chegara KIRADI;
+  arxiv kuni va qaytarilgan kun — ishlangan kunlar; bir kunda qaytarilsa yozuv yo'q). Hozir arxivda
+  bo'lsa — `ArchivedAt` dan keyingi hamma kun. `SalaryLedger.InactiveSpans` shu kunlarni: qat'iy
+  oylikdan va guruh qat'iy summasidan (`MonthFraction`), FOIZLI guruh ulushidan (o'sha kunlardagi
+  darslar unga yozilmaydi — hech kimga o'tmaydi: boshqa o'qituvchining varaqasi tarix bo'yicha
+  o'zgarmaydi), jurnal rejasidan va o'rinbosar ushlanmasidan chiqaradi. Ilgari qaytarilgan
+  o'qituvchiga arxivdagi oylar uchun qat'iy oylik qaytadan "hisoblanib" qolardi.
+
+- **O'QITUVCHINI ARXIVLASH = ISHDAN KETDI (audit SAL-2, `TeachersController.Archive`):** FAOL guruhi bor
+  o'qituvchi arxivlanmaydi (`Delete` bilan BITTA darvoza — 400 va guruhlar nomlari); kelajakdagi
+  o'rinbosarlik kunlari (o'rinbosar ham, asosiy ham) bekor qilinadi
+  (`SubstituteTeacherService.CancelFutureForTeacherAsync`, har tayinlovga audit); qat'iy oylik arxiv
+  kunida to'xtaydi (yuqorida); to'lanmagan maosh qoldig'i bo'lsa javobda `unpaidSalary` + `warning`
+  (UI ogohlantiradi va «Maosh» bo'limiga yo'naltiradi). Qaytarishda (`Restore`) arxiv davri
+  `InactivePeriods` ga yoziladi (yuqorida); parol yo'q bo'lsa `loginBlocked: true` — UI yangi parol
+  yaratishni taklif qiladi (mavjud `reset-password` yo'li).
+  Per-guruh foiz 0..100 dan tashqarida — 400 (`UpdateGroupSalaries`).
 
 - **O'RINBOSARLIK HAQI `Expected` GA QANDAY KIRADI** (nol yig'indili model — to'liq qoida:
   `.claude/rules/substitute-teachers.md`): o'rinbosar begona guruhda o'tgan darslar uchun
@@ -499,6 +616,14 @@ aks holda (sinf yo'q / oraliqdan tashqarida / kurssiz guruh)          → guruh 
   qo'shishni rad etadi. Sabab: bunday guruhda hisob hech qachon yozilmagan — oraliq narxi qo'llansa
   `AccrueDue` (butun tarixni skanerlaydi) aktivlashtirishdan beri BARCHA oylarga orqaga qarz yozib,
   ota-onalarga SMS yuborardi.
+- ⚠️ **«Joriy oydan qo'llash» endi KELGUSI (oldindan to'langan) oylarni ham qamraydi va TARIXGA yozadi
+  (2026-10-07):** `ApplyGroupFeeToCurrentMonthAsync` joriy VA keyingi oylarning hisobini (avans bilan
+  ochilganlarini) yangi narxga moslaydi — ilgari faqat joriy oy tegilardi va oldindan to'langan oy eski
+  narxda qolib ketardi (sinf narxi esa kelgusi oylarni allaqachon hisoblardi). `audit` uzatilsa, balansi
+  o'zgargan HAR o'quvchiga tarixda BITTA qator («Oylik guruh/kurs narxi o'zgargani uchun qayta
+  hisoblandi: guruh, oy — eski → yangi», `StudentDiscount` turi, `GradeRepricing` naqshi) — o'quvchining
+  to'lov tarixi panelida "qarzim nega o'zgardi" ko'rinadi. Qaytaradigan son — o'quvchilar soni.
+  `ClassesController.Update` va `SubjectsController.Update` `audit` ni uzatadi.
 - ⚠️ **«Joriy oydan qo'llash» (`ApplyGroupFeeToCurrentMonthAsync`) endi `oldFee` bilan:** narxi
   o'zgarmagan o'quvchi va ESKI to'liq narxga teng bo'lmagan (qisman — aktivlashtirish/muzlatish/chiqish
   oyi yoki qo'lda o'zgartirilgan) hisob TEGILMAYDI. Ilgari kurs/guruh narxi o'zgarganda qisman oy
@@ -574,6 +699,9 @@ Migratsiya: `AddFinanceTransactionVoid` (`IsVoided`, `VoidedAt`, `VoidedBy`, `Vo
 - `DELETE api/admin/finance/transactions/{id}` endi qatorni **o'chirmaydi**: `IsVoided = true`,
   kim/qachon/sabab yoziladi, balansga ta'siri qaytariladi (`StudentBalanceEffect`), audit "Bekor qilindi".
   Ikkinchi marta bekor qilish — 404 "allaqachon bekor qilingan". Vozvrati bor to'lov — 400.
+  ⚠️ (2026-10-07) **Bo'lingan to'lov oilasi BIRGA bekor qilinadi** (har a'zoga alohida audit qatori),
+  oilaning biror qismidan vozvrat bo'lsa — 400. **Kelgusi oy AVANSI bekor qilinsa** o'sha oyning hisobi
+  ham qaytariladi (pastda «AVANS HISOBI»).
 - ⚠️ **GLOBAL FILTR** (`AppDbContext`: `HasQueryFilter(t => !t.IsVoided)`) bekor qilinganlarni
   BARCHA so'rovlardan chiqaradi: balans, maosh, hisobotlar, kassa, kvitansiya nazorati (raqam
   qayta ishlatilishi mumkin), to'lov idempotentligi. Yangi so'rov yozganda hech narsa qilish shart emas.
@@ -585,7 +713,11 @@ Migratsiya: `AddFinanceTransactionVoid` (`IsVoided`, `VoidedAt`, `VoidedBy`, `Vo
 - Klientda bekor qilingan qator ustiga chizilgan + «Bekor qilindi» belgisi (kim/qachon/sabab
   sichqoncha ustida) va amal tugmalarisiz; jamilar va CSV eksport `live` filtri bilan ularni sanamaydi.
 - ⚠️ `IgnoreQueryFilters()` ni hisob-kitob uchun ISHLATMANG — faqat ko'rsatish uchun.
-- Eski (2026-09-26 gacha) o'chirilganlar avvalgidek Arxivda (`ArchiveService`, "finance").
+- Eski (2026-09-26 gacha) o'chirilganlar avvalgidek Arxivda (`ArchiveService`, "finance"). TIKLASHDA
+  balans ta'siri QAYTA qo'llanadi (`StudentBalanceEffect` bilan bir xil): o'quv to'lovi `+`, VOZVRAT `−`
+  (ilgari faqat to'lov qaytarilardi — tiklangan vozvrat balansni o'zgartirmasdi). Vozvrat asl to'lovi
+  yo'q/bekor qilingan bo'lsa yoki jami vozvrat to'lovdan oshsa — 400 (Refund endpointidagi cheklov).
+  Tiklash o'quvchi qulfi ostida va auditga yoziladi.
 - Testlar: `FinanceVoidTests`.
 
 ## KASSALAR (2026-10-05, migratsiya `AddCashboxes`)
@@ -689,3 +821,113 @@ Boshqa kirim**; filial xarajatlari ALOHIDA — **Ijara · Kommunal · Internet �
 - **«Kassalar balansi»** — bosh sahifada FAQAT superadmin uchun ixcham qator (har faol kassa + jami,
   arxivdagilar alohida), Moliya → «Kassalar» ga havola (`CashboxBalanceStrip`).
 - Testlar: `FinanceTypeSeedTests`, `BookFinanceTests`, `TransactionTypeCatalogTests`.
+
+## 2026-10-07 AUDIT TUZATISHLARI (T3 — to'lovlar, oylik hisob, kassa)
+
+### AVANS HISOBI — faqat accrual YOZADIGAN oyga (`EnsureChargeAsync`)
+
+To'lov (`PaymentIntake`), to'lovni tahrirlash (`UpdatePayment`) va kelmagan darslar chegirmasi hisob
+ochishi mumkin — endi AYNAN `AccrueMonth` shartida: a'zolik `active` + `IsActive` va oy `AccruableMonth`
+(aktivlashtirish oyidan KEYIN, muzlatish oyidan OLDIN), o'quvchi arxivlanmagan. Guruhsiz (null) hisob —
+faqat a'zoligi UMUMAN yo'q eski o'quvchiga, qabul oyidan boshlab. Shart bajarilmasa hisob OCHILMAYDI,
+pul guruh+oy tegi bilan **AVANS** bo'lib balansda turadi (`StudentLedger` yetim tegni FIFO hovuzga oladi).
+⚠️ Ilgari holatga qaralmasdi: sinovdagi o'quvchiga, kech aktivlashtirilgan oyga (qisman hisobi yo'q),
+muzlatilgan a'zolikka TO'LIQ oylik yozilardi.
+
+⚠️ **ISTISNO — hisobi YO'Q aktivlashtirish oyi** (2026-10-08): o'quvchi yaratish/importda
+"active" a'zolik (`AddMembershipRow`) o'z oyiga hisob yozmaydi va accrual ham bu oyni olmaydi — avans
+qoidasi bilan shu oyga to'lov keyingi oyni yopar, ya'ni bitta oy TEKIN qolardi. Endi shu oyga
+**QISMAN hisob** ochiladi — `ChargeActivationProrateAsync` ning O'ZI (ActivatedAt dan qolgan darslar,
+chegirma bilan; summa `ActivationGrossAsync` da — yagona joy). Qisman summa 0 (oyning oxirgi darsidan
+keyin aktivlashtirilgan) — hisob ochilmaydi, pul avans. Kelmagan darslar chegirmasi previewi
+(`LessonDiscountService.QuoteAsync`) hisobi yo'q oyda AYNAN shu summadan hisoblaydi
+(`TuitionService.ActivationChargePreviewAsync`) — aks holda qisman oyga undan katta chegirma yozilardi.
+Oila aktivlashtirish oyini emas, KEYINGI oyni to'lasa ham hisobsiz qolgan aktivlashtirish oyi xuddi shu qisman
+summa bilan ochiladi (`EnsureRecentActivationChargeAsync`) — faqat YAQIN oy (joriy yoki o'tgan): eski
+tarixga (admin o'chirgan oylarga) orqaga hisob yozilmaydi. Hech narsa to'lanmasa, yaratishda yozilmaydi
+(ommaviy importda yolg'on qarz/SMS to'lqini bo'lmasin — `membership-periods.md` §9).
+
+### SINOVDAGI O'QUVCHI TO'LOVI
+
+`PaymentIntake.ResolveGroup` (sof, testlangan): nomzodlar = sinovdan boshqa barcha a'zoliklar + FAOL sinov
+a'zoliklari. Guruh yuborilgan va nomzod bo'lsa — AYNAN o'sha; yuborilgan, lekin o'quvchiniki emas — 400
+(jimgina boshqa guruhga tushirilmaydi); yuborilmagan: bitta nomzod — o'sha, 2+ — 400 "tanlang". Sinov
+guruhiga to'lov — hisobsiz AVANS, aktivlashtirilganda odatdagidek hisobga o'tadi (balans orqali).
+⚠️ Ilgari: faqat sinovdagi o'quvchiga GURUHSIZ to'liq hisob ochilardi (aktivlashtirish uni o'chirmas,
+keyingi oy ham hisoblanardi — ikki marta); sinov + bitta eski guruhi bor o'quvchining to'lovi tanlovdan
+qat'i nazar eski guruhga tushardi. Klient `PaymentModal` faol sinov a'zoligini «— sinovda (avans)» bilan
+ko'rsatadi (oylar: joriy + 3, summa qo'lda).
+
+### AVANS QAYTARILSA — kelgusi oy hisobi ham qaytadi (`DropOrphanAdvanceChargeAsync`)
+
+KELAJAK oy hisobini faqat avans ochadi (accrual kelajakni yozmaydi). Shu oyga TIRIK to'lov qolmasa —
+to'lov bekor qilinganda, to'liq vozvrat qilinganda yoki tahrirda boshqa oy/guruhga ko'chirilganda —
+hisob o'chiriladi va effektiv balansga qaytadi. Joriy/o'tgan oylar, `Locked` qatorlar va boshqa to'lovi
+qolgan oy tegilmaydi. Oy kelganda accrual uni odatdagidek yozadi. ⚠️ Ilgari yolg'on qarz + to'lov
+eslatmasi SMS'i qolardi.
+
+### BO'LINGAN TO'LOV (`FinanceTransaction.SplitFromId`, `PaymentSplits`)
+
+Guruh almashtirishda (`CarryGroupAdvanceAsync`) to'lov ikkiga bo'linsa yangi qator ASL to'lovga
+(oila ildiziga) bog'lanadi va kassir (`CreatedById`), kvitansiya, karta, vaqt, usul, kassa, tur
+maydonlarini oladi. **Qaror:** bekor qilish — butun oila birga (jismonan bitta to'lov); vozvrat — har
+qatordan ALOHIDA (har qism o'z guruhi/oyiga tegishli), asl qatordan oshiqcha so'ralsa xabar ko'chirilgan
+qatorni ko'rsatadi. Kvitansiya nazorati tahrirda oilani dublikat hisoblamaydi. Klient bekor qilish
+oynasida "ko'chirilgan qismi ham birga bekor qilinadi" deb ogohlantiradi.
+
+### TAHRIR — ikki yo'l, ikki xil qoida (`FinanceTxEdit`)
+
+| Qator | Qayerdan | Qoida |
+|---|---|---|
+| O'quvchi to'lovi (kirim + tuition + o'quvchi) | FAQAT «To'lovlar» tahriri (`PUT payments/{id}`) — **serverda ham FAQAT superadmin** (hard rol, 403) | summa allaqachon qaytarilganidan kam bo'lmaydi (400) |
+| Vozvrat (chiqim + refund) | «Amallar» tahriri | faqat sana/izoh/sabab; summa, tur, o'quvchi, kassa — 400 |
+| Qolganlari | «Amallar» tahriri | forma yubormagan o'quvchi/o'qituvchi/tur toifa o'zgarmasa SAQLANADI |
+
+Umumiy tahrir oddiy qatorni vozvratga yoki o'quvchi to'loviga AYLANTIRA olmaydi; `POST transactions` ham
+vozvrat yozmaydi. DTO endi `TypeId` (va `SplitFromId`) qaytaradi — forma turni qaytarib yuboradi.
+⚠️ Ilgari «Amallar» dagi vozvrat tahriri `StudentId` ni bo'shatib, qaytarilgan pulni balansga QAYTARIB
+berardi (kassadan esa chiqib ketgan), turini "Arenda"ga almashtirardi. Klient: «Amallar» qalami o'quvchi
+to'lovida superadmin'ga `PaymentEditModal` ni ochadi (boshqalarga ko'rinmaydi), vozvratda forma faqat
+sana/izoh bilan ochiladi. «Yangi moliyaviy amal» → o'quvchi to'lovi formadagi GURUH, SANA va IZOHni
+(`comment`) uzatadi (ilgari `undefined` ketardi — 6ba9d616 ishlamasdi).
+
+### OY FORMATI — AYNAN "yyyy-MM" (`PaymentFields.IsMonth`)
+
+To'lov, to'lov tahriri, kirim/chiqim (`Month`), `EnsureChargeAsync`, `POST finance/accrue`, tushum rejasi
+va `MonthRange` buzuq oyni qabul qilmaydi (400 / bo'sh oraliq). `POST accrue?month=` KELAJAK oyni rad
+etadi; javobdagi `count`/`total` — shu bosishda YANGI yaratilgan hisoblar.
+
+### FON ACCRUAL va BALANS POYGASI
+
+`AccrueMonth` o'quvchilarni faqat REJA uchun (AsNoTracking) o'qiydi; har o'quvchining hisobi uning QULFI
+ostida (`PaymentIdempotency.LockAsync("student:…")`, to'lov/vozvrat bilan bir navbat), balans bazadan
+QAYTA o'qilib, ALOHIDA saqlanadi (`PurgeDuplicateAggregateChargesAsync` ham). ⚠️ Ilgari fon xizmati
+ro'yxatni bir marta yuklab, oxirida eski balans ustidan yozardi — shu orada kelgan to'lov jimgina
+yo'qolardi.
+
+**2026-10-08 (audit R1-6, R1-7):**
+- **Qulf ICHIDA qayta tekshiruv** — `already` (oy uchun mavjud hisoblar) qulfdan tashqarida bir marta
+  o'qiladi; qulf ichida shu o'quvchining shu oydagi hisoblari QAYTA o'qiladi (parallel to'lov/aktivlashtirish
+  yozgan bo'lsa — o'tkaziladi).
+- **Bitta o'quvchining xatosi yugurishni TO'XTATMAYDI** — `DbUpdateException` (unikal indeks va h.k.) da shu
+  o'quvchining yozuvlari kontekstdan ajratiladi, logga yoziladi (`AccrueDue(db, logger)`), keyingisiga
+  o'tiladi. Ilgari istisno butun yugurishni uzar: saqlanganlar uchun "oylik hisoblandi" SMS'i ketmas,
+  qolganlari 12 soat kutardi. `Count`/`Total`/`Created` — faqat saqlanganlar.
+- **Kesh bump'lari to'planadi** — fon xizmati `AccrueDue` ni `DataCache.BeginBatch()` ichida chaqiradi.
+- ⚠️ **BALANS QAYTA O'QISH — FAQAT `StudentBalanceSync.ReloadAsync`** (qulf OLMAYDI, chaqiruvchi qulf ichida).
+  Kuzatilayotgan o'quvchida `s.Balance = yangi` YETMAYDI: EF birinchi yuklangan snapshot'ni eslaydi va
+  "yangi + ta'sir" tasodifan o'sha snapshot'ga teng chiqsa UPDATE YUBORMAYDI (to'lov jimgina yo'qoladi).
+  Helper asl qiymatni ham tenglashtiradi. Ishlatiladi: `PaymentIntake`, `AccrueMonth`,
+  `PurgeDuplicateAggregateChargesAsync`, `StudentsController.Archive/Restore`, `ClassesController.AddMember`
+  (eski arxiv) / `RemoveMember`, `ArchiveController` (tranzaksiya tiklash). Yangi pul yo'lida ham SHU.
+
+### Ko'rsatkichlar
+
+- «Tushum rejasi» → «Shu oyda to'lagan summa» VOZVRATNI ayiradi (`IncomePlan`: `refund` toifasi ham).
+- Moliya → «O'quvchilar qarzi» — haqiqiy debitorlik (arxivdagilar ham) qoladi, lekin kartada
+  "Faol · Arxivdagi" bo'linishi chiqadi (`FinanceSummaryDto.StudentDebtArchived`) — bosh sahifa faqat
+  faollarni sanaydi, ikki sahifa jimgina farq qilmasin.
+- Klient «bugun / joriy oy» MAHALLIY sana (`lib/localDate.ts`, `lib/month.ts`): kassirning «To'lovlarim»
+  strelkalari va "7 kun" (UTC+5 da bir kun surilardi), to'lov/vozvrat/tahrir oynalari.
+
+Testlar: `AuditFixT3Tests`, `AuditFixFx2Tests`.

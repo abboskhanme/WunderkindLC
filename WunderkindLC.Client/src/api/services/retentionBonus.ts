@@ -1,4 +1,5 @@
 import { api } from '../client'
+import { localIsoDate } from '@/lib/localDate'
 
 /**
  * O'QUVCHINI USHLAB TURISH BONUSI — "O'quvchilar → Bonus hisoboti" bo'limi API'si.
@@ -217,7 +218,7 @@ export async function exportRetentionReport(): Promise<void> {
   const href = URL.createObjectURL(res.data as Blob)
   const a = document.createElement('a')
   a.href = href
-  a.download = match?.[1] ?? `bonus_hisobot_${new Date().toISOString().slice(0, 10)}.xlsx`
+  a.download = match?.[1] ?? `bonus_hisobot_${localIsoDate(new Date())}.xlsx`
   a.click()
   URL.revokeObjectURL(href)
 }

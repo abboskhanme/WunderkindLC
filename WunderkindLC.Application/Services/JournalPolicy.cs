@@ -18,9 +18,12 @@ public static class JournalPolicy
     public const string ModeWindow = "window";
 
     /// <summary>Joriy siyosat (CenterMeta yo'q/buzuq bo'lsa — xavfsiz default: erkin).</summary>
-    public static async Task<JournalPolicyDto> GetAsync(IAppDbContext db)
+    public static async Task<JournalPolicyDto> GetAsync(IAppDbContext db) =>
+        FromMeta(await db.CenterMeta.AsNoTracking().FirstOrDefaultAsync());
+
+    /// <summary>CenterMeta → siyosat DTO'si (buzuq qiymatlar xavfsiz defaultga). Audit snapshot'i ham shundan.</summary>
+    public static JournalPolicyDto FromMeta(CenterMeta? m)
     {
-        var m = await db.CenterMeta.AsNoTracking().FirstOrDefaultAsync();
         var mode = m?.JournalEditMode is ModeToday or ModeWindow ? m.JournalEditMode : ModeFree;
         return new JournalPolicyDto(mode, m?.JournalRetroDays ?? 3,
             m?.JournalConductedOnly ?? false, m?.JournalApplyToAdmins ?? false,
@@ -32,6 +35,17 @@ public static class JournalPolicy
 
     /// <summary>Siyosatni saqlaydi (noto'g'ri qiymatlar xavfsiz defaultga tushiriladi) va yangisini qaytaradi.</summary>
     public static async Task<JournalPolicyDto> SaveAsync(IAppDbContext db, JournalPolicyDto req)
+    {
+        await ApplyAsync(db, req);
+        await db.SaveChangesAsync();
+        return await GetAsync(db);
+    }
+
+    /// <summary>
+    /// Siyosatni CenterMeta'ga YOZADI, lekin SAQLAMAYDI — chaqiruvchi audit yozuvini qo'shib, so'ng
+    /// <c>SaveChangesAsync</c> qiladi (audit.md: yozuv saqlashdan OLDIN). Qaytaradi: kuzatilayotgan qator.
+    /// </summary>
+    public static async Task<CenterMeta> ApplyAsync(IAppDbContext db, JournalPolicyDto req)
     {
         var m = await db.CenterMeta.FirstOrDefaultAsync();
         if (m is null)
@@ -49,8 +63,7 @@ public static class JournalPolicy
         m.JournalHideUnpaidAfterDay = req.HideUnpaidAfterDay;
         // 28 — har oyda (fevralda ham) mavjudligi kafolatlangan eng katta kun.
         m.JournalUnpaidCutoffDay = Math.Clamp(req.UnpaidCutoffDay, 1, 28);
-        await db.SaveChangesAsync();
-        return await GetAsync(db);
+        return m;
     }
 
     /// <summary>

@@ -3,6 +3,7 @@ import { Check, ClipboardCheck, ChevronLeft, ChevronRight, ChevronDown, X } from
 import type { GradingBoard, SetGrade, BulkGrade } from '@/api/services/grading'
 import { Loader } from '@/components/ui/Loader'
 import { cn, apiErrorMessage } from '@/lib/utils'
+import { todayIso } from '@/lib/month'
 
 interface Props {
   groupId: string
@@ -24,7 +25,8 @@ function weekday(d: string) {
   const [y, m, day] = d.split('-').map(Number)
   return WD[new Date(y, m - 1, day).getDay()]
 }
-const TODAY = new Date().toISOString().slice(0, 10)
+// Markaz (brauzer) mintaqasidagi bugun — `toISOString()` UTC bo'lgani uchun 00:00–05:00 da KECHAGI kunni berardi.
+const TODAY = todayIso()
 
 /**
  * Guruh BAHOLASH grid'i (umumiy — admin va o'qituvchi guruh detalida).
@@ -91,18 +93,24 @@ export function GradingSection({ groupId, fetchBoard, saveGrade, bulkGrade }: Pr
   const applyBulk = async (cid: string, value: boolean) => {
     setMenuFor(null)
     if (!date || !board) return
-    setDone((s) => {
-      const n = new Set(s)
-      board.students.forEach((st) => {
-        // A'zoligi shu sanadan keyin boshlangan o'quvchi bulk'da ham belgilanmaydi (backend ham o'tkazib yuboradi).
-        if (st.memberStart && date < st.memberStart) return
-        const key = `${st.studentId}|${cid}|${date}`
-        if (value) n.add(key)
-        else n.delete(key)
-      })
-      return n
+    // OPTIMISTIK yangilash — xato bo'lsa ESKI holat qaytariladi va sabab ko'rsatiladi
+    // (error-visibility.md §3: aks holda ekranda "belgilandi", bazada esa yo'q bo'lib qolardi).
+    const before = done
+    const next = new Set(done)
+    board.students.forEach((st) => {
+      // A'zoligi shu sanadan keyin boshlangan o'quvchi bulk'da ham belgilanmaydi (backend ham o'tkazib yuboradi).
+      if (st.memberStart && date < st.memberStart) return
+      const key = `${st.studentId}|${cid}|${date}`
+      if (value) next.add(key)
+      else next.delete(key)
     })
-    await bulkGrade({ groupId, criterionId: cid, date, done: value })
+    setDone(next)
+    try {
+      await bulkGrade({ groupId, criterionId: cid, date, done: value })
+    } catch (err) {
+      setDone(before)
+      alert(apiErrorMessage(err, "Ommaviy belgilab bo'lmadi"))
+    }
   }
 
   if (loading) return <Loader label="Yuklanmoqda..." />

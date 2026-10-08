@@ -12,3 +12,8 @@ export async function getFeedback(type?: string, status?: string): Promise<Feedb
 export async function resolveFeedback(id: string): Promise<void> {
   await api.post(`/admin/feedback/${id}/resolve`)
 }
+
+/** Hal qilingan murojaatni qayta ochish ("Yangi" ga qaytarish) — xato bosilgan "Hal qilindi" uchun. */
+export async function reopenFeedback(id: string): Promise<void> {
+  await api.post(`/admin/feedback/${id}/reopen`)
+}

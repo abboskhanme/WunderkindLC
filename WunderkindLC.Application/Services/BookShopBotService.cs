@@ -448,6 +448,19 @@ public class BookShopBotService(
     private async Task CreateOrderAsync(
         IAppDbContext db, BookBotSession session, Book book, long chatId, string receiptUrl, CancellationToken ct)
     {
+        // Kitob sessiya davomida SOTUVDAN OLINGAN bo'lishi mumkin (admin "Sotuvda" belgisini
+        // o'chirdi) — eski tugmalar orqali buyurtma o'tib ketmasin (qo'lda sotuvdagi
+        // `ManualSaleBookError` darvozasi bilan bir xil qoida).
+        if (!book.IsActive)
+        {
+            db.BookBotSessions.Remove(session);
+            await db.SaveChangesAsync(ct);
+            await telegram.SendMessageAsync(chatId,
+                $"😔 Afsus, «{book.Title}» hozir sotuvda emas — buyurtma qabul qilinmadi. "
+                + "Katalogdan boshqa kitobni tanlang.", null, ct);
+            return;
+        }
+
         // Qoldiq buyurtma berish vaqtida ham tekshiriladi (boshqa mijoz oldin sotib olgan bo'lishi mumkin).
         if (book.Stock < session.Qty)
         {

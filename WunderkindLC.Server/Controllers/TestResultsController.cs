@@ -59,10 +59,15 @@ public class TestResultsController(
     [HttpPut("{id}")]
     public async Task<IActionResult> Update(string id, UpdateTestResultRequest req)
     {
-        var (ok, err) = await TestResultService.UpdateAsync(
+        var r = await TestResultService.UpdateDetailedAsync(
             db, id, req.Name, req.Date, req.MaxScore, req.Online,
             req.CertificateEnabled, req.CertificateTemplateId);
-        return ok ? NoContent() : BadRequest(new { message = err });
+        if (!r.Ok) return BadRequest(new { message = r.Error });
+        // Kalit/savollar soni o'zgarib ballar QAYTA HISOBLANGAN bo'lsa — berilgan sertifikatlar ham yangi
+        // ball (foiz, o'rin) bilan qayta yaratiladi: fonda, idempotent (raqami saqlanadi, bali tozalanganniki o'chadi).
+        if (r.Regraded > 0 && await TestResultService.HasCertificatesAsync(db, id))
+            await certJobs.StartAsync(db, certs, id, Actor());
+        return NoContent();
     }
 
     /// <summary>Testni o'chirish (ballari bilan).</summary>

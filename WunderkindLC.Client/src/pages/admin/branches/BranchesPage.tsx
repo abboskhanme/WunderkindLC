@@ -21,6 +21,7 @@ import { Modal } from '@/components/ui/Modal'
 import { Input } from '@/components/ui/Input'
 import { NumberInput } from '@/components/ui/NumberInput'
 import { OsmTileLayer } from '@/components/map/OsmTileLayer'
+import { apiErrorMessage } from '@/lib/utils'
 
 // Leaflet marker ikoni Vite bilan to'g'ri yuklanmaydi — CDN'dan ko'rsatamiz (LocationPage'dagidek).
 const markerIcon = new L.Icon({
@@ -46,6 +47,7 @@ export function BranchesPage() {
   const [editing, setEditing] = useState<Branch | null>(null)
   const [form, setForm] = useState<BranchForm>(empty)
   const [formError, setFormError] = useState('')
+  const [saving, setSaving] = useState(false)
   // Joriy joyni aniqlash holati + xaritani markazlash uchun nishon nuqta
   const [locating, setLocating] = useState(false)
   const [flyTo, setFlyTo] = useState<[number, number] | null>(null)
@@ -103,28 +105,42 @@ export function BranchesPage() {
     )
   }
 
-  const handleSubmit = (e: React.FormEvent) => {
+  // Ilgari oyna so'rov tugashidan OLDIN yopilar va xato umuman ushlanmasdi: server rad etsa
+  // foydalanuvchi "saqlandi" deb o'ylar, kiritgan joylashuvi esa yo'qolardi (error-visibility.md §2).
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!form.name.trim()) return
+    if (!form.name.trim() || saving) return
     if (form.radiusMeters === null || form.radiusMeters <= 0) {
       setFormError('Radiusni kiriting (metrda)')
       return
     }
     setFormError('')
     const payload: BranchPayload = { ...form, radiusMeters: form.radiusMeters }
-    if (editing) {
-      updateBranch(editing.id, payload).then((u) =>
-        setBranches((p) => p.map((x) => (x.id === u.id ? u : x))),
-      )
-    } else {
-      createBranch(payload).then((c) => setBranches((p) => [...p, c]))
+    setSaving(true)
+    try {
+      if (editing) {
+        const u = await updateBranch(editing.id, payload)
+        setBranches((p) => p.map((x) => (x.id === u.id ? u : x)))
+      } else {
+        const c = await createBranch(payload)
+        setBranches((p) => [...p, c])
+      }
+      setFormOpen(false)
+    } catch (err) {
+      setFormError(apiErrorMessage(err, "Filialni saqlab bo'lmadi"))
+    } finally {
+      setSaving(false)
     }
-    setFormOpen(false)
   }
 
-  const handleDelete = (b: Branch) => {
+  const handleDelete = async (b: Branch) => {
     if (!confirm(`"${b.name}" filialini o'chirasizmi?`)) return
-    deleteBranch(b.id).then(() => setBranches((p) => p.filter((x) => x.id !== b.id)))
+    try {
+      await deleteBranch(b.id)
+      setBranches((p) => p.filter((x) => x.id !== b.id))
+    } catch (err) {
+      alert(apiErrorMessage(err, "Filialni o'chirib bo'lmadi"))
+    }
   }
 
   const hasPoint = form.latitude !== 0 || form.longitude !== 0
@@ -225,8 +241,8 @@ export function BranchesPage() {
             <Button variant="secondary" onClick={() => setFormOpen(false)}>
               Bekor qilish
             </Button>
-            <Button type="submit" form="branch-form">
-              Saqlash
+            <Button type="submit" form="branch-form" disabled={saving}>
+              {saving ? 'Saqlanmoqda...' : 'Saqlash'}
             </Button>
           </>
         }

@@ -20,8 +20,15 @@ namespace WunderkindLC.Server.Controllers;
 /// tarjimasi va CRUD.</para>
 ///
 /// <para><b>⚠️ JOYLANGAN POSTNI API ORQALI O'ZGARTIRIB HAM, O'CHIRIB HAM BO'LMAYDI</b>
-/// (§5.9.1). Shuning uchun <c>PUT</c> faqat <c>scheduled</c> holatida ishlaydi, <c>DELETE</c>
-/// esa joylangan postda faqat CRM yozuvini o'chiradi va buni javobda OCHIQ aytadi.</para>
+/// (§5.9.1). Shuning uchun <c>PUT</c> faqat hali JOYLANMAGAN postda ishlaydi (<c>scheduled</c>,
+/// <c>failed</c>, <c>cancelled</c> — oxirgi ikkisi tahrirdan keyin navbatga qaytadi),
+/// <c>DELETE</c> esa joylangan postda faqat CRM yozuvini o'chiradi va buni javobda OCHIQ aytadi.</para>
+///
+/// <para>⚠️ <c>PUT</c>/<c>DELETE</c> navbat worker'i bilan BITTA qulf ostida
+/// (<see cref="InstagramPublishService.RunExclusiveAsync"/>) va holat qulf ICHIDA qayta
+/// o'qiladi — bekor qilingan post hech qachon joylanmasin. Qulf kutish ko'pi bilan
+/// <see cref="InstagramPublishService.ExclusiveWait"/> (10 s): band bo'lsa <b>409</b>
+/// (<see cref="InstagramPublishService.GateBusyMessage"/>) — so'rov Cloudflare 524 gacha osilmaydi.</para>
 /// </summary>
 public partial class InstagramController
 {
@@ -133,41 +140,67 @@ public partial class InstagramController
     /// <summary>
     /// Tahrirlash.
     ///
-    /// <para>⚠️ FAQAT <c>scheduled</c> holatida. <c>processing</c> — konteyner allaqachon
-    /// Meta'da yaratilgan va matnni o'zgartirish unga TA'SIR QILMASDI; <c>published</c> —
-    /// joylangan postni API orqali tahrirlab bo'lmaydi (§5.9.1). Ikkalasida ham foydalanuvchi
-    /// "o'zgartirdim" deb o'ylab, aslida hech narsa o'zgarmagan bo'lardi.</para>
+    /// <para>⚠️ Faqat hali JOYLANMAGAN post: <c>scheduled</c>, <c>failed</c>, <c>cancelled</c>.
+    /// <c>processing</c> — konteyner allaqachon Meta'da yaratilgan va matnni o'zgartirish unga
+    /// TA'SIR QILMASDI; <c>published</c> — joylangan postni API orqali tahrirlab bo'lmaydi
+    /// (§5.9.1). Ikkalasida ham foydalanuvchi "o'zgartirdim" deb o'ylab, aslida hech narsa
+    /// o'zgarmagan bo'lardi.</para>
+    ///
+    /// <para>🔴 <c>failed</c>/<c>cancelled</c> ilgari BOSHI BERK edi: server xato matnlari
+    /// "postni tahrirlab, qayta tanlang" desa ham tahrir rad etilardi. Endi saqlanganda post
+    /// NAVBATGA QAYTADI (<c>scheduled</c>, urinishlar 0, konteyner tozalanadi).</para>
     /// </summary>
     [HttpPut("content/posts/{id}")]
     [AdminPerm(ContentPerm)]
     public async Task<ActionResult<IgPostDto>> UpdateContentPost(
         string id, IgPostPayload payload, CancellationToken ct)
     {
-        var post = await db.IgScheduledPosts.FirstOrDefaultAsync(p => p.Id == id, ct);
-        if (post is null) return NotFound(new { message = "Post topilmadi." });
-
-        if (post.Status != IgPublishConst.StScheduled)
-            return BadRequest(new { message = EditBlockedText(post.Status) });
-
         var (ok, error, type, caption, mediaJson, optionsJson, scheduledAt) = ReadPostPayload(payload);
-        if (!ok) return BadRequest(new { message = error });
 
-        // Almashtirilgan media diskda yetim qolmasin — ESKI nomlar SAQLASHDAN OLDIN olinadi
-        // (keyin `post.MediaJson` yangisi bilan almashadi va eskisini bilib bo'lmaydi).
-        var oldNames = MarketingMediaCleanup.NamesOf(post.MediaJson, post.OptionsJson);
+        // ⚠️ Worker bilan BITTA qulf: holat qulf ICHIDA o'qiladi — worker postni shu soniyada
+        // konteynerga olib ketgan bo'lsa (`processing`) tahrir rad etiladi.
+        var (acquired, result) = await InstagramPublishService.RunExclusiveAsync<(ActionResult<IgPostDto>? Fail, IgScheduledPost? Post, List<string> OldNames)>(async () =>
+        {
+            var post = await db.IgScheduledPosts.FirstOrDefaultAsync(p => p.Id == id, ct);
+            if (post is null) return (NotFound(new { message = "Post topilmadi." }), null, []);
 
-        post.PostType = type;
-        post.Caption = caption;
-        post.MediaJson = mediaJson;
-        post.OptionsJson = optionsJson;
-        post.ScheduledAt = scheduledAt;
-        // Tahrirdan keyin urinishlar hisobi NOLDAN: odam sababni tuzatgan bo'lishi mumkin.
-        post.Attempts = 0;
-        post.Error = "";
+            if (!InstagramPublishContract.IsEditableStatus(post.Status))
+                return (BadRequest(new { message = EditBlockedText(post.Status) }), null, []);
 
-        audit.Record(AuditEntity, post.Id, "update",
-            $"Instagram posti tahrirlandi ({PostTypeLabel(type)}, {scheduledAt})");
-        await db.SaveChangesAsync(ct);
+            if (!ok) return (BadRequest(new { message = error }), null, []);
+
+            // Almashtirilgan media diskda yetim qolmasin — ESKI nomlar SAQLASHDAN OLDIN olinadi
+            // (keyin `post.MediaJson` yangisi bilan almashadi va eskisini bilib bo'lmaydi).
+            var oldNames = MarketingMediaCleanup.NamesOf(post.MediaJson, post.OptionsJson).ToList();
+            var wasStatus = post.Status;
+
+            post.PostType = type;
+            post.Caption = caption;
+            post.MediaJson = mediaJson;
+            post.OptionsJson = optionsJson;
+            post.ScheduledAt = scheduledAt;
+            // Tahrirdan keyin urinishlar hisobi NOLDAN: odam sababni tuzatgan bo'lishi mumkin.
+            post.Attempts = 0;
+            post.Error = "";
+            // Xato bilan qolgan / bekor qilingan post tahrirdan keyin NAVBATGA qaytadi.
+            post.Status = IgPublishConst.StScheduled;
+            post.ContainerId = "";
+            post.ContainerStatus = "";
+
+            audit.Record(AuditEntity, post.Id, "update",
+                $"Instagram posti tahrirlandi ({PostTypeLabel(type)}, {scheduledAt})"
+                + (wasStatus != IgPublishConst.StScheduled
+                    ? $" — «{StatusLabel(wasStatus)}» holatidan navbatga qaytarildi"
+                    : ""));
+            await db.SaveChangesAsync(ct);
+            return (null, post, oldNames);
+        }, ct);
+
+        // Qulf 10 soniyada bo'shamadi — so'rov osilib qolmaydi (Cloudflare 524), hech narsa o'zgarmagan.
+        if (!acquired) return Conflict(new { message = InstagramPublishService.GateBusyMessage });
+        if (result.Fail is not null) return result.Fail;
+        var post = result.Post!;
+        var oldNames = result.OldNames;
 
         // Postdan CHIQIB KETGAN fayllar (eskisida bor, yangisida yo'q) — darhol o'chiriladi.
         // Tekshiruv bazaning SAQLANGANDAN KEYINGI holati bo'yicha, ya'ni fayl boshqa postda
@@ -194,6 +227,17 @@ public partial class InstagramController
     [HttpDelete("content/posts/{id}")]
     [AdminPerm(ContentPerm)]
     public async Task<ActionResult<IgPostDeleteDto>> DeleteContentPost(string id, CancellationToken ct)
+    {
+        // ⚠️ Worker bilan BITTA qulf (§18.3): bekor qilish va worker'ning shu postni olishi bir
+        // vaqtga to'g'ri kelsa, bekor qilingan post baribir joylanardi. Holat qulf ICHIDA o'qiladi.
+        var (acquired, result) = await InstagramPublishService.RunExclusiveAsync(
+            () => DeleteContentPostCoreAsync(id, ct), ct);
+        // Qulf o'z vaqtida bo'shamadi — 409, post TEGILMAGAN (keyinroq qayta urinish xavfsiz).
+        if (!acquired) return Conflict(new { message = InstagramPublishService.GateBusyMessage });
+        return result!;
+    }
+
+    private async Task<ActionResult<IgPostDeleteDto>> DeleteContentPostCoreAsync(string id, CancellationToken ct)
     {
         var post = await db.IgScheduledPosts.FirstOrDefaultAsync(p => p.Id == id, ct);
         if (post is null) return NotFound(new { message = "Post topilmadi." });
@@ -262,6 +306,10 @@ public partial class InstagramController
         if (!exists) return NotFound(new { message = "Post topilmadi." });
 
         var (ok, error) = await svc.PublishNowAsync(id, ct);
+
+        // Navbat qulfi band (worker Meta bilan ishlayapti) — urinish BOSHLANMADI: 409, auditsiz.
+        if (!ok && error == InstagramPublishService.GateBusyMessage)
+            return Conflict(new { message = error });
 
         // ⚠️ Audit HAR DOIM yoziladi — muvaffaqiyatda ham, xatoda ham: "kim qo'lda joylashga
         // urindi" savoli aynan nosozlikdan keyin beriladi (`audit.md` §3.5).
@@ -404,9 +452,7 @@ public partial class InstagramController
             + "Matnni faqat Instagram ilovasidan o'zgartirish mumkin.",
         IgPublishConst.StProcessing =>
             "Post hozir joylanmoqda — tahrirlash uni o'zgartirmaydi. Bir necha daqiqa kuting.",
-        IgPublishConst.StCancelled =>
-            "Bekor qilingan post tahrirlanmaydi — yangi reja yarating.",
-        _ => "Bu post tahrirlanmaydi — faqat rejalashtirilgan post o'zgartiriladi.",
+        _ => "Bu post tahrirlanmaydi — faqat hali joylanmagan post o'zgartiriladi.",
     };
 
     private static string PostTypeLabel(string? type) => InstagramPublishContract.NormalizePostType(type) switch

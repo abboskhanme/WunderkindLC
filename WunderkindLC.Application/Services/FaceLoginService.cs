@@ -136,6 +136,14 @@ public class FaceLoginService(IAppDbContext db, FaceVault vault)
     /// qurilma" tushunchasi yo'q, va har kirishda selfi so'rab, yangilanmagan ilovadagi barcha
     /// o'quvchini tizimdan chiqarib qo'yardik. Ilova yangilangach deviceId keladi va darvoza
     /// o'zi ishlay boshlaydi.</para>
+    ///
+    /// <para>⚠️ <b>WEB va TELEGRAM MINI APP ham ATAYIN ISTISNO</b> (ular ham deviceId yubormaydi).
+    /// Yuz tekshiruvi FAQAT MOBIL ILOVA uchun qurilgan: vektor TELEFONDA hisoblanadi, tiriklik
+    /// (ko'z qisish, bosh burish) ilovada o'lchanadi — web klientda bu oqim umuman YO'Q (model
+    /// brauzerda ishlamaydi, `FACE-DETEKT-PLAN.md` §2/§7.4: ONNX/ML kutubxonasi yo'q). Web'da selfi
+    /// talab qilinsa, o'quvchilar «📱 Panel» (Mini App) va saytga UMUMAN kira olmasdi. Qabul
+    /// qilingan oqibat: parolni bilgan odam web orqali yuz tekshiruvisiz kiradi. Qoida va uni
+    /// yopish yo'li — `.claude/rules/auth-sessions.md` §5.</para>
     /// </summary>
     public async Task<LoginDecision> DecideAsync(
         AppUser user, string? deviceId, CancellationToken ct = default)

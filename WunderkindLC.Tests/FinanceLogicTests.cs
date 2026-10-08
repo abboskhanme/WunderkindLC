@@ -188,10 +188,11 @@ public class FinanceLogicTests
         Assert.Equal(new[] { "2026-04" }, TuitionService.MonthRange("2026-04", "2026-04").ToArray());
     }
 
-    [Fact(Skip = "XATO (TuitionService.cs:136-142): buzuq oy formatida NextMonth/MonthRange istisno beradi")]
+    [Fact]
     public void MonthRange_buzuqFormatda_istisnoBermasligiKerak()
     {
-        // XATO (TuitionService.cs:136-142): NextMonth("2026") → IndexOutOfRange, NextMonth("abcd-ef")
+        // TUZATILDI (2026-10-07): MonthRange buzuq oyda bo'sh oraliq beradi (`PaymentFields.IsMonth`).
+        // Ilgari: NextMonth("2026") → IndexOutOfRange, NextMonth("abcd-ef")
         // → FormatException. MonthRange ichida chaqirilgani uchun butun so'rov 500 bilan yiqiladi
         // (SalaryLedger.cs:38-39 dagi from/to ham foydalanuvchidan keladi va tekshirilmaydi).
         // KUTILGAN: noto'g'ri format bo'sh oraliq beradi (yoki tushunarli validatsiya xatosi).

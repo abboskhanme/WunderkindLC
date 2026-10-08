@@ -18,6 +18,12 @@ audit.Record(entityType, entityId, action, summary,
 - `summary` — o'zbekcha, TO'LIQ jumla: tarix ro'yxatida foydalanuvchi FAQAT shuni o'qiydi.
 - `before`/`after` — snapshot obyektlari (JSON'ga seriyalanadi). UI ularni "eski → yangi"
   ko'rinishida faqat `AuditHistoryList.fieldLabels` da yorlig'i BOR maydonlar uchun chizadi.
+- **SOZLAMA o'zgarishi** — `SettingsAudit.Record<TEntity>(audit, db.ChangeTracker, "nima", ...)`
+  (yagona yordamchi; o'zgargan maydonlarni ChangeTracker'dan oladi, shuning uchun SaveChanges'dan
+  OLDIN). `SettingsController` — faqat maydon NOMLARI (eskicha); pul/limit sozlamalari (ushlab turish
+  bonusi, AI tekshiruv limitlari, landing aloqa ma'lumotlari) — `withValues: true` + o'zbekcha
+  `labels`: tarixda "Standart summa: 100 000 → 150 000". Maxfiy nomli maydon bu rejimda ham faqat
+  NOMI bilan. Ilgari bu sozlamalar `SettingsController` dan tashqarida bo'lgani uchun UMUMAN yozilmasdi.
 - **Maxfiy qiymat yozilmaydi:** parol, token, API kalit — hech qachon. `/uploads/...` MANZILI ham
   yozilmasin (tarixni ko'rgan har kim faylni abadiy olib qolardi — `uploads-security.md`).
 
@@ -97,6 +103,51 @@ Ilgari shu tarzda tushib qolgan va 2026-08-05 da to'ldirilgan joylar:
 | O'qituvchilar | **Tahrirlash** | faqat toifa va maosh boshlanish oyi; ism, telefon, **MAOSH summasi/foizi**, fanlar, ruxsatlar o'zgarishi ko'rinmasdi |
 | O'qituvchilar | **O'chirish** | umuman yozilmasdi |
 | O'qituvchilar | Parolni tiklash | umuman yozilmasdi |
+
+2026-10-07 auditida to'ldirilganlar (operatsion bo'limlar):
+
+| Bo'lim | Amal | Nima bo'lgan edi |
+|---|---|---|
+| Shartnomalar | **Tuzish (yuklab olish)** va **Telegram orqali yuborish** | umuman yozilmasdi — har shartnoma uchun bitta qator (fayl MANZILISIZ), yuborilmagani ham |
+| O'quvchilar | **Taklif/shikoyat** hal qilindi / qayta ochildi (`Feedback`) | yozilmasdi; qayta ochish yo'li umuman yo'q edi |
+| Sozlamalar | **Topshiriqlar kunlik eslatmasi** (`CenterMeta`) | `SettingsController` dan tashqarida — yozilmasdi |
+| Kitoblar sotuvi | Olib ketilmagan buyurtmani **bekor qilish** | yangi amal (books.md §2.6) |
+
+2026-10-07 auditida to'ldirilganlar (hisobotni o'zgartiradigan KATALOGLAR va sozlamalar):
+
+| Tur | Amal | Bo'lim |
+|---|---|---|
+| `ActionReason` | sabab yaratish/tahrir/o'chirish — ⚠️ `OutOfControl` KPI jarimasi va ketish hisobotida JONLI o'qiladi | settings |
+| `AbsenceReason` | davomat sabablari ro'yxati (nima qo'shildi/o'chdi/qayta nomlandi) | settings |
+| `Room` | xona yaratish/tahrir/o'chirish | classes |
+| `Branch` | filial yaratish/tahrir/o'chirish | settings |
+| `CenterMeta` | ushlab turish bonusi, AI tekshiruv, landing sozlamalari (`SettingsAudit`) | settings |
+| `StudentAiAccess` | o'quvchiga AI limit/premium/blok (`studentId` bilan — profil tarixida ham) | students |
+| `CertificateTemplate` | sertifikat andozasi qo'shish/o'chirish (HTML matn yozilmaydi) | settings |
+| `Staff` (delete) | o'chirishda bo'shatilgan havolalar (lid, kassa, topshiriq, KPI, CTI, Telegram) shu qatorda | staff |
+
+`StudentBall` xaritada qoldi, lekin hozir uni YOZADIGAN endpoint yo'q (eski qatorlar uchun).
+
+2026-10-07 auditida to'ldirilganlar (o'quvchilar, arxiv, guruh a'zoligi):
+
+| Bo'lim | Amal | Nima bo'lgan edi |
+|---|---|---|
+| Sozlamalar → Arxiv | **Tiklash** va **butunlay o'chirish** (`ArchiveController`) | umuman yozilmasdi. Endi tur — tiklanayotgan entity'ning O'Z turi (`Lead`, `Student`, `TeacherSalary`, `Staff`, `Group`, `FinanceTransaction`), ya'ni yozuv o'sha bo'limda ko'rinadi |
+| O'quvchilar | Arxiv tabidan **o'chirish** (`DELETE students/{id}`) | iz qoldirmasdi |
+| O'quvchilar | **Telegram ulanishi uzildi** (raqam o'zgarganda avtomatik yoki profildan qo'lda) | yangi amal — `Student` turi |
+| Guruhlar | O'quvchini **arxivlash** → har guruhdan chiqish (`Membership`, «Guruhdan chiqarildi … — o'quvchi arxivlandi») | a'zolik umuman yopilmasdi |
+| Guruhlar | O'quvchi YARATILGANDA/IMPORTDA guruhga qo'shish (`Membership`) | yaratish yo'li izsiz qo'shardi |
+
+2026-10-07 auditida to'ldirilganlar (guruhlar):
+
+| Bo'lim | Amal | Nima bo'lgan edi |
+|---|---|---|
+| Guruhlar | **«Tugatish (sertifikat bilan)»** | yig'ma qator oxirgi `SaveChanges`dan KEYIN yozilib bazaga TUSHMASDI, a'zo qatorlari umuman yo'q edi — endi har a'zoga `Membership` qatori (tugatdi / kursni tugatmay chiqdi / yangi guruhga qo'shildi) + yig'ma qator, hammasi bitta tranzaksiyada |
+| Guruhlar | Guruhni o'chirish | endi nima o'chgani (jurnal, baholar, testlar, o'rinbosarlar, bekor qilingan chegirmalar) sanoq bilan yoziladi |
+| Guruhlar | Qayta nomlash | «Guruh nomi o'zgardi: A → B» + nechta chat xabari/yorliq ko'chgani |
+| Guruhlar | **Uzaytirishni bekor qilish** (yangi) | `StudentExtension`, `delete`, `"{groupId}:{studentId}"` |
+| O'qituvchilar | O'rinbosar tayinlovi guruh yopilganda/o'qituvchi almashganda qisqardi/bo'lindi | `substitute_teacher` (`substitute-teachers.md` §9) |
+| O'quvchilar | Chegirma guruh almashganda ko'chdi / ko'chmadi (boshqa fan) | `StudentDiscount` |
 
 **QAMROVDA ATAYIN YO'Q:** `POST {id}/ai-analysis` (guruh/o'qituvchi AI tahlili) — ma'lumot
 o'zgartirmaydi, faqat tahlil yaratadi.

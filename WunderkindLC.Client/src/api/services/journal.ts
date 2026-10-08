@@ -81,6 +81,9 @@ export interface GroupJournalStudent {
    *  tugatgan). Bunday qator `status: 'frozen'` bilan keladi (faqat ko'rish), `frozenAt` — oxirgi kuni;
    *  faqat o'quvchi o'qigan oylarda chiqadi. Bo'sh/yo'q — guruh a'zosi. */
   ended?: '' | 'left' | 'completed'
+  /** SHU GURUH bo'yicha qarzdormi. ⚠️ O'QITUVCHI javobida `balance` HAR DOIM 0 (qarz summasi
+   *  o'qituvchiga berilmaydi — teacher-portal.md §3), rang/belgi shu bayroq + `debtMonths` dan. */
+  debtor?: boolean
 }
 /** Bitta darsning bir martalik boshqa kunga ko'chirilishi (shu oyga tegishli). */
 export interface LessonReschedule {
