@@ -107,18 +107,31 @@ public static class GroupDeletion
         if (testIds.Count > 0)
         {
             var certs = await db.TestCertificates.Where(c => testIds.Contains(c.TestResultId)).ToListAsync(ct);
-            files.AddRange(certs.SelectMany(c => new[] { c.DocxUrl, c.PdfUrl }));
+            // ⚠️ XAVFSIZLIK: o'chiriladigan fayl manzili SERVER yaratgan nom naqshiga mos bo'lishi SHART
+            // (`UploadUrlRules`). Sertifikat — faqat `/uploads/certificates/cert-<guid>.docx|pdf`.
+            files.AddRange(certs.SelectMany(c => new[] { c.DocxUrl, c.PdfUrl })
+                .Where(UploadUrlRules.IsTestCertificateFile));
             db.TestCertificates.RemoveRange(certs);
             db.TestScores.RemoveRange(await db.TestScores.Where(x => testIds.Contains(x.TestResultId)).ToListAsync(ct));
             db.ExternalTestScores.RemoveRange(
                 await db.ExternalTestScores.Where(x => testIds.Contains(x.TestResultId)).ToListAsync(ct));
-            // Savollar PDF'i — faqat boshqa (o'chmaydigan) test uni ishlatmasa.
-            var pdfs = tests.Select(t => t.PdfUrl).Where(u => !string.IsNullOrWhiteSpace(u)).Distinct().ToList();
+            // Savollar PDF'i — faqat server saqlagan `/uploads/<guid>.pdf` VA boshqa hech narsa uni
+            // ishlatmasa: o'chmaydigan test, shartnoma yoki o'quv dasturi materiali. ⚠️ `PdfUrl` klientdan
+            // keladi — o'qituvchi dars PDF'ini (yoki o'z shartnomasi manzilini) test savoli qilib qo'ygan
+            // bo'lsa, guruh o'chganda o'sha BEGONA fayl diskdan o'chib ketardi.
+            var pdfs = tests.Select(t => t.PdfUrl).Where(UploadUrlRules.IsServerPdf).Distinct().ToList();
             if (pdfs.Count > 0)
             {
                 var shared = await db.TestResults.AsNoTracking()
                     .Where(t => !testIds.Contains(t.Id) && pdfs.Contains(t.PdfUrl))
                     .Select(t => t.PdfUrl).ToListAsync(ct);
+                foreach (var c in await db.Contracts.AsNoTracking()
+                             .Where(c => pdfs.Contains(c.PdfUrl) || pdfs.Contains(c.DocxUrl))
+                             .Select(c => new { c.PdfUrl, c.DocxUrl }).ToListAsync(ct))
+                    shared.AddRange([c.PdfUrl, c.DocxUrl]);
+                shared.AddRange(await db.CourseItems.AsNoTracking()
+                    .Where(i => pdfs.Contains(i.PdfUrl))
+                    .Select(i => i.PdfUrl).ToListAsync(ct));
                 files.AddRange(pdfs.Except(shared));
             }
             db.TestBotSessions.RemoveRange(

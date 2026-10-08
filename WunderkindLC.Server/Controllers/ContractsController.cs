@@ -360,13 +360,19 @@ public class ContractsController(
             return BadRequest(new { message = "PDF faylni yuklang" });
         if (!url.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase))
             return BadRequest(new { message = "Faqat PDF fayl yuklash mumkin" });
-        // Eski nusxa almashtirilsa — diskda axlat qolmasin.
-        if (!string.IsNullOrEmpty(c.PdfUrl) && c.PdfUrl != url) contracts.DeleteUpload(c.PdfUrl);
+        // ⚠️ FAQAT server saqlagan PDF (`/uploads/<32 hex>.pdf` — `POST /api/admin/uploads`). Ilgari istalgan
+        // `/uploads/*.pdf` qabul qilinardi: shartnoma BEGONA faylga (test savollari, dars PDF'i, CV) ishora
+        // qilib, uni o'qituvchi/ota-ona ilovasida ko'rsatardi va almashtirilganda/o'chirilganda diskdan o'chirardi.
+        if (!UploadUrlRules.IsServerPdf(url))
+            return BadRequest(new { message = "PDF fayl noto'g'ri — faylni shu oynadan qayta yuklang" });
+        var oldPdf = c.PdfUrl;
         c.PdfUrl = url;
         // MANZIL yozilmaydi — tarixni ko'rgan har kim `/uploads/...` havolasini olib qo'ymasin
         // (qarang: .claude/rules/uploads-security.md).
         audit.Record("Contract", c.Id, "update", $"Shartnomaga PDF nusxa biriktirildi: #{c.Number}");
         await db.SaveChangesAsync();
+        // Eski nusxa almashtirilsa — diskda axlat qolmasin (saqlangandan KEYIN, faqat o'z fayli).
+        if (!string.IsNullOrEmpty(oldPdf) && oldPdf != url) await DeleteOwnFilesAsync(oldPdf);
         return ContractService.ToDoc(c);
     }
 
@@ -389,15 +395,31 @@ public class ContractsController(
     {
         var c = await db.Contracts.FindAsync(id);
         if (c is null) return NotFound();
-        contracts.DeleteUpload(c.PdfUrl);
-        contracts.DeleteUpload(c.DocxUrl);
         audit.Record("Contract", c.Id, "delete", $"Shartnoma o'chirildi: #{c.Number}");
         db.Contracts.Remove(c);
         await db.SaveChangesAsync();
+        // Fayllar — saqlangandan KEYIN (yozuv o'chmasa fayl qolsin) va faqat o'z fayllari.
+        await DeleteOwnFilesAsync(c.PdfUrl, c.DocxUrl);
         return NoContent();
     }
 
     // ---------- Yordamchilar ----------
+
+    /// <summary>
+    /// Shartnoma fayllarini o'chiradi — FAQAT server nom naqshidagi (`/uploads/&lt;guid&gt;.pdf|.docx`) VA
+    /// boshqa hech bir yozuv ishlatmayotgan fayl (<see cref="UploadReferences.InUseAsync"/>). Eski
+    /// (tekshiruvdan oldingi) shartnoma begona faylga ishora qilgan bo'lishi mumkin — u TEGILMAYDI.
+    /// <c>SaveChanges</c> dan KEYIN chaqiriladi (o'chirilgan/almashtirilgan yozuv hisobga olinmasin).
+    /// </summary>
+    private async Task DeleteOwnFilesAsync(params string?[] urls)
+    {
+        var candidates = urls
+            .Where(u => UploadUrlRules.IsServerPdf(u) || UploadUrlRules.IsServerUpload(u, ".docx"))
+            .Select(u => u!).Distinct().ToList();
+        if (candidates.Count == 0) return;
+        var inUse = await UploadReferences.InUseAsync(db, candidates);
+        foreach (var u in candidates.Where(u => !inUse.Contains(u))) contracts.DeleteUpload(u);
+    }
 
     private async Task<bool> DeliverAsync(List<long> chatIds, byte[] filled, int number)
     {

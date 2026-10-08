@@ -108,6 +108,17 @@ ikki manbadan ko'chirilgan (ularning fayllari tegilmagan — o'zgarsa bu yerni h
   beradi: **«Mavjud o'quvchiga bog'lash»** (`?linkStudentId=` — yangi o'quvchi/akkaunt YARATILMAYDI,
   lid o'sha o'quvchiga yopiladi, guruh tanlangan bo'lsa unga qo'shiladi — allaqachon a'zo bo'lsa
   tegilmaydi) va **«Baribir yangi o'quvchi yaratish»** (`?force=true`).
+- ⚠️ **Bog'lash FAQAT dublikat nomzodiga** (`LeadConversion.CanLinkTo` — 409 dagi bilan AYNAN bir xil
+  qoida: arxivlanmagan, ism + kamida bitta telefon mos), aks holda 400 (2026-10-08). Ilgari istalgan
+  `linkStudentId` qabul qilinardi: lidni BEGONA o'quvchiga (masalan aka-ukasiga) yopib, KPI
+  "shartnoma"ni yozdirish va uni guruhga qo'shish mumkin edi.
+  Bir o'quvchiga BIR NECHTA lid bog'lanishi **MUMKIN (ATAYIN)**: sobiq/joriy o'quvchining takroriy
+  murojaati YANGI lid bo'lib tushadi (pastda — "Avval o'quvchi bo'lgan") va u aynan shu o'quvchiga
+  yopilishi kerak; rad etilsa operator `force=true` bilan dublikat o'quvchi yaratardi.
+- ⚠️ **Guruh tanlansa — `AddMember` ruxsati** (`classes.list`, POST → `create`; `MayAddToGroups`),
+  ikkala yo'lda ham (yaratish va bog'lash), 403 sabab bilan. Ilgari lid + o'quvchi ruxsati bor xodim
+  shu yo'l bilan guruhlar bo'limiga ruxsatsiz a'zo qo'sha olardi. Standart "Administrator" rolida
+  `classes` bor — o'zgarish yo'q.
 - **Guruh to'lgan** — o'quvchi yaratiladi, javobda `groupFull = true`, klient panelda sariq
   ogohlantirish ko'rsatadi ("guruhga QO'SHILMADI") — oyna yopilmaydi.
 

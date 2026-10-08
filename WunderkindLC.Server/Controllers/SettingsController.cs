@@ -639,20 +639,33 @@ public class SettingsController(AppDbContext db, TelegramService telegram, IWebH
     /// lekin disk baribir to'lyapti" holati. Yangi qiymat har kamera keyingi marta tahrirlanganda
     /// yoki jonli ochilganda emas, AYNAN SHU YERDA qo'llanadi.</para>
     /// </summary>
+    /// <summary>NVR manzili/portlarini superadmin bo'lmagan foydalanuvchi o'zgartirmoqchi bo'lsa.</summary>
+    public const string NvrTargetSuperAdminMessage =
+        "NVR manzili va portlarini faqat superadmin o'zgartira oladi (ular .env dagi NVR paroli qayerga yuborilishini belgilaydi).";
+
     [HttpPut("cameras")]
     [AdminPerm("settings.cameras")]
     public async Task<ActionResult<CameraSettingsDto>> SaveCameras(SaveCameraSettingsRequest req)
     {
         var m = await db.CenterMeta.FirstOrDefaultAsync();
+        // ⚠️ NVR MANZILI (host + RTSP/ISAPI portlari) — FAQAT SUPERADMIN (hard rol, `[AdminPerm]` emas:
+        // u `admin` ni ham o'tkazardi). Shu uchta maydon `.env` dagi NVR login/paroli QAYERGA yuborilishini
+        // hal qiladi: ilgari `settings.cameras` ruxsati bor har kim hostni o'z serveriga almashtirib, klip
+        // so'rovida (RTSP, ffmpeg — Basic'ga ham javob beradi) parolni qo'lga kiritardi (cameras.md §8).
+        // Qolgan sozlamalar (kalitlar, rusum) avvalgidek; manzil o'zgarmasa so'rov odatdagidek o'tadi.
+        var newHost = (req.NvrHost ?? m?.NvrHost ?? "").Trim();
+        if (!User.IsInRole(Roles.SuperAdmin)
+            && NvrArchiveService.TargetChanged(m, newHost, req.NvrRtspPort, req.NvrIsapiPort))
+            return StatusCode(StatusCodes.Status403Forbidden, new { message = NvrTargetSuperAdminMessage });
         if (m is null) { m = new CenterMeta(); db.CenterMeta.Add(m); }
         var wasNvrOn = NvrArchiveService.IsConfigured(m);
         var recordChanged = m.CameraRecordEnabled != req.RecordEnabled;
         m.CameraEnabled = req.Enabled;
         m.CameraRecordEnabled = req.RecordEnabled;
         m.NvrEnabled = req.NvrEnabled;
-        m.NvrHost = (req.NvrHost ?? m.NvrHost).Trim();
-        m.NvrRtspPort = req.NvrRtspPort is > 0 and <= 65535 ? req.NvrRtspPort : 554;
-        m.NvrIsapiPort = req.NvrIsapiPort is > 0 and <= 65535 ? req.NvrIsapiPort : 80;
+        m.NvrHost = newHost;
+        m.NvrRtspPort = NvrArchiveService.EffectiveRtspPort(req.NvrRtspPort);
+        m.NvrIsapiPort = NvrArchiveService.EffectiveIsapiPort(req.NvrIsapiPort);
         m.NvrVendor = string.IsNullOrWhiteSpace(req.NvrVendor)
             ? (string.IsNullOrEmpty(m.NvrVendor) ? "hikvision" : m.NvrVendor)
             : req.NvrVendor.Trim().ToLowerInvariant();

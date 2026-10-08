@@ -55,8 +55,20 @@ so'ralmaydi).
 ## 3. PAROL DARVOZASI — ko'rish = tiklash = o'rnatish
 
 Yangi parol QAYTARILADI (yoki admin o'zi yozadi) — ya'ni bu akkauntga KIRISH. Shuning uchun
-`Credentials`, eksport, `ResetPassword` va formadagi "yangi parol" — BITTA darvoza:
+`Credentials`, eksport, `ResetPassword`, formadagi "yangi parol" va **arxivdan qaytarishdagi
+`NewPassword`** — BITTA darvoza:
 `AdminPermAttribute.HasFullAccess(User, "students.list" | "teachers.list" | "staff")`.
+
+| Yo'l | Darvoza |
+|---|---|
+| `Students/TeachersController.Credentials`, eksport | `HasFullAccess` |
+| `Students/Teachers/StaffController.ResetPassword` | `HasFullAccess` |
+| `Students/Teachers/StaffController.Update` (formadagi yangi parol) | `HasFullAccess` |
+| `StudentsController.Restore`, `TeachersController.Restore` — **`NewPassword` berilsa** | `HasFullAccess`, HECH NARSA o'zgartirilishidan OLDIN (2026-10-08) |
+
+- ⚠️ `Restore` ilgari faqat sinf darajasidagi `…list:create` (POST) bilan ochilardi: parolni KO'RA
+  olmaydigan xodim arxivdagi akkauntni O'ZI tanlagan parol bilan qaytarib, uning nomidan kirardi.
+  Parolsiz qaytarish — avvalgidek sinf ruxsati bilan.
 
 - Ilgari `ResetPassword` faqat `…list:create` bilan ochilardi — parolni KO'RA olmaydigan xodim
   uni qayta yaratib, o'quvchi/o'qituvchi nomidan kirardi.
@@ -67,6 +79,22 @@ Yangi parol QAYTARILADI (yoki admin o'zi yozadi) — ya'ni bu akkauntga KIRISH. 
 Tiklashda `SetInitialPassword` (hash + `InitialPassword`) — aks holda «Login/parol», Excel
 eksport va botdagi login xabari ESKI, yaroqsiz parolni ko'rsatardi. Parolning O'ZI auditga
 yozilmaydi — faqat "qayta yaratildi" fakti (o'quvchi: `StudentDiscount` turi, login amallari bilan).
+
+### 3.1. `InitialPassword` — HAR muvaffaqiyatli kirishda tozalanadi
+
+Ochiq parol faqat "egasi hali kirmagan" davrda kerak («Login/parol», eksport, botdagi login xabari).
+Foydalanuvchi akkauntga KIRGACH u bazada saqlanmaydi (`user.InitialPassword = null`):
+
+| Kirish yo'li | Joy |
+|---|---|
+| Parol | `AuthController.Login` |
+| Bot kodi (OTP) — Mini App («📱 Panel») ham shu yo'l bilan kiradi | `AuthController.OtpLogin` |
+| Yuz tasdig'i (to'liq sessiya) | `StudentFaceController.IssueSessionAsync` (zaxira — odatda oldingi parol/OTP login'da tozalangan) |
+
+⚠️ Ilgari faqat PAROL bilan kirishda tozalanardi: bot kodi bilan kiradigan o'quvchining ochiq paroli
+(tiklashlardan keyin ham) bazada, eksportda va zaxirada abadiy qolardi. **Refresh — kirish EMAS**,
+u tozalamaydi. Tozalangandan keyin botdagi login xabari "Parolingizni avval olgansiz" deydi;
+kerak bo'lsa admin parolni qayta yaratadi. Yangi kirish yo'li qo'shsangiz — shu qatorni ham qo'shing.
 
 ## 4. «Oxirgi kirish» (`AppUser.LastLoginAt`)
 

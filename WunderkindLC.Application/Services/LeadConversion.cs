@@ -138,6 +138,21 @@ public static class LeadConversion
         return a.Count > 0 && a.Overlaps(StudentImportPlan.PhoneKeys(studentPhones));
     }
 
+    /// <summary>«Mavjud o'quvchiga bog'lash» rad etilganda (o'quvchi dublikat nomzodi emas).</summary>
+    public const string LinkNotCandidateMessage =
+        "Lidni faqat o'sha odamning o'zi bo'lgan o'quvchiga bog'lash mumkin (ism va telefon mos kelishi kerak).";
+
+    /// <summary>
+    /// <c>?linkStudentId=</c> — lidni SHU o'quvchiga bog'lash mumkinmi: u dublikat NOMZODI bo'lishi
+    /// shart (<see cref="IsSamePerson"/>, arxivlanmagan — <see cref="FindDuplicateStudentsAsync"/> bilan
+    /// AYNAN bir xil qoida). ⚠️ Ilgari istalgan id qabul qilinardi: lid ruxsati bor xodim lidni BEGONA
+    /// o'quvchiga (masalan aka-ukasiga) yopib, KPI "shartnoma"ni yozdirar va uni o'sha guruhga qo'shardi.
+    /// </summary>
+    public static bool CanLinkTo(Lead lead, Student student) =>
+        !student.IsArchived
+        && IsSamePerson(lead.FullName, new[] { lead.Phone, lead.FatherPhone, lead.MotherPhone },
+            student.FullName, new[] { student.Phone, student.FatherPhone, student.MotherPhone, student.ParentPhone });
+
     // ============================ Baza bilan ============================
 
     /// <summary>

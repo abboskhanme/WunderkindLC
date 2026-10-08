@@ -169,6 +169,11 @@ public class AuditFixT1Tests
     //  LRN-8 — GURUHNI O'CHIRISH: o'quv/yordamchi ma'lumot ham o'chadi
     // =====================================================================================
 
+    // Fayl manzillari SERVER yaratgan nom naqshida (`UploadUrlRules`) — boshqasi o'chirilmaydi (SecurityFixTests).
+    private const string Q1Pdf = "/uploads/0123456789abcdef0123456789abcdef.pdf";
+    private const string CertDocx = "/uploads/certificates/cert-00112233445566778899aabbccddeeff.docx";
+    private const string CertPdf = "/uploads/certificates/cert-00112233445566778899aabbccddeeff.pdf";
+
     [Fact]
     public async Task Ochirishda_baholar_ball_testlar_sertifikatlar_dastur_chat_TOZALANADI__boshqa_guruh_tegilmaydi()
     {
@@ -191,7 +196,7 @@ public class AuditFixT1Tests
             ctx.MembershipReasonLogs.Add(new MembershipReasonLog { GroupId = gid, StudentId = s.Id, Action = "remove", Date = D(-1), ReasonLabel = "x" });
             ctx.GroupTeacherAssignments.Add(new GroupTeacherAssignment { GroupId = gid, TeacherId = t.Id, FromDate = D(-30) });
         }
-        var test = new TestResult { GroupId = g.Id, Name = "Unit 1", Date = D(-3), MaxScore = 10, PdfUrl = "/uploads/q1.pdf" };
+        var test = new TestResult { GroupId = g.Id, Name = "Unit 1", Date = D(-3), MaxScore = 10, PdfUrl = Q1Pdf };
         var keptTest = new TestResult { GroupId = other.Id, Name = "Unit 1", Date = D(-3), MaxScore = 10 };
         ctx.TestResults.AddRange(test, keptTest);
         await ctx.SaveChangesAsync();
@@ -199,7 +204,7 @@ public class AuditFixT1Tests
         ctx.TestScores.Add(new TestScore { TestResultId = keptTest.Id, StudentId = s.Id, Score = 8 });
         ctx.TestCertificates.Add(new TestCertificate
         {
-            TestResultId = test.Id, StudentId = s.Id, DocxUrl = "/uploads/certificates/a.docx", PdfUrl = "/uploads/certificates/a.pdf",
+            TestResultId = test.Id, StudentId = s.Id, DocxUrl = CertDocx, PdfUrl = CertPdf,
         });
         ctx.ExternalTestScores.Add(new ExternalTestScore { TestResultId = test.Id, ChatId = 5, FullName = "Tashqi" });
         ctx.TestBotSessions.Add(new TestBotSession { ChatId = 77, TestResultId = test.Id, StudentId = s.Id });
@@ -213,9 +218,9 @@ public class AuditFixT1Tests
         await ctx.SaveChangesAsync();
 
         Assert.Equal(1, res.Tests);
-        Assert.Contains("/uploads/certificates/a.docx", res.FileUrls);
-        Assert.Contains("/uploads/certificates/a.pdf", res.FileUrls);
-        Assert.Contains("/uploads/q1.pdf", res.FileUrls);
+        Assert.Contains(CertDocx, res.FileUrls);
+        Assert.Contains(CertPdf, res.FileUrls);
+        Assert.Contains(Q1Pdf, res.FileUrls);
 
         Assert.Empty(await ctx.CriterionGrades.Where(x => x.GroupId == g.Id).ToListAsync());
         Assert.Empty(await ctx.StudentBallAdjustments.Where(x => x.GroupId == g.Id).ToListAsync());

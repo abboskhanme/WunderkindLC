@@ -462,6 +462,13 @@ function CameraFormModal({
       <div className="mt-4">
         <Input label="RTSP manzili *" placeholder="rtsp://login:parol@192.168.1.10:554/Streaming/Channels/101"
           value={form.rtspUrl} onChange={(e) => set('rtspUrl', e.target.value)} autoComplete="off" />
+        {camera && (camera.rtspHasCredentials || camera.rtspSubHasCredentials) && (
+          <p className="mt-1.5 text-[11px] text-slate-500">
+            Login/parol xavfsizlik uchun ko'rsatilmaydi va saqlangan holicha qoladi. Yangisini kiritish
+            uchun manzilni <code>rtsp://login:parol@...</code> ko'rinishida yozing. Host (IP) o'zgarsa
+            login/parolni qayta kiriting.
+          </p>
+        )}
       </div>
       <div className="mt-4">
         <Input label="Sub-oqim RTSP (ixtiyoriy — grid uchun past sifat)" placeholder="rtsp://.../Channels/102"

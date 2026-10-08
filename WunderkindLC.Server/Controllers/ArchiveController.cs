@@ -24,7 +24,7 @@ namespace WunderkindLC.Server.Controllers;
 [Authorize]
 [AdminPerm("settings.archive")]
 [Route("api/admin/archive")]
-public class ArchiveController(AppDbContext db, AuditService audit) : ControllerBase
+public class ArchiveController(AppDbContext db, AuditService audit, ILogger<ArchiveController> logger) : ControllerBase
 {
     private static readonly string[] Hidden = ArchiveService.HiddenTypes.ToArray();
 
@@ -228,9 +228,28 @@ public class ArchiveController(AppDbContext db, AuditService audit) : Controller
             db.ArchivedRecords.Remove(rec);
             await db.SaveChangesAsync();
         }
+        // ⚠️ `ex.Message` klientga QAYTARILMAYDI: `try` endi `SaveChanges` ni ham o'raydi va EF/Npgsql
+        // xatosi jadval/ustun nomlari, kalit qiymatlari va SQL bo'laklarini o'z ichiga oladi. Kutilgan
+        // holatlar (mavjud yozuv, band login, vozvrat chegarasi) yuqorida o'z sababi bilan 400 qaytaradi;
+        // bu yer — kutilmagan xato: to'liq matn LOGGA, foydalanuvchiga umumiy o'zbekcha sabab.
+        catch (JsonException ex)
+        {
+            logger.LogWarning(ex, "Arxiv surati o'qilmadi: {Id} ({Type})", rec.Id, rec.Type);
+            return BadRequest(new { message = "Tiklab bo'lmadi: arxiv surati buzilgan yoki eski formatda." });
+        }
+        catch (DbUpdateException ex)
+        {
+            logger.LogWarning(ex, "Arxivdan tiklashda saqlash xatosi: {Id} ({Type})", rec.Id, rec.Type);
+            return BadRequest(new
+            {
+                message = "Tiklab bo'lmadi: bazaga saqlanmadi — bog'liq yozuv (kurs, o'qituvchi, guruh) o'chirilgan "
+                          + "yoki shu ma'lumot allaqachon mavjud bo'lishi mumkin.",
+            });
+        }
         catch (Exception ex)
         {
-            return BadRequest(new { message = "Tiklab bo'lmadi: " + ex.Message });
+            logger.LogError(ex, "Arxivdan tiklashda kutilmagan xato: {Id} ({Type})", rec.Id, rec.Type);
+            return BadRequest(new { message = "Tiklab bo'lmadi: kutilmagan xato (tafsiloti server jurnalida)." });
         }
         finally
         {

@@ -249,6 +249,12 @@ public static class StudentPurge
                 .ToListAsync(ct))
               .SelectMany(x => new[] { x.BirthCertificateUrl, x.ParentPassportUrl })
               .Where(u => !string.IsNullOrEmpty(u)).Select(u => u!).ToHashSet();
+        // ⚠️ Surat/passport manzili admin formasidan keladi — FAQAT server yuklagan nom
+        // (`/uploads/<guid>.<ruxsat etilgan kengaytma>`, `UploadUrlRules.IsServerUpload`) o'chiriladi VA
+        // boshqa hech bir yozuv (shartnoma, test, dars materiali, o'qituvchi surati ...) uni ishlatmasa.
+        // Aks holda qo'lda yozilgan BEGONA manzil (masalan shartnoma PDF'i) o'quvchi bilan birga o'chib ketardi.
+        keep.UnionWith(own.Where(u => !UploadUrlRules.IsServerUpload(u)));
+        keep.UnionWith(await UploadReferences.InUseAsync(db, own, exceptStudentId: id, ct));
 
         db.Students.Remove(s);
 

@@ -13,17 +13,26 @@ namespace WunderkindLC.Server.Controllers;
 /// orqali proksilanadi) + playback/qirqib yuklab olish (yozuvdan MP4). Shlyuz (MediaMTX) ichki
 /// tarmoqda; brauzer faqat shu autentifikatsiyalangan endpointlar orqali ko'radi.
 /// </summary>
+/// <remarks>
+/// ⚠️ <c>ReadRequiresPerm = true</c> (cameras.md §9): GET ham <c>cameras</c> ruxsatini talab qiladi.
+/// Ilgari odatdagi <c>[AdminPerm]</c> GET'ni HAR QANDAY xodimga ochiq qoldirardi — har bir xodim
+/// kameralarni jonli ko'rar, arxivdan klip yuklab olar va RTSP manzilidagi login/parolni o'qirdi.
+/// </remarks>
 [ApiController]
 [Authorize]
-[AdminPerm("cameras")]
+[AdminPerm("cameras", ReadRequiresPerm = true)]
 [Route("api/admin/cameras")]
 public class CamerasController(AppDbContext db, CameraGateway gateway, NvrArchiveService nvr) : ControllerBase
 {
+    /// <summary>⚠️ RTSP manzillari LOGIN/PAROLSIZ qaytadi (<see cref="CameraUrlSecrets.Redact"/>) —
+    /// parol "faqat yoziladigan" maydon; saqlashda <see cref="CameraUrlSecrets.Merge"/> uni saqlab qoladi.</summary>
     private static CameraDto Dto(Camera c, CenterMeta? m, string? warning = null) =>
-        new(c.Id, c.Name, c.Location, c.RtspUrl, c.RtspSubUrl, c.RetentionDays, c.IsActive, c.Note,
+        new(c.Id, c.Name, c.Location, CameraUrlSecrets.Redact(c.RtspUrl), CameraUrlSecrets.Redact(c.RtspSubUrl),
+            c.RetentionDays, c.IsActive, c.Note,
             c.RecordEnabled, c.NvrChannel,
             CameraRules.ArchiveSource(NvrArchiveService.IsConfigured(m), m?.CameraRecordEnabled ?? false, c),
-            warning);
+            warning,
+            CameraUrlSecrets.HasCredentials(c.RtspUrl), CameraUrlSecrets.HasCredentials(c.RtspSubUrl));
 
     /// <summary>
     /// «Kamera kuzatuvini yoqish» (<see cref="CenterMeta.CameraEnabled"/>) o'chiq bo'lsa — KO'RISH
@@ -101,11 +110,16 @@ public class CamerasController(AppDbContext db, CameraGateway gateway, NvrArchiv
         var c = await db.Cameras.FindAsync(id);
         if (c is null) return NotFound();
         if (string.IsNullOrWhiteSpace(req.Name)) return BadRequest(new { message = "Nomi shart" });
-        if (string.IsNullOrWhiteSpace(req.RtspUrl)) return BadRequest(new { message = "RTSP manzili shart" });
+        // LOGIN/PAROL — "faqat yoziladigan": forma login/parolsiz (tozalangan) manzilni qaytaradi. Host
+        // o'zgarmagan bo'lsa saqlangan login/parol qayta qo'shiladi; host almashsa — qayta kiritiladi
+        // (`CameraUrlSecrets.Merge` izohi: parol begona hostga ketmasin). Bo'sh asosiy manzil — eskisi qoladi.
+        var rtsp = CameraUrlSecrets.Merge(c.RtspUrl, req.RtspUrl);
+        if (string.IsNullOrWhiteSpace(rtsp)) return BadRequest(new { message = "RTSP manzili shart" });
         c.Name = req.Name.Trim();
         c.Location = (req.Location ?? "").Trim();
-        c.RtspUrl = req.RtspUrl.Trim();
-        c.RtspSubUrl = (req.RtspSubUrl ?? "").Trim();
+        c.RtspUrl = rtsp;
+        // Sub-oqim ixtiyoriy: bo'sh = sub-oqim OLIB TASHLANDI (forma tegilmasa tozalangan manzilni qaytaradi).
+        c.RtspSubUrl = string.IsNullOrWhiteSpace(req.RtspSubUrl) ? "" : CameraUrlSecrets.Merge(c.RtspSubUrl, req.RtspSubUrl);
         c.RetentionDays = CameraRules.ClampRetention(req.RetentionDays);
         c.IsActive = req.IsActive;
         c.Note = (req.Note ?? "").Trim();

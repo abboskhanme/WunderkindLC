@@ -130,7 +130,9 @@ public class PublicCareerController(
 
         var dir = Path.Combine(env.ContentRootPath, "uploads");
         Directory.CreateDirectory(dir);
-        var stored = $"{Guid.NewGuid():N}.pdf";
+        // Nom `cv-<guid>.pdf` — CV boshqa yuklashlardan (shartnoma, test PDF, skan) AJRALIB turadi:
+        // `Apply` faqat shu naqshni qabul qiladi, ya'ni ariza BEGONA faylga ishora qila olmaydi.
+        var stored = UploadUrlRules.NewCvFileName();
         await using (var fs = System.IO.File.Create(Path.Combine(dir, stored)))
             await file.CopyToAsync(fs);
 
@@ -175,14 +177,18 @@ public class PublicCareerController(
         if (motivation.Length < 10)
             return BadRequest(new { message = "Motivatsion xatni to'liqroq yozing (kamida 10 belgi)" });
 
-        // CV — ixtiyoriy, lekin berilsa faqat o'zimiz yuklagan `/uploads/...pdf` bo'lishi shart
-        // (tashqi/soxta URL adminga yuborilmasin).
+        // CV — ixtiyoriy, lekin berilsa faqat `UploadCv` yaratgan `/uploads/cv-<guid>.pdf` bo'lishi
+        // shart. ⚠️ Ilgari faqat prefiks/suffiks tekshirilardi: nomzod istalgan `/uploads/*.pdf`
+        // (shartnoma, test savollari, boshqa nomzod CV'si) manzilini yozib qo'ya olardi — admin uni
+        // "rezyume" deb ochar, ariza o'chirilganda esa o'sha BEGONA fayl diskdan o'chib ketardi.
         var cvUrl = Trim(p.CvUrl, 300);
-        if (cvUrl.Length > 0 &&
-            !(cvUrl.StartsWith("/uploads/", StringComparison.Ordinal)
-              && cvUrl.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase)
-              && !cvUrl.Contains("..", StringComparison.Ordinal)))
-            return BadRequest(new { message = "CV fayli noto'g'ri" });
+        if (cvUrl.Length > 0 && !UploadUrlRules.IsCareerCv(cvUrl))
+            return BadRequest(new { message = "CV fayli noto'g'ri — faylni qayta yuklang" });
+        // Fayl BIRINCHI yuborgan chatniki: boshqa nomzodning arizasidagi CV'ni (manzili qayerdandir
+        // ma'lum bo'lsa ham) o'z arizasiga biriktirib bo'lmaydi.
+        if (cvUrl.Length > 0
+            && await db.JobApplications.AnyAsync(a => a.CvUrl == cvUrl && a.ChatId != me.ChatId))
+            return BadRequest(new { message = "CV fayli noto'g'ri — faylni qayta yuklang" });
 
         var app = CareerService.BuildApplication(
             vacancy, me.ChatId, me.Username, fullName, phone,

@@ -564,7 +564,7 @@ public class AuditFixT5Tests
         await db.Context.SaveChangesAsync();
 
         var r = await TestResultService.UpdateDetailedAsync(db.Context, t.Id, "Unit 1", Day(0), 4,
-            new OnlineTestDto("online", "/uploads/t.pdf", "t.pdf", 4, 4, "ABCA", t.StartAt, t.EndAt, "KOD123", true));
+            new OnlineTestDto("online", "/uploads/0123456789abcdef0123456789abcdef.pdf", "t.pdf", 4, 4, "ABCA", t.StartAt, t.EndAt, "KOD123", true));
 
         Assert.True(r.Ok);
         Assert.Equal(2, r.Regraded);

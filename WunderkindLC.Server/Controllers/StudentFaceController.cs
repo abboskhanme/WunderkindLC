@@ -281,6 +281,13 @@ public class StudentFaceController(
     /// JSON'da ham qaytadi — mobil uchun). (access token, xom refresh token) qaytaradi.</summary>
     private async Task<(string Token, string RefreshToken)> IssueSessionAsync(AppUser user, CancellationToken ct)
     {
+        // Akkauntga KIRDI — dastlabki OCHIQ parol saqlanmaydi (parol/OTP yo'li bilan bir xil,
+        // auth-sessions.md §3.1). Odatda u yuz tasdig'idan OLDINGI login'da tozalangan bo'ladi — bu zaxira.
+        if (user.InitialPassword is not null)
+        {
+            user.InitialPassword = null;
+            await db.SaveChangesAsync(ct);
+        }
         var ua = Request.Headers.UserAgent.ToString();
         var rt = await refreshTokens.IssueAsync(
             user.Id, ip: ClientIp(), ua: string.IsNullOrWhiteSpace(ua) ? null : ua, ct: ct);

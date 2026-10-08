@@ -85,6 +85,11 @@ aka-ukalar bilan umumiy.
 bo'lsa o'chadi — xodim akkauntini tasodifan o'chirmaslik uchun.
 
 ⚠️ **Rasm/passport fayli** boshqa o'quvchida ham turgan bo'lsa (bir xil manzil) — o'chirilmaydi.
+⚠️ Ular admin formasidan keladi, shuning uchun (2026-10-08) faqat **server yuklash nomi**
+(`/uploads/<32 hex>.<ruxsat etilgan kengaytma>`, `UploadUrlRules.IsServerUpload`) VA boshqa hech bir
+yozuv (shartnoma, test, dars materiali, o'qituvchi surati ... — `UploadReferences.InUseAsync`)
+ishlatmayotgan fayl o'chiriladi. Aks holda qo'lda yozilgan BEGONA manzil (masalan shartnoma PDF'i)
+o'quvchi bilan birga diskdan o'chib ketardi (`uploads-security.md`).
 
 ## 5. Tartib — hammasi yoki hech narsa
 

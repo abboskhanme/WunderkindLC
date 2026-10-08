@@ -402,20 +402,22 @@ public class CareerController(AppDbContext db, CareerService career, AuditServic
         // o'chsa ham rezyume `/uploads` da qolib, manzilni bilgan har kim uni yuklab olaverardi
         // (uploads-security.md). Boshqa ariza ham shu faylga ishora qilsa (nomzod bitta CV bilan
         // ikki vakansiyaga topshirgan) — tegilmaydi.
-        if (!string.IsNullOrWhiteSpace(a.CvUrl)
+        // ⚠️ FAQAT `cv-<guid>.pdf` (Mini App'ning CV yuklashi yaratgan fayl). `CvUrl` nomzoddan keladi:
+        // eski (naqshdan oldingi) arizada u begona PDF'ga ishora qilgan bo'lishi mumkin — bunday fayl
+        // TEGILMAYDI (ortiqcha fayl qolgani begona hujjatni o'chirib yuborishdan xavfsizroq).
+        if (UploadUrlRules.IsCareerCv(a.CvUrl)
             && !await db.JobApplications.AnyAsync(x => x.CvUrl == a.CvUrl))
             DeleteUploadedCv(a.CvUrl);
         return NoContent();
     }
 
-    /// <summary>`/uploads/{nom}.pdf` faylini o'chiradi. Faqat fayl NOMI olinadi (yo'l bilan
-    /// `uploads` dan tashqariga chiqib bo'lmaydi); xato arizani o'chirishga to'sqinlik qilmaydi.</summary>
+    /// <summary>`/uploads/cv-{guid}.pdf` faylini o'chiradi. Yo'l `UploadUrlRules.ResolveFlat` bilan
+    /// hal qilinadi (`uploads` dan tashqariga chiqib bo'lmaydi); xato arizani o'chirishga to'sqinlik qilmaydi.</summary>
     private void DeleteUploadedCv(string cvUrl)
     {
-        if (!cvUrl.StartsWith("/uploads/", StringComparison.Ordinal)) return;
-        var name = Path.GetFileName(cvUrl);
-        if (string.IsNullOrEmpty(name)) return;
-        var path = Path.Combine(env.ContentRootPath, "uploads", name);
+        if (!UploadUrlRules.IsCareerCv(cvUrl)) return;
+        var path = UploadUrlRules.ResolveFlat(env.ContentRootPath, cvUrl);
+        if (path is null) return;
         try { if (System.IO.File.Exists(path)) System.IO.File.Delete(path); }
         catch (IOException) { /* fayl band — yozuv baribir o'chdi */ }
         catch (UnauthorizedAccessException) { }

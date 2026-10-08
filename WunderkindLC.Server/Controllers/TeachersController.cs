@@ -375,6 +375,16 @@ public class TeachersController(AppDbContext db, AuditService audit, IConfigurat
         if (teacher is null) return NotFound();
         if (!teacher.IsArchived) return BadRequest(new { message = "O'qituvchi arxivda emas" });
 
+        var newPwd = (req?.NewPassword ?? "").Trim();
+        // Parol o'rnatish = akkauntga kirish — `ResetPassword`/`Credentials` bilan BIR XIL darvoza
+        // (auth-sessions.md §3). HECH NARSA o'zgartirilishidan OLDIN. ⚠️ Ilgari faqat sinf darajasidagi
+        // `teachers.list:create` (POST) yetardi: parolni KO'RA olmaydigan xodim arxivdagi o'qituvchini
+        // O'ZI tanlagan parol bilan qaytarib, uning nomidan kirardi. Parolsiz qaytarish — avvalgidek.
+        if (newPwd.Length > 0 && !AdminPermAttribute.HasFullAccess(User, "teachers.list"))
+            return StatusCode(StatusCodes.Status403Forbidden, new { message = PasswordForbiddenMessage });
+        if (newPwd.Length > 0 && newPwd.Length < MinPasswordLength)
+            return BadRequest(new { message = WeakPasswordMessage });
+
         // ⚠️ Arxivda turgan davr maosh tarixida QOLADI: `ArchivedAt` tozalanadi, shuning uchun u
         // `InactivePeriods` ga yoziladi — aks holda qaytarilgan o'qituvchiga arxivdagi oylar uchun ham
         // qat'iy oylik (va guruh ulushi) qaytadan "hisoblanib" qolardi.
@@ -386,10 +396,8 @@ public class TeachersController(AppDbContext db, AuditService audit, IConfigurat
         teacher.ArchivedAt = null;
         teacher.ArchiveReason = null;
 
-        var newPwd = (req?.NewPassword ?? "").Trim();
         if (!string.IsNullOrEmpty(newPwd))
         {
-            if (newPwd.Length < MinPasswordLength) return BadRequest(new { message = WeakPasswordMessage });
             var user = teacher.UserId is null ? null : await db.Users.FindAsync(teacher.UserId);
             user ??= AccountFactory.CreateAccountFor(db, "teacher", teacher.FullName);
             teacher.UserId = user.Id;

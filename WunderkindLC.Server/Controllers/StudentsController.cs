@@ -1367,6 +1367,12 @@ public class StudentsController(
             return BadRequest(new { message = "O'quvchi arxivda emas" });
 
         var newPwd = (req?.NewPassword ?? "").Trim();
+        // Parol o'rnatish = akkauntga kirish — `ResetPassword`/`Credentials` bilan BIR XIL darvoza
+        // (auth-sessions.md §3). HECH NARSA o'zgartirilishidan OLDIN. ⚠️ Ilgari faqat sinf darajasidagi
+        // `students.list:create` (POST) yetardi: parolni KO'RA olmaydigan xodim arxivdagi o'quvchini
+        // O'ZI tanlagan parol bilan qaytarib, uning nomidan kirardi. Parolsiz qaytarish — avvalgidek.
+        if (newPwd.Length > 0 && !AdminPermAttribute.HasFullAccess(User, "students.list"))
+            return StatusCode(StatusCodes.Status403Forbidden, new { message = PasswordForbiddenMessage });
         if (newPwd.Length > 0 && newPwd.Length < MinPasswordLength)
             return BadRequest(new { message = WeakPasswordMessage });
 

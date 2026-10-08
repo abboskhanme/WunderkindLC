@@ -133,6 +133,35 @@ public class NvrArchiveService(ILogger<NvrArchiveService> log)
         catch (InvalidOperationException) { /* jarayon allaqachon yo'q */ }
     }
 
+    /// <summary>RTSP porti — 1..65535, aks holda standart 554 (sozlamani saqlash bilan bir xil qoida).</summary>
+    public static int EffectiveRtspPort(int port) => port is > 0 and <= 65535 ? port : 554;
+
+    /// <summary>ISAPI (HTTP) porti — 1..65535, aks holda standart 80.</summary>
+    public static int EffectiveIsapiPort(int port) => port is > 0 and <= 65535 ? port : 80;
+
+    /// <summary>
+    /// NVR'ning MANZILI (host/RTSP porti/ISAPI porti) o'zgaryaptimi — <c>.env</c> dagi NVR login/paroli
+    /// QAYERGA yuborilishini aynan shu uchta maydon hal qiladi, shuning uchun ularni faqat superadmin
+    /// o'zgartiradi (cameras.md §8). Host registrsiz solishtiriladi; portlar standartga keltirilib
+    /// (eski qatordagi 0 = 554/80 — "o'zgardi" deb hisoblanmasin).
+    /// </summary>
+    public static bool TargetChanged(CenterMeta? current, string newHost, int newRtspPort, int newIsapiPort) =>
+        !string.Equals((current?.NvrHost ?? "").Trim(), (newHost ?? "").Trim(), StringComparison.OrdinalIgnoreCase)
+        || EffectiveRtspPort(current?.NvrRtspPort ?? 0) != EffectiveRtspPort(newRtspPort)
+        || EffectiveIsapiPort(current?.NvrIsapiPort ?? 0) != EffectiveIsapiPort(newIsapiPort);
+
+    /// <summary>
+    /// ISAPI uchun login/parol — FAQAT <c>Digest</c> sxemasiga bog'langan (sof, testlangan).
+    /// <c>HttpClientHandler</c> bu kesh bilan server "Basic" so'rasa parolni YUBORMAYDI (401 qoladi,
+    /// diagnostika matni "login/parolni tekshiring" deydi) — ochiq HTTP'da parol oshkor bo'lmasin.
+    /// </summary>
+    public static CredentialCache IsapiCredentials(Uri baseUri, string user, string password)
+    {
+        var cache = new CredentialCache();
+        cache.Add(new Uri(baseUri.GetLeftPart(UriPartial.Authority)), "Digest", new NetworkCredential(user, password));
+        return cache;
+    }
+
     /// <summary>
     /// "Shu kanalda shu oraliqda yozuv bormi" — ISAPI qidiruvi. Sozlash/diagnostika uchun
     /// ham shu ishlatiladi ("NVR'ni sinash").
@@ -146,10 +175,15 @@ public class NvrArchiveService(ILogger<NvrArchiveService> log)
 
         var port = meta.NvrIsapiPort > 0 ? meta.NvrIsapiPort : 80;
         var baseUrl = $"http://{meta.NvrHost}:{port}";
+        if (!Uri.TryCreate(baseUrl, UriKind.Absolute, out var baseUri))
+            return ([], $"NVR manzili noto'g'ri: «{meta.NvrHost}» (faqat IP yoki host nomi, masalan 192.168.1.20).");
         using var handler = new HttpClientHandler
         {
-            // Hikvision odatda Digest — HttpClientHandler uni O'ZI hal qiladi (turniketdagi naqsh).
-            Credentials = new NetworkCredential(AppSecrets.NvrUsername, AppSecrets.NvrPassword),
+            // ⚠️ FAQAT DIGEST (`IsapiCredentials`): Hikvision odatda Digest. Oddiy `NetworkCredential`
+            // server "Basic" so'rasa login/parolni HTTP ustidan OCHIQ (base64) yuborardi — sozlamada host
+            // almashtirilsa .env dagi NVR paroli o'sha serverga tushib qolardi.
+            Credentials = IsapiCredentials(baseUri, AppSecrets.NvrUsername, AppSecrets.NvrPassword),
+            PreAuthenticate = false,
             ServerCertificateCustomValidationCallback = HttpClientHandler.DangerousAcceptAnyServerCertificateValidator,
         };
         using var http = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(20) };

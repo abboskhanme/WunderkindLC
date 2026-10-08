@@ -6,8 +6,16 @@ export interface Camera {
   id: string
   name: string
   location: string
+  /**
+   * RTSP manzili LOGIN/PAROLSIZ (server tozalaydi — parol faqat yoziladi). Tahrirda shu qiymatni
+   * qaytarib yuborish xavfsiz: host o'zgarmasa saqlangan login/parol joyida qoladi.
+   */
   rtspUrl: string
   rtspSubUrl: string
+  /** Asosiy manzil uchun login/parol serverda saqlanganmi. */
+  rtspHasCredentials?: boolean
+  /** Sub-oqim manzili uchun login/parol serverda saqlanganmi. */
+  rtspSubHasCredentials?: boolean
   /** Yozuv necha kun saqlansin (0 = cheksiz) */
   retentionDays: number
   isActive: boolean

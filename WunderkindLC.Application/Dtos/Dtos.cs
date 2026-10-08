@@ -366,11 +366,14 @@ public record StudentTurnstileHistoryDto(
 public record SetStudentDeviceRequest(string StudentId, string? DeviceUserId);
 // ---------- Kamera (videokuzatuv) ----------
 public record CameraDto(
+    // ⚠️ RtspUrl/RtspSubUrl — LOGIN/PAROLSIZ (`CameraUrlSecrets.Redact`): parol faqat yoziladi,
+    // javobda qaytmaydi; `Rtsp*HasCredentials` — "login/parol saqlangan" bayrog'i (cameras.md §9).
     string Id, string Name, string Location, string RtspUrl, string RtspSubUrl,
     int RetentionDays, bool IsActive, string Note, bool RecordEnabled,
     int NvrChannel, string ArchiveSource,
     // Saqlashda media-shlyuz kamerani qabul qilmagan bo'lsa — SABAB (jim muvaffaqiyat o'rniga).
-    string? Warning = null);
+    string? Warning = null,
+    bool RtspHasCredentials = false, bool RtspSubHasCredentials = false);
 public record SaveCameraRequest(
     string Name, string? Location, string RtspUrl, string? RtspSubUrl,
     int RetentionDays = 7, bool IsActive = true, string? Note = null,

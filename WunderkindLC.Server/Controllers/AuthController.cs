@@ -150,6 +150,10 @@ public class AuthController(
         var now = AppClock.Now.ToString("yyyy-MM-ddTHH:mm:ss");
         if (string.IsNullOrEmpty(user.FirstLoginAt)) user.FirstLoginAt = now;
         user.LastLoginAt = now;
+        // Foydalanuvchi akkauntga KIRDI — dastlabki OCHIQ parol endi saqlanmaydi (parol yo'li bilan bir xil,
+        // auth-sessions.md §3.1). ⚠️ Ilgari faqat PAROL bilan kirishda tozalanardi: bot kodi (OTP) /
+        // Mini App orqali kiradigan o'quvchining ochiq paroli bazada (va eksportda) abadiy qolardi.
+        user.InitialPassword = null;
 
         // YUZ BILAN KIRISH — parol yo'li bilan AYNAN bir xil darvoza (`Login` dagi izohga qarang).
         // ⚠️ Bu SHART: OTP ham to'liq huquqli login yo'li. Darvoza faqat parolda tursa, modul

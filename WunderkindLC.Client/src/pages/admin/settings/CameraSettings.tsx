@@ -10,6 +10,7 @@ import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { Loader } from '@/components/ui/Loader'
 import { apiErrorMessage, cn } from '@/lib/utils'
+import { useAuth } from '@/context/auth-context'
 
 // Port maydonlari bo'sh bo'la oladi — bo'sh = standart port (554 / 80).
 type CameraForm = Omit<CameraConfig, 'nvrRtspPort' | 'nvrIsapiPort'> & {
@@ -28,6 +29,10 @@ type CameraForm = Omit<CameraConfig, 'nvrRtspPort' | 'nvrIsapiPort'> & {
  *      O'chiq bo'lsa kameralar baribir jonli ko'rinaveradi. Batafsil: `.claude/rules/cameras.md`.
  */
 export function CameraSettings() {
+  const { user } = useAuth()
+  /** NVR manzili/portlari — FAQAT superadmin (server ham tekshiradi, cameras.md §8): ular `.env`
+   *  dagi NVR paroli QAYERGA yuborilishini belgilaydi. Hard rol — `can()` admin'ni ham o'tkazardi. */
+  const canEditNvrTarget = user?.role === 'superadmin'
   const [cfg, setCfg] = useState<CameraForm | null>(null)
   const [loading, setLoading] = useState(true)
   const [status, setStatus] = useState<'idle' | 'saving' | 'saved'>('idle')
@@ -138,6 +143,7 @@ export function CameraSettings() {
           <>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <Input label="NVR manzili (IP/host)" placeholder="192.168.1.50" value={cfg.nvrHost}
+                disabled={!canEditNvrTarget}
                 onChange={(e) => setCfg({ ...cfg, nvrHost: e.target.value })} autoComplete="off" />
               <label className="flex flex-col gap-1 text-sm">
                 <span className="font-medium text-slate-600">Rusum</span>
@@ -147,10 +153,18 @@ export function CameraSettings() {
                 </select>
               </label>
               <NumberInput label="RTSP porti" placeholder="554" value={cfg.nvrRtspPort}
+                disabled={!canEditNvrTarget}
                 onChange={(v) => setCfg({ ...cfg, nvrRtspPort: v === null ? null : Math.min(65535, v) })} />
               <NumberInput label="ISAPI (HTTP) porti" placeholder="80" value={cfg.nvrIsapiPort}
+                disabled={!canEditNvrTarget}
                 onChange={(v) => setCfg({ ...cfg, nvrIsapiPort: v === null ? null : Math.min(65535, v) })} />
             </div>
+            {!canEditNvrTarget && (
+              <p className="mt-2 text-[11px] text-slate-500">
+                NVR manzili va portlarini faqat superadmin o'zgartira oladi — ular .env dagi NVR paroli
+                qayerga yuborilishini belgilaydi.
+              </p>
+            )}
 
             <div className={cn('mt-4 rounded-lg border px-3 py-2.5 text-xs',
               cfg.nvrCredentialsSet

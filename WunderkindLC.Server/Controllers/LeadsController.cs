@@ -642,6 +642,14 @@ public class LeadsController(
             // foydalanuvchi "qo'shildi" deb o'ylardi.
             if (group is null) return BadRequest(new { message = "Guruh topilmadi." });
             if (group.IsArchived) return BadRequest(new { message = "Guruh arxivlangan — boshqa guruhni tanlang." });
+            // Guruhga qo'shish = `ClassesController.AddMember` (sinf darajasi `classes.list`, POST → create)
+            // bilan BIR XIL ruxsat. Ilgari lid + o'quvchi ruxsati bor xodim shu yo'l bilan istalgan
+            // guruhga a'zo qo'sha olardi (guruhlar bo'limiga ruxsati bo'lmasa ham).
+            if (!MayAddToGroups())
+                return StatusCode(StatusCodes.Status403Forbidden, new
+                {
+                    message = "Guruhga qo'shish uchun «Guruhlar» bo'limida qo'shish ruxsati kerak — guruhni tanlamay aylantiring.",
+                });
         }
 
         var actor = new LeadConversion.Actor(Actor(), UserId());
@@ -653,6 +661,12 @@ public class LeadsController(
             if (existing is null) return NotFound(new { message = "O'quvchi topilmadi" });
             if (existing.IsArchived)
                 return BadRequest(new { message = "O'quvchi arxivda — avval uni arxivdan tiklang, keyin bog'lang." });
+            // FAQAT dublikat nomzodiga (ism + telefon mos) — 409 javobida taklif qilingan ro'yxat bilan
+            // bir xil qoida. ⚠️ Bir o'quvchiga bir nechta lid bog'lanishi MUMKIN (ATAYIN): sobiq/joriy
+            // o'quvchining takroriy murojaati YANGI lid bo'lib tushadi (crm-leads.md) va u aynan shu
+            // o'quvchiga yopilishi kerak — rad etilsa operator `force=true` bilan dublikat yaratardi.
+            if (!LeadConversion.CanLinkTo(lead, existing))
+                return BadRequest(new { message = LeadConversion.LinkNotCandidateMessage });
             result = await LeadConversion.LinkAsync(db, audit, lead, existing, group, enrollment, actor);
         }
         else
@@ -711,6 +725,18 @@ public class LeadsController(
         if (User.IsInRole(Roles.Admin) || User.IsInRole(Roles.SuperAdmin)) return true;
         var claims = User.Claims.Where(c => c.Type == AdminPermAttribute.ClaimType).Select(c => c.Value).ToList();
         return PermissionRules.CanWrite(claims, "students.list", HttpMethods.Post);
+    }
+
+    /// <summary>
+    /// GURUHGA QO'SHISH huquqi — <c>ClassesController.AddMember</c> (<c>[AdminPerm("classes.list")]</c>,
+    /// POST → <c>create</c>) bilan bir xil qoida: admin/superadmin har doim; xodim — yalang
+    /// <c>classes</c>/<c>classes.list</c> yoki <c>…:create</c>.
+    /// </summary>
+    private bool MayAddToGroups()
+    {
+        if (User.IsInRole(Roles.Admin) || User.IsInRole(Roles.SuperAdmin)) return true;
+        var claims = User.Claims.Where(c => c.Type == AdminPermAttribute.ClaimType).Select(c => c.Value).ToList();
+        return PermissionRules.CanWrite(claims, "classes.list", HttpMethods.Post);
     }
 
     // ---------- CRM statistikasi ----------

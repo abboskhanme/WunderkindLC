@@ -178,9 +178,11 @@ public class BookShopBotService(
             }
             else
             {
-                var rel = book.CoverUrl.TrimStart('/');           // "uploads/xxx.jpg"
-                var abs = Path.Combine(env.ContentRootPath, rel.Replace('/', Path.DirectorySeparatorChar));
-                if (!File.Exists(abs)) return false;
+                // "/uploads/xxx.jpg" → faqat `uploads/` ning O'ZIDAGI fayl (`UploadUrlRules.ResolveFlat`).
+                // ⚠️ `CoverUrl` klientdan keladi — ilgari "/../.env" kabi qiymat ilova ildizidagi istalgan
+                // faylni o'qib Telegram'ga yuborishga urinardi.
+                var abs = UploadUrlRules.ResolveFlat(env.ContentRootPath, book.CoverUrl);
+                if (abs is null || !File.Exists(abs)) return false;
                 var bytes = await File.ReadAllBytesAsync(abs, ct);
                 newId = await telegram.SendPhotoReturningIdAsync(
                     chatId, null, bytes, Path.GetFileName(abs), caption, keyboard, ct);

@@ -309,7 +309,8 @@ public class JournalDbTests
      *  3) TEST YARATISH/TAHRIRLASH — TestResultService
      * ========================================================================================= */
 
-    private static OnlineTestDto Online(string key = "ABCD", string pdf = "/uploads/t.pdf",
+    // Savollar PDF manzili server saqlagan nom naqshida (`UploadUrlRules.IsServerPdf`) bo'lishi SHART.
+    private static OnlineTestDto Online(string key = "ABCD", string pdf = "/uploads/0123456789abcdef0123456789abcdef.pdf",
         int? questionCount = null, string start = "", string end = "") =>
         new("online", pdf, "t.pdf", questionCount ?? key.Length, 4, key, start, end);
 
@@ -447,7 +448,7 @@ public class JournalDbTests
         await db.Context.SaveChangesAsync();
 
         await TestResultService.UpdateAsync(db.Context, t.Id, "Unit 1", Day(0), 4,
-            Online(pdf: "/uploads/yangi.pdf"));
+            Online(pdf: "/uploads/fedcba9876543210fedcba9876543210.pdf"));
 
         Assert.Equal("", (await db.Context.TestResults.SingleAsync()).PdfFileId);
     }

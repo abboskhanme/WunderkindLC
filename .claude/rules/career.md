@@ -165,12 +165,21 @@ alohida `AdminNote` maydoni bor va u hech qachon yuborilmaydi.
   Ariza tushgan vakansiyani **o'chirib bo'lmaydi** — arxivlanadi (tarix buzilmasin).
   ⚠️ **Ariza o'chirilganda CV FAYLI ham o'chadi** (saqlangandan keyin; boshqa ariza ham o'sha faylga
   ishora qilsa — tegilmaydi). Ilgari rezyume `/uploads` da qolib, manzilni bilgan har kim uni
-  olaverardi (`uploads-security.md`).
+  olaverardi (`uploads-security.md`). ⚠️ FAQAT `cv-<guid>.pdf` naqshidagi fayl o'chiriladi
+  (`UploadUrlRules.IsCareerCv`, 2026-10-08) — naqshdan oldingi (eski) arizaning `CvUrl` i begona PDF'ga
+  ishora qilgan bo'lishi mumkin, shuning uchun u TEGILMAYDI (ortiqcha fayl qolgani begona hujjatni
+  o'chirib yuborishdan xavfsizroq — `TestCertificateService.DeleteTemplateFile` bilan bir xil printsip).
 - **Mini App:** `api/career` — `[AllowAnonymous]`, initData bilan.
   `bootstrap` (BIR so'rovda: about + faol vakansiyalar + o'z arizalari + bosqichlar) ·
   `cv` (FAQAT `.pdf`, 10 MB, `public-lead` rate-limit) · `apply` (`public-lead` rate-limit).
-  `apply` da `CvUrl` faqat o'zimiz yuklagan `/uploads/*.pdf` bo'lishi tekshiriladi (tashqi/soxta
-  havola adminga tushmasin), bitta vakansiyaga bitta ariza.
+  `cv` faylni **`cv-<guid>.pdf`** nomi bilan saqlaydi (`UploadUrlRules.NewCvFileName`), `apply` esa
+  `CvUrl` ni AYNAN shu naqsh bo'yicha tekshiradi (`IsCareerCv`) VA fayl boshqa chatning arizasida
+  ishlatilmaganini (fayl uni BIRINCHI yuborgan nomzodniki). ⚠️ 2026-10-08 gacha faqat prefiks/suffiks
+  (`/uploads/` + `.pdf`) tekshirilardi: nomzod istalgan `/uploads/*.pdf` (shartnoma, test savollari,
+  boshqa nomzod CV'si) manzilini yozib qo'ya olardi va ariza o'chirilganda o'sha BEGONA fayl diskdan
+  o'chib ketardi. Yuklash yozuvi (kim yukladi) bazada YO'Q — himoya: 128 bit tasodifiy nom + `cv-`
+  prefiksi (boshqa yuklashlarga ishora qilib bo'lmaydi) + "boshqa chat ishlatmagan" tekshiruvi.
+  Bitta vakansiyaga bitta ariza.
 
 ## 7. Admin UI
 

@@ -17,6 +17,10 @@ namespace WunderkindLC.Application.Services;
 /// </summary>
 public static class TestResultService
 {
+    /// <summary>Savollar fayli manzili server saqlagan PDF bo'lmasa (<see cref="UploadUrlRules.IsServerPdf"/>).</summary>
+    public const string PdfUrlInvalidMessage =
+        "Savollar fayli noto'g'ri — PDF faylni shu oynadan qayta yuklang";
+
     /// <summary>Testlar natijalari bosh sahifasi — barcha guruhlar + har biriga yaratilgan testlar soni.
     /// Faol (muzlatilmagan) a'zolar soni ham qaytadi. Arxivlanmagan guruhlar, nomi bo'yicha tartiblangan.</summary>
     public static async Task<List<TestGroupOverviewDto>> GroupsOverviewAsync(IAppDbContext db)
@@ -252,6 +256,11 @@ public static class TestResultService
             return $"Javoblar kaliti {count} ta harfdan iborat bo'lishi kerak (hozir {key.Length} ta to'ldirilgan)";
         if (string.IsNullOrWhiteSpace(online.PdfUrl))
             return "Test savollari (PDF) faylini yuklang";
+        // ⚠️ XAVFSIZLIK: faqat server O'ZI saqlagan PDF (`/uploads/<32 hex>.pdf`). Bot bu faylni
+        // diskdan o'qib o'quvchilarga yuboradi — ilgari "/../.env" kabi qiymat serverning istalgan
+        // faylini botdan chiqarib berardi (o'qituvchi yo'li ham, admin yo'li ham shu yerdan o'tadi).
+        if (!UploadUrlRules.IsServerPdf(online.PdfUrl.Trim()))
+            return PdfUrlInvalidMessage;
 
         var start = (online.StartAt ?? "").Trim();
         var end = (online.EndAt ?? "").Trim();

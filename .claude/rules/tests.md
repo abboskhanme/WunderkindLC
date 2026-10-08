@@ -58,6 +58,15 @@ paths:
   tugagach ochiladi. Vaqtinchalik holat: `TestBotSession` (ChatId unikal).
   DIQQAT: `TestResultService.UpdateAsync`ga `Online` berilmasa rejim O'ZGARMAYDI (eski/qisqartirilgan
   forma onlayn testni oflaynga aylantirmasin).
+  ⚠️ **`PdfUrl` — FAQAT server saqlagan PDF** (`/uploads/<32 hex>.pdf`, `UploadUrlRules.IsServerPdf`;
+  boshqasi 400 «Savollar fayli noto'g'ri — PDF faylni shu oynadan qayta yuklang»). Tekshiruv
+  `TestResultService.ApplyOnlineAsync` da — admin ham, o'qituvchi ham shu yerdan o'tadi. Bot faylni
+  `UploadUrlRules.ResolveFlat` bilan o'qiydi (faqat `uploads/` ning o'zidagi fayl). Sabab (2026-10-08,
+  KRITIK): bot `PdfUrl` ni ilova ildiziga nisbatan hech qanday tekshiruvsiz o'qib Telegram hujjati
+  qilib yuborardi — o'qituvchi `"/../.env"` yozib, serverning maxfiy fayllarini (tokenlar, kalitlar)
+  botdan olardi. Guruh o'chirilganda savollar PDF'i ham faqat shu naqshda bo'lsa va boshqa test,
+  shartnoma yoki o'quv dasturi materiali (`CourseItem.PdfUrl`) uni ishlatmasa o'chiriladi
+  (`GroupDeletion`); sertifikat fayllari — faqat `/uploads/certificates/cert-<guid>.docx|pdf`.
   **QAYTA BAHOLASH (2026-10-07):** kalit yoki savollar soni o'zgarsa javoblari saqlangan HAR natija
   (`TestScore` ham, `ExternalTestScore` ham) yangi kalit bo'yicha qayta sanaladi; javobsiz (qo'lda qo'yilgan)
   ball faqat `[0, MaxScore]` ga qisiladi (`TestResultService.Regrade`). Ball o'zgargan bo'lsa va test bo'yicha

@@ -1,6 +1,6 @@
 # Kameralar (videokuzatuv) qoidalari
 
-"Boshqaruv → Kameralar" (`/admin/boshqaruv/cameras`, ruxsat `cameras`) +
+"Boshqaruv → Kameralar" (`/admin/boshqaruv/cameras`, ruxsat `cameras` — O'QISH ham, §9) +
 "Sozlamalar → Kamera integratsiya" (`/admin/settings/cameras`, ruxsat `settings.cameras`).
 Migratsiya: `AddCameraRecordToggle` (`Camera.RecordEnabled`, `CenterMeta.CameraRecordEnabled`).
 
@@ -217,6 +217,23 @@ yo'qolgandek bo'lardi.
 - ⚠️ ffmpeg **Dockerfile'da** (prod va dev) — busiz NVR rejimida "Yozuvni ko'rish" ishlamaydi.
 - ⚠️ ffmpeg jarayoni maxsus `FfmpegStream` bilan o'raladi: klient ulanishni uzganda jarayon
   **o'ldiriladi**. Aks holda yetim ffmpeg'lar to'planib, har biri RTSP oqimini tortib turardi.
+- ⚠️ **ISAPI — FAQAT DIGEST** (`NvrArchiveService.IsapiCredentials`, 2026-10-08). Ilgari oddiy
+  `NetworkCredential` berilardi: server "Basic" so'rasa `.env` dagi NVR login/paroli HTTP ustidan
+  OCHIQ (base64) ketardi — sozlamada host almashtirilsa o'sha serverga. Hikvision odatda Digest; NVR
+  faqat Basic'ni qabul qilsa qidiruv 401 bilan "login/parolni tekshiring" deydi (NVR'da Digest yoqing).
+  ⚠️ NVR manzili **PRIVAT IP bilan CHEKLANMADI** (ATAYIN): shlyuz serverda, kameralar markazda (§3) —
+  ya'ni NVR odatda markazning OCHIQ IP'si/port-forward orqali ko'rinadi; cheklov hujjatlashtirilgan
+  sozlashni buzardi. Buning o'rniga MANZILNI kim o'zgartirishi cheklangan (pastda).
+- ⚠️ **NVR MANZILI — FAQAT SUPERADMIN** (`NvrHost`, `NvrRtspPort`, `NvrIsapiPort`; 2026-10-08).
+  Bu uchta maydon `.env` dagi NVR login/paroli QAYERGA yuborilishini hal qiladi: RTSP qismi (ffmpeg)
+  server so'rasa Basic bilan ham javob beradi, ya'ni hostni o'z serveriga almashtirgan odam klip
+  so'rovida parolni qo'lga kiritardi. `SettingsController.SaveCameras` — HARD rol
+  (`User.IsInRole(Roles.SuperAdmin)`; `[AdminPerm]` admin'ni ham o'tkazardi), aks holda 403 sabab
+  bilan (`NvrTargetSuperAdminMessage`). Qaror `NvrArchiveService.TargetChanged` da (sof, testlangan:
+  host registrsiz, portlar standartga keltirib solishtiriladi — eski qatordagi `0` "o'zgardi" emas).
+  Manzil O'ZGARMASA `settings.cameras` ruxsatli xodim/admin qolgan sozlamalarni (kalitlar, rusum,
+  NVR yoqish) avvalgidek saqlaydi. Klientda maydonlar superadmin bo'lmaganga o'chiq (`CameraSettings`).
+  `.env` dagi `Nvr__Host`/portlar (env-wins, §6) startupda baribir qo'llanadi.
 - **ISAPI qidiruv** (`ContentMgmt/search`): `searchID` har so'rovda YANGI GUID — bir xil id
   "oldingi qidiruvning keyingi sahifasi" deb talqin qilinadi va ikkinchi so'rov bo'sh qaytarardi.
   Javob **lokal nom** bo'yicha o'qiladi (namespace firmware'ga qarab farq qiladi).
@@ -257,3 +274,24 @@ Odatda UI'dan boshqariladi.
 - Yozuv fayli manzilini (`/recordings/...`) javobga **chiqarmang** — u faqat shlyuz ichida.
   Fayl har doim avtorizatsiyalangan `clip` endpointi orqali beriladi
   (`.claude/rules/uploads-security.md` dagi bilan bir xil printsip).
+
+## 9. RUXSAT va RTSP LOGIN/PAROLI (2026-10-08)
+
+- `CamerasController` — **`[AdminPerm("cameras", ReadRequiresPerm = true)]`**. Ilgari odatdagi
+  `[AdminPerm]` GET'ni HAR QANDAY xodimga ochiq qoldirardi: istalgan xodim kameralarni jonli ko'rar,
+  arxivdan klip yuklab olar va ro'yxatdan RTSP login/parolini o'qirdi. Endi ro'yxat, `status`, jonli
+  HLS, `clip`, `nvr-search` — faqat `cameras` ruxsati bilan (admin/superadmin — cheklovsiz).
+- **RTSP login/paroli "faqat yoziladigan"** (`CameraUrlSecrets`, sof, testlangan):
+  - javobda `RtspUrl`/`RtspSubUrl` **login/parolsiz** (`Redact`); `RtspHasCredentials` /
+    `RtspSubHasCredentials` — "saqlangan" bayrog'i (forma ostida izoh chiqadi);
+  - tahrirda (`Merge`): bo'sh asosiy manzil → eskisi; login/parolli qiymat → yangisi; login/parolsiz
+    va **host:port o'sha** → saqlangan login/parol qayta qo'shiladi (forma tozalangan manzilni
+    qaytaradi — parol o'chib ketmaydi); **host BOSHQA** → login/parolsiz saqlanadi (qayta kiritiladi).
+  - ⚠️ Host almashganda parol ATAYIN ulanmaydi: aks holda tahrir huquqi bor odam hostni o'z serveriga
+    almashtirib, shlyuz ulanayotganda kameraning parolini qo'lga kiritardi.
+  - Sub-oqim bo'sh yuborilsa — sub-oqim OLIB TASHLANADI (forma tegilmasa tozalangan manzilni qaytaradi).
+  - Qabul qilingan cheklov: saqlangan login/parolni tahrirda butunlay OLIB TASHLAB bo'lmaydi
+    (kamera parolsiz bo'lib qolsa — kamerani qayta yaratish kerak). Bu kamdan-kam holat.
+- Yangi endpoint/DTO kamera manzilini qaytarsa — FAQAT `CameraUrlSecrets.Redact` orqali.
+- NVR manzili (host/portlar) — faqat superadmin o'zgartiradi (§8). Yangi joydan NVR'ga ulanadigan
+  sozlama qo'shsangiz — u ham shu darvozadan o'tsin.

@@ -24,7 +24,7 @@ public class StudentPurgeTests
         var target = new Student
         {
             FullName = "Dublikat Ali", UserId = user.Id,
-            BirthCertificateUrl = "/uploads/aaa.jpg", ParentPassportUrl = "/uploads/bbb.pdf",
+            BirthCertificateUrl = "/uploads/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.jpg", ParentPassportUrl = "/uploads/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.pdf",
         };
         var other = new Student { FullName = "Haqiqiy Ali" };
         ctx.AddRange(t, c, g, user, target, other);
@@ -225,14 +225,14 @@ public class StudentPurgeTests
         using var db = TestDb.Sqlite();
         var ctx = db.Context;
         var w = Seed(ctx);
-        w.Other.BirthCertificateUrl = "/uploads/aaa.jpg";   // bir xil rasm ikkinchi yozuvda ham
+        w.Other.BirthCertificateUrl = "/uploads/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.jpg";   // bir xil rasm ikkinchi yozuvda ham
         await ctx.SaveChangesAsync();
 
         var result = await StudentPurge.PurgeAsync(ctx, w.Target.Id);
 
         Assert.NotNull(result);
-        Assert.DoesNotContain("/uploads/aaa.jpg", result!.FileUrls);
-        Assert.Contains("/uploads/bbb.pdf", result.FileUrls);
+        Assert.DoesNotContain("/uploads/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.jpg", result!.FileUrls);
+        Assert.Contains("/uploads/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.pdf", result.FileUrls);
         Assert.Contains("/uploads/certificates/ccc.pdf", result.FileUrls);
     }
 

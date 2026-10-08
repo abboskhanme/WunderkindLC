@@ -406,9 +406,12 @@ public class OnlineTestBotService(TelegramService telegram, IHostEnvironment env
             }
             else
             {
-                var rel = test.PdfUrl.TrimStart('/');
-                var abs = Path.Combine(env.ContentRootPath, rel.Replace('/', Path.DirectorySeparatorChar));
-                if (!File.Exists(abs))
+                // ⚠️ XAVFSIZLIK: manzil FAQAT `uploads/` ning o'zidagi faylga hal qilinadi
+                // (`UploadUrlRules.ResolveFlat`). Ilgari "/../.env" kabi qiymat ilova ildizidan istalgan
+                // faylni o'qib, o'quvchiga Telegram hujjati qilib yuborardi. Yozishda ham tekshiriladi
+                // (`TestResultService` — `IsServerPdf`), bu yer bazada eskidan qolgan qiymat uchun.
+                var abs = UploadUrlRules.ResolveFlat(env.ContentRootPath, test.PdfUrl);
+                if (abs is null || !File.Exists(abs))
                 {
                     await telegram.SendMessageAsync(chatId,
                         "⚠️ Savollar fayli topilmadi — o'qituvchingizga xabar bering.", null, ct);

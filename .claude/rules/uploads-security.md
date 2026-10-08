@@ -149,6 +149,39 @@ adashish yo'q: `"students-arxiv"` ruxsati `"students"` ni ochmaydi.
   `/api/admin/...` yo'lida u hech qachon turmasligi kerak (ilgari `GradingController` da shunday
   xato bor edi — studentId bilan baholash statistikasi login'siz ochiq edi).
 
+## BAZADAGI MANZIL → DISKDAGI FAYL (o'qish, yuborish, o'chirish) — `UploadUrlRules`
+
+Klientdan kelgan manzil (`TestResult.PdfUrl`, `JobApplication.CvUrl`, `Book.CoverUrl` ...) keyin
+server tomonidan FAYL sifatida o'qilsa (botga yuborilsa) yoki O'CHIRILSA — ikki qatlam SHART:
+
+1. **Yozishda** — server O'ZI yaratgan nom naqshi: `IsServerPdf` (`/uploads/<32 hex>.pdf`),
+   `IsCareerCv` (`/uploads/cv-<32 hex>.pdf`), `IsTestCertificateFile`. Aks holda 400.
+2. **O'qish/o'chirishda** — yo'l `UploadUrlRules.ResolveFlat` (faqat `uploads/` ning O'ZI; pastki papka,
+   `..`, absolut yo'l → `null`) yoki `StudentPurge.ResolveUploadPath` / `FaceStorage.ResolvePath` orqali.
+   HECH QACHON `Path.Combine(ContentRootPath, url.TrimStart('/'))` emas.
+
+⚠️ 2026-10-08 (KRITIK): onlayn test boti `PdfUrl` ni ilova ildiziga nisbatan tekshiruvsiz o'qirdi —
+o'qituvchi `"/../.env"` yozib serverning maxfiy faylini botdan olardi. Kitob muqovasi (`CoverUrl`)
+ham xuddi shu yo'l bilan o'qilardi. O'chirishda esa: nomzod CV manzili va guruhdagi test PDF'i
+BEGONA faylga (shartnoma, dars PDF'i) ishora qilib, uni diskdan o'chirtira olardi — endi faqat naqshga
+mos VA boshqa joyda ishlatilmagan fayl o'chiriladi (`career.md` §6, `tests.md`).
+
+**O'chirishdan oldin "hali kimdir ishlatyaptimi"** — `UploadReferences.InUseAsync` (o'quvchi hujjatlari,
+o'qituvchi/foydalanuvchi surati, shartnoma va andozalari, test PDF'i va sertifikat andozasi, dars
+materiallari, kitob muqovasi/chek, CV, taklif rasmlari, AI tekshiruv audiosi, landing rasmlari,
+logotiplar). `SaveChanges` dan KEYIN chaqiriladi (o'chirilgan yozuv hisobga olinmasin) yoki
+`exceptStudentId` bilan. Yangi entity'da `/uploads` manzili saqlansa — shu ro'yxatga ham qo'shing.
+
+| Qayerda o'chiriladi | Naqsh | Ishlatilish tekshiruvi |
+|---|---|---|
+| Shartnoma (almashtirish, o'chirish) — `ContractsController` | `IsServerPdf` / `IsServerUpload(.docx)`; PDF biriktirishda ham `IsServerPdf` (400) | `InUseAsync`, saqlangandan keyin |
+| O'quvchini butunlay o'chirish — `StudentPurge` (surat, passport) | `IsServerUpload` (umumiy yuklash nomi) | boshqa o'quvchi + `InUseAsync` |
+| Guruh o'chirish — test PDF'i, sertifikat | `IsServerPdf`, `IsTestCertificateFile` | boshqa test / shartnoma / dars materiali |
+| Ariza o'chirish — CV | `IsCareerCv` | boshqa ariza |
+
+Naqshga mos KELMAGAN eski manzil o'chirilmaydi — ortiqcha fayl qolgani begona hujjatni o'chirib
+yuborishdan xavfsizroq.
+
 ## Qatlamlar (kim nimani ko'radi)
 
 1. **Tashqaridagi begona** — `/uploads` dan faqat LOGOTIP va landing sahifasining FAOL rasmlarini

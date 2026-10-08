@@ -47,7 +47,7 @@ public class OnlineTestExternalTests
     /// <summary>Onlayn sozlamalar — vaqt oynasi BUGUN va OCHIQ (00:00–23:59).</summary>
     private static OnlineTestDto OnlineDto(
         string key = "ABCD", string code = "", bool groupOpen = true) =>
-        new("online", "/uploads/test.pdf", "test.pdf", key.Length, 4, key,
+        new("online", "/uploads/0123456789abcdef0123456789abcdef.pdf", "test.pdf", key.Length, 4, key,
             $"{Today}T00:00", $"{Today}T23:59", code, groupOpen);
 
     private static async Task<TestResult> CreateOnlineAsync(
