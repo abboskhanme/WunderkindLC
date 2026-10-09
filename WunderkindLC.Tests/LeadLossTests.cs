@@ -276,6 +276,7 @@ public class LeadLossTests
             new DashboardSummary.LeadRow("a", false),
             new DashboardSummary.LeadRow("b", false, Lost: true),
             new DashboardSummary.LeadRow("c", true),
+            new DashboardSummary.LeadRow("d", false),
         };
         var trials = new[]
         {
@@ -283,7 +284,9 @@ public class LeadLossTests
             new DashboardSummary.TrialRow("b", "pending", "2026-10-07T15:00"),
         };
 
-        Assert.Equal(1, DashboardSummary.OpenLeads(leads));
+        // Buyurtma — faqat "d": "a" sinovga yozilgan (u «Birinchi dars»da, «Buyurtmalar»da EMAS — 2026-10-09),
+        // "b" yo'qotilgan, "c" aylantirilgan.
+        Assert.Equal(1, DashboardSummary.OpenLeads(leads, trials, today));
         Assert.Equal(1, DashboardSummary.FirstLessonLeads(leads, trials, today));
 
         // «Birinchi darsga yozilganlar» ro'yxati AYNAN shu ta'rif bilan.

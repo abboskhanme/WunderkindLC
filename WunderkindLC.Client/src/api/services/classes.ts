@@ -336,6 +336,36 @@ export async function activateMember(
   await api.post(`/admin/classes/${id}/members/${studentId}/activate`, body)
 }
 
+/** Aktivlashtirish sanasini o'zgartirish natijasi — hisobi o'zgargan oylar (effektiv summa; `null` — hisob yo'q). */
+export interface ActivationDateResult {
+  saved: boolean
+  oldDate: string
+  newDate: string
+  balanceBefore: number
+  balanceAfter: number
+  months: { month: string; before: number | null; after: number | null }[]
+  /** Qo'lda tahrirlangani uchun TEGILMAGAN oylar. */
+  lockedMonths: string[]
+}
+
+/**
+ * AKTIV a'zolikning AKTIVLASHTIRISH SANASINI o'zgartirish (sanasi xato/kech kiritilgan o'quvchi) — shu oy
+ * qisman hisobi qayta hisoblanadi, oldingi oyga surilsa eski oy to'liq bo'ladi va oraliq oylar yoziladi.
+ * `preview` — faqat natija, HECH NARSA saqlanmaydi.
+ */
+export async function changeActivationDate(
+  groupId: string,
+  studentId: string,
+  date: string,
+  preview: boolean,
+): Promise<ActivationDateResult> {
+  const { data } = await api.post<ActivationDateResult>(
+    `/admin/classes/${groupId}/members/${studentId}/activation-date`,
+    { date, preview },
+  )
+  return data
+}
+
 /**
  * A'zolikni MUZLATISH — kiritilgan sanadan boshlab oylik to'lov hisoblanmaydi. Sabab (ixtiyoriy).
  *

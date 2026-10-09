@@ -11,7 +11,6 @@ import { Button } from '@/components/ui/Button'
 import { Input, Select } from '@/components/ui/Input'
 import { PhoneInput } from '@/components/ui/PhoneInput'
 import { Badge } from '@/components/ui/Badge'
-import { genderOptions } from '@/config/constants'
 import { randomPassword, cn, apiErrorMessage } from '@/lib/utils'
 import { StudentPhotoDialog } from './StudentPhotoDialog'
 import { PhoneDupeModal } from './PhoneDupeModal'
@@ -35,7 +34,8 @@ const empty: StudentPayload = {
   birthDate: '',
   birthCertificateUrl: null,
   address: '',
-  gender: 'male',
+  // Jins IXTIYORIY va formada SO'RALMAYDI (2026-10-09) — `''` = ko'rsatilmagan ("Erkak" deb taxmin qilinmaydi).
+  gender: '',
   phone: '',
   fatherFullName: '',
   fatherPhone: '',
@@ -106,6 +106,17 @@ export function StudentFormModal({ open, onClose, onSubmit, initial }: Props) {
    * yorlig'ini yozib qo'yardi.
    */
   const hasMemberships = (initial?.groupStates?.length ?? 0) > 0
+
+  /**
+   * «Otasining ismi» (sharif) maydoni OLIB TASHLANDI (2026-10-09): ota F.I.SH pastda «Ota-ona»
+   * bo'limida bor, sharif esa ro'yxatda ismga qo'shilib ketardi ("Hasanboyeva Zulayho To'lqinjon").
+   * ⚠️ Faqat TAHRIRDA va sharifi BOR o'quvchida ko'rinadi — aks holda u yashirin holda F.I.SH ga
+   * qo'shilaverardi va uni o'chirishning yo'li qolmasdi.
+   */
+  const showMiddleName = useMemo(
+    () => !!initial && (payloadFromStudent(initial).middleName ?? '').trim() !== '',
+    [initial],
+  )
 
   // Tahrirda (a'zoligi YO'Q eski yozuvlar uchun): joriy guruh nomiga mos o'qituvchini avtomatik
   // tanlab qo'yamiz — kaskad ochilsin.
@@ -235,7 +246,7 @@ export function StudentFormModal({ open, onClose, onSubmit, initial }: Props) {
       <form id="student-form" onSubmit={handleSubmit} className="space-y-5">
         {/* ---------- O'quvchi ---------- */}
         <Section title="O'quvchi">
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+          <div className={cn('grid grid-cols-1 gap-3', showMiddleName ? 'md:grid-cols-3' : 'md:grid-cols-2')}>
             <Input
               label="Familiya"
               required
@@ -248,12 +259,16 @@ export function StudentFormModal({ open, onClose, onSubmit, initial }: Props) {
               value={form.firstName ?? ''}
               onChange={(e) => update('firstName', e.target.value)}
             />
-            <Input
-              label="Otasining ismi"
-              value={form.middleName ?? ''}
-              onChange={(e) => update('middleName', e.target.value)}
-            />
+            {showMiddleName && (
+              <Input
+                label="Otasining ismi"
+                value={form.middleName ?? ''}
+                onChange={(e) => update('middleName', e.target.value)}
+              />
+            )}
           </div>
+          {/* «Jinsi» maydoni OLIB TASHLANDI (2026-10-09, jins ixtiyoriy). Tahrirda saqlangan qiymat
+              `payloadFromStudent` orqali o'zgarishsiz qaytadi; kerak bo'lsa profil «Tahrirlash» tabida. */}
           <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
             <Input
               label="Tug'ilgan kun"
@@ -261,19 +276,6 @@ export function StudentFormModal({ open, onClose, onSubmit, initial }: Props) {
               value={form.birthDate}
               onChange={(e) => update('birthDate', e.target.value)}
             />
-            <Select
-              label="Jinsi"
-              value={form.gender}
-              onChange={(e) => update('gender', e.target.value as StudentPayload['gender'])}
-            >
-              {genderOptions.map((g) => (
-                <option key={g.value} value={g.value}>
-                  {g.label}
-                </option>
-              ))}
-            </Select>
-          </div>
-          <div className="mt-3">
             <PhoneInput
               label="O'z telefon raqami"
               value={form.phone ?? ''}

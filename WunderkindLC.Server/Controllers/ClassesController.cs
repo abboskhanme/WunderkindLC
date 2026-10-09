@@ -1160,6 +1160,55 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
         }
     }
 
+    /// <summary>
+    /// AKTIV a'zolikning AKTIVLASHTIRISH SANASINI o'zgartirish — sanasi xato/kech kiritilgan o'quvchi uchun
+    /// (masalan 8-sanadan qisman hisoblangan, aslida 1-sanadan o'qiyapti). Qoida va pul —
+    /// <see cref="ActivationDateChange"/>. <c>preview=true</c> — natija ko'rsatiladi, HECH NARSA saqlanmaydi.
+    /// Ruxsat — aktivlashtirish bilan bir xil (sinf darajasidagi <c>classes.list</c>, POST).
+    /// </summary>
+    [HttpPost("{id}/members/{studentId}/activation-date")]
+    public async Task<ActionResult<ActivationDateResultDto>> ChangeActivationDate(
+        string id, string studentId, ActivationDateRequest req)
+    {
+        var cls = await db.Classes.FindAsync(id);
+        if (cls is null) return NotFound(new { message = "Guruh topilmadi" });
+        // Arxivdagi (yopilgan) guruh — orqaga surilsa catch-up yopiq guruhdan to'liq oyliklar yozardi
+        // (`MembershipBulk.ActivationBlockReason` bilan bir xil sabab).
+        if (cls.IsArchived)
+            return BadRequest(new { message = "Guruh arxivda — aktivlashtirish sanasini o'zgartirib bo'lmaydi" });
+        // Bir o'quvchining pul amallari bir navbatda (to'lov/vozvrat bilan bir qulf).
+        using var gate = await PaymentIdempotency.LockAsync("student:" + studentId);
+        var sg = await db.StudentGroups
+            .FirstOrDefaultAsync(x => x.GroupId == id && x.StudentId == studentId && x.IsActive);
+        if (sg is null) return NotFound(new { message = "Faol a'zolik topilmadi" });
+        var reason = ActivationDateChange.BlockReason(sg, req.Date, AppClock.Today);
+        if (reason is not null) return BadRequest(new { message = reason });
+        var s = await db.Students.FindAsync(studentId);
+        if (s is null) return NotFound(new { message = "O'quvchi topilmadi" });
+        if (s.IsArchived) return BadRequest(new { message = "O'quvchi arxivda — avval arxivdan qaytaring" });
+
+        await StudentBalanceSync.ReloadAsync(db, s);
+        var r = await ActivationDateChange.ApplyAsync(db, s, cls, sg, req.Date!);
+        var dto = new ActivationDateResultDto(!req.Preview, r.OldDate, r.NewDate, r.BalanceBefore, r.BalanceAfter,
+            r.Months.Select(m => new ActivationDateMonthDto(m.Month, m.Before, m.After)).ToList(), r.LockedMonths);
+        if (req.Preview)
+        {
+            // Ko'rish rejimi — o'zgarishlar bazaga TUSHMAYDI.
+            db.ChangeTracker.Clear();
+            return dto;
+        }
+
+        var monthsText = r.Months.Count == 0 ? "hisob o'zgarmadi"
+            : "hisob: " + string.Join("; ", r.Months.Select(m =>
+                $"{m.Month} {AuditService.Money(m.Before ?? 0)} → {AuditService.Money(m.After ?? 0)} so'm"));
+        audit.Record("Membership", $"{cls.Id}:{studentId}", "update",
+            $"Aktivlashtirish sanasi o'zgartirildi: {r.OldDate} → {r.NewDate} — {s.FullName}, {cls.Name}; {monthsText}"
+            + (r.LockedMonths.Count > 0 ? $" (qo'lda tahrirlangan oy tegilmadi: {string.Join(", ", r.LockedMonths)})" : ""),
+            studentId: studentId);
+        await db.SaveChangesAsync();
+        return dto;
+    }
+
     /// <summary>Bitta a'zolikni AKTIVLASHTIRISH — hisob-kitobning YAGONA manbai: yakka
     /// <see cref="ActivateMember"/> ham, OMMAVIY <see cref="BulkApplyAsync"/> ham AYNAN shuni chaqiradi
     /// (aks holda ikki oqim vaqt o'tib bir-biridan ayrilib ketardi).

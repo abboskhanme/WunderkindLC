@@ -29,7 +29,7 @@ import {
   bulkMembershipSummary,
 } from '@/api/services/classes'
 import { getTeachers } from '@/api/services/teachers'
-import { genderLabels } from '@/config/constants'
+import { genderLabel, genderLabels } from '@/config/constants'
 import { formatDate, formatMoney, exportToCsv, cn, apiErrorMessage } from '@/lib/utils'
 import { todayIso } from '@/lib/month'
 import { bulkArchiveMessage, splitBulkArchive } from './bulkArchive'
@@ -563,7 +563,7 @@ export function StudentsPage() {
         s.fullName,
         s.groups && s.groups.length > 0 ? s.groups.join(', ') : s.className,
         memberStateInfo(s).label,
-        genderLabels[s.gender],
+        genderLabel(s.gender),
         formatDate(s.birthDate),
         s.address,
         s.parentFullName,
@@ -1311,7 +1311,7 @@ export function StudentsPage() {
                               {s.fullName}
                             </Link>
                           </strong>
-                          <span>{genderLabels[s.gender]}</span>
+                          <span>{genderLabel(s.gender)}</span>
                         </div>
                       </div>
                     </td>
@@ -1358,7 +1358,7 @@ export function StudentsPage() {
                         )
                       })()}
                     </td>
-                    <td className="whitespace-nowrap text-slate-600">{genderLabels[s.gender]}</td>
+                    <td className="whitespace-nowrap text-slate-600">{genderLabel(s.gender) || '—'}</td>
                     <td className="whitespace-nowrap font-mono text-slate-600">{formatDate(s.birthDate)}</td>
                     <td className="whitespace-nowrap text-slate-600">{s.parentFullName}</td>
                     <td className="whitespace-nowrap font-mono text-slate-600">{formatPhone(s.parentPhone)}</td>
@@ -1657,6 +1657,14 @@ export function StudentsPage() {
                   </tbody>
                 </table>
               </div>
+            )}
+
+            {(importResult.joinMonthChargedCount ?? 0) > 0 && (
+              <p className="text-slate-600">
+                «active» holatda qo'shilgan <b>{importResult.joinMonthChargedCount}</b> ta o'quvchiga qo'shilgan oyi
+                uchun (sanadan qolgan darslar bo'yicha) jami <b>{formatMoney(importResult.joinMonthCharged ?? 0)}</b>{' '}
+                qarz yozildi.
+              </p>
             )}
 
             {importResult.created > 0 && (

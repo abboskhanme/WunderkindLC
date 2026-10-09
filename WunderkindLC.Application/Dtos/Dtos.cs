@@ -224,7 +224,10 @@ public record LessonDiscountDto(
 /// <param name="AddedToGroups">Ulardan mavjud o'quvchi yangi guruhga qo'shilgani.</param>
 /// <param name="Warnings">Xato emas, lekin ko'rib chiqilsin: mavjud o'quvchi / ismdosh / guruhdan chiqqan.</param>
 public record StudentImportResultDto(int Created, int Failed, int Skipped, List<StudentImportRowErrorDto> Errors,
-    int Existing = 0, int AddedToGroups = 0, List<StudentImportRowErrorDto>? Warnings = null);
+    int Existing = 0, int AddedToGroups = 0, List<StudentImportRowErrorDto>? Warnings = null,
+    /// <summary>«active» bilan qo'shilganlarga qo'shilgan OY uchun yozilgan qisman hisob — jami (so'm)
+    /// va nechta O'QUVCHI (2026-10-09: ilgari bu oy hisoblanmay, balans 0 qolardi).</summary>
+    decimal JoinMonthCharged = 0, int JoinMonthChargedCount = 0);
 
 /// <summary>Tanlangan o'quvchilarni Excel'ga eksport qilish so'rovi.</summary>
 public record StudentExportSelectedRequest(List<string> StudentIds);
@@ -590,6 +593,14 @@ public record AddStudentToGroupRequest(string StudentId, string? JoinedAt);
 /// </summary>
 public record MembershipStatusRequest(
     string? Date, string? ReasonId = null, bool? RetentionBonus = null, bool? YearFreeze = null);
+
+/// <summary>Aktiv a'zolikning AKTIVLASHTIRISH SANASINI o'zgartirish (<c>ActivationDateChange</c>).
+/// <paramref name="Preview"/> = true — hech narsa saqlanmaydi, faqat natija (qaysi oy qanchaga o'zgaradi).</summary>
+public record ActivationDateRequest(string? Date, bool Preview = false);
+/// <summary>Bitta oy hisobining o'zgarishi (effektiv summa; <c>null</c> — hisob yo'q).</summary>
+public record ActivationDateMonthDto(string Month, decimal? Before, decimal? After);
+public record ActivationDateResultDto(bool Saved, string OldDate, string NewDate, decimal BalanceBefore,
+    decimal BalanceAfter, List<ActivationDateMonthDto> Months, List<string> LockedMonths);
 /// <summary>
 /// O'quvchini boshqa guruhga o'tkazish so'rovi: joriy guruh <paramref name="FreezeDate"/>dan
 /// muzlatiladi, maqsad guruh (<paramref name="ToGroupId"/>) <paramref name="ActivateDate"/>dan
@@ -1819,7 +1830,12 @@ public record StudentLedgerDto(
     decimal TotalCharged, decimal TotalDiscount, decimal TotalPaid,
     List<MonthLedgerDto> Months, List<PaymentDto> Payments);
 /// <summary>Super admin: oylik HISOBLANGAN summani qo'lda tahrirlash.</summary>
-public record EditChargeRequest(decimal Amount);
+/// <summary>Oylik hisobni qo'lda tahrirlash («Balansni tuzatish»). <paramref name="Note"/> — nega (tarixga yoziladi,
+/// masalan "Topik 1 tarifi"); <paramref name="Preview"/> — natijani ko'rsatish, SAQLAMASLIK.</summary>
+public record EditChargeRequest(decimal Amount, string? Note = null, bool Preview = false);
+/// <summary>Qo'lda tahrir natijasi (ko'rish rejimida ham): eski/yangi hisob va chegirma, balans oldin/keyin.</summary>
+public record EditChargeResultDto(bool Saved, decimal OldAmount, decimal NewAmount, decimal OldDiscount,
+    decimal NewDiscount, decimal BalanceBefore, decimal BalanceAfter);
 
 /* ---------- O'zgarishlar tarixi (audit) ---------- */
 public record AuditLogDto(

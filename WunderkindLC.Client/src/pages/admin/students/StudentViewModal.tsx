@@ -7,7 +7,7 @@ import type { BadgeTone } from '@/components/ui/Badge'
 import { CredentialsBox } from '@/components/ui/CredentialsBox'
 import { getStudentCredentials, resetStudentPassword } from '@/api/services/students'
 import { getStudentGroups } from '@/api/services/classes'
-import { genderLabels } from '@/config/constants'
+import { genderLabel } from '@/config/constants'
 import { apiErrorMessage, formatDate, formatMoney, cn } from '@/lib/utils'
 import { formatPhone } from '@/lib/numberFormat'
 import { groupsText } from '@/lib/studentGroups'
@@ -116,7 +116,7 @@ function StudentViewBody({ student }: { student: Student }) {
     <div className="space-y-0">
           <Row label="F.I.SH" value={student.fullName} />
           <Row label="Tug'ilgan kun" value={formatDate(student.birthDate)} mono />
-          <Row label="Jinsi" value={genderLabels[student.gender]} />
+          <Row label="Jinsi" value={genderLabel(student.gender) || '—'} />
           <Row label="Manzil" value={student.address} />
           {/* ⚠️ Ilgari bu yerda `student.className` (BIRINCHI qo'shilgan guruh) turardi va pastdagi
               ro'yxat bilan ZID chiqardi: o'quvchi eski guruhida muzlatilib yangisida o'qiyotgan

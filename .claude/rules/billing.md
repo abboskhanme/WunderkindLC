@@ -844,8 +844,8 @@ keyin aktivlashtirilgan) — hisob ochilmaydi, pul avans. Kelmagan darslar chegi
 (`TuitionService.ActivationChargePreviewAsync`) — aks holda qisman oyga undan katta chegirma yozilardi.
 Oila aktivlashtirish oyini emas, KEYINGI oyni to'lasa ham hisobsiz qolgan aktivlashtirish oyi xuddi shu qisman
 summa bilan ochiladi (`EnsureRecentActivationChargeAsync`) — faqat YAQIN oy (joriy yoki o'tgan): eski
-tarixga (admin o'chirgan oylarga) orqaga hisob yozilmaydi. Hech narsa to'lanmasa, yaratishda yozilmaydi
-(ommaviy importda yolg'on qarz/SMS to'lqini bo'lmasin — `membership-periods.md` §9).
+tarixga (admin o'chirgan oylarga) orqaga hisob yozilmaydi. ⚠️ 2026-10-09 dan Excel importi bu oyni to'lovni
+kutmasdan O'ZI yozadi (pastda «QO'SHILGAN OY», `membership-periods.md` §9).
 
 ### SINOVDAGI O'QUVCHI TO'LOVI
 
@@ -931,3 +931,49 @@ yo'qolardi.
   strelkalari va "7 kun" (UTC+5 da bir kun surilardi), to'lov/vozvrat/tahrir oynalari.
 
 Testlar: `AuditFixT3Tests`, `AuditFixFx2Tests`.
+
+## 2026-10-09 — MIJOZ SHIKOYATLARI (balans)
+
+### QO'SHILGAN OY — import darhol hisoblaydi + bazadagilarni tuzatish (`ActivationChargeRepair`)
+
+Shikoyat: "shablonga «aktiv» qilib qo'shilganda qarzdorlik hisoblanmay, balans 0 bo'lib ochilyapti". Import
+endi «active» a'zolikning qo'shilgan oyiga `ChargeActivationProrateAsync` (Aktivlashtirish oynasidagi AYNAN o'sha
+qisman summa) yozadi; natija oynasida "N ta o'quvchiga jami X qarz yozildi" (`StudentImportResultDto.JoinMonthCharged`).
+
+Bazada qolib ketganlar — **Moliya → «Qo'shilgan oy hisobini tuzatish»** (FAQAT superadmin, HARD rol;
+`BillingRepairController` `api/admin/billing-repair/activation-charges`):
+- `GET` — nomzodlar ro'yxati, **hech narsa yozmaydi**; `POST {keys}` — faqat BELGILANGANLAR, ro'yxat serverda
+  QAYTA quriladi (klient summasiga ishonilmaydi), har o'quvchi o'z qulfi ostida ALOHIDA saqlanadi.
+- Nomzod (`ActivationChargeRepair.IsCandidate`, sof): `active` + tirik, aktivlashtirish oyi JORIY yoki O'TGAN
+  (`EnsureRecentActivationChargeAsync` chegarasi — eski tarixga orqaga qarz yo'q), o'sha oyda muzlatilmagan, shu
+  oyda yopilgan oldingi davri yo'q, (o'quvchi, guruh, oy) uchun hisob qatori UMUMAN YO'Q (0 so'mlik/qulfli qator
+  ham "bor"), o'quvchi va guruh arxivda emas, qisman summa > 0.
+- Avto-xabar yuborilmaydi (tuzatish, yangi oy emas). Audit — `Membership` («Qo'shilgan oy hisobi tuzatildi …»).
+- Testlar: `ActivationBillingFixTests` (`Tuzatish__*`).
+
+### AKTIVLASHTIRISH SANASINI O'ZGARTIRISH (`ActivationDateChange`)
+
+Shikoyat: 8-sanadan qo'shilib −180 000 hisoblangan o'quvchi 225 000 to'lasa +45 000 qolardi — sanani orqaga
+surish yo'li yo'q edi. Profil → guruh kartasi «⋮» → **«Aktivlashtirish sanasini o'zgartirish»**
+(`POST classes/{id}/members/{sid}/activation-date {date, preview}`, ruxsat — aktivlashtirish bilan bir xil).
+- Yangi sananing oyi — `TuitionService.RechargeActivationMonthAsync` (qisman qayta hisob; dars qolmasa oy
+  hisobi olib tashlanadi). OLDINGI oyga surilsa — eski aktivlashtirish oyi `RechargeFullMonthAsync` bilan TO'LIQ,
+  oraliq oylar `AccrueCatchUpAsync` bilan darhol.
+- Cheklovlar (`BlockReason`, sof): faqat `active`; kelajak yo'q; KEYINGI oyga surish yo'q (o'tgan oy hisoblarini
+  bekor qilish kerak bo'lardi — muzlatish/chiqarish bor); 12 oydan ortiq orqaga yo'q; yopilgan oldingi davrga
+  tegmaydi. Qo'lda tahrirlangan (`Locked`) oy TEGILMAYDI va javobda `lockedMonths` bo'lib aytiladi.
+- UI ikki qadam: «Hisoblash» (`preview` — server hisoblaydi, `ChangeTracker.Clear()`, hech narsa saqlanmaydi) →
+  qaysi oy qanchaga o'zgarishi va yangi balans → «Saqlash». Audit — `Membership`, har oy "eski → yangi".
+- Testlar: `ActivationBillingFixTests` (`Sana_*`, `Qolda_tahrirlangan_*`).
+
+### BALANSNI TUZATISH (profil «⋮», FAQAT superadmin)
+
+Shikoyat: bitta guruhda har xil tarifda o'qiydiganlar (koreys tili: Topik 1 va Grammatika) — balansni qo'lda
+to'g'rilash kerak. ⚠️ Balans TO'G'RIDAN-TO'G'RI yozilmaydi: u hisoblar va to'lovlardan kelib chiqadi (per-guruh
+balans, maosh bazasi `MonthlyCharge.Amount`, qarzdorlar) — alohida "tuzatish" yozuvi ularning hammasiga istisno
+talab qilardi. Shuning uchun oyna mavjud **qo'lda oylik tahririni** (`EditCharge`, `discounts.md` §8.5) ochadi:
+oy + guruh tanlanadi, yangi hisob summasi va IZOH (`Note`, tarixga) kiritiladi, «Hisoblash» (`Preview`) yangi
+balansni SERVERDAN ko'rsatadi (chegirma yangi summadan qayta hisoblanadi), keyin «Saqlash». Tuzatilgan oy
+qulflanadi; KEYINGI oylar guruh narxida yoziladi (shaxsiy narx — alohida ish, hali YO'Q).
+- ⚠️ `EditCharge` endi SERVERDA ham faqat superadmin (403 sabab bilan; ilgari `students.list:edit` yetardi) va
+  o'quvchi qulfi ostida, balans `StudentBalanceSync.ReloadAsync` bilan qayta o'qiladi.

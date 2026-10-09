@@ -40,7 +40,35 @@ public class DashboardSummaryTests
             new DashboardSummary.LeadRow("l2", true),
             new DashboardSummary.LeadRow("l3", false),
         };
-        Assert.Equal(2, DashboardSummary.OpenLeads(leads));
+        Assert.Equal(2, DashboardSummary.OpenLeads(leads, [], "2026-10-09"));
+    }
+
+    [Fact]
+    public void Buyurtmalar_BIRINCHI_DARSGA_yozilgan_lidni_sanamaydi__ikkala_bolimda_qolmaydi()
+    {
+        // Mijoz shikoyati (2026-10-09): lid «Birinchi dars»ga o'tkazilganda «Buyurtmalar»dan o'chmasdi.
+        var today = "2026-10-09";
+        var leads = new[]
+        {
+            new DashboardSummary.LeadRow("buyurtma", false),
+            new DashboardSummary.LeadRow("sinovda", false),
+            new DashboardSummary.LeadRow("sinov_otib_ketgan", false),
+            new DashboardSummary.LeadRow("sinovga_kelgan", false),
+        };
+        var trials = new[]
+        {
+            new DashboardSummary.TrialRow("sinovda", "pending", "2026-10-12T15:00"),
+            // Sanasi o'tgan, belgilanmagan sinov — «Birinchi dars» ro'yxatida QIZIL bo'lib turadi.
+            new DashboardSummary.TrialRow("sinov_otib_ketgan", "pending", "2026-10-01T15:00"),
+            // Natijasi belgilangan — «Birinchi dars»dan chiqqan, buyurtmalarga qaytadi.
+            new DashboardSummary.TrialRow("sinovga_kelgan", "came", "2026-10-05T15:00"),
+        };
+
+        Assert.Equal(2, DashboardSummary.OpenLeads(leads, trials, today));
+        // Ikki ro'yxat KESISHMAYDI va birgalikda barcha ochiq lidlarni qamraydi.
+        var first = LeadFirstLesson.Select(leads,
+            trials.Select(t => new LeadFirstLesson.TrialRow("", t.LeadId, "", t.Result, t.ScheduledAt)), today);
+        Assert.Equal(leads.Length, DashboardSummary.OpenLeads(leads, trials, today) + first.Count);
     }
 
     [Fact]
@@ -286,7 +314,9 @@ public class DashboardSummaryTests
 
         var open = new Lead { FullName = "Ochiq" };
         var converted = new Lead { FullName = "Aylangan", ConvertedStudentId = active.Id };
-        ctx.Leads.AddRange(open, converted);
+        // Sinovi YO'Q ochiq lid — yagona «Buyurtma»: "Ochiq" sinovga yozilgan, ya'ni u «Birinchi dars»da (2026-10-09).
+        var order = new Lead { FullName = "Buyurtma" };
+        ctx.Leads.AddRange(open, converted, order);
         ctx.TrialLessons.Add(new TrialLesson
         {
             LeadId = open.Id, GroupId = gA.Id, ScheduledAt = "2026-09-19T10:00", Result = "pending",

@@ -328,3 +328,27 @@
 - [2026-10-08] KPI qo'ng'iroq ko'rsatkichlari manbasi? → Local Call yozuvlari (`CtiCallRecord`), xodim — agentning
   `StaffUserId` i orqali; "teginish" = kiruvchi + chiquvchi (javobsiz kiruvchi emas); yozuvni tinglash CTI'ning
   "faqat o'zinikini" qoidasi bilan → MoiZvonki olib tashlangach `Calls` to'ldirilmaydi, KPI jimgina bo'sh qolmasin
+- [2026-10-09] Student gender "not needed" on the add form — remove it everywhere? → Removed from «Yangi o'quvchi»
+  and the Excel template; kept in the profile «Tahrirlash» tab as an OPTIONAL select («Tanlang» = unspecified);
+  empty/unknown gender is stored as `""` instead of silently becoming `"male"` (form, import, lead→student
+  conversion) → user asked for gender to be optional, not deleted; existing rows untouched (no backfill)
+- [2026-10-09] Patronymic («Otasining ismi») removed from the student form — what about students who already have
+  one? → The field shows only when editing a student whose patronymic is non-empty, so it can be cleared → hiding
+  it would keep it silently glued to F.I.SH with no way to remove it; existing names are not rewritten
+- [2026-10-09] Dropping the «Jinsi» column from the import template shifts the columns — old filled files? →
+  Import maps columns by HEADER text (`StudentImportPlan.MapColumns`), positional legacy layout only when the
+  F.I.SH header is not found → old (11-column) and new (10-column) files both import correctly
+- [2026-10-09] "Manual balance edit" — write the balance directly or adjust charges? → Adjust the chosen month's
+  charge (existing superadmin `EditCharge`) behind a «Balansni tuzatish» modal with server preview + note →
+  balance is derived from charges/payments in 25+ places (per-group balance, salary base, debtors); a free-floating
+  balance adjustment would make those disagree. A per-student custom monthly price is the permanent fix for
+  "same group, different tariff" and is left as a separate task.
+- [2026-10-09] Backfill of active students left with a 0 balance — script or tool? → Superadmin tool
+  (Moliya → «Qo'shilgan oy hisobini tuzatish»): preview list, apply only ticked rows; scope = current + previous
+  activation month (same floor as `EnsureRecentActivationChargeAsync`); no auto-SMS → prod data change stays a
+  reviewed, per-row decision instead of a blind script.
+- [2026-10-09] Activation-date change — allow moving to a later month? → No (same month or earlier only) →
+  moving later means voiding already-charged past months; freeze/remove already cover that.
+- [2026-10-09] «Buyurtmalar» vs «Birinchi dars» overlap → table default hides first-lesson and converted leads,
+  kanban keeps the whole pipeline → client: a lead moved to Birinchi dars must leave Buyurtmalar; the kanban is
+  a stage board where every stage column must stay populated.

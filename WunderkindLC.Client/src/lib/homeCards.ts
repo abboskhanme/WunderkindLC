@@ -41,7 +41,8 @@ export interface HomeCard {
 }
 
 export const HOME_CARDS: HomeCard[] = [
-  // `status=lead&lost=hide` — aylantirilmagan VA yo'qotilmagan lidlar (kartochka: `DashboardSummary.OpenLeads`).
+  // `status=lead&lost=hide` — aylantirilmagan, yo'qotilmagan VA birinchi darsga yozilmagan lidlar
+  // (kartochka: `DashboardSummary.OpenLeads`; birinchi darsdagilar — keyingi kartochkada, 2026-10-09).
   { key: 'orders', label: 'Buyurtmalar', color: '#00D66F', icon: IconUserPlus, perm: 'leads.list', to: '/admin/leads?status=lead&lost=hide', linkPerm: 'leads.list' },
   // `color=upcoming` — qizil (o'tib ketgan) qatorlarsiz: kartochka faqat bugun va keyingilarini sanaydi.
   { key: 'firstLesson', label: 'Birinchi darsga keladiganlar', color: '#3D68FF', icon: IconUserCheck, perm: 'leads.list', to: '/admin/leads/birinchi-dars?color=upcoming', linkPerm: 'leads.list' },

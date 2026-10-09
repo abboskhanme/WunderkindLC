@@ -175,9 +175,15 @@ aktivlashtirish oyiga hisob yozmaydi, accrual esa bu oyni olmaydi (§4 `Accruabl
 to'lov AVANS bo'lib keyingi oy hisobini yopar, ya'ni bitta oy TEKIN qolardi. Endi `EnsureChargeAsync`
 (to'lov, to'lov tahriri, kelmagan darslar chegirmasi) hisobi YO'Q aktivlashtirish oyida
 `ChargeActivationProrateAsync` yozadigan qisman hisobni (ActivatedAt dan, chegirma bilan) ochadi;
-qisman summa 0 bo'lsa (oyning oxirgi darsidan keyin) — pul avans bo'lib qoladi. `AddMembershipRow`
-O'ZGARMADI: to'lov kelmasa oy hisobsiz qoladi (SMS to'lqini xavfi yo'q — faqat to'lov hisob ochadi).
-Testlar: `AuditFixFx2Tests`.
+qisman summa 0 bo'lsa (oyning oxirgi darsidan keyin) — pul avans bo'lib qoladi. Testlar: `AuditFixFx2Tests`.
+
+⚠️ **2026-10-09 dan Excel IMPORTI qo'shilgan oyni DARHOL hisoblaydi** (`StudentsController.ChargeJoinMonthAsync`,
+mijoz: "aktiv qilib qo'shilganda balans 0 bo'lib ochilyapti"). `AddMembershipRow` o'zi hamon hisob yozmaydi —
+import (yangi o'quvchi ham, mavjudini guruhga qo'shish ham) undan keyin «active» a'zolik uchun
+`ChargeActivationProrateAsync` ni chaqiradi (Aktivlashtirish oynasidagi AYNAN o'sha qisman summa). Xavf yo'q:
+`ActivatedAt` joriy oy boshidan orqaga o'tmaydi (yuqorida) — faqat BITTA, haqiqatan o'qilayotgan oy yoziladi,
+avto-xabar ketmaydi. Forma orqali yaratish o'zgarmadi (u har doim `trial`). Ilgari xato bilan hisobsiz qolganlar —
+Moliya → «Qo'shilgan oy hisobini tuzatish» (`ActivationChargeRepair`, faqat superadmin; `billing.md`).
 
 Mavjud qatorlar TEGILMAGAN (backfill YO'Q) — deploy paytida bironta ham yangi hisob paydo
 bo'lmaydi. Testlar: `FinanceLogicTests` → `ActivationStart_*` (4 ta).

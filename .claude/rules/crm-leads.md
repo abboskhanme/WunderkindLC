@@ -52,6 +52,14 @@ paths:
   keladiganlar" bilan BITTA ta'rif (`LeadFirstLesson` ↔ `DashboardSummary.FirstLessonLeads`;
   `LeadFirstLessonTests` "kartochka soni == qizil bo'lmagan qatorlar" ni qulflaydi). Sanasi o'tgan,
   belgilanmagan sinov ro'yxatda QOLADI (qizil `#FFCACA`). Ikkinchi ta'rif YARATMANG.
+  ⚠️ **«Buyurtmalar» bilan KESISHMAYDI (2026-10-09, mijoz: "Birinchi darsga o'tkazilganda oldingi bo'limdan
+  o'chmayapti").** Sinovga yozilgan lid «Buyurtmalar ro'yxati» JADVALIDA standart ko'rinmaydi (status `lead` =
+  aylantirilmagan VA `firstLessonAt` bo'sh — `leadMatchesStatus`, `leadLabels.ts`), bosh sahifadagi «Buyurtmalar»
+  ham uni sanamaydi (`DashboardSummary.OpenLeads(leads, trials, today)` — a'zolik `LeadFirstLesson.Select` dan).
+  O'quvchiga aylantirilgani ham standart jadvalda yo'q. «Status» filtri: Buyurtma · Birinchi darsga yozilgan ·
+  O'quvchiga aylantirilgan · Hammasi; jadval ostida yashirilganlar SONI va havola. Kanban — butun voronka,
+  standart "hammasi". Natija belgilangan sinov (keldi/kelmadi) lidni «Birinchi dars»dan chiqaradi — aylantirilmagan
+  bo'lsa u yana buyurtmalarda.
 
 - **Lid bosilsa — lid SAHIFASI** `/admin/leads/:id` (edutizim `/orders/info/:id`); eski `?lead=<id>`
   havolalari shu sahifaga yo'naltiriladi. `/admin/leads` standart ko'rinishi — jadval, `?view=kanban` — taxta.

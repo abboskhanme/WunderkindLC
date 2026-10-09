@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import {
   DndContext,
   DragOverlay,
@@ -48,7 +48,7 @@ import { LeadBulkSmsModal } from './LeadBulkSmsModal'
 import { StageFormModal } from './StageFormModal'
 import { LostColumn } from './LostColumn'
 import { LeadLostModal } from './LeadLostModal'
-import { isLeadLost, leadCallNumbers, shortLeadId, tableDateTime } from './leadLabels'
+import { isLeadLost, leadCallNumbers, leadMatchesStatus, shortLeadId, tableDateTime } from './leadLabels'
 import { useUrlFilters } from './useUrlFilters'
 
 /**
@@ -312,7 +312,20 @@ export function LeadsPage() {
     )
   }
 
-  const matches = (l: Lead) => {
+  /**
+   * STATUS — «Buyurtmalar ro'yxati» JADVALIDA standart `lead` (2026-10-09): faqat haqiqiy buyurtmalar.
+   * ⚠️ Ilgari jadval HAMMA lidni ko'rsatardi — sinov darsiga yozilgan lid «Buyurtmalar»da ham,
+   * «Birinchi darsga yozilganlar»da ham, o'quvchiga aylantirilgani esa «Yangi o'quvchilar»da ham
+   * turardi (mijoz: "oldingi bosqichdan o'chmayapti, ikkala bo'limda qolib ketyapti").
+   * «Birinchi dars» a'zoligi — serverdagi `firstLessonAt` (`LeadFirstLesson.Pick`, ikkinchi ta'rif YO'Q);
+   * bosh sahifadagi «Buyurtmalar» sanog'i ham AYNAN shu (`DashboardSummary.OpenLeads`).
+   * Kanban — butun voronka (bosqichlar), shuning uchun u yerda standart "hammasi".
+   */
+  const status = f.status || (view === 'table' ? 'lead' : 'all')
+  const matchesStatus = (l: Lead) => leadMatchesStatus(l, status)
+
+  /** Status'dan TASHQARI barcha filtrlar — jadval ostidagi "yashirilganlar" sanog'i uchun ham. */
+  const matchesOthers = (l: Lead) => {
     const d = dayOf(l)
     if ((f.from || f.to || f.day) && !d) return false
     if (f.from && d < f.from) return false
@@ -324,8 +337,6 @@ export function LeadsPage() {
     if (f.group && l.groupId !== f.group) return false
     if (f.teacher && l.teacherId !== f.teacher) return false
     if (f.moderator && (f.moderator === NONE ? !!l.assigneeUserId : l.assigneeUserId !== f.moderator)) return false
-    if (f.status === 'lead' && l.convertedStudentId) return false
-    if (f.status === 'student' && !l.convertedStudentId) return false
     if (f.source && (f.source === NONE ? !!l.source : l.source !== f.source)) return false
     // YO'QOTILGANLAR: yashirish / faqat ular; sabab tanlansa — faqat o'sha sabab bilan yo'qotilganlar.
     if (f.lost === 'hide' && isLeadLost(l)) return false
@@ -333,7 +344,17 @@ export function LeadsPage() {
     if (f.reason && (!isLeadLost(l) || (l.lostReason ?? '') !== f.reason)) return false
     return matchesSearch(l)
   }
+  const matches = (l: Lead) => matchesStatus(l) && matchesOthers(l)
   const visibleLeads = leads.filter(matches)
+  /** Standart (buyurtmalar) jadvalda ko'rinmay qolganlar — jimgina "yo'qolgan" bo'lib tuyulmasin. */
+  const hiddenByStatus = { first: 0, students: 0 }
+  if (view === 'table' && status === 'lead') {
+    for (const l of leads) {
+      if (!matchesOthers(l)) continue
+      if (l.convertedStudentId) hiddenByStatus.students++
+      else if (l.firstLessonAt) hiddenByStatus.first++
+    }
+  }
 
   // Select variantlari — ma'lumotdan (faqat haqiqatan uchraydigan qiymatlar).
   const courseOptions = useMemo(() => {
@@ -610,8 +631,10 @@ export function LeadsPage() {
             <option value={NONE}>Biriktirilmagan</option>
           </FilterSelect>
           <FilterSelect placeholder="Status" value={f.status} onChange={(e) => set({ status: e.target.value })}>
-            <option value="lead">Lid (aylantirilmagan)</option>
+            <option value="lead">Buyurtma (sinovga yozilmagan)</option>
+            <option value="first">Birinchi darsga yozilgan</option>
             <option value="student">O'quvchiga aylantirilgan</option>
+            <option value="all">Hammasi</option>
           </FilterSelect>
           <FilterSelect placeholder="Manba" value={f.source} onChange={(e) => set({ source: e.target.value })}>
             {sourceOptions.map((s) => (
@@ -672,6 +695,30 @@ export function LeadsPage() {
               <TotalPill total={visibleLeads.length} />
             </div>
           </div>
+          {(hiddenByStatus.first > 0 || hiddenByStatus.students > 0) && (
+            <p className="mb-2 text-[13px] text-[#757575]">
+              Bu yerda faqat buyurtmalar.
+              {hiddenByStatus.first > 0 && (
+                <>
+                  {' '}Birinchi darsga yozilgan <b>{hiddenByStatus.first}</b> ta lid —{' '}
+                  <Link to="/admin/leads/birinchi-dars" className="font-medium text-brand-600 hover:underline">
+                    «Birinchi darsga yozilganlar»
+                  </Link>
+                  {hiddenByStatus.students > 0 ? ',' : '.'}
+                </>
+              )}
+              {hiddenByStatus.students > 0 && (
+                <> o'quvchiga aylantirilgan <b>{hiddenByStatus.students}</b> tasi — «Status» filtrida.</>
+              )}{' '}
+              <button
+                type="button"
+                onClick={() => set({ status: 'all' })}
+                className="font-medium text-brand-600 hover:underline"
+              >
+                Hammasini ko'rsatish
+              </button>
+            </p>
+          )}
           <DataTable
             rows={pg.paged}
             columns={columns}

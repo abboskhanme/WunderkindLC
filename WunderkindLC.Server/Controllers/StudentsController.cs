@@ -723,7 +723,7 @@ public class StudentsController(
             MiddleName = middleName,
             BirthDate = p.BirthDate,
             Address = p.Address,
-            Gender = p.Gender,
+            Gender = StudentGender.Normalize(p.Gender), // ixtiyoriy — bo'sh qoladi
             Phone = PhoneUtil.Normalize(p.Phone ?? ""),
             BirthCertificateUrl = string.IsNullOrWhiteSpace(p.BirthCertificateUrl) ? null : p.BirthCertificateUrl,
             ParentFullName = parentFull,
@@ -846,7 +846,7 @@ public class StudentsController(
         }
         student.BirthDate = p.BirthDate;
         student.Address = p.Address;
-        student.Gender = p.Gender;
+        student.Gender = StudentGender.Normalize(p.Gender);
         student.Phone = PhoneUtil.Normalize(p.Phone ?? "");
         if (p.BirthCertificateUrl is not null)
             student.BirthCertificateUrl = string.IsNullOrWhiteSpace(p.BirthCertificateUrl) ? null : p.BirthCertificateUrl;
@@ -1650,7 +1650,7 @@ public class StudentsController(
             {
                 s.FullName,
                 s.BirthDate,
-                s.Gender == "female" ? "Qiz" : "O'g'il",
+                StudentGender.ExportLabel(s.Gender),
                 s.Phone,
                 s.Address,
                 groupsByStudent.GetValueOrDefault(s.Id, ""),
@@ -1675,25 +1675,29 @@ public class StudentsController(
 
     private const string XlsxMime = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 
-    // Import shabloni ustunlari (1-varaq). Tartibi import o'qishi bilan AYNAN bir xil bo'lishi shart.
+    // Import shabloni ustunlari (1-varaq). Import ustunlarni SARLAVHA bo'yicha topadi
+    // (`StudentImportPlan.MapColumns`) — sarlavha matni `HeaderField` taniydigan so'z bilan boshlansin.
+    // ⚠️ «Jinsi» ustuni 2026-10-09 da OLIB TASHLANDI (jins ixtiyoriy) — eski shablon bilan to'ldirilgan
+    // fayllardagi «Jinsi» va «Sinf» baribir o'qiladi (sarlavha bo'yicha).
     private static readonly string[] ImportHeaders =
     {
-        "F.I.SH (o'quvchi)*", "Telefon", "Ota ismi", "Ota tel", "Ona ismi", "Ona tel",
-        "Guruh", "Holat", "Tug'ilgan sana (YYYY-MM-DD)", "Jinsi (o'g'il/qiz)",
-        // ⚠️ YANGI ustunlar faqat OXIRIGA qo'shiladi — ustunlar o'rni bo'yicha o'qiladi, ya'ni eski
-        // (10 ustunli) to'ldirilgan fayllar ham avvalgidek import bo'ladi.
-        "Sinf (1-11 yoki bitirgan)",
+        "F.I.SH (o'quvchi)*", "Telefon", "Ota F.I.SH", "Ota tel", "Ona F.I.SH", "Ona tel",
+        "Guruh", "Holat", "Tug'ilgan sana (YYYY-MM-DD)", "Sinf (1-11 yoki bitirgan)",
     };
+
+    /// <summary>Importda o'qiladigan ustunlar soni — eski (11 ustunli) va qo'shimcha ustunli fayllar ham sig'sin.</summary>
+    private const int ImportReadColumns = 30;
 
     /// <summary>
     /// Guruh a'zoligini yaratadi — yangi o'quvchi (<see cref="AddStudent"/>) va Excel importida
     /// MAVJUD o'quvchini guruhga qo'shish uchun BITTA qoida (holat, sanalar, orqaga sanani qirqish).
-    /// SaveChanges QILMAYDI.
+    /// SaveChanges QILMAYDI. «active» a'zolikning qo'shilgan oyi hisobi — <see cref="ChargeJoinMonthAsync"/>
+    /// (chaqiruvchi, async).
     /// </summary>
-    private void AddMembershipRow(string studentId, Group cls, string status, string enrollment)
+    private StudentGroup AddMembershipRow(string studentId, Group cls, string status, string enrollment)
     {
         var memberStatus = NormalizeStatus(status);
-        db.StudentGroups.Add(new StudentGroup
+        var row = new StudentGroup
         {
             StudentId = studentId,
             GroupId = cls.Id,
@@ -1713,6 +1717,8 @@ public class StudentsController(
             // (qabul oyining O'ZI bu yerda hisoblanmaydi — qisman oylik «Aktivlashtirish» oynasida,
             // yoki shu oyga TO'LOV kelganda `TuitionService.EnsureChargeAsync` orqali yoziladi;
             // aks holda birinchi oy bepul qolardi), "frozen" tanlansa esa a'zolik boshidanoq to'xtatilgan.
+            // ⚠️ 2026-10-09 dan Excel importi qabul oyining O'ZINI ham darhol hisoblaydi
+            // (`ChargeJoinMonthAsync`) — mijoz: "aktiv qilib qo'shilganda balans 0 bo'lib ochilyapti".
             //
             // ⚠️ ORQAGA SANALGAN QABUL SANASI QIRQILADI (`MembershipLifecycle.ActivationStartForCreate`). Sabab:
             // `AccrueDue` har 12 soatda butun tarixni skanerlaydi, ya'ni eski `enrollment`
@@ -1730,7 +1736,33 @@ public class StudentsController(
             // Jurnalda undan OLDINGI, allaqachon davomati olingan darslar avto-"keldi" ✓
             // bo'lib to'lib qolmasin (ClassesController.AddMember bilan bir xil qoida).
             RecordedAt = AppClock.Today.ToString("yyyy-MM-dd"),
-        });
+        };
+        db.StudentGroups.Add(row);
+        return row;
+    }
+
+    /// <summary>
+    /// «active» bilan qo'shilgan a'zolikning QO'SHILGAN OYINI darhol hisoblaydi — «Aktivlashtirish» oynasidagi
+    /// AYNAN o'sha qisman hisob (<see cref="TuitionService.ChargeActivationProrateAsync"/>: sanadan oy oxirigacha
+    /// qolgan darslar, chegirma bilan; oyning birinchi darsidan — to'liq oylik). Sinov/muzlatilgan — hech narsa.
+    /// <para>⚠️ Ilgari bu oy ATAYIN yozilmasdi (ommaviy importda yolg'on qarz/SMS to'lqini xavfi) va o'quvchi
+    /// balansi 0 bo'lib qolardi — o'qiyotgan oyi tekin edi (mijoz shikoyati, 2026-10-09). Xavf endi yo'q:
+    /// <c>ActivatedAt</c> joriy oy boshidan orqaga o'tmaydi (<see cref="MembershipLifecycle.ActivationStartForCreate"/>),
+    /// ya'ni faqat BITTA — haqiqatan o'qilayotgan — oy yoziladi; avto-xabar yuborilmaydi.</para>
+    /// SaveChanges QILMAYDI. Qaytaradi: yozilgan effektiv summa.
+    /// </summary>
+    private async Task<decimal> ChargeJoinMonthAsync(Student s, Group cls, StudentGroup sg, PricingBook pricing)
+    {
+        if (sg.Status != "active" || sg.ActivatedAt.Length < 10) return 0m;
+        var before = s.Balance;
+        await TuitionService.ChargeActivationProrateAsync(db, s, cls, sg.ActivatedAt[..10], pricing: pricing);
+        var charged = before - s.Balance;
+        if (charged > 0)
+            audit.Record("Membership", $"{cls.Id}:{s.Id}", "update",
+                $"Qo'shilgan oy hisoblandi ({sg.ActivatedAt[..10]} sanadan qolgan darslar): "
+                + $"{AuditService.Money(charged)} so'm — {s.FullName}, {cls.Name}",
+                studentId: s.Id);
+        return charged;
     }
 
     /// <summary>Arxivdagi guruhga a'zo qo'shib bo'lmasligi sababi (yaratish 400, import ogohlantirishi).</summary>
@@ -1758,16 +1790,15 @@ public class StudentsController(
 
         var info = new List<IReadOnlyList<string>>
         {
-            new[] { "F.I.SH (o'quvchi)*", "Majburiy. Masalan: Aliyev Vali Aliyevich" },
+            new[] { "F.I.SH (o'quvchi)*", "Majburiy. Familiya va ism, masalan: Aliyev Vali (otasining ismi yozilmaydi)" },
             new[] { "Telefon", "ixtiyoriy. O'quvchining o'z raqami" },
-            new[] { "Ota ismi", "ixtiyoriy. Masalan: Aliyev Ali" },
+            new[] { "Ota F.I.SH", "ixtiyoriy. Masalan: Aliyev Ali" },
             new[] { "Ota tel", "ixtiyoriy. Masalan: +998901234567" },
-            new[] { "Ona ismi", "ixtiyoriy. Masalan: Aliyeva Nodira" },
+            new[] { "Ona F.I.SH", "ixtiyoriy. Masalan: Aliyeva Nodira" },
             new[] { "Ona tel", "ixtiyoriy. Masalan: +998901234568" },
             new[] { "Guruh", "ixtiyoriy. Bo'sh bo'lsa, o'quvchi faqat yaratiladi; pastdagi ro'yxatdan aniq nom" },
             new[] { "Holat", "ixtiyoriy: trial, active yoki frozen (default: trial). Guruh bo'lsa qo'llaniladi" },
             new[] { "Tug'ilgan sana", "YYYY-MM-DD, masalan 2015-03-21 (ixtiyoriy)" },
-            new[] { "Jinsi", "o'g'il yoki qiz (bo'sh bo'lsa — o'g'il)" },
             new[] { "Sinf", "ixtiyoriy. Maktabdagi sinf: 1 dan 11 gacha raqam (masalan 7) yoki «bitirgan». Har yili 1-sentabrda o'zi oshadi" },
             new[] { "", "" },
             new[] { "Takroriy o'quvchi", "Bazada F.I.SH va telefoni (o'quvchi/ota/ona) mos o'quvchi bo'lsa, yangisi yaratilmaydi — faqat ko'rsatilgan guruhga qo'shiladi. Bir o'quvchini bir nechta guruhga qo'shish uchun uni har guruh bilan alohida qatorda yozing" },
@@ -1805,7 +1836,7 @@ public class StudentsController(
         try
         {
             await using var stream = file.OpenReadStream();
-            rows = ExcelImport.ReadRows(stream, ImportHeaders.Length);
+            rows = ExcelImport.ReadRows(stream, ImportReadColumns);
         }
         catch
         {
@@ -1836,15 +1867,20 @@ public class StudentsController(
             .ToList();
 
         // 0-qator — sarlavha; ma'lumot 1-indeksdan boshlanadi (Excel'dagi 2-qator).
-        // Ustunlar: 0=FISH, 1=telefon, 2=ota ismi, 3=ota tel, 4=ona ismi, 5=ona tel, 6=guruh, 7=holat,
-        // 8=tug'ilgan sana, 9=jinsi, 10=sinf (eski fayllarda bo'sh).
-        var planRows = rows.Skip(1).Select((r, i) => new StudentImportPlan.Row(
-            i + 2, r[0], r[1], r[2], r[3], r[4], r[5], r[6], r[7], r[8], r[9], r[10])).ToList();
+        // Ustunlar SARLAVHA bo'yicha topiladi (`MapColumns`): yangi shablon (Jinsi'siz) ham, eski (Jinsi va
+        // Sinf bilan) ham to'g'ri o'qiladi; sarlavha tanilmasa — eski tartib.
+        var columns = StudentImportPlan.MapColumns(rows.Count > 0 ? rows[0] : Array.Empty<string>());
+        var planRows = rows.Skip(1).Select((r, i) => StudentImportPlan.ReadRow(i + 2, r, columns)).ToList();
         var steps = StudentImportPlan.Build(planRows, existing, memberships, classByName.Keys);
 
         var errors = new List<StudentImportRowErrorDto>();
         var warnings = new List<StudentImportRowErrorDto>();
         int created = 0, skipped = 0, existingCount = 0, addedToGroups = 0;
+        var joinCharged = 0m;
+        var joinChargedStudents = new HashSet<string>(StringComparer.Ordinal);
+        var joinCharges = new List<(string StudentId, Group Group, int ExcelRow)>();
+        // Kurslarning sinf narxlari — qo'shilgan oy hisobi uchun, kerak bo'lganda BIR marta (N+1 bo'lmasin).
+        PricingBook? pricing = null;
         var createdByIndex = new Dictionary<int, Student>();
 
         // SIG'IM (`GroupSeats`, AddMember bilan bir xil qoida) — import ham guruhni to'ldirib yubormasin.
@@ -1896,7 +1932,7 @@ public class StudentsController(
                         FullName: StudentImportPlan.CleanName(r.FullName),
                         BirthDate: NormalizeDate(r.BirthDate),
                         Address: "",
-                        Gender: NormalizeGender(r.Gender),
+                        Gender: StudentGender.Normalize(r.Gender),
                         ParentFullName: null,
                         ParentPhone: null,
                         ClassName: cls?.Name ?? "", // guruh bo'lsa guruh nomi, aks holda bo'sh
@@ -1907,8 +1943,14 @@ public class StudentsController(
                         MotherFullName: r.MotherName.Trim().Length > 0 ? r.MotherName.Trim() : null,
                         MotherPhone: r.MotherPhone.Trim().Length > 0 ? PhoneUtil.Normalize(r.MotherPhone) : null,
                         SchoolGrade: step.Grade);
-                    createdByIndex[step.NewIndex!.Value] = AddStudent(payload, cls, status);
+                    var newStudent = AddStudent(payload, cls, status);
+                    createdByIndex[step.NewIndex!.Value] = newStudent;
                     created++;
+                    // YANGI o'quvchi hali bazada yo'q — parallel pul amali unga tegolmaydi, hisob shu yerda.
+                    if (cls is not null
+                        && db.StudentGroups.Local.FirstOrDefault(x => x.StudentId == newStudent.Id && x.GroupId == cls.Id)
+                            is { Status: "active" } newSg)
+                        AddJoinCharge(newStudent.Id, await ChargeJoinMonthAsync(newStudent, cls, newSg, pricing ??= await PricingBook.LoadAsync(db)));
                     if (step.Warning is not null) warnings.Add(new StudentImportRowErrorDto(step.ExcelRow, step.Warning));
                     break;
                 }
@@ -1954,11 +1996,13 @@ public class StudentsController(
                         }
                         else
                         {
-                            AddMembershipRow(student.Id, cls, joinStatus, AppClock.Today.ToString("yyyy-MM-dd"));
+                            var joinSg = AddMembershipRow(student.Id, cls, joinStatus, AppClock.Today.ToString("yyyy-MM-dd"));
                             audit.Record("Membership", $"{cls.Id}:{student.Id}", "create",
                                 $"Guruhga qo'shildi (Excel importi): {student.FullName} → {cls.Name}",
                                 studentId: student.Id);
                             addedToGroups++;
+                            // MAVJUD o'quvchi — qo'shilgan oy hisobi SAQLASHDAN KEYIN, o'quvchi qulfi ostida (pastda).
+                            if (joinSg.Status == "active") joinCharges.Add((student.Id, cls, step.ExcelRow));
                         }
                     }
                     warnings.Add(new StudentImportRowErrorDto(step.ExcelRow, joinRefused
@@ -1974,15 +2018,43 @@ public class StudentsController(
         }
 
         if (created > 0 || existingCount > 0) await db.SaveChangesAsync();
-        return new StudentImportResultDto(created, errors.Count, skipped, errors,
-            Existing: existingCount, AddedToGroups: addedToGroups, Warnings: warnings);
-    }
 
-    private static string NormalizeGender(string raw)
-    {
-        var v = (raw ?? "").Trim().ToLowerInvariant();
-        // qiz/female/ayol → female; qolgan hammasi (bo'sh, o'g'il, erkak, male, ...) → male
-        return v is "qiz" or "female" or "ayol" or "f" or "q" or "2" ? "female" : "male";
+        // MAVJUD o'quvchini «active» bilan guruhga qo'shishning qo'shilgan oy hisobi — har biri o'quvchi QULFI ostida,
+        // balans bazadan QAYTA o'qilib, ALOHIDA saqlanadi. ⚠️ Halqa ichida yozilsa: (1) import davomida kelgan to'lov
+        // yoki fon accrual'i oxiridagi bitta SaveChanges bilan eski balans ustidan yozilib YO'QOLARDI; (2) bir o'quvchi
+        // ikki guruhga qo'shilsa, eski guruhsiz (aggregate) qator saqlanmay turib ikki marta balansga qaytarilardi.
+        // Bittasining xatosi qolganlarini to'xtatmaydi va importni (allaqachon saqlangan) 500 ga aylantirmaydi —
+        // sabab natija oynasida ogohlantirish bo'lib chiqadi (hisobni keyin «Qo'shilgan oy hisobini tuzatish» yozadi).
+        foreach (var (sid, jcls, excelRow) in joinCharges)
+        {
+            using var gate = await PaymentIdempotency.LockAsync("student:" + sid);
+            try
+            {
+                var st = await db.Students.FindAsync(sid);
+                var jsg = await db.StudentGroups.FirstOrDefaultAsync(x => x.StudentId == sid && x.GroupId == jcls.Id && x.IsActive);
+                if (st is null || jsg is null) continue;
+                await StudentBalanceSync.ReloadAsync(db, st);
+                AddJoinCharge(sid, await ChargeJoinMonthAsync(st, jcls, jsg, pricing ??= await PricingBook.LoadAsync(db)));
+                await db.SaveChangesAsync();
+            }
+            catch (Exception ex) when (ex is DbUpdateException or InvalidOperationException)
+            {
+                db.ChangeTracker.Clear();
+                warnings.Add(new StudentImportRowErrorDto(excelRow,
+                    $"«{jcls.Name}» guruhiga qo'shildi, lekin qo'shilgan oy hisoblanmadi — Moliya → «Qo'shilgan oy hisobini tuzatish»"));
+            }
+        }
+
+        return new StudentImportResultDto(created, errors.Count, skipped, errors,
+            Existing: existingCount, AddedToGroups: addedToGroups, Warnings: warnings,
+            JoinMonthCharged: joinCharged, JoinMonthChargedCount: joinChargedStudents.Count);
+
+        void AddJoinCharge(string studentId, decimal amount)
+        {
+            if (amount <= 0) return;
+            joinCharged += amount;
+            joinChargedStudents.Add(studentId); // natija oynasi O'QUVCHILAR sonini aytadi (a'zoliklar emas)
+        }
     }
 
     private static string NormalizeStatus(string raw)
@@ -2089,13 +2161,24 @@ public class StudentsController(
         };
     }
 
-    /// <summary>Shu oyning HISOBLANGAN summasini qo'lda tahrirlaydi ("O'quvchilar" ruxsati, tahrir
-    /// amali). Balans effektiv (summa − chegirma) farqiga moslanadi; o'zgarish auditga yoziladi.</summary>
+    /// <summary>Shu oyning HISOBLANGAN summasini qo'lda tahrirlaydi — «Balansni tuzatish» (profil) va «Tranzaksiyalar
+    /// tarixi»dagi qalam. Balans effektiv (summa − chegirma) farqiga moslanadi; o'zgarish auditga yoziladi.
+    /// <para>⚠️ <b>FAQAT superadmin</b> (HARD rol, 2026-10-09): UI ham faqat unga ko'rsatadi; ilgari server
+    /// `students.list:edit` li har qanday xodimga ochiq edi (o'quvchi to'lovi tahriri bilan bir xil qoida —
+    /// `billing.md` «TAHRIR»). Balans o'quvchi QULFI ostida qayta o'qiladi (to'lov bilan bir navbat).</para>
+    /// <para><c>Preview</c> — natija (balans oldin/keyin) qaytadi, HECH NARSA saqlanmaydi.</para></summary>
     [HttpPut("{id}/charges/{month}")]
-    public async Task<IActionResult> EditCharge(string id, string month, EditChargeRequest req, [FromQuery] string? groupId = null)
+    public async Task<ActionResult<EditChargeResultDto>> EditCharge(string id, string month, EditChargeRequest req, [FromQuery] string? groupId = null)
     {
+        if (!User.IsInRole(Roles.SuperAdmin))
+            return StatusCode(403, new { message = "Oylik hisobni (balansni) faqat superadmin tuzata oladi" });
+        if (req.Amount < 0) return BadRequest(new { message = "Summa manfiy bo'lishi mumkin emas" });
+        var note = (req.Note ?? "").Trim();
+        if (note.Length > 300) return BadRequest(new { message = "Izoh 300 belgidan oshmasin" });
         var student = await db.Students.FindAsync(id);
         if (student is null) return NotFound();
+        using var gate = await PaymentIdempotency.LockAsync("student:" + id);
+        await StudentBalanceSync.ReloadAsync(db, student);
         // Per-guruh: qaysi guruh hisobi tahrirlanmoqda (null = guruhsiz/ClassName hisobi).
         var gid = string.IsNullOrWhiteSpace(groupId) ? null : groupId.Trim();
         var charge = await db.MonthlyCharges
@@ -2127,6 +2210,10 @@ public class StudentsController(
         // hisoblanardi — natijada balansga hech qachon to'lanmagan pul qaytarilardi
         // (misol `TuitionService.PlanChargeEdit` izohida).
         var plan = TuitionService.PlanChargeEdit(charge.Amount, charge.Discount, req.Amount, specDiscount);
+        var balanceBefore = student.Balance;
+        var result = new EditChargeResultDto(!req.Preview, plan.OldAmount, plan.NewAmount, plan.OldDiscount,
+            plan.NewDiscount, balanceBefore, balanceBefore + plan.BalanceDelta);
+        if (req.Preview) return result; // hech narsa o'zgartirilmadi
 
         // Hisob balansni EFFEKTIV miqdorda kamaytirgan edi — farqni balansga qaytaramiz.
         student.Balance += plan.BalanceDelta;
@@ -2143,12 +2230,16 @@ public class StudentsController(
         var discountNote = plan.DiscountChanged
             ? $"; chegirma {AuditService.Money(plan.OldDiscount)} → {AuditService.Money(plan.NewDiscount)} so'm{discountWhy}"
             : "";
+        var groupName = gid is null ? null : await db.Classes.Where(c => c.Id == gid).Select(c => c.Name).FirstOrDefaultAsync();
         audit.Record(AuditService.EntityStudentDiscount, student.Id, "update",
-            $"Oylik hisob qo'lda tahrirlandi ({month}): {AuditService.Money(plan.OldAmount)} → {AuditService.Money(plan.NewAmount)} so'm{discountNote} — {student.FullName}",
+            $"Oylik hisob qo'lda tahrirlandi ({month}{(groupName is null ? "" : ", " + groupName)}): "
+            + $"{AuditService.Money(plan.OldAmount)} → {AuditService.Money(plan.NewAmount)} so'm{discountNote}; "
+            + $"balans {AuditService.Money(result.BalanceBefore)} → {AuditService.Money(result.BalanceAfter)} so'm — {student.FullName}"
+            + (note.Length > 0 ? $" — izoh: {note}" : ""),
             studentId: student.Id);
 
         await db.SaveChangesAsync();
-        return Ok(new { ok = true });
+        return result;
     }
 
     /// <summary>

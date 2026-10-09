@@ -107,7 +107,8 @@ public static class LeadConversion
         return new Student
         {
             FullName = (lead.FullName ?? "").Trim(),
-            Gender = string.IsNullOrWhiteSpace(lead.Gender) ? "male" : lead.Gender,
+            // Jins ixtiyoriy — lidda ko'rsatilmagan bo'lsa o'quvchida ham bo'sh qoladi ("male" deb taxmin qilinmaydi).
+            Gender = StudentGender.Normalize(lead.Gender),
             BirthDate = lead.BirthDate ?? "",
             Phone = PhoneUtil.Normalize(lead.Phone ?? ""),
             FatherFullName = fatherFull,

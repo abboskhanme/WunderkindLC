@@ -170,6 +170,90 @@ public class StudentImportPlanTests
         Assert.Equal(Kind.Skip, steps[2].Kind);
     }
 
+    // ============================ Ustunlar (sarlavha bo'yicha) ============================
+
+    // 2026-10-09 gacha shablon (11 ustun, «Jinsi» 9-o'rinda) va yangisi («Jinsi» yo'q, «Sinf» 9-o'rinda).
+    private static readonly string[] OldHeader =
+    {
+        "F.I.SH (o'quvchi)*", "Telefon", "Ota ismi", "Ota tel", "Ona ismi", "Ona tel",
+        "Guruh", "Holat", "Tug'ilgan sana (YYYY-MM-DD)", "Jinsi (o'g'il/qiz)", "Sinf (1-11 yoki bitirgan)",
+    };
+    private static readonly string[] NewHeader =
+    {
+        "F.I.SH (o'quvchi)*", "Telefon", "Ota F.I.SH", "Ota tel", "Ona F.I.SH", "Ona tel",
+        "Guruh", "Holat", "Tug'ilgan sana (YYYY-MM-DD)", "Sinf (1-11 yoki bitirgan)",
+    };
+
+    [Fact]
+    public void Yangi_shablonda_Sinf_Jinsi_orniga_tushib_qolmaydi()
+    {
+        var map = MapColumns(NewHeader);
+        var row = ReadRow(2, ["Aliyev Vali", "901234567", "Aliyev Ali", "901112233", "Aliyeva Nodira", "901112244",
+            "A guruh", "active", "2015-03-21", "7"], map);
+        Assert.Equal("7", row.Grade);
+        Assert.Equal("", row.Gender);
+        Assert.Equal("Aliyev Ali", row.FatherName);
+        Assert.Equal("Aliyeva Nodira", row.MotherName);
+        Assert.Equal("901112244", row.MotherPhone);
+        Assert.Equal("2015-03-21", row.BirthDate);
+    }
+
+    [Fact]
+    public void ESKI_shablon_bilan_toldirilgan_fayl_avvalgidek_oqiladi()
+    {
+        var map = MapColumns(OldHeader);
+        var row = ReadRow(2, ["Aliyeva Laylo", "", "Aliyev Ali", "", "", "", "A guruh", "trial", "", "qiz", "8"], map);
+        Assert.Equal("qiz", row.Gender);
+        Assert.Equal("8", row.Grade);
+        Assert.Equal("Aliyev Ali", row.FatherName);
+        Assert.Equal("A guruh", row.Group);
+    }
+
+    [Fact]
+    public void Sarlavha_tanilmasa_HOZIRGI_tartib__Sinf_jinsi_bolib_oqilmaydi()
+    {
+        var map = MapColumns(["Ism", "Tel"]);
+        Assert.Equal(CurrentLayout.Length, map.Count);
+        Assert.False(map.ContainsKey(Field.Gender));
+        Assert.Equal(9, map[Field.Grade]);
+    }
+
+    [Fact]
+    public void Sarlavha_tanilmasa_ESKI_fayl_belgisi_bolsa_eski_tartib()
+    {
+        // F.I.SH sarlavhasi o'zgartirilgan, lekin «Jinsi» bor — eski (11 ustunli) shablon.
+        var withGender = MapColumns(["Ism", "Tel", "", "", "", "", "", "", "", "Jinsi", "Sinf"]);
+        Assert.Equal(9, withGender[Field.Gender]);
+        Assert.Equal(10, withGender[Field.Grade]);
+        // Sarlavhasi butunlay boshqa, lekin 11-ustun to'la — eski tartib.
+        var wide = MapColumns(["a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k"]);
+        Assert.Equal(10, wide[Field.Grade]);
+    }
+
+    [Fact]
+    public void Qisqa_qator_va_ustunlar_tartibi_almashgan_fayl()
+    {
+        // Foydalanuvchi ustunlarni almashtirgan / Sinf ustunini o'chirgan bo'lsa ham maydonlar adashmaydi.
+        var map = MapColumns(["Guruh", "F.I.SH (o'quvchi)*", "Ota tel", "Telefon"]);
+        var row = ReadRow(2, ["B guruh", "Karimov Sardor", "991234567"], map);
+        Assert.Equal("Karimov Sardor", row.FullName);
+        Assert.Equal("B guruh", row.Group);
+        Assert.Equal("991234567", row.FatherPhone);
+        Assert.Equal("", row.Phone);   // qatorda ustun yo'q — bo'sh, xato emas
+        Assert.Equal("", row.Grade);
+    }
+
+    [Theory]
+    [InlineData("Otasining ismi", null)]   // sharif (otasining ismi) — ota F.I.SH EMAS
+    [InlineData("Ota ismi", Field.FatherName)]
+    [InlineData("Ota F.I.SH", Field.FatherName)]
+    [InlineData("Onasi tel", Field.MotherPhone)]
+    [InlineData("Tugʻilgan sana", Field.BirthDate)]
+    [InlineData("  JINSI ", Field.Gender)]
+    [InlineData("", null)]
+    public void Sarlavha_maydonga_togri_boglanadi(string header, Field? expected) =>
+        Assert.Equal(expected, HeaderField(header));
+
     [Fact]
     public void Ism_ortiqcha_boshliqsiz_saqlanadi() =>
         Assert.Equal("Aliyev Vali", CleanName("  Aliyev    Vali "));

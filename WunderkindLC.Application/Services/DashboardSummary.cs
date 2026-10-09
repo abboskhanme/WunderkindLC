@@ -155,7 +155,7 @@ public static class DashboardSummary
 
         return new DashboardSummaryDto(
             Month: month,
-            Orders: OpenLeads(leads),
+            Orders: OpenLeads(leads, trials, today),
             FirstLesson: FirstLessonLeads(leads, trials, today),
             NewStudents: trial,
             ActiveStudents: active,
@@ -174,8 +174,21 @@ public static class DashboardSummary
     /// lid sabab bilan YO'QOTILGAN deb belgilanadi (<see cref="LeadLoss"/>) — u faol ish emas, shuning
     /// uchun bu yerda sanalmaydi. ⚠️ "Buyurtmadan ketganlar" (<c>OrdersLeft</c>) esa avvalgidek faqat
     /// O'CHIRILGAN lidlar: kartochka ro'yxati arxiv sahifasi, yo'qotilganlar u yerda yo'q — sanoq
-    /// ro'yxatdan farq qilmasin. Yo'qotilganlar — «Yo'qotilgan lidlar» hisobotida.</para></summary>
-    public static int OpenLeads(IEnumerable<LeadRow> leads) => leads.Count(l => l.IsOpen);
+    /// ro'yxatdan farq qilmasin. Yo'qotilganlar — «Yo'qotilgan lidlar» hisobotida.</para>
+    /// <para>⚠️ <b>BIRINCHI DARSGA YOZILGAN lid bu yerda SANALMAYDI (2026-10-09).</b> Ilgari sinov darsiga
+    /// yozilgan lid «Buyurtmalar»da ham, «Birinchi darsga yozilganlar»da ham turardi (mijoz: "oldingi
+    /// bosqichdan o'chmayapti, ikkala bo'limda qolib ketyapti"). Endi lid sinovga yozilishi bilan
+    /// buyurtmalardan CHIQADI — a'zolik ta'rifi «Birinchi dars» ro'yxatining O'ZI
+    /// (<see cref="LeadFirstLesson.Select"/>, sanasi o'tgan belgilanmagan sinov ham), ikkinchi ta'rif yo'q.
+    /// Lidlar jadvalidagi standart ko'rinish ham shu qoida bilan (`firstLessonAt` — serverda AYNAN
+    /// <see cref="LeadFirstLesson.Pick"/>).</para></summary>
+    public static int OpenLeads(IEnumerable<LeadRow> leads, IEnumerable<TrialRow> trials, string today)
+    {
+        var list = leads as IReadOnlyCollection<LeadRow> ?? leads.ToList();
+        var inFirstLesson = LeadFirstLesson.Select(list,
+            trials.Select(t => new LeadFirstLesson.TrialRow("", t.LeadId, "", t.Result, t.ScheduledAt)), today);
+        return list.Count(l => l.IsOpen && !inFirstLesson.ContainsKey(l.Id));
+    }
 
     /// <summary>
     /// BIRINCHI DARSGA KELADIGANLAR — ochiq lid, unda natijasi hali belgilanmagan (<see cref="TrialPending"/>)

@@ -1,4 +1,4 @@
-import type { LeadEventType, TrialLesson } from '@/types'
+import type { Lead, LeadEventType, TrialLesson } from '@/types'
 
 /**
  * Lid sahifasi va jadvallari uchun YORLIQLAR va kichik sof yordamchilar. Komponent fayllaridan
@@ -113,3 +113,20 @@ export const isLeadLost = (l: { lostAt?: string | null }) => !!l.lostAt
  */
 export const cameBackAfterLoss = (l: { lostAt?: string | null; lastRepeatAt?: string | null }) =>
   !!l.lostAt && !!l.lastRepeatAt && l.lastRepeatAt > l.lostAt
+
+/**
+ * «Buyurtmalar ro'yxati» STATUS filtri (2026-10-09). `lead` — haqiqiy BUYURTMA: o'quvchiga aylantirilmagan VA
+ * «Birinchi darsga yozilganlar»da EMAS (`firstLessonAt` — serverdagi `LeadFirstLesson.Pick`, ikkinchi ta'rif yo'q;
+ * bosh sahifadagi «Buyurtmalar» sanog'i — `DashboardSummary.OpenLeads` — AYNAN shu). `first` — birinchi darsda,
+ * `student` — aylantirilgan, `all` (yoki noma'lum qiymat) — hammasi.
+ * ⚠️ Ilgari sinovga yozilgan lid ikkala bo'limda ham turardi ("oldingi bosqichdan o'chmayapti").
+ */
+export function leadMatchesStatus(
+  l: Pick<Lead, 'convertedStudentId' | 'firstLessonAt'>,
+  status: string,
+): boolean {
+  if (status === 'lead') return !l.convertedStudentId && !l.firstLessonAt
+  if (status === 'first') return !!l.firstLessonAt
+  if (status === 'student') return !!l.convertedStudentId
+  return true
+}

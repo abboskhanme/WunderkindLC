@@ -309,7 +309,7 @@ public class Student
     /// </summary>
     public string? BirthCertificateUrl { get; set; }
     public string Address { get; set; } = string.Empty;
-    /// <summary>male | female</summary>
+    /// <summary>male | female | "" (ko'rsatilmagan — jins IXTIYORIY, <see cref="StudentGender"/>).</summary>
     public string Gender { get; set; } = "male";
     /// <summary>O'quvchining o'z telefon raqami (lid formasiga mos).</summary>
     public string Phone { get; set; } = string.Empty;

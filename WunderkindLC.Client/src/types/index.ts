@@ -760,7 +760,8 @@ export interface Student extends StudentListExtras {
    */
   birthCertificateUrl?: string | null
   address: string
-  gender: Gender
+  /** Jins IXTIYORIY (2026-10-09): `''` — ko'rsatilmagan. Yorliq — `genderLabel()`. */
+  gender: Gender | ''
   /** O'quvchining o'z telefon raqami */
   phone?: string
   /** Otasi F.I.SH */

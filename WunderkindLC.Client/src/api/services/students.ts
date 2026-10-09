@@ -74,6 +74,9 @@ export interface StudentImportResult {
   addedToGroups?: number
   /** Xato emas, ko'rib chiqish uchun: mavjud o'quvchi, ismdosh, guruhdan chiqqan. */
   warnings?: StudentImportRowError[]
+  /** «active» bilan qo'shilganlarga qo'shilgan OY uchun yozilgan qisman hisob — jami so'm va nechta a'zolik. */
+  joinMonthCharged?: number
+  joinMonthChargedCount?: number
 }
 
 /** O'quvchilarni ommaviy kiritish uchun bo'sh Excel shablonini yuklab oladi (.xlsx). */
@@ -648,23 +651,39 @@ export async function getStudentLedger(id: string): Promise<StudentLedger> {
   return data
 }
 
-/** FAQAT super admin: shu oyning hisoblangan (avtomatik) summasini qo'lda tahrirlaydi.
- *  `groupId` berilsa — shu guruh hisobi; null/bo'sh — guruhsiz (ClassName) hisobi. */
+/** Qo'lda oylik tahriri natijasi (ko'rish rejimida ham): eski/yangi hisob, balans oldin/keyin. */
+export interface EditChargeResult {
+  saved: boolean
+  oldAmount: number
+  newAmount: number
+  oldDiscount: number
+  newDiscount: number
+  balanceBefore: number
+  balanceAfter: number
+}
+
+/** FAQAT super admin (server ham tekshiradi): shu oyning hisoblangan summasini qo'lda tahrirlaydi
+ *  («Balansni tuzatish»). `groupId` berilsa — shu guruh hisobi; null/bo'sh — guruhsiz (ClassName) hisobi.
+ *  `opts.preview` — natijani ko'rsatadi, SAQLAMAYDI; `opts.note` — tarixga yoziladigan izoh. */
 export async function editStudentCharge(
   id: string,
   month: string,
   amount: number,
   groupId?: string,
-): Promise<void> {
+  opts?: { note?: string; preview?: boolean },
+): Promise<EditChargeResult | undefined> {
   if (USE_MOCK) {
     await delay(150)
-    return
+    return undefined
   }
   // Olib tashla :1/:0 agar bor bo'lsa (backend Month faqat YYYY-MM formatda kutadi)
   const cleanMonth = month.split(':')[0]
-  await api.put(`/admin/students/${id}/charges/${cleanMonth}`, { amount }, {
-    params: groupId ? { groupId } : undefined,
-  })
+  const { data } = await api.put<EditChargeResult>(
+    `/admin/students/${id}/charges/${cleanMonth}`,
+    { amount, note: opts?.note || undefined, preview: opts?.preview ?? false },
+    { params: groupId ? { groupId } : undefined },
+  )
+  return data
 }
 
 /* ---------- Tugatgan kurslar + sertifikatlar ---------- */

@@ -28,6 +28,81 @@ public static class StudentImportPlan
         string MotherName, string MotherPhone, string Group, string Status, string BirthDate,
         string Gender, string Grade);
 
+    // ============================ Ustunlar ============================
+
+    /// <summary>Import qatoridagi maydon (ustun).</summary>
+    public enum Field { FullName, Phone, FatherName, FatherPhone, MotherName, MotherPhone, Group, Status, BirthDate, Gender, Grade }
+
+    /// <summary>
+    /// 2026-10-09 gacha bo'lgan shablon tartibi (11 ustun, 9-ustun «Jinsi»). Sarlavha tanilmasa —
+    /// ustunlar shu tartibda o'qiladi (eski xatti-harakat).
+    /// </summary>
+    public static readonly Field[] LegacyLayout =
+    {
+        Field.FullName, Field.Phone, Field.FatherName, Field.FatherPhone, Field.MotherName, Field.MotherPhone,
+        Field.Group, Field.Status, Field.BirthDate, Field.Gender, Field.Grade,
+    };
+
+    /// <summary>Hozirgi shablon tartibi (10 ustun, «Jinsi»siz) — sarlavha tanilmaganda, eski fayl belgisi bo'lmasa.</summary>
+    public static readonly Field[] CurrentLayout =
+    {
+        Field.FullName, Field.Phone, Field.FatherName, Field.FatherPhone, Field.MotherName, Field.MotherPhone,
+        Field.Group, Field.Status, Field.BirthDate, Field.Grade,
+    };
+
+    /// <summary>
+    /// Sarlavha qatoridan maydon → ustun raqami. ⚠️ Ustunlar SARLAVHA bo'yicha topiladi, o'rni bo'yicha
+    /// emas: «Jinsi» ustuni shablondan olib tashlangan (jins ixtiyoriy, 2026-10-09), lekin ESKI shablon
+    /// bilan to'ldirilgan fayllar (Jinsi va Sinf bilan) ham avvalgidek o'qilishi kerak — o'rni bo'yicha
+    /// o'qilsa yangi fayldagi «Sinf» eski «Jinsi» o'rniga tushib qolardi.
+    /// <para>Birinchi mos ustun g'olib. F.I.SH sarlavhasi topilmasa (sarlavha o'chirilgan/o'zgartirilgan) — o'rni
+    /// bo'yicha: «Jinsi» sarlavhasi bor yoki 11-ustun to'la bo'lsa ESKI tartib (<see cref="LegacyLayout"/>), aks holda
+    /// HOZIRGI (<see cref="CurrentLayout"/>). ⚠️ Doim eski tartib olinsa yangi fayldagi «Sinf» (9-ustun) jinsi
+    /// bo'lib o'qilib, sinf jimgina yo'qolardi.</para>
+    /// </summary>
+    public static Dictionary<Field, int> MapColumns(IReadOnlyList<string> header)
+    {
+        var map = new Dictionary<Field, int>();
+        for (var i = 0; i < header.Count; i++)
+        {
+            if (HeaderField(header[i]) is Field f && !map.ContainsKey(f)) map[f] = i;
+        }
+        if (map.ContainsKey(Field.FullName)) return map;
+        var legacy = map.ContainsKey(Field.Gender)
+                     || (header.Count > LegacyLayout.Length - 1 && !string.IsNullOrWhiteSpace(header[LegacyLayout.Length - 1]));
+        return (legacy ? LegacyLayout : CurrentLayout).Select((f, i) => (f, i)).ToDictionary(x => x.f, x => x.i);
+    }
+
+    /// <summary>Sarlavha matni qaysi maydonga tegishli (tanilmasa <c>null</c>).</summary>
+    public static Field? HeaderField(string? header)
+    {
+        var h = NameKey(header);
+        if (h.Length == 0) return null;
+        // Ota/ona — "telefon" va "f.i.sh" dan OLDIN: "Ota tel", "Ota F.I.SH" ham shu yerda.
+        if (h.StartsWith("ota") && !h.StartsWith("otasining ismi"))
+            return h.Contains("tel") ? Field.FatherPhone : Field.FatherName;
+        if (h.StartsWith("ona"))
+            return h.Contains("tel") ? Field.MotherPhone : Field.MotherName;
+        if (h.StartsWith("f.i.sh") || h.StartsWith("fish") || h.StartsWith("f.i.o") || h.StartsWith("fio"))
+            return Field.FullName;
+        if (h.StartsWith("telefon")) return Field.Phone;
+        if (h.StartsWith("guruh")) return Field.Group;
+        if (h.StartsWith("holat")) return Field.Status;
+        if (h.StartsWith("tug'ilgan")) return Field.BirthDate;
+        if (h.StartsWith("jins")) return Field.Gender;
+        if (h.StartsWith("sinf")) return Field.Grade;
+        return null;
+    }
+
+    /// <summary>Xom Excel qatoridan <see cref="Row"/> (<paramref name="map"/> — <see cref="MapColumns"/>).</summary>
+    public static Row ReadRow(int excelRow, IReadOnlyList<string> cells, IReadOnlyDictionary<Field, int> map)
+    {
+        string Get(Field f) => map.TryGetValue(f, out var i) && i < cells.Count ? cells[i] ?? "" : "";
+        return new Row(excelRow, Get(Field.FullName), Get(Field.Phone), Get(Field.FatherName), Get(Field.FatherPhone),
+            Get(Field.MotherName), Get(Field.MotherPhone), Get(Field.Group), Get(Field.Status), Get(Field.BirthDate),
+            Get(Field.Gender), Get(Field.Grade));
+    }
+
     /// <summary>Bazadagi o'quvchi (solishtirish uchun).</summary>
     public sealed record Existing(string Id, string FullName, bool IsArchived, int? SchoolGradeNow, params string?[] Phones);
 

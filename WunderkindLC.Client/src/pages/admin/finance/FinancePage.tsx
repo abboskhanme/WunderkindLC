@@ -1,6 +1,6 @@
 ﻿import { useCallback, useEffect, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
-import { Plus, Pencil, Ban, Download, TrendingUp, TrendingDown, Wallet, AlertCircle, Calculator, History, Inbox, Percent, Search, Receipt, Undo2, Banknote, Users } from 'lucide-react'
+import { Plus, Pencil, Ban, Download, TrendingUp, TrendingDown, Wallet, AlertCircle, Calculator, History, Inbox, Percent, Search, Receipt, Undo2, Banknote, Users, Wrench } from 'lucide-react'
 import type {
   FinanceDirection,
   FinanceMonthly,
@@ -53,6 +53,7 @@ import { RefundModal } from './RefundModal'
 import { RetentionBonusTab } from './RetentionBonusTab'
 import { useAuth } from '@/context/auth-context'
 import { CashboxesPanel } from './CashboxesPanel'
+import { ActivationChargeRepairModal } from './ActivationChargeRepairModal'
 import { usePerm } from '@/lib/permissions'
 import { tabFromUrl } from '@/lib/tabParam'
 import { todayIso } from '@/lib/month'
@@ -161,6 +162,8 @@ export function FinancePage() {
   const [loading, setLoading] = useState(true)
 
   const [formOpen, setFormOpen] = useState(false)
+  /** «Qo'shilgan oy hisobini tuzatish» (FAQAT superadmin) oynasi. */
+  const [repairOpen, setRepairOpen] = useState(false)
   const [editing, setEditing] = useState<FinanceTransaction | null>(null)
   const [audit, setAudit] = useState<{ filters: AuditFilters; title: string } | null>(null)
   const [detailTeacher, setDetailTeacher] = useState<SalaryReportRow | null>(null)
@@ -531,6 +534,11 @@ export function FinancePage() {
             <Button variant="secondary" onClick={handleAccrue}>
               <Calculator className="h-4 w-4" /> Oylik to'lovni hisoblash
             </Button>
+            {isSuper && (
+              <Button variant="secondary" onClick={() => setRepairOpen(true)}>
+                <Wrench className="h-4 w-4" /> Qo'shilgan oy hisobini tuzatish
+              </Button>
+            )}
             {can('finance.main', 'create') && (
               <Button
                 onClick={() => {
@@ -1431,6 +1439,8 @@ export function FinancePage() {
           )}
         </>
       )}
+
+      {repairOpen && <ActivationChargeRepairModal onClose={() => setRepairOpen(false)} onApplied={load} />}
 
       <TransactionFormModal
         open={formOpen}

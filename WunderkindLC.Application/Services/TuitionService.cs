@@ -486,7 +486,10 @@ public static class TuitionService
         // qatorini `existing` bilan ishlashdan OLDIN tozalaymiz (dublikat hisob bo'lmasin). Balans
         // hisobi shunga tayanadi: aggregate qatorning effektivi avval balansga QAYTARILADI, keyin
         // quyida per-guruh qisman hisob yechiladi.
-        var aggregateRow = monthRows.FirstOrDefault(c => c.GroupId == null);
+        // ⚠️ O'chirishga belgilangan (hali saqlanmagan) qator so'rovda baribir qaytadi — u ikkinchi marta
+        // balansga QAYTARILMASIN (bir so'rovda bir o'quvchi ikki guruhda aktivlashtirilganda).
+        var aggregateRow = monthRows.FirstOrDefault(c => c.GroupId == null
+                                                          && db.MonthlyCharges.Entry(c).State != EntityState.Deleted);
         if (aggregateRow is not null)
         {
             s.Balance += Math.Max(0m, aggregateRow.Amount - aggregateRow.Discount);
@@ -539,6 +542,58 @@ public static class TuitionService
             System.Diagnostics.Debug.WriteLine($"ChargeActivationProrateAsync error: {ex.Message}\n{ex.StackTrace}");
             throw;
         }
+    }
+
+    /// <summary>
+    /// AKTIVLASHTIRISH SANASI O'ZGARGANDA (<see cref="ActivationDateChange"/>) shu sananing oyini QAYTA hisoblaydi:
+    /// qolgan darslar bo'lsa — <see cref="ChargeActivationProrateAsync"/> (idempotent almashtirish); shu sanadan keyin
+    /// oyda dars qolmasa — oyning (qulfsiz) hisobi olib tashlanadi va effektiv summa balansga qaytadi.
+    /// Qaytaradi: <c>false</c> — oy QO'LDA tahrirlangan (qulf), tegilmadi. SaveChanges — chaqiruvchida.
+    /// </summary>
+    public static async Task<bool> RechargeActivationMonthAsync(IAppDbContext db, Student s, Group cls, string dateIso)
+    {
+        var month = dateIso[..7];
+        var row = await db.MonthlyCharges
+            .FirstOrDefaultAsync(c => c.StudentId == s.Id && c.GroupId == cls.Id && c.Month == month);
+        // Qo'lda tahrir qulfi — tegilmaydi (kelmagan darslar chegirmasi qulfi esa qayta hisoblanadi).
+        if (row is not null && await LessonDiscountService.ReworkableExtraAsync(db, row) is null) return false;
+        var (_, gross) = await ActivationGrossAsync(db, s, cls, dateIso, null, null);
+        if (gross > 0)
+        {
+            await ChargeActivationProrateAsync(db, s, cls, dateIso);
+            return true;
+        }
+        if (row is null) return true;
+        // Kelmagan darslar chegirmasi qulflagan qator — chegirmalari bilan qo'lda hal qilinadi (jimgina qolmasin).
+        if (row.Locked) return false;
+        s.Balance += Math.Max(0m, row.Amount - row.Discount);
+        db.MonthlyCharges.Remove(row);
+        return true;
+    }
+
+    /// <summary>
+    /// Oyni TO'LIQ oylik qilib qayta hisoblaydi (aktivlashtirish sanasi oldingi oyga surilganda ESKI aktivlashtirish
+    /// oyi qisman emas, to'liq o'qilgan oy bo'lib qoladi). Narx — <see cref="PricingBook"/> (sinf oralig'i), chegirma —
+    /// registrdan (+ amaldagi kelmagan darslar chegirmasi). Hisob qatori YO'Q bo'lsa — hech narsa (uni
+    /// <see cref="AccrueCatchUpAsync"/> yozadi). Qaytaradi: <c>false</c> — qo'lda tahrirlangan, tegilmadi.
+    /// SaveChanges — chaqiruvchida.
+    /// </summary>
+    public static async Task<bool> RechargeFullMonthAsync(IAppDbContext db, Student s, Group cls, string month)
+    {
+        var row = await db.MonthlyCharges
+            .FirstOrDefaultAsync(c => c.StudentId == s.Id && c.GroupId == cls.Id && c.Month == month);
+        if (row is null) return true;
+        if (await LessonDiscountService.ReworkableExtraAsync(db, row) is not { } extra) return false;
+        var fee = (await PricingBook.LoadForCourseAsync(db, cls.CourseId)).MonthlyFee(cls, s, month);
+        if (fee <= 0) return true;
+        var book = await DiscountBook.LoadForStudentAsync(db, s.Id);
+        var discount = Math.Min(fee, book.DiscountFor(s.Id, fee, month, cls.Id) + extra);
+        var oldEffective = Math.Max(0m, row.Amount - row.Discount);
+        row.Amount = fee;
+        row.Discount = discount;
+        row.Date = $"{month}-01";
+        s.Balance += oldEffective - (fee - discount);
+        return true;
     }
 
     /// <summary>MUZLATILGAN oyning QISMAN to'lovini hisoblaydi: o'quvchi shu oyda muzlatilgan SANAGACHA (shu sana

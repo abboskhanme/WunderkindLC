@@ -44,6 +44,12 @@ export function EditTab({
   const [dupes, setDupes] = useState<PhoneMatch[]>([])
   const [pending, setPending] = useState<StudentPayload | null>(null)
   const [archiveOpen, setArchiveOpen] = useState(false)
+  /**
+   * Sharif (otasining ismi) yangi o'quvchi formasidan OLIB TASHLANDI (2026-10-09). Bu yerda faqat
+   * sharifi BOR o'quvchida ko'rinadi — uni tozalash mumkin bo'lsin (aks holda F.I.SH ga yashirin
+   * qo'shilaverardi). `useState` initializer — tozalanganda maydon yo'qolib qolmasin.
+   */
+  const [showMiddleName] = useState(() => (payloadFromStudent(student).middleName ?? '').trim() !== '')
 
 
   const update = <K extends keyof StudentPayload>(key: K, value: StudentPayload[K]) => {
@@ -122,14 +128,18 @@ export function EditTab({
             </FilledPhoneWrap>
           </FormField>
 
-          <FormField label="Sharifi (otasining ismi)">
-            <TextField value={form.middleName ?? ''} onChange={(e) => update('middleName', e.target.value)} />
-          </FormField>
+          {showMiddleName && (
+            <FormField label="Sharifi (otasining ismi)">
+              <TextField value={form.middleName ?? ''} onChange={(e) => update('middleName', e.target.value)} />
+            </FormField>
+          )}
+          {/* Jins IXTIYORIY (2026-10-09) — «Tanlang» = ko'rsatilmagan. */}
           <FormField label="Jinsi">
             <SelectField
               value={form.gender}
               onChange={(e) => update('gender', e.target.value as StudentPayload['gender'])}
             >
+              <option value="">Tanlang</option>
               {genderOptions.map((g) => (
                 <option key={g.value} value={g.value}>
                   {g.label}

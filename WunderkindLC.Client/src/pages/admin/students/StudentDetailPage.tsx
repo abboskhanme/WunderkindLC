@@ -10,7 +10,7 @@ import {
   StickyNote, Gift, BadgePercent, Trash2,
   DoorOpen, LogIn, LogOut, RefreshCw, Wifi, WifiOff,
 } from 'lucide-react'
-import { genderLabels } from '@/config/constants'
+import { genderLabel } from '@/config/constants'
 import {
   Bar, BarChart, Cell, CartesianGrid, Legend,
   ResponsiveContainer, Tooltip, XAxis, YAxis,
@@ -91,6 +91,8 @@ import { PaymentModal } from './PaymentModal'
 import { AiAnalysisModal } from './AiAnalysisModal'
 import { AiAnalysisView } from './AiAnalysisView'
 import { StudentFormModal } from './StudentFormModal'
+import { ActivationDateModal } from './ActivationDateModal'
+import { BalanceAdjustModal } from './BalanceAdjustModal'
 import { DiscountSection } from './DiscountSection'
 import { studentDiscountLabel } from './discountLabel'
 import { ProfileCard } from './profile/ProfileCard'
@@ -180,6 +182,10 @@ export function StudentDetailPage() {
   // admin/superadmin va Rollar'da shu ruxsat berilgan xodim (server: `StudentPurgeController.MayPurge`).
   const canPurge = can('students.list', 'delete')
   const [purgeOpen, setPurgeOpen] = useState(false)
+  /** «Balansni tuzatish» (FAQAT superadmin — server ham tekshiradi). */
+  const [balanceAdjustOpen, setBalanceAdjustOpen] = useState(false)
+  /** «Aktivlashtirish sanasini o'zgartirish» — qaysi a'zolik uchun. */
+  const [activationDateFor, setActivationDateFor] = useState<StudentGroupMembership | null>(null)
   /** Shu o'quvchi bo'yicha bog'lanish talablari — "Aloqa" tabida ko'rinadi. */
   const [contacts, setContacts] = useState<ContactRequestItem[]>([])
   /** Ro'yxatni KO'RISH ruxsati — talab ochish (`create`) dan alohida. */
@@ -945,6 +951,10 @@ export function StudentDetailPage() {
                 ...(can('students.list', 'edit')
                   ? [{ label: 'Tahrirlash', icon: Pencil, onClick: openEdit }]
                   : []),
+                // Oylik hisobni qo'lda tuzatish — FAQAT superadmin (`can()` admin uchun ham true qaytaradi).
+                ...(user?.role === 'superadmin'
+                  ? [{ label: 'Balansni tuzatish', icon: Wallet, onClick: () => setBalanceAdjustOpen(true) }]
+                  : []),
                 ...(canPurge
                   ? [{ label: "Butunlay o'chirish", icon: Trash2, danger: true, onClick: () => setPurgeOpen(true) }]
                   : []),
@@ -973,7 +983,7 @@ export function StudentDetailPage() {
                 <h2 className="font-semibold text-slate-800">Shaxsiy ma'lumotlar</h2>
               </div>
               <dl className="divide-y divide-slate-100">
-                <InfoLine icon={User} label="Jinsi" value={genderLabels[data.gender as 'male' | 'female'] ?? data.gender} />
+                <InfoLine icon={User} label="Jinsi" value={genderLabel(data.gender) || '—'} />
                 <InfoLine icon={Cake} label="Tug'ilgan kun" value={data.birthDate ? formatDate(data.birthDate) : '—'} />
                 <InfoLine icon={CalendarPlus} label="Qabul sanasi" value={data.enrollmentDate ? formatDate(data.enrollmentDate) : '—'} />
                 <InfoLine icon={BookOpen} label="Sinf" value={schoolGradeLabel(data.schoolGradeNow) || '—'} />
@@ -1164,6 +1174,13 @@ export function StudentDetailPage() {
                                   label: 'Muzlatish', icon: Snowflake,
                                   onClick: () => { openGroupModal(gr); setGroupReasonAction('freeze') },
                                 },
+                                // Sanasi xato/kech kiritilgan — qisman oy qayta hisoblanadi (oldin «Hisoblash»).
+                                ...(gr.activatedAt
+                                  ? [{
+                                      label: "Aktivlashtirish sanasini o'zgartirish", icon: CalendarDays,
+                                      onClick: () => setActivationDateFor(gr),
+                                    }]
+                                  : []),
                                 // «Aktiv muzlatish» — FAQAT superadmin. `can()` bu yerda
                                 // yaramaydi: u oddiy admin uchun ham true qaytaradi.
                                 ...(user?.role === 'superadmin'
@@ -1961,6 +1978,36 @@ export function StudentDetailPage() {
 
       {/* Butunlay o'chirish — nimalar o'chishini ko'rsatib, aniq tasdiq so'raydi. O'chgach profil
           endi yo'q: ro'yxatga qaytamiz (`replace` — "orqaga" o'chgan profilga olib kelmasin). */}
+      {balanceAdjustOpen && id && (
+        <BalanceAdjustModal
+          studentId={id}
+          studentName={data.fullName}
+          onClose={() => setBalanceAdjustOpen(false)}
+          onSaved={() => {
+            setBalanceAdjustOpen(false)
+            // Balans, to'lov tarixi va chegirma (yangi summadan qayta hisoblanadi) eskirdi.
+            reloadAfterMembership()
+            setReloadKey((k) => k + 1)
+          }}
+        />
+      )}
+
+      {activationDateFor && id && (
+        <ActivationDateModal
+          key={activationDateFor.id}
+          studentId={id}
+          groupId={activationDateFor.groupId}
+          groupName={activationDateFor.groupName}
+          activatedAt={activationDateFor.activatedAt}
+          onClose={() => setActivationDateFor(null)}
+          onDone={() => {
+            setActivationDateFor(null)
+            reloadAfterMembership()
+            setReloadKey((k) => k + 1)
+          }}
+        />
+      )}
+
       {purgeOpen && id && (
         <StudentPurgeModal
           studentId={id}

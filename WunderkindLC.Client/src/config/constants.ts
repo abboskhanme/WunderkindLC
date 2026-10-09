@@ -5,6 +5,10 @@ export const genderLabels: Record<Gender, string> = {
   female: 'Ayol',
 }
 
+/** Jins yorlig'i; ko'rsatilmagan (`''`) yoki noma'lum qiymat — bo'sh satr (o'quvchida jins ixtiyoriy). */
+export const genderLabel = (g?: string | null): string =>
+  g === 'male' || g === 'female' ? genderLabels[g] : ''
+
 export const genderOptions: { value: Gender; label: string }[] = [
   { value: 'male', label: 'Erkak' },
   { value: 'female', label: 'Ayol' },

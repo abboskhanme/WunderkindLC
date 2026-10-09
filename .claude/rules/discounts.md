@@ -277,7 +277,8 @@ qayta yuklaydi.
 ## 8.5. QO'LDA OYLIK TAHRIRI — chegirma YANGI summadan qayta hisoblanadi
 
 `PUT /api/admin/students/{id}/charges/{month}?groupId=` (`StudentsController.EditCharge`,
-faqat superadmin UI'da) hisob qatorining `Amount` ini qo'lda o'zgartiradi.
+FAQAT superadmin — 2026-10-09 dan serverda ham HARD rol) hisob qatorining `Amount` ini qo'lda o'zgartiradi.
+Kirish: «Tranzaksiyalar tarixi» qalami va profil «⋮» → «Balansni tuzatish» (`Preview` + `Note`, `billing.md`).
 
 ⚠️ **`MonthlyCharge.Discount` — MUTLAQ so'm, foiz EMAS.** U birinchi hisoblashda O'SHA
 paytdagi summadan chiqarilgan. Ilgari tahrirda u shundayligicha ko'chirilar (faqat yangi
