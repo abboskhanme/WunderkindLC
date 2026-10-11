@@ -201,8 +201,15 @@ public sealed class McpToolContext(
 
     /// <summary>
     /// Serialize a tool result. <paramref name="rows"/> goes to the audit row count.
-    /// Defence in depth: every property whose NAME looks like a credential (password, hash,
-    /// token, secret, login, …) is removed from the output, however it got there.
+    /// Defence in depth, in ONE place for every tool:
+    /// <list type="bullet">
+    ///   <item>every property whose NAME looks like a credential (password, hash, token, secret, login, …)
+    ///     is removed from the output, however it got there;</item>
+    ///   <item>every string VALUE goes through <see cref="McpText.CleanOutput"/>: invisible control / format /
+    ///     bidi / zero-width / tag characters are stripped and the length is capped at
+    ///     <see cref="McpLimits.MaxTextLength"/> — free text from outside parties (lead notes, feedback,
+    ///     job applications, contact responses) is the prompt-injection channel.</item>
+    /// </list>
     /// </summary>
     public string Json(object payload, int? rows = null)
     {
@@ -213,7 +220,7 @@ public sealed class McpToolContext(
     public static string Serialize(object payload)
     {
         var node = JsonSerializer.SerializeToNode(payload, JsonOptions);
-        Scrub(node);
+        node = Scrub(node);
         return node?.ToJsonString(JsonOptions) ?? "null";
     }
 
@@ -231,20 +238,34 @@ public sealed class McpToolContext(
             || n.Contains("rtsp") || n.Contains("chatid") || n.Contains("certificateurl");
     }
 
-    private static void Scrub(JsonNode? node)
+    /// <summary>Removes secret-named properties and cleans string values; returns the (possibly replaced) node.</summary>
+    private static JsonNode? Scrub(JsonNode? node)
     {
         switch (node)
         {
             case JsonObject obj:
                 foreach (var key in obj.Select(p => p.Key).ToList())
                 {
-                    if (IsSecretName(key)) obj.Remove(key);
-                    else Scrub(obj[key]);
+                    if (IsSecretName(key)) { obj.Remove(key); continue; }
+                    var child = obj[key];
+                    var cleaned = Scrub(child);
+                    if (!ReferenceEquals(cleaned, child)) obj[key] = cleaned;
                 }
-                break;
+                return obj;
             case JsonArray arr:
-                foreach (var item in arr) Scrub(item);
-                break;
+                for (var i = 0; i < arr.Count; i++)
+                {
+                    var child = arr[i];
+                    var cleaned = Scrub(child);
+                    if (!ReferenceEquals(cleaned, child)) arr[i] = cleaned;
+                }
+                return arr;
+            case JsonValue value when value.GetValueKind() == JsonValueKind.String:
+                var text = value.GetValue<string>();
+                var clean = McpText.CleanOutput(text);
+                return string.Equals(clean, text, StringComparison.Ordinal) ? value : JsonValue.Create(clean);
+            default:
+                return node;
         }
     }
 }

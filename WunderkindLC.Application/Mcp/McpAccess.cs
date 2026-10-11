@@ -10,8 +10,9 @@ namespace WunderkindLC.Application.Mcp;
 /// Read-only MCP server for AI clients (docs/SPEC-mcp.md).
 ///
 /// <para>
-/// Who may connect: <see cref="Roles.SuperAdmin"/>, <see cref="Roles.Admin"/>, and a
-/// <see cref="Roles.Staff"/> member whose permissions carry <see cref="PermissionKey"/>.
+/// Who may connect: a <see cref="Roles.SuperAdmin"/> always; an <see cref="Roles.Admin"/> only when a
+/// superadmin explicitly enabled AI access for that account (<see cref="AppUser.AiAccessEnabled"/>);
+/// a <see cref="Roles.Staff"/> member whose permissions carry <see cref="PermissionKey"/>.
 /// Nobody else — teachers, students and parents never get a token.
 /// </para>
 /// </summary>
@@ -23,10 +24,27 @@ public static class McpAccess
     /// <summary>The only OAuth scope the server issues.</summary>
     public const string Scope = "center.read";
 
-    /// <summary>Is this account allowed to hold an MCP token right now?</summary>
-    public static bool IsAllowed(AppUser user) =>
-        user.Role is Roles.SuperAdmin or Roles.Admin
-        || (user.Role == Roles.Staff && PermissionRules.HasSection(user.Permissions, PermissionKey));
+    /// <summary>
+    /// Is this account allowed to hold an MCP token right now? Checked at login, consent, code exchange,
+    /// every refresh and every <c>/mcp</c> request — so revoking any of the three conditions stops the
+    /// connection on its next call.
+    /// </summary>
+    public static bool IsAllowed(AppUser user) => user.Role switch
+    {
+        Roles.SuperAdmin => true,
+        Roles.Admin => user.AiAccessEnabled,
+        Roles.Staff => PermissionRules.HasSection(user.Permissions, PermissionKey),
+        _ => false,
+    };
+
+    /// <summary>Uzbek reason shown when a panel account may not connect (login page, own-connections block).</summary>
+    public static string DeniedReason(AppUser user) => user.Role switch
+    {
+        Roles.Admin => "Administrator akkauntiga AI ulanishni superadmin alohida yoqadi "
+                       + "(Sozlamalar → Umumiy → «AI ulanishlar» → «Administratorlar»).",
+        Roles.Staff => "Xodimga AI ulanish rol orqali beriladi: Boshqaruv → Rollar → «AI ulanish (MCP, faqat o'qish)».",
+        _ => "Bu imkoniyat faqat rahbariyat uchun.",
+    };
 }
 
 /// <summary>Opaque secrets: generation, hashing, PKCE.</summary>
@@ -100,6 +118,28 @@ public static class McpLimits
 
     /// <summary>Audit rows older than this are pruned.</summary>
     public const int AuditRetentionDays = 365;
+
+    /// <summary>
+    /// A refresh token presented again within this window after it was rotated is treated as a concurrent
+    /// refresh by the same client (two requests at the same moment): <c>invalid_grant</c>, connection kept.
+    /// Later reuse means the old token is in someone else's hands — the connection is revoked.
+    /// </summary>
+    public static readonly TimeSpan RefreshReuseGrace = TimeSpan.FromSeconds(30);
+
+    /// <summary>Longest free-text string a tool result carries (longer values end with <see cref="McpText.TruncationMarker"/>).</summary>
+    public const int MaxTextLength = 2000;
+
+    /// <summary>Volume watch: tool calls of ONE connection in the last 24 h that raise an alert.</summary>
+    public const int VolumeCallsPerDay = 1_000;
+
+    /// <summary>Volume watch: rows returned to ONE connection in the last 24 h that raise an alert.</summary>
+    public const int VolumeRowsPerDay = 50_000;
+
+    /// <summary>Window the volume watch sums over, and the minimum gap between two alerts of one connection.</summary>
+    public static readonly TimeSpan VolumeWindow = TimeSpan.FromHours(24);
+
+    /// <summary>How often the background volume watch runs.</summary>
+    public static readonly TimeSpan VolumeCheckInterval = TimeSpan.FromMinutes(10);
 }
 
 /// <summary>
@@ -201,5 +241,68 @@ public static class McpText
         }
         var s = string.Join(' ', sb.ToString().Split(' ', StringSplitOptions.RemoveEmptyEntries));
         return s.Length <= max ? s : s[..max];
+    }
+
+    /// <summary>Appended to a tool-result string cut at <see cref="McpLimits.MaxTextLength"/>.</summary>
+    public const string TruncationMarker = "… [matn qisqartirildi]";
+
+    /// <summary>
+    /// Every string value of a tool result passes through here (<c>McpToolContext.Serialize</c>). Free text
+    /// written by outside parties (lead notes, parent feedback, job applications, contact responses…) reaches
+    /// the AI verbatim, so the invisible raw material of prompt injection and display spoofing is removed:
+    /// <list type="bullet">
+    ///   <item>control characters except <c>\n</c> and <c>\t</c> (<c>\r</c> dropped, U+2028/U+2029 → <c>\n</c>);</item>
+    ///   <item>format characters — bidi overrides/isolates, zero-width space/joiners, BOM, Unicode TAG characters
+    ///     (U+E0000–E007F, "ASCII smuggling");</item>
+    ///   <item>variation selectors supplement (U+E0100–E01EF, payload smuggling), private-use, unassigned code
+    ///     points and lone surrogates.</item>
+    /// </list>
+    /// Letters, digits, punctuation (the Uzbek apostrophes ʻ ’ ' included) and emoji stay as they are. The result
+    /// is capped at <paramref name="max"/> characters plus <see cref="TruncationMarker"/> — no field is unbounded.
+    /// Pure.
+    /// </summary>
+    public static string CleanOutput(string? value, int max = McpLimits.MaxTextLength)
+    {
+        if (string.IsNullOrEmpty(value)) return value ?? "";
+        if (IsPlain(value) && value.Length <= max) return value;   // fast path: the vast majority of values
+
+        var sb = new StringBuilder(Math.Min(value.Length, max + 32));
+        var span = value.AsSpan();
+        var i = 0;
+        while (i < span.Length && sb.Length < max)
+        {
+            if (Rune.DecodeFromUtf16(span[i..], out var rune, out var used) != System.Buffers.OperationStatus.Done)
+            {
+                i += Math.Max(used, 1);   // lone surrogate / invalid sequence
+                continue;
+            }
+            i += used;
+            var v = rune.Value;
+            if (v is '\n' or '\t') { sb.Append((char)v); continue; }
+            if (v is 0x2028 or 0x2029) { sb.Append('\n'); continue; }
+            if (v is >= 0xE0100 and <= 0xE01EF) continue;
+            var cat = Rune.GetUnicodeCategory(rune);
+            if (cat is UnicodeCategory.Control or UnicodeCategory.Format or UnicodeCategory.Surrogate
+                or UnicodeCategory.PrivateUse or UnicodeCategory.OtherNotAssigned) continue;
+            if (sb.Length + rune.Utf16SequenceLength > max) { i -= used; break; }
+            sb.Append(rune.ToString());
+        }
+        return i < span.Length ? sb.Append(TruncationMarker).ToString() : sb.ToString();
+    }
+
+    /// <summary>Printable BMP text with no format/control characters (other than \n and \t) — nothing to clean.</summary>
+    private static bool IsPlain(string value)
+    {
+        foreach (var ch in value)
+        {
+            if (ch is '\n' or '\t') continue;
+            if (ch < 0x20 || char.IsSurrogate(ch)) return false;
+            if (ch < 0x7F) continue;
+            var cat = CharUnicodeInfo.GetUnicodeCategory(ch);
+            if (cat is UnicodeCategory.Control or UnicodeCategory.Format or UnicodeCategory.LineSeparator
+                or UnicodeCategory.ParagraphSeparator or UnicodeCategory.PrivateUse
+                or UnicodeCategory.OtherNotAssigned) return false;
+        }
+        return true;
     }
 }

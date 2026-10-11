@@ -47,6 +47,12 @@ public class McpGrant
 
     /// <summary>Who revoked (<see cref="AppUser.Id"/>), or <c>system:…</c> for replay detection.</summary>
     public string? RevokedBy { get; set; }
+
+    /// <summary>
+    /// Last time the volume watch flagged this connection (calls or rows read in 24 h above
+    /// <c>McpLimits.VolumeCallsPerDay</c> / <c>VolumeRowsPerDay</c>). At most one alert per 24 h.
+    /// </summary>
+    public DateTime? VolumeAlertAt { get; set; }
 }
 
 /// <summary>One-time authorization code. Only its SHA-256 hash is stored.</summary>

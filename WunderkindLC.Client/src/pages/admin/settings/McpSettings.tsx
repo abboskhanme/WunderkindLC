@@ -1,10 +1,13 @@
 import { useEffect, useState } from 'react'
-import { CheckCircle2, Copy, PlugZap, ShieldCheck, XCircle } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, Copy, PlugZap, ShieldCheck, XCircle } from 'lucide-react'
 import {
+  getMcpAdmins,
   getMcpAudit,
   getMcpConnections,
   getMcpStatus,
   revokeMcpConnection,
+  setMcpAdminAccess,
+  type McpAdminAccess,
   type McpAuditPage,
   type McpConnection,
   type McpStatus,
@@ -13,13 +16,17 @@ import { Card } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { Loader } from '@/components/ui/Loader'
+import { Switch } from '@/components/ui/list/Switch'
 import { apiErrorMessage, cn } from '@/lib/utils'
+import { mcpTime as fmt } from '@/lib/mcp'
 
 /**
  * AI ULANISHLAR (read-only MCP) — faqat superadmin. Rahbariyat o'z AI ilovasini (Claude,
  * ChatGPT) tizimga ulab, ma'lumotni FAQAT O'QIYDI: vositalar hech narsani o'zgartirmaydi va
- * hech kimga xabar yubormaydi. Bu yerda: holat, ulanish manzili, ulangan ilovalar (bekor qilish)
- * va har bir so'rov jurnali. Server — `McpAdminController`, qoidalar — `docs/SPEC-mcp.md`.
+ * hech kimga xabar yubormaydi. Bu yerda: holat, ulanish manzili, administratorlarga AI ruxsati,
+ * ulangan ilovalar (bekor qilish, 24 soatlik hajm belgisi) va har bir so'rov jurnali.
+ * Server — `McpAdminController`, qoidalar — `docs/SPEC-mcp.md`. Har kim O'Z ulanishlarini
+ * «Akkaunt sozlamalari» dagi `MyMcpConnections` blokida boshqaradi.
  */
 export function McpSettings() {
   const [status, setStatus] = useState<McpStatus | null>(null)
@@ -136,8 +143,10 @@ export function McpSettings() {
             </ol>
             <p className="mt-3 flex items-start gap-2 text-xs text-slate-500">
               <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
-              Ulana oladiganlar: superadmin, admin va «Rollar» da <b>«AI ulanish (MCP, faqat o'qish)»</b> ruxsati berilgan
-              xodim. O'qituvchi, o'quvchi va ota-ona ulana olmaydi. Vositalar soni: {status.toolCount} guruh.
+              Ulana oladiganlar: superadmin, siz pastda <b>yoqqan</b> administrator va «Rollar» da{' '}
+              <b>«AI ulanish (MCP, faqat o'qish)»</b> ruxsati berilgan xodim. O'qituvchi, o'quvchi va ota-ona ulana
+              olmaydi. Har bir yangi ulanish va 24 soatda odatdan ko'p so'rov haqida sizga Telegram orqali xabar
+              keladi. Vositalar soni: {status.toolCount} guruh.
             </p>
           </>
         ) : (
@@ -152,6 +161,8 @@ export function McpSettings() {
           </div>
         )}
       </Card>
+
+      <AdminAccessCard onChanged={() => setTick((x) => x + 1)} />
 
       <Card title="Ulangan AI ilovalar">
         {connections.length === 0 ? (
@@ -183,7 +194,20 @@ export function McpSettings() {
                     </td>
                     <td className="py-2 pr-3 whitespace-nowrap">{fmt(c.createdAt)}</td>
                     <td className="py-2 pr-3 whitespace-nowrap">{c.lastUsedAt ? fmt(c.lastUsedAt) : '—'}</td>
-                    <td className="py-2 pr-3">{c.calls}</td>
+                    <td className="py-2 pr-3">
+                      {c.calls}
+                      <div className="text-xs text-slate-400" title="Oxirgi 24 soat: so'rovlar / o'qilgan qatorlar">
+                        24 soat: {c.calls24h} / {c.rows24h} qator
+                      </div>
+                      {c.volumeAlert && (
+                        <div
+                          className="mt-0.5 inline-flex items-center gap-1 text-xs font-semibold text-red-600"
+                          title="24 soatda so'rovlar yoki o'qilgan qatorlar chegaradan oshgan — so'rovlar jurnalini tekshiring"
+                        >
+                          <AlertTriangle className="h-3.5 w-3.5" /> Ko'p so'rov
+                        </div>
+                      )}
+                    </td>
                     <td className="py-2 pr-3">
                       {c.active ? (
                         <Badge tone="green">Faol</Badge>
@@ -293,15 +317,78 @@ export function McpSettings() {
   )
 }
 
-/** Server UTC vaqtini markaz vaqtida (Asia/Tashkent) "DD.MM.YYYY HH:mm" ko'rinishida — brauzer mintaqasidan qat'i nazar. */
-function fmt(iso: string): string {
-  const d = new Date(/[zZ]|[+-]\d{2}:\d{2}$/.test(iso) ? iso : iso + 'Z')
-  if (Number.isNaN(d.getTime())) return iso
-  const parts = Object.fromEntries(
-    new Intl.DateTimeFormat('en-GB', {
-      timeZone: 'Asia/Tashkent', day: '2-digit', month: '2-digit', year: 'numeric',
-      hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
-    }).formatToParts(d).map((p) => [p.type, p.value]),
+/**
+ * ADMINISTRATORLAR — har bir admin akkauntiga AI ulanish superadmin tomonidan ALOHIDA yoqiladi
+ * (server: `McpAccess.IsAllowed`, `PUT api/admin/mcp/admins/{id}/access`). O'chirilsa o'sha adminning
+ * ulanishlari darhol bekor qilinadi. Optimistik EMAS: kalit faqat server javobidan keyin o'zgaradi.
+ */
+function AdminAccessCard({ onChanged }: { onChanged: () => void }) {
+  const [admins, setAdmins] = useState<McpAdminAccess[] | null>(null)
+  const [error, setError] = useState('')
+  const [tick, setTick] = useState(0)
+  const [busy, setBusy] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    getMcpAdmins()
+      .then((a) => {
+        if (cancelled) return
+        setAdmins(a)
+        setError('')
+      })
+      .catch((e) => !cancelled && setError(apiErrorMessage(e, "Administratorlar ro'yxatini yuklab bo'lmadi")))
+    return () => {
+      cancelled = true
+    }
+  }, [tick])
+
+  const toggle = async (a: McpAdminAccess, next: boolean) => {
+    if (busy) return
+    if (!next && a.activeConnections > 0
+        && !window.confirm(`${a.fullName}: AI ruxsati o'chirilsa, ${a.activeConnections} ta ulanishi darhol bekor qilinadi. Davom etilsinmi?`))
+      return
+    setBusy(a.id)
+    setError('')
+    try {
+      await setMcpAdminAccess(a.id, next)
+      setTick((x) => x + 1)
+      onChanged()
+    } catch (e) {
+      setError(apiErrorMessage(e, "AI ruxsatini o'zgartirib bo'lmadi"))
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  return (
+    <Card
+      title="Administratorlar uchun AI ruxsati"
+      sub="Administrator AI ilovani faqat siz shu yerda yoqqandan keyin ulay oladi. Xodimlarga ruxsat Boshqaruv → Rollar orqali beriladi, superadmin esa har doim ulana oladi."
+    >
+      {error && <p className="mb-3 text-sm text-red-600">{error}</p>}
+      {!admins ? (
+        !error && <p className="text-sm text-slate-500">Yuklanmoqda...</p>
+      ) : admins.length === 0 ? (
+        <p className="text-sm text-slate-500">Administrator akkauntlari yo'q.</p>
+      ) : (
+        <ul className="divide-y divide-line/60">
+          {admins.map((a) => (
+            <li key={a.id} className="flex flex-wrap items-center justify-between gap-3 py-2">
+              <div className="min-w-0">
+                <div className="font-semibold text-ink">{a.fullName}</div>
+                <div className="text-xs text-slate-400">
+                  {a.enabled ? `Faol ulanishlar: ${a.activeConnections}` : 'AI ulanish yopiq'}
+                </div>
+              </div>
+              <Switch
+                checked={a.enabled}
+                onChange={(next) => toggle(a, next)}
+                label={busy === a.id ? 'Saqlanmoqda...' : a.enabled ? 'Yoqilgan' : "O'chiq"}
+              />
+            </li>
+          ))}
+        </ul>
+      )}
+    </Card>
   )
-  return `${parts.day}.${parts.month}.${parts.year} ${parts.hour}:${parts.minute}`
 }

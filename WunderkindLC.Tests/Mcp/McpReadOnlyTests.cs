@@ -313,7 +313,7 @@ public class McpReadOnlyTests
                  {
                      nameof(AppUser.PasswordHash), nameof(AppUser.InitialPassword), nameof(AppUser.Email),
                      nameof(AppUser.Permissions), nameof(AppUser.FailedLoginCount), nameof(AppUser.LockoutUntil),
-                     nameof(AppUser.AvatarUrl),
+                     nameof(AppUser.AvatarUrl), nameof(AppUser.AiAccessEnabled),
                  })
             Assert.DoesNotContain(secret, allowed);
         using var host = new McpTestHost();

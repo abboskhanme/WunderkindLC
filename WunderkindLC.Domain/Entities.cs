@@ -65,6 +65,13 @@ public class AppUser
     /// <c>StaffRoles.SyncMembersAsync</c>). Bo'sh = "individual ruxsatlar" (eski xodimlar; backfill YO'Q).
     /// </summary>
     public string? RoleTemplateId { get; set; }
+    /// <summary>
+    /// AI connection (read-only MCP) for an <c>admin</c> account ONLY: a superadmin explicitly enabled it
+    /// (Sozlamalar → «AI ulanishlar»). Ignored for other roles — a superadmin may always connect, staff
+    /// need the <c>aiAccess</c> permission (<c>McpAccess.IsAllowed</c>). Never granted to the MCP read-only
+    /// database role (<c>McpReadOnlyGrants.RestrictedColumns</c> is an allow-list for Users).
+    /// </summary>
+    public bool AiAccessEnabled { get; set; }
 }
 
 /// <summary>

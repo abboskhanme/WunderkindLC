@@ -410,3 +410,11 @@
 - [2026-10-11] Where are logins/passwords shown? → profile card, group «Login/parollar» modal and per-group Excel export (audited); never inside list payloads → convenient without leaking passwords in every list response.
 - [2026-10-11] New permission keys for the CRM upgrade → only `students.notices` (absent-notice control page) and `classes.rating` (rating report); everything else reuses existing keys → "own route = own key" (permissions.md §10).
 - [2026-10-11] Achievements list page? → none; achievements live in the student profile, the cabinet and MCP → no new page/key for a small catalogue.
+- [2026-10-11] MCP I7: where to store "superadmin enabled AI for this admin"? → `Users.AiAccessEnabled` bool
+  (no backfill: existing admins lose AI access until a superadmin enables them) → `IsAllowed(AppUser)` stays a
+  pure check on the loaded user; the column is outside the read-only role's Users allow-list.
+- [2026-10-11] MCP L8: where do users see their own AI connections? → «Mening AI ulanishlarim» block under
+  Akkaunt sozlamalari (profile page + Sozlamalar → Umumiy → Foydalanuvchi sozlamalari) → that is where a user
+  manages their own login/password; the superadmin-only «AI ulanishlar» tile stays superadmin-only.
+- [2026-10-11] MCP volume alert: revoke the connection automatically? → No, flag + Telegram + warning log only
+  → a heavy legitimate report must not cut the director off; the superadmin decides.

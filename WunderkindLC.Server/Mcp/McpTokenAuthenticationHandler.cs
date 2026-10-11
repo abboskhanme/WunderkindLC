@@ -18,8 +18,9 @@ public sealed class McpTokenAuthenticationOptions : AuthenticationSchemeOptions;
 /// <para>
 /// FRESHNESS: on EVERY request the token hash is looked up, the grant must not be revoked,
 /// the user must still exist and must still be allowed (<see cref="McpAccess.IsAllowed"/>:
-/// superadmin, admin, or staff whose permissions carry <c>aiAccess</c>). Removing <c>aiAccess</c>
-/// from a role or deleting the user therefore kills the connection on the next call — no token
+/// superadmin; admin only while a superadmin keeps AI access enabled for that account; staff whose
+/// permissions carry <c>aiAccess</c>). Removing <c>aiAccess</c> from a role, switching an admin off,
+/// revoking the connection or deleting the user therefore kills it on the next call — no token
 /// outlives the permission. The staff member's permissions are loaded from the DB as
 /// <c>perm</c> claims, exactly like the web panel, and every tool checks them.
 /// </para>

@@ -6,6 +6,7 @@ paths:
   - "WunderkindLC.Infrastructure/Data/ReadOnlyDatabase.cs"
   - "WunderkindLC.Infrastructure/Data/McpReadOnlyRole.cs"
   - "WunderkindLC.Infrastructure/Data/McpModel.cs"
+  - "WunderkindLC.Infrastructure/Mcp/**"
   - "WunderkindLC.Tests/Mcp/**"
 ---
 
@@ -33,7 +34,9 @@ emas, EGASINING YANGI QARORI. Himoya qatlamlari (bittasi ham olib tashlanmasin):
 4. O'z-o'zini tekshirish (`McpReadOnlyRole.SelfTest`) o'tmasa — MCP O'CHIQ (fail-closed). Yozadigan ulanishga
    QAYTISH YO'Q.
 
-MCP kodidan faqat ikki joy yozadi va faqat `Mcp*` jadvallariga: OAuth oqimi va so'rovlar jurnali (audit).
+MCP kodidan faqat shu joylar yozadi: OAuth oqimi, so'rovlar jurnali (audit) va ulanishlarni boshqarish
+(o'z/superadmin bekor qilishi, admin kaliti, hajm belgisi) — faqat `Mcp*` jadvallari, `AuditLog` va
+`Users.AiAccessEnabled`. Hech biri VOSITA orqali emas.
 
 ## 2. Yangi vosita qo'shganda
 
@@ -54,10 +57,33 @@ MCP kodidan faqat ikki joy yozadi va faqat `Mcp*` jadvallariga: OAuth oqimi va s
 
 ## 3. Kim ulanadi
 
-superadmin · admin · `aiAccess` ruxsatli xodim (`McpAccess.IsAllowed`). O'qituvchi/o'quvchi/ota-ona — HECH QACHON.
-Ruxsat olinsa, foydalanuvchi o'chirilsa yoki paroli o'zgarsa (`RefreshTokenService.RevokeAllForUserAsync`) —
-ulanish keyingi so'rovdayoq to'xtaydi. Boshqaruv — Sozlamalar → Umumiy → «AI ulanishlar» (FAQAT superadmin,
-`superadminOnly` band; `McpAdminController` — `[Authorize(Roles = SuperAdmin)]`).
+`McpAccess.IsAllowed`: **superadmin** — har doim · **admin** — FAQAT superadmin shu akkauntga yoqqan bo'lsa
+(`Users.AiAccessEnabled`; 2026-10-11 dan, I7 — avval har admin avtomatik ulanardi) · **xodim** — `aiAccess`
+ruxsati bilan. O'qituvchi/o'quvchi/ota-ona — HECH QACHON. ⚠️ Admin bayrog'i faqat `admin` rolida o'qiladi;
+`AiAccessEnabled` faqat-o'qish roliga BERILMAYDI (`RestrictedColumns[AppUser]` — ruxsat RO'YXATI, test qulflaydi).
+
+Ruxsat olinsa (rol kaliti, admin kaliti), foydalanuvchi o'chirilsa yoki paroli o'zgarsa
+(`RefreshTokenService.RevokeAllForUserAsync`) — ulanish keyingi so'rovdayoq to'xtaydi; admin kaliti o'chirilganda
+ulanishlari darhol BEKOR qilinadi ham.
+
+**Boshqaruv — ikki joy, BITTA bekor qilish yo'li** (`Infrastructure/Mcp/McpConnections.RevokeAsync`):
+
+| Joy | Kim | Server |
+|---|---|---|
+| Sozlamalar → Umumiy → «AI ulanishlar» (hammaning ulanishlari, admin kalitlari, 24 soatlik hajm belgisi, jurnal) | FAQAT superadmin (`superadminOnly` band) | `McpAdminController` — `[Authorize(Roles = SuperAdmin)]` |
+| Akkaunt sozlamalari → «Mening AI ulanishlarim» (faqat O'Z ulanishlari) | superadmin/admin/xodim | `McpMyConnectionsController` (`api/mcp/my`) — har so'rov `NameIdentifier` bo'yicha, begona grant → 404 |
+
+Har bekor qilish / admin kaliti o'zgarishi — audit (`McpGrant`, `McpAccess` → Sozlamalar).
+
+**Superadminga Telegram** (`McpAlerts`, `McpAlertWorker`): yangi ulanish (kod almashilganda, fire-and-forget
+navbat — OAuth oqimini hech qachon buzmaydi) va hajm ogohlantirishi (24 soatda > 1 000 so'rov yoki > 50 000 qator,
+ulanish boshiga kuniga ko'pi bilan BIR marta — `McpGrant.VolumeAlertAt`, bazada). Matnda token/ID/chat id YO'Q.
+
+**Refresh poygasi** (`McpTokens.RotateAsync`): rotatsiya shartli UPDATE (bittasi g'olib); 30 s ichida qayta
+taqdim etilgan token — `invalid_grant`, ulanish SAQLANADI; keyin — ulanish bekor (o'g'irlik belgisi).
+
+**Natija matni** (`McpText.CleanOutput`, `McpToolContext.Serialize` ichida — BITTA joy): ko'rinmas/bidi/nol
+kenglikdagi belgilar olib tashlanadi, har satr 2 000 belgigacha. Vositada alohida tozalash YOZMANG.
 
 ## 4. Olib tashlanayotgan modullar
 

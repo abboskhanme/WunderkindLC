@@ -21,6 +21,7 @@ import { ApkSettings } from './ApkSettings'
 import { AzureSpeechSettings } from './AzureSpeechSettings'
 import { GeminiSettings } from './GeminiSettings'
 import { McpSettings } from './McpSettings'
+import { MyMcpConnections } from '@/components/settings/MyMcpConnections'
 import { useAuth } from '@/context/auth-context'
 
 /**
@@ -168,9 +169,13 @@ function Panel({ panel, channelTab }: { panel: SettingsPanelKey; channelTab: str
       return <SchoolSettings />
     case 'account':
       return (
-        <div className="rounded-xl bg-white p-4">
-          <AccountSettings />
-        </div>
+        <>
+          <div className="rounded-xl bg-white p-4">
+            <AccountSettings />
+          </div>
+          {/* O'z AI ulanishlari (read-only MCP) — faqat ulana oladigan yoki ulanishi borga ko'rinadi. */}
+          <MyMcpConnections />
+        </>
       )
     case 'reasons':
       return <ReasonsPage embedded />

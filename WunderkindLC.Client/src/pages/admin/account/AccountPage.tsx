@@ -1,4 +1,5 @@
 import { PageHeader } from '@/components/ui/PageHeader'
+import { MyMcpConnections } from '@/components/settings/MyMcpConnections'
 import { AccountSettings } from './AccountSettings'
 
 /** Tepadagi profil menyusidan ochiladigan akkaunt (login/parol) sozlamalari sahifasi. */
@@ -11,6 +12,8 @@ export function AccountPage() {
       />
       <div className="max-w-3xl">
         <AccountSettings />
+        {/* O'z AI ulanishlari (read-only MCP) — faqat ulana oladigan yoki ulanishi borga ko'rinadi. */}
+        <MyMcpConnections />
       </div>
     </div>
   )

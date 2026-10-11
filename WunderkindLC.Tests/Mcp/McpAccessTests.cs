@@ -14,10 +14,12 @@ public class McpAccessTests
     private static AppUser U(string role, params string[] perms) => new() { Role = role, Permissions = [.. perms] };
 
     [Fact]
-    public void Superadmin_va_admin_har_doim_ulana_oladi()
+    public void Superadmin_har_doim_admin_FAQAT_superadmin_yoqqanda()
     {
         Assert.True(McpAccess.IsAllowed(U(Roles.SuperAdmin)));
-        Assert.True(McpAccess.IsAllowed(U(Roles.Admin)));
+        // I7 (2026-10-11): admin endi avtomatik ulana olmaydi — superadmin akkauntga alohida yoqadi.
+        Assert.False(McpAccess.IsAllowed(U(Roles.Admin)));
+        Assert.True(McpAccess.IsAllowed(new AppUser { Role = Roles.Admin, AiAccessEnabled = true }));
     }
 
     [Fact]

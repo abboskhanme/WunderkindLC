@@ -13,6 +13,7 @@ using WunderkindLC.Application.Mcp;
 using WunderkindLC.Domain;
 using WunderkindLC.Infrastructure.Auth;
 using WunderkindLC.Infrastructure.Data;
+using WunderkindLC.Infrastructure.Mcp;
 
 namespace WunderkindLC.Server.Mcp;
 
@@ -22,36 +23,12 @@ namespace WunderkindLC.Server.Mcp;
 /// </summary>
 public sealed class McpOAuthStore(AppDbContext db)
 {
-    public sealed record IssuedTokens(string AccessToken, string RefreshToken, int ExpiresIn, string Scope);
-
     /// <summary>New access + refresh pair under <paramref name="grant"/>. Caller saves.</summary>
-    public IssuedTokens Issue(McpGrant grant)
-    {
-        var now = DateTime.UtcNow;
-        var access = McpSecrets.New(McpSecrets.AccessPrefix);
-        var refresh = McpSecrets.New(McpSecrets.RefreshPrefix);
-        db.McpTokens.Add(new McpToken
-        {
-            GrantId = grant.Id, Kind = McpTokenKind.Access, TokenHash = McpSecrets.Hash(access),
-            CreatedAt = now, ExpiresAt = now + McpLimits.AccessLifetime,
-        });
-        db.McpTokens.Add(new McpToken
-        {
-            GrantId = grant.Id, Kind = McpTokenKind.Refresh, TokenHash = McpSecrets.Hash(refresh),
-            CreatedAt = now, ExpiresAt = now + McpLimits.RefreshLifetime,
-        });
-        return new IssuedTokens(access, refresh, (int)McpLimits.AccessLifetime.TotalSeconds, grant.Scope);
-    }
+    public McpIssuedTokens Issue(McpGrant grant) => McpTokens.Issue(db, grant);
 
     /// <summary>Revoke a grant (and so every token under it).</summary>
-    public async Task RevokeGrantAsync(Guid grantId, string by, CancellationToken ct = default)
-    {
-        var grant = await db.McpGrants.FirstOrDefaultAsync(g => g.Id == grantId, ct);
-        if (grant is null || grant.RevokedAt is not null) return;
-        grant.RevokedAt = DateTime.UtcNow;
-        grant.RevokedBy = by;
-        await db.SaveChangesAsync(ct);
-    }
+    public Task RevokeGrantAsync(Guid grantId, string by, CancellationToken ct = default) =>
+        McpTokens.RevokeGrantAsync(db, grantId, by, ct);
 
     /// <summary>Housekeeping: expired codes/tokens (> 1 day) and clients that never got a grant (> 24 h).</summary>
     public async Task PruneAsync(CancellationToken ct = default)
@@ -88,6 +65,7 @@ public sealed class McpOAuthController(
     McpRedirectRules redirects,
     IMemoryCache cache,
     IDataProtectionProvider dataProtection,
+    McpAlertQueue alerts,
     ILogger<McpOAuthController> logger) : ControllerBase
 {
     private static readonly string DummyHash = PasswordHasher.Hash("not-a-real-password-" + Guid.NewGuid());
@@ -347,7 +325,7 @@ public sealed class McpOAuthController(
                 logger.LogWarning("MCP OAuth refused: user {UserId} ({Role}) has no AI access", user!.Id, user.Role);
                 return Page("Ruxsat yo'q", ErrorBox(
                     "Sizning akkauntingizga AI ulanish ruxsati berilmagan. Bu imkoniyat faqat rahbariyat uchun — "
-                    + "kerak bo'lsa, superadminga murojaat qiling (Boshqaruv → Rollar → «AI ulanish»)."), 403);
+                    + "kerak bo'lsa, superadminga murojaat qiling. " + McpAccess.DeniedReason(user)), 403);
             }
 
             var consent = Protect(req with { UserId = user!.Id, Nonce = Guid.NewGuid().ToString("N") }, TimeSpan.FromMinutes(5));
@@ -453,13 +431,24 @@ public sealed class McpOAuthController(
             var issued = store.Issue(grant);
             // Every NEW AI connection appears in the main change history (Sozlamalar), not only revocations.
             var clientName = await db.McpClients.Where(c => c.Id == row.ClientId).Select(c => c.Name).FirstOrDefaultAsync(ct);
+            var destination = McpRedirectRules.DestinationLabel(row.RedirectUri);
             db.AuditLogs.Add(new AuditLog
             {
                 EntityType = "McpGrant", EntityId = grant.Id.ToString(), Action = "create",
                 Timestamp = AppClock.Iso(), ActorId = user.Id, ActorName = user.FullName,
-                Summary = $"AI ulanish yaratildi: «{clientName}» → {McpRedirectRules.DestinationLabel(row.RedirectUri)} — {user.FullName}",
+                Summary = $"AI ulanish yaratildi: «{clientName}» → {destination} — {user.FullName}",
             });
             await db.SaveChangesAsync(ct);
+            // Superadmins hear about every NEW connection at once (Telegram). Fire-and-forget: a queue hand-off
+            // that cannot throw or block — the token response never depends on the alert.
+            try
+            {
+                alerts.Enqueue(McpAlertText.NewConnection(user.FullName, user.Role, clientName ?? "AI mijoz", destination, grant.CreatedAt));
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "MCP new-connection alert could not be queued");
+            }
             // Link the code to its grant (replay detection) without touching the tracked row —
             // its ConsumedAt was just changed underneath the change tracker.
             var grantId = grant.Id;
@@ -471,44 +460,14 @@ public sealed class McpOAuthController(
 
         if (grantType == "refresh_token")
         {
-            var refresh = form["refresh_token"].ToString();
-            if (!refresh.StartsWith(McpSecrets.RefreshPrefix, StringComparison.Ordinal) || refresh.Length > 200)
-                return OAuthError("invalid_grant", "unknown refresh_token");
-            var hash = McpSecrets.Hash(refresh);
-            var tok = await db.McpTokens.AsNoTracking()
-                .FirstOrDefaultAsync(t => t.TokenHash == hash && t.Kind == McpTokenKind.Refresh, ct);
-            if (tok is null) return OAuthError("invalid_grant", "unknown refresh_token");
-            var grant = await db.McpGrants.AsNoTracking().FirstOrDefaultAsync(g => g.Id == tok.GrantId, ct);
-            if (grant is null || grant.RevokedAt is not null) return OAuthError("invalid_grant", "grant revoked");
-            if (!string.Equals(grant.ClientId, clientId, StringComparison.Ordinal)) return OAuthError("invalid_grant", "client mismatch");
-
-            if (tok.ConsumedAt is not null)
-            {
-                // Rotation reuse = the old refresh token is in someone else's hands.
-                await store.RevokeGrantAsync(grant.Id, "system:refresh-reuse", ct);
-                logger.LogWarning("MCP refresh token reuse on grant {GrantId}; grant revoked", grant.Id);
-                return OAuthError("invalid_grant", "refresh_token already used");
-            }
-            if (tok.ExpiresAt <= DateTime.UtcNow) return OAuthError("invalid_grant", "refresh_token expired");
-            if (grant.CreatedAt + McpLimits.GrantLifetime <= DateTime.UtcNow)
-                return OAuthError("invalid_grant", "connection older than 90 days — sign in again");
-
-            var user = await db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == grant.UserId, ct);
-            if (user is null || !McpAccess.IsAllowed(user)) return OAuthError("invalid_grant", "user no longer allowed");
-
-            // Atomic rotation: a racing second use of the same refresh token loses here.
-            var tokId = tok.Id;
-            var consumedAt = DateTime.UtcNow;
-            var won = await db.McpTokens.Where(t => t.Id == tokId && t.ConsumedAt == null)
-                .ExecuteUpdateAsync(s => s.SetProperty(t => t.ConsumedAt, consumedAt), ct);
-            if (won != 1)
-            {
-                await store.RevokeGrantAsync(grant.Id, "system:refresh-reuse", ct);
-                return OAuthError("invalid_grant", "refresh_token already used");
-            }
-            var issued = store.Issue(grant);
-            await db.SaveChangesAsync(ct);
-            return TokenResponse(issued);
+            // Atomic rotation, a 30 s grace for a client refreshing twice at the same moment, and
+            // reuse detection after it (revokes the connection) — McpTokens.RotateAsync, tested.
+            var result = await McpTokens.RotateAsync(db, form["refresh_token"].ToString(), clientId, ct);
+            if (result.Revoked)
+                logger.LogWarning("MCP refresh token reuse for client {ClientId}; connection revoked", clientId);
+            return result.Tokens is { } issued
+                ? TokenResponse(issued)
+                : OAuthError(result.Error ?? "invalid_grant", result.Description ?? "refresh failed");
         }
 
         return OAuthError("unsupported_grant_type", "authorization_code or refresh_token");
@@ -565,7 +524,7 @@ public sealed class McpOAuthController(
         return Redirect(QueryHelpers.AddQueryString(redirectUri, query));
     }
 
-    private IActionResult TokenResponse(McpOAuthStore.IssuedTokens t) => OAuthJson(new Dictionary<string, object>
+    private IActionResult TokenResponse(McpIssuedTokens t) => OAuthJson(new Dictionary<string, object>
     {
         ["access_token"] = t.AccessToken,
         ["token_type"] = "Bearer",
@@ -619,7 +578,8 @@ public sealed class McpOAuthController(
         <ul class="facts">
           <li>Faqat o'qiydi — hech narsani o'zgartirmaydi, o'chirmaydi va hech kimga xabar yubormaydi.</li>
           <li>Faqat sizga ruxsat berilgan bo'limlarni ko'radi.</li>
-          <li>Har bir so'rov jurnalga yoziladi; ulanishni istalgan payt «AI ulanishlar» sahifasida bekor qilish mumkin.</li>
+          <li>Har bir so'rov jurnalga yoziladi; ulanishni istalgan payt panelda «Akkaunt sozlamalari» →
+            «Mening AI ulanishlarim» bo'limida bekor qilish mumkin.</li>
         </ul>
         <form method="post" action="/oauth/authorize" class="row">
           <input type="hidden" name="step" value="consent">

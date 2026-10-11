@@ -140,6 +140,9 @@ namespace WunderkindLC.Infrastructure.Migrations
                     b.Property<string>("Id")
                         .HasColumnType("text");
 
+                    b.Property<bool>("AiAccessEnabled")
+                        .HasColumnType("boolean");
+
                     b.Property<string>("AvatarUrl")
                         .HasColumnType("text");
 
@@ -6201,6 +6204,9 @@ namespace WunderkindLC.Infrastructure.Migrations
                         .IsRequired()
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
+
+                    b.Property<DateTime?>("VolumeAlertAt")
+                        .HasColumnType("timestamp without time zone");
 
                     b.HasKey("Id");
 

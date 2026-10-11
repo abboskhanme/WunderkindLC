@@ -160,6 +160,8 @@ public static class AuditSections
         ["Branch"] = "settings",
         // "McpGrant" — AI ulanish (read-only MCP) bekor qilindi. Sozlamalar → «AI ulanishlar».
         ["McpGrant"] = "settings",
+        // "McpAccess" — administratorga AI ulanish ruxsati yoqildi/o'chirildi (faqat superadmin).
+        ["McpAccess"] = "settings",
         // "Room" — xonalar (Guruhlar → Xonalar sahifasi, ruxsat `classes.rooms`).
         ["Room"] = "classes",
         // "StudentAiAccess" — bitta o'quvchiga AI tekshiruv limiti/premium/blok (pulli API sarfi).

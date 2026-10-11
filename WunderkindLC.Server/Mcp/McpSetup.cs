@@ -111,6 +111,10 @@ public static class McpSetup
         var options = McpOptions.From(builder.Configuration);
         builder.Services.AddSingleton(options);
         builder.Services.AddSingleton(McpOptions.RedirectRules(builder.Configuration));
+        // Superadmin alerts (new connection, volume) — registered even when MCP is off: the OAuth controller
+        // depends on the queue, and the worker's volume watch idles until the feature is enabled.
+        builder.Services.AddSingleton<McpAlertQueue>();
+        builder.Services.AddHostedService<McpAlertWorker>();
 
         var password = ReadOnlyPassword(builder.Configuration);
         var reason = string.IsNullOrEmpty(password) ? "Mcp:ReadOnlyPassword (MCP_DB_RO_PASSWORD) is not configured"

@@ -21,10 +21,19 @@ Ulanish **FAQAT O'QISH uchun** (markaz egasining qat'iy talabi):
 
 | Kim | AI ulana oladimi |
 |---|---|
-| Superadmin | Ha |
-| Administrator (admin) | Ha |
+| Superadmin | Ha, har doim |
+| Administrator (admin) | Faqat superadmin shu akkauntga **alohida yoqqan** bo'lsa |
 | Xodim (staff) | Faqat rolida **«AI ulanish (MCP, faqat o'qish)»** ruxsati berilgan bo'lsa |
 | O'qituvchi, o'quvchi, ota-ona | Yo'q |
+
+**Administratorga ruxsat berish** (faqat superadmin): Sozlamalar → Umumiy → **AI ulanishlar** →
+**«Administratorlar uchun AI ruxsati»** → kerakli administrator yonidagi kalitni yoqing. Kalit
+o'chirilsa, o'sha administratorning barcha AI ulanishlari **darhol** bekor qilinadi. Yoqilganda
+eski (ruxsat o'chiq paytdagi) ulanishlar qayta tirilmaydi — administrator AI ilovada qaytadan
+«Connect» qiladi. Yangi
+administrator qo'shilganda (yoki xodim administratorga ko'tarilganda) AI ulanish avtomatik
+ochilmaydi — superadmin ongli ravishda yoqadi. Har bir yoqish/o'chirish «O'zgarishlar tarixi» ga
+yoziladi.
 
 Xodimga ruxsat berish: **Boshqaruv → Rollar** → rolni tahrirlash → **«AI ulanish (MCP, faqat
 o'qish)»** → Saqlash. Ruxsat olib qo'yilsa, o'sha roldagi xodimlarning AI ulanishlari **keyingi
@@ -37,6 +46,8 @@ https://lc.wunderkindedu.uz/mcp
 ```
 
 Aniq manzil — Sozlamalar → Umumiy → **AI ulanishlar** sahifasining yuqorisida («Nusxa» tugmasi bilan).
+Ulana oladigan administrator va xodim uni o'zining **Akkaunt sozlamalari** → **«Mening AI
+ulanishlarim»** blokida ko'radi.
 
 ## 3. Qanday ulanadi
 
@@ -92,14 +103,44 @@ Ruxsat yo'q bo'limni so'rasangiz, AI "Ruxsat yo'q" javobini oladi — bu jurnald
 Cheklovlar: bitta ro'yxat ko'pi bilan **200 qator** (qarzdorlar va maosh — 50); sana oralig'i ko'pi bilan
 **1 yil**; bitta so'rov ko'pi bilan **60 soniya**; bitta ulanishdan daqiqasiga 120 tadan ortiq so'rov qabul qilinmaydi.
 
-## 5. Ulanishni bekor qilish
+## 5. Ulanishlarni ko'rish va bekor qilish
 
-- **Superadmin**: Sozlamalar → Umumiy → **AI ulanishlar** → kerakli qatorda **«Bekor qilish»**.
-  Ulanish darhol to'xtaydi; AI qayta ulanmoqchi bo'lsa, yana login va parol so'raladi.
+- **Har kim o'zinikini**: profil menyusi → **Akkaunt sozlamalari** (yoki Sozlamalar → Umumiy →
+  **Foydalanuvchi sozlamalari**) → **«Mening AI ulanishlarim»**. U yerda har bir ulangan ilova,
+  ulangan va oxirgi foydalanilgan vaqt, qachongacha amal qilishi va so'rovlar soni ko'rinadi.
+  **«Bekor qilish»** (bitta) yoki **«Hammasini bekor qilish»** — AI ilova **darhol** to'xtaydi,
+  qayta ulanish uchun yana login va parol so'raladi. Tanimagan ulanishni ko'rsangiz — darhol bekor
+  qiling va parolingizni almashtiring. Blok faqat AI ulana oladigan (yoki ulanishi bor) foydalanuvchiga
+  ko'rinadi; boshqalarning ulanishlarini bu yerda ko'rib ham, bekor qilib ham bo'lmaydi.
+- **Superadmin — hammaning ulanishlari**: Sozlamalar → Umumiy → **AI ulanishlar** → kerakli
+  qatorda **«Bekor qilish»**.
+- **Administratorning ruxsatini olish**: o'sha sahifada «Administratorlar uchun AI ruxsati» kalitini o'chirish.
 - **Xodimning ruxsatini olish**: Boshqaruv → Rollar → «AI ulanish» ni o'chirish.
 - **Xodimni o'chirish yoki parolini tiklash** — uning ulanishlari ham darhol ishlamay qoladi.
-- Shu sahifada har bir so'rov ko'rinadi: kim, qaysi ilova, qaysi vosita, nechta qator, natija.
-  Jurnal **1 yil** saqlanadi.
+- «AI ulanishlar» sahifasida har bir so'rov ko'rinadi: kim, qaysi ilova, qaysi vosita, nechta qator,
+  natija. Jurnal **1 yil** saqlanadi.
+
+## 5.1 Superadminga Telegram xabarlari
+
+Superadmin Telegram botga ulangan bo'lsa (Akkaunt sozlamalaridagi telefon raqamini botga
+yuborgan bo'lsa), unga quyidagi xabarlar keladi:
+
+- **Yangi AI ulanish** — kim, qaysi ilova (nomi tekshirilmagan), kalit qayerga yuborilgani va
+  qachon. Tanimasangiz — «AI ulanishlar» sahifasida bekor qiling.
+- **24 soatda odatdan ko'p so'rov** — bitta ulanish 24 soatda **1 000** tadan ortiq so'rov qilsa
+  yoki **50 000** dan ortiq qator o'qisa. Har bir ulanish uchun kuniga ko'pi bilan bitta xabar.
+  Ulanish to'xtatilmaydi — so'rovlar jurnalini ko'rib, kerak bo'lsa o'zingiz bekor qilasiz.
+  «Ulangan AI ilovalar» jadvalida bunday ulanish yonida qizil **«Ko'p so'rov»** belgisi turadi.
+
+Xabarlarda kalit (token), ilova ID raqami yoki boshqa maxfiy ma'lumot bo'lmaydi. Bot sozlanmagan
+bo'lsa xabar server jurnaliga (log) yoziladi.
+
+## 5.2 AI o'qiydigan matnlar
+
+Lid izohi, ota-ona taklifi, ishga ariza kabi tashqi matnlar AI ga berilishidan oldin
+tozalanadi: ko'rinmas belgilar (masalan matn yo'nalishini o'zgartiruvchi va "nol kenglikdagi"
+belgilar) olib tashlanadi va har bir matn **2 000 belgigacha** qisqartiriladi (oxirida
+«… [matn qisqartirildi]»). Oddiy matn — o'zbekcha apostroflar (ʻ ’ ') va emoji bilan — o'zgarmaydi.
 
 ---
 
@@ -127,8 +168,11 @@ logda `MCP disabled: …` va «AI ulanishlar» sahifasida). Ilovaning qolgan qis
 # 0) BACKUP (deploy skill / DEPLOY.md)
 # 1) .env ga parol (bir marta)
 echo "MCP_DB_RO_PASSWORD=$(openssl rand -hex 24)" >> .env
-# 2) Odatdagi deploy: migratsiya AddMcpReadOnly (5 ta Mcp* jadval, DROP yo'q) o'zi qo'llanadi
+# 2) Odatdagi deploy: migratsiyalar AddMcpReadOnly (5 ta Mcp* jadval) va McpAccessAndVolumeAlerts
+#    (Users.AiAccessEnabled, McpGrants.VolumeAlertAt — faqat ustun qo'shadi, DROP yo'q) o'zi qo'llanadi
 docker compose up -d --build app
+# 2.1) Deploydan keyin: administratorlar AI ulanishi O'CHIQ bo'ladi — superadmin kerakli
+#      administratorlarga Sozlamalar → Umumiy → AI ulanishlar → «Administratorlar uchun AI ruxsati» da yoqadi
 # 3) Logda: "MCP (AI ulanish) yoqildi — wlc_ro o'z-o'zini tekshirishdan o'tdi"
 docker logs wunderkindlc-app 2>&1 | grep -i mcp
 ```

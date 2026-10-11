@@ -9,8 +9,10 @@ there) and adapted to this codebase.
 
 ## 1. Decisions
 
-1. **Who:** leadership only — `superadmin`, `admin`, and `staff` whose permissions carry the key
-   `aiAccess` (a row in Boshqaruv → Rollar). Teachers, students, parents — never (`McpAccess.IsAllowed`).
+1. **Who:** leadership only (`McpAccess.IsAllowed`) — a `superadmin` always; an `admin` ONLY when a
+   superadmin explicitly enabled AI access for that account (`Users.AiAccessEnabled`, Sozlamalar → «AI
+   ulanishlar» → «Administratorlar uchun AI ruxsati», security review I7, 2026-10-11); `staff` whose
+   permissions carry the key `aiAccess` (a row in Boshqaruv → Rollar). Teachers, students, parents — never.
 2. **How they connect:** a standard remote MCP server (Streamable HTTP, stateless) at **`/mcp`**
    inside the existing backend. The AI client opens **our** login page (OAuth 2.1 authorization
    code + PKCE S256, dynamic client registration); the password is typed into our page, never into the AI.
@@ -23,11 +25,11 @@ there) and adapted to this codebase.
 
 | Layer | Files |
 |---|---|
-| Domain | `McpEntities.cs` — `McpClient`, `McpGrant`, `McpAuthCode`, `McpToken`, `McpAuditEntry` |
-| Application | `Mcp/McpAccess.cs` (who, PKCE, redirect rules), `Mcp/McpToolContext.cs`, `Mcp/McpAreas.cs`, `Mcp/McpToolRegistry.cs` (+ `McpReadOnlyGrants`), `Mcp/Tools/*.cs` |
-| Infrastructure | `Data/ReadOnlyDatabase.cs`, `Data/McpReadOnlyRole.cs`, `Data/McpModel.cs`, migration `AddMcpReadOnly` |
-| Server | `Mcp/McpSetup.cs` (DI, `/mcp`, audit filter, limits), `McpTokenAuthenticationHandler.cs`, `McpOAuthController.cs`, `McpAdminController.cs` |
-| Client | Sozlamalar → «AI ulanishlar» (superadmin), permission key `aiAccess` |
+| Domain | `McpEntities.cs` — `McpClient`, `McpGrant` (+ `VolumeAlertAt`), `McpAuthCode`, `McpToken`, `McpAuditEntry`; `AppUser.AiAccessEnabled` (admin switch) |
+| Application | `Mcp/McpAccess.cs` (who, PKCE, redirect rules, `McpText.CleanOutput`), `Mcp/McpToolContext.cs`, `Mcp/McpAreas.cs`, `Mcp/McpToolRegistry.cs` (+ `McpReadOnlyGrants`), `Mcp/McpAlerts.cs` (alert texts, superadmin Telegram delivery), `Mcp/Tools/*.cs` |
+| Infrastructure | `Data/ReadOnlyDatabase.cs`, `Data/McpReadOnlyRole.cs`, `Data/McpModel.cs`, `Mcp/McpTokens.cs` (issue, rotate, revoke), `Mcp/McpConnections.cs` (own list, revoke path, admin switch, volume watch), migrations `AddMcpReadOnly`, `McpAccessAndVolumeAlerts` |
+| Server | `Mcp/McpSetup.cs` (DI, `/mcp`, audit filter, limits), `McpTokenAuthenticationHandler.cs`, `McpOAuthController.cs`, `McpAdminController.cs`, `McpMyConnectionsController.cs`, `McpAlertWorker.cs` (alert queue + volume watch) |
+| Client | Sozlamalar → «AI ulanishlar» (superadmin), «Mening AI ulanishlarim» (`components/settings/MyMcpConnections.tsx` in Akkaunt sozlamalari), permission key `aiAccess` |
 | Tests | `WunderkindLC.Tests/Mcp/*` |
 
 Tools live in **Application** (not Server) so the test project — which does not reference Server —
@@ -59,7 +61,15 @@ can execute them.
    `Users.PasswordHash` nor any column with a sensitive name. Otherwise `/mcp` answers 503 and `/oauth/*` 404. There is no fallback to
    the read/write connection. Off by default: without `MCP_DB_RO_PASSWORD` nothing is registered.
 5. **Output scrub.** `McpToolContext.Json` removes every property whose name looks like a
-   credential (`IsSecretName`), however it got into the payload.
+   credential (`IsSecretName`), however it got into the payload. **Every string value** goes through
+   `McpText.CleanOutput` (security review I1 — free text from outside parties is the prompt-injection
+   channel: lead notes/events/lost comments, parent feedback, job applications, contact responses,
+   book-order names, audit summaries): control characters except `\n`/`\t`, format characters (bidi
+   overrides/isolates, zero-width space/joiners, BOM, Unicode TAG U+E0000–E007F), variation selectors
+   supplement, private-use and unassigned code points are stripped; each string is capped at
+   `McpLimits.MaxTextLength` (2 000) + `… [matn qisqartirildi]`. Uzbek apostrophes (ʻ ’ ') and emoji
+   are untouched. One place for all tools — no tool needs its own cleaning. The server instructions
+   still tell the AI that result text is data, not instructions.
 6. **Audit.** Every tool call writes a `McpAuditEntry` (user, client, tool, arguments, outcome, row
    count) through the read/write context, outside the tool. No audit row → no data returned.
 7. **Limits.** 120 calls/min per connection, 2 concurrent per connection, 6 process-wide, 300
@@ -71,7 +81,9 @@ can execute them.
    statement logging off; the startup self-test checks EFFECTIVE privileges (incl. PUBLIC), database
    CREATE/TEMP, schema CREATE, secret `Users` columns and every forbidden table. SDK logs pinned to Warning.
 
-The only MCP code that writes is the OAuth flow and the audit, and it writes only `Mcp*` tables.
+The only MCP code that writes is the OAuth flow, the audit and the connection management endpoints
+(own / superadmin revoke, the admin switch, the volume claim). They write only `Mcp*` tables, the main
+`AuditLog` and the `Users.AiAccessEnabled` flag — never through a tool.
 
 ## 4. OAuth 2.1
 
@@ -82,6 +94,18 @@ consent) · `POST /oauth/token` (authorization_code + PKCE, rotating refresh_tok
 
 - Opaque tokens, stored hashed (SHA-256). Access 1 h, refresh 30 days with rotation, connection 90 days.
 - Code replay or refresh-token reuse revokes the whole connection.
+- **Concurrent refresh (I4).** Rotation is a conditional UPDATE (`ConsumedAt IS NULL`): of two exchanges of
+  one refresh token exactly one succeeds. A token presented again within `McpLimits.RefreshReuseGrace`
+  (30 s) of its rotation gets `invalid_grant` WITHOUT revoking (a client that refreshed twice at the same
+  moment keeps its connection — the winner's new pair is valid); after the window, reuse revokes the
+  connection (`system:refresh-reuse`). Logic: `Infrastructure/Mcp/McpTokens.RotateAsync`, tested on SQLite
+  including a real two-connection race.
+- **New-connection alert (M1).** Right after a code exchange creates a grant, a Telegram message goes to
+  every CURRENT superadmin's personal chat (the staff bot link `TelegramRegistration.UserId`, the channel
+  new-lead cards use): who, role, app name (marked unverified), where the key went, when — never tokens,
+  client/grant ids or chat ids. Fire-and-forget: the controller only hands the text to `McpAlertQueue`
+  (bounded channel, `TryWrite`, inside try/catch); `McpAlertWorker` sends. Bot not configured or no
+  superadmin linked → a WARNING log line with the same text instead.
 - Redirect URIs: EXACTLY one of the supported callbacks (`https://claude.ai/api/mcp/auth_callback`,
   `https://claude.com/api/mcp/auth_callback`, `https://chatgpt.com/connector_platform_oauth_redirect`;
   override with `Mcp:AllowedRedirectUris`) or http on loopback (any port). Host-wide allow-lists were
@@ -156,9 +180,34 @@ Rules:
 ## 6. Admin
 
 Sozlamalar → «AI ulanishlar» (superadmin only, `api/admin/mcp`): status and the reason when off,
-the MCP URL to paste into the AI client, connections per user (client, last used, calls), revoke one
-or all of a user's, the tool-call audit. Revocation is recorded in the main audit log (`McpGrant`,
-section Sozlamalar).
+the MCP URL to paste into the AI client, connections per user (client, last used, calls, 24-hour calls /
+rows and the volume flag), revoke one or all of a user's, the tool-call audit. Revocation is recorded in
+the main audit log (`McpGrant`, section Sozlamalar).
+
+**Per-admin AI access (I7).** `GET api/admin/mcp/admins` lists admin accounts with their switch;
+`PUT api/admin/mcp/admins/{userId}/access {enabled}` sets `Users.AiAccessEnabled` (admins only — 400 for
+superadmin/staff/others), audited as `McpAccess` (→ Sozlamalar). Turning it OFF revokes that admin's
+connections at once (`McpConnections.SetAdminAccessAsync` → the shared revoke path); turning it ON from off
+revokes leftover connections too (made before the switch existed and dormant since) — enabling never resurrects
+an old connection, the admin connects afresh and superadmins get the new-connection alert. The column is NOT
+granted to the read-only role (`McpReadOnlyGrants.RestrictedColumns[AppUser]` is an allow-list; locked by
+`McpAccessMatrixTests`). Deploy note: existing admins lose AI access until a superadmin enables them.
+
+**Volume watch (I7).** `McpAlertWorker` runs every `McpLimits.VolumeCheckInterval` (10 min, while MCP is
+enabled): a connection whose tool calls (> `VolumeCallsPerDay` = 1 000) or returned rows (`McpAudit.RowCount`
+sum > `VolumeRowsPerDay` = 50 000) in the last 24 h exceed a threshold is claimed with a conditional UPDATE
+of `McpGrant.VolumeAlertAt` (at most once per connection per 24 h — durable, a restart does not repeat it),
+logged at WARNING and reported to superadmins on Telegram (same channel as the new-connection alert). The
+connection keeps working — the superadmin decides. The connections table shows «Ko'p so'rov».
+
+**Own connections (L8).** `api/mcp/my` — `[Authorize(Roles = superadmin,admin,staff)]`, every query filtered
+by the caller's NameIdentifier (someone else's grant id → 404):
+`GET` (allowed flag + reason, MCP URL, own connections: app, created, last used, expires, calls) ·
+`POST connections/{id}/revoke` · `POST revoke-all`. Revocation is the SAME path as the superadmin's
+(`McpConnections.RevokeAsync`; the token handler and every refresh check the grant, so access and refresh
+tokens die at once), one `McpGrant` audit row per action. Client: «Mening AI ulanishlarim» block under
+Akkaunt sozlamalari (profile menu page and Sozlamalar → Umumiy → Foydalanuvchi sozlamalari), shown only to
+a panel user who may connect or has connections.
 
 ## 7. Configuration and deploy
 
