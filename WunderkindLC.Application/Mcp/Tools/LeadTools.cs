@@ -69,7 +69,7 @@ public sealed class LeadTools(McpToolContext t)
             throw new McpException("«createdFrom» sanasi «createdTo» dan keyin bo'lishi mumkin emas.");
 
         var db = t.Db;
-        var stages = await LoadStagesAsync(db, ct);
+        var stages = await LoadStagesAsync(ct);
 
         var q = db.Leads.AsQueryable();
         q = st switch
@@ -181,7 +181,7 @@ public sealed class LeadTools(McpToolContext t)
                 l.RepeatCount, l.LastRepeatAt, l.ConvertedStudentId, l.LostAt, l.LostReason))
             .ToListAsync(ct);
 
-        var ctx = await LoadContextAsync(db, rows.Select(r => r.Id).ToList(), ct);
+        var ctx = await LoadContextAsync(rows.Select(r => r.Id).ToList(), ct);
         var users = await t.UserNamesAsync(rows.Select(r => r.AssigneeUserId), ct);
         var today = McpToolContext.Iso(McpToolContext.Today);
 
@@ -250,8 +250,8 @@ public sealed class LeadTools(McpToolContext t)
 
         if (lead is null) return t.Json(new { message = "Lid topilmadi." }, 0);
 
-        var stages = await LoadStagesAsync(db, ct);
-        var ctx = await LoadContextAsync(db, [lead.Id], ct);
+        var stages = await LoadStagesAsync(ct);
+        var ctx = await LoadContextAsync([lead.Id], ct);
         var today = McpToolContext.Iso(McpToolContext.Today);
 
         var teacherIds = ctx.Groups.Values.Select(g => g.TeacherId).Where(x => x.Length > 0).Distinct().ToList();
@@ -384,7 +384,7 @@ public sealed class LeadTools(McpToolContext t)
                 e.LeadId, e.Type ?? "", e.FromStage ?? "", e.ToStage ?? "", e.ActorUserId, e.ActorName ?? "", e.CreatedAt ?? ""))
             .ToList();
 
-        var stageRows = (await LoadStagesAsync(db, ct))
+        var stageRows = (await LoadStagesAsync(ct))
             .Select(s => new LeadAnalytics.StageRow(s.Id, s.Title, s.Color, s.Order)).ToList();
         var sourceRows = (await db.LeadSources.Select(s => new { s.Id, s.Name }).ToListAsync(ct))
             .Select(s => new LeadAnalytics.SourceRow(s.Id, s.Name ?? "")).ToList();
@@ -425,7 +425,7 @@ public sealed class LeadTools(McpToolContext t)
         var titleOf = stageRows.ToDictionary(s => s.Id, s => s.Title, StringComparer.Ordinal);
 
         var total = analytics.Total;
-        var courses = await CourseStatsAsync(db, leads.Select(l => (l.InterestSubject, l.ConvertedStudentId != null)), ct);
+        var courses = await CourseStatsAsync(leads.Select(l => (l.InterestSubject, l.ConvertedStudentId != null)), ct);
 
         return t.Json(new
         {
@@ -490,7 +490,7 @@ public sealed class LeadTools(McpToolContext t)
     {
         t.Require(McpAreas.Leads);
         var db = t.Db;
-        var stages = await LoadStagesAsync(db, ct);
+        var stages = await LoadStagesAsync(ct);
 
         // Kanban column = every NOT-lost lead in its stage (converted ones too); lost leads only in the lost column.
         var cards = await db.Leads.Where(l => l.LostAt == null || l.LostAt == "")
@@ -550,13 +550,14 @@ public sealed class LeadTools(McpToolContext t)
         Dictionary<string, string> SourceNames);
 
     /// <summary>Board order (LeadStagesController.GetAll: by Order; ties by title for determinism).</summary>
-    private static async Task<List<StageInfo>> LoadStagesAsync(IAppDbContext db, CancellationToken ct) =>
-        await db.LeadStages.OrderBy(s => s.Order).ThenBy(s => s.Title).ThenBy(s => s.Id)
+    private async Task<List<StageInfo>> LoadStagesAsync(CancellationToken ct) =>
+        await t.Db.LeadStages.OrderBy(s => s.Order).ThenBy(s => s.Title).ThenBy(s => s.Id)
             .Select(s => new StageInfo(s.Id, s.Title, s.Color, s.Order)).ToListAsync(ct);
 
     /// <summary>Trials of the given leads, their groups, course and source names (LeadsController.LoadTrialContextAsync).</summary>
-    private static async Task<Context> LoadContextAsync(IAppDbContext db, List<string> leadIds, CancellationToken ct)
+    private async Task<Context> LoadContextAsync(List<string> leadIds, CancellationToken ct)
     {
+        var db = t.Db;
         var trials = leadIds.Count == 0
             ? new List<LeadFirstLesson.TrialRow>()
             : (await db.TrialLessons.Where(x => leadIds.Contains(x.LeadId))
@@ -640,9 +641,10 @@ public sealed class LeadTools(McpToolContext t)
     /// the controller): course id → name, then a case-insensitive course-name match, empty = "Ko'rsatilmagan".
     /// Here it is limited to the period's leads.
     /// </summary>
-    private static async Task<List<object>> CourseStatsAsync(
-        IAppDbContext db, IEnumerable<(string? Interest, bool Converted)> leads, CancellationToken ct)
+    private async Task<List<object>> CourseStatsAsync(
+        IEnumerable<(string? Interest, bool Converted)> leads, CancellationToken ct)
     {
+        var db = t.Db;
         var courses = await db.Subjects.Select(s => new { s.Id, s.Name }).ToListAsync(ct);
         var courseById = courses.ToDictionary(c => c.Id, c => c.Name, StringComparer.Ordinal);
         var courseByName = courses.Where(c => !string.IsNullOrWhiteSpace(c.Name))

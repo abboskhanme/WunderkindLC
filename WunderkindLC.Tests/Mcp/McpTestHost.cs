@@ -72,7 +72,13 @@ public sealed class McpTestHost : IDisposable
         try { McpReadOnlyRole.Ensure(ownerConn, _rw.Model, PgRoPassword!); }
         finally { RoleLock.Release(); }
         _pgRoConnection = McpReadOnlyRole.BuildConnectionString(ownerConn, PgRoPassword!);
+        // Prod'dagi startup tekshiruvi AYNAN shu: rol o'qishdan boshqa hech narsa qila olmasligi.
+        var problem = McpReadOnlyRole.SelfTest(_pgRoConnection, _rw.Model);
+        if (problem is not null) throw new InvalidOperationException("wlc_ro self-test failed: " + problem);
     }
+
+    /// <summary>PostgreSQL rejimida faqat-o'qish rolining ulanish satri (SQLite'da <c>null</c>).</summary>
+    public string? PgReadOnlyConnection => _pgRoConnection;
 
     /// <summary>Ma'lumot tayyorlash uchun oddiy kontekst (vositalar buni KO'RMAYDI).</summary>
     public AppDbContext Rw => _rw;
@@ -153,19 +159,19 @@ public sealed class McpTestHost : IDisposable
     }
 
     /// <summary>
-    /// USTUN darajasidagi ruxsat (<see cref="McpReadOnlyGrants.RestrictedColumns"/>, masalan <c>Users</c>,
-    /// <c>CenterMeta</c>): SQLite buni tekshirmaydi, PostgreSQL esa ruxsatsiz ustunni o'qishni
-    /// <c>permission denied</c> bilan rad etadi — ya'ni xato faqat prod'da chiqardi. Shu sabab har so'rovdagi
-    /// <c>"Jadval" AS "a"</c> taxallusi bo'yicha <c>"a"."Ustun"</c> lar ruxsat ro'yxatida bo'lishi tekshiriladi.
+    /// USTUN darajasidagi ruxsat (<see cref="McpReadOnlyRole.ColumnGrants"/>): maxfiy nomli ustuni bor HAR jadval
+    /// (<c>Students</c>, <c>Teachers</c>, <c>TestResults</c> …) va ruxsat ro'yxatli <c>Users</c> / <c>CenterMeta</c> /
+    /// <c>AuditLog</c> butunlay emas, faqat ruxsat etilgan ustunlari bilan beriladi. SQLite buni tekshirmaydi,
+    /// PostgreSQL esa ruxsatsiz ustunni o'qishni <c>permission denied</c> bilan rad etadi — ya'ni xato faqat
+    /// prod'da chiqardi. Shu sabab har so'rovdagi <c>"Jadval" AS "a"</c> taxallusi bo'yicha <c>"a"."Ustun"</c>
+    /// lar ruxsat ro'yxatida bo'lishi tekshiriladi.
     /// </summary>
     public void AssertColumnGrants()
     {
-        foreach (var (type, props) in McpReadOnlyGrants.RestrictedColumns)
+        foreach (var grant in McpReadOnlyRole.ColumnGrants(Rw.Model))
         {
-            var entity = Rw.Model.FindEntityType(type)!;
-            var table = entity.GetTableName()!;
-            var store = Microsoft.EntityFrameworkCore.Metadata.StoreObjectIdentifier.Table(table, entity.GetSchema());
-            var allowed = props.Select(p => entity.FindProperty(p)!.GetColumnName(store)!).ToHashSet(StringComparer.Ordinal);
+            var table = grant.Table;
+            var allowed = grant.Columns!.ToHashSet(StringComparer.Ordinal);
             var aliasRx = new Regex("\"" + Regex.Escape(table) + "\"\\s+AS\\s+\"([A-Za-z0-9_]+)\"");
             foreach (var sql in Sql)
                 foreach (Match a in aliasRx.Matches(sql))
@@ -174,9 +180,10 @@ public sealed class McpTestHost : IDisposable
                     foreach (Match c in Regex.Matches(sql, "\"" + Regex.Escape(alias) + "\"\\.\"([A-Za-z0-9_]+)\""))
                         Assert.True(allowed.Contains(c.Groups[1].Value),
                             $"`{table}.{c.Groups[1].Value}` ustuni faqat-o'qish roliga OCHILMAGAN "
-                            + "(McpReadOnlyGrants.RestrictedColumns) — prod'da `permission denied`. Faqat kerakli ustunlarni Select qiling.");
+                            + "(McpReadOnlyGrants: maxfiy nomli ustun yoki ruxsat ro'yxatida yo'q) — prod'da `permission denied`. "
+                            + "Faqat kerakli ustunlarni Select qiling.");
                 }
-            // Butun qatorni tanlovchi `SELECT *` yoki ustunsiz entity yuklash ham shu jadvalga mumkin emas.
+            // Butun qatorni tanlovchi `SELECT *` ham shu jadvalga mumkin emas.
             Assert.DoesNotContain(Sql, q => q.Contains("SELECT *", StringComparison.Ordinal)
                                              && q.Contains("\"" + table + "\"", StringComparison.Ordinal));
         }

@@ -55,7 +55,7 @@ public sealed class ScheduleTools(McpToolContext t)
         var rid = string.IsNullOrWhiteSpace(roomId) ? null : roomId.Trim();
         var db = t.Db;
 
-        var skipped = await BrokenGroupsAsync(db, tid, rid, ct);
+        var skipped = await BrokenGroupsAsync(tid, rid, ct);
         var p = McpToolContext.Page(page);
         var size = McpToolContext.PageSize(pageSize);
 
@@ -190,9 +190,9 @@ public sealed class ScheduleTools(McpToolContext t)
     /// (no lesson days, or no day yields a valid slot: broken time / end not after start). The panel shows only
     /// their COUNT; here the names too, so they can be fixed.
     /// </summary>
-    private static async Task<List<SkippedGroup>> BrokenGroupsAsync(
-        IAppDbContext db, string? teacherId, string? roomId, CancellationToken ct)
+    private async Task<List<SkippedGroup>> BrokenGroupsAsync(string? teacherId, string? roomId, CancellationToken ct)
     {
+        var db = t.Db;
         var groups = await db.Classes.Where(g => !g.IsArchived)
             .OrderBy(g => g.Name).ThenBy(g => g.Id)
             .Select(g => new { g.Id, g.Name, g.Days, g.StartTime, g.EndTime, g.TeacherId, g.RoomId, g.Room })

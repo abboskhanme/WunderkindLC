@@ -39,6 +39,9 @@ public sealed class FinanceTools(McpToolContext t)
     /// <summary>The discount report accepts at most this many months.</summary>
     public const int MaxReportMonths = 24;
 
+    /// <summary>Page cap of tools that build a full ledger per row (debtors, teacher salaries).</summary>
+    public const int HeavyPageSize = 50;
+
     // =====================================================================
     //  finance_summary
     // =====================================================================
@@ -335,12 +338,12 @@ public sealed class FinanceTools(McpToolContext t)
         var ordered = candidates.OrderBy(c => c.Balance).ThenBy(c => c.FullName, StringComparer.Ordinal)
             .ThenBy(c => c.Id, StringComparer.Ordinal).ToList();
         var p = McpToolContext.Page(page);
-        var size = McpToolContext.PageSize(pageSize);
+        var size = Math.Min(McpToolContext.PageSize(pageSize), HeavyPageSize);   // a ledger per row
         var pageIds = ordered.Skip((p - 1) * size).Take(size).Select(c => c.Id).ToList();
 
         var students = (await db.Students.Where(s => pageIds.Contains(s.Id)).ToListAsync(ct)).ToDictionary(s => s.Id);
         var memberships = await db.StudentGroups.Where(m => pageIds.Contains(m.StudentId)).ToListAsync(ct);
-        var (groups, teacherNames) = await GroupsAndTeachersAsync(db, memberships.Select(m => m.GroupId), ct);
+        var (groups, teacherNames) = await GroupsAndTeachersAsync(memberships.Select(m => m.GroupId), ct);
         var book = await DiscountBook.LoadAsync(db, pageIds);
         var current = TuitionService.CurrentMonth();
 
@@ -352,7 +355,7 @@ public sealed class FinanceTools(McpToolContext t)
             var debt = -s.Balance;
             var lines = own.Count == 0
                 ? new List<GroupDebt>()
-                : (await GroupDebtsAsync(db, s, own, groups, teacherNames, book, current))
+                : (await GroupDebtsAsync(s, own, groups, teacherNames, book, current))
                     .Where(l => l.Debt > 0).OrderByDescending(l => l.Debt).ToList();
             items.Add(new
             {
@@ -409,8 +412,7 @@ public sealed class FinanceTools(McpToolContext t)
         var chargeRows = await db.MonthlyCharges.Where(c => c.StudentId == st.Id)
             .Select(c => new { c.Month, c.GroupId, c.Amount, c.Discount, c.Locked }).ToListAsync(ct);
         var memberships = await db.StudentGroups.Where(m => m.StudentId == st.Id).ToListAsync(ct);
-        var (groups, teacherNames) = await GroupsAndTeachersAsync(db,
-            memberships.Select(m => m.GroupId).Concat(chargeRows.Where(c => c.GroupId != null).Select(c => c.GroupId!)), ct);
+        var (groups, teacherNames) = await GroupsAndTeachersAsync(memberships.Select(m => m.GroupId).Concat(chargeRows.Where(c => c.GroupId != null).Select(c => c.GroupId!)), ct);
         var courseIds = groups.Values.Select(g => g.CourseId).Where(c => !string.IsNullOrEmpty(c)).Distinct().ToList();
         var courses = await db.Subjects.Where(s => courseIds.Contains(s.Id))
             .Select(s => new { s.Id, s.Name }).ToDictionaryAsync(s => s.Id, s => s.Name, ct);
@@ -436,7 +438,7 @@ public sealed class FinanceTools(McpToolContext t)
         var book = await DiscountBook.LoadForStudentAsync(db, st.Id);
         var byGroup = memberships.Count == 0
             ? new List<GroupDebt>()
-            : await GroupDebtsAsync(db, st, memberships, groups, teacherNames, book, TuitionService.CurrentMonth());
+            : await GroupDebtsAsync(st, memberships, groups, teacherNames, book, TuitionService.CurrentMonth());
 
         var payments = ledger.Payments.Concat(voided).OrderByDescending(x => x.Date, StringComparer.Ordinal)
             .Select(x => new
@@ -497,8 +499,11 @@ public sealed class FinanceTools(McpToolContext t)
 
         var boxes = await db.Cashboxes.ToListAsync(ct);
         // Balances only with finance.main — the panel's cash box cards are `finance.main` (ReadRequiresPerm).
+        // The panel's service scans every cash-box transaction; cached briefly (key does not depend on the
+        // caller — the permission check above runs first) so a looping caller does not repeat the scan.
         var balances = finance
-            ? await CashboxService.BalancesAsync(db, McpToolContext.Iso(f), McpToolContext.Iso(e), ct)
+            ? await t.CachedAsync($"cashboxes:{McpToolContext.Iso(f)}:{McpToolContext.Iso(e)}", TimeSpan.FromSeconds(60),
+                () => CashboxService.BalancesAsync(db, McpToolContext.Iso(f), McpToolContext.Iso(e), ct))
             : new Dictionary<string, CashboxService.Balance>();
 
         var ordered = CashboxService.Active(boxes)
@@ -562,7 +567,7 @@ public sealed class FinanceTools(McpToolContext t)
         var tq = db.Teachers.Where(x => !x.IsArchived || paidIds.Contains(x.Id));
         var total = await tq.CountAsync(ct);
         var p = McpToolContext.Page(page);
-        var size = McpToolContext.PageSize(pageSize);
+        var size = Math.Min(McpToolContext.PageSize(pageSize), HeavyPageSize);   // a ledger per row
         var teachers = await tq.OrderBy(x => x.FullName).ThenBy(x => x.Id).Skip((p - 1) * size).Take(size).ToListAsync(ct);
 
         var items = new List<object>();
@@ -800,9 +805,10 @@ public sealed class FinanceTools(McpToolContext t)
     }
 
     /// <summary>Groups (by id) and their teachers' names — small lookups for the ledger lines.</summary>
-    private static async Task<(Dictionary<string, Group> Groups, Dictionary<string, string> TeacherNames)> GroupsAndTeachersAsync(
-        IAppDbContext db, IEnumerable<string> groupIds, CancellationToken ct)
+    private async Task<(Dictionary<string, Group> Groups, Dictionary<string, string> TeacherNames)> GroupsAndTeachersAsync(
+        IEnumerable<string> groupIds, CancellationToken ct)
     {
+        var db = t.Db;
         var ids = groupIds.Where(x => !string.IsNullOrEmpty(x)).Distinct().ToList();
         var groups = (await db.Classes.Where(g => ids.Contains(g.Id)).ToListAsync(ct)).ToDictionary(g => g.Id);
         var teacherIds = groups.Values.Select(g => g.TeacherId).Where(x => !string.IsNullOrEmpty(x)).Distinct().ToList();
@@ -819,11 +825,11 @@ public sealed class FinanceTools(McpToolContext t)
     /// months of an active membership as payable in advance (with the full fee as "remaining"); those are
     /// not debt.</para>
     /// </summary>
-    private static async Task<List<GroupDebt>> GroupDebtsAsync(
-        IAppDbContext db, Student s, IReadOnlyCollection<StudentGroup> memberships,
+    private async Task<List<GroupDebt>> GroupDebtsAsync(Student s, IReadOnlyCollection<StudentGroup> memberships,
         IReadOnlyDictionary<string, Group> groups, IReadOnlyDictionary<string, string> teacherNames,
         DiscountBook book, string currentMonth)
     {
+        var db = t.Db;
         var result = new List<GroupDebt>();
         foreach (var grp in memberships.Where(m => m.Status != "trial").GroupBy(m => m.GroupId)
                      .OrderBy(g => g.Key, StringComparer.Ordinal))

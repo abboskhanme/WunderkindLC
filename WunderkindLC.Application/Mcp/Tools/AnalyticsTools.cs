@@ -46,10 +46,12 @@ public sealed class AnalyticsTools(McpToolContext t)
     {
         t.Require(McpAreas.CourseAnalytics);
         var finance = t.CanReadFinance;
-        var n = Math.Clamp(months is null or <= 0 ? DefaultMonths : months.Value, 1, MaxMonths);
+        // Snapped to a few fixed windows: each distinct value is a full rebuild (whole membership table),
+        // so a looping caller cannot force 24 different cache entries.
+        var n = SnapMonths(months);
 
         var data = await t.CachedAsync($"course_analytics:{n}:{McpToolContext.Iso(McpToolContext.Today)}", CacheTtl,
-            () => BuildCourseAnalyticsAsync(t.Db, n, ct));
+            () => BuildCourseAnalyticsAsync(n, ct));
 
         var courses = data.Courses.AsEnumerable();
         if (!string.IsNullOrWhiteSpace(courseId))
@@ -128,8 +130,9 @@ public sealed class AnalyticsTools(McpToolContext t)
     /// Server project): same loads, same projection (incl. <c>PastPeriods</c> — membership-periods.md §7),
     /// same "archived student = left" rule, all arithmetic in <see cref="Services.CourseAnalytics"/>.
     /// </summary>
-    private static async Task<CourseAnalyticsData> BuildCourseAnalyticsAsync(IAppDbContext db, int monthCount, CancellationToken ct)
+    private async Task<CourseAnalyticsData> BuildCourseAnalyticsAsync(int monthCount, CancellationToken ct)
     {
+        var db = t.Db;
         var months = Services.CourseAnalytics.LastMonths(McpToolContext.Today, monthCount);
 
         // Archived groups are needed too: the history of pupils who went through them must not vanish.
@@ -307,4 +310,13 @@ public sealed class AnalyticsTools(McpToolContext t)
 
     private static string GradeLabel(int grade) =>
         grade == SchoolGrades.Graduated ? "Maktabni bitirgan" : $"{grade}-sinf";
+
+    private static readonly int[] MonthWindows = [3, 6, 12, 24];
+
+    /// <summary>Requested months → the smallest fixed window that covers it (3, 6, 12 or 24).</summary>
+    internal static int SnapMonths(int? months)
+    {
+        var want = Math.Clamp(months is null or <= 0 ? DefaultMonths : months.Value, 1, MaxMonths);
+        return MonthWindows.First(w => w >= want);
+    }
 }

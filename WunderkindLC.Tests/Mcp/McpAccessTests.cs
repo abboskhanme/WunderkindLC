@@ -161,20 +161,24 @@ public class McpAccessTests
 
     [Theory]
     [InlineData("https://claude.ai/api/mcp/auth_callback", true)]
+    [InlineData("https://claude.com/api/mcp/auth_callback", true)]
     [InlineData("https://chatgpt.com/connector_platform_oauth_redirect", true)]
     [InlineData("http://localhost:33418/callback", true)]
     [InlineData("http://127.0.0.1:8123/cb", true)]
+    [InlineData("https://chatgpt.com/cb", false)]                            // to'g'ri host, lekin AYNAN callback emas
+    [InlineData("https://claude.ai/api/mcp/other", false)]
+    [InlineData("https://claude.ai/api/mcp/auth_callback?x=1", false)]
     [InlineData("https://evil.example.com/cb", false)]
-    [InlineData("https://claude.ai.evil.com/cb", false)]
-    [InlineData("http://claude.ai/cb", false)]                       // https emas
-    [InlineData("https://claude.ai:8443/cb", false)]                 // nostandart port
-    [InlineData("https://user@claude.ai/cb", false)]                 // user-info
-    [InlineData("https://claude.ai/cb#frag", false)]                 // fragment
-    [InlineData("https://CLAUDE.ai/cb", false)]                      // kanonik emas
-    [InlineData("cursor://anysphere.cursor-retrieval/oauth", false)] // maxsus sxema
+    [InlineData("https://claude.ai.evil.com/api/mcp/auth_callback", false)]
+    [InlineData("http://claude.ai/api/mcp/auth_callback", false)]           // https emas
+    [InlineData("https://claude.ai:8443/api/mcp/auth_callback", false)]     // nostandart port
+    [InlineData("https://user@claude.ai/api/mcp/auth_callback", false)]     // user-info
+    [InlineData("https://claude.ai/api/mcp/auth_callback#f", false)]        // fragment
+    [InlineData("https://CLAUDE.ai/api/mcp/auth_callback", false)]          // kanonik emas
+    [InlineData("cursor://anysphere.cursor-retrieval/oauth", false)]        // maxsus sxema
     [InlineData("javascript:alert(1)", false)]
     [InlineData("", false)]
-    public void Qaytish_manzili_faqat_ruxsat_etilgan_AI_hostlariga(string uri, bool allowed) =>
+    public void Qaytish_manzili_faqat_AI_ilovalarning_AYNAN_callback_manzili(string uri, bool allowed) =>
         Assert.Equal(allowed, new McpRedirectRules().IsAllowed(uri));
 
     [Fact]
@@ -185,7 +189,7 @@ public class McpAccessTests
 
         Assert.Equal("https://claude.ai/api/mcp/auth_callback", rules.Match(registered, "https://claude.ai/api/mcp/auth_callback"));
         Assert.Null(rules.Match(registered, "https://claude.ai/api/mcp/other"));
-        Assert.Null(rules.Match(registered, "https://chatgpt.com/cb"));
+        Assert.Null(rules.Match(registered, "https://chatgpt.com/connector_platform_oauth_redirect"));   // ro'yxatda yo'q
         // Loopback: port farq qilishi mumkin (RFC 8252 §7.3), yo'l — yo'q.
         Assert.Equal("http://localhost:2000/cb", rules.Match(registered, "http://localhost:2000/cb"));
         Assert.Null(rules.Match(registered, "http://localhost:2000/boshqa"));
@@ -195,11 +199,11 @@ public class McpAccessTests
     }
 
     [Fact]
-    public void Ruxsat_royxatidan_olib_tashlangan_host_endi_otmaydi()
+    public void Sozlamadagi_royxat_standartni_ALMASHTIRADI_va_yaroqsiz_qiymat_tashlanadi()
     {
-        var rules = new McpRedirectRules(["chatgpt.com"]);
+        var rules = new McpRedirectRules(["https://chatgpt.com/connector_platform_oauth_redirect", "http://evil.example.com/x", " "]);
+        Assert.Equal(["https://chatgpt.com/connector_platform_oauth_redirect"], rules.AllowedUris);
         Assert.Null(rules.Match(["https://claude.ai/api/mcp/auth_callback"], "https://claude.ai/api/mcp/auth_callback"));
-        Assert.True(rules.IsAllowed("https://chatgpt.com/cb"));
     }
 
     [Theory]

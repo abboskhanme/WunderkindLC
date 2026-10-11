@@ -95,25 +95,39 @@ public static class McpLimits
     /// <summary>Tool calls per connection per minute.</summary>
     public const int CallsPerMinute = 120;
 
+    /// <summary>Overall time budget of ONE tool call (all its SQL statements together).</summary>
+    public static readonly TimeSpan CallTimeout = TimeSpan.FromSeconds(60);
+
     /// <summary>Audit rows older than this are pruned.</summary>
     public const int AuditRetentionDays = 365;
 }
 
-/// <summary>Where an OAuth client may send the user back to.</summary>
+/// <summary>
+/// Where an OAuth client may send the user back to: EXACT callback URLs of the supported AI apps
+/// (OAuth security best practice — the code's safety must not depend on every path of a vendor's
+/// domain), plus http on a loopback host (desktop apps; any port and path).
+/// </summary>
 public sealed class McpRedirectRules
 {
-    /// <summary>Hosts an OAuth client may redirect to (https). Loopback http is always allowed.</summary>
-    public static readonly string[] DefaultHosts = ["claude.ai", "claude.com", "chatgpt.com", "chat.openai.com"];
+    /// <summary>The documented MCP-connector callbacks of Claude and ChatGPT. Override with
+    /// <c>Mcp:AllowedRedirectUris</c> / <c>MCP_ALLOWED_REDIRECT_URIS</c> (comma-separated, exact).</summary>
+    public static readonly string[] DefaultUris =
+    [
+        "https://claude.ai/api/mcp/auth_callback",
+        "https://claude.com/api/mcp/auth_callback",
+        "https://chatgpt.com/connector_platform_oauth_redirect",
+    ];
 
-    public IReadOnlySet<string> AllowedHosts { get; }
+    public IReadOnlySet<string> AllowedUris { get; }
 
-    public McpRedirectRules(IEnumerable<string?>? hosts = null)
+    public McpRedirectRules(IEnumerable<string?>? uris = null)
     {
-        var set = (hosts ?? [])
-            .Select(h => (h ?? "").Trim().ToLowerInvariant())
-            .Where(h => h.Length > 0)
+        var set = (uris ?? [])
+            .Select(u => (u ?? "").Trim())
+            .Where(u => u.Length > 0 && Uri.TryCreate(u, UriKind.Absolute, out var x) && x.Scheme == Uri.UriSchemeHttps
+                        && string.Equals(u, x.AbsoluteUri, StringComparison.Ordinal))
             .ToHashSet(StringComparer.Ordinal);
-        AllowedHosts = set.Count > 0 ? set : new HashSet<string>(DefaultHosts, StringComparer.Ordinal);
+        AllowedUris = set.Count > 0 ? set : new HashSet<string>(DefaultUris, StringComparer.Ordinal);
     }
 
     public static bool IsLoopback(Uri uri) => uri.IdnHost is "localhost" or "127.0.0.1" or "[::1]" or "::1";
@@ -122,7 +136,7 @@ public sealed class McpRedirectRules
     /// A redirect URI we will ever send a code (or an error) to:
     /// <list type="bullet">
     ///   <item>exact canonical form (raw string == <see cref="Uri.AbsoluteUri"/>) — no case/encoding tricks;</item>
-    ///   <item>https to an allow-listed host (compared on <see cref="Uri.IdnHost"/>), or http on loopback;</item>
+    ///   <item>https: EXACTLY one of <see cref="AllowedUris"/>; http: only on a loopback host;</item>
     ///   <item>no fragment, no user-info, at most <see cref="McpLimits.MaxUriLength"/> characters.</item>
     /// </list>
     /// Custom schemes (cursor://, vscode://) are refused.
@@ -134,14 +148,13 @@ public sealed class McpRedirectRules
         if (!string.Equals(value, uri.AbsoluteUri, StringComparison.Ordinal)) return false;
         if (uri.Fragment.Length > 0 || uri.UserInfo.Length > 0) return false;
         if (uri.Scheme == Uri.UriSchemeHttp) return IsLoopback(uri);
-        return uri.Scheme == Uri.UriSchemeHttps && uri.IsDefaultPort
-            && AllowedHosts.Contains(uri.IdnHost.ToLowerInvariant());
+        return uri.Scheme == Uri.UriSchemeHttps && AllowedUris.Contains(value);
     }
 
     /// <summary>
     /// Exact match against a registered URI; for loopback redirects the port may differ
     /// (RFC 8252 §7.3). The result must ALSO pass today's allow-list — a client registered
-    /// before a host was removed gets nothing.
+    /// before a URI was removed gets nothing.
     /// </summary>
     public string? Match(IReadOnlyList<string> registered, string? requested)
     {

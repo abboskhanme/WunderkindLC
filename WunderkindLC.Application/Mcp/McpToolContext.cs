@@ -129,11 +129,28 @@ public sealed class McpToolContext(
     /// </summary>
     public async Task<T> CachedAsync<T>(string key, TimeSpan ttl, Func<Task<T>> factory)
     {
-        if (cache.TryGetValue("mcp:" + key, out T? hit) && hit is not null) return hit;
-        var value = await factory();
-        cache.Set("mcp:" + key, value, ttl);
-        return value;
+        var k = "mcp:" + key;
+        if (cache.TryGetValue(k, out T? hit) && hit is not null) return hit;
+        // Single flight: concurrent misses of one key wait for ONE computation instead of each running it.
+        var gate = CacheGates.GetOrAdd(k, _ => new SemaphoreSlim(1, 1));
+        await gate.WaitAsync();
+        try
+        {
+            if (cache.TryGetValue(k, out hit) && hit is not null) return hit;
+            var value = await factory();
+            cache.Set(k, value, ttl);
+            return value;
+        }
+        finally
+        {
+            gate.Release();
+            // Late arrivals find the cached value; dropping the gate keeps the dictionary bounded.
+            CacheGates.TryRemove(new KeyValuePair<string, SemaphoreSlim>(k, gate));
+        }
     }
+
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, SemaphoreSlim> CacheGates =
+        new(StringComparer.Ordinal);
 
     public static int Page(int? page) => Math.Max(1, page ?? 1);
 

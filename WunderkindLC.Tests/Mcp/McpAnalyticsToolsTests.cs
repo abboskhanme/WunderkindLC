@@ -13,6 +13,18 @@ public class McpAnalyticsToolsTests
     // Sanalar BUGUNGA nisbatan: m0 — joriy oy, m1 — o'tgan oy.
     private static readonly DateOnly M0 = new(McpToolContext.Today.Year, McpToolContext.Today.Month, 1);
     private static readonly DateOnly M1 = M0.AddMonths(-1);
+
+    [Theory]
+    [InlineData(null, 6)]
+    [InlineData(0, 6)]
+    [InlineData(1, 3)]
+    [InlineData(3, 3)]
+    [InlineData(4, 6)]
+    [InlineData(7, 12)]
+    [InlineData(13, 24)]
+    [InlineData(1000, 24)]
+    public void Oylar_oynasi_qatiy_qiymatlarga_yaxlitlanadi(int? asked, int expected) =>
+        Assert.Equal(expected, AnalyticsTools.SnapMonths(asked));
     private static string D(DateOnly month, int day) => month.AddDays(day - 1).ToString("yyyy-MM-dd");
     private static string Mon(DateOnly month) => month.ToString("yyyy-MM");
 
@@ -70,7 +82,8 @@ public class McpAnalyticsToolsTests
 
         var json = McpTestHost.Parse(await host.Tool<AnalyticsTools>(McpTestHost.SuperAdmin()).CourseAnalytics(months: 2));
 
-        Assert.Equal(new[] { Mon(M1), Mon(M0) }, json.GetProperty("months").EnumerateArray().Select(m => m.GetString()));
+        // 2 oy so'ralsa 3 oylik oynaga yaxlitlanadi (3/6/12/24 — har xil qiymat butun jadvalni qayta qurardi).
+        Assert.Equal(new[] { Mon(M1.AddMonths(-1)), Mon(M1), Mon(M0) }, json.GetProperty("months").EnumerateArray().Select(m => m.GetString()));
         Assert.Equal(new[] { "c3", "c1", "c2" },   // nom bo'yicha: Bo'sh kurs, Ingliz tili, Matematika
             json.GetProperty("courses").EnumerateArray().Select(c => c.GetProperty("id").GetString()));
 

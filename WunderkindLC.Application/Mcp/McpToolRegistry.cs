@@ -43,23 +43,28 @@ public static class McpToolRegistry
 /// What the read-only PostgreSQL role (<c>wlc_ro</c>) may SELECT. Deny-by-default:
 /// <list type="bullet">
 ///   <item>tables — only entities listed by the tools (<see cref="McpToolRegistry.ReadEntities"/>);</item>
-///   <item><see cref="RestrictedColumns"/> — those entities get a COLUMN-level grant instead of the
-///     whole table, so a secret column cannot be read even by a hand-written query;</item>
+///   <item>columns — a column whose NAME looks sensitive (<see cref="IsSensitiveColumn"/>: file links, chat and
+///     device ids, secrets, locations, test keys…) is NEVER granted, on any table, including columns a future
+///     migration adds: a table with such a column gets a COLUMN-level grant of everything else
+///     (<see cref="GrantedProperties"/>), computed from the EF model at startup;</item>
+///   <item><see cref="RestrictedColumns"/> — explicit allow-lists that stay authoritative for their entities
+///     (only what a tool needs, not "everything but the sensitive");</item>
 ///   <item><see cref="Forbidden"/> — never granted, whatever a tool declares (a test fails first).</item>
 /// </list>
 /// Table and column names are resolved from the EF model at startup (Infrastructure
-/// <c>McpReadOnlyRole</c>), so renames follow automatically.
+/// <c>McpReadOnlyRole</c>), so renames follow automatically. The MCP read-only DbContext's model is reduced
+/// by the same rule (Infrastructure <c>McpReadOnlyModel</c>), so a full-entity load never selects a closed column.
 /// </summary>
 public static class McpReadOnlyGrants
 {
     /// <summary>Property names that may be read; everything else on the entity is closed.</summary>
     public static readonly IReadOnlyDictionary<Type, string[]> RestrictedColumns = new Dictionary<Type, string[]>
     {
-        // No Email (= login), PasswordHash, InitialPassword, Permissions, lockout counters.
+        // No Email (= login), PasswordHash, InitialPassword, Permissions, lockout counters, avatar file link.
         [typeof(AppUser)] =
         [
             nameof(AppUser.Id), nameof(AppUser.FullName), nameof(AppUser.Role), nameof(AppUser.Phone),
-            nameof(AppUser.Position), nameof(AppUser.RoleTemplateId), nameof(AppUser.AvatarUrl),
+            nameof(AppUser.Position), nameof(AppUser.RoleTemplateId),
         ],
         // Change history: never the before/after snapshots (they can hold old values of any field) —
         // tools return only the human-readable summary.
@@ -91,12 +96,48 @@ public static class McpReadOnlyGrants
         typeof(McpClient), typeof(McpGrant), typeof(McpAuthCode), typeof(McpToken), typeof(McpAuditEntry),
     ];
 
-    /// <summary>Entities granted as whole tables.</summary>
-    public static IReadOnlyCollection<Type> Tables =>
-        McpToolRegistry.ReadEntities.Where(t => !RestrictedColumns.ContainsKey(t)).ToArray();
+    /// <summary>Name endings of sensitive columns: file links (<c>PhotoUrl</c>, <c>CvUrl</c>…) and Telegram file ids.</summary>
+    private static readonly string[] SensitiveSuffixes = ["Url", "FileId"];
 
-    /// <summary>Entities granted column by column (only those a tool actually reads).</summary>
-    public static IReadOnlyDictionary<Type, string[]> Columns =>
-        RestrictedColumns.Where(kv => McpToolRegistry.ReadEntities.Contains(kv.Key))
-            .ToDictionary(kv => kv.Key, kv => kv.Value);
+    /// <summary>Name parts of sensitive columns: chat/device ids, credentials, documents, locations, test keys.</summary>
+    private static readonly string[] SensitiveParts =
+    [
+        "ChatId", "Password", "Token", "Secret", "Hash", "ApiKey", "Passport", "AnswerKey", "DeviceUserId",
+        "TgUsername", "Latitude", "Longitude", "LocationAddress", "LocationUpdatedAt",
+    ];
+
+    /// <summary>Whole names of sensitive columns (test access codes, submitted answers, logins, permission lists).</summary>
+    private static readonly HashSet<string> SensitiveNames = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "Code", "Answers", "Permissions", "Email", "InitialPassword",
+    };
+
+    /// <summary>
+    /// The sensitive-column NAME rule (case-insensitive — when in doubt it closes). A column it matches is never
+    /// granted to the read-only role, on any table, now or after a future migration. Pure.
+    /// </summary>
+    public static bool IsSensitiveColumn(string name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return false;
+        foreach (var suffix in SensitiveSuffixes)
+            if (name.EndsWith(suffix, StringComparison.OrdinalIgnoreCase)) return true;
+        foreach (var part in SensitiveParts)
+            if (name.Contains(part, StringComparison.OrdinalIgnoreCase)) return true;
+        return SensitiveNames.Contains(name);
+    }
+
+    /// <summary>
+    /// What the role may read of one entity, given its mapped properties (from the EF model):
+    /// <c>null</c> = the whole table (no sensitive column); otherwise the property names of a COLUMN-level
+    /// grant — the <see cref="RestrictedColumns"/> allow-list for those entities, every non-sensitive column
+    /// for the rest. A sensitive name is dropped even from an allow-list. Pure.
+    /// </summary>
+    public static string[]? GrantedProperties(Type entity, IEnumerable<string> mappedProperties)
+    {
+        if (RestrictedColumns.TryGetValue(entity, out var allowed))
+            return allowed.Where(p => !IsSensitiveColumn(p)).ToArray();
+        var mapped = mappedProperties.ToList();
+        var open = mapped.Where(p => !IsSensitiveColumn(p)).ToArray();
+        return open.Length == mapped.Count ? null : open;
+    }
 }

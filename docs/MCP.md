@@ -52,13 +52,15 @@ Aniq manzil — Sozlamalar → Umumiy → **AI ulanishlar** sahifasining yuqoris
 4. Suhbatda ulagichni tanlab savol bering.
 
 ### Boshqa MCP mijozlari
-Kalit faqat **ruxsat etilgan manzillarga** yuboriladi: `claude.ai`, `claude.com`, `chatgpt.com`,
-`chat.openai.com` (https) va kompyuterning o'zidagi dasturlar (`http://127.0.0.1`,
-`http://localhost`). `cursor://`, `vscode://` kabi manzil bilan qaytadigan ilovalar ulana olmaydi.
-Yangi AI xizmati kerak bo'lsa — dasturchi `MCP_ALLOWED_REDIRECT_HOSTS` ga uning domenini qo'shadi.
+Kalit faqat Claude va ChatGPT'ning **aniq callback manzillariga** (`https://claude.ai/api/mcp/auth_callback`,
+`https://claude.com/api/mcp/auth_callback`, `https://chatgpt.com/connector_platform_oauth_redirect`) va
+kompyuterning o'zidagi dasturlarga (`http://127.0.0.1`, `http://localhost`) yuboriladi. `cursor://`, `vscode://`
+kabi manzil bilan qaytadigan ilovalar ulana olmaydi. Yangi AI xizmati kerak bo'lsa — dasturchi uning callback
+manzilini `MCP_ALLOWED_REDIRECT_URIS` ga qo'shadi.
 
-Ruxsat sahifasida **kalit qayerga yuborilishi** yoziladi («kalit claude.ai ga yuboriladi»).
-Tanimagan manzilni ko'rsangiz — **«Rad etish»** ni bosing.
+Ruxsat sahifasida **kalit qayerga yuborilishi** to'liq manzili bilan yoziladi. Ilova nomi — ilovaning o'zi
+aytgan, TEKSHIRILMAGAN nom. **Hozirgina o'zingiz AI ilovasida «Connect» ni bosmagan bo'lsangiz — «Rad etish»**
+ni bosing va superadminga xabar bering. Har bir yangi ulanish «O'zgarishlar tarixi» ga yoziladi.
 
 > Ulanish 1 soatlik kalit bilan ishlaydi, AI ilovasi uni o'zi yangilab turadi. 30 kun ishlatilmasa
 > yoki ulanganiga **90 kun** bo'lsa, qayta kirish so'raladi. **Parolingiz o'zgartirilsa yoki
@@ -87,8 +89,8 @@ ko'chirishdan oldin o'zingiz tekshiring.
 
 Ruxsat yo'q bo'limni so'rasangiz, AI "Ruxsat yo'q" javobini oladi — bu jurnalda ham ko'rinadi.
 
-Cheklovlar: bitta ro'yxat ko'pi bilan **200 qator**; sana oralig'i ko'pi bilan **1 yil**; bitta
-ulanishdan daqiqasiga 120 tadan ortiq so'rov qabul qilinmaydi.
+Cheklovlar: bitta ro'yxat ko'pi bilan **200 qator** (qarzdorlar va maosh — 50); sana oralig'i ko'pi bilan
+**1 yil**; bitta so'rov ko'pi bilan **60 soniya**; bitta ulanishdan daqiqasiga 120 tadan ortiq so'rov qabul qilinmaydi.
 
 ## 5. Ulanishni bekor qilish
 
@@ -111,7 +113,7 @@ Arxitektura va qoidalar: `docs/SPEC-mcp.md`.
 |---|---|
 | `MCP_DB_RO_PASSWORD` | **Majburiy.** `wlc_ro` rolining paroli: `openssl rand -hex 24` (16–128 belgi, `[A-Za-z0-9_-]`). Bo'sh = MCP o'chiq |
 | `MCP_PUBLIC_BASE_URL` | Ixtiyoriy. Bo'sh bo'lsa `https://<APP_HOST>` |
-| `MCP_ALLOWED_REDIRECT_HOSTS` | Ixtiyoriy, vergul bilan. Sukut: `claude.ai,claude.com,chatgpt.com,chat.openai.com` |
+| `MCP_ALLOWED_REDIRECT_URIS` | Ixtiyoriy, vergul bilan, AYNAN manzillar. Sukut: Claude va ChatGPT callback'lari (yuqorida) |
 
 Qo'lda SQL **kerak emas**: ilova har ishga tushganda (migratsiyalardan keyin) egasi ulanishi orqali
 `wlc_ro` rolini yaratadi/yangilaydi — avval barcha huquqlarni oladi, keyin faqat vositalar o'qiydigan

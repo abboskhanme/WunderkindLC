@@ -71,7 +71,8 @@ public class McpBackOfficeToolsTests
         Assert.Equal("s1", k1.GetProperty("studentId").GetString());
         Assert.Equal("download", k1.GetProperty("channel").GetString());
         Assert.Equal(JsonValueKind.Null, k1.GetProperty("telegramDelivered").ValueKind);
-        Assert.True(k1.GetProperty("pdfAttached").GetBoolean());
+        // PdfUrl is not granted to the read-only role (sensitive column name) — not even "is a PDF attached".
+        Assert.False(k1.TryGetProperty("pdfAttached", out _));
         Assert.Equal("2026-09-10T10:00:00", k1.GetProperty("date").GetString());
         var k2 = Item(json, "k2");
         Assert.Equal("telegram", k2.GetProperty("channel").GetString());
@@ -222,7 +223,7 @@ public class McpBackOfficeToolsTests
         var o2 = Item(json, "o2");
         Assert.True(o2.GetProperty("awaitingPickup").GetBoolean());
         Assert.False(o2.GetProperty("paid").GetBoolean());
-        Assert.True(Item(json, "o3").GetProperty("receiptAttached").GetBoolean());
+        Assert.False(Item(json, "o3").TryGetProperty("receiptAttached", out _));   // ReceiptUrl is not granted
         var o4 = Item(json, "o4");
         Assert.True(o4.GetProperty("overdue").GetBoolean());
         Assert.False(o4.GetProperty("paid").GetBoolean());
@@ -328,7 +329,7 @@ public class McpBackOfficeToolsTests
         Assert.Equal(501, f1.GetProperty("text").GetString()!.Length);          // 500 + "…"
         Assert.Equal("Vali Valiyev", f1.GetProperty("author").GetProperty("name").GetString());
         Assert.Equal("Ali Valiyev", f1.GetProperty("student").GetProperty("name").GetString());
-        Assert.True(f1.GetProperty("imageAttached").GetBoolean());
+        Assert.False(f1.TryGetProperty("imageAttached", out _));   // ImageUrl is not granted
         Assert.False(f1.GetProperty("resolved").GetBoolean());
         var f2 = Item(json, "f2");
         Assert.Equal("teacher", f2.GetProperty("author").GetProperty("role").GetString());
@@ -449,7 +450,7 @@ public class McpBackOfficeToolsTests
 
         Assert.Equal(new[] { "a4", "a3", "a2", "a1", "a5" }, Ids(json));
         var a1 = Item(json, "a1");
-        Assert.True(a1.GetProperty("cvAttached").GetBoolean());
+        Assert.False(a1.TryGetProperty("cvAttached", out _));   // CvUrl is not granted
         Assert.Equal("Kuchli nomzod", a1.GetProperty("internalNote").GetString());
         Assert.Equal(501, a1.GetProperty("experience").GetString()!.Length);
         Assert.Equal("CV qabul qilindi", a1.GetProperty("stageLabel").GetString());

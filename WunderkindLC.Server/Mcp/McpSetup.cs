@@ -4,6 +4,7 @@ using System.Security.Claims;
 using System.Text.Json;
 using System.Threading.RateLimiting;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.Extensions.Caching.Memory;
 using ModelContextProtocol.Protocol;
 using WunderkindLC.Application.Abstractions;
@@ -44,11 +45,11 @@ public sealed class McpOptions
 
     public static McpRedirectRules RedirectRules(IConfiguration config)
     {
-        var section = config.GetSection("Mcp:AllowedRedirectHosts");
-        var hosts = section.GetChildren().Select(c => c.Value).ToList();
-        var flat = section.Value ?? config["MCP_ALLOWED_REDIRECT_HOSTS"];
-        if (hosts.Count == 0 && !string.IsNullOrWhiteSpace(flat)) hosts = [.. flat.Split(',')];
-        return new McpRedirectRules(hosts);
+        var section = config.GetSection("Mcp:AllowedRedirectUris");
+        var uris = section.GetChildren().Select(c => c.Value).ToList();
+        var flat = section.Value ?? config["MCP_ALLOWED_REDIRECT_URIS"];
+        if (uris.Count == 0 && !string.IsNullOrWhiteSpace(flat)) uris = [.. flat.Split(',')];
+        return new McpRedirectRules(uris);
     }
 }
 
@@ -190,9 +191,23 @@ public static class McpSetup
             {
                 var sw = Stopwatch.StartNew();
                 CallToolResult result;
+                // One tool call has an overall budget (the 30 s statement timeout is per SQL statement only):
+                // a tool that fans out over many rows cannot keep the shared database busy indefinitely.
+                using var budget = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                budget.CancelAfter(McpLimits.CallTimeout);
                 try
                 {
-                    result = await next(ctx, ct);
+                    result = await next(ctx, budget.Token);
+                }
+                catch (OperationCanceledException ex) when (budget.IsCancellationRequested && !ct.IsCancellationRequested)
+                {
+                    await McpAudit.WriteAsync(ctx.Services!, ctx.Params?.Name ?? "?",
+                        ctx.Params?.Arguments, null, ex, (int)sw.ElapsedMilliseconds);
+                    return new CallToolResult
+                    {
+                        IsError = true,
+                        Content = [new TextContentBlock { Text = $"So'rov juda uzoq davom etdi ({(int)McpLimits.CallTimeout.TotalSeconds} s) va to'xtatildi. Sana oralig'ini yoki sahifa hajmini kichraytiring." }],
+                    };
                 }
                 catch (Exception ex)
                 {
@@ -227,12 +242,11 @@ public static class McpSetup
         var password = ReadOnlyPassword(app.Configuration)!;
         try
         {
+            IModel model;
             using (var scope = app.Services.CreateScope())
-            {
-                var model = scope.ServiceProvider.GetRequiredService<AppDbContext>().Model;
-                McpReadOnlyRole.Ensure(ownerConnectionString, model, password);
-            }
-            var problem = McpReadOnlyRole.SelfTest(McpReadOnlyRole.BuildConnectionString(ownerConnectionString, password));
+                model = scope.ServiceProvider.GetRequiredService<AppDbContext>().Model;
+            McpReadOnlyRole.Ensure(ownerConnectionString, model, password);
+            var problem = McpReadOnlyRole.SelfTest(McpReadOnlyRole.BuildConnectionString(ownerConnectionString, password), model);
             if (problem is not null)
             {
                 feature.DisabledReason = "read-only connection self-test failed: " + problem;

@@ -26,6 +26,10 @@ emas, EGASINING YANGI QARORI. Himoya qatlamlari (bittasi ham olib tashlanmasin):
 3. Baza roli `wlc_ro`: ilova har ishga tushganda (migratsiyadan keyin) uni yaratadi, `REVOKE ALL`, keyin faqat
    vositalar `Reads` ro'yxatidagi jadvallarga `SELECT` beradi; sessiya `default_transaction_read_only = on`.
    Prod'dagi kabi PostgreSQL'da tekshirilgan (2026-10-11): o'qish rejimi o'chirilsa ham yozish `permission denied`.
+   ⚠️ Nomi nozik USTUN (`McpReadOnlyGrants.IsSensitiveColumn`: `…Url`, `…FileId`, `ChatId`, `Password`, `Token`,
+   `Email`, `Permissions`, `Code`, `Answers`, joylashuv…) HECH QACHON berilmaydi — har jadvalda, kelajakdagi
+   migratsiyada qo'shilgani ham: bunday jadvalga USTUN darajasidagi grant beriladi. MCP konteksti modelidan ham
+   o'sha ustunlar olib tashlangan (`McpReadOnlyModel`), ya'ni to'liq entity yuklash yopiq ustunni SELECT qilmaydi.
 4. O'z-o'zini tekshirish (`McpReadOnlyRole.SelfTest`) o'tmasa — MCP O'CHIQ (fail-closed). Yozadigan ulanishga
    QAYTISH YO'Q.
 

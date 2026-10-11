@@ -31,8 +31,8 @@ public sealed class BackOfficeTools(McpToolContext t)
     [McpServerTool(Name = "contracts_list", Title = "Shartnomalar",
         ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
     [Description("Tuzilgan shartnomalar tarixi (eng yangisi birinchi): raqami, sanasi, kimga (o'quvchi / xodim — id va ism), "
-        + "andoza nomi, qanday berilgani (yuklab olingan yoki Telegram orqali yuborilgan va yetkazildimi), tayyor PDF "
-        + "biriktirilganmi va ilovada ko'rinadimi. Filtrlar: oluvchi turi, o'quvchi yoki xodim id, sana oralig'i, "
+        + "andoza nomi, qanday berilgani (yuklab olingan yoki Telegram orqali yuborilgan va yetkazildimi) va ilovada "
+        + "ko'rinadimi. Filtrlar: oluvchi turi, o'quvchi yoki xodim id, sana oralig'i, "
         + "qidiruv (oluvchi/andoza nomi yoki raqam). Fayl manzillari berilmaydi. Sahifalangan. "
         + "Contracts issued, newest first, without file links.")]
     public async Task<string> ContractsList(
@@ -89,7 +89,7 @@ public sealed class BackOfficeTools(McpToolContext t)
             .Select(c => new
             {
                 c.Id, c.Number, c.FileName, c.Target, c.RecipientKey, c.RecipientName, c.TemplateName,
-                c.SentAt, c.Status, c.Delivered, c.Visible, HasPdf = c.PdfUrl != "",
+                c.SentAt, c.Status, c.Delivered, c.Visible,
             }).ToListAsync(ct);
 
         var items = rows.Select(c => new
@@ -106,7 +106,6 @@ public sealed class BackOfficeTools(McpToolContext t)
             channel = c.Status == "downloaded" ? "download" : "telegram",
             telegramDelivered = c.Status == "downloaded" ? (bool?)null : c.Delivered,
             c.Status,
-            pdfAttached = c.HasPdf,
             visibleInApp = c.Visible,
         }).ToList();
 
@@ -263,7 +262,8 @@ public sealed class BackOfficeTools(McpToolContext t)
         var total = await q.CountAsync(ct);
         var p = McpToolContext.Page(page);
         var size = McpToolContext.PageSize(pageSize);
-        // Explicit projection: no ChatId, no receipt URL (only whether one is attached).
+        // Explicit projection: no ChatId, no receipt URL — those columns are not granted to the read-only role at all
+        // (McpReadOnlyGrants.IsSensitiveColumn), so not even "is a receipt attached" can be derived from them.
         var page1 = await q.OrderByDescending(o => o.CreatedAt).ThenByDescending(o => o.Number).ThenBy(o => o.Id)
             .Skip((p - 1) * size).Take(size)
             .Select(o => new
@@ -271,9 +271,8 @@ public sealed class BackOfficeTools(McpToolContext t)
                 o.Id, o.Number, o.CustomerName, o.Phone, o.StudentId, o.BookId, o.BookTitle, o.UnitPrice, o.Qty,
                 o.Total, o.PaymentMethod, o.Status, o.RejectReason, o.CreatedAt, o.DecidedAt, o.DecidedBy, o.Source,
                 o.DueDate, o.PaidAt, o.SettledMethod, o.PayAtPickup, o.ReturnedQty, o.ReturnedAt, o.ReturnReason,
-                o.RefundedAmount, HasReceipt = o.ReceiptUrl != "",
+                o.RefundedAmount,
             }).ToListAsync(ct);
-        var hasReceipt = page1.Where(o => o.HasReceipt).Select(o => o.Id).ToHashSet();
         // The pure helpers (IsPaid / NetTotal / IsOverdue) take the entity — rebuilt in memory from the projection.
         var rows = page1.Select(o => new BookOrder
         {
@@ -321,7 +320,6 @@ public sealed class BackOfficeTools(McpToolContext t)
             overdue = BookSalesService.IsOverdue(o, now),
             returnedAt = o.ReturnedAt?.ToString("yyyy-MM-ddTHH:mm:ss"),
             returnReason = o.ReturnReason.Length == 0 ? null : o.ReturnReason,
-            receiptAttached = hasReceipt.Contains(o.Id),
         }).ToList();
 
         return t.Json(new
@@ -381,7 +379,7 @@ public sealed class BackOfficeTools(McpToolContext t)
             .Select(f => new
             {
                 f.Id, f.StudentId, f.ParentName, f.Type, f.Text, f.SenderRole, f.SenderName, f.TeacherId,
-                f.CreatedAt, f.Status, HasImage = f.ImageUrl != null && f.ImageUrl != "",
+                f.CreatedAt, f.Status,
             }).ToListAsync(ct);
 
         var studentIds = rows.Select(f => f.StudentId).Where(id => id != "").Distinct().ToList();
@@ -427,7 +425,6 @@ public sealed class BackOfficeTools(McpToolContext t)
                 resolved = isResolved,
                 resolvedAt = isResolved && canAudit ? who.At : null,
                 resolvedBy = isResolved && canAudit ? who.By : null,
-                imageAttached = f.HasImage,
             };
         }).ToList();
 
@@ -513,7 +510,7 @@ public sealed class BackOfficeTools(McpToolContext t)
         ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
     [Description("Nomzodlarning ishga arizalari (eng yangisi birinchi): ism, telefon, vakansiya, joriy bosqich, ariza sanasi, "
         + "bosqich qachon va kim tomonidan o'zgartirilgani, nomzodga ko'rinadigan izoh va ichki izoh, tajriba va "
-        + "motivatsiya (500 belgigacha), CV biriktirilganmi. Filtrlar: vakansiya, bosqich, sana oralig'i, qidiruv "
+        + "motivatsiya (500 belgigacha). Filtrlar: vakansiya, bosqich, sana oralig'i, qidiruv "
         + "(ism, telefon, vakansiya nomi). CV fayli va Telegram ma'lumotlari berilmaydi. Sahifalangan. "
         + "Job applications with hiring stage and notes, without CV files.")]
     public async Task<string> JobApplications(
@@ -565,7 +562,6 @@ public sealed class BackOfficeTools(McpToolContext t)
             .Select(a => new
             {
                 a.Id, a.Number, a.VacancyId, a.VacancyTitle, a.FullName, a.Phone, a.Experience, a.Motivation,
-                HasCv = a.CvUrl != "",
                 a.Status, a.StatusNote, a.StatusChangedAt, a.StatusChangedBy, a.AdminNote, a.CreatedAt,
             }).ToListAsync(ct);
 
@@ -584,7 +580,6 @@ public sealed class BackOfficeTools(McpToolContext t)
                 internalNote = a.AdminNote.Length == 0 ? null : a.AdminNote,
                 experience = Truncate(a.Experience),
                 motivation = Truncate(a.Motivation),
-                cvAttached = a.HasCv,
             };
         }).ToList();
 

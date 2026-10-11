@@ -92,6 +92,18 @@ public sealed class McpOAuthController(
 {
     private static readonly string DummyHash = PasswordHasher.Hash("not-a-real-password-" + Guid.NewGuid());
 
+    /// <summary>Per login name (SHA-256 of the lower-cased login): 5 attempts per 15 minutes.</summary>
+    private static readonly System.Threading.RateLimiting.PartitionedRateLimiter<string> LoginLimiter =
+        System.Threading.RateLimiting.PartitionedRateLimiter.Create<string, string>(key =>
+            System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(key, _ =>
+                new System.Threading.RateLimiting.FixedWindowRateLimiterOptions
+                { PermitLimit = McpLimits.MaxFailuresPerLogin, Window = McpLimits.FailureWindow, QueueLimit = 0 }));
+
+    /// <summary>All logins on this page together: 100 attempts per hour (a spray over many accounts stops).</summary>
+    private static readonly System.Threading.RateLimiting.FixedWindowRateLimiter GlobalLoginLimiter =
+        new(new System.Threading.RateLimiting.FixedWindowRateLimiterOptions
+        { PermitLimit = 100, Window = TimeSpan.FromHours(1), QueueLimit = 0 });
+
     private static readonly JsonSerializerOptions Json = new() { PropertyNamingPolicy = null };
 
     // =====================================================================
@@ -174,7 +186,7 @@ public sealed class McpOAuthController(
         foreach (var u in uris)
             if (!redirects.IsAllowed(u))
                 return OAuthError("invalid_redirect_uri",
-                    "redirect_uri must be https on an allowed AI host (" + string.Join(", ", redirects.AllowedHosts.Order())
+                    "redirect_uri must be exactly one of the supported AI callbacks (" + string.Join(", ", redirects.AllowedUris.Order())
                     + ") or http on loopback (localhost/127.0.0.1/[::1]); canonical form, no fragment, max "
                     + McpLimits.MaxUriLength + " chars");
 
@@ -200,7 +212,9 @@ public sealed class McpOAuthController(
         // that never completed a connection are pruned after 24 h.
         await new McpOAuthStore(db).PruneAsync(ct);
         var dayAgo = DateTime.UtcNow.AddDays(-1);
-        if (await db.McpClients.CountAsync(c => c.CreatedAt > dayAgo, ct) >= McpLimits.MaxRegistrationsPerDay)
+        // Only clients that never connected count — real connections cannot be crowded out by junk registrations.
+        if (await db.McpClients.CountAsync(c => c.CreatedAt > dayAgo && !db.McpGrants.Any(g => g.ClientId == c.Id), ct)
+            >= McpLimits.MaxRegistrationsPerDay)
         {
             logger.LogWarning("MCP client registration refused: daily cap {Cap} reached", McpLimits.MaxRegistrationsPerDay);
             return OAuthError("temporarily_unavailable", "Registration limit reached, try again later",
@@ -239,7 +253,7 @@ public sealed class McpOAuthController(
 
     private sealed record AuthRequest(
         string ClientId, string RedirectUri, string CodeChallenge, string? State, string Resource,
-        string? UserId = null);
+        string? UserId = null, string? Nonce = null);
 
     [HttpGet("/oauth/authorize")]
     public async Task<IActionResult> Authorize(
@@ -301,15 +315,18 @@ public sealed class McpOAuthController(
             var password = form["password"].ToString();
             if (login.Length > 200) login = login[..200];
 
-            // Per-login throttle (on top of the per-IP limiter): a distributed guess at ONE
-            // account stops after 5 failures for 15 minutes. Kept apart from the web panel's
-            // lockout counter so a flood here cannot lock the director out of the panel.
-            var failKey = "mcp:login-fail:" + login.ToLowerInvariant();
-            if (cache.TryGetValue(failKey, out int fails) && fails >= McpLimits.MaxFailuresPerLogin)
+            // Throttles on top of the per-IP limiter (attempts, not only failures): per login name —
+            // a distributed guess at ONE account — and a global budget for this page. Kept apart from
+            // the web panel's lockout counter so a flood here cannot lock the director out of the panel.
+            // The limiters clean up idle partitions themselves; keys are hashes (bounded size).
+            using var perLogin = LoginLimiter.AttemptAcquire(McpSecrets.Hash(login.ToLowerInvariant()));
+            using var global = GlobalLoginLimiter.AttemptAcquire();
+            if (!perLogin.IsAcquired || !global.IsAcquired)
             {
-                logger.LogWarning("MCP OAuth login throttled: login={Login}", McpText.Sanitize(login, 60));
+                logger.LogWarning("MCP OAuth login throttled ({Scope}): login={Login}",
+                    perLogin.IsAcquired ? "global" : "per-login", McpText.Sanitize(login, 60));
                 return LoginPage(client, form["req"].ToString(),
-                    "Juda ko'p noto'g'ri urinish. 15 daqiqadan keyin qayta urinib ko'ring.");
+                    "Juda ko'p urinish. 15 daqiqadan keyin qayta urinib ko'ring.");
             }
 
             var user = login.Length == 0 ? null : await db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Email == login, ct);
@@ -321,12 +338,10 @@ public sealed class McpOAuthController(
             var ok = PasswordHasher.Verify(password, user?.PasswordHash ?? DummyHash) && user is not null;
             if (!ok)
             {
-                cache.Set(failKey, fails + 1, McpLimits.FailureWindow);
                 logger.LogWarning("MCP OAuth failed login: login={Login}, IP={IP}",
                     McpText.Sanitize(login, 60), HttpContext.Connection.RemoteIpAddress?.ToString() ?? "?");
                 return LoginPage(client, form["req"].ToString(), "Login yoki parol noto'g'ri.");
             }
-            cache.Remove(failKey);
             if (!McpAccess.IsAllowed(user!))
             {
                 logger.LogWarning("MCP OAuth refused: user {UserId} ({Role}) has no AI access", user!.Id, user.Role);
@@ -335,12 +350,18 @@ public sealed class McpOAuthController(
                     + "kerak bo'lsa, superadminga murojaat qiling (Boshqaruv → Rollar → «AI ulanish»)."), 403);
             }
 
-            var consent = Protect(req with { UserId = user!.Id }, TimeSpan.FromMinutes(5));
+            var consent = Protect(req with { UserId = user!.Id, Nonce = Guid.NewGuid().ToString("N") }, TimeSpan.FromMinutes(5));
             return ConsentPage(client, req.RedirectUri, user.FullName, consent);
         }
 
-        if (step == "consent" && req.UserId is not null)
+        if (step == "consent" && req.UserId is not null && req.Nonce is not null)
         {
+            // Single use: a consent page answers once (allow OR deny); a replayed form gets nothing.
+            var nonceKey = "mcp:consent:" + req.Nonce;
+            if (cache.TryGetValue(nonceKey, out _))
+                return Page("Muddati o'tdi", ErrorBox("Bu ruxsat sahifasi allaqachon ishlatilgan. AI ilovasida ulanishni qaytadan boshlang."), 400);
+            cache.Set(nonceKey, true, TimeSpan.FromMinutes(10));
+
             if (form["decision"] != "allow")
                 return RedirectError(req.RedirectUri, "access_denied", "The user denied the request", req.State);
 
@@ -430,6 +451,14 @@ public sealed class McpOAuthController(
             };
             db.McpGrants.Add(grant);
             var issued = store.Issue(grant);
+            // Every NEW AI connection appears in the main change history (Sozlamalar), not only revocations.
+            var clientName = await db.McpClients.Where(c => c.Id == row.ClientId).Select(c => c.Name).FirstOrDefaultAsync(ct);
+            db.AuditLogs.Add(new AuditLog
+            {
+                EntityType = "McpGrant", EntityId = grant.Id.ToString(), Action = "create",
+                Timestamp = AppClock.Iso(), ActorId = user.Id, ActorName = user.FullName,
+                Summary = $"AI ulanish yaratildi: «{clientName}» → {McpRedirectRules.DestinationLabel(row.RedirectUri)} — {user.FullName}",
+            });
             await db.SaveChangesAsync(ct);
             // Link the code to its grant (replay detection) without touching the tracked row —
             // its ConsumedAt was just changed underneath the change tracker.
@@ -581,9 +610,12 @@ public sealed class McpOAuthController(
         """);
 
     private IActionResult ConsentPage(McpClient client, string redirectUri, string userName, string req) => Page("Ruxsat", $"""
-        <p class="lead"><b>{H(userName)}</b>, «{H(client.Name)}» markaz ma'lumotlarini <b>faqat o'qish uchun</b> so'rayapti.</p>
-        <div class="dest">Ruxsat bersangiz, kalit <b>{H(McpRedirectRules.DestinationLabel(redirectUri))}</b> ga yuboriladi.
-          <span>Ilova ID: {H(client.Id)}</span></div>
+        <p class="lead"><b>{H(userName)}</b>, ilova markaz ma'lumotlarini <b>faqat o'qish uchun</b> so'rayapti.</p>
+        <div class="dest">Ilova o'zini <b>«{H(client.Name)}»</b> deb atagan — bu nom TEKSHIRILMAGAN.
+          Ruxsat bersangiz, kalit <b>{H(McpRedirectRules.DestinationLabel(redirectUri))}</b> ga yuboriladi:
+          <span>{H(redirectUri)}</span><span>Ilova ID: {H(client.Id)}</span></div>
+        <div class="error">Agar hozirgina AI ilovangizda o'zingiz «Connect» / «Ulash» tugmasini bosmagan bo'lsangiz —
+          «Rad etish» ni bosing va bu haqda superadminga xabar bering.</div>
         <ul class="facts">
           <li>Faqat o'qiydi — hech narsani o'zgartirmaydi, o'chirmaydi va hech kimga xabar yubormaydi.</li>
           <li>Faqat sizga ruxsat berilgan bo'limlarni ko'radi.</li>

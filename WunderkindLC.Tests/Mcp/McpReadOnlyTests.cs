@@ -89,6 +89,15 @@ public class McpReadOnlyTests
     [InlineData("SELECT 1; DELETE FROM \"Students\"", false)]
     [InlineData("-- SELECT\nDELETE FROM \"Students\"", false)]
     [InlineData("", false)]
+    [InlineData("SELECT pg_advisory_lock(1)", false)]
+    [InlineData("SELECT pg_notify('c', 'x')", false)]
+    [InlineData("SELECT set_config('default_transaction_read_only', 'off', false)", false)]
+    [InlineData("SELECT pg_sleep(100)", false)]
+    [InlineData("SELECT lo_import('/etc/passwd')", false)]
+    [InlineData("SELECT nextval('s')", false)]
+    [InlineData("SELECT pg_terminate_backend(42)", false)]
+    [InlineData("SELECT pg_read_file('x')", false)]
+    [InlineData("SELECT \"s\".\"SetupConfig\" FROM \"Students\" AS \"s\"", true)]   // column name, not a call
     public void Faqat_SELECT_buyruqlari_otadi(string sql, bool expected) =>
         Assert.Equal(expected, ReadOnlyDatabase.SelectOnly.IsSelect(sql));
 
@@ -181,6 +190,25 @@ public class McpReadOnlyTests
         }
     }
 
+    /// <summary>
+    /// The MCP SDK fills a tool parameter whose type it can resolve from DI with that SERVICE — an
+    /// <c>IAppDbContext</c> parameter would get the request's read/write context. Only plain argument types.
+    /// </summary>
+    [Fact]
+    public void Vosita_parametrlari_FAQAT_oddiy_turlar()
+    {
+        var allowed = new HashSet<Type>
+        {
+            typeof(string), typeof(int?), typeof(bool?), typeof(decimal?), typeof(int), typeof(bool), typeof(CancellationToken),
+        };
+        var bad = (from tool in AllTools()
+                   from p in tool.Method.GetParameters()
+                   where !allowed.Contains(p.ParameterType)
+                   select $"{tool.Type.Name}.{tool.Method.Name}({p.ParameterType.Name} {p.Name})").ToList();
+        Assert.True(bad.Count == 0, "Vosita parametri ruxsat etilmagan turda (DI'dan servis kirib qolishi mumkin):\n  "
+                                    + string.Join("\n  ", bad));
+    }
+
     private static string RepoRoot
     {
         get
@@ -202,6 +230,8 @@ public class McpReadOnlyTests
         {
             "SaveChanges", "ExecuteUpdate", "ExecuteDelete", "ExecuteSql", ".Entry(", ".Attach(", "ChangeTracker",
             "HttpClient", "TelegramService", "File.Write", "File.Delete", "AuditService", "IServiceProvider",
+            // The read/write context and the service locator: a tool reaches the database ONLY through t.Db.
+            "AppDbContext", "IAppDbContext", "ReadOnlyDatabase", "GetRequiredService", "GetService",
         };
         // Staging a change on a DbSet (`db.Students.Add(…)`, `t.Db.Leads.Remove(…)`). Building a local
         // List with `.Add(` is fine; the runtime guard refuses SaveChanges anyway.
@@ -251,13 +281,20 @@ public class McpReadOnlyTests
             Assert.StartsWith("GRANT SELECT", g);
         Assert.DoesNotContain(grants, g => Regex.IsMatch(g, @"\b(INSERT|UPDATE|DELETE|TRUNCATE|ALL)\b"));
 
-        Assert.Contains(grants, g => g == "GRANT SELECT ON public.\"Students\" TO wlc_ro");
+        // A table without a sensitive column is granted whole; one with such a column — column by column.
+        Assert.Contains(grants, g => g == "GRANT SELECT ON public.\"StudentGroups\" TO wlc_ro");
+        var students = Assert.Single(grants, g => g.EndsWith(" ON public.\"Students\" TO wlc_ro", StringComparison.Ordinal));
+        Assert.StartsWith("GRANT SELECT (", students);
+        Assert.Contains("\"FullName\"", students);
+        Assert.Contains("\"Balance\"", students);
 
         var all = string.Join("\n", sql);
         foreach (var secret in new[]
                  {
                      "PasswordHash", "InitialPassword", "\"Email\"", "\"Permissions\"", "RefreshTokens", "LoginOtpCodes",
                      "McpTokens", "McpAuthCodes", "DeviceTokens", "StudentFaceProfiles", "TrustedDevices", "\"Cameras\"",
+                     "ParentPassportUrl", "BirthCertificateUrl", "\"PhotoUrl\"", "\"ChatId\"", "\"PdfUrl\"", "AnswerKey",
+                     "\"Latitude\"", "\"DeviceUserId\"", "\"AvatarUrl\"", "\"CvUrl\"", "\"Answers\"",
                  })
             Assert.DoesNotContain(secret, all);
 
@@ -276,13 +313,185 @@ public class McpReadOnlyTests
                  {
                      nameof(AppUser.PasswordHash), nameof(AppUser.InitialPassword), nameof(AppUser.Email),
                      nameof(AppUser.Permissions), nameof(AppUser.FailedLoginCount), nameof(AppUser.LockoutUntil),
+                     nameof(AppUser.AvatarUrl),
                  })
             Assert.DoesNotContain(secret, allowed);
-        Assert.DoesNotContain(typeof(AppUser), McpReadOnlyGrants.Tables);
+        using var host = new McpTestHost();
+        var users = Assert.Single(McpReadOnlyRole.ColumnGrants(host.Rw.Model), g => g.Entity == typeof(AppUser));
+        Assert.Equal(allowed.OrderBy(x => x), users.Columns!.OrderBy(x => x));
 
         // McpUserRow (vositalar foydalanadigan yagona proyeksiya) faqat ruxsat etilgan ustunlardan.
         foreach (var p in typeof(McpUserRow).GetProperties())
             Assert.Contains(p.Name, allowed);
+    }
+
+    [Theory]
+    [InlineData("PhotoUrl")]
+    [InlineData("BirthCertificateUrl")]
+    [InlineData("ParentPassportUrl")]
+    [InlineData("CoverFileId")]
+    [InlineData("PdfFileId")]
+    [InlineData("ChatId")]
+    [InlineData("TelegramAdminChatId")]
+    [InlineData("TgUsername")]
+    [InlineData("DeviceUserId")]
+    [InlineData("Latitude")]
+    [InlineData("Longitude")]
+    [InlineData("LocationAddress")]
+    [InlineData("LocationUpdatedAt")]
+    [InlineData("AnswerKey")]
+    [InlineData("Answers")]
+    [InlineData("Code")]
+    [InlineData("Permissions")]
+    [InlineData("Email")]
+    [InlineData("InitialPassword")]
+    [InlineData("PasswordHash")]
+    [InlineData("TokenHash")]
+    [InlineData("InstagramCapiToken")]
+    [InlineData("WebhookSecret")]
+    [InlineData("GeminiApiKey")]
+    [InlineData("photourl")]
+    public void Maxfiy_nomli_ustun_qoidasi_YOPADI(string column) =>
+        Assert.True(McpReadOnlyGrants.IsSensitiveColumn(column), column);
+
+    [Theory]
+    [InlineData("Id")]
+    [InlineData("FullName")]
+    [InlineData("Phone")]
+    [InlineData("ParentPhone")]
+    [InlineData("CourseId")]
+    [InlineData("GroupId")]
+    [InlineData("Balance")]
+    [InlineData("Status")]
+    [InlineData("AnswersJson")]
+    [InlineData("ReceiptNo")]
+    [InlineData("Position")]
+    [InlineData("RoleTemplateId")]
+    [InlineData("")]
+    public void Oddiy_ustun_qoidadan_otadi(string column) =>
+        Assert.False(McpReadOnlyGrants.IsSensitiveColumn(column), column);
+
+    [Fact]
+    public void Ruxsat_modeldan_quriladi_va_maxfiy_nomli_ustun_HECH_QAYSI_jadvalda_berilmaydi()
+    {
+        using var host = new McpTestHost();
+        var model = host.Rw.Model;
+        var grants = McpReadOnlyRole.Grants(model);
+
+        // Every table a tool reads gets exactly one grant, nothing else.
+        Assert.Equal(McpToolRegistry.ReadEntities.OrderBy(t => t.Name), grants.Select(g => g.Entity).OrderBy(t => t.Name));
+
+        foreach (var g in grants)
+        {
+            var entity = model.FindEntityType(g.Entity)!;
+            var store = Microsoft.EntityFrameworkCore.Metadata.StoreObjectIdentifier.Table(g.Table, entity.GetSchema());
+            var columns = entity.GetProperties().Select(p => (Property: p.Name, Column: p.GetColumnName(store)!)).ToList();
+            var granted = g.Columns is null ? columns.Select(c => c.Column).ToList() : g.Columns.ToList();
+
+            foreach (var c in columns.Where(c => granted.Contains(c.Column)))
+            {
+                Assert.False(McpReadOnlyGrants.IsSensitiveColumn(c.Property), $"{g.Table}.{c.Property} berilgan, lekin nomi maxfiy");
+                Assert.False(McpReadOnlyGrants.IsSensitiveColumn(c.Column), $"{g.Table}.{c.Column} berilgan, lekin nomi maxfiy");
+            }
+
+            if (McpReadOnlyGrants.RestrictedColumns.TryGetValue(g.Entity, out var allowed))
+                // The three allow-lists stay authoritative: exactly their columns, never "all but the sensitive".
+                Assert.Equal(allowed.Select(p => entity.FindProperty(p)!.GetColumnName(store)!).OrderBy(x => x),
+                    granted.OrderBy(x => x));
+            else if (g.Columns is not null)
+                // Column-level only because of a sensitive name: every other column stays readable.
+                Assert.Equal(columns.Where(c => !McpReadOnlyGrants.IsSensitiveColumn(c.Property)).Select(c => c.Column).OrderBy(x => x),
+                    granted.OrderBy(x => x));
+        }
+
+        // The tables of this review (L1) are column-restricted now, the plain ones stay whole.
+        var restricted = McpReadOnlyRole.ColumnGrants(model).Select(g => g.Entity).ToHashSet();
+        foreach (var type in new[]
+                 {
+                     typeof(Student), typeof(Teacher), typeof(TelegramRegistration), typeof(Contract), typeof(Book),
+                     typeof(BookOrder), typeof(Feedback), typeof(JobApplication), typeof(TestResult), typeof(TestScore),
+                     typeof(AppUser), typeof(CenterMeta), typeof(AuditLog),
+                 })
+            Assert.Contains(type, restricted);
+        Assert.DoesNotContain(typeof(StudentGroup), restricted);
+        Assert.DoesNotContain(typeof(WunderkindLC.Domain.Group), restricted);
+    }
+
+    [Fact]
+    public void Ruxsat_royxatlarida_maxfiy_nomli_ustun_YOQ()
+    {
+        foreach (var (type, allowed) in McpReadOnlyGrants.RestrictedColumns)
+            foreach (var p in allowed)
+                Assert.False(McpReadOnlyGrants.IsSensitiveColumn(p), $"{type.Name}.{p}: ruxsat ro'yxatida maxfiy nomli ustun");
+        Assert.DoesNotContain(nameof(AppUser.AvatarUrl), McpReadOnlyGrants.RestrictedColumns[typeof(AppUser)]);
+    }
+
+    [Fact]
+    public void Faqat_oqish_konteksti_modeli_RUXSAT_bilan_bir_xil()
+    {
+        using var host = new McpTestHost();
+        using var ro = host.OpenReadOnly();
+        Assert.NotNull(ro.Model.FindAnnotation(McpReadOnlyModel.Annotation));
+        Assert.Null(host.Rw.Model.FindAnnotation(McpReadOnlyModel.Annotation));
+
+        foreach (var g in McpReadOnlyRole.Grants(host.Rw.Model))
+        {
+            var full = host.Rw.Model.FindEntityType(g.Entity)!.GetProperties().Select(p => p.Name).ToList();
+            var expected = McpReadOnlyGrants.GrantedProperties(g.Entity, full) ?? full.ToArray();
+            var actual = ro.Model.FindEntityType(g.Entity)!.GetProperties().Select(p => p.Name);
+            Assert.Equal(expected.OrderBy(x => x), actual.OrderBy(x => x));
+        }
+
+        // The reduced model must never be used to build grants: its closed columns would look absent.
+        Assert.Throws<InvalidOperationException>(() => McpReadOnlyRole.Grants(ro.Model));
+    }
+
+    [Fact]
+    public async Task Faqat_oqish_kontekstida_TOLIQ_yuklash_maxfiy_ustunni_tanlamaydi()
+    {
+        using var host = new McpTestHost();
+        host.Rw.Students.Add(new Student
+        {
+            Id = "s1", FullName = "Ali Valiyev", Phone = "901234567", Balance = -50_000,
+            BirthCertificateUrl = "/uploads/guvohnoma.jpg", ParentPassportUrl = "/uploads/pasport.jpg",
+            Latitude = 40.5, Longitude = 70.9, LocationAddress = "Qo'qon", DeviceUserId = "77",
+        });
+        host.Rw.Teachers.Add(new Teacher { Id = "t1", FullName = "Karim Karimov", PhotoUrl = "/uploads/foto.jpg", DeviceUserId = "88" });
+        host.Rw.Contracts.Add(new Contract { Id = "k1", Number = 1, PdfUrl = "/uploads/sh.pdf", RecipientName = "Ali" });
+        host.Rw.SaveChanges();
+        using var ro = host.OpenReadOnly();
+
+        // A shared service's full-entity load (FirstOrDefaultAsync / FindAsync) works and gets only granted columns.
+        var st = await ro.Students.FirstAsync(s => s.Id == "s1");
+        Assert.Equal("Ali Valiyev", st.FullName);
+        Assert.Equal(-50_000, st.Balance);
+        Assert.True(string.IsNullOrEmpty(st.ParentPassportUrl));
+        Assert.True(string.IsNullOrEmpty(st.BirthCertificateUrl));
+        Assert.True(string.IsNullOrEmpty(st.LocationAddress));
+        var teacher = await ro.Teachers.FindAsync("t1");
+        Assert.Equal("Karim Karimov", teacher!.FullName);
+        Assert.True(string.IsNullOrEmpty(teacher.PhotoUrl));
+        Assert.Equal(1, (await ro.Contracts.SingleAsync()).Number);
+
+        foreach (var column in new[] { "ParentPassportUrl", "BirthCertificateUrl", "Latitude", "LocationAddress", "DeviceUserId", "PhotoUrl", "PdfUrl" })
+            Assert.DoesNotContain(host.Sql, q => q.Contains("\"" + column + "\"", StringComparison.Ordinal));
+        host.AssertColumnGrants();
+
+        // A query that NAMES a closed column fails loudly (also here, on SQLite) — it would be `permission denied` in prod.
+        await Assert.ThrowsAsync<InvalidOperationException>(() => ro.Contracts.Where(c => c.PdfUrl != "").CountAsync());
+    }
+
+    [Fact]
+    public void PostgreSQL_da_rol_ozini_tekshirishdan_otadi()
+    {
+        if (!McpTestHost.IsPostgres) return;   // SQLite: there is no role to check
+        using var host = new McpTestHost();
+        Assert.Null(McpReadOnlyRole.SelfTest(host.PgReadOnlyConnection!));
+
+        // A sensitive column granted by hand (or by a future mistake) switches MCP off: the self-test names it.
+        // Privileges live in this host's throw-away database, so nothing leaks into other tests.
+        host.Rw.Database.ExecuteSqlRaw("GRANT SELECT (\"ParentPassportUrl\") ON \"Students\" TO " + McpReadOnlyRole.RoleName);
+        Assert.Contains("Students.ParentPassportUrl", McpReadOnlyRole.SelfTest(host.PgReadOnlyConnection!));
     }
 
     [Theory]

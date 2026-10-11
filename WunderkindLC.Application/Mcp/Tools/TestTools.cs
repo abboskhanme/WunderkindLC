@@ -83,7 +83,7 @@ public sealed class TestTools(McpToolContext t)
             .ToDictionary(g => g.Key, g => g.Select(s => s.Score).ToList());
 
         var groupIds = tests.Select(x => x.GroupId).Distinct().ToList();
-        var groups = await GroupHeadersAsync(db, groupIds, ct);
+        var groups = await GroupHeadersAsync(groupIds, ct);
         // Same count as ListForGroupAsync.studentCount: active, not frozen members.
         var studentCounts = (await db.StudentGroups
                 .Where(sg => groupIds.Contains(sg.GroupId) && sg.IsActive && sg.Status != "frozen")
@@ -145,7 +145,7 @@ public sealed class TestTools(McpToolContext t)
             .Select(x => new { x.Id, x.GroupId, x.Name, x.Date, x.MaxScore })
             .FirstOrDefaultAsync(ct);
         if (test is null) return t.Json(new { message = "Test topilmadi." }, 0);
-        var group = (await GroupHeadersAsync(db, new List<string> { test.GroupId }, ct)).GetValueOrDefault(test.GroupId);
+        var group = (await GroupHeadersAsync(new List<string> { test.GroupId }, ct)).GetValueOrDefault(test.GroupId);
 
         // Members as DetailAsync: active, not frozen memberships of the test's group.
         var members = await (from sg in db.StudentGroups
@@ -341,7 +341,7 @@ public sealed class TestTools(McpToolContext t)
         var mon = Clean(month) is null ? null : McpToolContext.Month(month);
         var db = t.Db;
 
-        var group = (await GroupHeadersAsync(db, new List<string> { gid }, ct)).GetValueOrDefault(gid);
+        var group = (await GroupHeadersAsync(new List<string> { gid }, ct)).GetValueOrDefault(gid);
         if (group is null) return t.Json(new { message = "Guruh topilmadi." }, 0);
 
         // Rows: live memberships of the group (the group page: active/trial; frozen on request), archived students out.
@@ -483,7 +483,7 @@ public sealed class TestTools(McpToolContext t)
         };
         var db = t.Db;
 
-        var all = await t.CachedAsync("rating:center", TimeSpan.FromMinutes(5), () => ComputeCenterAsync(db, ct));
+        var all = await t.CachedAsync("rating:center", TimeSpan.FromMinutes(5), () => ComputeCenterAsync(ct));
 
         var ordered = (sort == "ball"
                 ? all.OrderByDescending(r => r.Ball).ThenByDescending(r => r.Average)
@@ -537,8 +537,9 @@ public sealed class TestTools(McpToolContext t)
     /// Same row set: non-archived students with a live membership (or, failing that, a group named like their
     /// legacy <c>ClassName</c>); groups ordered active → trial → frozen, then newest joined.
     /// </summary>
-    internal static async Task<List<CenterRow>> ComputeCenterAsync(IAppDbContext db, CancellationToken ct)
+    internal async Task<List<CenterRow>> ComputeCenterAsync(CancellationToken ct)
     {
+        var db = t.Db;
         var balls = StudentBallService.AggregateByStudent(await StudentBallService.ComputeByGroupAsync(db));
         var students = await db.Students.Where(s => !s.IsArchived)
             .Select(s => new { s.Id, s.FullName, s.ClassName }).ToListAsync(ct);
@@ -620,9 +621,9 @@ public sealed class TestTools(McpToolContext t)
     private sealed record GroupHeader(string Name, bool IsArchived, string Course, string TeacherId, string TeacherName);
 
     /// <summary>Group name, archive flag, course and teacher names for the given ids (three small queries).</summary>
-    private static async Task<Dictionary<string, GroupHeader>> GroupHeadersAsync(
-        IAppDbContext db, List<string> ids, CancellationToken ct)
+    private async Task<Dictionary<string, GroupHeader>> GroupHeadersAsync(List<string> ids, CancellationToken ct)
     {
+        var db = t.Db;
         if (ids.Count == 0) return new Dictionary<string, GroupHeader>(StringComparer.Ordinal);
         var groups = await db.Classes.Where(c => ids.Contains(c.Id))
             .Select(c => new { c.Id, c.Name, c.IsArchived, c.CourseId, c.TeacherId }).ToListAsync(ct);

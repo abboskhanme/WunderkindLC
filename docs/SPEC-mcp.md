@@ -39,23 +39,37 @@ can execute them.
    Idempotent = true, OpenWorld = false`; a tool class depends on `McpToolContext` only.
 2. **Read-only context.** `McpToolContext.Db` is an `AppDbContext` built by `ReadOnlyDatabase`:
    no tracking, `SaveChanges` throws, every non-SELECT command (`ExecuteUpdate`, `ExecuteDelete`,
-   raw SQL) is refused before it is sent.
+   raw SQL) is refused before it is sent. Its EF model is reduced to the role's grant
+   (`McpReadOnlyModel`): closed columns do not exist for it, so even a full-entity load inside a shared
+   service (`db.Students.FirstOrDefaultAsync`, `db.Teachers.FindAsync`) selects only granted columns; a
+   query that names a closed column fails to translate (on SQLite in tests too).
 3. **SELECT-only PostgreSQL role `wlc_ro`.** The web app connects as the database owner, so the
    guarantee cannot rest on application code alone. At startup (after migrations) the owner
    connection re-creates `wlc_ro`: `default_transaction_read_only = on`, then `REVOKE ALL` and
    `GRANT SELECT` on exactly the allow-list (`McpReadOnlyGrants`) — the union of the tools' `Reads`.
-   `Users` is granted column by column (no login, no password hash). A table no tool lists —
-   including every table a future migration adds — stays closed.
+   A column whose NAME looks sensitive (`McpReadOnlyGrants.IsSensitiveColumn`: `…Url`, `…FileId`,
+   `ChatId`, `Password`, `Token`, `Secret`, `Hash`, `ApiKey`, `Passport`, `AnswerKey`, `DeviceUserId`,
+   `TgUsername`, location columns, exactly `Code` / `Answers` / `Permissions` / `Email`) is never granted, on
+   any table: a table with such a column gets a column-level grant of everything else, computed from the
+   EF model at startup — columns a future migration adds follow the same rule. `Users`, `CenterMeta` and
+   `AuditLog` keep explicit allow-lists. A table no tool lists — including every table a future
+   migration adds — stays closed.
 4. **Self-test, fail-closed.** `McpReadOnlyRole.SelfTest` must prove the connection is `wlc_ro`,
-   not a superuser, read-only, owns nothing, holds no non-SELECT privilege and cannot read
-   `Users.PasswordHash`. Otherwise `/mcp` answers 503 and `/oauth/*` 404. There is no fallback to
+   not a superuser, read-only, owns nothing, holds no non-SELECT privilege, cannot read
+   `Users.PasswordHash` nor any column with a sensitive name. Otherwise `/mcp` answers 503 and `/oauth/*` 404. There is no fallback to
    the read/write connection. Off by default: without `MCP_DB_RO_PASSWORD` nothing is registered.
 5. **Output scrub.** `McpToolContext.Json` removes every property whose name looks like a
    credential (`IsSecretName`), however it got into the payload.
 6. **Audit.** Every tool call writes a `McpAuditEntry` (user, client, tool, arguments, outcome, row
    count) through the read/write context, outside the tool. No audit row → no data returned.
 7. **Limits.** 120 calls/min per connection, 2 concurrent per connection, 6 process-wide, 300
-   pre-auth requests/min per IP, 200 rows per page, 366 days per range, 30 s statement timeout.
+   pre-auth requests/min per IP, 200 rows per page (50 for per-row-ledger tools), 366 days per range,
+   30 s per statement and 60 s per tool call (linked cancellation in the call filter), single-flight cache.
+8. **Role hardening.** `REVOKE TEMPORARY ON DATABASE … FROM PUBLIC`; side-effect functions (advisory locks,
+   `pg_notify`, `set_config`, `pg_sleep`, large objects, sequences, file/backend functions) are refused by
+   the SELECT-only interceptor; the password is sent only when it changed, inside a transaction with
+   statement logging off; the startup self-test checks EFFECTIVE privileges (incl. PUBLIC), database
+   CREATE/TEMP, schema CREATE, secret `Users` columns and every forbidden table. SDK logs pinned to Warning.
 
 The only MCP code that writes is the OAuth flow and the audit, and it writes only `Mcp*` tables.
 
@@ -68,8 +82,15 @@ consent) · `POST /oauth/token` (authorization_code + PKCE, rotating refresh_tok
 
 - Opaque tokens, stored hashed (SHA-256). Access 1 h, refresh 30 days with rotation, connection 90 days.
 - Code replay or refresh-token reuse revokes the whole connection.
-- Redirect URIs: https on an allow-listed AI host (`claude.ai`, `claude.com`, `chatgpt.com`,
-  `chat.openai.com`; override with `Mcp:AllowedRedirectHosts`) or http on loopback.
+- Redirect URIs: EXACTLY one of the supported callbacks (`https://claude.ai/api/mcp/auth_callback`,
+  `https://claude.com/api/mcp/auth_callback`, `https://chatgpt.com/connector_platform_oauth_redirect`;
+  override with `Mcp:AllowedRedirectUris`) or http on loopback (any port). Host-wide allow-lists were
+  dropped after the security review (any open redirect on a vendor domain would have leaked codes).
+- Consent page: the client name is marked unverified, the full callback is shown, with a warning to deny
+  unless the user just pressed Connect. A consent form answers once (nonce). Every new connection is
+  written to the main audit log (`McpGrant` / create), revocations too.
+- Login throttles: per login name (hashed) 5 attempts / 15 min, page-wide 100 / hour, plus the panel's
+  lockout flag; per-IP limits on top. The daily registration cap counts only never-connected clients.
 - On every `/mcp` request: token hash lookup, grant not revoked, user still exists and is still
   allowed. Removing `aiAccess` kills the connection on the next call.
 - `/oauth` and `/mcp` are exempt from the CSRF double-submit check (they never rely on the `at` cookie).
@@ -145,7 +166,7 @@ section Sozlamalar).
 |---|---|---|
 | `Mcp:ReadOnlyPassword` | `MCP_DB_RO_PASSWORD` | Password of `wlc_ro`, 16–128 chars of `[A-Za-z0-9_-]`. Empty = MCP off |
 | `Mcp:PublicBaseUrl` | `MCP_PUBLIC_BASE_URL` | OAuth issuer; defaults to `https://{APP_HOST}` |
-| `Mcp:AllowedRedirectHosts` | `MCP_ALLOWED_REDIRECT_HOSTS` | Comma-separated; default the four AI hosts above |
+| `Mcp:AllowedRedirectUris` | `MCP_ALLOWED_REDIRECT_URIS` | Comma-separated exact callbacks; default Claude + ChatGPT |
 
 No manual SQL: the app creates and maintains the role itself. `docs/MCP.md` — how to enable and
 how leadership connects from Claude / ChatGPT.

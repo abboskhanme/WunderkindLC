@@ -1,6 +1,7 @@
 using System.Data.Common;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 
 namespace WunderkindLC.Infrastructure.Data;
 
@@ -17,7 +18,10 @@ namespace WunderkindLC.Infrastructure.Data;
 ///     sessions are <c>default_transaction_read_only = on</c>;</item>
 ///   <item>a save-changes interceptor throws before anything reaches the database;</item>
 ///   <item>change tracking is off, so nothing is even staged;</item>
-///   <item>a command interceptor lets only <c>SELECT</c> / <c>WITH</c> statements through.</item>
+///   <item>a command interceptor lets only <c>SELECT</c> / <c>WITH</c> statements through;</item>
+///   <item>the EF model is reduced to the role's grant (<see cref="McpReadOnlyModel"/>): columns the role may
+///     not read do not exist for these contexts, so no query — not even a full-entity load in a shared
+///     service — selects them.</item>
 /// </list>
 /// <para>
 /// Deliberately NOT a <c>DbContext</c> subclass: a second context type in the assembly makes
@@ -36,8 +40,8 @@ public sealed class ReadOnlyDatabase(DbContextOptions<AppDbContext> options)
                 npg => npg.UseQuerySplittingBehavior(QuerySplittingBehavior.SplitQuery))));
 
     /// <summary>
-    /// The locks that do not depend on the provider (2–4 above). Tests build the options on
-    /// SQLite and pass them through here, so tool tests run under the same refusals.
+    /// The locks that do not depend on the provider (2–5 above). Tests build the options on
+    /// SQLite and pass them through here, so tool tests run under the same refusals and the same model.
     /// </summary>
     public static DbContextOptions<AppDbContext> Decorate(
         DbContextOptionsBuilder<AppDbContext> builder, params IInterceptor[] extra) =>
@@ -45,6 +49,10 @@ public sealed class ReadOnlyDatabase(DbContextOptions<AppDbContext> options)
             .UseQueryTrackingBehavior(QueryTrackingBehavior.NoTracking)
             .AddInterceptors(RefuseWrites.Instance, SelectOnly.Instance)
             .AddInterceptors(extra)
+            .ReplaceService<IModelCustomizer, McpReadOnlyModel.Customizer>()
+            .ReplaceService<IModelCacheKeyFactory, McpReadOnlyModel.CacheKeyFactory>()
+            // Removing mapped properties is the point here, not a mistake worth a log line per start.
+            .ConfigureWarnings(w => w.Ignore(CoreEventId.MappedPropertyIgnoredWarning))
             .Options;
 
     /// <summary>Any SaveChanges on a read-only context fails loudly.</summary>
@@ -72,8 +80,20 @@ public sealed class ReadOnlyDatabase(DbContextOptions<AppDbContext> options)
 
         public const string Message = "Read-only database (MCP tools): only SELECT statements are allowed.";
 
+        /// <summary>
+        /// Built-in functions with side effects that a SELECT can still call (locks, notifications, session
+        /// settings, sleeps, large objects, sequences, file access, backend control). EF never emits them;
+        /// matched on the command text, which never contains parameter VALUES.
+        /// </summary>
+        private static readonly System.Text.RegularExpressions.Regex SideEffectFunctions = new(
+            @"\b(pg_advisory\w*|pg_try_advisory\w*|pg_notify|set_config|pg_sleep\w*|lo_\w+|nextval|setval|"
+            + @"pg_terminate_backend|pg_cancel_backend|pg_reload_conf|pg_read_\w+|pg_ls_\w+|pg_stat_file|"
+            + @"dblink\w*|txid_current|pg_current_xact_id|pg_switch_wal|pg_logical_emit_message)\s*\(",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+
         public static bool IsSelect(string sql)
         {
+            if (SideEffectFunctions.IsMatch(sql)) return false;
             var s = sql.AsSpan().TrimStart();
             // Skip leading SQL comments EF may emit (query tags).
             while (true)

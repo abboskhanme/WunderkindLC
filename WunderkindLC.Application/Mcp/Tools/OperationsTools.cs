@@ -550,7 +550,8 @@ public sealed class OperationsTools(McpToolContext t)
         + "(students, contacts, classes, teachers, schedule, finance, leads, marketing, books, contracts, vacancies, staff, "
         + "settings, other), amal (create | update | delete | complete-and-transfer), xodim ismi bo'lagi, sana oralig'i, izoh "
         + "matni bo'yicha qidirish, o'quvchi yoki o'qituvchi id. Har qatorda vaqt, xodim, bo'lim, yozuv turi va id, amal va "
-        + "izoh. «Moliya» bo'limidagi izohlar faqat moliya ruxsati bilan. Sahifalangan (sukut 50, ko'pi bilan 200). "
+        + "izoh. «O'zgarishlar tarixi» ruxsati panelidagidek BUTUN tarixni ochadi (to'lov summalari ham). "
+        + "Sahifalangan (sukut 50, ko'pi bilan 200). "
         + "The change history (audit log) with section, action, actor, date and text filters.")]
     public async Task<string> AuditLogTool(
         [Description("Bo'lim kaliti: students | contacts | classes | teachers | schedule | finance | leads | marketing | books | contracts | vacancies | staff | settings | other")] string? section = null,

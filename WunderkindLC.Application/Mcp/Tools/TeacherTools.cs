@@ -117,7 +117,7 @@ public sealed class TeacherTools(McpToolContext t)
         var pageRows = rows.Skip((p - 1) * size).Take(size).ToList();
 
         var ids = pageRows.Select(r => r.Id).ToList();
-        var (groupCounts, studentCounts) = await CountsAsync(db, ids, ct);
+        var (groupCounts, studentCounts) = await CountsAsync(ids, ct);
         var courseIds = pageRows.SelectMany(r => r.SubjectIds).Distinct().ToList();
         var courseNames = await db.Subjects.Where(s => courseIds.Contains(s.Id))
             .Select(s => new { s.Id, s.Name }).ToDictionaryAsync(s => s.Id, s => s.Name, ct);
@@ -142,9 +142,10 @@ public sealed class TeacherTools(McpToolContext t)
     }
 
     /// <summary>Non-archived groups per teacher and DISTINCT students with an open membership there (student not archived).</summary>
-    private static async Task<(Dictionary<string, int> Groups, Dictionary<string, int> Students)> CountsAsync(
-        IAppDbContext db, List<string> teacherIds, CancellationToken ct)
+    private async Task<(Dictionary<string, int> Groups, Dictionary<string, int> Students)> CountsAsync(
+        List<string> teacherIds, CancellationToken ct)
     {
+        var db = t.Db;
         if (teacherIds.Count == 0) return (new(), new());
         var groups = await db.Classes.Where(g => !g.IsArchived && teacherIds.Contains(g.TeacherId))
             .GroupBy(g => g.TeacherId).Select(g => new { g.Key, N = g.Count() })
@@ -232,7 +233,7 @@ public sealed class TeacherTools(McpToolContext t)
         var today = McpToolContext.Today;
         var from = McpToolContext.Iso(today.AddDays(-ProfileSubstitutionDays));
         var to = McpToolContext.Iso(today.AddDays(ProfileSubstitutionDays));
-        var subs = await SubstitutionsAsync(db, from, to, tid, null, "active", ct);
+        var subs = await SubstitutionsAsync(from, to, tid, null, "active", ct);
 
         // "Reyting" tab — StudentBallService.TeacherAsync (only Id / FullName are used).
         var rating = await StudentBallService.TeacherAsync(db, new Teacher { Id = tr.Id, FullName = tr.FullName }, month);
@@ -391,7 +392,7 @@ public sealed class TeacherTools(McpToolContext t)
         var fromIso = McpToolContext.Iso(f);
         var toIso = McpToolContext.Iso(tt);
 
-        var all = await SubstitutionsAsync(t.Db, fromIso, toIso,
+        var all = await SubstitutionsAsync(fromIso, toIso,
             string.IsNullOrWhiteSpace(teacherId) ? null : teacherId.Trim(),
             string.IsNullOrWhiteSpace(groupId) ? null : groupId.Trim(), st, ct);
 
@@ -429,9 +430,10 @@ public sealed class TeacherTools(McpToolContext t)
     /// always lie inside it), then the exact rule in memory — with SelectedDates only those days count
     /// (<see cref="SubstituteTeacherService.CoversDate"/> semantics); a legacy range row covers its whole range.
     /// </summary>
-    private static async Task<List<SubstitutionRow>> SubstitutionsAsync(
-        IAppDbContext db, string from, string to, string? teacherId, string? groupId, string state, CancellationToken ct)
+    private async Task<List<SubstitutionRow>> SubstitutionsAsync(
+        string from, string to, string? teacherId, string? groupId, string state, CancellationToken ct)
     {
+        var db = t.Db;
         var q = db.SubstituteTeacherAssignments.Where(a =>
             string.Compare(a.Date, to) <= 0
             && string.Compare(a.EndDate == null || a.EndDate == "" ? a.Date : a.EndDate, from) >= 0);
