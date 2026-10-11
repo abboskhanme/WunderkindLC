@@ -16,6 +16,7 @@ using WunderkindLC.Infrastructure.Auth;
 using WunderkindLC.Infrastructure.Data;
 using WunderkindLC.Server.Controllers;
 using WunderkindLC.Server.Cti;
+using WunderkindLC.Server.Mcp;
 using System.IdentityModel.Tokens.Jwt;
 using System.Text;
 
@@ -546,6 +547,10 @@ builder.Services.AddOutputCache(options =>
 
 builder.Services.AddControllers();
 
+// READ-ONLY MCP server (AI ulanish) — docs/SPEC-mcp.md. Fail-closed: MCP_DB_RO_PASSWORD
+// berilmagan bo'lsa hech narsa ro'yxatdan o'tmaydi va /mcp 503 qaytaradi.
+builder.AddWunderkindMcp(defaultConn);
+
 // HSTS — brauzer domenni 1 yil davomida FAQAT https deb eslab qoladi (subdomenlar ham).
 // `Preload` ATAYIN qo'shilmadi: preload ro'yxatiga tushish qaytarib bo'lmas majburiyat
 // (barcha subdomenlar abadiy https bo'lishi shart) — bu qaror alohida ko'rib chiqiladi.
@@ -1039,6 +1044,11 @@ catch (Exception ex)
 // IP'ga (tunnel) tushib qoladi va HTTPS-redirect tsikli yuzaga kelishi mumkin.
 // FAQAT prod'da yoqamiz (dev'da Vite proxy bu sarlavhalarni yubormaydi).
 // MUHIM: konteyner portini internetga OCHMANG — unga faqat cloudflared kirsin.
+// READ-ONLY MCP: migratsiyalardan KEYIN — faqat-o'qish roli (wlc_ro) ruxsat ro'yxati bilan
+// qayta yaratiladi va ulanish o'zini-o'zi tekshiradi. Yiqilsa MCP o'chiq qoladi (sababi logda
+// va Sozlamalar → «AI ulanishlar» da), ilovaning qolgani o'zgarishsiz ishlaydi.
+app.ActivateWunderkindMcp(defaultConn);
+
 if (!app.Environment.IsDevelopment())
 {
     var fwd = new ForwardedHeadersOptions
@@ -1408,6 +1418,10 @@ static (bool Valid, string? AgentId) ValidateAgentToken(string token, JwtOptions
 
 app.UseHttpsRedirection();
 
+// MCP/OAuth: autentifikatsiyadan OLDIN — IP bo'yicha byudjet (soxta tokenlar oqimi bazaga
+// token qidiruvi bo'lib tushmasin) va funksiya yoqilmagan bo'lsa 503.
+app.UseMcpGate();
+
 app.UseAuthentication();
 
 // ---------------------------------------------------------------------------------------------
@@ -1455,6 +1469,9 @@ app.Use(async (context, next) =>
 
 app.UseAuthorization();
 
+// MCP: avtorizatsiyadan KEYIN (ulanish ma'lum) — bir ulanishga 2 ta, jami 6 ta parallel so'rov.
+app.UseMcpConcurrency();
+
 // CSRF himoyasi (double-submit) — auth'dan KEYIN (User to'ldirilgan bo'lsin), controllerlardan
 // OLDIN. Faqat COOKIE bilan autentifikatsiya qilingan UNSAFE so'rovlarni tekshiradi; Bearer
 // bilan kelgan mobil/web so'rovlari ISTISNO (batafsil: CsrfMiddleware).
@@ -1466,6 +1483,7 @@ app.UseRateLimiter();
 app.UseOutputCache();
 
 app.MapControllers();
+app.MapWunderkindMcp();
 app.MapHub<ChatHub>("/hubs/chat");
 app.MapHub<LiveHub>("/hubs/live");
 

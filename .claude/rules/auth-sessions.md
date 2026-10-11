@@ -45,6 +45,10 @@ bo'lmasa `sfam` claim'i. Aniqlanmasa — HAMMASI bekor (xavfsiz tomon: qayta log
 
 ⚠️ Access token bekor qilinmaydi — u ko'pi bilan 60 daqiqa yashaydi, keyin refresh rad etiladi.
 
+⚠️ **AI ulanishlari (read-only MCP, `McpGrant`) ham shu funksiyada bekor qilinadi — HAR DOIM**, o'z parolini
+almashtirganda ham (joriy veb-sessiya saqlanadi, AI ulanishi emas). MCP tokeni har so'rovda grant holatini
+tekshiradi, ya'ni ulanish keyingi so'rovdayoq to'xtaydi. `docs/SPEC-mcp.md` §4.
+
 ⚠️ Refresh token QAYSI QURILMAGA berilganini saqlamaydi — shuning uchun qurilma bekor qilinsa
 o'quvchining hamma sessiyasi tugaydi (boshqa ishonchli telefonda bir marta qayta kiradi, selfi
 so'ralmaydi).

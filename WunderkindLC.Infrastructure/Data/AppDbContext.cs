@@ -255,8 +255,17 @@ public class AppDbContext(DbContextOptions<AppDbContext> options)
     public DbSet<KpiMonthResult> KpiMonthResults => Set<KpiMonthResult>();
     public DbSet<StudentExtension> StudentExtensions => Set<StudentExtension>();
 
+    /* ---------- Read-only MCP server (AI ulanish): OAuth mijozlari, tokenlar, audit ---------- */
+    public DbSet<McpClient> McpClients => Set<McpClient>();
+    public DbSet<McpGrant> McpGrants => Set<McpGrant>();
+    public DbSet<McpAuthCode> McpAuthCodes => Set<McpAuthCode>();
+    public DbSet<McpToken> McpTokens => Set<McpToken>();
+    public DbSet<McpAuditEntry> McpAudit => Set<McpAuditEntry>();
+
     protected override void OnModelCreating(ModelBuilder b)
     {
+        McpModel.Apply(b);
+
         // SQL Server: indeksda qatnashadigan string ustunlar default `nvarchar(max)` bo'lib
         // indekslanmaydi — ularga aniq maksimal uzunlik beramiz (nvarchar(N)). Qolgan matn
         // maydonlari nvarchar(max) bo'lib qoladi (kesilmaydi). Unicode (o'zbek/kirill) — nvarchar

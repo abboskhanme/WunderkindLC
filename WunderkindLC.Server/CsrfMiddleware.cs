@@ -151,6 +151,11 @@ public sealed class CsrfMiddleware(RequestDelegate next)
         "/api/public/instagram/leadgen",    // Meta lead webhook
         "/api/sms/callback",                // SMS provayder callback
         "/hubs",                            // SignalR (WebSocket handshake)
+        // Read-only MCP: OAuth login/consent form and token endpoints. They never rely on the
+        // `at` cookie (login is by password, consent by a data-protected one-time blob), but an
+        // admin signed in to the panel in the same browser DOES send that cookie with the form.
+        "/oauth",
+        "/mcp",
     };
 
     public async Task InvokeAsync(HttpContext ctx)

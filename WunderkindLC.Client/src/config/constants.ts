@@ -306,6 +306,11 @@ export const adminPermissions: AdminPermSection[] = [
   // xodim (markaz egasi bonusga kirishni o'zida qoldirishni tanlagan). Tekshiruv:
   // `useSuperOrGranted('retentionBonus')` — `can()` bu yerda YARAMAYDI, u admin uchun true qaytaradi.
   { key: 'retentionBonus', label: 'Bonus ptichkasi (aktivlashtirishda)' },
+  // AI ULANISH (read-only MCP) — xodim o'z AI ilovasini (Claude, ChatGPT) tizimga ulab, ma'lumotni
+  // FAQAT O'QIY oladi. Admin/superadmin bu ruxsatsiz ham ulanadi. AI faqat xodimning O'Z bo'limlarini
+  // ko'radi (shu matritsadagi qolgan ruxsatlar bo'yicha) — bu kalit faqat "ulanish mumkin" degani.
+  // Server: `McpAccess.PermissionKey` (docs/SPEC-mcp.md); o'qituvchi/o'quvchi hech qachon ulanmaydi.
+  { key: 'aiAccess', label: "AI ulanish (MCP, faqat o'qish)" },
 ]
 
 /** Bo'lim kaliti bo'yicha uning sahifa kalitlari (matritsa va yoyish/ixchamlash uchun). */

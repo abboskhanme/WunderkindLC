@@ -100,6 +100,11 @@ services:
       Fcm__ServiceAccountJson: "${FCM_SERVICE_ACCOUNT_JSON:-}"
       # AI Tahlil (Gemini) kaliti (MAXFIY):
       Gemini__ApiKey: "${GEMINI_API_KEY:-}"
+      # AI ULANISH (read-only MCP, docs/MCP.md) — faqat-o'qish baza roli `wlc_ro` ning paroli (MAXFIY,
+      # 16-128 belgi: harf, raqam, - va _). Bo'sh = MCP O'CHIQ (/mcp 503). Rolni ilova o'zi yaratadi.
+      Mcp__ReadOnlyPassword: "${MCP_DB_RO_PASSWORD:-}"
+      Mcp__PublicBaseUrl: "${MCP_PUBLIC_BASE_URL:-}"
+      Mcp__AllowedRedirectHosts: "${MCP_ALLOWED_REDIRECT_HOSTS:-}"
       # Speaking (Azure) — kalit MAXFIY, region ham env'dan:
       Azure__SpeechKey: "${AZURE_SPEECH_KEY:-}"
       Azure__SpeechRegion: "${AZURE_SPEECH_REGION:-}"

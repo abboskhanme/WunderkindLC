@@ -1172,6 +1172,32 @@ public class AutoMessageTests
     }
 
     [Fact]
+    public void Qarzdorlik_summasiga_AVANS_oylari_QOSHILMAYDI_va_qarzsiz_fanga_xabar_ketmaydi()
+    {
+        // 2026-10-11 xatosi: guruh narxi > 0 bo'lsa ledger keyingi 3 oyni (avans) ham "qolgan" bilan
+        // berardi va eslatma summasi 3 oylik ko'p chiqardi; qarzi YO'Q fanga ham "qarz" xabari ketardi.
+        using var db = TestDb.Sqlite();
+        var ctx = db.Context;
+        var s = NewStudent();
+        s.Balance = -200000m;
+        ctx.Students.Add(s);
+        var eng = DebtSubject(ctx, s, "Ingliz tili", 200000m);
+        eng.MonthlyFee = 200000m;                         // haqiqiy narx
+        var mat = DebtSubject(ctx, s, "Matematika", 0m);  // shu fandan qarz yo'q
+        mat.MonthlyFee = 300000m;
+        ctx.AutoMessageRules.Add(DebtRule());
+        ctx.SaveChanges();
+
+        Reflect.RunAsyncMethod(Payment(ctx, new MessagingStack()), "RunDailyAsync", OddDay(), CancellationToken.None);
+
+        var n = Assert.Single(ctx.UserNotifications);
+        Assert.Contains("Ingliz tili", n.Body);
+        Assert.Contains("200 000 so'm", n.Body);
+        Assert.DoesNotContain("800 000", n.Body);
+        Assert.DoesNotContain("Matematika", n.Body);
+    }
+
+    [Fact]
     public void Qarzdorlik_bitta_fanda_BITTA_xabar()
     {
         using var db = TestDb.Sqlite();

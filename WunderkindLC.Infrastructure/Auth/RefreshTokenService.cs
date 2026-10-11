@@ -174,6 +174,17 @@ public class RefreshTokenService(
             t.RevokedAt = now;
             n++;
         }
+
+        // AI ulanishlar (read-only MCP) ham — HAR DOIM, joriy sessiya saqlansa ham: ular boshqa
+        // "qurilma" (AI ilovasi), parol almashtirilgandan keyin eski ulanish ishlayvermasin.
+        var grants = await db.McpGrants
+            .Where(g => g.UserId == userId && g.RevokedAt == null)
+            .ToListAsync(ct);
+        foreach (var g in grants)
+        {
+            g.RevokedAt = now;
+            g.RevokedBy = "system:password-change";
+        }
         return n;
     }
 

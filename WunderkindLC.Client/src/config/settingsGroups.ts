@@ -25,6 +25,7 @@ import {
   IconMessages,
   IconMicrophone,
   IconMoneybag,
+  IconPlugConnected,
   IconReceipt,
   IconSchool,
   IconSparkles,
@@ -37,7 +38,7 @@ import {
 export type SettingsGroupKey = 'umumiy' | 'moliya' | 'oquv' | 'sotuv' | 'ilova'
 
 /** Bo'lim ichida chiziladigan TAYYOR sozlama komponenti (kalit → komponent `SettingsGroupPage` da). */
-export type SettingsPanelKey = 'check' | 'school' | 'account' | 'reasons' | 'channels' | 'apk' | 'azure' | 'gemini'
+export type SettingsPanelKey = 'check' | 'school' | 'account' | 'reasons' | 'channels' | 'apk' | 'azure' | 'gemini' | 'mcp'
 
 /** Qatordan ochiladigan oyna (mavjud modallar). */
 export type SettingsModalKey = 'journal-edit' | 'journal-payment' | 'journal-salary' | 'retention'
@@ -47,6 +48,9 @@ interface Gated {
   perm?: string
   /** `view` (standart) — ko'rish; `edit` — faqat o'zgartira oladiganga (oyna faqat saqlash uchun). */
   action?: 'view' | 'edit'
+  /** FAQAT superadmin (ruxsat kaliti bilan ifodalab bo'lmaydi: `can()` admin uchun ham `true`).
+   *  Server tomonda ham hard rol (`[Authorize(Roles = SuperAdmin)]`). `perm` bilan birga ishlatilmaydi. */
+  superadminOnly?: boolean
 }
 
 /** edutizim "Funksionallik" uslubidagi kulrang qator: rangli ikonka + sarlavha + izoh + strelka. */
@@ -134,6 +138,8 @@ export const SETTINGS_GROUPS: SettingsGroup[] = [
       { key: 'chek', label: 'Chek', icon: IconReceipt, kind: 'panel', panel: 'check', perm: 'settings.check' },
       { key: 'markaz', label: "Markaz ma'lumotlari", icon: IconBuildingCommunity, kind: 'panel', panel: 'school', perm: 'settings.school' },
       { key: 'foydalanuvchi', label: 'Foydalanuvchi sozlamalari', icon: IconUserCog, kind: 'panel', panel: 'account' },
+      // AI ulanish (read-only MCP): holat, manzil, ulangan ilovalar, so'rovlar jurnali (docs/SPEC-mcp.md).
+      { key: 'ai', label: 'AI ulanishlar (MCP)', icon: IconPlugConnected, kind: 'panel', panel: 'mcp', superadminOnly: true },
     ],
   },
   {
@@ -212,16 +218,17 @@ export const SETTINGS_GROUPS: SettingsGroup[] = [
 /** Ruxsat tekshiruvchi: `(perm, action) => boolean` (odatda `usePerm().can`). */
 export type CanFn = (perm: string, action: 'view' | 'edit') => boolean
 
-const allowed = (x: Gated, can: CanFn) => !x.perm || can(x.perm, x.action ?? 'view')
+const allowed = (x: Gated, can: CanFn, isSuperAdmin: boolean) =>
+  x.superadminOnly ? isSuperAdmin : !x.perm || can(x.perm, x.action ?? 'view')
 
 /** Foydalanuvchiga ko'rinadigan guruhlar: band va qatorlar ruxsat bo'yicha filtrlanadi,
  *  bo'sh qolgan `rows` bandi va bandsiz guruh butunlay tushib qoladi. */
-export function visibleSettingsGroups(can: CanFn): SettingsGroup[] {
+export function visibleSettingsGroups(can: CanFn, isSuperAdmin = false): SettingsGroup[] {
   return SETTINGS_GROUPS.map((g) => ({
     ...g,
     items: g.items
-      .filter((i) => allowed(i, can))
-      .map((i) => (i.rows ? { ...i, rows: i.rows.filter((r) => allowed(r, can)) } : i))
+      .filter((i) => allowed(i, can, isSuperAdmin))
+      .map((i) => (i.rows ? { ...i, rows: i.rows.filter((r) => allowed(r, can, isSuperAdmin)) } : i))
       .filter((i) => i.kind !== 'rows' || (i.rows?.length ?? 0) > 0),
   })).filter((g) => g.items.length > 0)
 }
@@ -233,6 +240,8 @@ export function visibleSettingsGroups(can: CanFn): SettingsGroup[] {
 export function groupPermAny(g: SettingsGroup): string[] | null {
   const perms: string[] = []
   for (const i of g.items) {
+    // Faqat superadmin bandi menyu darvozasiga KIRMAYDI (kalitsiz — u guruhni hammaga ochib yubormasin).
+    if (i.superadminOnly) continue
     if (!i.perm && i.kind !== 'rows') return null
     if (i.perm) perms.push(i.perm)
     for (const r of i.rows ?? []) if (r.perm) perms.push(r.perm)

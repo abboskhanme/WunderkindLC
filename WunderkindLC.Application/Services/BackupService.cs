@@ -72,6 +72,8 @@ public static class BackupService
         "ctiCallEvents", "ctiCommandLogs", "refreshTokens", "loginOtpCodes", "trustedDevices",
         "faceChallenges", "loginFaceChecks", "studentFaceProfiles", "bookBotSessions", "testBotSessions",
         "seedMarkers", "cameras", "attendanceNotifyItems",
+        // Read-only MCP: OAuth mijozlari, ulanishlar, kod/token xeshlari va so'rovlar jurnali — texnik.
+        "mcpClients", "mcpGrants", "mcpAuthCodes", "mcpTokens", "mcpAudit",
     };
 
     /// <summary>Biznes jadvallarini JSON (UTF-8 baytlar) ko'rinishida yig'adi (siqilmagan — testlar va

@@ -17,9 +17,22 @@ public static class JournalPolicy
     public const string ModeToday = "today";
     public const string ModeWindow = "window";
 
-    /// <summary>Joriy siyosat (CenterMeta yo'q/buzuq bo'lsa — xavfsiz default: erkin).</summary>
+    /// <summary>Joriy siyosat (CenterMeta yo'q/buzuq bo'lsa — xavfsiz default: erkin).
+    /// <para>FAQAT siyosat ustunlari o'qiladi (butun qator emas): CenterMeta'da integratsiya sirlari ham bor,
+    /// AI ulanishining faqat-o'qish roli esa bu jadvaldan faqat shu ustunlarni ko'ra oladi
+    /// (<c>McpReadOnlyGrants.RestrictedColumns</c>). Natija o'zgarmaydi — <see cref="FromMeta"/> ayni maydonlarni oladi.</para></summary>
     public static async Task<JournalPolicyDto> GetAsync(IAppDbContext db) =>
-        FromMeta(await db.CenterMeta.AsNoTracking().FirstOrDefaultAsync());
+        FromMeta(await db.CenterMeta.AsNoTracking()
+            .Select(m => new CenterMeta
+            {
+                JournalEditMode = m.JournalEditMode, JournalRetroDays = m.JournalRetroDays,
+                JournalConductedOnly = m.JournalConductedOnly, JournalApplyToAdmins = m.JournalApplyToAdmins,
+                SalaryRequireJournal = m.SalaryRequireJournal, SalaryGraceDays = m.SalaryGraceDays,
+                JournalHideUnpaidPrevMonth = m.JournalHideUnpaidPrevMonth,
+                JournalHideUnpaidAfterDay = m.JournalHideUnpaidAfterDay,
+                JournalUnpaidCutoffDay = m.JournalUnpaidCutoffDay,
+            })
+            .FirstOrDefaultAsync());
 
     /// <summary>CenterMeta → siyosat DTO'si (buzuq qiymatlar xavfsiz defaultga). Audit snapshot'i ham shundan.</summary>
     public static JournalPolicyDto FromMeta(CenterMeta? m)

@@ -20,6 +20,8 @@ import { ChannelsSettings } from './ChannelsSettings'
 import { ApkSettings } from './ApkSettings'
 import { AzureSpeechSettings } from './AzureSpeechSettings'
 import { GeminiSettings } from './GeminiSettings'
+import { McpSettings } from './McpSettings'
+import { useAuth } from '@/context/auth-context'
 
 /**
  * SOZLAMALAR — edutizim ko'rinishida: chapda oq kartada bo'limlar ro'yxati (ikonka + nom,
@@ -36,9 +38,10 @@ export function SettingsGroupPage() {
   const { group = 'umumiy' } = useParams()
   const [params, setParams] = useSearchParams()
   const { can } = usePerm()
+  const { user } = useAuth()
   const [modal, setModal] = useState<SettingsModalKey | null>(null)
 
-  const groups = visibleSettingsGroups((p, a) => can(p, a))
+  const groups = visibleSettingsGroups((p, a) => can(p, a), user?.role === 'superadmin')
   const current = groups.find((g) => g.key === group)
 
   if (!current) {
@@ -183,6 +186,8 @@ function Panel({ panel, channelTab }: { panel: SettingsPanelKey; channelTab: str
       return <AzureSpeechSettings />
     case 'gemini':
       return <GeminiSettings />
+    case 'mcp':
+      return <McpSettings />
   }
 }
 

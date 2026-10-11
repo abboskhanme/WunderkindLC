@@ -352,3 +352,30 @@
 - [2026-10-09] «Buyurtmalar» vs «Birinchi dars» overlap → table default hides first-lesson and converted leads,
   kanban keeps the whole pipeline → client: a lead moved to Birinchi dars must leave Buyurtmalar; the kanban is
   a stage board where every stage column must stay populated.
+- [2026-10-11] CRM upgrade (client meeting script) — USER DECISIONS, not assumptions (full gap list:
+  `docs/GAP-crm-takomillashtirish.md`):
+  1. Remove entirely: push, group chat, Local Call, Local SMS (CTI agent app), APK — no installable app is used.
+  2. Remove the SMS channel entirely (Eskiz too) — Telegram is the only outbound channel.
+  3. Absent notice: the send time is configurable by admins (settings).
+  4. Teacher fine for attendance not taken; the delay after which it applies is an admin setting (e.g. 10 / 15 min).
+  5. Tests: no question authoring / distribution in the platform (remove it if present). Only results are entered
+     per group: name, date, number of questions, number solved, percent on a 100-point scale; 1–2 times a month.
+     Results must feed the rating.
+  6. No debtor lock on the rating. Student profile shows rich rating data (own tests, history, monthly, group,
+     centre, quarterly / 3-month, yearly) — clean, not cluttered.
+  7. Student login + password permanently visible to administrators; per-group login/password export.
+  8. "Telegram connected / not connected" column in the active students list and in the teacher's view of his students.
+  9. FIRST PRIORITY: an MCP server for the whole project — STRICTLY READ-ONLY (no write / delete / create tools).
+- [2026-10-11] MCP: how to build it? → Port the sibling WunderkindLMS design (`SchoolLms.Server/Mcp`): remote
+  Streamable-HTTP MCP at `/mcp` inside the existing backend, OAuth 2.1 + PKCE login on our own page, leadership only
+  (`superadmin`, `admin`, staff with the `aiAccess` permission), tools run on a separate DbContext bound to a
+  SELECT-only PostgreSQL role, fail-closed when that connection is not configured → same owner, same stack family,
+  already proven with claude.ai / ChatGPT connectors.
+- [2026-10-11] Test percent vs solved count — two inputs or one? → One input (solved count); percent is computed
+  as solved / questions × 100 → the client's example (80% and 25 of 30) was approximate; two independent inputs
+  would let them disagree.
+- [2026-10-11] "Remove test authoring" — how far? → Remove the ONLINE mode of group tests (bot PDF, answer key,
+  test code, external participants). The lead level test and curriculum-item tests are left in place for now and
+  flagged to the user → they belong to the lead funnel / curriculum, not to "monthly tests".
+- [2026-10-11] Fine amount for attendance not taken → configurable in settings (sum per lesson), next to the delay
+  → the client named the delay but not the amount.

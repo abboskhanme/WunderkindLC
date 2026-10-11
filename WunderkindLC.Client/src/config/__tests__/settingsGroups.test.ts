@@ -78,6 +78,16 @@ describe('ruxsat bo\'yicha ko\'rinish', () => {
     expect(visibleSettingsGroups(() => true)).toHaveLength(SETTINGS_GROUPS.length)
   })
 
+  it("«AI ulanishlar» (MCP) FAQAT superadmin — admin ham ko'rmaydi (can() admin uchun true)", () => {
+    const keysOf = (gs: ReturnType<typeof visibleSettingsGroups>) => gs.flatMap((g) => g.items).map((i) => i.key)
+    expect(keysOf(visibleSettingsGroups(() => true))).not.toContain('ai')
+    expect(keysOf(visibleSettingsGroups(() => true, true))).toContain('ai')
+    // Kalitsiz superadmin bandi guruhning menyu darvozasini OCHMAYDI.
+    const ai = SETTINGS_GROUPS.flatMap((g) => g.items).find((i) => i.key === 'ai')!
+    expect(ai.perm).toBeUndefined()
+    expect(ai.superadminOnly).toBe(true)
+  })
+
   it("jurnal siyosati qatorlari faqat TAHRIRLASH huquqi bilan (oyna faqat saqlash uchun)", () => {
     const viewOnly = visibleSettingsGroups((_p, a) => a === 'view')
     const rows = viewOnly.flatMap((g) => g.items).flatMap((i) => i.rows ?? [])

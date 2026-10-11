@@ -411,7 +411,11 @@ public class PaymentReminderService(
                         .First();
             if (!groups.TryGetValue(m.GroupId, out var g)) continue;
             var ledger = await StudentGroupLedger.BuildAsync(db, s, g, m, book);
-            var owed = ledger.Months.Sum(x => x.Remaining);
+            // ⚠️ FAQAT joriy oygacha (2026-10-11). Ledger faol a'zolikka keyingi 3 oyni ham AVANS uchun
+            // ko'rsatadi (to'liq oylik "qolgan" bilan) — ilgari ular ham qo'shilib, ota-onaga haqiqiy
+            // qarzdan 3 oylik ko'p summa ketardi, qarzi yo'q fan bo'yicha esa "qarz" xabari tuzilardi.
+            var current = TuitionService.CurrentMonth();
+            var owed = ledger.Months.Where(x => string.CompareOrdinal(x.Month, current) <= 0).Sum(x => x.Remaining);
             if (owed <= 0) continue;
             items.Add(Compose(s, g, ledger.CourseName, owed));
         }
