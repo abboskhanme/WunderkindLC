@@ -1506,6 +1506,17 @@ namespace WunderkindLC.Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<int>("RatingTestWeight")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("RatingTopBottomCount")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("RatingTopBottomScope")
+                        .IsRequired()
+                        .HasMaxLength(8)
+                        .HasColumnType("character varying(8)");
+
                     b.Property<string>("Region")
                         .IsRequired()
                         .HasColumnType("text");
