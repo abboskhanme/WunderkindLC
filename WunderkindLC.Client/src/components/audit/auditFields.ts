@@ -81,10 +81,21 @@ export const auditFieldLabels: Record<string, string> = {
 const pctKeys = new Set(['discountPct', 'salaryPercent', 'bonusPct'])
 const hiddenKeys = new Set(['studentId', 'teacherId'])
 
+/**
+ * Snapshot JSON → object with camelCase top-level keys. The server serialises snapshots with
+ * `JsonSerializer` defaults (PascalCase: `FullName`, `Amount`), while the labels above are camelCase —
+ * without this no field ever matched and the "old → new" lines never rendered.
+ */
 export function parseSnapshot(json?: string): Record<string, unknown> | null {
   if (!json) return null
   try {
-    return JSON.parse(json) as Record<string, unknown>
+    const raw = JSON.parse(json) as unknown
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null
+    const out: Record<string, unknown> = {}
+    for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+      out[k.length > 0 ? k[0].toLowerCase() + k.slice(1) : k] = v
+    }
+    return out
   } catch {
     return null
   }
