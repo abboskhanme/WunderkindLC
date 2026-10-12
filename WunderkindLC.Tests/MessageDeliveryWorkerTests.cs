@@ -330,6 +330,23 @@ public class MessageDeliveryWorkerTests
         Assert.True(r.Ctx.MessageDeliveries.Any(d => d.Id == fresh.Id));
     }
 
+    [Fact]
+    public async Task Bot_sozlanmaganda_qolib_ketgan_pending_kunlik_xizmatda_expired()
+    {
+        using var r = new Rig();
+        var bc = new Broadcast { ClassName = "Faol", Status = "queued", Kind = "broadcast" };
+        r.Ctx.Broadcasts.Add(bc);
+        r.Db.Context.SaveChanges();
+        var row = r.Add(broadcastId: bc.Id);
+        r.Now = T0.AddDays(1);
+
+        await r.Worker.MaintainAsync(CancellationToken.None);
+
+        Assert.Equal("expired", r.Reload(row.Id).Status);
+        Assert.Equal("done", r.Ctx.Broadcasts.AsNoTracking().Single().Status);
+        Assert.Empty(r.Sender.Sent);
+    }
+
     private static async Task<(MessageAttachment Attachment, string Url)> SavePhoto(Rig r)
     {
         var bytes = new byte[] { 0xFF, 0xD8, 0xFF, 0xE0, 1, 2, 3, 4, 5, 6 };

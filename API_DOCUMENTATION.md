@@ -575,7 +575,7 @@ staff'ga GET har doim ochiq bo'lgani uchun mavjud endpointlar ishlatiladi.
 |---|---|---|
 | GET | /api/admin/messages/classes | Guruhlar (o'quvchilar va Telegram'ga ulangan ota-onalar soni). |
 | GET | /api/admin/messages/broadcasts | Telegram e'lonlari tarixi (`className`, oxirgi 100). |
-| POST | /api/admin/messages/broadcast | Telegram e'lon (scope class/all/selected; qarzdorlar; mail-merge). |
+| POST | /api/admin/messages/broadcast | ESKI adapter: scope class/all/selected → `AudienceSpec`, OUTBOX orqali (yangi klient ishlatmaydi; `sentCount` = 0 — yetkazish asinxron). |
 | GET | /api/admin/messages/telegram/registrations | Ro'yxatdan o'tgan ota-onalar (`className`). |
 | GET | /api/admin/messages/telegram/registrations/teachers | Ro'yxatdan o'tgan o'qituvchilar. |
 | GET | /api/admin/messages/telegram/status | Telegram bot holati. |
@@ -598,6 +598,34 @@ staff'ga GET har doim ochiq bo'lgani uchun mavjud endpointlar ishlatiladi.
 | PUT | /api/admin/auto-messages/{id} | Tahrirlaydi. |
 | DELETE | /api/admin/auto-messages/{id} | O'chiradi. |
 | POST | /api/admin/auto-messages/seed-standard | Standart Telegram qoidalarini qo'shadi (bor triggerlar o'tkazib yuboriladi). |
+
+2026-10-12 (CRM P2.5): qoidada `ackButton`, `attachmentId`; trigger katalogida `scheduleMode` (`monthly_day_time` |
+`daily_time` | `custom` | `none`), `defaultAck`, `defaultDay`, `defaultTime`; tokenlarda `example`. Shablon Telegram HTML +
+noma'lum token tekshiruvi (400). Yaratish/tahrir/o'chirish — audit (`AutoMessageRule`).
+
+### MessagingController (CRM upgrade Phase 2)
+`api/admin/messaging` · Ruxsat: `[Authorize]` + `[AdminPerm("messages.broadcast", ReadRequiresPerm = true)]` (o'qish ham).
+Telegram OUTBOX: preview, sanoq, biriktirma, kampaniya, hisobot, qarzdorlar, shablonlar. Xatolar `{ message }`.
+
+| Metod | Yo'l | Vazifasi |
+|---|---|---|
+| POST | /api/admin/messaging/preview | `{ template, audience?, studentId?, attachmentId?, trigger?, kind? }` → `{ html, plain, visibleLength, mode, errors, warnings, sample }` (shablon xatosi `errors` da, 400 emas). |
+| POST | /api/admin/messaging/audience/count | `{ audience, template?, kind? }` → `{ students, chats, messages, byRelation, notConnected, blocked, perChat, sampleNames }` — `POST campaigns` bilan AYNAN bir xil rejalashtiruvchi. |
+| POST | /api/admin/messaging/attachments | multipart `file` (jpg/png ≤ 10 MB, mp4/pdf/office ≤ 50 MB; kengaytma + Content-Type + sehrli baytlar) → `{ id, kind, fileName, sizeBytes, contentType }`. |
+| GET | /api/admin/messaging/attachments/{id}/content | Fayl (`private, no-store`); statik `/uploads` yo'q. |
+| POST | /api/admin/messaging/campaigns | `{ kind: broadcast\|archive\|debt, audience, template, attachmentId?, ackRequired }` → 202 `{ id, messages, chats, students }`. |
+| GET | /api/admin/messaging/campaigns | `kind, from, to, page, pageSize` → `Paged<CampaignRow>`. |
+| GET | /api/admin/messaging/campaigns/{id} | Kampaniya + yuborilgan HTML + biriktirma + auditoriya. |
+| GET | /api/admin/messaging/campaigns/{id}/deliveries | `status, q, page, pageSize` → o'quvchi bo'yicha sahifalangan qatorlar (har chat holati, `ackAt`). |
+| POST | /api/admin/messaging/campaigns/{id}/cancel | Navbatdagilar → `cancelled`. |
+| GET | /api/admin/messaging/auto-stats | `from, to` (≤ 92 kun) → kun × trigger: total/sent/failed/blocked/acked. |
+| GET | /api/admin/messaging/debtors | `groupId, courseId, teacherId, minDebt, memberStatus` → kurs bo'yicha qarz, Telegram, oxirgi eslatma. |
+| GET/POST/PUT/DELETE | /api/admin/messaging/templates[/{id}] | Qo'lda shablonlar (`SmsTemplates` jadvali), audit `MessageTemplate`. |
+
+Talaba profili: `PUT /api/admin/students/{id}/telegram-links/{regId}` `{ relation }` (`students.list` edit) ·
+`GET /api/admin/students/{id}/telegram-deliveries?limit=50` (`students.list` yoki `messages.broadcast`, o'qish darvozasi).
+Yutuqlar: `api/admin/achievements` (`students.list`, o'qish ham) — `GET ?studentId&kind&from&to`, `POST` (+`congratulate`),
+`PUT {id}`, `DELETE {id}`, `POST {id}/congratulate`, `GET {id}/photo`; kabinet `GET /api/student/achievements[/{id}/photo]`.
 
 ### RemindersController
 `api/admin/reminders` · Ruxsat: `[Authorize]` + `[AdminPerm("settings")]` · **`[Obsolete]`** (frontend `auto-messages`ga ko'chgan, lekin API ishlaydi). Eski avto push-eslatma qoidalari.
