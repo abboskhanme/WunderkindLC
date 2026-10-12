@@ -83,7 +83,7 @@ Kabinet: `GET api/student/rating/summary?studentId=&period=&key=` (`StudentPorta
 guruh va markaz TOP 10 (+ o'z qatori TOP dan tashqarida bo'lsa). Begona o'quvchilar FAQAT ism, o'rin, bal bilan
 (id YO'Q). Ota-ona faqat O'Z farzandini (`TargetAsync`), admin — `?studentId=` bilan.
 
-`GET top-bottom` (oylik TOP/BOTTOM ko'rinishi) — U4d (`TopBottomRules`, `MonthlyRatingNotifier`), hali YO'Q.
+`GET top-bottom?month=&scope=` (oylik TOP/BOTTOM ko'rinishi, `classes.rating`, RRP) — §8 (U4d).
 
 ## 6. SOZLAMALAR — `CenterMeta`
 
@@ -103,3 +103,31 @@ bilan yoziladi (`SettingsAudit`, «Reyting sozlamalari», «Testlar ulushi, %: 6
 - Kabinetdagi eski «Guruh» va «Markaz» tablari olib tashlandi — o'rniga bitta «Reyting» (blok + TOP ro'yxatlar).
 - Guruh sahifasida eski ball jadvali qoldi — endi sarlavhasi «Ball tafsiloti».
 - Hisobot katalogida `inNav: true` (sof hisobot), menyuda asosiy «Hisobotlar» guruhida (`mainReportRoutes`).
+
+## 8. OYLIK TOP / BOTTOM (U4d) — `TopBottomRules`, `TopBottomService`, `MonthlyRatingNotifier`
+
+SPEC P4.5; egasining qarori: O'TGAN oyning TEST o'rtachasi (T) bo'yicha (kompozit bal EMAS), standart — har guruh,
+N = 5, **k = min(N, ⌊n/2⌋)** (⌊n/2⌋ — kichik guruhda deyarli hammani ogohlantirmaslik uchun). Sozlama `CenterMeta`
+(`RatingTopBottomCount` 1..10, `RatingTopBottomScope` `group`|`centre`) — «Reyting sozlamalari» oynasi (§6).
+
+- **Qoida (sof, `TopBottomRulesTests`):** `group` — testi bor ≥ 2 o'quvchili har guruh: TOP = T kamayishida birinchi k
+  (teng — ism bo'yicha), BOTTOM = oxirgi k (eng pasti birinchi); `centre` — bitta ro'yxat, o'quvchining markaz T si =
+  uning guruh T larining O'RTACHASI. Testsiz o'quvchi qatnashmaydi. k ≤ n/2 — hech kim ikkala ro'yxatda emas.
+  ⚠️ TOP dagi biror o'quvchi bilan T si TENG o'quvchi BOTTOM ga TUSHMAYDI (bir xil natija — biri maqtov, biri ogohlantirish
+  olmasin); hamma teng bo'lgan guruhda BOTTOM bo'sh.
+- **Ko'rinish = yuborish:** hisobot tabi («Hisobotlar → Reyting → TOP/BOTTOM», standart — o'tgan oy) va yuboruvchi
+  ro'yxatni BITTA funksiyadan oladi (`TopBottomService.BuildAsync`, T — keshlangan oy reytingi `RatingEngine`).
+- **Yuborish (`MonthlyRatingNotifier`, har 10 daqiqada):** yoqilgan har `rating_top`/`rating_bottom` qoidasi O'Z kuni va
+  soatida (`AutoMessageSchedule.IsDue`, standart 3-sana 10:00) — `rating_top` → TOP, `rating_bottom` → BOTTOM; outbox
+  orqali, `DispatchStudentAsync(…, onlyRuleId: rule.Id)`, `eventKey = "{yyyy-MM}"`. Tokenlar: {oy} (baholangan oy,
+  "sentabr"), {orin} "r/n" (T bo'yicha o'rin / qamrovdagi natijasi borlar), {foiz} T ("78%"), {guruh} (guruh nomi;
+  markaz qamrovida «markaz»).
+- ⚠️ **Oyiga BIR marta — BAZADA** (`JobRunMarker`, belgi "sanasi" = baholangan oyning 1-kuni): o'quvchi
+  `rating:{ruleId}:{yyyy-MM}:{studentId}` yuborishdan OLDIN band qilinadi, qoida `rating:{ruleId}:{yyyy-MM}` — ish
+  XATOSIZ tugagach. Restart takrorlamaydi; yarim yo'lda yiqilgan ish keyingi uyg'onishda davom etadi; qoidaning kuni
+  keyin o'zgartirilsa ham o'sha oy QAYTA ketmaydi.
+- Ikki guruh ro'yxatida turgan o'quvchiga qoida bo'yicha BITTA xabar (TOP — eng yaxshi o'rni, BOTTOM — eng past T).
+  Arxivdagi va faqat yopilgan guruhli o'quvchiga yuborilmaydi (`MessagingAudience.ClosedGroupStudentIdsAsync`).
+- **Catch-up YO'Q** (har oylik eslatma kabi): qoida kuni butunlay o'tib ketsa (server o'chiq / qoida keyin yoqilgan) o'sha
+  oy yuborilmaydi — bir marta ogohlantirish logi (`rating-skip:{ruleId}:{yyyy-MM}`).
+- ImportMode'da xizmat ishga tushmaydi (`CrmRatingSetup.AddCrmRating`).
