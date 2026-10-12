@@ -33,6 +33,7 @@ const FirstPaymentStudentsPage = lazy(() => import('@/pages/admin/students/lists
 const SubscriptionRiskPage = lazy(() => import('@/pages/admin/students/lists/SubscriptionRiskPage').then((m) => ({ default: m.SubscriptionRiskPage })))
 const IntakeChecklistPage = lazy(() => import('@/pages/admin/students/lists/IntakeChecklistPage').then((m) => ({ default: m.IntakeChecklistPage })))
 const NotAttendedGroupsPage = lazy(() => import('@/pages/admin/nazorat/NotAttendedGroupsPage').then((m) => ({ default: m.NotAttendedGroupsPage })))
+const AbsentNoticesPage = lazy(() => import('@/pages/admin/nazorat/AbsentNoticesPage').then((m) => ({ default: m.AbsentNoticesPage })))
 const LeadsPage = lazy(() => import('@/pages/admin/leads/LeadsPage').then((m) => ({ default: m.LeadsPage })))
 const LeadDetailPage = lazy(() => import('@/pages/admin/leads/LeadDetailPage').then((m) => ({ default: m.LeadDetailPage })))
 const FirstLessonLeadsPage = lazy(() => import('@/pages/admin/leads/FirstLessonLeadsPage').then((m) => ({ default: m.FirstLessonLeadsPage })))
@@ -410,6 +411,8 @@ export default function App() {
                 Uchala ko'rinish AYNI ma'lumot ustida ishlaydi, shuning uchun ruxsati ham
                 bitta (`tasks.board`); nazorat paneli alohida (`tasks.dashboard`). */}
             <Route path="nazorat/davomat-qilinmagan" element={<RequirePerm perm="classes.notAttended"><NotAttendedGroupsPage /></RequirePerm>} />
+            {/* CRM U3b: «kelmadi» xabarlari navbati — menejer to'xtatadi/tasdiqlaydi/bekor qiladi. */}
+            <Route path="nazorat/davomat-xabarlari" element={<RequirePerm perm="students.notices"><AbsentNoticesPage /></RequirePerm>} />
             <Route path="topshiriqlar" element={<RequirePerm perm="tasks.board"><TasksBoardPage /></RequirePerm>} />
             <Route path="topshiriqlar/royxat" element={<RequirePerm perm="tasks.board"><TasksListPage /></RequirePerm>} />
             <Route path="topshiriqlar/kalendar" element={<RequirePerm perm="tasks.board"><TasksCalendarPage /></RequirePerm>} />
