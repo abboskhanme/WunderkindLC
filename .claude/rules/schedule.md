@@ -117,8 +117,12 @@ turlar: Group, Teacher, Subject, Room, StudentGroup, Student, LessonNote, Lesson
 SubstituteTeacherAssignment).
 
 - Javob: `rooms` (BARCHA faol xona + darsi bor nofaol/eski matnli xona — dars jimgina yo'qolmasin), `teachers`
-  (arxivlanmaganlar + dars o'tadiganlar), `lessons` (`members` = `SeatHolders`, `attendanceTaken` = jurnalda
-  «o'tildi»), `skippedGroups` (kunsiz/vaqti buzuq guruhlar SONI).
+  (arxivlanmaganlar + dars o'tadiganlar), `lessons` (`members` = `SeatHolders`, `attendanceTaken` = shu kuni guruhda
+  davomat OLINGAN), `skippedGroups` (kunsiz/vaqti buzuq guruhlar SONI).
+- ⚠️ **`attendanceTaken` — YAGONA davomat ta'rifi (U3a, 2026-10-12):** guruhning shu kundagi istalgan `LessonNote` ida
+  `AttendanceTakenAt` bor (birinchi «keldi»/«kelmadi» belgisi, fan/dars raqamidan qat'i nazar) — dars monitoringi,
+  eslatma va jarima bilan bir xil (`journal.md` «YAGONA DAVOMAT TA'RIFI»). Ilgari `Conducted` («o'tildi») edi: bitta
+  baho ham darsni "davomat olingan" qilib ko'rsatardi. MCP `schedule_week`/`schedule_day` ham shu ta'rifni beradi.
 - Klient (`lib/scheduleDated.ts`, testlari bilan): manzilda `?date=&view=day|week&groupBy=room|teacher&layout=list`
   + filtrlar (`teacher`, `group`, `course`, `room`, `floor`, `status`), `replace` bilan. ⚠️ O'QITUVCHI filtri
   EGASI ham, O'RINBOSARI ham bo'yicha; «o'qituvchi bo'yicha» ustunlarda dars — shu kuni uni O'TADIGAN odamda.

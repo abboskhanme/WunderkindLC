@@ -36,18 +36,23 @@ public sealed class TestTools(McpToolContext t)
 
     [McpServerTool(Name = "tests_list", Title = "Testlar natijalari ro'yxati",
         ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
-    [Description("«Testlar natijalari» bo'limidagi testlar (guruhga o'tkazilgan nomli, sanali test va maksimal ball): "
-        + "yangisidan eskisiga. Har qatorda: test id, nomi, sanasi, guruh (id, nomi, arxivdami), kurs, o'qituvchi, "
-        + "maksimal ball, guruhning hozirgi faol (muzlatilmagan) o'quvchilari soni, ball kiritilganlar soni, o'rtacha ball "
-        + "va o'rtacha foiz (o'rtacha ÷ maksimal × 100). Filtrlar: guruh, oy (YYYY-MM) YOKI sana oralig'i (from/to, ko'pi "
-        + "bilan 366 kun), nomi bo'yicha qidiruv. Sahifalangan. Ballar ro'yxati — test_scores. "
-        + "Group tests with score count, average score and average percent, newest first.")]
+    [Description("«Testlar natijalari» bo'limidagi testlar (guruhga o'tkazilgan nomli, sanali test) — markaz bo'yicha testlar "
+        + "ko'rinishi bilan bir xil: yangisidan eskisiga. Har qatorda: test id, nomi, sanasi, TURI (monthly — «Oylik», interim — "
+        + "«Oraliq»), SAVOLLAR SONI (0 — eski test, maxraj maksimal ball), maksimal ball, guruh (id, nomi, arxivdami), kurs, "
+        + "o'qituvchi, guruhning hozirgi faol (muzlatilmagan) o'quvchilari soni, natija kiritilganlar soni, o'rtacha ball, "
+        + "o'rtacha FOIZ (natijalar foizlarining o'rtachasi — panel bilan bir xil) va natijalar ota-onalarga qachon "
+        + "yuborilgani. Filtrlar: guruh, oy (YYYY-MM) YOKI sana oralig'i (from/to, ko'pi bilan 366 kun), turi, kurs, "
+        + "o'qituvchi (guruh egasi), nomi bo'yicha qidiruv. Sahifalangan. Natijalar ro'yxati — test_scores. "
+        + "Group tests with kind, question count, scored count and average percent, newest first.")]
     public async Task<string> TestsList(
         [Description("Faqat shu guruh testlari (groups_list natijasidan id)")] string? groupId = null,
         [Description("Oy YYYY-MM (from/to bilan birga berilmaydi)")] string? month = null,
         [Description("Boshlanish sanasi YYYY-MM-DD (month o'rniga)")] string? from = null,
         [Description("Tugash sanasi YYYY-MM-DD (month o'rniga; sukut — bugun)")] string? to = null,
         [Description("Test nomi bo'yicha qidiruv (qismi ham bo'ladi)")] string? search = null,
+        [Description("Test turi: monthly («Oylik») | interim («Oraliq»)")] string? kind = null,
+        [Description("Faqat shu kurs guruhlarining testlari (courses_list natijasidan id)")] string? courseId = null,
+        [Description("Faqat shu o'qituvchi (guruh egasi) guruhlarining testlari")] string? teacherId = null,
         [Description("Sahifa (1 dan)")] int? page = null,
         [Description("Sahifa hajmi (1..200, sukut 50)")] int? pageSize = null,
         CancellationToken ct = default)
@@ -56,6 +61,9 @@ public sealed class TestTools(McpToolContext t)
         var gid = Clean(groupId);
         var (mon, fromIso, toIso) = Period(month, from, to);
         var q = Clean(search)?.ToLower();
+        var k = Kind(kind);
+        var cid = Clean(courseId);
+        var tid = Clean(teacherId);
         var db = t.Db;
 
         var query = db.TestResults.AsQueryable();
@@ -64,6 +72,16 @@ public sealed class TestTools(McpToolContext t)
         if (fromIso is not null && toIso is not null)
             query = query.Where(x => string.Compare(x.Date, fromIso) >= 0 && string.Compare(x.Date, toIso) <= 0);
         if (q is not null) query = query.Where(x => x.Name.ToLower().Contains(q));
+        if (k is not null) query = query.Where(x => x.Kind == k);
+        // Course / teacher — the group's (TestResultService.OverviewAsync: the group owner, not a substitute).
+        if (cid is not null || tid is not null)
+        {
+            var groupQuery = db.Classes.AsQueryable();
+            if (cid is not null) groupQuery = groupQuery.Where(g => g.CourseId == cid);
+            if (tid is not null) groupQuery = groupQuery.Where(g => g.TeacherId == tid);
+            var groupIdsQuery = groupQuery.Select(g => g.Id);
+            query = query.Where(x => groupIdsQuery.Contains(x.GroupId));
+        }
 
         var total = await query.CountAsync(ct);
         var p = McpToolContext.Page(page);
@@ -72,7 +90,7 @@ public sealed class TestTools(McpToolContext t)
         var tests = await query
             .OrderByDescending(x => x.Date).ThenByDescending(x => x.CreatedAt).ThenBy(x => x.Id)
             .Skip((p - 1) * size).Take(size)
-            .Select(x => new { x.Id, x.GroupId, x.Name, x.Date, x.MaxScore })
+            .Select(x => new { x.Id, x.GroupId, x.Name, x.Date, x.MaxScore, x.Kind, x.QuestionCount, x.ResultsSentAt })
             .ToListAsync(ct);
 
         var testIds = tests.Select(x => x.Id).ToList();
@@ -98,22 +116,31 @@ public sealed class TestTools(McpToolContext t)
             var g = groups.GetValueOrDefault(x.GroupId);
             return new
             {
-                x.Id, x.Name, x.Date, x.MaxScore,
+                x.Id, x.Name, x.Date,
+                kind = x.Kind, kindLabel = TestEntryRules.KindLabel(x.Kind),
+                questionCount = x.QuestionCount,
+                x.MaxScore,
                 group = new { id = x.GroupId, name = g?.Name ?? "", isArchived = g?.IsArchived ?? false },
                 course = g?.Course ?? "",
                 teacher = new { id = g?.TeacherId ?? "", name = g?.TeacherName ?? "" },
                 groupStudents = studentCounts.GetValueOrDefault(x.GroupId, 0),
                 scored = scores.Count,
                 averageScore = avg is null ? (decimal?)null : Math.Round(avg.Value, 1),
-                averagePercent = Percent(avg, x.MaxScore),
+                // The panel's «O'rtacha foiz» (TestResultService.AvgPercent): mean of each result's percent (0..100).
+                averagePercent = TestResultService.AvgPercent(scores, x.MaxScore),
+                resultsSentAt = x.ResultsSentAt?.ToString("yyyy-MM-ddTHH:mm:ss"),
             };
         }).ToList();
 
         return t.Json(new
         {
             groupId = gid, month = mon, from = fromIso, to = toIso, search = Clean(search),
-            note = "«groupStudents» — guruhning HOZIRGI faol (muzlatilmagan) o'quvchilari; «scored» — ball kiritilganlar; "
-                + "«averagePercent» = o'rtacha ball ÷ maksimal ball × 100.",
+            kind = k, courseId = cid, teacherId = tid,
+            note = "«groupStudents» — guruhning HOZIRGI faol (muzlatilmagan) o'quvchilari; «scored» — natija kiritilganlar; "
+                + "«averagePercent» — natijalar foizlarining o'rtachasi (har natija ÷ maksimal ball × 100, 0..100). "
+                + "«questionCount» > 0 bo'lgan testlarda natija = YECHILGAN savollar soni (maksimal ball = savollar soni); "
+                + "0 — eski test (ball, maxraj — maksimal ball). «resultsSentAt» — natijalar ota-onalarga oxirgi marta yuborilgan "
+                + "vaqt (null — yuborilmagan).",
             total, page = p, pageSize = size,
             items,
         }, items.Count);
@@ -126,11 +153,12 @@ public sealed class TestTools(McpToolContext t)
     [McpServerTool(Name = "test_scores", Title = "Test ballari (o'rinlar bilan)",
         ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
     [Description("Bitta testning natijalari — panelning test sahifasi bilan bir xil: guruhning faol (muzlatilmagan) "
-        + "o'quvchilari va guruhdan tashqari ball olgan markaz o'quvchilari (member=false), ball bo'yicha kamayish tartibida. "
-        + "O'rin musobaqa qoidasida: teng ball — bir xil o'rin, keyingisi sakraydi (1, 1, 3); ball kiritilmaganlar oxirida, "
-        + "o'rni yo'q. Har qatorda ball va foiz (ball ÷ maksimal × 100). Jamlanma: ball kiritilganlar, kiritilmaganlar, "
-        + "o'rtacha, eng yuqori, eng past ball va o'rtacha foiz. Testlar ro'yxati — tests_list. "
-        + "One test's ranked scores with a summary.")]
+        + "o'quvchilari va guruhdan tashqari ball olgan markaz o'quvchilari (member=false), natija bo'yicha kamayish tartibida. "
+        + "O'rin musobaqa qoidasida: teng natija — bir xil o'rin, keyingisi sakraydi (1, 1, 3); natija kiritilmaganlar oxirida, "
+        + "o'rni yo'q. Har qatorda natija, YECHILGAN savollar soni (savollar soni berilgan testda) va foiz (natija ÷ maksimal "
+        + "× 100). Test: turi (Oylik/Oraliq), savollar soni, ota-onalarga yuborilgan vaqti. Jamlanma: kiritilganlar, "
+        + "kiritilmaganlar, o'rtacha, eng yuqori, eng past natija va o'rtacha foiz. Testlar ro'yxati — tests_list. "
+        + "One test's ranked scores (solved, percent, rank) with a summary.")]
     public async Task<string> TestScores(
         [Description("Test id (tests_list natijasidan)")] string testId,
         [Description("Sahifa (1 dan)")] int? page = null,
@@ -142,7 +170,7 @@ public sealed class TestTools(McpToolContext t)
         var db = t.Db;
 
         var test = await db.TestResults.Where(x => x.Id == id)
-            .Select(x => new { x.Id, x.GroupId, x.Name, x.Date, x.MaxScore })
+            .Select(x => new { x.Id, x.GroupId, x.Name, x.Date, x.MaxScore, x.Kind, x.QuestionCount, x.ResultsSentAt })
             .FirstOrDefaultAsync(ct);
         if (test is null) return t.Json(new { message = "Test topilmadi." }, 0);
         var group = (await GroupHeadersAsync(new List<string> { test.GroupId }, ct)).GetValueOrDefault(test.GroupId);
@@ -182,6 +210,7 @@ public sealed class TestTools(McpToolContext t)
             rank = r.Rank,
             r.StudentId, r.FullName, r.Member,
             score = r.Score,
+            solved = test.QuestionCount > 0 ? r.Score : null,
             percent = Percent(r.Score, test.MaxScore),
         }).ToList();
 
@@ -189,7 +218,11 @@ public sealed class TestTools(McpToolContext t)
         {
             test = new
             {
-                test.Id, test.Name, test.Date, test.MaxScore,
+                test.Id, test.Name, test.Date,
+                kind = test.Kind, kindLabel = TestEntryRules.KindLabel(test.Kind),
+                questionCount = test.QuestionCount,
+                test.MaxScore,
+                resultsSentAt = test.ResultsSentAt?.ToString("yyyy-MM-ddTHH:mm:ss"),
                 group = new { id = test.GroupId, name = group?.Name ?? "", isArchived = group?.IsArchived ?? false },
                 course = group?.Course ?? "",
                 teacher = new { id = group?.TeacherId ?? "", name = group?.TeacherName ?? "" },
@@ -202,10 +235,11 @@ public sealed class TestTools(McpToolContext t)
                 averageScore = avg is null ? (decimal?)null : Math.Round(avg.Value, 1),
                 maxScore = scored.Count > 0 ? scored.Max() : (decimal?)null,
                 minScore = scored.Count > 0 ? scored.Min() : (decimal?)null,
-                averagePercent = Percent(avg, test.MaxScore),
+                averagePercent = TestResultService.AvgPercent(scored, test.MaxScore),
             },
-            note = "O'rin — ball kiritilganlar orasida (teng ball — bir xil o'rin); ball kiritilmaganlarda rank = null. "
-                + "member=false — guruhning faol a'zosi emas, lekin shu testdan ball olgan markaz o'quvchisi.",
+            note = "O'rin — natija kiritilganlar orasida (teng natija — bir xil o'rin); kiritilmaganlarda rank = null. "
+                + "«solved» — yechilgan savollar soni (savollar soni berilgan testda natija aynan shu; eski testda null). "
+                + "member=false — guruhning faol a'zosi emas, lekin shu testdan natija olgan markaz o'quvchisi.",
             total = ranked.Count, page = p, pageSize = size,
             items,
         }, items.Count);
@@ -252,14 +286,16 @@ public sealed class TestTools(McpToolContext t)
     [McpServerTool(Name = "student_tests", Title = "O'quvchining test natijalari",
         ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
     [Description("Bitta o'quvchining barcha guruhlaridagi test natijalari — admin profilidagi «Testlar natijalari» "
-        + "bo'limi bilan bir xil: sana, test nomi, guruh, ball / maksimal, foiz, testdagi o'rni (teng ball — bir xil o'rin) "
-        + "va shu testda ball olganlar soni (o'rin shular orasida). Yangisidan eskisiga; ixtiyoriy sana oralig'i "
-        + "(from/to, ko'pi bilan 366 kun; berilmasa — butun tarix). Sahifalangan. "
-        + "One student's test history with score, percent and rank.")]
+        + "bo'limi bilan bir xil: sana, test nomi, turi (Oylik/Oraliq), savollar soni, guruh, natija / maksimal, foiz, "
+        + "testdagi o'rni (teng natija — bir xil o'rin) va shu testda natija olganlar soni (o'rin shular orasida). "
+        + "Yangisidan eskisiga; ixtiyoriy oy (YYYY-MM) YOKI sana oralig'i (from/to, ko'pi bilan 366 kun; berilmasa — butun "
+        + "tarix) va test turi filtri. Sahifalangan. One student's test history with kind, percent and rank.")]
     public async Task<string> StudentTests(
         [Description("O'quvchi id (students_search natijasidan)")] string studentId,
         [Description("Boshlanish sanasi YYYY-MM-DD (ixtiyoriy)")] string? from = null,
         [Description("Tugash sanasi YYYY-MM-DD (ixtiyoriy; from berilsa sukut — bugun)")] string? to = null,
+        [Description("Oy YYYY-MM (from/to bilan birga berilmaydi)")] string? month = null,
+        [Description("Test turi: monthly («Oylik») | interim («Oraliq»)")] string? kind = null,
         [Description("Sahifa (1 dan)")] int? page = null,
         [Description("Sahifa hajmi (1..200, sukut 50)")] int? pageSize = null,
         CancellationToken ct = default)
@@ -267,13 +303,8 @@ public sealed class TestTools(McpToolContext t)
         // Either area is enough: the test results page, or the student list/profile.
         if (!t.CanReadArea(McpAreas.TestResults)) t.Require(McpAreas.Students);
         var sid = Clean(studentId) ?? throw new McpException("studentId kerak.");
-        string? fromIso = null, toIso = null;
-        if (Clean(from) is not null || Clean(to) is not null)
-        {
-            var (f, tt) = McpToolContext.Range(from, to, defaultDays: McpToolContext.MaxRangeDays);
-            fromIso = McpToolContext.Iso(f);
-            toIso = McpToolContext.Iso(tt);
-        }
+        var (mon, fromIso, toIso) = Period(month, from, to);
+        var k = Kind(kind);
         var db = t.Db;
 
         var student = await db.Students.Where(s => s.Id == sid)
@@ -281,9 +312,19 @@ public sealed class TestTools(McpToolContext t)
         if (student is null) return t.Json(new { message = "O'quvchi topilmadi." }, 0);
 
         var all = await TestResultService.StudentResultsAsync(db, sid);
-        var rows = fromIso is null
-            ? all
-            : all.Where(r => string.CompareOrdinal(r.Date, fromIso) >= 0 && string.CompareOrdinal(r.Date, toIso) <= 0).ToList();
+        var allIds = all.Select(r => r.TestId).ToList();
+        // Kind and «Savollar soni» of those tests (the service's DTO predates U4a).
+        var meta = allIds.Count == 0
+            ? new Dictionary<string, (string Kind, int QuestionCount)>()
+            : (await db.TestResults.Where(x => allIds.Contains(x.Id))
+                    .Select(x => new { x.Id, x.Kind, x.QuestionCount }).ToListAsync(ct))
+                .ToDictionary(x => x.Id, x => (x.Kind, x.QuestionCount));
+        var rows = all
+            .Where(r => mon is null || r.Date.StartsWith(mon, StringComparison.Ordinal))
+            .Where(r => fromIso is null
+                        || (string.CompareOrdinal(r.Date, fromIso) >= 0 && string.CompareOrdinal(r.Date, toIso) <= 0))
+            .Where(r => k is null || meta.GetValueOrDefault(r.TestId).Kind == k)
+            .ToList();
 
         var percents = rows.Select(r => Percent(r.Score, r.MaxScore)).Where(x => x.HasValue).Select(x => x!.Value).ToList();
         var p = McpToolContext.Page(page);
@@ -291,6 +332,9 @@ public sealed class TestTools(McpToolContext t)
         var items = rows.Skip((p - 1) * size).Take(size).Select(r => new
         {
             r.TestId, r.Date, r.Name,
+            kind = meta.GetValueOrDefault(r.TestId).Kind ?? "",
+            kindLabel = TestEntryRules.KindLabel(meta.GetValueOrDefault(r.TestId).Kind),
+            questionCount = meta.GetValueOrDefault(r.TestId).QuestionCount,
             group = new { id = r.GroupId, name = r.GroupName },
             r.Score, r.MaxScore,
             percent = Percent(r.Score, r.MaxScore),
@@ -301,7 +345,7 @@ public sealed class TestTools(McpToolContext t)
         return t.Json(new
         {
             student = new { student.Id, student.FullName, student.IsArchived },
-            from = fromIso, to = toIso,
+            month = mon, from = fromIso, to = toIso, kind = k,
             summary = new
             {
                 tests = rows.Count,
@@ -646,9 +690,24 @@ public sealed class TestTools(McpToolContext t)
             string.IsNullOrEmpty(g.TeacherId) ? "" : teachers.GetValueOrDefault(g.TeacherId, "")), StringComparer.Ordinal);
     }
 
-    /// <summary>score ÷ max × 100, one decimal; null when there is no score or no max.</summary>
-    internal static decimal? Percent(decimal? score, decimal max) =>
-        score is null || max <= 0 ? null : Math.Round(score.Value / max * 100, 1);
+    /// <summary>
+    /// score ÷ max × 100, one decimal; null when there is no score or no max — the panel's formula
+    /// (<see cref="TestEntryRules.Percent"/>: clamped to 0..100, midpoint away from zero).
+    /// </summary>
+    internal static decimal? Percent(decimal? score, decimal max)
+    {
+        if (score is null) return null;
+        var p = TestEntryRules.Percent(score.Value, max);
+        return p is null ? null : (decimal)p.Value;
+    }
+
+    /// <summary>The kind filter: monthly | interim (case-insensitive); empty → no filter; anything else → an error.</summary>
+    private static string? Kind(string? kind)
+    {
+        if (Clean(kind) is null) return null;
+        return TestEntryRules.NormalizeKind(kind)
+            ?? throw new McpException("«kind»: monthly («Oylik») yoki interim («Oraliq»).");
+    }
 
     /// <summary>month XOR from/to → (month, fromIso, toIso); nothing → all time.</summary>
     private static (string? Month, string? From, string? To) Period(string? month, string? from, string? to)

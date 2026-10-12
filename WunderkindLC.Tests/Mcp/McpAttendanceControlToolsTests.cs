@@ -303,4 +303,166 @@ public class McpAttendanceControlToolsTests
                 denied.Tool<AttendanceControlTools>(McpTestHost.Staff(perm)).TeacherAttendanceFines("2026-09"));
         Assert.Empty(denied.Sql);
     }
+
+    // ================================================================== attendance_notices (U3b)
+
+    private const string NoticeDay = "2026-10-05";
+    private const long ChatMother = 987_654_321;
+    private const long ChatFather = 555_000_111;
+
+    private static DateTime At(string date, string time) => DateTime.Parse(date + "T" + time + ":00");
+
+    /// <summary>
+    /// g1 (14:00–15:30, t1): n1 Ali — «kelmadi» rejalashtirilgan; n2 Bobur — «kelmadi» (Kasal) yuborildi, ikki chat
+    /// (biri o'qib «tanishdim» bosgan, biri bloklagan); n3 Charos — «keldi» yuborildi. Davomat 14:05 da olingan.
+    /// g2 (16:00–17:00, t2): davomat 16:40 da (KECH) — n4 Davron tasdiq kutmoqda; n5 Eldor menejer to'xtatgan.
+    /// n6 — boshqa kun.
+    /// </summary>
+    private static void SeedNotices(McpTestHost host)
+    {
+        var db = host.Rw;
+        db.CenterMeta.Add(new CenterMeta { AbsentNoticeApproval = "late_only", AbsentNoticeDelayMinutes = 5, AttendanceDeadlineMinutes = 15 });
+        db.AddRange(
+            new Subject { Id = "c1", Name = "Ingliz tili" },
+            new Teacher { Id = "t1", FullName = "Dilnoza Karimova" },
+            new Teacher { Id = "t2", FullName = "Rustam Saidov" },
+            new Group { Id = "g1", Name = "English A1", CourseId = "c1", TeacherId = "t1", Days = [0], StartTime = "14:00", EndTime = "15:30" },
+            new Group { Id = "g2", Name = "English B1", CourseId = "c1", TeacherId = "t2", Days = [0], StartTime = "16:00", EndTime = "17:00" });
+        db.AbsenceReasons.AddRange(
+            new AbsenceReason { Id = "rS", Name = "Sababsiz", Short = "S" },
+            new AbsenceReason { Id = "rK", Name = "Kasal", Short = "K", IsExcused = true });
+        db.Students.AddRange(
+            new Student { Id = "s1", FullName = "Ali Valiyev" },
+            new Student { Id = "s2", FullName = "Bobur Aliyev" },
+            new Student { Id = "s3", FullName = "Charos Tosheva" },
+            new Student { Id = "s4", FullName = "Davron Karimov" },
+            new Student { Id = "s5", FullName = "Eldor Saidov" });
+        db.LessonNotes.AddRange(
+            new LessonNote { ClassId = "g1", SubjectId = "c1", Date = NoticeDay, Period = 1, Conducted = true, AttendanceTakenAt = At(NoticeDay, "14:05") },
+            new LessonNote { ClassId = "g2", SubjectId = "c1", Date = NoticeDay, Period = 1, Conducted = true, AttendanceTakenAt = At(NoticeDay, "16:40") });
+
+        AttendanceNotifyItem N(string id, string kind, string gid, string sid, string status, string? reason, bool late,
+            string start, string end, string sendAfter, string date = NoticeDay) => new()
+        {
+            Id = id, Kind = kind, ClassId = gid, SubjectId = "c1", Date = date, Period = 1, StudentId = sid, Status = status,
+            ReasonId = reason, TakenLate = late, LessonStart = start, LessonEnd = end, SendAfter = At(date, sendAfter),
+            CreatedAt = At(date, start), UpdatedAt = At(date, start),
+        };
+        var held = N("n5", "absent", "g2", "s5", "held", "rS", true, "16:00", "17:00", "17:05");
+        held.DecidedById = "u-admin";
+        held.DecidedByName = "Menejer Nodira";
+        held.DecidedAt = At(NoticeDay, "16:50");
+        held.DecisionNote = "Ota-onasi oldindan aytgan";
+        db.AttendanceNotifyItems.AddRange(
+            N("n1", "absent", "g1", "s1", "pending", "rS", false, "14:00", "15:30", "15:35"),
+            N("n2", "absent", "g1", "s2", "done", "rK", false, "14:00", "15:30", "15:35"),
+            N("n3", "present", "g1", "s3", "done", null, false, "14:00", "15:30", "14:05"),
+            N("n4", "absent", "g2", "s4", "awaiting", "rS", true, "16:00", "17:00", "17:05"),
+            held,
+            N("n6", "absent", "g1", "s1", "expired", "rS", false, "14:00", "15:30", "15:35", date: "2026-10-04"));
+        MessageDelivery Del(string id, long chat, string status, DateTime? ack) => new()
+        {
+            Id = id, Source = "auto", Trigger = "attendance_absent", SourceId = "n2", StudentId = "s2", ChatId = chat,
+            Relation = "mother", RecipientName = "Bobur Aliyev", Text = "Farzandingiz darsga kelmadi", Status = status,
+            CreatedAt = At(NoticeDay, "15:35"), AckAt = ack, AckRequired = true, DedupeKey = "n2:" + id,
+        };
+        db.MessageDeliveries.AddRange(
+            Del("d1", ChatMother, "sent", At(NoticeDay, "15:40")),
+            Del("d2", ChatFather, "blocked", null));
+        db.SaveChanges();
+    }
+
+    [Fact]
+    public async Task Davomat_xabarlari_panel_navbati_bilan_bir_xil_va_chat_id_siz()
+    {
+        using var host = new McpTestHost();
+        SeedNotices(host);
+
+        var raw = await host.Tool<AttendanceControlTools>(McpTestHost.Staff("students.notices")).AttendanceNotices(NoticeDay);
+        var json = McpTestHost.Parse(raw);
+
+        // Panelning o'zi (AttendanceNoticesController.List → AbsentNoticeQueries.ListAsync) bilan AYNAN bir xil.
+        var panel = await WunderkindLC.Application.Services.AbsentNoticeQueries.ListAsync(host.Rw, NoticeDay, null, null, null);
+        Assert.Equal(panel.Lessons.SelectMany(l => l.Items).Select(i => (string?)i.Id), Ids(json, "id"));
+        Assert.Equal(new[] { "n1", "n2", "n3", "n4", "n5" }, Ids(json, "id"));   // dars vaqti, «kelmadi» oldin, ism
+        var counts = json.GetProperty("counts");
+        Assert.Equal(panel.Counts.Pending, counts.GetProperty("pending").GetInt32());
+        Assert.Equal(1, counts.GetProperty("pending").GetInt32());
+        Assert.Equal(1, counts.GetProperty("awaiting").GetInt32());
+        Assert.Equal(1, counts.GetProperty("held").GetInt32());
+        Assert.Equal(2, counts.GetProperty("sent").GetInt32());
+        Assert.Equal(0, counts.GetProperty("expired").GetInt32());   // n6 — boshqa kun
+
+        var items = json.GetProperty("items").EnumerateArray().ToDictionary(i => i.GetProperty("id").GetString()!);
+        Assert.Equal("Kelmadi", items["n1"].GetProperty("kindLabel").GetString());
+        Assert.Equal("Rejalashtirilgan", items["n1"].GetProperty("statusLabel").GetString());
+        Assert.Equal(NoticeDay + "T15:35:00", items["n1"].GetProperty("sendAfter").GetString());
+        Assert.False(items["n1"].GetProperty("reason").GetProperty("isExcused").GetBoolean());
+        Assert.Equal("Kasal", items["n2"].GetProperty("reason").GetProperty("name").GetString());
+        Assert.True(items["n2"].GetProperty("reason").GetProperty("isExcused").GetBoolean());
+        var delivery = items["n2"].GetProperty("delivery");
+        Assert.Equal(1, delivery.GetProperty("sent").GetInt32());
+        Assert.Equal(1, delivery.GetProperty("blocked").GetInt32());
+        Assert.Equal(1, delivery.GetProperty("acked").GetInt32());
+        Assert.Equal(JsonValueKind.Null, items["n1"].GetProperty("delivery").ValueKind);
+        Assert.Equal("Keldi", items["n3"].GetProperty("kindLabel").GetString());
+        Assert.Equal(JsonValueKind.Null, items["n3"].GetProperty("reason").ValueKind);
+        Assert.Equal("Tasdiq kutmoqda", items["n4"].GetProperty("statusLabel").GetString());
+        Assert.Equal("Menejer Nodira", items["n5"].GetProperty("decision").GetProperty("by").GetString());
+        Assert.Equal("Ota-onasi oldindan aytgan", items["n5"].GetProperty("decision").GetProperty("note").GetString());
+
+        // Darslar: davomat birinchi belgisi va kech olinganmi (g2 — 16:40, muddat 16:15).
+        var lessons = json.GetProperty("lessons").EnumerateArray().ToList();
+        Assert.Equal(new[] { "g1", "g2" }, lessons.Select(l => l.GetProperty("group").GetProperty("id").GetString()));
+        Assert.Equal(NoticeDay + "T14:05:00", lessons[0].GetProperty("attendanceTakenAt").GetString());
+        Assert.False(lessons[0].GetProperty("takenLate").GetBoolean());
+        Assert.True(lessons[1].GetProperty("takenLate").GetBoolean());
+        Assert.Equal("Dilnoza Karimova", lessons[0].GetProperty("teacher").GetString());
+        Assert.Equal(3, lessons[0].GetProperty("notices").GetInt32());
+
+        var settings = json.GetProperty("settings");
+        Assert.Equal("late_only", settings.GetProperty("approval").GetString());
+        Assert.Equal(5, settings.GetProperty("delayMinutes").GetInt32());
+
+        // Chat id hech qayerda yo'q — na natijada, na SQL'da.
+        Assert.DoesNotContain(ChatMother.ToString(), raw);
+        Assert.DoesNotContain(ChatFather.ToString(), raw);
+        Assert.DoesNotContain(host.Sql, s => s.Contains("\"ChatId\"", StringComparison.Ordinal));
+        host.AssertReadsOnlyDeclared(typeof(AttendanceControlTools));
+        host.AssertNoSecretColumns();
+    }
+
+    [Fact]
+    public async Task Davomat_xabarlari_filtrlari_sahifalash_va_ruxsat()
+    {
+        using var host = new McpTestHost();
+        SeedNotices(host);
+        AttendanceControlTools Tool() => host.Tool<AttendanceControlTools>(McpTestHost.Admin());
+
+        // Holat filtri — sanoqlar filtrdan OLDIN (chiplar o'z sonini saqlaydi).
+        var awaiting = McpTestHost.Parse(await Tool().AttendanceNotices(NoticeDay, status: "awaiting"));
+        Assert.Equal(new[] { "n4" }, Ids(awaiting, "id"));
+        Assert.Equal(2, awaiting.GetProperty("counts").GetProperty("sent").GetInt32());
+        Assert.Equal(new[] { "n1", "n2", "n3" }, Ids(McpTestHost.Parse(await Tool().AttendanceNotices(NoticeDay, groupId: "g1")), "id"));
+        Assert.Equal(new[] { "n4", "n5" }, Ids(McpTestHost.Parse(await Tool().AttendanceNotices(NoticeDay, teacherId: "t2")), "id"));
+        Assert.Equal(new[] { "n6" }, Ids(McpTestHost.Parse(await Tool().AttendanceNotices("2026-10-04")), "id"));
+        var paged = McpTestHost.Parse(await Tool().AttendanceNotices(NoticeDay, page: 2, pageSize: 2));
+        Assert.Equal(5, paged.GetProperty("total").GetInt32());
+        Assert.Equal(new[] { "n3", "n4" }, Ids(paged, "id"));
+        // Sukut — bugun.
+        Assert.Equal(McpToolContext.Iso(McpToolContext.Today),
+            McpTestHost.Parse(await Tool().AttendanceNotices()).GetProperty("date").GetString());
+
+        await Assert.ThrowsAsync<McpException>(() => Tool().AttendanceNotices(NoticeDay, status: "sending"));
+        await Assert.ThrowsAsync<McpException>(() => Tool().AttendanceNotices("05.10.2026"));
+
+        // Ruxsat — `students.notices` (panel: ReadRequiresPerm); davomat yoki o'quvchilar ruxsati YETMAYDI.
+        using var denied = new McpTestHost();
+        SeedNotices(denied);
+        foreach (var perm in new[] { "students.attendance", "students.list", "classes.notAttended" })
+            await Assert.ThrowsAsync<McpAccessDeniedException>(() =>
+                denied.Tool<AttendanceControlTools>(McpTestHost.Staff(perm)).AttendanceNotices(NoticeDay));
+        Assert.True(denied.State.Denied);
+        Assert.Empty(denied.Sql);
+    }
 }

@@ -49,7 +49,8 @@ public static class DatedSchedule
         IReadOnlyDictionary<string, int> Members,
         IReadOnlySet<string> AttendanceTaken);
 
-    /// <summary>Key of <see cref="Input.AttendanceTaken"/>: "yyyy-MM-dd|groupId".</summary>
+    /// <summary>Key of <see cref="Input.AttendanceTaken"/>: "yyyy-MM-dd|groupId" — the group's FIRST attendance mark exists
+    /// that day (<see cref="LessonNote.AttendanceTakenAt"/>, <see cref="AttendanceTaking"/>).</summary>
     public static string TakenKey(string date, string groupId) => date + "|" + groupId;
 
     /// <summary>Pure builder (tested: <c>DatedScheduleTests</c>).</summary>
@@ -157,8 +158,12 @@ public static class DatedSchedule
             .Select(g => new { g.Key, N = g.Count() })
             .ToDictionaryAsync(x => x.Key, x => x.N, ct);
 
+        // "Attendance taken" — the single definition (SPEC P3.1, journal.md «YAGONA DAVOMAT TA'RIFI», AttendanceTaking):
+        // ANY lesson note of (group, date) with a FIRST attendance mark (AttendanceTakenAt), subject/period agnostic —
+        // the lesson monitor, the teacher reminders and the fines read the same. Not `Conducted`: one grade makes a
+        // lesson «o'tildi» but takes no attendance.
         var taken = (await db.LessonNotes.AsNoTracking()
-                .Where(n => n.Conducted && ids.Contains(n.ClassId)
+                .Where(n => n.AttendanceTakenAt != null && ids.Contains(n.ClassId)
                             && string.Compare(n.Date, lo) >= 0 && string.Compare(n.Date, hi) <= 0)
                 .Select(n => new { n.Date, n.ClassId }).ToListAsync(ct))
             .Select(n => TakenKey(n.Date, n.ClassId))

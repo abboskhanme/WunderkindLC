@@ -212,4 +212,94 @@ public class McpRatingToolsTests
         Assert.Equal(4, McpTestHost.Parse(await host.Tool<RatingTools>(rating).RatingGroupReport("g1")).GetProperty("total").GetInt32());
         Assert.Equal(1, McpTestHost.Parse(await host.Tool<RatingTools>(rating).StudentRating("s1")).GetProperty("centre").GetProperty("rank").GetInt32());
     }
+
+    // ================================================================== rating_top_bottom (U4d)
+
+    private static List<string?> Students(JsonElement list) =>
+        list.EnumerateArray().Select(r => r.GetProperty("studentId").GetString()).ToList();
+
+    [Fact]
+    public async Task TopBottom_guruh_boyicha_panel_oldindan_korish_bilan_bir_xil()
+    {
+        using var host = new McpTestHost();
+        Seed(host);
+
+        var raw = await host.Tool<RatingTools>(McpTestHost.Staff("classes.rating")).RatingTopBottom(month: Cm);
+        var json = McpTestHost.Parse(raw);
+
+        // g1: testi bor s1 (80%), s2 (60%) → k = min(5, ⌊2/2⌋) = 1. g2: bitta o'quvchi (s4) — ro'yxat yo'q. Arxivdagi s5 — yo'q.
+        Assert.Equal(Cm, json.GetProperty("month").GetString());
+        Assert.Equal("group", json.GetProperty("scope").GetString());
+        Assert.Equal(5, json.GetProperty("count").GetInt32());
+        var g = Assert.Single(json.GetProperty("items").EnumerateArray());
+        Assert.Equal("g1", g.GetProperty("group").GetProperty("id").GetString());
+        Assert.Equal(2, g.GetProperty("scored").GetInt32());
+        Assert.Equal(new[] { "s1" }, Students(g.GetProperty("top")));
+        Assert.Equal(new[] { "s2" }, Students(g.GetProperty("bottom")));
+        Assert.Equal(80.0, g.GetProperty("top")[0].GetProperty("testAvg").GetDouble());
+        Assert.Equal(2, g.GetProperty("bottom")[0].GetProperty("rank").GetInt32());
+        Assert.DoesNotContain("s5", raw);
+
+        // Panelning o'zi (RatingController.TopBottom → TopBottomService.BuildAsync) bilan AYNAN bir xil.
+        var (panel, _, _) = await TopBottomService.BuildAsync(
+            host.Rw, p => RatingEngine.ComputeAsync(host.Rw, p), Cm, null, McpToolContext.Today);
+        Assert.Equal(panel!.Groups.Select(x => x.GroupId),
+            json.GetProperty("items").EnumerateArray().Select(x => x.GetProperty("group").GetProperty("id").GetString()));
+        Assert.Equal(panel.Groups.SelectMany(x => x.Top.Concat(x.Bottom)).Select(x => (x.StudentId, x.Rank, x.TestAvg)),
+            json.GetProperty("items").EnumerateArray()
+                .SelectMany(x => x.GetProperty("top").EnumerateArray().Concat(x.GetProperty("bottom").EnumerateArray()))
+                .Select(x => (x.GetProperty("studentId").GetString()!, x.GetProperty("rank").GetInt32(), x.GetProperty("testAvg").GetDouble())));
+
+        Assert.DoesNotContain("MAXFIY-KALIT", raw);
+        host.AssertReadsOnlyDeclared(typeof(RatingTools));
+        host.AssertNoSecretColumns();
+    }
+
+    [Fact]
+    public async Task TopBottom_markaz_qamrovi_sozlama_filtrlar_va_xatolar()
+    {
+        using var host = new McpTestHost();
+        Seed(host);
+        RatingTools Tool() => host.Tool<RatingTools>(McpTestHost.Admin());
+
+        // Markaz: s1 80, s2 60, s4 50 → k = 1: TOP s1, BOTTOM s4 (eng past).
+        var centre = McpTestHost.Parse(await Tool().RatingTopBottom(Cm, "centre"));
+        Assert.Equal("centre", centre.GetProperty("scope").GetString());
+        var list = Assert.Single(centre.GetProperty("items").EnumerateArray());
+        Assert.Equal("", list.GetProperty("group").GetProperty("id").GetString());
+        Assert.Equal("Markaz", list.GetProperty("group").GetProperty("name").GetString());
+        Assert.Equal(3, list.GetProperty("scored").GetInt32());
+        Assert.Equal(new[] { "s1" }, Students(list.GetProperty("top")));
+        Assert.Equal(new[] { "s4" }, Students(list.GetProperty("bottom")));
+
+        Assert.Empty(McpTestHost.Parse(await Tool().RatingTopBottom(Cm, groupId: "g2")).GetProperty("items").EnumerateArray());
+
+        // Sukut — O'TGAN oy (navbatdagi yuborish shu oyni oladi); unda test yo'q.
+        var prev = McpTestHost.Parse(await Tool().RatingTopBottom());
+        Assert.Equal(MonthStart.AddMonths(-1).ToString("yyyy-MM"), prev.GetProperty("month").GetString());
+        Assert.Equal(0, prev.GetProperty("total").GetInt32());
+
+        await Assert.ThrowsAsync<McpException>(() => Tool().RatingTopBottom(Cm, "school"));
+        await Assert.ThrowsAsync<McpException>(() => Tool().RatingTopBottom("2026-13"));
+        await Assert.ThrowsAsync<McpException>(() => Tool().RatingTopBottom(MonthStart.AddMonths(2).ToString("yyyy-MM")));
+
+        // N va qamrov — sozlamadan (CenterMeta, faqat-o'qish ruxsat ro'yxatidagi ustunlar).
+        using var configured = new McpTestHost();
+        Seed(configured);
+        configured.Rw.CenterMeta.Add(new CenterMeta { RatingTopBottomCount = 3, RatingTopBottomScope = "centre" });
+        configured.Rw.SaveChanges();
+        var json = McpTestHost.Parse(await configured.Tool<RatingTools>(McpTestHost.SuperAdmin()).RatingTopBottom(Cm));
+        Assert.Equal("centre", json.GetProperty("scope").GetString());
+        Assert.Equal(3, json.GetProperty("count").GetInt32());
+        configured.AssertReadsOnlyDeclared(typeof(RatingTools));
+
+        // Ruxsat — `classes.rating` (panel: ReadRequiresPerm).
+        using var denied = new McpTestHost();
+        Seed(denied);
+        foreach (var perm in new[] { "classes.list", "classes.testResults", "students.list" })
+            await Assert.ThrowsAsync<McpAccessDeniedException>(() =>
+                denied.Tool<RatingTools>(McpTestHost.Staff(perm)).RatingTopBottom(Cm));
+        Assert.True(denied.State.Denied);
+        Assert.Empty(denied.Sql);
+    }
 }

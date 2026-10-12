@@ -566,5 +566,131 @@ public class McpTestToolsTests
         Assert.Equal(33.3m, TestTools.Percent(1, 3));
         Assert.Null(TestTools.Percent(null, 20));
         Assert.Null(TestTools.Percent(5, 0));
+        // Panel formulasi (TestEntryRules.Percent): 0..100 oralig'ida, yarim — noldan uzoqqa.
+        Assert.Equal(100m, TestTools.Percent(25, 20));
+        Assert.Equal(12.3m, TestTools.Percent(0.1225m, 1));
+    }
+
+    // ================================================================== U4a: turi, savollar soni, foiz, oy
+
+    /// <summary>T1 — «Oylik», 20 savol, natijalar yuborilgan; T2 — «Oylik», 10 savol; T3 — «Oraliq» (eski, savollarsiz);
+    /// T4 — turi to'ldirilmagan eski test.</summary>
+    private static void SetKinds(McpTestHost host)
+    {
+        var db = host.Rw;
+        var t1 = db.TestResults.Single(x => x.Id == "T1");
+        t1.Kind = "monthly";
+        t1.QuestionCount = 20;
+        t1.ResultsSentAt = DateTime.Parse("2026-09-11T15:40:00");
+        var t2 = db.TestResults.Single(x => x.Id == "T2");
+        t2.Kind = "monthly";
+        t2.QuestionCount = 10;
+        db.TestResults.Single(x => x.Id == "T3").Kind = "interim";
+        db.SaveChanges();
+    }
+
+    [Fact]
+    public async Task Testlar_royxati_turi_savollar_soni_va_panel_bilan_bir_xil_foiz()
+    {
+        using var host = TestsHost();
+        SetKinds(host);
+
+        var raw = await host.Tool<TestTools>(McpTestHost.Staff("classes.testResults")).TestsList(month: "2026-09");
+        var json = McpTestHost.Parse(raw);
+        var items = json.GetProperty("items").EnumerateArray().ToDictionary(i => i.GetProperty("id").GetString()!);
+        Assert.Equal("monthly", items["T1"].GetProperty("kind").GetString());
+        Assert.Equal("Oylik", items["T1"].GetProperty("kindLabel").GetString());
+        Assert.Equal(20, items["T1"].GetProperty("questionCount").GetInt32());
+        Assert.Equal("2026-09-11T15:40:00", items["T1"].GetProperty("resultsSentAt").GetString());
+        Assert.Equal("Oraliq", items["T3"].GetProperty("kindLabel").GetString());
+        Assert.Equal(0, items["T3"].GetProperty("questionCount").GetInt32());
+        Assert.Equal(JsonValueKind.Null, items["T3"].GetProperty("resultsSentAt").ValueKind);
+
+        // Panelning markaz ko'rinishi (GET test-results/overview → TestResultService.OverviewAsync) bilan AYNAN bir xil.
+        var panel = await TestResultService.OverviewAsync(host.Rw, "2026-09", null, null, null);
+        Assert.Equal(panel.Select(r => (string?)r.TestId), Ids(json, "id"));
+        foreach (var r in panel)
+        {
+            var i = items[r.TestId];
+            Assert.Equal(r.Kind, i.GetProperty("kind").GetString());
+            Assert.Equal(r.QuestionCount, i.GetProperty("questionCount").GetInt32());
+            Assert.Equal(r.Scored, i.GetProperty("scored").GetInt32());
+            Assert.Equal(r.Members, i.GetProperty("groupStudents").GetInt32());
+            Assert.Equal(r.AvgPercent, i.GetProperty("averagePercent").GetDouble());
+        }
+
+        AssertNoOnlineTestData(raw);
+        host.AssertReadsOnlyDeclared(typeof(TestTools));
+        host.AssertNoSecretColumns();
+    }
+
+    [Fact]
+    public async Task Testlar_royxati_tur_kurs_va_oqituvchi_filtrlari()
+    {
+        using var host = TestsHost();
+        SetKinds(host);
+        var tool = () => host.Tool<TestTools>(McpTestHost.Admin());
+
+        Assert.Equal(new[] { "T2", "T1" }, Ids(McpTestHost.Parse(await tool().TestsList(kind: "monthly")), "id"));
+        Assert.Equal(new[] { "T3" }, Ids(McpTestHost.Parse(await tool().TestsList(kind: "Interim")), "id"));
+        Assert.Equal(new[] { "T3" }, Ids(McpTestHost.Parse(await tool().TestsList(courseId: "c2")), "id"));
+        Assert.Equal(new[] { "T2", "T1", "T4" }, Ids(McpTestHost.Parse(await tool().TestsList(teacherId: "t1")), "id"));
+        Assert.Equal(new[] { "T1" }, Ids(McpTestHost.Parse(await tool().TestsList(month: "2026-09", teacherId: "t1")), "id"));
+        Assert.Empty(Ids(McpTestHost.Parse(await tool().TestsList(courseId: "c2", teacherId: "t1")), "id"));
+        Assert.Equal(new[] { "T2", "T1" }, Ids(McpTestHost.Parse(await tool().TestsList(kind: "monthly", courseId: "c1")), "id"));
+
+        await Assert.ThrowsAsync<McpException>(() => tool().TestsList(kind: "weekly"));
+    }
+
+    [Fact]
+    public async Task Test_ballari_yechgan_savollar_foiz_va_turi()
+    {
+        using var host = TestsHost();
+        SetKinds(host);
+        var tool = () => host.Tool<TestTools>(McpTestHost.Staff("classes.testResults"));
+
+        var t1 = McpTestHost.Parse(await tool().TestScores("T1"));
+        Assert.Equal("Oylik", t1.GetProperty("test").GetProperty("kindLabel").GetString());
+        Assert.Equal(20, t1.GetProperty("test").GetProperty("questionCount").GetInt32());
+        Assert.Equal("2026-09-11T15:40:00", t1.GetProperty("test").GetProperty("resultsSentAt").GetString());
+        var first = t1.GetProperty("items")[0];
+        Assert.Equal(18m, first.GetProperty("solved").GetDecimal());
+        Assert.Equal(90m, first.GetProperty("percent").GetDecimal());
+        Assert.Equal(78.8, t1.GetProperty("summary").GetProperty("averagePercent").GetDouble());
+
+        // Panel tafsiloti (TestResultService.DetailAsync) — foiz va o'rin AYNAN bir xil.
+        var panel = await TestResultService.DetailAsync(host.Rw, "T1");
+        Assert.Equal(panel!.Rows.Select(r => r.Percent),
+            t1.GetProperty("items").EnumerateArray()
+                .Select(i => i.GetProperty("percent").ValueKind == JsonValueKind.Null ? (double?)null : i.GetProperty("percent").GetDouble()));
+
+        // Savollar soni yo'q eski test — «solved» yo'q (ball).
+        var t3 = McpTestHost.Parse(await tool().TestScores("T3"));
+        Assert.Equal(0, t3.GetProperty("test").GetProperty("questionCount").GetInt32());
+        Assert.Equal(JsonValueKind.Null, t3.GetProperty("items")[0].GetProperty("solved").ValueKind);
+        Assert.Equal(90m, t3.GetProperty("items")[0].GetProperty("percent").GetDecimal());   // s7: 45 / 50
+    }
+
+    [Fact]
+    public async Task Oquvchi_test_tarixi_oy_va_tur_filtri()
+    {
+        using var host = TestsHost();
+        SetKinds(host);
+        var tool = () => host.Tool<TestTools>(McpTestHost.Staff("students.list"));
+
+        var sep = McpTestHost.Parse(await tool().StudentTests("s1", month: "2026-09"));
+        Assert.Equal(new[] { "T1" }, Ids(sep, "testId"));
+        Assert.Equal("2026-09", sep.GetProperty("month").GetString());
+        Assert.Equal("Oylik", sep.GetProperty("items")[0].GetProperty("kindLabel").GetString());
+        Assert.Equal(20, sep.GetProperty("items")[0].GetProperty("questionCount").GetInt32());
+
+        Assert.Equal(new[] { "T2", "T1" }, Ids(McpTestHost.Parse(await tool().StudentTests("s1", kind: "monthly")), "testId"));
+        var old = McpTestHost.Parse(await tool().StudentTests("s1", month: "2026-06"));
+        Assert.Equal(new[] { "T4" }, Ids(old, "testId"));
+        Assert.Equal("", old.GetProperty("items")[0].GetProperty("kind").GetString());
+
+        await Assert.ThrowsAsync<McpException>(() => tool().StudentTests("s1", from: "2026-09-01", month: "2026-09"));
+        await Assert.ThrowsAsync<McpException>(() => tool().StudentTests("s1", kind: "final"));
+        host.AssertReadsOnlyDeclared(typeof(TestTools));
     }
 }

@@ -244,7 +244,7 @@ foiz = round(kelgan × 100 / o'tilgan). **Unmarked / NotHeld / Blocked foizga KI
 
 | Ustun | Ma'nosi | Kim qo'yadi | Kim o'qiydi |
 |---|---|---|---|
-| `LessonNote.AttendanceTakenAt` (+ `AttendanceTakenById`) | BIRINCHI davomat belgisi («keldi» yoki sabab) vaqti | katak (`SetEntryAsync`) va ommaviy davomat; faqat BIR MARTA | eslatma (`LessonAttendanceReminderService`), monitor (`DashboardController.today-lessons`), kunlik sahifa, jarima (U3c), xabarlar navbati (U3b) |
+| `LessonNote.AttendanceTakenAt` (+ `AttendanceTakenById`) | BIRINCHI davomat belgisi («keldi» yoki sabab) vaqti | katak (`SetEntryAsync`) va ommaviy davomat; faqat BIR MARTA | eslatma (`LessonAttendanceReminderService`), monitor (`DashboardController.today-lessons`), kunlik sahifa, jarima (U3c), xabarlar navbati (U3b), sanali «Kun/Hafta» jadval (`DatedSchedule`, `schedule.md` §8.1) va MCP jadval vositalari |
 | `LessonNote.AttendanceTaken` | davomat TO'LIQ | ommaviy davomat YOKI katak saqlangach shu darsda KUTILGAN har o'quvchida «keldi»/sabab/baho bor | avto-"keldi" (`Classify`), `GroupJournalDto.AttendanceTakenDates` |
 
 - ⚠️ Baho yolg'iz `AttendanceTakenAt` ni QO'YMAYDI (lekin to'liqlikka kiradi — o'quvchi darsda bo'lgan).

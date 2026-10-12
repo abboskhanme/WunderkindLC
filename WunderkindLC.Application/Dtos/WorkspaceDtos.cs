@@ -15,7 +15,8 @@ public record DatedTeacherDto(string Id, string Name);
 /// ONE REAL lesson on a date (<c>AttendanceWatch.LessonsOn</c>): moved lessons are on their NEW date/time
 /// (<paramref name="Moved"/>), substitutes are named, the group lifetime is respected.
 /// <paramref name="Members"/> — seat holders (<c>MembershipLifecycle.SeatHolders</c>).
-/// <paramref name="AttendanceTaken"/> — the lesson is marked «o'tildi» in the journal (same as the lesson monitor).
+/// <paramref name="AttendanceTaken"/> — attendance was taken that day: the group's FIRST attendance mark
+/// (<c>LessonNote.AttendanceTakenAt</c>, U3a — the lesson monitor's definition); a grade alone («o'tildi») is not.
 /// <paramref name="Status"/> — <c>active</c> | <c>full</c> | <c>blocked</c> (group status filter).
 /// </summary>
 public record DatedLessonDto(
