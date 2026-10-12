@@ -19,12 +19,14 @@ namespace WunderkindLC.Application.Services;
 /// ishtirokchilar) olib tashlandi — test faqat OFLAYN: nom, sana, maksimal ball va o'qituvchi/admin
 /// kiritadigan ballar. Eski onlayn testlarning qatorlari oddiy test bo'lib ko'rinadi (ballari joyida).</para>
 /// </summary>
-public static class TestResultService
+public static partial class TestResultService
 {
 
     /// <summary>Testlar natijalari bosh sahifasi — barcha guruhlar + har biriga yaratilgan testlar soni.
-    /// Faol (muzlatilmagan) a'zolar soni ham qaytadi. Arxivlanmagan guruhlar, nomi bo'yicha tartiblangan.</summary>
-    public static async Task<List<TestGroupOverviewDto>> GroupsOverviewAsync(IAppDbContext db)
+    /// Faol (muzlatilmagan) a'zolar soni ham qaytadi. Arxivlanmagan guruhlar, nomi bo'yicha tartiblangan.
+    /// <para>CRM U4a: <paramref name="month"/> (<c>yyyy-MM</c>) berilsa — shu oydagi testlar soni va natijalar o'rtacha
+    /// foizi (<c>MonthTestCount</c>, <c>MonthAvgPercent</c>); berilmasa — butun vaqt bo'yicha.</para></summary>
+    public static async Task<List<TestGroupOverviewDto>> GroupsOverviewAsync(IAppDbContext db, string? month = null)
     {
         var groups = await db.Classes.AsNoTracking()
             .Where(g => !g.IsArchived)
@@ -47,22 +49,36 @@ public static class TestResultService
             .Select(g => new { GroupId = g.Key, Count = g.Count() })
             .ToDictionaryAsync(x => x.GroupId, x => x.Count);
 
+        var monthStats = await MonthStatsByGroupAsync(db, TestEntryRules.NormalizeMonth(month));
+
         return groups.Select(g => new TestGroupOverviewDto(
             g.Id, g.Name,
             courseNames.GetValueOrDefault(g.CourseId, ""),
             g.TeacherId,
             teacherNames.GetValueOrDefault(g.TeacherId, ""),
             memberCounts.GetValueOrDefault(g.Id, 0),
-            testCounts.GetValueOrDefault(g.Id, 0))).ToList();
+            testCounts.GetValueOrDefault(g.Id, 0),
+            monthStats.GetValueOrDefault(g.Id).Tests,
+            monthStats.GetValueOrDefault(g.Id).AvgPercent)).ToList();
     }
 
     /// <summary>Bitta guruhning testlar ro'yxati (sana desc → yangi test tepada), har testda
-    /// faol o'quvchilar soni, ball kiritilganlar soni va o'rtacha ball.</summary>
-    public static async Task<List<GroupTestDto>> ListForGroupAsync(IAppDbContext db, string groupId)
+    /// faol o'quvchilar soni, ball kiritilganlar soni va o'rtacha ball.
+    /// <para>CRM U4a: <paramref name="month"/> (<c>yyyy-MM</c>) va <paramref name="kind"/> (<c>monthly</c>/<c>interim</c>)
+    /// filtrlari; noto'g'ri qiymat — filtrsiz (eskirgan havola ro'yxatni bo'shatmasin).</para></summary>
+    public static async Task<List<GroupTestDto>> ListForGroupAsync(
+        IAppDbContext db, string groupId, string? month = null, string? kind = null)
     {
-        var tests = await db.TestResults.AsNoTracking()
-            .Where(t => t.GroupId == groupId)
-            .ToListAsync();
+        var query = db.TestResults.AsNoTracking().Where(t => t.GroupId == groupId);
+        var m = TestEntryRules.NormalizeMonth(month);
+        if (m is not null)
+        {
+            var (from, to) = TestEntryRules.MonthRange(m);
+            query = query.Where(t => t.Date.CompareTo(from) >= 0 && t.Date.CompareTo(to) <= 0);
+        }
+        var k = TestEntryRules.NormalizeKind(kind);
+        if (k is not null) query = query.Where(t => t.Kind == k);
+        var tests = await query.ToListAsync();
         if (tests.Count == 0) return new List<GroupTestDto>();
 
         var studentCount = await db.StudentGroups.AsNoTracking()
@@ -90,7 +106,8 @@ public static class TestResultService
                 return new GroupTestDto(t.Id, t.GroupId, t.Name, t.Date, t.MaxScore,
                     t.CreatedAt, t.CreatedBy, studentCount, s.Count, avg,
                     t.CertificateEnabled, t.CertificateTemplateId,
-                    certCounts.GetValueOrDefault(t.Id, 0));
+                    certCounts.GetValueOrDefault(t.Id, 0),
+                    t.Kind, t.QuestionCount, AvgPercent(s.Select(x => x.Score), t.MaxScore), t.ResultsSentAt);
             })
             .ToList();
     }
@@ -125,7 +142,7 @@ public static class TestResultService
             .CountAsync(sg => sg.GroupId == groupId && sg.IsActive);
         return (new GroupTestDto(t.Id, t.GroupId, t.Name, t.Date, t.MaxScore,
             t.CreatedAt, t.CreatedBy, studentCount, 0, null,
-            t.CertificateEnabled, t.CertificateTemplateId, 0), null);
+            t.CertificateEnabled, t.CertificateTemplateId, 0, t.Kind, t.QuestionCount), null);
     }
 
     /// <summary>Test ma'lumotini tahrirlash (nomi/sana/maksimal ball + sertifikat sozlamasi).</summary>
@@ -253,13 +270,15 @@ public static class TestResultService
             position++;
             if (prevScore is null || x.Score.Value != prevScore.Value) rank = position;
             prevScore = x.Score.Value;
-            result.Add(new TestScoreRowDto(x.Id, x.FullName, x.Score, rank, x.Member));
+            result.Add(new TestScoreRowDto(x.Id, x.FullName, x.Score, rank, x.Member,
+                TestEntryRules.Percent(x.Score.Value, t.MaxScore)));
         }
 
         var certificates = await TestCertificateService.ListForTestAsync(db, id);
         return new TestResultDetailDto(t.Id, t.GroupId, group?.Name ?? "", t.Name, t.Date,
             t.MaxScore, t.CreatedAt, t.CreatedBy, result,
-            t.CertificateEnabled, t.CertificateTemplateId, certificates);
+            t.CertificateEnabled, t.CertificateTemplateId, certificates,
+            t.Kind, t.QuestionCount, t.ResultsSentAt);
     }
 
     /// <summary>Bitta o'quvchiga ball qo'yish/yangilash yoki tozalash (score=null). Ball 0..MaxScore

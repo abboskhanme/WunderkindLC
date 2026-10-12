@@ -2309,6 +2309,10 @@ export interface TestGroupOverview {
   teacherName: string
   studentCount: number
   testCount: number
+  /** CRM U4a: tanlangan oydagi testlar soni (`?month=`; oysiz — butun vaqt). */
+  monthTestCount?: number
+  /** CRM U4a: shu testlar natijalarining o'rtacha foizi. */
+  monthAvgPercent?: number | null
 }
 
 /** Bitta test qatori (guruh testlar ro'yxatida). */
@@ -2329,6 +2333,14 @@ export interface GroupTest {
   certificateTemplateId: string
   /** Shu test bo'yicha yaratilgan sertifikatlar soni */
   certificateCount: number
+  /** CRM U4a: «monthly» | «interim» ("" — eski, hali to'ldirilmagan). */
+  kind?: string
+  /** CRM U4a: «Savollar soni» (0 — eski test: maxScore maxraj). */
+  questionCount?: number
+  /** CRM U4a: natijalar o'rtacha foizi. */
+  avgPercent?: number | null
+  /** CRM U4a: ota-onalarga oxirgi yuborilgan vaqt (ISO). */
+  resultsSentAt?: string | null
 }
 
 /** Test natijasi qatori — bitta o'quvchi bali (rank=0 → ball kiritilmagan). */
@@ -2339,6 +2351,8 @@ export interface TestScoreRow {
   rank: number
   /** Guruhning faol a'zosimi. false — ball qo'yilgan, lekin hozir guruhning faol a'zosi emas. */
   member: boolean
+  /** CRM U4a: score ÷ maxScore × 100, bir kasr. */
+  percent?: number | null
 }
 
 /** Test tafsiloti — test + o'quvchilar ballari (ball desc bo'yicha saralangan). */
@@ -2359,6 +2373,52 @@ export interface TestResultDetail {
   certificateTemplateId: string
   /** Yaratilgan sertifikatlar (eski javoblarda bo'lmasligi mumkin) */
   certificates?: TestCertificate[]
+  /** CRM U4a: turi, «Savollar soni» (0 — eski test) va «Yuborilgan» vaqti. */
+  kind?: string
+  questionCount?: number
+  resultsSentAt?: string | null
+}
+
+/** CRM U4a — jadval saqlash qatori (`solved = null` — tozalash). */
+export interface TestScoreBatchRow {
+  studentId: string
+  solved: number | null
+}
+
+/** CRM U4a — saqlanmagan (rad etilgan) qator va sababi. */
+export interface TestScoreBatchError {
+  studentId: string
+  message: string
+}
+
+/** CRM U4a — jadval saqlash javobi. */
+export interface TestScoreBatchResult {
+  detail: TestResultDetail
+  errors: TestScoreBatchError[]
+}
+
+/** CRM U4a — «Ota-onalarga yuborish» natijasi. */
+export interface SendTestResultsResult {
+  queued: number
+  noTelegram: number
+  skippedUnchanged: number
+}
+
+/** CRM U4a — markaz kesimi (barcha guruhlar testlari). */
+export interface TestOverviewRow {
+  testId: string
+  name: string
+  kind: string
+  date: string
+  groupId: string
+  groupName: string
+  teacherName: string
+  questionCount: number
+  maxScore: number
+  scored: number
+  members: number
+  avgPercent: number | null
+  resultsSentAt: string | null
 }
 
 /** O'quvchi profilidagi test natijasi qatori (barcha guruhlaridan). */

@@ -1,13 +1,17 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ClipboardList, Users, Search, ChevronRight, ArrowLeft, GraduationCap, Award } from 'lucide-react'
-import type { TestGroupOverview } from '@/types'
-import { getTestGroups } from '@/api/services/testResults'
+import { ClipboardList, Users, Search, ChevronRight, ArrowLeft, GraduationCap, Award, Send } from 'lucide-react'
+import type { TestGroupOverview, TestOverviewRow } from '@/types'
+import { getTestGroups, getTestsOverview } from '@/api/services/testResults'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Loader } from '@/components/ui/Loader'
 import { PageHeader } from '@/components/ui/PageHeader'
-import { apiErrorMessage } from '@/lib/utils'
+import { apiErrorMessage, cn, formatDate } from '@/lib/utils'
+import { currentMonth } from '@/lib/month'
+import { fmtScore, testKindLabel } from '@/lib/ratingPeriods'
+import { formatSentAt } from '@/lib/testScoreGrid'
+import { TestMonthFilter } from './TestMonthFilter'
 
 interface TeacherSummary {
   teacherId: string
@@ -16,40 +20,56 @@ interface TeacherSummary {
   testCount: number
 }
 
+type View = 'groups' | 'tests'
+
 /**
- * "O'quv bo'limi" → Testlar natijalari — ikki bosqichli tanlov:
- * 1) O'qituvchi tanlanadi (kartalar);
- * 2) Shu o'qituvchining guruhlari ko'rsatiladi. Guruhga kirilsa — shu guruhning testlar ro'yxati.
+ * "O'quv bo'limi" → Testlar natijalari. Ikki ko'rinish (CRM U4a):
+ * • «Guruhlar» — ikki bosqichli tanlov: o'qituvchi → uning guruhlari (tanlangan OYdagi testlar soni va o'rtacha
+ *   foiz bilan); guruhga kirilsa — testlar ro'yxati;
+ * • «Barcha testlar» — markaz kesimi: oydagi barcha guruhlar testlari (tur filtri bilan).
+ * Oy filtri (standart — joriy oy, «Hammasi» — barcha oylar) ikkalasiga ham tegishli.
  */
 export function TestResultsPage() {
   const navigate = useNavigate()
-  const [groups, setGroups] = useState<TestGroupOverview[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState('')
+  const thisMonth = currentMonth()
+  const [month, setMonth] = useState(thisMonth)
+  const [kind, setKind] = useState('')
+  const [view, setView] = useState<View>('groups')
+  const [res, setRes] = useState<{ month: string; groups: TestGroupOverview[]; error: string } | null>(null)
   const [q, setQ] = useState('')
   const [selectedTeacherId, setSelectedTeacherId] = useState<string | null>(null)
 
   useEffect(() => {
-    getTestGroups()
-      .then(setGroups)
-      .catch((e) => setError(apiErrorMessage(e, 'Guruhlarni yuklab bo\'lmadi')))
-      .finally(() => setLoading(false))
-  }, [])
+    let active = true
+    getTestGroups(month)
+      .then((groups) => active && setRes({ month, groups, error: '' }))
+      .catch((e) => active && setRes({ month, groups: [], error: apiErrorMessage(e, 'Guruhlarni yuklab bo\'lmadi') }))
+    return () => {
+      active = false
+    }
+  }, [month])
+
+  const groups = useMemo(() => res?.groups ?? [], [res])
+  const loading = !res
+  const error = res?.error ?? ''
+  /** Tanlangan oy kesimidagi testlar soni (oysiz — butun vaqt). */
+  const testsOf = (g: TestGroupOverview) => g.monthTestCount ?? g.testCount
 
   const teachers = useMemo(() => {
     const byId = new Map<string, TeacherSummary>()
     for (const g of groups) {
       if (!g.teacherId) continue
       const cur = byId.get(g.teacherId)
+      const n = g.monthTestCount ?? g.testCount
       if (cur) {
         cur.groupCount += 1
-        cur.testCount += g.testCount
+        cur.testCount += n
       } else {
         byId.set(g.teacherId, {
           teacherId: g.teacherId,
           teacherName: g.teacherName || "Noma'lum",
           groupCount: 1,
-          testCount: g.testCount,
+          testCount: n,
         })
       }
     }
@@ -98,6 +118,33 @@ export function TestResultsPage() {
         }
       />
 
+      <div className="mb-4 flex flex-wrap items-center gap-3">
+        <div className="flex gap-2" role="tablist">
+          <button type="button" className={cn('tab', view === 'groups' && 'active')} onClick={() => setView('groups')}>
+            Guruhlar
+          </button>
+          <button type="button" className={cn('tab', view === 'tests' && 'active')} onClick={() => setView('tests')}>
+            Barcha testlar
+          </button>
+        </div>
+        <TestMonthFilter
+          month={month}
+          kind={kind}
+          onMonth={setMonth}
+          onKind={setKind}
+          currentMonth={thisMonth}
+          showKind={view === 'tests'}
+        />
+      </div>
+
+      {view === 'tests' ? (
+        <OverviewTable
+          month={month}
+          kind={kind}
+          onOpen={(row) => navigate(`/admin/test-results/${row.groupId}/tests/${row.testId}`)}
+        />
+      ) : (
+      <>
       {selectedTeacher && (
         <button
           type="button"
@@ -179,8 +226,11 @@ export function TestResultsPage() {
                     <Users className="h-3.5 w-3.5" /> {g.studentCount}
                   </span>
                   <span className="inline-flex items-center gap-1 font-medium text-brand-600">
-                    <ClipboardList className="h-3.5 w-3.5" /> {g.testCount} ta test
+                    <ClipboardList className="h-3.5 w-3.5" /> {testsOf(g)} ta test
                   </span>
+                  {g.monthAvgPercent != null && (
+                    <span className="font-medium text-slate-600">o'rtacha {fmtScore(g.monthAvgPercent)}%</span>
+                  )}
                 </div>
               </div>
               <ChevronRight className="h-5 w-5 shrink-0 text-slate-300 transition-transform group-hover:translate-x-0.5" />
@@ -188,6 +238,94 @@ export function TestResultsPage() {
           ))}
         </div>
       )}
+      </>
+      )}
     </div>
+  )
+}
+
+/** «Barcha testlar» — tanlangan oydagi barcha guruhlar testlari (markaz kesimi). */
+function OverviewTable({
+  month,
+  kind,
+  onOpen,
+}: {
+  month: string
+  kind: string
+  onOpen: (row: TestOverviewRow) => void
+}) {
+  const key = `${month}|${kind}`
+  const [res, setRes] = useState<{ key: string; rows: TestOverviewRow[]; error: string } | null>(null)
+
+  useEffect(() => {
+    let active = true
+    const k = `${month}|${kind}`
+    getTestsOverview({ month, kind })
+      .then((rows) => active && setRes({ key: k, rows, error: '' }))
+      .catch((e) => active && setRes({ key: k, rows: [], error: apiErrorMessage(e, "Testlarni yuklab bo'lmadi") }))
+    return () => {
+      active = false
+    }
+  }, [month, kind])
+
+  if (!res) return <Loader label="Yuklanmoqda..." />
+  if (res.error) return <Card className="py-10 text-center text-red-500">{res.error}</Card>
+  if (res.rows.length === 0) return <Card className="py-12 text-center text-slate-400">Bu davrda test yo'q.</Card>
+
+  return (
+    <Card tight className={cn('overflow-x-auto transition-opacity', res.key !== key && 'opacity-60')}>
+      <table className="w-full min-w-[720px] text-left text-sm">
+        <thead>
+          <tr className="border-b border-slate-100 bg-slate-50/60 text-xs uppercase tracking-wide text-slate-400">
+            <th className="px-4 py-3 font-medium">Sana</th>
+            <th className="px-3 py-3 font-medium">Test</th>
+            <th className="px-3 py-3 font-medium">Guruh</th>
+            <th className="px-3 py-3 font-medium">O'qituvchi</th>
+            <th className="px-3 py-3 text-right font-medium">Kiritilgan</th>
+            <th className="px-3 py-3 text-right font-medium">O'rtacha</th>
+            <th className="px-4 py-3 font-medium">Yuborilgan</th>
+          </tr>
+        </thead>
+        <tbody>
+          {res.rows.map((r) => (
+            <tr
+              key={r.testId}
+              onClick={() => onOpen(r)}
+              className="cursor-pointer border-b border-slate-50 last:border-0 hover:bg-slate-50/60"
+            >
+              <td className="whitespace-nowrap px-4 py-2.5 text-slate-500">{formatDate(r.date)}</td>
+              <td className="px-3 py-2.5">
+                <span className="font-medium text-slate-800">{r.name}</span>
+                {testKindLabel(r.kind) && (
+                  <span className="ml-1.5 rounded-md bg-indigo-50 px-1.5 py-0.5 text-[10px] font-semibold text-indigo-700">
+                    {testKindLabel(r.kind)}
+                  </span>
+                )}
+                <span className="ml-1.5 text-xs text-slate-400">
+                  {r.questionCount > 0 ? `${r.questionCount} ta savol` : `maks ${r.maxScore}`}
+                </span>
+              </td>
+              <td className="px-3 py-2.5 text-slate-600">{r.groupName}</td>
+              <td className="px-3 py-2.5 text-slate-600">{r.teacherName || '—'}</td>
+              <td className="whitespace-nowrap px-3 py-2.5 text-right text-slate-600">
+                {r.scored}/{r.members}
+              </td>
+              <td className="whitespace-nowrap px-3 py-2.5 text-right font-semibold text-slate-700">
+                {r.avgPercent == null ? '—' : `${fmtScore(r.avgPercent)}%`}
+              </td>
+              <td className="whitespace-nowrap px-4 py-2.5 text-xs text-emerald-700">
+                {r.resultsSentAt ? (
+                  <span className="inline-flex items-center gap-1">
+                    <Send className="h-3 w-3" /> {formatSentAt(r.resultsSentAt)}
+                  </span>
+                ) : (
+                  <span className="text-slate-300">—</span>
+                )}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </Card>
   )
 }

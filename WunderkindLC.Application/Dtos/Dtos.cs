@@ -664,32 +664,47 @@ public record GroupFillRowDto(
 /// <summary>Guruh kartasi (Testlar natijalari bosh sahifasi) — guruh + yaratilgan testlar soni.</summary>
 public record TestGroupOverviewDto(
     string GroupId, string Name, string CourseName, string TeacherId, string TeacherName,
-    int StudentCount, int TestCount);
+    int StudentCount, int TestCount,
+    // CRM U4a: tests of the selected month (`?month=yyyy-MM`; no month = all time) and their mean percent.
+    int MonthTestCount = 0, double? MonthAvgPercent = null);
 /// <summary>Bitta test qatori (guruh testlar ro'yxatida) — soni/o'rtacha bilan.
 /// (Onlayn rejim maydonlari — PDF, javob kaliti, kod, tashqi ishtirokchilar — 2026-10 da olib tashlandi.)</summary>
 public record GroupTestDto(
     string Id, string GroupId, string Name, string Date, decimal MaxScore,
     string CreatedAt, string CreatedBy, int StudentCount, int ScoredCount, decimal? AvgScore,
     // Sertifikat: yoqilganmi, qaysi andoza, nechta sertifikat berilgan.
-    bool CertificateEnabled = false, string CertificateTemplateId = "", int CertificateCount = 0);
+    bool CertificateEnabled = false, string CertificateTemplateId = "", int CertificateCount = 0,
+    // CRM U4a: kind («monthly»/«interim»), «Savollar soni» (0 = old test — MaxScore is the denominator),
+    // mean percent of the scored rows and when results were last sent to parents.
+    string Kind = "", int QuestionCount = 0, double? AvgPercent = null, DateTime? ResultsSentAt = null);
+/// <param name="Kind">CRM U4a: «monthly» | «interim» — required on create (the panel endpoints).</param>
+/// <param name="QuestionCount">CRM U4a: «Savollar soni» 1..200 — required on create; MaxScore = QuestionCount.</param>
 public record CreateTestResultRequest(
     string GroupId, string Name, string Date, decimal MaxScore,
-    bool CertificateEnabled = false, string? CertificateTemplateId = null);
+    bool CertificateEnabled = false, string? CertificateTemplateId = null,
+    string? Kind = null, int? QuestionCount = null);
+/// <param name="QuestionCount">CRM U4a: null/0 keeps the current count (old tests: <c>MaxScore</c> is edited as
+/// before); a lower count is refused while any score exceeds it.</param>
 public record UpdateTestResultRequest(
     string Name, string Date, decimal MaxScore,
-    bool CertificateEnabled = false, string? CertificateTemplateId = null);
+    bool CertificateEnabled = false, string? CertificateTemplateId = null,
+    string? Kind = null, int? QuestionCount = null);
 /// <summary>Test natijasi qatori — bitta o'quvchining bali (ball bo'yicha saralanadi). Rank = 0 → ball kiritilmagan.</summary>
 /// <param name="Member">Guruhning FAOL a'zosimi. <c>false</c> — bali bor, lekin hozir bu guruhning faol
 /// a'zosi emas (masalan guruhdan chiqqan) — bali yo'qolmasin deb ro'yxatda qoldiriladi.</param>
 public record TestScoreRowDto(
-    string StudentId, string FullName, decimal? Score, int Rank, bool Member = true);
+    string StudentId, string FullName, decimal? Score, int Rank, bool Member = true,
+    // CRM U4a: Score ÷ MaxScore × 100, one decimal (null — no score).
+    double? Percent = null);
 /// <summary>Test tafsiloti — test ma'lumoti + faol o'quvchilar ballari (ball desc bo'yicha saralangan).</summary>
 public record TestResultDetailDto(
     string Id, string GroupId, string GroupName, string Name, string Date, decimal MaxScore,
     string CreatedAt, string CreatedBy, List<TestScoreRowDto> Rows,
     // Sertifikat: yoqilganmi, qaysi andoza va shu testda allaqachon berilganlari.
     bool CertificateEnabled = false, string CertificateTemplateId = "",
-    List<TestCertificateDto>? Certificates = null);
+    List<TestCertificateDto>? Certificates = null,
+    // CRM U4a: kind, «Savollar soni» (0 = old test) and the «Yuborilgan: 12.10 15:40» stamp.
+    string Kind = "", int QuestionCount = 0, DateTime? ResultsSentAt = null);
 /// <summary>Bitta o'quvchiga ball qo'yish/tozalash (Score=null → tozalash).</summary>
 public record SetTestScoreRequest(string StudentId, decimal? Score);
 

@@ -17,3 +17,20 @@ public partial class CenterMeta
     /// <summary>TOP/BOTTOM scope: <c>group</c> (default — per group) | <c>centre</c> (one centre-wide list) — U4d.</summary>
     public string RatingTopBottomScope { get; set; } = "group";
 }
+
+// U4a (test entry, SPEC P4.1) — result-only tests: kind + "sent to parents" stamp.
+// QuestionCount (existing column) = «Savollar soni»; for every test created from now on MaxScore = QuestionCount and a
+// score is the SOLVED count, so the rating engine's percent = Score / MaxScore stays the same formula.
+public partial class TestResult
+{
+    /// <summary>Test kind: <c>monthly</c> («Oylik») | <c>interim</c> («Oraliq»). Required on create; existing rows
+    /// are backfilled to <c>interim</c> by the data SQL (<c>docs/migrations/Phase4a.sql</c>). Does not change the
+    /// rating weight.</summary>
+    public string Kind { get; set; } = string.Empty;
+
+    /// <summary>When results were last queued to parents («Ota-onalarga yuborish»), centre time. Null = never.</summary>
+    public DateTime? ResultsSentAt { get; set; }
+
+    /// <summary>User id of who pressed «Ota-onalarga yuborish» last.</summary>
+    public string? ResultsSentById { get; set; }
+}

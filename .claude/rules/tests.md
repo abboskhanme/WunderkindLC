@@ -1,7 +1,14 @@
 ---
-description: Test natijalari (FAQAT oflayn — ball qo'lda; onlayn test 2026-10 da olib tashlandi) va TEST SERTIFIKATI (Word andoza → PDF).
+description: Test natijalari (FAQAT natija — turi + savollar soni + yechgani; Excel'dek jadval, ota-onalarga yuborish; onlayn test 2026-10 da olib tashlandi) va TEST SERTIFIKATI (Word andoza → PDF).
 paths:
   - "WunderkindLC.Application/Services/TestResultService.cs"
+  - "WunderkindLC.Application/Services/TestResultService.Entry.cs"
+  - "WunderkindLC.Application/Services/TestEntryRules.cs"
+  - "WunderkindLC.Application/Services/TestScoreMessages.cs"
+  - "WunderkindLC.Server/Controllers/TestResultsController.Grid.cs"
+  - "WunderkindLC.Server/Controllers/TeacherPortalController.Tests.cs"
+  - "WunderkindLC.Client/src/pages/teacher/tests/**"
+  - "WunderkindLC.Client/src/lib/testScoreGrid.ts"
   - "WunderkindLC.Application/Services/TestCertificateService.cs"
   - "WunderkindLC.Application/Services/DocxToPdfConverter.cs"
   - "WunderkindLC.Application/Services/DocxTemplate.cs"
@@ -14,6 +21,70 @@ paths:
 ---
 
 # Test natijalari qoidalari
+
+## 0. CRM U4a (2026-10-12) — FAQAT NATIJA: turi + savollar soni + YECHGANI
+
+SPEC: `docs/SPEC-crm-upgrade.md` P4.1–P4.2; egasining qarori (`docs/ASSUMPTIONS.md` 2026-10-11): savol tuzish/tarqatish
+YO'Q — guruh bo'yicha faqat NATIJA: nom, sana, **TURI** (`monthly` «Oylik» / `interim` «Oraliq», yaratishda SHART),
+**«Savollar soni»** (1..200, yaratishda SHART) va har o'quvchiga BITTA raqam — nechta savolni YECHGANI. Foiz =
+yechgan ÷ savollar × 100 (ikkita mustaqil kiritish ziddiyatga olib kelardi). Oyiga 1–2 marta.
+
+- **Model:** `TestResult.Kind` · `ResultsSentAt` · `ResultsSentById` (`Domain/Crm/Rating.cs`). Mavjud `QuestionCount`
+  ustuni «Savollar soni» sifatida qayta ishlatiladi va yangi testda **`MaxScore = QuestionCount`**, ball = yechgan
+  soni — ya'ni reyting dvigateli (`RatingFormula.Percent(score, max)`) O'ZGARMAYDI (`rating.md` §3).
+  ⚠️ ESKI testlar (`QuestionCount = 0`) maxraj sifatida `MaxScore` ni saqlaydi: jadvalda ustun «Ball», oraliq
+  0..⌊MaxScore⌋ (baribir BUTUN son). Migratsiyada hamma eski test `interim` (`docs/migrations/Phase4a.sql`).
+- **Qoidalar YAGONA joyda** — `TestEntryRules` (sof, `TestScoreBatchTests`), servis — `TestResultService.Entry.cs`
+  (`CreateEntryAsync`, `UpdateEntryAsync`, `DeleteEntryAsync`, `OverviewAsync`, `SaveScoresBatchAsync`). Admin ham,
+  o'qituvchi ham AYNAN shularni chaqiradi (eski `CreateAsync`/`UpdateDetailedAsync`/`SetScoreAsync` faqat moslik uchun
+  qoldi — eski bitta-katak `PUT {id}/scores` hamon QISADI).
+- ⚠️ **NOTO'G'RI QIYMAT RAD ETILADI, QISILMAYDI** (`PUT …/{id}/scores/batch` `{ rows: [{ studentId, solved }] }` →
+  `{ detail, errors }`): to'g'ri qatorlar saqlanadi, 0..savollar oralig'idan tashqari yoki kasr — «Natija 0 dan {n}
+  gacha butun son bo'lsin», begona o'quvchi — «O'quvchi bu guruh a'zosi emas». `null` — tozalash. Qabul qilinadi:
+  hozirgi faol (muzlatilmagan) a'zo YOKI shu testda natijasi bor o'quvchi (chiqib ketganning natijasini tuzatish/
+  tozalash mumkin). Ilgari 31/30 jimgina 30 bo'lib saqlanardi — o'qituvchi xatoni hech qachon ko'rmasdi.
+- ⚠️ **«Savollar soni» KAMAYTIRILSA** va kimningdir natijasi undan katta bo'lsa — 400 «{n} ta o'quvchining natijasi
+  yangi savollar sonidan katta» (qisish YO'Q). Eski testda `MaxScore` tahriri avvalgidek (pastdagi «QISILADI» bandi).
+- Tafsilot qatorlari `percent` (bir kasr) va `rank` (musobaqa usuli "1, 2, 2, 4") bilan; ro'yxatlar `kind`,
+  `questionCount`, `avgPercent`, `resultsSentAt` bilan.
+- **Oy/tur filtri:** `GET api/admin/test-results?groupId=&month=yyyy-MM&kind=`, `GET …/groups?month=` (`monthTestCount`,
+  `monthAvgPercent`), o'qituvchi `GET api/teacher/test-results?classId=|groupId=&month=&kind=`; markaz kesimi —
+  `GET api/admin/test-results/overview?month=&kind=&courseId=&teacherId=`. Noto'g'ri `month`/`kind` — filtrsiz
+  (eskirgan havola ro'yxatni bo'shatmasin). Sanalar QAT'IY `yyyy-MM-dd` (filtr satr solishtiradi) — boshqasi 400.
+- **Audit** — tur `TestResult` (bo'lim «Guruhlar», `EntityId = "{groupId}:{testId}"` — guruh «Tarix» tabida):
+  yaratish, tahrir (oldin/keyin), o'chirish (nechta natija bilan) va yuborish («Test natijalari ota-onalarga
+  yuborildi: {test}, {n} ta»). Har bir ball kiritish YOZILMAYDI (jadvalni to'ldirish tarixni to'ldirib yuborardi).
+- **Ruxsat:** admin — sinf darajasidagi `classes.testResults` (GET — ko'rish, batch PUT — tahrir, yuborish POST —
+  yaratish); o'qituvchi — `OwnsGroup` (`journal` + guruh EGASI; o'rinbosarga YOPIQ). Yangi kalit YO'Q.
+- **Menyu:** «Testlar natijalari» Future'dan asosiy «O'quv bo'limi» guruhiga ko'chdi (`navCrmPhase4a.test.ts`).
+
+### 0.1. Excel'dek jadval — `pages/admin/tests/TestScoreGrid.tsx` (admin VA o'qituvchi — bitta komponent)
+
+- Qatorlar ISM bo'yicha va yozish paytida QAYTA SARALANMAYDI; ustunlar «№», «F.I.Sh», «Yechgan (0–30)» (eski testda
+  «Ball»), «Foiz» (jonli), «O'rin» (oxirgi saqlashdan). `NumberInput` (butun son, `inputMode` raqamli, mobil'da 16px).
+- Enter/↓ — keyingi qator, Shift+Enter/↑ — oldingisi. Excel ustunini katakka qo'yish — shu qatordan PASTGA to'ldiradi
+  (har qatorning 1-ustuni, `"25/30"` → 25, bo'sh — tozalaydi, tanib bo'lmagan matn — qizil «Raqam emas: …»).
+  Sof qism — `lib/testScoreGrid.ts` (`parsePastedColumn`, `nextRowIndex`, `cellError`; testlari bor).
+- Avtosaqlash — oxirgi tahrirdan **800 ms** keyin YOKI jadvaldan TASHQARIGA chiqilganda (qatorlar orasida yurish
+  so'rov yubormaydi) — BITTA batch. Holat: «Saqlanmoqda…» / «Saqlandi» / qizil xato (qiymatlar joyida qoladi).
+- Noto'g'ri katak QIZIL (sababi `title`da) va YUBORILMAYDI; server rad etgani ham qizil qoladi.
+- ⚠️ ESKI testdagi KASRLI ball (37.5) faqat «✎» bosilganda tahrirlanadi — aks holda `NumberInput` uni yaxlitlab
+  JIMGINA qayta saqlab yuborardi (`number-inputs.md` §1).
+- Sertifikat yoki yuborishdan OLDIN jadval `flush()` qilinadi (ref) — saqlanmagan natija chetda qolmasin.
+
+### 0.2. «Ota-onalarga yuborish» — `TestScoreMessages` (`POST …/{id}/send-results` `{ resend? }`)
+
+- Faqat QO'LDA, har test uchun (egasining qarori: har saqlashda xabar — o'zgaruvchan o'rinlar bilan spam bo'lardi).
+  Trigger `test_score`, faqat OUTBOX orqali (`messaging.md` §0.5). Yoqilgan qoida yo'q — 400 «"Test natijasi
+  (ota-onaga)" avto-xabar qoidasi yoqilmagan — Xabarlar → Avto xabarlar».
+- Tokenlar: {test}, {turi}, {sana}, {ball} "25/30", {foiz} "83%", {orin} "3/18" (testdagi o'rin / natija kiritilganlar),
+  {guruh_orin} va {reyting_orin} — test OYINING reytingidan (`RatingEngine`, keshlangan; o'rinsiz — «—»), {guruh}.
+- ⚠️ **Faqat O'ZGARGAN natija qayta ketadi:** `eventKey = "{testId}:{score}"`; o'quvchining HAR yetadigan chatida shu
+  kalitli qator bo'lsa u DISPATCHGA ham chiqmaydi (`skippedUnchanged`) — kabinet qo'ng'iroqchasi ham takrorlanmaydi.
+  Yangi ulangan ota-ona chati — yangi qator (faqat o'shanga). `resend = true` → `":r{ticks}"`, hammaga qayta.
+- Arxivdagi o'quvchi — yo'q. Yetadigan chati yo'q (bloklagan ham) — `noTelegram`, dispatch qilinmaydi.
+- Biror xabar navbatga tushsagina `ResultsSentAt/ById` yangilanadi va audit yoziladi (UI: «Yuborilgan: 12.10 15:40»).
+  Javob: `{ queued, noTelegram, skippedUnchanged }`.
 
 - **Test natijalari** (migratsiya `AddTestResults`): o'qituvchi o'quvchilardan olgan testlar ballarini
   kiritadi. Entity: `TestResult`(GroupId, Name, Date, MaxScore, CreatedAt, CreatedBy) +
@@ -59,8 +130,8 @@ paths:
     (`GroupDeletion`, quyidagi naqsh qoidasi bilan).
   • Daraja testi (lidlar, `LevelTestService`) va o'quv dasturi testlari bunga KIRMAYDI — ular qoldi.
 
-- **MAKSIMAL BALL KAMAYSA ballar QISILADI** (`TestResultService.UpdateDetailedAsync` → `ClampScore`,
-  `[0, MaxScore]`): ilgari "9/5 = 180%" chiqardi (sertifikatda ham). Ball o'zgargan bo'lsa (`Regraded > 0`)
+- **MAKSIMAL BALL KAMAYSA ballar QISILADI** — FAQAT ESKI (savollar sonisiz) testda (`UpdateEntryAsync` /
+  `UpdateDetailedAsync` → `ClampScore`, `[0, MaxScore]`; savollar sonili testda — rad, §0): ilgari "9/5 = 180%" chiqardi (sertifikatda ham). Ball o'zgargan bo'lsa (`Regraded > 0`)
   va test bo'yicha sertifikat berilgan bo'lsa — sertifikatlar fonda QAYTA yaratiladi
   (`TestCertificateJobs`, idempotent).
 

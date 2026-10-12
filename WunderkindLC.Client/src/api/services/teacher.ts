@@ -6,6 +6,9 @@ import type {
   TeacherClass,
   TestResultDetail,
   TeacherRating,
+  SendTestResultsResult,
+  TestScoreBatchResult,
+  TestScoreBatchRow,
 } from '@/types'
 import { api, USE_MOCK } from '../client'
 import { delay } from '@/lib/utils'
@@ -250,10 +253,16 @@ export async function getMyStudentRating(month?: string): Promise<TeacherRating 
 
 /* ---------- Test natijalari (o'z guruhlari) ---------- */
 
-/** Bitta guruhning testlar ro'yxati. */
-export async function getTeacherGroupTests(classId: string): Promise<GroupTest[]> {
+/** Bitta guruhning testlar ro'yxati (CRM U4a: `month` "yyyy-MM" — bo'sh = hammasi, `kind` — tur). */
+export async function getTeacherGroupTests(
+  classId: string,
+  filter: { month?: string; kind?: string } = {},
+): Promise<GroupTest[]> {
   if (USE_MOCK) return []
-  const { data } = await api.get<GroupTest[]>('/teacher/test-results', { params: { classId } })
+  const params: Record<string, string> = { classId }
+  if (filter.month) params.month = filter.month
+  if (filter.kind) params.kind = filter.kind
+  const { data } = await api.get<GroupTest[]>('/teacher/test-results', { params })
   return data
 }
 
@@ -267,13 +276,16 @@ export async function createTeacherTest(payload: {
   groupId: string
   name: string
   date: string
-  maxScore: number
+  /** CRM U4a: «monthly» | «interim» — SHART. */
+  kind?: string
+  /** CRM U4a: «Savollar soni» 1..200 — SHART (maks ball = savollar soni). */
+  questionCount?: number | null
   /** true — test natijasi bo'yicha sertifikat beriladi */
   certificateEnabled?: boolean
   /** Sertifikat shabloni; bo'sh/null — standart shablon */
   certificateTemplateId?: string | null
 }): Promise<GroupTest> {
-  const { data } = await api.post<GroupTest>('/teacher/test-results', payload)
+  const { data } = await api.post<GroupTest>('/teacher/test-results', { maxScore: 0, ...payload })
   return data
 }
 
@@ -282,14 +294,33 @@ export async function updateTeacherTest(
   payload: {
     name: string
     date: string
-    maxScore: number
+    kind?: string
+    /** «Savollar soni»; null — o'zgarmaydi (eski testda `maxScore` tahrirlanadi). */
+    questionCount?: number | null
+    /** Faqat ESKI (savollar sonisiz) test uchun. */
+    maxScore?: number
     /** true — test natijasi bo'yicha sertifikat beriladi */
     certificateEnabled?: boolean
     /** Sertifikat shabloni; bo'sh/null — standart shablon */
     certificateTemplateId?: string | null
   },
 ): Promise<void> {
-  await api.put(`/teacher/test-results/${id}`, payload)
+  await api.put(`/teacher/test-results/${id}`, { maxScore: 0, ...payload })
+}
+
+/** CRM U4a: jadvaldan bir nechta katakni bittada saqlash (o'z guruhi) — noto'g'rilari `errors` da. */
+export async function saveTeacherTestScoresBatch(
+  id: string,
+  rows: TestScoreBatchRow[],
+): Promise<TestScoreBatchResult> {
+  const { data } = await api.put<TestScoreBatchResult>(`/teacher/test-results/${id}/scores/batch`, { rows })
+  return data
+}
+
+/** CRM U4a: «Ota-onalarga yuborish» (o'z guruhi) — faqat o'zgargan natijalar (`resend` — hammasini). */
+export async function sendTeacherTestResults(id: string, resend = false): Promise<SendTestResultsResult> {
+  const { data } = await api.post<SendTestResultsResult>(`/teacher/test-results/${id}/send-results`, { resend })
+  return data
 }
 
 export async function deleteTeacherTest(id: string): Promise<void> {

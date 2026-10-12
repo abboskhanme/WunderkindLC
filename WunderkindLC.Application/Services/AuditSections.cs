@@ -92,6 +92,9 @@ public static class AuditSections
         // "AttendanceNotice" — «KELMADI» XABARI nazorati (CRM Phase 3, U3b): menejer xabarni to'xtatdi /
         // tasdiqladi / bekor qildi. Dars (guruh) hodisasi → Guruhlar; EntityId "{groupId}:{itemId}", studentId bilan.
         ["AttendanceNotice"] = "classes",
+        // "TestResult" — CRM U4a: test yaratish/tahrir/o'chirish va «Ota-onalarga yuborish». `EntityId` —
+        // "{groupId}:{testId}" (guruh «Tarix» tabida ko'rinadi).
+        ["TestResult"] = "classes",
 
         // --- Kurslar ---
         ["Course"] = "schedule",

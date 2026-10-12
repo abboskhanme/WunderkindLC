@@ -163,7 +163,8 @@ Mavjud qarz qoidalari migratsiyada 1-sana 09:00 ga o'tkaziladi.
 ### Yangi triggerlar (15 ta katalog)
 
 `bot_connected` («01», faqat ulangan chatga) · `achievement` (yutuq tabrigi, rasm bilan) · `test_score`,
-`rating_top`, `rating_bottom` (katalogda; yuborish — Phase 4). `payment_debt` va `attendance_absent` yangi qoidada
+`rating_top`, `rating_bottom` (yuborish — Phase 4: `test_score` — test sahifasidagi «Ota-onalarga yuborish»
+(`TestScoreMessages`, `tests.md` §0.2), `rating_*` — `MonthlyRatingNotifier`, `rating.md` §8). `payment_debt` va `attendance_absent` yangi qoidada
 «Qabul qildim» oldindan yoqilgan (`DefaultAck`). Qoida saqlash — `SendTelegram = true` (endi faqat `Enabled` hal
 qiladi), audit `AutoMessageRule` («Xabarlar» bo'limi).
 

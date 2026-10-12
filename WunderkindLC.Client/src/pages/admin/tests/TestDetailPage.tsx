@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, Trophy, Check, Loader2, Award, Download } from 'lucide-react'
+import { ArrowLeft, Loader2, Award, Download } from 'lucide-react'
 import type { TestResultDetail } from '@/types'
-import { getTestDetail, setTestScore } from '@/api/services/testResults'
+import { getTestDetail, saveTestScoresBatch, sendTestResults } from '@/api/services/testResults'
 import {
   startTestCertificates,
   getCertificateJob,
@@ -15,36 +15,31 @@ import { Card } from '@/components/ui/Card'
 import { Loader } from '@/components/ui/Loader'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { apiErrorMessage, formatDate } from '@/lib/utils'
-import { NumberInput } from '@/components/ui/NumberInput'
 import { usePerm } from '@/lib/permissions'
-
-const MEDALS = ['🥇', '🥈', '🥉']
+import { testKindLabel } from '@/lib/ratingPeriods'
+import { TestScoreGrid, type TestScoreGridHandle } from './TestScoreGrid'
+import { SendResultsPanel } from './SendResultsPanel'
 
 /** Sertifikat fon ishi holatini shuncha vaqtda bir so'raymiz (bo'lak ~7 soniyada tayyor bo'ladi). */
 const CERT_POLL_MS = 2500
 /** Ketma-ket shuncha xatodan keyin so'rashni to'xtatamiz (tarmoq uzilsa abadiy urinmasin). */
 const CERT_POLL_MAX_FAILS = 5
 
-/** Ball foizi (butun songa yaxlitlangan). */
-const percentOf = (score: number, max: number) => (max > 0 ? Math.round((score / max) * 100) : 0)
-
 /**
- * Test tafsiloti — guruhning faol o'quvchilari ballari (ball bo'yicha kamayish tartibida).
- * Har o'quvchiga ball kiritiladi; kiritilganda ro'yxat qayta saralanadi (tepadan pastga).
+ * Test tafsiloti — Excel'dek natijalar jadvali (`TestScoreGrid`, CRM U4a): har o'quvchiga YECHGAN savollar soni,
+ * foiz jonli, o'rin — oxirgi saqlashdan; «Ota-onalarga yuborish» (`SendResultsPanel`) va sertifikatlar.
  */
 export function TestDetailPage() {
   const { groupId = '', testId = '' } = useParams()
   const navigate = useNavigate()
   const { can } = usePerm()
   const editable = can('classes.testResults', 'edit')
+  const canSend = can('classes.testResults', 'create')
+  const grid = useRef<TestScoreGridHandle>(null)
 
   const [detail, setDetail] = useState<TestResultDetail | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  // Har o'quvchi input qiymati (matn) — saqlanmaguncha lokal
-  const [draft, setDraft] = useState<Record<string, string>>({})
-  const [savingId, setSavingId] = useState<string | null>(null)
-  const [savedId, setSavedId] = useState<string | null>(null)
   // --- sertifikat ---
   // Generatsiya FONDA, 5 tadan bo'lib bajariladi: `certJob` — holat (nechtadan nechtasi tayyor)
   // va shu daqiqada tayyor sertifikatlar. Ish ketayotganda ham ro'yxat to'lib boradi.
@@ -56,9 +51,6 @@ export function TestDetailPage() {
   const jobRunning = certJob?.running === true
   /** Ketma-ket muvaffaqiyatsiz holat so'rovlari soni (render'ga ta'sir qilmaydi — shuning uchun ref). */
   const pollFails = useRef(0)
-
-  const syncDraft = (d: TestResultDetail) =>
-    setDraft(Object.fromEntries(d.rows.map((r) => [r.studentId, r.score == null ? '' : String(r.score)])))
 
   // Manzildagi testId almashsa komponent QAYTA YARATILMAYDI (marshrut bir xil), shuning uchun
   // sertifikat holatini o'zimiz tozalaymiz — aks holda yangi testda ESKI testning sertifikatlari
@@ -80,7 +72,6 @@ export function TestDetailPage() {
       .then((d) => {
         if (!active) return
         setDetail(d)
-        syncDraft(d)
         // Sahifa boshqa oynada boshlangan generatsiya PAYTIDA ochilgan bo'lishi mumkin —
         // shuni ilib olamiz, aks holda progress ko'rinmay qolardi.
         if (d.certificateEnabled) {
@@ -92,7 +83,6 @@ export function TestDetailPage() {
       .catch((e) => { if (active) setError(apiErrorMessage(e, 'Yuklab bo\'lmadi')) })
       .finally(() => { if (active) setLoading(false) })
     return () => { active = false }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [testId])
 
   /** Ish ketayotganda holatni so'rab turamiz — tayyor bo'lganlar ro'yxatga qo'shilib boradi. */
@@ -118,55 +108,20 @@ export function TestDetailPage() {
     return () => clearInterval(timer)
   }, [jobRunning, testId])
 
-  const save = async (studentId: string) => {
-    if (!detail) return
-    const raw = (draft[studentId] ?? '').trim()
-    const current = detail.rows.find((r) => r.studentId === studentId)?.score ?? null
-    const next = raw === '' ? null : Number(raw)
-    if (next !== null && (!Number.isFinite(next) || next < 0)) {
-      setError('Ball manfiy bo\'lmasligi kerak')
-      return
-    }
-    if (next === current) return // o'zgarmagan
-    setSavingId(studentId)
-    setError('')
-    try {
-      const updated = await setTestScore(testId, studentId, next)
-      setDetail(updated)
-      syncDraft(updated)
-      setSavedId(studentId)
-      setTimeout(() => setSavedId((s) => (s === studentId ? null : s)), 1200)
-    } catch (e) {
-      setError(apiErrorMessage(e, 'Saqlab bo\'lmadi'))
-    } finally {
-      setSavingId(null)
-    }
-  }
-
   /**
-   * Hali saqlanmagan ballarni saqlab BO'LGUNCHA kutamiz.
-   *
-   * Tugma "Saqlash va sertifikat yaratish" deyiladi, lekin ball aslida katakdan chiqilganda
-   * (`onBlur`) ALOHIDA so'rov bilan saqlanadi. Tugma bosilganda `mousedown` blur'ni, `click` esa
-   * generatsiyani qo'zg'aydi — ikkalasi bir vaqtda ketib, server ball yozilishidan OLDIN ro'yxatni
-   * o'qishi mumkin edi: oxirgi kiritilgan o'quvchi sertifikatsiz yoki ESKI ball bilan qolardi.
+   * Hali saqlanmagan natijalarni saqlab BO'LGUNCHA kutamiz (jadval avtosaqlashi 800 ms kechikadi).
+   * Aks holda sertifikat/yuborish server natija yozilishidan OLDIN ro'yxatni o'qib, oxirgi kiritilgan
+   * o'quvchi sertifikatsiz yoki ESKI natija bilan qolardi.
    */
   const flushDrafts = async () => {
-    if (!detail) return
-    const pending = detail.rows.filter((r) => {
-      const raw = (draft[r.studentId] ?? '').trim()
-      const next = raw === '' ? null : Number(raw)
-      if (next !== null && (!Number.isFinite(next) || next < 0)) return false
-      return next !== (r.score ?? null)
-    })
-    if (pending.length === 0) return
-    for (const r of pending) {
-      const raw = (draft[r.studentId] ?? '').trim()
-      await setTestScore(testId, r.studentId, raw === '' ? null : Number(raw))
-    }
-    const fresh = await getTestDetail(testId)
-    setDetail(fresh)
-    syncDraft(fresh)
+    await grid.current?.flush()
+  }
+
+  /** «Yuborilgan» vaqtini yangilash — tafsilotni qayta o'qiymiz (jadval qiymatlari tegilmaydi). */
+  const refreshSent = () => {
+    getTestDetail(testId)
+      .then((d) => setDetail((prev) => (prev && prev.id === d.id ? { ...prev, resultsSentAt: d.resultsSentAt } : prev)))
+      .catch(() => { /* ikkilamchi: vaqt keyingi ochilishda ko'rinadi */ })
   }
 
   /** «Saqlash va sertifikat yaratish» — ball kiritilgan har o'quvchiga sertifikat (qayta bosilsa yangilanadi).
@@ -232,7 +187,12 @@ export function TestDetailPage() {
 
       <PageHeader
         title={detail.name}
-        sub={`${formatDate(detail.date)} · Maksimal ball: ${detail.maxScore} · Baholangan: ${scored}/${detail.rows.length}`}
+        sub={[
+          formatDate(detail.date),
+          testKindLabel(detail.kind ?? ''),
+          (detail.questionCount ?? 0) > 0 ? `${detail.questionCount} ta savol` : `Maksimal ball: ${detail.maxScore}`,
+          `Kiritilgan: ${scored}/${detail.rows.length}`,
+        ].filter(Boolean).join(' · ')}
       />
 
       {error && <Card className="mb-3 py-2.5 text-center text-sm text-red-500">{error}</Card>}
@@ -242,90 +202,24 @@ export function TestDetailPage() {
           Guruhda faol o'quvchi yo'q.
         </Card>
       ) : (
-        <Card tight className="overflow-hidden">
-          <table className="w-full text-left text-sm">
-            <thead>
-              <tr className="border-b border-slate-100 bg-slate-50/60 text-xs uppercase tracking-wide text-slate-400">
-                <th className="w-16 px-4 py-3 font-medium">O'rin</th>
-                <th className="px-4 py-3 font-medium">O'quvchi</th>
-                <th className="w-40 px-4 py-3 text-right font-medium">Ball</th>
-              </tr>
-            </thead>
-            <tbody>
-              {detail.rows.map((r) => {
-                const isTop = r.rank >= 1 && r.rank <= 3
-                return (
-                  <tr key={r.studentId} className="border-b border-slate-50 last:border-0 hover:bg-slate-50/40">
-                    <td className="px-4 py-2.5">
-                      {r.rank === 0 ? (
-                        <span className="text-slate-300">—</span>
-                      ) : isTop ? (
-                        <span className="text-lg leading-none">{MEDALS[r.rank - 1]}</span>
-                      ) : (
-                        <span className="font-semibold text-slate-500">{r.rank}</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-2.5">
-                      <span className={isTop ? 'font-semibold text-slate-800' : 'font-medium text-slate-700'}>
-                        {r.fullName}
-                      </span>
-                      {r.rank === 1 && (
-                        <Trophy className="ml-1.5 inline h-3.5 w-3.5 text-amber-400" />
-                      )}
-                      {r.member === false && (
-                        <span
-                          className="ml-1.5 rounded bg-sky-50 px-1.5 py-0.5 text-[10px] font-semibold text-sky-700"
-                          title="Ball qo'yilgan, lekin hozir bu guruhning faol a'zosi emas"
-                        >
-                          GURUHDA EMAS
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-4 py-2.5">
-                      <div className="flex items-center justify-end gap-2">
-                        {savingId === r.studentId && (
-                          <Loader2 className="h-4 w-4 animate-spin text-brand-400" />
-                        )}
-                        {savedId === r.studentId && <Check className="h-4 w-4 text-emerald-500" />}
-                        <div className="flex items-center gap-1">
-                          <NumberInput
-                            as="input"
-                            disabled={!editable || savingId === r.studentId}
-                            value={draft[r.studentId] ? Number(draft[r.studentId]) : null}
-                            onChange={(v) =>
-                              setDraft((d) => ({
-                                ...d,
-                                [r.studentId]: v === null ? '' : String(Math.min(detail.maxScore, v)),
-                              }))
-                            }
-                            onBlur={() => editable && save(r.studentId)}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
-                            }}
-                            placeholder="—"
-                            className="w-20 rounded-lg border border-slate-200 px-2.5 py-1.5 text-right text-sm text-slate-800 outline-none transition-colors focus:border-brand-400 disabled:bg-slate-50 disabled:text-slate-400"
-                          />
-                          {/* Jami ball — "85 / 100 · 85%" */}
-                          <span className="whitespace-nowrap text-xs text-slate-400">
-                            {r.score == null
-                              ? `/ ${detail.maxScore}`
-                              : `${r.score} / ${detail.maxScore} · ${percentOf(r.score, detail.maxScore)}%`}
-                          </span>
-                        </div>
-                      </div>
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </Card>
+        <TestScoreGrid
+          key={detail.id}
+          ref={grid}
+          detail={detail}
+          editable={editable}
+          save={(rows) => saveTestScoresBatch(testId, rows)}
+          onDetail={setDetail}
+        />
       )}
 
-      {editable && (
-        <p className="mt-3 text-center text-xs text-slate-400">
-          Ballni kiritib bosing yoki katakdan chiqing — natija avtomatik saqlanadi va ro'yxat qayta saralanadi.
-        </p>
+      {canSend && detail.rows.length > 0 && (
+        <SendResultsPanel
+          className="mt-3"
+          resultsSentAt={detail.resultsSentAt}
+          beforeSend={flushDrafts}
+          send={(resend) => sendTestResults(testId, resend)}
+          onSent={refreshSent}
+        />
       )}
 
       {/* SERTIFIKAT natijalari — xabarlar va yaratish tugmasi (pastda yopishib turadi) */}

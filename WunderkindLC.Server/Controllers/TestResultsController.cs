@@ -27,15 +27,17 @@ public partial class TestResultsController(
         ?? User.FindFirst(ClaimTypes.Name)?.Value
         ?? "Admin";
 
-    /// <summary>Bosh sahifa — barcha guruhlar + har biriga yaratilgan testlar soni.</summary>
+    /// <summary>Bosh sahifa — barcha guruhlar + har biriga yaratilgan testlar soni (CRM U4a: <c>?month=yyyy-MM</c> —
+    /// shu oydagi testlar soni va o'rtacha foiz).</summary>
     [HttpGet("groups")]
-    public async Task<List<TestGroupOverviewDto>> Groups() =>
-        await TestResultService.GroupsOverviewAsync(db);
+    public async Task<List<TestGroupOverviewDto>> Groups([FromQuery] string? month = null) =>
+        await TestResultService.GroupsOverviewAsync(db, month);
 
-    /// <summary>Bitta guruhning testlar ro'yxati (?groupId=).</summary>
+    /// <summary>Bitta guruhning testlar ro'yxati (?groupId=&amp;month=yyyy-MM&amp;kind=monthly|interim).</summary>
     [HttpGet]
-    public async Task<List<GroupTestDto>> List([FromQuery] string groupId) =>
-        await TestResultService.ListForGroupAsync(db, groupId);
+    public async Task<List<GroupTestDto>> List(
+        [FromQuery] string groupId, [FromQuery] string? month = null, [FromQuery] string? kind = null) =>
+        await TestResultService.ListForGroupAsync(db, groupId, month, kind);
 
     /// <summary>Test tafsiloti — o'quvchilar + ballari (ball desc).</summary>
     [HttpGet("{id}")]
@@ -45,13 +47,12 @@ public partial class TestResultsController(
         return d is null ? NotFound() : d;
     }
 
-    /// <summary>Yangi test yaratish.</summary>
+    /// <summary>Yangi test yaratish — CRM U4a: turi (oylik/oraliq) va «Savollar soni» SHART, MaxScore = savollar soni.
+    /// Tarixga yoziladi.</summary>
     [HttpPost]
     public async Task<ActionResult<GroupTestDto>> Create(CreateTestResultRequest req)
     {
-        var (dto, err) = await TestResultService.CreateAsync(
-            db, req.GroupId, req.Name, req.Date, req.MaxScore, Actor(),
-            req.CertificateEnabled, req.CertificateTemplateId);
+        var (dto, err) = await TestResultService.CreateEntryAsync(db, req, Actor(), Audit);
         return err != null ? BadRequest(new { message = err }) : dto!;
     }
 
@@ -59,21 +60,20 @@ public partial class TestResultsController(
     [HttpPut("{id}")]
     public async Task<IActionResult> Update(string id, UpdateTestResultRequest req)
     {
-        var r = await TestResultService.UpdateDetailedAsync(
-            db, id, req.Name, req.Date, req.MaxScore,
-            req.CertificateEnabled, req.CertificateTemplateId);
+        // CRM U4a: «Savollar soni» kamaytirilsa va kimningdir natijasi undan katta bo'lsa — 400 (qisilmaydi).
+        var r = await TestResultService.UpdateEntryAsync(db, id, req, Audit);
         if (!r.Ok) return BadRequest(new { message = r.Error });
-        // Maksimal ball kamayib ballar QISILGAN bo'lsa — berilgan sertifikatlar ham yangi
+        // Maksimal ball kamayib ballar QISILGAN bo'lsa (faqat ESKI, savollar sonisiz test) — berilgan sertifikatlar ham yangi
         // ball (foiz, o'rin) bilan qayta yaratiladi: fonda, idempotent (raqami saqlanadi, bali tozalanganniki o'chadi).
         if (r.Regraded > 0 && await TestResultService.HasCertificatesAsync(db, id))
             await certJobs.StartAsync(db, certs, id, Actor());
         return NoContent();
     }
 
-    /// <summary>Testni o'chirish (ballari bilan).</summary>
+    /// <summary>Testni o'chirish (ballari bilan) — tarixga yoziladi.</summary>
     [HttpDelete("{id}")]
     public async Task<IActionResult> Delete(string id) =>
-        await TestResultService.DeleteAsync(db, id) ? NoContent() : NotFound();
+        await TestResultService.DeleteEntryAsync(db, id, Audit) ? NoContent() : NotFound();
 
     /// <summary>Bitta o'quvchiga ball qo'yish/tozalash. Qaytadi: qayta saralangan tafsilot.</summary>
     [HttpPut("{id}/scores")]

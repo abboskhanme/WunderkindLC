@@ -181,3 +181,42 @@ export async function getStudentRatingSummary(p: RatingQuery, studentId?: string
   })
   return data
 }
+
+/* ---------- Oylik TOP / BOTTOM (CRM U4d) ---------- */
+
+export interface TopBottomRow {
+  studentId: string
+  fullName: string
+  /** O'tgan oy testlari o'rtacha foizi (T). */
+  testAvg: number
+  /** Qamrovdagi o'rin (T bo'yicha, musobaqa usuli). */
+  rank: number
+}
+
+export interface TopBottomGroup {
+  /** Markaz qamrovida — "" («Markaz»). */
+  groupId: string
+  groupName: string
+  /** Oyda testi bor o'quvchilar soni ({orin} dagi "/ n"). */
+  scored: number
+  top: TopBottomRow[]
+  /** Eng past natija birinchi. */
+  bottom: TopBottomRow[]
+}
+
+export interface TopBottom {
+  month: string
+  monthLabel: string
+  scope: RatingTopBottomScope
+  count: number
+  groups: TopBottomGroup[]
+}
+
+/** Oylik TOP/BOTTOM ko'rinishi — avto-xabar AYNAN shu ro'yxatlarga ketadi (`month` bo'sh — o'tgan oy). */
+export async function getRatingTopBottom(p: { month?: string; scope?: RatingTopBottomScope | '' } = {}) {
+  const params: Record<string, string> = {}
+  if (p.month) params.month = p.month
+  if (p.scope) params.scope = p.scope
+  const { data } = await api.get<TopBottom>('/admin/rating/top-bottom', { params })
+  return data
+}

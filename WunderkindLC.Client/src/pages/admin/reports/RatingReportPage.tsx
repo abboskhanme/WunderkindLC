@@ -13,14 +13,16 @@ import { defaultRatingPeriod, fmtScore, type RatingPeriodValue } from '@/lib/rat
 import { usePerm } from '@/lib/permissions'
 import { tabFromUrl } from '@/lib/tabParam'
 import { apiErrorMessage, cn } from '@/lib/utils'
+import { TopBottomTab } from './TopBottomTab'
 
-type Tab = 'markaz' | 'guruhlar'
-const TABS = ['markaz', 'guruhlar'] as const
+type Tab = 'markaz' | 'guruhlar' | 'topbottom'
+const TABS = ['markaz', 'guruhlar', 'topbottom'] as const
 const PAGE_SIZE = 50
 
 /**
  * HISOBOTLAR → REYTING (`/admin/hisobotlar/reyting`, ruxsat `classes.rating`).
- * «Markaz» — butun markaz jadvali (qidiruv, sahifalash), «Guruhlar» — tanlangan guruh jadvali.
+ * «Markaz» — butun markaz jadvali (qidiruv, sahifalash), «Guruhlar» — tanlangan guruh jadvali,
+ * «TOP/BOTTOM» — o'tgan oy testlari bo'yicha oylik ro'yxatlar (CRM U4d, avto-xabarlar shu ro'yxatga ketadi).
  * Reyting bali = testlar o'rtachasi × ulush + ball (guruhdagi eng yaxshiga nisbatan) × qolgani;
  * hammasi serverda (`.claude/rules/rating.md`). CSV yo'q (SPEC).
  */
@@ -51,9 +53,18 @@ export function RatingReportPage() {
         <button type="button" className={cn('tab', tab === 'guruhlar' && 'active')} onClick={() => setTab('guruhlar')}>
           Guruhlar
         </button>
+        <button type="button" className={cn('tab', tab === 'topbottom' && 'active')} onClick={() => setTab('topbottom')}>
+          TOP/BOTTOM
+        </button>
       </div>
 
-      {tab === 'markaz' ? <CentreTab key={reloadTick} /> : <GroupsTab key={reloadTick} />}
+      {tab === 'markaz' ? (
+        <CentreTab key={reloadTick} />
+      ) : tab === 'guruhlar' ? (
+        <GroupsTab key={reloadTick} />
+      ) : (
+        <TopBottomTab key={reloadTick} />
+      )}
 
       {settingsOpen && (
         <RatingSettingsModal onClose={() => setSettingsOpen(false)} onSaved={() => setReloadTick((t) => t + 1)} />

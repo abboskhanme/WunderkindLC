@@ -21,7 +21,7 @@ namespace WunderkindLC.Server.Controllers;
 [ApiController]
 [Authorize]
 [Route("api/admin/rating")]
-public class RatingController(AppDbContext db, DataCache cache, AuditService audit) : ControllerBase
+public partial class RatingController(AppDbContext db, DataCache cache, AuditService audit) : ControllerBase
 {
     /// <summary>Uzbek labels of the settings in the change history (values are written — they change scores).</summary>
     private static readonly Dictionary<string, string> SettingsLabels = new()

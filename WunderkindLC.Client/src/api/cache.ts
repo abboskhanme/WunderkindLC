@@ -174,8 +174,11 @@ const CROSS_INVALIDATION: Record<string, string[]> = {
     '/admin/course-analytics'],
   '/admin/subjects': ['/admin/classes', '/admin/curriculum', '/admin/course-analytics'],
   // Test natijasi/sertifikati: admin va o'qituvchi bitta do'konga yozadi (`testCertificates.ts`).
-  '/admin/test-results': ['/admin/students', '/admin/classes', '/student', '/teacher/test-results'],
-  '/teacher/test-results': ['/admin/test-results', '/admin/students', '/admin/classes', '/student'],
+  // CRM U4a: natija reytingga tushadi (`/admin/rating`), «Ota-onalarga yuborish» — xabarlar tarixiga (`/admin/messaging`).
+  '/admin/test-results': ['/admin/students', '/admin/classes', '/student', '/teacher/test-results',
+    '/admin/rating', '/admin/messaging'],
+  '/teacher/test-results': ['/admin/test-results', '/admin/students', '/admin/classes', '/student',
+    '/admin/rating', '/admin/messaging'],
   '/admin/level-tests': ['/admin/leads', '/admin/lead-forms', '/admin/test-results'],
 
   /* ─────────── O'QITUVCHI ─────────── */
