@@ -50,3 +50,17 @@ export function attendanceTally(marks: AttendanceMark[]): {
   const attended = present + late
   return { held, attended, absent, late, pct: held > 0 ? Math.round((attended * 100) / held) : null }
 }
+
+/** Profil → «Qoldirilgan darslar» davri. */
+export type AbsencePeriod = 'month' | '3m' | '6m' | '1y'
+
+/** Davr → `{from, to}` ("yyyy-MM-dd", MAHALLIY sana). «1 yil» — 365/366 kun (server chegarasi 366). */
+export function absencePeriodRange(p: AbsencePeriod, now: Date): { from: string; to: string } {
+  const iso = (d: Date) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  const to = iso(now)
+  if (p === 'month') return { from: `${to.slice(0, 7)}-01`, to }
+  const back = p === '3m' ? 3 : p === '6m' ? 6 : 12
+  const f = new Date(now.getFullYear(), now.getMonth() - back, now.getDate() + 1)
+  return { from: iso(f), to }
+}

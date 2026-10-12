@@ -516,3 +516,34 @@ uzoqda tushib qolardi.
 `ContactRequest` turi `AuditSections` da **`contacts`** ("Bog'lanish kerak") bo'limiga xaritalangan
 — talab ochish, bog'lanish, izoh, qayta ochish va o'chirish "O'zgarishlar tarixi"da ko'rinadi.
 Batafsil: `.claude/rules/audit.md`.
+
+## 9. AVTOMATIK TALAB — ketma-ket kelmaslik (CRM Phase 3, U3d — 2026-10-12)
+
+SPEC: `docs/SPEC-crm-upgrade.md` P3.5. Menyuda «Bog'lanish kerak» endi ASOSIY «O'quvchilar» guruhida
+(«Qabul cheklisti» dan keyin), Future'dan olib tashlandi (`navCrmPhase3.test.ts`).
+
+- **Seriya** — `AbsenceStreaks` (sof, `AbsenceStreakTests`): bitta (o'quvchi, guruh) bo'yicha eng oxirgi darsdan
+  ORQAGA: sababsiz yo'qlik sanaladi, belgilanmagan / o'tilmagan / a'zolikdan tashqari dars o'tkazib yuboriladi,
+  «keldi», «kech» yoki «sababli» (`AbsenceReason.IsExcused`) yo'qlik to'xtatadi. Turli guruhlar aralashmaydi.
+  Darajalar: 3 va 5. Manba — `AbsenceStreakLoader` (oxirgi 60 kun, `AttendanceRules` bilan; qizil ro'yxat, KPI
+  «Ketma-ket 3 dars kelmaganlar» va fon xizmati — AYNAN shu funksiya).
+- **Fon xizmati** `AbsenceStreakService` (startupdan 2 daq keyin, keyin har 30 daq, 08:00–22:00): 3/5 darajaga
+  yetgan seriyaga `AbsenceStreakAlert` (unikal `(StudentId, GroupId, StreakStart, Level)` — qayta yugurish takror
+  bermaydi). YANGI qator paydo bo'lsa, o'quvchiga yugurish boshiga ko'pi bilan BITTA amal va faqat oxirgi yo'qlik
+  ≤ 14 kun oldin bo'lsa (deploydan keyin eski seriyalar to'lqini bo'lmasin):
+  - ochiq talab YO'Q → `ContactQueueService.Add` («Ketma-ket darsga kelmadi» — sabab
+    `CenterMeta.AbsenceStreakReasonId`, izoh «{guruh}: ketma-ket {n} ta dars sababsiz qoldirildi (dd.MM, …)»,
+    muallif «Tizim»);
+  - ochiq talab BOR → unga `note` hodisasi (§4: ikkinchi ochiq talab HECH QACHON ochilmaydi; `note` hisobotdagi
+    urinish/bog'lanildi sonlarini o'zgartirmaydi).
+  Talab yopilgandan keyin seriya 5 ga yetsa — yangi talab ochiladi.
+- **Seed** (bir martalik, `SeedMarker` `streak-reason-2026-10`, `CrmAttendanceSetup.RunStartupAsync`): «Bog'lanish
+  kerak» kategoriyasida «Ketma-ket darsga kelmadi» sababi (yo'q bo'lsa) + `CenterMeta.AbsenceStreakReasonId`.
+  Admin sababni o'chirsa/qayta nomlasa — talab sababsiz (yorliq matni bilan) ochilaveradi.
+- **Qizil ro'yxat** — «O'quvchilar davomati» → «Qizil ro'yxat» tabi (`?tab=qizil`),
+  `GET api/admin/student-attendance/red-list?min=3&groupId=&teacherId=` (`[AdminPerm("students.attendance",
+  ReadRequiresPerm = true)]`, DataCache 5 daq): qator yonida talab holati (ochig'i yoki shu seriya uchun ochilgani).
+- **Profil** → «Baholar va davomat» → «Qoldirilgan darslar» (`GET api/admin/students/{id}/absences?from=&to=`,
+  standart 180 kun, ko'pi bilan 366): sanoqlar (Darslar · Keldi · Kech · Sababli · Sababsiz · %) va har qoldirilgan
+  dars (sana, guruh, sabab) — `StudentJournalBuilder.PeriodCellsAsync` dan, ya'ni sanoqlar ro'yxat bilan bir xil.
+- `AbsenceStreakAlerts` — hosila ma'lumot, zaxiraga KIRMAYDI (`BackupService.ExcludedTables`).

@@ -100,6 +100,7 @@ import { ReasonPromptModal } from '@/components/ui/ReasonPromptModal'
 import { TransferGroupModal } from '../classes/TransferGroupModal'
 import { StudentJournalModal } from './StudentJournalModal'
 import { StudentPurgeModal } from './StudentPurgeModal'
+import { MissedLessonsSection } from '@/components/students/MissedLessonsSection'
 
 const uzMonths = [
   'Yanvar', 'Fevral', 'Mart', 'Aprel', 'May', 'Iyun',
@@ -1562,6 +1563,9 @@ export function StudentDetailPage() {
       </Section>
 
       )}
+
+      {/* Qoldirilgan darslar (CRM Phase 3) — bo'limning ENG TEPASIDA */}
+      {tab === 'baholar' && id && <MissedLessonsSection studentId={id} />}
 
       {/* Stat kartalar — Baholar va davomat */}
       {tab === 'baholar' && (

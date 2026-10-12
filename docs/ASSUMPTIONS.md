@@ -445,3 +445,8 @@
 - [2026-10-12] U3c — escalation recipients' Telegram → `TelegramRegistration.UserId` of superadmin/admin/staff with `classes.notAttended`; the bell (UserNotification) is always written → SPEC P3.4; staff without the page key gets nothing.
 - [2026-10-12] U3c — admin teacher profile «Davomat jarimasi» date list → loaded from `api/admin/attendance-fines` only when the viewer has `finance.main` (the amount/count line itself comes from the salary ledger) → the fines endpoint is ReadRequiresPerm.
 - [2026-10-12] U3c — teacher portal fines endpoint gate → `TeacherPermissions.Salary` (same as the salary page) → fines are salary data.
+- [2026-10-12] U3d — which new alert triggers the contact action? → only alert rows INSERTED in this run (a new level of a new streak); at most one action per student per run (highest level, newest absence) → reruns never add notes; a 3 → 5 progression adds exactly one note.
+- [2026-10-12] U3d — stale streaks (> 14 days) → the alert row is still written (so it never fires later) but no request/note → no flood after deploy.
+- [2026-10-12] U3d — KPI «Ketma-ket 3 dars kelmaganlar» → now from AbsenceStreakLoader, per student the longest group streak → the old rule counted every non-«keldi» entry (graded, late) across groups.
+- [2026-10-12] U3d — red list `min` parameter → any value ≥ 1 accepted (UI uses 3 and 5); default 3 → harmless, lets KPI-like "2" lists reuse it.
+- [2026-10-12] U3d — profile absences endpoint permission → class gate of StudentsController (`students.list`, GET readable by staff like the rest of the profile) → no sensitive data (dates/reasons only); SPEC names no separate key.

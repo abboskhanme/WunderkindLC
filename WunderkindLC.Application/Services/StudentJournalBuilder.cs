@@ -485,6 +485,34 @@ public static class StudentJournalBuilder
     }
 
     /// <summary>
+    /// O'quvchining BARCHA guruhlaridagi (yopilgan a'zoliklar ham — o'z chegaralari ichida) kataklari sana
+    /// oralig'ida — profilning «Qoldirilgan darslar» bo'limi (CRM Phase 3, U3d). Ichki <c>CellsAsync</c> bilan
+    /// AYNAN bir xil yadro, ya'ni sonlar o'quvchi ilovasi va admin jurnali bilan bir xil.
+    /// </summary>
+    public static async Task<List<(Group Group, string CourseName, Cell Cell)>> PeriodCellsAsync(
+        IAppDbContext db, string studentId, string from, string to)
+    {
+        var (memberships, groups, courseNames, _) = await GroupsOfAsync(db, studentId);
+        var result = new List<(Group, string, Cell)>();
+        if (groups.Count == 0) return result;
+        var months = TuitionService.MonthRange(from[..7], to[..7]).ToList();
+        if (months.Count == 0) return result;
+        var membershipByGroup = memberships
+            .GroupBy(m => m.GroupId, StringComparer.Ordinal)
+            .ToDictionary(x => x.Key, x => x.First(), StringComparer.Ordinal);
+        var reasons = await db.AbsenceReasons.AsNoTracking().ToDictionaryAsync(r => r.Id);
+        var byGroup = await CellsAsync(db, studentId, groups, membershipByGroup, months, reasons);
+        foreach (var g in groups)
+        {
+            var course = string.IsNullOrEmpty(g.CourseId) ? "" : courseNames.GetValueOrDefault(g.CourseId, "");
+            foreach (var c in byGroup.GetValueOrDefault(g.Id) ?? new List<Cell>())
+                if (string.CompareOrdinal(c.Date, from) >= 0 && string.CompareOrdinal(c.Date, to) <= 0)
+                    result.Add((g, course, c));
+        }
+        return result;
+    }
+
+    /// <summary>
     /// Jamlanma — FAQAT "o'tilgan" belgili kataklardan (<see cref="AttendanceRules.IsHeld"/>).
     /// <c>homeworkDone/Missed</c>: 1 = qildi, 2 = qilmadi; 3 (chala) ATAYIN ikkalasiga ham
     /// qo'shilmaydi — "chala qildi" na bajarilgan, na bajarilmagan.

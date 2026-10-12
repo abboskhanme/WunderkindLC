@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { attendanceMark, attendanceTally } from '@/lib/attendance'
+import { absencePeriodRange, attendanceMark, attendanceTally } from '@/lib/attendance'
 import { autoPresent } from '@/pages/admin/classes/detail/shared'
 
 const base = {
@@ -58,5 +58,16 @@ describe('autoPresent — attendanceTaken (conducted EMAS)', () => {
     expect(autoPresent({ ...cell, attendanceTaken: false, explicitPresent: true })).toBe(true)
     expect(autoPresent({ ...cell, attendanceTaken: true, hasReason: true })).toBe(false)
     expect(autoPresent({ ...cell, attendanceTaken: true, hasGrade: true })).toBe(false)
+  })
+})
+
+describe('absencePeriodRange', () => {
+  const now = new Date(2026, 9, 12)
+  it('shu oy — oyning 1-kunidan', () => {
+    expect(absencePeriodRange('month', now)).toEqual({ from: '2026-10-01', to: '2026-10-12' })
+  })
+  it('3 oy / 1 yil — orqaga, server chegarasidan oshmaydi', () => {
+    expect(absencePeriodRange('3m', now)).toEqual({ from: '2026-07-13', to: '2026-10-12' })
+    expect(absencePeriodRange('1y', now)).toEqual({ from: '2025-10-13', to: '2026-10-12' })
   })
 })

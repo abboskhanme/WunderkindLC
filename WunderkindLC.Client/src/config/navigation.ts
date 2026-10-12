@@ -140,6 +140,8 @@ export const navByRole: Record<Role, NavItem[]> = {
         { label: "Yangi o'quvchilar", to: '/admin/students/yangi', perm: 'students.list' },
         // Resepshn: yangi o'quvchini qabul qilish cheklisti (uchrashuv talabi, Future'dan chiqarildi).
         { label: 'Qabul cheklisti', to: '/admin/students/qabul', perm: 'students.list' },
+        // CRM Phase 3 (2026-10-12): ketma-ket kelmaslik avtomatik talab ochadi — kundalik ish, Future'dan chiqarildi.
+        { label: "Bog'lanish kerak", to: '/admin/students/boglanish', perm: 'contacts' },
         { label: "Aktiv o'quvchilar", to: '/admin/students/aktiv', perm: 'students.list' },
         { label: "Arxiv o'quvchilar", to: '/admin/students/arxiv', perm: 'students.list' },
         { label: "O'quvchilar ro'yxati", to: '/admin/students', end: true, perm: 'students.list' },
@@ -283,7 +285,6 @@ export const navByRole: Record<Role, NavItem[]> = {
           children: [
             { label: 'Arxiv (barcha turdagi)', to: '/admin/archive', perm: 'settings.archive' },
             { label: "Kassa (to'lov qabul qilish)", to: '/admin/kassa', perm: 'kassa' },
-            { label: "Bog'lanish kerak", to: '/admin/students/boglanish', perm: 'contacts' },
             { label: 'Izohlarga javoblar', to: '/admin/students/izohlar', perm: 'students.notes' },
             { label: 'Ushlab turish bonusi', to: '/admin/students/bonus', perm: 'finance.bonus' },
             { label: 'Yuz bilan kirish', to: '/admin/students/yuz', perm: 'students.face' },

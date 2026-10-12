@@ -17,6 +17,11 @@ import { Button } from '@/components/ui/Button'
 import { Loader } from '@/components/ui/Loader'
 import { PhoneCallModal, type CallOption } from '@/components/PhoneCallModal'
 import { TelegramMessageModal, type TelegramRecipient } from './TelegramMessageModal'
+import { AttendanceRedList } from './AttendanceRedList'
+import { tabFromUrl } from '@/lib/tabParam'
+
+const ABSENCE_TABS = ['kunlik', 'qizil'] as const
+type AbsenceTab = (typeof ABSENCE_TABS)[number]
 
 type ChipFilter = 'absent' | 'late' | 'all'
 
@@ -45,7 +50,46 @@ function dedupeCallOptions(options: CallOption[]): CallOption[] {
   })
 }
 
+/**
+ * «O'quvchilar davomati» — ikki tab: «Kunlik» (shu kun kelmagan/kechikkanlar) va «Qizil ro'yxat» (ketma-ket sababsiz
+ * qoldirganlar, CRM Phase 3). Boshlang'ich tab `?tab=qizil` bilan ham ochiladi (`lib/tabParam.ts`).
+ */
 export function StudentAbsencePage() {
+  const [tab, setTab] = useState<AbsenceTab>(() => tabFromUrl(ABSENCE_TABS, 'kunlik'))
+  return (
+    <div className="space-y-4">
+      <div className="flex w-fit rounded-lg border border-slate-200 bg-white p-1">
+        {ABSENCE_TABS.map((k) => (
+          <button
+            key={k}
+            type="button"
+            onClick={() => setTab(k)}
+            className={cn(
+              'h-8 rounded-md px-3 text-[13px] font-medium transition-colors',
+              tab === k ? 'bg-brand-600 text-white' : 'text-slate-600 hover:bg-slate-50',
+            )}
+          >
+            {k === 'kunlik' ? 'Kunlik' : "Qizil ro'yxat"}
+          </button>
+        ))}
+      </div>
+      {tab === 'kunlik' ? (
+        <DailyAbsenceView />
+      ) : (
+        <>
+          <PageHeader
+            title="Qizil ro'yxat"
+            sub="Bitta guruhda ketma-ket SABABSIZ dars qoldirganlar. 3 ga yetganda tizim «Bog'lanish kerak» talabini o'zi ochadi."
+          />
+          <AttendanceRedList />
+        </>
+      )}
+    </div>
+  )
+}
+
+/** «Kunlik» — shu kunda darsga kelmagan/kechikkan o'quvchilar. */
+function DailyAbsenceView() {
   const [date, setDate] = useState(today())
   const [data, setData] = useState<DailyAbsence | null>(null)
   const [loading, setLoading] = useState(true)

@@ -70,6 +70,27 @@ public class AttendanceRbacTests
         Assert.True(PermissionRules.CanWrite(["finance.main"], "finance.main", "PUT"));
     }
 
+    /* ---------- U3d: red list — `students.attendance` (reading gated); profile absences — `students.list` ---------- */
+
+    [Fact]
+    public void Red_list_requires_students_attendance_even_for_reading()
+    {
+        Assert.True(Gated(Controller("AttendanceRedListController.cs"), "students.attendance", readRequiresPerm: true));
+        Assert.False(PermissionRules.HasSection(["students.list"], "students.attendance"));
+        Assert.False(PermissionRules.HasSection(["finance.main"], "students.attendance"));
+        Assert.True(PermissionRules.HasSection(["students"], "students.attendance"));
+    }
+
+    [Fact]
+    public void Profile_absences_live_in_the_students_list_controller()
+    {
+        Assert.True(Gated(Controller("StudentsController.cs"), "students.list", readRequiresPerm: false));
+        var src = Controller("StudentsController.Absences.cs");
+        Assert.Contains("public partial class StudentsController", src);
+        Assert.DoesNotContain("[AllowAnonymous]", src);
+        Assert.DoesNotContain("[AdminPerm(", src);   // no method-level override that would widen the class gate
+    }
+
     [Fact]
     public void Teacher_sees_only_own_fines_behind_the_salary_permission()
     {
