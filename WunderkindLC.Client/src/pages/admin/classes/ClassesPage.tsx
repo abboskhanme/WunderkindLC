@@ -48,6 +48,8 @@ import {
   notAttendedGroupIds,
 } from '@/lib/groupDisplay'
 import { localIsoDate } from '@/lib/localDate'
+import { scheduleConflictOf, type ScheduleConflictInfo } from '@/lib/scheduleConflicts'
+import { ScheduleConflictModal } from '@/components/schedule/ScheduleConflictModal'
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
 import { Textarea } from '@/components/ui/Input'
@@ -91,15 +93,16 @@ export function ClassesPage() {
     values: ClassPayload
     oldFee: number
   } | null>(null)
-  // Xona band bo'lsa — chiroyli ogohlantirish oynasi (native alert o'rniga). Forma ochiq qoladi,
-  // kiritilgan ma'lumot yo'qolmaydi; "Baribir saqlash" force bilan saqlaydi.
+  // JADVAL TO'QNASHUVI (server 409, CRM Phase 5) — oyna; forma ochiq qoladi, kiritilgan ma'lumot
+  // yo'qolmaydi. «Baribir saqlash» faqat superadmin'ga (`canForce`) va SABAB bilan.
   const [roomConflict, setRoomConflict] = useState<{
     values: ClassPayload
     editId: string | null
     applyFee?: boolean
-    list: string
+    info: ScheduleConflictInfo
   } | null>(null)
-  const [savingConflict, setSavingConflict] = useState(false)
+  // Arxivdan chiqarilayotgan guruh boshqa faol guruh bilan to'qnashdi (409).
+  const [unarchiveConflict, setUnarchiveConflict] = useState<{ group: Group; info: ScheduleConflictInfo } | null>(null)
   /** Arxivlangan guruhlar ro'yxati (holat filtri "Arxiv" bo'lganda ko'rsatiladi) */
   const [archived, setArchived] = useState<Group[]>([])
   /** A'zolarni boshqarish modali uchun tanlangan guruh */
@@ -253,54 +256,38 @@ export function ClassesPage() {
     setTimeFilter('')
   }
 
-  /** Konflikt ro'yxatini o'qiladigan satrga aylantiradi. */
-  const conflictList = (raw: unknown): string =>
-    (
-      raw as
-        | Array<{ groupName: string; sharedDays: string; existingSlot: string; reason?: string }>
-        | undefined
-    )
-      ?.map((c) => {
-        const tag = c.reason === 'teacher' ? "O'qituvchi band" : 'Xona band'
-        return `${tag}: ${c.groupName} (${c.sharedDays}, ${c.existingSlot})`
-      })
-      .join('; ') ?? ''
-
-  /** Guruhni saqlaydi (yaratish yoki yangilash). roomConflict qaytsa — forma yopilmaydi, chiroyli
-   *  oyna chiqadi (ma'lumot saqlanadi). force=true bilan baribir saqlaydi. */
+  /** Guruhni saqlaydi (yaratish yoki yangilash). Jadval to'qnashuvi (409) — forma yopilmaydi, oyna
+   *  chiqadi (ma'lumot saqlanadi). `forceReason` — superadmin "baribir saqlash" sababi. */
   const saveClass = (
     values: ClassPayload,
-    opts: { editId: string | null; applyFee?: boolean; force?: boolean },
+    opts: { editId: string | null; applyFee?: boolean; forceReason?: string },
   ) => {
-    const { editId, applyFee, force } = opts
+    const { editId, applyFee, forceReason } = opts
     const req = editId
-      ? updateClass(editId, values, applyFee, force)
-      : createClass(values, force)
-    return req
-      .then((res) => {
-        const any = res as unknown as Record<string, unknown>
-        if (any.roomConflict) {
-          // Xona band — chiroyli oyna ko'rsatamiz, forma ochiq qoladi.
-          setRoomConflict({ values, editId, applyFee, list: conflictList(any.conflicts) })
-          return false
-        }
-        if (editId) setClasses((prev) => prev.map((c) => (c.id === res.id ? res : c)))
-        else setClasses((prev) => [...prev, res])
-        // Muvaffaqiyatli — endi formani va konflikt oynasini yopamiz.
-        setFormOpen(false)
-        setEditing(null)
-        setRoomConflict(null)
-        return true
-      })
-      .catch((e: unknown) => {
-        // Server sababi aynan ko'rsatiladi ("Bu nomli guruh allaqachon bor", "Tugash sanasi …").
-        alert(apiErrorMessage(e, 'Saqlashda xatolik yuz berdi'))
-        return false
-      })
+      ? updateClass(editId, values, applyFee, forceReason)
+      : createClass(values, forceReason)
+    return req.then((res) => {
+      if (editId) setClasses((prev) => prev.map((c) => (c.id === res.id ? res : c)))
+      else setClasses((prev) => [...prev, res])
+      // Muvaffaqiyatli — endi formani va konflikt oynasini yopamiz.
+      setFormOpen(false)
+      setEditing(null)
+      setRoomConflict(null)
+      return true
+    })
   }
 
+  /** Oddiy saqlash: to'qnashuv — oyna; boshqa xato — server sababi aynan («Bu nomli guruh allaqachon bor»). */
+  const trySave = (values: ClassPayload, opts: { editId: string | null; applyFee?: boolean }) =>
+    saveClass(values, opts).catch((e: unknown) => {
+      const info = scheduleConflictOf(e)
+      if (info) setRoomConflict({ values, editId: opts.editId, applyFee: opts.applyFee, info })
+      else alert(apiErrorMessage(e, 'Saqlashda xatolik yuz berdi'))
+      return false
+    })
+
   const applyUpdate = (id: string, values: ClassPayload, applyFee?: boolean) =>
-    saveClass(values, { editId: id, applyFee })
+    trySave(values, { editId: id, applyFee })
 
   const handleSubmit = (values: ClassPayload) => {
     if (editing) {
@@ -315,19 +302,18 @@ export function ClassesPage() {
       // DIQQAT: formani DARHOL yopmaymiz — konflikt bo'lsa ma'lumot yo'qolmasligi uchun.
       applyUpdate(editing.id, values)
     } else {
-      saveClass(values, { editId: null })
+      trySave(values, { editId: null })
     }
   }
 
-  /** Xona band oynasidagi "Baribir saqlash" — force bilan saqlaydi. */
-  const handleConflictForce = () => {
-    if (!roomConflict) return
-    setSavingConflict(true)
-    saveClass(roomConflict.values, {
+  /** To'qnashuv oynasidagi «Baribir saqlash» (superadmin, sabab bilan). Xato — oyna ichida. */
+  const handleConflictForce = (reason: string) => {
+    if (!roomConflict) return Promise.resolve()
+    return saveClass(roomConflict.values, {
       editId: roomConflict.editId,
       applyFee: roomConflict.applyFee,
-      force: true,
-    }).finally(() => setSavingConflict(false))
+      forceReason: reason,
+    })
   }
 
   const resolveFeePrompt = (applyFee: boolean) => {
@@ -395,17 +381,24 @@ export function ClassesPage() {
       )
     )
       return
-    unarchiveClass(c.id)
-      .then((r) => {
-        setArchived((prev) => prev.filter((x) => x.id !== c.id))
-        setClasses((prev) => [...prev, { ...c, isArchived: false }])
-        const extra = r.restoredStudents > 0 ? ` ${r.restoredStudents} ta o'quvchi arxivdan qaytarildi.` : ''
-        alert(
-          `"${c.name}" arxivdan chiqarildi.${extra} A'zoliklar muzlatilganicha qoldi — kerak bo'lsa qo'lda aktivlashtiring.`,
-        )
-      })
-      .catch((e) => alert(apiErrorMessage(e, 'Arxivdan chiqarishda xatolik')))
+    doUnarchive(c).catch((e) => {
+      const info = scheduleConflictOf(e)
+      if (info) setUnarchiveConflict({ group: c, info })
+      else alert(apiErrorMessage(e, 'Arxivdan chiqarishda xatolik'))
+    })
   }
+
+  /** Arxivdan chiqarish so'rovi; `forceReason` — superadmin to'qnashuvni sabab bilan o'tkazadi. */
+  const doUnarchive = (c: Group, forceReason?: string) =>
+    unarchiveClass(c.id, forceReason).then((r) => {
+      setArchived((prev) => prev.filter((x) => x.id !== c.id))
+      setClasses((prev) => [...prev, { ...c, isArchived: false }])
+      setUnarchiveConflict(null)
+      const extra = r.restoredStudents > 0 ? ` ${r.restoredStudents} ta o'quvchi arxivdan qaytarildi.` : ''
+      alert(
+        `"${c.name}" arxivdan chiqarildi.${extra} A'zoliklar muzlatilganicha qoldi — kerak bo'lsa qo'lda aktivlashtiring.`,
+      )
+    })
 
   /** Vaqtincha bloklash — guruh o'qituvchida ko'rinmay qoladi (admin ro'yxatida qoladi). */
   const confirmBlock = () => {
@@ -947,36 +940,21 @@ export function ClassesPage() {
         )}
       </Modal>
 
-      {/* Xona/o'qituvchi band — chiroyli ogohlantirish oynasi (native alert o'rniga). Forma ochiq qoladi. */}
-      <Modal
-        open={!!roomConflict}
-        onClose={() => setRoomConflict(null)}
-        title="Jadvalda to'qnashuv bor"
-        size="sm"
-        footer={
-          <>
-            <Button variant="secondary" onClick={() => setRoomConflict(null)} disabled={savingConflict}>
-              Orqaga
-            </Button>
-            <Button variant="danger" onClick={handleConflictForce} disabled={savingConflict}>
-              {savingConflict ? 'Saqlanmoqda...' : 'Baribir saqlash'}
-            </Button>
-          </>
-        }
-      >
-        {roomConflict && (
-          <div className="space-y-3 text-sm">
-            <p className="font-medium text-red-700">
-              Shu vaqt oralig'ida xona yoki o'qituvchi band bo'lgan boshqa guruh bor:
-            </p>
-            <div className="rounded-lg bg-red-50 px-3 py-2 text-slate-700">{roomConflict.list}</div>
-            <p className="text-slate-500">
-              Vaqt, xona yoki o'qituvchini o'zgartirish uchun <b>Orqaga</b> bosing (ma'lumotlaringiz saqlanib qoladi),
-              yoki shunday saqlash uchun <b>Baribir saqlash</b>.
-            </p>
-          </div>
-        )}
-      </Modal>
+      {/* Jadval to'qnashuvi (409) — forma ochiq qoladi; «Baribir saqlash» faqat superadmin, sabab bilan. */}
+      {roomConflict && (
+        <ScheduleConflictModal
+          info={roomConflict.info}
+          onClose={() => setRoomConflict(null)}
+          onForce={handleConflictForce}
+        />
+      )}
+      {unarchiveConflict && (
+        <ScheduleConflictModal
+          info={unarchiveConflict.info}
+          onClose={() => setUnarchiveConflict(null)}
+          onForce={(reason) => doUnarchive(unarchiveConflict.group, reason)}
+        />
+      )}
     </div>
   )
 }

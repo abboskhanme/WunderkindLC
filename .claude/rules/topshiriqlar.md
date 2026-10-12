@@ -15,8 +15,9 @@ paths:
 # Topshiriqlar (Kanban) qoidalari
 
 `/admin/topshiriqlar` — adminlarga/xodimlarga beriladigan **loyihaviy topshiriqlar** va ular
-bo'yicha nazorat. Menyuda **Future → Boshqaruv → Topshiriqlar** (2026-09-26 dan: hozircha
-ishlatilmaydi, asosiy menyudan olindi; marshrut o'zgarmagan).
+bo'yicha nazorat. Menyuda **Boshqaruv → Topshiriqlar** («Rollar» dan keyin). 2026-09-26 da Future'ga
+olingan edi; 2026-10 da (CRM Phase 5, TASDIQLASH bosqichi — §8) asosiy menyuga QAYTDI. Marshrut o'zgarmagan,
+eski manzillar redirect (`config/__tests__/navCrmPhase5.test.ts` qulflaydi).
 
 ## 1. BITTA MODUL — eski "Adminga topshiriq" OLIB TASHLANDI
 
@@ -40,8 +41,9 @@ kaliti `tasks*` (§5). Eski modul `staff` kalitida turgani faqat tarixiy sabab e
 ## 2. Model: doska → ustun → topshiriq
 
 - **`WorkTaskBoard`** — loyiha/bo'lim doskasi. O'chirilmaydi, **arxivlanadi** (`?hard=true` bilan
-  butunlay o'chirish mumkin). Birinchi ochilishda "Umumiy" doskasi 4 ta ustun bilan avtomatik
-  yaratiladi (`EnsureSeedAsync`, idempotent).
+  butunlay o'chirish mumkin). Birinchi ochilishda "Umumiy" doskasi standart ustunlar bilan avtomatik
+  yaratiladi (`EnsureSeedAsync`, idempotent): «Rejada» · «Jarayonda» · «Bajarildi» (2026-10 dan «Tekshiruvda»
+  EKILMAYDI — tekshiruv endi tasdiqlash bosqichi, §8; mavjud doskalar tegilmaydi).
 - **`WorkTaskColumn`** — Kanban bosqichi. Ikki bayroq muhim:
   - `IsDone` — bu ustundagi topshiriq **YOPILGAN** hisoblanadi. Statistika, muddat eslatmasi va
     botdagi "Bajardim" tugmasi AYNAN shunga qaraydi. Doskada kamida bitta `IsDone` ustun qolishi
@@ -143,3 +145,42 @@ Tanlangan doska manzilda saqlanadi (`?board=...`) — ko'rinishlar orasida o'tga
 - **Ustun ichida sudrab qayta tartiblash yo'q** — faqat ustundan ustunga. Ustun ichidagi tartib
   serverda saqlanadi (`Order`), lekin kundalik ishda saralash muddat/muhimlik bo'yicha qilinadi.
 - **Topshiriq o'chirish o'rniga ARXIV** tavsiya etiladi (`PUT /{id}/archive`) — tarix saqlanadi.
+
+## 8. TASDIQLASH bosqichi (CRM Phase 5, 2026-10)
+
+Migratsiya `CrmWorkspace`: `WorkTask.ApprovalRequired` (bool), `ApprovedAt`, `ApprovedById`, `ReturnCount`,
+`LastReturnedAt`. Backfill YO'Q — mavjud topshiriqlarda `ApprovalRequired = false`, ya'ni ular o'zgarishsiz.
+
+Savol: "bajarildimi va BERGAN odam qabul qildimi". Qoidalar — **`WorkTaskApproval`** (sof, `WorkTaskApprovalTests`),
+bazaviy qism — **`WorkTaskFlow.Approval.cs`** (panel ham, bot ham AYNAN shu metodlar — `SpawnRepeatAsync` dagi
+"yagona joy" qoidasi).
+
+| Holat (`state`) | Yorliq | Qachon |
+|---|---|---|
+| `open` / `overdue` | Ochiq / Kechikkan | yopiluvchi ustunda emas |
+| `awaiting_approval` | Tasdiq kutmoqda | bajarilgan, `ApprovalRequired`, `ApprovedAt` bo'sh |
+| `approved` | Tasdiqlangan | tasdiqlangan |
+| `done` | Bajarildi | bajarilgan, tasdiq talab qilinmaydi |
+
+- **Standart**: yaratishda `approvalRequired` yuborilmasa — mas'ul BOSHQA odam bo'lsa yoqiq (o'ziga berilgan
+  yoki mas'ulsiz topshiriqda tasdiqlovchi yo'q). Oynada «Bajarilgach tasdiqlash talab qilinsin» ptichkasi;
+  tahrirda yuborilmasa — tegilmaydi.
+- **Bajarildi** (panelda yopiluvchi ustunga ko'chirish, ustun bayrog'i, botda «✅ Bajardim») — avvalgidek
+  (`CompletedAt`, takroriy nusxa) + `WorkTaskFlow.OnCompletedAsync`: tarixga `submitted` «Bajarildi — tasdiqlash
+  kutilmoqda» va topshiriq BERGANGA qo'ng'iroqcha + Telegram «✅ {mas'ul} topshiriqni bajardi: «…». Tasdiqlang.»
+  tugmasi bilan **«✅ Tasdiqlash»** (`wtok:{taskId}`). Bergan o'zi yopsa — xabar yo'q.
+- **Tasdiqlash** `PUT work-tasks/{id}/approve` · **Qaytarish** `PUT {id}/return {reason}` (1..500) — `tasks.board`
+  + QAT'IY darvoza: topshiriq BERGAN xodim yoki admin/superadmin (`WorkTaskApproval.IsApprover`), aks holda
+  403 «Faqat topshiriq bergan xodim tasdiqlaydi». Ikkalasi ham `WorkTaskFlow.LockKey` qulfi ostida.
+  Qaytarish: doskaning birinchi OCHIQ ustuniga (tepaga), `CompletedAt`/tasdiq tozalanadi, `ReturnCount++`,
+  tarixga «Qaytarildi: {sabab}», mas'ulga Telegram «↩️ …» (tasdiqda «👍 …») + qo'ng'iroqcha.
+- ⚠️ Yopiluvchi ustundan **har qanday** chiqish tasdiqni bekor qiladi (`WorkTaskFlow.OnReopened`, panel va
+  `SyncCompletionAsync`).
+- **Bot `wtok:`** — chat topshiriq BERGANNING yoki admin/superadmin akkauntiga bog'langan bo'lishi shart
+  (`ChatApproverIdAsync`), aks holda «Bu amal sizga ruxsat etilmagan». ⚠️ Botdagi tugma javobi (`answerCallbackQuery`)
+  umumiy tarmoqda allaqachon matnsiz yuboriladi, shuning uchun rad matni ODDIY xabar bo'lib keladi.
+- Takroriy topshiriq qaytarilib qayta yopilsa ham keyingi nusxa BIR marta tug'iladi (idempotentlik o'zgarmadi).
+- Ro'yxat filtri `status=awaiting|approved`; `assigneeId=me` / `createdById=me` — so'rovchi. Nazorat paneli
+  qatorlarida «Tasdiq kutmoqda» · «Tasdiqlangan» · «Qaytarilgan».
+- Telegram matnlari — `WorkTaskTelegram` (`ApprovalRequestText`, `ApproveKeyboard`, `ApprovedText`,
+  `ReturnedText`). Xodimga operatsion xabar — to'g'ridan-to'g'ri `TelegramService` (ota-ona navbati emas).

@@ -27,13 +27,14 @@ public partial class WorkTasksController
     }
 
     /// <summary>Yangi doskaning standart ustunlari. Birinchisi va yopiluvchisi TIZIM ustuni —
-    /// o'chirilmaydi (topshiriqning "uyi" va "bajarildi" nuqtasi doim qolsin).</summary>
+    /// o'chirilmaydi (topshiriqning "uyi" va "bajarildi" nuqtasi doim qolsin).
+    /// <para>⚠️ «Tekshiruvda» 2026-10 dan EKILMAYDI (CRM Phase 5): tekshiruv endi TASDIQLASH bosqichi
+    /// (<see cref="WorkTaskApproval"/>), ustun emas. Mavjud doskalar tegilmaydi.</para></summary>
     private static List<WorkTaskColumn> DefaultColumns(string boardId) =>
     [
         new() { BoardId = boardId, Title = "Rejada",     Color = "slate",   Order = 0, IsSystem = true },
         new() { BoardId = boardId, Title = "Jarayonda",  Color = "blue",    Order = 1 },
-        new() { BoardId = boardId, Title = "Tekshiruvda", Color = "amber",  Order = 2 },
-        new() { BoardId = boardId, Title = "Bajarildi",  Color = "emerald", Order = 3, IsDone = true, IsSystem = true },
+        new() { BoardId = boardId, Title = "Bajarildi",  Color = "emerald", Order = 2, IsDone = true, IsSystem = true },
     ];
 
     // ---------- Kichik yordamchilar ----------
@@ -118,11 +119,14 @@ public partial class WorkTasksController
             t.CompletedById = Uid;
             Log(t.Id, "moved", "Bajarildi deb belgilandi");
             await SpawnRepeatAsync(t);
+            // Tasdiqlash bosqichi (CRM Phase 5) — bot bilan BITTA joy.
+            await WorkTaskFlow.OnCompletedAsync(db, t, Uid, telegram);
         }
         else if (!col.IsDone && wasDone)
         {
             t.CompletedAt = null;
             t.CompletedById = "";
+            WorkTaskFlow.OnReopened(t);
             Log(t.Id, "reopened", "Qayta ochildi");
         }
         return true;
@@ -154,7 +158,7 @@ public partial class WorkTasksController
                 .Select(c => c.TaskId).ToListAsync())
             .GroupBy(x => x).ToDictionary(g => g.Key, g => g.Count());
 
-        var userIds = tasks.SelectMany(t => new[] { t.AssigneeId, t.CreatedById })
+        var userIds = tasks.SelectMany(t => new[] { t.AssigneeId, t.CreatedById, t.ApprovedById })
             .Where(x => !string.IsNullOrWhiteSpace(x)).Distinct().ToList();
         var users = await db.Users.Where(u => userIds.Contains(u.Id))
             .Select(u => new { u.Id, u.FullName, u.AvatarUrl }).ToListAsync();
@@ -175,7 +179,9 @@ public partial class WorkTasksController
                 isDone, overdue,
                 stepsTotal.GetValueOrDefault(t.Id, 0), stepsDone.GetValueOrDefault(t.Id, 0),
                 comments.GetValueOrDefault(t.Id, 0),
-                Iso(t.CreatedAt)!, Iso(t.UpdatedAt)!, Iso(t.CompletedAt), t.Repeat, t.IsArchived);
+                Iso(t.CreatedAt)!, Iso(t.UpdatedAt)!, Iso(t.CompletedAt), t.Repeat, t.IsArchived,
+                t.ApprovalRequired, Iso(t.ApprovedAt), names.GetValueOrDefault(t.ApprovedById, ""), t.ReturnCount,
+                WorkTaskApproval.State(isDone, overdue, t.ApprovalRequired, t.ApprovedAt));
         }).ToList();
     }
 

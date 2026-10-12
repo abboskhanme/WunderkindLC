@@ -231,9 +231,12 @@ public static class JournalService
     /// yoqilganda; maosh muhlati va "o'tgan darsni kelajakka" taqig'i adminga QO'LLANMAYDI —
     /// kechikib rasmiylashtirilgan "qo'shimcha dars" admin qarori, u tarixga yoziladi).</para>
     /// </summary>
+    /// <param name="forceConflict">Save even when the target room/teacher is busy (<see cref="RescheduleConflicts"/>).
+    /// ONLY the admin journal endpoint passes <c>true</c>, and only for a superadmin with a reason
+    /// (<paramref name="forceReason"/>, audited); the teacher endpoint never forces.</param>
     public static async Task<LessonReschedule> RescheduleLessonAsync(
         IAppDbContext db, string classId, string fromDate, string toDate, string? time, string? actor,
-        bool isAdmin, AuditService? audit = null)
+        bool isAdmin, AuditService? audit = null, bool forceConflict = false, string? forceReason = null)
     {
         var cls = await db.Classes.FindAsync(classId)
             ?? throw new InvalidOperationException("Guruh topilmadi");
@@ -260,6 +263,18 @@ public static class JournalService
 
         var deny = await CheckMoveAsync(db, cls, fromDate, toDate, isAdmin);
         if (deny is not null) throw new InvalidOperationException(deny);
+
+        // DOUBLE BOOKING (CRM Phase 5): the room / the teacher must be free at the new date and time
+        // (given time or the group's start; same duration). Hard refusal; only a forced admin save passes.
+        var clash = await RescheduleConflicts.FindAsync(db, cls, toDate, time);
+        if (clash is not null)
+        {
+            if (!forceConflict)
+                throw new ScheduleConflictException(ScheduleConflicts.LessonClashMessage(clash), clash);
+            audit?.Record(AuditService.EntityGroup, classId, "update",
+                $"Jadval to'qnashuvi bilan saqlandi: «{cls.Name}» darsi {UzDay(toDate)} ga ko'chirildi, " +
+                $"band: «{clash.GroupName}» {clash.Start}–{clash.End} — sabab: {(forceReason ?? "").Trim()}");
+        }
 
         // Zanjirni yig'ish: agar shu darsning o'zi allaqachon ko'chirilgan bo'lsa (ToDate == fromDate) — o'sha
         // yozuvni yangilaymiz (asl kun saqlanadi). Aks holda yangi yozuv.

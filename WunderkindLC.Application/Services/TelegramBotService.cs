@@ -487,6 +487,14 @@ public class TelegramBotService(
         {
             await HandleWorkTaskDoneAsync(chatId, data[WorkTaskTelegram.CallbackDone.Length..], ct);
         }
+        else if (data.StartsWith(WorkTaskTelegram.CallbackApprove, StringComparison.Ordinal))
+        {
+            // «✅ Tasdiqlash» — topshiriq bergan xodim/admin bajarilganini tasdiqlaydi (CRM Phase 5;
+            // darvoza, qulf va javob — WorkTaskFlow.ApproveFromChatAsync).
+            using var scope = sp.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<IAppDbContext>();
+            await WorkTaskFlow.ApproveFromChatAsync(db, telegram, chatId, data[WorkTaskTelegram.CallbackApprove.Length..], ct);
+        }
     }
 
     /// <summary>
@@ -538,6 +546,7 @@ public class TelegramBotService(
             Text = "Telegram bot orqali bajarildi deb belgilandi",
         });
         await WorkTaskFlow.SpawnRepeatAsync(db, t, ct);
+        await WorkTaskFlow.OnCompletedAsync(db, t, t.AssigneeId, telegram, ct);   // tasdiqlash so'rovi (CRM Phase 5)
         await db.SaveChangesAsync(ct);
 
         await telegram.SendMessageAsync(chatId, $"✅ Bajarildi: «{t.Title}»", null, ct);

@@ -25,6 +25,7 @@ const emptyForm: RoomForm = {
   capacity: 20,
   building: '',
   location: '',
+  floor: null,
 }
 
 export function RoomsPage() {
@@ -62,6 +63,7 @@ export function RoomsPage() {
       capacity: room.capacity,
       building: room.building ?? '',
       location: room.location ?? '',
+      floor: room.floor ?? null,
     })
     setFormError('')
     setFormOpen(true)
@@ -80,7 +82,12 @@ export function RoomsPage() {
     try {
       if (editing) {
         // Faollik JORIY qiymati bilan yuboriladi — tahrir xonani hech qachon jimgina nofaol qilmasin.
-        const updated = await updateRoom(editing.id, { ...payload, isActive: editing.isActive })
+        // Qavat bo'shatilsa — `clearFloor` (server `floor: null` ni "tegilmaydi" deb o'qiydi).
+        const updated = await updateRoom(editing.id, {
+          ...payload,
+          isActive: editing.isActive,
+          clearFloor: form.floor === null,
+        })
         setRooms((prev) => prev.map((r) => (r.id === updated.id ? updated : r)))
       } else {
         const created = await createRoom(payload)
@@ -170,6 +177,12 @@ export function RoomsPage() {
           { key: 'name', header: 'Sarlavha', render: (r) => <span className="font-medium">{r.name}</span> },
           { key: 'capacity', header: "O'quvchi sig'imi", align: 'right', render: (r) => r.capacity },
           {
+            key: 'floor',
+            header: 'Qavat',
+            align: 'right',
+            render: (r) => (r.floor ?? null) === null ? <span className="text-[#9ca3af]">—</span> : `${r.floor}-qavat`,
+          },
+          {
             key: 'building',
             header: 'Bino / qavat',
             render: (r) =>
@@ -247,6 +260,13 @@ export function RoomsPage() {
             required
             value={form.capacity}
             onChange={(v) => update('capacity', v === null ? null : Math.min(1000, v))}
+          />
+          <NumberInput
+            label="Qavat"
+            placeholder="Masalan: 2 (yerto'la: -1)"
+            allowNegative
+            value={form.floor ?? null}
+            onChange={(v) => update('floor', v)}
           />
           <Input
             label="Bino / qavat"

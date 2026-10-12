@@ -4,10 +4,12 @@ using Microsoft.EntityFrameworkCore;
 namespace WunderkindLC.Application.Services;
 
 /// <summary>
-/// Xona/o'qituvchi konfliktini aniqlash servisi.
-/// Guruh yaratish/tahrirlashda bir xil xona YOKI bir xil o'qituvchi, kunlar va vaqt
-/// to'qnashuvini WARNING sifatida qaytaradi (o'qituvchi bir vaqtda 2 guruhda bo'la olmaydi,
-/// xona tanlanmagan yoki har xil bo'lsa ham). REJECT QILINMAYDI — admin "baribir saqlash" qila oladi.
+/// Xona/o'qituvchi to'qnashuvi — IO qatlami. QOIDANING O'ZI <see cref="ScheduleConflicts"/> da (sof,
+/// testlangan): bir xil xona YOKI bir xil o'qituvchi, umumiy kun, ustma-ust vaqt (yarim-ochiq) va
+/// ustma-ust sana oralig'i (<c>StartDate..EndDate</c>).
+///
+/// <para>⚠️ 2026-10 dan to'qnashuv QAT'IY TAQIQ (409) — faqat superadmin sabab bilan "baribir saqlash"
+/// qila oladi (<see cref="ScheduleConflicts.Decide"/>). Ilgari bu yerda faqat OGOHLANTIRISH edi.</para>
 /// </summary>
 public class RoomConflictService(IAppDbContext db)
 {
@@ -24,74 +26,59 @@ public class RoomConflictService(IAppDbContext db)
     }
 
     /// <summary>
-    /// Berilgan xona (FK RoomId) va/yoki o'qituvchi, kunlar va vaqt oralig'i uchun konfliktli
-    /// guruhlarni qaytaradi (xona bir xil BO'LSA yoki o'qituvchi bir xil BO'LSA — biri kifoya).
-    /// roomId/teacherId ikkalasi ham bo'sh yoki days/time bo'sh berilsa — bo'sh ro'yxat.
+    /// Berilgan xona (FK RoomId) va/yoki o'qituvchi, kunlar, vaqt va sana oralig'i uchun to'qnashadigan
+    /// guruhlar (har guruh bitta qator; xona bir xil bo'lsa "room", aks holda "teacher").
+    /// roomId/teacherId ikkalasi ham bo'sh yoki kunlar/vaqt bo'sh berilsa — bo'sh ro'yxat.
     /// <paramref name="excludeGroupId"/> — tahrirlash paytida o'z id'sini chiqarib tashlash uchun.
+    /// <paramref name="startDate"/>/<paramref name="endDate"/> — guruh umri (bo'sh = chegarasiz).
     /// </summary>
     public async Task<List<ConflictInfo>> CheckRoomConflictAsync(
         string? roomId, string? teacherId, List<int> days, string? startTime, string? endTime,
-        string? excludeGroupId = null)
+        string? excludeGroupId = null, string? startDate = null, string? endDate = null)
     {
-        var hasRoom = !string.IsNullOrWhiteSpace(roomId);
-        var hasTeacher = !string.IsNullOrWhiteSpace(teacherId);
-        if ((!hasRoom && !hasTeacher)
-            || days.Count == 0
-            || string.IsNullOrWhiteSpace(startTime)
-            || string.IsNullOrWhiteSpace(endTime))
+        var conflicts = await FindAsync(new ScheduleConflicts.Slot(
+            excludeGroupId ?? "", "", roomId?.Trim() ?? "", teacherId?.Trim() ?? "",
+            days, startTime ?? "", endTime ?? "", startDate, endDate, IsArchived: false));
+        return conflicts.Select(c => new ConflictInfo
+        {
+            GroupId = c.GroupId,
+            GroupName = c.GroupName,
+            SharedDays = ScheduleConflicts.FormatDays(c.Days),
+            ExistingSlot = c.ExistingSlot,
+            Reason = c.Kind,
+        }).ToList();
+    }
+
+    /// <summary>
+    /// <paramref name="candidate"/> bilan to'qnashadigan ARXIVLANMAGAN guruhlar
+    /// (<see cref="ScheduleConflicts.Find"/>). Faqat xonasi yoki o'qituvchisi mos guruhlar yuklanadi;
+    /// <c>Days</c> (<c>List&lt;int&gt;</c>) xotirada tekshiriladi (SQLite/PostgreSQL bir xil).
+    /// </summary>
+    public async Task<List<ScheduleConflicts.Conflict>> FindAsync(ScheduleConflicts.Slot candidate)
+    {
+        var roomId = candidate.RoomId;
+        var teacherId = candidate.TeacherId;
+        var hasRoom = roomId.Length > 0;
+        var hasTeacher = teacherId.Length > 0;
+        if ((!hasRoom && !hasTeacher) || candidate.IsArchived) return [];
+        if (ScheduleConflicts.CleanDays(candidate.Days).Count == 0
+            || ScheduleRules.MakeSlot(0, candidate.StartTime, candidate.EndTime) is null)
             return [];
 
-        var existing = await db.Classes
-            .Where(g => ((hasRoom && g.RoomId == roomId) || (hasTeacher && g.TeacherId == teacherId))
-                     && !g.IsArchived
-                     && g.Id != excludeGroupId
-                     && g.Days != null
-                     && g.StartTime != null && g.StartTime != ""
-                     && g.EndTime != null && g.EndTime != "")
+        var excludeId = candidate.GroupId;
+        var existing = await db.Classes.AsNoTracking()
+            .Where(g => !g.IsArchived
+                        && g.Id != excludeId
+                        && ((hasRoom && g.RoomId == roomId) || (hasTeacher && g.TeacherId == teacherId)))
             .ToListAsync();
 
-        var conflicts = new List<ConflictInfo>();
-        foreach (var g in existing)
-        {
-            var sharedDays = (g.Days ?? []).Intersect(days).ToList();
-            if (sharedDays.Count > 0 && TimeOverlap(g.StartTime, g.EndTime, startTime, endTime))
-            {
-                var reason = hasRoom && g.RoomId == roomId ? "room" : "teacher";
-                conflicts.Add(new ConflictInfo
-                {
-                    GroupId = g.Id,
-                    GroupName = g.Name,
-                    SharedDays = FormatDays(sharedDays),
-                    ExistingSlot = $"{g.StartTime}–{g.EndTime}",
-                    Reason = reason,
-                });
-            }
-        }
-        return conflicts;
+        return ScheduleConflicts.Find(candidate, existing.Select(ScheduleConflicts.Of));
     }
 
-    private static bool TimeOverlap(string s1, string e1, string s2, string e2)
+    /// <summary>Barcha to'qnashayotgan JUFTLIKLAR (jadval sahifasidagi ogohlantirish banneri uchun).</summary>
+    public async Task<List<ScheduleConflicts.Pair>> AllPairsAsync()
     {
-        var a1 = TimeToMinutes(s1);
-        var b1 = TimeToMinutes(e1);
-        var a2 = TimeToMinutes(s2);
-        var b2 = TimeToMinutes(e2);
-        // Yarim-ochiq oraliq: [a1, b1) va [a2, b2) — b1<=a2 yoki b2<=a1 bo'lsa to'qnashmaydi
-        return !(b1 <= a2 || b2 <= a1);
-    }
-
-    private static int TimeToMinutes(string hhmm)
-    {
-        if (string.IsNullOrWhiteSpace(hhmm)) return 0;
-        var parts = hhmm.Split(':');
-        if (parts.Length < 2) return 0;
-        if (!int.TryParse(parts[0], out var h) || !int.TryParse(parts[1], out var m)) return 0;
-        return h * 60 + m;
-    }
-
-    private static string FormatDays(List<int> days)
-    {
-        var dayNames = new[] { "Du", "Se", "Ch", "Pa", "Jum", "Sha", "Yak" };
-        return string.Join(", ", days.Order().Select(d => d >= 0 && d < dayNames.Length ? dayNames[d] : d.ToString()));
+        var groups = await db.Classes.AsNoTracking().Where(g => !g.IsArchived).ToListAsync();
+        return ScheduleConflicts.AllPairs(groups.Select(ScheduleConflicts.Of));
     }
 }

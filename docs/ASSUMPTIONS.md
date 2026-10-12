@@ -436,3 +436,31 @@
   connect (`/ws`, `api/cti/*` removed); rewriting legacy rows adds risk without benefit.
 - [2026-10-11] Phase 1 — APK files under `uploads/app-*.apk` and the `cti-recordings` volume? → Left in place
   (data) → deleting files is a separate, confirmed step.
+- [2026-10-12] Phase 5 — one conflict entry per group when both room AND teacher collide? → One entry, kind
+  `room` first (same as the old warning and its tests) → the list names the group once; the room is the stronger signal.
+- [2026-10-12] Phase 5 — reschedule clash: which teacher counts on the target day? → The person who TEACHES
+  that lesson (substitute if any, else the owner), on both sides → an owner covered by a substitute is free then.
+- [2026-10-12] Phase 5 — superadmin force on reschedule, how does the client know? → Admin journal answers 409
+  `{ roomConflict, message, canForce }` (`ScheduleConflictException`); the teacher endpoint keeps 400 + text →
+  only the admin journal may force (SPEC), teacher UI unchanged.
+- [2026-10-12] Phase 5 — dated schedule "attendanceTaken" before Phase 3's `AttendanceTakenAt` exists? →
+  `LessonNote.Conducted` (the lesson monitor's definition) → one definition until U3a replaces it everywhere.
+- [2026-10-12] Phase 5 — grid/list toggle vs SPEC URL `view=day|week`? → `view` = Kun/Hafta, grid/list moved to
+  `?layout=list` → both kept, no key clash; old `?day=` links simply open today.
+- [2026-10-12] Phase 5 — old weekday `ScheduleBoard`/`HomeFilterRow` components? → Kept (no page uses them),
+  `schedule/grid` endpoint and `export?day=` kept → additive; removal is a separate cleanup.
+- [2026-10-12] Phase 5 — bot «✅ Bajardim» must notify the creator: edit beyond the single `wtok:` branch? → One
+  extra line in `HandleWorkTaskDoneAsync` (`WorkTaskFlow.OnCompletedAsync`) → SPEC P5.2 requires the bot path to
+  call the single approval method; logic stays in WorkTaskFlow.
+- [2026-10-12] Phase 5 — `wtok:` refusal "toast"? → Plain bot message «Bu amal sizga ruxsat etilmagan» → the shared
+  callback handler already answers `answerCallbackQuery` without text before branching.
+- [2026-10-12] Phase 5 — return an already APPROVED task? → Allowed (approval withdrawn) → the approver may have
+  approved by mistake; approve itself is refused twice.
+- [2026-10-12] Phase 5 — approval/return notices: Telegram only? → Telegram + cabinet bell for the recipient →
+  staff without a bot link still see it; bell rows are saved with the same SaveChanges.
+- [2026-10-12] Phase 5 — home widgets: blocks of later phases (absentNotices, redList)? → In the server catalog now
+  (layout keeps their place), client marks them `available: false` until U3b/U3d build them → later phases add
+  only a component.
+- [2026-10-12] Phase 5 — home layout 4 000-char limit: before or after normalisation? → On the SENT payload →
+  normalised output is always small; the limit only stops garbage payloads.
+- [2026-10-12] Phase 5 — home layout writes audited? → No (personal view preference, like theme/language).

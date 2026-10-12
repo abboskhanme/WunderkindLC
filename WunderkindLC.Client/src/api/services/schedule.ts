@@ -131,6 +131,8 @@ export interface ScheduleGridGroup {
   lessonsDone: number
   /** Rejadagi jami darslar; 0 = noma'lum (boshlanish/tugash sanasi kiritilmagan). */
   lessonsTotal: number
+  /** Sanali jadvalda: «ko'chirilgan» / «o'rinbosar: …» (blok va tooltipda alohida qator). */
+  badge?: string
 }
 
 export interface ScheduleGrid {
@@ -152,6 +154,8 @@ export async function getScheduleGrid(): Promise<ScheduleGrid> {
 /** Eksport parametrlari. `day` — SERVER konvensiyasi (0=Dushanba … 6=Yakshanba). */
 export interface ScheduleExportParams {
   day: number
+  /** "yyyy-MM-dd" — SANALI kun (haqiqiy darslar: ko'chirilgan, o'rinbosar); berilsa `day` e'tiborsiz. */
+  date?: string
   groupBy: 'room' | 'teacher'
   fromHour: string
   toHour: string
@@ -184,3 +188,80 @@ export async function exportScheduleDay(params: ScheduleExportParams): Promise<v
   a.click()
   URL.revokeObjectURL(href)
 }
+
+/* ---------- SANALI JADVAL («Kun» / «Hafta», CRM Phase 5) ---------- */
+
+/** Xona ustuni. `id` — Room.Id yoki eski matnli xona uchun `name:...` (`roomKey`). `floor` null — qavat ko'rsatilmagan. */
+export interface DatedRoom {
+  id: string
+  name: string
+  floor: number | null
+  capacity: number
+}
+
+export interface DatedTeacher {
+  id: string
+  name: string
+}
+
+/**
+ * Sanadagi HAQIQIY dars (server `AttendanceWatch.LessonsOn`): ko'chirilgan dars YANGI sana/vaqtida
+ * (`moved`), o'rinbosar nomi bilan, guruh umri hisobga olingan.
+ */
+export interface DatedLesson {
+  /** "yyyy-MM-dd" */
+  date: string
+  groupId: string
+  groupName: string
+  courseId: string
+  courseName: string
+  /** Guruh egasi. */
+  teacherId: string
+  teacherName: string
+  /** Shu kuni darsni o'tadigan o'rinbosar (bo'lmasa bo'sh). */
+  substituteTeacherId: string
+  substituteTeacherName: string
+  roomId: string
+  roomName: string
+  floor: number | null
+  start: string
+  end: string
+  moved: boolean
+  members: number
+  capacity: number
+  /** Jurnalda «o'tildi» belgilangan. */
+  attendanceTaken: boolean
+  status: ScheduleGroupStatus | string
+}
+
+export interface DatedSchedule {
+  from: string
+  to: string
+  rooms: DatedRoom[]
+  teachers: DatedTeacher[]
+  lessons: DatedLesson[]
+  skippedGroups: number
+}
+
+/** `from`..`to` (ikkalasi ham kiradi, ko'pi bilan 7 kun). */
+export async function getDatedSchedule(from: string, to: string): Promise<DatedSchedule> {
+  const { data } = await api.get<DatedSchedule>('/admin/schedule/dated', { params: { from, to } })
+  return data
+}
+
+/** Bazadagi mavjud to'qnashuv (ikki faol guruh bir xonada yoki bir o'qituvchida bir vaqtda). */
+export interface ScheduleConflictPair {
+  kind: 'room' | 'teacher'
+  groupA: { id: string; name: string }
+  groupB: { id: string; name: string }
+  /** Umumiy hafta kunlari (0=Dushanba). */
+  days: number[]
+  /** Kesishgan vaqt «15:00–15:30». */
+  slot: string
+}
+
+export async function getScheduleConflicts(): Promise<ScheduleConflictPair[]> {
+  const { data } = await api.get<ScheduleConflictPair[]>('/admin/schedule/conflicts')
+  return data
+}
+

@@ -135,6 +135,8 @@ export function timeSlots(from: number, to: number): { start: number; label: str
 export interface GridColumn {
   key: string
   name: string
+  /** Ustunlar guruhi sarlavhasi (sanali jadvalda — QAVAT: «2-qavat»). Bo'lmasa sarlavha qatori chizilmaydi. */
+  group?: string
 }
 
 /** Tabiiy tartib: "1-bino 2-xona" < "1-bino 10-xona". */

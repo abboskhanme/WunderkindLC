@@ -1,15 +1,16 @@
 import { useEffect, useState } from 'react'
-import { Clock, ListChecks, MessageSquare, Plus, Send, Trash2 } from 'lucide-react'
+import { BadgeCheck, Clock, ListChecks, MessageSquare, Plus, Send, Trash2, Undo2 } from 'lucide-react'
 import {
-  addComment, addStep, createTask, deleteStep, getTask, updateStep, updateTask,
+  addComment, addStep, approveTask, createTask, deleteStep, getTask, returnTask, updateStep, updateTask,
   type WorkTask, type WorkTaskAssignee, type WorkTaskBoard, type WorkTaskDetail,
 } from '@/api/services/workTasks'
+import { useAuth } from '@/context/auth-context'
 import { Button } from '@/components/ui/Button'
 import { Input, Select, Textarea } from '@/components/ui/Input'
 import { Loader } from '@/components/ui/Loader'
 import { Modal } from '@/components/ui/Modal'
 import { cn, apiErrorMessage, formatDateTime } from '@/lib/utils'
-import { PRIORITIES, REPEATS } from './model'
+import { PRIORITIES, REPEATS, TASK_STATES, canApproveTask, stateOf } from './model'
 import { Avatar } from './shared'
 
 interface FormState {
@@ -22,11 +23,14 @@ interface FormState {
   dueTime: string
   repeat: string
   tags: string
+  /** «Bajarilgach tasdiqlash talab qilinsin». `null` — yangi topshiriqda hali tegilmagan: mas'ul BOSHQA
+   *  odam bo'lsa yoqiq ko'rinadi (server `WorkTaskApproval.DefaultRequired` bilan bir xil). */
+  approvalRequired: boolean | null
 }
 
 const EMPTY: FormState = {
   title: '', description: '', columnId: '', assigneeId: '',
-  priority: 1, dueDate: '', dueTime: '', repeat: 'none', tags: '',
+  priority: 1, dueDate: '', dueTime: '', repeat: 'none', tags: '', approvalRequired: null,
 }
 
 /**
@@ -75,6 +79,7 @@ function TaskModalInner({
   onSaved,
 }: TaskModalProps) {
   const columns = board?.columns ?? []
+  const { user } = useAuth()
 
   const [form, setForm] = useState<FormState>(() => ({
     ...EMPTY,
@@ -103,6 +108,7 @@ function TaskModalInner({
           dueTime: d.task.dueTime ?? '',
           repeat: d.task.repeat,
           tags: d.task.tags.join(', '),
+          approvalRequired: d.task.approvalRequired ?? false,
         })
         setLoading(false)
       })
@@ -117,6 +123,10 @@ function TaskModalInner({
   }, [taskId])
 
   const set = (patch: Partial<FormState>) => setForm((f) => ({ ...f, ...patch }))
+
+  /** Ko'rinadigan qiymat: tegilmagan yangi topshiriqda — standart (boshqa odamga berilsa yoqiq). */
+  const approvalShown =
+    form.approvalRequired ?? (form.assigneeId !== '' && form.assigneeId !== (user?.id ?? ''))
 
   const handleSave = async () => {
     if (!board || !form.title.trim() || saving) return
@@ -133,6 +143,7 @@ function TaskModalInner({
         dueTime: form.dueTime || null,
         tags: form.tags.split(',').map((t) => t.trim()).filter(Boolean),
         repeat: form.repeat,
+        approvalRequired: approvalShown,
       }
       const saved = taskId ? await updateTask(taskId, payload) : await createTask(payload)
       onSaved(saved)
@@ -271,8 +282,32 @@ function TaskModalInner({
             disabled={!canWrite}
           />
 
+          <label className="flex items-start gap-2 text-sm text-slate-700">
+            <input
+              type="checkbox"
+              checked={approvalShown}
+              disabled={!canWrite}
+              onChange={(e) => set({ approvalRequired: e.target.checked })}
+              className="mt-0.5 h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-200"
+            />
+            <span>
+              Bajarilgach tasdiqlash talab qilinsin
+              <span className="block text-xs text-slate-400">
+                Mas'ul bajarganda topshiriqni bergan xodim tasdiqlaydi yoki sabab bilan qaytaradi.
+              </span>
+            </span>
+          </label>
+
           {taskId && detail && (
             <>
+              <ApprovalSection
+                task={detail.task}
+                user={user}
+                onChanged={(t) => {
+                  onSaved(t)
+                  reloadDetail()
+                }}
+              />
               <StepsSection detail={detail} canWrite={canWrite} onChanged={reloadDetail} />
               <CommentsSection detail={detail} canWrite={canWrite} onChanged={reloadDetail} />
               <HistorySection detail={detail} />
@@ -281,6 +316,115 @@ function TaskModalInner({
         </div>
       )}
     </Modal>
+  )
+}
+
+/* ---------------------------------------------------------------------------------------
+ *  TASDIQLASH (CRM Phase 5) — «Tasdiqlash» / «Qaytarish» faqat topshiriq BERGAN xodim yoki
+ *  admin uchun (server darvozasi bilan bir xil). Xato oyna ICHIDA chiqadi, sabab matni saqlanadi.
+ * ------------------------------------------------------------------------------------- */
+
+function ApprovalSection({
+  task,
+  user,
+  onChanged,
+}: {
+  task: WorkTask
+  user: { id: string; role: string } | null | undefined
+  onChanged: (t: WorkTask) => void
+}) {
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [returning, setReturning] = useState(false)
+  const [reason, setReason] = useState('')
+
+  if (!task.approvalRequired) return null
+  const state = stateOf(task)
+  const can = canApproveTask(task, user)
+
+  const run = async (fn: () => Promise<WorkTask>, fallback: string) => {
+    if (busy) return
+    setBusy(true)
+    setError(null)
+    try {
+      const t = await fn()
+      setReturning(false)
+      setReason('')
+      onChanged(t)
+    } catch (err) {
+      setError(apiErrorMessage(err, fallback))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <section className="rounded-xl border border-slate-100 p-3">
+      <h4 className="mb-2 flex flex-wrap items-center gap-2 text-sm font-bold text-slate-700">
+        <BadgeCheck className="h-4 w-4 text-slate-400" />
+        Tasdiqlash
+        <span className={cn('rounded-full px-2 py-0.5 text-[11px] font-semibold', TASK_STATES[state].chip)}>
+          {TASK_STATES[state].label}
+        </span>
+        {(task.returnCount ?? 0) > 0 && (
+          <span className="rounded-full bg-orange-50 px-2 py-0.5 text-[11px] font-semibold text-orange-700">
+            {task.returnCount} marta qaytarilgan
+          </span>
+        )}
+      </h4>
+      {task.approvedAt && (
+        <p className="mb-2 text-xs text-slate-500">
+          Tasdiqladi: {task.approvedByName || '—'} · {formatDateTime(task.approvedAt)}
+        </p>
+      )}
+      {!task.isDone && (
+        <p className="text-xs text-slate-400">Mas'ul bajarganda topshiriqni bergan xodim tasdiqlaydi.</p>
+      )}
+      {(can.approve || can.ret) && (
+        <div className="space-y-2">
+          {returning ? (
+            <>
+              <Textarea
+                label="Qaytarish sababi"
+                rows={2}
+                maxLength={500}
+                value={reason}
+                onChange={(e) => setReason(e.target.value)}
+                autoFocus
+              />
+              <div className="flex justify-end gap-2">
+                <Button variant="secondary" onClick={() => setReturning(false)} disabled={busy}>
+                  Bekor qilish
+                </Button>
+                <Button
+                  variant="danger"
+                  disabled={busy || !reason.trim()}
+                  onClick={() => run(() => returnTask(task.id, reason.trim()), "Qaytarib bo'lmadi")}
+                >
+                  Qaytarish
+                </Button>
+              </div>
+            </>
+          ) : (
+            <div className="flex flex-wrap gap-2">
+              {can.approve && (
+                <Button onClick={() => run(() => approveTask(task.id), "Tasdiqlab bo'lmadi")} disabled={busy}>
+                  <BadgeCheck className="h-4 w-4" />
+                  Tasdiqlash
+                </Button>
+              )}
+              {can.ret && (
+                <Button variant="secondary" onClick={() => setReturning(true)} disabled={busy}>
+                  <Undo2 className="h-4 w-4" />
+                  Qaytarish
+                </Button>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+      {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
+    </section>
   )
 }
 

@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router-dom'
 import { apiErrorMessage } from '@/lib/utils'
 import {
   getAssignees, getBoards,
-  type WorkTaskAssignee, type WorkTaskBoard, type WorkTaskQuery,
+  type WorkTask, type WorkTaskAssignee, type WorkTaskBoard, type WorkTaskQuery, type WorkTaskState,
 } from '@/api/services/workTasks'
 
 /* =====================================================================================
@@ -51,6 +51,39 @@ export const REPEATS: { value: string; label: string }[] = [
 
 export function repeatLabel(value: string): string {
   return REPEATS.find((r) => r.value === value)?.label ?? 'Takrorlanmaydi'
+}
+
+// ---------- Tasdiqlash (CRM Phase 5, topshiriqlar.md §8) ----------
+
+/** Holat yorliqlari — server `WorkTaskApproval.StateLabels` bilan bir xil. */
+export const TASK_STATES: Record<WorkTaskState, { label: string; chip: string }> = {
+  open: { label: 'Ochiq', chip: 'bg-slate-100 text-slate-600' },
+  overdue: { label: 'Kechikkan', chip: 'bg-rose-50 text-rose-700' },
+  awaiting_approval: { label: 'Tasdiq kutmoqda', chip: 'bg-amber-50 text-amber-700' },
+  approved: { label: 'Tasdiqlangan', chip: 'bg-emerald-50 text-emerald-700' },
+  done: { label: 'Bajarildi', chip: 'bg-emerald-50 text-emerald-600' },
+}
+
+/** Topshiriq holati: serverdagi `state`, eski javobda — bayroqlardan (bir xil qoida). */
+export function stateOf(t: WorkTask): WorkTaskState {
+  if (t.state) return t.state
+  if (!t.isDone) return t.isOverdue ? 'overdue' : 'open'
+  if (!t.approvalRequired) return 'done'
+  return t.approvedAt ? 'approved' : 'awaiting_approval'
+}
+
+/**
+ * «Tasdiqlash» / «Qaytarish» tugmalari kimga ko'rinadi — server darvozasi bilan bir xil
+ * (`WorkTaskApproval.IsApprover`): topshiriq BERGAN xodim yoki admin/superadmin, va topshiriq
+ * tasdiqlash talab qiladigan BAJARILGAN topshiriq. Qaytarish tasdiqlangandan keyin ham mumkin.
+ */
+export function canApproveTask(
+  t: WorkTask,
+  user: { id: string; role: string } | null | undefined,
+): { approve: boolean; ret: boolean } {
+  const approver = !!user && (user.role === 'admin' || user.role === 'superadmin' || user.id === t.createdById)
+  const ready = approver && !!t.approvalRequired && t.isDone && !t.isArchived
+  return { approve: ready && !t.approvedAt, ret: ready }
 }
 
 // ---------- Sana yordamchilari ----------
@@ -166,7 +199,7 @@ export interface TaskFilters {
   assigneeId: string
   q: string
   priority: string
-  /** '' | 'open' | 'done' | 'overdue' | 'today' */
+  /** '' | 'open' | 'done' | 'overdue' | 'today' | 'awaiting' | 'approved' */
   status: string
 }
 

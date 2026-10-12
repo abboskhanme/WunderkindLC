@@ -85,13 +85,17 @@ export async function getGroupSmsRecipients(id: string): Promise<GroupSmsRecipie
   return data
 }
 
-export async function createClass(payload: ClassPayload, force?: boolean): Promise<Group> {
+/**
+ * Guruh yaratish. Jadval to'qnashuvi bo'lsa server 409 qaytaradi (`scheduleConflictOf`); faqat superadmin
+ * `forceReason` (sabab) bilan baribir saqlay oladi — u tarixga yoziladi (CRM Phase 5).
+ */
+export async function createClass(payload: ClassPayload, forceReason?: string): Promise<Group> {
   if (USE_MOCK) {
     await delay(200)
     return { ...payload, id: uid() }
   }
   const { data } = await api.post<Group>('/admin/classes', payload, {
-    params: force ? { force: true } : undefined,
+    params: forceReason ? { force: true, forceReason } : undefined,
   })
   return data
 }
@@ -104,7 +108,8 @@ export async function updateClass(
   id: string,
   payload: ClassPayload,
   applyFee?: boolean,
-  force?: boolean,
+  /** Jadval to'qnashuvini baribir saqlash sababi — FAQAT superadmin (aks holda 409). */
+  forceReason?: string,
 ): Promise<Group> {
   if (USE_MOCK) {
     await delay(200)
@@ -112,7 +117,10 @@ export async function updateClass(
   }
   const params: Record<string, unknown> = {}
   if (applyFee !== undefined) params.applyFee = applyFee
-  if (force) params.force = true
+  if (forceReason) {
+    params.force = true
+    params.forceReason = forceReason
+  }
   const { data } = await api.put<Group>(`/admin/classes/${id}`, payload, {
     params: Object.keys(params).length ? params : undefined,
   })
@@ -171,8 +179,11 @@ export async function archiveClass(id: string): Promise<ArchiveClassResult> {
  * aktivlashtirilmaydi). `restoredStudents` faqat ESKI yozuvlar uchun: guruh bilan birga
  * arxivlangan o'quvchilar qaytariladi; yangi arxivlashda bu 0 bo'ladi.
  */
-export async function unarchiveClass(id: string): Promise<{ restoredStudents: number }> {
-  const { data } = await api.post<{ restoredStudents: number }>(`/admin/classes/${id}/unarchive`)
+export async function unarchiveClass(id: string, forceReason?: string): Promise<{ restoredStudents: number }> {
+  // Qayta ochilgan guruh boshqa faol guruh bilan to'qnashsa — 409 (faqat superadmin sabab bilan o'tkazadi).
+  const { data } = await api.post<{ restoredStudents: number }>(`/admin/classes/${id}/unarchive`, null, {
+    params: forceReason ? { force: true, forceReason } : undefined,
+  })
   return data
 }
 

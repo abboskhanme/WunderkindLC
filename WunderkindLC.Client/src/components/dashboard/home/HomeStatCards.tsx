@@ -2,16 +2,25 @@ import { useNavigate } from 'react-router-dom'
 import type { DashboardSummary } from '@/api/services/dashboard'
 import { usePerm } from '@/lib/permissions'
 import { cn } from '@/lib/utils'
-import { HOME_CARDS, cardHref } from '@/lib/homeCards'
+import { HOME_CARDS, cardHref, type HomeCard } from '@/lib/homeCards'
 
 /**
  * Bosh sahifaning 12 ta kartochkasi (ro'yxat, ranglar va ruxsatlar — `lib/homeCards.ts`).
  * Foydalanuvchi ko'ra olmaydigan kartochka chizilmaydi; bittasi ham qolmasa — blok umuman yo'q.
  */
-export function HomeStatCards({ data, loading }: { data: DashboardSummary | null; loading: boolean }) {
+export function HomeStatCards({
+  data,
+  loading,
+  cards,
+}: {
+  data: DashboardSummary | null
+  loading: boolean
+  /** Vidjetlar sozlamasidagi TARTIB va ko'rinish (`lib/homeWidgets.ts`); berilmasa — `HOME_CARDS` hammasi. */
+  cards?: HomeCard[]
+}) {
   const { can } = usePerm()
   const navigate = useNavigate()
-  const visible = HOME_CARDS.filter((c) => can(c.perm, 'view'))
+  const visible = (cards ?? HOME_CARDS).filter((c) => can(c.perm, 'view'))
   if (visible.length === 0) return null
 
   return (

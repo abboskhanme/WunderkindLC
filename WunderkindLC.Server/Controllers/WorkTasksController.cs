@@ -174,7 +174,7 @@ public partial class WorkTasksController(AppDbContext db, TelegramService telegr
         // botdagi "allaqachon bajarilgan" tekshiruvi ustun bilan ziddiyatga tushardi.
         if (doneChanged)
             foreach (var t in await db.WorkTasks.Where(t => t.ColumnId == id).ToListAsync())
-                await WorkTaskFlow.SyncCompletionAsync(db, t, c.IsDone, Uid);
+                await WorkTaskFlow.SyncCompletionAsync(db, t, c.IsDone, Uid, telegram: telegram);
 
         await db.SaveChangesAsync();
         return NoContent();
@@ -219,7 +219,7 @@ public partial class WorkTasksController(AppDbContext db, TelegramService telegr
         {
             t.ColumnId = target.Id;
             // Yopiluvchi ustundan oddiy ustunga tushgan topshiriq qayta ochiladi (va aksincha).
-            await WorkTaskFlow.SyncCompletionAsync(db, t, target.IsDone, Uid);
+            await WorkTaskFlow.SyncCompletionAsync(db, t, target.IsDone, Uid, telegram: telegram);
         }
         db.WorkTaskColumns.Remove(c);
         await db.SaveChangesAsync();
@@ -236,13 +236,19 @@ public partial class WorkTasksController(AppDbContext db, TelegramService telegr
     public async Task<ActionResult<IEnumerable<WorkTaskDto>>> List(
         [FromQuery] string? boardId, [FromQuery] string? assigneeId, [FromQuery] string? q,
         [FromQuery] string? status, [FromQuery] int? priority,
-        [FromQuery] string? from, [FromQuery] string? to, [FromQuery] bool archived = false)
+        [FromQuery] string? from, [FromQuery] string? to, [FromQuery] bool archived = false,
+        [FromQuery] string? createdById = null)
     {
         await EnsureSeedAsync();
+
+        // `me` — so'rov yuborgan foydalanuvchi («Mening topshiriqlarim» bloki, CRM Phase 5).
+        if (assigneeId == "me") assigneeId = Uid;
+        if (createdById == "me") createdById = Uid;
 
         var query = db.WorkTasks.Where(t => t.IsArchived == archived);
         if (!string.IsNullOrWhiteSpace(boardId)) query = query.Where(t => t.BoardId == boardId);
         if (!string.IsNullOrWhiteSpace(assigneeId)) query = query.Where(t => t.AssigneeId == assigneeId);
+        if (!string.IsNullOrWhiteSpace(createdById)) query = query.Where(t => t.CreatedById == createdById);
         if (priority is not null) query = query.Where(t => t.Priority == priority);
         if (!string.IsNullOrWhiteSpace(from)) query = query.Where(t => t.DueDate != null && t.DueDate.CompareTo(from) >= 0);
         if (!string.IsNullOrWhiteSpace(to)) query = query.Where(t => t.DueDate != null && t.DueDate.CompareTo(to) <= 0);
@@ -276,6 +282,8 @@ public partial class WorkTasksController(AppDbContext db, TelegramService telegr
             "done" => dtos.Where(d => d.IsDone).ToList(),
             "overdue" => dtos.Where(d => d.IsOverdue).ToList(),
             "today" => dtos.Where(d => !d.IsDone && d.DueDate == Today).ToList(),
+            "awaiting" => dtos.Where(d => d.State == WorkTaskApproval.StateAwaiting).ToList(),
+            "approved" => dtos.Where(d => d.State == WorkTaskApproval.StateApproved).ToList(),
             _ => dtos,
         };
     }
@@ -337,6 +345,8 @@ public partial class WorkTasksController(AppDbContext db, TelegramService telegr
             Tags = (input.Tags ?? []).Where(x => !string.IsNullOrWhiteSpace(x))
                 .Select(x => x.Trim()).Distinct().ToList(),
             Repeat = Repeat(input.Repeat),
+            // Boshqa odamga berilgan topshiriq bajarilgach tasdiqlanadi (aniq tanlov bo'lmasa — standart).
+            ApprovalRequired = WorkTaskApproval.DefaultRequired(input.ApprovalRequired, input.AssigneeId, Uid),
         };
         if (column.IsDone) { task.CompletedAt = AppClock.Now; task.CompletedById = Uid; }
 
@@ -393,6 +403,13 @@ public partial class WorkTasksController(AppDbContext db, TelegramService telegr
         t.Tags = (input.Tags ?? []).Where(x => !string.IsNullOrWhiteSpace(x))
             .Select(x => x.Trim()).Distinct().ToList();
         t.Repeat = Repeat(input.Repeat);
+        // Tasdiqlash talabi — faqat ANIQ yuborilganda o'zgaradi (eski mijoz uni yubormaydi).
+        if (input.ApprovalRequired is { } approval && approval != t.ApprovalRequired)
+        {
+            t.ApprovalRequired = approval;
+            if (!approval) WorkTaskFlow.OnReopened(t);   // talab olib tashlandi — tasdiq belgisi ham ma'nosiz
+            Log(t.Id, "approval", approval ? "Bajarilgach tasdiqlash talab qilinadi" : "Tasdiqlash talabi olib tashlandi");
+        }
         t.UpdatedAt = AppClock.Now;
 
         // Ustun ham berilgan bo'lsa — ko'chirish (oyna ichidan holat o'zgartirish).

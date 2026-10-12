@@ -1,0 +1,18 @@
+-- CRM upgrade — Phase 5 (U5a schedule, U5b task approval, U5c home widgets) — migration `CrmWorkspace`.
+--
+-- Columns only (no new tables). Generate with `dotnet ef migrations add CrmWorkspace` after the merge; EF emits
+-- exactly these AddColumn operations (anything else — especially a DROP — is spurious, delete it):
+--
+--   Rooms.Floor                  integer NULL                       -- null = «Qavat ko'rsatilmagan»
+--   WorkTasks.ApprovalRequired   boolean NOT NULL DEFAULT false     -- existing tasks: no approval step
+--   WorkTasks.ApprovedAt         NULL  (same type as WorkTasks.CompletedAt)
+--   WorkTasks.ApprovedById       text NOT NULL DEFAULT ''
+--   WorkTasks.ReturnCount        integer NOT NULL DEFAULT 0
+--   WorkTasks.LastReturnedAt     NULL  (same type as WorkTasks.CompletedAt)
+--   UserSettings.HomeLayout      text NOT NULL DEFAULT ''           -- '' = never customised (defaults)
+--
+-- DATA SQL: none required. The column defaults ARE the intended state of every existing row:
+--   * rooms keep no floor until an admin sets one (dated schedule shows them under «Qavat ko'rsatilmagan»);
+--   * existing tasks do not require approval (SPEC P5.2: "existing tasks untouched");
+--   * users without a stored layout get today's home page (12 cards + cashboxes + schedule).
+-- Existing boards keep their «Tekshiruvda» column (only NEW boards are seeded without it) — no SQL either.

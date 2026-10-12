@@ -107,7 +107,8 @@ public partial class ClassesController(AppDbContext db, AuditService audit, ILog
     }
 
     [HttpPost]
-    public async Task<ActionResult<Group>> Create(ClassPayload p, [FromQuery] bool force = false)
+    public async Task<ActionResult<Group>> Create(
+        ClassPayload p, [FromQuery] bool force = false, [FromQuery] string? forceReason = null)
     {
         // Guruhga o'qituvchi biriktirish MAJBURIY (foizli maosh va jurnal shunga tayanadi).
         if (string.IsNullOrWhiteSpace(p.TeacherId))
@@ -142,20 +143,13 @@ public partial class ClassesController(AppDbContext db, AuditService audit, ILog
             if (roomEntity is not null) resolvedRoomName = roomEntity.Name;
         }
 
-        // Xona/o'qituvchi konflikti tekshiruvi (REJECT emas — WARNING; force=true bo'lsa baribir saqlaydi).
-        if (!force)
-        {
-            var conflicts = await roomConflict.CheckRoomConflictAsync(
-                p.RoomId, p.TeacherId, p.Days ?? [], p.StartTime, p.EndTime);
-            if (conflicts.Count > 0)
-                return Ok(new
-                {
-                    roomConflict = true,
-                    message = "Jadvalda vaqt konflikti bor",
-                    conflicts = conflicts.Select(c => new RoomConflictDto(
-                        c.GroupId, c.GroupName, c.SharedDays, c.ExistingSlot, c.Reason)),
-                });
-        }
+        // Xona/o'qituvchi TO'QNASHUVI — QAT'IY taqiq (409); faqat superadmin sabab bilan "baribir saqlaydi"
+        // (ScheduleConflicts, CRM Phase 5). Ilgari bu yerda 200 + ogohlantirish edi.
+        var conflicts = await roomConflict.FindAsync(new ScheduleConflicts.Slot(
+            "", name, p.RoomId?.Trim() ?? "", p.TeacherId?.Trim() ?? "", p.Days ?? [],
+            p.StartTime ?? "", p.EndTime ?? "", p.StartDate, endDate, IsArchived: false));
+        var verdict = ScheduleConflicts.Decide(conflicts.Count, force, forceReason, User.IsInRole(Roles.SuperAdmin));
+        if (verdict.Verdict == ScheduleConflicts.Verdict.Blocked) return ScheduleConflict(verdict, conflicts);
 
         var cls = new Group
         {
@@ -196,6 +190,9 @@ public partial class ClassesController(AppDbContext db, AuditService audit, ILog
         audit.Record(AuditService.EntityGroup, cls.Id, "create",
             $"Guruh yaratildi ({cls.Name})",
             after: AuditService.GroupSnapshot(cls));
+        if (verdict.Verdict == ScheduleConflicts.Verdict.Forced)
+            audit.Record(AuditService.EntityGroup, cls.Id, "create",
+                ScheduleConflicts.ForcedAuditText(conflicts, verdict.Reason));
 
         await db.SaveChangesAsync();
         return cls;
@@ -208,7 +205,8 @@ public partial class ClassesController(AppDbContext db, AuditService audit, ILog
     /// narx keyingi oy hisoblashidan amal qiladi.
     /// </summary>
     [HttpPut("{id}")]
-    public async Task<ActionResult<Group>> Update(string id, ClassPayload p, [FromQuery] bool applyFee = false, [FromQuery] bool force = false)
+    public async Task<ActionResult<Group>> Update(string id, ClassPayload p, [FromQuery] bool applyFee = false,
+        [FromQuery] bool force = false, [FromQuery] string? forceReason = null)
     {
         var cls = await db.Classes.FindAsync(id);
         if (cls is null) return NotFound();
@@ -252,17 +250,20 @@ public partial class ClassesController(AppDbContext db, AuditService audit, ILog
             if (roomEntity is not null) resolvedRoomName = roomEntity.Name;
         }
 
-        // Xona/o'qituvchi konflikti tekshiruvi — o'z id'si hisoba olinmaydi (excludeGroupId=id). force=true bo'lsa o'tkazib yuboriladi.
-        var conflicts = force ? new List<RoomConflictService.ConflictInfo>() : await roomConflict.CheckRoomConflictAsync(
-            p.RoomId, p.TeacherId, p.Days ?? [], p.StartTime, p.EndTime, excludeGroupId: id);
-        if (conflicts.Count > 0)
-            return Ok(new
-            {
-                roomConflict = true,
-                message = "Jadvalda vaqt konflikti bor",
-                conflicts = conflicts.Select(c => new RoomConflictDto(
-                    c.GroupId, c.GroupName, c.SharedDays, c.ExistingSlot, c.Reason)),
-            });
+        // Xona/o'qituvchi TO'QNASHUVI — QAT'IY taqiq (409), o'z id'si hisobga olinmaydi. ⚠️ FAQAT jadval
+        // maydonlari (xona, o'qituvchi, kunlar, vaqt, boshlanish/tugash sanasi) O'ZGARGANDA tekshiriladi:
+        // bazada allaqachon to'qnashib turgan guruhning nomi/izohini tuzatish bloklanmasin.
+        var afterSlot = new ScheduleConflicts.Slot(
+            cls.Id, name, p.RoomId?.Trim() ?? "", p.TeacherId?.Trim() ?? "", p.Days ?? [],
+            p.StartTime ?? "", p.EndTime ?? "", p.StartDate, endDate, cls.IsArchived);
+        var conflicts = ScheduleConflicts.ScheduleChanged(ScheduleConflicts.Of(cls), afterSlot)
+            ? await roomConflict.FindAsync(afterSlot)
+            : [];
+        var verdict = ScheduleConflicts.Decide(conflicts.Count, force, forceReason, User.IsInRole(Roles.SuperAdmin));
+        if (verdict.Verdict == ScheduleConflicts.Verdict.Blocked) return ScheduleConflict(verdict, conflicts);
+        if (verdict.Verdict == ScheduleConflicts.Verdict.Forced)
+            audit.Record(AuditService.EntityGroup, cls.Id, "update",
+                ScheduleConflicts.ForcedAuditText(conflicts, verdict.Reason));
 
         var oldFee = cls.MonthlyFee;
         var oldName = cls.Name;   // o'quvchilar hozir shu nom bilan biriktirilgan
@@ -605,6 +606,10 @@ public partial class ClassesController(AppDbContext db, AuditService audit, ILog
     [HttpPost("{id}/unarchive")]
     public async Task<IActionResult> Unarchive(string id)
     {
+        // `?force=true&forceReason=...` — jadval to'qnashuvini baribir o'tkazish (faqat superadmin, pastda).
+        // Imzo ATAYIN o'zgartirilmadi (manba matnini tekshiradigan testlar shu imzoga tayanadi).
+        var force = bool.TryParse(Request.Query["force"], out var forceFlag) && forceFlag;
+        string? forceReason = Request.Query["forceReason"];
         if (!MayCloseGroups) return CloseForbidden();
         var cls = await db.Classes.FindAsync(id);
         if (cls is null) return NotFound();
@@ -621,6 +626,15 @@ public partial class ClassesController(AppDbContext db, AuditService audit, ILog
         // sanasi tegilmaydi; kerak bo'lsa guruh formasidan tahrirlanadi.
         var newEnd = GroupLifecycleRules.EndDateOnUnarchive(cls.EndDate, cls.ArchivedAt);
         var endCleared = newEnd is null && !string.IsNullOrWhiteSpace(cls.EndDate);
+
+        // Qayta ochilgan guruh jadvali boshqa FAOL guruh bilan to'qnashmasin (yopiq turgan paytda xona/
+        // o'qituvchi band qilingan bo'lishi mumkin) — 409, faqat superadmin sabab bilan (CRM Phase 5).
+        var conflicts = await roomConflict.FindAsync(ScheduleConflicts.Of(cls) with { EndDate = newEnd, IsArchived = false });
+        var verdict = ScheduleConflicts.Decide(conflicts.Count, force, forceReason, User.IsInRole(Roles.SuperAdmin));
+        if (verdict.Verdict == ScheduleConflicts.Verdict.Blocked) return ScheduleConflict(verdict, conflicts);
+        if (verdict.Verdict == ScheduleConflicts.Verdict.Forced)
+            audit.Record(AuditService.EntityGroup, cls.Id, "update",
+                ScheduleConflicts.ForcedAuditText(conflicts, verdict.Reason));
         var groupArchivedAt = cls.ArchivedAt;
         cls.EndDate = newEnd;
         cls.IsArchived = false;

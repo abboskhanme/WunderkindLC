@@ -8,6 +8,8 @@ export interface Room {
   location?: string
   isActive: boolean
   createdAt: string
+  /** Qavat (−2..50); null — ko'rsatilmagan. Sanali jadvalda xona ustunlari shu bo'yicha guruhlanadi. */
+  floor?: number | null
 }
 
 export interface RoomUtilization {
@@ -34,6 +36,8 @@ export interface CreateRoomPayload {
   capacity: number
   building?: string
   location?: string
+  /** Qavat (−2..50); bo'sh — ko'rsatilmagan. */
+  floor?: number | null
 }
 
 export async function getRooms(): Promise<Room[]> {
@@ -53,6 +57,8 @@ export async function createRoom(payload: CreateRoomPayload): Promise<Room> {
  */
 export interface UpdateRoomPayload extends CreateRoomPayload {
   isActive?: boolean
+  /** Qavatni TOZALASH (server `floor: null` ni "tegilmaydi" deb o'qiydi). */
+  clearFloor?: boolean
 }
 
 export async function updateRoom(id: string, payload: UpdateRoomPayload): Promise<Room> {
