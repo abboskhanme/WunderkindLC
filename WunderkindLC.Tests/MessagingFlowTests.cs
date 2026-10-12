@@ -154,7 +154,9 @@ public class MessagingFlowTests
 
         Assert.Equal(AckOutcome.WrongChat, await MessageAckService.HandleAsync(ctx, sender, 43, "cb1", row.Id));
         Assert.Null(ctx.MessageDeliveries.AsNoTracking().Single().AckAt);
-        Assert.Equal(MessageAckService.ToastWrongChat, sender.Answers[^1].Text);
+        // L2: a foreign chat gets EXACTLY the «not found» toast — the id's existence is never confirmed.
+        Assert.Equal(MessageAckService.ToastNotFound, sender.Answers[^1].Text);
+        var wrongChatToast = sender.Answers[^1].Text;
 
         Assert.Equal(AckOutcome.Acknowledged, await MessageAckService.HandleAsync(ctx, sender, 42, "cb2", row.Id));
         var ackAt = ctx.MessageDeliveries.AsNoTracking().Single().AckAt;
@@ -168,6 +170,7 @@ public class MessagingFlowTests
 
         Assert.Equal(AckOutcome.NotFound, await MessageAckService.HandleAsync(ctx, sender, 42, "cb4", "yoq"));
         Assert.Equal(MessageAckService.ToastNotFound, sender.Answers[^1].Text);
+        Assert.Equal(wrongChatToast, sender.Answers[^1].Text);
     }
 
     [Fact]

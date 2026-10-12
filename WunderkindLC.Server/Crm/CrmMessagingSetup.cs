@@ -42,5 +42,13 @@ public static class CrmMessagingSetup
                     string.Join(", ", disabled));
         }
         catch (Exception ex) { log.LogWarning(ex, "[crm-messaging] avto-xabar qoidalari tuzatilmadi"); }
+        try
+        {
+            // M4: bot suhbati tarixidagi login/parol va bir martalik kod xabarlari — belgiga (bir marta, SeedMarker).
+            var scrubbed = await BotHistoryText.ScrubStoredAsync(db);
+            if (scrubbed is not null)
+                log.LogInformation("[crm-messaging] bot tarixidan kirish ma'lumotlari tozalandi: {Count} ta qator", scrubbed);
+        }
+        catch (Exception ex) { log.LogWarning(ex, "[crm-messaging] bot tarixini tozalab bo'lmadi"); }
     }
 }

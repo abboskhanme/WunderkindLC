@@ -50,9 +50,37 @@ public class RatingRbacTests
         Assert.Contains("[AdminPerm(\"classes.rating\", ReadRequiresPerm = true)]", Gate(src, "[HttpPut(\"settings\")]"));
 
         // Every action carries its own gate (no ungated method sneaks in).
-        var actions = Regex.Matches(src, @"\[Http(Get|Post|Put|Patch|Delete)").Count;
-        var gates = Regex.Matches(src, @"\[AdminPerm\(").Count;
+        var body = src[Regex.Match(src, @"public partial class RatingController\b").Index..];
+        var actions = Regex.Matches(body, @"\[Http(Get|Post|Put|Patch|Delete)").Count;
+        var gates = Regex.Matches(body, @"\[AdminPerm\(").Count;
         Assert.Equal(actions, gates);
+    }
+
+    [Fact]
+    public void Class_level_floor_closes_any_future_ungated_action()
+    {
+        // M3 (2026-10-12): the class carries the page key with ReadRequiresPerm — an action added later without its
+        // own [AdminPerm] is still closed to staff without «classes.rating» (default AdminPerm opens every GET).
+        // Method-level gates override it (AdminPermAttribute.IsOverriddenAtMethod), so the wider key sets of the
+        // group/student endpoints keep working.
+        var src = Source("RatingController.cs");
+        var header = src[..Regex.Match(src, @"public partial class RatingController\b").Index];
+        // An ATTRIBUTE line (not just a mention in the doc comment).
+        Assert.Matches(new Regex(@"^\[AdminPerm\(""classes\.rating"", ReadRequiresPerm = true\)\]\r?$", RegexOptions.Multiline), header);
+        Assert.Matches(new Regex(@"^\[Authorize\]\r?$", RegexOptions.Multiline), header);
+
+        // The override rule the wider method gates rely on is still in place.
+        var attr = Source("AdminPermAttribute.cs");
+        Assert.Contains("if (IsOverriddenAtMethod(context)) return;", attr);
+
+        // Every partial file of the controller: each action has its own gate too (defence in depth).
+        foreach (var file in Directory.GetFiles(Path.Combine(RepoRoot, "WunderkindLC.Server", "Controllers"), "RatingController*.cs"))
+        {
+            var f = File.ReadAllText(file);
+            var start = Regex.Match(f, @"public partial class RatingController\b").Index;
+            var b = f[start..];
+            Assert.Equal(Regex.Matches(b, @"\[Http(Get|Post|Put|Patch|Delete)").Count, Regex.Matches(b, @"\[AdminPerm\(").Count);
+        }
     }
 
     [Fact]

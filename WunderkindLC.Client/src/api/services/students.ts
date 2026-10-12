@@ -15,8 +15,9 @@ export interface UploadedFile {
 }
 
 /**
- * Barcha o'quvchilarni login/parol bilan Excel (.xlsx) ga yuklab oladi (server: `HasFullAccess("students.list")`).
- * Parol — seyfdagi JORIY parol (CRM Phase 6); noma'lumi «(saqlanmagan)».
+ * Barcha o'quvchilarni login/parol bilan Excel (.xlsx) ga yuklab oladi. Eksport — `HasFullAccess("students.list")`,
+ * «Parol» ustuni esa FAQAT superadmin uchun (M2, 2026-10-12 — ommaviy parol dumpi; server hard rol bilan tekshiradi
+ * va auditga yozadi). Parol — seyfdagi JORIY parol (CRM Phase 6); noma'lumi «(saqlanmagan)».
  */
 export async function downloadStudentCredentials(): Promise<void> {
   if (USE_MOCK) {
@@ -37,7 +38,7 @@ export async function downloadStudentCredentials(): Promise<void> {
 }
 
 /** TANLANGAN o'quvchilarning to'liq ma'lumotlarini Excel (.xlsx) ga yuklab oladi
- *  (profil + guruhlar + balans + login; «Parol» ustuni — to'liq «O'quvchilar» ruxsatiga, CRM Phase 6). */
+ *  (profil + guruhlar + balans + login; «Parol» ustuni — FAQAT superadmin, M2: ommaviy eksport). */
 export async function downloadSelectedStudents(studentIds: string[]): Promise<void> {
   if (USE_MOCK) {
     alert('Eksport faqat real serverda ishlaydi (VITE_USE_MOCK=false).')

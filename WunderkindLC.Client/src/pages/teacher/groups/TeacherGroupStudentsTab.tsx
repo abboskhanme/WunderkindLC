@@ -10,7 +10,7 @@ import { TelegramLinkCell } from '@/components/messaging/TelegramLinkCell'
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
 import { useAsync } from '@/hooks/useAsync'
-import { formatPhone, typedPhoneInput } from '@/lib/numberFormat'
+import { formatPhone } from '@/lib/numberFormat'
 import { SCHOOL_GRADE_OPTIONS, schoolGradeLabel } from '@/lib/schoolGrades'
 import { toast } from '@/lib/toast'
 import { apiErrorMessage, cn } from '@/lib/utils'
@@ -18,9 +18,10 @@ import { apiErrorMessage, cn } from '@/lib/utils'
 /**
  * Guruh sahifasi → «O'quvchilar» tabi (o'qituvchi portali, asosan Telegram Mini App ichida).
  *
- * O'qituvchi o'z guruhi o'quvchisining FAQAT ism-familiyasi, sinfi va telefonini tahrirlaydi
- * (`PUT /teacher/groups/{id}/students/{studentId}`, server `TeacherStudentEdit`). Guruhga qo'shish,
- * chiqarish, muzlatish — bu yerda YO'Q (administrator ishi), va buni sahifaning o'zi aytadi.
+ * O'qituvchi o'z guruhi o'quvchisining FAQAT ism-familiyasi va sinfini tahrirlaydi
+ * (`PUT /teacher/groups/{id}/students/{studentId}`, server `TeacherStudentEdit`). Telefon raqami faqat
+ * KO'RINADI — u Telegram botiga kirish omili (H1, 2026-10-12), uni faqat administrator o'zgartiradi.
+ * Guruhga qo'shish, chiqarish, muzlatish — bu yerda YO'Q (administrator ishi), va buni sahifaning o'zi aytadi.
  *
  * Telefon birinchi: qator butunlay bosiladi (kichik tugma emas), maydonlar 16px — iOS Telegram'da
  * fokusda sahifa kattalashib ketmasin.
@@ -70,7 +71,7 @@ export function TeacherGroupStudentsTab({ groupId }: { groupId: string }) {
   return (
     <div className="space-y-3">
       <p className="rounded-lg border border-line bg-paper2 px-3 py-2 text-[12.5px] leading-snug text-mute">
-        O'quvchining ism-familiyasi, sinfi va telefon raqamini o'zgartira olasiz. Guruhga qo'shish
+        O'quvchining ism-familiyasi va sinfini o'zgartira olasiz. Telefon raqami, guruhga qo'shish
         yoki guruhdan chiqarish — administrator orqali.
       </p>
 
@@ -170,16 +171,12 @@ function EditStudentModal({
 }) {
   const [fullName, setFullName] = useState(student.fullName)
   const [grade, setGrade] = useState(student.schoolGradeNow ?? 0)
-  // Ko'rinish matni (`+998 90 123 45 67`); eski/xorijiy raqam o'zgarmasdan ko'rsatiladi.
-  const [phone, setPhone] = useState(formatPhone(student.phone))
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   // Sinxron qulf: tez ikki bosishda so'rov ikki marta ketmasin (`saving` keyingi renderda yangilanadi).
   const inFlight = useRef(false)
 
-  const phoneChanged = digitsOf(phone) !== digitsOf(student.phone)
-  const dirty =
-    fullName.trim() !== student.fullName.trim() || grade !== (student.schoolGradeNow ?? 0) || phoneChanged
+  const dirty = fullName.trim() !== student.fullName.trim() || grade !== (student.schoolGradeNow ?? 0)
 
   const save = async () => {
     if (inFlight.current || !dirty) return
@@ -194,8 +191,6 @@ function EditStudentModal({
       const row = await updateTeacherGroupStudent(groupId, student.id, {
         fullName: fullName.trim(),
         schoolGrade: grade,
-        // O'zgarmagan raqam saqlangan ko'rinishida yuboriladi — server uni qayta tekshirmaydi.
-        phone: phoneChanged ? digitsOf(phone) : student.phone,
       })
       onSaved(row)
     } catch (e) {
@@ -258,17 +253,19 @@ function EditStudentModal({
             ))}
           </select>
         </label>
+        {/* Telefon — faqat ko'rish (H1): raqam Telegram botiga kirish omili, uni administrator o'zgartiradi. */}
         <label className="block">
           <span className={label}>Telefon raqami</span>
           <input
             type="tel"
-            inputMode="tel"
-            autoComplete="off"
-            placeholder="+998 90 123 45 67"
-            className={field}
-            value={phone}
-            onChange={(e) => setPhone(typedPhoneInput(e.target.value, phone))}
+            readOnly
+            disabled
+            className={cn(field, 'cursor-not-allowed bg-paper2 text-mute')}
+            value={student.phone ? formatPhone(student.phone) : "Telefon yo'q"}
           />
+          <span className="mt-1 block text-[12px] leading-snug text-mute">
+            Telefon raqamini faqat administrator o'zgartiradi — u Telegram botga kirish uchun ishlatiladi.
+          </span>
         </label>
         {error && <p className="text-[13px] text-red-600">{error}</p>}
         {/* Enter bilan yuborish uchun (footer tugmalari forma tashqarisida). */}

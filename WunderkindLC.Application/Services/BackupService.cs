@@ -204,8 +204,12 @@ public static class BackupService
         await Add("messageAttachments", db.MessageAttachments);
         await Add("studentAchievements", db.StudentAchievements);
         await Add("smsBatches", db.SmsBatches);
-        await Add("botUsers", db.BotUsers);
-        await Add("botSupportMessages", db.BotSupportMessages);
+        // Bot suhbati — KIRISH MA'LUMOTLARI xabarlarisiz (M4): login/parol va bir martalik kod o'rniga belgi
+        // (`BotHistoryText`). Startupdagi bir martalik tozalash eski qatorlarni ham tozalaydi — bu ikkinchi qatlam.
+        Put("botUsers", (await db.BotUsers.AsNoTracking().ToListAsync(ct))
+            .Select(u => { u.LastText = BotHistoryText.ForHistory(u.LastText); return u; }).ToList());
+        Put("botSupportMessages", (await db.BotSupportMessages.AsNoTracking().ToListAsync(ct))
+            .Select(m => { m.Text = BotHistoryText.ForHistory(m.Text); return m; }).ToList());
         // ---- Bog'lanish kerak (follow-up navbati) ----
         await Add("contactRequests", db.ContactRequests);
         await Add("contactAttempts", db.ContactAttempts);

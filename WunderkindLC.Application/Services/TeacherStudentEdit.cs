@@ -7,9 +7,14 @@ namespace WunderkindLC.Application.Services;
 /// O'QITUVCHI o'z guruhidagi o'quvchini tahrirlashi (`PUT api/teacher/groups/{classId}/students/{id}`)
 /// — sof qoidalar (<c>TeacherStudentEditTests</c>).
 ///
-/// <para>⚠️ FAQAT UCH MAYDON: ism-familiya, maktab sinfi, o'quvchining telefoni. Ota-ona, manzil,
-/// guruh, chegirma, balans, login — o'qituvchiga YOPIQ (admin formasi `StudentsController.Update`).
-/// Guruhga qo'shish/chiqarish/muzlatish o'qituvchi portalida umuman YO'Q.</para>
+/// <para>⚠️ FAQAT IKKI MAYDON: ism-familiya va maktab sinfi. Ota-ona, manzil, guruh, chegirma, balans,
+/// login — o'qituvchiga YOPIQ (admin formasi `StudentsController.Update`). Guruhga qo'shish/chiqarish/
+/// muzlatish o'qituvchi portalida umuman YO'Q.</para>
+///
+/// <para>⚠️ TELEFON RAQAMLARI (o'quvchi, ota-ona, ota, ona) — o'qituvchiga YOPIQ (2026-10-12, H1). To'rttalasi
+/// ham Telegram botida ro'yxatdan o'tish uchun MOSLASH maydoni (<c>TelegramRegistrar</c>) — ya'ni KIRISH OMILI:
+/// raqamni o'z telefoniga almashtirgan odam botda o'quvchi akkaunti uchun bir martalik kirish kodini olardi.
+/// Raqamni faqat xodim/admin o'zgartiradi (auditlanadi). Kiruvchi DTO'da telefon maydoni YO'Q.</para>
 ///
 /// <para>Sinf qoidasi admin bilan BIR XIL (<c>school-grade.md</c> §3): <c>null</c> — tegilmaydi,
 /// <c>0</c> — tozalash, 1..12 — joriy o'quv yiliga bog'lab yoziladi (keyingi yillarda o'zi oshadi).</para>
@@ -18,12 +23,10 @@ public static class TeacherStudentEdit
 {
     public const int MaxNameLength = 150;
 
-    public sealed record Input(string? FullName, int? SchoolGrade, string? Phone);
+    public sealed record Input(string? FullName, int? SchoolGrade);
 
     /// <summary>Xato matni (o'zbekcha, foydalanuvchiga ko'rsatiladi) yoki <c>null</c> — hammasi joyida.</summary>
-    /// <param name="currentPhone">Bazadagi joriy raqam. Telefon O'ZGARMAGAN bo'lsa tekshirilmaydi —
-    /// aks holda eski/xorijiy formatdagi raqami bor o'quvchining faqat ismini tuzatib bo'lmasdi.</param>
-    public static string? Validate(Input p, string? currentPhone = null)
+    public static string? Validate(Input p)
     {
         var name = CleanName(p.FullName);
         if (name.Length < 2) return "Ism-familiyani kiriting";
@@ -32,25 +35,18 @@ public static class TeacherStudentEdit
         if (p.SchoolGrade is { } g && g != 0 && !SchoolGrades.IsValid(g))
             return "Sinf 1 dan 11 gacha yoki «Maktabni bitirgan» bo'lishi kerak";
 
-        // Telefon IXTIYORIY (bo'sh = tozalash), lekin kiritilgan bo'lsa haqiqiy raqam bo'lsin —
-        // aks holda ota-onaga SMS/qo'ng'iroq noto'g'ri raqamga ketardi.
-        if (!string.IsNullOrWhiteSpace(p.Phone) && !PhoneUnchanged(p.Phone, currentPhone)
-            && !PhoneUtil.Validate(p.Phone).Valid)
-            return "Telefon raqami noto'g'ri";
-
         return null;
     }
 
     /// <summary>
     /// O'zgarishni yozadi (<see cref="Validate"/> dan KEYIN chaqiriladi). SaveChanges QILMAYDI.
+    /// Telefon raqamlariga HECH QACHON tegmaydi (H1).
     /// Ism QISMLARI (<c>LastName/FirstName/MiddleName</c>) ham yangi FullName'dan qayta bo'linadi
     /// (<see cref="SetName"/>) — aks holda keyingi admin tahriri o'qituvchining tuzatishini bekor qilardi.
     /// </summary>
     public static void Apply(Student s, Input p, DateOnly today)
     {
         SetName(s, p.FullName);
-        // O'zgarmagan raqam AYNAN saqlangan ko'rinishida qoladi (eski formatni jimgina "tuzatmaymiz").
-        if (!PhoneUnchanged(p.Phone, s.Phone)) s.Phone = PhoneUtil.Normalize(p.Phone ?? "");
 
         if (p.SchoolGrade is null) return;
         if (p.SchoolGrade == 0)
@@ -62,11 +58,6 @@ public static class TeacherStudentEdit
         s.SchoolGrade = p.SchoolGrade;
         s.SchoolGradeYear = SchoolGrades.AcademicYear(today);
     }
-
-    /// <summary>Kiritilgan raqam bazadagisi bilan bir xilmi (normallashtirilgan holda).</summary>
-    public static bool PhoneUnchanged(string? phone, string? currentPhone) =>
-        !string.IsNullOrWhiteSpace(currentPhone)
-        && string.Equals(PhoneUtil.Normalize(phone), PhoneUtil.Normalize(currentPhone), StringComparison.Ordinal);
 
     /// <summary>
     /// FullName'ni yozadi va uni ism QISMLARIGA admin bilan BIR XIL qoida bo'yicha bo'ladi:

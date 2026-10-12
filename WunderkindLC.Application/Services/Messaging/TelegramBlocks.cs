@@ -52,8 +52,11 @@ public static class MessageAckService
 {
     public const string CallbackPrefix = "mack:";
     public const string ButtonText = "✅ Qabul qildim";
+    /// <summary>
+    /// ONE toast for «not found» AND «another chat's message» (L2, 2026-10-12): a different text for a foreign
+    /// delivery id would confirm to a guesser that the id exists.
+    /// </summary>
     public const string ToastNotFound = "Xabar topilmadi yoki eskirgan";
-    public const string ToastWrongChat = "Bu xabar sizga tegishli emas";
     public const string ToastOk = "✅ Qabul qilindi. Rahmat!";
 
     /// <summary>Inline keyboard with the button.</summary>
@@ -78,7 +81,7 @@ public static class MessageAckService
         }
         if (d.ChatId != chatId)
         {
-            await Answer(ToastWrongChat);
+            await Answer(ToastNotFound);   // the same toast as «not found» — never reveal that the id exists
             return AckOutcome.WrongChat;
         }
         if (d.AckAt is not null)

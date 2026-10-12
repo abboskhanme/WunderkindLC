@@ -9,12 +9,16 @@ namespace WunderkindLC.Application.Dtos;
 /// <para><c>IsSubstitute</c> — bu darsni o'qituvchi O'RINBOSAR sifatida o'tadi (guruh boshqa odamniki).
 /// <c>SubstitutedBy</c> — guruh o'qituvchiniki, lekin shu kuni darsni boshqa odam (o'rinbosar) o'tadi.
 /// <c>Moved</c> — dars boshqa kundan shu kunga ko'chirilgan (vaqti <c>StartTime</c> da).
-/// <c>Conducted</c> — jurnalda shu dars "o'tildi" (davomat/baho kiritilgan).</para>
+/// <c>Conducted</c> — jurnalda shu dars "o'tildi" (bitta baho ham yetadi — DAVOMAT OLINDI degani EMAS).
+/// <c>AttendanceTaken</c> — shu kuni guruhning istalgan darsida BIRINCHI davomat belgisi bor
+/// (<c>LessonNote.AttendanceTakenAt</c>, <c>AttendanceTaking</c> — eslatma/jarima/monitor bilan bir xil ta'rif,
+/// <c>journal.md</c> «YAGONA DAVOMAT TA'RIFI»). Tezkor davomat, bosh sahifadagi «Davomat kutilmoqda» va dars holati
+/// SHUNGA qaraydi, <c>Conducted</c> ga emas.</para>
 /// </summary>
 public record TeacherLessonDto(
     string GroupId, string GroupName, string CourseName, string Date,
     string StartTime, string EndTime, string Room, int StudentCount,
-    bool IsSubstitute, string SubstitutedBy, bool Moved, bool Conducted);
+    bool IsSubstitute, string SubstitutedBy, bool Moved, bool Conducted, bool AttendanceTaken = false);
 
 /// <summary>O'qituvchining guruh kartasi — jadval (kunlar/vaqt/xona) va o'quvchilar soni bilan.
 /// Sanoqlar o'qituvchi jurnalida KO'RINADIGAN o'quvchilar bo'yicha (to'lov darvozasi bilan

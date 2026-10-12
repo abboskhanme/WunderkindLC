@@ -3900,14 +3900,15 @@ public record TeacherContactRequest(List<string> StudentIds, string? ReasonId = 
 
 /// <summary>
 /// O'qituvchi guruh sahifasidagi «O'quvchilar» tabi: o'z guruhining FAOL a'zosi.
-/// Telefon BOR — o'qituvchi uni tahrirlay olishi uchun (faqat o'z guruhi o'quvchilari).
-/// Balans/ota-ona ma'lumoti ATAYIN yo'q.
+/// Telefon BOR — faqat KO'RISH uchun (o'z guruhi o'quvchilari); o'qituvchi uni o'zgartira OLMAYDI (H1:
+/// raqam Telegram botiga kirish omili). Balans/ota-ona ma'lumoti ATAYIN yo'q.
 /// </summary>
 public record TeacherGroupStudentDto(string Id, string FullName, string Phone, int? SchoolGradeNow, string Status,
     int TelegramLinked = 0, List<string>? TelegramRelations = null);
 
-/// <summary>O'qituvchi tahriri — faqat uch maydon (<c>TeacherStudentEdit</c>). Sinf: null — tegilmaydi, 0 — tozalash.</summary>
-public record TeacherStudentEditRequest(string? FullName, int? SchoolGrade, string? Phone);
+/// <summary>O'qituvchi tahriri — faqat IKKI maydon (<c>TeacherStudentEdit</c>). Sinf: null — tegilmaydi, 0 — tozalash.
+/// ⚠️ Telefon maydoni ATAYIN YO'Q (H1, 2026-10-12): klient yuborsa ham JSON bog'lovchisi uni tashlab yuboradi.</summary>
+public record TeacherStudentEditRequest(string? FullName, int? SchoolGrade);
 
 /* =================================================================================================
  *  O'RINBOSAR O'QITUVCHILAR (Substitute Teacher Assignments)

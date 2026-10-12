@@ -11,9 +11,10 @@ namespace WunderkindLC.Server.Controllers;
 /// O'QITUVCHI — o'z guruhi o'quvchilarini TAHRIRLASH (guruh sahifasi → «O'quvchilar» tabi,
 /// asosan Telegram Mini App ichida ishlatiladi).
 ///
-/// <para><b>Faqat uch maydon:</b> ism-familiya, maktab sinfi, o'quvchining telefoni
-/// (<see cref="TeacherStudentEdit"/>). Guruhga qo'shish, chiqarish, muzlatish, ko'chirish —
-/// o'qituvchi portalida ATAYIN YO'Q (bu admin/xodim ishi, pul hisobiga tegadi).</para>
+/// <para><b>Faqat ikki maydon:</b> ism-familiya va maktab sinfi (<see cref="TeacherStudentEdit"/>).
+/// ⚠️ Telefon raqamlari (o'quvchi, ota-ona, ota, ona) — o'qituvchiga YOPIQ (H1, 2026-10-12): ular Telegram
+/// botida ro'yxatdan o'tish uchun moslash maydoni, ya'ni kirish omili. Guruhga qo'shish, chiqarish,
+/// muzlatish, ko'chirish — o'qituvchi portalida ATAYIN YO'Q (bu admin/xodim ishi, pul hisobiga tegadi).</para>
 ///
 /// <para><b>Darvoza (ikkalasi ham SHART):</b></para>
 /// <list type="bullet">
@@ -70,7 +71,7 @@ public partial class TeacherPortalController
             .ToList();
     }
 
-    /// <summary>Ism-familiya, sinf va telefonni o'zgartiradi. Javob — yangilangan qator.</summary>
+    /// <summary>Ism-familiya va sinfni o'zgartiradi (telefon — YO'Q, H1). Javob — yangilangan qator.</summary>
     [HttpPut("groups/{classId}/students/{studentId}")]
     public async Task<ActionResult<TeacherGroupStudentDto>> UpdateGroupStudent(
         string classId, string studentId, TeacherStudentEditRequest req)
@@ -85,17 +86,14 @@ public partial class TeacherPortalController
         if (student is null || student.IsArchived)
             return NotFound(new { message = "O'quvchi bu guruhda topilmadi" });
 
-        var input = new TeacherStudentEdit.Input(req.FullName, req.SchoolGrade, req.Phone);
-        var error = TeacherStudentEdit.Validate(input, student.Phone);
+        var input = new TeacherStudentEdit.Input(req.FullName, req.SchoolGrade);
+        var error = TeacherStudentEdit.Validate(input);
         if (error is not null) return BadRequest(new { message = error });
 
         var before = AuditService.StudentProfileSnapshot(student);
         var (oldGrade, oldGradeYear) = (student.SchoolGrade, student.SchoolGradeYear);
-        var phonesBefore = TelegramLinks.PhonesSignature(student);
+        // Telefon raqamlariga TEGILMAYDI (H1) — shuning uchun Telegram ulanishlari ham o'zgarmaydi.
         TeacherStudentEdit.Apply(student, input, AppClock.Today);
-        // Raqam o'zgarsa ESKI raqam bilan ulangan Telegram chat uziladi (admin tahriri bilan bir xil — `TelegramLinks`).
-        if (TelegramLinks.PhonesChanged(phonesBefore, student))
-            await TelegramLinks.PruneStaleAsync(db, audit, student, "raqam o'zgardi — o'qituvchi tahriri");
 
         // Login akkauntidagi ism ham yangilanadi (admin tahriri bilan bir xil — `StudentsController.Update`).
         var user = student.UserId is null ? null : await db.Users.FindAsync(student.UserId);

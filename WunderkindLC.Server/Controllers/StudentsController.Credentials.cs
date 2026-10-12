@@ -7,13 +7,33 @@ namespace WunderkindLC.Server.Controllers;
 
 /// <summary>
 /// Student password vault helpers for <c>Credentials</c>, <c>ResetPassword</c>, <c>Export</c> and
-/// <c>ExportSelected</c> (CRM Phase 6, docs/SPEC-crm-upgrade.md §7 P6.1). The gate stays the single
-/// <c>AdminPermAttribute.HasFullAccess(User, "students.list")</c> (<c>.claude/rules/auth-sessions.md</c> §3).
+/// <c>ExportSelected</c> (CRM Phase 6, docs/SPEC-crm-upgrade.md §7 P6.1). The per-student gate stays the single
+/// <c>AdminPermAttribute.HasFullAccess(User, "students.list")</c> (<c>.claude/rules/auth-sessions.md</c> §3); the
+/// BULK exports show passwords only to a superadmin (<see cref="BulkExportShowsPasswords"/>).
 /// </summary>
 public partial class StudentsController
 {
     /// <summary>Resolved per request — the shared primary constructor is not edited (SPEC §0.2 step 3).</summary>
     private CredentialVault Vault => HttpContext.RequestServices.GetRequiredService<CredentialVault>();
+
+    /// <summary>
+    /// BULK exports (all students / selected) carry the «Parol» column ONLY for a superadmin — a hard role check
+    /// (M2, 2026-10-12): <c>AdminPerm</c>/<c>HasFullAccess</c> let a plain admin through as well, and a centre-wide
+    /// password dump is the owner's call. The per-student reveal and the per-group export stay at
+    /// <c>HasFullAccess(User, "students.list")</c> (<c>.claude/rules/auth-sessions.md</c> §3).
+    /// </summary>
+    private bool BulkExportShowsPasswords() => User.IsInRole(Roles.SuperAdmin);
+
+    /// <summary>Audit row id of the bulk password exports (M1) — no single student is the subject.</summary>
+    public const string ExportAuditEntityId = "export";
+
+    /// <summary>Audit text of «all students» exported WITH passwords (never the passwords themselves).</summary>
+    public static string ExportAllAuditSummary(int students) =>
+        $"O'quvchilar login/parollari eksport qilindi: barcha faol o'quvchilar ({students} ta)";
+
+    /// <summary>Audit text of the selected students exported WITH passwords (never the passwords themselves).</summary>
+    public static string ExportSelectedAuditSummary(int students) =>
+        $"Tanlangan o'quvchilar login/parollari eksport qilindi ({students} ta o'quvchi)";
 
     /// <summary>Every response that carries a password: browsers/proxies must not keep it.</summary>
     private void NoStore() => Response.Headers.CacheControl = "no-store";

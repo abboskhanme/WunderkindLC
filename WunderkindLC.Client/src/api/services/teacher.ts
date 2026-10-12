@@ -479,10 +479,11 @@ export interface TeacherGroupStudent {
 }
 
 /** O'qituvchi o'zgartira oladigan FAQAT uch maydon. `schoolGrade`: 0 — tozalash. */
+/** O'qituvchi tahriri — FAQAT ism va sinf. Telefon raqamlari o'qituvchiga YOPIQ (H1, 2026-10-12): ular Telegram
+ *  botida ro'yxatdan o'tish uchun moslash maydoni (kirish omili) — server bu maydonni umuman qabul qilmaydi. */
 export interface TeacherStudentEditPayload {
   fullName: string
   schoolGrade: number
-  phone: string
 }
 
 export async function getTeacherGroupStudents(classId: string): Promise<TeacherGroupStudent[]> {

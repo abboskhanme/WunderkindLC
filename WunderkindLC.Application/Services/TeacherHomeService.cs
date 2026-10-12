@@ -294,12 +294,19 @@ public static class TeacherHomeService
 
         // "O'tildi" — shu guruh KURSI bo'yicha (jurnal ham kurs bo'yicha ochiladi).
         var notes = await db.LessonNotes.AsNoTracking()
-            .Where(n => gids.Contains(n.ClassId) && n.Conducted
+            .Where(n => gids.Contains(n.ClassId) && (n.Conducted || n.AttendanceTakenAt != null)
                         && n.Date.CompareTo(fromStr) >= 0 && n.Date.CompareTo(toStr) <= 0)
-            .Select(n => new { n.ClassId, n.SubjectId, n.Date })
+            .Select(n => new { n.ClassId, n.SubjectId, n.Date, n.Conducted, Taken = n.AttendanceTakenAt != null })
             .ToListAsync();
         var conducted = notes
-            .Where(n => byId.TryGetValue(n.ClassId, out var g) && g.CourseId == n.SubjectId)
+            .Where(n => n.Conducted && byId.TryGetValue(n.ClassId, out var g) && g.CourseId == n.SubjectId)
+            .Select(n => n.ClassId + "|" + n.Date)
+            .ToHashSet(StringComparer.Ordinal);
+        // "Davomat olindi" — YAGONA ta'rif (AttendanceTaking): guruhning shu KUNDAGI istalgan LessonNote'ida birinchi
+        // davomat belgisi bor (fan/dars raqamidan qat'i nazar — eslatma, jarima va monitor bilan bir xil). `Conducted`
+        // EMAS: bitta baho darsni "o'tildi" qiladi, lekin davomat olinmagan (tezkor davomat sahifasi shunga tayanadi).
+        var attendanceTaken = notes
+            .Where(n => n.Taken)
             .Select(n => n.ClassId + "|" + n.Date)
             .ToHashSet(StringComparer.Ordinal);
 
@@ -311,7 +318,7 @@ public static class TeacherHomeService
                 g.Id, g.Name, courseNames.GetValueOrDefault(g.CourseId, ""), p.Date,
                 p.StartTime, p.EndTime, roomNames.GetValueOrDefault(g.Id, ""), count,
                 p.IsSubstitute, p.SubstituteTeacherId.Length > 0 ? teacherNames.GetValueOrDefault(p.SubstituteTeacherId, "O'rinbosar") : "",
-                p.Moved, conducted.Contains(g.Id + "|" + p.Date));
+                p.Moved, conducted.Contains(g.Id + "|" + p.Date), attendanceTaken.Contains(g.Id + "|" + p.Date));
         }).ToList();
     }
 

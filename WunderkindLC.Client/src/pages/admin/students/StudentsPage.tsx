@@ -1162,7 +1162,13 @@ export function StudentsPage() {
                 <PhoneCall className="h-4 w-4" /> Bog'lanish kerak ({selected.size})
               </Button>
             )}
-            <Button variant="secondary" onClick={handleExportExcel} disabled={exportingSelected}>
+            <Button
+              variant="secondary"
+              onClick={handleExportExcel}
+              disabled={exportingSelected}
+              // «Parol» ustuni faqat superadmin eksportida (server hard rol bilan, M2) — boshqalarga login bilan.
+              title={user?.role === 'superadmin' ? 'Login va parol bilan' : 'Parolsiz (parol ustuni faqat superadminga)'}
+            >
               {exportingSelected ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : (

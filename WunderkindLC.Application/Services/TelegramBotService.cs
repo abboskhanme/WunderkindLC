@@ -175,7 +175,10 @@ public class TelegramBotService(
     /// <summary>telegram.SendMessageAsync + botning avtomatik javobini umumiy suhbat tarixiga yozadi
     /// (AdminName="Bot" — admin qo'lda yozgan javobdan frontendda ajratish uchun). Barcha ichki
     /// SendMessageAsync chaqiruvlari shu orqali o'tadi — shunda "Qo'llab-quvvatlash" panelida
-    /// /start'dan boshlab BUTUN suhbat (savol ham, avtomatik javob ham) ko'rinadi.</summary>
+    /// /start'dan boshlab BUTUN suhbat (savol ham, avtomatik javob ham) ko'rinadi.
+    /// <para>⚠️ KIRISH MA'LUMOTLARI tarixga YOZILMAYDI (M4, 2026-10-12): login/parol xabari va bir martalik kod o'rniga
+    /// tarixda (<c>Text</c> ham, <c>LastText</c> ham) belgi turadi — <see cref="BotHistoryText.ForHistory"/>.
+    /// Foydalanuvchiga xabar AYNAN yuboriladi; faqat saqlanadigan nusxa tozalanadi.</para></summary>
     private async Task<bool> SendAsync(
         long chatId, string text, object? keyboard = null, CancellationToken ct = default, string? parseMode = null)
     {
@@ -186,13 +189,14 @@ public class TelegramBotService(
             var db = scope.ServiceProvider.GetRequiredService<IAppDbContext>();
             db.BotSupportMessages.Add(new BotSupportMessage
             {
-                ChatId = chatId, FromUser = false, Text = text, AdminName = "Bot", CreatedAt = AppClock.Iso(),
+                ChatId = chatId, FromUser = false, Text = BotHistoryText.ForHistory(text), AdminName = "Bot",
+                CreatedAt = AppClock.Iso(),
             });
             var botUser = await db.BotUsers.FirstOrDefaultAsync(u => u.ChatId == chatId, ct);
             if (botUser is not null)
             {
                 botUser.LastMessageAt = AppClock.Iso();
-                botUser.LastText = text.Length > 140 ? text[..140] : text;
+                botUser.LastText = BotHistoryText.Preview(text);
             }
             await db.SaveChangesAsync(ct);
         }
