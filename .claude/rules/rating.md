@@ -64,9 +64,15 @@ so'rov GROUP BY).
 ## 4. ESKI `RatingService.SchoolAsync` — kontrakt va raqamlar O'ZGARMADI
 
 `GET /api/admin/students/rating` va `GET /api/student/rating` (eski ilova) avvalgidek ishlaydi: ball, o'rtacha baho
-(BARCHA baholar), davomat = (o'tilgan − kech bo'lmagan sababli qoldirilgan) ÷ o'tilgan. Ilgari butun `JournalEntries`
+(BARCHA baholar). ⚠️ DAVOMAT 2026-10-12 dan YAGONA ta'rifda (`MembershipAttendance`, `journal.md` «Jamlanma
+hisobotlar»): ilgari `(o'tilgan − kech bo'lmagan sababli) ÷ o'tilgan` edi. Ilgari butun `JournalEntries`
 xotiraga yuklanardi — endi SQL agregatlari (MCP `TestTools.ComputeCenterAsync` naqshi). `RatingEngineTests`
-yangi kodni ESKI algoritm (test ichida saqlangan) va MCP bilan solishtiradi. Yangi UI bu ikki endpointni CHAQIRMAYDI.
+yangi kodni xotiradagi ma'lumot (har dars `AttendanceRules.Classify`) va MCP bilan solishtiradi. Yangi UI bu ikki
+endpointni CHAQIRMAYDI.
+
+⚠️ `RatingController` da SINF darajasida ham `[AdminPerm("classes.rating", ReadRequiresPerm = true)]` (2026-10-12,
+review M3) — o'z darvozasisiz qo'shilgan yangi amal ham ruxsatsiz xodimga yopiq; metod atributlari (guruh/o'quvchi
+endpointlarining kengroq kalitlari) baribir USTUN (`AdminPermAttribute.IsOverriddenAtMethod`, `RatingRbacTests`).
 
 ## 5. API va RUXSAT
 

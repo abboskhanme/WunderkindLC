@@ -81,21 +81,27 @@ YIG'INDI: nechta o'quvchi va jami qancha. Har o'quvchining summasi baribir beril
 guruhdagi o'quvchi BIR marta sanaladi. To'lov darvozasi bu yerda QO'LLANMAYDI — maqsad aynan
 jurnalda yashiringan qarzdorlarni ham ko'rsatish (uchrashuv talabi: "o'qituvchi qarzdorlikni
 yopishga qiziqsin", maosh sahifasidagi "qarzdorlar to'lasa yana +" bilan birga).
-(Telefon faqat §3.5 dagi «O'quvchilar» tabida — o'z guruhi o'quvchilari, tahrirlash uchun.)
+(Telefon faqat §3.5 dagi «O'quvchilar» tabida — o'z guruhi o'quvchilari, FAQAT KO'RISH uchun.)
 
 ## 3.5. O'QUVCHINI TAHRIRLASH (guruh sahifasi → «O'quvchilar» tabi, 2026-10-05)
 
-Foydalanuvchi talabi: o'qituvchi o'z guruhi o'quvchisining **ism-familiyasi, maktab sinfi va
-telefonini** tuzata olsin (asosan Telegram Mini App ichida). Qo'shish/chiqarish — TAQIQLANGAN.
+Foydalanuvchi talabi: o'qituvchi o'z guruhi o'quvchisining **ism-familiyasi va maktab sinfini** tuzata olsin
+(asosan Telegram Mini App ichida). Qo'shish/chiqarish — TAQIQLANGAN.
 
 | Endpoint | Nima |
 |---|---|
-| `GET api/teacher/groups/{classId}/students` | guruhning tirik a'zolari (ism, telefon, joriy sinf, holat) |
-| `PUT api/teacher/groups/{classId}/students/{studentId}` | `{ fullName, schoolGrade, phone }` — FAQAT shu uchtasi |
+| `GET api/teacher/groups/{classId}/students` | guruhning tirik a'zolari (ism, telefon — faqat ko'rish, joriy sinf, holat) |
+| `PUT api/teacher/groups/{classId}/students/{studentId}` | `{ fullName, schoolGrade }` — FAQAT shu ikkitasi |
 
 - Qoida — `TeacherStudentEdit` (Application, sof, `TeacherStudentEditTests`). Sinf: `0` = tozalash,
-  joriy o'quv yiliga bog'lanadi (admin bilan bir xil, `school-grade.md`). Telefon ixtiyoriy, lekin
-  O'ZGARTIRILSA haqiqiy raqam bo'lishi shart; o'zgarmagan (eski/xorijiy) raqam qayta tekshirilmaydi.
+  joriy o'quv yiliga bog'lanadi (admin bilan bir xil, `school-grade.md`).
+- ⚠️ **TELEFON RAQAMLARI — O'QITUVCHIGA YOPIQ (2026-10-12, review H1).** O'quvchi, ota-ona, ota va ona raqami —
+  to'rttalasi ham Telegram botida ro'yxatdan o'tish uchun MOSLASH maydoni (`TelegramRegistrar`), ya'ni KIRISH OMILI:
+  raqamni o'z telefoniga almashtirgan o'qituvchi botda o'quvchi akkaunti uchun bir martalik kirish kodini olardi.
+  Kiruvchi DTO'da telefon maydoni UMUMAN yo'q (yuborilsa JSON bog'lovchisi tashlab yuboradi), `Apply` raqamlarga
+  tegmaydi, Telegram ulanishlari ham o'zgarmaydi. Raqamni faqat xodim/admin o'zgartiradi (`StudentsController.Update`,
+  auditlanadi). Klientda maydon o'chirilgan (faqat ko'rish) + izoh «Telefon raqamini faqat administrator o'zgartiradi
+  — u Telegram botga kirish uchun ishlatiladi».
 - Darvoza: `journal` ruxsati + guruh EGASI (`TeacherGroupAccess.OwnedBy`) + o'quvchi shu guruhning
   `IsActive` a'zosi va arxivda emas. ⚠️ **O'rinbosar tahrirlay OLMAYDI** (u vaqtincha keladi).
 - Login akkauntidagi ism ham yangilanadi; audit — `Student/update`, ActorName = o'qituvchi.
@@ -130,6 +136,13 @@ Xato bo'lsa oyna YOPILMAYDI, sabab ichida ko'rinadi. Saqlangandan keyin dars man
 
 Jurnalda shu kunga ustun bo'lmasa (dars ko'chirilgan) saqlash YOPIQ — aks holda yozuv ko'rinmas
 sanaga tushardi. Muzlatilganlar ro'yxatda yo'q; a'zoligi keyin boshlanganlar xira, bosilmaydi.
+
+⚠️ **«DAVOMAT OLINDI» — YAGONA TA'RIF (2026-10-12, review BLOCKER).** Tezkor davomat «Keldi» ni OLDINDAN FAQAT davomati
+TO'LIQ olingan darsda qo'yadi (`GroupJournal.attendanceTakenDates`, server `AttendanceRules`); dars tanlash
+(«davomati kutilayotgan birinchi dars»), dars holati (`lessonPhase` → «Davomat olingan») va bosh sahifadagi
+«Davomat kutilmoqda» — `TeacherLessonDto.AttendanceTaken` (`LessonNote.AttendanceTakenAt`, eslatma/jarima/monitor
+bilan bir xil). `Conducted` («o'tildi») EMAS: bitta baho darsni "o'tildi" qiladi — ilgari shunday darsda hamma
+o'quvchi «Keldi» bo'lib to'lar va «Saqlash» ularni haqiqatan «keldi» qilib yozardi (`journal.md`).
 
 ## 5. TELEGRAM BOT — «📱 Panel» (Mini App)
 

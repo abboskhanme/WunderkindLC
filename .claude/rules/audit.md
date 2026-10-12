@@ -116,6 +116,11 @@ Ilgari shu tarzda tushib qolgan va 2026-08-05 da to'ldirilgan joylar:
 | O'qituvchilar | **O'chirish** | umuman yozilmasdi |
 | O'qituvchilar | Parolni tiklash | umuman yozilmasdi |
 
+2026-10-12 (review M1): **parol bilan OMMAVIY eksport** — `Student` turi, `EntityId = "export"`, «O'quvchilar
+login/parollari eksport qilindi: barcha faol o'quvchilar (N ta)» / «Tanlangan o'quvchilar login/parollari eksport
+qilindi (N ta o'quvchi)» — faqat superadmin eksportida (parol ustuni bilan), parolning O'ZISIZ (`auth-sessions.md` §3).
+Guruh eksporti avvaldan yozilardi (`Group`).
+
 2026-10-07 auditida to'ldirilganlar (operatsion bo'limlar):
 
 | Bo'lim | Amal | Nima bo'lgan edi |

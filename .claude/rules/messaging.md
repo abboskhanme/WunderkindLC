@@ -129,7 +129,8 @@ chidamlilik va Telegram tezlik chegarasi — hammasi shu jadvaldan.
 ### «✅ Qabul qildim» (`MessageAckService`, callback `mack:{deliveryId}`)
 
 Birinchi bosish (xabar yuborilgan chatning O'ZI) → `AckAt`, tugma olib tashlanadi, «✅ Qabul qilindi. Rahmat!».
-Begona chat — «Bu xabar sizga tegishli emas», topilmasa — «Xabar topilmadi yoki eskirgan». "Ko'rdi" alohida holat
+Begona chat ham, topilmagan id ham — BIR XIL «Xabar topilmadi yoki eskirgan» (2026-10-12, review L2: boshqacha matn
+begona id MAVJUDLIGINI tasdiqlardi; natija `WrongChat`/`NotFound` faqat ichki). "Ko'rdi" alohida holat
 EMAS (botga o'qildi belgisi kelmaydi). ⚠️ `mack:` umumiy bo'sh `answerCallbackQuery` dan OLDIN ushlanadi
 (`MessagingRbacTests` qulflaydi). Phase 5 `wtok:` qo'shadi — `mack:`/`wtdone:` bilan to'qnashmaydi.
 
@@ -139,6 +140,21 @@ Bitta xabarga bitta fayl: rasm jpg/png ≤ 10 MB, video mp4 ≤ 50 MB, hujjat pd
 Kengaytma + Content-Type + sehrli baytlar — UCHALASI mos bo'lishi shart. Fayl `uploads/messaging/{guid}{ext}` —
 ⚠️ STATIK BERILMAYDI (`PrivateFolderFileProvider` ro'yxatida), faqat ishchi va `attachments/{id}/content`
 (ruxsat bilan, `no-store`). Yuborish diskdan OQIM bilan (`"telegram-media"` mijozi, 120 s); `byte[]` ga yig'ilmaydi.
+⚠️ Papka TUNGI tar zaxirasiga KIRMAYDI (2026-10-12, `docker-compose.yml` → `--exclude='uploads/messaging'`,
+`uploads/face` kabi): video 50 MB gacha — arxivni shishiradi, yuborilgan fayl Telegram'da `file_id` bilan qoladi.
+Qabul qilingan oqibat: disk yo'qolsa yutuq rasmlari tar'dan tiklanmaydi (`KOCHIRISH.md` — ko'chirishda volume TO'LIQ).
+
+### Bot suhbati tarixida KIRISH MA'LUMOTLARI YO'Q (2026-10-12, review M4)
+
+Botning har javobi tarixga (`BotSupportMessages.Text`, `BotUser.LastText`) yoziladi — «Support Telegram» paneli va
+kunlik JSON zaxira (Telegram chatiga ketadi). Login/parol xabari va bir martalik kirish kodi — KIRISH MA'LUMOTI:
+tarixga ular o'rniga belgi yoziladi — «[kirish ma'lumotlari yuborildi]» / «[bir martalik kirish kodi yuborildi]»
+(`BotHistoryText.ForHistory`, `TelegramBotService.SendAsync` — botning YAGONA tarix yozuvchisi). Foydalanuvchiga xabar
+AYNAN boradi. Moslash ATAYIN tor: faqat bot yuboradigan andozalarning qat'iy boshi («🔑 Kirish ma'lumotlari:\n»,
+«🔑 Ilovaga kirish:\n», «🔑 Login: », «🔑 … uchun bir martalik kirish kodi:») — oddiy support xabariga tegilmaydi.
+Eski qatorlar startupda BIR MARTA tozalanadi (SeedMarker `bot-history-credentials-scrub-2026-10`,
+`CrmMessagingSetup`); JSON zaxira ham o'sha qoida bilan yig'iladi (ikkinchi qatlam). Yangi kirish xabari qo'shsangiz —
+`BotHistoryText` andozalariga ham qo'shing (`BotHistoryTextTests`).
 
 ### Jadvalli avto-xabarlar (`AutoMessageSchedule`)
 
@@ -244,7 +260,9 @@ qarindoshlik belgilari. ⚠️ Faqat SON va qarindoshlik — telefon, ism, chat 
   BO'LMAGAN o'quvchining zaxira yo'lida ishlatiladi.
   **TOZALANGAN (migratsiya `MessagingCleanup`):** `ReminderRule`, `RemindersController`, `ReminderTriggers`,
   `SmsTemplate.Trigger/IsAuto`. `SmsTemplate` (jadval nomi tarixiy) — faqat qo'lda shablon
-  (`{id,name,text,order}`, `GET/POST/PUT/DELETE messages/templates`).
+  (`{id,name,text,order}`). YOZISH — faqat `messaging/templates` (`MessagingController`: Telegram HTML tekshiruvi,
+  noma'lum token, audit); eski `POST/PUT/DELETE messages/templates` 2026-10-12 da OLIB TASHLANDI (chaqiruvchisi yo'q edi),
+  `GET messages/templates` va `templates/all` qoldi.
   API: `api/admin/auto-messages` (+ /triggers + /tokens + /seed-standard), AdminPerm("messages.broadcast").
 
 - **GURUHI YOPILGAN/TUGATILGAN O'QUVCHIGA AVTO-XABAR YO'Q** (`MessagingAudience.ClosedGroupStudentIdsAsync`):
@@ -291,7 +309,9 @@ qarindoshlik belgilari. ⚠️ Faqat SON va qarindoshlik — telefon, ism, chat 
   «Qabul qildim», server PREVIEW va sanoq) · «Qarzdorlar» · «Avto xabarlar» · «Shablonlar» · «Tarix» (kampaniya
   hisoboti — har o'quvchi va har chat holati, «Bekor qilish»; avto-xabarlar statistikasi). Preview HTML faqat
   `lib/telegramHtml.ts` whitelist renderi bilan (`dangerouslySetInnerHTML` YO'Q). O'quvchi(lar)ga xabar —
-  `TelegramSendModal`. Quyidagi 3-tabli tavsif — TARIX (2026-10 holati).
+  `TelegramSendModal`. ⚠️ «Telegram xabar» tugmalari (o'quvchi profili, guruh «⋮», «O'quvchilar davomati»,
+  o'quvchilar ro'yxatidagi tanlov paneli) FAQAT `can('messages.broadcast', 'create')` bo'lganda ko'rinadi (2026-10-12) —
+  yuborish (`POST messaging/campaigns`) shu ruxsatsiz 403 bo'lardi. Quyidagi 3-tabli tavsif — TARIX (2026-10 holati).
 - **FRONTEND (2026-10, eski):** Xabarlar sahifasi 3 tab — **Xabar yuborish (default)** | Avto xabarlar
   (trigger'lar Category bo'yicha guruhlangan; har qoidada qat'iy «Kabinet (bildirishnoma) — doim» chipi +
   Telegram kaliti; «Standart qoidalar» → `seed-standard`) | Tarix (faqat Telegram e'lonlari).
@@ -721,6 +741,13 @@ tug'ilgan kun va sinov darsi SMS'lari ham (o'sha paytdagi kanallar). Erkin eslat
   saqlaydi — `LessonReminderMark` (dars kaliti bo'yicha UNIQUE), ya'ni restartdan keyin ham
   takrorlanmaydi (`journal.md`).
 
+- ⚠️ **KALIT FORMATI O'ZGARSA — ESKI kalitlar ham "bajarildi" (2026-10-12, review).** CRM upgrade kalitlarni QOIDA
+  bo'yicha qildi (`birthday:{ruleId}[:{sid}]`, `payment_debt:{ruleId}[:{sid}]`). Deploy KUNI eski xizmat ertalab
+  ishlab bo'lgan bo'lsa yangi kalitlar bo'sh — shuning uchun `BirthdayGreetingService`/`PaymentReminderService` BUGUNGI
+  eski kalitlarni ham o'qiydi: butun ish (`birthday` / `payment_debt`) — qoida ishga tushmaydi; oluvchi
+  (`birthday:{sid}` / `payment_debt:{sid}`) — o'sha o'quvchi o'tkaziladi (`LegacyJobKey`, `LegacyRecipientKey`,
+  `JobRunMarker.DoneKeysAsync`). Kalit formatini yana o'zgartirsangiz — xuddi shunday eski kalitni ham o'qing.
+
 Yangi kunlik fon ishi yozsangiz — "bugun bajarildimi" ni xotirada SAQLAMANG, `JobRunMarker` dan
 foydalaning. Testlar: `WunderkindLC.Tests/AuditFixT6Tests.cs`.
 
@@ -744,9 +771,9 @@ kontakt raqami o'quvchining raqamiga mos kelsa). Ilgari uni olib tashlashning yo
 raqami tuzatilsa ham ESKI chat qarz/davomat/baho xabarlarini olaverar va o'quvchi akkaunti uchun
 bir martalik kirish kodini so'ray olardi. Qoida — `TelegramLinks` (Application, `AuditFixT2Tests`).
 
-- **Avtomatik:** o'quvchining raqamlari (o'zi, asosiy ota-ona, ota, ona) O'ZGARGANDA — admin tahriri
-  (`StudentsController.Update`) ham, o'qituvchi tahriri (`TeacherPortalController.UpdateGroupStudent`) ham
-  — raqami HECH BIRIGA mos kelmaydigan ulanishlar o'chiriladi. Solishtiruv `PhoneUtil.Key` (oxirgi 9 raqam):
+- **Avtomatik:** o'quvchining raqamlari (o'zi, asosiy ota-ona, ota, ona) O'ZGARGANDA — admin/xodim tahriri
+  (`StudentsController.Update`) — raqami HECH BIRIGA mos kelmaydigan ulanishlar o'chiriladi. ⚠️ O'qituvchi raqamni
+  2026-10-12 dan UMUMAN o'zgartira olmaydi (`teacher-portal.md` §3.5 — raqam botga kirish omili). Solishtiruv `PhoneUtil.Key` (oxirgi 9 raqam):
   faqat FORMAT o'zgarishi ("+998 90…" ↔ "90…") o'zgarish EMAS.
 - ⚠️ Raqami NOMA'LUM (bo'sh/qisqa) eski ulanish taxmin bilan UZILMAYDI — profilda "Raqam mos emas"
   bo'lib ko'rinadi, admin qo'lda uzadi.

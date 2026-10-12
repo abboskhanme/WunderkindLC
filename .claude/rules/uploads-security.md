@@ -128,7 +128,8 @@ javob berib bo'lmaydi. Buni yoqish — alohida ish.
 - ⚠️ `Uploads:PublicCertificates=true` favqulodda kaliti bu papkaga **TA'SIR QILMAYDI**: u faqat
   sertifikatlarni ochadi. Biometrik suratni "vaqtincha ochib qo'yish" varianti yo'q.
 - Papka kunlik zaxira arxividan ham chiqarilgan (`docker-compose` → `tar --exclude`), sabab
-  `DEPLOY.md` §6.1 da.
+  `DEPLOY.md` §6.1 da. 2026-10-12 dan `uploads/messaging` (Telegram xabarlari biriktirmalari) ham xuddi shunday
+  chiqarilgan (`messaging.md` §0.5 «Biriktirma»).
 
 ### Xodim (staff) uchun O'QISH darvozasi
 `AdminPermAttribute` da GET/HEAD/OPTIONS xodimga **ataylab ochiq** — bo'limlararo o'qish buzilmasin

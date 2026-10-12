@@ -73,6 +73,9 @@ Audit: `AbsenceReason` — nima qo'shildi/o'chdi/qayta nomlandi ("Sozlamalar" bo
   Ilgari `CenterMeta` TO'LIQ (`InstagramCapiToken` bilan) va arxiv suratlari xom (o'chirilgan
   xodimning `PasswordHash` / ochiq `InitialPassword` i) ketardi.
 - ⚠️ **Arxiv suratlarining ICHI ham tozalanadi** (`ArchivedRecord.Json` — matn ichidagi JSON).
+- ⚠️ **Bot suhbati (`botSupportMessages.Text`, `botUsers.LastText`) — KIRISH MA'LUMOTLARISIZ** (2026-10-12, review M4):
+  login/parol xabari va bir martalik kod o'rniga belgi (`BotHistoryText.ForHistory`) — bazadagi qatorlar startupda bir
+  marta tozalangan bo'lsa ham zaxira ularni yana o'sha qoida bilan yig'adi (`messaging.md` «Bot suhbati tarixida»).
 - ⚠️ **O'quvchi parollari seyfi (`studentCredentials`) zaxiraga KIRMAYDI** — shifrlangan bo'lsa ham
   (`ExcludedTables`; `auth-sessions.md` §6.5).
 - Biznes jadvallari to'liq (kitob, shartnoma, qo'ng'iroq, bog'lanish, topshiriq, vakansiya, KPI,

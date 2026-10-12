@@ -411,7 +411,8 @@ o'quvchi kunlar nisbatida hisoblanadi (dars kunlari bo'yicha emas).
   mezonli baholar, ball tuzatishlari, guruh mezonlari, dars ko'chirishlari, dastur o'tilishi, guruh
   testlari (ballar, tashqi natijalar, sertifikatlar va FAYLLARI), o'rinbosarlar, o'qituvchi tarixi, AI
   tahlillari, «Chegirma (kelmagan darslar)», ketish sabablari jurnali, guruh CHATI (nom boshqa guruhda
-  bo'lmasa); amaldagi guruh chegirmalari bekor qilinadi. QOLADI: o'qituvchi haqidagi fikrlar, lid sinov
+  bo'lmasa), davomat JARIMALARI (`TeacherAttendanceFines`) va ketma-ket kelmaslik belgilari
+  (`AbsenceStreakAlerts`, 2026-10-12); amaldagi guruh chegirmalari bekor qilinadi. QOLADI: o'qituvchi haqidagi fikrlar, lid sinov
   darslari, uzaytirish hodisalari (snapshot), o'quvchining mashq urinishlari, xabar tarixi, audit.
 
 - **PER-GURUH BALANS (qizil/yashil):** guruh kontekstidagi ro'yxatlar (jurnal qatorlari, guruh a'zolari —
