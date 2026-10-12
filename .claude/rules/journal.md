@@ -91,6 +91,11 @@ paths:
   + jadval), o'qituvchi ilovasida `/teacher/rating` (profil menyusidan), admin "O'quvchilar" ro'yxatida
   "Ball" ustuni + "Ball: yuqoridan/pastdan" saralash (TOP-3 ga medal).
 
+- **YANGI (CRM 4-bosqich) — o'quvchilar REYTINGI = testlar + ball** (`.claude/rules/rating.md`): ball komponenti
+  `StudentBallService.ComputeByGroupAsync(db, groupIds, from, to)` (SANA ORALIG'I varianti, oylik/umumiy bilan
+  AYNAN bir formula, SQL'da). Quyidagi "yig'ilgan ball" reytinglari (o'qituvchi reytingi, eski portal endpointi)
+  O'ZGARMADI. ⚠️ `RatingService.SchoolAsync` endi SQL agregatlari bilan (butun jurnal xotiraga yuklanmaydi) —
+  raqamlari eskisi bilan bir xil (`RatingEngineTests`).
 - **Reyting hamma joyda YIG'ILGAN BALL bo'yicha** (o'rtacha baho EMAS): `RatingService.SchoolAsync`
   `StudentBallService.ComputeAsync` dan `Ball` ni qo'shadi (`StudentRatingRowDto.Ball`,
   `PortalRatingRowDto.Ball`), o'quvchi portali guruh/markaz reytingi ball bo'yicha saralanadi va ballni

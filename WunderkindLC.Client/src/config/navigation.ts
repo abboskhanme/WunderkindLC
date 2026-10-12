@@ -38,6 +38,8 @@ export const mainReportRoutes = new Set([
   ...edutizimReportRoutes,
   '/admin/hisobotlar/yoqotilgan-lidlar',
   '/admin/hisobotlar/ketish-sabablari',
+  // O'quvchilar reytingi (testlar + ball) — CRM 4-bosqich: asosiy "Hisobotlar" guruhida.
+  '/admin/hisobotlar/reyting',
 ])
 
 /**
@@ -257,6 +259,8 @@ export const navByRole: Record<Role, NavItem[]> = {
         { label: 'Xodimlar reytingi', to: '/admin/teacher-reports', perm: 'teacherReports' },
         { label: "Yo'qotilgan lidlar", to: '/admin/hisobotlar/yoqotilgan-lidlar', perm: 'leads.stats' },
         { label: 'Ketish sabablari', to: '/admin/hisobotlar/ketish-sabablari', perm: 'teachers.retention' },
+        // O'quvchilar reytingi (testlar + ball) — CRM 4-bosqich (`.claude/rules/rating.md`).
+        { label: 'Reyting', to: '/admin/hisobotlar/reyting', perm: 'classes.rating' },
       ],
     },
     {

@@ -28,6 +28,7 @@ import {
   IconReceipt,
   IconSchool,
   IconSparkles,
+  IconTrophy,
   IconUserCheck,
   IconUserCog,
   IconWorld,
@@ -41,6 +42,7 @@ export type SettingsPanelKey = 'check' | 'school' | 'account' | 'reasons' | 'cha
 
 /** Qatordan ochiladigan oyna (mavjud modallar). */
 export type SettingsModalKey = 'journal-edit' | 'journal-payment' | 'journal-salary' | 'retention'
+  | 'rating'
 
 /** Ruxsat: `perm` — shu kalit (+ `action`), yo'q bo'lsa hamma ko'radi. */
 interface Gated {
@@ -171,6 +173,21 @@ export const SETTINGS_GROUPS: SettingsGroup[] = [
     label: "O'quv",
     to: '/admin/sozlamalar/oquv',
     items: [
+      {
+        // O'quvchilar reytingi (CRM 4-bosqich) — O'quv bandlarining BIRINCHISI (SPEC §8: birlashtirishda
+        // boshqa bosqich qo'shadigan bandlar bilan to'qnashmasin).
+        key: 'reyting',
+        label: 'Reyting',
+        icon: IconTrophy,
+        kind: 'rows',
+        rows: [
+          {
+            key: 'reyting', title: 'Reyting sozlamalari', icon: IconTrophy, color: VIOLET,
+            sub: 'Testlar va ball ulushi, oylik TOP/BOTTOM soni va qamrovi',
+            open: { modal: 'rating' }, perm: 'classes.rating', action: 'edit',
+          },
+        ],
+      },
       { key: 'sabablar', label: 'Sabablar', icon: IconListDetails, kind: 'panel', panel: 'reasons', perm: 'settings.reasons' },
       {
         key: 'jurnal',

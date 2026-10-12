@@ -188,6 +188,14 @@ export const reportGroups: ReportGroup[] = [
         inNav: true,
       },
       {
+        // SOF hisobot (yozuvchi amal yo'q — sozlama oynasi faqat tahrir huquqi bilan) va yangi sahifa.
+        label: 'Reyting',
+        to: '/admin/hisobotlar/reyting',
+        perm: 'classes.rating',
+        description: "O'quvchilar test natijalari va ball bo'yicha qaysi o'rinda (oy, 3 oy, o'quv yili)?",
+        inNav: true,
+      },
+      {
         label: 'Testlar natijalari',
         to: '/admin/test-results',
         perm: 'classes.testResults',

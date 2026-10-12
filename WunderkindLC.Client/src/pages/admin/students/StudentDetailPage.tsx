@@ -9,7 +9,9 @@ import {
   Snowflake, CheckCircle2, RotateCcw, ArrowLeftRight, Plus, NotebookText, X,
   StickyNote, Gift, BadgePercent, Trash2,
   DoorOpen, LogIn, LogOut, RefreshCw, Wifi, WifiOff,
+  Trophy,
 } from 'lucide-react'
+import { StudentRatingSection } from '@/components/rating/StudentRatingSection'
 import { genderLabel } from '@/config/constants'
 import {
   Bar, BarChart, Cell, CartesianGrid, Legend,
@@ -147,6 +149,7 @@ type Tab =
   | 'chegirma'
   | 'dastur'
   | 'baholar'
+  | 'reyting'
   | 'fikr'
   | 'testlar'
   | 'sertifikatlar'
@@ -1009,6 +1012,10 @@ export function StudentDetailPage() {
             <button type="button" className={cn('tab', tab === 'baholar' && 'active')} onClick={() => setTab('baholar')}>
               <GraduationCap className="mr-1 inline h-3.5 w-3.5" /> Baholar va davomat
             </button>
+            {/* Reyting — testlar + ball (markaz/guruh o'rni, 12 oylik tarix, testlar). CRM 4-bosqich. */}
+            <button type="button" className={cn('tab', tab === 'reyting' && 'active')} onClick={() => setTab('reyting')}>
+              <Trophy className="mr-1 inline h-3.5 w-3.5" /> Reyting
+            </button>
             <button type="button" className={cn('tab', tab === 'fikr' && 'active')} onClick={() => setTab('fikr')}>
               <LifeBuoy className="mr-1 inline h-3.5 w-3.5" /> Fikr-mulohaza
             </button>
@@ -1082,6 +1089,9 @@ export function StudentDetailPage() {
               onSaveDevice={saveTurnstileDevice}
             />
           )}
+
+          {/* Reyting — o'quvchi bloki (`components/rating/StudentRatingBlock`), davr tanlovi bilan. */}
+          {tab === 'reyting' && <StudentRatingSection studentId={data.id} />}
 
           {/* AI Tahlil — saqlangan tahlillar tarixi (kuniga bir marta) */}
           {tab === 'ai' && (

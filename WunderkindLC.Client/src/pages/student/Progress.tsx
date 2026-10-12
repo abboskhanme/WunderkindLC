@@ -2,30 +2,31 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   getStudentCurriculum,
-  getStudentRating,
   type StudentCurriculum,
   type CurriculumItem,
-  type StudentRating,
-  type RatingRow,
 } from '@/api/services/studentPortal'
+import { getStudentRatingSummary, type RatingTopRow, type StudentRatingSummary } from '@/api/services/rating'
+import { StudentRatingBlock } from '@/components/rating/StudentRatingBlock'
+import { defaultRatingPeriod, fmtScore, type RatingPeriodValue } from '@/lib/ratingPeriods'
+import { apiErrorMessage } from '@/lib/utils'
 import { Icon, Ring, subjectColor, initials, fmtDate } from '@/pages/student/lib'
 
 /* ============================================================
-   O'quvchi portali — Progress ekrani (Dastur / Guruh / Markaz).
+   O'quvchi portali — Progress ekrani (Dastur / Reyting).
    "Dastur" = Duolingo uslubidagi o'quv dasturi yo'l-xaritasi.
+   "Reyting" — testlar + ball (CRM 4-bosqich): eski «Guruh» va «Markaz» tablari
+   o'rniga bitta blok + guruh va markaz TOP ro'yxatlari. Qarzdorlik reytingni YOPMAYDI.
    ============================================================ */
 
-type Mode = 0 | 1 | 2
+type Mode = 0 | 1
 
 const SUBS = [
   "O'quv dasturi — o'tilgan / qolgan",
-  'Guruh reytingi — barcha o‘quvchilar',
-  'Markaz reytingi — TOP 15',
+  "Reyting — testlar va ball, guruhda va markazda",
 ]
 const TABS: Array<[string, string]> = [
   ['book', 'Dastur'],
-  ['award', 'Guruh'],
-  ['school', 'Markaz'],
+  ['award', 'Reyting'],
 ]
 
 /** Birinchi o'tilmagan band (kurs tartibida) — "hozir o'rganiladigan". */
@@ -390,171 +391,133 @@ function Node({
   )
 }
 
-function RatingView({ scope }: { scope: 'class' | 'school' }) {
-  const [board, setBoard] = useState<StudentRating | null>(null)
-  const [err, setErr] = useState<string | null>(null)
+/** Davr kaliti — javob qaysi tanlov uchun kelganini bilish. */
+const periodKey = (p: RatingPeriodValue) => `${p.kind}:${p.key}`
+
+/**
+ * «Reyting» — o'quvchi bloki (admin profilidagi bilan bir xil komponent, kabinet ko'rinishida) +
+ * guruh va markaz TOP ro'yxatlari («Siz» belgisi bilan). Manba: `GET /api/student/rating/summary`.
+ */
+function RatingCabinetView() {
+  const [period, setPeriod] = useState<RatingPeriodValue>(() => defaultRatingPeriod(new Date()))
+  const [res, setRes] = useState<{ key: string; data: StudentRatingSummary | null; error: string | null } | null>(null)
+  const key = periodKey(period)
+
   useEffect(() => {
     let on = true
-    getStudentRating()
-      .then((d) => on && setBoard(d))
-      .catch((e) => on && setErr(e?.message || String(e)))
+    const k = `${period.kind}:${period.key}`
+    getStudentRatingSummary({ period: period.kind, key: period.key })
+      .then((data) => on && setRes({ key: k, data, error: null }))
+      .catch((e) => on && setRes((prev) => ({ key: k, data: prev?.data ?? null, error: apiErrorMessage(e, "Reytingni yuklab bo'lmadi") })))
     return () => {
       on = false
     }
-  }, [])
+  }, [period.kind, period.key])
 
-  if (err) return <EmptyState title="Yuklab bo'lmadi" sub={err} ic="alert" />
-  if (!board) return <Loading />
-
-  const isSchool = scope === 'school'
-  const rows: RatingRow[] = isSchool ? board.schoolRows || [] : board.classRows || []
-  const meId = board.meStudentId
-  const me = rows.find((r) => r.studentId === meId)
-  const meRank = isSchool ? board.meSchoolRank || me?.rank || 0 : me?.rank || 0
-  const meTotal = isSchool ? board.schoolSize : (board.classRows || []).length
-
-  const medal = (r: number) => (r === 1 ? '#F5B301' : r === 2 ? '#9AA3B2' : r === 3 ? '#CD7F32' : null)
-
+  const data = res?.data ?? null
   return (
-    <div className="pad" style={{ paddingTop: 4, paddingBottom: 24 }}>
-      {me && meRank > 0 && (
-        <>
-          <div
-            className="card row"
-            style={{
-              gap: 18,
-              background: 'var(--accentSoft)',
-              borderColor: 'color-mix(in srgb,var(--accent) 25%,transparent)',
-              boxShadow: 'none',
-            }}
-          >
-            <div style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: 30, fontWeight: 800, lineHeight: 1, color: 'var(--accent)' }}>#{meRank}</div>
-              {meTotal > 0 && (
-                <div className="muted" style={{ fontSize: 11, fontWeight: 700 }}>
-                  {meTotal} dan
-                </div>
-              )}
-            </div>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div className="muted" style={{ fontSize: 13, fontWeight: 700 }}>
-                Sizning o'rningiz
-              </div>
-              <div
-                style={{
-                  fontSize: 16.5,
-                  fontWeight: 800,
-                  whiteSpace: 'nowrap',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                }}
-              >
-                {me.fullName}
-              </div>
-              {me.className && (
-                <div className="muted" style={{ fontSize: 12.5 }}>
-                  {me.className}
-                </div>
-              )}
-            </div>
-            <div style={{ textAlign: 'right' }}>
-              <div style={{ fontSize: 24, fontWeight: 800, lineHeight: 1, color: 'var(--accent)' }}>
-                {me.ball ?? 0}
-              </div>
-              <div className="muted" style={{ fontSize: 11, fontWeight: 700 }}>
-                ball
-              </div>
-            </div>
-          </div>
-          <div style={{ height: 16 }} />
-        </>
-      )}
+    <div className="pad" style={{ paddingTop: 4, paddingBottom: 28 }}>
+      <StudentRatingBlock
+        variant="cabinet"
+        data={data}
+        loading={res?.key !== key}
+        error={res?.key === key ? res.error : null}
+        period={period}
+        onPeriodChange={setPeriod}
+      >
+        {data && (
+          <>
+            {data.groupTop.map((g) => (
+              <TopList key={g.groupId} title={`${g.groupName} · guruh reytingi`} rows={g.rows} />
+            ))}
+            <TopList title="Markaz reytingi · TOP 10" rows={data.centreTop} />
+          </>
+        )}
+      </StudentRatingBlock>
+    </div>
+  )
+}
 
+/** TOP ro'yxat (kabinet uslubida): medal, bosh harflar, «Siz» belgisi va reyting bali. */
+function TopList({ title, rows }: { title: string; rows: RatingTopRow[] }) {
+  const medal = (r: number) => (r === 1 ? '#F5B301' : r === 2 ? '#9AA3B2' : r === 3 ? '#CD7F32' : null)
+  return (
+    <div>
       <div className="sh">
-        <div className="sh-title">{isSchool ? 'Markaz reytingi · TOP 15' : 'Guruh reytingi'}</div>
+        <div className="sh-title">{title}</div>
       </div>
-
       {rows.length ? (
         <div className="card" style={{ padding: 4 }}>
           {rows.map((e, i) => {
             const m = medal(e.rank)
-            const isMe = e.studentId === meId
+            const prevRank = i > 0 ? rows[i - 1].rank : 0
+            // Own row appended after the top 10: a thin gap shows the jump (e.g. 10 → 23).
+            const gap = i > 0 && e.rank - prevRank > 1 && e.isMe
             return (
-              <div
-                key={e.studentId + '_' + i}
-                className="row gap10"
-                style={{
-                  padding: 8,
-                  borderRadius: 12,
-                  background: isMe ? 'var(--accentSoft)' : undefined,
-                  borderBottom: !isMe && i < rows.length - 1 ? '1px solid var(--border)' : undefined,
-                }}
-              >
-                <div
-                  className="badge"
-                  style={{
-                    width: 36,
-                    height: 36,
-                    borderRadius: 11,
-                    color: m || 'var(--muted)',
-                    background: m ? `color-mix(in srgb,${m} 16%,transparent)` : 'var(--surface3)',
-                    fontSize: 15,
-                  }}
-                >
-                  {e.rank}
-                </div>
-                <div
-                  className="subj"
-                  style={{
-                    width: 36,
-                    height: 36,
-                    borderRadius: '50%',
-                    flex: 'none',
-                    background: 'linear-gradient(135deg,var(--accent),#5340c4)',
-                    color: '#fff',
-                    fontSize: 14,
-                  }}
-                >
-                  {initials(e.fullName)}
-                </div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div className="row gap6">
-                    <span
-                      style={{
-                        fontSize: 14.5,
-                        fontWeight: 700,
-                        whiteSpace: 'nowrap',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                      }}
-                    >
-                      {e.fullName}
-                    </span>
-                    {isMe && (
-                      <span
-                        className="chip"
-                        style={{ color: 'var(--accent)', background: 'color-mix(in srgb,var(--accent) 12%,transparent)', fontSize: 9.5 }}
-                      >
-                        Siz
-                      </span>
-                    )}
+              <div key={`${e.rank}_${i}`}>
+                {gap && (
+                  <div className="muted" style={{ textAlign: 'center', fontSize: 12, padding: '2px 0' }}>
+                    ⋯
                   </div>
-                  {isSchool && e.className && (
-                    <div className="muted" style={{ fontSize: 12 }}>
-                      {e.className}
-                    </div>
-                  )}
-                </div>
-                {/* Yig'ilgan ball (reyting shu bo'yicha) — o'rtacha baho kichik yozuvda */}
-                <div style={{ textAlign: 'right', flex: 'none' }}>
+                )}
+                <div
+                  className="row gap10"
+                  style={{
+                    padding: 8,
+                    borderRadius: 12,
+                    background: e.isMe ? 'var(--accentSoft)' : undefined,
+                    borderBottom: !e.isMe && i < rows.length - 1 ? '1px solid var(--border)' : undefined,
+                  }}
+                >
                   <div
-                    className="font-mono"
-                    style={{ fontSize: 17, fontWeight: 800, lineHeight: 1.1, color: m || 'var(--accent)' }}
+                    className="badge"
+                    style={{
+                      width: 36,
+                      height: 36,
+                      borderRadius: 11,
+                      color: m || 'var(--muted)',
+                      background: m ? `color-mix(in srgb,${m} 16%,transparent)` : 'var(--surface3)',
+                      fontSize: 15,
+                    }}
                   >
-                    {e.ball ?? 0}
+                    {e.rank}
                   </div>
-                  <div className="muted" style={{ fontSize: 10, fontWeight: 700 }}>
-                    ball
+                  <div
+                    className="subj"
+                    style={{
+                      width: 36,
+                      height: 36,
+                      borderRadius: '50%',
+                      flex: 'none',
+                      background: 'linear-gradient(135deg,#6366f1,#5340c4)',
+                      color: '#fff',
+                      fontSize: 14,
+                    }}
+                  >
+                    {initials(e.fullName)}
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div className="row gap6">
+                      <span style={{ fontSize: 14.5, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {e.fullName}
+                      </span>
+                      {e.isMe && (
+                        <span
+                          className="chip"
+                          style={{ color: 'var(--accent)', background: 'color-mix(in srgb,var(--accent) 12%,transparent)', fontSize: 9.5 }}
+                        >
+                          Siz
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <div style={{ textAlign: 'right', flex: 'none' }}>
+                    <div className="font-mono" style={{ fontSize: 17, fontWeight: 800, lineHeight: 1.1, color: m || '#6366f1' }}>
+                      {fmtScore(e.score)}
+                    </div>
+                    <div className="muted" style={{ fontSize: 10, fontWeight: 700 }}>
+                      reyting
+                    </div>
                   </div>
                 </div>
               </div>
@@ -563,7 +526,7 @@ function RatingView({ scope }: { scope: 'class' | 'school' }) {
         </div>
       ) : (
         <div className="card">
-          <EmptyState title="Reyting yo'q" sub="Reyting ma'lumoti topilmadi." ic="award" />
+          <EmptyState title="Reyting yo'q" sub="Bu davrda test ham, ball ham yo'q." ic="award" />
         </div>
       )}
     </div>
@@ -617,7 +580,7 @@ export function StudentProgressScreen() {
       </div>
 
       <div className="scroll">
-        {mode === 0 ? <DasturView /> : <RatingView scope={mode === 2 ? 'school' : 'class'} />}
+        {mode === 0 ? <DasturView /> : <RatingCabinetView />}
       </div>
     </div>
   )

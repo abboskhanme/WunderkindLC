@@ -74,19 +74,41 @@ public static class StudentBallService
     /// (<see cref="StudentBallAdjustment"/>) YOZILGAN oyiga tegishli deb hisoblanadi
     /// (<c>CreatedAt</c> boshlanishi "yyyy-MM"), ya'ni oy kesimida ham hisobga olinadi.</para>
     /// </summary>
-    public static async Task<Dictionary<(string StudentId, string GroupId), BallStat>> ComputeByGroupAsync(
-        IAppDbContext db, IReadOnlyCollection<string>? groupIds = null, string? month = null)
+    public static Task<Dictionary<(string StudentId, string GroupId), BallStat>> ComputeByGroupAsync(
+        IAppDbContext db, IReadOnlyCollection<string>? groupIds = null, string? month = null) =>
+        // Bo'sh satr = filtr yo'q (Umumiy) — controllerdan "?month=" bo'sh kelsa ham to'g'ri ishlasin.
+        ComputeCoreAsync(db, groupIds, string.IsNullOrEmpty(month) ? null : month, null, null);
+
+    /// <summary>
+    /// <b>SANA ORALIG'I</b> bo'yicha per-guruh ball (CRM reyting dvigateli, <c>Services/Rating</c>):
+    /// jurnal va mezon belgilari <c>Date</c> bo'yicha <paramref name="fromDate"/>..<paramref name="toDate"/>
+    /// (ikkalasi ham kiradi, "yyyy-MM-dd"), qo'lda tuzatish esa <c>CreatedAt</c> bo'yicha shu kunlar ichida
+    /// (<paramref name="toDate"/> ning oxirigacha). Formula oylik/umumiy variant bilan AYNAN bir xil —
+    /// hisob SQL'da (GROUP BY), jurnal qatorlari xotiraga yuklanmaydi.
+    /// </summary>
+    public static Task<Dictionary<(string StudentId, string GroupId), BallStat>> ComputeByGroupAsync(
+        IAppDbContext db, IReadOnlyCollection<string>? groupIds, string fromDate, string toDate)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(fromDate);
+        ArgumentException.ThrowIfNullOrEmpty(toDate);
+        return ComputeCoreAsync(db, groupIds, null, fromDate, toDate);
+    }
+
+    private static async Task<Dictionary<(string StudentId, string GroupId), BallStat>> ComputeCoreAsync(
+        IAppDbContext db, IReadOnlyCollection<string>? groupIds, string? m, string? from, string? to)
     {
         var result = new Dictionary<(string, string), BallStat>();
         if (groupIds is { Count: 0 }) return result;
-        // Bo'sh satr = filtr yo'q (Umumiy) — controllerdan "?month=" bo'sh kelsa ham to'g'ri ishlasin.
-        var m = string.IsNullOrEmpty(month) ? null : month;
+        // Tuzatishning yuqori chegarasi — KEYINGI kun (qat'iy kichik): "yyyy-MM-ddTHH:mm:ss" ning har qanday
+        // ko'rinishi (soniya kasri bilan ham) oxirgi kun ichida qoladi.
+        var adjustUntil = to is null ? null : NextDay(to);
 
         // Jurnal baholari — GURUH (ClassId) ham guruhlash kalitida. Mezondan avtomatik yozilgan baho
         // KIRMAYDI (u checklar sifatida pastda sanaladi — ikki marta emas).
         var jq = db.JournalEntries.AsNoTracking().Where(e => e.Grade != null && !e.GradeFromCriteria);
         if (groupIds is not null) jq = jq.Where(e => groupIds.Contains(e.ClassId));
         if (m is not null) jq = jq.Where(e => e.Date.StartsWith(m));
+        if (from is not null) jq = jq.Where(e => e.Date.CompareTo(from) >= 0 && e.Date.CompareTo(to!) <= 0);
         var journal = await jq
             .GroupBy(e => new { e.StudentId, e.ClassId })
             .Select(g => new
@@ -101,6 +123,7 @@ public static class StudentBallService
         var cq = db.CriterionGrades.AsNoTracking().Where(g => g.Done);
         if (groupIds is not null) cq = cq.Where(g => groupIds.Contains(g.GroupId));
         if (m is not null) cq = cq.Where(g => g.Date.StartsWith(m));
+        if (from is not null) cq = cq.Where(g => g.Date.CompareTo(from) >= 0 && g.Date.CompareTo(to!) <= 0);
         var criteria = await cq
             .GroupBy(g => new { g.StudentId, g.GroupId })
             .Select(g => new { g.Key.StudentId, g.Key.GroupId, Done = g.Count() })
@@ -109,6 +132,7 @@ public static class StudentBallService
         var aq = db.StudentBallAdjustments.AsNoTracking();
         if (groupIds is not null) aq = aq.Where(a => groupIds.Contains(a.GroupId));
         if (m is not null) aq = aq.Where(a => a.CreatedAt.StartsWith(m));
+        if (from is not null) aq = aq.Where(a => a.CreatedAt.CompareTo(from) >= 0 && a.CreatedAt.CompareTo(adjustUntil!) < 0);
         var adjustments = await aq
             .GroupBy(a => new { a.StudentId, a.GroupId })
             .Select(g => new { g.Key.StudentId, g.Key.GroupId, Delta = g.Sum(x => x.Delta) })
@@ -126,6 +150,13 @@ public static class StudentBallService
                 : new BallStat(0, 0, 0, a.Delta);
         return result;
     }
+
+    /// <summary>"yyyy-MM-dd" → keyingi kun ("yyyy-MM-dd"); buzuq sana bo'lsa — o'zi (chegara qat'iy bo'ladi).</summary>
+    private static string NextDay(string date) =>
+        DateOnly.TryParseExact(date.Length >= 10 ? date[..10] : date, "yyyy-MM-dd",
+            System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out var d)
+            ? d.AddDays(1).ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture)
+            : date;
 
     /// <summary>
     /// Per-guruh statlarni O'QUVCHI bo'yicha jamlaydi (jami, o'rtacha, guruhlar kesimi).

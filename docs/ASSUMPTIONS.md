@@ -460,3 +460,14 @@
   deletes its vault row → no orphan encrypted passwords.
 - [2026-10-12] U6a — `McpReadOnlyGrants.Forbidden` += `StudentCredential` (SPEC P6.3)? → left to U6m (MCP unit,
   "do not touch MCP") → already closed today: the column name contains "Password" and no tool lists the table.
+- [2026-10-12] U4b rating — attendance line of the student block: `AttendanceRules` (U3a) is not merged yet → use `StudentJournalBuilder.PeriodAsync` (the student app's own numbers, one student's rows only) → U3a moves that builder to the single definition, so the block follows without a second copy.
+- [2026-10-12] U4b rating — `tests[].kind` before U4a adds `TestResult.Kind` → returned as "" (badge hidden) → U4a is a later unit; percent = Score ÷ MaxScore already works unchanged once MaxScore = QuestionCount.
+- [2026-10-12] U4b rating — `GET api/admin/rating/top-bottom` → left to U4d (needs `TopBottomRules`, U4d's file) → avoid writing U4d's rule twice; settings for it (count/scope) are stored now.
+- [2026-10-12] U4b rating — "previous period" of «3 oy» for the ▲/▼ arrow → the three months right BEFORE the window (Aug–Oct vs May–Jul), not the window shifted by one month → comparing overlapping windows would mostly compare the same data.
+- [2026-10-12] U4b rating — centre-level T (components, centre table) → mean over ALL the student's tests (each test equal weight), not the mean of group T's → same "each test equal weight" principle as the group T.
+- [2026-10-12] U4b rating — who is in a group's table → students with a test or ball in the period (any membership state) first; current active/trial members without data follow unranked («—») → the teacher sees who has nothing yet; frozen members are omitted.
+- [2026-10-12] U4b rating — B for a student with tests but no ball rows in a group whose best ball > 0 → B = 0 (counts) → SPEC: B = Ball ÷ best × 100, absent only when the group's best is 0.
+- [2026-10-12] U4b rating — rank inside a single test (block «Testlarim») → among everyone scored in that test, archived included → same rule as `TestResultService` (detail/student results).
+- [2026-10-12] U4b rating — cache key → `rating:v2:{kind}:{key}:{to}` (SPEC key + clipped end date) → the current period grows daily; without `to` a cached month could miss today's data for up to 15 min after midnight.
+- [2026-10-12] U4b rating — `CenterMeta.RatingTestWeight` default for the existing row → set to 60 by data SQL in the migration (`docs/migrations/Phase4.sql`), no `HasDefaultValue` in the model → 0 is a valid weight and EF would silently drop an explicit 0 on INSERT with a DB default.
+- [2026-10-12] U4c rating UI — cabinet top lists → per group: top 10 + own row; centre: top 10 + own row; other students shown with name, rank and score only (no id) → SPEC shape; ids are not needed by the cabinet.

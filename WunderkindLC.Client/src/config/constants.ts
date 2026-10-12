@@ -160,6 +160,7 @@ export const adminPermissions: AdminPermSection[] = [
       { key: 'classes.list', label: 'Guruhlar va jurnal' },
       { key: 'classes.rooms', label: 'Xonalar' },
       { key: 'classes.testResults', label: 'Testlar natijalari' },
+      { key: 'classes.rating', label: 'Reyting' },
       { key: 'classes.notAttended', label: 'Davomat qilinmagan guruhlar' },
     ],
   },
