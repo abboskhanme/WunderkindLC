@@ -58,7 +58,8 @@ can execute them.
    migration adds — stays closed.
 4. **Self-test, fail-closed.** `McpReadOnlyRole.SelfTest` must prove the connection is `wlc_ro`,
    not a superuser, read-only, owns nothing, holds no non-SELECT privilege, cannot read
-   `Users.PasswordHash` nor any column with a sensitive name. Otherwise `/mcp` answers 503 and `/oauth/*` 404. There is no fallback to
+   `Users.PasswordHash` nor any column with a sensitive name, nor a single column of a `Forbidden` table
+   (`has_any_column_privilege` — e.g. the student password vault `StudentCredentials`, 2026-10-12). Otherwise `/mcp` answers 503 and `/oauth/*` 404. There is no fallback to
    the read/write connection. Off by default: without `MCP_DB_RO_PASSWORD` nothing is registered.
 5. **Output scrub.** `McpToolContext.Json` removes every property whose name looks like a
    credential (`IsSecretName`), however it got into the payload. **Every string value** goes through
@@ -226,23 +227,26 @@ how leadership connects from Claude / ChatGPT.
 - Modules scheduled for removal in the same upgrade (push, group chat, SMS, Local Call / CTI,
   online test authoring) get no tools.
 
-## 9. Tool catalog (generated 2026-10-11)
+## 9. Tool catalog (generated 2026-10-12)
 
 | Class | Tool | Title (Uzbek) | Area |
 |---|---|---|---|
-| AnalyticsTools | `course_analytics` | Kurslar analitikasi | CourseAnalytics |
-| AnalyticsTools | `school_grades_breakdown` | Sinflar kesimi | Students |
+| OverviewTools | `center_overview` | Markaz bo'yicha umumiy ko'rsatkichlar | Any |
+| StudentTools | `students_search` | O'quvchilarni qidirish | Students |
+| StudentTools | `student_profile` | O'quvchi kartochkasi | Students |
+| GroupTools | `groups_list` | Guruhlar ro'yxati | Groups |
+| GroupTools | `group_roster` | Guruh a'zolari | Groups |
+| GroupTools | `group_journal` | Guruh jurnali (oylik xulosa) | Groups |
+| GroupTools | `rooms_list` | Xonalar | Rooms |
+| GroupTools | `courses_list` | Kurslar | Courses |
 | AttendanceTools | `attendance_daily` | Kunlik davomat (kelmaganlar) | StudentAttendance |
 | AttendanceTools | `attendance_not_taken` | Davomat qilinmagan guruhlar | NotAttended |
-| AttendanceTools | `student_attendance` | O'quvchi davomati (davr bo'yicha) | Students |
+| AttendanceTools | `student_attendance` | O'quvchi davomati (davr bo'yicha) | Students or StudentAttendance |
 | AttendanceTools | `absence_reasons` | Davomat sabablari | StudentAttendance |
-| BackOfficeTools | `contracts_list` | Shartnomalar | Contracts |
-| BackOfficeTools | `books_stock` | Kitoblar ombori | Books |
-| BackOfficeTools | `book_orders` | Kitob buyurtmalari | Books |
-| BackOfficeTools | `feedback_list` | Taklif va shikoyatlar | Feedback |
-| BackOfficeTools | `vacancies_list` | Vakansiyalar | Vacancies |
-| BackOfficeTools | `job_applications` | Ishga arizalar | Vacancies |
-| BackOfficeTools | `onboarding_list` | Yangi xodimlar moslashuvi | Onboarding |
+| LeadTools | `leads_list` | Lidlar ro'yxati | Leads |
+| LeadTools | `lead_detail` | Lid kartochkasi | Leads |
+| LeadTools | `leads_funnel` | CRM statistika (voronka) | LeadStats |
+| LeadTools | `lead_stages` | Lid bosqichlari va manbalari | Leads |
 | FinanceTools | `finance_summary` | Moliyaviy xulosa | Finance |
 | FinanceTools | `finance_transactions` | Moliyaviy amallar jurnali | Finance |
 | FinanceTools | `finance_debtors` | Qarzdorlar | Finance |
@@ -250,34 +254,68 @@ how leadership connects from Claude / ChatGPT.
 | FinanceTools | `cashboxes` | Kassalar | Kassa |
 | FinanceTools | `teacher_salaries` | O'qituvchilar maoshi | Finance |
 | FinanceTools | `discounts_report` | Chegirmalar hisoboti | Discounts |
-| GroupTools | `groups_list` | Guruhlar ro'yxati | Groups |
-| GroupTools | `group_roster` | Guruh a'zolari | Groups |
-| GroupTools | `group_journal` | Guruh jurnali (oylik xulosa) | Groups |
-| GroupTools | `rooms_list` | Xonalar | Rooms |
-| GroupTools | `courses_list` | Kurslar | Courses |
-| LeadTools | `leads_list` | Lidlar ro'yxati | Leads |
-| LeadTools | `lead_detail` | Lid kartochkasi | Leads |
-| LeadTools | `leads_funnel` | CRM statistika (voronka) | LeadStats |
-| LeadTools | `lead_stages` | Lid bosqichlari va manbalari | Leads |
+| TeacherTools | `teachers_list` | O'qituvchilar ro'yxati | Teachers |
+| TeacherTools | `teacher_profile` | O'qituvchi kartochkasi | Teachers |
+| TeacherTools | `staff_list` | Xodimlar (panel akkauntlari) | Staff |
+| TeacherTools | `substitutions_list` | O'rinbosar o'qituvchilar | Substitutions |
+| ScheduleTools | `schedule_day` | Kunlik dars jadvali | Timetable |
+| ScheduleTools | `schedule_gaps` | Jadvaldagi bo'sh oraliqlar | Timetable |
+| ScheduleTools | `schedule_week` | Dars jadvali (kun / hafta, sanalar bo'yicha) | Timetable |
+| ScheduleTools | `schedule_conflicts` | Jadvaldagi to'qnashuvlar | Timetable |
+| TestTools | `tests_list` | Testlar natijalari ro'yxati | TestResults |
+| TestTools | `test_scores` | Test ballari (o'rinlar bilan) | TestResults |
+| TestTools | `student_tests` | O'quvchining test natijalari | TestResults |
+| TestTools | `rating_group` | Guruh reytingi (yig'ilgan ball) | Groups |
+| TestTools | `rating_center` | Markaz reytingi (TOP o'quvchilar) | Students |
 | OperationsTools | `contact_queue` | Bog'lanish kerak navbati | Contacts |
 | OperationsTools | `contact_report` | Bog'lanish hisoboti | ContactReport |
 | OperationsTools | `tasks_list` | Topshiriqlar ro'yxati | Tasks |
 | OperationsTools | `messages_history` | Telegram e'lonlari tarixi | Messages |
 | OperationsTools | `auto_message_rules` | Avto-xabar qoidalari | Messages |
 | OperationsTools | `audit_log` | O'zgarishlar tarixi | Audit |
-| OverviewTools | `center_overview` | Markaz bo'yicha umumiy ko'rsatkichlar | Any |
-| ScheduleTools | `schedule_day` | Kunlik dars jadvali | Timetable |
-| ScheduleTools | `schedule_gaps` | Jadvaldagi bo'sh oraliqlar | Timetable |
-| StudentTools | `students_search` | O'quvchilarni qidirish | Students |
-| StudentTools | `student_profile` | O'quvchi kartochkasi | Students |
-| TeacherTools | `teachers_list` | O'qituvchilar ro'yxati | Teachers |
-| TeacherTools | `teacher_profile` | O'qituvchi kartochkasi | Teachers |
-| TeacherTools | `staff_list` | Xodimlar (panel akkauntlari) | Staff |
-| TeacherTools | `substitutions_list` | O'rinbosar o'qituvchilar | Substitutions |
-| TestTools | `tests_list` | Testlar natijalari ro'yxati | TestResults |
-| TestTools | `test_scores` | Test ballari (o'rinlar bilan) | TestResults |
-| TestTools | `student_tests` | O'quvchining test natijalari | TestResults |
-| TestTools | `rating_group` | Guruh reytingi (yig'ilgan ball) | Groups |
-| TestTools | `rating_center` | Markaz reytingi (TOP o'quvchilar) | Students |
+| AnalyticsTools | `course_analytics` | Kurslar analitikasi | CourseAnalytics |
+| AnalyticsTools | `school_grades_breakdown` | Sinflar kesimi | Students |
+| BackOfficeTools | `contracts_list` | Shartnomalar | Contracts |
+| BackOfficeTools | `books_stock` | Kitoblar ombori | Books |
+| BackOfficeTools | `book_orders` | Kitob buyurtmalari | Books |
+| BackOfficeTools | `feedback_list` | Taklif va shikoyatlar | Feedback |
+| BackOfficeTools | `vacancies_list` | Vakansiyalar | Vacancies |
+| BackOfficeTools | `job_applications` | Ishga arizalar | Vacancies |
+| BackOfficeTools | `onboarding_list` | Yangi xodimlar moslashuvi | Onboarding |
+| MessagingTools | `message_campaign_report` | Telegram e'lon hisoboti | Messages |
+| MessagingTools | `message_deliveries` | Telegram xabarlar jurnali | Messages (one student: Students too) |
+| MessagingTools | `auto_message_stats` | Avto-xabarlar statistikasi | Messages |
+| MessagingTools | `student_achievements` | O'quvchilar yutuqlari | Students |
+| AttendanceControlTools | `attendance_red_list` | Qizil ro'yxat (ketma-ket kelmaganlar) | StudentAttendance |
+| AttendanceControlTools | `attendance_discipline` | Davomat intizomi (o'z vaqtida olinmagan darslar) | NotAttended |
+| AttendanceControlTools | `teacher_attendance_fines` | Davomat jarimalari | Finance |
+| RatingTools | `rating_report` | Reyting (testlar + ball) — markaz | Rating |
+| RatingTools | `rating_group_report` | Reyting (testlar + ball) — guruh | RatingGroup |
+| RatingTools | `student_rating` | O'quvchi reytingi (davr bo'yicha) | StudentRating |
 
-49 tools. Areas → permission keys: `WunderkindLC.Application/Mcp/McpAreas.cs`.
+61 tools. Areas → permission keys: `WunderkindLC.Application/Mcp/McpAreas.cs`.
+
+CRM upgrade additions (2026-10-12, `docs/SPEC-crm-upgrade.md` U2m–U6m):
+
+- **Messaging (U2m)** — `MessagingTools`; `messages_history` gained kind/status and the delivery counts of
+  `MessagingReports` (total, sent, failed, blocked, pending, acked; legacy rows fall back to the stored counts);
+  `auto_message_rules` gained `ackButton`, `hasAttachment`, `schedule.mode`; `students_search` / `student_profile`
+  show the Telegram link status (usable chats by relation, blocked chats; "linked" = a non-blocked chat — the panel's
+  column). `MessageDelivery.ChatId`, `MessageAttachment.FileUrl/TelegramFileId` are closed by the column-name rule
+  and never selected.
+- **Attendance (U3m)** — the single definition: "taken" = `LessonNote.AttendanceTakenAt` (first mark; a grade alone
+  is not attendance), "unexcused" = `AbsenceReason.IsExcused == false` (the name heuristic is gone), late = attended,
+  `student_attendance` returns the `AttendanceRules` mark per lesson; `absence_reasons` returns `isExcused`;
+  `teacher_salaries` returns `attendanceFines`/`attendanceFineCount`. `AttendanceControlTools` reuse
+  `AbsenceStreakLoader`, `AttendanceDiscipline.Decide` and `AttendanceFineQueries` (fines: finance only; the
+  discipline report hides fine amounts without finance access).
+- **Rating (U4m)** — `RatingTools` slice `RatingEngine` exactly like `RatingController` (period month / quarter /
+  year; MCP cache 5 min with the panel's key). `rating_group` / `rating_center` stay as the legacy ball-only views.
+- **Workspace (U5m)** — `schedule_week` = `DatedSchedule.LoadAsync` + `Build` (≤ 7 days, floors), `schedule_conflicts`
+  = `RoomConflictService.AllPairsAsync`, `schedule_day` / `rooms_list` show the floor, `tasks_list` returns the
+  approval state (`WorkTaskApproval.State`), `state=awaiting|approved`, `createdById`.
+- **Accounts (U6m)** — nothing reveals a password: `StudentCredential` is on `McpReadOnlyGrants.Forbidden`, no tool
+  source names it (test), and the self-test checks forbidden tables with `has_any_column_privilege` (a column-level
+  grant of a single "harmless" column switches MCP off).
+- `CenterMeta` allow-list += `AttendanceDisciplineEnabled`, `AttendanceDeadlineMinutes`, `AttendanceFineEnabled`,
+  `AttendanceFineAmount`, `RatingTestWeight` (plain settings; without the weight the reduced model could not read it).

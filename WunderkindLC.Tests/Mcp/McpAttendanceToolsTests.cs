@@ -22,7 +22,7 @@ public class McpAttendanceToolsTests
     private static void Reasons(AppDbContext db) =>
         db.AbsenceReasons.AddRange(
             new AbsenceReason { Id = "rS", Name = "Sababsiz", Short = "S" },
-            new AbsenceReason { Id = "rK", Name = "Kasal", Short = "K" },
+            new AbsenceReason { Id = "rK", Name = "Kasal", Short = "K", IsExcused = true },
             new AbsenceReason { Id = "rL", Name = "Kech keldi", Short = "Kech", IsLate = true });
 
     // ================================================================== attendance_daily
@@ -70,9 +70,9 @@ public class McpAttendanceToolsTests
             M("s1", "g1"), M("s2", "g1"), M("s3", "g1"), frozen, M("s5", "g1"), M("s6", "g1", from: "2026-09-20"), left,
             M("s3", "g2"), M("s8", "g2"));
         db.LessonNotes.AddRange(
-            new LessonNote { ClassId = "g1", SubjectId = "c1", Date = Day, Period = 1, Conducted = true, AttendanceTaken = true },
-            new LessonNote { ClassId = "g2", SubjectId = "c2", Date = Day, Period = 1, Conducted = true, AttendanceTaken = true },
-            new LessonNote { ClassId = "g1", SubjectId = "c1", Date = "2026-09-15", Period = 1, Conducted = true, AttendanceTaken = true });
+            new LessonNote { ClassId = "g1", SubjectId = "c1", Date = Day, Period = 1, Conducted = true, AttendanceTaken = true, AttendanceTakenAt = new DateTime(2026, 9, 14, 14, 5, 0) },
+            new LessonNote { ClassId = "g2", SubjectId = "c2", Date = Day, Period = 1, Conducted = true, AttendanceTaken = true, AttendanceTakenAt = new DateTime(2026, 9, 14, 9, 5, 0) },
+            new LessonNote { ClassId = "g1", SubjectId = "c1", Date = "2026-09-15", Period = 1, Conducted = true, AttendanceTaken = true, AttendanceTakenAt = new DateTime(2026, 9, 15, 14, 3, 0) });
         db.JournalEntries.AddRange(
             new JournalEntry { ClassId = "g1", SubjectId = "c1", StudentId = "s1", Date = Day, Period = 1, ReasonId = "rS" },
             new JournalEntry { ClassId = "g1", SubjectId = "c1", StudentId = "s2", Date = Day, Period = 1, ReasonId = "rL" },
@@ -212,7 +212,7 @@ public class McpAttendanceToolsTests
             GroupId = "g3", OriginalTeacherId = "t1", SubstituteTeacherId = "t2", Date = Day, SelectedDates = [Day],
             IsActive = true, Reason = "Kasal",
         });
-        db.LessonNotes.Add(new LessonNote { ClassId = "g1", SubjectId = "c1", Date = Day, Period = 1, Conducted = true, AttendanceTaken = true });
+        db.LessonNotes.Add(new LessonNote { ClassId = "g1", SubjectId = "c1", Date = Day, Period = 1, Conducted = true, AttendanceTaken = true, AttendanceTakenAt = new DateTime(2026, 9, 14, 14, 5, 0) });
         db.Students.AddRange(
             new Student { Id = "s1", FullName = "Ali" }, new Student { Id = "s2", FullName = "Bobur" }, new Student { Id = "s3", FullName = "Charos" });
         db.StudentGroups.AddRange(
@@ -455,6 +455,109 @@ public class McpAttendanceToolsTests
         Assert.Equal("Kech", late.GetProperty("short").GetString());
         Assert.True(late.GetProperty("isLate").GetBoolean());
         host.AssertReadsOnlyDeclared(typeof(AttendanceTools));
+    }
+
+    // ================================================================== yagona ta'rif (CRM Phase 3, U3m)
+
+    [Fact]
+    public async Task Kunlik_davomat_faqat_baho_qoyilgan_dars_davomat_olingan_EMAS()
+    {
+        using var host = new McpTestHost();
+        SeedDaily(host);
+        // 16-sentabr: dars «o'tildi», faqat baho qo'yilgan — birinchi davomat belgisi YO'Q.
+        host.Rw.LessonNotes.Add(new LessonNote { ClassId = "g1", SubjectId = "c1", Date = "2026-09-16", Period = 1, Conducted = true });
+        host.Rw.JournalEntries.Add(new JournalEntry { ClassId = "g1", SubjectId = "c1", StudentId = "s1", Date = "2026-09-16", Period = 1, Grade = 5 });
+        host.Rw.SaveChanges();
+
+        var json = McpTestHost.Parse(await host.Tool<AttendanceTools>(McpTestHost.SuperAdmin()).AttendanceDaily("2026-09-16"));
+
+        Assert.Equal(0, json.GetProperty("summary").GetProperty("conductedGroups").GetInt32());
+        Assert.Equal(0, json.GetProperty("summary").GetProperty("markedStudents").GetInt32());
+    }
+
+    [Fact]
+    public async Task Kunlik_davomat_sababsiz_NOMDAN_emas_BELGIDAN()
+    {
+        using var host = new McpTestHost();
+        SeedDaily(host);
+        // Nomida "sababsiz" so'zi YO'Q, lekin «Sababli (uzrli)» belgisi ham yo'q — sababsiz sanaladi.
+        host.Rw.AbsenceReasons.Add(new AbsenceReason { Id = "rX", Name = "Dars qoldirdi", Short = "Q" });
+        host.Rw.JournalEntries.Single(e => e.StudentId == "s8" && e.Date == Day).ReasonId = "rX";
+        host.Rw.SaveChanges();
+
+        var json = McpTestHost.Parse(await host.Tool<AttendanceTools>(McpTestHost.SuperAdmin()).AttendanceDaily(Day));
+        var sum = json.GetProperty("summary");
+
+        Assert.Equal(2, sum.GetProperty("unexcused").GetInt32());   // s1 (Sababsiz) + s8 (Dars qoldirdi)
+        Assert.Equal(0, sum.GetProperty("excused").GetInt32());
+        var hamid = json.GetProperty("items").EnumerateArray().Single(i => i.GetProperty("studentId").GetString() == "s8");
+        Assert.False(hamid.GetProperty("reason").GetProperty("isExcused").GetBoolean());
+
+        // Asl seed: «Kasal» — sababli (uzrli).
+        using var host2 = new McpTestHost();
+        SeedDaily(host2);
+        var orig = McpTestHost.Parse(await host2.Tool<AttendanceTools>(McpTestHost.SuperAdmin()).AttendanceDaily(Day));
+        Assert.Equal(1, orig.GetProperty("summary").GetProperty("excused").GetInt32());
+        Assert.True(orig.GetProperty("items").EnumerateArray().Single(i => i.GetProperty("studentId").GetString() == "s8")
+            .GetProperty("reason").GetProperty("isExcused").GetBoolean());
+    }
+
+    [Fact]
+    public async Task Davomat_olinmagan_monitori_bahoni_davomat_deb_hisoblamaydi()
+    {
+        using var host = new McpTestHost();
+        SeedLessons(host);
+        // g2 — faqat «o'tildi» (baho), birinchi davomat belgisi yo'q: hamon OLINMAGAN.
+        host.Rw.LessonNotes.Add(new LessonNote { ClassId = "g2", SubjectId = "c1", Date = Day, Period = 1, Conducted = true });
+        host.Rw.SaveChanges();
+
+        var json = McpTestHost.Parse(await host.Tool<AttendanceTools>(McpTestHost.SuperAdmin()).AttendanceNotTaken(Day));
+
+        Assert.Equal(1, json.GetProperty("summary").GetProperty("attendanceDone").GetInt32());   // faqat g1
+        Assert.Contains("g2", Ids(json, "groupId"));
+    }
+
+    [Fact]
+    public async Task Oquvchi_davomati_yagona_belgi_va_sababli_sababsiz()
+    {
+        using var host = new McpTestHost();
+        SeedStudent(host);
+
+        var json = McpTestHost.Parse(await host.Tool<AttendanceTools>(McpTestHost.SuperAdmin())
+            .StudentAttendance("s1", "2026-09-01", "2026-09-30"));
+        var items = json.GetProperty("items").EnumerateArray().ToDictionary(i => i.GetProperty("date").GetString()!);
+
+        Assert.Equal("present", items["2026-09-18"].GetProperty("mark").GetString());
+        Assert.Equal("unmarked", items["2026-09-16"].GetProperty("mark").GetString());
+        Assert.Equal("absent_excused", items["2026-09-15"].GetProperty("mark").GetString());   // Kasal
+        Assert.True(items["2026-09-15"].GetProperty("reason").GetProperty("isExcused").GetBoolean());
+        Assert.Equal("rK", items["2026-09-15"].GetProperty("reason").GetProperty("id").GetString());
+        Assert.Equal("late", items["2026-09-14"].GetProperty("mark").GetString());
+        Assert.Equal("present", items["2026-09-11"].GetProperty("mark").GetString());           // davomat olingan, belgisiz
+        Assert.Equal("absent_unexcused", items["2026-09-09"].GetProperty("mark").GetString());
+        Assert.False(items["2026-09-09"].GetProperty("reason").GetProperty("isExcused").GetBoolean());
+
+        var totals = json.GetProperty("totals");
+        Assert.Equal(1, totals.GetProperty("absentExcused").GetInt32());
+        Assert.Equal(1, totals.GetProperty("absentUnexcused").GetInt32());
+        Assert.Equal(totals.GetProperty("absent").GetInt32(),
+            totals.GetProperty("absentExcused").GetInt32() + totals.GetProperty("absentUnexcused").GetInt32());
+        host.AssertReadsOnlyDeclared(typeof(AttendanceTools));
+    }
+
+    [Fact]
+    public async Task Sabablar_katalogida_sababli_belgisi()
+    {
+        using var host = new McpTestHost();
+        Reasons(host.Rw);
+        host.Rw.SaveChanges();
+
+        var json = McpTestHost.Parse(await host.Tool<AttendanceTools>(McpTestHost.SuperAdmin()).AbsenceReasons());
+        var byId = json.GetProperty("items").EnumerateArray().ToDictionary(i => i.GetProperty("id").GetString()!);
+
+        Assert.True(byId["rK"].GetProperty("isExcused").GetBoolean());
+        Assert.False(byId["rS"].GetProperty("isExcused").GetBoolean());
+        Assert.False(byId["rL"].GetProperty("isExcused").GetBoolean());
     }
 
     // ================================================================== ruxsat

@@ -35,7 +35,7 @@ public sealed class FinanceTools(McpToolContext t)
         typeof(CenterMeta), typeof(GroupTeacherAssignment), typeof(SubstituteTeacherAssignment),
         typeof(LessonNote), typeof(LessonReschedule),
         // SalaryLedger subtracts ACTIVE attendance fines (CRM Phase 3, U3c) — the read-only role needs the table,
-        // otherwise teacher_salaries fails with "permission denied". Fine LINES are U3m's job.
+        // otherwise teacher_salaries fails with "permission denied". The fine LIST is teacher_attendance_fines.
         typeof(TeacherAttendanceFine),
     ];
 
@@ -545,7 +545,8 @@ public sealed class FinanceTools(McpToolContext t)
         ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
     [Description("Bir oy uchun o'qituvchilar maoshi — Moliya → O'qituvchilar bilan BIR XIL hisob (SalaryLedger): "
         + "hisoblangan maosh (qat'iy yoki guruh to'lovlaridan foiz), jurnalda belgilanmagan darslar uchun ushlanma, "
-        + "o'rinbosarlik haqi/ushlanmasi, berilgan maosh va qoldiq; foizli maoshda baza (hisoblangan yoki yig'ilgan pul) va "
+        + "o'rinbosarlik haqi/ushlanmasi, davomat jarimalari (davomat o'z vaqtida olinmagan darslar), berilgan maosh va "
+        + "qoldiq; foizli maoshda baza (hisoblangan yoki yig'ilgan pul) va "
         + "«hozir chiqadigan» summa. Maosh qaysi oy uchun berilgani hisoblanadi (iyul maoshi avgustda berilsa ham iyulga). "
         + "Faol o'qituvchilar va shu oy uchun maosh olgan arxivdagilar. Moliya ruxsati kerak. "
         + "Accrued salary, deductions, paid and remaining per teacher for one month, as the panel computes them.")]
@@ -594,6 +595,10 @@ public sealed class FinanceTools(McpToolContext t)
                 lessons = row is null ? null : new { planned = row.PlannedLessons, conducted = row.ConductedLessons, missed = row.MissedLessons },
                 substituteFee = row?.SubstituteFee ?? 0m,
                 substituteDeduction = row?.SubstituteDeduction ?? 0m,
+                // Attendance fines of the month (CRM Phase 3, U3c): ACTIVE fines, capped at what is left after the
+                // journal deduction — already subtracted from «accrued». List: teacher_attendance_fines.
+                attendanceFines = row?.AttendanceFines ?? 0m,
+                attendanceFineCount = row?.AttendanceFineCount ?? 0,
                 percentBase = row is null || ledger.SalaryMode != "percent" ? null
                     : new { amount = row.SalaryBase, fromCharged = row.ChargedBase, collected = row.Collected, charged = row.Charged },
                 paid = row?.Paid ?? payments.Sum(pm => pm.Amount),
@@ -608,8 +613,9 @@ public sealed class FinanceTools(McpToolContext t)
             month = m, total, page = p, pageSize = size,
             totalPaid = monthPayments.Sum(x => x.Amount),   // all teachers, not just this page
             journalLinked = (await JournalPolicy.GetAsync(db)).SalaryRequireJournal,
-            note = "Hisob panel bilan bir xil (SalaryLedger). «accrued» — jurnal ushlanmasidan keyingi hisoblangan maosh; "
-                   + "«remaining» — accrued − paid.",
+            note = "Hisob panel bilan bir xil (SalaryLedger). «accrued» — jurnal ushlanmasi va davomat jarimalaridan keyingi "
+                   + "hisoblangan maosh; «attendanceFines» — shu oyning faol davomat jarimalari (ushlanmadan keyingi qoldiqdan "
+                   + "oshmaydi, «attendanceFineCount» — jarimali darslar); «remaining» — accrued − paid.",
             items,
         }, items.Count);
     }

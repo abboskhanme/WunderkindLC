@@ -298,7 +298,7 @@ public sealed class GroupTools(McpToolContext t)
 
     [McpServerTool(Name = "rooms_list", Title = "Xonalar",
         ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
-    [Description("Xonalar: nomi, sig'imi, bino/qavat, faolligi va shu xonadagi arxivlanmagan guruhlar soni "
+    [Description("Xonalar: nomi, sig'imi, bino, joylashuv izohi, QAVATI (floor; null — ko'rsatilmagan), faolligi va shu xonadagi arxivlanmagan guruhlar soni "
         + "(guruh xonasi — avval biriktirilgan xona, bo'lmasa eski matnli xona nomi; panel xonalar bandligi bilan bir xil). "
         + "Rooms with capacity and the number of groups using each.")]
     public async Task<string> RoomsList(
@@ -328,6 +328,8 @@ public sealed class GroupTools(McpToolContext t)
         var items = rooms.Select(r => new
         {
             r.Id, r.Name, r.Capacity, r.Building, r.Location, r.IsActive,
+            // CRM Phase 5: floor (−2..50; null = «Qavat ko'rsatilmagan») — the dated schedule groups rooms by it.
+            r.Floor, floorLabel = RoomFloors.Label(r.Floor),
             groups = usage.GetValueOrDefault(r.Id),
         }).ToList();
         return t.Json(new { total = items.Count, items }, items.Count);

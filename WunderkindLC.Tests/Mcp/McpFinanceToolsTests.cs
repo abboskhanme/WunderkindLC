@@ -567,6 +567,32 @@ public class McpFinanceToolsTests
         host.AssertNoSecretColumns();
     }
 
+    [Fact]
+    public async Task Oqituvchilar_maoshi_davomat_jarimasi_qatori_bilan()
+    {
+        using var host = new McpTestHost();
+        Seed(host);
+        var cm = AppClock.Today.ToString("yyyy-MM");
+        // CRM Phase 3 (U3c/U3m): faol jarima maoshdan ushlanadi, bekor qilingani — yo'q.
+        host.Rw.TeacherAttendanceFines.AddRange(
+            new TeacherAttendanceFine { TeacherId = "t2", GroupId = "g1", LessonDate = cm + "-01", Month = cm, LessonStart = "14:00", Amount = 20_000, Status = "active" },
+            new TeacherAttendanceFine { TeacherId = "t2", GroupId = "g2", LessonDate = cm + "-02", Month = cm, LessonStart = "14:00", Amount = 20_000, Status = "waived" });
+        host.Rw.SaveChanges();
+
+        var cur = McpTestHost.Parse(await host.Tool<FinanceTools>(McpTestHost.SuperAdmin()).TeacherSalaries());
+        var bekzod = ById(cur, "t2", "teacherId");
+
+        Assert.Equal(20_000, bekzod.GetProperty("attendanceFines").GetDecimal());
+        Assert.Equal(1, bekzod.GetProperty("attendanceFineCount").GetInt32());
+        Assert.Equal(2_980_000, bekzod.GetProperty("accrued").GetDecimal());   // 3 000 000 − jarima
+        var teacher = host.Rw.Teachers.Single(x => x.Id == "t2");
+        var month = (await SalaryLedger.BuildAsync(host.Rw, teacher, cm, cm)).Months.Single(x => x.Month == cm);
+        Assert.Equal(month.Expected, bekzod.GetProperty("accrued").GetDecimal());
+        Assert.Equal(month.AttendanceFines, bekzod.GetProperty("attendanceFines").GetDecimal());
+        Assert.Equal(0, ById(cur, "t1", "teacherId").GetProperty("attendanceFines").GetDecimal());
+        host.AssertReadsOnlyDeclared(typeof(FinanceTools));
+    }
+
     // ------------------------------------------------------------------ discounts_report
 
     [Fact]

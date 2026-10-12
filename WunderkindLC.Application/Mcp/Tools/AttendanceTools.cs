@@ -11,8 +11,12 @@ namespace WunderkindLC.Application.Mcp.Tools;
 /// Student attendance: the daily absence page, lessons whose attendance is not taken, one student's
 /// attendance over a period and the absence-reason catalogue.
 /// Rules: .claude/rules/journal.md ("late" is NOT absent, RecordedAt, ExpectedOn), teacher-portal.md §3–4,
-/// substitute-teachers.md (who teaches on a date). "Attendance taken" = a <see cref="LessonNote"/> with
-/// <c>Conducted</c> on that date (the same definition as the panel — not redefined here).
+/// substitute-teachers.md (who teaches on a date).
+/// <para>CRM Phase 3 (U3m, 2026-10-12) — ONE attendance definition (<see cref="AttendanceRules"/>, SPEC P3.1):
+/// "attendance taken" for the daily page and the monitor = a <see cref="LessonNote"/> of (group, date) with
+/// <c>AttendanceTakenAt</c> (the FIRST «keldi»/absence mark — a grade alone is not attendance,
+/// <see cref="AttendanceTaking"/>); late = attended; "unexcused" = the reason's <c>IsExcused</c> flag is off (the old
+/// guess from the word "sababsiz" in the name is gone). The same definitions as the panel — not redefined here.</para>
 /// </summary>
 [McpServerToolType]
 public sealed class AttendanceTools(McpToolContext t)
@@ -31,8 +35,9 @@ public sealed class AttendanceTools(McpToolContext t)
     [McpServerTool(Name = "attendance_daily", Title = "Kunlik davomat (kelmaganlar)",
         ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
     [Description("«O'quvchilar davomati» sahifasi bilan bir xil: tanlangan kun (sukut — bugun) uchun jamlanma — "
-        + "davomat olingan guruhlar soni, shu kuni darsda kutilgan o'quvchilar, kelganlar (kech kelgan ham KELGAN), "
-        + "kelmaganlar, sababsizlar, kechikkanlar — hamda kelmagan/kechikkan o'quvchilar ro'yxati: guruh, kurs, o'qituvchi, "
+        + "davomat olingan guruhlar soni (birinchi «keldi»/«kelmadi» belgisi qo'yilgan; faqat baho qo'yilgani hisoblanmaydi), "
+        + "shu kuni darsda kutilgan o'quvchilar, kelganlar (kech kelgan ham KELGAN), kelmaganlar, sababsizlar (sababning "
+        + "«Sababli (uzrli)» belgisi yo'q), sababli (uzrli), kechikkanlar — hamda kelmagan/kechikkan o'quvchilar ro'yxati: guruh, kurs, o'qituvchi, "
         + "dars vaqti, xona, sabab, o'quvchi va ota-ona telefonlari. Arxivlangan o'quvchi kirmaydi. groupId berilsa jamlanma "
         + "ham shu guruh bo'yicha. Ro'yxat sahifalangan. "
         + "Daily absent/late students with the same summary tiles as the panel's student attendance page.")]
@@ -49,8 +54,9 @@ public sealed class AttendanceTools(McpToolContext t)
         var gid = string.IsNullOrWhiteSpace(groupId) ? null : groupId.Trim();
         var db = t.Db;
 
-        // Lessons marked "conducted" on that day — the groups where attendance was taken.
-        var notesQ = db.LessonNotes.Where(n => n.Date == day && n.Conducted);
+        // Groups whose attendance was TAKEN that day — the first «keldi»/absence mark (LessonNote.AttendanceTakenAt,
+        // SPEC P3.1; the panel's StudentAttendanceController.Absent). A grade alone does not count.
+        var notesQ = db.LessonNotes.Where(n => n.Date == day && n.AttendanceTakenAt != null);
         if (gid is not null) notesQ = notesQ.Where(n => n.ClassId == gid);
         var conductedGroupIds = await notesQ.Select(n => n.ClassId).Distinct().ToListAsync(ct);
 
@@ -112,7 +118,7 @@ public sealed class AttendanceTools(McpToolContext t)
                 g is null || string.IsNullOrEmpty(g.TeacherId) ? "" : teacherNames.GetValueOrDefault(g.TeacherId, ""),
                 g?.StartTime ?? "", g?.EndTime ?? "",
                 g is null ? "" : RoomName(g.RoomId, g.Room, roomNames),
-                reason.Id, reason.Name, reason.Short, reason.IsLate));
+                reason.Id, reason.Name, reason.Short, reason.IsLate, reason.IsExcused));
         }
 
         rows = rows
@@ -125,8 +131,8 @@ public sealed class AttendanceTools(McpToolContext t)
 
         // Present = students whose attendance was taken minus absent ones (distinct); late counts as PRESENT.
         var absentStudents = rows.Where(r => !r.IsLate).Select(r => r.StudentId).Distinct().Count();
-        var unexcused = rows.Count(r => !r.IsLate
-            && r.ReasonName.Contains("sababsiz", StringComparison.OrdinalIgnoreCase));
+        // Unexcused = the reason is not flagged «Sababli (uzrli)» (AbsenceReason.IsExcused) — the panel's rule.
+        var unexcused = rows.Count(r => !r.IsLate && !r.IsExcused);
 
         var listed = onlyAbsent == true ? rows.Where(r => !r.IsLate).ToList() : rows;
         var p = McpToolContext.Page(page);
@@ -137,7 +143,7 @@ public sealed class AttendanceTools(McpToolContext t)
             parent = new { name = r.ParentFullName, phone = r.ParentPhone, fatherPhone = r.FatherPhone, motherPhone = r.MotherPhone },
             group = new { id = r.GroupId, name = r.GroupName, course = r.CourseName, teacher = r.TeacherName },
             lesson = new { r.StartTime, r.EndTime, room = r.Room },
-            reason = new { id = r.ReasonId, name = r.ReasonName, @short = r.ReasonShort, isLate = r.IsLate },
+            reason = new { id = r.ReasonId, name = r.ReasonName, @short = r.ReasonShort, isLate = r.IsLate, isExcused = r.IsExcused },
         }).ToList();
 
         return t.Json(new
@@ -153,10 +159,12 @@ public sealed class AttendanceTools(McpToolContext t)
                 absent = rows.Count(r => !r.IsLate),
                 absentStudents,
                 unexcused,
+                excused = rows.Count(r => !r.IsLate && r.IsExcused),
                 late = rows.Count(r => r.IsLate),
             },
             note = "«markedStudents» — davomat olingan guruhlarda shu kuni darsda kutilgan o'quvchilar; "
-                + "«present» = markedStudents − kelmaganlar (kech kelgan KELGAN hisoblanadi).",
+                + "«present» = markedStudents − kelmaganlar (kech kelgan KELGAN hisoblanadi); «unexcused»/«excused» — "
+                + "sababning «Sababli (uzrli)» belgisi bo'yicha.",
             total = listed.Count, page = p, pageSize = size,
             items,
         }, items.Count);
@@ -167,7 +175,7 @@ public sealed class AttendanceTools(McpToolContext t)
         string ParentFullName, string ParentPhone, string FatherPhone, string MotherPhone,
         string GroupId, string GroupName, string CourseName, string TeacherName,
         string StartTime, string EndTime, string Room,
-        string ReasonId, string ReasonName, string ReasonShort, bool IsLate);
+        string ReasonId, string ReasonName, string ReasonShort, bool IsLate, bool IsExcused);
 
     /// <summary>Room as the lessons monitor shows it: the linked room's name, else the legacy text.</summary>
     private static string RoomName(string? roomId, string? roomText, IReadOnlyDictionary<string, string> names) =>
@@ -180,7 +188,8 @@ public sealed class AttendanceTools(McpToolContext t)
     [McpServerTool(Name = "attendance_not_taken", Title = "Davomat qilinmagan guruhlar",
         ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
     [Description("«Davomat qilinmagan guruhlar» monitori bilan bir xil: tanlangan kunda (sukut — bugun) darsi BOR, lekin "
-        + "davomati hali olinmagan (dars «o'tildi» deb belgilanmagan) guruhlar. Dars kunlari ko'chirilgan darslar va guruh "
+        + "davomati hali olinmagan (birinchi «keldi»/«kelmadi» belgisi qo'yilmagan — faqat baho qo'yilgani davomat emas) "
+        + "guruhlar. Dars kunlari ko'chirilgan darslar va guruh "
         + "umri bilan hisoblanadi; o'qituvchi — o'sha kuni darsni HAQIQATAN o'tadigan odam (o'rinbosar bo'lsa — o'rinbosar). "
         + "Har qatorda: guruh, kurs, o'qituvchi, xona, vaqt, bosqich (upcoming — hali boshlanmagan, started — ketyapti, "
         + "ended — tugagan), kechikkanmi va necha daqiqa kechikkani. Jamlanma: kundagi darslar, davomati olinganlar, "
@@ -243,10 +252,10 @@ public sealed class AttendanceTools(McpToolContext t)
                 .Select(g => new { g.Key, N = g.Count() }).ToListAsync(ct))
             .ToDictionary(x => x.Key, x => x.N);
 
-        // Attendance taken = a lesson of that group marked "conducted" on that day.
-        var attendanceDone = (await db.LessonNotes
-                .Where(n => n.Date == day && n.Conducted && groupIds.Contains(n.ClassId))
-                .Select(n => n.ClassId).Distinct().ToListAsync(ct)).ToHashSet();
+        // Attendance taken = the FIRST attendance mark of that group's day (LessonNote.AttendanceTakenAt) — the
+        // monitor's, the reminder's and the fine's definition (DashboardController.TodayLessons, SPEC P3.1).
+        var firstMarks = await AttendanceTaking.FirstMarksAsync(db, day, groupIds, ct);
+        var attendanceDone = firstMarks.Keys.ToHashSet(StringComparer.Ordinal);
 
         // Phase/overdue depend on the clock — computed per call (the panel does it after its cache too).
         var now = AppClock.Now;
@@ -334,9 +343,11 @@ public sealed class AttendanceTools(McpToolContext t)
         ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
     [Description("Bitta o'quvchining sana oralig'idagi (sukut — oxirgi 30 kun, ko'pi bilan 366 kun) davomati: har o'tilgan "
         + "dars — sana, guruh, kurs, holat (present — keldi, absent — kelmadi, late — kech keldi, unmarked — belgilanmagan), "
-        + "sabab va baho; hamda jami: o'tilgan darslar, kelgan, kelmagan, kech kelgan, davomat foizi va kurslar kesimi. "
-        + "Hisob o'quvchi ilovasi va admin jurnal oynasi bilan BIR XIL (StudentJournalBuilder): davomat olingan darsda yozuvi "
-        + "yo'q o'quvchi «keldi», a'zolik tizimga kiritilishidan oldingi belgilanmagan dars (beforeRecorded) jamiga kirmaydi, "
+        + "yagona belgi (mark: present | late | absent_excused | absent_unexcused | unmarked), sabab (sababli/uzrli yoki yo'q) "
+        + "va baho; hamda jami: o'tilgan darslar, kelgan (kech kelgan ham KELGAN), kelmagan (sababli/sababsiz), kech kelgan, "
+        + "davomat foizi va kurslar kesimi. Hisob o'quvchi ilovasi, profil va admin jurnali bilan BIR XIL (yagona ta'rif — "
+        + "AttendanceRules): davomati TO'LIQ olingan darsda yozuvi yo'q o'quvchi «keldi», davomati olinmagan (faqat «o'tildi») "
+        + "dars va a'zolik tizimga kiritilishidan oldingi belgilanmagan dars (beforeRecorded) foizga kirmaydi, "
         + "muzlatish/chiqishdan keyingi darslar ko'rinmaydi. groupId bilan bitta guruhga toraytiriladi. Darslar yangisidan "
         + "eskisiga, sahifalangan. One student's per-lesson attendance and totals over a date range.")]
     public async Task<string> StudentAttendance(
@@ -363,6 +374,19 @@ public sealed class AttendanceTools(McpToolContext t)
         var journal = await StudentJournalBuilder.PeriodAsync(db, sid, McpToolContext.Iso(f), McpToolContext.Iso(tt), gid);
         if (journal is null) return t.Json(new { message = "O'quvchi topilmadi." }, 0);
 
+        // The ONE classification per lesson (AttendanceRules — mark, excused flag). PeriodAsync above gives the panel's
+        // totals and list; its lesson rows carry no mark, so the same core's cells are read once more and joined by
+        // (group, date, period) — identical cells, identical rule.
+        var cells = (await StudentJournalBuilder.PeriodCellsAsync(db, sid, McpToolContext.Iso(f), McpToolContext.Iso(tt)))
+            .GroupBy(c => (c.Group.Id, c.Cell.Date, c.Cell.Period))
+            .ToDictionary(g => g.Key, g => g.First().Cell);
+        var marks = journal.Lessons
+            .Select(l => cells.GetValueOrDefault((l.GroupId, l.Date, l.Period)))
+            .Where(c => c is not null && AttendanceRules.IsHeld(c.Mark))
+            .Select(c => c!.Mark)
+            .ToList();
+        var tally = AttendanceRules.Tally(marks);
+
         // PresentDefaultFrom (RecordedAt) per group — to flag the unmarked lessons the totals leave out.
         var memberships = await db.StudentGroups.Where(sg => sg.StudentId == sid).ToListAsync(ct);
         var recordedFrom = memberships
@@ -380,7 +404,9 @@ public sealed class AttendanceTools(McpToolContext t)
             .ToList();
         var items = ordered.Skip((p - 1) * size).Take(size).Select(l =>
         {
-            var status = StatusOf(l.ReasonName, l.IsLate, l.Present, l.Grade);
+            var cell = cells.GetValueOrDefault((l.GroupId, l.Date, l.Period));
+            var mark = cell?.Mark;
+            var status = mark is null ? StatusOf(l.ReasonName, l.IsLate, l.Present, l.Grade) : StatusOf(mark.Value);
             var pdf = recordedFrom.GetValueOrDefault(l.GroupId);
             return new
             {
@@ -388,7 +414,12 @@ public sealed class AttendanceTools(McpToolContext t)
                 group = new { id = l.GroupId, name = l.GroupName },
                 course = l.SubjectName,
                 status,
-                reason = l.ReasonName is null ? null : new { name = l.ReasonName, @short = l.ReasonShort, isLate = l.IsLate },
+                mark = mark is null ? null : AttendanceRules.Key(mark.Value),
+                reason = l.ReasonName is null ? null : new
+                {
+                    id = cell?.ReasonId, name = l.ReasonName, @short = l.ReasonShort, isLate = l.IsLate,
+                    isExcused = cell?.IsExcused ?? false,
+                },
                 grade = l.Grade,
                 beforeRecorded = status == "unmarked" && pdf is not null && string.CompareOrdinal(l.Date, pdf) < 0,
             };
@@ -403,17 +434,27 @@ public sealed class AttendanceTools(McpToolContext t)
             totals = new
             {
                 conducted = sum.Held, attended = sum.Attended, absent = sum.Absent, late = sum.Late, percent = sum.AttendancePct,
+                absentExcused = tally.AbsentExcused, absentUnexcused = tally.AbsentUnexcused,
                 lessonsListed = journal.Lessons.Count,
                 excludedFromTotals = journal.Lessons.Count - sum.Held,
             },
             byCourse = journal.Subjects.Select(c => new { course = c.SubjectName, conducted = c.Held, attended = c.Attended }),
-            note = "«attended» — «keldi» belgisi yoki baho olgan darslar (o'quvchi ilovasi va admin jurnal oynasidagi hisob; "
-                + "bahosiz «kech» dars bu yerda attended ga kirmaydi, «late» da sanaladi); «excludedFromTotals» — a'zolik "
-                + "tizimga kiritilishidan oldingi belgilanmagan darslar, foizga kirmaydi.",
+            note = "Yagona ta'rif (AttendanceRules): «attended» = keldi + kech keldi (kech kelgan KELGAN); «conducted» = "
+                + "keldi + kech + kelmadi (sababli va sababsiz); belgilanmagan darslar («excludedFromTotals» — davomati olinmagan "
+                + "yoki a'zolik tizimga kiritilishidan oldingi) foizga kirmaydi.",
             total = ordered.Count, page = p, pageSize = size,
             items,
         }, items.Count);
     }
+
+    /// <summary>The coarse status of the ONE classification (excused and unexcused are both "absent").</summary>
+    internal static string StatusOf(LessonMark m) => m switch
+    {
+        LessonMark.Present => "present",
+        LessonMark.Late => "late",
+        LessonMark.AbsentExcused or LessonMark.AbsentUnexcused => "absent",
+        _ => "unmarked",
+    };
 
     /// <summary>One lesson's status from the journal cell: a reason wins (late / absent), then present (or graded).</summary>
     internal static string StatusOf(string? reasonName, bool isLate, bool present, int? grade) =>
@@ -427,8 +468,9 @@ public sealed class AttendanceTools(McpToolContext t)
 
     [McpServerTool(Name = "absence_reasons", Title = "Davomat sabablari",
         ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
-    [Description("Davomat sabablari katalogi: id, nomi, qisqa belgisi va «kech» turidami (isLate — kech kelgan o'quvchi "
-        + "KELGAN hisoblanadi, kelmaganlar sanog'iga kirmaydi). Avval kelmaslik sabablari, keyin «kech» turlari. "
+    [Description("Davomat sabablari katalogi: id, nomi, qisqa belgisi, «kech» turidami (isLate — kech kelgan o'quvchi "
+        + "KELGAN hisoblanadi, kelmaganlar sanog'iga kirmaydi) va «Sababli (uzrli)»mi (isExcused — uzrli yo'qlik: «sababsiz» "
+        + "sanog'iga va ketma-ket qoldirish seriyasiga kirmaydi). Avval kelmaslik sabablari, keyin «kech» turlari. "
         + "The absence-reason catalogue.")]
     public async Task<string> AbsenceReasons(
         [Description("Sahifa (1 dan)")] int? page = null,
@@ -443,7 +485,7 @@ public sealed class AttendanceTools(McpToolContext t)
         var items = await db.AbsenceReasons
             .OrderBy(r => r.IsLate).ThenBy(r => r.Name).ThenBy(r => r.Id)
             .Skip((p - 1) * size).Take(size)
-            .Select(r => new { r.Id, r.Name, r.Short, r.IsLate })
+            .Select(r => new { r.Id, r.Name, r.Short, r.IsLate, r.IsExcused })
             .ToListAsync(ct);
         return t.Json(new { total, page = p, pageSize = size, items }, items.Count);
     }

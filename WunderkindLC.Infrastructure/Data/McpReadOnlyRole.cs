@@ -254,12 +254,14 @@ public static partial class McpReadOnlyRole
                 if (r.GetBoolean(10)) return "role can read a secret Users column";
             }
 
-            // Forbidden tables (sessions, codes, biometrics, MCP tokens…) must be unreadable.
+            // Forbidden tables (sessions, codes, biometrics, MCP tokens, the student password vault…) must be unreadable —
+            // not even ONE column: has_any_column_privilege is true for a table-level grant AND for a column-level grant of
+            // any column (has_table_privilege alone misses `GRANT SELECT ("UserId") ON "StudentCredentials"`).
             if (model is not null)
                 foreach (var type in McpReadOnlyGrants.Forbidden)
                 {
                     if (model.FindEntityType(type) is null) continue;
-                    using var f = new NpgsqlCommand("SELECT has_table_privilege(current_user, @t, 'SELECT')", conn);
+                    using var f = new NpgsqlCommand("SELECT has_any_column_privilege(current_user, @t, 'SELECT')", conn);
                     f.Parameters.AddWithValue("t", Table(model, type));
                     if (f.ExecuteScalar() is true) return $"role can read forbidden table {type.Name}";
                 }

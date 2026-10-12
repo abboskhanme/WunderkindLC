@@ -218,5 +218,8 @@ startupda qayta uriniladi. Qolganlari — guruh oynasidagi bir tugma bilan.
   `…Password…` va `byte[]` ni baribir olib tashlaydi). `pg_dump` da shifrlangan holda bor — kalitsiz o'qilmaydi.
 - **Read-only MCP** — ustun nomida `Password` bor (`McpReadOnlyGrants.IsSensitiveColumn`) va jadval hech bir
   vosita `Reads` ida yo'q. ⚠️ Ustun NOMINI o'zgartirmang (`PasswordCipher`) — himoya nom bo'yicha.
+  Ustiga (U6m, 2026-10-12): `StudentCredential` — `McpReadOnlyGrants.Forbidden` da; o'z-o'zini tekshirish taqiqlangan
+  jadvalning BIRORTA ustuni (`UserId` ham) o'qilsa MCP'ni o'chiradi (`has_any_column_privilege`); MCP kodida seyf
+  tilga olinsa test qizaradi (`McpCredentialVaultTests`, PostgreSQL'da haqiqiy rol bilan `42501` tekshiriladi).
 - **Audit / log** — faqat "qayta yaratildi / eksport qilindi" fakti; `PendingPasswordChange.ToString()` parolni
   chiqarmaydi; arxiv suratlari va API javoblari `PendingPassword` ni serializatsiya qilmaydi (`[JsonIgnore]`).

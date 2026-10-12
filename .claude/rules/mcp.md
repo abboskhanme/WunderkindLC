@@ -31,7 +31,9 @@ emas, EGASINING YANGI QARORI. Himoya qatlamlari (bittasi ham olib tashlanmasin):
    `Email`, `Permissions`, `Code`, `Answers`, joylashuv…) HECH QACHON berilmaydi — har jadvalda, kelajakdagi
    migratsiyada qo'shilgani ham: bunday jadvalga USTUN darajasidagi grant beriladi. O'quvchi parollari seyfi
    (`StudentCredentials.PasswordCipher`) aynan shu nom qoidasi bilan yopiq — jadvalni hech bir vosita `Reads` iga
-   qo'shmang (`auth-sessions.md` §6.5). MCP konteksti modelidan ham
+   qo'shmang (`auth-sessions.md` §6.5). U `McpReadOnlyGrants.Forbidden` da ham, o'z-o'zini tekshirish taqiqlangan
+   jadvalni `has_any_column_privilege` bilan tekshiradi: BITTA "zararsiz" ustun (`UserId`) qo'lda berilsa ham MCP o'chadi;
+   MCP kodida `StudentCredential`/`CredentialVault` so'zi bo'lsa test qizaradi (`McpCredentialVaultTests`). MCP konteksti modelidan ham
    o'sha ustunlar olib tashlangan (`McpReadOnlyModel`), ya'ni to'liq entity yuklash yopiq ustunni SELECT qilmaydi.
 4. O'z-o'zini tekshirish (`McpReadOnlyRole.SelfTest`) o'tmasa — MCP O'CHIQ (fail-closed). Yozadigan ulanishga
    QAYTISH YO'Q.
@@ -53,6 +55,10 @@ MCP kodidan faqat shu joylar yozadi: OAuth oqimi, so'rovlar jurnali (audit) va u
 - Natijada MA'LUMOT MATNI KALIT bo'lmasin (`{ "Sababsiz": 3 }`): maxfiy-nom filtri "hash"/"token"/"login" li
   kalitni o'chiradi («Hashar» sababi shunday yo'qolgan edi) — `[{ name, count }]` massivi.
 - `CenterMeta` YOPIQ (integratsiya sirlari) — undagi sozlama kerak bo'lsa, natijaga izoh yozing, jadvalni ochmang.
+  Faqat ODDIY son/bayroq sozlamasi `RestrictedColumns[CenterMeta]` ruxsat RO'YXATIGA qo'shiladi (2026-10-12: davomat
+  intizomi muddati/jarimasi, `RatingTestWeight`). ⚠️ Vosita chaqiradigan servis `CenterMeta` ustunini o'qisa va u
+  ro'yxatda bo'lmasa — qisqartirilgan modelda ustun YO'Q: so'rov tarjima bo'lmaydi yoki to'liq yuklashda qiymat
+  JIMGINA standartga tushadi (reyting vazni 60 bo'lib qolardi) — ustunni ro'yxatga qo'shing.
 - Natijada login, parol, token, Telegram chat id, `/uploads/...` manzil, hujjat skani BO'LMAYDI.
 - Panel bilan BIR XIL raqam: mavjud servisni chaqiring yoki controller so'rovini aynan takrorlang.
 - `McpToolRegistry.ToolTypes` ga qo'shing; testlar `WunderkindLC.Tests/Mcp/` (`McpTestHost`).
@@ -86,6 +92,20 @@ taqdim etilgan token — `invalid_grant`, ulanish SAQLANADI; keyin — ulanish b
 
 **Natija matni** (`McpText.CleanOutput`, `McpToolContext.Serialize` ichida — BITTA joy): ko'rinmas/bidi/nol
 kenglikdagi belgilar olib tashlanadi, har satr 2 000 belgigacha. Vositada alohida tozalash YOZMANG.
+
+## 3.5. CRM yangilanishi vositalari (2026-10-12, U2m–U6m) — ta'riflar PANELNIKI
+
+To'liq ro'yxat — `docs/SPEC-mcp.md` §9. Har biri panel funksiyasini CHAQIRADI, qayta yozmaydi:
+
+| Mavzu | Qoida |
+|---|---|
+| Telegram xabarlar (`MessagingTools`, `messages_history`) | sanoqlar `MessagingReports` dan (yetkazish jurnali; eski e'lon — saqlangan sanoq). Chat id, fayl manzili, Telegram file_id — HECH QACHON (ustun ham tanlanmaydi). «Telegram ulangan» = BLOKLANMAGAN chat bor (U6b ustuni) |
+| Davomat (`AttendanceTools`, `AttendanceControlTools`) | «olingan» = `LessonNote.AttendanceTakenAt` (birinchi belgi, `AttendanceTaking`); «sababsiz» = `AbsenceReason.IsExcused == false` — NOMDAN taxmin qilinmaydi; belgi — `AttendanceRules`; qizil ro'yxat — `AbsenceStreakLoader`; intizom — `AttendanceDiscipline.Decide`; jarima summasi — faqat moliya ruxsati bilan |
+| Reyting (`RatingTools`) | `RatingEngine` (Centre / GroupTable / StudentBlockAsync) — `RatingController` ruxsatlari bilan; `rating_group`/`rating_center` — ESKI faqat-ball ko'rinishi |
+| Jadval/topshiriqlar | `DatedSchedule` (≤ 7 kun, qavat), `RoomConflictService.AllPairsAsync`, `WorkTaskApproval.State` |
+
+⚠️ Bir test hostida BIR NECHTA vosita chaqirilsa `AssertReadsOnlyDeclared` hammasining SQL'ini ko'radi — har vosita uchun
+alohida host oching (aks holda boshqa vositaning jadvali "e'lon qilinmagan" bo'lib chiqadi).
 
 ## 4. Olib tashlanayotgan modullar
 
