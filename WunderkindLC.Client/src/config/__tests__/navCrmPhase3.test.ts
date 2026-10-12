@@ -27,3 +27,14 @@ describe("CRM Phase 3 — «Bog'lanish kerak» menyuda", () => {
     expect(flatten(admin).filter((c) => c.to === '/admin/students/boglanish')).toHaveLength(1)
   })
 })
+
+/** CRM Phase 3, U3b (SPEC P3.3): «Davomat xabarlari» — Nazorat guruhida, o'z ruxsati bilan. */
+describe('CRM Phase 3 — «Davomat xabarlari» menyuda', () => {
+  it('Nazorat guruhida, `students.notices` bilan, bitta joyda', () => {
+    const group = admin.find((i) => i.to === '#nazorat')
+    const item = (group?.children ?? []).find((c) => c.label === 'Davomat xabarlari')
+    expect(item?.to).toBe('/admin/nazorat/davomat-xabarlari')
+    expect(item?.perm).toBe('students.notices')
+    expect(flatten(admin).filter((c) => c.to === '/admin/nazorat/davomat-xabarlari')).toHaveLength(1)
+  })
+})

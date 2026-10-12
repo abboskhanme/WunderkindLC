@@ -89,6 +89,9 @@ public static class AuditSections
         // ko'chishi; `EntityId` — `Membership` naqshidagidek "{fromGroupId}:{studentId}", ya'ni
         // yozuv TUGATILGAN guruhning "Tarix" tabida ko'rinadi (`EntityId.StartsWith(groupId + ":")`).
         ["StudentExtension"] = "classes",
+        // "AttendanceNotice" — «KELMADI» XABARI nazorati (CRM Phase 3, U3b): menejer xabarni to'xtatdi /
+        // tasdiqladi / bekor qildi. Dars (guruh) hodisasi → Guruhlar; EntityId "{groupId}:{itemId}", studentId bilan.
+        ["AttendanceNotice"] = "classes",
 
         // --- Kurslar ---
         ["Course"] = "schedule",

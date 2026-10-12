@@ -42,8 +42,8 @@ Kartochkalar hammasi (`HOME_CARDS` tartibida), `cardsVisible = true`; bloklardan
 | `schedule` | `schedule.timetable` | sanali jadval (`DatedScheduleBoard`, `schedule.md` §8) |
 | `lessonsMonitor` | `classes.notAttended` | `TodayLessonsMonitor compact` |
 | `myTasks` | `tasks.board` | `MyTasksBlock` — ochiq (`assigneeId=me`) + tasdig'imni kutayotgan (`createdById=me&status=awaiting`), top 5 |
-| `absentNotices` | `students.notices` | ⏳ U3b quradi — hozircha `available: false` |
-| `redList` | `students.attendance` | ⏳ U3d quradi — hozircha `available: false` |
+| `absentNotices` | `students.notices` | `AbsentNoticesBlock` — bugungi «kelmadi» navbati: tasdiq kutmoqda · to'xtatilgan · rejalashtirilgan · yuborildi (`GET attendance-notices/summary`) + Nazorat → «Davomat xabarlari» havolasi (CRM U3b, `journal.md`) |
+| `redList` | `students.attendance` | `RedListBlock` — `GET student-attendance/red-list?min=3`, eng uzun seriyalar top 10 (5+ qizil, 3+ sariq), o'quvchiga havola faqat `students.list` bo'lsa + «Barchasi» → `/admin/students/davomat?tab=qizil` |
 | `contactsToday` | `contacts` | `ContactsTodayBlock` — `contacts/meta` `due.todo` |
 | `aiAnalysis` | `ai` | `CenterAiAnalysisCard` |
 

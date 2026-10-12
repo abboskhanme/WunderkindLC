@@ -12,9 +12,10 @@ namespace WunderkindLC.Application.Services;
 /// <c>UserSettings.HomeLayout</c> (follows the user to another browser). Pure rules, tested
 /// (<c>HomeLayoutRulesTests</c>); the client keeps the same catalog in <c>lib/homeWidgets.ts</c>.
 ///
-/// <para>⚠️ The block catalog lists the blocks later phases add too (<c>absentNotices</c>, <c>redList</c>):
-/// a layout saved today keeps their place, and the client simply skips a block it does not render yet.
-/// Adding a block = one entry here + one in <c>homeWidgets.ts</c> + its component.</para>
+/// <para>The block catalog was written before Phase 3 built <c>absentNotices</c> (U3b: today's notice counts)
+/// and <c>redList</c> (U3d: consecutive absences) — a layout saved earlier kept their place, and since U3b the
+/// client renders both (permission-filtered). Adding a block = one entry here + one in <c>homeWidgets.ts</c> +
+/// its component.</para>
 /// </summary>
 public static class HomeLayoutRules
 {

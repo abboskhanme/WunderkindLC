@@ -263,6 +263,11 @@ qarindoshlik belgilari. ⚠️ Faqat SON va qarindoshlik — telefon, ism, chat 
   qachon "kelmadi" emas, faqat "kelmadi emas → kelmadi" o'tishida, ommaviy davomatda faqat YANGI kelmaganlarga
   va FONDA — BAZADAGI navbat orqali (`AttendanceNotifyItem` + `AttendanceNotifyWorker`, restartda yo'qolmaydi);
   standart "Davomat" kabinet bildirishnomasi faqat qoida umuman yo'q bo'lsa (bitta hodisa — bitta xabar).
+  ⚠️ **2026-10-12 (CRM U3b):** bitta katak ham NAVBAT orqali; «kelmadi» DARS TUGAGACH + `AbsentNoticeDelayMinutes`
+  bilan ketadi, kech olingan davomatda menejer tasdig'ini kutadi (`AbsentNoticeApproval`, standart `late_only`),
+  menejer Nazorat → «Davomat xabarlari» da to'xtatadi/tasdiqlaydi/bekor qiladi, jurnal «keldi»ga tuzatilsa —
+  bekor; «keldi» darhol; faqat BUGUNGI dars. Yuborish — outbox, `eventKey = sourceId = item.Id` (holat sahifada
+  `TelegramOutbox.SummaryBySourceAsync` dan). To'liq qoida — `journal.md` «KELMADI XABARLARI NAVBATI».
 
 - **ARXIVDAGI O'QUVCHI (2026-10-07) — `AutoMessageTriggers.ReachesArchived`.** Arxiv = o'quvchi
   markazdan KETDI. `DispatchStudentAsync` arxivdagi o'quvchiga FAQAT `payment_received` (to'lov

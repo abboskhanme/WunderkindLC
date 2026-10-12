@@ -217,6 +217,8 @@ export const navByRole: Record<Role, NavItem[]> = {
         { label: 'Fikr-mulohaza', to: '/admin/boshqaruv/feedback', perm: 'feedback' },
         { label: 'Xodimlar reytingi', to: '/admin/teacher-reports', perm: 'teacherReports' },
         { label: 'Davomat qilinmagan guruhlar', to: '/admin/nazorat/davomat-qilinmagan', perm: 'classes.notAttended' },
+        // CRM U3b: «kelmadi» xabari ota-onaga ketishidan oldin to'xtatish/tasdiqlash/bekor qilish.
+        { label: 'Davomat xabarlari', to: '/admin/nazorat/davomat-xabarlari', perm: 'students.notices' },
       ],
     },
     {

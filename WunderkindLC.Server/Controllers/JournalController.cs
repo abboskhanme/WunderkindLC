@@ -86,13 +86,15 @@ public class JournalController(
         {
             return BadRequest(new { message = ex.Message });
         }
-        // Bitta o'quvchi — so'rov ichida (kutish xavfi yo'q). Faqat YANGI "kelmadi" ("kech" emas).
-        if (newAbsence)
-            await AttendanceNotify.DispatchAbsencesAsync(db, autoMsg, req.ClassId, req.Date, req.ReasonId, one);
-        // Arxivlangan o'quvchiga (eski yozuvlarda a'zoligi tirik bo'lishi mumkin) "keldi" ham ketmaydi.
-        if (req.Present)
-            await autoMsg.DispatchNewlyPresentAsync(db, req.ClassId, req.SubjectId, req.Date, req.Period,
-                await AttendanceNotify.NotArchivedAsync(db, one), wasPresent);
+        // CRM U3b (SPEC P3.3): bitta katak ham NAVBAT orqali — "kelmadi" dars TUGAGACH + kechikish bilan (menejer
+        // to'xtata oladi), «keldi» darhol (ishchi). Avval ochiq xabarlar jurnal bilan solishtiriladi: "kelmadi"
+        // «keldi»/«kech»ga o'zgargan bo'lsa yuborilmagan xabar BEKOR bo'ladi. Faqat bugungi dars; arxivdagiga yo'q.
+        await AttendanceNotify.ReconcileAsync(db, WunderkindLC.Domain.AppClock.Now, req.ClassId, req.Date, one);
+        if (await AttendanceNotify.EnqueueSingleAsync(db, req, newAbsence, wasPresent) > 0)
+        {
+            await db.SaveChangesAsync();
+            notifyWorker.Wake();
+        }
         return NoContent();
     }
 
@@ -125,6 +127,8 @@ public class JournalController(
         {
             return BadRequest(new { message = ex.Message });
         }
+        // «Hammasi keldi» — shu o'quvchilarning hali yuborilmagan "kelmadi" xabarlari bekor (CRM U3b).
+        await AttendanceNotify.ReconcileAsync(db, WunderkindLC.Domain.AppClock.Now, req.ClassId, req.Date, req.StudentIds);
         notifyWorker.Wake();
         return NoContent();
     }
@@ -139,6 +143,8 @@ public class JournalController(
             isAdmin: true, skipConducted: true);
         if (deny is not null) return BadRequest(new { message = deny });
         await JournalService.ClearEntryAsync(db, classId, subjectId, quarter, studentId, date, period);
+        // Katak tozalandi — hali yuborilmagan "kelmadi"/«keldi» xabari bekor (CRM U3b).
+        await AttendanceNotify.ReconcileAsync(db, WunderkindLC.Domain.AppClock.Now, classId, date, [studentId]);
         return NoContent();
     }
 

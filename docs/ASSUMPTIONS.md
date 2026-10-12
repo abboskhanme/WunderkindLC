@@ -525,3 +525,15 @@
 - [2026-10-12] U3d — KPI «Ketma-ket 3 dars kelmaganlar» → now from AbsenceStreakLoader, per student the longest group streak → the old rule counted every non-«keldi» entry (graded, late) across groups.
 - [2026-10-12] U3d — red list `min` parameter → any value ≥ 1 accepted (UI uses 3 and 5); default 3 → harmless, lets KPI-like "2" lists reuse it.
 - [2026-10-12] U3d — profile absences endpoint permission → class gate of StudentsController (`students.list`, GET readable by staff like the rest of the profile) → no sensitive data (dates/reasons only); SPEC names no separate key.
+- [2026-10-12] U3b — lesson times of a notice when the group has NO planned lesson that day (extra lesson) → the group's regular StartTime/EndTime → managers keep their hold window instead of «mark + 1 min».
+- [2026-10-12] U3b — which reason does a delayed «kelmadi» carry? → the CURRENT journal reason at send time (Sababsiz → Kasal sends «Kasal», still one notice) → the parent's message must match the journal.
+- [2026-10-12] U3b — when is a notice cancelled as `changed`? → after every journal write (cell, clear, bulk) for the touched students AND on every worker cycle for all open notices (also awaiting/held, also reschedules or any other path) → the page shows «Bekor qilindi» at once, not only at send time.
+- [2026-10-12] U3b — managers' alert text in `manual` mode (attendance on time) → «… tasdiq kutmoqda: har bir xabarni menejer tasdiqlaydi.» instead of «davomat kech olingan» → the SPEC text only fits `late_only`.
+- [2026-10-12] U3b — alert recipients' Telegram → `TelegramRegistration.UserId` (not blocked) of superadmin/admin/staff with `students.notices`; bell always → same pattern as the U3c escalation.
+- [2026-10-12] U3b — «Tasdiqlash» before lesson end → does NOT send early; approved notices still go at SendAfter (immediately when it has passed) → approval releases a notice, it does not change the schedule.
+- [2026-10-12] U3b — audit action of hold/approve/cancel → `update` (the row stays, only its status changes) → audit.md allows only create/update/delete; the summary says which.
+- [2026-10-12] U3b — bulk action when one notice changed concurrently → nothing saved, 409 «Holat o'zgardi, sahifani yangilang» → a half-applied batch with an unclear result is worse; already closed notices are skipped (counted), not an error.
+- [2026-10-12] U3b — status counters → SPEC's 7 keys + `failed` (failed + unknown); `sending` counts as `pending` → every status lands in exactly one chip.
+- [2026-10-12] U3b — lesson card teacher / `teacherId` filter → the person teaching that day (substitute when assigned), the filter also matches the group owner → managers search "whose lesson".
+- [2026-10-12] U3b — «keldi» corrections of PAST days → no longer messaged either (SPEC: only today's lessons) → previously a past-day «keldi» still went to the parent.
+- [2026-10-12] U3b — home widgets → «Davomat xabarlari» shows today's pending / awaiting / held counts (`GET attendance-notices/summary`) + link; «Qizil ro'yxat» shows the top 10 of `red-list?min=3` + link to `/admin/students/davomat?tab=qizil` → SPEC P5.3 block descriptions.

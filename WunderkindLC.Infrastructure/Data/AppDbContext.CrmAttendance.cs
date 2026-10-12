@@ -46,5 +46,17 @@ public partial class AppDbContext
         a.Property(x => x.StreakStart).HasMaxLength(10);
         a.Property(x => x.ContactRequestId).HasMaxLength(200);
         a.HasIndex(x => new { x.StudentId, x.GroupId, x.StreakStart, x.Level }).IsUnique();
+
+        // ---- U3b: absent-notice queue with manager hold (columns on AttendanceNotifyItem) ----
+        var n = b.Entity<AttendanceNotifyItem>();
+        n.Property(x => x.LessonStart).HasMaxLength(5);
+        n.Property(x => x.LessonEnd).HasMaxLength(5);
+        n.Property(x => x.DecidedById).HasMaxLength(200);
+        n.Property(x => x.DecidedByName).HasMaxLength(200);
+        n.Property(x => x.DecisionNote).HasMaxLength(300);
+        n.Property(x => x.CancelReason).HasMaxLength(32);
+        // Worker: "(pending|approved) && SendAfter <= now"; control page: one day of one group.
+        n.HasIndex(x => new { x.Status, x.SendAfter });
+        n.HasIndex(x => new { x.Date, x.ClassId });
     }
 }

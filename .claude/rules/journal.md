@@ -9,6 +9,10 @@ paths:
   - "WunderkindLC.Server/Controllers/ClassAnalyticsController.cs"
   - "WunderkindLC.Server/Controllers/TeacherPortalController.cs"
   - "WunderkindLC.Server/Controllers/StudentAttendanceController.cs"
+  - "WunderkindLC.Application/Services/AttendanceNotify*.cs"
+  - "WunderkindLC.Application/Services/Attendance/AbsentNotice*.cs"
+  - "WunderkindLC.Server/Controllers/AttendanceNoticesController.cs"
+  - "WunderkindLC.Client/src/pages/admin/nazorat/AbsentNoticesPage.tsx"
   - "WunderkindLC.Client/src/pages/admin/journal/**"
   - "WunderkindLC.Client/src/pages/admin/classes/**"
   - "WunderkindLC.Client/src/pages/admin/grading/**"
@@ -138,7 +142,8 @@ o'qituvchi qoidasi bilan (muzlatilgan o'quvchi baholanmaydi), olib tashlash a'zo
   yangi hodisa emas — ikkinchi SMS ketmaydi.
 - **Ommaviy** — faqat shu so'rovda YANGI kelmaganlarga (`NewlyAbsentIds`) va FONDA. Sabab: 25 ta SMS
   bittalab ketsa so'rov Cloudflare'ning 100 soniyasidan oshar, o'qituvchi qayta bosar va hamma ota-ona xabarni
-  ikki marta olardi. Bitta katak — so'rov ichida (kutish xavfi yo'q).
+  ikki marta olardi. ~~Bitta katak — so'rov ichida~~ — 2026-10-12 dan bitta katak HAM navbat orqali (pastdagi
+  «KELMADI XABARLARI NAVBATI», CRM U3b).
 - ⚠️ **Ommaviy xabarlar navbati BAZADA (2026-10-08)** — `AttendanceNotifyItem` (har oluvchi — bitta qator).
   Ilgari fon ishi xotirada edi (`Task.Run`): yuborish paytida deploy bo'lsa qolgan ota-onalar xabarni JIMGINA
   olmasdi. Endi `AttendanceNotify.EnqueueBulkAsync` qatorlarni `JournalService.BulkAttendanceAsync` ning
@@ -147,7 +152,7 @@ o'qituvchi qoidasi bilan (muzlatilgan o'quvchi baholanmaydi), olib tashlash a'zo
   daqiqada o'zi tekshiradi): har oluvchi yuborishdan OLDIN `sending` deb band qilinadi (concurrency token),
   restartda qolgan `pending` lar yuboriladi, aynan yuborish paytida uzilgani `unknown` (QAYTA yuborilmaydi —
   eski ommaviy SMS navbati bilan bir xil qoida). 6 soatdan eski qator yuborilmaydi (`expired` — kechagi "kelmadi"
-  ertasiga ketmasin). Qoida (trigger) yoqilmagan bo'lsa qator umuman yozilmaydi. Arxiv va joriy «keldi»
+  ertasiga ketmasin; 2026-10-12 dan 6 soat `SendAfter` dan sanaladi — U3b). Qoida (trigger) yoqilmagan bo'lsa qator umuman yozilmaydi. Arxiv va joriy «keldi»
   holati YUBORISH paytida qayta tekshiriladi. Yakunlangan qatorlar 7 kundan keyin tozalanadi.
 - **Bitta hodisa — bitta xabar:** standart "Davomat" kabinet bildirishnomasi faqat `attendance_absent` qoidasi
   UMUMAN yo'q bo'lsa (baho bildirishnomasi bilan bir xil naqsh); qoida bor bo'lsa xabarni faqat dispatcher
@@ -265,4 +270,69 @@ backfill: kech emas va nomida «sababsiz» yo'q → sababli. Yangi bazada «Kasa
 (`auto`/`manual`/`late_only`). Tekshiruv — `AttendanceSettingsRules.Validate` (sof). Saqlash tarixga QIYMATLARI
 bilan (`SettingsAudit`, "Davomat intizomi"). Eski «Davomat eslatmasi» avto-qoidasi yoqiq bo'lsa javobda
 ogohlantirish (ikki marta eslatma). UI: «Jurnal va davomat» → «Davomat intizomi» (`AttendanceDisciplineModal`)
-va «Davomat xabarlari» (`AbsentNoticeSettingsModal`; navbat — U3b).
+va «Davomat xabarlari» (`AbsentNoticeSettingsModal`; navbat — U3b, pastda).
+
+## 2026-10-12 — «KELMADI» XABARLARI NAVBATI va MENEJER NAZORATI (CRM Phase 3, U3b)
+
+SPEC: `docs/SPEC-crm-upgrade.md` P3.3. Ilgari «kelmadi» belgisi qo'yilishi bilan ota-onaga ketardi — noto'g'ri
+belgilangan (keyin tuzatilgan) o'quvchining ota-onasi ham xabar olardi. Endi xabar DARS TUGAGACH ketadi va
+undan oldin menejer uni to'xtata oladi. Migratsiya (integrator): `CrmAbsentNotices` + `docs/migrations/Phase3b.sql`.
+
+### Qachon ketadi — `AbsentNoticeRules` (sof, `AbsentNoticeTests`)
+
+| | «Kelmadi» (`absent`) | «Keldi» (`present`) |
+|---|---|---|
+| `SendAfter` | dars sanasi + dars TUGASHI + `AbsentNoticeDelayMinutes` (tugash noma'lum → belgi + kechikish; hech qachon belgidan oldin) | belgi vaqti — DARHOL (SPEC §10 #4) |
+| Tasdiq | `AbsentNoticeApproval`: `auto` → `pending`; `manual` → `awaiting`; `late_only` (standart) → davomat KECH olingan bo'lsa `awaiting`, aks holda `pending` | hech qachon |
+
+- **Dars vaqti** — `AttendanceNotify.LessonContextAsync`: `AttendanceWatch.LessonsOn` (ko'chirilgan dars yangi
+  kunida/vaqtida), kunning BIRINCHI darsi; shu kuni rejada dars yo'q (qo'shimcha dars) → guruhning odatiy vaqti.
+- **Kech olingan** (`TakenLate`) = kunning BIRINCHI davomat belgisi (`AttendanceTakenAt`, guruh bo'yicha) > dars
+  boshlanishi + `AttendanceDeadlineMinutes`. Boshlanish noma'lum — hech qachon kech emas.
+- ⚠️ **Faqat BUGUNGI dars** navbatga tushadi — o'tgan kunni tuzatish ota-onaga xabar BERMAYDI («keldi» ham).
+- ⚠️ **Bitta katak ham navbat orqali** (`AttendanceNotify.EnqueueSingleAsync`, admin `JournalController.SetEntry` va
+  o'qituvchi `TeacherPortalController` PUT) — so'rov ichida hech narsa yuborilmaydi. Ommaviy — `EnqueueBulkAsync`
+  (jurnal bilan bitta SaveChanges, avvalgidek).
+- Kabinet «Davomat» standart bildirishnomasi (qoida UMUMAN yo'q bo'lsa) o'zgarmadi — u ota-onaga Telegram emas.
+
+### Holatlar (`AttendanceNotifyItem.Status`, concurrency token)
+
+`pending` (SendAfter da o'zi ketadi) · `awaiting` (tasdiq kutadi) · `held` (menejer to'xtatgan) · `approved` ·
+`sending` · `done` · `failed` · `unknown` · `expired` · `cancelled` (`CancelReason`: `manager` · `changed` · `archived`).
+
+| Amal (`CanApply`) | Qaysi holatdan |
+|---|---|
+| To'xtatish (`hold`) | pending · awaiting · approved |
+| Tasdiqlash (`approve`) | pending · awaiting · held |
+| Bekor qilish (`cancel`) | pending · awaiting · held · approved |
+| boshqasi | 409 «Xabar allaqachon yuborilgan yoki yopilgan» |
+
+- ⚠️ **HECH KIM TEGMASA:** `pending` — SendAfter da ketadi; `awaiting`/`held` — HECH QACHON ketmaydi va
+  `SendAfter + 6 soat` da `expired` («Muddati o'tdi»). «Tasdiqlash» xabarni ERTA yubormaydi — u SendAfter da
+  (o'tib ketgan bo'lsa darhol) ketadi.
+- ⚠️ **Jurnal o'zgarsa — BEKOR** (`AttendanceNotify.ReconcileAsync`): "kelmadi" → «keldi»/«kech»/tozalandi
+  (yoki «keldi» → sabab) bo'lsa ochiq xabar `cancelled` (`changed`); o'quvchi arxivlansa — `archived`. Har jurnal
+  yozuvidan keyin (katak, tozalash, ommaviy) VA ishchining HAR aylanishida (boshqa yo'llar — ko'chirish va h.k.)
+  hamda yuborishdan oldin yana bir bor. Sabab almashishi (Sababsiz → Kasal) yangi hodisa EMAS — bitta xabar,
+  matnda JORIY sabab.
+- Ishchi (`AttendanceNotifyWorker`): faqat `(pending|approved) && SendAfter <= now`; band qilish `sending`
+  (concurrency) — menejerning «To'xtatish»i bilan poyga shu token bilan hal bo'ladi (409 «Holat o'zgardi»).
+  Yuborish — `AutoMessageService` → outbox, `eventKey = sourceId = item.Id` (`messaging.md` §0.5).
+- **Menejerlarga ogohlantirish:** dars uchun `awaiting` xabarlar paydo bo'lsa — superadmin, admin va
+  `students.notices` ruxsatli xodimga BIR MARTA (`LessonReminderMark` kaliti `notice-await:{groupId}:{sana}`):
+  qo'ng'iroqcha + Telegram (`TelegramRegistration.UserId`, ishchi xabar — outbox emas): «🕓 {guruh} ({sana}) — {n} ta
+  «kelmadi» xabari tasdiq kutmoqda: davomat kech olingan ({vaqt}). Tekshiring: https://{App:Host}/admin/nazorat/
+  davomat-xabarlari?date={sana}» (`App:Host` bo'sh bo'lsa havolasiz; `manual` rejimda sabab — «har bir xabarni
+  menejer tasdiqlaydi»).
+
+### Nazorat sahifasi — Nazorat → «Davomat xabarlari»
+
+`/admin/nazorat/davomat-xabarlari` (`AbsentNoticesPage`), ruxsat **`students.notices`** («Davomat xabarlari
+nazorati», O'QISH ham — `ReadRequiresPerm`). API `api/admin/attendance-notices`: `GET ?date&status&groupId&teacherId`
+(sanoqlar status filtridan OLDIN; darslar kesimida; yetkazish — `MessageDelivery.SourceId`), `GET summary`
+(bosh sahifa vidjeti), `PUT {id}/hold|approve|cancel { note? }`, `PUT bulk { ids, action, note? }` (≤ 500;
+yopilganlari `skipped`; parallel o'zgarish — hech narsa saqlanmaydi, 409). Har amal — audit `AttendanceNotice`
+(«Guruhlar», `EntityId = "{groupId}:{itemId}"`, `studentId`): ««Kelmadi» xabari to'xtatildi / tasdiqlandi /
+bekor qilindi: {o'quvchi}, {guruh}, {sana}» (+ izoh). Sahifa bugun ko'rilsa har 30 s yangilanadi; `?date=` bilan
+ochiladi (Telegram havolasi). Klient nusxasi — `lib/absentNotices.ts` (o'tishlar jadvali va yorliqlar serverdagi
+bilan BIR XIL — `absentNotices.test.ts` server manbasini o'qib qulflaydi).
