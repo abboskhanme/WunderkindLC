@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using ModelContextProtocol;
 using ModelContextProtocol.Server;
 using WunderkindLC.Application.Services;
+using WunderkindLC.Application.Services.Messaging;
 using WunderkindLC.Domain;
 
 namespace WunderkindLC.Application.Mcp.Tools;
@@ -20,7 +21,9 @@ public sealed class StudentTools(McpToolContext t)
     [McpServerTool(Name = "students_search", Title = "O'quvchilarni qidirish",
         ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
     [Description("O'quvchilar ro'yxati: ism yoki telefon bo'yicha qidirish; holat (faol/sinov/muzlatilgan), guruh, arxiv va "
-        + "qarz filtrlari. Har qatorda guruhlari, maktab sinfi va Telegram botga ulangan-ulanmagani chiqadi. "
+        + "qarz filtrlari. Har qatorda guruhlari, maktab sinfi va Telegram holati: botga ulangan (bloklamagan) chatlar soni, "
+        + "ular kimniki (father — otasi, mother — onasi, parent — ota-onasi, student — o'zi, other — boshqa) va botni "
+        + "bloklaganlar soni (chat id chiqmaydi). "
         + "Balans faqat moliya ruxsati bo'lsa. Sahifalangan (ko'pi bilan 200 qator). "
         + "Search students by name/phone with status, group, archive and debt filters.")]
     public async Task<string> StudentsSearch(
@@ -29,7 +32,7 @@ public sealed class StudentTools(McpToolContext t)
         [Description("A'zolik holati: active | trial | frozen | none (guruhsiz)")] string? memberState = null,
         [Description("Guruh id (groups_list natijasidan)")] string? groupId = null,
         [Description("Faqat qarzdorlar: true (moliya ruxsati kerak)")] bool? debtorsOnly = null,
-        [Description("Telegram: linked | unlinked")] string? telegram = null,
+        [Description("Telegram: linked (bloklanmagan chat bor) | unlinked")] string? telegram = null,
         [Description("Sahifa (1 dan)")] int? page = null,
         [Description("Sahifa hajmi (1..200, sukut 50)")] int? pageSize = null,
         CancellationToken ct = default)
@@ -88,8 +91,9 @@ public sealed class StudentTools(McpToolContext t)
         switch ((telegram ?? "").Trim().ToLowerInvariant())
         {
             case "": break;
-            case "linked": q = q.Where(s => db.TelegramRegistrations.Any(r => r.StudentId == s.Id)); break;
-            case "unlinked": q = q.Where(s => !db.TelegramRegistrations.Any(r => r.StudentId == s.Id)); break;
+            // Linked = at least one USABLE chat (not blocked) — the panel's «Telegram» column (TelegramLinkSummary).
+            case "linked": q = q.Where(s => db.TelegramRegistrations.Any(r => r.StudentId == s.Id && r.BlockedAt == null)); break;
+            case "unlinked": q = q.Where(s => !db.TelegramRegistrations.Any(r => r.StudentId == s.Id && r.BlockedAt == null)); break;
             default: throw new McpException("«telegram»: linked | unlinked.");
         }
 
@@ -106,8 +110,7 @@ public sealed class StudentTools(McpToolContext t)
 
         var ids = rows.Select(r => r.Id).ToList();
         var memberships = await live.Where(m => ids.Contains(m.StudentId)).ToListAsync(ct);
-        var linked = (await db.TelegramRegistrations.Where(r => ids.Contains(r.StudentId))
-            .Select(r => r.StudentId).Distinct().ToListAsync(ct)).ToHashSet();
+        var tgLinks = await TelegramLinksAsync(ids, ct);
 
         var items = rows.Select(r =>
         {
@@ -120,7 +123,8 @@ public sealed class StudentTools(McpToolContext t)
                 r.EnrollmentDate,
                 memberState = StateOf(own.Select(m => (m.Status, m.YearFreeze))),
                 groups = own.Select(m => new { id = m.GroupId, name = m.GroupName, status = m.Status }),
-                telegramLinked = linked.Contains(r.Id),
+                telegramLinked = tgLinks.GetValueOrDefault(r.Id)?.Linked > 0,
+                telegram = TelegramOf(tgLinks.GetValueOrDefault(r.Id)),
                 r.IsArchived, r.ArchivedAt, r.ArchiveReason,
                 balance = finance ? r.Balance : (decimal?)null,
             };
@@ -137,7 +141,8 @@ public sealed class StudentTools(McpToolContext t)
     [McpServerTool(Name = "student_profile", Title = "O'quvchi kartochkasi",
         ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
     [Description("Bitta o'quvchi haqida to'liq ma'lumot: guruhlari (holati, qo'shilgan/aktivlashgan sana, o'qituvchi, kurs), "
-        + "ota-ona, maktab sinfi, davomat xulosasi (sabablar bo'yicha), oyma-oy baholar, Telegram botga ulangan chatlar soni; "
+        + "ota-ona, maktab sinfi, davomat xulosasi (sabablar bo'yicha), oyma-oy baholar, Telegram botga ulangan chatlar (qarindoshlik bo'yicha, bloklaganlar alohida; yutuqlar — "
+        + "student_achievements, Telegram xabarlari — message_deliveries); "
         + "moliya ruxsati bo'lsa balans. id yoki ism bo'yicha topiladi — bir nechta mos kelsa, nomzodlar ro'yxati qaytadi. "
         + "Full student card by id or name.")]
     public async Task<string> StudentProfile(
@@ -186,7 +191,7 @@ public sealed class StudentTools(McpToolContext t)
             .Select(s => new { s.Id, s.Name }).ToDictionaryAsync(s => s.Id, s => s.Name, ct);
         var teachers = await db.Teachers.Where(x => teacherIds.Contains(x.Id))
             .Select(x => new { x.Id, x.FullName }).ToDictionaryAsync(x => x.Id, x => x.FullName, ct);
-        var telegramChats = await db.TelegramRegistrations.CountAsync(r => r.StudentId == st.Id, ct);
+        var telegram = (await TelegramLinksAsync([st.Id], ct)).GetValueOrDefault(st.Id);
 
         var subjectName = nb.Subjects.ToDictionary(s => s.Id, s => s.Name);
         var grades = nb.Grades.Select(g => new
@@ -215,7 +220,13 @@ public sealed class StudentTools(McpToolContext t)
                 status = m.IsActive ? m.Status : "left",
                 m.YearFreeze, m.JoinedAt, m.ActivatedAt, m.FrozenAt, m.LeftAt, m.groupArchived,
             }),
-            telegram = new { linked = telegramChats > 0, chats = telegramChats },
+            telegram = new
+            {
+                linked = telegram?.Linked > 0,
+                chats = telegram?.Linked ?? 0,
+                blocked = telegram?.Blocked ?? 0,
+                relations = (telegram?.Relations ?? []).Select(x => new { relation = x.Relation, label = x.Label, chats = x.Chats }),
+            },
             attendance = new
             {
                 lessonsConducted = nb.Conducted, lessonsAttended = nb.Attended, percent = nb.AttendancePct,
@@ -228,6 +239,40 @@ public sealed class StudentTools(McpToolContext t)
             note = finance ? null : "Balans ko'rsatilmadi: moliya ruxsati yo'q.",
         }, 1);
     }
+
+    /// <summary>Telegram status of one student: usable chats, their relations, chats that blocked the bot.</summary>
+    internal sealed record TelegramRelationCount(string Relation, string Label, int Chats);
+
+    internal sealed record TelegramLinks(int Linked, int Blocked, List<TelegramRelationCount> Relations);
+
+    /// <summary>
+    /// The panel's «Telegram» summary (<c>TelegramLinkSummary</c>, SPEC P6.2): USABLE chats (<c>BlockedAt == null</c>)
+    /// counted per relation, blocked chats separately. One grouped query; the chat id column is never selected
+    /// (closed to the read-only role) — a registration row is one chat (unique StudentId + ChatId).
+    /// </summary>
+    private async Task<Dictionary<string, TelegramLinks>> TelegramLinksAsync(List<string> studentIds, CancellationToken ct)
+    {
+        if (studentIds.Count == 0) return new Dictionary<string, TelegramLinks>(StringComparer.Ordinal);
+        var rows = await t.Db.TelegramRegistrations.Where(r => studentIds.Contains(r.StudentId))
+            .GroupBy(r => new { r.StudentId, r.Relation, Blocked = r.BlockedAt != null })
+            .Select(g => new { g.Key.StudentId, g.Key.Relation, g.Key.Blocked, N = g.Count() })
+            .ToListAsync(ct);
+        return rows.GroupBy(r => r.StudentId, StringComparer.Ordinal).ToDictionary(g => g.Key, g => new TelegramLinks(
+            g.Where(r => !r.Blocked).Sum(r => r.N),
+            g.Where(r => r.Blocked).Sum(r => r.N),
+            g.Where(r => !r.Blocked)
+                .GroupBy(r => TelegramRelations.Effective(r.Relation))
+                .OrderBy(x => Array.IndexOf(TelegramRelations.All, x.Key))
+                .Select(x => new TelegramRelationCount(x.Key, TelegramRelations.Label(x.Key), x.Sum(r => r.N)))
+                .ToList()), StringComparer.Ordinal);
+    }
+
+    private static object TelegramOf(TelegramLinks? l) => new
+    {
+        chats = l?.Linked ?? 0,
+        relations = (l?.Relations ?? []).Select(x => x.Relation),
+        blocked = l?.Blocked ?? 0,
+    };
 
     /// <summary>One state per student: active &gt; trial &gt; yearFrozen &gt; frozen &gt; none (.claude/rules/year-freeze.md §5).</summary>
     internal static string StateOf(IEnumerable<(string Status, bool YearFreeze)> memberships)

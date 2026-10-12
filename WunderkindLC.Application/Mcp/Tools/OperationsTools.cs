@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using ModelContextProtocol;
 using ModelContextProtocol.Server;
 using WunderkindLC.Application.Services;
+using WunderkindLC.Application.Services.Messaging;
 using WunderkindLC.Domain;
 
 namespace WunderkindLC.Application.Mcp.Tools;
@@ -33,6 +34,8 @@ public sealed class OperationsTools(McpToolContext t)
         typeof(ContactRequest), typeof(ContactAttempt), typeof(ContactStage), typeof(Student),
         typeof(WorkTask), typeof(WorkTaskBoard), typeof(WorkTaskColumn), typeof(WorkTaskItem), typeof(AppUser),
         typeof(Broadcast), typeof(AutoMessageRule), typeof(AuditLog),
+        // messages_history counts (MessagingReports.CountsAsync) — delivery rows, never the chat id column.
+        typeof(MessageDelivery),
     ];
 
     /// <summary>Longest announcement text returned (the rest is cut, <c>truncated = true</c>).</summary>
@@ -391,14 +394,19 @@ public sealed class OperationsTools(McpToolContext t)
 
     [McpServerTool(Name = "messages_history", Title = "Telegram e'lonlari tarixi",
         ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
-    [Description("Paneldan Telegram bot orqali yuborilgan e'lonlar tarixi (eng yangisi tepada): sana, auditoriya (guruh / "
-        + "barcha guruhlar / tanlangan, qarzdorlar), matn (ko'pi bilan 500 belgi), kim yuborgani, nechta chatga mo'ljallangan "
-        + "va nechtasiga yetib borgani. Sana oralig'i va matn/auditoriya bo'yicha qidirish. Sahifalangan (ko'pi bilan 200 qator). "
-        + "History of Telegram announcements sent from the panel.")]
+    [Description("Paneldan Telegram bot orqali yuborilgan e'lonlar (kampaniyalar) tarixi — «Xabarlar → Tarix» bilan bir xil, "
+        + "eng yangisi tepada: sana, turi (broadcast — e'lon, archive — arxivdagilarga, debt — qarz eslatmasi), holati "
+        + "(queued — navbatda, sending — yuborilmoqda, done — tugadi, cancelled — bekor qilindi), auditoriya, matn (ko'pi bilan "
+        + "500 belgi), kim yuborgani, fayl biriktirilganmi, «Qabul qildim» tugmasi bormi va sanoqlar: jami xabar, yetkazildi, "
+        + "xato, bloklagan, navbatda, «Qabul qildim» bosganlar. Sana oralig'i, tur, holat va matn/auditoriya bo'yicha qidirish. "
+        + "Bitta e'lonning har o'quvchi/chat bo'yicha hisoboti — message_campaign_report. Sahifalangan (ko'pi bilan 200 qator). "
+        + "History of Telegram campaigns with delivery and acknowledgement counts.")]
     public async Task<string> MessagesHistory(
         [Description("Yuborilgan sana — dan, YYYY-MM-DD")] string? from = null,
         [Description("Yuborilgan sana — gacha (shu kun ham kiradi), YYYY-MM-DD")] string? to = null,
         [Description("Matn, auditoriya yoki yuboruvchi ismi bo'lagi")] string? search = null,
+        [Description("Turi: broadcast | archive | debt")] string? kind = null,
+        [Description("Holati: queued | sending | done | cancelled")] string? status = null,
         [Description("Sahifa (1 dan)")] int? page = null,
         [Description("Sahifa hajmi (1..200, sukut 50)")] int? pageSize = null,
         CancellationToken ct = default)
@@ -408,6 +416,12 @@ public sealed class OperationsTools(McpToolContext t)
         DateOnly? tt = string.IsNullOrWhiteSpace(to) ? null : McpToolContext.Date(to, default, "to");
         if (f is not null && tt is not null && f > tt)
             throw new McpException("«from» sanasi «to» dan keyin bo'lishi mumkin emas.");
+        var k = (kind ?? "").Trim().ToLowerInvariant();
+        if (k.Length > 0 && !CampaignService.IsKind(k))
+            throw new McpException("«kind»: broadcast | archive | debt.");
+        var st = (status ?? "").Trim().ToLowerInvariant();
+        if (st.Length > 0 && st is not ("queued" or "sending" or "done" or "cancelled"))
+            throw new McpException("«status»: queued | sending | done | cancelled.");
         var db = t.Db;
 
         var q = db.Broadcasts.AsQueryable();
@@ -427,35 +441,59 @@ public sealed class OperationsTools(McpToolContext t)
             q = q.Where(b => b.Text.ToLower().Contains(term) || b.ClassName.ToLower().Contains(term)
                              || b.SenderName.ToLower().Contains(term));
         }
+        // Legacy rows (before the 2026-10 outbox) may carry empty values: kind = "broadcast", status = "done"
+        // (the panel's MessagingReports.Row rule).
+        if (k.Length > 0)
+            q = k == CampaignService.KindBroadcast
+                ? q.Where(b => b.Kind == k || b.Kind == "")
+                : q.Where(b => b.Kind == k);
+        if (st.Length > 0)
+            q = st == "done"
+                ? q.Where(b => b.Status == st || b.Status == "")
+                : q.Where(b => b.Status == st);
 
         var total = await q.CountAsync(ct);
         var p = McpToolContext.Page(page);
         var size = McpToolContext.PageSize(pageSize);
-        var rows = await q.OrderByDescending(b => b.CreatedAt).ThenByDescending(b => b.Id)
-            .Skip((p - 1) * size).Take(size)
-            .Select(b => new
-            {
-                b.Id, b.CreatedAt, b.ClassName, b.SenderName, b.RecipientCount, b.SentCount,
-                Text = b.Text.Length > MaxBroadcastText ? b.Text.Substring(0, MaxBroadcastText) : b.Text,
-                Truncated = b.Text.Length > MaxBroadcastText,
-            }).ToListAsync(ct);
+        var list = await q.OrderByDescending(b => b.CreatedAt).ThenByDescending(b => b.Id)
+            .Skip((p - 1) * size).Take(size).ToListAsync(ct);
+        // The panel's counts (MessagingReports — «Xabarlar → Tarix»): delivery rows; legacy rows fall back to the
+        // stored RecipientCount / SentCount.
+        var counts = await MessagingReports.CountsAsync(db, list.Select(b => b.Id).ToList(), ct);
 
-        var items = rows.Select(r => new
+        var items = list.Select(b =>
         {
-            r.Id,
-            sentAt = r.CreatedAt.ToString("yyyy-MM-ddTHH:mm:ss"),
-            audience = r.ClassName,
-            text = r.Text,
-            truncated = r.Truncated,
-            sender = r.SenderName,
-            recipients = r.RecipientCount,
-            sent = r.SentCount,
+            var row = MessagingReports.Row(b, counts.GetValueOrDefault(b.Id));
+            return new
+            {
+                b.Id,
+                sentAt = b.CreatedAt.ToString("yyyy-MM-ddTHH:mm:ss"),
+                kind = row.Kind,
+                kindLabel = MessagingReports.TriggerLabel(TelegramOutbox.SourceCampaign, row.Kind),
+                status = row.Status,
+                audience = b.ClassName,
+                text = b.Text.Length > MaxBroadcastText ? b.Text[..MaxBroadcastText] : b.Text,
+                truncated = b.Text.Length > MaxBroadcastText,
+                sender = b.SenderName,
+                hasAttachment = row.HasAttachment,
+                ackRequired = row.AckRequired,
+                counts = new
+                {
+                    total = row.Total, sent = row.Sent, failed = row.Failed, blocked = row.Blocked,
+                    pending = row.Pending, acked = row.Acked,
+                },
+                recipients = row.Total,
+                sent = row.Sent,
+                finishedAt = b.FinishedAt?.ToString("yyyy-MM-ddTHH:mm:ss"),
+            };
         }).ToList();
 
         return t.Json(new
         {
             total, page = p, pageSize = size,
-            note = "Faqat Telegram e'lonlari. «recipients» — botga ulangan chatlar soni, «sent» — yetib borganlari.",
+            note = "Faqat Telegram e'lonlari. «counts» — yetkazish jurnali bo'yicha (bitta chatga bitta xabar): «acked» — "
+                + "«✅ Qabul qildim» bosganlar, «failed» — xato/noma'lum/muddati o'tgan. Eski e'lonlarda (jurnal yo'q) — "
+                + "yuborish paytidagi chatlar soni va yetib borganlari. «recipients»/«sent» — counts.total/counts.sent bilan bir xil.",
             items,
         }, items.Count);
     }
@@ -468,8 +506,11 @@ public sealed class OperationsTools(McpToolContext t)
         ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
     [Description("Sozlangan avtomatik xabar qoidalari («Xabarlar → Avto xabarlar»): qaysi hodisada (to'lov qabul qilindi, "
         + "qarzdorlik, darsga kelmadi, tug'ilgan kun va h.k.) kimga (ota-ona / o'quvchi / o'qituvchi) qanday matn "
-        + "yuboriladi, qoida yoqilganmi, Telegram kanali yoqilganmi va jadval maydonlari (turi, vaqti, oy kuni, daqiqa "
-        + "siljishi, qamrov). Kabinet bildirishnomasi har yoqilgan qoida uchun yoziladi. Hodisa, toifa va "
+        + "yuboriladi, qoida yoqilganmi, Telegram kanali yoqilganmi, «✅ Qabul qildim» tugmasi (ackButton) va fayl "
+        + "(hasAttachment) bormi, jadval maydonlari (rejim: monthly_day_time — oyning tanlangan kuni va soatida (qarzdorlik, "
+        + "TOP/BOTTOM), daily_time — har kuni soatida (tug'ilgan kun), custom, none — hodisa bo'yicha; turi, vaqti, oy kuni, "
+        + "daqiqa siljishi, qamrov). Kabinet bildirishnomasi har yoqilgan qoida uchun yoziladi. Yuborilganlar statistikasi — "
+        + "auto_message_stats. Hodisa, toifa va "
         + "yoqilgan/o'chirilgan bo'yicha filtr. Qoidasi yo'q hodisalar ham ro'yxatda. "
         + "Configured automatic notification rules.")]
     public async Task<string> AutoMessageRules(
@@ -495,6 +536,7 @@ public sealed class OperationsTools(McpToolContext t)
             {
                 r.Id, r.Name, r.Trigger, r.Enabled, SendTelegram = r.SendTelegram || r.SendSms, r.Audience, r.Template,
                 r.ScheduleType, r.ScheduleTime, r.ScheduleDayOfMonth, r.OffsetMinutes, r.SendScope, r.CreatedAt,
+                r.AckButton, HasAttachment = r.AttachmentId != null && r.AttachmentId != "",
             }).ToListAsync(ct);
         var truncated = rows.Count > McpToolContext.MaxPageSize;
 
@@ -516,8 +558,14 @@ public sealed class OperationsTools(McpToolContext t)
                 x.r.SendTelegram,
                 x.r.Audience,
                 x.r.Template,
+                // «✅ Qabul qildim» button and a media file sent with every message of the rule (CRM Phase 2).
+                ackButton = x.r.AckButton,
+                hasAttachment = x.r.HasAttachment,
                 schedule = new
                 {
+                    // monthly_day_time (debt, rating TOP/BOTTOM: the rule's own day + time) · daily_time (birthday) ·
+                    // custom (custom_schedule) · none (event-driven) — AutoMessageSchedule.ModeOf.
+                    mode = AutoMessageSchedule.ModeOf(x.r.Trigger),
                     type = x.r.ScheduleType, time = x.r.ScheduleTime, dayOfMonth = x.r.ScheduleDayOfMonth,
                     offsetMinutes = x.r.OffsetMinutes, scope = x.r.SendScope,
                     usesSchedule = x.info?.SupportsSchedule ?? false,

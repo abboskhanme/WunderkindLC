@@ -17,9 +17,10 @@ public static class MessagingReports
     public static (int Page, int Size) Paging(int? page, int? pageSize) =>
         (Math.Max(1, page ?? 1), Math.Clamp(pageSize ?? 50, 1, MaxPageSize));
 
-    private sealed record Counts(int Total, int Sent, int Failed, int Blocked, int Pending, int Acked);
+    /// <summary>Delivery counts of one campaign (internal: the read-only MCP <c>messages_history</c> reuses them).</summary>
+    internal sealed record Counts(int Total, int Sent, int Failed, int Blocked, int Pending, int Acked);
 
-    private static async Task<Dictionary<string, Counts>> CountsAsync(IAppDbContext db, List<string> ids, CancellationToken ct)
+    internal static async Task<Dictionary<string, Counts>> CountsAsync(IAppDbContext db, List<string> ids, CancellationToken ct)
     {
         if (ids.Count == 0) return new Dictionary<string, Counts>();
         var rows = await db.MessageDeliveries.AsNoTracking()
@@ -36,7 +37,7 @@ public static class MessagingReports
             g.Sum(r => r.Acked)));
     }
 
-    private static CampaignRowDto Row(Broadcast b, Counts? c)
+    internal static CampaignRowDto Row(Broadcast b, Counts? c)
     {
         var plain = TelegramHtml.ToPlain(TelegramHtml.SanitizeTemplate(b.Text).Html);
         if (plain.Length > 200) plain = plain[..200] + "…";
