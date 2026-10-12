@@ -88,7 +88,8 @@ public class AttendanceRbacTests
         var src = Controller("StudentsController.Absences.cs");
         Assert.Contains("public partial class StudentsController", src);
         Assert.DoesNotContain("[AllowAnonymous]", src);
-        Assert.DoesNotContain("[AdminPerm(", src);   // no method-level override that would widen the class gate
+        // No method-level [AdminPerm] override that would replace the class gate (comments may mention it).
+        Assert.DoesNotMatch(new Regex(@"^\s*\[AdminPerm\(", RegexOptions.Multiline), src);
     }
 
     [Fact]
