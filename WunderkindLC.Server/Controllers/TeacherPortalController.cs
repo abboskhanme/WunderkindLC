@@ -922,12 +922,15 @@ public partial class TeacherPortalController(
         return owns;
     }
 
-    /// <summary>O'qituvchining bitta guruhi testlari ro'yxati (?classId=).</summary>
+    /// <summary>O'qituvchining bitta guruhi testlari ro'yxati (?classId= yoki ?groupId=; CRM U4a: &amp;month=yyyy-MM&amp;kind=).</summary>
     [HttpGet("test-results")]
-    public async Task<ActionResult<List<GroupTestDto>>> TeacherTestList([FromQuery] string classId)
+    public async Task<ActionResult<List<GroupTestDto>>> TeacherTestList(
+        [FromQuery] string? classId, [FromQuery] string? groupId = null,
+        [FromQuery] string? month = null, [FromQuery] string? kind = null)
     {
-        if (!await OwnsGroup(classId)) return Forbid();
-        return await TestResultService.ListForGroupAsync(db, classId);
+        var gid = !string.IsNullOrWhiteSpace(classId) ? classId : groupId ?? "";
+        if (!await OwnsGroup(gid)) return Forbid();
+        return await TestResultService.ListForGroupAsync(db, gid, month, kind);
     }
 
     /// <summary>Test tafsiloti — o'quvchilar + ballari (ball desc).</summary>
@@ -948,9 +951,8 @@ public partial class TeacherPortalController(
         var me = await Me();
         if (me is null) return NotFound();
         if (!await OwnsGroup(req.GroupId)) return Forbid();
-        var (dto, err) = await TestResultService.CreateAsync(
-            db, req.GroupId, req.Name, req.Date, req.MaxScore, me.FullName,
-            req.CertificateEnabled, req.CertificateTemplateId);
+        // CRM U4a: turi + «Savollar soni» SHART (admin bilan bitta qoida — TestResultService.CreateEntryAsync).
+        var (dto, err) = await TestResultService.CreateEntryAsync(db, req, me.FullName, audit);
         return err != null ? BadRequest(new { message = err }) : dto!;
     }
 
@@ -961,9 +963,7 @@ public partial class TeacherPortalController(
         var groupId = await TestResultService.GroupIdOfAsync(db, id);
         if (groupId is null) return NotFound();
         if (!await OwnsGroup(groupId)) return Forbid();
-        var r = await TestResultService.UpdateDetailedAsync(
-            db, id, req.Name, req.Date, req.MaxScore,
-            req.CertificateEnabled, req.CertificateTemplateId);
+        var r = await TestResultService.UpdateEntryAsync(db, id, req, audit);
         if (!r.Ok) return BadRequest(new { message = r.Error });
         // Maksimal ball kamayib ballar QISILGAN bo'lsa — berilgan sertifikatlar ham
         // yangi ball bilan qayta yaratiladi (fonda, idempotent).
@@ -982,7 +982,7 @@ public partial class TeacherPortalController(
         var groupId = await TestResultService.GroupIdOfAsync(db, id);
         if (groupId is null) return NotFound();
         if (!await OwnsGroup(groupId)) return Forbid();
-        return await TestResultService.DeleteAsync(db, id) ? NoContent() : NotFound();
+        return await TestResultService.DeleteEntryAsync(db, id, audit) ? NoContent() : NotFound();
     }
 
     /// <summary>Bitta o'quvchiga ball qo'yish/tozalash. Qaytadi: qayta saralangan tafsilot.</summary>

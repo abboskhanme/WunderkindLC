@@ -159,6 +159,9 @@ export const navByRole: Record<Role, NavItem[]> = {
       children: [
         { label: 'Oflayn kurslar', to: '/admin/subjects', end: true, perm: 'schedule.courses' },
         { label: 'Shartnoma', to: '/admin/contracts', perm: 'contracts' },
+        // CRM Phase 4 (U4a, 2026-10-12): oyiga 1–2 marta natija kiritiladi va ota-onalarga yuboriladi — kundalik
+        // ish, Future'dan chiqarildi.
+        { label: 'Testlar natijalari', to: '/admin/test-results', perm: 'classes.testResults' },
       ],
     },
     {
@@ -304,7 +307,6 @@ export const navByRole: Record<Role, NavItem[]> = {
             { label: "Jadval: bo'sh oraliqlar", to: '/admin/jadval/bosh-oraliqlar', perm: 'schedule.timetable' },
             { label: "O'quv dasturi", to: '/admin/curricula', perm: 'schedule.curricula' },
             { label: 'Baholash mezonlari', to: '/admin/grading', perm: 'schedule.grading' },
-            { label: 'Testlar natijalari', to: '/admin/test-results', perm: 'classes.testResults' },
             { label: 'Formalar', to: '/admin/forms', permAny: ['leads.forms', 'schedule.levelTests'] },
             { label: 'Kitoblar sotuvi', to: '/admin/books', perm: 'books' },
           ],

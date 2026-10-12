@@ -54,7 +54,7 @@ so'rov GROUP BY).
   StudentBallAdjustment, StudentGroup, Student, Group, CenterMeta, Subject, Teacher), TTL 15 daqiqa.
   Markaz jadvali, guruh jadvali, o'quvchi bloki va kabinet SHU obyektni kesadi — raqamlar hech qachon ayrilmaydi.
 - **Test foizi = Score ÷ MaxScore.** U4a dan keyin `MaxScore = QuestionCount`, `Score` = yechgan soni — formula
-  O'ZGARMAYDI. Test turi (`kind`) blok javobida hozircha bo'sh (`""`) — U4a ustunni qo'shganda to'ldiriladi.
+  O'ZGARMAYDI. Test turi (`kind`) blok javobida — `TestResult.Kind` (U4a; eski, to'ldirilmagan qatorda `""`).
 - **Davomat** (blokdagi qator) — `StudentJournalBuilder.PeriodAsync` (o'quvchi ilovasining o'z raqami, faqat bitta
   o'quvchining darslari). U3a uni `AttendanceRules` ga o'tkazganda blok avtomatik ergashadi — NUSXA YOZMANG.
 - O'quvchi bloki: markazdagi o'rin (+ oldingi davr o'rni), har guruhdagi o'rin (hozirgi faol/sinov a'zoliklari ma'lumotsiz ham

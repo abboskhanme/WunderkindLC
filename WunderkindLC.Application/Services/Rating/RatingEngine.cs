@@ -272,7 +272,7 @@ public static class RatingEngine
                           join t in db.TestResults.AsNoTracking() on s.TestResultId equals t.Id
                           where s.StudentId == studentId
                                 && t.Date.CompareTo(p.From) >= 0 && t.Date.CompareTo(p.To) <= 0
-                          select new { t.Id, t.Name, t.Date, t.CreatedAt, t.GroupId, t.MaxScore, s.Score })
+                          select new { t.Id, t.Name, t.Kind, t.Date, t.CreatedAt, t.GroupId, t.MaxScore, s.Score })
             .ToListAsync(ct);
         if (mine.Count == 0) return new List<RatingTestRowDto>();
 
@@ -291,7 +291,7 @@ public static class RatingEngine
                 var scores = all[x.Id].ToList();
                 var pct = RatingFormula.Percent(x.Score, x.MaxScore);
                 return new RatingTestRowDto(
-                    x.Id, x.Name, "", x.Date, GroupName(r, x.GroupId), x.Score, x.MaxScore,
+                    x.Id, x.Name, x.Kind, x.Date, GroupName(r, x.GroupId), x.Score, x.MaxScore,
                     pct is null ? null : RatingFormula.Round1(pct.Value),
                     scores.Count(s => s > x.Score) + 1, scores.Count);
             })

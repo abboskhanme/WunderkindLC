@@ -17,5 +17,5 @@ SET "RatingTestWeight" = 60,
     "RatingTopBottomScope" = 'group';
 -- ⚠️ Only inside the migration that ADDS the columns: run later it would overwrite an admin's saved weight.
 
--- ---- U4a (test entry, later unit) appends its own lines below ---------------------------------------
--- (SPEC P4.1: UPDATE "TestResults" SET "Kind" = 'interim' WHERE "Kind" = '' OR "Kind" IS NULL;)
+-- ---- U4a (test entry) — merged AFTER this migration was generated: its schema + data SQL live in
+-- docs/migrations/Phase4a.sql (a separate, later migration). Do NOT run the Kind backfill here.

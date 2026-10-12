@@ -89,6 +89,9 @@ public static class AuditSections
         // ko'chishi; `EntityId` — `Membership` naqshidagidek "{fromGroupId}:{studentId}", ya'ni
         // yozuv TUGATILGAN guruhning "Tarix" tabida ko'rinadi (`EntityId.StartsWith(groupId + ":")`).
         ["StudentExtension"] = "classes",
+        // "TestResult" — CRM U4a: test yaratish/tahrir/o'chirish va «Ota-onalarga yuborish». `EntityId` —
+        // "{groupId}:{testId}" (guruh «Tarix» tabida ko'rinadi).
+        ["TestResult"] = "classes",
 
         // --- Kurslar ---
         ["Course"] = "schedule",
