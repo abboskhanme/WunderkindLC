@@ -1,0 +1,15 @@
+-- CRM upgrade Phase 6 «Accounts» — migration `CrmAccounts` (docs/SPEC-crm-upgrade.md §0.3, §7).
+--
+-- U6a (permanently visible student passwords) — schema only, NO data SQL:
+--   * new table "StudentCredentials":
+--       "UserId"         varchar(36) NOT NULL PRIMARY KEY   -- the student's AppUser.Id (no FK, like RefreshTokens)
+--       "PasswordCipher" bytea       NOT NULL               -- CredentialVault blob (AES-256-GCM)
+--       "Source"         varchar(16) NOT NULL               -- create | reset | admin_set | self_change | backfill
+--       "UpdatedAt"      timestamp without time zone NOT NULL
+--     EF generates it from AppDbContext.ConfigureCrmAccounts — expect exactly one CreateTable and NO other
+--     operation from this unit (AppUser.PendingPassword is [NotMapped]).
+--   * The backfill of existing passwords CANNOT be SQL: it needs the .env key (CREDENTIAL_VAULT_KEY) to encrypt.
+--     It runs once at startup in C# (CrmAccountsSetup.RunStartupAsync → StudentCredentialBackfill, SeedMarker
+--     'student-credential-backfill-2026-10'; retried on the next start while the key is missing).
+--
+-- U6b (Telegram column) — appended by its own unit.

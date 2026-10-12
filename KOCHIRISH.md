@@ -19,8 +19,10 @@ serverdan yangisiga o'tadi. Ikkita skript bor: `migrate-export.sh` (eski server)
 | `.env` | **barcha maxfiy kalitlar** — busiz Telegram/Gemini/SMS/yuz vektorlari ishlamaydi | fayl |
 
 ⚠️ **`.env` eng muhimi.** Yuz vektorlari bazada `FACE_VECTOR_KEY` bilan shifrlangan — kalit
-o'zgarsa yuz bilan kirish butunlay ishlamay qoladi. `JWT_KEY` o'zgarsa hamma qaytadan login
-qilishga majbur bo'ladi.
+o'zgarsa yuz bilan kirish butunlay ishlamay qoladi. O'quvchi parollari (adminlar ko'radigan
+«Login/parollar») `CREDENTIAL_VAULT_KEY` bilan shifrlangan — kalit o'zgarsa parollar «saqlanmagan»
+bo'lib qoladi (loginlar ishlayveradi, parollarni guruh bo'yicha qayta yaratish kerak). `JWT_KEY`
+o'zgarsa hamma qaytadan login qilishga majbur bo'ladi.
 
 ---
 

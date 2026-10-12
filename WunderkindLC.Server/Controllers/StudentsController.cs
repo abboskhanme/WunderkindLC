@@ -7,6 +7,7 @@ using WunderkindLC.Infrastructure.Data;
 using WunderkindLC.Application.Dtos;
 using WunderkindLC.Domain;
 using WunderkindLC.Application.Services;
+using WunderkindLC.Application.Services.Accounts;
 
 namespace WunderkindLC.Server.Controllers;
 
@@ -1526,8 +1527,11 @@ public partial class StudentsController(
             await db.SaveChangesAsync();
         }
 
-        // Foydalanuvchi hali kirmagan bo'lsa dastlabki parol ko'rsatiladi; kirgach bo'sh (faqat reset-password).
-        return new CredentialsDto(user.Email, user.InitialPassword ?? "", user.Role);
+        // Parollar seyfi (CRM Phase 6): saqlangan JORIY parol (o'quvchi kirgandan/o'zi almashtirgandan keyin
+        // ham); seyf bo'lmasa — hali ishlatilmagan dastlabki parol; ikkalasi ham yo'q — `known: false`.
+        NoStore();
+        var row = await db.StudentCredentials.AsNoTracking().FirstOrDefaultAsync(c => c.UserId == user.Id);
+        return CredentialsOf(user, StudentCredentials.Reveal(row, user, Vault));
     }
 
     /// <summary>Parolni o'rnatish/qayta yaratish huquqi yo'q xodimga (403) ko'rsatiladigan sabab.</summary>
@@ -1560,10 +1564,11 @@ public partial class StudentsController(
         // (o'qituvchi/xodimdagi qoida bilan bir xil). Tur — login amallari bilan bir joyda.
         audit.Record(AuditService.EntityStudentDiscount, student.Id, "update",
             $"O'quvchi paroli qayta yaratildi ({student.FullName})", studentId: student.Id);
-        user.SetInitialPassword(pwd);
+        user.SetInitialPassword(pwd, PasswordSources.Reset);
         await RefreshTokenService.RevokeAllForUserAsync(db, user.Id);
         await db.SaveChangesAsync();
-        return new CredentialsDto(user.Email, pwd, user.Role);
+        NoStore();
+        return CredentialsOf(user, new StudentCredentials.Revealed(pwd, true, PasswordSources.Reset, AppClock.Now));
     }
 
     /// <summary>
@@ -1582,6 +1587,8 @@ public partial class StudentsController(
         var userIds = students.Where(s => s.UserId != null).Select(s => s.UserId!).ToList();
         var byId = (await db.Users.Where(u => userIds.Contains(u.Id)).ToListAsync())
             .ToDictionary(u => u.Id);
+        // Parol — seyfdagi JORIY parol (yoki hali ishlatilmagan dastlabki); noma'lum — «(saqlanmagan)».
+        var revealed = await RevealManyAsync(byId.Values);
 
         var headers = new[] { "F.I.SH.", "Guruh", "Ota-ona", "Telefon", "Login", "Parol" };
         var rows = students.Select(s =>
@@ -1590,11 +1597,12 @@ public partial class StudentsController(
             return (IReadOnlyList<string>)new[]
             {
                 s.FullName, s.ClassName, s.ParentFullName, s.ParentPhone,
-                u?.Email ?? "", u?.InitialPassword ?? "",
+                u?.Email ?? "", PasswordCell(u, revealed),
             };
         });
 
         var bytes = ExcelExport.Build("O'quvchilar", headers, rows);
+        NoStore();
         return File(bytes,
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             $"oquvchilar_{AppClock.Now:yyyy-MM-dd}.xlsx");
@@ -1637,14 +1645,19 @@ public partial class StudentsController(
         var userIds = students.Where(s => s.UserId != null).Select(s => s.UserId!).ToList();
         var usersById = (await db.Users.Where(u => userIds.Contains(u.Id)).ToListAsync())
             .ToDictionary(u => u.Id);
-        var isSuper = User.IsInRole(Roles.SuperAdmin);
+        // Parol ustuni — login/parolni ko'rish darvozasi bilan BIR XIL (`HasFullAccess`, auth-sessions.md §3):
+        // ilgari faqat superadmin edi (CRM Phase 6: «to'liq ruxsatli har kim»).
+        var showPasswords = AdminPermAttribute.HasFullAccess(User, "students.list");
+        var revealed = showPasswords
+            ? await RevealManyAsync(usersById.Values)
+            : new Dictionary<string, StudentCredentials.Revealed>();
 
         var headers = new List<string>
         {
             "F.I.SH.", "Tug'ilgan sana", "Jinsi", "Telefon", "Manzil", "Guruhlar",
             "Ota F.I.SH.", "Ota tel", "Ona F.I.SH.", "Ona tel", "Balans", "Login",
         };
-        if (isSuper) headers.Add("Parol");
+        if (showPasswords) headers.Add("Parol");
 
         var rows = students.Select(s =>
         {
@@ -1664,11 +1677,12 @@ public partial class StudentsController(
                 s.Balance.ToString("0.##", CultureInfo.InvariantCulture),
                 u?.Email ?? "",
             };
-            if (isSuper) row.Add(u?.InitialPassword ?? "");
+            if (showPasswords) row.Add(PasswordCell(u, revealed));
             return (IReadOnlyList<string>)row;
         });
 
         var bytes = ExcelExport.Build("O'quvchilar", headers, rows);
+        if (showPasswords) NoStore();
         return File(bytes,
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             $"oquvchilar_tanlangan_{AppClock.Now:yyyy-MM-dd}.xlsx");

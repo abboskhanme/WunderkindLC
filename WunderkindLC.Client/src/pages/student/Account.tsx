@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { changeStudentPassword } from '@/api/services/studentPortal'
+import { useAuth } from '@/context/auth-context'
 import { Icon } from '@/pages/student/lib'
 
 /* ============================================================
@@ -40,6 +41,7 @@ function PasswordField({ label, placeholder, value, onChange }: FieldProps) {
 
 export function StudentAccountScreen() {
   const nav = useNavigate()
+  const { user } = useAuth()
   const [cur, setCur] = useState('')
   const [nw, setNw] = useState('')
   const [rep, setRep] = useState('')
@@ -95,6 +97,14 @@ export function StudentAccountScreen() {
           value={rep}
           onChange={setRep}
         />
+
+        {/* CRM Phase 6: o'quvchi paroli seyfda saqlanadi va adminlarga ko'rinadi — oldindan aytiladi.
+            Ota-ona akkaunti saqlanmaydi (SPEC §10 #10), shuning uchun izoh faqat o'quvchiga. */}
+        {user?.role === 'student' && (
+          <div style={{ color: 'var(--muted)', fontSize: 12.5, margin: '0 2px 12px' }}>
+            Eslatma: markaz administratorlari yangi parolingizni ko'ra oladi
+          </div>
+        )}
 
         {err && (
           <div

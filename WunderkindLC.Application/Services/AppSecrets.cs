@@ -95,6 +95,15 @@ public static class AppSecrets
     /// yo'qolmaydi, faqat qayta ro'yxat).</para></summary>
     public static string FaceVectorKey => Read("Face:VectorKey", EnvKeys.FaceVectorKey);
 
+    /* ---------- O'QUVCHI PAROLLARI SEYFI (CRM upgrade, Phase 6) ---------- */
+
+    /// <summary>Key of the student password vault — <b>base64, exactly 32 bytes</b>
+    /// (<c>openssl rand -base64 32</c>). Used by <see cref="Accounts.CredentialVault"/>.
+    /// <para>⚠️ Empty/invalid → passwords are NOT stored at all (never in plain text); the profile card and
+    /// the group «Login/parollar» show only still-unused initial passwords. Lost/changed key → stored
+    /// passwords cannot be read (logins keep working; regenerate per group).</para></summary>
+    public static string CredentialVaultKey => Read("Credentials:VaultKey", EnvKeys.CredentialVaultKey);
+
     /* ---------- ILOVA HAQIQIYLIGI (Google Play Integrity) ---------- */
 
     /// <summary>Play Integrity API uchun Google Cloud service account JSON (bir qatorda).
@@ -171,6 +180,8 @@ public static class AppSecrets
     public static bool NvrCredentialsConfigured => NvrUsername.Length > 0 && NvrPassword.Length > 0;
     /// <summary>Yuz vektorlari kaliti bor VA yaroqli (32 bayt base64) — modul shu bilan yoqiladi.</summary>
     public static bool FaceVectorKeyConfigured => FaceVault.IsValidKey(FaceVectorKey);
+    /// <summary>Student password vault key present AND valid (32 bytes base64).</summary>
+    public static bool CredentialVaultKeyConfigured => Accounts.CredentialVault.IsValidKey(CredentialVaultKey);
     /// <summary>Instagram moduli uchun ikkala `.env` kaliti ham berilganmi. Ikkalasi HAM shart:
     /// verify tokensiz Meta webhookni ro'yxatga ololmaydi, app secretsiz esa kelgan hodisa
     /// imzosini tekshirib bo'lmaydi (va u rad etiladi).</summary>
@@ -194,6 +205,7 @@ public static class AppSecrets
         public const string NvrUsername = "NVR_USERNAME";
         public const string NvrPassword = "NVR_PASSWORD";
         public const string FaceVectorKey = "FACE_VECTOR_KEY";
+        public const string CredentialVaultKey = "CREDENTIAL_VAULT_KEY";
         public const string PlayIntegritySaJson = "PLAY_INTEGRITY_SA_JSON";
         public const string PlayIntegrityPackage = "PLAY_INTEGRITY_PACKAGE";
         public const string InstagramAppSecret = "INSTAGRAM_APP_SECRET";

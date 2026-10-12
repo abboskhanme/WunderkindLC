@@ -129,6 +129,9 @@ services:
       # YUZ BILAN KIRISH — vektorlarni bazada shifrlash kaliti (MAXFIY, base64 32 bayt).
       # Bo'sh bo'lsa modul UMUMAN ishlamaydi (startupda ogohlantirish logi). DEPLOY.md §2.1.
       Face__VectorKey: "${FACE_VECTOR_KEY:-}"
+      # O'QUVCHI PAROLLARI SEYFI — adminlar o'quvchi parolini doim ko'rishi uchun (MAXFIY, base64 32 bayt).
+      # Bo'sh bo'lsa parollar SAQLANMAYDI (ochiq matnda hech qachon). .claude/rules/auth-sessions.md §6.
+      Credentials__VaultKey: "${CREDENTIAL_VAULT_KEY:-}"
       # Ilova haqiqiyligi (Google Play Integrity). SA JSON bo'sh bo'lsa FCM'niki zaxira sifatida
       # ishlatiladi. Bo'sh qoldirilsa tekshiruv "notConfigured" — kirishga to'siq BO'LMAYDI.
       PlayIntegrity__ServiceAccountJson: "${PLAY_INTEGRITY_SA_JSON:-}"

@@ -436,3 +436,27 @@
   connect (`/ws`, `api/cti/*` removed); rewriting legacy rows adds risk without benefit.
 - [2026-10-11] Phase 1 — APK files under `uploads/app-*.apk` and the `cti-recordings` volume? → Left in place
   (data) → deleting files is a separate, confirmed step.
+- [2026-10-12] U6a — vault key missing and an admin sets/resets a student password? → the stale vault row is
+  DELETED (never kept, never plain text); the new password stays visible from `InitialPassword` until the first
+  login → a kept row would show a WRONG password once the key returns.
+- [2026-10-12] U6a — vault row and a still-unused `InitialPassword` disagree? → `InitialPassword` wins → it is
+  written together with the hash and cleared on every login/own change, so it is always current; a differing row
+  can only be stale.
+- [2026-10-12] U6a — per-group Excel when a password is unknown / a member has no account? → Parol cell
+  «(saqlanmagan)», Login cell «(akkaunt yo'q)»; the window offers «Paroli noma'lumlarga yangi parol yaratish (n)»
+  (n = unknown + no account) → existing students' passwords cannot be recovered from the hash.
+- [2026-10-12] U6a — `POST …/credentials/ensure` with `onlyUnknown: false`? → 400 → regenerating KNOWN passwords
+  of a whole group in one click is destructive and nobody asked for it.
+- [2026-10-12] U6a — audit action of the group login/password export? → `create` on `Group` (a file was produced),
+  summary «Login/parollar eksport qilindi: {guruh} ({n} ta o'quvchi)», no password → the audit has only 4 actions;
+  the contract download uses `create` too.
+- [2026-10-12] U6a — «Parollarni saqlash o'chiq» banner — where? → in the profile «Kirish ma'lumotlari» card and
+  the group «Login/parollar» window (env-key text for the superadmin, a generic text for others) + a startup
+  warning log → those are the only places a missing key changes what admins see; no global banner.
+- [2026-10-12] U6a — Telegram column of the group export before U6b? → counts DISTINCT linked chats per student
+  from `TelegramRegistrations` («Ulangan (n)» / «Ulanmagan»); blocked chats are not known until U2a/U6b → U6b may
+  refine to usable chats.
+- [2026-10-12] U6a — a deleted student account (any path, not only `StudentPurge`)? → the interceptor also
+  deletes its vault row → no orphan encrypted passwords.
+- [2026-10-12] U6a — `McpReadOnlyGrants.Forbidden` += `StudentCredential` (SPEC P6.3)? → left to U6m (MCP unit,
+  "do not touch MCP") → already closed today: the column name contains "Password" and no tool lists the table.

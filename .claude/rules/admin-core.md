@@ -71,6 +71,8 @@ Audit: `AbsenceReason` — nima qo'shildi/o'chdi/qayta nomlandi ("Sozlamalar" bo
   Ilgari `CenterMeta` TO'LIQ (`InstagramCapiToken` bilan) va arxiv suratlari xom (o'chirilgan
   xodimning `PasswordHash` / ochiq `InitialPassword` i) ketardi.
 - ⚠️ **Arxiv suratlarining ICHI ham tozalanadi** (`ArchivedRecord.Json` — matn ichidagi JSON).
+- ⚠️ **O'quvchi parollari seyfi (`studentCredentials`) zaxiraga KIRMAYDI** — shifrlangan bo'lsa ham
+  (`ExcludedTables`; `auth-sessions.md` §6.5).
 - Biznes jadvallari to'liq (kitob, shartnoma, qo'ng'iroq, bog'lanish, topshiriq, vakansiya, KPI,
   chegirma, bonus ...). Texnik jurnallar/keshlar va biometrik/sessiya jadvallari ATAYIN kirmaydi va
   ro'yxati faylning o'zida — `excluded` (ilgari "BARCHA ma'lumotlar" deb yozilib, ko'p jadval yo'q edi).

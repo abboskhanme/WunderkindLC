@@ -93,6 +93,8 @@ import { DiscountSection } from './DiscountSection'
 import { studentDiscountLabel } from './discountLabel'
 import { ProfileCard } from './profile/ProfileCard'
 import { TelegramLinksSection } from './profile/TelegramLinksSection'
+import { StudentCredentialsCard } from './profile/StudentCredentialsCard'
+import { canStudentCreds } from '@/lib/studentCreds'
 import { IntakeChecklistCard } from '@/components/students/IntakeChecklistCard'
 import { TelegramMessageModal } from './TelegramMessageModal'
 import { PhoneCallModal, type CallOption } from '@/components/PhoneCallModal'
@@ -978,6 +980,11 @@ export function StudentDetailPage() {
               )}
             </div>
           </Card>
+
+          {/* Login + JORIY parol (CRM Phase 6) — faqat to'liq «O'quvchilar» ruxsatiga (server `HasFullAccess`). */}
+          {canStudentCreds(user?.role, user?.permissions) && (
+            <StudentCredentialsCard key={data.id} studentId={data.id} isSuperAdmin={user?.role === 'superadmin'} />
+          )}
         </div>
 
         {/* O'NG USTUN — bo'limlar (tab) */}

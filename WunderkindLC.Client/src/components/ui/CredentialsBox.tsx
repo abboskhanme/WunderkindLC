@@ -50,6 +50,9 @@ export function CredentialsBox({ credentials, loading, onReset }: Props) {
           <CredRow label="Login" value={credentials.login} />
           {credentials.password ? (
             <CredRow label="Parol" value={credentials.password} />
+          ) : credentials.known === false ? (
+            // O'quvchi (parollar seyfi, CRM Phase 6): parol saqlanmagan — eski akkaunt yoki seyf o'chiq.
+            <p className="px-1 text-xs text-slate-400">Parol saqlanmagan — «Yangi parol yaratish» bilan yarating.</p>
           ) : (
             <p className="px-1 text-xs text-slate-400">
               Foydalanuvchi allaqachon ilovaga kirgan — dastlabki parol endi ko'rinmaydi. Kerak bo'lsa

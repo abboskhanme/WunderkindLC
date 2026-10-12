@@ -861,7 +861,7 @@ export function StudentsPage() {
               </button>
             </div>
             {/* Faqat superadmin: barcha o'quvchilarni login/parol bilan Excel'ga yuklab olish.
-                Parol faqat foydalanuvchi hali kirmagan bo'lsa ko'rinadi. */}
+                Parol — seyfdagi JORIY parol (CRM Phase 6); noma'lumi «(saqlanmagan)». */}
             {user?.role === 'superadmin' && (
               <Button variant="secondary" onClick={() => downloadStudentCredentials()}>
                 <Download className="h-4 w-4" /> Login/parollar
