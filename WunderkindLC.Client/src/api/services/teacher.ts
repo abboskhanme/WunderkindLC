@@ -397,6 +397,10 @@ export interface TeacherStudentRow {
   late: number
   /** Davomat foizi; dars o'tilmagan bo'lsa null */
   attendancePct: number | null
+  /** CRM upgrade U6b: botga ulangan (bloklamagan) Telegram chatlari soni — raqam/ism YO'Q. */
+  telegramLinked?: number
+  /** U6b: ulangan chatlarning qarindoshliklari. */
+  telegramRelations?: string[] | null
 }
 
 export interface TeacherStudents {
@@ -438,6 +442,9 @@ export interface TeacherGroupStudent {
   schoolGradeNow: number | null
   /** A'zolik holati: `active` | `trial` | `frozen`. */
   status: string
+  /** CRM upgrade U6b: botga ulangan Telegram chatlari soni (tahrir javobida 0 keladi — saqlab qoling). */
+  telegramLinked?: number
+  telegramRelations?: string[] | null
 }
 
 /** O'qituvchi o'zgartira oladigan FAQAT uch maydon. `schoolGrade`: 0 — tozalash. */

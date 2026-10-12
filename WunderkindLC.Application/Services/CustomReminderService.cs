@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using WunderkindLC.Application.Abstractions;
+using WunderkindLC.Application.Services.Messaging;
 using WunderkindLC.Domain;
 
 namespace WunderkindLC.Application.Services;
@@ -31,7 +32,8 @@ namespace WunderkindLC.Application.Services;
 public class CustomReminderService(
     IServiceProvider services,
     TelegramService telegram,
-    ILogger<CustomReminderService> logger) : BackgroundService
+    ILogger<CustomReminderService> logger,
+    IOutboxSignal? outbox = null) : BackgroundService
 {
     /// <summary>Belgi kaliti prefiksi: qoida — <c>custom_schedule:{ruleId}</c>, oluvchi —
     /// <c>custom_schedule:{ruleId}:{s|t}:{id}</c>.</summary>
@@ -97,6 +99,7 @@ public class CustomReminderService(
             try
             {
                 await SendAsync(db, rule, today, centerName, ct);
+                outbox?.Wake();
                 await JobRunMarker.TryClaimAsync(db, ruleKey, today, ct);
                 await JobRunMarker.PruneAsync(db, ruleKey + ":", today.AddDays(-2), ct);
             }
@@ -122,8 +125,10 @@ public class CustomReminderService(
                 // OLUVCHI BELGISI — yuborishdan OLDIN (restartdan keyin takror ketmasin).
                 if (!await JobRunMarker.TryClaimAsync(db, $"{ruleKey}:t:{t.Id}", today, ct)) continue;
                 var body = MessageTokenizer.Teacher(rule.Template, t, centerName);
-                await DeliverAsync(db, rule, t.UserId, t.Id, isTeacher: true, title, body, ct);
-                await db.SaveChangesAsync(ct);
+                var html = MessageRender.RenderTeacher(rule.Template, t, null, null, centerName);
+                await DeliverAsync(db, rule, t.UserId, t.Id, isTeacher: true, title, body, _ => SafeHtml(html, rule.Template,
+                    tpl => MessageRender.RenderTeacher(tpl, t, null, null, centerName).Html), t.FullName, today, ct);
+                await TelegramOutbox.SaveAsync(db, ct);
             }
         }
         else
@@ -143,32 +148,60 @@ public class CustomReminderService(
                 // {telefon} tokeni: "students" — o'quvchining O'Z raqami birinchi, "parents" — ota-ona raqami.
                 var phone = MessagingAudience.StudentPhone(s, rule.Audience);
                 var grp = groupByName.GetValueOrDefault(s.ClassName ?? "");
+                var teacherName = MessageTokenizer.TeacherNameOf(grp, teacherNames);
                 var body = MessageTokenizer.Student(rule.Template, s, s.ParentFullName, phone, centerName,
-                    group: grp, teacherName: MessageTokenizer.TeacherNameOf(grp, teacherNames));
-                await DeliverAsync(db, rule, s.UserId, s.Id, isTeacher: false, title, body, ct);
-                await db.SaveChangesAsync(ct);
+                    group: grp, teacherName: teacherName);
+                await DeliverAsync(db, rule, s.UserId, s.Id, isTeacher: false, title, body,
+                    reg => SafeHtml(MessageRender.RenderStudent(rule.Template, s, reg, grp, teacherName, null, centerName, rule.Audience),
+                        rule.Template,
+                        tpl => MessageRender.RenderStudent(tpl, s, reg, grp, teacherName, null, centerName, rule.Audience).Html),
+                    s.FullName, today, ct);
+                await TelegramOutbox.SaveAsync(db, ct);
             }
         }
 
         await db.SaveChangesAsync(ct);
     }
 
-    /// <summary>Bitta oluvchiga yetkazish: kabinet bildirishnomasi (HAR DOIM, akkaunti bo'lsa) + Telegram
-    /// (<see cref="AutoMessageChannels.Telegram"/>).</summary>
+    /// <summary>Bitta oluvchiga yetkazish: kabinet bildirishnomasi (HAR DOIM, akkaunti bo'lsa) + Telegram OUTBOX
+    /// (<see cref="AutoMessageChannels.Telegram"/>; o'quvchi auditoriyasida «students» — o'quvchining o'z chati,
+    /// aks holda ota-ona chatlari; bloklagan chatlar chiqariladi). Dedupe:
+    /// <c>custom_schedule:{ruleId}:{s|t}:{id}:{chatId}:{yyyy-MM-dd}</c>.</summary>
     private async Task DeliverAsync(
         IAppDbContext db, AutoMessageRule rule, string? userId, string entityId, bool isTeacher,
-        string title, string body, CancellationToken ct)
+        string title, string body, Func<TelegramRegistration?, string> html, string recipientName, DateOnly today,
+        CancellationToken ct)
     {
         if (userId is not null)
             NotificationStore.Add(db, userId, title, body, "custom_schedule");
 
-        if (AutoMessageChannels.Telegram(rule) && telegram.IsConfigured)
+        if (!AutoMessageChannels.Telegram(rule)) return;
+        var regs = isTeacher
+            ? await db.TelegramRegistrations.AsNoTracking().Where(r => r.TeacherId == entityId && r.BlockedAt == null).ToListAsync(ct)
+            : (await db.TelegramRegistrations.AsNoTracking().Where(r => r.StudentId == entityId && r.BlockedAt == null).ToListAsync(ct))
+                .Where(r => rule.Audience == "students"
+                    ? r.Relation == TelegramRelations.StudentSelf
+                    : TelegramRelations.IsParent(r.Relation))
+                .ToList();
+        var header = MessageRender.HeaderAuto(title);
+        var day = today.ToString("yyyy-MM-dd");
+        foreach (var reg in regs.GroupBy(r => r.ChatId).Select(g => g.First()))
         {
-            var chatIds = isTeacher
-                ? await db.TelegramRegistrations.Where(r => r.TeacherId == entityId).Select(r => r.ChatId).Distinct().ToListAsync(ct)
-                : await db.TelegramRegistrations.Where(r => r.StudentId == entityId).Select(r => r.ChatId).Distinct().ToListAsync(ct);
-            foreach (var chatId in chatIds)
-                await telegram.SendMessageAsync(chatId, $"🔔 {title}\n\n{body}", ct: ct);
+            var text = header + html(isTeacher ? null : reg);
+            if (TelegramHtml.VisibleLength(text) > TelegramHtml.MaxText) text = TelegramHtml.PlainCut(text, 4000);
+            await TelegramOutbox.EnqueueAsync(db, new OutboxItem(
+                TelegramOutbox.SourceAuto, AutoMessageTriggers.CustomSchedule, reg.ChatId, text,
+                StudentId: isTeacher ? null : entityId, TeacherId: isTeacher ? entityId : null, RegistrationId: reg.Id,
+                Relation: isTeacher ? "" : TelegramRelations.Effective(reg.Relation), RecipientName: recipientName,
+                SourceId: rule.Id, AttachmentId: rule.AttachmentId, AckRequired: rule.AckButton,
+                DedupeKey: $"{JobKey}:{rule.Id}:{(isTeacher ? "t" : "s")}:{entityId}:{reg.ChatId}:{day}"), ct);
         }
     }
+
+    /// <summary>Rendered HTML, or — for a legacy template with a markup error — the escaped template rendered.</summary>
+    private static string SafeHtml((string Html, IReadOnlyList<string> Errors) r, string template, Func<string, string> renderEscaped) =>
+        r.Errors.Count == 0 ? r.Html : renderEscaped(TelegramHtml.Escape(template));
+
+    /// <summary>Telegram bot sozlanganmi (diagnostika).</summary>
+    internal bool TelegramConfigured => telegram.IsConfigured;
 }

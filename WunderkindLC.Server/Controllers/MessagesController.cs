@@ -5,6 +5,7 @@ using WunderkindLC.Infrastructure.Data;
 using WunderkindLC.Application.Dtos;
 using WunderkindLC.Domain;
 using WunderkindLC.Application.Services;
+using WunderkindLC.Application.Services.Messaging;
 using System.Security.Claims;
 
 namespace WunderkindLC.Server.Controllers;
@@ -70,107 +71,60 @@ public class MessagesController(AppDbContext db, TelegramService telegram) : Con
             b.RecipientCount, b.SentCount)).ToList();
     }
 
+    /// <summary>
+    /// LEGACY adapter (CRM upgrade P2.7): the old "scope" request is mapped to an <see cref="AudienceSpec"/> and sent
+    /// through the Telegram OUTBOX (<see cref="CampaignService"/>) — no direct send any more. Returns the old
+    /// <see cref="BroadcastDto"/> (<c>SentCount</c> = 0: delivery is asynchronous; the report is under
+    /// <c>api/admin/messaging/campaigns/{id}</c>). The new client does not call it.
+    /// </summary>
     [HttpPost("broadcast")]
     public async Task<ActionResult<BroadcastDto>> SendBroadcast(SendBroadcastRequest req)
     {
         var text = req.Text?.Trim() ?? "";
         if (text.Length == 0) return BadRequest(new { message = "Xabar matni kerak" });
         var scope = (req.Scope ?? "class").Trim().ToLowerInvariant();
-
-        // Qamrov bo'yicha maqsadli o'quvchilar to'plami.
-        var studentsQ = db.Students.AsQueryable();
-        var teacherIds = scope == "selected"
-            ? (req.TeacherIds ?? new()).Where(x => !string.IsNullOrWhiteSpace(x)).Distinct().ToList()
-            : new List<string>();
-        string audience;
-        string? groupScope = null;   // "Guruh" qamrovi — token konteksti ({guruh}, dars jadvali) shu guruhdan
+        var all = WunderkindLC.Application.Services.Messaging.TelegramRelations.All.ToList();
+        var statuses = new List<string> { "active", "trial", "frozen" };
+        var specs = new List<AudienceSpec>();
         switch (scope)
         {
             case "selected":
-                var ids = req.StudentIds ?? new();
+                var ids = (req.StudentIds ?? new()).Where(x => !string.IsNullOrWhiteSpace(x)).Distinct().ToList();
+                var teacherIds = (req.TeacherIds ?? new()).Where(x => !string.IsNullOrWhiteSpace(x)).Distinct().ToList();
                 if (ids.Count == 0 && teacherIds.Count == 0) return BadRequest(new { message = "Hech kim tanlanmadi" });
-                studentsQ = studentsQ.Where(s => ids.Contains(s.Id));
-                audience = $"Tanlangan ({ids.Count + teacherIds.Count})";
+                if (ids.Count > 0) specs.Add(new AudienceSpec { Kind = "selected", StudentIds = ids, Relations = all, OnlyDebtors = req.OnlyDebtors });
+                if (teacherIds.Count > 0) specs.Add(new AudienceSpec { Kind = "teachers", TeacherIds = teacherIds });
                 break;
             case "all":
-                audience = "Barcha guruhlar";
+                specs.Add(new AudienceSpec { Kind = "active", MemberStatuses = statuses, Relations = all, OnlyDebtors = req.OnlyDebtors });
                 break;
             default: // class
                 var cn = req.ClassName?.Trim() ?? "";
                 if (cn.Length == 0) return BadRequest(new { message = "Guruh kerak" });
-                // A'ZOLIK bo'yicha (eskirgan `ClassName` emas) — guruhlar ro'yxatidagi sanoq bilan bir xil.
-                var memberIds = await MessagingAudience.GroupAudienceAsync(db, cn);
-                studentsQ = studentsQ.Where(s => memberIds.Contains(s.Id));
-                audience = cn;
-                groupScope = cn;
+                var groupIds = await db.Classes.Where(c => c.Name == cn).Select(c => c.Id).ToListAsync();
+                if (groupIds.Count == 0) return BadRequest(new { message = "Guruh topilmadi" });
+                specs.Add(new AudienceSpec { Kind = "active", GroupIds = groupIds, MemberStatuses = statuses, Relations = all, OnlyDebtors = req.OnlyDebtors });
                 break;
         }
 
-        var students = await studentsQ.ToListAsync();
-        if (req.OnlyDebtors)
+        var services = HttpContext.RequestServices;
+        var audit = services.GetRequiredService<AuditService>();
+        var actorId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        var actorName = User.FindFirst(ClaimTypes.Name)?.Value ?? "Administrator";
+        CampaignCreatedDto? last = null;
+        var total = 0;
+        foreach (var spec in specs)
         {
-            students = students.Where(s => s.Balance < 0).ToList();
-            audience += " — qarzdorlar";
+            var (created, error) = await CampaignService.CreateAsync(db, audit,
+                new CreateCampaignRequest(CampaignService.KindBroadcast, spec, text, null, false),
+                actorId, actorName, telegram.IsConfigured);
+            if (error is not null) return BadRequest(new { message = error });
+            last = created;
+            total += created!.Messages;
         }
-        // OMMAVIY e'lon: arxivdagi va guruhi YOPILGAN/TUGATILGAN o'quvchilar chiqarib tashlanadi
-        // ("Tanlangan" rejimida admin kimni tanlagan bo'lsa — o'shanga yuboriladi).
-        if (scope != "selected")
-        {
-            var closed = await MessagingAudience.ClosedGroupStudentIdsAsync(db);
-            students = students.Where(s => !s.IsArchived && !closed.Contains(s.Id)).ToList();
-        }
-        var byId = students.ToDictionary(s => s.Id);
-        var sids = students.Select(s => s.Id).ToList();
-
-        // Har bir o'quvchi (ro'yxatdagi chat) uchun matn alohida moslashtiriladi (mail-merge).
-        var regs = await db.TelegramRegistrations
-            .Where(r => sids.Contains(r.StudentId))
-            .ToListAsync();
-
-        // "Tanlab" rejimida tanlangan o'qituvchilarning Telegram registratsiyalari — alohida yuboriladi.
-        var teacherRegs = teacherIds.Count > 0
-            ? await db.TelegramRegistrations.Where(r => r.TeacherId != null && teacherIds.Contains(r.TeacherId)).ToListAsync()
-            : new List<TelegramRegistration>();
-        var teachersById = teacherRegs.Count > 0
-            ? await db.Teachers.Where(t => teacherIds.Contains(t.Id)).ToDictionaryAsync(t => t.Id)
-            : new Dictionary<string, Teacher>();
-
-        var centerName = (await db.CenterMeta.FirstOrDefaultAsync())?.Name ?? "";
-        var groupByName = await GroupByNameAsync();
-        var teacherNames = await TeacherNamesAsync();
-        var sent = 0;
-        var scopeGroup = groupScope is null ? null : groupByName.GetValueOrDefault(groupScope);
-        var scopedText = GroupScoped(text, groupScope);
-        foreach (var r in regs)
-        {
-            if (!byId.TryGetValue(r.StudentId, out var s)) continue;
-            var grp = scopeGroup ?? groupByName.GetValueOrDefault(s.ClassName ?? "");
-            var message = $"📢 Markaz e'loni\n\n{Personalize(scopedText, s, r, centerName, grp, MessageTokenizer.TeacherNameOf(grp, teacherNames))}";
-            if (await telegram.SendMessageAsync(r.ChatId, message)) sent++;
-        }
-        foreach (var r in teacherRegs)
-        {
-            if (!teachersById.TryGetValue(r.TeacherId!, out var t)) continue;
-            var message = $"📢 Markaz e'loni\n\n{MessageTokenizer.Teacher(text, t, centerName)}";
-            if (await telegram.SendMessageAsync(r.ChatId, message)) sent++;
-        }
-
-        var user = await db.Users.FindAsync(Uid);
-        var bc = new Broadcast
-        {
-            ClassName = audience,
-            Text = text,
-            SenderUserId = Uid,
-            SenderName = user?.FullName ?? "Administrator",
-            CreatedAt = AppClock.Now,
-            RecipientCount = regs.Count + teacherRegs.Count,
-            SentCount = sent,
-        };
-        db.Broadcasts.Add(bc);
-        await db.SaveChangesAsync();
-
-        return new BroadcastDto(bc.Id, bc.ClassName, bc.Text, bc.SenderName,
-            bc.CreatedAt.ToString("o"), bc.RecipientCount, bc.SentCount);
+        services.GetRequiredService<IOutboxSignal>().Wake();
+        var bc = await db.Broadcasts.AsNoTracking().FirstAsync(b => b.Id == last!.Id);
+        return new BroadcastDto(bc.Id, bc.ClassName, bc.Text, bc.SenderName, bc.CreatedAt.ToString("o"), total, 0);
     }
 
     // Matn o'rinbosarlari markazlashgan: <see cref="MessageTokenizer"/> (barcha kanal/auditoriyalar shu yerda).

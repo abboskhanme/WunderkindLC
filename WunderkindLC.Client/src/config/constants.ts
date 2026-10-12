@@ -168,7 +168,7 @@ export const adminPermissions: AdminPermSection[] = [
     key: 'messages',
     label: 'Xabarlar',
     pages: [
-      { key: 'messages.broadcast', label: 'Ommaviy xabarlar (Telegram)' },
+      { key: 'messages.broadcast', label: 'Telegram xabarlar' },
       { key: 'messages.support', label: 'Support Telegram' },
     ],
   },

@@ -737,13 +737,21 @@ public partial class ClassesController(AppDbContext db, AuditService audit, ILog
                           where sg.GroupId == id && !(sg.IsActive && s.IsArchived)
                           orderby sg.IsActive descending, s.FullName
                           select new GroupMemberDto(s.Id, s.FullName, sg.JoinedAt, sg.LeftAt, sg.IsActive,
-                              sg.Status, sg.ActivatedAt, sg.FrozenAt, s.Balance, sg.YearFreeze))
+                              sg.Status, sg.ActivatedAt, sg.FrozenAt, s.Balance, sg.YearFreeze, 0, null))
                          .ToListAsync();
         // Balans — SHU GURUH bo'yicha (umumiy Student.Balance emas): boshqa guruhdagi qarz bu ro'yxatni
         // qizil qilib qo'ymasin (jurnal ro'yxati bilan bir xil mantiq).
         var balances = await GroupBalanceService.ForGroupAsync(db, id, rows.Select(r => r.StudentId));
+        // CRM upgrade U6b: «Telegram» column — usable chats + relations (counts only).
+        var telegram = await WunderkindLC.Application.Services.Messaging.TelegramLinkSummary.ForStudentsAsync(
+            db, rows.Select(r => r.StudentId).ToList());
         return rows
-            .Select(r => r with { Balance = balances.GetValueOrDefault(r.StudentId, 0m) })
+            .Select(r => r with
+            {
+                Balance = balances.GetValueOrDefault(r.StudentId, 0m),
+                TelegramLinked = telegram.GetValueOrDefault(r.StudentId)?.Linked ?? 0,
+                TelegramRelations = telegram.GetValueOrDefault(r.StudentId)?.Relations ?? new List<string>(),
+            })
             .ToList();
     }
 

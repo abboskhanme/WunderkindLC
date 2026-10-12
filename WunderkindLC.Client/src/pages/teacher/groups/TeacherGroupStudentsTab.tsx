@@ -6,6 +6,7 @@ import {
   type TeacherGroupStudent,
 } from '@/api/services/teacher'
 import { Avatar, EmptyState, SkeletonRows } from '@/components/teacher/TeacherUi'
+import { TelegramLinkCell } from '@/components/messaging/TelegramLinkCell'
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
 import { useAsync } from '@/hooks/useAsync'
@@ -53,7 +54,10 @@ export function TeacherGroupStudentsTab({ groupId }: { groupId: string }) {
   const [q, setQ] = useState('')
 
   const rows = useMemo(() => {
-    const list = (data ?? []).map((r) => edited[r.id] ?? r)
+    // Tahrir javobida Telegram sanog'i kelmaydi (0) — ro'yxatdagi qiymat saqlanadi (U6b).
+    const list = (data ?? []).map((r) =>
+      edited[r.id] ? { ...edited[r.id], telegramLinked: r.telegramLinked, telegramRelations: r.telegramRelations } : r,
+    )
     const needle = q.trim().toLowerCase()
     const digits = needle.replace(/\D/g, '')
     if (!needle) return list
@@ -123,6 +127,7 @@ export function TeacherGroupStudentsTab({ groupId }: { groupId: string }) {
                       {[grade || 'Sinf kiritilmagan', s.phone ? formatPhone(s.phone) : 'Telefon yo\'q'].join(' · ')}
                     </span>
                   </span>
+                  <TelegramLinkCell linked={s.telegramLinked} relations={s.telegramRelations} className="shrink-0 text-[12px]" />
                   <span className="flex shrink-0 items-center gap-1 rounded-lg px-2 py-1.5 text-[12.5px] font-semibold text-brand-600">
                     <Pencil className="h-4 w-4" />
                     <span className="hidden sm:inline">Tahrirlash</span>

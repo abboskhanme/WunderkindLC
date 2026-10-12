@@ -9,7 +9,7 @@ import {
 import { Card } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
-import { Input, Select } from '@/components/ui/Input'
+import { Input } from '@/components/ui/Input'
 import { Loader } from '@/components/ui/Loader'
 import { EnvSecretField } from '@/components/settings/EnvSecretField'
 import type { EnvSecret } from '@/api/services/settings'
@@ -26,6 +26,7 @@ export function TelegramSettings() {
   const [username, setUsername] = useState('')
   const [name, setName] = useState('')
   const [channel, setChannel] = useState('')
+  // Eski sozlama — endi tahrirlanmaydi, yuklangan qiymat o'zgarishsiz qaytariladi.
   const [phoneMatchField, setPhoneMatchField] = useState<'parent' | 'student'>('parent')
   const [configured, setConfigured] = useState(false)
   const [loading, setLoading] = useState(true)
@@ -125,21 +126,12 @@ export function TelegramSettings() {
 
         <div className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-500">
           Ota-ona (yoki o'quvchi) botni ochib (masalan {username ? `@${username}` : '@BotUsername'}) "Start"
-          bossin va telefon raqamini ulashsin — raqami pastdagi sozlamaga qarab solishtiriladi.
+          bossin va telefon raqamini ulashsin.
         </div>
-
-        <Select
-          label="Kontakt ulashilganda qaysi raqam bo'yicha tekshirilsin"
-          value={phoneMatchField}
-          onChange={(e) => setPhoneMatchField(e.target.value as 'parent' | 'student')}
-        >
-          <option value="parent">Ota-ona raqami</option>
-          <option value="student">O'quvchining o'zi raqami</option>
-        </Select>
-        <p className="-mt-2 text-xs text-slate-400">
-          "Ota-ona raqami" — botga ota-ona o'z raqamini yuborsa moslashadi (standart). "O'quvchining
-          o'zi raqami" — bot orqali o'quvchi o'zi ro'yxatdan o'tsa, uning shaxsiy telefon raqami
-          bilan solishtiriladi.
+        {/* CRM upgrade P2.3: raqam tanlovi olib tashlandi — server 4 ta raqamning hammasini solishtiradi
+            (`phoneMatchField` serverdan qanday kelsa, shunday qaytariladi). */}
+        <p className="-mt-2 text-xs text-slate-500">
+          Bot o'quvchini 4 ta raqamning istalgani bo'yicha taniydi: o'quvchi, asosiy ota-ona, ota, ona
         </p>
 
         <div className="border-t border-slate-100 pt-4">

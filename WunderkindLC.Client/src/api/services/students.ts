@@ -340,6 +340,42 @@ export interface StudentTelegramLink {
   createdAt: string
   /** `false` — raqami o'quvchining joriy raqamlaridan hech biriga mos emas (eskirgan ulanish). */
   phoneMatches: boolean
+  /** Kim ulangan: father · mother · parent · student · other (CRM upgrade P2.4). */
+  relation?: string
+  /** Chat botni bloklagan — xabar bormaydi (foydalanuvchi botga qayta yozsa o'zi tiklanadi). */
+  blocked?: boolean
+  blockedAt?: string | null
+}
+
+/** Ulanish qarindoshligini o'zgartirish (`students.list:edit`). */
+export async function setStudentTelegramRelation(
+  id: string, linkId: string, relation: string,
+): Promise<StudentTelegramLink> {
+  const { data } = await api.put<StudentTelegramLink>(`/admin/students/${id}/telegram-links/${linkId}`, { relation })
+  return data
+}
+
+/** O'quvchining «Telegram xabarlari» (oxirgilari birinchi). */
+export interface StudentTelegramDelivery {
+  id: string
+  createdAt: string
+  sentAt: string | null
+  trigger: string
+  /** Xabar turi yorlig'i (masalan «To'lov eslatmasi», «E'lon»). */
+  label: string
+  relation: string
+  status: string
+  ackAt: string | null
+  textPlain: string
+}
+
+export async function getStudentTelegramDeliveries(id: string, limit = 50): Promise<StudentTelegramDelivery[]> {
+  if (USE_MOCK) return []
+  const { data } = await api.get<StudentTelegramDelivery[]>(`/admin/students/${id}/telegram-deliveries`, {
+    params: { limit },
+    cache: false,
+  })
+  return data
 }
 
 export async function getStudentTelegramLinks(id: string): Promise<StudentTelegramLink[]> {

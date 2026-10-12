@@ -42,6 +42,8 @@ public static class AuditSections
         new("contracts", "Shartnomalar"),
         new("vacancies", "Vakansiyalar"),
         new("staff",     "Xodimlar"),
+        // CRM upgrade Phase 2 (P2.9): Telegram campaigns, auto-message rules, manual templates.
+        new("messages",  "Xabarlar"),
         new("settings",  "Sozlamalar"),
         new(Other,       "Boshqa"),
     };
@@ -166,6 +168,15 @@ public static class AuditSections
         ["Room"] = "classes",
         // "StudentAiAccess" — bitta o'quvchiga AI tekshiruv limiti/premium/blok (pulli API sarfi).
         ["StudentAiAccess"] = "students",
+
+        // --- Xabarlar (CRM upgrade Phase 2, P2.9) ---
+        // "Broadcast" — Telegram xabar (kampaniya) yuborildi / bekor qilindi; "AutoMessageRule" — avto-xabar
+        // qoidasi yaratish/tahrir/o'chirish; "MessageTemplate" — qo'lda yoziladigan shablonlar.
+        ["Broadcast"] = "messages",
+        ["AutoMessageRule"] = "messages",
+        ["MessageTemplate"] = "messages",
+        // "StudentAchievement" — o'quvchi yutug'i (IELTS/CEFR/sertifikat) qo'shish/tahrir/o'chirish/tabrik.
+        ["StudentAchievement"] = "students",
     };
 
     /// <summary>Yozuv qaysi bo'limga tegishli (noma'lum tur → <see cref="Other"/>).</summary>

@@ -413,9 +413,12 @@ public record NvrSearchDto(bool Ok, string Error, List<NvrSegmentDto> Segments);
 public record AutoMessageTriggerInfoDto(
     string Key, string Label, string Description, string[] Tokens,
     bool SupportsSchedule, bool SupportsSendScope, string[] Audiences, string DefaultAudience,
-    string DefaultTemplate, string Category, bool TemplateOptional = false);
+    string DefaultTemplate, string Category, bool TemplateOptional = false,
+    // CRM upgrade P2.5: schedule mode (monthly_day_time | daily_time | custom | none), «Qabul qildim» default,
+    // default day/time of a new rule.
+    string ScheduleMode = "none", bool DefaultAck = false, int DefaultDay = 1, string DefaultTime = "09:00");
 /// <summary>Xabar {token}i katalogdagi bitta yozuv. Group: "student" | "lead" | "common" | "event".</summary>
-public record MessageTokenDto(string Token, string Label, string Group);
+public record MessageTokenDto(string Token, string Label, string Group, string Example = "");
 /// <summary>Avto-xabar qoidasi (o'qish uchun). Kabinet bildirishnomasi har doim yoziladi;
 /// <c>SendTelegram</c> — Telegram ham (eski SMS qoidasi ham shu yerda <c>true</c> bo'lib keladi —
 /// <c>AutoMessageChannels.Telegram</c>).</summary>
@@ -423,13 +426,16 @@ public record AutoMessageRuleDto(
     string Id, string Trigger, string Name, bool Enabled,
     bool SendTelegram, string Audience, string Template,
     int OffsetMinutes, string SendScope, string ScheduleType, string ScheduleTime, int ScheduleDayOfMonth,
-    string CreatedAt);
+    string CreatedAt,
+    // CRM upgrade P2.5: «✅ Qabul qildim» button + optional media of every message of the rule.
+    bool AckButton = false, string? AttachmentId = null, MessageAttachmentDto? Attachment = null);
 /// <summary>Avto-xabar qoidasini saqlash (yaratish/tahrirlash).</summary>
 public record SaveAutoMessageRuleRequest(
     string Trigger, string Name, bool Enabled,
     bool SendTelegram, string Audience, string Template,
     int OffsetMinutes = 5, string SendScope = "lesson_start",
-    string ScheduleType = "daily", string ScheduleTime = "09:00", int ScheduleDayOfMonth = 1);
+    string ScheduleType = "daily", string ScheduleTime = "09:00", int ScheduleDayOfMonth = 1,
+    bool AckButton = false, string? AttachmentId = null);
 
 /// <summary>Moliyada o'quvchi qatori. Charged = jami to'liq oylik (chegirmasiz);
 /// Discount = jami berilgan chegirma; Paid = haqiqiy naqd to'lovlar yig'indisi (turli oylar uchun);
@@ -477,7 +483,9 @@ public record StudentGroupDto(
 /// "frozen", hisob-kitobda oddiy muzlatishdan farqi YO'Q.</param>
 public record GroupMemberDto(
     string StudentId, string FullName, string JoinedAt, string? LeftAt, bool IsActive,
-    string Status, string ActivatedAt, string FrozenAt, decimal Balance, bool YearFreeze);
+    string Status, string ActivatedAt, string FrozenAt, decimal Balance, bool YearFreeze,
+    // CRM upgrade U6b: usable Telegram chats (not blocked) + their relations — counts only, no phones/chat ids.
+    int TelegramLinked = 0, List<string>? TelegramRelations = null);
 /// <summary>
 /// Guruhning FAOL a'zosi — SMS modali uchun (telefonlar + a'zolik holati + SHU GURUH balansi).
 /// <para>⚠️ Telefonlar ATAYIN <see cref="GroupMemberDto"/> ga qo'shilmadi, alohida DTO qilindi:
@@ -3871,7 +3879,8 @@ public record TeacherContactRequest(List<string> StudentIds, string? ReasonId = 
 /// Telefon BOR — o'qituvchi uni tahrirlay olishi uchun (faqat o'z guruhi o'quvchilari).
 /// Balans/ota-ona ma'lumoti ATAYIN yo'q.
 /// </summary>
-public record TeacherGroupStudentDto(string Id, string FullName, string Phone, int? SchoolGradeNow, string Status);
+public record TeacherGroupStudentDto(string Id, string FullName, string Phone, int? SchoolGradeNow, string Status,
+    int TelegramLinked = 0, List<string>? TelegramRelations = null);
 
 /// <summary>O'qituvchi tahriri — faqat uch maydon (<c>TeacherStudentEdit</c>). Sinf: null — tegilmaydi, 0 — tozalash.</summary>
 public record TeacherStudentEditRequest(string? FullName, int? SchoolGrade, string? Phone);

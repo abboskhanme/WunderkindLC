@@ -499,3 +499,15 @@
 - [2026-10-12] Phase 5 — home layout 4 000-char limit: before or after normalisation? → On the SENT payload →
   normalised output is always small; the limit only stops garbage payloads.
 - [2026-10-12] Phase 5 — home layout writes audited? → No (personal view preference, like theme/language).
+- [2026-10-12] Phase 2 — SPEC startup fix "disable SMS-only rules" vs Phase 1 "SMS rules go over Telegram"? → Follow the merged Phase 1 decision: only rules with NO external channel (push-only) are disabled (names logged); legacy SMS rules stay enabled; then `SendTelegram = true` everywhere → Phase 1 is the later, user-facing decision.
+- [2026-10-12] Phase 2 — `{link}` manual-send block (`MessageTokenCatalog.ForbiddenInManual`) no longer exists (Phase 1) → `{link}` is reported as an unknown token («Noma'lum o'zgaruvchi: {link}») → same 400, one rule.
+- [2026-10-12] Phase 2 — achievement resend counter (`{id}:{n}`) storage? → new column `StudentAchievement.CongratulationCount` (int, default 0) → the dedupe key must grow per explicit resend and survive restarts.
+- [2026-10-12] Phase 2 — campaign while the bot token is missing? → 400 «Telegram bot sozlanmagan (.env: TELEGRAM_BOT_TOKEN)»; auto messages are still queued (and expire unsent) → a manual send must not silently go nowhere; the auto log stays honest.
+- [2026-10-12] Phase 2 — achievement created with «Ota-onaga tabrik yuborish» but no enabled `achievement` rule / no linked chat? → the achievement is SAVED and the response carries a `warning` (200), never a 400 → a 400 after saving would make the user resubmit and create a duplicate.
+- [2026-10-12] Phase 2 — group context of campaign tokens ({guruh}, {oqituvchi}, {dars_*})? → the one selected group when exactly one group is filtered (and {guruh} = its name), otherwise the student's main (ClassName) group → same as the legacy broadcast.
+- [2026-10-12] Phase 2 — `audience/count` for debt campaigns? → `kind` is an optional field of the count request; the count always runs the SAME planner as `POST campaigns` (no rendering) → "count == rows created" holds for every kind.
+- [2026-10-12] Phase 2 — «students» audience of auto rules → only chats with relation `student`; «parents» → every other relation (incl. not-yet-backfilled "") → mirrors the campaign relation chips.
+- [2026-10-12] Phase 2 — multi-part (media + long text) retry after the media part went out? → a pending row with `TelegramMessageId` set resends only the text → no duplicate media on retries.
+- [2026-10-12] Phase 2 — RateLimited pause → the whole worker pauses for `retry_after` (capped at 60 s; the row waits up to 300 s) on every 429 → Telegram's descriptions do not distinguish chat from bot flood reliably.
+- [2026-10-12] Phase 2 — student purge and the new tables? → achievements and the student's delivery-log rows are deleted with the student (listed in the purge preview) → no orphan rows (student-purge.md §7).
+- [2026-10-12] Phase 2 — legacy `POST messages/broadcast` with both students and teachers selected → two campaigns (students + teachers), one combined `BroadcastDto` → the old request could mix them; a campaign has one audience.

@@ -23,7 +23,10 @@ public static class TelegramLinks
     /// <summary>Profilda ko'rsatiladigan bitta ulanish.</summary>
     /// <param name="PhoneMatches">Ulanish raqami o'quvchining JORIY raqamlaridan biriga mosmi
     /// (<c>false</c> — eskirgan ulanish, uzish tavsiya etiladi).</param>
-    public sealed record LinkDto(string Id, string ParentName, string Phone, string CreatedAt, bool PhoneMatches);
+    /// <param name="Relation">CRM upgrade P2.4: father · mother · parent · student · other (<c>""</c> = not backfilled).</param>
+    /// <param name="Blocked">The chat blocked the bot (<see cref="TelegramRegistration.BlockedAt"/>).</param>
+    public sealed record LinkDto(string Id, string ParentName, string Phone, string CreatedAt, bool PhoneMatches,
+        string Relation = "", bool Blocked = false, string? BlockedAt = null);
 
     /// <summary>O'quvchining joriy raqamlari KALITLARI (oxirgi 9 raqam, <see cref="PhoneUtil.Key"/>).
     /// 7 raqamdan qisqasi raqam emas — kirmaydi.</summary>
@@ -80,10 +83,16 @@ public static class TelegramLinks
         return (await db.TelegramRegistrations.AsNoTracking()
                 .Where(r => r.StudentId == s.Id).ToListAsync(ct))
             .OrderByDescending(r => r.CreatedAt)
-            .Select(r => new LinkDto(r.Id, r.ParentName, PhoneUtil.Normalize(r.Phone),
-                r.CreatedAt.ToString("yyyy-MM-ddTHH:mm:ss"), !IsStale(r, keys) && PhoneUtil.Key(r.Phone).Length >= 7))
+            .Select(ToDto(keys))
             .ToList();
     }
+
+    /// <summary>Profil qatori (raqam mosligi, qarindoshlik, blok belgisi bilan).</summary>
+    public static Func<TelegramRegistration, LinkDto> ToDto(IReadOnlySet<string> keys) => r =>
+        new LinkDto(r.Id, r.ParentName, PhoneUtil.Normalize(r.Phone),
+            r.CreatedAt.ToString("yyyy-MM-ddTHH:mm:ss"), !IsStale(r, keys) && PhoneUtil.Key(r.Phone).Length >= 7,
+            Messaging.TelegramRelations.Effective(r.Relation), r.BlockedAt is not null,
+            r.BlockedAt?.ToString("yyyy-MM-ddTHH:mm:ss"));
 
     /// <summary>Audit/izoh uchun: "Ism (+998-90-...)".</summary>
     public static string Describe(TelegramRegistration r)

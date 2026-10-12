@@ -72,6 +72,8 @@ public static class BackupService
         "ctiCallEvents", "ctiCommandLogs", "refreshTokens", "loginOtpCodes", "trustedDevices",
         "faceChallenges", "loginFaceChecks", "studentFaceProfiles", "bookBotSessions", "testBotSessions",
         "seedMarkers", "cameras", "attendanceNotifyItems",
+        // CRM upgrade Phase 2: Telegram outbox / delivery log — log-like and large (180-day retention).
+        "messageDeliveries",
         // Read-only MCP: OAuth mijozlari, ulanishlar, kod/token xeshlari va so'rovlar jurnali — texnik.
         "mcpClients", "mcpGrants", "mcpAuthCodes", "mcpTokens", "mcpAudit",
         // O'quvchi parollari seyfi (CRM Phase 6) — shifrlangan bo'lsa ham Telegram'ga ketmaydi (auth-sessions.md §6).
@@ -194,6 +196,9 @@ public static class BackupService
         await Add("feedbacks", db.Feedbacks);
         await Add("autoMessageRules", db.AutoMessageRules);
         await Add("smsTemplates", db.SmsTemplates);
+        // CRM upgrade Phase 2: attachment METADATA (files stay in uploads/) and student achievements.
+        await Add("messageAttachments", db.MessageAttachments);
+        await Add("studentAchievements", db.StudentAchievements);
         await Add("smsBatches", db.SmsBatches);
         await Add("botUsers", db.BotUsers);
         await Add("botSupportMessages", db.BotSupportMessages);

@@ -585,6 +585,12 @@ export interface StudentListExtras {
   movementDate?: string
   /** O'sha ro'yxatda — chiqib ketgan guruh nomi. */
   movementGroup?: string
+  /** CRM upgrade U6b: botni bloklamagan Telegram chatlari soni (0 — «Ulanmagan»). */
+  telegramLinked?: number
+  /** U6b: shu chatlarning qarindoshliklari (father · mother · parent · student · other). */
+  telegramRelations?: string[]
+  /** U6b: botni bloklagan chatlar soni. */
+  telegramBlocked?: number
 }
 
 export interface Lead {
@@ -1105,6 +1111,10 @@ export interface GroupMember {
   balance: number
   /** «Aktiv muzlatish» — yangi o'quv yiliga o'tishdagi muzlatish belgisi (`status` = "frozen"). */
   yearFreeze: boolean
+  /** CRM upgrade U6b: botni bloklamagan Telegram chatlari soni. */
+  telegramLinked?: number
+  /** U6b: shu chatlarning qarindoshliklari. */
+  telegramRelations?: string[] | null
 }
 
 /** O'quvchining guruh a'zoligi */

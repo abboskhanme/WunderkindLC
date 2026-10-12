@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type MouseEvent as ReactMouseEvent } from 'react'
-import { Plus, Trash2, AlertTriangle, Sparkles, Hand, Zap, Bell, MessageCircle } from 'lucide-react'
+import { AlertTriangle, Bell, CheckCircle2, MessageCircle, Paperclip, Plus, Sparkles, Trash2, Zap } from 'lucide-react'
 import {
   getAutoMessageTriggers,
   getAutoMessageRules,
@@ -16,13 +16,6 @@ import {
   type AutoMessageRuleInput,
   type MessageToken,
 } from '@/api/services/autoMessages'
-import {
-  getMessageTemplates,
-  createMessageTemplate,
-  updateMessageTemplate,
-  deleteMessageTemplate,
-  type MessageTemplate,
-} from '@/api/services/messages'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
@@ -32,9 +25,12 @@ import { NumberInput } from '@/components/ui/NumberInput'
 import { Modal } from '@/components/ui/Modal'
 import { cn, apiErrorMessage } from '@/lib/utils'
 import { MessageEditor } from '@/components/messaging/MessageEditor'
+import { TelegramPreview } from '@/components/messaging/TelegramPreview'
+import { AttachmentPicker, type PickedAttachment } from '@/components/messaging/AttachmentPicker'
+import { useMessagePreview } from '@/components/messaging/useTelegramDraft'
 
 /** Bo'limlar tartibi (trigger.category bo'yicha guruhlash). */
-const CATEGORY_ORDER = ['Lidlar', "O'quv jarayoni", 'Moliya', 'Boshqa'] as const
+const CATEGORY_ORDER = ["O'quv jarayoni", 'Moliya', 'Boshqa'] as const
 
 /** Backend `category` bermasa — client-side fallback xarita. */
 const CATEGORY_FALLBACK: Record<string, string> = {
@@ -44,6 +40,10 @@ const CATEGORY_FALLBACK: Record<string, string> = {
   lesson_attendance: "O'quv jarayoni",
   birthday: "O'quv jarayoni",
   grade_entered: "O'quv jarayoni",
+  achievement: "O'quv jarayoni",
+  test_score: "O'quv jarayoni",
+  rating_top: "O'quv jarayoni",
+  rating_bottom: "O'quv jarayoni",
   payment_received: 'Moliya',
   monthly_charge: 'Moliya',
   payment_debt: 'Moliya',
@@ -54,82 +54,63 @@ function triggerCategory(t: AutoMessageTrigger): string {
   return (CATEGORY_ORDER as readonly string[]).includes(c) ? c : 'Boshqa'
 }
 
-/** Yagona ro'yxat elementi — qo'lda matn (MessageTemplate) yoki avtomatik qoida (AutoMessageRule). */
-type Item = { kind: 'manual'; tpl: MessageTemplate } | { kind: 'auto'; rule: AutoMessageRule }
+/** Ro'yxatdagi jadval izohi: "Har oyning 10-kuni, 09:00" / "Har kuni 09:00". */
+function scheduleSummary(t: AutoMessageTrigger | undefined, r: AutoMessageRule): string {
+  if (!t) return ''
+  if (t.scheduleMode === 'monthly_day_time') return `Har oyning ${r.scheduleDayOfMonth}-kuni, ${r.scheduleTime}`
+  if (t.scheduleMode === 'daily_time') return `Har kuni ${r.scheduleTime}`
+  return ''
+}
 
 /**
- * "Xabar yaratish" — YAGONA joy. Har xabar QO'LDA (tanlab yuboriladigan tayyor matn) yoki AVTOMATIK
- * (hodisa yuz berganda o'zi ketadigan) bo'lishi mumkin (yaratishda tanlanadi). Avtomatik xabar HAR
- * DOIM kabinetga bildirishnoma yozadi (o'quvchi/o'qituvchi web kabinetidagi qo'ng'iroqcha), Telegram
- * esa qo'shimcha kanal (yoqiladi/o'chiriladi). SMS va push 2026-10 da olib tashlangan. Element ustiga
- * bosilsa tahrirlash ochiladi.
+ * «Avto xabarlar» (CRM upgrade P2.8): hodisa yuz berganda (yoki jadval bo'yicha) o'zi ketadigan xabarlar.
+ * Har yoqilgan qoida kabinetga bildirishnoma + Telegram (OUTBOX — sanoq, hisobot, «Qabul qildim»)
+ * yuboradi; `enabled` yolg'iz hal qiladi (Telegram kaliti yo'q — 2026-10-12). Qoidada formatlash,
+ * preview, bitta fayl, «Qabul qildim» tugmasi va jadval (oyning kuni + soat / soat).
+ * Qo'lda yuboriladigan matnlar — «Shablonlar» tabida.
  */
 export function AutoMessagesTab({
-  highlightRuleId,
   canCreate = true,
   canEdit = true,
   canDelete = true,
 }: {
-  highlightRuleId?: string | null
-  /** Ruxsat: "Yangi xabar" yaratish ko'rinsinmi (default true) */
   canCreate?: boolean
-  /** Ruxsat: elementni bosib tahrirlash mumkinmi (default true) */
   canEdit?: boolean
-  /** Ruxsat: o'chirish tugmasi ko'rinsinmi (default true) */
   canDelete?: boolean
 } = {}) {
   const [triggers, setTriggers] = useState<AutoMessageTrigger[]>([])
-  const [autoRules, setAutoRules] = useState<AutoMessageRule[]>([])
-  const [manualTpls, setManualTpls] = useState<MessageTemplate[]>([])
+  const [rules, setRules] = useState<AutoMessageRule[]>([])
   const [allTokens, setAllTokens] = useState<MessageToken[]>([])
   const [loading, setLoading] = useState(true)
   const [failed, setFailed] = useState(false)
   const [err, setErr] = useState('')
   const [seeding, setSeeding] = useState(false)
   const [seedMsg, setSeedMsg] = useState('')
-  /** Modal: 'new' — yaratish; Item — tahrirlash; null — yopiq. */
-  const [modal, setModal] = useState<'new' | Item | null>(null)
+  /** Modal: 'new' — yaratish; qoida — tahrirlash; null — yopiq. */
+  const [modal, setModal] = useState<'new' | AutoMessageRule | null>(null)
 
-  const reload = () =>
-    Promise.all([getAutoMessageRules().catch(() => []), getMessageTemplates().catch(() => [])]).then(
-      ([r, m]) => {
-        setAutoRules(r)
-        setManualTpls(m)
-      },
-    )
+  const reload = () => getAutoMessageRules().then(setRules).catch(() => undefined)
 
   useEffect(() => {
-    Promise.all([
-      getAutoMessageTriggers(),
-      getAutoMessageRules(),
-      getMessageTemplates(),
-      getMessageTokens(),
-    ])
-      .then(([t, r, m, tk]) => {
+    Promise.all([getAutoMessageTriggers(), getAutoMessageRules(), getMessageTokens()])
+      .then(([t, r, tk]) => {
         setTriggers(t)
-        setAutoRules(r)
-        setManualTpls(m)
+        setRules(r)
         setAllTokens(tk)
       })
       .catch(() => setFailed(true))
       .finally(() => setLoading(false))
   }, [])
 
-  // "Xabar yuborish"dan "Sozlash" bosilganda shu avto qoidani tahrirlash uchun ochamiz.
-  useEffect(() => {
-    if (!highlightRuleId || autoRules.length === 0) return
-    const r = autoRules.find((x) => x.id === highlightRuleId)
-    if (r) setModal({ kind: 'auto', rule: r })
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [autoRules, highlightRuleId])
-
-  const items: Item[] = useMemo(
-    () => [
-      ...manualTpls.map((tpl) => ({ kind: 'manual' as const, tpl })),
-      ...autoRules.map((rule) => ({ kind: 'auto' as const, rule })),
-    ],
-    [manualTpls, autoRules],
-  )
+  const byCategory = useMemo(() => {
+    const m = new Map<string, AutoMessageRule[]>()
+    for (const r of rules) {
+      const t = triggers.find((x) => x.key === r.trigger)
+      const c = t ? triggerCategory(t) : 'Boshqa'
+      m.set(c, [...(m.get(c) ?? []), r])
+    }
+    return m
+  }, [rules, triggers])
 
   const doSeed = async () => {
     setSeeding(true)
@@ -140,7 +121,7 @@ export function AutoMessagesTab({
       await reload()
       setSeedMsg(
         created > 0
-          ? `${created} ta tayyor avto xabar qo'shildi (Telegram + kabinet). Kerak bo'lsa tahrirlang.`
+          ? `${created} ta tayyor avto xabar qo'shildi. Kerak bo'lsa tahrirlang.`
           : 'Barcha standart avto xabarlar allaqachon mavjud.',
       )
     } catch (e) {
@@ -152,21 +133,18 @@ export function AutoMessagesTab({
 
   const toggleEnabled = async (rule: AutoMessageRule) => {
     try {
-      const { id: _id, createdAt: _c, ...rest } = rule
-      await updateAutoMessageRule(rule.id, { ...rest, enabled: !rule.enabled })
+      await updateAutoMessageRule(rule.id, { ...toInput(rule), enabled: !rule.enabled })
       await reload()
     } catch (e) {
       setErr(apiErrorMessage(e, "O'zgartirib bo'lmadi"))
     }
   }
 
-  const removeItem = async (item: Item, e: ReactMouseEvent) => {
+  const remove = async (rule: AutoMessageRule, e: ReactMouseEvent) => {
     e.stopPropagation()
-    const name = item.kind === 'manual' ? item.tpl.name : item.rule.name
-    if (!window.confirm(`"${name || 'Xabar'}" o'chirilsinmi?`)) return
+    if (!window.confirm(`"${rule.name || 'Xabar'}" o'chirilsinmi?`)) return
     try {
-      if (item.kind === 'manual') await deleteMessageTemplate(item.tpl.id)
-      else await deleteAutoMessageRule(item.rule.id)
+      await deleteAutoMessageRule(rule.id)
       await reload()
     } catch (e2) {
       setErr(apiErrorMessage(e2, "O'chirib bo'lmadi"))
@@ -209,160 +187,129 @@ export function AutoMessagesTab({
 
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h3 className="text-sm font-bold text-slate-700">Yaratilgan xabarlar ({items.length})</h3>
+          <h3 className="text-sm font-bold text-slate-700">Avto xabarlar ({rules.length})</h3>
           <p className="text-xs text-slate-500">
-            Har xabar <b>qo'lda</b> (tanlab yuboriladigan matn) yoki <b>avtomatik</b> (hodisada o'zi ketadigan)
-            bo'lishi mumkin. Element ustiga bosib tahrirlang.
+            Hodisa yuz berganda (to'lov, davomat, tug'ilgan kun ...) o'zi ketadi — kabinetga va Telegram'ga.
           </p>
         </div>
         <div className="flex items-center gap-2">
           {canCreate && (
             <Button variant="secondary" onClick={doSeed} disabled={seeding}>
-              <Sparkles className="h-4 w-4" /> {seeding ? 'Qo\'shilmoqda...' : 'Namunaviy xabarlar'}
+              <Sparkles className="h-4 w-4" /> {seeding ? "Qo'shilmoqda..." : 'Namunaviy xabarlar'}
             </Button>
           )}
           {canCreate && (
             <Button onClick={() => setModal('new')}>
-              <Plus className="h-4 w-4" /> Yangi xabar
+              <Plus className="h-4 w-4" /> Yangi avto xabar
             </Button>
           )}
         </div>
       </div>
 
-      {items.length === 0 ? (
+      {rules.length === 0 ? (
         <Card>
           <div className="flex flex-col items-center gap-3 py-10 text-center">
             <div className="rounded-full bg-brand-50 p-3">
-              <Plus className="h-6 w-6 text-brand-500" />
+              <Zap className="h-6 w-6 text-brand-500" />
             </div>
-            <div>
-              <h4 className="font-semibold text-slate-700">Hali xabar yaratilmagan</h4>
-              <p className="mt-1 text-sm text-slate-500">
-                "Yangi xabar" bilan boshlang yoki tayyor avto xabarlar to'plamini qo'shing.
-              </p>
-            </div>
-            <div className="flex gap-2">
-              {canCreate && (
-                <Button variant="secondary" onClick={doSeed} disabled={seeding}>
-                  <Sparkles className="h-4 w-4" /> Namunaviy xabarlar qo'shish
-                </Button>
-              )}
-              {canCreate && (
-                <Button onClick={() => setModal('new')}>
-                  <Plus className="h-4 w-4" /> Yangi xabar
-                </Button>
-              )}
-            </div>
+            <h4 className="font-semibold text-slate-700">Hali avto xabar yo'q</h4>
+            <p className="text-sm text-slate-500">«Yangi avto xabar» bilan boshlang yoki tayyor to'plamni qo'shing.</p>
           </div>
         </Card>
       ) : (
-        <div className="space-y-2">
-          {items.map((item) => {
-            const key = item.kind === 'manual' ? `m-${item.tpl.id}` : `a-${item.rule.id}`
-            const name = item.kind === 'manual' ? item.tpl.name : item.rule.name
-            const text = item.kind === 'manual' ? item.tpl.text : item.rule.template
-            const enabled = item.kind === 'auto' ? item.rule.enabled : true
-            return (
-              <button
-                key={key}
-                type="button"
-                disabled={!canEdit}
-                onClick={() => canEdit && setModal(item)}
-                className={cn(
-                  'flex w-full items-center gap-3 rounded-xl border p-3 text-left transition-colors',
-                  canEdit && 'hover:border-brand-300 hover:bg-brand-50/40',
-                  !canEdit && 'cursor-default',
-                  enabled ? 'border-slate-200 bg-white' : 'border-slate-100 bg-slate-50',
-                )}
-              >
-                {item.kind === 'auto' ? (
+        CATEGORY_ORDER.filter((c) => (byCategory.get(c) ?? []).length > 0).map((cat) => (
+          <div key={cat} className="space-y-2">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">{cat}</p>
+            {(byCategory.get(cat) ?? []).map((rule) => {
+              const t = triggers.find((x) => x.key === rule.trigger)
+              const sched = scheduleSummary(t, rule)
+              return (
+                <button
+                  key={rule.id}
+                  type="button"
+                  disabled={!canEdit}
+                  onClick={() => canEdit && setModal(rule)}
+                  className={cn(
+                    'flex w-full items-center gap-3 rounded-xl border p-3 text-left transition-colors',
+                    canEdit && 'hover:border-brand-300 hover:bg-brand-50/40',
+                    !canEdit && 'cursor-default',
+                    rule.enabled ? 'border-slate-200 bg-white' : 'border-slate-100 bg-slate-50',
+                  )}
+                >
                   <span
                     role="switch"
-                    aria-checked={item.rule.enabled}
+                    aria-checked={rule.enabled}
                     onClick={(e) => {
                       e.stopPropagation()
-                      if (canEdit) toggleEnabled(item.rule)
+                      if (canEdit) toggleEnabled(rule)
                     }}
                     className={cn(
                       'relative h-5 w-9 shrink-0 rounded-full transition-colors',
                       canEdit ? 'cursor-pointer' : 'cursor-default opacity-60',
-                      item.rule.enabled ? 'bg-emerald-500' : 'bg-slate-300',
+                      rule.enabled ? 'bg-emerald-500' : 'bg-slate-300',
                     )}
-                    title={item.rule.enabled ? 'Yoqilgan' : "O'chirilgan"}
+                    title={rule.enabled ? 'Yoqilgan' : "O'chirilgan"}
                   >
                     <span
                       className={cn(
                         'absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform',
-                        item.rule.enabled ? 'translate-x-4' : 'translate-x-0.5',
+                        rule.enabled ? 'translate-x-4' : 'translate-x-0.5',
                       )}
                     />
                   </span>
-                ) : (
-                  <span className="flex h-5 w-9 shrink-0 items-center justify-center" title="Qo'lda">
-                    <Hand className="h-4 w-4 text-slate-400" />
-                  </span>
-                )}
-
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    <span className={cn('truncate font-semibold', enabled ? 'text-slate-800' : 'text-slate-400')}>
-                      {name || (item.kind === 'auto' ? item.rule.trigger : 'Nomsiz')}
-                    </span>
-                    {item.kind === 'auto' ? (
-                      <>
-                        <Badge tone="violet">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span className={cn('truncate font-semibold', rule.enabled ? 'text-slate-800' : 'text-slate-400')}>
+                        {rule.name || t?.label || rule.trigger}
+                      </span>
+                      <Badge tone="blue">
+                        <span className="inline-flex items-center gap-1">
+                          <MessageCircle className="h-3 w-3" /> Telegram
+                        </span>
+                      </Badge>
+                      {rule.ackButton && (
+                        <Badge tone="green">
                           <span className="inline-flex items-center gap-1">
-                            <Zap className="h-3 w-3" /> Avto
+                            <CheckCircle2 className="h-3 w-3" /> Qabul qildim
                           </span>
                         </Badge>
+                      )}
+                      {rule.attachmentId && (
                         <Badge tone="default">
                           <span className="inline-flex items-center gap-1">
-                            <Bell className="h-3 w-3" /> Kabinet
+                            <Paperclip className="h-3 w-3" /> Fayl
                           </span>
                         </Badge>
-                        {item.rule.sendTelegram && (
-                          <Badge tone="blue">
-                            <span className="inline-flex items-center gap-1">
-                              <MessageCircle className="h-3 w-3" /> Telegram
-                            </span>
-                          </Badge>
-                        )}
-                      </>
-                    ) : (
-                      <Badge tone="default">Qo'lda</Badge>
-                    )}
+                      )}
+                    </div>
+                    <p className="mt-0.5 truncate text-xs text-slate-400">
+                      {t?.label ?? rule.trigger}
+                      {(t?.audiences.length ?? 0) > 0 && ` · ${audienceLabel(rule.audience)}`}
+                      {sched && ` · ${sched}`}
+                    </p>
                   </div>
-                  <p className="mt-0.5 truncate text-xs text-slate-400">
-                    {item.kind === 'auto'
-                      ? `${triggers.find((t) => t.key === item.rule.trigger)?.label ?? item.rule.trigger}${
-                          (triggers.find((t) => t.key === item.rule.trigger)?.audiences.length ?? 0) > 0
-                            ? ` · ${audienceLabel(item.rule.audience)}`
-                            : ''
-                        }`
-                      : text || 'Matn yo\'q'}
-                  </p>
-                </div>
-
-                {canDelete && (
-                  <span
-                    onClick={(e) => removeItem(item, e)}
-                    className="shrink-0 rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-red-50 hover:text-red-600"
-                    title="O'chirish"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </span>
-                )}
-              </button>
-            )
-          })}
-        </div>
+                  {canDelete && (
+                    <span
+                      onClick={(e) => remove(rule, e)}
+                      className="shrink-0 rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-red-50 hover:text-red-600"
+                      title="O'chirish"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </span>
+                  )}
+                </button>
+              )
+            })}
+          </div>
+        ))
       )}
 
       {modal && (
-        <MessageFormModal
+        <RuleFormModal
+          key={modal === 'new' ? 'new' : modal.id}
           triggers={triggers}
           allTokens={allTokens}
-          item={modal === 'new' ? null : modal}
+          rule={modal === 'new' ? null : modal}
           onClose={() => setModal(null)}
           onSaved={async () => {
             await reload()
@@ -374,150 +321,137 @@ export function AutoMessagesTab({
   )
 }
 
-/** Yaratish/tahrirlash modali — "Avtomatik yuborish" tanlanadi; avtomatikda bo'lim/hodisa/kimga/kanallar/matn. */
-function MessageFormModal({
+/** Qoidadan saqlash so'rovi (o'qishdagi qo'shimcha maydonlarsiz). */
+function toInput(r: AutoMessageRule): AutoMessageRuleInput {
+  return {
+    trigger: r.trigger,
+    name: r.name,
+    enabled: r.enabled,
+    sendTelegram: true,
+    audience: r.audience,
+    template: r.template,
+    offsetMinutes: r.offsetMinutes,
+    sendScope: r.sendScope,
+    scheduleType: r.scheduleType,
+    scheduleTime: r.scheduleTime,
+    scheduleDayOfMonth: r.scheduleDayOfMonth,
+    ackButton: r.ackButton ?? false,
+    attachmentId: r.attachmentId ?? null,
+  }
+}
+
+/** Yaratish/tahrirlash oynasi: bo'lim → hodisa → kimga → jadval → matn (formatlash + preview) → fayl → tugma. */
+function RuleFormModal({
   triggers,
   allTokens,
-  item,
+  rule,
   onClose,
   onSaved,
 }: {
   triggers: AutoMessageTrigger[]
   allTokens: MessageToken[]
-  item: Item | null
+  rule: AutoMessageRule | null
   onClose: () => void
   onSaved: () => Promise<void> | void
 }) {
-  const editing = !!item
-  const editRule = item?.kind === 'auto' ? item.rule : null
-  const editTpl = item?.kind === 'manual' ? item.tpl : null
-
+  const editing = !!rule
   const triggersByCategory = useMemo(() => {
     const m = new Map<string, AutoMessageTrigger[]>()
-    for (const t of triggers) {
-      const arr = m.get(triggerCategory(t)) ?? []
-      arr.push(t)
-      m.set(triggerCategory(t), arr)
-    }
+    for (const t of triggers) m.set(triggerCategory(t), [...(m.get(triggerCategory(t)) ?? []), t])
     return m
   }, [triggers])
 
-  const firstTrigger = triggers[0]
-  const initialTrigger = editRule ? triggers.find((t) => t.key === editRule.trigger) ?? firstTrigger : firstTrigger
+  const initialTrigger = (rule ? triggers.find((t) => t.key === rule.trigger) : undefined) ?? triggers[0]
 
-  // Rejim: item bo'lsa uning turi; yangi bo'lsa AVTOMATIK (default).
-  const [auto, setAuto] = useState(item ? item.kind === 'auto' : true)
-  // Umumiy maydonlar
-  const [name, setName] = useState(editRule?.name ?? editTpl?.name ?? initialTrigger?.label ?? '')
-  const [body, setBody] = useState(editRule?.template ?? editTpl?.text ?? initialTrigger?.defaultTemplate ?? '')
-  // Avtomatik maydonlar
   const [category, setCategory] = useState(initialTrigger ? triggerCategory(initialTrigger) : CATEGORY_ORDER[0])
   const [triggerKey, setTriggerKey] = useState(initialTrigger?.key ?? '')
-  const [audience, setAudience] = useState(editRule?.audience ?? initialTrigger?.defaultAudience ?? 'parents')
-  // Telegram — yagona tashqi kanal; yangi qoidada standart YOQIQ (kabinet bildirishnomasi har doim yoziladi).
-  const [sendTelegram, setSendTelegram] = useState<boolean>(editRule ? editRule.sendTelegram : true)
-  const [sendScope, setSendScope] = useState(editRule?.sendScope || sendScopeOptions[0].value)
-  // Davomat eslatmasi «dars boshlanishiga nisbatan»: oldin (manfiy) yoki keyin. Maydonda MUSBAT son,
-  // yo'nalish alohida — server `OffsetMinutes` ni ishorali saqlaydi (masalan −90 = darsdan 1,5 soat oldin).
-  const [offsetMinutes, setOffsetMinutes] = useState<number | null>(
-    editRule?.offsetMinutes != null ? Math.abs(editRule.offsetMinutes) : null,
-  )
-  const [offsetBefore, setOffsetBefore] = useState<boolean>((editRule?.offsetMinutes ?? 0) < 0)
-  const [scheduleType, setScheduleType] = useState(editRule?.scheduleType || 'daily')
-  const [scheduleTime, setScheduleTime] = useState(editRule?.scheduleTime || '09:00')
-  const [scheduleDayOfMonth, setScheduleDayOfMonth] = useState<number | null>(editRule?.scheduleDayOfMonth ?? null)
+  const [name, setName] = useState(rule?.name ?? initialTrigger?.label ?? '')
+  const [body, setBody] = useState(rule?.template ?? initialTrigger?.defaultTemplate ?? '')
+  const [audience, setAudience] = useState(rule?.audience ?? initialTrigger?.defaultAudience ?? 'parents')
+  const [sendScope, setSendScope] = useState(rule?.sendScope || sendScopeOptions[0].value)
+  const [offsetMinutes, setOffsetMinutes] = useState<number | null>(rule?.offsetMinutes != null ? Math.abs(rule.offsetMinutes) : null)
+  const [offsetBefore, setOffsetBefore] = useState<boolean>((rule?.offsetMinutes ?? 0) < 0)
+  const [scheduleType, setScheduleType] = useState(rule?.scheduleType || 'daily')
+  const [scheduleTime, setScheduleTime] = useState(rule?.scheduleTime || initialTrigger?.defaultTime || '09:00')
+  const [scheduleDay, setScheduleDay] = useState<number | null>(rule?.scheduleDayOfMonth ?? initialTrigger?.defaultDay ?? 1)
+  const [ack, setAck] = useState<boolean>(rule ? !!rule.ackButton : !!initialTrigger?.defaultAck)
+  const [attachment, setAttachment] = useState<PickedAttachment | null>(rule?.attachment ?? null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
   const trigger = triggers.find((t) => t.key === triggerKey)
+  const mode = trigger?.scheduleMode ?? 'none'
+  const { preview, loading } = useMessagePreview({
+    template: body,
+    trigger: triggerKey,
+    attachmentId: attachment?.id ?? null,
+    enabled: !!trigger && trigger.tokens.length > 0,
+  })
+  const templateErrors = preview?.errors ?? []
 
-  // Matn ostidagi o'zgaruvchilar: o'quvchi+umumiy+hodisa (lid hodisalari SMS bilan olib tashlangan).
   const editorTokens = useMemo(() => {
     const groups = ['student', 'common', 'event']
     const seen = new Set<string>()
     const list = allTokens
       .filter((t) => groups.includes(t.group) && !seen.has(t.token) && seen.add(t.token))
       .map((t) => ({ token: t.token, label: t.label }))
-    if (list.length > 0) return list
-    return (trigger?.tokens ?? []).map((tk) => ({ token: tk, label: tk }))
+    return list.length > 0 ? list : (trigger?.tokens ?? []).map((tk) => ({ token: tk, label: tk }))
   }, [allTokens, trigger])
 
-  const applyTriggerDefaults = (t: AutoMessageTrigger | undefined) => {
+  const applyDefaults = (t: AutoMessageTrigger | undefined) => {
     if (!t) return
     setName(t.label)
     setAudience(t.defaultAudience)
     setBody(t.defaultTemplate ?? '')
     setSendScope(sendScopeOptions[0].value)
     setScheduleType('daily')
-    setScheduleTime('09:00')
-    setScheduleDayOfMonth(null)
-  }
-
-  const onCategoryChange = (cat: string) => {
-    setCategory(cat)
-    const first = (triggersByCategory.get(cat) ?? [])[0]
-    if (first) {
-      setTriggerKey(first.key)
-      applyTriggerDefaults(first)
-    }
-  }
-
-  const onTriggerChange = (key: string) => {
-    setTriggerKey(key)
-    applyTriggerDefaults(triggers.find((t) => t.key === key))
+    setScheduleTime(t.defaultTime ?? '09:00')
+    setScheduleDay(t.defaultDay ?? 1)
+    setAck(!!t.defaultAck)
   }
 
   const save = async () => {
+    if (!trigger) {
+      setError('Hodisa tanlang')
+      return
+    }
     if (!name.trim()) {
       setError('Nom kerak')
+      return
+    }
+    if (trigger.tokens.length > 0 && !trigger.templateOptional && !body.trim()) {
+      setError('Xabar matni kerak')
+      return
+    }
+    if (mode === 'monthly_day_time' && (scheduleDay == null || scheduleDay < 1 || scheduleDay > 31)) {
+      setError("Oyning kuni 1–31 oralig'ida bo'lsin")
+      return
+    }
+    if (trigger.supportsSchedule && scheduleType === 'monthly' && (scheduleDay == null || scheduleDay < 1)) {
+      setError('Oy kunini kiriting (1-31)')
       return
     }
     setSaving(true)
     setError('')
     try {
-      if (auto) {
-        if (!trigger) {
-          setError('Hodisa tanlang')
-          setSaving(false)
-          return
-        }
-        if (trigger.tokens.length > 0 && !trigger.templateOptional && !body.trim()) {
-          setError('Xabar matni kerak')
-          setSaving(false)
-          return
-        }
-        if (trigger.supportsSchedule && scheduleType === 'monthly' && (scheduleDayOfMonth ?? 0) < 1) {
-          setError('Oy kunini kiriting (1-28)')
-          setSaving(false)
-          return
-        }
-        const input: AutoMessageRuleInput = {
-          trigger: trigger.key,
-          name: name.trim(),
-          enabled: editRule?.enabled ?? true,
-          sendTelegram,
-          audience,
-          template: body,
-          // Bo'sh surilish = 0 (dars boshlanishida).
-          offsetMinutes: (offsetBefore ? -1 : 1) * (offsetMinutes ?? 0),
-          sendScope: trigger.supportsSendScope ? sendScope : '',
-          scheduleType: trigger.supportsSchedule ? scheduleType : '',
-          // Vaqt kerak: reja (custom_schedule) YOKI qamrov "not_filled"/"all" (davomat eslatmasi kunlik vaqti).
-          scheduleTime: trigger.supportsSchedule || trigger.supportsSendScope ? scheduleTime : '',
-          scheduleDayOfMonth: scheduleDayOfMonth ?? 1,
-        }
-        if (editRule) await updateAutoMessageRule(editRule.id, input)
-        else await createAutoMessageRule(input)
-      } else {
-        // Qo'lda matn (MessageTemplate)
-        if (!body.trim()) {
-          setError('Xabar matni kerak')
-          setSaving(false)
-          return
-        }
-        if (editTpl) await updateMessageTemplate(editTpl.id, { name: name.trim(), text: body.trim() })
-        else await createMessageTemplate({ name: name.trim(), text: body.trim() })
+      const scheduled = mode === 'monthly_day_time' || mode === 'daily_time' || trigger.supportsSchedule || trigger.supportsSendScope
+      const input: AutoMessageRuleInput = {
+        trigger: trigger.key,
+        name: name.trim(),
+        enabled: rule?.enabled ?? true,
+        sendTelegram: true,
+        audience,
+        template: body,
+        offsetMinutes: (offsetBefore ? -1 : 1) * (offsetMinutes ?? 0),
+        sendScope: trigger.supportsSendScope ? sendScope : '',
+        scheduleType: mode === 'monthly_day_time' ? 'monthly' : trigger.supportsSchedule ? scheduleType : 'daily',
+        scheduleTime: scheduled ? scheduleTime : '09:00',
+        scheduleDayOfMonth: scheduleDay ?? 1,
+        ackButton: ack,
+        attachmentId: attachment?.id ?? null,
       }
+      if (rule) await updateAutoMessageRule(rule.id, input)
+      else await createAutoMessageRule(input)
       await onSaved()
     } catch (e) {
       setError(apiErrorMessage(e, "Saqlab bo'lmadi"))
@@ -530,211 +464,189 @@ function MessageFormModal({
     <Modal
       open
       onClose={onClose}
-      title={editing ? 'Xabarni tahrirlash' : 'Yangi xabar'}
+      size="xl"
+      title={editing ? 'Avto xabarni tahrirlash' : 'Yangi avto xabar'}
       footer={
         <>
           <Button variant="secondary" onClick={onClose} disabled={saving}>
             Bekor qilish
           </Button>
-          <Button onClick={save} disabled={saving}>
+          <Button onClick={save} disabled={saving || templateErrors.length > 0}>
             {saving ? 'Saqlanmoqda...' : editing ? 'Saqlash' : 'Yaratish'}
           </Button>
         </>
       }
     >
-      <div className="space-y-4">
-        {/* Rejim: Avtomatik yuborish */}
-        <div
-          className={cn(
-            'flex items-center justify-between rounded-lg border px-3 py-2.5',
-            auto ? 'border-violet-200 bg-violet-50' : 'border-slate-200 bg-slate-50',
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-[1fr_320px]">
+        <div className="space-y-4">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <Select
+              label="Bo'lim"
+              value={category}
+              disabled={editing}
+              onChange={(e) => {
+                setCategory(e.target.value)
+                const first = (triggersByCategory.get(e.target.value) ?? [])[0]
+                if (first) {
+                  setTriggerKey(first.key)
+                  applyDefaults(first)
+                }
+              }}
+            >
+              {CATEGORY_ORDER.filter((c) => (triggersByCategory.get(c) ?? []).length > 0).map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </Select>
+            <Select
+              label="Hodisa"
+              value={triggerKey}
+              disabled={editing}
+              onChange={(e) => {
+                setTriggerKey(e.target.value)
+                applyDefaults(triggers.find((t) => t.key === e.target.value))
+              }}
+            >
+              {(triggersByCategory.get(category) ?? []).map((t) => (
+                <option key={t.key} value={t.key}>
+                  {t.label}
+                </option>
+              ))}
+            </Select>
+          </div>
+          {trigger && <p className="-mt-2 text-xs text-slate-500">{trigger.description}</p>}
+
+          <Input label="Nom" value={name} onChange={(e) => setName(e.target.value)} placeholder="Xabar nomi" />
+
+          {trigger && trigger.audiences.length > 1 && (
+            <Select label="Kimga" value={audience} onChange={(e) => setAudience(e.target.value)}>
+              {trigger.audiences.map((a) => (
+                <option key={a} value={a}>
+                  {audienceLabel(a)}
+                </option>
+              ))}
+            </Select>
           )}
-        >
-          <div>
-            <p className="text-sm font-semibold text-slate-700">Avtomatik yuborish</p>
-            <p className="text-xs text-slate-500">
-              {auto
-                ? 'Hodisa yuz berganda (masalan to\'lov kelganda) o\'zi yuboriladi.'
-                : 'Faqat tayyor matn — Telegram xabar yuborish oynalarida tanlab yuborasiz.'}
-            </p>
+
+          <div className="flex flex-wrap gap-2 text-xs">
+            <span className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 font-medium text-slate-500">
+              <Bell className="h-3.5 w-3.5" /> Kabinet (bildirishnoma) — doim
+            </span>
+            <span className="inline-flex items-center gap-1.5 rounded-lg border border-sky-200 bg-sky-50 px-2.5 py-1.5 font-medium text-sky-700">
+              <MessageCircle className="h-3.5 w-3.5" /> Telegram — faqat botga ulanganlar
+            </span>
           </div>
-          <button
-            type="button"
-            role="switch"
-            aria-checked={auto}
-            disabled={editing}
-            onClick={() => setAuto((a) => !a)}
-            className={cn(
-              'relative h-6 w-11 shrink-0 rounded-full transition-colors disabled:opacity-50',
-              auto ? 'bg-violet-500' : 'bg-slate-300',
-            )}
-            title={editing ? "Yaratilgandan keyin rejim o'zgartirilmaydi" : ''}
-          >
-            <span
-              className={cn(
-                'absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform',
-                auto ? 'translate-x-5' : 'translate-x-0.5',
-              )}
-            />
-          </button>
-        </div>
 
-        {auto && (
-          <>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <Select label="Bo'lim" value={category} onChange={(e) => onCategoryChange(e.target.value)}>
-                {CATEGORY_ORDER.filter((c) => (triggersByCategory.get(c) ?? []).length > 0).map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
-              </Select>
-              <Select label="Hodisa" value={triggerKey} onChange={(e) => onTriggerChange(e.target.value)}>
-                {(triggersByCategory.get(category) ?? []).map((t) => (
-                  <option key={t.key} value={t.key}>
-                    {t.label}
-                  </option>
-                ))}
-              </Select>
-            </div>
-            {trigger && <p className="-mt-1 text-xs text-slate-500">{trigger.description}</p>}
-          </>
-        )}
-
-        {/* Nom */}
-        <Input label="Nom" value={name} onChange={(e) => setName(e.target.value)} placeholder="Xabar nomi" />
-
-        {auto && trigger && trigger.audiences.length > 0 && (
-          <Select label="Kimga" value={audience} onChange={(e) => setAudience(e.target.value)}>
-            {trigger.audiences.map((a) => (
-              <option key={a} value={a}>
-                {audienceLabel(a)}
-              </option>
-            ))}
-          </Select>
-        )}
-
-        {/* Kanallar — kabinet bildirishnomasi DOIM, Telegram — tanlanadi */}
-        {auto && (
-          <div>
-            <p className="mb-1.5 text-sm font-medium text-slate-600">Kanallar</p>
-            <div className="flex flex-wrap gap-2">
-              <span
-                className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-500"
-                title="O'quvchi/o'qituvchi web kabinetidagi bildirishnomalar ro'yxatiga har doim yoziladi"
-              >
-                <Bell className="h-4 w-4" /> Kabinet (bildirishnoma) — doim
-              </span>
-              <button
-                type="button"
-                role="switch"
-                aria-checked={sendTelegram}
-                onClick={() => setSendTelegram((v) => !v)}
-                className={cn(
-                  'inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-medium transition-colors',
-                  sendTelegram ? 'border-brand-400 bg-brand-50 text-brand-700' : 'border-slate-200 text-slate-600 hover:bg-slate-50',
-                )}
-              >
-                <span
-                  className={cn(
-                    'flex h-4 w-4 items-center justify-center rounded border',
-                    sendTelegram ? 'border-brand-500 bg-brand-500 text-white' : 'border-slate-300',
-                  )}
-                >
-                  {sendTelegram && '✓'}
-                </span>
-                <MessageCircle className="h-4 w-4" /> Telegram
-              </button>
-            </div>
-            <p className="mt-1 text-xs text-slate-400">
-              Telegram — faqat botga ulangan oilalar (va o'qituvchilar) oladi.
-            </p>
-          </div>
-        )}
-
-        {auto && trigger?.supportsSendScope && (
-          <div className="grid grid-cols-2 gap-2">
-            <Select label="Qamrov" value={sendScope} onChange={(e) => setSendScope(e.target.value)}>
-              {sendScopeOptions.map((o) => (
-                <option key={o.value} value={o.value}>
-                  {o.label}
-                </option>
-              ))}
-            </Select>
-            {sendScope === 'lesson_start' ? (
-              <div className="grid grid-cols-2 gap-2">
-                <Select
-                  label="Qachon"
-                  value={offsetBefore ? 'before' : 'after'}
-                  onChange={(e) => setOffsetBefore(e.target.value === 'before')}
-                >
-                  <option value="before">Darsdan oldin</option>
-                  <option value="after">Dars boshlangach</option>
-                </Select>
-                <NumberInput label="Daqiqa" placeholder={offsetBefore ? '90' : '0'} value={offsetMinutes} onChange={setOffsetMinutes} />
+          {/* Jadval — rejimga qarab */}
+          {mode === 'monthly_day_time' && (
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <NumberInput
+                  label="Oyning qaysi kuni"
+                  placeholder="1"
+                  value={scheduleDay}
+                  onChange={(v) => setScheduleDay(v === null ? null : Math.min(Math.max(v, 0), 31))}
+                />
+                <p className="mt-1 text-xs text-slate-400">31 — qisqa oylarda oyning oxirgi kuni</p>
               </div>
-            ) : (
-              <Input
-                label="Yuborish vaqti"
-                type="time"
-                value={scheduleTime}
-                onChange={(e) => setScheduleTime(e.target.value)}
-              />
-            )}
-          </div>
-        )}
+              <Input label="Soat" type="time" value={scheduleTime} onChange={(e) => setScheduleTime(e.target.value)} />
+            </div>
+          )}
+          {mode === 'daily_time' && (
+            <Input label="Soat" type="time" value={scheduleTime} onChange={(e) => setScheduleTime(e.target.value)} />
+          )}
+          {trigger?.supportsSendScope && (
+            <div className="grid grid-cols-2 gap-2">
+              <Select label="Qamrov" value={sendScope} onChange={(e) => setSendScope(e.target.value)}>
+                {sendScopeOptions.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </Select>
+              {sendScope === 'lesson_start' ? (
+                <div className="grid grid-cols-2 gap-2">
+                  <Select label="Qachon" value={offsetBefore ? 'before' : 'after'} onChange={(e) => setOffsetBefore(e.target.value === 'before')}>
+                    <option value="before">Darsdan oldin</option>
+                    <option value="after">Dars boshlangach</option>
+                  </Select>
+                  <NumberInput label="Daqiqa" placeholder={offsetBefore ? '90' : '0'} value={offsetMinutes} onChange={setOffsetMinutes} />
+                </div>
+              ) : (
+                <Input label="Yuborish vaqti" type="time" value={scheduleTime} onChange={(e) => setScheduleTime(e.target.value)} />
+              )}
+            </div>
+          )}
+          {trigger?.supportsSchedule && (
+            <div className="grid grid-cols-3 gap-2">
+              <Select label="Reja" value={scheduleType} onChange={(e) => setScheduleType(e.target.value)}>
+                {scheduleTypeOptions.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </Select>
+              <Input label="Vaqt" type="time" value={scheduleTime} onChange={(e) => setScheduleTime(e.target.value)} />
+              {scheduleType === 'monthly' && (
+                <NumberInput
+                  label="Oy kuni (1-31)"
+                  placeholder="1"
+                  value={scheduleDay}
+                  onChange={(v) => setScheduleDay(v === null ? null : Math.min(v, 31))}
+                />
+              )}
+            </div>
+          )}
 
-        {auto && trigger?.supportsSchedule && (
-          <div className="grid grid-cols-2 gap-2">
-            <Select label="Reja" value={scheduleType} onChange={(e) => setScheduleType(e.target.value)}>
-              {scheduleTypeOptions.map((o) => (
-                <option key={o.value} value={o.value}>
-                  {o.label}
-                </option>
-              ))}
-            </Select>
-            <Input label="Vaqt" type="time" value={scheduleTime} onChange={(e) => setScheduleTime(e.target.value)} />
-            {scheduleType === 'monthly' && (
-              <NumberInput
-                label="Oy kuni (1-28)"
-                placeholder="1"
-                value={scheduleDayOfMonth}
-                onChange={(v) => setScheduleDayOfMonth(v === null ? null : Math.min(v, 28))}
-              />
-            )}
-          </div>
-        )}
-
-        {/* Matn + o'zgaruvchilar */}
-        <div>
-          <p className="mb-1.5 text-sm font-medium text-slate-600">Xabar matni</p>
-          {auto && trigger && trigger.tokens.length === 0 ? (
+          {trigger && trigger.tokens.length === 0 ? (
             <p className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-500">
               Bu hodisa matni tizim tomonidan avtomatik tuziladi — alohida matn shart emas.
             </p>
           ) : (
-            <>
+            <div>
               <MessageEditor
+                formatting
+                label="Xabar matni"
                 value={body}
                 onChange={setBody}
                 tokens={editorTokens}
-                rows={4}
-                placeholder={
-                  auto && trigger?.templateOptional
-                    ? "Matn (ixtiyoriy) — o'zgaruvchilar bilan"
-                    : "Xabar matni — o'zgaruvchilar bilan"
-                }
+                rows={5}
+                placeholder={trigger?.templateOptional ? "Matn (ixtiyoriy) — o'zgaruvchilar bilan" : "Xabar matni — o'zgaruvchilar bilan"}
+                error={templateErrors.length > 0 ? templateErrors.join('; ') : null}
               />
-              {auto && trigger?.templateOptional && (
+              {trigger?.templateOptional && (
                 <p className="mt-1.5 text-xs text-slate-400">
-                  Matn <b>ixtiyoriy</b>: bo'sh qoldirsangiz — tizim batafsil qarz ro'yxatini o'zi tuzadi.
+                  Matn <b>ixtiyoriy</b>: bo'sh qoldirsangiz — tizim matnni o'zi tuzadi (har kurs uchun alohida).
                 </p>
               )}
-            </>
+            </div>
           )}
+
+          <AttachmentPicker label="Rasm/fayl" value={attachment} onChange={setAttachment} />
+
+          <label className="inline-flex cursor-pointer items-center gap-2 text-sm text-slate-700">
+            <input type="checkbox" checked={ack} onChange={(e) => setAck(e.target.checked)} className="h-4 w-4 accent-brand-600" />
+            "Qabul qildim" tugmasi
+          </label>
+
+          {error && <p className="text-sm font-medium text-red-600">{error}</p>}
         </div>
 
-        {error && <p className="text-sm font-medium text-red-600">{error}</p>}
+        <div>
+          <p className="mb-1.5 text-sm font-medium text-slate-600">Telegram'da ko'rinishi</p>
+          <TelegramPreview
+            html={preview?.html ?? ''}
+            mode={preview?.mode ?? 'text'}
+            loading={loading}
+            ackButton={ack}
+            attachment={attachment}
+            emptyHint={trigger?.templateOptional ? 'Tizim matni yuboriladi' : undefined}
+          />
+          {preview?.sample && (
+            <p className="mt-1.5 text-xs text-slate-400">Namuna: {preview.sample.fullName}</p>
+          )}
+        </div>
       </div>
     </Modal>
   )

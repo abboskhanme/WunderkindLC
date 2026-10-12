@@ -42,6 +42,8 @@ public record TeacherDebtSummaryDto(int DebtorCount, decimal DebtTotal);
 public record TeacherStudentRowDto(
     string StudentId, string FullName, string PhotoUrl, string GroupId, string GroupName,
     string CourseName, string Status, string MemberStart, int DebtMonths,
-    int Held, int Attended, int Absent, int Late, int? AttendancePct);
+    int Held, int Attended, int Absent, int Late, int? AttendancePct,
+    // CRM upgrade U6b: «Telegram ulangan / ulanmagan» — counts and relations only (no phones, names, chat ids).
+    int TelegramLinked = 0, List<string>? TelegramRelations = null);
 
 public record TeacherStudentsDto(string Month, List<TeacherStudentRowDto> Rows);

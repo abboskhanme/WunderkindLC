@@ -1,4 +1,5 @@
 import { getStudents } from '@/api/services/students'
+import { TelegramLinkCell } from '@/components/messaging/TelegramLinkCell'
 import {
   StudentListBoard,
   balanceColumn,
@@ -6,7 +7,15 @@ import {
   moderatorColumn,
   nameColumn,
   phoneColumn,
+  type StudentColumn,
 } from './StudentListBoard'
+
+/** TELEGRAM (CRM upgrade U6b): qarindoshlik ikonkalari + soni; ulanmagan — qizil «Ulanmagan». */
+const telegramColumn: StudentColumn = {
+  key: 'telegram',
+  header: 'Telegram',
+  render: (s) => <TelegramLinkCell linked={s.telegramLinked} relations={s.telegramRelations} blocked={s.telegramBlocked} />,
+}
 
 /**
  * O'quvchilar → «Aktiv o'quvchilar» (edutizim `/students/active`): kamida bitta AKTIV a'zoligi
@@ -16,9 +25,11 @@ export function ActiveStudentsPage() {
   return (
     <StudentListBoard
       load={() => getStudents('active')}
+      telegramFilter
       columns={[
         nameColumn,
         phoneColumn,
+        telegramColumn,
         balanceColumn,
         dateColumn('paid', "To'lov sanasi", (s) => s.lastPaymentDate),
         dateColumn('created', 'Yaratilgan sanasi', (s) => s.createdAt || s.enrollmentDate),

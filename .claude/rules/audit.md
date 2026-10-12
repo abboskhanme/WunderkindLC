@@ -63,6 +63,18 @@ qidiradi). Batafsil: `.claude/rules/substitute-teachers.md` §6.
 Tarixiy izoh: kurs narxi ilgari `ClassFee` deb yozilar va "Guruhlar"ga tushardi; endi `Course`
 (bo'lim: Kurslar). **Eski qatorlar qayta yozilmaydi** — ular o'sha joyda qoladi.
 
+**«Xabarlar» bo'limi (`messages`, 2026-10-12, CRM upgrade P2.9)** — `Sozlamalar` dan OLDIN:
+
+| EntityType | Nima |
+|---|---|
+| `Broadcast` | Telegram xabar (kampaniya) yuborildi: auditoriya + xabarlar soni + matn boshi (120 belgi); bekor qilindi (nechta) |
+| `AutoMessageRule` | avto-xabar qoidasi yaratildi (standart to'plam ham) / tahrirlandi («yoqildi»/«o'chirildi») / o'chirildi |
+| `MessageTemplate` | qo'lda yoziladigan shablon qo'shildi / tahrirlandi / o'chirildi |
+| `StudentAchievement` | **O'quvchilar** bo'limida (`studentId` bilan): yutuq qo'shildi / tahrirlandi / o'chirildi / tabrik yuborildi |
+
+Telegram ulanishining qarindoshligi o'zgarishi — `Student` turi («Telegram ulanishi turi o'zgardi: … — Otasi → Onasi»).
+⚠️ Kampaniya qatorida chat id, telefon va fayl manzili YO'Q.
+
 ## 3. RUXSAT — `audit`
 
 `AuditController` da `[AdminPerm("audit", ReadRequiresPerm = true)]`.

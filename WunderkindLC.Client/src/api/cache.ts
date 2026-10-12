@@ -215,7 +215,13 @@ const CROSS_INVALIDATION: Record<string, string[]> = {
   // Telegram xabar yuborilishi qabul qiluvchining portal ro'yxatlarida ko'rinadi.
   '/admin/messages': ['/admin/students', '/admin/notifications', '/student', '/teacher'],
   '/admin/reminders': ['/admin/messages'],
-  '/admin/auto-messages': ['/admin/messages'],
+  '/admin/auto-messages': ['/admin/messages', '/admin/messaging'],
+  // Telegram xabarlar (CRM upgrade P2.7): kampaniya o'quvchi profilidagi «Telegram xabarlari»
+  // (`/admin/students/{id}/telegram-deliveries`) va eski e'lon tarixiga tushadi; shablonlar
+  // "Avto xabarlar" ro'yxatida ham ko'rinadi.
+  '/admin/messaging': ['/admin/messages', '/admin/students', '/admin/auto-messages'],
+  // Yutuqlar profilning «Yutuqlar» tabida va kabinetda; tabrik Telegram jurnaliga yoziladi.
+  '/admin/achievements': ['/admin/students', '/student', '/admin/messaging'],
   '/teacher/notifications': ['/admin/messages'],
   '/student/notifications': ['/admin/messages'],
   // Faqat "o'qildi" belgisi — boshqa hech narsaga tegmaydi (Topbar qo'ng'irog'i).
@@ -252,6 +258,21 @@ const CROSS_INVALIDATION: Record<string, string[]> = {
   '/admin/work-tasks': [],
   // Sof fayl yuklash — hech qanday ro'yxatni o'zgartirmaydi (manzil javobda qaytadi).
   '/admin/uploads': [],
+}
+
+/**
+ * MA'LUMOT O'ZGARTIRMAYDIGAN POST'lar — hech narsa tozalanmaydi. Xabar oynasi matn yozilayotganda
+ * har 400 ms da server PREVIEW va oluvchilar SANOG'ini so'raydi (`POST` — tana katta, `AudienceSpec`);
+ * ular faqat hisoblaydi. Aks holda har tugma bosishida o'quvchilar ro'yxati keshi ham tushib ketardi.
+ * Yo'l AYNAN mos kelishi shart (query'siz).
+ */
+const NON_MUTATING_POSTS = new Set(['/admin/messaging/preview', '/admin/messaging/audience/count'])
+
+/** Bu POST ma'lumot o'zgartirmaydimi (invalidatsiya kerak emas). */
+export function isNonMutatingPost(url: string | undefined): boolean {
+  if (!url || url.includes('://')) return false
+  const path = url.split('?')[0].split('#')[0].replace(/\/+$/, '')
+  return NON_MUTATING_POSTS.has(path.startsWith('/') ? path : '/' + path)
 }
 
 /**
@@ -497,6 +518,7 @@ async function cachedAdapter(
   // HEAD/OPTIONS ma'lumot o'zgartirmaydi, hech narsa tozalamaydi.
   if (method !== 'get') {
     const response = await base(config)
+    if (method === 'post' && isNonMutatingPost(config.url)) return response
     if (method === 'post' || method === 'put' || method === 'patch' || method === 'delete') {
       const scopes = invalidationScopesFor(config.url)
       if (scopes) invalidateScopes(scopes)

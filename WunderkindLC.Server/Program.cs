@@ -1160,6 +1160,13 @@ var faceFolders = new[]
     Path.Combine(uploadsDir, WunderkindLC.Application.Services.FaceStorage.FolderName),
     Path.Combine(webRootForPrivate, "uploads", WunderkindLC.Application.Services.FaceStorage.FolderName),
 };
+// ⚠️ `uploads/messaging` — Telegram xabar biriktirmalari (CRM upgrade P2.7): HAR DOIM yopiq, faqat outbox ishchisi va
+// `api/admin/messaging/attachments/{id}/content` (ruxsat bilan) o'qiydi.
+var messagingFolders = new[]
+{
+    Path.Combine(uploadsDir, WunderkindLC.Application.Services.Messaging.MessageAttachmentStore.FolderName),
+    Path.Combine(webRootForPrivate, "uploads", WunderkindLC.Application.Services.Messaging.MessageAttachmentStore.FolderName),
+};
 var privateFilesLogger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("PrivateFiles");
 var certificatesArePublic = app.Configuration.GetValue("Uploads:PublicCertificates", false);
 if (certificatesArePublic)
@@ -1249,7 +1256,9 @@ app.Use(async (context, next) =>
 IFileProvider Guarded(IFileProvider innerProvider) =>
     new WunderkindLC.Application.Services.PrivateFolderFileProvider(
         innerProvider, privateFilesLogger,
-        certificatesArePublic ? faceFolders : [.. certificateFolders, .. faceFolders]);
+        certificatesArePublic
+            ? [.. faceFolders, .. messagingFolders]
+            : [.. certificateFolders, .. faceFolders, .. messagingFolders]);
 
 // ── LANDING FAYLLARI UCHUN QAT'IY "KESHLAMA" SIYOSATI ──────────────────────────────────────────
 // Vite assetlari kontent-hash bilan chiqadi (`/assets/index-XXXX.js`) — nomi har build'da o'zgargani

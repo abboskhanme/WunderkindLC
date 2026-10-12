@@ -113,12 +113,15 @@ public class AuditFixT6Tests
         var s = NewStudent();
         s.Balance = -100000m;
         ctx.Students.Add(s);
-        ctx.AutoMessageRules.Add(DebtRule());
+        var rule = DebtRule();
+        ctx.AutoMessageRules.Add(rule);
         ctx.SaveChanges();
         var at10 = OddDay().ToDateTime(new TimeOnly(10, 0));
 
         Reflect.RunAsyncMethod(Payment(ctx, new MessagingStack()), "TickAsync", at10, CancellationToken.None);
-        Assert.True(JobRunMarker.IsDoneAsync(ctx, PaymentReminderService.JobKey, OddDay()).GetAwaiter().GetResult());
+        // CRM upgrade (P2.5): the "done today" marker is per RULE (each rule has its own day/time).
+        Assert.True(JobRunMarker.IsDoneAsync(ctx, JobRunMarker.For(PaymentReminderService.JobKey, rule.Id), OddDay())
+            .GetAwaiter().GetResult());
 
         // Yangi qarzdor qo'shildi — lekin bugungi ish allaqachon BAJARILGAN: restartdagi nusxa qayta boshlamaydi.
         var s2 = NewStudent("Valiyev Vali", "u-2");

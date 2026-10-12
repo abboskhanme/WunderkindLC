@@ -32,6 +32,7 @@ import { AuditHistoryList } from '@/components/audit/AuditHistoryList'
 import { DataTable, type DataColumn } from '@/components/ui/list/DataTable'
 import { TotalPill } from '@/components/ui/list/TotalPill'
 import { PhoneChip } from '@/components/ui/list/PhoneChip'
+import { TelegramLinkCell } from '@/components/messaging/TelegramLinkCell'
 import { Switch } from '@/components/ui/list/Switch'
 import { MoreMenu, type MoreMenuItem } from '@/components/ui/list/MoreMenu'
 import { RowActionBar, type RowAction } from '@/components/ui/list/RowActionBar'
@@ -74,7 +75,10 @@ export function GroupStudentsTab({
   onChanged,
   menu,
   toolbarExtra,
+  telegram,
 }: {
+  /** CRM upgrade U6b: studentId → Telegram (ulangan chatlar soni + qarindoshliklar) — `members` javobidan. */
+  telegram?: Record<string, { linked: number; relations: string[] }>
   groupId: string
   groupName: string
   groupFee: number
@@ -286,6 +290,17 @@ export function GroupStudentsTab({
       render: (m) => <span className="whitespace-nowrap">{formatDate(m.joinedAt) || '—'}</span>,
     },
     { key: 'phone', header: 'Telefon raqam', render: (m) => <PhoneChip phone={m.phone} /> },
+    ...(telegram
+      ? [
+          {
+            key: 'telegram',
+            header: 'Telegram',
+            render: (m: GroupRosterRow) => (
+              <TelegramLinkCell linked={telegram[m.studentId]?.linked ?? 0} relations={telegram[m.studentId]?.relations} />
+            ),
+          },
+        ]
+      : []),
     {
       key: 'balance',
       header: 'Balans',

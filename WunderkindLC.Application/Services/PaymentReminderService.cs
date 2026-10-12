@@ -1,50 +1,42 @@
 using Microsoft.EntityFrameworkCore;
 using WunderkindLC.Application.Abstractions;
+using WunderkindLC.Application.Services.Messaging;
 using WunderkindLC.Domain;
 
 namespace WunderkindLC.Application.Services;
 
 /// <summary>
-/// Avtomatik to'lov eslatmasi (fon xizmati). Har oyning 1-sanasida BARCHA qarzdorlarga
-/// (balansi manfiy o'quvchilar) eslatma yuboradi; keyin HAR 2 KUNDA (1, 3, 5, ...)
-/// hali ham qarzdor bo'lganlarga TAKROR yuboradi (o'quvchi qarzini to'lasa balansi manfiy
-/// bo'lmaydi — eslatma to'xtaydi). Yuborish vaqti: ertalab 09:00 (Toshkent, UTC+5).
+/// Avtomatik to'lov eslatmasi (fon xizmati, trigger <c>payment_debt</c>).
 ///
-/// ⚠️ XABAR HAR FAN (kurs/guruh) UCHUN ALOHIDA ketadi: o'quvchi ikki fanda o'qisa ota-onaga
-/// ikkita alohida eslatma boradi (bitta "jami" xabar EMAS). Batafsil sabab va narx kelishuvi —
-/// <see cref="BuildMessagesAsync"/> izohida.
+/// <para>⚠️ <b>JADVAL — HAR QOIDANING O'ZIDAN</b> (CRM upgrade 2026-10-12, P2.5): har yoqilgan qoida oyning
+/// O'Z kunida (<c>ScheduleDayOfMonth</c>, 31 → qisqa oyda oxirgi kun) va O'Z soatida (<c>ScheduleTime</c>)
+/// ishlaydi (<see cref="AutoMessageSchedule.IsDue"/>). Ko'proq kun kerak bo'lsa — ko'proq qoida. Eski "1-sanada
+/// hamma, keyin har 2 kunda (toq kunlar) 09:00" jadvali OLIB TASHLANDI. Xizmat har 10 daqiqada uyg'onadi.</para>
 ///
-/// Kanal: kabinet bildirishnomasi (har doim) + Telegram (TelegramRegistration chatlari) —
-/// <see cref="AutoMessageChannels"/>. SMS/push 2026-10 da olib tashlandi.
+/// <para>⚠️ XABAR HAR FAN (kurs/guruh) UCHUN ALOHIDA ketadi (<see cref="DebtMessages"/>): o'quvchi ikki fanda o'qisa
+/// ota-onaga ikkita alohida eslatma boradi.</para>
 ///
-/// "Qaysi kunlari" — oyning TOQ kunlarida yubor (kun == 1 yoki (kun - 1) % 2 == 0 ⇒ 1, 3, 5, 7, ...).
-/// Bu "1-sanada hamma, keyin har 2 kunda to'lamaganlar" talabini aniq beradi.
+/// <para>Kanal: kabinet bildirishnomasi (har doim) + Telegram — <see cref="TelegramOutbox"/> orqali (oluvchi bo'yicha
+/// jurnal, «Qabul qildim» tugmasi, bloklagan chatlar). Dedupe kaliti
+/// <c>payment_debt:{ruleId}:{studentId}:{groupId|none}:{chatId}:{yyyy-MM-dd}</c>.</para>
 ///
-/// <para>⚠️ <b>"BUGUN ISHLADIMI" — BAZADA</b> (<see cref="JobRunMarker"/>). Ilgari bu belgi
-/// xotirada edi: har deploy/restart (09:00 dan keyin) BUTUN qarzdorlar ro'yxatiga eslatma QAYTA
-/// ketardi. Endi ikki daraja: har o'quvchi yuborishdan OLDIN band qilinadi
-/// (<c>payment_debt:{studentId}</c> — ish yarmida yiqilsa ham takror yo'q, qolganlarga yetadi) va
-/// ish to'liq tugagach <c>payment_debt</c> belgisi qo'yiladi.</para>
+/// <para>⚠️ <b>"BUGUN ISHLADIMI" — BAZADA</b> (<see cref="JobRunMarker"/>): har o'quvchi yuborishdan OLDIN band
+/// qilinadi (<c>payment_debt:{ruleId}:{studentId}</c>), qoida to'liq tugagach <c>payment_debt:{ruleId}</c> belgisi
+/// qo'yiladi — restart takrorlamaydi, ish yarmida yiqilsa qolganlarga keyingi uyg'onishda yetadi.</para>
 ///
-/// <para>⚠️ <b>AUDITORIYA</b> qoidaning o'zidan (<see cref="AutoMessageRule.Audience"/>), har qoida
-/// alohida: <c>parents</c> — ota-ona raqami birinchi; <c>students</c> — o'quvchining o'z raqami
-/// birinchi; <c>teachers</c> — SHU FAN guruhining o'qituvchisiga (kabineti/Telegrami).
-/// Ilgari auditoriya umuman o'qilmasdi — hamma qoida ota-onaga ketardi.</para>
+/// <para>⚠️ <b>AUDITORIYA</b> qoidaning o'zidan: <c>parents</c> — ota-ona chatlari; <c>students</c> — o'quvchining
+/// o'z chati; <c>teachers</c> — SHU FAN guruhining o'qituvchisi.</para>
 /// </summary>
 public class PaymentReminderService(
     IServiceProvider services,
     TelegramService telegram,
-    ILogger<PaymentReminderService> logger) : BackgroundService
+    ILogger<PaymentReminderService> logger,
+    IOutboxSignal? outbox = null) : BackgroundService
 {
-    /// <summary>Eslatma yuboriladigan soat (Toshkent vaqti).</summary>
-    private const int SendHour = 9;
-
-    /// <summary>Ish darajasidagi belgi kaliti (oluvchi kaliti — <c>payment_debt:{studentId}</c>).</summary>
+    /// <summary>Kalitlar prefiksi: qoida — <c>payment_debt:{ruleId}</c>, oluvchi — <c>payment_debt:{ruleId}:{studentId}</c>.</summary>
     public const string JobKey = AutoMessageTriggers.PaymentDebt;
 
-    /// <summary>Shu jarayonda bugun allaqachon tekshirildimi — har soatda bazaga bekor so'rov
-    /// yubormaslik uchun. ⚠️ Faqat TEZLIK uchun: haqiqiy "bajarildi" belgisi bazada.</summary>
-    private DateOnly _checked = DateOnly.MinValue;
+    public static readonly TimeSpan TickInterval = TimeSpan.FromMinutes(10);
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -60,71 +52,89 @@ public class PaymentReminderService(
                 logger.LogError(ex, "To'lov eslatmasi siklida xatolik");
             }
 
-            // Har ~1 soatda uyg'onamiz (09:00 ni o'tkazib yubormaslik uchun).
-            try { await Task.Delay(TimeSpan.FromHours(1), stoppingToken); }
+            try { await Task.Delay(TickInterval, stoppingToken); }
             catch (TaskCanceledException) { break; }
         }
     }
 
     /// <summary>
-    /// Bitta uyg'onish: 09:00 dan o'tgan va bugungi ish bazada BAJARILMAGAN bo'lsa — kunlik ish.
-    /// Ish yarmida yiqilsa belgi qo'yilmaydi: keyingi uyg'onishda qayta boshlanadi, allaqachon
-    /// olganlar esa oluvchi belgisi tufayli TAKROR olmaydi.
+    /// Bitta uyg'onish: vaqti kelgan (<see cref="AutoMessageSchedule.IsDue"/>) va bugun BAJARILMAGAN har qoida
+    /// ishlaydi. Qoida yarmida yiqilsa belgisi qo'yilmaydi — keyingi uyg'onishda qolganlarga davom etadi.
     /// </summary>
     private async Task TickAsync(DateTime now, CancellationToken ct)
     {
         var today = DateOnly.FromDateTime(now);
-        if (now.Hour < SendHour || _checked == today) return;
-
+        List<AutoMessageRule> rules;
         using (var scope = services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<IAppDbContext>();
-            if (await JobRunMarker.IsDoneAsync(db, JobKey, today, ct)) { _checked = today; return; }
+            rules = await db.AutoMessageRules.AsNoTracking()
+                .Where(r => r.Trigger == AutoMessageTriggers.PaymentDebt && r.Enabled).ToListAsync(ct);
         }
 
-        // Ish yarmida tutilgan xato bo'lsa (belgisi qo'yilmagan qarzdorlar qolgan) — ish belgisi QO'YILMAYDI.
-        if (!await RunDailyAsync(today, ct)) return;
-
-        using (var scope = services.CreateScope())
+        foreach (var rule in rules.Where(r => AutoMessageSchedule.IsDue(r, now)))
         {
-            var db = scope.ServiceProvider.GetRequiredService<IAppDbContext>();
-            await JobRunMarker.TryClaimAsync(db, JobKey, today, ct);
-            // Oluvchi belgilari faqat O'Z sanasida ma'noli — eskilari tozalanadi.
-            await JobRunMarker.PruneAsync(db, JobKey + ":", today.AddDays(-2), ct);
+            var key = JobRunMarker.For(JobKey, rule.Id);
+            using (var scope = services.CreateScope())
+            {
+                var db = scope.ServiceProvider.GetRequiredService<IAppDbContext>();
+                if (await JobRunMarker.IsDoneAsync(db, key, today, ct)) continue;
+            }
+            if (!await RunRuleAsync(rule.Id, today, ct)) continue;
+            using (var scope = services.CreateScope())
+            {
+                var db = scope.ServiceProvider.GetRequiredService<IAppDbContext>();
+                await JobRunMarker.TryClaimAsync(db, key, today, ct);
+                // Oluvchi belgilari faqat O'Z sanasida ma'noli — eskilari tozalanadi.
+                await JobRunMarker.PruneAsync(db, JobKey + ":", today.AddDays(-2), ct);
+            }
         }
-        _checked = today;
     }
 
-    /// <summary>Bugungi kun uchun eslatma yuborish kerakmi (toq kunlar: 1, 3, 5, ...) tekshiradi va yuboradi.
-    /// <para>Natija — kunlik ish TO'LIQ bajarildimi. <c>false</c>: kamida bitta qarzdor oluvchi belgisi
-    /// QO'YILMASDAN (ya'ni hali yuborilmay) xatoga uchradi — ish belgisi qo'yilmaydi va keyingi uyg'onishda
-    /// faqat shu qolganlar qayta uriniladi (belgisi borlar takror olmaydi).</para></summary>
+    /// <summary>Bugungi KUNGA belgilangan barcha yoqilgan qoidalarni (soatidan qat'i nazar) ishga tushiradi —
+    /// qo'lda/test yo'li. Natija — hammasi TO'LIQ bajarildimi.</summary>
     private async Task<bool> RunDailyAsync(DateOnly today, CancellationToken ct)
     {
-        // Eslatma faqat toq kunlarda: 1-sana (hamma qarzdor), keyin har 2 kunda (3, 5, 7, ...) — hali qarzdorlar.
-        if (today.Day != 1 && (today.Day - 1) % 2 != 0) return true;
-
-        using var scope = services.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<IAppDbContext>();
-
-        var meta = await db.CenterMeta.FirstOrDefaultAsync(ct);
-        // Yetkazish FAQAT admin aniq YOQGAN qarzdorlik qoidalaridan olinadi. DIQQAT: ilgari qoida yo'q bo'lsa
-        // push+telegram DEFAULT-ON edi — bu "auto Telegramdan xato bilan yuborish" sababi edi. ENDI: yoqilgan
-        // qoida bo'lmasa HECH NARSA yuborilmaydi. HAR QOIDA alohida yetkaziladi — o'z kanallari va o'z
-        // AUDITORIYASI bilan (DispatchStudentAsync bilan bir xil model).
-        var debtRules = await db.AutoMessageRules
-            .Where(r => r.Trigger == AutoMessageTriggers.PaymentDebt && r.Enabled).ToListAsync(ct);
-        if (debtRules.Count == 0)
+        List<AutoMessageRule> rules;
+        using (var scope = services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<IAppDbContext>();
+            rules = await db.AutoMessageRules.AsNoTracking()
+                .Where(r => r.Trigger == AutoMessageTriggers.PaymentDebt && r.Enabled).ToListAsync(ct);
+        }
+        if (rules.Count == 0)
         {
             logger.LogInformation("To'lov eslatmasi: yoqilgan qoida yo'q — yuborilmadi.");
             return true;
         }
+        var ok = true;
+        foreach (var rule in rules)
+        {
+            var monthly = new AutoMessageRule { ScheduleType = "monthly", ScheduleDayOfMonth = rule.ScheduleDayOfMonth };
+            if (!CustomReminderService.IsScheduledDay(monthly, today)) continue;
+            ok &= await RunRuleAsync(rule.Id, today, ct);
+        }
+        return ok;
+    }
 
-        // Qarzdorlar: balansi manfiy, arxivlanmagan o'quvchilar.
-        var debtors = await db.Students
-            .Where(s => !s.IsArchived && s.Balance < 0)
-            .ToListAsync(ct);
-        // Guruhi YOPILGAN/TUGATILGAN (tirik a'zoligi qolmagan) o'quvchilarga eslatma yuborilmaydi.
+    /// <summary>
+    /// BITTA qoida bo'yicha bugungi eslatmalar. Natija — kunlik ish TO'LIQ bajarildimi: <c>false</c> — kamida bitta
+    /// qarzdor oluvchi belgisi QO'YILMASDAN xatoga uchradi (keyingi uyg'onishda faqat shu qolganlar uriniladi).
+    /// </summary>
+    private async Task<bool> RunRuleAsync(string ruleId, DateOnly today, CancellationToken ct)
+    {
+        using var scope = services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<IAppDbContext>();
+
+        var rule = await db.AutoMessageRules.AsNoTracking()
+            .FirstOrDefaultAsync(r => r.Id == ruleId && r.Enabled && r.Trigger == AutoMessageTriggers.PaymentDebt, ct);
+        if (rule is null) return true;
+        var ruleKey = JobRunMarker.For(JobKey, rule.Id);
+        var meta = await db.CenterMeta.FirstOrDefaultAsync(ct);
+        var centerName = meta?.Name ?? "";
+
+        // Qarzdorlar: balansi manfiy, arxivlanmagan o'quvchilar; guruhi YOPILGAN/TUGATILGANlar chiqariladi.
+        var debtors = await db.Students.Where(s => !s.IsArchived && s.Balance < 0).ToListAsync(ct);
         var closedGroupStudents = await MessagingAudience.ClosedGroupStudentIdsAsync(db, ct);
         var skipped = debtors.Count(s => closedGroupStudents.Contains(s.Id));
         if (skipped > 0)
@@ -138,39 +148,31 @@ public class PaymentReminderService(
             return true;
         }
 
-        var debtorIds = debtors.Select(s => s.Id).ToList();
-
-        // Telegram chatlari (har qarzdor o'quvchiga 0+ chat).
-        var regsByStudent = (await db.TelegramRegistrations
-                .Where(r => debtorIds.Contains(r.StudentId))
-                .ToListAsync(ct))
-            .GroupBy(r => r.StudentId)
-            .ToDictionary(g => g.Key, g => g.Select(x => x.ChatId).Distinct().ToList());
-
-        // "O'qituvchilarga" qoidasi bo'lsa — o'qituvchilar va ularning Telegram chatlari (bir marta).
-        var anyTeacherRule = debtRules.Any(r => r.Audience == "teachers");
-        var teachersById = anyTeacherRule
+        var debtorIds = debtors.Select(s => s.Id).ToHashSet();
+        var toTeacher = rule.Audience == "teachers";
+        var toStudent = rule.Audience == "students";
+        // Telegram chatlari (bloklaganlar va auditoriyaga mos kelmaganlar chiqariladi).
+        var regsByStudent = toTeacher ? new Dictionary<string, List<TelegramRegistration>>()
+            : (await db.TelegramRegistrations.AsNoTracking().Where(r => r.StudentId != "" && r.BlockedAt == null).ToListAsync(ct))
+                .Where(r => debtorIds.Contains(r.StudentId)
+                            && (toStudent ? r.Relation == TelegramRelations.StudentSelf : TelegramRelations.IsParent(r.Relation)))
+                .GroupBy(r => r.StudentId)
+                .ToDictionary(g => g.Key, g => g.GroupBy(r => r.ChatId).Select(x => x.First()).ToList());
+        var teachersById = toTeacher
             ? await db.Teachers.AsNoTracking().Where(t => !t.IsArchived).ToDictionaryAsync(t => t.Id, ct)
             : new Dictionary<string, Teacher>();
-        var chatsByTeacher = anyTeacherRule
+        var regsByTeacher = toTeacher
             ? (await db.TelegramRegistrations.AsNoTracking()
-                    .Where(r => r.TeacherId != null && r.TeacherId != "").ToListAsync(ct))
+                    .Where(r => r.TeacherId != null && r.TeacherId != "" && r.BlockedAt == null).ToListAsync(ct))
                 .GroupBy(r => r.TeacherId!)
-                .ToDictionary(g => g.Key, g => g.Select(x => x.ChatId).Distinct().ToList())
-            : new Dictionary<string, List<long>>();
+                .ToDictionary(g => g.Key, g => g.GroupBy(r => r.ChatId).Select(x => x.First()).ToList())
+            : new Dictionary<string, List<TelegramRegistration>>();
 
-        // Guruh konteksti — FAQAT zaxira yo'l uchun (a'zoligi yo'q, eski `ClassName` modelidagi
-        // o'quvchi): {dars_sana}/{dars_vaqti}/{dars_kunlari} va {oqituvchi} tokenlari shundan
-        // to'ladi. A'zoligi bor o'quvchida token konteksti endi HAR XABARNING O'Z GURUHIDAN
-        // olinadi (pastga qarang) — ilgari hammasi shu eskirgan yorliqdan olinardi.
-        // Ro'yxat uchun bir marta yuklanadi (N+1 yo'q).
-        var groupByName = (await db.Classes.ToListAsync(ct))
-            .GroupBy(c => c.Name).ToDictionary(g => g.Key, g => g.First());
+        var groupByName = (await db.Classes.ToListAsync(ct)).GroupBy(c => c.Name).ToDictionary(g => g.Key, g => g.First());
         var teacherNames = await MessageTokenizer.TeacherNamesByIdAsync(db, ct);
+        var day = today.ToString("yyyy-MM-dd");
 
-        var centerName = meta?.Name ?? "";
-
-        int tgSent = 0, cabinet = 0, students = 0, messages = 0, alreadySent = 0, noGroupDebt = 0;
+        int queued = 0, cabinet = 0, students = 0, messages = 0, alreadySent = 0, noGroupDebt = 0;
         var unclaimedFailures = 0;
         foreach (var s in debtors)
         {
@@ -178,13 +180,11 @@ public class PaymentReminderService(
             var claimed = false;
             try
             {
-                // HAR FAN uchun alohida xabar (§ BuildMessagesAsync izohi).
-                var items = await BuildMessagesAsync(db, s, groupByName, ct);
+                var items = await DebtMessages.BuildForStudentAsync(db, s, groupByName, ct);
                 if (items.Count == 0) { noGroupDebt++; continue; }
 
-                // ⚠️ OLUVCHI BELGISI — yuborishdan OLDIN, atomik. Restart/ikkinchi nusxa shu
-                // o'quvchiga bugun TAKROR yubormaydi (ilgari har deploy hammaga qayta yuborardi).
-                if (!await JobRunMarker.TryClaimAsync(db, JobRunMarker.For(JobKey, s.Id), today, ct))
+                // ⚠️ OLUVCHI BELGISI — yuborishdan OLDIN, atomik (restart/ikkinchi nusxa takrorlamasin).
+                if (!await JobRunMarker.TryClaimAsync(db, JobRunMarker.For(ruleKey, s.Id), today, ct))
                 {
                     alreadySent++;
                     continue;
@@ -195,199 +195,78 @@ public class PaymentReminderService(
                 foreach (var item in items)
                 {
                     messages++;
-                    // Token konteksti — SHU xabarning guruhi: {guruh}/{oqituvchi}/{dars_*} aynan shu
-                    // fandan, {qarzdorlik} esa aynan shu fanning qarzi (jami EMAS).
+                    Teacher? teacher = null;
+                    if (toTeacher && (string.IsNullOrEmpty(item.Group?.TeacherId)
+                                      || !teachersById.TryGetValue(item.Group.TeacherId, out teacher)))
+                        continue;   // fan guruhining o'qituvchisi yo'q — shu xabar uchun o'tkazib yuboriladi
+
                     var grpTeacher = MessageTokenizer.TeacherNameOf(item.Group, teacherNames);
-                    var extra = new Dictionary<string, string>
+                    var extra = DebtMessages.Extra(item);
+                    string Body(TelegramRegistration? reg) => string.IsNullOrWhiteSpace(rule.Template)
+                        ? TelegramHtml.Escape(item.Body)
+                        : RenderSafe(rule.Template, s, reg, item.Group, grpTeacher, extra, centerName, rule.Audience);
+
+                    // Kabinet bildirishnomasi — HAR DOIM, oddiy matn.
+                    var cabinetUserId = toTeacher ? teacher!.UserId : s.UserId;
+                    if (!string.IsNullOrWhiteSpace(cabinetUserId))
                     {
-                        ["{qarzdorlik}"] = Money(item.Amount),
-                        ["{kurs}"] = item.Label,
-                        // {guruh} ATAYIN ustidan yoziladi: MessageTokenizer.Student uni eskirgan
-                        // `Student.ClassName` dan to'ldiradi (u faqat BIRINCHI guruhda yoziladi va
-                        // keyin yangilanmaydi — `StudentMembershipView` izohi).
-                        ["{guruh}"] = item.Group?.Name ?? item.Label,
-                    };
+                        NotificationStore.Add(db, cabinetUserId, item.Title, TelegramHtml.ToPlain(Body(null)), "payment_debt");
+                        cabinet++;
+                    }
 
-                    foreach (var rule in debtRules)
+                    if (!AutoMessageChannels.Telegram(rule)) continue;
+                    var chats = toTeacher ? regsByTeacher.GetValueOrDefault(teacher!.Id) : regsByStudent.GetValueOrDefault(s.Id);
+                    if (chats is null) continue;
+                    foreach (var reg in chats)
                     {
-                        // AUDITORIYA — qoidaning o'zidan (ilgari e'tiborsiz qolardi).
-                        var toTeacher = rule.Audience == "teachers";
-                        Teacher? teacher = null;
-                        if (toTeacher)
-                        {
-                            // Fan guruhining o'qituvchisi yo'q (zaxira yo'l / o'qituvchisiz guruh) — bu
-                            // qoida shu xabar uchun o'tkazib yuboriladi.
-                            if (string.IsNullOrEmpty(item.Group?.TeacherId)
-                                || !teachersById.TryGetValue(item.Group.TeacherId, out teacher))
-                                continue;
-                        }
-                        var phone = MessagingAudience.StudentPhone(s, rule.Audience);
-
-                        // Qoidaning matni bo'lsa — tokenlar bilan render, aks holda tizim matni.
-                        var body = string.IsNullOrWhiteSpace(rule.Template)
-                            ? item.Body
-                            : MessageTokenizer.Student(MessageTokenizer.ApplyExtra(rule.Template, extra),
-                                s, s.ParentFullName, phone, centerName, group: item.Group, teacherName: grpTeacher);
-
-                        // Kabinet bildirishnomasi (web kabinet qo'ng'iroqchasi) — HAR DOIM (AutoMessageChannels).
-                        var cabinetUserId = toTeacher ? teacher!.UserId : s.UserId;
-                        if (!string.IsNullOrWhiteSpace(cabinetUserId))
-                        {
-                            NotificationStore.Add(db, cabinetUserId, item.Title, body, "payment_debt");
-                            cabinet++;
-                        }
-
-                        // Telegram.
-                        if (AutoMessageChannels.Telegram(rule) && telegram.IsConfigured)
-                        {
-                            var chats = toTeacher
-                                ? chatsByTeacher.GetValueOrDefault(teacher!.Id)
-                                : regsByStudent.GetValueOrDefault(s.Id);
-                            if (chats is not null)
-                            {
-                                var tgText = $"💰 To'lov eslatmasi\n\n{body}";
-                                foreach (var chatId in chats)
-                                    if (await telegram.SendMessageAsync(chatId, tgText, ct: ct)) tgSent++;
-                            }
-                        }
-
+                        var text = MessageRender.HeaderDebt + Body(toTeacher ? null : reg);
+                        if (TelegramHtml.VisibleLength(text) > TelegramHtml.MaxText) text = TelegramHtml.PlainCut(text, 4000);
+                        var row = await TelegramOutbox.EnqueueAsync(db, new OutboxItem(
+                            TelegramOutbox.SourceAuto, AutoMessageTriggers.PaymentDebt, reg.ChatId, text,
+                            StudentId: s.Id, TeacherId: teacher?.Id, RegistrationId: reg.Id,
+                            Relation: toTeacher ? "" : TelegramRelations.Effective(reg.Relation),
+                            RecipientName: toTeacher ? teacher!.FullName : s.FullName,
+                            SourceId: rule.Id, AttachmentId: rule.AttachmentId, AckRequired: rule.AckButton,
+                            DedupeKey: $"{JobKey}:{rule.Id}:{s.Id}:{(string.IsNullOrEmpty(item.Group?.Id) ? "none" : item.Group!.Id)}:{reg.ChatId}:{day}"), ct);
+                        if (row is not null) queued++;
                     }
                 }
             }
             catch (OperationCanceledException) { throw; }
             catch (Exception ex)
             {
-                // Bitta o'quvchi xatosi butun siklni to'xtatmasin. Belgi QO'YILMAGAN bo'lsa (xabar hali
-                // ketmagan) — kun "bajarildi" deb yopilmaydi, keyingi uyg'onishda shu o'quvchi qayta uriniladi.
                 if (!claimed) unclaimedFailures++;
                 logger.LogWarning(ex, "To'lov eslatmasi: o'quvchi {Id} uchun xatolik", s.Id);
             }
 
-            // HAR O'QUVCHIDAN KEYIN saqlanadi: kabinet tarixi yiqilishda yo'qolmasin,
-            // keyingi o'quvchining belgisi esa toza kontekstda band qilinsin (JobRunMarker sharti).
-            try { await db.SaveChangesAsync(ct); }
+            // HAR O'QUVCHIDAN KEYIN saqlanadi (JobRunMarker sharti: band qilish toza kontekstda).
+            try { await TelegramOutbox.SaveAsync(db, ct); }
             catch (OperationCanceledException) { throw; }
             catch (Exception ex) { logger.LogWarning(ex, "To'lov eslatmasi: o'quvchi {Id} yozuvi saqlanmadi", s.Id); }
         }
+        if (queued > 0) outbox?.Wake();
 
         if (alreadySent > 0)
             logger.LogInformation("To'lov eslatmasi: {Count} qarzdor bugun ALLAQACHON olgan — takror yuborilmadi.", alreadySent);
         if (noGroupDebt > 0)
-            // Ro'yxat olinganidan keyin qarzi yopilgan (yoki guruh ledger'lari va balans qarzni
-            // ko'rsatmagan) qarzdorlar — xabar yo'q. Diagnostika uchun soni yoziladi.
             logger.LogInformation("To'lov eslatmasi: {Count} qarzdorda qarz topilmadi — yuborilmadi.", noGroupDebt);
-
-        // ⚠️ "Qarzdor" va "xabar" soni endi BOSHQA-BOSHQA: har fan uchun alohida xabar ketadi
-        // (2 fanda o'qiydigan 1 qarzdor = 2 xabar). Log shuni ochiq yozadi, aks holda
-        // "3 qarzdor, 5 xabar" chalkash ko'rinardi.
         logger.LogInformation(
-            "To'lov eslatmasi yuborildi: {Students} qarzdor, {Messages} xabar (har FAN uchun alohida), "
-            + "Telegram {Tg}, kabinet {Cabinet}.",
-            students, messages, tgSent, cabinet);
+            "To'lov eslatmasi (qoida {Rule}): {Students} qarzdor, {Messages} xabar (har FAN uchun alohida), "
+            + "Telegram navbatga {Tg}, kabinet {Cabinet}. Bot sozlangan: {Configured}.",
+            rule.Id, students, messages, queued, cabinet, telegram.IsConfigured);
         if (unclaimedFailures > 0)
             logger.LogWarning("To'lov eslatmasi: {Count} qarzdorga xato tufayli yuborilmadi — keyingi uyg'onishda qayta uriniladi.",
                 unclaimedFailures);
         return unclaimedFailures == 0;
     }
 
-    /// <summary>Bitta yuboriladigan xabar: QAYSI fan (guruh) uchun, qancha qarz va tayyor matn.</summary>
-    /// <param name="Group">Token konteksti — {guruh}, {oqituvchi} va {dars_*} AYNAN shu guruhdan
-    /// olinadi. Zaxira (a'zoliksiz) yo'lda <c>null</c> bo'lishi mumkin.</param>
-    /// <param name="Label">Kurs (fan) nomi — matnda va {kurs} tokenida.</param>
-    /// <param name="Amount">SHU fan bo'yicha qarz (jami EMAS) — {qarzdorlik} tokeni shundan.</param>
-    private sealed record DebtMessage(Group? Group, string Label, decimal Amount, string Title, string Body);
-
-    /// <summary>
-    /// Bitta o'quvchi uchun eslatma xabarlari — HAR FAN (guruh) uchun ALOHIDA element.
-    ///
-    /// <para>⚠️ Ilgari o'quvchiga BITTA xabar ketardi: ichida har kurs alohida qator, oxirida
-    /// "Jami". Endi har fan O'Z xabari bilan boradi — ikki fanda o'qiyotgan o'quvchi ikkita
-    /// alohida eslatma oladi. Bu markaz egasining ANIQ talabi (N fan = N xabar) — ONGLI kelishuv,
-    /// xato emas. Shuning uchun matn ham qisqartirilgan.</para>
-    ///
-    /// <para>Per-guruh qarz <see cref="StudentGroupLedger"/> orqali (perGroup billing). BARCHA
-    /// to'lovli a'zoliklar hisobga olinadi — TUGAGAN/CHIQQANLARI ham (trial — to'lov yo'q):
-    /// guruh almashtirgan o'quvchining ESKI guruhdagi qoldiq qarzi o'sha fan nomi bilan keladi.
-    /// Qarzi YO'Q fan uchun xabar umuman tuzilmaydi.</para>
-    ///
-    /// <para>⚠️ ZAXIRA YO'L (bitta xabar, qarz <see cref="Student.Balance"/> dan, yorliq
-    /// <c>ClassName</c>) — FAQAT a'zoligi UMUMAN YO'Q (eski model) o'quvchiga. Ilgari a'zoligi bor,
-    /// lekin faol guruhlarida qarzi chiqmagan o'quvchiga ham ishlardi va eski guruhning qarzini
-    /// boshqa (yangi) guruh nomi bilan yozib yuborardi.</para>
-    /// </summary>
-    private static async Task<List<DebtMessage>> BuildMessagesAsync(
-        IAppDbContext db, Student s, IReadOnlyDictionary<string, Group> groupByName, CancellationToken ct)
+    /// <summary>Qoida matni (Telegram HTML); belgilash xatosi bo'lgan eski matn — escape qilingan oddiy matn.</summary>
+    private static string RenderSafe(
+        string template, Student s, TelegramRegistration? reg, Group? group, string? teacherName,
+        IReadOnlyDictionary<string, string> extra, string centerName, string audience)
     {
-        var items = new List<DebtMessage>();
-
-        var memberships = await db.StudentGroups.AsNoTracking()
-            .Where(m => m.StudentId == s.Id)
-            .ToListAsync(ct);
-
-        if (memberships.Count == 0)
-        {
-            // ZAXIRA YO'L: a'zoligi yo'q (eski ClassName modeli) — umumiy balans qarzidan BITTA xabar.
-            // Bu yerda fan kesimi UMUMAN ma'lum emas, shuning uchun bo'linmaydi (eski xulq saqlanadi).
-            var total = s.Balance < 0 ? -s.Balance : 0m;
-            if (total <= 0) return items;
-            var label = s.ClassName ?? "";
-            items.Add(Compose(s, groupByName.GetValueOrDefault(label), label, total));
-            return items;
-        }
-
-        // To'lovli a'zoliklar (faol, muzlatilgan, CHIQQAN/TUGATGAN) — sinov (trial) to'lov hisoblamaydi.
-        var billable = memberships.Where(m => m.Status != "trial").ToList();
-        var groupIds = billable.Select(m => m.GroupId).Distinct().ToList();
-        var groups = (await db.Classes.AsNoTracking().Where(g => groupIds.Contains(g.Id)).ToListAsync(ct))
-            .ToDictionary(g => g.Id);
-
-        // Chegirma kitobi — o'quvchi uchun BIR MARTA (halqa ichida yuklansa har guruh uchun
-        // ortiqcha so'rov bo'lardi; qiymat bir xil).
-        var book = await DiscountBook.LoadForStudentAsync(db, s.Id);
-
-        // Bitta guruhda bir nechta a'zolik qatori bo'lsa — BITTA xabar: tirigi (asosiysi), u yo'q
-        // bo'lsa ENG OXIRGI tugagani. Aks holda o'quvchi bir xil fan uchun ikki marta eslatma olardi.
-        foreach (var group in billable.GroupBy(m => m.GroupId))
-        {
-            var m = MembershipLifecycle.PrimaryMembership(group)
-                    ?? group.OrderByDescending(x => x.LeftAt ?? "", StringComparer.Ordinal)
-                        .ThenByDescending(x => x.JoinedAt ?? "", StringComparer.Ordinal)
-                        .First();
-            if (!groups.TryGetValue(m.GroupId, out var g)) continue;
-            var ledger = await StudentGroupLedger.BuildAsync(db, s, g, m, book);
-            // ⚠️ FAQAT joriy oygacha (2026-10-11). Ledger faol a'zolikka keyingi 3 oyni ham AVANS uchun
-            // ko'rsatadi (to'liq oylik "qolgan" bilan) — ilgari ular ham qo'shilib, ota-onaga haqiqiy
-            // qarzdan 3 oylik ko'p summa ketardi, qarzi yo'q fan bo'yicha esa "qarz" xabari tuzilardi.
-            var current = TuitionService.CurrentMonth();
-            var owed = ledger.Months.Where(x => string.CompareOrdinal(x.Month, current) <= 0).Sum(x => x.Remaining);
-            if (owed <= 0) continue;
-            items.Add(Compose(s, g, ledger.CourseName, owed));
-        }
-
-        // GURUHGA BOG'LANMAGAN QARZ: a'zolik bor, lekin hech bir guruh ledger'ida qarz chiqmadi, balans
-        // esa manfiy (eski `GroupId`siz hisoblar). Kurs NOMISIZ bitta umumiy eslatma: noto'g'ri guruh
-        // nomi (`ClassName`) bilan yozish yolg'on bo'lardi, jim tashlab ketish esa qarzni unuttirardi.
-        if (items.Count == 0 && s.Balance < 0)
-            items.Add(Compose(s, null, "", -s.Balance));
-
-        return items;
-    }
-
-    /// <summary>Bitta fan uchun xabar matni. Matn ATAYIN qisqa: har fan alohida xabar bo'lib
-    /// ketadi. "Jami" qatori YO'Q — u fanlarni aralashtirib, xabarni yolg'on qilardi.</summary>
-    private static DebtMessage Compose(Student s, Group? group, string label, decimal amount)
-    {
-        var head = string.IsNullOrWhiteSpace(label)
-            ? $"{s.FullName} bo'yicha qarzdorlik: {Money(amount)}."
-            : $"{s.FullName} — {label} bo'yicha qarzdorlik: {Money(amount)}.";
-        return new DebtMessage(group, label, amount, "To'lov eslatmasi",
-            $"{head}\nIltimos, to'lovni amalga oshiring.");
-    }
-
-    /// <summary>So'm formatlash: 1 700 000 so'm (probel bilan ajratilgan).</summary>
-    private static string Money(decimal v)
-    {
-        var nfi = new System.Globalization.NumberFormatInfo { NumberGroupSeparator = " ", NumberDecimalDigits = 0 };
-        return v.ToString("#,0", nfi) + " so'm";
+        var r = MessageRender.RenderStudent(template, s, reg, group, teacherName, extra, centerName, audience);
+        return r.Errors.Count == 0 ? r.Html
+            : MessageRender.RenderStudent(TelegramHtml.Escape(template), s, reg, group, teacherName, extra, centerName, audience).Html;
     }
 }

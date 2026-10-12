@@ -63,6 +63,9 @@ Qoidalar QAYTA YOZILMAGAN, chaqiriladi:
 - davomat foizi — `StudentJournalBuilder.BuildCells` (o'quvchi portali bilan bir xil); kech kelgan KELGAN.
 
 ⚠️ "O'quvchilarim" da balans SUMMASI va telefon YO'Q — faqat qarzdor oylar soni (belgi uchun).
+«Telegram» ustuni (2026-10-12, CRM U6b) — ulangan (bloklanmagan) chatlar SONI va qarindoshlik belgilari
+(`telegramLinked`, `telegramRelations` — `TelegramLinkSummary`); telefon, ism, chat id BERILMAYDI. Guruh
+«O'quvchilar» tabida (`groups/{classId}/students`) ham xuddi shunday.
 ⚠️ ARXIVDAGI o'quvchi ro'yxatda ham, sanoq/qarzdorlarda ham YO'Q (`VisibleMembersAsync`,
 `DebtSummaryAsync` — `!Student.IsArchived`): eski arxivlashlar a'zolikni yopmagan, `IsActive`
 qator qolgan bo'lishi mumkin (arxiv = o'quvchi ketgan).
