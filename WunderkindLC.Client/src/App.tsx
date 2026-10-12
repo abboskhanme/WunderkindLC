@@ -163,6 +163,7 @@ const TeacherMenuPage = lazy(() => import('@/pages/teacher/menu/TeacherMenuPage'
 // O'quvchi portali (SPA ichida, /student/*)
 const StudentDashboardScreen = lazy(() => import('@/pages/student/Dashboard').then((m) => ({ default: m.StudentDashboardScreen })))
 const StudentProgressScreen = lazy(() => import('@/pages/student/Progress').then((m) => ({ default: m.StudentProgressScreen })))
+const StudentRatingScreen = lazy(() => import('@/pages/student/Rating').then((m) => ({ default: m.StudentRatingScreen })))
 const SubjectProgressDetailScreen = lazy(() => import('@/pages/student/SubjectProgressDetail').then((m) => ({ default: m.SubjectProgressDetailScreen })))
 const StudentGradesScreen = lazy(() => import('@/pages/student/Grades').then((m) => ({ default: m.StudentGradesScreen })))
 const StudentAttendanceScreen = lazy(() => import('@/pages/student/Attendance').then((m) => ({ default: m.StudentAttendanceScreen })))
@@ -484,13 +485,15 @@ export default function App() {
           </Route>
         </Route>
 
-        {/* O'quvchi/ota-ona portali — MOBIL web ilova (student.html dizayni, blue).
-            Pastki 5-tab navigatsiya (StudentMobileLayout). */}
+        {/* O'quvchi/ota-ona portali — MOBIL web ilova + Telegram Mini App.
+            Pastki 5-tab navigatsiya: Bosh sahifa · Darslar · Natijalar · To'lovlar · Profil
+            (guruhlash — pages/student/nav.ts; marshrutlar o'zgarmagan). */}
         <Route element={<ProtectedRoute role="student" />}>
           <Route path="/student" element={<StudentMobileLayout />}>
             <Route index element={<StudentDashboardScreen />} />
             <Route path="progress" element={<StudentProgressScreen />} />
             <Route path="progress/subject/:id" element={<SubjectProgressDetailScreen />} />
+            <Route path="rating" element={<StudentRatingScreen />} />
             <Route path="grades" element={<StudentGradesScreen />} />
             <Route path="attendance" element={<StudentAttendanceScreen />} />
             <Route path="statistics" element={<StudentStatisticsScreen />} />

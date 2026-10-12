@@ -1,83 +1,69 @@
-import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useEffect, useState, type ReactNode } from 'react'
+import { Check, Lock, Moon, SunMoon } from 'lucide-react'
 import { getStudentSettings, saveStudentSettings } from '@/api/services/studentPortal'
-import { getStudentTheme, setStudentTheme } from '@/components/layout/StudentMobileLayout'
-import { Icon } from '@/pages/student/lib'
+import { getThemePref, setThemePref, telegramApp, type ThemePref } from '@/pages/student/theme'
 import { apiErrorMessage } from '@/lib/utils'
+import { IconBox, ListRow, PageHeader } from '@/pages/student/ui'
 
 /* ============================================================
-   O'quvchi portali — SOZLAMALAR.
-   Dizayn: student.html SETTINGS. .student-app shell.
+   Profil → SOZLAMALAR: theme (Avto / Yorug' / Tungi), language, password.
+   Theme is a per-device choice (localStorage); "Avto" follows Telegram inside the Mini App and
+   the phone's setting in a browser. Language is saved on the server.
    ============================================================ */
 
 const LANGS: [string, string][] = [
-  ['uz', "O'zbek"],
+  ['uz', "O'zbekcha"],
   ['ru', 'Русский'],
   ['en', 'English'],
 ]
 
-/** Komponent TASHQARIDA — render ichida yaratilsa har chizishda qayta tug'ilardi (`react-hooks/static-components`). */
-const IconBox = ({ icon, color }: { icon: string; color: string }) => (
-  <div
-    style={{
-      width: 32,
-      height: 32,
-      borderRadius: 9,
-      background: color + '22',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      flex: 'none',
-    }}
-  >
-    <Icon name={icon} size={17} color={color} />
-  </div>
-)
+const THEMES: [ThemePref, string][] = [
+  ['auto', 'Avto'],
+  ['light', "Yorug'"],
+  ['dark', 'Tungi'],
+]
 
-const Group = ({ title, children }: { title: string; children: React.ReactNode }) => (
-  <div style={{ marginBottom: 18 }}>
-    <div
-      className="muted"
-      style={{ fontSize: 13, fontWeight: 800, letterSpacing: '.3px', padding: '0 4px 8px' }}
-    >
-      {title.toUpperCase()}
+const Group = ({ title, children, foot }: { title: string; children: ReactNode; foot?: ReactNode }) => (
+  <div style={{ marginBottom: 20 }}>
+    <div className="st-label" style={{ textTransform: 'uppercase', letterSpacing: '0.4px', fontSize: 12.5 }}>
+      {title}
     </div>
-    <div className="card" style={{ padding: 4, borderRadius: 18 }}>
-      {children}
-    </div>
+    <div className="card flush">{children}</div>
+    {foot && (
+      <div className="muted" style={{ fontSize: 13, padding: '8px 4px 0', lineHeight: 1.45 }}>
+        {foot}
+      </div>
+    )}
   </div>
 )
 
 export function StudentSettingsScreen() {
-  const nav = useNavigate()
-  const [dark, setDark] = useState<boolean>(() => getStudentTheme() === 'dark')
+  const [theme, setTheme] = useState<ThemePref>(getThemePref)
   const [lang, setLang] = useState<string>('uz')
-  /** Saqlash xatosi — JIM QOLMAYDI: xato bo'lsa tanlov ham orqaga qaytariladi. */
+  /** Save error — NEVER silent: on failure the choice is rolled back too. */
   const [saveError, setSaveError] = useState('')
   const [saving, setSaving] = useState(false)
+  const inTelegram = !!telegramApp()
 
   useEffect(() => {
     let alive = true
     getStudentSettings()
       .then((s) => {
-        if (!alive) return
-        if (s?.language) setLang(s.language)
+        if (alive && s?.language) setLang(s.language)
       })
-      // Fon O'QISH: xato bo'lsa sahifa standart qiymatlar bilan ishlayveradi (saqlash xatosi alohida ko'rsatiladi).
+      // Background READ: on failure the page works with defaults (save errors are shown separately).
       .catch(() => {})
     return () => {
       alive = false
     }
   }, [])
 
-  const toggleDark = () => {
-    const next = !dark
-    setDark(next)
-    setStudentTheme(next ? 'dark' : 'light')
+  const pickTheme = (t: ThemePref) => {
+    setTheme(t)
+    setThemePref(t)
   }
 
-  // OPTIMISTIK yangilash — xato bo'lsa ESKI holatga qaytariladi va sabab ko'rsatiladi
-  // (`.claude/rules/error-visibility.md` §3).
+  // OPTIMISTIC update — rolled back on error with the reason shown (`error-visibility.md` §3).
   const pickLang = async (l: string) => {
     if (saving || l === lang) return
     const prev = lang
@@ -96,75 +82,57 @@ export function StudentSettingsScreen() {
 
   return (
     <div className="screen">
-      <div className="hd">
-        <div className="row gap10" style={{ minHeight: 38 }}>
-          <button className="iconbtn press" onClick={() => nav(-1)}>
-            <Icon name="chevL" size={22} />
-          </button>
-          <div className="hd-sm" style={{ flex: 1 }}>
-            Sozlamalar
-          </div>
-        </div>
-      </div>
+      <PageHeader title="Sozlamalar" back="/student/profile" />
 
-      <div className="scroll pad" style={{ paddingBottom: 24 }}>
-        {saveError && (
-          <div role="alert" style={{ color: 'var(--red)', fontSize: 13, fontWeight: 600, margin: '0 4px 14px' }}>
-            {saveError}
-          </div>
-        )}
-        {/* Ko'rinish */}
-        <Group title="Ko'rinish">
-          <div className="row gap12" style={{ padding: '12px 11px' }}>
-            <IconBox icon="moon" color="#7C3AED" />
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 14.5, fontWeight: 700 }}>Tungi rejim</div>
-              <div className="muted" style={{ fontSize: 12 }}>
-                {dark ? 'Yoqilgan' : "O'chirilgan"}
+      <div className="scroll">
+        <div className="st-page" style={{ paddingTop: 8 }}>
+          {saveError && (
+            <div role="alert" className="st-banner" style={{ marginBottom: 14 }}>
+              {saveError}
+            </div>
+          )}
+
+          <Group
+            title="Ko'rinish"
+            foot={
+              theme === 'auto'
+                ? inTelegram
+                  ? 'Avto — Telegram mavzusiga moslashadi.'
+                  : 'Avto — telefon sozlamasiga moslashadi.'
+                : undefined
+            }
+          >
+            <div className="row gap12" style={{ padding: '14px 16px' }}>
+              <IconBox icon={theme === 'dark' ? Moon : SunMoon} tone="violet" />
+              <div style={{ flex: 1, minWidth: 0, fontSize: 15, fontWeight: 700 }}>Mavzu</div>
+            </div>
+            <div style={{ padding: '0 16px 16px' }}>
+              <div className="seg" role="radiogroup" aria-label="Mavzu">
+                {THEMES.map(([k, label]) => (
+                  <button key={k} type="button" role="radio" aria-checked={theme === k} className={theme === k ? 'on' : 'press'} onClick={() => pickTheme(k)}>
+                    {label}
+                  </button>
+                ))}
               </div>
             </div>
-            <div className={'switch press' + (dark ? ' on' : '')} onClick={toggleDark}>
-              <i />
-            </div>
-          </div>
-        </Group>
+          </Group>
 
-        {/* Til */}
-        <Group title="Til">
-          {LANGS.map((l, i) => (
-            <button
-              key={l[0]}
-              className="press row"
-              onClick={() => pickLang(l[0])}
-              style={{
-                width: '100%',
-                padding: '13px 11px',
-                borderBottom: i < LANGS.length - 1 ? '1px solid var(--border)' : undefined,
-              }}
-            >
-              <span style={{ flex: 1, textAlign: 'left', fontSize: 15, fontWeight: 700 }}>
-                {l[1]}
-              </span>
-              {lang === l[0] && <Icon name="check" size={20} color="var(--accent)" />}
-            </button>
-          ))}
-        </Group>
+          <Group title="Til">
+            {LANGS.map(([k, label]) => (
+              <button key={k} type="button" className="st-li press" onClick={() => pickLang(k)} style={{ minHeight: 54 }}>
+                <span className="st-li-main" style={{ fontSize: 15, fontWeight: lang === k ? 700 : 500 }}>
+                  {label}
+                </span>
+                {lang === k && <Check size={20} color="var(--accent)" strokeWidth={2.6} />}
+              </button>
+            ))}
+          </Group>
 
-        {/* Akkaunt */}
-        <Group title="Akkaunt">
-          <button
-            className="press row gap12"
-            onClick={() => nav('/student/account')}
-            style={{ width: '100%', padding: '12px 11px', textAlign: 'left' }}
-          >
-            <IconBox icon="lock" color="#2563EB" />
-            <span style={{ flex: 1, fontSize: 14.5, fontWeight: 700 }}>Parolni o'zgartirish</span>
-            <Icon name="chevR" size={18} color="var(--faint)" />
-          </button>
-        </Group>
+          <Group title="Akkaunt">
+            <ListRow to="/student/account" icon={Lock} iconTone="info" title="Parolni o'zgartirish" />
+          </Group>
 
-        <div className="faint" style={{ textAlign: 'center', fontSize: 12 }}>
-          Wunderkind · v1.0.0
+          <div className="faint" style={{ textAlign: 'center', fontSize: 12.5 }}>Wunderkind · v1.0.0</div>
         </div>
       </div>
     </div>

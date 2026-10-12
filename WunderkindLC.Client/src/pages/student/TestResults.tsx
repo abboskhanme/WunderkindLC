@@ -1,54 +1,57 @@
-import { useEffect, useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useMemo } from 'react'
+import { ClipboardList } from 'lucide-react'
 import { getStudentTestResults, type StudentTestResult } from '@/api/services/studentPortal'
-import { Icon, fmtDate } from '@/pages/student/lib'
+import { fmtScore } from '@/lib/ratingPeriods'
+import { fmtDate } from '@/pages/student/lib'
+import { percentTone, toneColors } from '@/pages/student/format'
+import { useApi } from '@/pages/student/hooks'
+import { EmptyState, ErrorState, PageHeader, SkeletonList, StatusChip } from '@/pages/student/ui'
 
 /* ============================================================
-   O'quvchi portali — OYLIK TEST NATIJALARI (Google Sheets o'rniga, 2026-10-07 uchrashuvi).
-   O'qituvchi o'z guruhida ball kiritadi (Mini App → Testlar) — natija shu yerda o'quvchiga ham,
-   ota-onaga ham darhol ko'rinadi. Manba: GET /student/test-results (o'quvchi — o'ziniki,
-   ota-ona — farzandiniki). Dizayn: Contracts/Certificates bilan bir xil (.student-app).
+   Natijalar → TESTLAR — monthly test results (Google Sheets replacement, 2026-10-07).
+   The teacher enters scores in their Mini App; the student and the parents see them here at once.
+   Source: GET /student/test-results (student — own, parent — their child's).
    ============================================================ */
 
-const pct = (r: StudentTestResult) =>
-  r.score === null || r.maxScore <= 0 ? null : Math.round((r.score / r.maxScore) * 100)
+const loadTests = () => getStudentTestResults()
 
-/** Foiz rangi: 85+ yashil, 60+ ko'k, 40+ sariq, qolgani qizil. */
-function pctColor(p: number | null): string {
-  if (p === null) return 'var(--faint)'
-  if (p >= 85) return '#16A34A'
-  if (p >= 60) return '#2563EB'
-  if (p >= 40) return '#D97706'
-  return '#DC2626'
+const pct = (r: StudentTestResult) => (r.score === null || r.maxScore <= 0 ? null : Math.round((r.score / r.maxScore) * 100))
+
+const barColor = (p: number | null) => {
+  const t = percentTone(p)
+  return t === 'ok' ? 'var(--greenBar)' : t === 'warn' ? 'var(--amberBar)' : toneColors(t).fg
 }
 
 function ResultCard({ r }: { r: StudentTestResult }) {
   const p = pct(r)
-  const color = pctColor(p)
+  const c = toneColors(percentTone(p))
   return (
-    <div className="card" style={{ borderRadius: 18, padding: '14px 16px', marginBottom: 12, borderLeft: `4px solid ${color}` }}>
+    <div className="card" style={{ padding: 14 }}>
       <div className="row gap12" style={{ alignItems: 'flex-start' }}>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 15, fontWeight: 800, letterSpacing: '-.2px', lineHeight: 1.25 }}>{r.name}</div>
-          <div className="muted" style={{ fontSize: 12.5, marginTop: 2 }}>
-            {r.groupName} · {fmtDate(r.date)}
+          <div className="st-wrap" style={{ fontSize: 15.5, fontWeight: 700, lineHeight: 1.3 }}>{r.name}</div>
+          <div className="muted st-wrap" style={{ fontSize: 13, marginTop: 2 }}>
+            {fmtDate(r.date)}
+            {r.groupName ? ` · ${r.groupName}` : ''}
           </div>
         </div>
         <div style={{ textAlign: 'right', flex: 'none' }}>
-          <div style={{ fontSize: 20, fontWeight: 800, color }}>{p === null ? '—' : `${p}%`}</div>
-          <div className="faint" style={{ fontSize: 11.5, fontWeight: 700 }}>
-            {r.score === null ? 'baho qo\'yilmagan' : `${r.score} / ${r.maxScore}`}
+          <div className="st-num" style={{ fontSize: 22, lineHeight: 1.1, color: p === null ? 'var(--faint)' : c.fg }}>{p === null ? '—' : `${p}%`}</div>
+          <div className="muted" style={{ fontSize: 12.5, fontWeight: 600 }}>
+            {r.score === null ? 'ball kiritilmagan' : `${fmtScore(r.score)} / ${r.maxScore}`}
           </div>
         </div>
       </div>
       {p !== null && (
-        <div style={{ marginTop: 10, height: 6, borderRadius: 6, background: 'var(--line, #E5E7EB)', overflow: 'hidden' }}>
-          <div style={{ width: `${Math.min(100, p)}%`, height: '100%', background: color, borderRadius: 6 }} />
+        <div className="progress thin" style={{ marginTop: 12 }}>
+          <div style={{ width: `${Math.min(100, p)}%`, background: barColor(p) }} />
         </div>
       )}
       {r.score !== null && r.total > 0 && (
-        <div className="muted" style={{ fontSize: 12, marginTop: 8 }}>
-          Guruhda <b>{r.rank}</b>-o'rin ({r.total} ta o'quvchidan)
+        <div style={{ marginTop: 10 }}>
+          <StatusChip tone="violet">
+            Guruhda {r.rank}-o'rin · {r.total} ta o'quvchidan
+          </StatusChip>
         </div>
       )}
     </div>
@@ -56,72 +59,45 @@ function ResultCard({ r }: { r: StudentTestResult }) {
 }
 
 export function StudentTestResultsScreen() {
-  const navigate = useNavigate()
-  const [rows, setRows] = useState<StudentTestResult[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const { data, error, loading, reload } = useApi(loadTests)
+  const rows = useMemo(() => [...(data ?? [])].sort((a, b) => (b.date || '').localeCompare(a.date || '')), [data])
 
-  useEffect(() => {
-    let alive = true
-    getStudentTestResults()
-      .then((d) => alive && setRows(d))
-      .catch((e) => alive && setError(e?.response?.data?.message || e?.message || String(e)))
-      .finally(() => alive && setLoading(false))
-    return () => {
-      alive = false
-    }
-  }, [])
-
-  // O'rtacha — faqat baho qo'yilgan testlar bo'yicha.
+  // Average — only over tests that have a score.
   const avg = useMemo(() => {
     const ps = rows.map(pct).filter((p): p is number => p !== null)
     return ps.length ? Math.round(ps.reduce((a, b) => a + b, 0) / ps.length) : null
   }, [rows])
-
-  const head = (
-    <div className="hd">
-      <div className="row gap10" style={{ minHeight: 38 }}>
-        <button className="iconbtn press" onClick={() => navigate(-1)}>
-          <Icon name="chevL" size={22} />
-        </button>
-        <div className="hd-sm" style={{ flex: 1 }}>Test natijalari</div>
-      </div>
-    </div>
-  )
+  const scored = rows.filter((r) => pct(r) !== null).length
 
   return (
     <div className="screen">
-      {head}
-      <div className="scroll" style={{ paddingBottom: 24 }}>
-        <div className="pad">
-          {loading ? (
-            <div className="center" style={{ minHeight: '60dvh' }}>
-              <div className="spin" />
-            </div>
-          ) : error ? (
-            <div className="center" style={{ minHeight: '60dvh', flexDirection: 'column', gap: 10 }}>
-              <Icon name="alert" size={36} color="var(--red)" />
-              <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--red)' }}>Yuklab bo'lmadi</div>
-              <div className="muted" style={{ fontSize: 13, textAlign: 'center' }}>{error}</div>
-            </div>
+      <PageHeader section="results" />
+      <div className="scroll">
+        <div className="st-page">
+          {error && !data ? (
+            <ErrorState message={error} onRetry={reload} />
+          ) : loading && !data ? (
+            <SkeletonList rows={3} />
           ) : rows.length === 0 ? (
-            <div className="center" style={{ minHeight: '55dvh', flexDirection: 'column', gap: 10, textAlign: 'center' }}>
-              <Icon name="clipboard" size={40} color="var(--faint)" />
-              <div style={{ fontSize: 17, fontWeight: 800 }}>Hali test natijasi yo'q</div>
-              <div className="muted" style={{ fontSize: 13 }}>O'qituvchi oylik test ballarini kiritgach shu yerda ko'rinadi.</div>
+            <div className="card flush">
+              <EmptyState icon={ClipboardList} title="Hali test natijasi yo'q" sub="O'qituvchi oylik test ballarini kiritgach shu yerda ko'rinadi." />
             </div>
           ) : (
             <>
               {avg !== null && (
-                <div className="card" style={{ borderRadius: 18, padding: '14px 16px', marginBottom: 14 }}>
-                  <div className="faint" style={{ fontSize: 11, fontWeight: 700 }}>O'RTACHA NATIJA</div>
-                  <div style={{ fontSize: 26, fontWeight: 800, color: pctColor(avg) }}>{avg}%</div>
-                  <div className="muted" style={{ fontSize: 12 }}>{rows.length} ta test bo'yicha</div>
+                <div className="card row gap12" style={{ marginBottom: 12 }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div className="muted" style={{ fontSize: 13.5, fontWeight: 600 }}>O'rtacha natija</div>
+                    <div className="muted" style={{ fontSize: 13 }}>{scored} ta test bo'yicha</div>
+                  </div>
+                  <div className="st-num" style={{ fontSize: 30, color: toneColors(percentTone(avg)).fg }}>{avg}%</div>
                 </div>
               )}
-              {rows.map((r) => (
-                <ResultCard key={r.testId} r={r} />
-              ))}
+              <div className="col" style={{ gap: 10 }}>
+                {rows.map((r) => (
+                  <ResultCard key={r.testId} r={r} />
+                ))}
+              </div>
             </>
           )}
         </div>

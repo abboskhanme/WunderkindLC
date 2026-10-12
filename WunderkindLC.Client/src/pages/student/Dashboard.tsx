@@ -1,88 +1,116 @@
-import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useEffect, useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
+import {
+  Bell,
+  CalendarCheck,
+  CalendarDays,
+  ChevronRight,
+  CircleCheck,
+  ClipboardList,
+  Clock,
+  MapPin,
+  Send,
+  Trophy,
+  UserRound,
+  Wallet,
+  X,
+} from 'lucide-react'
 import {
   getStudentDashboard,
-  getStudentNotebook,
+  getStudentPortalGroups,
   getStudentSchool,
+  getStudentTestResults,
   getStudentNotifications,
   markStudentNotificationsRead,
   confirmStudentNotification,
-  type StudentDashboard,
-  type StudentNotebook,
   type NotificationsResponse,
+  type StudentTestResult,
 } from '@/api/services/studentPortal'
+import { getStudentRatingSummary } from '@/api/services/rating'
+import { getMyAchievements } from '@/api/services/achievements'
 import { useAuth } from '@/context/auth-context'
-import { Icon, fmtDate, fmtMoney, fmtTime, gradeColor } from '@/pages/student/lib'
 import { telegramUrl, openTelegram, apiErrorMessage } from '@/lib/utils'
-
-const NOTIF_ICON: Record<string, string> = {
-  grade: 'chart',
-  attendance: 'checkCircle',
-  payment: 'wallet',
-  announcement: 'bell',
-  pickup: 'user',
-}
+import { fmtScore, monthKeyOf } from '@/lib/ratingPeriods'
+import { fmtDate, fmtMoney, fmtTime } from '@/pages/student/lib'
+import {
+  balanceState,
+  courseTitle,
+  dayLabel,
+  greeting,
+  liveGroups,
+  nextLesson,
+  percentTone,
+  timeRange,
+  todayLine,
+  toneColors,
+} from '@/pages/student/format'
+import { useApi, useNow } from '@/pages/student/hooks'
+import { Avatar, IconBox, SectionTitle, Skeleton, StatusChip } from '@/pages/student/ui'
 
 /* ============================================================
-   O'quvchi Dashboard — to'liq salom + bildirishnoma + qisqacha
-   ko'rsatkichlar (dars qoldirish / balans / guruh) + umumiy statistika.
-   (O'quv dasturi yo'l-xaritasi "Progress" tabига ko'chirildi.)
+   Student / parent cabinet — HOME.
+   What a parent opens the app for, top to bottom: who (child + groups) and the next lesson ·
+   payment status with a pay action · this month (attendance, rating, tests) · latest test
+   results · achievements. Every block loads independently (one failing request never blanks
+   the page). Data: existing student endpoints only.
    ============================================================ */
 
-const WD = ['Yakshanba', 'Dushanba', 'Seshanba', 'Chorshanba', 'Payshanba', 'Juma', 'Shanba']
-const MO = ['yanvar', 'fevral', 'mart', 'aprel', 'may', 'iyun', 'iyul', 'avgust', 'sentabr', 'oktabr', 'noyabr', 'dekabr']
-function todayLine(): string {
-  const d = new Date()
-  return `${d.getDate()}-${MO[d.getMonth()]}, ${WD[d.getDay()]}`
+const NOTIF_ICON: Record<string, typeof Bell> = {
+  grade: ClipboardList,
+  attendance: CalendarCheck,
+  payment: Wallet,
+  announcement: Bell,
+  pickup: UserRound,
 }
-const num = (v: unknown): number => (typeof v === 'number' && isFinite(v) ? v : 0)
+
+// Stable fetchers (useApi effect dependencies).
+const loadDash = () => getStudentDashboard()
+const loadGroups = () => getStudentPortalGroups()
+const loadSchool = () => getStudentSchool()
+const loadTests = () => getStudentTestResults()
+const loadAchievements = () => getMyAchievements()
+const loadMonth = () => getStudentRatingSummary({ period: 'month', key: monthKeyOf(new Date()) })
+
+const pct = (r: StudentTestResult) => (r.score === null || r.maxScore <= 0 ? null : Math.round((r.score / r.maxScore) * 100))
 
 export function StudentDashboardScreen() {
   const { user } = useAuth()
-  const navigate = useNavigate()
-  const [dash, setDash] = useState<StudentDashboard | null>(null)
-  const [nb, setNb] = useState<StudentNotebook | null>(null)
-  const [channel, setChannel] = useState('')
+  const now = useNow()
+  const dash = useApi(loadDash)
+  const groups = useApi(loadGroups)
+  const school = useApi(loadSchool)
+  const tests = useApi(loadTests)
+  const achievements = useApi(loadAchievements)
+  const month = useApi(loadMonth)
+
   const [notifs, setNotifs] = useState<NotificationsResponse | null>(null)
-  const [loading, setLoading] = useState(true)
   const [notifOpen, setNotifOpen] = useState(false)
-  /** "Tasdiqlash" yuborilayotgan e'lon va uning xatosi (bildirishnoma ostida ko'rsatiladi). */
+  /** Announcement being confirmed and its error (shown under that notification). */
   const [confirming, setConfirming] = useState<string | null>(null)
   const [confirmError, setConfirmError] = useState<{ id: string; message: string } | null>(null)
 
   useEffect(() => {
     let on = true
-    Promise.all([
-      getStudentDashboard().catch(() => null),
-      getStudentNotebook().catch(() => null),
-      getStudentSchool().catch(() => null),
-      getStudentNotifications().catch(() => null),
-    ])
-      .then(([d, n, s, nt]) => {
-        if (!on) return
-        setDash(d)
-        setNb(n)
-        setChannel(s?.telegramChannel || '')
-        setNotifs(nt)
-      })
-      .finally(() => on && setLoading(false))
+    getStudentNotifications()
+      .then((n) => on && setNotifs(n))
+      // Background read: without it the bell simply shows no badge.
+      .catch(() => {})
     return () => {
       on = false
     }
   }, [])
 
-  // Qo'ng'iroq bosilganda — panel ochiladi va o'qilgan deb belgilanadi.
+  // Opening the bell marks everything as read.
   const openNotifs = () => {
     setNotifOpen(true)
     if (notifs && notifs.unread > 0) {
+      // Secondary "read" marker — allowed to fail silently (error-visibility.md §4).
       markStudentNotificationsRead().catch(() => {})
       setNotifs((p) => (p ? { unread: 0, items: p.items.map((i) => ({ ...i, read: true })) } : p))
     }
   }
 
-  // "Tasdiqlash" tugmasi (admin e'loni uchun) — admin shu holatni ko'radi.
-  // ⚠️ "Tasdiqlandi" belgisi FAQAT server qabul qilgandan KEYIN qo'yiladi: ilgari oldindan qo'yilib,
-  // xato yutilardi — o'quvchi "tasdiqladim" deb o'ylar, admin esa tasdiqlanmagan deb ko'rardi.
+  // ⚠️ "Tasdiqlandi" appears ONLY after the server accepted it (the admin sees this state).
   const confirmNotif = async (id: string) => {
     if (confirming) return
     setConfirming(id)
@@ -97,234 +125,249 @@ export function StudentDashboardScreen() {
     }
   }
 
-  const fullName = dash?.profile?.fullName || user?.fullName || "O'quvchi"
-  const className = dash?.profile?.className || '—'
-  const balance = dash?.balance ?? 0
-
-  // Umumiy statistika (notebook'dan, bo'sh bo'lsa 0)
-  const avg = num(nb?.avgGrade)
-  const attended = num(nb?.attended)
-  const conducted = num(nb?.conducted)
-  const missed = Math.max(0, conducted - attended)
-  const attPct = num(nb?.attendancePct)
-  const hwDone = num(nb?.homeworkDone)
-  const hwMissed = num(nb?.homeworkMissed)
-  const hwPct = hwDone + hwMissed > 0 ? Math.round((hwDone / (hwDone + hwMissed)) * 100) : 0
+  const fullName = dash.data?.profile?.fullName || user?.fullName || ''
+  const live = useMemo(() => liveGroups(groups.data ?? []), [groups.data])
+  const next = useMemo(() => (groups.data ? nextLesson(groups.data, now) : null), [groups.data, now])
+  const channel = (school.data?.telegramChannel || '').trim()
+  const latestTests = useMemo(
+    () => [...(tests.data ?? [])].sort((a, b) => (b.date || '').localeCompare(a.date || '')).slice(0, 3),
+    [tests.data],
+  )
 
   return (
     <div className="screen">
-      {/* Salom + bildirishnoma */}
-      <div className="hd" style={{ paddingTop: 10, paddingBottom: 6 }}>
-        <div className="row sp gap10">
-          <div style={{ minWidth: 0, flex: 1 }}>
-            <div className="muted" style={{ fontSize: 12.5, fontWeight: 600 }}>{todayLine()}</div>
-            <div style={{ fontSize: 21, fontWeight: 800, letterSpacing: '-.3px', lineHeight: 1.15 }}>
-              Salom, <span style={{ color: 'var(--accent)' }}>{fullName}</span> {'\u{1F44B}'}
-            </div>
+      <div className="st-hd">
+        <div className="st-hd-row">
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div className="st-hd-sub" style={{ marginTop: 0 }}>{todayLine(now)}</div>
+            <div className="st-hd-title" style={{ fontSize: 24 }}>{greeting(now)}!</div>
           </div>
           <button className="iconbtn press" onClick={openNotifs} aria-label="Bildirishnomalar">
-            <Icon name="bell" size={20} color="var(--text)" />
-            {notifs && notifs.unread > 0 && (
-              <span className="nbadge">{notifs.unread > 9 ? '9+' : notifs.unread}</span>
-            )}
+            <Bell size={20} />
+            {notifs && notifs.unread > 0 && <span className="nbadge">{notifs.unread > 9 ? '9+' : notifs.unread}</span>}
           </button>
         </div>
       </div>
 
       <div className="scroll">
-        {loading ? (
-          <div className="center" style={{ minHeight: '40dvh' }}>
-            <div className="spin" />
-          </div>
-        ) : (
-          <div className="pad" style={{ paddingBottom: 28 }}>
-            {/* Qisqacha: dars qoldirish · balans · guruh */}
-            <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
-              <Quick
-                icon="alert"
-                label="Dars qoldirdi"
-                value={`${missed}`}
-                tone={missed > 0 ? 'var(--amber)' : 'var(--muted)'}
-              />
-              <Quick
-                icon="wallet"
-                label="Balans"
-                value={fmtMoney(balance)}
-                tone={balance < 0 ? 'var(--red)' : balance > 0 ? 'var(--green)' : 'var(--muted)'}
-                small
-              />
-              <Quick icon="school" label="Guruh" value={className} tone="var(--accent)" small />
+        <div className="st-page">
+          {/* Who + next lesson */}
+          <div className="hero" style={{ padding: 16 }}>
+            <div className="row gap12" style={{ alignItems: 'center' }}>
+              {fullName ? (
+                <Avatar name={fullName} size={52} gradient="rgba(255,255,255,.18)" />
+              ) : (
+                <Skeleton h={52} w={52} r={26} style={{ opacity: 0.4 }} />
+              )}
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div className="st-wrap" style={{ fontSize: 19, fontWeight: 800, lineHeight: 1.25, letterSpacing: '-0.2px' }}>
+                  {fullName || ' '}
+                </div>
+                <div className="st-wrap" style={{ fontSize: 13.5, fontWeight: 600, opacity: 0.85, marginTop: 2, lineHeight: 1.35 }}>
+                  {live.length ? live.map(courseTitle).join(' · ') : school.data?.name || "O'quvchi kabineti"}
+                </div>
+              </div>
             </div>
+            <NextLessonPanel loading={groups.loading && !groups.data} error={groups.error} next={next} />
+          </div>
 
-            {/* Telegram kanal (sozlangan bo'lsa, faqat o'quvchi) */}
-            {channel.trim() && user?.role === 'student' && (
-              <a
-                href={telegramUrl(channel)}
-                onClick={(e) => {
-                  e.preventDefault()
-                  openTelegram(channel)
-                }}
-                className="card press"
-                style={{ marginTop: 14, display: 'flex', alignItems: 'center', gap: 12, textDecoration: 'none' }}
-              >
-                <div
-                  style={{
-                    width: 42,
-                    height: 42,
-                    borderRadius: 13,
-                    background: '#229ED9',
-                    color: '#fff',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    flex: 'none',
-                  }}
-                >
-                  <Icon name="send" size={20} color="#fff" />
-                </div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--text)' }}>Telegram kanalimiz</div>
-                  <div className="muted" style={{ fontSize: 12 }}>
-                    Markaz e'lonlari — kanalga o'ting
-                  </div>
-                </div>
-                <Icon name="chevR" size={18} color="var(--faint)" />
-              </a>
-            )}
+          {/* Payment */}
+          <PaymentCard loading={dash.loading && !dash.data} error={dash.error} onRetry={dash.reload} balance={dash.data?.balance ?? 0} monthlyFee={dash.data?.monthlyFee ?? 0} />
 
-            {/* Tez havolalar — dars jadvali, oylik test natijalari, to'lovlar (Mini App kabineti, 2026-10-07). */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginTop: 14 }}>
-              {[
-                { icon: 'calendar', label: 'Dars jadvali', to: '/student/schedule', color: '#2563EB' },
-                { icon: 'clipboard', label: 'Test natijalari', to: '/student/tests', color: '#DC2626' },
-                { icon: 'wallet', label: "To'lovlar", to: '/student/finance', color: '#7C3AED' },
-              ].map((q) => (
-                <button
-                  key={q.to}
-                  className="card press"
-                  onClick={() => navigate(q.to)}
-                  style={{ borderRadius: 16, padding: '12px 8px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}
-                >
-                  <Icon name={q.icon} size={22} color={q.color} />
-                  <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)' }}>{q.label}</span>
-                </button>
+          {/* This month */}
+          <SectionTitle title={month.data ? `${month.data.period.label}` : 'Bu oy'} sub="Davomat, reyting va testlar" to="/student/rating" action="Batafsil" />
+          {month.loading && !month.data ? (
+            <div className="st-kpis">
+              {[0, 1, 2].map((i) => (
+                <div key={i} className="st-kpi">
+                  <Skeleton h={22} w="60%" />
+                  <Skeleton h={12} w="80%" style={{ marginTop: 8 }} />
+                </div>
               ))}
             </div>
-
-            {/* Umumiy statistika */}
-            <div className="sh" style={{ marginTop: 18 }}>
-              <div className="sh-title">Umumiy statistika</div>
-              <button
-                className="sh-act press"
-                onClick={() => navigate('/student/statistics')}
-                style={{ background: 'none' }}
-              >
-                Batafsil
-                <Icon name="chevR" size={16} color="var(--accent)" />
-              </button>
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
-              <Stat icon="chart" label="O'rtacha baho" value={avg > 0 ? avg.toFixed(2) : '—'} color={gradeColor(avg)} />
-              <Stat
-                icon="checkCircle"
+          ) : month.data ? (
+            <div className="st-kpis">
+              <Kpi
+                to="/student/attendance"
+                value={month.data.attendance.percent != null ? `${month.data.attendance.percent}%` : '—'}
                 label="Davomat"
-                value={`${attPct}%`}
-                color="var(--green)"
-                sub={conducted > 0 ? `${attended}/${conducted} dars` : undefined}
+                sub={month.data.attendance.held > 0 ? `${month.data.attendance.attended}/${month.data.attendance.held} dars` : "dars o'tilmagan"}
+                tone={attendanceTone(month.data.attendance.percent)}
               />
-              <Stat icon="checkCircle" label="Uy vazifa" value={`${hwPct}%`} color="var(--violet)" />
+              <Kpi
+                to="/student/rating"
+                value={month.data.centre.rank != null ? `${month.data.centre.rank}-o'rin` : '—'}
+                label="Reyting"
+                sub={month.data.centre.rank != null ? `${month.data.centre.total} o'quvchidan` : "hali o'rin yo'q"}
+                tone="violet"
+              />
+              <Kpi
+                to="/student/tests"
+                value={month.data.components.testAvg != null ? `${fmtScore(month.data.components.testAvg)}%` : '—'}
+                label="Testlar"
+                sub={month.data.components.testCount > 0 ? `${month.data.components.testCount} ta test` : "test bo'lmagan"}
+                tone={percentTone(month.data.components.testAvg)}
+              />
             </div>
-          </div>
-        )}
+          ) : (
+            <div className="card" style={{ padding: 14 }}>
+              <div className="muted" style={{ fontSize: 14 }}>
+                Oylik ko'rsatkichlarni yuklab bo'lmadi.{' '}
+                <button className="press" onClick={month.reload} style={{ color: 'var(--accent)', fontWeight: 700 }}>
+                  Qayta urinish
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Latest test results */}
+          <SectionTitle title="So'nggi test natijalari" to={latestTests.length ? '/student/tests' : undefined} />
+          {tests.loading && !tests.data ? (
+            <div className="card flush">
+              {[0, 1].map((i) => (
+                <div key={i} className="st-li">
+                  <Skeleton h={40} w={40} r={12} />
+                  <div style={{ flex: 1 }}>
+                    <Skeleton h={14} w="55%" />
+                    <Skeleton h={12} w="35%" style={{ marginTop: 8 }} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : latestTests.length ? (
+            <div className="card flush">
+              {latestTests.map((r) => {
+                const p = pct(r)
+                const tone = toneColors(percentTone(p))
+                return (
+                  <Link key={r.testId} to="/student/tests" className="st-li press">
+                    <IconBox icon={ClipboardList} tone={percentTone(p) === 'neutral' ? 'info' : percentTone(p)} />
+                    <div className="st-li-main">
+                      <div className="st-li-title">{r.name}</div>
+                      <div className="st-li-sub">{fmtDate(r.date)}{r.groupName ? ` · ${r.groupName}` : ''}</div>
+                    </div>
+                    <div className="st-li-end">
+                      <div className="st-num" style={{ fontSize: 18, color: tone.fg }}>{p === null ? '—' : `${p}%`}</div>
+                      <div className="faint" style={{ fontSize: 12, fontWeight: 600 }}>
+                        {r.score === null ? 'kiritilmagan' : `${fmtScore(r.score)}/${r.maxScore}`}
+                      </div>
+                    </div>
+                  </Link>
+                )
+              })}
+            </div>
+          ) : (
+            <div className="card row gap12">
+              <IconBox icon={ClipboardList} tone="neutral" />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 15, fontWeight: 700 }}>{tests.error ? "Natijalarni yuklab bo'lmadi" : "Hali test natijasi yo'q"}</div>
+                <div className="muted" style={{ fontSize: 13, marginTop: 2 }}>
+                  {tests.error ? tests.error : "O'qituvchi oylik test ballarini kiritgach shu yerda ko'rinadi."}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Achievements — only when there are any (no empty clutter) */}
+          {(achievements.data ?? []).length > 0 && (
+            <>
+              <SectionTitle title="Yutuqlar" to="/student/certificates" />
+              <div className="card flush">
+                {(achievements.data ?? []).slice(0, 3).map((a) => (
+                  <Link key={a.id} to="/student/certificates" className="st-li press">
+                    <IconBox icon={Trophy} color="#d97706" />
+                    <div className="st-li-main">
+                      <div className="st-li-title">{a.title}</div>
+                      <div className="st-li-sub">{a.kindLabel}{a.date ? ` · ${fmtDate(a.date)}` : ''}</div>
+                    </div>
+                    {a.result && <div className="st-li-end st-num" style={{ fontSize: 15, color: 'var(--amber)' }}>{a.result}</div>}
+                  </Link>
+                ))}
+              </div>
+            </>
+          )}
+
+          {/* Telegram channel (configured; student account) */}
+          {channel && user?.role === 'student' && (
+            <a
+              href={telegramUrl(channel)}
+              onClick={(e) => {
+                e.preventDefault()
+                openTelegram(channel)
+              }}
+              className="card press row gap12"
+              style={{ marginTop: 22, textDecoration: 'none', color: 'inherit' }}
+            >
+              <div className="st-ic" style={{ background: '#229ED9', color: '#fff' }}>
+                <Send size={20} />
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 15, fontWeight: 700 }}>Telegram kanalimiz</div>
+                <div className="muted" style={{ fontSize: 13 }}>Markaz e'lonlari va yangiliklari</div>
+              </div>
+              <ChevronRight size={18} color="var(--faint)" />
+            </a>
+          )}
+        </div>
       </div>
 
-      {/* Bildirishnomalar paneli */}
       {notifOpen && (
         <div className="scrim" onClick={() => setNotifOpen(false)}>
-          <div className="sheet" onClick={(e) => e.stopPropagation()}>
+          <div className="sheet" onClick={(e) => e.stopPropagation()} role="dialog" aria-label="Bildirishnomalar">
             <div className="grab" />
-            <div className="row sp" style={{ marginBottom: 8 }}>
-              <div style={{ fontSize: 17, fontWeight: 800 }}>Bildirishnomalar</div>
+            <div className="row sp" style={{ marginBottom: 12 }}>
+              <div style={{ fontSize: 18, fontWeight: 800 }}>Bildirishnomalar</div>
               <button className="iconbtn press" onClick={() => setNotifOpen(false)} aria-label="Yopish">
-                <Icon name="x" size={18} color="var(--text)" />
+                <X size={18} />
               </button>
             </div>
             {!notifs || notifs.items.length === 0 ? (
-              <div className="empty" style={{ paddingTop: 24, paddingBottom: 24 }}>
+              <div className="empty" style={{ padding: '24px 12px' }}>
                 <div className="empty-ic">
-                  <Icon name="bell" size={26} color="var(--faint)" />
+                  <Bell size={26} />
                 </div>
-                <div style={{ fontWeight: 800, fontSize: 15 }}>Bildirishnoma yo'q</div>
-                <div className="muted" style={{ fontSize: 13, marginTop: 6 }}>
-                  Yangi e'lon va baholar shu yerda ko'rinadi.
-                </div>
+                <div className="st-empty-title">Bildirishnoma yo'q</div>
+                <div className="st-empty-sub">Yangi e'lonlar va baholar shu yerda ko'rinadi.</div>
               </div>
             ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, paddingBottom: 8 }}>
-                {notifs.items.map((n) => (
-                  <div
-                    key={n.id}
-                    className="row gap10"
-                    style={{
-                      alignItems: 'flex-start',
-                      padding: 12,
-                      borderRadius: 14,
-                      background: 'var(--surface2)',
-                      border: '1px solid var(--border)',
-                    }}
-                  >
-                    <div
-                      style={{
-                        width: 36,
-                        height: 36,
-                        borderRadius: 11,
-                        background: 'var(--accentSoft)',
-                        color: 'var(--accent)',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        flex: 'none',
-                      }}
-                    >
-                      <Icon name={NOTIF_ICON[n.type] || 'bell'} size={18} color="var(--accent)" />
-                    </div>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--text)' }}>{n.title}</div>
-                      {n.body && (
-                        <div className="muted" style={{ fontSize: 13, marginTop: 2, lineHeight: 1.4 }}>
-                          {n.body}
+              <div className="col" style={{ gap: 8, paddingBottom: 8 }}>
+                {notifs.items.map((n) => {
+                  const Ic = NOTIF_ICON[n.type] || Bell
+                  return (
+                    <div key={n.id} className="row gap12" style={{ alignItems: 'flex-start', padding: 12, borderRadius: 14, background: 'var(--surface2)', border: '1px solid var(--border)' }}>
+                      <IconBox icon={Ic} tone="info" size={36} />
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div className="st-wrap" style={{ fontSize: 15, fontWeight: 700 }}>{n.title}</div>
+                        {n.body && <div className="muted st-wrap" style={{ fontSize: 14, marginTop: 2, lineHeight: 1.45 }}>{n.body}</div>}
+                        <div className="faint" style={{ fontSize: 12, marginTop: 4 }}>
+                          {fmtDate(n.createdAt)} · {fmtTime(n.createdAt)}
                         </div>
-                      )}
-                      <div className="faint" style={{ fontSize: 11, marginTop: 4 }}>
-                        {fmtDate(n.createdAt)} · {fmtTime(n.createdAt)}
+                        {n.type === 'announcement' &&
+                          (n.confirmed ? (
+                            <div style={{ marginTop: 8 }}>
+                              <StatusChip tone="ok" icon={CircleCheck}>Tasdiqlandi</StatusChip>
+                            </div>
+                          ) : (
+                            <>
+                              <button
+                                className="btn btn-primary btn-sm press"
+                                onClick={() => confirmNotif(n.id)}
+                                disabled={confirming === n.id}
+                                style={{ marginTop: 10 }}
+                              >
+                                {confirming === n.id ? 'Yuborilmoqda...' : 'Tasdiqlash'}
+                              </button>
+                              {confirmError?.id === n.id && (
+                                <div role="alert" style={{ marginTop: 6, color: 'var(--red)', fontSize: 13, fontWeight: 600 }}>
+                                  {confirmError.message}
+                                </div>
+                              )}
+                            </>
+                          ))}
                       </div>
-                      {n.type === 'announcement' &&
-                        (n.confirmed ? (
-                          <div
-                            style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, fontWeight: 700, color: 'var(--green)' }}
-                          >
-                            <Icon name="checkCircle" size={14} color="var(--green)" /> Tasdiqlandi
-                          </div>
-                        ) : (
-                          <>
-                            <button
-                              className="press"
-                              onClick={() => confirmNotif(n.id)}
-                              disabled={confirming === n.id}
-                              style={{ marginTop: 8, padding: '7px 16px', borderRadius: 10, background: 'var(--accent)', color: '#fff', fontSize: 13, fontWeight: 700, opacity: confirming === n.id ? 0.6 : 1 }}
-                            >
-                              {confirming === n.id ? 'Yuborilmoqda...' : 'Tasdiqlash'}
-                            </button>
-                            {confirmError?.id === n.id && (
-                              <div role="alert" style={{ marginTop: 6, color: 'var(--red)', fontSize: 12, fontWeight: 600 }}>
-                                {confirmError.message}
-                              </div>
-                            )}
-                          </>
-                        ))}
                     </div>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             )}
           </div>
@@ -334,94 +377,134 @@ export function StudentDashboardScreen() {
   )
 }
 
-function Quick({
-  icon,
-  label,
-  value,
-  tone,
-  small,
-}: {
-  icon: string
-  label: string
-  value: string
-  tone: string
-  small?: boolean
-}) {
+function attendanceTone(p: number | null) {
+  if (p == null) return 'neutral' as const
+  if (p >= 90) return 'ok' as const
+  if (p >= 75) return 'info' as const
+  if (p >= 50) return 'warn' as const
+  return 'bad' as const
+}
+
+function Kpi({ to, value, label, sub, tone }: { to: string; value: string; label: string; sub: string; tone: Parameters<typeof toneColors>[0] }) {
+  const c = toneColors(tone)
   return (
-    <div className="card" style={{ flex: 1, minWidth: 0, padding: 12 }}>
-      <div
-        style={{
-          width: 30,
-          height: 30,
-          borderRadius: 9,
-          background: `color-mix(in srgb,${tone} 14%,transparent)`,
-          color: tone,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-        }}
-      >
-        <Icon name={icon} size={17} color={tone} />
-      </div>
-      <div
-        style={{
-          marginTop: 8,
-          fontSize: small ? 14 : 20,
-          fontWeight: 800,
-          color: tone,
-          whiteSpace: 'nowrap',
-          overflow: 'hidden',
-          textOverflow: 'ellipsis',
-        }}
-      >
-        {value}
-      </div>
-      <div className="muted" style={{ fontSize: 10.5, marginTop: 2 }}>
-        {label}
-      </div>
-    </div>
+    <Link to={to} className="st-kpi press">
+      <div className="st-kpi-v" style={{ color: value === '—' ? 'var(--faint)' : c.fg === 'var(--muted)' ? 'var(--text)' : c.fg }}>{value}</div>
+      <div className="st-kpi-l" style={{ color: 'var(--text)' }}>{label}</div>
+      <div className="st-kpi-s">{sub}</div>
+    </Link>
   )
 }
 
-function Stat({
-  icon,
-  label,
-  value,
-  color,
-  sub,
-}: {
-  icon: string
-  label: string
-  value: string
-  color: string
-  sub?: string
-}) {
+function NextLessonPanel({ loading, error, next }: { loading: boolean; error: string | null; next: ReturnType<typeof nextLesson> }) {
+  const panel = { marginTop: 14, padding: '12px 14px', borderRadius: 16, background: 'rgba(255,255,255,.14)' } as const
+  if (loading)
+    return (
+      <div style={panel}>
+        <Skeleton h={12} w="35%" style={{ opacity: 0.35 }} />
+        <Skeleton h={16} w="70%" style={{ opacity: 0.35, marginTop: 10 }} />
+      </div>
+    )
+  if (!next)
+    return (
+      <Link to="/student/schedule" style={{ ...panel, display: 'flex', alignItems: 'center', gap: 10, color: '#fff', textDecoration: 'none' }}>
+        <CalendarDays size={20} style={{ flex: 'none', opacity: 0.9 }} />
+        <span style={{ flex: 1, fontSize: 14, fontWeight: 600 }}>{error ? "Dars jadvalini yuklab bo'lmadi" : 'Dars jadvali hali kiritilmagan'}</span>
+        <ChevronRight size={18} style={{ flex: 'none', opacity: 0.8 }} />
+      </Link>
+    )
+  const g = next.group
   return (
-    <div className="card" style={{ padding: 14 }}>
-      <div className="row sp">
-        <div
-          style={{
-            width: 32,
-            height: 32,
-            borderRadius: 10,
-            background: `color-mix(in srgb,${color} 14%,transparent)`,
-            color,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
-        >
-          <Icon name={icon} size={18} color={color} />
+    <Link to="/student/schedule" style={{ ...panel, display: 'block', color: '#fff', textDecoration: 'none' }}>
+      <div className="row sp" style={{ flexWrap: 'wrap', gap: 6 }}>
+        <span style={{ fontSize: 12, fontWeight: 800, letterSpacing: '0.6px', textTransform: 'uppercase', opacity: 0.85, whiteSpace: 'nowrap' }}>
+          {next.status === 'now' ? 'Hozir darsda' : 'Keyingi dars'}
+        </span>
+        <span style={{ fontSize: 13, fontWeight: 800, padding: '2px 10px', borderRadius: 999, background: 'rgba(255,255,255,.2)', whiteSpace: 'nowrap' }}>
+          {dayLabel(next.dayOffset, next.day)} · {timeRange(g)}
+        </span>
+      </div>
+      <div className="st-wrap" style={{ fontSize: 16.5, fontWeight: 800, marginTop: 8, lineHeight: 1.3 }}>{courseTitle(g)}</div>
+      <div className="row" style={{ flexWrap: 'wrap', gap: '4px 14px', marginTop: 6, fontSize: 13.5, fontWeight: 600, opacity: 0.9 }}>
+        {g.teacherName && (
+          <span className="row gap6">
+            <UserRound size={15} /> {g.teacherName}
+          </span>
+        )}
+        {g.room && (
+          <span className="row gap6">
+            <MapPin size={15} /> {g.room}
+          </span>
+        )}
+        {g.state === 'trial' && (
+          <span className="row gap6">
+            <Clock size={15} /> Sinov darsi
+          </span>
+        )}
+      </div>
+    </Link>
+  )
+}
+
+function PaymentCard({
+  loading,
+  error,
+  onRetry,
+  balance,
+  monthlyFee,
+}: {
+  loading: boolean
+  error: string | null
+  onRetry: () => void
+  balance: number
+  monthlyFee: number
+}) {
+  if (loading)
+    return (
+      <div className="card" style={{ marginTop: 12 }}>
+        <div className="row gap12">
+          <Skeleton h={44} w={44} r={13} />
+          <div style={{ flex: 1 }}>
+            <Skeleton h={12} w="40%" />
+            <Skeleton h={22} w="55%" style={{ marginTop: 8 }} />
+          </div>
         </div>
       </div>
-      <div style={{ fontSize: 22, fontWeight: 800, color, marginTop: 8 }}>{value}</div>
-      <div className="muted" style={{ fontSize: 11.5, marginTop: 1 }}>
-        {label}
-      </div>
-      {sub && (
-        <div className="faint" style={{ fontSize: 10.5, marginTop: 1 }}>
-          {sub}
+    )
+  if (error)
+    return (
+      <div className="card row gap12" style={{ marginTop: 12 }}>
+        <IconBox icon={Wallet} tone="neutral" />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 15, fontWeight: 700 }}>To'lov holatini yuklab bo'lmadi</div>
+          <div className="muted" style={{ fontSize: 13 }}>{error}</div>
         </div>
+        <button className="btn btn-soft btn-sm press" onClick={onRetry}>
+          Qayta
+        </button>
+      </div>
+    )
+  const st = balanceState(balance)
+  const c = toneColors(st.tone)
+  const debt = balance < 0
+  return (
+    <div className="card" style={{ marginTop: 12, borderColor: debt ? 'color-mix(in srgb, var(--red) 28%, var(--border))' : undefined }}>
+      <Link to="/student/finance" className="row gap12" style={{ color: 'inherit', textDecoration: 'none' }}>
+        <IconBox icon={debt ? Wallet : CircleCheck} tone={st.tone} size={44} />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div className="muted" style={{ fontSize: 13.5, fontWeight: 600 }}>{st.label}</div>
+          <div className="st-num" style={{ fontSize: 23, lineHeight: 1.2, color: st.amount > 0 ? c.fg : 'var(--text)' }}>
+            {st.amount > 0 ? `${fmtMoney(st.amount)} so'm` : "Hammasi to'langan"}
+          </div>
+          {monthlyFee > 0 && <div className="faint" style={{ fontSize: 13, marginTop: 1 }}>Oylik to'lov: {fmtMoney(monthlyFee)} so'm</div>}
+        </div>
+        {!debt && <ChevronRight size={18} color="var(--faint)" style={{ flex: 'none' }} />}
+      </Link>
+      {debt && (
+        <Link to="/student/finance" className="btn btn-primary press" style={{ marginTop: 14 }}>
+          <Wallet size={18} />
+          To'lash
+        </Link>
       )}
     </div>
   )

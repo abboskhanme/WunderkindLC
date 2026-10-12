@@ -1,224 +1,88 @@
-import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { getStudentFinance, type StudentFinance, type MonthLedger } from '@/api/services/studentPortal'
-import { Icon, fmtMoney, fmtDate, fmtMonth } from '@/pages/student/lib'
+import { useMemo, useState } from 'react'
+import { Banknote, ChevronRight, CircleCheck, CreditCard, Landmark, Percent, Receipt, Wallet } from 'lucide-react'
+import { getStudentFinance, type MonthLedger, type StudentPayment } from '@/api/services/studentPortal'
+import { fmtDate, fmtMoney, fmtMonth } from '@/pages/student/lib'
+import { balanceState, monthStatus, paymentView, toneColors } from '@/pages/student/format'
+import { useApi, useToast } from '@/pages/student/hooks'
+import { EmptyState, ErrorState, IconBox, PageHeader, SectionTitle, Skeleton, SkeletonList, StatusChip, Toast } from '@/pages/student/ui'
 
 /* ============================================================
-   O'quvchi portali — To'lovlar ekrani.
-   Balans hero (qarz=qizil / balans=yashil), jami to'langan/hisoblangan,
-   chegirma, oylar bo'yicha hisob, to'lovlar tarixi.
-   To'lov gateway YO'Q — tugma faqat "tez orada" sheet ko'rsatadi.
+   TO'LOVLAR — balance status (debt vs paid, crystal clear), totals, month-by-month ledger
+   (newest first) and the payment history as clean lines: "O'qish to'lovi · Sentabr 2026",
+   course + method, amount. The server's automatic note ("O'quvchi to'lovi (2026-09) […] — Name")
+   is never shown raw. There is NO payment gateway yet — the pay button opens the provider sheet
+   that says the provider is coming soon (unchanged behaviour).
    ============================================================ */
 
-const statusOf = (s: string) =>
-  s === 'paid'
-    ? { label: 'To‘langan', color: 'var(--green)', icon: 'checkCircle' }
-    : s === 'partial'
-      ? { label: 'Qisman', color: 'var(--amber)', icon: 'clock' }
-      : { label: 'To‘lanmagan', color: 'var(--red)', icon: 'alert' }
+const loadFinance = () => getStudentFinance()
+
+const METHOD_ICON = { cash: Banknote, card: CreditCard, bank: Landmark } as const
 
 export function StudentFinanceScreen() {
-  const navigate = useNavigate()
-  const [data, setData] = useState<StudentFinance | null>(null)
-  const [err, setErr] = useState<string | null>(null)
+  const { data, error, loading, reload } = useApi(loadFinance)
   const [sheet, setSheet] = useState(false)
-  const [toast, setToast] = useState<string | null>(null)
+  const [toast, setToast] = useToast()
 
-  useEffect(() => {
-    let on = true
-    getStudentFinance()
-      .then((d) => on && setData(d))
-      .catch((e) => on && setErr(e?.message || String(e)))
-    return () => {
-      on = false
-    }
-  }, [])
-
-  useEffect(() => {
-    if (!toast) return
-    const t = setTimeout(() => setToast(null), 2500)
-    return () => clearTimeout(t)
-  }, [toast])
-
-  const head = (
-    <div className="hd">
-      <div className="row gap10" style={{ minHeight: 38 }}>
-        <button className="iconbtn press" onClick={() => navigate(-1)}>
-          <Icon name="chevL" size={22} />
-        </button>
-        <div className="hd-sm" style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          To‘lovlar
-        </div>
-      </div>
-    </div>
-  )
-
-  if (err) {
-    return (
-      <div className="screen">
-        {head}
-        <div className="center">
-          <Empty title="Yuklab bo'lmadi" sub={err} ic="alert" />
-        </div>
-      </div>
-    )
-  }
-  if (!data) {
-    return (
-      <div className="screen">
-        {head}
-        <div className="center">
-          <div className="spin" />
-        </div>
-      </div>
-    )
-  }
-
-  const debt = data.balance < 0
-  const months = data.months || []
-  const payments = data.payments || []
-
-  const total = (label: string, value: string, color: string) => (
-    <div className="card" style={{ flex: 1, padding: 14, borderRadius: 16 }}>
-      <div className="muted" style={{ fontSize: 12, fontWeight: 700 }}>
-        {label}
-      </div>
-      <div style={{ fontSize: 18, fontWeight: 800, color, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', marginTop: 3 }}>
-        {value}
-      </div>
-    </div>
-  )
+  const months = useMemo(() => [...(data?.months ?? [])].sort((a, b) => b.month.localeCompare(a.month)), [data])
+  const payments = useMemo(() => [...(data?.payments ?? [])].sort((a, b) => (b.date || '').localeCompare(a.date || '')), [data])
 
   return (
     <div className="screen">
-      {head}
-      <div className="scroll" style={{ paddingBottom: 24 }}>
-        <div className="pad">
-          {/* Balans hero */}
-          <div
-            style={{
-              borderRadius: 22,
-              padding: 20,
-              color: '#fff',
-              boxShadow: `0 14px 34px rgba(${debt ? '239,68,68' : '22,163,74'},.3)`,
-              background: `linear-gradient(135deg,${debt ? '#EF4444,#B91C1C' : '#16A34A,#15803D'})`,
-            }}
-          >
-            <div style={{ fontSize: 13, fontWeight: 700, opacity: 0.85 }}>{debt ? 'Joriy qarz' : 'Balans'}</div>
-            <div style={{ fontSize: 34, fontWeight: 800, letterSpacing: '-.5px', marginTop: 4 }}>
-              {fmtMoney(Math.abs(data.balance))}
-              <span style={{ fontSize: 18 }}> so‘m</span>
+      <PageHeader title="To'lovlar" />
+      <div className="scroll">
+        {error && !data ? (
+          <ErrorState message={error} onRetry={reload} />
+        ) : loading && !data ? (
+          <div className="st-page">
+            <div className="card">
+              <Skeleton h={14} w="40%" />
+              <Skeleton h={30} w="65%" style={{ marginTop: 10 }} />
+              <Skeleton h={12} w="50%" style={{ marginTop: 10 }} />
+              <Skeleton h={48} w="100%" r={14} style={{ marginTop: 16 }} />
             </div>
-            <div style={{ fontSize: 13, fontWeight: 600, opacity: 0.85, marginTop: 2 }}>
-              Oylik to‘lov: {fmtMoney(data.monthlyFee)} so‘m
+            <div style={{ height: 22 }} />
+            <SkeletonList rows={3} />
+          </div>
+        ) : data ? (
+          <div className="st-page">
+            <BalanceCard balance={data.balance} monthlyFee={data.monthlyFee} onPay={() => setSheet(true)} />
+
+            {/* Totals */}
+            <div className={data.totalDiscount > 0 ? 'st-kpis' : 'st-kpis two'} style={{ marginTop: 12 }}>
+              <Total label="Hisoblangan" value={data.totalCharged} />
+              <Total label="To'langan" value={data.totalPaid} color="var(--green)" />
+              {data.totalDiscount > 0 && <Total label="Chegirma" value={data.totalDiscount} color="var(--violet)" minus />}
             </div>
-          </div>
 
-          {debt && (
-            <>
-              <div style={{ height: 16 }} />
-              <button className="btn btn-primary btn-lg press" onClick={() => setSheet(true)}>
-                <Icon name="wallet" size={18} />
-                <span>To‘lovni amalga oshirish</span>
-              </button>
-            </>
-          )}
-
-          <div style={{ height: 16 }} />
-          <div className="row gap10">
-            {total('Jami to‘langan', fmtMoney(data.totalPaid), 'var(--green)')}
-            {total('Jami hisoblangan', fmtMoney(data.totalCharged), 'var(--text)')}
-          </div>
-
-          {data.totalDiscount > 0 && (
-            <>
-              <div style={{ height: 10 }} />
-              <div className="card row gap12" style={{ borderRadius: 16 }}>
-                <div
-                  style={{
-                    width: 40,
-                    height: 40,
-                    borderRadius: 11,
-                    background: 'color-mix(in srgb,var(--violet) 13%,transparent)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    flex: 'none',
-                  }}
-                >
-                  <Icon name="award" size={20} color="var(--violet)" />
-                </div>
-                <div style={{ flex: 1 }}>
-                  <div className="muted" style={{ fontSize: 12, fontWeight: 700 }}>
-                    Chegirma
-                  </div>
-                  <div className="faint" style={{ fontSize: 12.5 }}>
-                    Jami olingan chegirma
-                  </div>
-                </div>
-                <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--violet)' }}>−{fmtMoney(data.totalDiscount)} so‘m</div>
-              </div>
-            </>
-          )}
-
-          {/* Oylar bo'yicha */}
-          <div style={{ height: 16 }} />
-          <div className="sh">
-            <div className="sh-title">Oylar bo‘yicha</div>
-          </div>
-          <div className="card" style={{ padding: 4 }}>
+            {/* Month by month */}
+            <SectionTitle title="Oylar bo'yicha" sub="Har oy uchun hisoblangan va to'langan summa" />
             {months.length ? (
-              months.map((m, i) => <MonthRow key={m.month + '_' + i} m={m} border={i < months.length - 1} />)
+              <div className="card flush">
+                {months.map((m, i) => (
+                  <MonthRow key={m.month + '_' + i} m={m} />
+                ))}
+              </div>
             ) : (
-              <Empty title="Ma'lumot yo'q" ic="wallet" />
+              <div className="card flush">
+                <EmptyState compact icon={Receipt} title="Hali hisob yo'q" sub="Oylik to'lov hisoblangach shu yerda ko'rinadi." />
+              </div>
+            )}
+
+            {/* Payment history */}
+            <SectionTitle title="To'lovlar tarixi" />
+            {payments.length ? (
+              <div className="card flush">
+                {payments.map((p, i) => (
+                  <PaymentRow key={p.date + '_' + i} p={p} />
+                ))}
+              </div>
+            ) : (
+              <div className="card flush">
+                <EmptyState compact icon={Wallet} title="To'lovlar yo'q" sub="Hozircha to'lov qayd etilmagan." />
+              </div>
             )}
           </div>
-
-          {/* To'lovlar tarixi */}
-          <div style={{ height: 16 }} />
-          <div className="sh">
-            <div className="sh-title">To‘lovlar tarixi</div>
-          </div>
-          {payments.length ? (
-            <div className="card" style={{ padding: 4 }}>
-              {payments.map((p, i) => (
-                <div
-                  key={p.date + '_' + i}
-                  className="row gap12"
-                  style={{ padding: '12px 11px', borderBottom: i < payments.length - 1 ? '1px solid var(--border)' : undefined }}
-                >
-                  <div
-                    style={{
-                      width: 38,
-                      height: 38,
-                      borderRadius: 11,
-                      background: 'var(--greenSoft)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      flex: 'none',
-                    }}
-                  >
-                    <Icon name="download" size={18} color="var(--green)" />
-                  </div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 14.5, fontWeight: 700 }}>{fmtDate(p.date)}</div>
-                    {(p.note || p.comment) && (
-                      <div className="muted" style={{ fontSize: 12 }}>
-                        {p.note || p.comment}
-                      </div>
-                    )}
-                  </div>
-                  <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--green)' }}>+{fmtMoney(p.amount)}</div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="card">
-              <Empty title="To'lovlar yo'q" sub="Hozircha to'lov qayd etilmagan." ic="wallet" />
-            </div>
-          )}
-        </div>
+        ) : null}
       </div>
 
       {sheet && (
@@ -226,113 +90,146 @@ export function StudentFinanceScreen() {
           onClose={() => setSheet(false)}
           onMethod={(name) => {
             setSheet(false)
-            setToast(`${name} orqali to‘lov tez orada qo‘shiladi`)
+            setToast(`${name} orqali to'lov tez orada qo'shiladi`)
           }}
         />
       )}
-      {toast && <div className="toast">{toast}</div>}
+      <Toast text={toast} />
     </div>
   )
 }
 
-function MonthRow({ m, border }: { m: MonthLedger; border: boolean }) {
-  const sm = statusOf(m.status)
+function BalanceCard({ balance, monthlyFee, onPay }: { balance: number; monthlyFee: number; onPay: () => void }) {
+  const st = balanceState(balance)
+  const c = toneColors(st.tone)
+  const debt = balance < 0
   return (
-    <div className="row gap12" style={{ padding: '12px 11px', borderBottom: border ? '1px solid var(--border)' : undefined }}>
-      <div
-        style={{
-          width: 40,
-          height: 40,
-          borderRadius: 11,
-          background: `color-mix(in srgb,${sm.color} 13%,transparent)`,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          flex: 'none',
-        }}
-      >
-        <Icon name={sm.icon} size={20} color={sm.color} />
+    <div className="card" style={{ background: c.bg, borderColor: 'transparent', boxShadow: 'none', padding: 18 }}>
+      <div className="row gap10" style={{ color: c.fg }}>
+        {debt ? <Wallet size={20} /> : <CircleCheck size={20} />}
+        <span style={{ fontSize: 15, fontWeight: 700 }}>{st.label}</span>
       </div>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 14.5, fontWeight: 700 }}>{fmtMonth(m.month)}</div>
-        <div className="muted" style={{ fontSize: 12 }}>
-          {fmtMoney(m.paid)} / {fmtMoney(m.charged)} so‘m
+      <div className="st-num" style={{ fontSize: 34, lineHeight: 1.15, marginTop: 8, color: debt ? c.fg : 'var(--text)', overflowWrap: 'anywhere' }}>
+        {st.amount > 0 ? fmtMoney(st.amount) : '0'}
+        <span style={{ fontSize: 18, fontWeight: 700, marginLeft: 6 }}>so'm</span>
+      </div>
+      {!debt && balance === 0 && <div style={{ fontSize: 14, color: 'var(--muted)', marginTop: 2 }}>Barcha hisoblangan oylar to'langan.</div>}
+      {monthlyFee > 0 && (
+        <div style={{ fontSize: 14, color: 'var(--muted)', marginTop: 4 }}>
+          Oylik to'lov: <b style={{ color: 'var(--text)' }}>{fmtMoney(monthlyFee)} so'm</b>
         </div>
-        {(m.courses || []).length > 0 && (
-          <div className="faint" style={{ fontSize: 11.5 }}>
-            {m.courses.map((c) => `${c.courseName} · ${fmtMoney(c.fee)}`).join(' , ')}
+      )}
+      {debt && (
+        <button className="btn btn-primary btn-lg press" onClick={onPay} style={{ marginTop: 16 }}>
+          <Wallet size={19} />
+          To'lash
+        </button>
+      )}
+    </div>
+  )
+}
+
+function Total({ label, value, color, minus }: { label: string; value: number; color?: string; minus?: boolean }) {
+  return (
+    <div className="st-kpi">
+      <div className="st-kpi-l" style={{ marginTop: 0 }}>{label}</div>
+      <div className="st-kpi-v" style={{ fontSize: 18, marginTop: 4, color: color ?? 'var(--text)' }}>
+        {minus ? '−' : ''}
+        {fmtMoney(value)}
+      </div>
+      <div className="st-kpi-s">so'm</div>
+    </div>
+  )
+}
+
+function MonthRow({ m }: { m: MonthLedger }) {
+  const st = monthStatus(m)
+  const c = toneColors(st.tone)
+  const due = Math.max(0, m.charged - m.discount)
+  const pct = due > 0 ? Math.min(100, Math.round((m.paid / due) * 100)) : 100
+  const courses = (m.courses || []).map((x) => (x.courseName || x.groupName || '').trim()).filter(Boolean)
+  return (
+    <div className="st-li" style={{ alignItems: 'flex-start', flexDirection: 'column', gap: 8 }}>
+      <div className="row gap10" style={{ width: '100%', alignItems: 'flex-start' }}>
+        <div className="st-li-main">
+          <div className="st-li-title">{fmtMonth(m.month)}</div>
+          {courses.length > 0 && <div className="st-li-sub">{[...new Set(courses)].join(' · ')}</div>}
+        </div>
+        <StatusChip tone={st.tone}>{st.label}</StatusChip>
+      </div>
+      <div style={{ width: '100%' }}>
+        <div className="progress thin">
+          <div style={{ width: `${pct}%`, background: st.tone === 'ok' ? 'var(--greenBar)' : st.tone === 'warn' ? 'var(--amberBar)' : c.fg }} />
+        </div>
+        <div className="row sp" style={{ marginTop: 6, fontSize: 13, color: 'var(--muted)' }}>
+          <span>
+            To'langan <b className="st-num" style={{ color: 'var(--text)', fontWeight: 700 }}>{fmtMoney(m.paid)}</b>
+          </span>
+          <span>
+            Oylik <b className="st-num" style={{ color: 'var(--text)', fontWeight: 700 }}>{fmtMoney(due)}</b>
+          </span>
+        </div>
+        {m.discount > 0 && (
+          <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--violet)', marginTop: 4 }} className="row gap6">
+            <Percent size={13} /> Chegirma: −{fmtMoney(m.discount)} so'm
           </div>
         )}
-        {m.discount > 0 && (
-          <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--violet)' }}>Chegirma: −{fmtMoney(m.discount)} so‘m</div>
+      </div>
+    </div>
+  )
+}
+
+function PaymentRow({ p }: { p: StudentPayment }) {
+  const v = paymentView(p)
+  const Ic = METHOD_ICON[(p.method || '') as keyof typeof METHOD_ICON] ?? Receipt
+  return (
+    <div className="st-li" style={{ alignItems: 'flex-start' }}>
+      <IconBox icon={Ic} tone="ok" />
+      <div className="st-li-main">
+        <div className="st-li-title">{v.title}</div>
+        {v.sub && <div className="st-li-sub">{v.sub}</div>}
+        {v.note && (
+          <div className="st-li-sub" style={{ fontStyle: 'italic' }}>
+            {v.note}
+          </div>
         )}
       </div>
-      <span
-        className="chip"
-        style={{ color: sm.color, background: `color-mix(in srgb,${sm.color} 12%,transparent)`, fontSize: 11, flex: 'none' }}
-      >
-        {sm.label}
-      </span>
+      <div className="st-li-end">
+        <div className="st-num" style={{ fontSize: 16, color: 'var(--green)' }}>+{fmtMoney(p.amount)}</div>
+        <div className="faint" style={{ fontSize: 12.5, marginTop: 2 }}>{fmtDate(p.date)}</div>
+      </div>
     </div>
   )
 }
 
 function PaymentSheet({ onClose, onMethod }: { onClose: () => void; onMethod: (name: string) => void }) {
   const methods: [string, string][] = [
-    ['Click', '#3B82F6'],
-    ['Payme', '#00CDB6'],
-    ['Uzum', '#7C3AED'],
+    ['Click', '#0080ff'],
+    ['Payme', '#00b4b0'],
+    ['Uzum', '#7c3aed'],
   ]
   return (
     <div className="scrim" onClick={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="sheet">
+      <div className="sheet" role="dialog" aria-label="To'lov usuli">
         <div className="grab" />
-        <div style={{ fontSize: 19, fontWeight: 800, letterSpacing: '-.3px', marginBottom: 14 }}>To‘lov usuli</div>
-        {methods.map((m) => (
-          <button
-            key={m[0]}
-            className="card press row gap12"
-            onClick={() => onMethod(m[0])}
-            style={{ width: '100%', borderRadius: 15, padding: 14, marginBottom: 10, textAlign: 'left' }}
-          >
-            <div
-              style={{
-                width: 42,
-                height: 42,
-                borderRadius: 12,
-                background: m[1],
-                color: '#fff',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontSize: 18,
-                fontWeight: 800,
-                flex: 'none',
-              }}
-            >
-              {m[0][0]}
-            </div>
-            <div style={{ flex: 1, fontSize: 15.5, fontWeight: 700 }}>{m[0]} orqali to‘lash</div>
-            <Icon name="chevR" size={24} color="var(--faint)" />
-          </button>
-        ))}
-      </div>
-    </div>
-  )
-}
-
-function Empty({ title, sub, ic = 'sparkle' }: { title: string; sub?: string; ic?: string }) {
-  return (
-    <div className="empty">
-      <div className="empty-ic">
-        <Icon name={ic} size={30} />
-      </div>
-      <div style={{ fontSize: 16, fontWeight: 800 }}>{title}</div>
-      {sub && (
-        <div className="muted" style={{ fontSize: 13.5, marginTop: 6, lineHeight: 1.5 }}>
-          {sub}
+        <div style={{ fontSize: 19, fontWeight: 800, letterSpacing: '-0.3px' }}>To'lov usuli</div>
+        <div className="muted" style={{ fontSize: 14, marginTop: 4, marginBottom: 14 }}>
+          Onlayn to'lov tez orada qo'shiladi. Hozircha to'lov markazda qabul qilinadi.
         </div>
-      )}
+        <div className="card flush">
+          {methods.map(([name, color]) => (
+            <button key={name} type="button" className="st-li press" onClick={() => onMethod(name)}>
+              <div className="st-ic" style={{ background: color, color: '#fff', fontSize: 18, fontWeight: 800 }}>
+                {name[0]}
+              </div>
+              <span className="st-li-main" style={{ fontSize: 15.5, fontWeight: 700 }}>
+                {name} orqali to'lash
+              </span>
+              <ChevronRight size={20} color="var(--faint)" />
+            </button>
+          ))}
+        </div>
+      </div>
     </div>
   )
 }

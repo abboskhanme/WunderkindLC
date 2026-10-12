@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { MapContainer, Marker, useMap, useMapEvents } from 'react-leaflet'
 import { OsmTileLayer } from '@/components/map/OsmTileLayer'
 import L from 'leaflet'
 // Leaflet CSS shu yerda — global index.css'da EMAS (faqat xarita sahifalariga kerak)
 import 'leaflet/dist/leaflet.css'
 import { Icon, fmtDate } from '@/pages/student/lib'
+import { IconBox, PageHeader } from '@/pages/student/ui'
+import { MapPin } from 'lucide-react'
+import { apiErrorMessage } from '@/lib/utils'
 import { getStudentLocation, updateStudentLocation } from '@/api/services/studentPortal'
 
 /* ============================================================
@@ -48,7 +50,6 @@ function ClickToSet({ onSet }: { onSet: (p: [number, number]) => void }) {
 }
 
 export function StudentLocationScreen() {
-  const nav = useNavigate()
   const [pos, setPos] = useState<[number, number] | null>(null)
   const [updatedAt, setUpdatedAt] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -157,8 +158,8 @@ export function StudentLocationScreen() {
       const fresh = await getStudentLocation()
       setUpdatedAt(fresh.updatedAt ?? null)
       setOk(true)
-    } catch {
-      setErr("Saqlashda xatolik. Internetni tekshiring.")
+    } catch (e) {
+      setErr(apiErrorMessage(e, "Saqlashda xatolik. Internetni tekshiring."))
     } finally {
       setSaving(false)
     }
@@ -166,141 +167,91 @@ export function StudentLocationScreen() {
 
   return (
     <div className="screen">
-      <div className="hd">
-        <div className="row gap10" style={{ minHeight: 38 }}>
-          <button className="iconbtn press" onClick={() => nav(-1)}>
-            <Icon name="chevL" size={22} />
-          </button>
-          <div className="hd-sm" style={{ flex: 1 }}>
-            Uy joylashuvi
-          </div>
-        </div>
-      </div>
+      <PageHeader title="Uy joylashuvi" back="/student/profile" />
 
-      <div className="scroll pad" style={{ paddingBottom: 24 }}>
-        {/* Izoh */}
-        <div
-          className="card"
-          style={{ display: 'flex', gap: 12, alignItems: 'flex-start', marginBottom: 14, borderRadius: 18 }}
-        >
-          <div
-            style={{
-              width: 38,
-              height: 38,
-              borderRadius: 12,
-              background: 'var(--accentSoft)',
-              color: 'var(--accent)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              flex: 'none',
-            }}
-          >
-            <Icon name="pin" size={20} color="var(--accent)" />
-          </div>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 15, fontWeight: 800 }}>Uy manzilingizni belgilang</div>
-            <div className="muted" style={{ fontSize: 12.5, marginTop: 2, lineHeight: 1.5 }}>
-              "Joriy joylashuvim" tugmasini bosing yoki xaritadan uyingizni tanlang, so'ng saqlang.
+      <div className="scroll">
+        <div className="st-page" style={{ paddingTop: 8 }}>
+          {/* Hint */}
+          <div className="card row gap12" style={{ alignItems: 'flex-start', marginBottom: 12 }}>
+            <IconBox icon={MapPin} tone="bad" />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 15.5, fontWeight: 700 }}>Uy manzilini belgilang</div>
+              <div className="muted" style={{ fontSize: 13.5, marginTop: 2, lineHeight: 1.5 }}>
+                «Joriy joylashuvim» tugmasini bosing yoki xaritada uyni tanlang, so'ng saqlang.
+              </div>
             </div>
           </div>
-        </div>
 
-        {/* Xarita */}
-        <div
-          style={{
-            height: 300,
-            borderRadius: 20,
-            overflow: 'hidden',
-            border: '1px solid var(--border)',
-            boxShadow: 'var(--shadow)',
-            marginBottom: 12,
-          }}
-        >
-          {!loading && (
-            <MapContainer
-              center={pos ?? TASHKENT}
-              zoom={pos ? 16 : 12}
-              style={{ height: '100%', width: '100%' }}
-              scrollWheelZoom
-            >
-              <OsmTileLayer />
-              <ClickToSet onSet={setPos} />
-              <Recenter pos={pos} />
-              {pos && (
-                <Marker
-                  position={pos}
-                  draggable
-                  icon={PIN}
-                  eventHandlers={{
-                    dragend: (e) => {
-                      const m = e.target as L.Marker
-                      const ll = m.getLatLng()
-                      setPos([ll.lat, ll.lng])
-                    },
-                  }}
-                />
-              )}
-            </MapContainer>
+          {/* Xarita */}
+          <div
+            style={{
+              height: 320,
+              borderRadius: 18,
+              overflow: 'hidden',
+              border: '1px solid var(--border)',
+              boxShadow: 'var(--shadow)',
+              marginBottom: 12,
+            }}
+          >
+            {!loading && (
+              <MapContainer
+                center={pos ?? TASHKENT}
+                zoom={pos ? 16 : 12}
+                style={{ height: '100%', width: '100%' }}
+                scrollWheelZoom
+              >
+                <OsmTileLayer />
+                <ClickToSet onSet={setPos} />
+                <Recenter pos={pos} />
+                {pos && (
+                  <Marker
+                    position={pos}
+                    draggable
+                    icon={PIN}
+                    eventHandlers={{
+                      dragend: (e) => {
+                        const m = e.target as L.Marker
+                        const ll = m.getLatLng()
+                        setPos([ll.lat, ll.lng])
+                      },
+                    }}
+                  />
+                )}
+              </MapContainer>
+            )}
+          </div>
+
+          {/* Koordinata + holat */}
+          {pos && (
+            <div className="muted" style={{ fontSize: 12.5, textAlign: 'center', marginBottom: 12 }}>
+              {pos[0].toFixed(5)}, {pos[1].toFixed(5)}
+              {updatedAt && <> · Oxirgi: {fmtDate(updatedAt)}</>}
+            </div>
           )}
+
+          {err && (
+            <div role="alert" className="st-banner" style={{ marginBottom: 12 }}>
+              <Icon name="alert" size={18} style={{ flex: 'none', marginTop: 1 }} />
+              {err}
+            </div>
+          )}
+          {ok && (
+            <div role="status" className="st-banner ok" style={{ marginBottom: 12 }}>
+              <Icon name="checkCircle" size={18} style={{ flex: 'none', marginTop: 1 }} />
+              Joylashuv saqlandi
+            </div>
+          )}
+
+          {/* Tugmalar */}
+          <button className="btn btn-soft press" onClick={locate} disabled={locating} style={{ marginBottom: 10 }}>
+            <Icon name="locate" size={19} color="var(--accent)" />
+            {locating ? 'Aniqlanmoqda...' : 'Joriy joylashuvim'}
+          </button>
+          <button className="btn btn-primary btn-lg press" onClick={save} disabled={!pos || saving}>
+            <Icon name="check" size={20} color="#fff" />
+            {saving ? 'Saqlanmoqda...' : 'Saqlash'}
+          </button>
         </div>
-
-        {/* Koordinata + holat */}
-        {pos && (
-          <div className="muted" style={{ fontSize: 12.5, textAlign: 'center', marginBottom: 12 }}>
-            {pos[0].toFixed(5)}, {pos[1].toFixed(5)}
-            {updatedAt && <> · Oxirgi: {fmtDate(updatedAt)}</>}
-          </div>
-        )}
-
-        {err && (
-          <div
-            style={{
-              background: 'var(--redSoft)',
-              color: 'var(--red)',
-              borderRadius: 14,
-              padding: '11px 14px',
-              fontSize: 13,
-              fontWeight: 600,
-              marginBottom: 12,
-              display: 'flex',
-              gap: 8,
-              alignItems: 'center',
-            }}
-          >
-            <Icon name="alert" size={17} color="var(--red)" />
-            {err}
-          </div>
-        )}
-        {ok && (
-          <div
-            style={{
-              background: 'var(--greenSoft, #dcfce7)',
-              color: 'var(--green, #16a34a)',
-              borderRadius: 14,
-              padding: '11px 14px',
-              fontSize: 13,
-              fontWeight: 700,
-              marginBottom: 12,
-              display: 'flex',
-              gap: 8,
-              alignItems: 'center',
-            }}
-          >
-            <Icon name="checkCircle" size={17} />
-            Joylashuv saqlandi
-          </div>
-        )}
-
-        {/* Tugmalar */}
-        <button className="btn btn-soft press" onClick={locate} disabled={locating} style={{ marginBottom: 10 }}>
-          <Icon name="locate" size={19} color="var(--accent)" />
-          {locating ? 'Aniqlanmoqda...' : 'Joriy joylashuvim'}
-        </button>
-        <button className="btn btn-primary btn-lg press" onClick={save} disabled={!pos || saving}>
-          <Icon name="check" size={20} color="#fff" />
-          {saving ? 'Saqlanmoqda...' : 'Saqlash'}
-        </button>
       </div>
     </div>
   )

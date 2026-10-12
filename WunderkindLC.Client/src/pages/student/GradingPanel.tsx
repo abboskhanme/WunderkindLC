@@ -1,16 +1,15 @@
 import { useEffect, useState } from 'react'
+import { Check, ChevronLeft, ChevronRight, ListChecks, X } from 'lucide-react'
 import { getStudentGrading, type StudentGradingGroup } from '@/api/services/studentPortal'
-import { Icon } from '@/pages/student/lib'
+import { apiErrorMessage } from '@/lib/utils'
+import { EmptyState, ErrorState, Skeleton } from '@/pages/student/ui'
 
 /* ============================================================
-   BAHOLASH paneli (umumiy) — oylik mezon xulosasi + har darslik
-   belgilar. Grading ekrani VA Statistika bo'limi ishlatadi.
+   GRADING panel (shared) — monthly criteria summary + per-lesson marks.
+   Used by the «Baholash mezonlari» screen AND inside Statistika.
    ============================================================ */
 
-const MONTHS = [
-  'Yanvar', 'Fevral', 'Mart', 'Aprel', 'May', 'Iyun',
-  'Iyul', 'Avgust', 'Sentabr', 'Oktabr', 'Noyabr', 'Dekabr',
-]
+const MONTHS = ['Yanvar', 'Fevral', 'Mart', 'Aprel', 'May', 'Iyun', 'Iyul', 'Avgust', 'Sentabr', 'Oktabr', 'Noyabr', 'Dekabr']
 const WD = ['Ya', 'Du', 'Se', 'Ch', 'Pa', 'Ju', 'Sh']
 function monthLabel(m: string) {
   const [y, mm] = m.split('-')
@@ -22,114 +21,139 @@ function weekday(d: string) {
 }
 
 /**
- * @param hideWhenEmpty Statistika ichida — baholash bo'lmasa umuman ko'rsatmaslik (null).
- * @param title Ma'lumot bo'lsa tepada ko'rsatiladigan sarlavha (bo'sh bo'lsa sarlavha chiqmaydi).
+ * @param hideWhenEmpty Inside Statistika — render nothing when there is no grading (and on errors:
+ *                      it is a secondary block there).
+ * @param title Heading shown above the panel when there is data.
  */
-export function GradingPanel({
-  hideWhenEmpty = false,
-  title,
-}: {
-  hideWhenEmpty?: boolean
-  title?: string
-}) {
+export function GradingPanel({ hideWhenEmpty = false, title }: { hideWhenEmpty?: boolean; title?: string }) {
   const [groups, setGroups] = useState<StudentGradingGroup[] | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
   const [sel, setSel] = useState(0)
-  const [loading, setLoading] = useState(true)
+  const [tick, setTick] = useState(0)
 
-  const load = (month?: string) => {
-    setLoading(true)
+  useEffect(() => {
+    let on = true
+    getStudentGrading()
+      .then((g) => {
+        if (!on) return
+        setGroups(g)
+        setError(null)
+      })
+      .catch((e) => on && setError(apiErrorMessage(e, "Baholashni yuklab bo'lmadi")))
+    return () => {
+      on = false
+    }
+  }, [tick])
+
+  // Month switch (event handler — state changes here are fine).
+  const pickMonth = (month: string) => {
+    setBusy(true)
     getStudentGrading(month)
-      .then((g) => setGroups(g))
-      .catch(() => setGroups([]))
-      .finally(() => setLoading(false))
+      .then((g) => {
+        setGroups(g)
+        setError(null)
+      })
+      .catch((e) => setError(apiErrorMessage(e, "Baholashni yuklab bo'lmadi")))
+      .finally(() => setBusy(false))
   }
-  useEffect(() => load(undefined), [])
 
   const g = groups && groups.length > 0 ? groups[Math.min(sel, groups.length - 1)] : null
 
-  if (loading)
-    return (
-      <div className="center" style={{ minHeight: 80 }}>
-        <div className="spin" />
+  if (error && !groups) return hideWhenEmpty ? null : <ErrorState message={error} onRetry={() => setTick((t) => t + 1)} />
+  if (!groups)
+    return hideWhenEmpty ? null : (
+      <div className="card">
+        <Skeleton h={16} w="45%" />
+        <Skeleton h={8} w="100%" style={{ marginTop: 14 }} />
+        <Skeleton h={8} w="80%" style={{ marginTop: 14 }} />
       </div>
     )
 
-  if (!groups || groups.length === 0) {
+  if (groups.length === 0 || !g) {
     if (hideWhenEmpty) return null
     return (
-      <div className="card" style={{ marginTop: 12 }}>
-        <div className="empty">
-          <div className="empty-ic"><Icon name="checkCircle" size={28} /></div>
-          <div style={{ fontSize: 15, fontWeight: 800 }}>Baholash mavjud emas</div>
-          <div className="muted" style={{ fontSize: 13, marginTop: 4 }}>
-            Guruhingizga baholash mezoni biriktirilmagan.
-          </div>
-        </div>
+      <div className="card flush">
+        <EmptyState icon={ListChecks} title="Baholash mezoni yo'q" sub="Guruhga baholash mezonlari biriktirilgach, har dars va oy bo'yicha ball shu yerda ko'rinadi." />
       </div>
     )
   }
-  if (!g) return null
 
+  const idx = g.months.indexOf(g.month)
   return (
-    <>
+    <div style={{ opacity: busy ? 0.6 : 1, transition: 'opacity .15s' }}>
       {title && (
-        <div className="sh" style={{ marginTop: 22, paddingBottom: 4 }}>
-          <div className="sh-title">{title}</div>
+        <div className="st-sh">
+          <div className="st-sh-title">{title}</div>
         </div>
       )}
 
-      {/* Guruh tanlash (bir nechta bo'lsa) */}
       {groups.length > 1 && (
-        <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 8 }}>
+        <div className="st-pills" style={{ marginBottom: 12 }}>
           {groups.map((x, i) => (
-            <button
-              key={x.groupId}
-              onClick={() => setSel(i)}
-              className="press"
-              style={{
-                flex: 'none', padding: '8px 14px', borderRadius: 12, fontSize: 13, fontWeight: 700,
-                background: i === sel ? 'var(--accent)' : 'var(--surface)',
-                color: i === sel ? '#fff' : 'var(--muted)',
-                border: `1px solid ${i === sel ? 'var(--accent)' : 'var(--border)'}`,
-              }}
-            >
+            <button key={x.groupId} onClick={() => setSel(i)} className={'pill press' + (i === sel ? ' on' : '')}>
               {x.groupName}
             </button>
           ))}
         </div>
       )}
 
-      {/* Oy navigatsiyasi */}
-      <MonthNav group={g} onPick={(m) => load(m)} />
+      {error && (
+        <div role="alert" className="st-banner" style={{ marginBottom: 12 }}>
+          {error}
+        </div>
+      )}
 
-      {/* Yig'ilgan ball: shu oy + guruh bo'yicha jami (o'rtacha emas) */}
-      <div className="sh" style={{ marginTop: 6 }}>
-        <div className="sh-title">Yig'ilgan ball</div>
-      </div>
-      <div className="card" style={{ display: 'flex', gap: 10 }}>
-        <BallTile label="Bu oyda" value={g.monthBall ?? 0} accent />
-        <BallTile label="Jami yig'ilgan" value={g.totalBall ?? 0} />
+      {/* Month navigation */}
+      <div className="card row sp" style={{ padding: 8 }}>
+        <button className="iconbtn press" disabled={idx <= 0 || busy} style={{ opacity: idx <= 0 ? 0.35 : 1 }} onClick={() => idx > 0 && pickMonth(g.months[idx - 1])} aria-label="Oldingi oy">
+          <ChevronLeft size={20} />
+        </button>
+        <span style={{ fontSize: 16, fontWeight: 800 }}>{monthLabel(g.month)}</span>
+        <button
+          className="iconbtn press"
+          disabled={idx >= g.months.length - 1 || busy}
+          style={{ opacity: idx >= g.months.length - 1 ? 0.35 : 1 }}
+          onClick={() => idx < g.months.length - 1 && pickMonth(g.months[idx + 1])}
+          aria-label="Keyingi oy"
+        >
+          <ChevronRight size={20} />
+        </button>
       </div>
 
-      {/* OYLIK xulosa */}
-      <div className="sh" style={{ marginTop: 16 }}>
-        <div className="sh-title">Oylik xulosa</div>
+      {/* Collected points: this month + all time (sums, not averages) */}
+      <div className="st-kpis two" style={{ marginTop: 10 }}>
+        <div className="st-kpi" style={{ background: 'var(--accentSoft)', borderColor: 'transparent', boxShadow: 'none' }}>
+          <div className="st-kpi-l" style={{ marginTop: 0, color: 'var(--accent)' }}>Bu oyda</div>
+          <div className="st-kpi-v" style={{ color: 'var(--accent)' }}>{g.monthBall ?? 0}</div>
+          <div className="st-kpi-s">ball</div>
+        </div>
+        <div className="st-kpi">
+          <div className="st-kpi-l" style={{ marginTop: 0 }}>Jami yig'ilgan</div>
+          <div className="st-kpi-v">{g.totalBall ?? 0}</div>
+          <div className="st-kpi-s">ball</div>
+        </div>
       </div>
-      <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+
+      {/* Monthly summary */}
+      <div className="st-sh">
+        <div className="st-sh-title">Oylik xulosa</div>
+      </div>
+      <div className="card col" style={{ gap: 14 }}>
         {g.criteria.length === 0 ? (
-          <p className="muted" style={{ fontSize: 13, textAlign: 'center' }}>Mezon biriktirilmagan.</p>
+          <p className="muted" style={{ fontSize: 14, textAlign: 'center', margin: 0 }}>Mezon biriktirilmagan.</p>
         ) : (
           g.criteria.map((c) => {
             const pct = c.total > 0 ? Math.round((c.done / c.total) * 100) : 0
             return (
               <div key={c.id}>
-                <div className="row" style={{ justifyContent: 'space-between', marginBottom: 6 }}>
-                  <span style={{ fontSize: 14.5, fontWeight: 700 }}>{c.name}</span>
-                  <span className="font-mono" style={{ fontSize: 13.5, fontWeight: 800, color: 'var(--accent)' }}>
+                <div className="row sp gap8" style={{ marginBottom: 6, alignItems: 'flex-start' }}>
+                  <span className="st-wrap" style={{ fontSize: 14.5, fontWeight: 700 }}>{c.name}</span>
+                  <span className="st-num" style={{ fontSize: 14, color: 'var(--accent)', flex: 'none' }}>
                     {c.done}/{c.total} · {pct}%
                   </span>
                 </div>
-                <div className="progress">
+                <div className="progress thin">
                   <div style={{ width: `${pct}%`, background: 'var(--accent)' }} />
                 </div>
               </div>
@@ -138,44 +162,30 @@ export function GradingPanel({
         )}
       </div>
 
-      {/* HAR DARSLIK */}
-      <div className="sh" style={{ marginTop: 16 }}>
-        <div className="sh-title">Har darslik</div>
+      {/* Per lesson */}
+      <div className="st-sh">
+        <div className="st-sh-title">Har dars</div>
       </div>
       {g.dates.length === 0 ? (
-        <div className="card"><p className="muted" style={{ fontSize: 13, textAlign: 'center' }}>Bu oyda dars yo'q.</p></div>
+        <div className="card">
+          <p className="muted" style={{ fontSize: 14, textAlign: 'center', margin: 0 }}>Bu oyda dars yo'q.</p>
+        </div>
       ) : (
-        <div className="card" style={{ padding: 4 }}>
-          {g.lessons.map((les, i) => {
+        <div className="card flush">
+          {g.lessons.map((les) => {
             const doneSet = new Set(les.doneCriterionIds)
             return (
-              <div
-                key={les.date}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: 12, padding: '10px 12px',
-                  borderBottom: i < g.lessons.length - 1 ? '1px solid var(--border)' : undefined,
-                }}
-              >
-                {/* Sana */}
-                <div style={{ width: 42, textAlign: 'center', flex: 'none' }}>
-                  <div className="muted" style={{ fontSize: 10.5, fontWeight: 600 }}>{weekday(les.date)}</div>
-                  <div style={{ fontSize: 16, fontWeight: 800 }}>{Number(les.date.slice(8, 10))}</div>
+              <div key={les.date} className="st-li" style={{ alignItems: 'flex-start' }}>
+                <div style={{ width: 40, textAlign: 'center', flex: 'none' }}>
+                  <div className="muted" style={{ fontSize: 12, fontWeight: 600 }}>{weekday(les.date)}</div>
+                  <div className="st-num" style={{ fontSize: 17 }}>{Number(les.date.slice(8, 10))}</div>
                 </div>
-                {/* Mezonlar */}
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, flex: 1 }}>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, flex: 1, minWidth: 0 }}>
                   {g.criteria.map((c) => {
                     const ok = doneSet.has(c.id)
                     return (
-                      <span
-                        key={c.id}
-                        style={{
-                          display: 'inline-flex', alignItems: 'center', gap: 4,
-                          padding: '3px 8px', borderRadius: 9, fontSize: 11.5, fontWeight: 700,
-                          background: ok ? 'var(--greenSoft, #dcfce7)' : 'var(--surface3)',
-                          color: ok ? 'var(--green, #16a34a)' : 'var(--faint)',
-                        }}
-                      >
-                        <Icon name={ok ? 'check' : 'x'} size={12} color={ok ? 'var(--green, #16a34a)' : 'var(--faint)'} />
+                      <span key={c.id} className={'st-chip' + (ok ? ' ok' : '')} style={{ whiteSpace: 'normal' }}>
+                        {ok ? <Check size={13} strokeWidth={2.8} /> : <X size={13} strokeWidth={2.6} />}
                         {c.name}
                       </span>
                     )
@@ -186,55 +196,6 @@ export function GradingPanel({
           })}
         </div>
       )}
-    </>
-  )
-}
-
-/** Ball kartachasi — "Bu oyda" / "Jami yig'ilgan". */
-function BallTile({ label, value, accent = false }: { label: string; value: number; accent?: boolean }) {
-  return (
-    <div
-      style={{
-        flex: 1, textAlign: 'center', padding: '10px 8px', borderRadius: 14,
-        background: accent ? 'var(--accentSoft, #ccfbf1)' : 'var(--surface3)',
-        border: `1px solid ${accent ? 'var(--accent)' : 'var(--border)'}`,
-      }}
-    >
-      <div className="muted" style={{ fontSize: 11.5, fontWeight: 700 }}>{label}</div>
-      <div
-        className="font-mono"
-        style={{ fontSize: 22, fontWeight: 800, marginTop: 2, color: accent ? 'var(--accent)' : undefined }}
-      >
-        {value}
-      </div>
-      <div className="muted" style={{ fontSize: 10.5 }}>ball</div>
-    </div>
-  )
-}
-
-function MonthNav({ group, onPick }: { group: StudentGradingGroup; onPick: (m: string) => void }) {
-  const idx = group.months.indexOf(group.month)
-  return (
-    <div className="row" style={{ justifyContent: 'center', gap: 10, marginTop: 4 }}>
-      <button
-        className="iconbtn press"
-        disabled={idx <= 0}
-        style={{ opacity: idx <= 0 ? 0.4 : 1 }}
-        onClick={() => idx > 0 && onPick(group.months[idx - 1])}
-      >
-        <Icon name="chevL" size={18} />
-      </button>
-      <span style={{ minWidth: 120, textAlign: 'center', fontSize: 14.5, fontWeight: 800 }}>
-        {monthLabel(group.month)}
-      </span>
-      <button
-        className="iconbtn press"
-        disabled={idx >= group.months.length - 1}
-        style={{ opacity: idx >= group.months.length - 1 ? 0.4 : 1 }}
-        onClick={() => idx < group.months.length - 1 && onPick(group.months[idx + 1])}
-      >
-        <Icon name="chevR" size={18} />
-      </button>
     </div>
   )
 }

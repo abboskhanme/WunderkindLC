@@ -1,13 +1,13 @@
-import { useEffect, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
-import {
-  getStudentSubjectProgressDetail,
-  type SubjectProgressDetail,
-} from '@/api/services/studentPortal'
-import { Icon, Ring, subjectColor } from '@/pages/student/lib'
+import { useCallback } from 'react'
+import { useParams } from 'react-router-dom'
+import { BookOpen, CircleCheck, Clock, X } from 'lucide-react'
+import { getStudentSubjectProgressDetail } from '@/api/services/studentPortal'
+import { Ring, subjectColor } from '@/pages/student/lib'
+import { useApi } from '@/pages/student/hooks'
+import { EmptyState, ErrorState, PageHeader, SkeletonList } from '@/pages/student/ui'
 
 /* ============================================================
-   O'quvchi portali — fan progresi (darslar) detali.
+   Subject progress detail — lessons of one subject (conducted / missed / upcoming).
    ============================================================ */
 
 const MONTHS_SHORT = ['Yan', 'Fev', 'Mar', 'Apr', 'May', 'Iyn', 'Iyl', 'Avg', 'Sen', 'Okt', 'Noy', 'Dek']
@@ -19,150 +19,72 @@ function dateBlock(iso?: string) {
 }
 
 export function SubjectProgressDetailScreen() {
-  const { id } = useParams<{ id: string }>()
-  const navigate = useNavigate()
-  const [data, setData] = useState<SubjectProgressDetail | null>(null)
-  const [err, setErr] = useState<string | null>(null)
-
-  useEffect(() => {
-    let on = true
-    if (!id) return
-    getStudentSubjectProgressDetail(id, 1)
-      .then((d) => on && setData(d))
-      .catch((e) => on && setErr(e?.message || String(e)))
-    return () => {
-      on = false
-    }
-  }, [id])
-
-  const col = subjectColor(id || '')
-
-  const head = (title: string) => (
-    <div className="hd">
-      <div className="row gap10" style={{ minHeight: 38 }}>
-        <button className="iconbtn press" onClick={() => navigate(-1)}>
-          <Icon name="chevL" size={22} />
-        </button>
-        <div
-          className="hd-sm"
-          style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-        >
-          {title}
-        </div>
-      </div>
-    </div>
-  )
-
-  if (err) {
-    return (
-      <div className="screen">
-        {head('Fan')}
-        <div className="center">
-          <Empty title="Yuklab bo'lmadi" sub={err} ic="alert" />
-        </div>
-      </div>
-    )
-  }
-  if (!data) {
-    return (
-      <div className="screen">
-        {head('Fan')}
-        <div className="center">
-          <div className="spin" />
-        </div>
-      </div>
-    )
-  }
+  const { id = '' } = useParams<{ id: string }>()
+  const load = useCallback(() => getStudentSubjectProgressDetail(id, 1), [id])
+  const { data, error, loading, reload } = useApi(load)
+  const col = subjectColor(id)
 
   return (
     <div className="screen">
-      {head(data.subjectName || 'Fan')}
-      <div className="scroll" style={{ paddingBottom: 24 }}>
-        <div className="pad">
-          <div className="card row" style={{ gap: 18 }}>
-            <Ring value={data.percent} max={100} size={92} stroke={11} color={col}>
-              <div style={{ fontSize: 24, fontWeight: 800, lineHeight: 1, color: col }}>{data.percent}%</div>
-              <div className="muted" style={{ fontSize: 10.5, fontWeight: 700 }}>
-                o'zlashtirildi
-              </div>
-            </Ring>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 24, fontWeight: 800, lineHeight: 1 }}>
-                {data.conducted} / {data.planned}
-              </div>
-              <div className="muted" style={{ fontSize: 12.5, marginTop: 4 }}>
-                {data.remaining} qoldi
-              </div>
-            </div>
-          </div>
-
-          <div style={{ height: 16 }} />
-          <div className="sh">
-            <div className="sh-title">Darslar</div>
-          </div>
-
-          {(data.lessons || []).length ? (
-            <div className="card" style={{ padding: 4 }}>
-              {data.lessons.map((l, i) => {
-                const state = l.conducted ? 'done' : l.isPast ? 'missed' : 'future'
-                const dot =
-                  state === 'done' ? 'var(--green)' : state === 'missed' ? 'var(--red)' : 'var(--borderStrong)'
-                const db = dateBlock(l.date)
-                return (
-                  <div
-                    key={l.date + '_' + l.period + '_' + i}
-                    className="row gap12"
-                    style={{ padding: 11, borderBottom: i < data.lessons.length - 1 ? '1px solid var(--border)' : undefined }}
-                  >
-                    <div style={{ width: 10, height: 10, borderRadius: '50%', background: dot, flex: 'none' }} />
-                    <div style={{ width: 46, textAlign: 'center' }}>
-                      <div style={{ fontSize: 15, fontWeight: 800 }}>{db.d}</div>
-                      <div className="faint" style={{ fontSize: 10.5 }}>
-                        {db.m}
-                      </div>
-                    </div>
-                    <div style={{ flex: 1, opacity: state === 'future' ? 0.6 : 1 }}>
-                      <div style={{ fontSize: 14, fontWeight: 700 }}>{l.topic || `${l.period}-dars`}</div>
-                      {l.homework && (
-                        <div className="muted" style={{ fontSize: 12 }}>
-                          Uy vazifa: {l.homework}
-                        </div>
-                      )}
-                    </div>
-                    {state === 'done' ? (
-                      <Icon name="checkCircle" size={20} color="var(--green)" />
-                    ) : state === 'missed' ? (
-                      <Icon name="x" size={20} color="var(--red)" />
-                    ) : (
-                      <Icon name="clock" size={20} color="var(--faint)" />
-                    )}
+      <PageHeader title={data?.subjectName || 'Fan'} back="/student/progress" />
+      <div className="scroll">
+        <div className="st-page" style={{ paddingTop: 8 }}>
+          {error && !data ? (
+            <ErrorState message={error} onRetry={reload} />
+          ) : loading && !data ? (
+            <SkeletonList rows={4} />
+          ) : data ? (
+            <>
+              <div className="card row" style={{ gap: 16 }}>
+                <Ring value={data.percent} max={100} size={88} stroke={10} color={col}>
+                  <div className="st-num" style={{ fontSize: 22, lineHeight: 1, color: col }}>{data.percent}%</div>
+                </Ring>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div className="st-num" style={{ fontSize: 24, lineHeight: 1.1 }}>
+                    {data.conducted} / {data.planned}
                   </div>
-                )
-              })}
-            </div>
-          ) : (
-            <div className="card">
-              <Empty title="Dars yo'q" ic="book" />
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  )
-}
+                  <div className="muted" style={{ fontSize: 14, marginTop: 4 }}>dars o'tildi · {data.remaining} ta qoldi</div>
+                </div>
+              </div>
 
-function Empty({ title, sub, ic = 'sparkle' }: { title: string; sub?: string; ic?: string }) {
-  return (
-    <div className="empty">
-      <div className="empty-ic">
-        <Icon name={ic} size={30} />
-      </div>
-      <div style={{ fontSize: 16, fontWeight: 800 }}>{title}</div>
-      {sub && (
-        <div className="muted" style={{ fontSize: 13.5, marginTop: 6, lineHeight: 1.5 }}>
-          {sub}
+              <div className="st-sh">
+                <div className="st-sh-title">Darslar</div>
+              </div>
+              {(data.lessons || []).length ? (
+                <div className="card flush">
+                  {data.lessons.map((l, i) => {
+                    const state = l.conducted ? 'done' : l.isPast ? 'missed' : 'future'
+                    const db = dateBlock(l.date)
+                    return (
+                      <div key={l.date + '_' + l.period + '_' + i} className="st-li" style={{ opacity: state === 'future' ? 0.7 : 1 }}>
+                        <div style={{ width: 44, textAlign: 'center', flex: 'none' }}>
+                          <div className="st-num" style={{ fontSize: 17 }}>{db.d}</div>
+                          <div className="muted" style={{ fontSize: 12, fontWeight: 600 }}>{db.m}</div>
+                        </div>
+                        <div className="st-li-main">
+                          <div className="st-li-title">{l.topic || `${l.period}-dars`}</div>
+                          {l.homework && <div className="st-li-sub">Uy vazifa: {l.homework}</div>}
+                        </div>
+                        {state === 'done' ? (
+                          <CircleCheck size={20} color="var(--green)" />
+                        ) : state === 'missed' ? (
+                          <X size={20} color="var(--red)" />
+                        ) : (
+                          <Clock size={20} color="var(--faint)" />
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              ) : (
+                <div className="card flush">
+                  <EmptyState icon={BookOpen} title="Dars yo'q" />
+                </div>
+              )}
+            </>
+          ) : null}
         </div>
-      )}
+      </div>
     </div>
   )
 }

@@ -291,62 +291,88 @@ body {
 }
 
 /* ============================================================
-   O'QUVCHI portali (blue) — student.html dizayni
-   Hammasi .student-app ostida scoped (admin/teacher tegilmaydi).
-   Times New Roman (global), Material Symbols ikonkalar, light/dark.
+   STUDENT / PARENT CABINET (Telegram Mini App + mobile web).
+   Everything is scoped under .student-app — admin/teacher are untouched.
+
+   Design system
+   - Type: Nunito (var(--font-sans)); 400 body · 600 labels · 700 titles · 800 headings/numbers.
+   - Spacing: 4px scale (4 · 8 · 12 · 16 · 20 · 24); page gutter 16px.
+   - Radii: 10 (chips/inputs) · 14 (buttons) · 18 (cards) · 22 (hero).
+   - Colors: tokens below, light + dark. Inside Telegram (theme "Avto") the layout overrides
+     --bg/--surface/--text/--muted/--border inline from WebApp.themeParams (contrast-checked).
+   - Filled controls use --primary (white text ≥ 4.5:1 in both themes); --accent is for text/icons.
    ============================================================ */
 .student-app {
   --accent: #2563eb;
   --accentD: #1d4ed8;
-  --accentSoft: #e9f0ff;
+  --accentSoft: #eaf1ff;
+  --primary: #2563eb;
   --onAccent: #fff;
-  --bg: #eef1f8;
-  --surface: #fff;
-  --surface2: #f4f7fc;
-  --surface3: #e9eef7;
-  --text: #0f1729;
-  --muted: #5d6b85;
-  --faint: #98a4bc;
-  --border: #e8ecf4;
-  --borderStrong: #dbe1ec;
-  --green: #16a34a;
+  --bg: #f3f5f9;
+  --surface: #ffffff;
+  --surface2: #f6f8fb;
+  --surface3: #eceff5;
+  --text: #111827;
+  --muted: #5b6577;
+  --faint: #8c95a8;
+  --border: #e5e9f0;
+  --borderStrong: #d3d9e3;
+  --green: #15803d;
   --greenSoft: #e7f6ec;
-  --red: #ef4444;
-  --redSoft: #fdeaea;
-  --amber: #f59e0b;
-  --amberSoft: #fdf2e1;
-  --violet: #7c3aed;
-  --violetSoft: #f0e9ff;
-  --shadow: 0 6px 18px rgba(16, 32, 67, 0.06);
+  --greenBar: #22c55e;
+  --red: #dc2626;
+  --redSoft: #fdecec;
+  --amber: #b45309;
+  --amberSoft: #fdf2e0;
+  --amberBar: #f59e0b;
+  --violet: #6d28d9;
+  --violetSoft: #f1ebff;
+  --shadow: 0 1px 2px rgba(16, 24, 40, 0.04), 0 4px 14px rgba(16, 24, 40, 0.05);
+  --shadowLg: 0 12px 32px rgba(16, 24, 40, 0.14);
+  --r-sm: 10px;
+  --r-md: 14px;
+  --r-lg: 18px;
+  --r-xl: 22px;
+  --nav-h: 64px;
 
-  font-family: 'Times New Roman', Times, serif;
-  font-weight: 600;
+  font-family: var(--font-sans, 'Nunito', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif);
+  font-weight: 400;
+  font-size: 15px;
+  line-height: 1.45;
   background: var(--bg);
   color: var(--text);
+  color-scheme: light;
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  -webkit-text-size-adjust: 100%;
 }
 .student-app[data-theme='dark'] {
-  --accent: #3b82f6;
-  --accentD: #2563eb;
-  --accentSoft: #18253f;
-  --bg: #0a0f1c;
-  --surface: #131b2d;
-  --surface2: #1a2338;
-  --surface3: #222e48;
-  --text: #eef2fb;
-  --muted: #9aa8c4;
-  --faint: #64718c;
+  --accent: #60a5fa;
+  --accentD: #3b82f6;
+  --accentSoft: rgba(96, 165, 250, 0.14);
+  --primary: #2563eb;
+  --bg: #0c111d;
+  --surface: #151c2c;
+  --surface2: #1a2234;
+  --surface3: #232c40;
+  --text: #eef2f8;
+  --muted: #a3adc2;
+  --faint: #737e95;
   --border: rgba(255, 255, 255, 0.08);
-  --borderStrong: rgba(255, 255, 255, 0.14);
-  --green: #22c55e;
-  --greenSoft: #11271b;
+  --borderStrong: rgba(255, 255, 255, 0.15);
+  --green: #4ade80;
+  --greenSoft: rgba(74, 222, 128, 0.13);
+  --greenBar: #22c55e;
   --red: #f87171;
-  --redSoft: #2b1518;
+  --redSoft: rgba(248, 113, 113, 0.14);
   --amber: #fbbf24;
-  --amberSoft: #2a2110;
+  --amberSoft: rgba(251, 191, 36, 0.13);
+  --amberBar: #f59e0b;
   --violet: #a78bfa;
-  --violetSoft: #211a3a;
-  --shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+  --violetSoft: rgba(167, 139, 250, 0.15);
+  --shadow: none;
+  --shadowLg: 0 12px 32px rgba(0, 0, 0, 0.45);
+  color-scheme: dark;
 }
 .student-app * {
   box-sizing: border-box;
@@ -358,17 +384,24 @@ body {
 }
 .student-app button {
   font-family: inherit;
+  letter-spacing: inherit;
   cursor: pointer;
   border: none;
   background: none;
   color: inherit;
 }
 .student-app input,
-.student-app textarea {
+.student-app textarea,
+.student-app select {
   font-family: inherit;
   color: inherit;
 }
-/* Material Symbols ikonka */
+.student-app :focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.student-app a { color: var(--accent); }
+/* Material Symbols (legacy markup) */
 .student-app .ms {
   font-family: 'Material Symbols Rounded';
   font-weight: normal;
@@ -382,6 +415,7 @@ body {
   -webkit-font-feature-settings: 'liga';
   user-select: none;
 }
+.student-app .font-mono { font-family: inherit; font-variant-numeric: tabular-nums; }
 @keyframes st-fade {
   from { opacity: 0; transform: translateY(4px); }
   to { opacity: 1; }
@@ -393,16 +427,18 @@ body {
 @keyframes st-rot {
   to { transform: rotate(360deg); }
 }
-/* layout */
-/* .screen — sahifa konteyneri.
-   flex:1 — tashqi konteyner bo'sh joyini egallaydi (mobil app: har sahifa to'la balandlikda).
-   min-height:0 — flex shrink to'g'ri ishlaydi.
-   Ichki .scroll — vertikal scroll (overflow-y:auto, flex:1, min-height:0). */
-.student-app .screen { flex: 1; display: flex; flex-direction: column; min-height: 0; animation: st-fade 0.22s ease; }
-/* .scroll — ichki scroll konteyner. flex:1 + min-height:0 + overflow-y:auto. */
-.student-app .scroll { flex: 1; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+@keyframes st-shimmer {
+  0% { background-position: 100% 50%; }
+  100% { background-position: 0 50%; }
+}
+
+/* ---- layout ----
+   .screen fills the shell (flex:1); the inner .scroll is the only vertical scroller. */
+.student-app .screen { flex: 1; display: flex; flex-direction: column; min-height: 0; animation: st-fade 0.2s ease; }
+.student-app .scroll { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch; overscroll-behavior-y: contain; }
 .student-app .pad { padding: 0 16px; }
-.student-app .h-pad { padding: 0 20px; }
+.student-app .h-pad { padding: 0 16px; }
+.student-app .st-page { padding: 4px 16px 28px; }
 .student-app .center { flex: 1; display: flex; align-items: center; justify-content: center; }
 .student-app .row { display: flex; align-items: center; }
 .student-app .col { display: flex; flex-direction: column; }
@@ -410,94 +446,165 @@ body {
 .student-app .gap6 { gap: 6px; } .student-app .gap8 { gap: 8px; }
 .student-app .gap10 { gap: 10px; } .student-app .gap12 { gap: 12px; }
 .student-app .muted { color: var(--muted); } .student-app .faint { color: var(--faint); }
-/* primitives */
-.student-app .card { background: var(--surface); border: 1px solid var(--border); border-radius: 20px; box-shadow: var(--shadow); padding: 16px; }
-.student-app .press { transition: transform 0.12s ease; cursor: pointer; }
-.student-app .press:active { transform: scale(0.975); }
-.student-app .chip { display: inline-flex; align-items: center; gap: 4px; padding: 4px 9px; border-radius: 8px; font-size: 12px; font-weight: 700; }
+.student-app .st-num { font-variant-numeric: tabular-nums; font-weight: 800; letter-spacing: -0.3px; }
+.student-app .st-wrap { overflow-wrap: anywhere; }
+
+/* ---- primitives ---- */
+.student-app .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg); box-shadow: var(--shadow); padding: 16px; }
+.student-app .card.flush { padding: 0; overflow: hidden; }
+.student-app .press { transition: transform 0.12s ease, background 0.15s ease; cursor: pointer; }
+.student-app .press:active { transform: scale(0.98); }
+.student-app .chip { display: inline-flex; align-items: center; gap: 4px; padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 700; line-height: 1.4; white-space: nowrap; }
+.student-app .st-chip { display: inline-flex; align-items: center; gap: 4px; padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 700; line-height: 1.4; white-space: nowrap; background: var(--surface3); color: var(--muted); }
+.student-app .st-chip.ok { background: var(--greenSoft); color: var(--green); }
+.student-app .st-chip.warn { background: var(--amberSoft); color: var(--amber); }
+.student-app .st-chip.bad { background: var(--redSoft); color: var(--red); }
+.student-app .st-chip.info { background: var(--accentSoft); color: var(--accent); }
+.student-app .st-chip.violet { background: var(--violetSoft); color: var(--violet); }
 .student-app .progress { height: 8px; background: var(--surface3); border-radius: 8px; overflow: hidden; }
 .student-app .progress > div { height: 100%; border-radius: 8px; transition: width 0.5s cubic-bezier(0.22, 1, 0.36, 1); }
-.student-app .btn { display: flex; align-items: center; justify-content: center; gap: 8px; font-weight: 700; border-radius: 15px; height: 50px; padding: 0 20px; font-size: 16px; width: 100%; }
-.student-app .btn-lg { height: 56px; border-radius: 17px; font-size: 17px; }
-.student-app .btn-primary { background: var(--accent); color: #fff; box-shadow: 0 6px 18px rgba(37, 99, 235, 0.32); }
+.student-app .progress.thin { height: 6px; }
+.student-app .btn { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; min-height: 48px; height: auto; padding: 10px 18px; border: 0; border-radius: var(--r-md); font-size: 15.5px; font-weight: 700; line-height: 1.25; white-space: normal; text-align: center; text-decoration: none; transition: transform 0.12s ease, filter 0.15s ease; }
+.student-app .btn-lg { min-height: 52px; border-radius: 16px; font-size: 16px; }
+.student-app .btn-sm { width: auto; min-height: 38px; padding: 6px 14px; border-radius: 12px; font-size: 14px; }
+.student-app .btn-primary,
+.student-app .btn-primary:hover:not(:disabled) { background: var(--primary); color: #fff; box-shadow: 0 6px 16px rgba(37, 99, 235, 0.24); }
 .student-app .btn-soft { background: var(--accentSoft); color: var(--accent); }
-.student-app .btn-ghost { background: var(--surface3); color: var(--text); }
+.student-app .btn-ghost,
+.student-app .btn-ghost:hover:not(:disabled) { background: var(--surface3); color: var(--text); }
 .student-app .btn-danger { background: var(--redSoft); color: var(--red); }
 .student-app .btn-outline { background: transparent; color: var(--text); border: 1.5px solid var(--borderStrong); }
-.student-app .btn[disabled] { opacity: 0.45; pointer-events: none; }
-.student-app .iconbtn { width: 38px; height: 38px; border-radius: 12px; background: var(--surface); border: 1px solid var(--border); box-shadow: var(--shadow); display: flex; align-items: center; justify-content: center; position: relative; flex: none; }
-.student-app .nbadge { position: absolute; top: -3px; right: -3px; min-width: 17px; height: 17px; padding: 0 4px; background: var(--red); color: #fff; border-radius: 9px; border: 2px solid var(--bg); font-size: 10.5px; font-weight: 800; display: flex; align-items: center; justify-content: center; }
-.student-app .empty { padding: 48px 24px; display: flex; flex-direction: column; align-items: center; text-align: center; }
-.student-app .empty-ic { width: 64px; height: 64px; border-radius: 20px; background: var(--surface3); display: flex; align-items: center; justify-content: center; color: var(--faint); margin-bottom: 10px; }
-.student-app .ring { position: relative; display: flex; align-items: center; justify-content: center; flex: none; }
+.student-app .btn[disabled],
+.student-app .btn:disabled { opacity: 0.5; pointer-events: none; box-shadow: none; }
+.student-app .iconbtn { width: 40px; height: 40px; border-radius: 12px; background: var(--surface); border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; position: relative; flex: none; color: var(--text); }
+.student-app .nbadge { position: absolute; top: -4px; right: -4px; min-width: 18px; height: 18px; padding: 0 4px; background: var(--red); color: #fff; border-radius: 9px; border: 2px solid var(--bg); font-size: 10.5px; font-weight: 800; display: flex; align-items: center; justify-content: center; }
+.student-app .empty { padding: 36px 20px; display: flex; flex-direction: column; align-items: center; text-align: center; }
+.student-app .empty-ic { width: 56px; height: 56px; border-radius: 18px; background: var(--surface3); display: flex; align-items: center; justify-content: center; color: var(--faint); margin-bottom: 12px; }
+.student-app .st-empty-title { font-size: 16px; font-weight: 800; line-height: 1.3; }
+.student-app .st-empty-sub { font-size: 14px; color: var(--muted); margin-top: 6px; line-height: 1.5; max-width: 300px; }
+/* box-shadow: Tailwind's `.ring` utility would otherwise draw a 1px box around the SVG ring. */
+.student-app .ring { position: relative; display: flex; align-items: center; justify-content: center; flex: none; box-shadow: none; }
 .student-app .ring svg { transform: rotate(-90deg); }
 .student-app .ring-c { position: absolute; display: flex; flex-direction: column; align-items: center; justify-content: center; }
-.student-app .spin { width: 34px; height: 34px; border: 3px solid var(--surface3); border-top-color: var(--accent); border-radius: 50%; animation: st-rot 0.8s linear infinite; }
-.student-app .badge { display: flex; align-items: center; justify-content: center; font-weight: 800; color: #fff; }
+.student-app .spin { width: 32px; height: 32px; border: 3px solid var(--surface3); border-top-color: var(--accent); border-radius: 50%; animation: st-rot 0.8s linear infinite; }
+.student-app .badge { display: flex; align-items: center; justify-content: center; font-weight: 800; color: #fff; padding: 0; border: 0; }
 .student-app .subj { display: flex; align-items: center; justify-content: center; font-weight: 800; }
-/* header — scroll paytida yuqorida yopishib turadi (WebView app-bar hissi) */
-.student-app .hd { position: sticky; top: 0; z-index: 5; background: var(--bg); padding: 8px 16px; }
-.student-app .hd.lg { padding: 6px 20px 10px; }
-.student-app .hd-big { font-size: 30px; font-weight: 800; letter-spacing: -0.7px; line-height: 1.05; }
-.student-app .hd-sm { font-size: 18px; font-weight: 800; letter-spacing: -0.3px; }
-.student-app .hd-sub { font-size: 13.5px; font-weight: 600; color: var(--muted); }
-.student-app .sh { display: flex; align-items: center; justify-content: space-between; padding: 4px 2px 10px; }
-.student-app .sh-title { font-size: 17px; font-weight: 800; letter-spacing: -0.3px; }
-.student-app .sh-act { display: flex; align-items: center; color: var(--accent); font-size: 13.5px; font-weight: 700; }
-/* bottom nav */
-.student-app .tabbar { display: flex; background: var(--surface); border-top: 1px solid var(--border); padding: 8px 8px calc(8px + env(safe-area-inset-bottom)); flex: none; }
-.student-app .tab { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 4px 0; color: var(--faint); font-size: 10.5px; font-weight: 600; background: none; }
-.student-app .tab.on { color: var(--accent); font-weight: 800; }
+.student-app .st-skel { display: block; border-radius: 10px; background: linear-gradient(90deg, var(--surface3) 25%, var(--surface2) 37%, var(--surface3) 63%); background-size: 400% 100%; animation: st-shimmer 1.4s ease infinite; }
+.student-app .st-banner { display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px; border-radius: var(--r-md); background: var(--redSoft); color: var(--red); font-size: 14px; font-weight: 600; line-height: 1.4; }
+.student-app .st-banner.ok { background: var(--greenSoft); color: var(--green); }
+.student-app .st-banner.info { background: var(--accentSoft); color: var(--accent); }
+.student-app .st-ic { width: 40px; height: 40px; border-radius: 12px; display: flex; align-items: center; justify-content: center; flex: none; }
+.student-app .st-ic.sm { width: 34px; height: 34px; border-radius: 10px; }
 
-/* ---- Desktop yon-menyu (faqat keng ekran; mobil/WebView'da yashirin) ---- */
+/* ---- list rows (inside .card.flush) ---- */
+.student-app .st-li { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 60px; padding: 12px 16px; text-align: left; color: inherit; text-decoration: none; background: none; }
+.student-app .st-li + .st-li { border-top: 1px solid var(--border); }
+.student-app button.st-li:active,
+.student-app a.st-li:active { background: var(--surface2); }
+.student-app .st-li-main { flex: 1; min-width: 0; }
+.student-app .st-li-title { font-size: 15px; font-weight: 700; line-height: 1.3; overflow-wrap: anywhere; }
+.student-app .st-li-sub { font-size: 13px; color: var(--muted); margin-top: 2px; line-height: 1.4; overflow-wrap: anywhere; }
+.student-app .st-li-end { flex: none; text-align: right; }
+
+/* ---- section heading ---- */
+.student-app .st-sh { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 22px 2px 10px; }
+.student-app .st-sh-title { font-size: 17px; font-weight: 800; letter-spacing: -0.2px; line-height: 1.3; }
+.student-app .st-sh-sub { font-size: 13px; color: var(--muted); font-weight: 600; margin-top: 1px; }
+.student-app .st-sh-act { flex: none; display: inline-flex; align-items: center; gap: 2px; min-height: 32px; font-size: 14px; font-weight: 700; color: var(--accent); text-decoration: none; }
+
+/* ---- KPI tiles ---- */
+.student-app .st-kpis { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.student-app .st-kpis.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.student-app .st-kpi { min-width: 0; padding: 12px; border-radius: 16px; background: var(--surface); border: 1px solid var(--border); box-shadow: var(--shadow); color: inherit; text-decoration: none; display: block; }
+.student-app .st-kpi-v { font-size: 22px; font-weight: 800; line-height: 1.15; letter-spacing: -0.4px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.student-app .st-kpi-l { font-size: 12.5px; font-weight: 600; color: var(--muted); margin-top: 4px; line-height: 1.3; }
+.student-app .st-kpi-s { font-size: 12px; color: var(--faint); margin-top: 2px; line-height: 1.3; }
+
+/* ---- page header ---- */
+.student-app .st-hd { flex: none; background: var(--bg); padding: 12px 16px 10px; position: relative; z-index: 5; }
+.student-app .st-hd-row { display: flex; align-items: center; gap: 10px; min-height: 40px; }
+.student-app .st-hd-title { flex: 1; min-width: 0; font-size: 26px; font-weight: 800; letter-spacing: -0.5px; line-height: 1.2; }
+.student-app .st-hd.sub .st-hd-title { font-size: 19px; letter-spacing: -0.2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.student-app .st-hd-sub { font-size: 13.5px; color: var(--muted); font-weight: 600; margin-top: 2px; line-height: 1.35; }
+.student-app .st-back { width: 40px; height: 40px; margin-left: -4px; border-radius: 12px; display: flex; align-items: center; justify-content: center; flex: none; color: var(--text); background: var(--surface); border: 1px solid var(--border); }
+/* section switch under a header (Darslar: Jadval · Davomat · Dastur …) */
+.student-app .st-seg { display: flex; gap: 4px; margin-top: 12px; padding: 4px; border-radius: var(--r-md); background: var(--surface); border: 1px solid var(--border); overflow-x: auto; scrollbar-width: none; }
+.student-app .st-seg > a,
+.student-app .st-seg > button { flex: 1 0 0; min-width: max-content; display: flex; align-items: center; justify-content: center; min-height: 36px; padding: 0 10px; border-radius: 10px; font-size: 14px; font-weight: 700; color: var(--muted); text-decoration: none; white-space: nowrap; transition: background 0.15s ease, color 0.15s ease; }
+.student-app .st-seg > .on { background: var(--primary); color: #fff; }
+
+@media (max-width: 380px) {
+  .student-app .st-seg > a,
+  .student-app .st-seg > button { padding: 0 8px; font-size: 13.5px; }
+}
+
+/* legacy headers (pages not rebuilt yet: Lesson) */
+.student-app .hd { flex: none; position: sticky; top: 0; z-index: 5; background: var(--bg); padding: 12px 16px 10px; }
+.student-app .hd.lg { padding: 14px 16px 8px; }
+.student-app .hd-big { font-size: 26px; font-weight: 800; letter-spacing: -0.5px; line-height: 1.2; }
+.student-app .hd-sm { font-size: 19px; font-weight: 800; letter-spacing: -0.2px; line-height: 1.25; }
+.student-app .hd-sub { font-size: 13.5px; font-weight: 600; color: var(--muted); }
+.student-app .sh { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 18px 2px 10px; }
+.student-app .sh-title { font-size: 17px; font-weight: 800; letter-spacing: -0.2px; line-height: 1.3; }
+.student-app .sh-act { display: flex; align-items: center; color: var(--accent); font-size: 14px; font-weight: 700; }
+
+/* ---- bottom navigation (phone / Telegram) ---- */
+.student-app .st-nav { flex: none; display: flex; background: var(--surface); border-top: 1px solid var(--border); padding: 6px 4px calc(6px + env(safe-area-inset-bottom)); }
+.student-app .st-nav-a { flex: 1; min-width: 0; min-height: 52px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; padding: 2px 0; color: var(--muted); text-decoration: none; font-size: 11.5px; font-weight: 600; line-height: 1.2; }
+.student-app .st-nav-ic { width: 56px; height: 30px; border-radius: 999px; display: flex; align-items: center; justify-content: center; transition: background 0.2s ease; }
+.student-app .st-nav-a.on { color: var(--accent); font-weight: 800; }
+.student-app .st-nav-a.on .st-nav-ic { background: var(--accentSoft); }
+.student-app .st-nav-lbl { max-width: 100%; padding: 0 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ---- desktop side menu (≥1024px only; hidden in phone/WebView) ---- */
 .student-app .st-side { display: none; }
 .student-app .st-brand { display: flex; align-items: center; gap: 10px; padding: 6px 12px 18px; font-size: 19px; font-weight: 800; letter-spacing: -0.4px; color: var(--text); }
-.student-app .st-brand > * { color: var(--accent); }
-.student-app .st-nav-item {
-  display: flex; align-items: center; gap: 12px; padding: 11px 14px; border-radius: 13px;
-  color: var(--muted); font-size: 15px; font-weight: 700; text-decoration: none; transition: 0.15s;
-}
+.student-app .st-brand > svg { color: var(--accent); }
+.student-app .st-nav-item { display: flex; align-items: center; gap: 12px; padding: 11px 14px; border-radius: 13px; color: var(--muted); font-size: 15px; font-weight: 700; text-decoration: none; transition: 0.15s; }
 .student-app .st-nav-item:hover { background: var(--surface3); color: var(--text); }
 .student-app .st-nav-item.on { background: var(--accentSoft); color: var(--accent); }
-
-/* Planshet+ : kontentni markazlashtirib cho'zilishdan saqlaymiz (telefon <700px tegilmaydi). */
 @media (min-width: 700px) {
-  .student-app .screen { max-width: 920px; margin-left: auto; margin-right: auto; width: 100%; }
+  .student-app .screen { max-width: 760px; margin-left: auto; margin-right: auto; width: 100%; }
 }
-/* Desktop : chap yon-menyu + keng kontent; pastki tab yashiriladi. */
 @media (min-width: 1024px) {
   .student-app { flex-direction: row !important; }
-  .student-app .tabbar { display: none; }
-  .student-app .st-side {
-    display: flex; flex-direction: column; width: 248px; flex: none; height: 100%;
-    background: var(--surface); border-right: 1px solid var(--border); padding: 18px 12px; gap: 4px; overflow-y: auto;
-  }
-  .student-app .st-main { border-left: 0; }
-  .student-app .screen { max-width: 980px; }
+  .student-app .st-nav { display: none; }
+  .student-app .st-side { display: flex; flex-direction: column; width: 248px; flex: none; height: 100%; background: var(--surface); border-right: 1px solid var(--border); padding: 18px 12px; gap: 4px; overflow-y: auto; }
+  .student-app .screen { max-width: 820px; }
 }
-/* segmented / pills */
-.student-app .seg { display: flex; height: 46px; padding: 4px; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; }
-.student-app .seg > button { flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px; border-radius: 11px; font-size: 13px; font-weight: 700; color: var(--muted); transition: 0.18s; }
-.student-app .seg > button.on { background: var(--accent); color: #fff; }
-.student-app .pill { display: flex; align-items: center; justify-content: center; gap: 6px; height: 38px; border-radius: 12px; background: var(--surface); border: 1px solid var(--border); font-size: 13px; font-weight: 700; color: var(--muted); }
-.student-app .pill.on { background: var(--accent); border-color: var(--accent); color: #fff; }
-/* inputs */
-.student-app .field { display: flex; align-items: center; gap: 10px; height: 54px; padding: 0 14px; background: var(--surface2); border: 1px solid var(--border); border-radius: 15px; }
-.student-app .field input { flex: 1; border: none; background: none; outline: none; font-size: 16px; font-weight: 600; }
-.student-app .ta { width: 100%; border: 1px solid var(--border); border-radius: 16px; background: var(--surface); padding: 14px; font-size: 15px; line-height: 1.5; font-weight: 600; outline: none; resize: vertical; }
-.student-app .ta:focus, .student-app .field:focus-within { border-color: var(--accent); }
-/* sheet / toast / switch / hero */
-.student-app .scrim { position: fixed; inset: 0; background: rgba(8, 12, 24, 0.45); z-index: 50; display: flex; align-items: flex-end; justify-content: center; animation: st-fade 0.2s; }
-.student-app .sheet { width: 100%; max-width: 480px; background: var(--surface); border: 1px solid var(--border); border-radius: 26px 26px 0 0; padding: 10px 18px 30px; max-height: 84dvh; overflow-y: auto; animation: st-up 0.26s cubic-bezier(0.22, 1, 0.36, 1); }
+
+/* ---- segmented / pills / inputs ---- */
+.student-app .seg { display: flex; gap: 4px; min-height: 44px; padding: 4px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-md); }
+.student-app .seg > button { flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px; min-height: 36px; padding: 0 8px; border-radius: 10px; font-size: 14px; font-weight: 700; color: var(--muted); transition: 0.18s; }
+.student-app .seg > button.on { background: var(--primary); color: #fff; }
+.student-app .pill { display: flex; align-items: center; justify-content: center; gap: 6px; height: 38px; padding: 0 14px; border-radius: 999px; background: var(--surface); border: 1px solid var(--border); font-size: 14px; font-weight: 700; color: var(--muted); white-space: nowrap; }
+.student-app .pill.on { background: var(--primary); border-color: var(--primary); color: #fff; }
+.student-app .st-pills { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; }
+.student-app .st-label { display: block; font-size: 13.5px; font-weight: 700; color: var(--muted); padding: 0 2px 8px; }
+.student-app .field { display: flex; align-items: center; gap: 10px; min-height: 52px; padding: 0 14px; background: var(--surface); border: 1px solid var(--borderStrong); border-radius: var(--r-md); }
+.student-app .field input { flex: 1; min-width: 0; border: none; background: none; outline: none; font-size: 16px; font-weight: 500; }
+.student-app .field input::placeholder,
+.student-app .ta::placeholder { color: var(--faint); font-weight: 400; }
+.student-app .ta { width: 100%; border: 1px solid var(--borderStrong); border-radius: var(--r-md); background: var(--surface); padding: 14px; font-size: 16px; line-height: 1.5; font-weight: 400; outline: none; resize: vertical; }
+.student-app .ta:focus,
+.student-app .field:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accentSoft); }
+
+/* ---- sheet / toast / switch / hero ---- */
+.student-app .scrim { position: fixed; inset: 0; background: rgba(8, 12, 24, 0.5); z-index: 50; display: flex; align-items: flex-end; justify-content: center; animation: st-fade 0.2s; }
+.student-app .sheet { width: 100%; max-width: 520px; background: var(--surface); border: 1px solid var(--border); border-radius: 24px 24px 0 0; padding: 8px 16px calc(24px + env(safe-area-inset-bottom)); max-height: 86dvh; overflow-y: auto; animation: st-up 0.26s cubic-bezier(0.22, 1, 0.36, 1); }
 .student-app .grab { width: 40px; height: 5px; background: var(--borderStrong); border-radius: 5px; margin: 4px auto 14px; }
-/* toast — tabbar (pastki nav ~64px) ustida ko'rinadi */
-.student-app .toast { position: fixed; left: 50%; bottom: calc(72px + env(safe-area-inset-bottom)); transform: translateX(-50%); z-index: 90; background: var(--text); color: var(--bg); padding: 12px 18px; border-radius: 14px; font-size: 13.5px; font-weight: 700; max-width: 90%; box-shadow: 0 8px 30px rgba(0, 0, 0, 0.25); animation: st-fade 0.2s; }
+.student-app .toast { position: fixed; left: 50%; bottom: calc(var(--nav-h) + 16px + env(safe-area-inset-bottom)); transform: translateX(-50%); z-index: 90; background: var(--text); color: var(--bg); padding: 12px 18px; border-radius: var(--r-md); font-size: 14px; font-weight: 700; width: max-content; max-width: calc(100% - 32px); text-align: center; box-shadow: var(--shadowLg); animation: st-fade 0.2s; }
 .student-app .switch { width: 50px; height: 30px; border-radius: 15px; background: var(--borderStrong); padding: 3px; display: flex; transition: 0.2s; flex: none; }
-.student-app .switch.on { background: var(--accent); justify-content: flex-end; }
+.student-app .switch.on { background: var(--primary); justify-content: flex-end; }
 .student-app .switch > i { width: 24px; height: 24px; border-radius: 50%; background: #fff; display: block; box-shadow: 0 2px 5px rgba(0, 0, 0, 0.25); transition: 0.2s; }
-.student-app .hero { border-radius: 22px; padding: 18px; color: #fff; background: linear-gradient(135deg, var(--accent), #5340c4); box-shadow: 0 14px 34px rgba(37, 99, 235, 0.3); }
+.student-app .hero { border-radius: var(--r-xl); padding: 18px; color: #fff; background: linear-gradient(135deg, #2563eb, #4338ca); box-shadow: 0 12px 30px rgba(37, 99, 235, 0.25); }
 .student-app .divline { border-bottom: 1px solid var(--border); }
-.student-app a { color: var(--accent); }
+@media (prefers-reduced-motion: reduce) {
+  .student-app .screen,
+  .student-app .sheet,
+  .student-app .scrim,
+  .student-app .st-skel { animation: none; }
+}
 
 /* ============================================================
    Ported component classes from crm/styles.css

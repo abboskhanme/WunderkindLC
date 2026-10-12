@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Mic, PenLine, RotateCcw, Sparkles, Square } from 'lucide-react'
 import type { AiCheck, AiCheckListItem, AiCheckStatus } from '@/types'
 import {
   getAiCheckStatus,
@@ -10,31 +10,16 @@ import {
 } from '@/api/services/studentAiCheck'
 import { startWavRecording, type WavRecorder } from '@/lib/wavRecorder'
 import { RecWaveform } from '@/pages/student/RecWaveform'
-import { Icon, fmtDate } from '@/pages/student/lib'
+import { fmtDate } from '@/pages/student/lib'
 import { AiCheckResultView } from '@/pages/student/AiCheckResultView'
+import { EmptyState, IconBox, PageHeader, StatusChip } from '@/pages/student/ui'
 
 function errMsg(e: unknown): string {
   const ax = e as { response?: { data?: { message?: string } }; message?: string }
   return ax?.response?.data?.message ?? ax?.message ?? 'Xatolik yuz berdi'
 }
 
-function BackHeader({ title, onBack }: { title: string; onBack: () => void }) {
-  return (
-    <div className="hd">
-      <div className="row gap10" style={{ minHeight: 38 }}>
-        <button className="iconbtn press" onClick={onBack}>
-          <Icon name="chevL" size={22} />
-        </button>
-        <div className="hd-sm" style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {title}
-        </div>
-      </div>
-    </div>
-  )
-}
-
 export function StudentAiCheckScreen() {
-  const navigate = useNavigate()
   const [status, setStatus] = useState<AiCheckStatus | null>(null)
   const [history, setHistory] = useState<AiCheckListItem[]>([])
   const [tab, setTab] = useState<'writing' | 'speaking'>('writing')
@@ -116,9 +101,9 @@ export function StudentAiCheckScreen() {
   if (result) {
     return (
       <div className="screen">
-        <BackHeader title="AI tekshiruv natijasi" onBack={() => setResult(null)} />
+        <PageHeader title="AI tekshiruv natijasi" onBack={() => setResult(null)} />
         <div className="scroll">
-          <div className="pad" style={{ paddingBottom: 28 }}>
+          <div className="st-page" style={{ paddingTop: 8 }}>
             <AiCheckResultView rec={result} />
           </div>
         </div>
@@ -134,19 +119,18 @@ export function StudentAiCheckScreen() {
 
   return (
     <div className="screen">
-      <BackHeader title="AI tekshiruv" onBack={() => navigate('/student/profile')} />
+      <PageHeader title="AI tekshiruv" back="/student/profile" />
       <div className="scroll">
-        <div className="pad" style={{ paddingBottom: 28 }}>
+        <div className="st-page" style={{ paddingTop: 8 }}>
           {/* Bo'lim yopiq — tekshiruv yuborib bo'lmaydi (eski natijalar pastda qoladi) */}
           {closed && (
-            <div className="card" style={{ marginBottom: 16, textAlign: 'center' }}>
-              <div style={{ fontSize: 16, fontWeight: 800, marginBottom: 6 }}>
-                Bu bo'lim hali markaz tomonidan ochilmagan
-              </div>
-              <div style={{ fontSize: 13.5, color: 'var(--muted)', lineHeight: 1.5 }}>
-                AI tekshiruv yoqilgach, yozma ishlaringizni va talaffuzingizni shu yerda
-                tekshirib, batafsil tahlil olasiz.
-              </div>
+            <div className="card flush" style={{ marginBottom: 6 }}>
+              <EmptyState
+                icon={Sparkles}
+                tone="violet"
+                title="Bu bo'lim hali ochilmagan"
+                sub="Markaz AI tekshiruvni yoqqach, yozma ishlar va talaffuzni shu yerda tekshirib, batafsil tahlil olish mumkin bo'ladi."
+              />
             </div>
           )}
 
@@ -154,18 +138,18 @@ export function StudentAiCheckScreen() {
           {!closed && status && (
             <div className="card" style={{ marginBottom: 12 }}>
               {status.blocked ? (
-                <div style={{ color: '#ef4444', fontWeight: 700, fontSize: 14 }}>
-                  AI tekshiruv sizga cheklangan. Adminga murojaat qiling.
+                <div style={{ color: 'var(--red)', fontWeight: 700, fontSize: 14.5 }}>
+                  AI tekshiruv bu akkaunt uchun cheklangan. Markaz administratoriga murojaat qiling.
                 </div>
               ) : status.premium ? (
                 <div className="row sp">
                   <span style={{ fontWeight: 700 }}>Premium</span>
-                  <span className="chip" style={{ background: 'var(--violetSoft)', color: 'var(--violet)' }}>cheksiz</span>
+                  <StatusChip tone="violet">cheksiz</StatusChip>
                 </div>
               ) : (
                 <div className="row sp">
-                  <span style={{ fontSize: 14 }}>Bugungi limit</span>
-                  <span className="font-mono" style={{ fontWeight: 800 }}>
+                  <span style={{ fontSize: 14.5, fontWeight: 600 }}>Bugungi limit</span>
+                  <span className="st-num" style={{ fontSize: 16 }}>
                     {status.usedToday} / {status.limit}
                   </span>
                 </div>
@@ -174,7 +158,7 @@ export function StudentAiCheckScreen() {
           )}
 
           {!closed && notReady && (
-            <div className="card" style={{ marginBottom: 12, color: '#f59e0b', fontSize: 13.5 }}>
+            <div className="st-banner info" style={{ marginBottom: 12 }}>
               AI tekshiruv hali sozlanmagan (admin Gemini kalitini kiritishi kerak).
             </div>
           )}
@@ -185,15 +169,15 @@ export function StudentAiCheckScreen() {
             {/* Tab */}
             <div className="seg" style={{ marginBottom: 12 }}>
               <button className={tab === 'writing' ? 'on' : ''} onClick={() => { setTab('writing'); setErr(null) }}>
-                ✍️ Writing
+                <PenLine size={17} /> Writing
               </button>
               <button className={tab === 'speaking' ? 'on' : ''} onClick={() => { setTab('speaking'); setErr(null) }}>
-                🎤 Speaking
+                <Mic size={17} /> Speaking
               </button>
             </div>
 
             {err && (
-              <div className="card" style={{ marginBottom: 12, color: '#ef4444', fontSize: 13.5 }}>{err}</div>
+              <div role="alert" className="st-banner" style={{ marginBottom: 12 }}>{err}</div>
             )}
 
             {/* Writing */}
@@ -241,7 +225,7 @@ export function StudentAiCheckScreen() {
             {tab === 'speaking' && (
               <div className="card" style={{ marginBottom: 16 }}>
                 {azureMissing && (
-                  <div style={{ color: '#f59e0b', fontSize: 13, marginBottom: 10 }}>
+                  <div className="st-banner info" style={{ marginBottom: 10 }}>
                     Speaking baholash hali sozlanmagan (admin Azure kalitini kiritishi kerak).
                   </div>
                 )}
@@ -255,14 +239,14 @@ export function StudentAiCheckScreen() {
                 <div className="center" style={{ flexDirection: 'column', gap: 10, padding: '8px 0' }}>
                   {recState === 'idle' && (
                     <button className="btn btn-primary" disabled={!!azureMissing || (status?.blocked ?? false)} onClick={startRec}>
-                      🎤 Yozishni boshlash
+                      <Mic size={18} /> Yozishni boshlash
                     </button>
                   )}
                   {recState === 'recording' && (
                     <>
                       <RecWaveform recorder={recorderRef} active={recState === 'recording'} />
                       <button className="btn btn-danger" onClick={stopRec}>
-                        ⏹ To'xtatish (yozilmoqda...)
+                        <Square size={16} /> To'xtatish (yozilmoqda...)
                       </button>
                     </>
                   )}
@@ -271,7 +255,7 @@ export function StudentAiCheckScreen() {
                       <audio controls src={URL.createObjectURL(blob)} style={{ width: '100%' }} />
                       <div className="row gap8" style={{ width: '100%' }}>
                         <button className="btn btn-ghost" style={{ flex: 1 }} disabled={busy} onClick={() => { setBlob(null); setRecState('idle') }}>
-                          Qayta yozish
+                          <RotateCcw size={16} /> Qayta yozish
                         </button>
                         <button className="btn btn-primary" style={{ flex: 1 }} disabled={busy} onClick={doSpeaking}>
                           {busy ? 'Tekshirilmoqda...' : 'AI tekshirish'}
@@ -287,26 +271,21 @@ export function StudentAiCheckScreen() {
 
 
           {/* Tarix */}
-          <div className="sh"><div className="sh-title">Tarix</div></div>
+          <div className="st-sh"><div className="st-sh-title">Tarix</div></div>
           {history.length === 0 ? (
-            <div className="empty">
-              <div className="empty-ic"><Icon name="sparkle" size={28} /></div>
-              <div className="muted">Hali tekshiruv yo'q</div>
+            <div className="card flush">
+              <EmptyState compact icon={Sparkles} title="Hali tekshiruv yo'q" sub="Tekshirilgan ishlar shu yerda saqlanadi." />
             </div>
           ) : (
-            <div className="col gap8">
+            <div className="card flush">
               {history.map((h) => (
-                <button key={h.id} className="card press row sp" style={{ textAlign: 'left' }} onClick={() => openItem(h.id)}>
-                  <div className="row gap10">
-                    <div className="subj" style={{ width: 40, height: 40, borderRadius: 13, background: 'var(--accentSoft)', color: 'var(--accent)' }}>
-                      {h.type === 'speaking' ? '🎤' : '✍️'}
-                    </div>
-                    <div className="col" style={{ gap: 2 }}>
-                      <span style={{ fontWeight: 700, fontSize: 14 }}>{h.type === 'speaking' ? 'Speaking' : 'Writing'}</span>
-                      <span className="muted" style={{ fontSize: 12 }}>{h.prompt || fmtDate(h.createdAt, true)}</span>
-                    </div>
+                <button key={h.id} type="button" className="st-li press" onClick={() => openItem(h.id)}>
+                  <IconBox icon={h.type === 'speaking' ? Mic : PenLine} tone="violet" />
+                  <div className="st-li-main">
+                    <div className="st-li-title">{h.type === 'speaking' ? 'Speaking' : 'Writing'}</div>
+                    <div className="st-li-sub">{h.prompt || fmtDate(h.createdAt, true)}</div>
                   </div>
-                  <span className="font-mono" style={{ fontWeight: 800, fontSize: 16 }}>{Math.round(h.score)}</span>
+                  <span className="st-num" style={{ fontSize: 18 }}>{Math.round(h.score)}</span>
                 </button>
               ))}
             </div>
