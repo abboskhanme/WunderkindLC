@@ -16,7 +16,7 @@ namespace WunderkindLC.Server.Controllers;
 [Authorize]
 [AdminPerm("classes.testResults")]
 [Route("api/admin/test-results")]
-public class TestResultsController(
+public partial class TestResultsController(
     AppDbContext db, TestCertificateService certs, TestCertificateJobs certJobs) : ControllerBase
 {
     private const string ZipMime = "application/zip";

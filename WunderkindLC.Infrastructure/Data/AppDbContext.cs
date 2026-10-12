@@ -8,7 +8,7 @@ namespace WunderkindLC.Infrastructure.Data;
 /// <summary>
 /// Markaz ma'lumotlar bazasi (bitta o'quv markazi — multi-tenant emas).
 /// </summary>
-public class AppDbContext(DbContextOptions<AppDbContext> options)
+public partial class AppDbContext(DbContextOptions<AppDbContext> options)
     : DbContext(options), IAppDbContext
 {
     // Maktab ma'lumotlari
@@ -1120,7 +1120,21 @@ public class AppDbContext(DbContextOptions<AppDbContext> options)
         b.Entity<AttendanceNotifyItem>().Property(x => x.StudentId).HasMaxLength(200);
         b.Entity<AttendanceNotifyItem>().Property(x => x.Status).HasMaxLength(16).IsConcurrencyToken();
         b.Entity<AttendanceNotifyItem>().HasIndex(x => new { x.Status, x.CreatedAt });
+
+        // CRM upgrade phases (docs/SPEC-crm-upgrade.md §0.2): each phase configures its own model in
+        // AppDbContext.Crm<Name>.cs. Kept LAST so a phase can refine an entity configured above.
+        ConfigureCrmMessaging(b);
+        ConfigureCrmAttendance(b);
+        ConfigureCrmRating(b);
+        ConfigureCrmWorkspace(b);
+        ConfigureCrmAccounts(b);
     }
+
+    partial void ConfigureCrmMessaging(ModelBuilder b);   // Phase 2
+    partial void ConfigureCrmAttendance(ModelBuilder b);  // Phase 3
+    partial void ConfigureCrmRating(ModelBuilder b);      // Phase 4
+    partial void ConfigureCrmWorkspace(ModelBuilder b);   // Phase 5
+    partial void ConfigureCrmAccounts(ModelBuilder b);    // Phase 6
 
     // ==================== Saqlashdan oldingi normalizatsiya ====================
 

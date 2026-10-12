@@ -143,7 +143,7 @@ public class GroupStudentsRbacTests
     public void Sinf_darajasida_guruhlar_royxati_ruxsati()
     {
         var src = Source();
-        var header = src[..src.IndexOf("public class ClassesController", StringComparison.Ordinal)];
+        var header = src[..System.Text.RegularExpressions.Regex.Match(src, @"public (partial )?class ClassesController\b").Index];
         Assert.Contains("[Authorize]", header);
         Assert.Contains("[AdminPerm(\"classes.list\")]", header);
         Assert.DoesNotContain("AllowAnonymous", src);

@@ -24,7 +24,7 @@ public enum MasteryLevel
 }
 
 /// <summary>Tizim foydalanuvchisi (autentifikatsiya uchun).</summary>
-public class AppUser
+public partial class AppUser
 {
     public string Id { get; set; } = Guid.NewGuid().ToString();
     public string FullName { get; set; } = string.Empty;
@@ -284,7 +284,7 @@ public class StudentGroupState
 }
 
 /// <summary>O'quvchi.</summary>
-public class Student
+public partial class Student
 {
     public string Id { get; set; } = Guid.NewGuid().ToString();
     /// <summary>To'liq FISH — saqlanadi (ko'rsatish, qidiruv, hisobotlar). Parts'dan join qilinadi.</summary>
@@ -881,7 +881,7 @@ public class LessonDiscount
 }
 
 /// <summary>O'quv xonasi (auditoriya). Guruhlarga FK orqali bog'lanadi.</summary>
-public class Room
+public partial class Room
 {
     public string Id { get; set; } = Guid.NewGuid().ToString();
     public string Name { get; set; } = "";
@@ -1090,7 +1090,7 @@ public class StudentGroup
 /// O'quv bo'limi → "Testlar natijalari" bo'limida boshqariladi; o'qituvchi o'z guruhlari uchun ham
 /// yarata oladi. Ichida har o'quvchi uchun olgan bali (<see cref="TestScore"/>) bo'ladi.
 /// </summary>
-public class TestResult
+public partial class TestResult
 {
     public string Id { get; set; } = Guid.NewGuid().ToString();
     /// <summary>Guruh (Group.Id) — test shu guruh o'quvchilariga tegishli.</summary>
@@ -1562,7 +1562,7 @@ public class JournalEntry
 }
 
 /// <summary>Dars mavzusi va uyga vazifa (sana bo'yicha).</summary>
-public class LessonNote
+public partial class LessonNote
 {
     public string Id { get; set; } = Guid.NewGuid().ToString();
     public string ClassId { get; set; } = string.Empty;
@@ -1606,7 +1606,7 @@ public class LessonReschedule
 }
 
 /// <summary>Davomat sababi (kelmaganlik turi).</summary>
-public class AbsenceReason
+public partial class AbsenceReason
 {
     public string Id { get; set; } = Guid.NewGuid().ToString();
     public string Name { get; set; } = string.Empty;
@@ -1951,7 +1951,7 @@ public class TurnstileEvent
 }
 
 /// <summary>Markaz umumiy holati va ma'lumotlari (bitta qator) — joriy o'quv yili + markaz profili.</summary>
-public class CenterMeta
+public partial class CenterMeta
 {
     // Bitta markaz — bitta CenterMeta qatori. Id unikal (Guid).
     public string Id { get; set; } = Guid.NewGuid().ToString();
@@ -2362,7 +2362,7 @@ public class CenterMeta
 /// shablon asosida xabar yuboriladi. Admin "Xabarlar → Avto xabarlar"da boshqaradi.
 /// Eski SmsTemplate+IsAuto (faqat SMS) va ReminderRule (faqat push+telegram) modellarini
 /// BIRLASHTIRGAN yagona model — har qoida 3 kanalni (SMS/Push/Telegram) mustaqil yoqadi.</summary>
-public class AutoMessageRule
+public partial class AutoMessageRule
 {
     public string Id { get; set; } = Guid.NewGuid().ToString();
     public string Trigger { get; set; } = string.Empty;   // AutoMessageTriggers katalogidan
@@ -2434,7 +2434,7 @@ public class ChatMessage
 }
 
 /// <summary>Guruh ota-onalariga Telegram bot orqali yuborilgan e'lon (bir tomonlama xabar).</summary>
-public class Broadcast
+public partial class Broadcast
 {
     public string Id { get; set; } = Guid.NewGuid().ToString();
     public string ClassName { get; set; } = string.Empty;
@@ -2471,7 +2471,7 @@ public class PushMessage
 /// kelib chiqadi). Ota-ona botga kontaktini ulashganda raqami o'quvchining ParentPhone'i
 /// bilan solishtirilib yoziladi. Bitta ota-onaning bir nechta farzandi bo'lishi mumkin.
 /// </summary>
-public class TelegramRegistration
+public partial class TelegramRegistration
 {
     public string Id { get; set; } = Guid.NewGuid().ToString();
     /// <summary>Bog'langan o'quvchi id'si (ota-ona ro'yxati uchun). Xodim yozuvida bo'sh.</summary>
@@ -2575,7 +2575,7 @@ public class BotSupportMessage
 /// Foydalanuvchining shaxsiy sozlamalari (asosan o'quvchi/o'qituvchi ilovasi uchun): til, tema,
 /// bildirishnoma yoqilganmi. Har foydalanuvchi uchun bitta qator (UserId — PK).
 /// </summary>
-public class UserSettings
+public partial class UserSettings
 {
     /// <summary>AppUser.Id — birlamchi kalit (har foydalanuvchi uchun bitta yozuv).</summary>
     public string UserId { get; set; } = string.Empty;
@@ -5454,7 +5454,7 @@ public class WorkTaskColumn
 /// (+ixtiyoriy soat) sifatida saqlanadi: kun bo'yicha filtr/kalendar oddiy satr solishtiruvi
 /// bilan ishlaydi va vaqt zonasi muammosi chiqmaydi (loyihadagi boshqa "kun" maydonlari bilan bir xil).
 /// </summary>
-public class WorkTask
+public partial class WorkTask
 {
     public string Id { get; set; } = Guid.NewGuid().ToString();
     public string BoardId { get; set; } = string.Empty;

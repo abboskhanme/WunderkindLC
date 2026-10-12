@@ -14,7 +14,7 @@ namespace WunderkindLC.Server.Controllers;
 [Authorize]
 [AdminPerm("students.list")]
 [Route("api/admin/students")]
-public class StudentsController(
+public partial class StudentsController(
     AppDbContext db, AuditService audit, IConfiguration config, AutoMessageService autoMsg,
     DataCache dataCache) : ControllerBase
 {

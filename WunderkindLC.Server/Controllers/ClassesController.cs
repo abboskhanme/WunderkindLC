@@ -12,7 +12,7 @@ namespace WunderkindLC.Server.Controllers;
 [Authorize]
 [AdminPerm("classes.list")]
 [Route("api/admin/classes")]
-public class ClassesController(AppDbContext db, AuditService audit, ILogger<ClassesController> logger, CertificateService certSvc, RoomConflictService roomConflict, AutoMessageService autoMsg, IConfiguration config, DataCache dataCache) : ControllerBase
+public partial class ClassesController(AppDbContext db, AuditService audit, ILogger<ClassesController> logger, CertificateService certSvc, RoomConflictService roomConflict, AutoMessageService autoMsg, IConfiguration config, DataCache dataCache) : ControllerBase
 {
     private string Actor => User.FindFirst(System.Security.Claims.ClaimTypes.Name)?.Value ?? "Admin";
 

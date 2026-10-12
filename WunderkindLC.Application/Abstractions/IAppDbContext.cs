@@ -10,7 +10,7 @@ namespace WunderkindLC.Application.Abstractions;
 /// saqlaydi. Infrastructure'dagi <c>AppDbContext</c> shu interfeysni implement qiladi,
 /// DI esa <c>IAppDbContext</c> ni o'sha scoped <c>AppDbContext</c> ga ulaydi.
 /// </summary>
-public interface IAppDbContext
+public partial interface IAppDbContext
 {
     DbSet<AppUser> Users { get; }
     DbSet<StaffRoleTemplate> StaffRoleTemplates { get; }

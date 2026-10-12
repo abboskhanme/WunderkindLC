@@ -16,7 +16,7 @@ namespace WunderkindLC.Domain;
 /// <c>unknown</c> bo'ladi va QAYTA yuborilmaydi (xabar ketgan bo'lishi mumkin — takror SMS dan
 /// bitta yo'qotish arzon, <c>SmsQueueItem</c> bilan bir xil qoida).</para>
 /// </summary>
-public class AttendanceNotifyItem
+public partial class AttendanceNotifyItem
 {
     public string Id { get; set; } = Guid.NewGuid().ToString();
     /// <summary>"absent" (darsga kelmadi) | "present" (darsga keldi).</summary>

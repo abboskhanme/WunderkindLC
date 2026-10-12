@@ -36,7 +36,8 @@ public class HomeEndpointsRbacTests
     /// <summary>Sinf e'lonidan OLDINGI atributlar (sinf darajasidagi darvoza).</summary>
     private static string ClassHeader(string source, string className)
     {
-        var i = source.IndexOf($"public class {className}", StringComparison.Ordinal);
+        // "public class X" or "public partial class X" (controllers are partial since the CRM upgrade, Phase 0).
+        var i = System.Text.RegularExpressions.Regex.Match(source, $@"public (partial )?class {className}\b").Index;
         Assert.True(i > 0, $"{className} topilmadi");
         return source[..i];
     }

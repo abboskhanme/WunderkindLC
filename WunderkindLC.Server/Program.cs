@@ -17,6 +17,7 @@ using WunderkindLC.Infrastructure.Data;
 using WunderkindLC.Server.Controllers;
 using WunderkindLC.Server.Cti;
 using WunderkindLC.Server.Mcp;
+using WunderkindLC.Server.Crm;
 using System.IdentityModel.Tokens.Jwt;
 using System.Text;
 
@@ -57,7 +58,9 @@ builder.Services.AddDbContext<AppDbContext>((sp, opt) =>
             })
         // Kesh invalidatsiya interceptor'i — har SaveChanges'dan keyin o'zgargan entity turlari
         // versiyasini oshiradi (DataCache), bog'liq keshni avtomatik eskirtiradi.
-        .AddInterceptors(sp.GetRequiredService<CacheInvalidationInterceptor>()));
+        // Every IInterceptor registered in DI (the cache interceptor below + any a CRM phase adds in
+        // its Crm<Name>Setup.cs) — phases plug in without editing this line.
+        .AddInterceptors(sp.GetServices<Microsoft.EntityFrameworkCore.Diagnostics.IInterceptor>()));
 
 // Application qatlamidagi xizmatlar konkret AppDbContext o'rniga IAppDbContext'ga
 // bog'lanadi — uni o'sha scoped AppDbContext instansiyasiga ulaymiz.
@@ -70,6 +73,8 @@ builder.Services.AddSingleton<ReferenceCache>();
 // Ikkalasi ham Singleton (versiyalar butun ilova bo'ylab yagona; interceptor holatsiz).
 builder.Services.AddSingleton<DataCache>();
 builder.Services.AddSingleton<CacheInvalidationInterceptor>();
+builder.Services.AddSingleton<Microsoft.EntityFrameworkCore.Diagnostics.IInterceptor>(
+    sp => sp.GetRequiredService<CacheInvalidationInterceptor>());
 
 // DataProtection kalitlarini DOIMIY volume'ga saqlaymiz. Aks holda kalitlar konteyner ichida
 // (/root/.aspnet) turadi va HAR deploy'da yo'qoladi — natijada eski tokenlar/shifrlangan
@@ -550,6 +555,12 @@ builder.Services.AddControllers();
 // READ-ONLY MCP server (AI ulanish) — docs/SPEC-mcp.md. Fail-closed: MCP_DB_RO_PASSWORD
 // berilmagan bo'lsa hech narsa ro'yxatdan o'tmaydi va /mcp 503 qaytaradi.
 builder.AddWunderkindMcp(defaultConn);
+// CRM upgrade phases (docs/SPEC-crm-upgrade.md §0.2) — each fills its own Server/Crm/Crm<Name>Setup.cs.
+builder.Services.AddCrmMessaging();
+builder.Services.AddCrmAttendance();
+builder.Services.AddCrmRating();
+builder.Services.AddCrmWorkspace();
+builder.Services.AddCrmAccounts();
 
 // HSTS — brauzer domenni 1 yil davomida FAQAT https deb eslab qoladi (subdomenlar ham).
 // `Preload` ATAYIN qo'shilmadi: preload ro'yxatiga tushish qaytarib bo'lmas majburiyat
@@ -1047,6 +1058,7 @@ catch (Exception ex)
 // READ-ONLY MCP: migratsiyalardan KEYIN — faqat-o'qish roli (wlc_ro) ruxsat ro'yxati bilan
 // qayta yaratiladi va ulanish o'zini-o'zi tekshiradi. Yiqilsa MCP o'chiq qoladi (sababi logda
 // va Sozlamalar → «AI ulanishlar» da), ilovaning qolgani o'zgarishsiz ishlaydi.
+await CrmSetup.RunStartupAsync(app.Services);
 app.ActivateWunderkindMcp(defaultConn);
 
 if (!app.Environment.IsDevelopment())

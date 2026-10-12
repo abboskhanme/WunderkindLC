@@ -22,7 +22,7 @@ namespace WunderkindLC.Server.Controllers;
 [ApiController]
 [Authorize(Roles = "student,parent,admin")]
 [Route("api/student")]
-public class StudentPortalController(
+public partial class StudentPortalController(
     AppDbContext db, ChatService chat, IWebHostEnvironment env, ReferenceCache refCache,
     TelegramService telegram, IConfiguration config, DataCache dataCache,
     ContractService contracts) : ControllerBase

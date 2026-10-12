@@ -314,7 +314,7 @@ public class StudentListsRbacTests
     public void Sinf_darajasida_oquvchilar_royxati_ruxsati()
     {
         var src = Source();
-        var header = src[..src.IndexOf("public class StudentsController", StringComparison.Ordinal)];
+        var header = src[..System.Text.RegularExpressions.Regex.Match(src, @"public (partial )?class StudentsController\b").Index];
         Assert.Contains("[Authorize]", header);
         Assert.Contains("[AdminPerm(\"students.list\")]", header);
     }
