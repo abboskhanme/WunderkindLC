@@ -49,7 +49,10 @@ public static class AttendanceNotify
     /// "Darsga kelmadi" xabarini berilgan o'quvchilarga yuboradi (guruh + sabab bilan).
     /// Arxivlangan o'quvchi CHETLAB o'tiladi (eski arxivdagilarda a'zolik hali tirik bo'lishi mumkin).
     /// Chaqiruvchi ro'yxatni ALLAQACHON "yangi kelmadi"larga toraytirgan bo'lishi kerak.
+    /// <para>⚠️ CRM U3b dan beri ISHLATILMAYDI: u xabarni DARHOL yuboradi — dars tugashini, menejer nazoratini va
+    /// "keldi"ga tuzatishni chetlab o'tardi. Yangi kod <see cref="EnqueueSingleAsync"/> / <see cref="EnqueueBulkAsync"/>.</para>
     /// </summary>
+    [Obsolete("CRM U3b: «kelmadi» goes through the queue (EnqueueSingleAsync / EnqueueBulkAsync) — this sends immediately.")]
     public static async Task DispatchAbsencesAsync(
         IAppDbContext db, AutoMessageService autoMsg, string classId, string date, string? reasonId,
         IEnumerable<string> studentIds, CancellationToken ct = default)
