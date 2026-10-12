@@ -96,6 +96,8 @@ public static class McpReadOnlyGrants
         typeof(CtiAgent), typeof(IgAccount), typeof(IgOAuthState), typeof(IgAdAccount), typeof(BotUser),
         typeof(CareerBotUser), typeof(TestBotSession), typeof(BookBotSession), typeof(ArchivedRecord),
         typeof(McpClient), typeof(McpGrant), typeof(McpAuthCode), typeof(McpToken), typeof(McpAuditEntry),
+        // Student passwords (credential vault, CRM phase 6) — never readable by the AI read-only role.
+        typeof(StudentCredential),
     ];
 #pragma warning restore CS0618
 

@@ -7346,6 +7346,29 @@ namespace WunderkindLC.Infrastructure.Migrations
                     b.ToTable("StudentCertificates");
                 });
 
+            modelBuilder.Entity("WunderkindLC.Domain.StudentCredential", b =>
+                {
+                    b.Property<string>("UserId")
+                        .HasMaxLength(36)
+                        .HasColumnType("character varying(36)");
+
+                    b.Property<byte[]>("PasswordCipher")
+                        .IsRequired()
+                        .HasColumnType("bytea");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.HasKey("UserId");
+
+                    b.ToTable("StudentCredentials", (string)null);
+                });
+
             modelBuilder.Entity("WunderkindLC.Domain.StudentDiscount", b =>
                 {
                     b.Property<string>("Id")
