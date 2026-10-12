@@ -207,3 +207,62 @@ Ko'chirish oyning dars sonini va jurnal jarimasini o'zgartiradi (asl kun rejadan
   KUTILGAN a'zolardan sanaydi (`StudentJournalBuilder.ExpectedOn`): muzlatilgan (muzlatish sanasidan keyin),
   hali qo'shilmagan va arxivlangan o'quvchi "kelgan" bo'lib chiqmaydi.
 
+
+## 2026-10-12 — YAGONA DAVOMAT TA'RIFI (CRM Phase 3, U3a)
+
+SPEC: `docs/SPEC-crm-upgrade.md` P3.1. Ilgari "kech" va "belgilanmagan" har ekranda boshqacha sanalardi
+(kunlik sahifa kech kelganni KELGAN, o'quvchi jurnali esa bahosiz kechni "kelmagan" der, guruh sahifasi
+"o'tildi + belgisiz"ni KELDI, jurnal esa "davomat olingan + belgisiz"ni keldi derdi).
+
+### Qoida — `AttendanceRules.Classify` (Application/Services/Attendance, sof, `AttendanceRulesTests`)
+
+Tartib: bloklangan → sabab (`IsLate` → **Late**, `IsExcused` → AbsentExcused, aks holda AbsentUnexcused) →
+aniq «keldi» / baho / o'zlashtirish → **Present** → dars o'tilmagan → NotHeld → davomat TO'LIQ olingan va
+`PresentDefaultFrom` dan keyin → Present → aks holda **Unmarked**.
+
+`Tally`: o'tilgan = Present + Late + AbsentExcused + AbsentUnexcused; kelgan = Present + Late;
+foiz = round(kelgan × 100 / o'tilgan). **Unmarked / NotHeld / Blocked foizga KIRMAYDI.**
+
+- ⚠️ **Kech = KELGAN** hamma joyda (profil, kabinet, o'qituvchi ro'yxati, guruh tabi, AI kirishi).
+- ⚠️ **"O'tildi" + belgisiz ≠ keldi.** Bitta baho darsni "o'tildi" qiladi, lekin davomat OLMAYDI — qolgan
+  o'quvchilar BELGILANMAGAN (foiz ham, avto-"keldi" ham yo'q). Bu o'zgarish orqaga ham ta'sir qiladi
+  (foizlar biroz o'zgaradi) — egasi qabul qilgan (`ASSUMPTIONS.md` 2026-10-11).
+- Klient nusxasi — `lib/attendance.ts` (`attendanceMark`, `attendanceTally`) va `classes/detail/shared.ts`
+  `autoPresent` (endi `attendanceTaken` oladi, `conducted` EMAS). Server qoidasi o'zgarsa — ikkalasini ham.
+- Qo'llangan joylar: `StudentJournalBuilder` (katakda `Mark`), `TeacherHomeService.Attendance`,
+  `StudentProfileBuilder`, `Analytics.BuildClass` (+ a'zolik chegaralari), `GroupSnapshotBuilder` (AI),
+  `StudentAttendanceController.Absent` (davomat OLINGAN guruhlar, `IsExcused`), admin/o'qituvchi guruh
+  sahifalari. `RatingService`/`StudentBallService` — Phase 4 (U4b) qayta yozadi, bu yerda TEGILMAGAN.
+  ⚠️ Yangi ko'rsatkich yozsangiz `IsLate`/`ReasonId != null` ni qo'lda sanamang — `Classify`/`Tally`.
+
+### "Davomat olindi" — IKKI XIL savol (`AttendanceTaking`)
+
+| Ustun | Ma'nosi | Kim qo'yadi | Kim o'qiydi |
+|---|---|---|---|
+| `LessonNote.AttendanceTakenAt` (+ `AttendanceTakenById`) | BIRINCHI davomat belgisi («keldi» yoki sabab) vaqti | katak (`SetEntryAsync`) va ommaviy davomat; faqat BIR MARTA | eslatma (`LessonAttendanceReminderService`), monitor (`DashboardController.today-lessons`), kunlik sahifa, jarima (U3c), xabarlar navbati (U3b) |
+| `LessonNote.AttendanceTaken` | davomat TO'LIQ | ommaviy davomat YOKI katak saqlangach shu darsda KUTILGAN har o'quvchida «keldi»/sabab/baho bor | avto-"keldi" (`Classify`), `GroupJournalDto.AttendanceTakenDates` |
+
+- ⚠️ Baho yolg'iz `AttendanceTakenAt` ni QO'YMAYDI (lekin to'liqlikka kiradi — o'quvchi darsda bo'lgan).
+- "Kutilgan" = `StudentJournalBuilder.ExpectedOn` + arxivlanmagan; O'QITUVCHI yo'lida to'lov darvozasi
+  yashirgan o'quvchi kutilmaydi (u uni ko'rmaydi).
+- Eslatma/jarima/monitor uchun "olindi" = guruhning shu KUNDAGI istalgan `LessonNote` ida `AttendanceTakenAt`
+  bor (fan/dars raqamidan qat'i nazar). Bitta-bitta belgilaydigan o'qituvchi shu sababli jarima olmaydi.
+- Migratsiyada oxirgi 60 kun uchun `AttendanceTakenAt` = dars SANASI 00:00 (o'z vaqtida) bilan to'ldiriladi
+  (`docs/migrations/Phase3.sql`) — deploy jarima to'lqini bermaydi, monitor tarixi ham to'g'ri.
+
+### «Sababli (uzrli)» — `AbsenceReason.IsExcused`
+
+Sozlamalar → O'quv → Sabablar → «Davomat sabablari» da «Sababli (uzrli)» belgisi. `IsLate && IsExcused` —
+400 (`AbsenceReasonRules.ExcusedError`). Ishlatilgan sababda ham o'zgartiriladi (faqat analitika: ketma-ket
+kelmaslik seriyasi, sababsizlar sanog'i); `IsLate` esa ishlatilgan sababda hamon O'ZGARMAYDI. Migratsiya
+backfill: kech emas va nomida «sababsiz» yo'q → sababli. Yangi bazada «Kasal», «Sababli» — sababli.
+
+### Davomat sozlamalari — `AttendanceSettingsController` (`api/admin/attendance/settings`, `[AdminPerm("classes")]`)
+
+`CenterMeta`: `AttendanceDisciplineEnabled`, `AttendanceDeadlineMinutes` (5..120, 15), `AttendanceReminderMinutes`
+("5,10", ≤ 3, o'sib boruvchi, 1..muddat), `AttendanceEscalateEnabled`, `AttendanceFineEnabled`,
+`AttendanceFineAmount` (0..10 mln, yoqilganda > 0), `AbsentNoticeDelayMinutes` (0..180), `AbsentNoticeApproval`
+(`auto`/`manual`/`late_only`). Tekshiruv — `AttendanceSettingsRules.Validate` (sof). Saqlash tarixga QIYMATLARI
+bilan (`SettingsAudit`, "Davomat intizomi"). Eski «Davomat eslatmasi» avto-qoidasi yoqiq bo'lsa javobda
+ogohlantirish (ikki marta eslatma). UI: «Jurnal va davomat» → «Davomat intizomi» (`AttendanceDisciplineModal`)
+va «Davomat xabarlari» (`AbsentNoticeSettingsModal`; navbat — U3b).

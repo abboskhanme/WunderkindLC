@@ -153,7 +153,9 @@ sahifasi, guruhlar ro'yxatidagi sariq qator va «O'quvchilar davomati» sahifasi
   **o'rinbosar** (`SubstituteTeacherName` — o'sha kuni davomatni u oladi).
 - ⚠️ Ilgari monitor faqat hafta kuniga qarardi: ko'chirilgan dars asl kunida "davomat olinmagan"
   bo'lib qizarardi, yangi kunida esa ko'rinmasdi.
-- "Davomat olindi" = o'sha kuni `Conducted` LessonNote (eslatma xizmati bilan bir xil).
+- "Davomat olindi" = o'sha kuni BIRINCHI davomat belgisi bor LessonNote (`AttendanceTakenAt`, 2026-10-12 —
+  eslatma va jarima bilan bir xil, `journal.md` «YAGONA DAVOMAT TA'RIFI»). Ilgari `Conducted` edi: bitta baho
+  ham guruhni "davomat qilingan" ko'rsatardi.
 - **Bosqich** (`Phase`: upcoming | started | ended) va **`Overdue`** (boshlangan, davomat yo'q) —
   keshdan KEYIN, har so'rovda markaz vaqti (`AppClock.Now`) bilan: kesh 5 daqiqagacha eski
   bo'lishi mumkin, soat esa yo'q. Vaqti noma'lum bugungi dars — `started` (`not_filled`

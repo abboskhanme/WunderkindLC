@@ -42,7 +42,9 @@ public static class StudentProfileBuilder
                   End: m.Status == "frozen" && m.FrozenAt is { Length: >= 10 } ? m.FrozenAt[..10]
                        // Guruhdan CHIQIB KETGAN a'zolikda chegara — chiqqan sana.
                        : !m.IsActive && m.LeftAt is { Length: >= 10 } ? m.LeftAt[..10]
-                       : null));
+                       : null,
+                  // Standart "davomat olindi + belgisiz = keldi" faqat a'zolik tizimga kiritilgan kundan.
+                  PresentDefaultFrom: StudentJournalBuilder.BoundsOf(m).PresentDefaultFrom));
         bool InMemberWindow(string classId, string date)
         {
             if (!boundsByClass.TryGetValue(classId, out var b)) return true;
@@ -62,17 +64,31 @@ public static class StudentProfileBuilder
 
         // ---- Qatnashish (o'tilgan / qatnashgan) — o'quvchining faol guruh(lar)i bo'yicha, FAQAT
         // a'zolik oynasi ichidagi darslar (jurnaldagi "Davomat" tabi bilan mos kelishi uchun) ----
-        var studentConducted = classIds.Count == 0
-            ? new HashSet<(string ClassId, string SubjectId, string Date, int Period)>()
+        // YAGONA ta'rif (AttendanceRules, SPEC P3.1): har o'tilgan dars (a'zolik oynasi ichida) BITTA belgi —
+        // kech = keldi, davomat olingan + belgisiz = keldi, davomat olinmagan + belgisiz = BELGILANMAGAN
+        // (foizga kirmaydi). Ilgari "o'tilgan − kelmagan" edi: davomati olinmagan dars ham "keldi" bo'lardi.
+        var conductedLessons = classIds.Count == 0
+            ? []
             : (await db.LessonNotes.AsNoTracking().Where(n => n.Conducted && classIds.Contains(n.ClassId))
-                    .Select(n => new { n.ClassId, n.SubjectId, n.Date, n.Period }).ToListAsync())
+                    .Select(n => new { n.ClassId, n.SubjectId, n.Date, n.Period, n.AttendanceTaken }).ToListAsync())
                 .Where(n => InMemberWindow(n.ClassId, n.Date))
-                .Select(n => (n.ClassId, n.SubjectId, n.Date, n.Period)).ToHashSet();
-        var conducted = studentConducted.Count;
-        var absent = entries.Count(e => classIds.Contains(e.ClassId) && e.ReasonId != null && !lateSet.Contains(e.ReasonId)
-            && studentConducted.Contains((e.ClassId, e.SubjectId, e.Date, e.Period)));
-        var attended = Math.Max(0, conducted - absent);
-        var pct = conducted > 0 ? (int)Math.Round((double)attended / conducted * 100) : 0;
+                .GroupBy(n => (n.ClassId, n.SubjectId, n.Date, n.Period))
+                .Select(g => (Key: g.Key, Taken: g.Any(x => x.AttendanceTaken)))
+                .ToList();
+        var entryByLesson = entries
+            .GroupBy(e => (e.ClassId, e.SubjectId, e.Date, e.Period))
+            .ToDictionary(g => g.Key, g => g.First());
+        var tally = AttendanceRules.Tally(conductedLessons.Select(l =>
+        {
+            var e = entryByLesson.GetValueOrDefault(l.Key);
+            var reason = e?.ReasonId is not null ? reasonMap.GetValueOrDefault(e.ReasonId) : null;
+            var pdf = boundsByClass.TryGetValue(l.Key.ClassId, out var b) ? b.PresentDefaultFrom : null;
+            return AttendanceRules.Classify(true, l.Taken, false,
+                AttendanceRules.BeforePresentDefault(l.Key.Date, pdf), e, reason);
+        }));
+        var conducted = tally.Held;
+        var attended = tally.Attended;
+        var pct = tally.Percent ?? 0;
 
         // ---- Davomat sabablari taqsimoti (barcha belgilar) ----
         var reasonCounts = entries

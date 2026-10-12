@@ -34,6 +34,9 @@ public sealed class FinanceTools(McpToolContext t)
         // SalaryLedger (teacher_salaries): ownership history, substitutes, journal stats, policy columns.
         typeof(CenterMeta), typeof(GroupTeacherAssignment), typeof(SubstituteTeacherAssignment),
         typeof(LessonNote), typeof(LessonReschedule),
+        // SalaryLedger subtracts ACTIVE attendance fines (CRM Phase 3, U3c) — the read-only role needs the table,
+        // otherwise teacher_salaries fails with "permission denied". Fine LINES are U3m's job.
+        typeof(TeacherAttendanceFine),
     ];
 
     /// <summary>The discount report accepts at most this many months.</summary>

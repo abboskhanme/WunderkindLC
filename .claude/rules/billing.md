@@ -977,3 +977,32 @@ balansni SERVERDAN ko'rsatadi (chegirma yangi summadan qayta hisoblanadi), keyin
 qulflanadi; KEYINGI oylar guruh narxida yoziladi (shaxsiy narx — alohida ish, hali YO'Q).
 - ⚠️ `EditCharge` endi SERVERDA ham faqat superadmin (403 sabab bilan; ilgari `students.list:edit` yetardi) va
   o'quvchi qulfi ostida, balans `StudentBalanceSync.ReloadAsync` bilan qayta o'qiladi.
+
+## DAVOMAT JARIMALARI (CRM Phase 3, U3c — 2026-10-12)
+
+SPEC: `docs/SPEC-crm-upgrade.md` P3.4. Sozlama — «Davomat intizomi» (`journal.md` «YAGONA DAVOMAT TA'RIFI»).
+
+- **Kim yozadi:** FAQAT fon xizmati `AttendanceDisciplineService` (har daqiqada, `AttendanceDisciplineEnabled`
+  yoqiq bo'lsa). Bugungi dars boshlanishi + `AttendanceDeadlineMinutes` gacha davomat OLINMAGAN bo'lsa
+  (`AttendanceTakenAt` yo'q yoki muddatdan keyin) — `TeacherAttendanceFine` qatori (summa = `AttendanceFineAmount`
+  surati). Kech olingan davomat ham jarimadan qutqarmaydi (qoida "dars paytida"), lekin kiritish taqiqlanmaydi.
+  Kechagi darslar faqat to'xtab qolishda o'tkazib yuborilgan jarima uchun ko'riladi (xabarsiz).
+- **Kimga:** o'sha kuni darsni O'TGAN o'qituvchiga (o'rinbosar bo'lsa — unga;
+  `LessonAttendanceReminderService.RecipientTeacherId`). Arxivdagi o'qituvchiga, o'qituvchisiz guruhga, kursi yo'q
+  guruhga, o'sha kuni kutilgan o'quvchisi yo'q guruhga va boshlanish vaqti yo'q darsga — jarima YO'Q.
+- **Bir marta:** unikal `(GroupId, LessonDate)` — guruh+kun bo'yicha ko'pi bilan BITTA jarima (restart, ikki nusxa).
+- ⚠️ **`FinanceTransaction` EMAS** — kassaga, P&L ga, «Jarima» (penalty) chiqimlariga TEGMAYDI. Faqat
+  `SalaryLedger` da: oy (`Month` = dars oyi) bo'yicha FAOL jarimalar yig'indisi `Expected` dan ayriladi, lekin
+  ushlanmalardan keyingi qoldiqdan OSHMAYDI (maosh manfiy bo'lmaydi); `PotentialExpected` va `CollectedExpected`
+  dan ham. DTO: `MonthSalaryDto.AttendanceFines/AttendanceFineCount`, `SalaryLedgerDto.TotalAttendanceFines`,
+  `SalaryReportRowDto.AttendanceFines`. «Maoshni jurnalga bog'lash» ushlanmasidan MUSTAQIL — ikkalasi birga
+  qo'llanishi mumkin (SPEC §10 #1).
+- **Bekor qilish:** Moliya → Jarima → «Davomat jarimalari» (`AttendanceFinesController`,
+  `api/admin/attendance-fines`, `[AdminPerm("finance.main", ReadRequiresPerm = true)]`): bittasini sabab bilan
+  (1..300 belgi) bekor qilish, tiklash, butun KUNNI bekor qilish (bayram — loyihada bayram kalendari yo'q).
+  Qator o'chirilmaydi (`Status = waived`, kim/qachon/sabab). Har amal — audit `TeacherAttendanceFine`
+  («O'qituvchilar», `EntityId = "{groupId}:{fineId}"`, `teacherId`); yozilishi — «Tizim» nomidan.
+- **Ko'rinishi:** o'qituvchi profili → Maosh (oy tanlanganda «Davomat jarimasi: −X so'm (N ta dars)», sanalar —
+  `finance.main` bilan), `TeacherSalaryDetailModal`, o'qituvchi portali → Maosh (`GET api/teacher/attendance-fines`,
+  faqat O'Z jarimalari, `TeacherPermissions.Salary`).
+- Backup: jadval zaxiraga KIRADI (pul). Testlar: `AttendanceDisciplineTests` (qaror, xizmat, maosh).

@@ -30,7 +30,7 @@ public class ReferenceCache(IMemoryCache cache, IServiceScopeFactory scopeFactor
         GetAsync("ref:meta", TimeSpan.FromSeconds(30), async db =>
         {
             var reasons = await db.AbsenceReasons.OrderBy(r => r.Name)
-                .Select(r => new AbsenceReasonDto(r.Id, r.Name, r.Short, r.IsLate)).ToListAsync();
+                .Select(r => new AbsenceReasonDto(r.Id, r.Name, r.Short, r.IsLate, r.IsExcused)).ToListAsync();
             var quarters = await TuitionService.SyntheticPeriodsAsync(db);
             return new PortalMetaDto(new List<LessonTimeDto>(), reasons, quarters, 1, 1);
         });

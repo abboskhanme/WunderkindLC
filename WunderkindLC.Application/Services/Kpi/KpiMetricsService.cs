@@ -1290,44 +1290,31 @@ public static class KpiMetricsService
     /// keyinroq tuzatilganda (o'qituvchi ertasi kuni to'g'rilaydi) ro'yxat eskirib qolar va
     /// admin allaqachon kelgan o'quvchiga qo'ng'iroq qilardi.
     ///
-    /// ⚠️ Oyna <see cref="AlertLookbackDays"/> kun: butun jurnalni o'qishning hojati yo'q,
-    /// "oxirgi 2–3 dars" doim shu oraliqda.
+    /// <para>2026-10-12 (CRM Phase 3, U3d): manba — <see cref="AbsenceStreakLoader"/> (qizil ro'yxat va avtomatik
+    /// «Bog'lanish kerak» bilan BITTA ta'rif): (o'quvchi, guruh) bo'yicha ketma-ket SABABSIZ yo'qliklar, sababli
+    /// yo'qlik / kech / keldi seriyani to'xtatadi, belgilanmagan dars o'tkazib yuboriladi. O'quvchi bo'yicha eng
+    /// uzun seriya olinadi (takrorsiz o'quvchilar). Ilgari "Present emas" bo'lgan HAR yozuv (baho, kech ham)
+    /// sanalardi va guruhlar aralashardi.</para>
     /// </remarks>
     private static async Task<Streaks> AbsenceStreaksAsync(IAppDbContext db, string dayIso, CancellationToken ct)
     {
         var day = ParseDate(dayIso) ?? AppClock.Today;
-        var fromIso = day.AddDays(-AlertLookbackDays).ToString("yyyy-MM-dd");
-
-        var rows = await db.JournalEntries.AsNoTracking()
-            .Where(e => string.Compare(e.Date, fromIso) >= 0 && string.Compare(e.Date, dayIso) <= 0)
-            .Select(e => new { e.StudentId, e.Date, e.Present })
-            .ToListAsync(ct);
-
-        var studentIds = rows.Select(r => r.StudentId).Distinct().ToList();
-        var names = await db.Students.AsNoTracking()
-            .Where(s => studentIds.Contains(s.Id) && !s.IsArchived)
-            .Select(s => new { s.Id, s.FullName })
-            .ToDictionaryAsync(s => s.Id, s => s.FullName, ct);
+        var rows = await AbsenceStreakLoader.ComputeAsync(db, day, ct);
 
         var two = new List<KpiAlertRowDto>();
         var three = new List<KpiAlertRowDto>();
         foreach (var g in rows.GroupBy(r => r.StudentId))
         {
-            if (!names.TryGetValue(g.Key, out var name)) continue;   // arxivlangan — ro'yxatga kirmaydi
-            var ordered = g.OrderByDescending(r => r.Date, StringComparer.Ordinal).ToList();
-            var streak = 0;
-            foreach (var e in ordered)
-            {
-                if (e.Present) break;
-                streak++;
-            }
-            if (streak >= 3)
-                three.Add(new KpiAlertRowDto(g.Key, name,
-                    $"Ketma-ket {streak} dars kelmadi (oxirgisi {ordered[0].Date})",
+            var best = g.OrderByDescending(r => r.Streak.Count)
+                .ThenByDescending(r => r.Streak.LastDate, StringComparer.Ordinal).First();
+            var streak = best.Streak.Count;
+            if (streak >= AbsenceStreaks.Level3)
+                three.Add(new KpiAlertRowDto(g.Key, best.StudentName,
+                    $"Ketma-ket {streak} dars kelmadi (oxirgisi {best.Streak.LastDate})",
                     $"{LinkStudents}/{g.Key}"));
             else if (streak == 2)
-                two.Add(new KpiAlertRowDto(g.Key, name,
-                    $"Ketma-ket 2 dars kelmadi (oxirgisi {ordered[0].Date})",
+                two.Add(new KpiAlertRowDto(g.Key, best.StudentName,
+                    $"Ketma-ket 2 dars kelmadi (oxirgisi {best.Streak.LastDate})",
                     $"{LinkStudents}/{g.Key}"));
         }
         return new Streaks(two, three);

@@ -31,8 +31,17 @@ public class ClassAnalyticsController(AppDbContext db, DataCache dataCache) : Co
         var activeIds = groupMs.Where(m => m.IsActive).Select(m => m.StudentId).ToHashSet();
         var anyIds = groupMs.Select(m => m.StudentId).ToHashSet();
         return Analytics.BuildClass(cls, students, subjects, assignedSubjectIds, entries, notes,
-            lateReasonIds: lateIds, activeMemberIds: activeIds, anyMemberIds: anyIds);
+            lateReasonIds: lateIds, activeMemberIds: activeIds, anyMemberIds: anyIds,
+            boundsByStudent: BoundsByStudent(groupMs));
     }
+
+    /// <summary>A'zolik chegaralari (o'quvchi → <see cref="StudentJournalBuilder.Bounds"/>) — davomat foizi
+    /// a'zolik oynasi ichida hisoblansin (jurnal va o'quvchi profili bilan bir xil, SPEC P3.1).</summary>
+    private static Dictionary<string, StudentJournalBuilder.Bounds> BoundsByStudent(IEnumerable<StudentGroup> groupMs) =>
+        groupMs.GroupBy(m => m.StudentId, StringComparer.Ordinal)
+            .ToDictionary(g => g.Key,
+                g => StudentJournalBuilder.BoundsOf(g.OrderByDescending(m => m.IsActive).First()),
+                StringComparer.Ordinal);
 
     [HttpGet("api/admin/classes/{classId}/performance")]
     public async Task<ActionResult<ClassPerformanceDataDto>> Performance(string classId)
@@ -88,7 +97,8 @@ public class ClassAnalyticsController(AppDbContext db, DataCache dataCache) : Co
             var anyIds = groupMs.Select(m => m.StudentId).ToHashSet();
 
             var rows = Analytics.BuildClass(cls, students, subjects, assignedSubjectIds, entries, notes,
-                lateReasonIds: lateIds, activeMemberIds: activeIds, anyMemberIds: anyIds).Rows;
+                lateReasonIds: lateIds, activeMemberIds: activeIds, anyMemberIds: anyIds,
+                boundsByStudent: BoundsByStudent(groupMs)).Rows;
             var n = rows.Count;
             var att = rows.Where(r => r.Attendance.HasValue).Select(r => r.Attendance!.Value).ToList();
             result[cls.Id] = new ClassStatsDto(

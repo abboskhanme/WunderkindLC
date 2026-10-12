@@ -78,6 +78,8 @@ public static class BackupService
         "mcpClients", "mcpGrants", "mcpAuthCodes", "mcpTokens", "mcpAudit",
         // O'quvchi parollari seyfi (CRM Phase 6) — shifrlangan bo'lsa ham Telegram'ga ketmaydi (auth-sessions.md §6).
         "studentCredentials",
+        // Davomat seriyalari (U3d) — jurnaldan qayta hisoblanadi (hosila ma'lumot).
+        "absenceStreakAlerts",
     };
 
     /// <summary>Biznes jadvallarini JSON (UTF-8 baytlar) ko'rinishida yig'adi (siqilmagan — testlar va
@@ -179,6 +181,8 @@ public static class BackupService
         // Kassalar va kassadan kassaga ko'chirishlar — kassa QOLDIG'I shulardan tiklanadi.
         await Add("cashboxes", db.Cashboxes);
         await Add("cashboxTransfers", db.CashboxTransfers);
+        // Davomat jarimalari (U3c) — maoshdan ushlanadi, ya'ni PUL.
+        await Add("teacherAttendanceFines", db.TeacherAttendanceFines);
         await Add("studentDiscounts", db.StudentDiscounts);
         await Add("lessonDiscounts", db.LessonDiscounts);
         await Add("studentExtensions", db.StudentExtensions);

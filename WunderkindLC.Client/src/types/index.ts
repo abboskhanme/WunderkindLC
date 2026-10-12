@@ -1246,6 +1246,9 @@ export interface AbsenceReason {
   short: string
   /** "Kech keldi" turi — yo'qlik emas (davomatga ta'sir qilmaydi), baho qo'ysa bo'ladi */
   isLate: boolean
+  /** «Sababli (uzrli)» — uzrli yo'qlik (faqat analitika: ketma-ket kelmaslik seriyasini buzadi).
+   *  "Kech keldi" bilan birga bo'lmaydi (server 400). Eski javoblarda bo'lmasligi mumkin. */
+  isExcused?: boolean
 }
 
 export interface SchoolSettings {
@@ -1824,6 +1827,11 @@ export interface MonthSalary {
   /** «Hozir chiqadigan» — o'sha foiz, lekin HAQIQATAN TUSHGAN puldan. `chargedBase` oylarida `expected` dan
    *  kichik bo'lishi mumkin: farq — qarzdorlar to'lasa qo'shiladigan qism. Aks holda = expected. */
   collectedExpected?: number
+  /** DAVOMAT JARIMASI (CRM Phase 3) — shu oyda `expected` dan ayrilgan summa (faol jarimalar, ushlanmadan
+   *  keyingi qoldiqdan oshmaydi). */
+  attendanceFines?: number
+  /** Jarimali darslar soni. */
+  attendanceFineCount?: number
 }
 
 /** Maosh hisobida bitta guruhning ulushi (davr bo'yicha) */
@@ -1871,6 +1879,8 @@ export interface SalaryLedger {
   totalDeduction?: number
   /** true — maosh jurnalga bog'langan (Guruhlar → Jurnal boshqaruvi) */
   journalLinked?: boolean
+  /** Davr bo'yicha jami davomat jarimasi (maoshdan ayrilgan). */
+  totalAttendanceFines?: number
 }
 
 export interface SalaryReportRow {
@@ -1895,6 +1905,8 @@ export interface SalaryReportRow {
   deduction?: number
   /** Belgilanmagan darslar soni (davr bo'yicha) */
   missedLessons?: number
+  /** Davomat jarimalari (davr bo'yicha, maoshdan ayrilgan). */
+  attendanceFines?: number
 }
 
 /** O'quvchilar bo'yicha moliya hisoboti qatori (joriy holat) */

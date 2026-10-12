@@ -106,6 +106,9 @@ export interface GroupJournal {
   conductedDates: string[]
   /** Shu oyga tegishli dars ko'chirishlari (bir martalik). */
   reschedules: LessonReschedule[]
+  /** Davomati TO'LIQ olingan darslar (ommaviy davomat yoki hammasi belgilangan) — belgisiz o'quvchi faqat
+   *  SHU kunlarda avto-"keldi" (yagona ta'rif, SPEC P3.1). Eski server javobida bo'lmasligi mumkin. */
+  attendanceTakenDates?: string[]
 }
 
 /** Guruhning bitta oylik jurnali — ustunlar guruh dars kunlari bo'yicha avtomatik, qatorlar faqat faol o'quvchilar. */

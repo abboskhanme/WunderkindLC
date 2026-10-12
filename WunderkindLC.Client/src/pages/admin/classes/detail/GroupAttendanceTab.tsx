@@ -15,7 +15,8 @@ import type { GroupJournal, GroupJournalStudent } from '@/api/services/journal'
 import { balanceTextCls, cn, exportToCsv, formatDate, formatMoney } from '@/lib/utils'
 import type { BackState } from '@/lib/nav'
 import { TintedIconButton } from '@/components/ui/list/TintedIconButton'
-import { autoPresent, uzMonths } from './shared'
+import { uzMonths } from './shared'
+import { attendanceMark } from '@/lib/attendance'
 
 type CellKind = 'present' | 'late' | 'absent' | 'empty' | 'blocked'
 
@@ -44,6 +45,7 @@ export function GroupAttendanceTab({
   entryMap,
   reasonById,
   conductedSet,
+  attendanceTakenSet,
   phones,
   attendance,
   rescheduledDates,
@@ -58,6 +60,8 @@ export function GroupAttendanceTab({
   entryMap: Map<string, JournalEntry>
   reasonById: Map<string, AbsenceReason>
   conductedSet: Set<string>
+  /** Davomati TO'LIQ olingan darslar (`attendanceTakenDates`) — belgisiz o'quvchi faqat shu kunlarda "keldi". */
+  attendanceTakenSet: Set<string>
   /** studentId → telefon (guruh ro'yxatidan). */
   phones: Map<string, string>
   attendance: Map<string, AttendancePct>
@@ -104,20 +108,20 @@ export function GroupAttendanceTab({
       (!!g.startDate && date < g.startDate) ||
       (!!s.memberStart && date < s.memberStart) ||
       (isFrozenRow && !!s.frozenAt && date > s.frozenAt)
-    if (e?.grade != null || e?.mastery != null) return 'present'
-    if (reason) return reason.isLate ? 'late' : 'absent'
-    if (
-      autoPresent({
-        hasGrade: false,
-        hasReason: false,
-        conducted: conductedSet.has(date),
-        explicitPresent: !!e?.present,
-        date,
-        presentDefaultFrom: s.presentDefaultFrom,
-        blocked,
-      })
-    )
-      return 'present'
+    // YAGONA ta'rif (attendanceMark = server AttendanceRules): sabab baho'dan ustun (kech + baho = kech).
+    const mark = attendanceMark({
+      blocked: blocked && !e?.present,
+      hasReason: !!reason,
+      reasonIsLate: !!reason?.isLate,
+      explicitPresent: !!e?.present,
+      hasGrade: e?.grade != null,
+      hasMastery: e?.mastery != null,
+      conducted: conductedSet.has(date),
+      attendanceTaken: attendanceTakenSet.has(date),
+      date,
+      presentDefaultFrom: s.presentDefaultFrom,
+    })
+    if (mark === 'present' || mark === 'late' || mark === 'absent') return mark
     return blocked ? 'blocked' : 'empty'
   }
 

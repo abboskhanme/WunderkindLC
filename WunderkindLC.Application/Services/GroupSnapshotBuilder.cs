@@ -116,29 +116,32 @@ public static class GroupSnapshotBuilder
         var reasonById = reasons.ToDictionary(r => r.Id);
         var lateIds = reasons.Where(r => r.IsLate).Select(r => r.Id).ToHashSet();
 
-        // ---------- 5. Davomat (jurnaldagi "Davomat" tabi bilan bir xil qoida) ----------
+        // ---------- 5. Davomat — YAGONA ta'rif (AttendanceRules, SPEC P3.1) ----------
+        // Kech = keldi; davomat olingan + belgisiz = keldi; davomat olinmagan + belgisiz = BELGILANMAGAN
+        // (foizga kirmaydi). Jurnal, o'quvchi profili va portal bilan bir xil.
         var entryByKey = entries
-            .Where(e => e.ReasonId != null)
             .GroupBy(e => (e.StudentId, e.Date))
-            .ToDictionary(g => g.Key, g => g.First().ReasonId!);
+            .ToDictionary(g => g.Key, g => g.First());
+        var takenByDate = conductedNotes
+            .GroupBy(n => n.Date, StringComparer.Ordinal)
+            .ToDictionary(g => g.Key, g => g.Any(n => n.AttendanceTaken), StringComparer.Ordinal);
 
         (int Held, int Absent, int? Pct) AttendanceOf(StudentGroup m, string? monthFilter = null)
         {
-            var start = JournalService.MemberStart(m);
-            var end = m.Status == "frozen" && m.FrozenAt is { Length: >= 10 } ? m.FrozenAt[..10]
-                    : !m.IsActive && m.LeftAt is { Length: >= 10 } ? m.LeftAt[..10]
-                    : null;
-            var held = 0;
-            var absent = 0;
+            var bounds = StudentJournalBuilder.BoundsOf(m);
+            var marks = new List<LessonMark>();
             foreach (var d in conductedDates)
             {
                 if (monthFilter != null && MonthOf(d) != monthFilter) continue;
-                if (start != null && string.CompareOrdinal(d, start) < 0) continue;
-                if (end != null && string.CompareOrdinal(d, end) > 0) continue;
-                held++;
-                if (entryByKey.TryGetValue((m.StudentId, d), out var rid) && !lateIds.Contains(rid)) absent++;
+                if (bounds.MemberStart != null && string.CompareOrdinal(d, bounds.MemberStart) < 0) continue;
+                if (bounds.MemberEnd != null && string.CompareOrdinal(d, bounds.MemberEnd) > 0) continue;
+                var e = entryByKey.GetValueOrDefault((m.StudentId, d));
+                var reason = e?.ReasonId is not null ? reasonById.GetValueOrDefault(e.ReasonId) : null;
+                marks.Add(AttendanceRules.Classify(true, takenByDate.GetValueOrDefault(d), false,
+                    AttendanceRules.BeforePresentDefault(d, bounds.PresentDefaultFrom), e, reason));
             }
-            return (held, absent, held > 0 ? (int)Math.Round((held - absent) * 100.0 / held) : null);
+            var t = AttendanceRules.Tally(marks);
+            return (t.Held, t.Absent, t.Percent);
         }
 
         var attendanceAll = memberships.Select(m => AttendanceOf(m)).ToList();

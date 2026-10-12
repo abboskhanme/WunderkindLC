@@ -41,7 +41,7 @@ public class SettingsController(AppDbContext db, TelegramService telegram, IWebH
     public async Task<ActionResult<SchoolSettingsDto>> Get()
     {
         var reasons = await db.AbsenceReasons
-            .Select(r => new AbsenceReasonDto(r.Id, r.Name, r.Short, r.IsLate)).ToListAsync();
+            .Select(r => new AbsenceReasonDto(r.Id, r.Name, r.Short, r.IsLate, r.IsExcused)).ToListAsync();
         var quarters = await TuitionService.SyntheticPeriodsAsync(db);
         // Dars vaqtlari (qo'ng'iroqlar jadvali) olib tashlandi — bo'sh ro'yxat.
         return new SchoolSettingsDto(new List<LessonTimeDto>(), reasons, quarters);
@@ -492,6 +492,11 @@ public class SettingsController(AppDbContext db, TelegramService telegram, IWebH
         // o'tgan kechikishlar yo'qlikka aylanib ketardi (AbsenceReasonRules izohi).
         if (await AbsenceReasonRules.ValidateReplaceAsync(db, incoming) is { } error)
             return BadRequest(new { message = error });
+        // «Kech keldi» + «Sababli» bir vaqtda — rad (SPEC P3.1). «Sababli» bayrog'i ishlatilgan sababda ham
+        // o'zgaradi (faqat analitika), shuning uchun ValidateReplaceAsync uni tekshirmaydi.
+        foreach (var r in incoming)
+            if (AbsenceReasonRules.ExcusedError(r.IsLate, r.IsExcused) is { } excusedError)
+                return BadRequest(new { message = $"«{r.Name}»: {excusedError}" });
 
         // Joyida yangilash (upsert) — id'lar saqlanadi (jurnal yozuvlari reasonId orqali bog'langan).
         var existing = await db.AbsenceReasons.ToListAsync();
@@ -510,14 +515,19 @@ public class SettingsController(AppDbContext db, TelegramService telegram, IWebH
                 if (row.Name != r.Name) changes.Add($"«{row.Name}» → «{r.Name}»");
                 if (row.Short != r.Short) changes.Add($"«{r.Name}» qisqa nomi: {row.Short} → {r.Short}");
                 if (row.IsLate != r.IsLate) changes.Add($"«{r.Name}»: kech keldi {(r.IsLate ? "yoqildi" : "o'chirildi")}");
+                if (row.IsExcused != r.IsExcused) changes.Add($"«{r.Name}»: sababli (uzrli) {(r.IsExcused ? "yoqildi" : "o'chirildi")}");
                 row.Name = r.Name;
                 row.Short = r.Short;
                 row.IsLate = r.IsLate;
+                row.IsExcused = r.IsExcused;
             }
             else
             {
-                changes.Add($"qo'shildi «{r.Name}»" + (r.IsLate ? " (kech keldi)" : ""));
-                db.AbsenceReasons.Add(new AbsenceReason { Id = r.Id, Name = r.Name, Short = r.Short, IsLate = r.IsLate });
+                changes.Add($"qo'shildi «{r.Name}»" + (r.IsLate ? " (kech keldi)" : r.IsExcused ? " (sababli)" : ""));
+                db.AbsenceReasons.Add(new AbsenceReason
+                {
+                    Id = r.Id, Name = r.Name, Short = r.Short, IsLate = r.IsLate, IsExcused = r.IsExcused,
+                });
             }
         }
         audit.Record("AbsenceReason", "absence-reasons", "update",

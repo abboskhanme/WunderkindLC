@@ -70,6 +70,8 @@ import {
   getTeacherRetentionBonuses,
   type TeacherRetentionSummary,
 } from '@/api/services/retentionBonus'
+import { getAttendanceFines } from '@/api/services/attendanceFines'
+import { AttendanceFineLine } from '@/components/salary/AttendanceFineLine'
 
 type Tab = 'info' | 'groups' | 'rating' | 'salary' | 'bonus' | 'performance' | 'fikrlar' | 'ai'
 
@@ -1422,6 +1424,21 @@ export function TeacherDetailPage() {
                   </div>
                 )}
               </div>
+            )}
+
+            {/* Davomat jarimasi (CRM Phase 3) — sanalar ro'yxati moliya ruxsati bilan */}
+            {selMonthData && (selMonthData.attendanceFines ?? 0) > 0 && (
+              <AttendanceFineLine
+                key={selMonthData.month}
+                className="mt-3"
+                amount={selMonthData.attendanceFines ?? 0}
+                count={selMonthData.attendanceFineCount ?? 0}
+                load={
+                  can('finance.main', 'view') && id
+                    ? () => getAttendanceFines({ month: selMonthData.month, teacherId: id })
+                    : undefined
+                }
+              />
             )}
 
             {/* Jurnal ushlanmasi tafsiloti (bo'lsa) */}

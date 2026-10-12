@@ -14,6 +14,7 @@
  */
 import {
   IconBrandInstagram,
+  IconBellRinging,
   IconBuildingCommunity,
   IconChecklist,
   IconClockHour4,
@@ -27,6 +28,7 @@ import {
   IconPlugConnected,
   IconReceipt,
   IconSchool,
+  IconShieldCheck,
   IconSparkles,
   IconTrophy,
   IconUserCheck,
@@ -41,7 +43,15 @@ export type SettingsGroupKey = 'umumiy' | 'moliya' | 'oquv' | 'sotuv' | 'ilova'
 export type SettingsPanelKey = 'check' | 'school' | 'account' | 'reasons' | 'channels' | 'azure' | 'gemini' | 'mcp'
 
 /** Qatordan ochiladigan oyna (mavjud modallar). */
-export type SettingsModalKey = 'journal-edit' | 'journal-payment' | 'journal-salary' | 'retention'
+export type SettingsModalKey =
+  | 'journal-edit'
+  | 'journal-payment'
+  | 'journal-salary'
+  | 'retention'
+  // Davomat intizomi va «kelmadi» xabarlari (CRM Phase 3, SPEC P3.2) — server `AttendanceSettingsController` (`classes`).
+  | 'attendance-discipline'
+  | 'absent-notice'
+  // Reyting sozlamalari (CRM Phase 4)
   | 'rating'
 
 /** Ruxsat: `perm` — shu kalit (+ `action`), yo'q bo'lsa hamma ko'radi. */
@@ -199,6 +209,16 @@ export const SETTINGS_GROUPS: SettingsGroup[] = [
             key: 'davomat', title: 'Davomat sozlamalari', icon: IconClockHour4, color: BLUE,
             sub: "Baho va davomat kiritish muddati, o'tilgan dars qoidasi",
             open: { modal: 'journal-edit' }, ...JOURNAL,
+          },
+          {
+            key: 'davomat-intizomi', title: 'Davomat intizomi', icon: IconShieldCheck, color: ORANGE,
+            sub: 'Eslatma, jarima va administratorga xabar',
+            open: { modal: 'attendance-discipline' }, ...JOURNAL,
+          },
+          {
+            key: 'davomat-xabarlari', title: 'Davomat xabarlari', icon: IconBellRinging, color: CYAN,
+            sub: 'Ota-onaga "kelmadi" xabari vaqti va tasdiqlash',
+            open: { modal: 'absent-notice' }, ...JOURNAL,
           },
           {
             key: 'topshiriq', title: 'Baholash mezonlari', icon: IconFileText, color: PINK,

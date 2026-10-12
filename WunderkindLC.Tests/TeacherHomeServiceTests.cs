@@ -152,9 +152,13 @@ public class TeacherHomeServiceTests
     [Fact]
     public void Davomat_foizi_kech_kelgan_KELGAN_hisoblanadi()
     {
+        // Katakning belgisi — YAGONA ta'rif (AttendanceRules.Classify, SPEC P3.1), BuildCells bilan bir xil;
+        // "noma'lum" = davomat olinmagan/kiritilishidan oldingi, belgisiz dars.
         StudentJournalBuilder.Cell C(bool conducted, bool present = false, string? reason = null, bool late = false,
             bool blocked = false, bool unknown = false) =>
-            new("2026-09-01", 1, conducted, blocked, present, unknown, null, reason, reason, late, 0, 0, null, "", "");
+            new("2026-09-01", 1, conducted, blocked, present, unknown, null, reason, reason, late, 0, 0, null, "", "",
+                AttendanceRules.Classify(conducted, attendanceTaken: !unknown, blocked, beforePresentDefault: false,
+                    present, null, false, reason is null ? null : new AbsenceReason { Name = reason, IsLate = late }));
 
         var cells = new[]
         {

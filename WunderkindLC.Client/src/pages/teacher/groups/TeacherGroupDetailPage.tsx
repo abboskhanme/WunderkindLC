@@ -30,6 +30,8 @@ import { localIsoDate } from '@/lib/localDate'
 import { TeacherGroupTestsPanel } from '@/pages/teacher/tests/TeacherGroupTestsPanel'
 import { TeacherGroupStudentsTab } from './TeacherGroupStudentsTab'
 import { ballGrade } from '@/lib/studentBall'
+import { attendanceMark, attendanceTally } from '@/lib/attendance'
+import { autoPresent } from '@/pages/admin/classes/detail/shared'
 
 const weekdayShort = ['Du', 'Se', 'Cho', 'Pa', 'Ju', 'Sha', 'Ya']
 const uzMonths = [
@@ -155,6 +157,8 @@ export function TeacherGroupDetailPage() {
     [journal],
   )
   const conductedSet = useMemo(() => new Set(journal?.conductedDates ?? []), [journal])
+  // Davomati TO'LIQ olingan darslar — belgisiz o'quvchi FAQAT shu kunlarda avto-"keldi" (SPEC P3.1).
+  const attendanceTakenSet = useMemo(() => new Set(journal?.attendanceTakenDates ?? []), [journal])
   // O'quvchilari jurnalga kiritilgan va baholashga kiritilgan baholarning yig'indisi bo'yicha saralash.
   const sortedAndScoredStudents = useMemo(() => {
     const students = (journal?.students ?? []).filter((s) => s.status !== 'frozen')
@@ -205,24 +209,37 @@ export function TeacherGroupDetailPage() {
     [reasons],
   )
 
-  // Davomat tabi: shu oy jurnalidan har o'quvchi bo'yicha davomat foizi (yangi so'rovsiz).
+  // Davomat tabi: shu oy jurnalidan har o'quvchi bo'yicha davomat foizi (yangi so'rovsiz). YAGONA ta'rif
+  // (`attendanceMark` = server `AttendanceRules`, SPEC P3.1): kech = KELGAN; davomati olinmagan + belgisiz
+  // dars — BELGILANMAGAN (foizga kirmaydi). Admin guruh sahifasi va o'quvchi portali bilan bir xil.
   const attendanceRows = useMemo(() => {
-    const conducted = journal?.conductedDates ?? []
+    const columns = journal?.columns ?? []
+    const groupStart = journal?.group.startDate || ''
     return journalStudents.map((st) => {
-      // O'quvchi guruhga qo'shilgandan (memberStart) keyingi o'tilgan darslar.
-      const myConducted = conducted.filter((d) => !st.memberStart || d >= st.memberStart)
-      const total = myConducted.length
-      // Sababli kelmagan darslar (kech qolgan mustasno).
-      let absences = 0
-      for (const d of myConducted) {
+      const marks = columns.map((c) => {
+        const d = c.date
         const e = entryMap.get(`${st.studentId}|${d}`)
-        if (e?.reasonId && !lateReasonIds.has(e.reasonId)) absences += 1
-      }
-      const present = total - absences
-      const percent = total > 0 ? Math.round((present / total) * 100) : 0
+        return attendanceMark({
+          blocked: (!!groupStart && d < groupStart) || (!!st.memberStart && d < st.memberStart),
+          hasReason: !!e?.reasonId,
+          reasonIsLate: !!e?.reasonId && lateReasonIds.has(e.reasonId),
+          explicitPresent: !!e?.present,
+          hasGrade: e?.grade != null,
+          hasMastery: e?.mastery != null,
+          conducted: conductedSet.has(d),
+          attendanceTaken: attendanceTakenSet.has(d),
+          date: d,
+          presentDefaultFrom: st.presentDefaultFrom,
+        })
+      })
+      const t = attendanceTally(marks)
+      const total = t.held
+      const present = t.attended
+      const absences = t.absent
+      const percent = t.pct ?? 0
       return { studentId: st.studentId, fullName: st.fullName, photoUrl: st.photoUrl ?? '', balance: st.balance, debtor: st.debtor, debtMonths: st.debtMonths, total, present, absences, percent }
     })
-  }, [journalStudents, journal, entryMap, lateReasonIds])
+  }, [journalStudents, journal, entryMap, lateReasonIds, conductedSet, attendanceTakenSet])
 
   const handleSave = async (
     grade: number | null,
@@ -620,9 +637,14 @@ export function TeacherGroupDetailPage() {
                             // BOR yoki sana o'quvchi tizimga kiritilganidan (presentDefaultFrom) keyin) —
                             // orqaga sanalgan a'zolikda ko'rib chiqilmagan darslar avto-"keldi" bo'lmaydi,
                             // lekin o'qituvchi "Keldi"/"hammasi keldi" bosgan (e.present) katak yashil bo'ladi.
-                            const present =
-                              e?.grade == null && !reason && conductedSet.has(c.date) &&
-                              (e?.present || !st.presentDefaultFrom || c.date >= st.presentDefaultFrom)
+                            const present = autoPresent({
+                              hasGrade: e?.grade != null,
+                              hasReason: !!reason,
+                              attendanceTaken: attendanceTakenSet.has(c.date),
+                              explicitPresent: !!e?.present,
+                              date: c.date,
+                              presentDefaultFrom: st.presentDefaultFrom,
+                            })
                             const masteryInfo = e?.mastery != null ? masteryDisplay(e.mastery) : { label: '', cls: '' }
                             return (
                               <td

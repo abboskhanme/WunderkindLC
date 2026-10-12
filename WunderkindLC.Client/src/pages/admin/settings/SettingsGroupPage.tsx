@@ -13,6 +13,8 @@ import {
 import { JournalPolicyModal, type JournalPolicySection } from '@/pages/admin/classes/JournalPolicyModal'
 import { RetentionSettingsModal } from '@/pages/admin/students/RetentionSettingsModal'
 import { RatingSettingsModal } from '@/components/rating/RatingSettingsModal'
+import { AttendanceDisciplineModal } from './AttendanceDisciplineModal'
+import { AbsentNoticeSettingsModal } from './AbsentNoticeSettingsModal'
 import { ReasonsPage } from '@/pages/admin/reasons/ReasonsPage'
 import { AccountSettings } from '@/pages/admin/account/AccountSettings'
 import { SchoolSettings } from './SchoolSettings'
@@ -197,6 +199,8 @@ const JOURNAL_MODALS: Partial<Record<SettingsModalKey, { sections: JournalPolicy
 function SettingsModals({ modal, onClose }: { modal: SettingsModalKey | null; onClose: () => void }) {
   if (modal === 'retention') return <RetentionSettingsModal onClose={onClose} onSaved={onClose} />
   if (modal === 'rating') return <RatingSettingsModal onClose={onClose} />
+  if (modal === 'attendance-discipline') return <AttendanceDisciplineModal open onClose={onClose} />
+  if (modal === 'absent-notice') return <AbsentNoticeSettingsModal open onClose={onClose} />
   const journal = modal ? JOURNAL_MODALS[modal] : undefined
   return (
     <JournalPolicyModal

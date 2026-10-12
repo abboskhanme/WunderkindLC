@@ -305,7 +305,10 @@ public record MonthSalaryDto(
     /// <paramref name="ChargedBase"/> oylarida <paramref name="Expected"/> dan kichik bo'lishi mumkin:
     /// farq — qarzdorlar to'lasa qo'shiladigan qism (foydalanuvchi qarori, 2026-10-07: rasmiy oylik
     /// hisoblangandan, o'qituvchiga esa "hozir tushgan puldan" ham ko'rsatiladi). Aks holda = Expected.</summary>
-    decimal CollectedExpected = 0);
+    decimal CollectedExpected = 0,
+    /// <summary>DAVOMAT JARIMALARI (CRM Phase 3, U3c) — shu oyning FAOL jarimalari, <c>Expected</c> dan ayrilgan
+    /// (ushlanmalardan keyingi qoldiqdan oshmaydi). <paramref name="AttendanceFineCount"/> — jarimali darslar soni.</summary>
+    decimal AttendanceFines = 0, int AttendanceFineCount = 0);
 /// <summary>
 /// Maosh hisobida bitta guruhning ulushi (davr bo'yicha): qaysi rejim (foiz/qat'iy), qiymati,
 /// shu davrda guruhdan yig'ilgan to'lov bazasi va shu guruh keltirgan hisoblangan maosh.
@@ -321,7 +324,8 @@ public record SalaryLedgerDto(
     List<MonthSalaryDto> Months, List<PaymentDto> Payments,
     string SalaryMode = "fixed", decimal SalaryPercent = 0,
     List<GroupSalaryLineDto>? Groups = null,
-    decimal TotalDeduction = 0, bool JournalLinked = false);
+    decimal TotalDeduction = 0, bool JournalLinked = false,
+    decimal TotalAttendanceFines = 0);
 
 /// <summary>O'qituvchi guruhlari maosh sozlamasini yangilash (per-guruh foiz/qat'iy summa).</summary>
 public record GroupSalaryItemDto(string GroupId, string Mode, decimal Percent, decimal Fixed);
@@ -330,7 +334,8 @@ public record SalaryReportRowDto(
     string TeacherId, string TeacherName, decimal Salary, decimal TotalPaid, int PaymentsCount,
     int Months, decimal Expected, decimal Remaining,
     string SalaryMode = "fixed", decimal SalaryPercent = 0,
-    decimal Deduction = 0, int MissedLessons = 0);
+    decimal Deduction = 0, int MissedLessons = 0,
+    decimal AttendanceFines = 0);
 
 /// <summary>O'qituvchilar davomati — oylik board (o'qituvchilar + belgilangan kunlar).</summary>
 public record TeacherNameDto(string Id, string FullName, string StartDate = "");
@@ -981,7 +986,7 @@ public record DailyAbsenceDto(
     string Date, int ConductedGroups, int MarkedStudents, int AbsentCount, int LateCount,
     List<AbsentStudentDto> Rows,
     // KELGANLAR (davomat olingan o'quvchilar − kelmaganlar; kech kelgan KELGAN) va SABABSIZ qoldirganlar
-    // (sabab nomida "sababsiz" — bulk davomat aynan shu nomli sababni avtomatik yaratadi). 2026-10-07.
+    // (sabab «Sababli» EMAS — AbsenceReason.IsExcused, 2026-10-12; ilgari nom ichidan "sababsiz" qidirilardi).
     int PresentCount = 0, int UnexcusedCount = 0);
 
 /// <summary>O'quvchi jurnalidagi bitta dars (faqat o'qish uchun).</summary>
@@ -1063,7 +1068,11 @@ public record GroupJournalStudentDto(
 public record GroupJournalDto(
     GroupJournalInfoDto Group, List<string> Months, string Month,
     List<JournalColumnDto> Columns, List<GroupJournalStudentDto> Students, List<JournalEntryDto> Entries,
-    List<string> ConductedDates, List<LessonRescheduleDto> Reschedules);
+    List<string> ConductedDates, List<LessonRescheduleDto> Reschedules,
+    // Davomati TO'LIQ olingan darslar (LessonNote.AttendanceTaken) — belgisiz o'quvchi faqat SHU kunlarda
+    // avto-"keldi" (AttendanceRules, SPEC P3.1). ConductedDates'dan farqi: bitta baho darsni "o'tildi"
+    // qiladi, lekin davomatni olmaydi.
+    List<string>? AttendanceTakenDates = null);
 /// <summary>Bitta darsning BIR MARTALIK boshqa kunga ko'chirilishi (shu oyga tegishli). ToDate — jurnalda
 /// ko'rinadigan yangi ustun; FromDate — asl (endi yo'q) kun; Time — yangi vaqt (ixtiyoriy, "HH:mm").</summary>
 public record LessonRescheduleDto(string Id, string FromDate, string ToDate, string? Time);
@@ -1093,7 +1102,7 @@ public record JournalPolicyDto(
 
 /* ---------- Settings ---------- */
 public record LessonTimeDto(int Period, string StartTime, string EndTime);
-public record AbsenceReasonDto(string Id, string Name, string Short, bool IsLate);
+public record AbsenceReasonDto(string Id, string Name, string Short, bool IsLate, bool IsExcused = false);
 /// <summary>Jadval/hafta navigatsiyasi uchun davr oralig'i. Markazda chorak tizimi YO'Q —
 /// bu o'quv yili oralig'idan sintez qilingan bitta davr (frontend hafta hisobi uchun).</summary>
 public record QuarterPeriodDto(int Quarter, string StartDate, string EndDate, bool GradesOpen);

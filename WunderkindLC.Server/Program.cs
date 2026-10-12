@@ -816,8 +816,8 @@ if (CashboxService.EnsureMain(db))
         {
             db.AbsenceReasons.AddRange(
                 new AbsenceReason { Name = "Sababsiz", Short = "S" },
-                new AbsenceReason { Name = "Kasal", Short = "K" },
-                new AbsenceReason { Name = "Sababli", Short = "SB" },
+                new AbsenceReason { Name = "Kasal", Short = "K", IsExcused = true },
+                new AbsenceReason { Name = "Sababli", Short = "SB", IsExcused = true },
                 new AbsenceReason { Name = "Kech keldi", Short = "KK", IsLate = true });
             db.SaveChanges();
             app.Logger.LogInformation("[seed] 4 ta davomat sababi yaratildi");
