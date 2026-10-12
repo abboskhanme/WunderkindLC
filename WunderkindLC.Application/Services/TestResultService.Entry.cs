@@ -22,7 +22,7 @@ public static partial class TestResultService
     /// <summary>Before/after snapshot of the editable fields (no ids, no file paths).</summary>
     public static object Snapshot(TestResult t) => new
     {
-        t.Name, t.Date, Kind = TestEntryRules.KindLabel(t.Kind), t.QuestionCount, t.MaxScore,
+        Test = t.Name, t.Date, Kind = TestEntryRules.KindLabel(t.Kind), t.QuestionCount, t.MaxScore,
     };
 
     /// <summary>Mean percent (one decimal) of the given scores against <paramref name="max"/>; null when none.</summary>
@@ -75,7 +75,7 @@ public static partial class TestResultService
     public static async Task<(GroupTestDto? Dto, string? Error)> CreateEntryAsync(
         IAppDbContext db, CreateTestResultRequest req, string createdBy, AuditService? audit = null)
     {
-        var group = await db.Classes.FindAsync(req.GroupId);
+        var group = string.IsNullOrWhiteSpace(req.GroupId) ? null : await db.Classes.FindAsync(req.GroupId);
         if (group is null) return (null, "Guruh topilmadi");
         var err = TestEntryRules.ValidateNew(req.Name, req.Kind, req.QuestionCount);
         if (err is not null) return (null, err);
