@@ -95,10 +95,11 @@ ko'chirishdan oldin o'zingiz tekshiring.
 | Guruhlar | "English A1 guruhi a'zolari", "Oktabr jurnali xulosasi", "Xonalar bandligi", "2-qavatdagi xonalar" | Guruhlar va jurnal / Xonalar / Kurslar |
 | Davomat | "Bugun kim kelmadi?", "Sababsiz kelmaganlar", "Davomati olinmagan darslar", "Alining oxirgi oydagi davomati", "Ketma-ket 3 dars kelmaganlar (qizil ro'yxat)" | O'quvchilar davomati / Davomat qilinmagan guruhlar |
 | Davomat intizomi | "Bu hafta qaysi o'qituvchi davomatni kech oldi?", "Kecha davomat olinmagan darslar" | Davomat qilinmagan guruhlar (jarima summasi — Moliya) |
+| Davomat xabarlari | "Bugun nechta «kelmadi» xabari tasdiq kutyapti?", "Kim xabarni to'xtatdi?", "Kechagi «kelmadi» xabarlari ota-onalarga yetib bordimi?" | Davomat xabarlari nazorati |
 | Moliya | "Eng katta 10 ta qarzdor", "Sentabr kirim va chiqim", "Kassalar qoldig'i", "O'qituvchilar maoshi", "Oktabr davomat jarimalari" | Moliya (kirim/chiqim, hisobotlar, maosh, jarimalar) |
 | Telegram xabarlar | "Kechagi e'lonni nechta ota-ona qabul qildi?", "Kimlar botni bloklagan?", "Bu hafta nechta «kelmadi» xabari ketdi?" | Telegram xabarlar (o'quvchining o'z xabarlari — O'quvchilar ham) |
 | Lidlar | "Oxirgi 30 kun voronkasi", "Yo'qotilgan lidlar sabablari" | Lidlar / CRM statistika |
-| Testlar va reyting | "Guruh testlari natijalari", "Oktabr reytingi TOP-20 (testlar + ball)", "Alining 3 oylik reytingi", "English A1 o'quv yili reytingi" | Testlar natijalari / Reyting (guruh reytingi — Guruhlar ham, o'quvchi reytingi — O'quvchilar ham) |
+| Testlar va reyting | "Oktabrdagi oylik testlar va o'rtacha foizlari", "Unit 5 testida kim nechta savol yechdi?", "Alining oraliq testlari", "Oktabr reytingi TOP-20 (testlar + ball)", "Alining 3 oylik reytingi", "Sentabr TOP/BOTTOM ro'yxati (ota-onalarga ketadigan)" | Testlar natijalari / Reyting (guruh reytingi — Guruhlar ham, o'quvchi reytingi — O'quvchilar ham; TOP/BOTTOM — Reyting) |
 | O'qituvchilar va jadval | "O'qituvchilar ro'yxati", "Shu haftaning jadvali", "Jadvalda to'qnashuvlar bormi?", "Bo'sh xonalar" | O'qituvchilar / Dars jadvali |
 | Boshqa | "Bog'lanish navbati", "Tasdiq kutayotgan topshiriqlar", "O'zgarishlar tarixi" | Bog'lanish kerak / Topshiriqlar / O'zgarishlar tarixi |
 
@@ -109,9 +110,11 @@ Cheklovlar: bitta ro'yxat ko'pi bilan **200 qator** (qarzdorlar va maosh — 50)
 bilan **60 soniya**; bitta ulanishdan daqiqasiga 120 tadan ortiq so'rov qabul qilinmaydi.
 
 Raqamlar panel bilan **bir xil**: davomat — yagona ta'rif (kech kelgan KELGAN, «sababsiz» — sababning «Sababli (uzrli)»
-belgisi bo'yicha, davomat «olingan» — birinchi «keldi»/«kelmadi» belgisi; faqat baho davomat emas); reyting — testlar +
-ball (Hisobotlar → Reyting bilan bir xil hisob). Qizil ro'yxat va reyting **5 daqiqagacha** eskirgan bo'lishi mumkin
-(server keshi).
+belgisi bo'yicha, davomat «olingan» — birinchi «keldi»/«kelmadi» belgisi; faqat baho davomat emas — dars jadvalidagi
+«davomat olingan» belgisi ham shu); reyting — testlar + ball (Hisobotlar → Reyting bilan bir xil hisob); test foizi —
+yechilgan savollar ÷ savollar soni (panel bilan bir xil, 0–100); TOP/BOTTOM — oylik avto-xabar yuboradigan AYNAN o'sha
+ro'yxat (AI faqat ko'radi, yubormaydi). Davomat xabarlari navbatini AI faqat KO'RADI — to'xtatish, tasdiqlash va bekor
+qilish faqat panelda. Qizil ro'yxat va reyting **5 daqiqagacha** eskirgan bo'lishi mumkin (server keshi).
 
 ## 5. Ulanishlarni ko'rish va bekor qilish
 

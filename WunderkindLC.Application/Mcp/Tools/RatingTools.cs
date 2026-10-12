@@ -17,6 +17,9 @@ namespace WunderkindLC.Application.Mcp.Tools;
 /// <see cref="RatingEngine.GroupTable"/>, <see cref="RatingEngine.StudentBlockAsync"/>) — the numbers never disagree.
 /// The MCP cache keeps a period for 5 minutes (the panel's key, TTL only).</para>
 ///
+/// <para>The monthly TOP/BOTTOM preview (<c>rating_top_bottom</c>, U4d) is <see cref="TopBottomService.BuildAsync"/> over the
+/// same cached month — what the monthly notifier sends; N and the scope come from the allow-listed CenterMeta columns.</para>
+///
 /// <para>The legacy ball-only views stay as they were: <c>rating_group</c> (the group page's «Ball tafsiloti») and
 /// <c>rating_center</c> (the old portal centre rating by collected ball).</para>
 /// </summary>
@@ -174,5 +177,65 @@ public sealed class RatingTools(McpToolContext t)
             note = FormulaNote + " «centre.prevRank» — oldingi davrdagi o'rin (oy → o'tgan oy, 3 oy → undan oldingi 3 oy, "
                 + "o'quv yili → o'tgan o'quv yili); testdagi o'rin — o'sha testda ball olgan hamma orasida.",
         }, 1);
+    }
+
+    // =====================================================================================
+    //  rating_top_bottom — RatingController.TopBottom (TopBottomService.BuildAsync, U4d)
+    // =====================================================================================
+
+    [McpServerTool(Name = "rating_top_bottom", Title = "Oylik TOP / BOTTOM (testlar bo'yicha)",
+        ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
+    [Description("«Hisobotlar → Reyting → TOP/BOTTOM» oldindan ko'rish bilan bir xil — oylik avto-xabar AYNAN shu ro'yxatni "
+        + "yuboradi: tanlangan oyda (sukut — O'TGAN oy, ya'ni navbatdagi yuborish ishlatadigan oy) testlar o'rtacha FOIZI (T) "
+        + "eng yuqori (TOP) va eng past (BOTTOM) o'quvchilar. Ro'yxat hajmi k = min(N, ⌊n/2⌋): N — sozlama (1..10), n — "
+        + "o'sha oyda testi bor o'quvchilar; T si TOP dagi kimdir bilan teng o'quvchi BOTTOM ga tushmaydi; oyda testi yo'qlar "
+        + "qaralmaydi. Qamrov: group — har guruh alohida (kamida 2 ta testi bor o'quvchi bo'lsa), centre — bitta markaz "
+        + "ro'yxati (o'quvchi T = guruhlaridagi T lar o'rtachasi); sukut — sozlamadagi. Har qatorda: o'quvchi, T va o'rin "
+        + "(teng T — bir xil o'rin). Faqat KO'RISH — hech narsa yubormaydi (yuborish qoidalari — auto_message_rules, "
+        + "rating_top / rating_bottom). Sahifalangan (guruhlar). Monthly TOP/BOTTOM students by test average (preview).")]
+    public async Task<string> RatingTopBottom(
+        [Description("Oy YYYY-MM (sukut — o'tgan oy; kelajakdagi oy bo'lmaydi)")] string? month = null,
+        [Description("Qamrov: group (har guruh) | centre (markaz) — sukut: sozlamadagi")] string? scope = null,
+        [Description("Faqat shu guruh ro'yxati (group qamrovida; groups_list natijasidan id)")] string? groupId = null,
+        [Description("Sahifa (1 dan)")] int? page = null,
+        [Description("Sahifa hajmi — guruhlar (1..200, sukut 50)")] int? pageSize = null,
+        CancellationToken ct = default)
+    {
+        t.Require(McpAreas.Rating);
+        var sc = string.IsNullOrWhiteSpace(scope) ? null : scope.Trim().ToLowerInvariant();
+        if (sc is not null && sc is not (TopBottomRules.ScopeGroup or TopBottomRules.ScopeCentre))
+            throw new McpException("«scope»: group | centre.");
+        var gid = string.IsNullOrWhiteSpace(groupId) ? null : groupId.Trim();
+
+        var (dto, _, error) = await TopBottomService.BuildAsync(t.Db, Loader(ct), month, sc, McpToolContext.Today, ct);
+        if (dto is null)
+            throw new McpException((error ?? RatingPeriods.InvalidMessage) + ": month — YYYY-MM, kelajakdagi oy bo'lmaydi.");
+
+        var groups = dto.Groups.Where(g => gid is null || g.GroupId == gid).ToList();
+        var p = McpToolContext.Page(page);
+        var size = McpToolContext.PageSize(pageSize);
+        var items = groups.Skip((p - 1) * size).Take(size).Select(g => new
+        {
+            group = new { id = g.GroupId, name = g.GroupName },
+            scored = g.Scored,
+            top = g.Top.Select(r => new { r.StudentId, r.FullName, testAvg = r.TestAvg, r.Rank }),
+            bottom = g.Bottom.Select(r => new { r.StudentId, r.FullName, testAvg = r.TestAvg, r.Rank }),
+        }).ToList();
+
+        return t.Json(new
+        {
+            month = dto.Month, monthLabel = dto.MonthLabel, scope = dto.Scope, count = dto.Count,
+            summary = new
+            {
+                lists = groups.Count,
+                topStudents = groups.Sum(g => g.Top.Count),
+                bottomStudents = groups.Sum(g => g.Bottom.Count),
+            },
+            note = "T — oydagi testlar o'rtacha foizi (har test teng vaznda), o'rin — shu ro'yxat (guruh yoki markaz) ichida, "
+                + "«scored» — o'sha oyda testi bor o'quvchilar (xabardagi «o'rin / n» ning n i). BOTTOM eng past T dan boshlab. "
+                + "Markaz qamrovida bitta ro'yxat: group.id = \"\", nomi «Markaz». Natija 5 daqiqagacha eskirgan bo'lishi mumkin.",
+            total = groups.Count, page = p, pageSize = size,
+            items,
+        }, items.Sum(i => i.top.Count() + i.bottom.Count()));
     }
 }

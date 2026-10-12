@@ -20,7 +20,9 @@ namespace WunderkindLC.Application.Mcp.Tools;
 ///     time, the substitute teaches, a start time and a course, at least one expected student; the earliest lesson of the
 ///     group's day), "taken" = the first attendance mark (<see cref="AttendanceTaking.FirstMarksAsync"/>) and "on time" =
 ///     <see cref="AttendanceDiscipline.Decide"/> with the configured deadline;</item>
-///   <item>fines — <see cref="AttendanceFineQueries.ListAsync"/> (Moliya → Jarima → «Davomat jarimalari»), money: finance only.</item>
+///   <item>fines — <see cref="AttendanceFineQueries.ListAsync"/> (Moliya → Jarima → «Davomat jarimalari»), money: finance only;</item>
+///   <item>absent-notice queue — <see cref="AbsentNoticeQueries.ListAsync"/> (Nazorat → «Davomat xabarlari», U3b): the
+///     same counters, lessons and per-notice Telegram delivery; read only — holding/approving stays in the panel.</item>
 /// </list></para>
 /// </summary>
 [McpServerToolType]
@@ -31,6 +33,8 @@ public sealed class AttendanceControlTools(McpToolContext t)
         typeof(Group), typeof(LessonNote), typeof(StudentGroup), typeof(Student), typeof(JournalEntry), typeof(AbsenceReason),
         typeof(Teacher), typeof(Subject), typeof(ContactRequest), typeof(AbsenceStreakAlert), typeof(TeacherAttendanceFine),
         typeof(CenterMeta), typeof(LessonReschedule), typeof(SubstituteTeacherAssignment),
+        // attendance_notices — AbsentNoticeQueries (the notice queue + the outbox delivery summary, no chat ids).
+        typeof(AttendanceNotifyItem), typeof(MessageDelivery),
     ];
 
     /// <summary>Longest range of the discipline report.</summary>
@@ -457,6 +461,120 @@ public sealed class AttendanceControlTools(McpToolContext t)
             summary = new { totalActive = list.TotalActive, countActive = list.CountActive, rows = rows.Count },
             byTeacher,
             truncated = list.Rows.Count >= AttendanceFineQueries.MaxRows,
+            total = rows.Count, page = p, pageSize = size,
+            items,
+        }, items.Count);
+    }
+
+    // =====================================================================================
+    //  attendance_notices — AttendanceNoticesController.List (AbsentNoticeQueries.ListAsync, U3b)
+    // =====================================================================================
+
+    [McpServerTool(Name = "attendance_notices", Title = "Davomat xabarlari (ota-onaga «kelmadi»/«keldi» navbati)",
+        ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
+    [Description("«Nazorat → Davomat xabarlari» bilan bir xil: bir kunlik (sukut — bugun) ota-onaga ketadigan davomat "
+        + "xabarlari navbati. «Kelmadi» xabari dars TUGAGACH (+ sozlamadagi kechikish) ketadi, menejer undan oldin to'xtatishi, "
+        + "tasdiqlashi yoki bekor qilishi mumkin; davomat KECH olingan bo'lsa (sozlamaga qarab) tasdiq kutadi. «Keldi» darhol "
+        + "ketadi. Holat sanoqlari (pending — rejalashtirilgan, awaiting — tasdiq kutmoqda, held — to'xtatilgan, approved — "
+        + "tasdiqlangan, sent — yuborildi, failed — xato, cancelled — bekor qilindi, expired — muddati o'tdi), darslar kesimi "
+        + "(guruh, kurs, o'qituvchi, dars vaqti, davomat birinchi marta qachon olingani, kech olinganmi) va har xabar: o'quvchi, "
+        + "turi, sabab (sababli/sababsiz), holat, qachon yuboriladi, kim qaror qilgan va izohi, Telegram yetkazilishi "
+        + "(yuborildi / xato / bloklagan / «tanishdim» bosgan chatlar soni). Filtrlar: sana, holat (sanoqlar filtrdan OLDIN), "
+        + "guruh, o'qituvchi. Faqat KO'RISH — to'xtatish/tasdiqlash panelda. Sahifalangan (xabarlar). "
+        + "The day's parent attendance-notice queue with statuses and Telegram delivery.")]
+    public async Task<string> AttendanceNotices(
+        [Description("Sana YYYY-MM-DD (sukut — bugun)")] string? date = null,
+        [Description("Holat: pending | awaiting | held | approved | sent | failed | cancelled | expired (sukut — hammasi)")] string? status = null,
+        [Description("Faqat shu guruh (groups_list natijasidan id)")] string? groupId = null,
+        [Description("O'qituvchi id (o'sha kuni darsni o'tadigan — o'rinbosar ham — yoki guruh egasi)")] string? teacherId = null,
+        [Description("Sahifa (1 dan)")] int? page = null,
+        [Description("Sahifa hajmi (1..200, sukut 50)")] int? pageSize = null,
+        CancellationToken ct = default)
+    {
+        t.Require(McpAreas.AttendanceNotices);
+        var day = McpToolContext.Iso(McpToolContext.Date(date, McpToolContext.Today, "date"));
+        var st = string.IsNullOrWhiteSpace(status) ? null : status.Trim().ToLowerInvariant();
+        if (st is not null && !AbsentNoticeRules.CountKeys.Contains(st))
+            throw new McpException("«status»: " + string.Join(" | ", AbsentNoticeRules.CountKeys) + ".");
+        var gid = string.IsNullOrWhiteSpace(groupId) ? null : groupId.Trim();
+        var tid = string.IsNullOrWhiteSpace(teacherId) ? null : teacherId.Trim();
+        var db = t.Db;
+
+        // The panel's own query (counters BEFORE the status filter, lessons ordered by start time).
+        var list = await AbsentNoticeQueries.ListAsync(db, day, st, gid, tid, ct);
+
+        // The policy the statuses come from (allow-listed CenterMeta columns only).
+        var meta = await db.CenterMeta.Select(m => new
+        {
+            m.AbsentNoticeApproval, m.AbsentNoticeDelayMinutes, m.AttendanceDeadlineMinutes,
+        }).FirstOrDefaultAsync(ct);
+        var defaults = new CenterMeta();
+        var approval = meta is not null && AttendanceSettingsRules.Approvals.Contains(meta.AbsentNoticeApproval)
+            ? meta.AbsentNoticeApproval
+            : AttendanceSettingsRules.ApprovalLateOnly;
+
+        var rows = list.Lessons.SelectMany(l => l.Items.Select(i => (Lesson: l, Item: i))).ToList();
+        var p = McpToolContext.Page(page);
+        var size = McpToolContext.PageSize(pageSize);
+        var items = rows.Skip((p - 1) * size).Take(size).Select(x => new
+        {
+            x.Item.Id,
+            kind = x.Item.Kind,
+            kindLabel = x.Item.Kind == AttendanceNotify.KindAbsent ? "Kelmadi" : "Keldi",
+            student = new { id = x.Item.StudentId, name = x.Item.StudentName },
+            group = new { id = x.Lesson.GroupId, name = x.Lesson.GroupName },
+            lesson = new { start = x.Lesson.LessonStart, end = x.Lesson.LessonEnd, period = x.Item.Period },
+            reason = x.Item.Kind == AttendanceNotify.KindAbsent
+                ? new { name = x.Item.ReasonName, isExcused = x.Item.IsExcused }
+                : null,
+            status = x.Item.Status,
+            statusLabel = AbsentNoticeRules.Label(x.Item.Status),
+            sendAfter = x.Item.SendAfter.ToString("yyyy-MM-ddTHH:mm:ss"),
+            decision = x.Item.DecidedAt is null ? null : new
+            {
+                by = x.Item.DecidedByName,
+                at = x.Item.DecidedAt.Value.ToString("yyyy-MM-ddTHH:mm:ss"),
+                note = x.Item.Note,
+            },
+            cancelReason = x.Item.CancelReason,
+            delivery = x.Item.Delivery is null ? null : new
+            {
+                sent = x.Item.Delivery.Sent, failed = x.Item.Delivery.Failed,
+                blocked = x.Item.Delivery.Blocked, acked = x.Item.Delivery.Acked,
+            },
+        }).ToList();
+
+        return t.Json(new
+        {
+            date = list.Date,
+            status = st, groupId = gid, teacherId = tid,
+            settings = new
+            {
+                approval,
+                approvalLabel = approval switch
+                {
+                    AttendanceSettingsRules.ApprovalAuto => "Avtomatik (tasdiqsiz)",
+                    AttendanceSettingsRules.ApprovalManual => "Har doim menejer tasdig'i bilan",
+                    _ => "Faqat davomat kech olinganda menejer tasdig'i bilan",
+                },
+                delayMinutes = meta?.AbsentNoticeDelayMinutes ?? defaults.AbsentNoticeDelayMinutes,
+                deadlineMinutes = meta?.AttendanceDeadlineMinutes ?? defaults.AttendanceDeadlineMinutes,
+            },
+            counts = list.Counts,
+            lessons = list.Lessons.Select(l => new
+            {
+                group = new { id = l.GroupId, name = l.GroupName },
+                course = l.CourseName, teacher = l.TeacherName,
+                start = l.LessonStart, end = l.LessonEnd,
+                attendanceTakenAt = l.AttendanceTakenAt?.ToString("yyyy-MM-ddTHH:mm:ss"),
+                takenLate = l.TakenLate,
+                notices = l.Items.Count,
+            }),
+            note = "Sanoqlar (counts) holat filtridan OLDIN hisoblanadi. «sendAfter» — eng erta yuborish vaqti (markaz vaqti); "
+                + "«delivery» — Telegram navbatidagi chatlar soni bo'yicha (null — hali navbatga tushmagan yoki ota-onaning "
+                + "Telegrami ulanmagan). Davomat «olingan» = birinchi «keldi»/«kelmadi» belgisi; «takenLate» — u dars "
+                + "boshlanishi + muddatdan keyin qo'yilgan. Faqat BUGUNGI dars belgilari navbatga tushadi (o'tgan kunni tuzatish "
+                + "ota-onaga xabar bermaydi).",
             total = rows.Count, page = p, pageSize = size,
             items,
         }, items.Count);

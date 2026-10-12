@@ -229,7 +229,7 @@ export interface DatedLesson {
   moved: boolean
   members: number
   capacity: number
-  /** Jurnalda «o'tildi» belgilangan. */
+  /** Shu kuni davomat olingan (birinchi «keldi»/«kelmadi» belgisi — monitor bilan bir xil; faqat baho emas). */
   attendanceTaken: boolean
   status: ScheduleGroupStatus | string
 }

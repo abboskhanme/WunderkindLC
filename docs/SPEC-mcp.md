@@ -289,11 +289,13 @@ how leadership connects from Claude / ChatGPT.
 | AttendanceControlTools | `attendance_red_list` | Qizil ro'yxat (ketma-ket kelmaganlar) | StudentAttendance |
 | AttendanceControlTools | `attendance_discipline` | Davomat intizomi (o'z vaqtida olinmagan darslar) | NotAttended |
 | AttendanceControlTools | `teacher_attendance_fines` | Davomat jarimalari | Finance |
+| AttendanceControlTools | `attendance_notices` | Davomat xabarlari (ota-onaga «kelmadi»/«keldi» navbati) | AttendanceNotices |
 | RatingTools | `rating_report` | Reyting (testlar + ball) — markaz | Rating |
 | RatingTools | `rating_group_report` | Reyting (testlar + ball) — guruh | RatingGroup |
 | RatingTools | `student_rating` | O'quvchi reytingi (davr bo'yicha) | StudentRating |
+| RatingTools | `rating_top_bottom` | Oylik TOP / BOTTOM (testlar bo'yicha) | Rating |
 
-61 tools. Areas → permission keys: `WunderkindLC.Application/Mcp/McpAreas.cs`.
+63 tools. Areas → permission keys: `WunderkindLC.Application/Mcp/McpAreas.cs`.
 
 CRM upgrade additions (2026-10-12, `docs/SPEC-crm-upgrade.md` U2m–U6m):
 
@@ -319,3 +321,29 @@ CRM upgrade additions (2026-10-12, `docs/SPEC-crm-upgrade.md` U2m–U6m):
   grant of a single "harmless" column switches MCP off).
 - `CenterMeta` allow-list += `AttendanceDisciplineEnabled`, `AttendanceDeadlineMinutes`, `AttendanceFineEnabled`,
   `AttendanceFineAmount`, `RatingTestWeight` (plain settings; without the weight the reduced model could not read it).
+
+Follow-up (2026-10-12, the units that were blocked until U3b / U4a / U4d merged):
+
+- **Absent notices (U3b)** — `attendance_notices` = `AbsentNoticeQueries.ListAsync` (the panel's `GET
+  api/admin/attendance-notices`): one day (default today), counters BEFORE the status filter, lessons (first mark,
+  `takenLate`), every notice with reason (`isExcused`), status + label, `sendAfter`, the manager's decision and the
+  Telegram delivery summary (`TelegramOutbox.SummaryBySourceAsync` — counts only; `MessageDelivery.ChatId` is never
+  selected); filters date / status / group / teacher; paged over notices. Area `AttendanceNotices` = `students.notices`
+  (the panel's `ReadRequiresPerm` gate — `students.attendance` / `students.list` do NOT open it). Read only: hold /
+  approve / cancel stay in the panel. Reads += `AttendanceNotifyItem`, `MessageDelivery`.
+- **TOP / BOTTOM (U4d)** — `rating_top_bottom` = `TopBottomService.BuildAsync` over the cached month rating (the preview
+  the monthly notifier sends): month (default the PREVIOUS month), scope `group` | `centre` (default — the setting),
+  optional group, paged over lists. Area `Rating` (`classes.rating`).
+- **Test entry (U4a)** — `tests_list`: `kind` (monthly/interim), `kindLabel`, `questionCount`, `resultsSentAt`, filters
+  `kind`, `courseId`, `teacherId` (group owner — the overview's rule); `averagePercent` is now the panel's
+  `TestResultService.AvgPercent` (mean of each result's percent, 0..100) — equal to `GET test-results/overview`.
+  `test_scores`: kind / question count / sent stamp on the test, `solved` per row (tests with a question count), percent
+  and summary percent by the panel's formula (`TestEntryRules.Percent`, clamped, midpoint away from zero) — equal to
+  `DetailAsync`. `student_tests`: `month` (XOR from/to) and `kind` filters, kind and question count per row.
+- `CenterMeta` allow-list += `AbsentNoticeDelayMinutes`, `AbsentNoticeApproval` (the queue's policy shown with it),
+  `RatingTopBottomCount`, `RatingTopBottomScope` (`TopBottomService.SettingsAsync` projects them — without them the
+  query would not translate on the reduced model).
+- **Dated schedule (panel + MCP)** — `DatedSchedule.LoadAsync` marks a lesson's attendance taken by the single U3a
+  definition (any `LessonNote` of (group, date) with `AttendanceTakenAt`), no longer by `Conducted` (one grade made a
+  lesson «o'tildi»). `schedule_week` returns it as `attendanceTaken` (was `conducted`); `schedule_day` (date mode) gains
+  `attendanceTaken` + `attendanceTakenAt` (`AttendanceTaking.FirstMarksAsync`, the lesson monitor's source).

@@ -34,7 +34,8 @@ public sealed class ScheduleTools(McpToolContext t)
         + "to'ri bilan bir xil); «date» (YYYY-MM-DD) berilsa — o'sha sananing HAQIQIY darslari: ko'chirilgan darslar (yangi kun "
         + "va vaqt), guruh boshlanish/tugash sanalari va o'rinbosar o'qituvchi hisobga olinadi. Ikkalasi ham berilmasa — bugungi "
         + "sana. Har darsda: guruh, kurs, o'qituvchi (sanada — darsni haqiqatan o'tadigan odam), xona, boshlanish/tugash vaqti, "
-        + "a'zolar soni (o'rin egallaganlar: faol + sinov, muzlatilgan va arxivdagi o'quvchi emas); sanada xona qavati ham. "
+        + "a'zolar soni (o'rin egallaganlar: faol + sinov, muzlatilgan va arxivdagi o'quvchi emas); sanada xona qavati va "
+        + "davomat olinganmi (birinchi «keldi»/«kelmadi» belgisi va uning vaqti — dars monitoringi bilan bir xil). "
         + "Bir necha kun (hafta) — schedule_week, to'qnashuvlar — schedule_conflicts. «skippedGroups» — vaqti yoki "
         + "kunlari buzuq/to'ldirilmagan, shuning uchun jadvalga TUSHMAGAN guruhlar (nomlari bilan). Filtrlar: o'qituvchi, xona. "
         + "Sahifalangan. One day's timetable: weekly template for a weekday, or the real lessons of a date.")]
@@ -141,10 +142,14 @@ public sealed class ScheduleTools(McpToolContext t)
             .GroupBy(sg => sg.GroupId)
             .Select(g => new { g.Key, N = g.Count() })
             .ToDictionaryAsync(x => x.Key, x => x.N, ct);
+        // Attendance taken — the single U3a definition the lesson monitor uses: the group's FIRST attendance mark of
+        // the day (LessonNote.AttendanceTakenAt, any subject/period); a grade alone («o'tildi») is not attendance.
+        var firstMarks = await AttendanceTaking.FirstMarksAsync(db, dayIso, groupIds, ct);
 
         var rows = valid.Select(l =>
             {
                 var g = l.Group;
+                DateTime? takenAt = firstMarks.TryGetValue(g.Id, out var mark) ? mark : null;
                 var substitute = l.SubstituteTeacherId.Length > 0;
                 var actualId = substitute ? l.SubstituteTeacherId : g.TeacherId;
                 var start = ScheduleRules.ParseTime(l.StartTime)!.Value;
@@ -171,6 +176,8 @@ public sealed class ScheduleTools(McpToolContext t)
                     members = members.GetValueOrDefault(g.Id),
                     g.Capacity,
                     status = g.IsBlocked ? "blocked" : (g.Status ?? "active"),
+                    attendanceTaken = takenAt is not null,
+                    attendanceTakenAt = takenAt?.ToString("yyyy-MM-ddTHH:mm:ss"),
                 };
             })
             .OrderBy(r => r.startTime, StringComparer.Ordinal)
@@ -187,7 +194,9 @@ public sealed class ScheduleTools(McpToolContext t)
             items = pageItems,
             skippedGroups = new { count = skipped.Count, groups = skipped },
             note = "«teacher» — shu kuni darsni o'tadigan o'qituvchi (o'rinbosar bo'lsa — o'rinbosar), «moved» — dars "
-                + "boshqa kundan ko'chirilgan. Bayram/dam olish kunlari modeli yo'q — bunday kunda ham dars rejada turadi.",
+                + "boshqa kundan ko'chirilgan. «attendanceTaken» — shu kuni guruhda birinchi «keldi»/«kelmadi» belgisi qo'yilgan "
+                + "(«attendanceTakenAt» — o'sha vaqt; faqat baho davomat emas). Bayram/dam olish kunlari modeli yo'q — bunday "
+                + "kunda ham dars rejada turadi.",
         }, pageItems.Count);
     }
 
@@ -288,7 +297,8 @@ public sealed class ScheduleTools(McpToolContext t)
         + "xil (bir so'rovda ko'pi bilan 7 kun; sukut — bugun): ko'chirilgan darslar yangi sana va vaqtida, o'rinbosar "
         + "o'qituvchi nomi bilan, guruh boshlanish/tugash sanalari hisobga olinadi. Har darsda: sana, guruh, kurs, o'qituvchi "
         + "(va o'rinbosar), xona va uning QAVATI, boshlanish/tugash vaqti, ko'chirilganmi, o'rin egallaganlar va sig'im, "
-        + "jurnalda «o'tildi» belgisi, holati. Xonalar ro'yxati qavatlar bo'yicha (qavat ko'rsatilmaganlar oxirida), "
+        + "shu kuni davomat olinganmi (birinchi «keldi»/«kelmadi» belgisi — faqat baho davomat emas), holati. Xonalar "
+        + "ro'yxati qavatlar bo'yicha (qavat ko'rsatilmaganlar oxirida), "
         + "o'qituvchilar ro'yxati, vaqti buzuq guruhlar soni. Filtrlar: o'qituvchi (o'rinbosar ham), xona, qavat, guruh, kurs. "
         + "Darslar sana va vaqt bo'yicha, sahifalangan. Real lessons of a date range (≤ 7 days) with rooms grouped by floor.")]
     public async Task<string> ScheduleWeek(
@@ -334,7 +344,7 @@ public sealed class ScheduleTools(McpToolContext t)
             room = new { id = l.RoomId, name = l.RoomName, floor = l.Floor, floorLabel = RoomFloors.Label(l.Floor) },
             startTime = l.Start, endTime = l.End, moved = l.Moved,
             members = l.Members, capacity = l.Capacity,
-            conducted = l.AttendanceTaken,
+            attendanceTaken = l.AttendanceTaken,
         }).ToList();
 
         var floors = dated.Rooms
@@ -356,7 +366,8 @@ public sealed class ScheduleTools(McpToolContext t)
             floors,
             teachers = dated.Teachers.Select(x => new { x.Id, x.Name, lessons = lessons.Count(l => (l.SubstituteTeacherId.Length > 0 ? l.SubstituteTeacherId : l.TeacherId) == x.Id) }),
             skippedGroups = dated.SkippedGroups,
-            note = "«conducted» — jurnalda dars «o'tildi» deb belgilangan (dars monitoringi bilan bir xil). Xonalar — barcha faol "
+            note = "«attendanceTaken» — shu kuni guruhda davomat olingan: birinchi «keldi»/«kelmadi» belgisi qo'yilgan (dars "
+                + "monitoringi, eslatma va jarima bilan bir xil ta'rif; faqat baho qo'yilgan dars davomat olingan EMAS). Xonalar — barcha faol "
                 + "xonalar (bo'shi ham) va dars bo'lgan har xona; qavatlar o'sish tartibida, ko'rsatilmaganlar oxirida. "
                 + "Bayram/dam olish kunlari modeli yo'q.",
             total = lessons.Count, page = p, pageSize = size,

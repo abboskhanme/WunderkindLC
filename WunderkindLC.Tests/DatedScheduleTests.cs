@@ -97,6 +97,38 @@ public class DatedScheduleTests
         Assert.Equal(["Ali", "Vali"], day.Teachers.Select(t => t.Name));
     }
 
+    /// <summary>
+    /// «Davomat olindi» — YAGONA ta'rif (U3a, journal.md): guruhning shu kundagi istalgan LessonNote ida BIRINCHI davomat
+    /// belgisi (<c>AttendanceTakenAt</c>) — dars monitoringi, eslatma va jarima bilan bir xil. Faqat baho qo'yilgan
+    /// («o'tildi», <c>Conducted</c>) dars davomat olingan EMAS; belgi boshqa fan/dars raqamidagi yozuvda bo'lsa ham sanaladi.
+    /// </summary>
+    [Fact]
+    public async Task Davomat_olindi_birinchi_belgi_boyicha_faqat_baho_emas()
+    {
+        using var db = TestDb.Sqlite();
+        Rooms(db);
+        Group G(string name) => new() { Name = name, TeacherId = "t1", Days = [0], StartTime = "14:00", EndTime = "15:00", CourseId = "c1" };
+        var marked = G("Belgilangan");
+        var gradeOnly = G("Faqat baho");
+        var otherPeriod = G("Boshqa dars raqami");
+        var nothing = G("Hech narsa");
+        db.Context.Classes.AddRange(marked, gradeOnly, otherPeriod, nothing);
+        var day = Iso(D0);
+        db.Context.LessonNotes.AddRange(
+            new LessonNote { ClassId = marked.Id, SubjectId = "c1", Date = day, Period = 1, Conducted = true, AttendanceTakenAt = D0.ToDateTime(new TimeOnly(14, 5)) },
+            new LessonNote { ClassId = gradeOnly.Id, SubjectId = "c1", Date = day, Period = 1, Conducted = true },
+            new LessonNote { ClassId = otherPeriod.Id, SubjectId = "c2", Date = day, Period = 3, AttendanceTakenAt = D0.ToDateTime(new TimeOnly(14, 20)) },
+            // Boshqa kundagi belgi bu kunga ta'sir qilmaydi.
+            new LessonNote { ClassId = nothing.Id, SubjectId = "c1", Date = Iso(D0.AddDays(-7)), Period = 1, Conducted = true, AttendanceTakenAt = D0.AddDays(-7).ToDateTime(new TimeOnly(14, 1)) });
+        await db.Context.SaveChangesAsync();
+
+        var taken = (await BuildAsync(db, D0, D0)).Lessons.ToDictionary(l => l.GroupName, l => l.AttendanceTaken);
+        Assert.True(taken["Belgilangan"]);
+        Assert.False(taken["Faqat baho"]);
+        Assert.True(taken["Boshqa dars raqami"]);
+        Assert.False(taken["Hech narsa"]);
+    }
+
     [Fact]
     public void Oraliq_tekshiruvi()
     {

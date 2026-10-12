@@ -48,7 +48,10 @@ public class McpWorkspaceToolsTests
         db.StudentGroups.AddRange(
             new StudentGroup { StudentId = "s1", GroupId = "g1", Status = "active", JoinedAt = "2026-09-01" },
             new StudentGroup { StudentId = "s2", GroupId = "g1", Status = "trial", JoinedAt = "2026-09-01" });
-        db.LessonNotes.Add(new LessonNote { ClassId = "g1", SubjectId = "c1", Date = Mon, Period = 1, Conducted = true });
+        // g1: davomat olingan (birinchi belgi 14:03); g2: faqat baho — dars «o'tildi», lekin davomat OLINMAGAN (U3a).
+        db.LessonNotes.AddRange(
+            new LessonNote { ClassId = "g1", SubjectId = "c1", Date = Mon, Period = 1, Conducted = true, AttendanceTakenAt = DateTime.Parse(Mon + "T14:03:00") },
+            new LessonNote { ClassId = "g2", SubjectId = "c1", Date = Mon, Period = 1, Conducted = true });
         db.SaveChanges();
     }
 
@@ -80,7 +83,11 @@ public class McpWorkspaceToolsTests
         Assert.Equal(1, g1Mon.GetProperty("room").GetProperty("floor").GetInt32());
         Assert.Equal("1-qavat", g1Mon.GetProperty("room").GetProperty("floorLabel").GetString());
         Assert.Equal(2, g1Mon.GetProperty("members").GetInt32());
-        Assert.True(g1Mon.GetProperty("conducted").GetBoolean());
+        Assert.True(g1Mon.GetProperty("attendanceTaken").GetBoolean());
+        var g2Mon = items.Single(i => i.GetProperty("group").GetProperty("id").GetString() == "g2");
+        Assert.False(g2Mon.GetProperty("attendanceTaken").GetBoolean());   // faqat baho — davomat emas
+        Assert.Equal(panel.Lessons.Select(l => l.AttendanceTaken),
+            items.Select(i => i.GetProperty("attendanceTaken").GetBoolean()));
         var g5 = items.Single(i => i.GetProperty("group").GetProperty("id").GetString() == "g5");
         Assert.Equal("2026-09-17", g5.GetProperty("date").GetString());
         Assert.True(g5.GetProperty("moved").GetBoolean());
@@ -130,6 +137,12 @@ public class McpWorkspaceToolsTests
         var day = McpTestHost.Parse(await host.Tool<ScheduleTools>(McpTestHost.SuperAdmin()).ScheduleDay(date: Mon));
         var g2 = day.GetProperty("items").EnumerateArray().Single(i => i.GetProperty("groupId").GetString() == "g2");
         Assert.Equal(1, g2.GetProperty("room").GetProperty("floor").GetInt32());
+        // Davomat — monitor ta'rifi: birinchi belgi (g1, 14:03); faqat baho (g2) — olinmagan.
+        Assert.False(g2.GetProperty("attendanceTaken").GetBoolean());
+        Assert.Equal(JsonValueKind.Null, g2.GetProperty("attendanceTakenAt").ValueKind);
+        var g1 = day.GetProperty("items").EnumerateArray().Single(i => i.GetProperty("groupId").GetString() == "g1");
+        Assert.True(g1.GetProperty("attendanceTaken").GetBoolean());
+        Assert.Equal(Mon + "T14:03:00", g1.GetProperty("attendanceTakenAt").GetString());
 
         host.AssertReadsOnlyDeclared(typeof(ScheduleTools));
 

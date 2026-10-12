@@ -25,6 +25,9 @@ public static partial class McpAreas
 
     public static readonly McpArea Students = new("O'quvchilar ro'yxati va profili", ["students.list"]);
     public static readonly McpArea StudentAttendance = new("O'quvchilar davomati", ["students.attendance"]);
+    // «Davomat xabarlari» control (CRM Phase 3, U3b) — AttendanceNoticesController: `students.notices`, READ included
+    // (ReadRequiresPerm): pupil names, absence reasons and the parents' Telegram delivery.
+    public static readonly McpArea AttendanceNotices = new("Davomat xabarlari nazorati", ["students.notices"]);
     public static readonly McpArea Contacts = new("Bog'lanish kerak", ["contacts"]);
     public static readonly McpArea ContactReport = new("Bog'lanish hisoboti", [], SuperAdminOnly: true);
 
