@@ -1,159 +1,128 @@
-import { useEffect, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useRef, useState } from 'react'
+import { ImagePlus, Lightbulb, Send, TriangleAlert, X, Image as ImageIcon } from 'lucide-react'
 import { sendStudentFeedback } from '@/api/services/studentPortal'
-import { Icon } from '@/pages/student/lib'
+import { apiErrorMessage } from '@/lib/utils'
 import posthog from '@/lib/posthog'
+import { useBack, useToast } from '@/pages/student/hooks'
+import { IconBox, PageHeader, Toast } from '@/pages/student/ui'
 
 /* ============================================================
-   O'quvchi portali — Taklif va shikoyat ekrani.
-   Taklif/Shikoyat segment + matn (>=5 belgi) + ixtiyoriy rasm.
-   Yuborilgach toast + ortga.
+   Profil → TAKLIF VA SHIKOYAT — suggestion/complaint switch + text (≥ 5 chars) + optional photo.
+   On error the form stays filled and the reason is shown (error-visibility.md); on success —
+   a toast, then back.
    ============================================================ */
 
 type FeedbackType = 'suggestion' | 'complaint'
+const MIN = 5
 
 export function StudentFeedbackScreen() {
-  const navigate = useNavigate()
+  const back = useBack('/student/profile')
   const [type, setType] = useState<FeedbackType>('suggestion')
   const [text, setText] = useState('')
   const [file, setFile] = useState<File | null>(null)
   const [busy, setBusy] = useState(false)
-  const [toast, setToast] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [toast, setToast] = useToast()
   const fileInputRef = useRef<HTMLInputElement | null>(null)
 
-  useEffect(() => {
-    if (!toast) return
-    const t = setTimeout(() => setToast(null), 2500)
-    return () => clearTimeout(t)
-  }, [toast])
-
-  const canSend = text.trim().length >= 5 && !busy
+  const len = text.trim().length
+  const canSend = len >= MIN && !busy
 
   const submit = async () => {
     const t = text.trim()
-    if (t.length < 5) {
-      setToast('Matn juda qisqa')
+    if (t.length < MIN) {
+      setError('Matn juda qisqa — kamida 5 ta belgi yozing.')
       return
     }
     setBusy(true)
+    setError(null)
     try {
       await sendStudentFeedback(type, t, file)
-      posthog.capture('student_feedback_submitted', {
-        feedback_type: type,
-        has_attachment: Boolean(file),
-      })
+      posthog.capture('student_feedback_submitted', { feedback_type: type, has_attachment: Boolean(file) })
       setToast('Yuborildi. Rahmat!')
-      setTimeout(() => navigate(-1), 600)
+      setTimeout(back, 700)
     } catch (e) {
       setBusy(false)
-      setToast((e as Error)?.message || String(e))
+      setError(apiErrorMessage(e, "Yuborib bo'lmadi. Qayta urinib ko'ring."))
     }
   }
 
-  const head = (
-    <div className="hd">
-      <div className="row gap10" style={{ minHeight: 38 }}>
-        <button className="iconbtn press" onClick={() => navigate(-1)}>
-          <Icon name="chevL" size={22} />
-        </button>
-        <div className="hd-sm" style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          Taklif va shikoyat
-        </div>
-      </div>
-    </div>
-  )
-
   return (
     <div className="screen">
-      {head}
-      <div className="scroll" style={{ paddingBottom: 24 }}>
-        <div className="pad">
-          {/* Segment */}
-          <div className="seg" style={{ marginBottom: 16 }}>
-            <button className={type === 'suggestion' ? 'on press' : 'press'} onClick={() => setType('suggestion')}>
-              <Icon name="sparkle" size={16} color={type === 'suggestion' ? '#fff' : 'var(--muted)'} />
+      <PageHeader title="Taklif va shikoyat" back="/student/profile" />
+      <div className="scroll">
+        <div className="st-page" style={{ paddingTop: 8 }}>
+          <div className="seg" style={{ marginBottom: 16 }} role="radiogroup" aria-label="Turi">
+            <button type="button" role="radio" aria-checked={type === 'suggestion'} className={type === 'suggestion' ? 'on' : 'press'} onClick={() => setType('suggestion')}>
+              <Lightbulb size={17} />
               Taklif
             </button>
-            <button className={type === 'complaint' ? 'on press' : 'press'} onClick={() => setType('complaint')}>
-              <Icon name="alert" size={16} color={type === 'complaint' ? '#fff' : 'var(--muted)'} />
+            <button type="button" role="radio" aria-checked={type === 'complaint'} className={type === 'complaint' ? 'on' : 'press'} onClick={() => setType('complaint')}>
+              <TriangleAlert size={17} />
               Shikoyat
             </button>
           </div>
 
-          <div style={{ fontSize: 14, fontWeight: 800, padding: '0 2px 8px' }}>Matn</div>
+          <label className="st-label" htmlFor="fb-text">
+            {type === 'suggestion' ? 'Taklifingiz' : 'Shikoyatingiz'}
+          </label>
           <textarea
+            id="fb-text"
             className="ta"
             rows={6}
             value={text}
             onChange={(e) => setText(e.target.value)}
-            placeholder="Fikringizni yozing…"
+            placeholder={type === 'suggestion' ? 'Nimani yaxshilashimiz mumkin?' : "Nima bo'ldi? Batafsil yozing…"}
           />
+          <div className="faint" style={{ fontSize: 12.5, textAlign: 'right', marginTop: 4 }}>
+            {len < MIN ? `Kamida ${MIN} ta belgi` : `${len} ta belgi`}
+          </div>
 
-          <div style={{ height: 14 }} />
-
-          {/* Rasm biriktirish */}
           <input
             ref={fileInputRef}
             type="file"
             accept="image/*"
             style={{ display: 'none' }}
             onChange={(e) => {
-              const f = e.target.files?.[0] || null
-              setFile(f)
+              setFile(e.target.files?.[0] || null)
               e.target.value = ''
             }}
           />
-          {file ? (
-            <div className="card row gap12" style={{ borderRadius: 16, padding: 13 }}>
-              <div
-                style={{
-                  width: 40,
-                  height: 40,
-                  borderRadius: 11,
-                  background: 'var(--accentSoft)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  flex: 'none',
-                }}
+          <div style={{ marginTop: 10 }}>
+            {file ? (
+              <div className="card row gap12" style={{ padding: 12 }}>
+                <IconBox icon={ImageIcon} tone="info" />
+                <div className="st-wrap" style={{ flex: 1, minWidth: 0, fontSize: 14.5, fontWeight: 600 }}>{file.name}</div>
+                <button type="button" className="iconbtn press" onClick={() => setFile(null)} aria-label="Rasmni olib tashlash">
+                  <X size={18} />
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                className="press row gap10"
+                onClick={() => fileInputRef.current?.click()}
+                style={{ width: '100%', minHeight: 56, padding: 14, background: 'var(--surface)', border: '1.5px dashed var(--borderStrong)', borderRadius: 14, justifyContent: 'center', color: 'var(--accent)', fontSize: 15, fontWeight: 700 }}
               >
-                <Icon name="image" size={20} color="var(--accent)" />
-              </div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 14, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                  {file.name}
-                </div>
-              </div>
-              <button className="press" onClick={() => setFile(null)}>
-                <Icon name="x" size={18} color="var(--faint)" />
+                <ImagePlus size={20} />
+                Rasm biriktirish (ixtiyoriy)
               </button>
+            )}
+          </div>
+
+          {error && (
+            <div role="alert" className="st-banner" style={{ marginTop: 14 }}>
+              {error}
             </div>
-          ) : (
-            <button
-              className="press row gap10"
-              onClick={() => fileInputRef.current?.click()}
-              style={{
-                width: '100%',
-                padding: 16,
-                background: 'var(--surface)',
-                border: '1.5px dashed var(--borderStrong)',
-                borderRadius: 16,
-                justifyContent: 'center',
-              }}
-            >
-              <Icon name="gallery" size={22} color="var(--accent)" />
-              <span style={{ fontWeight: 700 }}>Rasm biriktirish (ixtiyoriy)</span>
-            </button>
           )}
 
-          <div style={{ height: 16 }} />
-          <button className="btn btn-primary btn-lg press" disabled={!canSend} onClick={submit}>
-            <Icon name="send" size={18} />
-            <span>{busy ? 'Yuborilmoqda…' : 'Yuborish'}</span>
+          <button className="btn btn-primary btn-lg press" disabled={!canSend} onClick={submit} style={{ marginTop: 16 }}>
+            <Send size={18} />
+            {busy ? 'Yuborilmoqda…' : 'Yuborish'}
           </button>
         </div>
       </div>
-      {toast && <div className="toast">{toast}</div>}
+      <Toast text={toast} />
     </div>
   )
 }

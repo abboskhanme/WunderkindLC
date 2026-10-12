@@ -3,7 +3,7 @@
 CRM 4-bosqich (docs/SPEC-crm-upgrade.md §5, P4.3–P4.4; egasining qarorlari `docs/ASSUMPTIONS.md` 2026-10-11).
 Sahifalar: **Hisobotlar → Reyting** (`/admin/hisobotlar/reyting`), o'quvchi profilida **«Reyting»** tabi,
 guruh sahifasining «Reyting» tabida **«Umumiy reyting (testlar + ball)»**, o'quvchi/ota-ona kabinetida
-**Progress → «Reyting»**, sozlama — **Sozlamalar → O'quv → Reyting**. Ruxsat kaliti — **`classes.rating`**.
+**Natijalar → «Reyting»** (`/student/rating`; eski `/student/progress?tab=reyting` u yerga yo'naltiriladi), sozlama — **Sozlamalar → O'quv → Reyting**. Ruxsat kaliti — **`classes.rating`**.
 Migratsiya (integrator, `CrmTestsRating`): `CenterMeta.RatingTestWeight` · `RatingTopBottomCount` ·
 `RatingTopBottomScope` (ma'lumot SQL'i — `docs/migrations/Phase4.sql`).
 
@@ -107,6 +107,7 @@ bilan yoziladi (`SettingsAudit`, «Reyting sozlamalari», «Testlar ulushi, %: 6
 - Ranglar umumiy CSS o'zgaruvchilaridan (`--surface`, `--border`, `--muted`, `--text`/`--fg`) — kabinetning tungi
   rejimi buzilmaydi.
 - Kabinetdagi eski «Guruh» va «Markaz» tablari olib tashlandi — o'rniga bitta «Reyting» (blok + TOP ro'yxatlar).
+  Kabinetda (`variant="cabinet"`) plitkalar 2 ustunli, «Testlarim» — jadval emas, kartochka qatorlari (tor ekran).
 - Guruh sahifasida eski ball jadvali qoldi — endi sarlavhasi «Ball tafsiloti».
 - Hisobot katalogida `inNav: true` (sof hisobot), menyuda asosiy «Hisobotlar» guruhida (`mainReportRoutes`).
 

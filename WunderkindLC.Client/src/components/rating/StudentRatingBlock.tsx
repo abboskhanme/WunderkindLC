@@ -78,9 +78,9 @@ export function StudentRatingBlock({ data, loading, error, period, onPeriodChang
 
       {data && (
         <div className={`space-y-4 transition-opacity ${loading ? 'opacity-60' : ''}`}>
-          <Tiles data={data} />
+          <Tiles data={data} variant={variant} />
           <HistoryCharts data={data} />
-          <TestsTable data={data} />
+          {variant === 'cabinet' ? <TestsList data={data} /> : <TestsTable data={data} />}
           <AttendanceLine data={data} />
           {children}
         </div>
@@ -91,9 +91,9 @@ export function StudentRatingBlock({ data, loading, error, period, onPeriodChang
 
 /* ------------------------------------------------------------------ plitkalar */
 
-function Tile({ icon, title, children, hint }: { icon: ReactNode; title: string; children: ReactNode; hint?: string }) {
+function Tile({ icon, title, children, hint, className }: { icon: ReactNode; title: string; children: ReactNode; hint?: string; className?: string }) {
   return (
-    <div className="min-w-0 p-4" style={card} title={hint}>
+    <div className={`min-w-0 p-4 ${className ?? ''}`} style={card} title={hint}>
       <div className="mb-1.5 flex items-center gap-1.5 text-[12px] font-semibold uppercase tracking-wide" style={{ color: C.muted }}>
         {icon}
         {title}
@@ -103,7 +103,7 @@ function Tile({ icon, title, children, hint }: { icon: ReactNode; title: string;
   )
 }
 
-function Tiles({ data }: { data: BlockData }) {
+function Tiles({ data, variant }: { data: BlockData; variant: 'admin' | 'cabinet' }) {
   const { centre, groups, components } = data
   const delta = rankDelta(centre.rank, centre.prevRank)
   const formula =
@@ -114,8 +114,10 @@ function Tiles({ data }: { data: BlockData }) {
           .map((g) => `${g.groupName}: ${fmtScore(g.score)} (${scoreFormulaText(g.testAvg, g.ballNorm, components.testWeight)})`)
           .join('\n') || scoreFormulaText(null, null, components.testWeight)
 
+  // Cabinet (phone): two compact tiles side by side, the score tile full width under them.
+  const cabinet = variant === 'cabinet'
   return (
-    <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+    <div className={cabinet ? 'grid grid-cols-2 gap-3 sm:grid-cols-3' : 'grid grid-cols-1 gap-3 sm:grid-cols-3'}>
       <Tile icon={<Award className="h-3.5 w-3.5" />} title="Markazda">
         {centre.rank != null ? (
           <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
@@ -161,7 +163,7 @@ function Tiles({ data }: { data: BlockData }) {
                 </span>
               )}
             </div>
-            <div className="mt-1 truncate text-[12.5px]" style={{ color: C.muted }}>
+            <div className="mt-1 line-clamp-2 text-[12.5px]" style={{ color: C.muted, overflowWrap: 'anywhere' }} title={groups[0].groupName}>
               {groups[0].groupName}
             </div>
           </>
@@ -182,7 +184,7 @@ function Tiles({ data }: { data: BlockData }) {
         )}
       </Tile>
 
-      <Tile icon={<Trophy className="h-3.5 w-3.5" />} title="Reyting bali" hint={formula}>
+      <Tile icon={<Trophy className="h-3.5 w-3.5" />} title="Reyting bali" hint={formula} className={cabinet ? 'col-span-2 sm:col-span-1' : undefined}>
         {centre.score != null ? (
           <>
             <div className="flex items-baseline gap-1.5">
@@ -346,6 +348,52 @@ function TestsTable({ data }: { data: BlockData }) {
             </tbody>
           </table>
         </div>
+      )}
+    </div>
+  )
+}
+
+/** «Testlarim» for the phone cabinet — one card row per test instead of a wide table. */
+function TestsList({ data }: { data: BlockData }) {
+  return (
+    <div className="min-w-0 overflow-hidden" style={card}>
+      <div className="flex items-center justify-between px-4 py-3" style={{ borderBottom: `1px solid ${C.border}` }}>
+        <span className="text-[15px] font-bold">Testlarim</span>
+        <span className="text-[12.5px]" style={{ color: C.muted }}>
+          {data.tests.length > 0 ? `${data.tests.length} ta test` : ''}
+        </span>
+      </div>
+      {data.tests.length === 0 ? (
+        <div className="px-4 py-6 text-center text-[14px]" style={{ color: C.muted }}>
+          Bu davrda test yo'q.
+        </div>
+      ) : (
+        data.tests.map((t, i) => {
+          const kind = testKindLabel(t.kind)
+          return (
+            <div key={t.testId} className="flex items-center gap-3 px-4 py-3" style={i > 0 ? { borderTop: `1px solid ${C.border}` } : undefined}>
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="text-[14.5px] font-bold" style={{ overflowWrap: 'anywhere' }}>{t.name}</span>
+                  {kind && (
+                    <span className="rounded-full px-2 py-0.5 text-[11px] font-bold" style={{ background: '#6366f11a', color: RATING_LINE }}>
+                      {kind}
+                    </span>
+                  )}
+                </div>
+                <div className="mt-0.5 text-[12.5px]" style={{ color: C.muted }}>
+                  {t.date.slice(8, 10)}.{t.date.slice(5, 7)} · {t.groupName} · {t.rankInTest}/{t.takers}-o'rin
+                </div>
+              </div>
+              <div className="flex-none text-right">
+                <div className="text-[17px] font-extrabold" style={{ color: RATING_LINE, fontVariantNumeric: 'tabular-nums' }}>
+                  {t.percent != null ? `${fmtScore(t.percent)}%` : '—'}
+                </div>
+                <div className="text-[12px] font-semibold" style={{ color: C.muted }}>{fmtSolved(t.solved, t.questions)}</div>
+              </div>
+            </div>
+          )
+        })
       )}
     </div>
   )

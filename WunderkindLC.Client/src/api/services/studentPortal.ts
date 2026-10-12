@@ -156,9 +156,21 @@ export interface SubjectProgressDetail {
 }
 
 
-export interface MonthCourse { courseName: string; fee: number }
+export interface MonthCourse { courseName: string; fee: number; groupId?: string | null; groupName?: string | null }
 export interface MonthLedger { month: string; charged: number; discount: number; paid: number; remaining: number; status: string; courses: MonthCourse[] }
-export interface StudentPayment { date: string; amount: number; note?: string | null; month?: string | null; comment?: string | null }
+export interface StudentPayment {
+  date: string
+  amount: number
+  note?: string | null
+  month?: string | null
+  comment?: string | null
+  /** cash | card | bank (server `PaymentDto.Method`). */
+  method?: string | null
+  /** Which group/course the payment is for (null — untagged legacy payment). */
+  groupName?: string | null
+  courseName?: string | null
+  teacherName?: string | null
+}
 export interface StudentFinance {
   student: { id: string; fullName: string; className: string }
   balance: number

@@ -1,33 +1,21 @@
-import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useState } from 'react'
+import { Navigate, useLocation, useNavigate } from 'react-router-dom'
+import { BookOpen } from 'lucide-react'
 import {
   getStudentCurriculum,
   type StudentCurriculum,
   type CurriculumItem,
 } from '@/api/services/studentPortal'
-import { getStudentRatingSummary, type RatingTopRow, type StudentRatingSummary } from '@/api/services/rating'
-import { StudentRatingBlock } from '@/components/rating/StudentRatingBlock'
-import { defaultRatingPeriod, fmtScore, type RatingPeriodValue } from '@/lib/ratingPeriods'
-import { apiErrorMessage } from '@/lib/utils'
-import { Icon, Ring, subjectColor, initials, fmtDate } from '@/pages/student/lib'
+import { Icon, Ring, subjectColor, fmtDate } from '@/pages/student/lib'
+import { useApi, useToast } from '@/pages/student/hooks'
+import { EmptyState, ErrorState, PageHeader, Skeleton, Toast } from '@/pages/student/ui'
 
 /* ============================================================
-   O'quvchi portali — Progress ekrani (Dastur / Reyting).
-   "Dastur" = Duolingo uslubidagi o'quv dasturi yo'l-xaritasi.
-   "Reyting" — testlar + ball (CRM 4-bosqich): eski «Guruh» va «Markaz» tablari
-   o'rniga bitta blok + guruh va markaz TOP ro'yxatlari. Qarzdorlik reytingni YOPMAYDI.
+   Darslar → DASTUR — Duolingo-style curriculum roadmap (covered / remaining topics).
+   The rating that used to share this screen («Reyting» tab) moved to Natijalar → Reyting
+   (/student/rating); the old deep link `?tab=reyting` redirects there.
    ============================================================ */
 
-type Mode = 0 | 1
-
-const SUBS = [
-  "O'quv dasturi — o'tilgan / qolgan",
-  "Reyting — testlar va ball, guruhda va markazda",
-]
-const TABS: Array<[string, string]> = [
-  ['book', 'Dastur'],
-  ['award', 'Reyting'],
-]
 
 /** Birinchi o'tilmagan band (kurs tartibida) — "hozir o'rganiladigan". */
 function findNext(cur: StudentCurriculum): string | null {
@@ -36,50 +24,46 @@ function findNext(cur: StudentCurriculum): string | null {
   return null
 }
 
-function DasturView() {
-  const [courses, setCourses] = useState<StudentCurriculum[] | null>(null)
-  const [err, setErr] = useState<string | null>(null)
-  const [sel, setSel] = useState(0)
-  useEffect(() => {
-    let on = true
-    getStudentCurriculum()
-      .then((c) => on && setCourses(c))
-      .catch((e) => on && setErr(e?.message || String(e)))
-    return () => {
-      on = false
-    }
-  }, [])
+const loadCurriculum = () => getStudentCurriculum()
 
-  if (err) return <EmptyState title="Yuklab bo'lmadi" sub={err} ic="alert" />
-  if (!courses) return <Loading />
-  if (!courses.length)
+function DasturView() {
+  const { data: courses, error, loading, reload } = useApi(loadCurriculum)
+  const [sel, setSel] = useState(0)
+
+  if (error && !courses) return <ErrorState message={error} onRetry={reload} />
+  if (loading && !courses)
     return (
-      <div className="card" style={{ margin: '0 16px' }}>
-        <EmptyState title="O'quv dasturi yo'q" sub="Hozircha kursingizga o'quv dasturi biriktirilmagan." ic="book" />
+      <div className="st-page">
+        <div className="card row gap12">
+          <Skeleton h={80} w={80} r={40} />
+          <div style={{ flex: 1 }}>
+            <Skeleton h={16} w="70%" />
+            <Skeleton h={12} w="50%" style={{ marginTop: 10 }} />
+            <Skeleton h={8} w="100%" style={{ marginTop: 12 }} />
+          </div>
+        </div>
+      </div>
+    )
+  if (!courses || !courses.length)
+    return (
+      <div className="st-page">
+        <div className="card flush">
+          <EmptyState
+            icon={BookOpen}
+            title="O'quv dasturi hali yo'q"
+            sub="Kursga o'quv dasturi biriktirilgach, o'tilgan va qolgan mavzular shu yerda ko'rinadi."
+          />
+        </div>
       </div>
     )
 
   const cur = courses[Math.min(sel, courses.length - 1)]
   return (
-    <div className="pad" style={{ paddingBottom: 28 }}>
+    <div className="st-page">
       {courses.length > 1 && (
-        <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 4 }}>
+        <div className="st-pills" style={{ marginBottom: 12 }}>
           {courses.map((c, i) => (
-            <button
-              key={c.groupId}
-              onClick={() => setSel(i)}
-              className="press"
-              style={{
-                flex: 'none',
-                padding: '8px 14px',
-                borderRadius: 12,
-                fontSize: 13,
-                fontWeight: 700,
-                background: i === sel ? 'var(--accent)' : 'var(--surface)',
-                color: i === sel ? '#fff' : 'var(--muted)',
-                border: `1px solid ${i === sel ? 'var(--accent)' : 'var(--border)'}`,
-              }}
-            >
+            <button key={c.groupId} onClick={() => setSel(i)} className={'pill press' + (i === sel ? ' on' : '')}>
               {c.courseName}
             </button>
           ))}
@@ -90,6 +74,7 @@ function DasturView() {
     </div>
   )
 }
+
 
 function ForecastCard({ cur }: { cur: StudentCurriculum }) {
   const pct = cur.totalItems > 0 ? Math.round((cur.coveredCount / cur.totalItems) * 100) : 0
@@ -190,12 +175,7 @@ function FinishNode({ done, color }: { done: boolean; color: string }) {
 
 function Roadmap({ cur }: { cur: StudentCurriculum }) {
   const nav = useNavigate()
-  const [toast, setToast] = useState<string | null>(null)
-  useEffect(() => {
-    if (!toast) return
-    const t = setTimeout(() => setToast(null), 2400)
-    return () => clearTimeout(t)
-  }, [toast])
+  const [toast, setToast] = useToast(2400)
   const nextId = findNext(cur)
   const col = subjectColor(cur.courseId)
   const allDone = cur.remainingItems <= 0
@@ -319,7 +299,7 @@ function Roadmap({ cur }: { cur: StudentCurriculum }) {
         )
       })}
       <FinishNode done={allDone} color={col} />
-      {toast && <div className="toast">{toast}</div>}
+      <Toast text={toast} />
     </div>
   )
 }
@@ -391,196 +371,15 @@ function Node({
   )
 }
 
-/** Davr kaliti — javob qaysi tanlov uchun kelganini bilish. */
-const periodKey = (p: RatingPeriodValue) => `${p.kind}:${p.key}`
-
-/**
- * «Reyting» — o'quvchi bloki (admin profilidagi bilan bir xil komponent, kabinet ko'rinishida) +
- * guruh va markaz TOP ro'yxatlari («Siz» belgisi bilan). Manba: `GET /api/student/rating/summary`.
- */
-function RatingCabinetView() {
-  const [period, setPeriod] = useState<RatingPeriodValue>(() => defaultRatingPeriod(new Date()))
-  const [res, setRes] = useState<{ key: string; data: StudentRatingSummary | null; error: string | null } | null>(null)
-  const key = periodKey(period)
-
-  useEffect(() => {
-    let on = true
-    const k = `${period.kind}:${period.key}`
-    getStudentRatingSummary({ period: period.kind, key: period.key })
-      .then((data) => on && setRes({ key: k, data, error: null }))
-      .catch((e) => on && setRes((prev) => ({ key: k, data: prev?.data ?? null, error: apiErrorMessage(e, "Reytingni yuklab bo'lmadi") })))
-    return () => {
-      on = false
-    }
-  }, [period.kind, period.key])
-
-  const data = res?.data ?? null
-  return (
-    <div className="pad" style={{ paddingTop: 4, paddingBottom: 28 }}>
-      <StudentRatingBlock
-        variant="cabinet"
-        data={data}
-        loading={res?.key !== key}
-        error={res?.key === key ? res.error : null}
-        period={period}
-        onPeriodChange={setPeriod}
-      >
-        {data && (
-          <>
-            {data.groupTop.map((g) => (
-              <TopList key={g.groupId} title={`${g.groupName} · guruh reytingi`} rows={g.rows} />
-            ))}
-            <TopList title="Markaz reytingi · TOP 10" rows={data.centreTop} />
-          </>
-        )}
-      </StudentRatingBlock>
-    </div>
-  )
-}
-
-/** TOP ro'yxat (kabinet uslubida): medal, bosh harflar, «Siz» belgisi va reyting bali. */
-function TopList({ title, rows }: { title: string; rows: RatingTopRow[] }) {
-  const medal = (r: number) => (r === 1 ? '#F5B301' : r === 2 ? '#9AA3B2' : r === 3 ? '#CD7F32' : null)
-  return (
-    <div>
-      <div className="sh">
-        <div className="sh-title">{title}</div>
-      </div>
-      {rows.length ? (
-        <div className="card" style={{ padding: 4 }}>
-          {rows.map((e, i) => {
-            const m = medal(e.rank)
-            const prevRank = i > 0 ? rows[i - 1].rank : 0
-            // Own row appended after the top 10: a thin gap shows the jump (e.g. 10 → 23).
-            const gap = i > 0 && e.rank - prevRank > 1 && e.isMe
-            return (
-              <div key={`${e.rank}_${i}`}>
-                {gap && (
-                  <div className="muted" style={{ textAlign: 'center', fontSize: 12, padding: '2px 0' }}>
-                    ⋯
-                  </div>
-                )}
-                <div
-                  className="row gap10"
-                  style={{
-                    padding: 8,
-                    borderRadius: 12,
-                    background: e.isMe ? 'var(--accentSoft)' : undefined,
-                    borderBottom: !e.isMe && i < rows.length - 1 ? '1px solid var(--border)' : undefined,
-                  }}
-                >
-                  <div
-                    className="badge"
-                    style={{
-                      width: 36,
-                      height: 36,
-                      borderRadius: 11,
-                      color: m || 'var(--muted)',
-                      background: m ? `color-mix(in srgb,${m} 16%,transparent)` : 'var(--surface3)',
-                      fontSize: 15,
-                    }}
-                  >
-                    {e.rank}
-                  </div>
-                  <div
-                    className="subj"
-                    style={{
-                      width: 36,
-                      height: 36,
-                      borderRadius: '50%',
-                      flex: 'none',
-                      background: 'linear-gradient(135deg,#6366f1,#5340c4)',
-                      color: '#fff',
-                      fontSize: 14,
-                    }}
-                  >
-                    {initials(e.fullName)}
-                  </div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div className="row gap6">
-                      <span style={{ fontSize: 14.5, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                        {e.fullName}
-                      </span>
-                      {e.isMe && (
-                        <span
-                          className="chip"
-                          style={{ color: 'var(--accent)', background: 'color-mix(in srgb,var(--accent) 12%,transparent)', fontSize: 9.5 }}
-                        >
-                          Siz
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                  <div style={{ textAlign: 'right', flex: 'none' }}>
-                    <div className="font-mono" style={{ fontSize: 17, fontWeight: 800, lineHeight: 1.1, color: m || '#6366f1' }}>
-                      {fmtScore(e.score)}
-                    </div>
-                    <div className="muted" style={{ fontSize: 10, fontWeight: 700 }}>
-                      reyting
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )
-          })}
-        </div>
-      ) : (
-        <div className="card">
-          <EmptyState title="Reyting yo'q" sub="Bu davrda test ham, ball ham yo'q." ic="award" />
-        </div>
-      )}
-    </div>
-  )
-}
-
-function Loading() {
-  return (
-    <div className="center">
-      <div className="spin" />
-    </div>
-  )
-}
-function EmptyState({ title, sub, ic = 'sparkle' }: { title: string; sub?: string; ic?: string }) {
-  return (
-    <div className="empty">
-      <div className="empty-ic">
-        <Icon name={ic} size={30} />
-      </div>
-      <div style={{ fontSize: 16, fontWeight: 800 }}>{title}</div>
-      {sub && (
-        <div className="muted" style={{ fontSize: 13.5, marginTop: 6, lineHeight: 1.5 }}>
-          {sub}
-        </div>
-      )}
-    </div>
-  )
-}
-
 export function StudentProgressScreen() {
-  const [mode, setMode] = useState<Mode>(0)
-
+  const { search } = useLocation()
+  // Old deep link (the rating used to be a tab here).
+  if (new URLSearchParams(search).get('tab') === 'reyting') return <Navigate to="/student/rating" replace />
   return (
     <div className="screen">
-      <div className="hd lg">
-        <div className="hd-sub" style={{ marginTop: 4 }}>
-          {SUBS[mode]}
-        </div>
-        <div className="hd-big">Progress</div>
-      </div>
-
-      <div className="pad" style={{ paddingBottom: 12 }}>
-        <div className="seg">
-          {TABS.map(([ic, label], i) => (
-            <button key={i} className={i === mode ? 'on' : 'press'} onClick={() => setMode(i as Mode)}>
-              <Icon name={ic} size={16} color={i === mode ? '#fff' : 'var(--muted)'} />
-              {label}
-            </button>
-          ))}
-        </div>
-      </div>
-
+      <PageHeader section="lessons" />
       <div className="scroll">
-        {mode === 0 ? <DasturView /> : <RatingCabinetView />}
+        <DasturView />
       </div>
     </div>
   )

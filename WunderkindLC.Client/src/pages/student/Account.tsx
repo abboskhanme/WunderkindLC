@@ -1,53 +1,51 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Eye, EyeOff, Info, Lock } from 'lucide-react'
 import { changeStudentPassword } from '@/api/services/studentPortal'
 import { useAuth } from '@/context/auth-context'
-import { Icon } from '@/pages/student/lib'
+import { apiErrorMessage } from '@/lib/utils'
+import { useBack, useToast } from '@/pages/student/hooks'
+import { PageHeader, Toast } from '@/pages/student/ui'
 
 /* ============================================================
-   O'quvchi portali — PAROLNI O'ZGARTIRISH.
-   Dizayn: student.html ACCOUNT. .student-app shell.
+   Sozlamalar → PAROLNI O'ZGARTIRISH.
    ============================================================ */
 
 interface FieldProps {
+  id: string
   label: string
   placeholder: string
   value: string
   onChange: (v: string) => void
+  autoComplete: string
 }
 
-function PasswordField({ label, placeholder, value, onChange }: FieldProps) {
+function PasswordField({ id, label, placeholder, value, onChange, autoComplete }: FieldProps) {
   const [show, setShow] = useState(false)
   return (
-    <>
-      <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--muted)', padding: '0 2px 7px' }}>
+    <div style={{ marginBottom: 14 }}>
+      <label className="st-label" htmlFor={id}>
         {label}
-      </div>
-      <div className="field" style={{ marginBottom: 12 }}>
-        <Icon name="lock" size={20} color="var(--faint)" />
-        <input
-          type={show ? 'text' : 'password'}
-          placeholder={placeholder}
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-        />
-        <button className="press" type="button" onClick={() => setShow((s) => !s)}>
-          <Icon name={show ? 'eyeOff' : 'eye'} size={20} color="var(--faint)" />
+      </label>
+      <div className="field">
+        <Lock size={19} color="var(--faint)" style={{ flex: 'none' }} />
+        <input id={id} type={show ? 'text' : 'password'} placeholder={placeholder} value={value} autoComplete={autoComplete} onChange={(e) => onChange(e.target.value)} />
+        <button type="button" className="press" onClick={() => setShow((s) => !s)} aria-label={show ? 'Parolni yashirish' : "Parolni ko'rsatish"} style={{ display: 'flex', padding: 6, margin: -6 }}>
+          {show ? <EyeOff size={20} color="var(--faint)" /> : <Eye size={20} color="var(--faint)" />}
         </button>
       </div>
-    </>
+    </div>
   )
 }
 
 export function StudentAccountScreen() {
-  const nav = useNavigate()
+  const back = useBack('/student/settings')
   const { user } = useAuth()
   const [cur, setCur] = useState('')
   const [nw, setNw] = useState('')
   const [rep, setRep] = useState('')
   const [err, setErr] = useState('')
   const [busy, setBusy] = useState(false)
-  const [toast, setToast] = useState('')
+  const [toast, setToast] = useToast()
 
   const save = async () => {
     if (busy) return
@@ -68,64 +66,43 @@ export function StudentAccountScreen() {
     try {
       await changeStudentPassword(cur, nw)
       setToast('Parol almashtirildi')
-      setTimeout(() => nav(-1), 1200)
+      setTimeout(back, 1200)
     } catch (e) {
-      setErr((e as Error)?.message || "O'zgartirib bo'lmadi")
+      setErr(apiErrorMessage(e, "Parolni o'zgartirib bo'lmadi"))
       setBusy(false)
     }
   }
 
   return (
     <div className="screen">
-      <div className="hd">
-        <div className="row gap10" style={{ minHeight: 38 }}>
-          <button className="iconbtn press" onClick={() => nav(-1)}>
-            <Icon name="chevL" size={22} />
+      <PageHeader title="Parolni o'zgartirish" back="/student/settings" />
+      <div className="scroll">
+        <div className="st-page" style={{ paddingTop: 8 }}>
+          <PasswordField id="pw-cur" label="Joriy parol" placeholder="Hozirgi parolingiz" value={cur} onChange={setCur} autoComplete="current-password" />
+          <PasswordField id="pw-new" label="Yangi parol" placeholder="Kamida 8 belgi" value={nw} onChange={setNw} autoComplete="new-password" />
+          <PasswordField id="pw-rep" label="Yangi parolni takrorlang" placeholder="Yangi parol yana bir marta" value={rep} onChange={setRep} autoComplete="new-password" />
+
+          {/* CRM Phase 6: the student password is kept in the vault and visible to admins — said upfront.
+              Parent accounts are not stored (SPEC §10 #10), so the note is for the student only. */}
+          {user?.role === 'student' && (
+            <div className="st-banner info" style={{ marginBottom: 14, fontWeight: 500 }}>
+              <Info size={18} style={{ flex: 'none', marginTop: 1 }} />
+              <span>Eslatma: markaz administratorlari yangi parolni ko'ra oladi.</span>
+            </div>
+          )}
+
+          {err && (
+            <div role="alert" className="st-banner" style={{ marginBottom: 14 }}>
+              {err}
+            </div>
+          )}
+
+          <button className="btn btn-primary btn-lg press" disabled={busy} onClick={save}>
+            {busy ? 'Saqlanmoqda…' : 'Saqlash'}
           </button>
-          <div className="hd-sm" style={{ flex: 1 }}>
-            Parolni o'zgartirish
-          </div>
         </div>
       </div>
-
-      <div className="scroll pad" style={{ paddingBottom: 24 }}>
-        <PasswordField label="Joriy parol" placeholder="Joriy parol" value={cur} onChange={setCur} />
-        <PasswordField label="Yangi parol" placeholder="Kamida 8 belgi" value={nw} onChange={setNw} />
-        <PasswordField
-          label="Yangi parolni takrorlang"
-          placeholder="Takror"
-          value={rep}
-          onChange={setRep}
-        />
-
-        {/* CRM Phase 6: o'quvchi paroli seyfda saqlanadi va adminlarga ko'rinadi — oldindan aytiladi.
-            Ota-ona akkaunti saqlanmaydi (SPEC §10 #10), shuning uchun izoh faqat o'quvchiga. */}
-        {user?.role === 'student' && (
-          <div style={{ color: 'var(--muted)', fontSize: 12.5, margin: '0 2px 12px' }}>
-            Eslatma: markaz administratorlari yangi parolingizni ko'ra oladi
-          </div>
-        )}
-
-        {err && (
-          <div
-            style={{
-              color: 'var(--red)',
-              fontSize: 13,
-              fontWeight: 600,
-              margin: '4px 0 12px',
-            }}
-          >
-            {err}
-          </div>
-        )}
-
-        <div style={{ height: 4 }} />
-        <button className="btn btn-primary btn-lg press" disabled={busy} onClick={save}>
-          <span>{busy ? 'Saqlanmoqda…' : 'Saqlash'}</span>
-        </button>
-      </div>
-
-      {toast && <div className="toast">{toast}</div>}
+      <Toast text={toast} />
     </div>
   )
 }
