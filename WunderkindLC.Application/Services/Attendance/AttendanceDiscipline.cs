@@ -45,13 +45,19 @@ public static class AttendanceDiscipline
     /// <para>At/after the deadline, attendance not taken ON TIME (<c>takenAt == null || takenAt &gt; deadline</c>)
     /// → fine (if enabled and amount &gt; 0) and escalation (if enabled, today only). Attendance taken AFTER the
     /// deadline still gets the fine — the rule is "during the lesson"; entry itself is never blocked.</para>
+    /// <para>⚠️ NOT RETROACTIVE (2026-10-12): a lesson whose deadline is before <paramref name="disciplineSince"/>
+    /// (the discipline was switched on later) is skipped entirely — no reminder, escalation or fine; a lesson whose
+    /// deadline is before <paramref name="fineSince"/> is never fined. <c>null</c> = no lower bound (legacy rows).</para>
     /// </summary>
     public static Decision Decide(
-        string date, string startTime, DateTime now, DateTime? takenAt, AttendanceSettingsDto s, bool isToday)
+        string date, string startTime, DateTime now, DateTime? takenAt, AttendanceSettingsDto s, bool isToday,
+        DateTime? disciplineSince = null, DateTime? fineSince = null)
     {
         var start = StartOf(date, startTime);
         if (start is null) return Skip;
         var deadline = start.Value.AddMinutes(s.DeadlineMinutes);
+        if (disciplineSince is { } ds && deadline < ds) return Skip;
+        var fineAllowed = fineSince is not { } fs || deadline >= fs;
 
         var due = new List<int>();
         if (isToday && takenAt is null)
@@ -64,7 +70,7 @@ public static class AttendanceDiscipline
         var late = now >= deadline && (takenAt is null || takenAt > deadline);
         return new Decision(
             start, deadline, due,
-            FineDue: late && s.FineEnabled && s.FineAmount > 0,
+            FineDue: late && s.FineEnabled && s.FineAmount > 0 && fineAllowed,
             EscalateDue: late && isToday && s.EscalateEnabled,
             Late: late);
     }

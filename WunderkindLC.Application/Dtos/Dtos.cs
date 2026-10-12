@@ -1041,8 +1041,6 @@ public record SetJournalEntryRequest(
     int? Grade, string? ReasonId, int Homework = 0, int Behavior = 0, MasteryLevel? Mastery = null,
     bool Present = false);
 public record JournalTopicDto(string Date, int Period, string Topic, string? Homework, bool Conducted);
-/// <summary>Berilgan sanada o'tilgan (conducted) darslar — guruh+fan+dars raqami.</summary>
-public record ConductedLessonDto(string ClassId, string SubjectId, int Period);
 
 /* ---------- Guruh OYLIK jurnali (guruh sahifasidan) ---------- */
 /// <summary>Guruh jurnali sarlavhasi: guruh + kurs + o'qituvchi + jadval ma'lumotlari.</summary>
@@ -1920,8 +1918,6 @@ public record TelegramTeacherDto(
 /// <summary>Tayyor matn (andoza) — faqat QO'LDA yuborish uchun (avto-hodisalar AutoMessageRule'da).
 /// Nomi tarixiy (<c>SmsTemplate</c> jadvali) — endi Telegram e'lonida ishlatiladi.</summary>
 public record SmsTemplateDto(string Id, string Name, string Text, int Order);
-/// <summary>Andozani saqlash (yaratish/tahrirlash).</summary>
-public record SaveSmsTemplateRequest(string Name, string Text);
 /// <summary>"Tanlab" e'lon uchun o'quvchi. <c>TelegramChats</c> — o'quvchiga ulangan Telegram chatlari soni
 /// (0 — e'lon unga yetib bormaydi).</summary>
 public record MessageRecipientDto(string StudentId, string FullName, string ClassName, int TelegramChats);
@@ -3900,14 +3896,15 @@ public record TeacherContactRequest(List<string> StudentIds, string? ReasonId = 
 
 /// <summary>
 /// O'qituvchi guruh sahifasidagi «O'quvchilar» tabi: o'z guruhining FAOL a'zosi.
-/// Telefon BOR — o'qituvchi uni tahrirlay olishi uchun (faqat o'z guruhi o'quvchilari).
-/// Balans/ota-ona ma'lumoti ATAYIN yo'q.
+/// Telefon BOR — faqat KO'RISH uchun (o'z guruhi o'quvchilari); o'qituvchi uni o'zgartira OLMAYDI (H1:
+/// raqam Telegram botiga kirish omili). Balans/ota-ona ma'lumoti ATAYIN yo'q.
 /// </summary>
 public record TeacherGroupStudentDto(string Id, string FullName, string Phone, int? SchoolGradeNow, string Status,
     int TelegramLinked = 0, List<string>? TelegramRelations = null);
 
-/// <summary>O'qituvchi tahriri — faqat uch maydon (<c>TeacherStudentEdit</c>). Sinf: null — tegilmaydi, 0 — tozalash.</summary>
-public record TeacherStudentEditRequest(string? FullName, int? SchoolGrade, string? Phone);
+/// <summary>O'qituvchi tahriri — faqat IKKI maydon (<c>TeacherStudentEdit</c>). Sinf: null — tegilmaydi, 0 — tozalash.
+/// ⚠️ Telefon maydoni ATAYIN YO'Q (H1, 2026-10-12): klient yuborsa ham JSON bog'lovchisi uni tashlab yuboradi.</summary>
+public record TeacherStudentEditRequest(string? FullName, int? SchoolGrade);
 
 /* =================================================================================================
  *  O'RINBOSAR O'QITUVCHILAR (Substitute Teacher Assignments)

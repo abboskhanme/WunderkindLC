@@ -362,8 +362,12 @@ export interface TeacherLesson {
   substitutedBy: string
   /** Boshqa kundan shu kunga ko'chirilgan dars */
   moved: boolean
-  /** Jurnalda "o'tildi" (davomat/baho kiritilgan) */
+  /** Jurnalda "o'tildi" (bitta baho ham yetadi) — DAVOMAT OLINDI degani EMAS. */
   conducted: boolean
+  /** Davomat olingan: shu kuni guruhning birinchi davomat belgisi bor (`LessonNote.AttendanceTakenAt` — eslatma, jarima
+   *  va monitor bilan bir xil yagona ta'rif, journal.md). Dars holati, «Davomat kutilmoqda» va tezkor davomat SHUNGA
+   *  qaraydi. Eski server javobida bo'lmasligi mumkin (undefined = olinmagan). */
+  attendanceTaken?: boolean
 }
 
 export interface TeacherGroupCard {
@@ -479,10 +483,11 @@ export interface TeacherGroupStudent {
 }
 
 /** O'qituvchi o'zgartira oladigan FAQAT uch maydon. `schoolGrade`: 0 — tozalash. */
+/** O'qituvchi tahriri — FAQAT ism va sinf. Telefon raqamlari o'qituvchiga YOPIQ (H1, 2026-10-12): ular Telegram
+ *  botida ro'yxatdan o'tish uchun moslash maydoni (kirish omili) — server bu maydonni umuman qabul qilmaydi. */
 export interface TeacherStudentEditPayload {
   fullName: string
   schoolGrade: number
-  phone: string
 }
 
 export async function getTeacherGroupStudents(classId: string): Promise<TeacherGroupStudent[]> {

@@ -89,6 +89,8 @@ export function AutoMessagesTab({
   /** Modal: 'new' — yaratish; qoida — tahrirlash; null — yopiq. */
   const [modal, setModal] = useState<'new' | AutoMessageRule | null>(null)
 
+  // error-visibility.md §4 — fon O'QISH: yozuv (saqlash/o'chirish) allaqachon muvaffaqiyatli bo'lgan va o'z xatosini
+  // ko'rsatgan; ro'yxatni qayta o'qish yiqilsa eski ro'yxat qoladi (asosiy yuklash xatosi — `failed` bilan ko'rinadi).
   const reload = () => getAutoMessageRules().then(setRules).catch(() => undefined)
 
   useEffect(() => {

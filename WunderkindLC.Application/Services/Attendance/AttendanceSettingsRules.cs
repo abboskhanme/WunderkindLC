@@ -87,9 +87,15 @@ public static class AttendanceSettingsRules
             Approvals.Contains(m.AbsentNoticeApproval) ? m.AbsentNoticeApproval : ApprovalLateOnly);
     }
 
-    /// <summary>Writes a VALIDATED dto into the meta row.</summary>
-    public static void Apply(CenterMeta m, AttendanceSettingsDto s)
+    /// <summary>
+    /// Writes a VALIDATED dto into the meta row. <paramref name="now"/> stamps the «since» moments: a switch flipped
+    /// false → true gets <c>now</c>, a switch turned off is cleared, an unchanged switch keeps its moment — fines,
+    /// reminders and escalations are never retroactive (<see cref="AttendanceDiscipline.Decide"/>).
+    /// </summary>
+    public static void Apply(CenterMeta m, AttendanceSettingsDto s, DateTime now)
     {
+        m.AttendanceDisciplineSince = Since(m.AttendanceDisciplineEnabled, s.DisciplineEnabled, m.AttendanceDisciplineSince, now);
+        m.AttendanceFineSince = Since(m.AttendanceFineEnabled, s.FineEnabled, m.AttendanceFineSince, now);
         m.AttendanceDisciplineEnabled = s.DisciplineEnabled;
         m.AttendanceDeadlineMinutes = s.DeadlineMinutes;
         m.AttendanceReminderMinutes = FormatReminders(s.ReminderMinutes ?? []);
@@ -99,6 +105,15 @@ public static class AttendanceSettingsRules
         m.AbsentNoticeDelayMinutes = s.AbsentNoticeDelayMinutes;
         m.AbsentNoticeApproval = s.AbsentNoticeApproval;
     }
+
+    /// <summary>
+    /// The «since» moment after a save: off → null; just turned on (or on without a moment — legacy row) → now;
+    /// still on → unchanged.
+    /// </summary>
+    public static DateTime? Since(bool wasOn, bool isOn, DateTime? current, DateTime now) =>
+        !isOn ? null
+        : !wasOn || current is null ? now
+        : current;
 
     /// <summary>Uzbek labels for the settings audit row (<c>SettingsAudit.Record</c>, withValues).</summary>
     public static readonly IReadOnlyDictionary<string, string> AuditLabels = new Dictionary<string, string>
@@ -111,5 +126,7 @@ public static class AttendanceSettingsRules
         [nameof(CenterMeta.AttendanceFineAmount)] = "Bir dars uchun jarima",
         [nameof(CenterMeta.AbsentNoticeDelayMinutes)] = "«Kelmadi» xabari kechikishi (daqiqa)",
         [nameof(CenterMeta.AbsentNoticeApproval)] = "«Kelmadi» xabarini tasdiqlash",
+        [nameof(CenterMeta.AttendanceDisciplineSince)] = "Davomat intizomi yoqilgan vaqt",
+        [nameof(CenterMeta.AttendanceFineSince)] = "Jarima yoqilgan vaqt",
     };
 }

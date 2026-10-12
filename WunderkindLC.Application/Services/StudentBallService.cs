@@ -286,28 +286,9 @@ public static class StudentBallService
 
         var balls = await ComputeByGroupAsync(db, groupIds, mon);
 
-        // Davomat: o'tilgan darslar (LessonNote.Conducted) va sababli qoldirilganlar (kech kelish emas).
-        // OY tanlanganda surat ham, maxraj ham AYNAN o'sha oydan olinadi — aks holda "shu oy
-        // qoldirgan / barcha vaqt o'tilgan darslar" degan ma'nosiz nisbat chiqardi.
-        var lateIds = (await db.AbsenceReasons.AsNoTracking().Where(r => r.IsLate).Select(r => r.Id).ToListAsync())
-            .ToHashSet();
-        var notesQuery = db.LessonNotes.AsNoTracking()
-            .Where(n => groupIds.Contains(n.ClassId) && n.Conducted);
-        if (mon is not null) notesQuery = notesQuery.Where(n => n.Date.StartsWith(mon));
-        var conductedByGroup = (await notesQuery
-                .Select(n => new { n.ClassId, n.SubjectId, n.Date, n.Period })
-                .ToListAsync())
-            .GroupBy(n => n.ClassId)
-            .ToDictionary(g => g.Key, g => g.Select(n => (n.SubjectId, n.Date, n.Period)).ToHashSet());
-        var absenceQuery = db.JournalEntries.AsNoTracking()
-            .Where(e => groupIds.Contains(e.ClassId) && e.ReasonId != null);
-        if (mon is not null) absenceQuery = absenceQuery.Where(e => e.Date.StartsWith(mon));
-        var absencesByKey = (await absenceQuery
-                .Select(e => new { e.StudentId, e.ClassId, e.SubjectId, e.Date, e.Period, e.ReasonId })
-                .ToListAsync())
-            .Where(e => !lateIds.Contains(e.ReasonId!))
-            .GroupBy(e => (e.StudentId, e.ClassId))
-            .ToDictionary(g => g.Key, g => g.ToList());
+        // Davomat — YAGONA ta'rif (MembershipAttendance, journal.md): kech = kelgan, davomati olinmagan darsdagi
+        // belgisiz o'quvchi foizga KIRMAYDI. OY tanlanganda surat ham, maxraj ham AYNAN o'sha oydan olinadi.
+        var attendanceBy = await MembershipAttendance.ComputeAsync(db, groupIds, mon);
 
         // Qator = (o'quvchi, guruh). Arxivlangan o'quvchi ro'yxatga kirmaydi.
         var raw = memberships
@@ -316,16 +297,7 @@ public static class StudentBallService
             {
                 var b = balls.GetValueOrDefault((m.StudentId, m.GroupId), new BallStat(0, 0, 0));
 
-                int conducted = 0, absent = 0;
-                if (conductedByGroup.TryGetValue(m.GroupId, out var cond))
-                {
-                    conducted = cond.Count;
-                    if (absencesByKey.TryGetValue((m.StudentId, m.GroupId), out var abs))
-                        absent = abs.Count(e => cond.Contains((e.SubjectId, e.Date, e.Period)));
-                }
-                double? attendance = conducted > 0
-                    ? Math.Round((double)(conducted - absent) / conducted * 100)
-                    : null;
+                double? attendance = attendanceBy.GetValueOrDefault((m.StudentId, m.GroupId))?.Percent;
 
                 var name = groupName.GetValueOrDefault(m.GroupId, "");
                 return new TeacherRatingRowDto(

@@ -46,7 +46,8 @@ export function useMessagePreview(input: {
         ctrl.signal,
       )
         .then((p) => setPreview(p))
-        // Fon o'qish (preview): tarmoq xatosi — eski ko'rinish qoladi; bekor qilingani — jim.
+        // error-visibility.md §4 — fon O'QISH (preview, ikkilamchi): tarmoq xatosi — eski ko'rinish qoladi; bekor
+        // qilingani (AbortController) — jim. Yuborishning O'Z xatosi (`createCampaign`) oynada ko'rsatiladi.
         .catch(() => {})
         .finally(() => {
           if (!ctrl.signal.aborted) setLoading(false)

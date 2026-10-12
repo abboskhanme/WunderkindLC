@@ -623,6 +623,21 @@ public class StudentCredentialLeakTests
     }
 
     [Fact]
+    public void Group_ensure_is_refused_with_400_while_the_vault_is_off_before_anything_changes()
+    {
+        // Review fix (2026-10-12): with no CREDENTIAL_VAULT_KEY the new passwords could not be stored — the old ones
+        // would stop working and the new ones would vanish after the first login. 400 + Uzbek reason, nothing written.
+        var src = Controller("GroupCredentialsController.cs");
+        var i = src.IndexOf("public async Task<IActionResult> Ensure(", StringComparison.Ordinal);
+        var body = src[i..src.IndexOf("\n    }", i, StringComparison.Ordinal)];
+        var check = body.IndexOf("if (!vault.Configured) return BadRequest(new { message = VaultOffMessage });", StringComparison.Ordinal);
+        Assert.True(check > 0, "no vault check in Ensure");
+        Assert.True(check < body.IndexOf("GroupCredentials.EnsureAsync(", StringComparison.Ordinal), "the vault check must come before EnsureAsync");
+        Assert.True(body.IndexOf("if (!MaySee) return Forbidden();", StringComparison.Ordinal) < check, "the permission gate stays first");
+        Assert.Contains("CREDENTIAL_VAULT_KEY", src[src.IndexOf("VaultOffMessage =", StringComparison.Ordinal)..]);
+    }
+
+    [Fact]
     public void Student_credentials_and_exports_use_the_vault_the_single_gate_and_no_store()
     {
         var src = Controller("StudentsController.cs");
@@ -643,9 +658,47 @@ public class StudentCredentialLeakTests
         Assert.DoesNotContain("InitialPassword", export);
 
         var selected = Body("public async Task<IActionResult> ExportSelected(");
-        Assert.Contains("var showPasswords = AdminPermAttribute.HasFullAccess(User, \"students.list\");", selected);
-        Assert.DoesNotContain("IsInRole(Roles.SuperAdmin)", selected);
         Assert.DoesNotContain("InitialPassword", selected);
+    }
+
+    [Fact]
+    public void Bulk_exports_show_passwords_only_to_superadmin_and_audit_without_the_password()
+    {
+        // M2 (2026-10-12): a centre-wide password dump is SUPERADMIN only (hard role — HasFullAccess/AdminPerm let a
+        // plain admin through). Per-student reveal and per-group export stay at HasFullAccess (auth-sessions.md §3).
+        var src = Controller("StudentsController.cs");
+        var creds = Controller("StudentsController.Credentials.cs");
+        Assert.Contains("private bool BulkExportShowsPasswords() => User.IsInRole(Roles.SuperAdmin);", creds);
+
+        string Body(string sig)
+        {
+            var i = src.IndexOf(sig, StringComparison.Ordinal);
+            Assert.True(i > 0, sig);
+            return src[i..src.IndexOf("\n    }", i, StringComparison.Ordinal)];
+        }
+        foreach (var (sig, summary) in new[]
+                 {
+                     ("public async Task<IActionResult> Export()", "ExportAllAuditSummary("),
+                     ("public async Task<IActionResult> ExportSelected(", "ExportSelectedAuditSummary("),
+                 })
+        {
+            var body = Body(sig);
+            Assert.Contains("var showPasswords = BulkExportShowsPasswords();", body);
+            // The «Parol» column and the reveal exist only under showPasswords.
+            Assert.Contains("if (showPasswords) headers.Add(\"Parol\");", body);
+            Assert.Contains("if (showPasswords) row.Add(PasswordCell(u, revealed));", body);
+            // M1: the export WITH passwords is audited — a fact, never a password value.
+            var audit = body.IndexOf("audit.Record(AuditService.EntityStudent, ExportAuditEntityId", StringComparison.Ordinal);
+            Assert.True(audit > 0, $"{sig}: no audit row");
+            Assert.True(audit > body.IndexOf("if (showPasswords)\n", StringComparison.Ordinal), $"{sig}: audit outside the password branch");
+            Assert.Contains(summary, body);
+            Assert.DoesNotMatch(new Regex(@"audit\.Record\([^;]*(revealed|Password\b|PasswordCell)"), body);
+        }
+        // The per-student reveal keeps the single HasFullAccess gate.
+        Assert.Contains("HasFullAccess(User, \"students.list\")", Body("public async Task<ActionResult<CredentialsDto>> Credentials("));
+        // Audit texts carry only the count.
+        Assert.Contains("$\"O'quvchilar login/parollari eksport qilindi: barcha faol o'quvchilar ({students} ta)\"", creds);
+        Assert.Contains("$\"Tanlangan o'quvchilar login/parollari eksport qilindi ({students} ta o'quvchi)\"", creds);
     }
 
     [Fact]

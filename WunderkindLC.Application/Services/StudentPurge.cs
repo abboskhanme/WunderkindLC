@@ -171,6 +171,8 @@ public static class StudentPurge
         db.TelegramRegistrations.RemoveRange(await db.TelegramRegistrations.Where(x => x.StudentId == id).ToListAsync(ct));
         db.StudentAchievements.RemoveRange(await db.StudentAchievements.Where(x => x.StudentId == id).ToListAsync(ct));
         db.MessageDeliveries.RemoveRange(await db.MessageDeliveries.Where(x => x.StudentId == id).ToListAsync(ct));
+        // Ketma-ket kelmaslik belgilari (U3d, hosila) — o'quvchisiz ma'nosiz.
+        db.AbsenceStreakAlerts.RemoveRange(await db.AbsenceStreakAlerts.Where(x => x.StudentId == id).ToListAsync(ct));
         db.ArchivedRecords.RemoveRange(await db.ArchivedRecords.Where(x => x.EntityId == id).ToListAsync(ct));
         // Tarix: o'quvchi bo'yicha yozuvlar + a'zolik hodisalari ("{groupId}:{studentId}").
         db.AuditLogs.RemoveRange(await db.AuditLogs

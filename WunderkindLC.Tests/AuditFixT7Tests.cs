@@ -398,7 +398,7 @@ public class AuditFixT7Tests
             FullName = "Karimov Ali", LastName = "Karimov", FirstName = "Ali", MiddleName = "",
         };
 
-        TeacherStudentEdit.Apply(s, new TeacherStudentEdit.Input("  Karimova   Aziza  Valiyevna  qizi ", null, null),
+        TeacherStudentEdit.Apply(s, new TeacherStudentEdit.Input("  Karimova   Aziza  Valiyevna  qizi ", null),
             new DateOnly(2026, 10, 7));
 
         Assert.Equal("Karimova Aziza Valiyevna qizi", s.FullName);

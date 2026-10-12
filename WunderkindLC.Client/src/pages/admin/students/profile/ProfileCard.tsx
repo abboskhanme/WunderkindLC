@@ -45,7 +45,8 @@ export function ProfileCard({
   /** "⋮" menyusidagi qo'shimcha amallar (AI tahlil, Bog'lanish kerak, Jurnal ...). */
   menuItems: DropdownMenuItem[]
   onPhoto: () => void
-  onMessage: () => void
+  /** «Telegram xabar» — berilmasa tugma ko'rinmaydi (yuborish `messages.broadcast` ruxsatini talab qiladi). */
+  onMessage?: () => void
   onPay: () => void
   onCall: () => void
 }) {
@@ -134,9 +135,11 @@ export function ProfileCard({
 
         {/* Uchta asosiy amal */}
         <div className="mt-3 flex items-center gap-1">
-          <CardIconButton label="Telegram xabar" onClick={onMessage}>
-            <IconMessage className="h-5 w-5" />
-          </CardIconButton>
+          {onMessage && (
+            <CardIconButton label="Telegram xabar" onClick={onMessage}>
+              <IconMessage className="h-5 w-5" />
+            </CardIconButton>
+          )}
           <CardIconButton label="Balans · To'lov qilish" onClick={onPay}>
             <IconCurrencyDollar className="h-5 w-5" />
           </CardIconButton>

@@ -17,9 +17,15 @@ namespace WunderkindLC.Server.Controllers;
 /// per endpoint — the centre table, a group's table and a student's block never disagree.</para>
 ///
 /// <para>No debtor lock: the balance is never read (owner decision, 2026-10-11).</para>
+///
+/// <para>⚠️ CLASS-LEVEL FLOOR (M3, 2026-10-12): <c>[AdminPerm("classes.rating", ReadRequiresPerm = true)]</c> on the
+/// class — an action added later WITHOUT its own gate is still closed to staff without the page key (default
+/// <c>AdminPerm</c> would leave its GET open to every staff member). A method-level <c>[AdminPerm]</c> still OVERRIDES
+/// it (<c>AdminPermAttribute.IsOverriddenAtMethod</c>), so the group/student endpoints keep their wider key sets.</para>
 /// </summary>
 [ApiController]
 [Authorize]
+[AdminPerm("classes.rating", ReadRequiresPerm = true)]
 [Route("api/admin/rating")]
 public partial class RatingController(AppDbContext db, DataCache cache, AuditService audit) : ControllerBase
 {

@@ -66,7 +66,7 @@ export function TeacherDashboard() {
         // O'tgan 7 kun ichida davomati kiritilmagan darslar (faqat jadval ruxsati bo'lsa).
         if (d.canSchedule)
           getTeacherSchedule(addDays(d.today, -PENDING_LOOKBACK_DAYS), addDays(d.today, -1))
-            .then((ls) => alive && setPending(ls.filter((l) => !l.conducted && !l.substitutedBy)))
+            .then((ls) => alive && setPending(ls.filter((l) => !l.attendanceTaken && !l.substitutedBy)))
             .catch(() => {}) // ikkilamchi blok — xato bo'lsa shunchaki ko'rinmaydi
       })
       .catch((err) => alive && setError(apiErrorMessage(err, "Ma'lumotni yuklab bo'lmadi")))
@@ -87,7 +87,8 @@ export function TeacherDashboard() {
 
   const firstName = (user?.fullName ?? '').trim().split(/\s+/)[0] || 'ustoz'
   const lessons = data?.todayLessons ?? []
-  const todayPending = lessons.filter((l) => !l.conducted && !l.substitutedBy && (!l.endTime || l.endTime <= now)).length
+  // «Davomat kutilmoqda» — davomati OLINMAGAN (`attendanceTaken`, yagona ta'rif), `conducted` EMAS.
+  const todayPending = lessons.filter((l) => !l.attendanceTaken && !l.substitutedBy && (!l.endTime || l.endTime <= now)).length
   const groups = useMemo(() => data?.groups ?? [], [data])
   const subCount = groups.filter((g) => g.isSubstitute).length
 

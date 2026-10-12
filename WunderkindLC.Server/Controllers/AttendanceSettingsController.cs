@@ -43,7 +43,8 @@ public class AttendanceSettingsController(AppDbContext db, AuditService audit) :
             meta = new CenterMeta();
             db.CenterMeta.Add(meta);
         }
-        AttendanceSettingsRules.Apply(meta, dto);
+        // «since» vaqtlari shu yerda qo'yiladi: jarima/eslatma/eskalatsiya yoqilishidan OLDINGI darslarga tegmaydi.
+        AttendanceSettingsRules.Apply(meta, dto, AppClock.Now);
         SettingsAudit.Record<CenterMeta>(audit, db.ChangeTracker, "Davomat intizomi",
             withValues: true, labels: AttendanceSettingsRules.AuditLabels);
         await db.SaveChangesAsync();

@@ -4,15 +4,16 @@ Baza + **barcha fayllar** (rasm, hujjat, sertifikat, yuz selfilari, qo'ng'iroq a
 serverdan yangisiga o'tadi. Ikkita skript bor: `migrate-export.sh` (eski server) va
 `migrate-import.sh` (yangi server).
 
-> ⚠️ **Kunlik backup arxividan foydalanmang.** U `uploads/face` (yuz bilan kirish selfilari) ni
-> ATAYIN tashlab ketadi (`docker-compose.yml` → backup servisi). Ko'chirishda volume TO'LIQ olinadi.
+> ⚠️ **Kunlik backup arxividan foydalanmang.** U `uploads/face` (yuz bilan kirish selfilari) va
+> `uploads/messaging` (Telegram xabarlari biriktirmalari, yutuq rasmlari) ni ATAYIN tashlab ketadi
+> (`docker-compose.yml` → backup servisi). Ko'chirishda volume TO'LIQ olinadi.
 
 ## Nima ko'chadi
 
 | Manba | Nima | Qayerda |
 |---|---|---|
 | PostgreSQL | butun baza | `postgres-data` volume → `db.dump` |
-| `uploads` | rasmlar, hujjatlar, chek, sertifikat, **`uploads/face`** | volume |
+| `uploads` | rasmlar, hujjatlar, chek, sertifikat, **`uploads/face`**, **`uploads/messaging`** | volume |
 | `dpkeys` | DataProtection kalitlari | volume |
 | `cti-recordings` | qo'ng'iroq audiolari | volume |
 | `cam-recordings` | kamera yozuvlari (ixtiyoriy, KATTA) | volume |

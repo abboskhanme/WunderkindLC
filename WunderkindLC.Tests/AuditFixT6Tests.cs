@@ -172,6 +172,94 @@ public class AuditFixT6Tests
         Assert.Single(ctx.UserNotifications);
     }
 
+    // ===================== Deploy kuni — ESKI kalitlar ham "bajarildi" (review fix 2026-10-12) =====================
+    // CRM upgrade kalitlarni QOIDA bo'yicha qildi (`birthday:{ruleId}[:{sid}]`, `payment_debt:{ruleId}[:{sid}]`). Deploy
+    // kuni eski xizmat ertalab yuborib bo'lgan bo'lsa, yangi kalitlar bo'sh — eski kalitlar o'qilmasa hamma IKKINCHI
+    // xabarni olardi.
+
+    private static AutoMessageRule BirthdayRule() => new()
+    {
+        Trigger = AutoMessageTriggers.Birthday, Enabled = true, Template = "Tabrik {ism}",
+    };
+
+    [Fact]
+    public async Task Tugilgan_kun_ESKI_oluvchi_kaliti_bugun_bolsa_qayta_tabriklanmaydi()
+    {
+        using var db = TestDb.Sqlite();
+        var ctx = db.Context;
+        var today = AppClock.Today;
+        var s = NewStudent();
+        s.BirthDate = today.AddYears(-12).ToString("yyyy-MM-dd");
+        ctx.Students.Add(s);
+        ctx.AutoMessageRules.Add(BirthdayRule());
+        ctx.SaveChanges();
+        // Eski xizmat bugun ertalab shu o'quvchini tabriklagan.
+        await JobRunMarker.TryClaimAsync(ctx, BirthdayGreetingService.LegacyRecipientKey(s.Id), today);
+
+        Reflect.RunAsyncMethod(Birthday(ctx, new MessagingStack()), "RunAsync", today, CancellationToken.None);
+        Assert.Empty(ctx.UserNotifications);
+    }
+
+    [Fact]
+    public async Task Tugilgan_kun_ESKI_ish_kaliti_bugun_bolsa_qoida_ishlamaydi__kecha_bolsa_ishlaydi()
+    {
+        using var db = TestDb.Sqlite();
+        var ctx = db.Context;
+        var today = AppClock.Today;
+        var s = NewStudent();
+        s.BirthDate = today.AddYears(-12).ToString("yyyy-MM-dd");
+        ctx.Students.Add(s);
+        ctx.AutoMessageRules.Add(BirthdayRule());
+        ctx.SaveChanges();
+        var at10 = today.ToDateTime(new TimeOnly(10, 0));
+
+        // Kechagi eski belgi — bugungi ishga ta'sir qilmaydi.
+        await JobRunMarker.TryClaimAsync(ctx, BirthdayGreetingService.LegacyJobKey, today.AddDays(-1));
+        ctx.ChangeTracker.Clear();
+        await JobRunMarker.TryClaimAsync(ctx, BirthdayGreetingService.LegacyJobKey, today);   // bugun eski xizmat tugatgan
+
+        Reflect.RunAsyncMethod(Birthday(ctx, new MessagingStack()), "TickAsync", at10, CancellationToken.None);
+        Assert.Empty(ctx.UserNotifications);
+    }
+
+    [Fact]
+    public async Task Qarzdorlik_ESKI_oluvchi_kaliti_bugun_bolsa_qayta_eslatilmaydi()
+    {
+        using var db = TestDb.Sqlite();
+        var ctx = db.Context;
+        var s = NewStudent();
+        s.Balance = -300000m;
+        var s2 = NewStudent("Valiyev Vali", "u-2");
+        s2.Balance = -300000m;
+        ctx.Students.AddRange(s, s2);
+        ctx.AutoMessageRules.Add(DebtRule());
+        ctx.SaveChanges();
+        // Eski xizmat bugun faqat BIRINCHI qarzdorga ulgurgan (masalan deploy yarmida).
+        await JobRunMarker.TryClaimAsync(ctx, PaymentReminderService.LegacyRecipientKey(s.Id), OddDay());
+
+        Reflect.RunAsyncMethod(Payment(ctx, new MessagingStack()), "RunDailyAsync", OddDay(), CancellationToken.None);
+
+        var n = Assert.Single(ctx.UserNotifications);
+        Assert.Equal("u-2", n.UserId);
+    }
+
+    [Fact]
+    public async Task Qarzdorlik_ESKI_ish_kaliti_bugun_bolsa_TickAsync_ishlamaydi()
+    {
+        using var db = TestDb.Sqlite();
+        var ctx = db.Context;
+        var s = NewStudent();
+        s.Balance = -100000m;
+        ctx.Students.Add(s);
+        ctx.AutoMessageRules.Add(DebtRule());
+        ctx.SaveChanges();
+        await JobRunMarker.TryClaimAsync(ctx, PaymentReminderService.LegacyJobKey, OddDay());
+
+        Reflect.RunAsyncMethod(Payment(ctx, new MessagingStack()), "TickAsync",
+            OddDay().ToDateTime(new TimeOnly(10, 0)), CancellationToken.None);
+        Assert.Empty(ctx.UserNotifications);
+    }
+
     // ===================== Lows (d) — oylik erkin eslatma 29–31-sanada =====================
 
     [Fact]

@@ -291,13 +291,17 @@ services:
             db="/backups/wunderkindlc_$${ts}.sql.gz"; files="/backups/wunderkindlc_$${ts}_files.tar.gz"
             echo "[backup] $$ts — baza dump..."
             pg_dump | gzip > "$$db" || { echo "[backup] XATO: pg_dump"; rm -f "$$db"; }
-            echo "[backup] $$ts — fayllar (uploads + cti audio, uploads/face TASHQARIDA)..."
+            echo "[backup] $$ts — fayllar (uploads + cti audio, uploads/face va uploads/messaging TASHQARIDA)..."
             # ⚠️ `uploads/face` ISTISNO: yuz bilan kirish selfilari — BIOMETRIK ma'lumot va
             # ustiga voyaga yetmaganlarniki. Bu arxiv off-site'ga/Telegram'ga chiqishi mumkin,
             # shuning uchun selfilar unga UMUMAN qo'shilmaydi. (Yuz VEKTORLARI bazada, lekin
             # ular AES-GCM bilan shifrlangan — kalit faqat .env da, dump'da yo'q.)
             # Selfilar baribir vaqtinchalik: CenterMeta.LoginFaceKeepChecks dan oshgani o'chadi.
-            tar czf "$$files" --exclude='uploads/face' --exclude='uploads/face/*' -C /data uploads recordings 2>/dev/null || { echo "[backup] OGOHLANTIRISH: fayllar tar xato"; rm -f "$$files"; }
+            # ⚠️ `uploads/messaging` ham ISTISNO: Telegram xabarlari biriktirmalari (50 MB gacha video) — arxivni
+            # shishiradi, Telegram esa yuborilgan faylni `file_id` bo'yicha saqlaydi (MessageAttachment.TelegramFileId),
+            # 60 kundan eskilari baribir lokal o'chiriladi (messaging.md §0.5). Qabul qilingan oqibat: yutuq rasmlari ham
+            # shu papkada — disk yo'qolsa ular tar'dan tiklanmaydi (Telegram'da file_id qoladi, kabinet uchun qayta yuklanadi).
+            tar czf "$$files" --exclude='uploads/face' --exclude='uploads/face/*' --exclude='uploads/messaging' --exclude='uploads/messaging/*' -C /data uploads recordings 2>/dev/null || { echo "[backup] OGOHLANTIRISH: fayllar tar xato"; rm -f "$$files"; }
             # Shifrlash (parol berilgan bo'lsa) — natija .gpg, asl fayl o'chiriladi.
             if [ -n "$$ENC" ]; then
               for f in "$$db" "$$files"; do

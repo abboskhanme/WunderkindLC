@@ -273,6 +273,36 @@ public class TeacherHomeServiceTests
     }
 
     [Fact]
+    public async Task Schedule_davomat_olindi_faqat_AttendanceTakenAt_dan__bitta_baho_YETMAYDI()
+    {
+        // YAGONA ta'rif (journal.md «Davomat olindi»): "o'tildi" (bitta baho) ≠ davomat olindi. Tezkor davomat sahifasi
+        // va «Davomat kutilmoqda» shu bayroqqa qaraydi — aks holda baho qo'yilgan darsda hamma «Keldi» bo'lib to'lardi.
+        using var db = TestDb.Sqlite();
+        var s = SeedDb(db);
+        var today = D(AppClock.Today);
+        db.Context.LessonNotes.Add(new LessonNote
+        {
+            ClassId = s.Mine.Id, SubjectId = s.Mine.CourseId, Quarter = 1, Date = today, Period = 1, Conducted = true,
+        });
+        db.Context.SaveChanges();
+
+        var gradedOnly = Assert.Single(await TeacherHomeService.ScheduleAsync(db.Context, s.Me.Id, AppClock.Today, AppClock.Today));
+        Assert.True(gradedOnly.Conducted);
+        Assert.False(gradedOnly.AttendanceTaken);
+
+        // Birinchi davomat belgisi (istalgan fan/dars raqami) — olingan.
+        db.Context.LessonNotes.Add(new LessonNote
+        {
+            ClassId = s.Mine.Id, SubjectId = "boshqa-fan", Quarter = 1, Date = today, Period = 2,
+            AttendanceTakenAt = AppClock.Now,
+        });
+        db.Context.SaveChanges();
+
+        var taken = Assert.Single(await TeacherHomeService.ScheduleAsync(db.Context, s.Me.Id, AppClock.Today, AppClock.Today));
+        Assert.True(taken.AttendanceTaken);
+    }
+
+    [Fact]
     public async Task Schedule_begona_guruh_darsini_bermaydi()
     {
         using var db = TestDb.Sqlite();

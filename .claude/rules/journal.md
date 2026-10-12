@@ -237,8 +237,27 @@ foiz = round(kelgan × 100 / o'tilgan). **Unmarked / NotHeld / Blocked foizga KI
 - Qo'llangan joylar: `StudentJournalBuilder` (katakda `Mark`), `TeacherHomeService.Attendance`,
   `StudentProfileBuilder`, `Analytics.BuildClass` (+ a'zolik chegaralari), `GroupSnapshotBuilder` (AI),
   `StudentAttendanceController.Absent` (davomat OLINGAN guruhlar, `IsExcused`), admin/o'qituvchi guruh
-  sahifalari. `RatingService`/`StudentBallService` — Phase 4 (U4b) qayta yozadi, bu yerda TEGILMAGAN.
+  sahifalari, o'qituvchi tezkor davomati (`teacher-portal.md` §4).
   ⚠️ Yangi ko'rsatkich yozsangiz `IsLate`/`ReasonId != null` ni qo'lda sanamang — `Classify`/`Tally`.
+
+### Jamlanma hisobotlar — `MembershipAttendance` (2026-10-12, review fix)
+
+Markaz reytingi (`RatingService.SchoolAsync` + MCP `rating_center`), o'qituvchi reytingi
+(`StudentBallService.TeacherAsync` + MCP `rating_group`) va bosh sahifadagi guruh davomati (`DashboardController`)
+endi YAGONA ta'rifda — **SQL agregatlari** bilan (jurnal xotiraga yuklanmaydi), per (o'quvchi, guruh) `Stat`.
+Ilgari `(o'tilgan − kech bo'lmagan sababli) ÷ o'tilgan` edi: bitta baho butun guruhni «kelgan» qilardi.
+
+- Har o'tilgan dars KATAGI bir marta: sabab → kech (kelgan) / sababli / sababsiz (noma'lum sabab — sababsiz);
+  sababsiz «keldi»/baho/o'zlashtirish → keldi; bir katakda ham sabab, ham baho bo'lsa (eski dublikat qator) — SABAB.
+- Belgisiz o'quvchi faqat davomati TO'LIQ olingan darsda VA a'zolik OYNASIDA «keldi»
+  (`MembershipAttendance.ImplicitWindow`: aktivlashtirish kuni — bo'lmasa qo'shilish kuni — va `RecordedAt` dan,
+  muzlatish/chiqish kunigacha). Aniq belgilar oynadan qat'i nazar sanaladi (jurnal ularni faqat a'zolik ichida
+  qabul qiladi — `MemberWriteError`). A'zoligi yo'q (eski `ClassName`) juftlik — oynasiz.
+- ⚠️ SQL dagi oyna sharti va xotiradagi `ImplicitWindow` AYNAN bir xil bo'lishi SHART (`MembershipAttendanceTests`,
+  `RatingEngineTests` xotiradagi `Classify` bilan solishtiradi).
+- Raqamlar o'zgardi (egasi qabul qilgan qoida, `ASSUMPTIONS.md` 2026-10-11): davomati olinmagan darslar foizga
+  kirmaydi. `JournalDbTests`: «davomati olinmagan darslar hisobga KIRMAYDI» (90 → 0) va ilgari Skip qilingan
+  «faqat a'zolik oynasida» (50 %) endi faol.
 
 ### "Davomat olindi" — IKKI XIL savol (`AttendanceTaking`)
 
@@ -271,6 +290,19 @@ backfill: kech emas va nomida «sababsiz» yo'q → sababli. Yangi bazada «Kasa
 bilan (`SettingsAudit`, "Davomat intizomi"). Eski «Davomat eslatmasi» avto-qoidasi yoqiq bo'lsa javobda
 ogohlantirish (ikki marta eslatma). UI: «Jurnal va davomat» → «Davomat intizomi» (`AttendanceDisciplineModal`)
 va «Davomat xabarlari» (`AbsentNoticeSettingsModal`; navbat — U3b, pastda).
+
+⚠️ **JARIMA ORQAGA ISHLAMAYDI (2026-10-12, review).** `CenterMeta.AttendanceDisciplineSince` /
+`AttendanceFineSince` (`DateTime?`, markaz vaqti) — kalit o'chiqdan YOQILGANDA saqlashda qo'yiladi
+(`AttendanceSettingsRules.Since`: o'chirilsa `null`, yoqiq turgan bo'lsa o'zgarmaydi, yoqiq-u bo'sh (eski qator) —
+`now`). `AttendanceDiscipline.Decide`: dars MUDDATI intizom yoqilgan vaqtdan OLDIN bo'lsa — eslatma, eskalatsiya,
+jarima YO'Q; jarima yoqilgan vaqtdan oldin bo'lsa — faqat jarima yo'q (eskalatsiya bor). Ikkala yo'lda ham (bugun
+va kechagi o'tkazib yuborilgan jarima). Ilgari intizom/jarima yoqilishi bilan bugungi va KECHAGI darslar uchun
+birdaniga jarima/xabar yog'ilardi. Migratsiya: `docs/migrations/ReviewFixes.sql` (yoqiq qatorlarga deploy vaqti).
+Noyob indeksdan BOSHQA saqlash xatosi (`DbUpdateException`, jarima qatori bazada yo'q) — log ogohlantirishi,
+poyga esa jim (`TryCreateFineAsync`).
+
+⚠️ `GET journal/conducted` (o'tilgan darslar, eski bosh sahifa) 2026-10-12 da OLIB TASHLANDI — chaqiruvchisi yo'q edi
+va "o'tildi" ni "davomat olindi" deb ko'rsatardi.
 
 ## 2026-10-12 — «KELMADI» XABARLARI NAVBATI va MENEJER NAZORATI (CRM Phase 3, U3b)
 

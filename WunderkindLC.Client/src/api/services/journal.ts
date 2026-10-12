@@ -7,24 +7,6 @@ import { journalTopicsMock } from '../mock/journalTopics'
 const gkey = (classId: string, subjectId: string, quarter: number) =>
   `${classId}-${subjectId}-${quarter}`
 
-/** Berilgan sanada o'tilgan darslar (guruh+fan+dars raqami) — bosh sahifada yashil/qizil ko'rsatish uchun */
-export interface ConductedLesson {
-  classId: string
-  subjectId: string
-  period: number
-}
-
-export async function getConductedLessons(date: string): Promise<ConductedLesson[]> {
-  if (USE_MOCK) {
-    await delay()
-    return []
-  }
-  const { data } = await api.get<ConductedLesson[]>('/admin/journal/conducted', {
-    params: { date },
-  })
-  return data
-}
-
 /* ---------- Guruh OYLIK jurnali (guruh sahifasi) ---------- */
 
 export interface GroupJournalInfo {

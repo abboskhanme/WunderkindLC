@@ -441,9 +441,11 @@ public class JournalDbTests
     }
 
     [Fact]
-    public async Task Rating_DAVOMAT_GURUHNINGBUTUNTARIXIboyicha_HOZIRGIXULQ()
+    public async Task Rating_DAVOMAT_otildi_lekin_davomati_OLINMAGAN_darslar_hisobga_KIRMAYDI()
     {
-        // HOZIRGI xulqni muzlatadi — pastdagi Skip'li test to'g'ri xulqni tasvirlaydi.
+        // 2026-10-12 (review fix) — YAGONA davomat ta'rifi (MembershipAttendance / AttendanceRules): darslar faqat
+        // "o'tildi" (davomat OLINMAGAN), ya'ni belgisiz o'quvchi BELGILANMAGAN — foizga kirmaydi. Hisobda faqat
+        // aniq "kelmadi" qoladi: 1 dars, 0 kelgan → 0 %. (Ilgari "10 dars − 1 kelmagan" = 90 % edi.)
         using var db = TestDb.Sqlite();
         var g = AddGroup(db, startDate: Day(-100));
         var yangi = AddStudent(db, g, "Yangi", activatedAt: Day(-2));
@@ -465,20 +467,16 @@ public class JournalDbTests
 
         var rows = await RatingService.SchoolAsync(db.Context);
 
-        // 10 dars, 1 kelmagan → 90%; aslida o'quvchi faqat 2 darsga ulgurgan (1/2 = 50%).
-        Assert.Equal(90, rows.Single().Attendance);
+        Assert.Equal(0, rows.Single().Attendance);
     }
 
-    [Fact(Skip = "XATO (RatingService.cs:54-69): davomat a'zolik oynasini hisobga olmaydi")]
+    [Fact]
     public async Task Rating_DAVOMAT_FAQATAZOLIKOYNASIDAsanalishiKerak()
     {
-        // XATO (RatingService.cs:54-69): `conducted += cond.Count` GURUHNING BARCHA o'tilgan
-        // darslarini sanaydi — o'quvchi guruhga qo'shilishidan OLDINGI va muzlatilgandan
-        // KEYINGI darslar ham maxrajga kiradi. Kelmaganlar esa faqat o'quvchining O'Z
-        // yozuvlaridan olinadi, shuning uchun yangi qo'shilgan o'quvchining davomati sun'iy
-        // ravishda 100% ga yaqinlashadi va reyting adolatsiz bo'ladi.
-        // To'g'risi: jurnal qoidasidagi kabi `held = conducted ∩ (memberStart ≤ sana ≤ frozenAt)`
-        // (JournalService.MemberStart / StudentAttendanceController bilan bir xil).
+        // 2026-10-12 dan TUZATILGAN (ilgari Skip — `conducted += cond.Count` GURUHNING BARCHA o'tilgan darslarini
+        // sanardi, yangi qo'shilgan o'quvchining davomati sun'iy ravishda 100% ga yaqinlashardi). Endi YAGONA ta'rif:
+        // davomati OLINGAN darsdagi belgisiz o'quvchi faqat a'zolik oynasida "keldi" (MembershipAttendance.ImplicitWindow:
+        // aktivlashtirish/qo'shilish va kiritilgan kundan) — oynadan tashqaridagi darslar hisobga kirmaydi.
         using var db = TestDb.Sqlite();
         var g = AddGroup(db, startDate: Day(-100));
         var yangi = AddStudent(db, g, "Yangi", activatedAt: Day(-2));
@@ -486,7 +484,7 @@ public class JournalDbTests
             db.Context.LessonNotes.Add(new LessonNote
             {
                 ClassId = g.Id, SubjectId = g.CourseId, Quarter = 1,
-                Date = Day(-i), Period = 1, Conducted = true,
+                Date = Day(-i), Period = 1, Conducted = true, AttendanceTaken = true,
             });
         var sabab = new AbsenceReason { Name = "Sababsiz", Short = "S" };
         db.Context.AbsenceReasons.Add(sabab);

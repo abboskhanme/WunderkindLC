@@ -28,9 +28,10 @@ public static class RatingService
     /// <c>JournalEntries</c> jadvali (<c>ToListAsync()</c> — prod'da o'n millionlab qator) xotiraga yuklanib,
     /// o'rtacha baho va qoldirilgan darslar sanalardi. Endi AYNAN o'sha raqamlar GROUP BY / EXISTS so'rovlaridan
     /// keladi (MCP <c>TestTools.ComputeCenterAsync</c> naqshi) — bazadan faqat (o'quvchi, guruh) bo'yicha bitta
-    /// qator chiqadi. Kontrakt va raqamlar O'ZGARMADI (<c>RatingEngineTests</c> eski algoritm bilan solishtiradi):
-    /// o'rtacha baho — BARCHA baholar (mezondan yozilgani ham); davomat = (o'tilgan − kech bo'lmagan sababli
-    /// qoldirilgan) ÷ o'tilgan (kech kelgan — kelgan).</para></summary>
+    /// qator chiqadi. O'rtacha baho — BARCHA baholar (mezondan yozilgani ham).
+    /// ⚠️ DAVOMAT — YAGONA ta'rif (2026-10-12, <see cref="MembershipAttendance"/>, <c>journal.md</c>): kech = kelgan,
+    /// davomati OLINMAGAN darsdagi belgisiz o'quvchi foizga KIRMAYDI (ilgari "o'tilgan − sababli" ÷ "o'tilgan" edi —
+    /// bitta baho butun guruhni "kelgan" qilardi).</para></summary>
     public static async Task<List<StudentRatingRowDto>> SchoolAsync(IAppDbContext db)
     {
         // Ball PER-GURUH hisoblanadi, keyin o'quvchi bo'yicha jamlanadi: `Ball` — yig'indi,
@@ -40,7 +41,6 @@ public static class RatingService
         var students = await db.Students.AsNoTracking().Where(s => !s.IsArchived).ToListAsync();
         var classes = await db.Classes.AsNoTracking().Select(c => new { c.Id, c.Name, c.Grade }).ToListAsync();
         var classById = classes.GroupBy(c => c.Id).ToDictionary(g => g.Key, g => g.First());
-        var lateIds = await db.AbsenceReasons.AsNoTracking().Where(r => r.IsLate).Select(r => r.Id).ToListAsync();
 
         // Faol a'zoliklar (M2M) — har o'quvchining guruhlari. Tartib USTUNLIK bo'yicha
         // (faol → sinov → muzlatilgan, keyin eng yangi qo'shilgani): birinchi element "vakil guruh"
@@ -60,49 +60,38 @@ public static class RatingService
                 .ToListAsync())
             .ToDictionary(x => (x.StudentId, x.ClassId), x => (Sum: (long)x.Sum, x.N));
 
-        // O'tilgan darslar soni guruh bo'yicha = o'tilgan dars yozuvlarining TAKRORSIZ (fan, sana, para) soni.
-        var conductedByClass = (await db.LessonNotes.AsNoTracking().Where(n => n.Conducted)
-                .Select(n => new { n.ClassId, n.SubjectId, n.Date, n.Period }).Distinct()
-                .GroupBy(n => n.ClassId)
-                .Select(g => new { ClassId = g.Key, N = g.Count() })
-                .ToListAsync())
-            .ToDictionary(x => x.ClassId, x => x.N);
+        // O'quvchining guruhlari: faol a'zolik (M2M); yo'q bo'lsa ClassName yorlig'i bo'yicha (orqaga moslik).
+        var groupsOf = students.ToDictionary(st => st.Id, st =>
+            groupsByStudent.TryGetValue(st.Id, out var gs) && gs.Count > 0
+                ? gs
+                : classes.Where(c => !string.IsNullOrEmpty(st.ClassName) && c.Name == st.ClassName)
+                    .Select(c => c.Id).ToList());
 
-        // O'tilgan darsdagi qoldirishlar (kech bo'lmagan sabab) — (o'quvchi, guruh) bo'yicha, EXISTS bilan.
-        var conductedNotes = db.LessonNotes.AsNoTracking().Where(n => n.Conducted);
-        var absences = (await db.JournalEntries.AsNoTracking()
-                .Where(e => e.ReasonId != null && !lateIds.Contains(e.ReasonId!)
-                            && conductedNotes.Any(n => n.ClassId == e.ClassId && n.SubjectId == e.SubjectId
-                                                       && n.Date == e.Date && n.Period == e.Period))
-                .GroupBy(e => new { e.StudentId, e.ClassId })
-                .Select(g => new { g.Key.StudentId, g.Key.ClassId, N = g.Count() })
-                .ToListAsync())
-            .ToDictionary(x => (x.StudentId, x.ClassId), x => x.N);
+        // DAVOMAT — YAGONA ta'rif, SQL agregatlari bilan (MembershipAttendance). A'zoligi yo'q (ClassName zaxirasi)
+        // juftliklar a'zolik oynasisiz hisoblanadi.
+        var fallbackPairs = students
+            .Where(st => !(groupsByStudent.TryGetValue(st.Id, out var gs) && gs.Count > 0))
+            .SelectMany(st => groupsOf[st.Id].Select(gid => (st.Id, gid)))
+            .ToList();
+        var attendanceBy = await MembershipAttendance.ComputeAsync(db, unboundedPairs: fallbackPairs);
 
         var result = new List<StudentRatingRowDto>();
         foreach (var st in students)
         {
-            // O'quvchining guruhlari: faol a'zolik (M2M); yo'q bo'lsa ClassName yorlig'i bo'yicha (orqaga moslik).
-            var groupIds = groupsByStudent.TryGetValue(st.Id, out var gs) && gs.Count > 0
-                ? gs
-                : classes.Where(c => !string.IsNullOrEmpty(st.ClassName) && c.Name == st.ClassName)
-                    .Select(c => c.Id).ToList();
+            var groupIds = groupsOf[st.Id];
             if (groupIds.Count == 0) continue; // guruhsiz o'quvchi reytingda yo'q
 
             long sum = 0;
-            int count = 0, conducted = 0, absent = 0;
+            int count = 0;
+            var att = MembershipAttendance.Stat.Empty;
             foreach (var gid in groupIds)
             {
                 if (grades.TryGetValue((st.Id, gid), out var g)) { sum += g.Sum; count += g.N; }
-                if (conductedByClass.TryGetValue(gid, out var c))
-                {
-                    conducted += c;
-                    absent += absences.GetValueOrDefault((st.Id, gid), 0);
-                }
+                att = att.Plus(attendanceBy.GetValueOrDefault((st.Id, gid), MembershipAttendance.Stat.Empty));
             }
 
             var average = count > 0 ? Math.Round((double)sum / count, 1) : 0;
-            double? attendance = conducted > 0 ? Math.Round((double)(conducted - absent) / conducted * 100) : null;
+            double? attendance = att.Percent;
 
             // VAKIL GURUH — a'zolik bo'yicha birinchisi (yuqorida ustunlik tartibida saralangan).
             // ⚠️ Ilgari `ClassName` (BIRINCHI qo'shilgan guruh yorlig'i) ustun edi: eski guruhida

@@ -147,7 +147,7 @@ turmaydi.
 | `students` | `.list` `.notes` `.attendance` `.notices` `.turnstile` `.face` | `StudentsController` · `StudentAttendanceController` · `AttendanceNoticesController` (`.notices`, RRP — Nazorat → «Davomat xabarlari», `journal.md`) · `StudentTurnstileController` · `AdminFaceController` · `CertificatesController` |
 | `teachers` | `.list` `.attendance` `.substitutions` `.retention` | `TeachersController` · `TeacherAttendanceController` · `SubstituteTeachersController` · `RetentionLossController` (RRP, `retention-loss.md`) |
 | `schedule` | `.courses` `.analytics` `.curricula` `.grading` `.levelTests` | `SubjectsController` · `CourseAnalyticsController` · `CurriculumController` · `GradingController` · `LevelTestsController` |
-| `classes` | `.list` `.rooms` `.testResults` `.rating` | `ClassesController` · `JournalController` · `RoomsController` · `TestResultsController` · `RatingController` (`.rating`, RRP — `rating.md`) |
+| `classes` | `.list` `.rooms` `.testResults` `.rating` | `ClassesController` · `JournalController` · `RoomsController` · `TestResultsController` · `RatingController` (`.rating`, RRP — `rating.md`; 2026-10-12 dan SINF darajasida ham — "pastki chegara": metodsiz yangi amal ham yopiq, metod atributlari baribir USTUN) |
 | `messages` | `.broadcast` `.support` | `MessagesController` · `AutoMessagesController` · `BotSupportController` (`.chat` 2026-10 da guruh chati bilan birga olib tashlandi) |
 | `app` | `.aiCheck` `.support` `.locations` `.parents` `.teachers` | `AiCheckController` · `SupportController` · `LocationsController` · `ParentsController` · `AppTeachersController` |
 | `finance` | `.main` `.bonus` `.discounts` | `FinanceController` · `RetentionBonusController` · `DiscountReportController` |

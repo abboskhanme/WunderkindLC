@@ -14,8 +14,8 @@ public class TeacherStudentEditTests
 {
     private static readonly DateOnly Today = new(2026, 10, 5);
 
-    private static TeacherStudentEdit.Input In(string? name = "Aliyev Vali", int? grade = null, string? phone = null) =>
-        new(name, grade, phone);
+    private static TeacherStudentEdit.Input In(string? name = "Aliyev Vali", int? grade = null) =>
+        new(name, grade);
 
     // ============================ Tekshiruv ============================
 
@@ -45,43 +45,54 @@ public class TeacherStudentEditTests
     public void Togri_sinf_qabul_qilinadi(int grade) =>
         Assert.Null(TeacherStudentEdit.Validate(In(grade: grade)));
 
-    [Theory]
-    [InlineData("123")]
-    [InlineData("abc")]
-    public void Notogri_telefon_rad_etiladi(string phone) =>
-        Assert.NotNull(TeacherStudentEdit.Validate(In(phone: phone)));
-
-    [Theory]
-    [InlineData(null)]
-    [InlineData("")]
-    [InlineData("901234567")]
-    [InlineData("+998 90 123 45 67")]
-    public void Bosh_yoki_togri_telefon_qabul_qilinadi(string? phone) =>
-        Assert.Null(TeacherStudentEdit.Validate(In(phone: phone)));
+    // ============================ Telefon — YOPIQ (H1) ============================
 
     [Fact]
-    public void Ozgarmagan_eski_formatdagi_telefon_ismni_saqlashga_TOSIQ_EMAS()
+    public void Tahrir_sorovida_TELEFON_maydoni_YOQ()
     {
-        // Xorijiy/eski raqam bor o'quvchining faqat ismini tuzatish mumkin bo'lishi kerak.
-        const string foreign = "+7-916-123-45-67";
-        Assert.NotNull(TeacherStudentEdit.Validate(In(phone: foreign)));
-        Assert.Null(TeacherStudentEdit.Validate(In(phone: foreign), currentPhone: foreign));
+        // H1 (2026-10-12): o'quvchi/ota-ona/ota/ona raqamlari — Telegram botida ro'yxatdan o'tish uchun moslash
+        // maydoni (kirish omili). O'qituvchi ularni o'zgartira olmasin: kiruvchi DTO'da ham, qoida kirishida ham
+        // telefon maydoni bo'lmasin.
+        foreach (var t in new[] { typeof(WunderkindLC.Application.Dtos.TeacherStudentEditRequest), typeof(TeacherStudentEdit.Input) })
+            Assert.DoesNotContain(t.GetProperties(), p => p.Name.Contains("Phone", StringComparison.OrdinalIgnoreCase));
+    }
 
-        var s = new Student { FullName = "Eski", Phone = foreign };
-        TeacherStudentEdit.Apply(s, In("Yangi Ism", phone: foreign), Today);
-        Assert.Equal(foreign, s.Phone);
+    [Fact]
+    public void Qollash_TORTTALA_raqamga_TEGMAYDI()
+    {
+        var s = new Student
+        {
+            FullName = "Eski", Phone = "+998-90-000-00-00", ParentPhone = "+998-91-111-11-11",
+            FatherPhone = "+998-93-333-33-33", MotherPhone = "+998-94-444-44-44",
+        };
+        TeacherStudentEdit.Apply(s, In("Yangi Ism", grade: 3), Today);
+
+        Assert.Equal("+998-90-000-00-00", s.Phone);
+        Assert.Equal("+998-91-111-11-11", s.ParentPhone);
+        Assert.Equal("+998-93-333-33-33", s.FatherPhone);
+        Assert.Equal("+998-94-444-44-44", s.MotherPhone);
+    }
+
+    [Fact]
+    public void Controller_telefonni_YOZMAYDI_va_Telegram_ulanishiga_TEGMAYDI()
+    {
+        var src = Controller("TeacherPortalController.Students.cs");
+        var body = src[src.IndexOf("UpdateGroupStudent(", StringComparison.Ordinal)..];
+        Assert.DoesNotContain("req.Phone", body);
+        Assert.DoesNotMatch(new Regex(@"student\.(Phone|ParentPhone|FatherPhone|MotherPhone)\s*=[^=]"), body);
+        Assert.DoesNotContain("TelegramLinks", body);
     }
 
     // ============================ Qo'llash ============================
 
     [Fact]
-    public void Ism_tozalanadi_telefon_normallashadi()
+    public void Ism_tozalanadi()
     {
         var s = new Student { FullName = "Eski", Phone = "" };
-        TeacherStudentEdit.Apply(s, In("  Aliyev   Vali  ", phone: "90 123 45 67"), Today);
+        TeacherStudentEdit.Apply(s, In("  Aliyev   Vali  "), Today);
 
         Assert.Equal("Aliyev Vali", s.FullName);
-        Assert.Equal("+998-90-123-45-67", s.Phone);
+        Assert.Equal("", s.Phone);
     }
 
     [Fact]
@@ -117,15 +128,16 @@ public class TeacherStudentEditTests
     }
 
     [Fact]
-    public void Faqat_uch_maydon_ozgaradi()
+    public void Faqat_ikki_maydon_ozgaradi()
     {
         var s = new Student
         {
             FullName = "Eski", Phone = "+998-90-000-00-00", ParentFullName = "Ota", ParentPhone = "+998-91-111-11-11",
             Address = "Qo'qon", ClassName = "A guruh", Balance = -100_000m,
         };
-        TeacherStudentEdit.Apply(s, In("Yangi Ism", grade: 3, phone: "901234567"), Today);
+        TeacherStudentEdit.Apply(s, In("Yangi Ism", grade: 3), Today);
 
+        Assert.Equal("+998-90-000-00-00", s.Phone);
         Assert.Equal("Ota", s.ParentFullName);
         Assert.Equal("+998-91-111-11-11", s.ParentPhone);
         Assert.Equal("Qo'qon", s.Address);

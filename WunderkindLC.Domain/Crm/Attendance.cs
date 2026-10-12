@@ -57,6 +57,19 @@ public partial class CenterMeta
 
     /// <summary>Id of the seeded contact reason «Ketma-ket darsga kelmadi» (U3d streak requests).</summary>
     public string? AbsenceStreakReasonId { get; set; }
+
+    /// <summary>
+    /// When <see cref="AttendanceDisciplineEnabled"/> last flipped false → true (centre time); <c>null</c> while off.
+    /// Lessons whose attendance deadline is BEFORE this moment get no reminder, escalation or fine — enabling the
+    /// discipline must not fire a burst for today's/yesterday's earlier lessons (review fix, 2026-10-12).
+    /// </summary>
+    public DateTime? AttendanceDisciplineSince { get; set; }
+
+    /// <summary>
+    /// When <see cref="AttendanceFineEnabled"/> last flipped false → true (centre time); <c>null</c> while off.
+    /// Fines are NOT retroactive: a lesson whose deadline is before this moment is never fined.
+    /// </summary>
+    public DateTime? AttendanceFineSince { get; set; }
 }
 
 /// <summary>

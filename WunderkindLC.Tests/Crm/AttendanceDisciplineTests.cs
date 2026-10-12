@@ -276,6 +276,135 @@ public class AttendanceDisciplineTests
     }
 
     /* =========================================================================================
+     *  2b) NOT RETROACTIVE — AttendanceDisciplineSince / AttendanceFineSince (review fix 2026-10-12)
+     * ========================================================================================= */
+
+    [Fact]
+    public void Lesson_with_deadline_before_discipline_since_is_skipped_entirely()
+    {
+        // Discipline switched on at 14:30 — the 14:00 lesson (deadline 14:15) gets nothing.
+        var d = AttendanceDiscipline.Decide(Today, "14:00", At(14, 31), null, Settings, true, disciplineSince: At(14, 30));
+        Assert.Null(d.Start);
+        Assert.False(d.FineDue);
+        Assert.False(d.EscalateDue);
+        Assert.Empty(d.DueReminders);
+
+        // Switched on at 14:10 — the deadline (14:15) is after it: the lesson is handled normally.
+        var later = AttendanceDiscipline.Decide(Today, "14:00", At(14, 16), null, Settings, true, disciplineSince: At(14, 10));
+        Assert.True(later.FineDue);
+        Assert.True(later.EscalateDue);
+    }
+
+    [Fact]
+    public void Fine_since_blocks_only_the_fine_not_the_escalation()
+    {
+        var d = AttendanceDiscipline.Decide(Today, "14:00", At(14, 20), null, Settings, true,
+            disciplineSince: At(8, 0), fineSince: At(14, 18));
+        Assert.True(d.Late);
+        Assert.True(d.EscalateDue);
+        Assert.False(d.FineDue);
+
+        // Yesterday's lesson, fine switched on this morning — never fined.
+        Assert.False(AttendanceDiscipline.Decide(Yesterday, "14:00", At(9, 0), null, Settings, false, fineSince: At(8, 0)).FineDue);
+    }
+
+    [Fact]
+    public void Since_is_stamped_on_false_to_true_cleared_on_off_kept_while_on()
+    {
+        var now = At(10, 0);
+        var earlier = At(8, 0, dayOffset: -3);
+        Assert.Equal(now, AttendanceSettingsRules.Since(wasOn: false, isOn: true, current: earlier, now));
+        Assert.Null(AttendanceSettingsRules.Since(wasOn: true, isOn: false, current: earlier, now));
+        Assert.Equal(earlier, AttendanceSettingsRules.Since(wasOn: true, isOn: true, current: earlier, now));
+        // A legacy row that is on but has no moment gets one on the next save (never "unbounded" again).
+        Assert.Equal(now, AttendanceSettingsRules.Since(wasOn: true, isOn: true, current: null, now));
+
+        var meta = new CenterMeta { AttendanceDisciplineEnabled = true, AttendanceDisciplineSince = earlier };
+        AttendanceSettingsRules.Apply(meta, Settings, now);
+        Assert.Equal(earlier, meta.AttendanceDisciplineSince);   // discipline stayed on
+        Assert.Equal(now, meta.AttendanceFineSince);             // fine just switched on
+    }
+
+    [Fact]
+    public async Task Enabling_today_fires_no_burst_for_earlier_lessons()
+    {
+        using var db = TestDb.Sqlite();
+        SeedDb(db, yesterdayTaken: false);
+        var meta = db.Context.CenterMeta.Single();
+        meta.AttendanceDisciplineSince = At(14, 30);   // switched on after today's 14:15 deadline
+        meta.AttendanceFineSince = At(14, 30);
+        db.Context.SaveChanges();
+
+        // Yesterday's lesson was never taken and today's deadline already passed — still no fine/escalation/reminder.
+        var (r, sent) = await RunAsync(db, At(14, 31));
+        Assert.Equal(new AttendanceDisciplineService.RunResult(0, 0, 0), r);
+        Assert.Empty(sent);
+        Assert.Empty(db.Context.TeacherAttendanceFines.AsNoTracking().ToList());
+    }
+
+    [Fact]
+    public async Task Fine_switched_on_later_still_escalates_but_does_not_fine()
+    {
+        using var db = TestDb.Sqlite();
+        SeedDb(db, yesterdayTaken: false);
+        var meta = db.Context.CenterMeta.Single();
+        meta.AttendanceDisciplineSince = At(8, 0, dayOffset: -7);
+        meta.AttendanceFineSince = At(14, 16);   // fine switched on after today's deadline
+        db.Context.SaveChanges();
+
+        var (r, sent) = await RunAsync(db, At(14, 17));
+        Assert.Equal(0, r.Fines);
+        Assert.Equal(1, r.Escalations);
+        Assert.Contains(sent, x => x.Chat == 222 && x.Text.StartsWith("⚠️ Davomat olinmadi"));
+        Assert.Empty(db.Context.TeacherAttendanceFines.AsNoTracking().ToList());
+    }
+
+    /// <summary>Any save that carries a NEW fine fails with a non-race DbUpdateException (e.g. disk full).</summary>
+    private sealed class FailFineInsert : Microsoft.EntityFrameworkCore.Diagnostics.SaveChangesInterceptor
+    {
+        public override ValueTask<Microsoft.EntityFrameworkCore.Diagnostics.InterceptionResult<int>> SavingChangesAsync(
+            Microsoft.EntityFrameworkCore.Diagnostics.DbContextEventData eventData,
+            Microsoft.EntityFrameworkCore.Diagnostics.InterceptionResult<int> result, CancellationToken cancellationToken = default)
+        {
+            if (eventData.Context!.ChangeTracker.Entries<TeacherAttendanceFine>().Any(e => e.State == EntityState.Added))
+                throw new DbUpdateException("simulated: disk full");
+            return base.SavingChangesAsync(eventData, result, cancellationToken);
+        }
+    }
+
+    [Fact]
+    public async Task Non_race_fine_insert_failure_is_logged_not_swallowed()
+    {
+        using var db = TestDb.Sqlite(new FailFineInsert());
+        SeedDb(db);
+        var log = new CapturingLogger<AttendanceDisciplineService>();
+
+        var r = await AttendanceDisciplineService.RunOnceAsync(db.Context, new AuditService(db.Context, new NoHttpContext()),
+            null, At(14, 16), default, log);
+
+        Assert.Equal(0, r.Fines);
+        Assert.Contains(log.Warnings, w => w.StartsWith("Davomat jarimasi yozilmadi"));
+        Assert.Empty(db.Context.TeacherAttendanceFines.AsNoTracking().ToList());
+    }
+
+    [Fact]
+    public async Task Existing_fine_is_not_rewritten_and_not_logged()
+    {
+        // The fine of the day already exists (a previous tick or a parallel instance) — nothing new, no warning.
+        using var db = TestDb.Sqlite();
+        var s = SeedDb(db);
+        var log = new CapturingLogger<AttendanceDisciplineService>();
+        var (r1, _) = await RunAsync(db, At(14, 16));
+        Assert.Equal(1, r1.Fines);
+
+        var r2 = await AttendanceDisciplineService.RunOnceAsync(db.Context, new AuditService(db.Context, new NoHttpContext()),
+            null, At(14, 17), default, log);
+        Assert.Equal(0, r2.Fines);
+        Assert.Empty(log.Warnings);
+        Assert.Equal(s.Teacher.Id, db.Context.TeacherAttendanceFines.AsNoTracking().Single().TeacherId);
+    }
+
+    /* =========================================================================================
      *  3) Salary
      * ========================================================================================= */
 

@@ -64,7 +64,8 @@ o'quvchiga qayta kiriting → keyin o'chiring.
 **O'chadi** (o'quvchining o'zi): a'zoliklar, oylik hisoblar, jurnal/baho/ball, chegirmalar, izohlar,
 bog'lanish talablari va hodisalari, test natijalari/sertifikatlari, onlayn kurs natijalari, AI tahlil
 va tekshiruvlar, fikrlar, yuz bilan kirish, bonus/uzaytirish yozuvlari, Telegram bog'lanishi,
-YUTUQLAR (`StudentAchievement`) va Telegram xabarlari jurnali (`MessageDelivery`, 2026-10-12),
+YUTUQLAR (`StudentAchievement`) va Telegram xabarlari jurnali (`MessageDelivery`, 2026-10-12), ketma-ket kelmaslik
+belgilari (`AbsenceStreakAlert`, 2026-10-12),
 qabul cheklistining qo'lda belgilari (`StudentIntakeMark`),
 o'quvchi bo'yicha **audit yozuvlari** (a'zolik `"{groupId}:{studentId}"` ham), login akkaunti va
 uning tokenlari/qurilmalari/xabarlari.

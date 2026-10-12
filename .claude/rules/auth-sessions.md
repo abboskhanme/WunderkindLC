@@ -69,8 +69,18 @@ Yangi parol QAYTARILADI (yoki admin o'zi yozadi) — ya'ni bu akkauntga KIRISH. 
 
 | Yo'l | Darvoza |
 |---|---|
-| `Students/TeachersController.Credentials`, eksport, **tanlanganlar eksportidagi «Parol» ustuni** | `HasFullAccess` |
+| `Students/TeachersController.Credentials` (bitta akkaunt) | `HasFullAccess` |
+| **OMMAVIY eksport** — barcha o'quvchilar (`GET students/export`) va tanlanganlar (`POST students/export-selected`) — «Parol» ustuni | **FAQAT superadmin** (hard rol `User.IsInRole(Roles.SuperAdmin)`, 2026-10-12 review M2) + audit (M1). Eksportning O'ZI (login bilan) — avvalgidek |
 | Guruh «Login/parollar» (`GroupCredentialsController`: ro'yxat, `ensure`, Excel) | `HasFullAccess` (+ sinf `[AdminPerm("students.list", ReadRequiresPerm = true)]`) |
+
+- ⚠️ **Ommaviy parol dumpi = egasining qarori (M2).** Butun markaz (yoki ixtiyoriy tanlov) parollari bitta faylda —
+  `HasFullAccess`/`AdminPerm` oddiy `admin` ni ham o'tkazardi; shuning uchun hard rol (`year-freeze.md` §3 dagi sabab).
+  Bitta o'quvchining paroli (profil) va guruh eksporti `HasFullAccess` da QOLADI. Superadmin bo'lmagan to'liq ruxsatli
+  odam eksportni oladi, lekin «Parol» ustunisiz. Klient: «Login/parollar» (barchasi) tugmasi faqat superadminga;
+  tanlanganlar eksporti tugmasi hammaga, sarlavhasida «Parolsiz (parol ustuni faqat superadminga)».
+- **Audit (M1):** parol bilan ommaviy eksport — `Student` turi, `EntityId = "export"`, «O'quvchilar login/parollari
+  eksport qilindi: barcha faol o'quvchilar (N ta)» / «Tanlangan o'quvchilar login/parollari eksport qilindi (N ta
+  o'quvchi)» — parolning O'ZISIZ (guruh eksportidagi naqsh).
 | `Students/Teachers/StaffController.ResetPassword` | `HasFullAccess` |
 | `Students/Teachers/StaffController.Update` (formadagi yangi parol) | `HasFullAccess` |
 | `StudentsController.Restore`, `TeachersController.Restore` — **`NewPassword` berilsa** | `HasFullAccess`, HECH NARSA o'zgartirilishidan OLDIN (2026-10-08) |
@@ -146,6 +156,10 @@ faqat "Yangi parol" qolardi. SPEC: `docs/SPEC-crm-upgrade.md` §7 P6.1.
   ogohlantirish logi, profil kartasi va guruh oynasida «Parollarni saqlash o'chiq: .env da
   CREDENTIAL_VAULT_KEY yo'q» (superadminga; boshqalarga umumiy matn). Bu holatda faqat hali ishlatilmagan
   `InitialPassword` ko'rinadi (eskicha).
+- ⚠️ **Kalit yo'q — guruhdagi «yangi parol yaratish» RAD (2026-10-12):** `POST …/credentials/ensure` 400
+  (`GroupCredentialsController.VaultOffMessage` — «Parollarni saqlash o'chiq (.env da CREDENTIAL_VAULT_KEY yo'q) …»),
+  HECH NARSA o'zgarmaydi; klientda tugma `vaultConfigured = false` da ko'rinmaydi. Sabab: yangi parollar saqlanmas,
+  eskilari esa ishlamay qolar va yangilari birinchi kirishdan keyin yana «noma'lum» bo'lardi.
 - ⚠️ **Kalit yo'qolsa/almashsa** — saqlangan parollar ochilmaydi (`Unprotect` → `null`, istisno YO'Q):
   "Parol saqlanmagan" bo'lib ko'rinadi, loginlar ishlayveradi; guruh oynasidan qayta yaratiladi.
 - **FAQAT o'quvchi** (`role = student`). O'qituvchi, xodim, admin va OTA-ONA (`parent`) paroli saqlanmaydi
@@ -203,7 +217,7 @@ startupda qayta uriniladi. Qolganlari — guruh oynasidagi bir tugma bilan.
 | Guruh → «O'quvchilar» → «Login/parollar» oynasi | `GET classes/{groupId}/credentials` — tirik, arxivlanmagan a'zolar; HECH NARSA yaratmaydi |
 | ↳ «Paroli noma'lumlarga yangi parol yaratish (n)» (tasdiq: «Ularning eski parollari ishlamay qoladi») | `POST …/credentials/ensure` `{ onlyUnknown: true }` — akkaunti yo'qqa akkaunt, `known: false` larga yangi parol (`reset`) + sessiyalar tugaydi; MA'LUM parol tegilmaydi |
 | ↳ «Excel yuklab olish» — «№, F.I.SH., Login, Parol, Telegram, Holat», noma'lum → «(saqlanmagan)» | `GET …/credentials/export` → `login_parollar_{guruh}_{sana}.xlsx`, audit `Group` «Login/parollar eksport qilindi: …» (parolsiz) |
-| Barcha o'quvchilar eksporti / tanlanganlar eksporti | `GET students/export`, `POST students/export-selected` (Parol ustuni endi `HasFullAccess` ga — ilgari faqat superadmin) |
+| Barcha o'quvchilar eksporti / tanlanganlar eksporti | `GET students/export`, `POST students/export-selected` — «Parol» ustuni FAQAT superadminga + audit (§3; CRM Phase 6 da `HasFullAccess` ga kengaytirilgan edi, 2026-10-12 review M2 da QAYTARILDI) |
 
 - Klient nusxasi: `lib/studentCreds.ts` → `canStudentCreds` (admin/superadmin yoki yalang `students` /
   `students.list`). **O'qituvchi HECH QACHON ko'rmaydi** (SPEC §10 #5) — o'qituvchi portali seyfga tegmaydi (test).

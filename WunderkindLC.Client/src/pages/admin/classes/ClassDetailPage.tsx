@@ -860,10 +860,13 @@ export function ClassDetailPage() {
                               onClick: () => setMembersOpen(true),
                             }]
                           : []),
-                        {
-                          label: msgLoading ? 'Yuklanmoqda...' : 'Telegram xabar', icon: MessageSquare,
-                          onClick: openGroupMessage,
-                        },
+                        // «Telegram xabar» — yuborish `messages.broadcast` ruxsatisiz 403 bo'lardi: band ko'rsatilmaydi.
+                        ...(can('messages.broadcast', 'create')
+                          ? [{
+                              label: msgLoading ? 'Yuklanmoqda...' : 'Telegram xabar', icon: MessageSquare,
+                              onClick: openGroupMessage,
+                            }]
+                          : []),
                         ...(can('classes.list', 'edit')
                           ? [{ label: 'Guruhni tahrirlash', icon: Pencil, onClick: () => setEditOpen(true) }]
                           : []),

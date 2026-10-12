@@ -27,6 +27,11 @@ public class GroupCredentialsController(AppDbContext db, CredentialVault vault, 
     /// <summary>403 text (the UI shows it).</summary>
     public const string ForbiddenMessage = "Login/parolni ko'rish uchun «O'quvchilar» bo'limiga to'liq ruxsat kerak";
 
+    /// <summary>400 text of <c>ensure</c> while the credential vault is off (no <c>CREDENTIAL_VAULT_KEY</c>).</summary>
+    public const string VaultOffMessage =
+        "Parollarni saqlash o'chiq (.env da CREDENTIAL_VAULT_KEY yo'q) — yangi parollar saqlanmaydi va keyin ko'rinmaydi. "
+        + "Avval kalitni sozlang.";
+
     private bool MaySee => AdminPermAttribute.HasFullAccess(User, "students.list");
 
     private ObjectResult Forbidden() => StatusCode(StatusCodes.Status403Forbidden, new { message = ForbiddenMessage });
@@ -57,6 +62,9 @@ public class GroupCredentialsController(AppDbContext db, CredentialVault vault, 
         // Only the «unknown» mode exists: regenerating KNOWN passwords of a whole group in one click is not offered.
         if (!req.OnlyUnknown)
             return BadRequest(new { message = "Faqat paroli noma'lum o'quvchilar uchun yangi parol yaratiladi" });
+        // Vault OFF: new passwords could not be stored — every old password would stop working while the new ones
+        // show only until the first login (then «unknown» again). Refused before anything changes (review fix 2026-10-12).
+        if (!vault.Configured) return BadRequest(new { message = VaultOffMessage });
 
         var result = await GroupCredentials.EnsureAsync(db, vault, audit, groupId, ct);
         if (result is null) return NotFound(new { message = "Guruh topilmadi" });

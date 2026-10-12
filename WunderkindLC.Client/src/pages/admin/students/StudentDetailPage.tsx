@@ -913,7 +913,8 @@ export function StudentDetailPage() {
               discountLabel={studentDiscountLabel({ ...data, discountCount: discounts?.active.length })}
               canEditPhoto={canEditPhoto}
               onPhoto={() => setPhotoOpen(true)}
-              onMessage={openMessage}
+              // «Telegram xabar» — yuborish `messages.broadcast` ruxsatisiz 403 bo'lardi: tugma ko'rsatilmaydi.
+              onMessage={can('messages.broadcast', 'create') ? openMessage : undefined}
               onPay={openPayment}
               onCall={openCall}
               menuItems={[

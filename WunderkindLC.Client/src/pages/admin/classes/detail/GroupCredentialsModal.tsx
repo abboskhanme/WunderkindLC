@@ -69,7 +69,7 @@ function GroupCredentialsBody({ groupId, isSuperAdmin }: { groupId: string; isSu
   const missing = data.rows.filter((r) => !r.hasAccount || !r.known).length
 
   const ensure = async () => {
-    if (busy || missing === 0) return
+    if (busy || missing === 0 || !data.vaultConfigured) return
     if (!confirm(`${missing} ta o'quvchiga yangi parol yaratilsinmi? Ularning eski parollari ishlamay qoladi.`)) return
     setBusy('ensure')
     setError('')
@@ -113,7 +113,8 @@ function GroupCredentialsBody({ groupId, isSuperAdmin }: { groupId: string; isSu
         <Button variant="secondary" disabled={!!busy} onClick={exportXlsx}>
           <IconDownload className="h-4 w-4" /> {busy === 'export' ? 'Yuklanmoqda...' : 'Excel yuklab olish'}
         </Button>
-        {missing > 0 && (
+        {/* Seyf o'chiq bo'lsa yangi parol SAQLANMAYDI (server 400 beradi) — tugma ko'rsatilmaydi. */}
+        {missing > 0 && data.vaultConfigured && (
           <Button disabled={!!busy} onClick={ensure}>
             <IconRefresh className={cn('h-4 w-4', busy === 'ensure' && 'animate-spin')} />
             Paroli noma'lumlarga yangi parol yaratish ({missing})

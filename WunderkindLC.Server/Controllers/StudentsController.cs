@@ -1572,36 +1572,49 @@ public partial class StudentsController(
     }
 
     /// <summary>
-    /// Barcha (faol) o'quvchilarni login/parol bilan Excel (.xlsx) ga eksport qiladi.
-    /// Parol FAQAT foydalanuvchi hali kirmagan bo'lsa ko'rinadi (kirgach bo'sh). GET odatda xodim uchun
-    /// ham ochiq bo'lsa-da, bu amal ommaviy parol dumpi bo'lgani uchun MAXSUS tekshiriladi — faqat
-    /// superadmin/admin yoki "O'quvchilar" bo'limiga TO'LIQ (barcha 4 amal) ruxsati bor xodim.
-    /// Ustunlar: F.I.SH., Guruh, Ota-ona, Telefon, Login, Parol.
+    /// Barcha (faol) o'quvchilarni login (va superadminga — parol) bilan Excel (.xlsx) ga eksport qiladi.
+    /// GET odatda xodim uchun ham ochiq bo'lsa-da, bu amal ommaviy login ro'yxati bo'lgani uchun MAXSUS
+    /// tekshiriladi — faqat superadmin/admin yoki "O'quvchilar" bo'limiga TO'LIQ ruxsati bor xodim.
+    /// <para>⚠️ «Parol» ustuni — FAQAT SUPERADMIN (hard rol, M2, 2026-10-12): bu butun markazning parol DUMPI.
+    /// Bitta o'quvchining paroli (profil) va guruh eksporti avvalgidek <c>HasFullAccess</c> bilan. Parol bilan
+    /// eksport — audit qatori (parolning O'ZISIZ).</para>
+    /// Ustunlar: F.I.SH., Guruh, Ota-ona, Telefon, Login[, Parol].
     /// </summary>
     [HttpGet("export")]
     public async Task<IActionResult> Export()
     {
         if (!AdminPermAttribute.HasFullAccess(User, "students.list")) return Forbid();
+        var showPasswords = BulkExportShowsPasswords();
         var students = await db.Students.Where(s => !s.IsArchived)
             .OrderBy(s => s.ClassName).ThenBy(s => s.FullName).ToListAsync();
         var userIds = students.Where(s => s.UserId != null).Select(s => s.UserId!).ToList();
         var byId = (await db.Users.Where(u => userIds.Contains(u.Id)).ToListAsync())
             .ToDictionary(u => u.Id);
         // Parol — seyfdagi JORIY parol (yoki hali ishlatilmagan dastlabki); noma'lum — «(saqlanmagan)».
-        var revealed = await RevealManyAsync(byId.Values);
+        var revealed = showPasswords
+            ? await RevealManyAsync(byId.Values)
+            : new Dictionary<string, StudentCredentials.Revealed>();
 
-        var headers = new[] { "F.I.SH.", "Guruh", "Ota-ona", "Telefon", "Login", "Parol" };
+        var headers = new List<string> { "F.I.SH.", "Guruh", "Ota-ona", "Telefon", "Login" };
+        if (showPasswords) headers.Add("Parol");
         var rows = students.Select(s =>
         {
             byId.TryGetValue(s.UserId ?? "", out var u);
-            return (IReadOnlyList<string>)new[]
+            var row = new List<string>
             {
-                s.FullName, s.ClassName, s.ParentFullName, s.ParentPhone,
-                u?.Email ?? "", PasswordCell(u, revealed),
+                s.FullName, s.ClassName, s.ParentFullName, s.ParentPhone, u?.Email ?? "",
             };
+            if (showPasswords) row.Add(PasswordCell(u, revealed));
+            return (IReadOnlyList<string>)row;
         });
 
         var bytes = ExcelExport.Build("O'quvchilar", headers, rows);
+        if (showPasswords)
+        {
+            // M1: ommaviy parol eksporti — "kim, qachon, nechta" (parolning O'ZISIZ, GroupCredentials naqshi).
+            audit.Record(AuditService.EntityStudent, ExportAuditEntityId, "create", ExportAllAuditSummary(students.Count));
+            await db.SaveChangesAsync();
+        }
         NoStore();
         return File(bytes,
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -1610,8 +1623,8 @@ public partial class StudentsController(
 
     /// <summary>
     /// TANLANGAN o'quvchilarning to'liq ma'lumotlarini Excel (.xlsx) ga eksport qiladi
-    /// (profil + faol guruhlar + balans + login). Parol ustuni faqat superadmin uchun
-    /// (va foydalanuvchi hali kirmagan bo'lsagina ko'rinadi).
+    /// (profil + faol guruhlar + balans + login). «Parol» ustuni — FAQAT SUPERADMIN (hard rol, M2) va
+    /// u bilan eksport auditga yoziladi (parolsiz, M1).
     /// </summary>
     [HttpPost("export-selected")]
     public async Task<IActionResult> ExportSelected(StudentExportSelectedRequest req)
@@ -1645,9 +1658,9 @@ public partial class StudentsController(
         var userIds = students.Where(s => s.UserId != null).Select(s => s.UserId!).ToList();
         var usersById = (await db.Users.Where(u => userIds.Contains(u.Id)).ToListAsync())
             .ToDictionary(u => u.Id);
-        // Parol ustuni — login/parolni ko'rish darvozasi bilan BIR XIL (`HasFullAccess`, auth-sessions.md §3):
-        // ilgari faqat superadmin edi (CRM Phase 6: «to'liq ruxsatli har kim»).
-        var showPasswords = AdminPermAttribute.HasFullAccess(User, "students.list");
+        // Parol ustuni — OMMAVIY eksportda FAQAT superadmin (M2, 2026-10-12; hard rol — `AdminPerm`/`can()` admin'ni
+        // ham o'tkazardi). Bitta o'quvchining paroli va guruh eksporti `HasFullAccess` da qoladi (auth-sessions.md §3).
+        var showPasswords = BulkExportShowsPasswords();
         var revealed = showPasswords
             ? await RevealManyAsync(usersById.Values)
             : new Dictionary<string, StudentCredentials.Revealed>();
@@ -1682,7 +1695,13 @@ public partial class StudentsController(
         });
 
         var bytes = ExcelExport.Build("O'quvchilar", headers, rows);
-        if (showPasswords) NoStore();
+        if (showPasswords)
+        {
+            // M1: parol bilan eksport — audit qatori (parolning O'ZISIZ).
+            audit.Record(AuditService.EntityStudent, ExportAuditEntityId, "create", ExportSelectedAuditSummary(students.Count));
+            await db.SaveChangesAsync();
+            NoStore();
+        }
         return File(bytes,
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             $"oquvchilar_tanlangan_{AppClock.Now:yyyy-MM-dd}.xlsx");

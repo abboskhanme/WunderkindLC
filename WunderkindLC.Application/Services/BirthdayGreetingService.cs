@@ -25,6 +25,16 @@ public class BirthdayGreetingService(
     /// <summary>Kalitlar prefiksi: qoida — <c>birthday:{ruleId}</c>, oluvchi — <c>birthday:{ruleId}:{studentId}</c>.</summary>
     public const string JobKey = AutoMessageTriggers.Birthday;
 
+    /// <summary>
+    /// ESKI (2026-10-12 gacha) kalitlar: butun ish — <c>birthday</c>, oluvchi — <c>birthday:{studentId}</c>. Deploy KUNI
+    /// eski xizmat ertalab tabriklab bo'lgan bo'lsa, yangi (qoida bo'yicha) kalitlar bo'sh — ular BUGUN uchun
+    /// "bajarildi" deb o'qiladi, aks holda o'sha o'quvchilar ikkinchi tabrik olardi.
+    /// </summary>
+    public const string LegacyJobKey = JobKey;
+
+    /// <summary>Eski oluvchi kaliti (<c>birthday:{studentId}</c>).</summary>
+    public static string LegacyRecipientKey(string studentId) => JobRunMarker.For(JobKey, studentId);
+
     public static readonly TimeSpan TickInterval = TimeSpan.FromMinutes(10);
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -64,6 +74,8 @@ public class BirthdayGreetingService(
             {
                 var db = scope.ServiceProvider.GetRequiredService<IAppDbContext>();
                 if (await JobRunMarker.IsDoneAsync(db, key, today, ct)) continue;
+                // Deploy kuni: eski xizmat bugun BUTUN ishni tugatgan — qayta yuborilmaydi.
+                if (await JobRunMarker.IsDoneAsync(db, LegacyJobKey, today, ct)) continue;
             }
             await RunRuleAsync(rule.Id, today, ct);
             using (var scope = services.CreateScope())
@@ -98,11 +110,14 @@ public class BirthdayGreetingService(
         var closedGroupStudents = await MessagingAudience.ClosedGroupStudentIdsAsync(db, ct);
         var ruleKey = JobRunMarker.For(JobKey, ruleId);
         var day = today.ToString("yyyy-MM-dd");
+        var birthdays = students.Where(s => IsBirthdayToday(s.BirthDate, today)).ToList();
+        // Deploy kuni: eski xizmat bugun tabriklab ulgurgan o'quvchilar (eski oluvchi kaliti) — takror yo'q.
+        var legacyDone = await JobRunMarker.DoneKeysAsync(db, birthdays.Select(s => LegacyRecipientKey(s.Id)), today, ct);
         var sent = 0;
-        foreach (var s in students)
+        foreach (var s in birthdays)
         {
-            if (!IsBirthdayToday(s.BirthDate, today)) continue;
             if (closedGroupStudents.Contains(s.Id)) continue;
+            if (legacyDone.Contains(LegacyRecipientKey(s.Id))) continue;
             // OLUVCHI BELGISI — yuborishdan OLDIN (restart/ikkinchi nusxa takror tabriklamasin).
             if (!await JobRunMarker.TryClaimAsync(db, JobRunMarker.For(ruleKey, s.Id), today, ct)) continue;
             await autoMsg.DispatchStudentAsync(db, AutoMessageTriggers.Birthday, s, ct: ct,

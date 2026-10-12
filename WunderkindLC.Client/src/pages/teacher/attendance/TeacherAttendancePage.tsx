@@ -132,7 +132,7 @@ export function TeacherAttendancePage() {
       .map((g) => ({
         groupId: g.id, groupName: g.name, courseName: g.courseName, date,
         startTime: g.startTime, endTime: g.endTime, room: g.room, studentCount: g.active + g.trial,
-        isSubstitute: g.isSubstitute, substitutedBy: '', moved: false, conducted: false,
+        isSubstitute: g.isSubstitute, substitutedBy: '', moved: false, conducted: false, attendanceTaken: false,
       }))
   }, [overview, loaded, date])
 
@@ -141,7 +141,9 @@ export function TeacherAttendancePage() {
     if (!lessons) return null
     if (groupParam) return lessons.find((l) => l.groupId === groupParam) ?? null
     const open = lessons.filter((l) => !l.substitutedBy)
-    return open.find((l) => !l.conducted) ?? open[0] ?? null
+    // "Davomat kutilayotgan" — davomati OLINMAGAN dars (yagona ta'rif: `attendanceTaken`, `conducted` EMAS —
+    // bitta baho darsni "o'tildi" qiladi, lekin davomat olinmagan bo'ladi).
+    return open.find((l) => !l.attendanceTaken) ?? open[0] ?? null
   }, [lessons, groupParam])
   const groupNotOnDate = !!groupParam && lessons !== null && !lessons.some((l) => l.groupId === groupParam)
   const paramGroup = overview?.groups.find((g) => g.id === groupParam)
@@ -155,7 +157,10 @@ export function TeacherAttendancePage() {
   /** Jurnaldan boshlang'ich holatni hisoblaydi va ekranga qo'yadi. */
   const applyJournal = useCallback(
     (groupId: string, j: GroupJournal) => {
-      const conductedNow = j.conductedDates.includes(date)
+      // «Keldi» oldindan FAQAT davomat TO'LIQ olingan darsda (`attendanceTakenDates` — server `AttendanceRules`:
+      // davomat olingan + belgisiz = keldi). "O'tildi" (`conductedDates`) yetmaydi: bitta baho qo'yilgan darsda
+      // hamma o'quvchi jimgina «Keldi» bo'lib to'lardi va «Saqlash» ularni haqiqatan «keldi» qilib yozardi.
+      const takenNow = (j.attendanceTakenDates ?? []).includes(date)
       const init: Record<string, RowState> = {}
       const ui: Record<string, RowState> = {}
       for (const s of j.students) {
@@ -164,7 +169,7 @@ export function TeacherAttendancePage() {
         let st: RowState = { mark: 'none', reasonId: null }
         if (e?.reasonId) st = { mark: reasonById.get(e.reasonId)?.isLate ? 'late' : 'absent', reasonId: e.reasonId }
         else if (e?.present || e?.grade != null) st = { mark: 'present', reasonId: null }
-        else if (conductedNow && (!s.presentDefaultFrom || date >= s.presentDefaultFrom)) st = { mark: 'present', reasonId: null }
+        else if (takenNow && (!s.presentDefaultFrom || date >= s.presentDefaultFrom)) st = { mark: 'present', reasonId: null }
         init[s.studentId] = st
         // Hali belgilanmagan o'quvchi BELGILANMAGAN bo'lib turadi — o'qituvchi har birini o'zi belgilaydi
         // (foydalanuvchi talabi: avtomatik "Keldi" xato davomatga olib kelardi).
@@ -198,7 +203,8 @@ export function TeacherAttendancePage() {
     [journal],
   )
   const isLessonDate = !!journal?.columns.some((c) => c.date === date)
-  const conducted = !!journal?.conductedDates.includes(date)
+  /** Davomat shu kunga TO'LIQ olingan (`attendanceTakenDates`) — "o'tildi" (`conductedDates`) EMAS. */
+  const taken = !!journal?.attendanceTakenDates?.includes(date)
   const blocked = (memberStart: string) => !!memberStart && date < memberStart
 
   const changed = students.filter((s) => {
@@ -272,7 +278,12 @@ export function TeacherAttendancePage() {
       // o'zi keyingi guruhga o'tkazib yuborardi va o'qituvchi natijani ko'rmasdi.
       if (!groupParam) setQuery({ group: journal.group.id })
       setLoaded((prev) =>
-        prev && { ...prev, lessons: prev.lessons.map((l) => (l.groupId === journal.group.id ? { ...l, conducted: true } : l)) },
+        prev && {
+          ...prev,
+          lessons: prev.lessons.map((l) =>
+            l.groupId === journal.group.id ? { ...l, conducted: true, attendanceTaken: true } : l,
+          ),
+        },
       )
     } catch (err) {
       // Oyna YOPILMAYDI — sabab uning ichida ko'rinadi (error-visibility.md §2).
@@ -367,7 +378,7 @@ export function TeacherAttendancePage() {
                 <span className="min-w-0">
                   <span className="block truncate text-[14px] font-bold text-ink">{l.groupName}</span>
                   <span className="block truncate text-[12px] text-mute">
-                    {timeRange(l.startTime, l.endTime) || 'Vaqt yo\'q'} · {l.conducted ? 'belgilangan' : l.substitutedBy ? "o'rinbosar" : 'belgilanmagan'}
+                    {timeRange(l.startTime, l.endTime) || 'Vaqt yo\'q'} · {l.attendanceTaken ? 'belgilangan' : l.substitutedBy ? "o'rinbosar" : 'belgilanmagan'}
                   </span>
                 </span>
               </button>
@@ -436,7 +447,7 @@ export function TeacherAttendancePage() {
           ) : (
             <>
               <div className="flex flex-wrap items-center gap-2 border-b border-line-soft px-4 py-2.5">
-                {!conducted ? (
+                {!taken ? (
                   <p className="flex-1 text-[12.5px] text-amber-700">
                     Davomat hali olinmagan — har bir o'quvchini belgilang.
                   </p>
@@ -536,7 +547,7 @@ export function TeacherAttendancePage() {
                   className="inline-flex h-10 min-w-[140px] items-center justify-center gap-1.5 rounded-lg bg-brand-600 px-4 text-[14px] font-bold text-white transition-colors hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
-                  {changed.length === 0 ? (conducted ? 'Saqlangan' : 'Saqlash') : `Saqlash (${changed.length})`}
+                  {changed.length === 0 ? (taken ? 'Saqlangan' : 'Saqlash') : `Saqlash (${changed.length})`}
                 </button>
               </div>
             </>
