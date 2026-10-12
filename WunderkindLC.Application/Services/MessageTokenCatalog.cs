@@ -7,10 +7,12 @@ namespace WunderkindLC.Application.Services;
 ///   "student" — o'quvchi/ota-ona xabarlari (MessageTokenizer.Student);
 ///   "common"  — barcha xabarlar (markaz/sana/oy/yil);
 ///   "event"   — hodisaga xos qo'shimcha tokenlar (dispatcher extraTokens orqali beradi).
+/// <para><see cref="TokenInfo.Example"/> — server PREVIEW'ida (CRM upgrade P2.5) hodisa tokenlari o'rniga
+/// qo'yiladigan namuna qiymat ("" — qiymat namuna o'quvchidan to'ladi).</para>
 /// </summary>
 public static class MessageTokenCatalog
 {
-    public record TokenInfo(string Token, string Label, string Group);
+    public record TokenInfo(string Token, string Label, string Group, string Example = "");
 
     public static readonly TokenInfo[] All =
     {
@@ -41,15 +43,39 @@ public static class MessageTokenCatalog
         new("{yil}", "Joriy yil", "common"),
 
         // ---------- Hodisaga xos ----------
-        new("{summa}", "Summa (to'lov / oylik hisob)", "event"),
+        new("{summa}", "Summa (to'lov / oylik hisob)", "event", "350 000"),
         new("{kurs}", "Kurs nomi", "event"),
-        new("{sabab}", "Davomat sababi (kelmadi)", "event"),
+        new("{sabab}", "Davomat sababi (kelmadi)", "event", "Sababsiz"),
         new("{dars_sana}", "Dars sanasi", "event"),
         new("{dars_vaqti}", "Dars vaqti", "event"),
         new("{dars_kunlari}", "Dars kunlari (Du, Chor...)", "event"),
-        new("{baho}", "Qo'yilgan baho", "event"),
+        new("{baho}", "Qo'yilgan baho", "event", "5"),
+        // CRM upgrade (Phase 2): relation, achievements, test results and the monthly rating.
+        new("{qarindosh}", "Kim (otasi/onasi/o'zi)", "event", "Otasi"),
+        new("{yutuq}", "Yutuq nomi", "event", "IELTS"),
+        new("{yutuq_natija}", "Yutuq natijasi", "event", "7.5"),
+        new("{test}", "Test nomi", "event", "Unit 5"),
+        new("{turi}", "Test turi (Oylik/Oraliq)", "event", "Oylik"),
+        new("{ball}", "Ball (masalan 25/30)", "event", "25/30"),
+        new("{foiz}", "Foiz", "event", "83%"),
+        new("{orin}", "O'rin (masalan 3/18)", "event", "3/18"),
+        new("{guruh_orin}", "Guruhdagi oylik o'rin", "event", "2/12"),
+        new("{reyting_orin}", "Markazdagi oylik o'rin", "event", "12/430"),
     };
 
-    // (Lid tokenlari, daraja testi tokenlari ({link}, {natija}, {daraja}, {ball}, {foiz}) va
-    //  ForbiddenInManual darvozasi 2026-10 da lidga SMS bilan birga olib tashlandi.)
+    /// <summary>Tokens the tokenizer accepts but the picker does not list (spelling aliases).</summary>
+    public static readonly string[] Aliases = { "{ota_ona}" };
+
+    /// <summary>Is <paramref name="token"/> (with braces) a token the tokenizer knows (case-insensitive)?</summary>
+    public static bool IsKnown(string token) =>
+        All.Any(t => string.Equals(t.Token, token, StringComparison.OrdinalIgnoreCase))
+        || Aliases.Any(a => string.Equals(a, token, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>Preview sample value of an event token (<c>""</c> when the value comes from the sample student).</summary>
+    public static string ExampleOf(string token) =>
+        All.FirstOrDefault(t => string.Equals(t.Token, token, StringComparison.OrdinalIgnoreCase))?.Example ?? "";
+
+    // (Lid tokenlari, daraja testi tokenlari ({link}, {natija}, {daraja}) va ForbiddenInManual darvozasi
+    //  2026-10 da lidga SMS bilan birga olib tashlandi. {ball}/{foiz} 2026-10-12 da test natijasi va reyting
+    //  xabarlari uchun QAYTDI — CRM upgrade Phase 2/4.)
 }

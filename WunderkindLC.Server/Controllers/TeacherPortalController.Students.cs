@@ -53,9 +53,20 @@ public partial class TeacherPortalController
             .ToListAsync();
 
         // `SchoolGradeNow` — hisoblanadigan maydon, shuning uchun xotirada quriladi.
+        // CRM upgrade U6b: Telegram link counts + relations (no phones/chat ids).
+        var telegram = await WunderkindLC.Application.Services.Messaging.TelegramLinkSummary.ForStudentsAsync(
+            db, rows.Select(r => r.Student.Id).ToList());
         return rows
             .OrderBy(r => r.Student.FullName, StringComparer.CurrentCultureIgnoreCase)
-            .Select(r => ToGroupStudentDto(r.Student, r.Status ?? ""))
+            .Select(r =>
+            {
+                var tg = telegram.GetValueOrDefault(r.Student.Id);
+                return ToGroupStudentDto(r.Student, r.Status ?? "") with
+                {
+                    TelegramLinked = tg?.Linked ?? 0,
+                    TelegramRelations = tg?.Relations ?? new List<string>(),
+                };
+            })
             .ToList();
     }
 

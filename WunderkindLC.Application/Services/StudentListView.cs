@@ -104,8 +104,15 @@ public static class StudentListView
             .GroupBy(c => c.RecipientKey)
             .ToDictionary(g => g.Key, g => g.Max(x => x.Number));
 
+        // CRM upgrade U6b: «Telegram ulangan / ulanmagan» — usable chats (not blocked) + relations, one query.
+        var telegram = await Messaging.TelegramLinkSummary.ForStudentsAsync(db, ids, ct);
+
         foreach (var s in students)
         {
+            var tg = telegram.GetValueOrDefault(s.Id) ?? Messaging.TelegramLinkInfo.None;
+            s.TelegramLinked = tg.Linked;
+            s.TelegramRelations = tg.Relations;
+            s.TelegramBlocked = tg.Blocked;
             if (leads.TryGetValue(s.Id, out var lead))
             {
                 s.LeadSource = lead.Source ?? "";

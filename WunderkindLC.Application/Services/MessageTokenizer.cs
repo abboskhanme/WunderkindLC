@@ -40,20 +40,22 @@ public static class MessageTokenizer
     public static string MoneyPlain(decimal v) =>
         v.ToString("0", CultureInfo.InvariantCulture);
 
-    private static string Rep(string input, string token, string? value) =>
+    /// <param name="html">The target text is Telegram HTML (CRM upgrade P2.3): the substituted VALUE is
+    /// HTML-escaped (<see cref="Messaging.TelegramHtml.Escape"/>) so data can never inject markup.</param>
+    private static string Rep(string input, string token, string? value, bool html = false) =>
         Regex.Replace(input, Regex.Escape(token),
-            (value ?? "").Replace("$", "$$"), RegexOptions.IgnoreCase);
+            (html ? Messaging.TelegramHtml.Escape(value) : value ?? "").Replace("$", "$$"), RegexOptions.IgnoreCase);
 
     /// <summary>Hodisaga xos qo'shimcha tokenlarni matnga BIRINCHI bo'lib qo'llaydi (masalan {summa},
     /// {sabab} — yoki {guruh}/{sana}/{oy} kabi standart tokenlarni USTIDAN yozish uchun). Dispatcher shuni
     /// entity tokenizeridan (Student/Teacher/Lead) OLDIN chaqiradi: shu bilan qo'shimcha qiymat standart
     /// qiymatdan ustun turadi (birinchi almashtirilgan token keyingi passda qayta almashmaydi).</summary>
-    public static string ApplyExtra(string text, IReadOnlyDictionary<string, string>? extra)
+    public static string ApplyExtra(string text, IReadOnlyDictionary<string, string>? extra, bool html = false)
     {
         if (extra is null) return text;
         var r = text;
         foreach (var (k, v) in extra)
-            r = Rep(r, k, v);
+            r = Rep(r, k, v, html);
         return r;
     }
 
@@ -68,7 +70,7 @@ public static class MessageTokenizer
     ///   {dars_kunlari} — hafta kunlari (masalan "Du, Chor, Jum").
     /// group=null bo'lsa (o'qituvchi yoki guruh topilmasa) — tokenlar bo'sh qoladi.
     /// </summary>
-    private static string Schedule(string text, DomainGroup? g)
+    private static string Schedule(string text, DomainGroup? g, bool html = false)
     {
         var sana = "";
         // StartDate "YYYY-MM-DD" → "DD.MM.YYYY".
@@ -79,15 +81,15 @@ public static class MessageTokenizer
         if (g is not null && !string.IsNullOrWhiteSpace(g.StartTime))
             vaqt = string.IsNullOrWhiteSpace(g.EndTime) ? g.StartTime : $"{g.StartTime}-{g.EndTime}";
         var kunlar = g is null ? "" : FormatDays(g.Days);
-        return Schedule(text, sana, vaqt, kunlar);
+        return Schedule(text, sana, vaqt, kunlar, html);
     }
 
     /// <summary>Dars jadvali tokenlarini aniq qiymatlar bilan almashtiradi.</summary>
-    private static string Schedule(string text, string sana, string vaqt, string kunlar)
+    private static string Schedule(string text, string sana, string vaqt, string kunlar, bool html = false)
     {
-        var r = Rep(text, "{dars_sana}", sana);
-        r = Rep(r, "{dars_vaqti}", vaqt);
-        r = Rep(r, "{dars_kunlari}", kunlar);
+        var r = Rep(text, "{dars_sana}", sana, html);
+        r = Rep(r, "{dars_vaqti}", vaqt, html);
+        r = Rep(r, "{dars_kunlari}", kunlar, html);
         return r;
     }
 
@@ -100,17 +102,17 @@ public static class MessageTokenizer
     }
 
     /// <summary>Barcha kanal/auditoriyalar uchun umumiy tokenlar: markaz nomi, joriy sana + ad-hoc tokenlar.</summary>
-    private static string Common(string text, string? centerName, IReadOnlyDictionary<string, string>? extra)
+    private static string Common(string text, string? centerName, IReadOnlyDictionary<string, string>? extra, bool html = false)
     {
         var now = AppClock.Now;
-        var r = Rep(text, "{markaz}", centerName);
-        r = Rep(r, "{sana}", now.ToString("dd.MM.yyyy"));
-        r = Rep(r, "{oy}", now.Month is >= 1 and <= 12 ? UzMonths[now.Month - 1] : "");
-        r = Rep(r, "{yil}", now.Year.ToString());
+        var r = Rep(text, "{markaz}", centerName, html);
+        r = Rep(r, "{sana}", now.ToString("dd.MM.yyyy"), html);
+        r = Rep(r, "{oy}", now.Month is >= 1 and <= 12 ? UzMonths[now.Month - 1] : "", html);
+        r = Rep(r, "{yil}", now.Year.ToString(), html);
         // Hodisaga xos qo'shimcha tokenlar (masalan {summa} — to'lov, {natija} — test).
         if (extra is not null)
             foreach (var (k, v) in extra)
-                r = Rep(r, k, v);
+                r = Rep(r, k, v, html);
         return r;
     }
 
@@ -149,32 +151,33 @@ public static class MessageTokenizer
     /// ({dars_sana}/{dars_vaqti}/{dars_kunlari}) to'ladi. teacherName berilsa — {oqituvchi} (guruh
     /// o'qituvchisining F.I.Sh); berilmasa token bo'sh qoladi.</summary>
     public static string Student(string text, Student s, string? parentName, string? contactPhone, string? centerName,
-        IReadOnlyDictionary<string, string>? extra = null, DomainGroup? group = null, string? teacherName = null)
+        IReadOnlyDictionary<string, string>? extra = null, DomainGroup? group = null, string? teacherName = null,
+        bool html = false)
     {
         var debt = s.Balance < 0 ? -s.Balance : 0m;
         var parent = string.IsNullOrWhiteSpace(parentName) ? "Ota-ona" : parentName!;
         var r = text;
-        r = Rep(r, "{fish}", s.FullName);
-        r = Rep(r, "{ism}", s.FirstName);
-        r = Rep(r, "{familiya}", s.LastName);
-        r = Rep(r, "{sharif}", s.MiddleName);
-        r = Rep(r, "{sinf}", s.ClassName);
-        r = Rep(r, "{guruh}", s.ClassName);
-        r = Rep(r, "{qarzdorlik}", Money(debt));
-        r = Rep(r, "{balans}", Money(s.Balance));
-        r = Rep(r, "{ota-ona}", parent);
-        r = Rep(r, "{ota_ona}", parent);
-        r = Rep(r, "{telefon}", contactPhone);
-        r = Rep(r, "{ota}", s.FatherFullName);
-        r = Rep(r, "{ota_telefon}", s.FatherPhone);
-        r = Rep(r, "{ona}", s.MotherFullName);
-        r = Rep(r, "{ona_telefon}", s.MotherPhone);
-        r = Rep(r, "{oquvchi_telefon}", s.Phone);
-        r = Rep(r, "{manzil}", s.Address);
-        r = Rep(r, "{tugilgan}", s.BirthDate);
-        r = Rep(r, "{oqituvchi}", teacherName); // guruh o'qituvchisi F.I.Sh (berilmasa bo'sh)
-        r = Schedule(r, group); // guruh dars jadvali (sana/vaqt/kunlar)
-        return Common(r, centerName, extra);
+        r = Rep(r, "{fish}", s.FullName, html);
+        r = Rep(r, "{ism}", s.FirstName, html);
+        r = Rep(r, "{familiya}", s.LastName, html);
+        r = Rep(r, "{sharif}", s.MiddleName, html);
+        r = Rep(r, "{sinf}", s.ClassName, html);
+        r = Rep(r, "{guruh}", s.ClassName, html);
+        r = Rep(r, "{qarzdorlik}", Money(debt), html);
+        r = Rep(r, "{balans}", Money(s.Balance), html);
+        r = Rep(r, "{ota-ona}", parent, html);
+        r = Rep(r, "{ota_ona}", parent, html);
+        r = Rep(r, "{telefon}", contactPhone, html);
+        r = Rep(r, "{ota}", s.FatherFullName, html);
+        r = Rep(r, "{ota_telefon}", s.FatherPhone, html);
+        r = Rep(r, "{ona}", s.MotherFullName, html);
+        r = Rep(r, "{ona_telefon}", s.MotherPhone, html);
+        r = Rep(r, "{oquvchi_telefon}", s.Phone, html);
+        r = Rep(r, "{manzil}", s.Address, html);
+        r = Rep(r, "{tugilgan}", s.BirthDate, html);
+        r = Rep(r, "{oqituvchi}", teacherName, html); // guruh o'qituvchisi F.I.Sh (berilmasa bo'sh)
+        r = Schedule(r, group, html); // guruh dars jadvali (sana/vaqt/kunlar)
+        return Common(r, centerName, extra, html);
     }
 
     /// <summary>O'qituvchi xabari — {fish}/{telefon}/{manzil}/{tugilgan}; o'quvchi tokenlari bo'sh.
@@ -182,24 +185,24 @@ public static class MessageTokenizer
     /// ({dars_sana}/{dars_vaqti}/{dars_kunlari}) shu guruhdan to'ladi (masalan davomat eslatmasi uchun).
     /// <paramref name="extra"/> — hodisaga xos qo'shimcha tokenlar (masalan {kurs}).</summary>
     public static string Teacher(string text, Teacher t, string? centerName,
-        IReadOnlyDictionary<string, string>? extra = null, DomainGroup? group = null)
+        IReadOnlyDictionary<string, string>? extra = null, DomainGroup? group = null, bool html = false)
     {
         var r = text;
-        r = Rep(r, "{fish}", t.FullName);
-        r = Rep(r, "{telefon}", t.Phone);
-        r = Rep(r, "{oquvchi_telefon}", t.Phone);
-        r = Rep(r, "{manzil}", t.Address);
-        r = Rep(r, "{tugilgan}", t.BirthDate);
-        r = Rep(r, "{guruh}", group?.Name ?? "");
-        r = Rep(r, "{oqituvchi}", t.FullName); // o'qituvchiga yozilgan xabarda — o'zining F.I.Sh
+        r = Rep(r, "{fish}", t.FullName, html);
+        r = Rep(r, "{telefon}", t.Phone, html);
+        r = Rep(r, "{oquvchi_telefon}", t.Phone, html);
+        r = Rep(r, "{manzil}", t.Address, html);
+        r = Rep(r, "{tugilgan}", t.BirthDate, html);
+        r = Rep(r, "{guruh}", group?.Name ?? "", html);
+        r = Rep(r, "{oqituvchi}", t.FullName, html); // o'qituvchiga yozilgan xabarda — o'zining F.I.Sh
         foreach (var tok in new[]
                  {
                      "{ism}", "{familiya}", "{sharif}", "{sinf}", "{qarzdorlik}", "{balans}",
                      "{ota-ona}", "{ota_ona}", "{ota}", "{ota_telefon}", "{ona}", "{ona_telefon}",
                  })
-            r = Rep(r, tok, "");
-        r = Schedule(r, group); // guruh berilsa dars jadvali tokenlari shundan, aks holda bo'sh
-        return Common(r, centerName, extra);
+            r = Rep(r, tok, "", html);
+        r = Schedule(r, group, html); // guruh berilsa dars jadvali tokenlari shundan, aks holda bo'sh
+        return Common(r, centerName, extra, html);
     }
 
     // (Lead(...) — lid xabari renderi — 2026-10 da lidga SMS bilan birga olib tashlandi.)

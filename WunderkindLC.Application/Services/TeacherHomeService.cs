@@ -474,6 +474,14 @@ public static class TeacherHomeService
             }
         }
 
+        // CRM upgrade U6b: Telegram link counts + relations (one query; no phones/chat ids to teachers).
+        var telegram = await Messaging.TelegramLinkSummary.ForStudentsAsync(db, rows.Select(r => r.StudentId).ToList());
+        rows = rows.Select(r =>
+        {
+            var tg = telegram.GetValueOrDefault(r.StudentId) ?? Messaging.TelegramLinkInfo.None;
+            return r with { TelegramLinked = tg.Linked, TelegramRelations = tg.Relations };
+        }).ToList();
+
         return new TeacherStudentsDto(resolved, rows
             .OrderBy(r => r.FullName, StringComparer.OrdinalIgnoreCase)
             .ThenBy(r => r.GroupName, StringComparer.OrdinalIgnoreCase)

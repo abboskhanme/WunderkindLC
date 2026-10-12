@@ -41,7 +41,7 @@ public readonly record struct TgEditOutcome(TgEditResult Result, int RetryAfterS
 /// qoladi va <see cref="Load"/> bilan startupda xotiraga olinadi, <see cref="Set"/> esa admin
 /// sozlamani saqlaganda yangilaydi.</para>
 /// </summary>
-public class TelegramService(IHttpClientFactory httpFactory, ILogger<TelegramService> logger)
+public partial class TelegramService(IHttpClientFactory httpFactory, ILogger<TelegramService> logger)
 {
     private volatile string _username = "";
     private volatile string _name = "";

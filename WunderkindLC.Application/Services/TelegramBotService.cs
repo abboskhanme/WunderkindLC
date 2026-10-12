@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Hosting;
 using WunderkindLC.Application.Abstractions;
+using WunderkindLC.Application.Services.Messaging;
 using WunderkindLC.Domain;
 using System.Collections.Concurrent;
 using System.Net;
@@ -26,7 +27,8 @@ namespace WunderkindLC.Application.Services;
 public class TelegramBotService(
     IServiceProvider sp, TelegramService telegram,
     BookShopBotService bookShop,
-    ILogger<TelegramBotService> logger) : BackgroundService
+    ILogger<TelegramBotService> logger,
+    AutoMessageService? autoMsg = null) : BackgroundService
 {
     /// <summary>ESKI «📝 Testni ishlash» tugmasi matni — bot orqali onlayn test 2026-10 da olib tashlandi,
     /// lekin foydalanuvchilarga ilgari yuborilgan klaviaturalarda tugma hali turibdi. Bosilsa — tushuntirish
@@ -124,6 +126,18 @@ public class TelegramBotService(
         }
     }
 
+    /// <summary>Clears the «blocked» mark of a private chat that talks to the bot again (CRM upgrade P2.4).</summary>
+    private async Task UnblockAsync(long chatId, CancellationToken ct)
+    {
+        try
+        {
+            using var scope = sp.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<IAppDbContext>();
+            await TelegramBlocks.UnblockAsync(db, chatId, ct);
+        }
+        catch (Exception ex) { logger.LogWarning(ex, "Telegram blokini olib tashlashda xato: chat {Chat}", chatId); }
+    }
+
     private static async Task<bool> DelayAsync(int ms, CancellationToken ct)
     {
         try { await Task.Delay(ms, ct); return true; }
@@ -208,6 +222,10 @@ public class TelegramBotService(
         if (!upd.TryGetProperty("message", out var msg)) return;
         if (!msg.TryGetProperty("chat", out var chat) || !chat.TryGetProperty("id", out var chatIdEl)) return;
         var chatId = chatIdEl.GetInt64();
+
+        // CRM upgrade P2.4: a private chat that writes to the bot is deliverable again (clears «Bloklagan»).
+        if (chat.TryGetProperty("type", out var chatTypeEl) && chatTypeEl.GetString() == "private")
+            await UnblockAsync(chatId, ct);
 
         // Kontakt ulashildi. XAVFSIZLIK: faqat O'ZINING kontakti qabul qilinadi — Telegramda manzillar
         // kitobidan BEGONA odamning kontaktini ham yuborish mumkin, u holda o'sha odamning profili
@@ -363,8 +381,24 @@ public class TelegramBotService(
         {
             if (!mcm.TryGetProperty("chat", out var chat) || !chat.TryGetProperty("id", out var chatIdEl)) return;
             var chatType = chat.TryGetProperty("type", out var typeEl) ? typeEl.GetString() ?? "" : "";
-            if (chatType is not ("group" or "supergroup")) return; // faqat guruhlar (shaxsiy/kanal emas)
             var chatId = chatIdEl.GetInt64();
+            if (chatType == "private")
+            {
+                // CRM upgrade P2.4: the user blocked (kicked) / unblocked (member) the bot in a PRIVATE chat.
+                var privateStatus = mcm.TryGetProperty("new_chat_member", out var pm) && pm.TryGetProperty("status", out var pst)
+                    ? pst.GetString() : null;
+                var blocked = TelegramBlocks.BlockedByStatus(privateStatus);
+                if (blocked is null) return;
+                using var pscope = sp.CreateScope();
+                var pdb = pscope.ServiceProvider.GetRequiredService<IAppDbContext>();
+                if (blocked == true)
+                {
+                    if (await TelegramBlocks.MarkBlockedAsync(pdb, chatId, AppClock.Now, ct) > 0) await pdb.SaveChangesAsync(ct);
+                }
+                else await TelegramBlocks.UnblockAsync(pdb, chatId, ct);
+                return;
+            }
+            if (chatType is not ("group" or "supergroup")) return; // faqat guruhlar (kanal emas)
             var title = chat.TryGetProperty("title", out var tEl) ? tEl.GetString() ?? "" : "";
 
             var status = mcm.TryGetProperty("new_chat_member", out var ncm) && ncm.TryGetProperty("status", out var stEl)
@@ -415,6 +449,23 @@ public class TelegramBotService(
         if (!cq.TryGetProperty("from", out var from) || !from.TryGetProperty("id", out var fromIdEl)) return;
         var chatId = fromIdEl.GetInt64();
         var data = cq.TryGetProperty("data", out var dEl) ? dEl.GetString() ?? "" : "";
+        await UnblockAsync(chatId, ct);
+
+        // «✅ Qabul qildim» (CRM upgrade P2.4): the generic empty answer is SKIPPED — the ack service answers
+        // with its own toast. Not logged into the support history (it is not a conversation).
+        if (data.StartsWith(MessageAckService.CallbackPrefix, StringComparison.Ordinal))
+        {
+            try
+            {
+                using var ackScope = sp.CreateScope();
+                var ackDb = ackScope.ServiceProvider.GetRequiredService<IAppDbContext>();
+                await MessageAckService.HandleAsync(ackDb, telegram, chatId, cbId,
+                    data[MessageAckService.CallbackPrefix.Length..], ct);
+            }
+            catch (Exception ex) { logger.LogWarning(ex, "«Qabul qildim» ishlovida xato: chat {Chat}", chatId); }
+            return;
+        }
+
         if (cbId.Length > 0) await telegram.AnswerCallbackAsync(cbId, ct: ct);
         await LogInAsync(chatId, $"[tugma bosildi: {data}]", ct);
 
@@ -665,12 +716,10 @@ public class TelegramBotService(
         var db = scope.ServiceProvider.GetRequiredService<IAppDbContext>();
 
         var meta = await db.CenterMeta.FirstOrDefaultAsync(ct);
-        // Qaysi raqam bo'yicha tekshirilsin (Sozlamalar → Telegram bot): "student" — o'quvchining O'ZI
-        // raqami (Student.Phone), aks holda (default) ota-ona raqami (Student.ParentPhone).
-        var matchStudentOwnPhone = string.Equals(meta?.TelegramPhoneMatchField, "student", StringComparison.OrdinalIgnoreCase);
-
-        var matchedStudents = (await db.Students.ToListAsync(ct))
-            .Where(s => PhoneUtil.Key(matchStudentOwnPhone ? s.Phone : s.ParentPhone) == key).ToList();
+        // CRM upgrade P2.4: o'quvchi 4 ta raqamning ISTALGANI bo'yicha taniladi (o'quvchi, asosiy ota-ona, ota,
+        // ona) — ota, ona va o'quvchining o'zi har biri o'z Telegramini ulay oladi. `TelegramPhoneMatchField`
+        // endi o'qilmaydi (ustun qoldi).
+        var matchedStudents = await TelegramRegistrar.MatchStudentsAsync(db, phone, ct);
         var matchedTeachers = (await db.Teachers.Where(t => !t.IsArchived).ToListAsync(ct))
             .Where(t => PhoneUtil.Key(t.Phone) == key).ToList();
         // Admin/xodim — telefon AppUser.Phone bilan moslashsa (yangi lid xabarnomalarini olish uchun).
@@ -749,15 +798,11 @@ public class TelegramBotService(
                 .Select(m => memberClasses.FirstOrDefault(c => c.Id == m.GroupId))
                 .Where(c => c is not null).Cast<Group>().ToList());
 
+        // Bitta ulanish har mos o'quvchiga (aka-uka bitta ota-ona chatini bo'lishadi), qarindoshlik aniqlanadi;
+        // mavjud ulanishda qarindoshlik faqat bo'sh bo'lsa yoziladi (admin tahriri bosilmaydi), blok belgisi tozalanadi.
+        var newLinks = await TelegramRegistrar.UpsertStudentLinksAsync(db, chatId, phone, senderName, students, ct);
         foreach (var s in students)
         {
-            var exists = await db.TelegramRegistrations.AnyAsync(r => r.StudentId == s.Id && r.ChatId == chatId, ct);
-            if (!exists)
-                db.TelegramRegistrations.Add(new TelegramRegistration
-                {
-                    StudentId = s.Id, ChatId = chatId, ParentName = senderName, Phone = digits, CreatedAt = AppClock.Now,
-                });
-
             var studentClasses = classesByStudent.GetValueOrDefault(s.Id, new List<Group>());
             if (studentClasses.Count > 0)
             {
@@ -831,6 +876,16 @@ public class TelegramBotService(
             await SendAsync(chatId,
                 $"🌐 Tizimga veb-versiya orqali kiring:\n{WebAppUrl}",
                 ct: ct);
+
+        // «01» minnatdorchilik (CRM upgrade P2.4) — tasdiq va login xabarlaridan KEYIN, FAQAT yangi ulangan chatga,
+        // har yangi (arxivlanmagan) o'quvchi ulanishi uchun (outbox dedupe — bir chatga bir o'quvchi bo'yicha bir marta).
+        if (autoMsg is not null)
+            foreach (var reg in newLinks)
+            {
+                var st = students.FirstOrDefault(x => x.Id == reg.StudentId);
+                if (st is null || st.IsArchived) continue;
+                await autoMsg.DispatchBotConnectedAsync(db, st, reg, ct);
+            }
     }
 
     /// <summary>Berilgan o'quvchilardan bot orqali KIRISH MA'LUMOTI olishga haqli bo'lganlarining id'lari.

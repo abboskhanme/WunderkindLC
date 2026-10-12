@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using WunderkindLC.Infrastructure.Data;
 using WunderkindLC.Application.Dtos;
 using WunderkindLC.Application.Services;
+using WunderkindLC.Application.Services.Messaging;
 using WunderkindLC.Domain;
 
 namespace WunderkindLC.Server.Controllers;
@@ -19,21 +20,24 @@ namespace WunderkindLC.Server.Controllers;
 [Authorize]
 [AdminPerm("messages.broadcast")]
 [Route("api/admin/auto-messages")]
-public class AutoMessagesController(AppDbContext db) : ControllerBase
+public class AutoMessagesController(AppDbContext db, AuditService audit) : ControllerBase
 {
+    private const string EntityType = "AutoMessageRule";
+
     /// <summary>Hodisa katalogi (frontend forma shundan quriladi). category — guruhlash toifasi.</summary>
     [HttpGet("triggers")]
     public ActionResult<IEnumerable<AutoMessageTriggerInfoDto>> Triggers() =>
         AutoMessageTriggers.All.Select(t => new AutoMessageTriggerInfoDto(
             t.Key, t.Label, t.Description, t.Tokens,
             t.SupportsSchedule, t.SupportsSendScope, t.Audiences, t.DefaultAudience,
-            t.DefaultTemplate, t.Category, t.TemplateOptional)).ToList();
+            t.DefaultTemplate, t.Category, t.TemplateOptional,
+            t.ScheduleMode, t.DefaultAck, t.DefaultDay, t.DefaultTime)).ToList();
 
     /// <summary>Xabar {token}lari katalogi — shablon tahrirlagichda "token qo'shish" ro'yxati.
     /// group: "student" | "common" | "event".</summary>
     [HttpGet("tokens")]
     public ActionResult<IEnumerable<MessageTokenDto>> Tokens() =>
-        MessageTokenCatalog.All.Select(t => new MessageTokenDto(t.Token, t.Label, t.Group)).ToList();
+        MessageTokenCatalog.All.Select(t => new MessageTokenDto(t.Token, t.Label, t.Group, t.Example)).ToList();
 
     [HttpGet]
     public async Task<ActionResult<IEnumerable<AutoMessageRuleDto>>> List()
@@ -41,21 +45,25 @@ public class AutoMessagesController(AppDbContext db) : ControllerBase
         var list = await db.AutoMessageRules.OrderBy(r => r.CreatedAt).ToListAsync();
         // Katalogdan olib tashlangan hodisalarning qoidalari (2026-10: faqat-SMS lid hodisalari) bazada
         // qoladi, lekin hech qayerda ishlamaydi — ro'yxatda ko'rsatilmaydi (UI ularning formasini chiza olmaydi).
-        return list.Where(r => AutoMessageTriggers.IsKnown(r.Trigger)).Select(ToDto).ToList();
+        var known = list.Where(r => AutoMessageTriggers.IsKnown(r.Trigger)).ToList();
+        var attIds = known.Where(r => r.AttachmentId != null).Select(r => r.AttachmentId!).Distinct().ToList();
+        var atts = await db.MessageAttachments.AsNoTracking().Where(a => attIds.Contains(a.Id)).ToDictionaryAsync(a => a.Id);
+        return known.Select(r => ToDto(r, r.AttachmentId is null ? null : atts.GetValueOrDefault(r.AttachmentId))).ToList();
     }
 
     [HttpPost]
     public async Task<ActionResult<AutoMessageRuleDto>> Create(SaveAutoMessageRuleRequest req)
     {
         var info = AutoMessageTriggers.Get(req.Trigger);
-        var error = Validate(req, info);
+        var error = Validate(req, info) ?? await AttachmentErrorAsync(req.AttachmentId);
         if (error is not null) return BadRequest(new { message = error });
 
         var rule = new AutoMessageRule();
         Apply(rule, req, info!);
         db.AutoMessageRules.Add(rule);
+        audit.Record(EntityType, rule.Id, "create", $"Avto-xabar qoidasi yaratildi: {Describe(rule)}");
         await db.SaveChangesAsync();
-        return ToDto(rule);
+        return ToDto(rule, await AttachmentAsync(rule.AttachmentId));
     }
 
     [HttpPut("{id}")]
@@ -64,12 +72,16 @@ public class AutoMessagesController(AppDbContext db) : ControllerBase
         var rule = await db.AutoMessageRules.FindAsync(id);
         if (rule is null) return NotFound();
         var info = AutoMessageTriggers.Get(req.Trigger);
-        var error = Validate(req, info);
+        var error = Validate(req, info) ?? await AttachmentErrorAsync(req.AttachmentId);
         if (error is not null) return BadRequest(new { message = error });
 
+        var wasEnabled = rule.Enabled;
         Apply(rule, req, info!);
+        audit.Record(EntityType, rule.Id, "update",
+            $"Avto-xabar qoidasi tahrirlandi: {Describe(rule)}"
+            + (wasEnabled == rule.Enabled ? "" : rule.Enabled ? " (yoqildi)" : " (o'chirildi)"));
         await db.SaveChangesAsync();
-        return ToDto(rule);
+        return ToDto(rule, await AttachmentAsync(rule.AttachmentId));
     }
 
     [HttpDelete("{id}")]
@@ -78,6 +90,7 @@ public class AutoMessagesController(AppDbContext db) : ControllerBase
         var rule = await db.AutoMessageRules.FindAsync(id);
         if (rule is null) return NotFound();
         db.AutoMessageRules.Remove(rule);
+        audit.Record(EntityType, rule.Id, "delete", $"Avto-xabar qoidasi o'chirildi: {Describe(rule)}");
         await db.SaveChangesAsync();
         return NoContent();
     }
@@ -108,7 +121,7 @@ public class AutoMessagesController(AppDbContext db) : ControllerBase
             if (existing.Contains(key)) continue;
             var info = AutoMessageTriggers.Get(key);
             if (info is null) continue;
-            db.AutoMessageRules.Add(new AutoMessageRule
+            var seeded = new AutoMessageRule
             {
                 Trigger = key,
                 Name = info.Label,
@@ -116,7 +129,13 @@ public class AutoMessagesController(AppDbContext db) : ControllerBase
                 SendTelegram = true,
                 Audience = info.DefaultAudience,
                 Template = info.DefaultTemplate,
-            });
+                AckButton = info.DefaultAck,
+                ScheduleType = info.ScheduleMode == AutoMessageSchedule.MonthlyDayTime ? "monthly" : "daily",
+                ScheduleDayOfMonth = info.DefaultDay,
+                ScheduleTime = info.DefaultTime,
+            };
+            db.AutoMessageRules.Add(seeded);
+            audit.Record(EntityType, seeded.Id, "create", $"Avto-xabar qoidasi yaratildi (standart): {Describe(seeded)}");
             created++;
         }
         if (created > 0) await db.SaveChangesAsync();
@@ -131,8 +150,11 @@ public class AutoMessagesController(AppDbContext db) : ControllerBase
         rule.Trigger = req.Trigger;
         rule.Name = (req.Name ?? "").Trim();
         rule.Enabled = req.Enabled;
-        rule.SendTelegram = req.SendTelegram;
-        rule.SendSms = false;   // legacy (SMS removed 2026-10) — the admin's explicit choice wins from now on
+        // CRM upgrade P2.2: Telegram is the only channel — `Enabled` alone decides; every save sets SendTelegram.
+        rule.SendTelegram = true;
+        rule.SendSms = false;   // legacy (SMS removed 2026-10)
+        rule.AckButton = req.AckButton;
+        rule.AttachmentId = string.IsNullOrWhiteSpace(req.AttachmentId) ? null : req.AttachmentId;
         rule.Audience = info.Audiences.Contains(req.Audience) ? req.Audience : info.DefaultAudience;
         rule.Template = (req.Template ?? "").Trim();
         // Manfiy = darsdan OLDIN (uchrashuv talabi: «darsdan 1–1,5 soat oldin davomat olishni unutmang»).
@@ -144,6 +166,8 @@ public class AutoMessagesController(AppDbContext db) : ControllerBase
         rule.ScheduleType = req.ScheduleType == "monthly" ? "monthly" : "daily";
         rule.ScheduleTime = req.ScheduleTime;
         rule.ScheduleDayOfMonth = req.ScheduleDayOfMonth is >= 1 and <= 31 ? req.ScheduleDayOfMonth : 1;
+        // monthly_day_time (debt, rating_*) — the day is used through CustomReminderService.IsScheduledDay.
+        if (info.ScheduleMode == AutoMessageSchedule.MonthlyDayTime) rule.ScheduleType = "monthly";
     }
 
     private static string? Validate(SaveAutoMessageRuleRequest req, AutoMessageTriggers.TriggerInfo? info)
@@ -164,6 +188,21 @@ public class AutoMessagesController(AppDbContext db) : ControllerBase
             if (scope != ReminderSendScopes.LessonStart && !System.TimeSpan.TryParse(req.ScheduleTime, out _))
                 return "Yuborish vaqti formati noto'g'ri (HH:mm)";
         }
+        // CRM upgrade P2.5: scheduled triggers — day of month + time (monthly_day_time) or time (daily_time).
+        if (info.ScheduleMode == AutoMessageSchedule.MonthlyDayTime)
+        {
+            if (req.ScheduleDayOfMonth is < 1 or > 31) return "Oyning kuni 1-31 oralig'ida bo'lishi kerak";
+            if (!AutoMessageSchedule.TryParseTime(req.ScheduleTime, out _)) return "Vaqt formati noto'g'ri (HH:mm)";
+        }
+        else if (info.ScheduleMode == AutoMessageSchedule.DailyTime)
+        {
+            if (!AutoMessageSchedule.TryParseTime(req.ScheduleTime, out _)) return "Vaqt formati noto'g'ri (HH:mm)";
+        }
+
+        // Template: Telegram HTML formatting + known tokens only.
+        var templateErrors = CampaignService.TemplateErrors(req.Template);
+        if (templateErrors.Count > 0) return string.Join("; ", templateErrors);
+
         if (info.SupportsSchedule)
         {
             if (req.ScheduleType != "daily" && req.ScheduleType != "monthly")
@@ -176,8 +215,24 @@ public class AutoMessagesController(AppDbContext db) : ControllerBase
         return null;
     }
 
-    private static AutoMessageRuleDto ToDto(AutoMessageRule r) =>
+    private static AutoMessageRuleDto ToDto(AutoMessageRule r, MessageAttachment? a) =>
         new(r.Id, r.Trigger, r.Name, r.Enabled, AutoMessageChannels.Telegram(r), r.Audience, r.Template,
             r.OffsetMinutes, r.SendScope, r.ScheduleType, r.ScheduleTime, r.ScheduleDayOfMonth,
-            r.CreatedAt.ToString("o"));
+            r.CreatedAt.ToString("o"), r.AckButton, r.AttachmentId,
+            a is null ? null : new MessageAttachmentDto(a.Id, a.Kind, a.FileName, a.SizeBytes, a.ContentType));
+
+    private Task<MessageAttachment?> AttachmentAsync(string? id) =>
+        id is null ? Task.FromResult<MessageAttachment?>(null)
+            : db.MessageAttachments.AsNoTracking().FirstOrDefaultAsync(a => a.Id == id);
+
+    private async Task<string?> AttachmentErrorAsync(string? id) =>
+        string.IsNullOrWhiteSpace(id) || await db.MessageAttachments.AnyAsync(a => a.Id == id)
+            ? null : "Biriktirilgan fayl topilmadi — qaytadan yuklang";
+
+    /// <summary>Audit text: "Name (trigger label)".</summary>
+    private static string Describe(AutoMessageRule r)
+    {
+        var label = AutoMessageTriggers.Get(r.Trigger)?.Label ?? r.Trigger;
+        return string.IsNullOrWhiteSpace(r.Name) || r.Name == label ? label : $"{r.Name} ({label})";
+    }
 }

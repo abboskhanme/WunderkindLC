@@ -102,6 +102,10 @@ public static class StudentPurge
                 + await db.RetentionBonusTracks.CountAsync(x => x.StudentId == id, ct)
                 + await db.StudentExtensions.CountAsync(x => x.StudentId == id, ct), false),
             new("telegram", "Telegram bot bog'lanishi", await db.TelegramRegistrations.CountAsync(x => x.StudentId == id, ct), false),
+            // CRM upgrade Phase 2: achievements (+ their photos' metadata stay — files are shared rows) and the
+            // Telegram delivery log of this student.
+            new("achievements", "Yutuqlar", await db.StudentAchievements.CountAsync(x => x.StudentId == id, ct), false),
+            new("deliveries", "Telegram xabarlari jurnali", await db.MessageDeliveries.CountAsync(x => x.StudentId == id, ct), false),
             new("account", "Login akkaunti (ilova)", userId is null ? 0 : 1, false),
             new("history", "O'zgarishlar tarixi yozuvlari",
                 await db.AuditLogs.CountAsync(a => a.StudentId == id || a.EntityId == id || a.EntityId.EndsWith(suffix), ct), false),
@@ -165,6 +169,8 @@ public static class StudentPurge
         db.RetentionBonusTracks.RemoveRange(await db.RetentionBonusTracks.Where(x => x.StudentId == id).ToListAsync(ct));
         db.StudentExtensions.RemoveRange(await db.StudentExtensions.Where(x => x.StudentId == id).ToListAsync(ct));
         db.TelegramRegistrations.RemoveRange(await db.TelegramRegistrations.Where(x => x.StudentId == id).ToListAsync(ct));
+        db.StudentAchievements.RemoveRange(await db.StudentAchievements.Where(x => x.StudentId == id).ToListAsync(ct));
+        db.MessageDeliveries.RemoveRange(await db.MessageDeliveries.Where(x => x.StudentId == id).ToListAsync(ct));
         db.ArchivedRecords.RemoveRange(await db.ArchivedRecords.Where(x => x.EntityId == id).ToListAsync(ct));
         // Tarix: o'quvchi bo'yicha yozuvlar + a'zolik hodisalari ("{groupId}:{studentId}").
         db.AuditLogs.RemoveRange(await db.AuditLogs
