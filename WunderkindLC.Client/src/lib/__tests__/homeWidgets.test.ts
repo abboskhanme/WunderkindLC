@@ -77,15 +77,19 @@ describe('normallashtirish (server bilan bir xil)', () => {
 })
 
 describe('ruxsat filtri', () => {
-  it("kassalar faqat superadmin; boshqa bloklar o'z ruxsati bilan; qurilmaganlari yo'q", () => {
+  it("kassalar faqat superadmin; boshqa bloklar o'z ruxsati bilan", () => {
     const layout = { ...defaultHomeLayout(), blocks: defaultHomeLayout().blocks.map((b) => ({ ...b, visible: true })) }
     expect(visibleBlocks(layout, admin).map((b) => b.key)).not.toContain('cashboxes')
+    // CRM U3b: «Davomat xabarlari» va «Qizil ro'yxat» qurildi — endi ko'rinadi.
     expect(visibleBlocks(layout, all).map((b) => b.key)).toEqual(
-      ['cashboxes', 'schedule', 'lessonsMonitor', 'myTasks', 'contactsToday', 'aiAnalysis'],
+      ['cashboxes', 'schedule', 'lessonsMonitor', 'myTasks', 'absentNotices', 'redList', 'contactsToday', 'aiAnalysis'],
     )
     expect(visibleBlocks(layout, staff(['tasks.board', 'contacts'])).map((b) => b.key)).toEqual(['myTasks', 'contactsToday'])
-    // Keyingi bosqich bloklari (absentNotices, redList) — hali ko'rinmaydi.
-    expect(allowedBlocks(layout, all).map((b) => b.key)).not.toContain('redList')
+    // Kalitsiz xodim — bu ikki blok oynada ham, sahifada ham yo'q.
+    expect(allowedBlocks(layout, staff(['contacts'])).map((b) => b.key)).not.toContain('absentNotices')
+    expect(allowedBlocks(layout, staff(['contacts'])).map((b) => b.key)).not.toContain('redList')
+    expect(visibleBlocks(layout, staff(['students.notices'])).map((b) => b.key)).toEqual(['absentNotices'])
+    expect(visibleBlocks(layout, staff(['students.attendance'])).map((b) => b.key)).toEqual(['redList'])
   })
 
   it("kartochkalar sozlama TARTIBIDA va ruxsat bo'yicha", () => {

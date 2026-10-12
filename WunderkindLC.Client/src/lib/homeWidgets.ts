@@ -7,9 +7,8 @@
  * (AYNAN shu katalog; `homeWidgets.test.ts` ikkalasining kalitlari bir xilligini qulflaydi).
  *
  * YANGI BLOK QO'SHISH: (1) server `HomeLayoutRules.BlockKeys` ga kalit, (2) shu yerda `HOME_BLOCKS` ga band
- * (`available: true`), (3) `AdminDashboard.renderBlock` ga komponent. Keyingi bosqichlar qo'shadigan
- * «Davomat xabarlari» (`absentNotices`, U3b) va «Qizil ro'yxat» (`redList`, U3d) katalogda TAYYOR, lekin
- * `available: false` — ular qurilguncha vidjetlar oynasida ham, sahifada ham ko'rinmaydi.
+ * (`available: true`), (3) `AdminDashboard.renderBlock` ga komponent. «Davomat xabarlari» (`absentNotices`) va
+ * «Qizil ro'yxat» (`redList`) Phase 3 (U3b) da qurildi — `available: true`.
  */
 import { HOME_CARDS } from '@/lib/homeCards'
 
@@ -44,8 +43,8 @@ export const HOME_BLOCKS: HomeBlockDef[] = [
   { key: 'schedule', label: 'Dars jadvali', description: '«Kun» / «Hafta» — haqiqiy sanadagi darslar', defaultVisible: true, perm: 'schedule.timetable', available: true },
   { key: 'lessonsMonitor', label: 'Darslar monitoringi', description: "Bugungi darslar: davomat va baho qo'yildimi", defaultVisible: false, perm: 'classes.notAttended', available: true },
   { key: 'myTasks', label: 'Mening topshiriqlarim', description: 'Ochiq topshiriqlarim va tasdig\'imni kutayotganlar', defaultVisible: false, perm: 'tasks.board', available: true },
-  { key: 'absentNotices', label: 'Davomat xabarlari', description: 'Bugungi «kelmadi» xabarlari', defaultVisible: false, perm: 'students.notices', available: false },
-  { key: 'redList', label: "Qizil ro'yxat", description: 'Ketma-ket dars qoldirganlar', defaultVisible: false, perm: 'students.attendance', available: false },
+  { key: 'absentNotices', label: 'Davomat xabarlari', description: 'Bugungi «kelmadi» xabarlari: rejalashtirilgan, tasdiq kutayotgan, to\'xtatilgan', defaultVisible: false, perm: 'students.notices', available: true },
+  { key: 'redList', label: "Qizil ro'yxat", description: 'Ketma-ket sababsiz dars qoldirganlar (top 10)', defaultVisible: false, perm: 'students.attendance', available: true },
   { key: 'contactsToday', label: "Bog'lanish kerak — bugun", description: "Bugun qo'ng'iroq qilinishi kerak bo'lganlar", defaultVisible: false, perm: 'contacts', available: true },
   { key: 'aiAnalysis', label: 'AI tahlil', description: 'Markaz bo\'yicha kunlik AI tahlil', defaultVisible: false, perm: 'ai', available: true },
 ]

@@ -98,7 +98,9 @@ it("Vidjetlar oynasi: ▲/▼, yashirish va saqlash", async () => {
   })
   expect(document.body.textContent).toContain('Kartochkalar')
   expect(document.body.textContent).toContain('Mening topshiriqlarim')
-  expect(document.body.textContent).not.toContain("Qizil ro'yxat")   // keyingi bosqich — hali yo'q
+  // CRM U3b: Phase 3 bloklari qurildi — to'liq ruxsatda oynada ko'rinadi.
+  expect(document.body.textContent).toContain("Qizil ro'yxat")
+  expect(document.body.textContent).toContain('Davomat xabarlari')
 
   const downs = [...document.querySelectorAll('button[aria-label="Pastga"]')] as HTMLButtonElement[]
   // Bloklar ro'yxatining birinchisi (Kassalar) pastga — Dars jadvali bilan o'rin almashadi.

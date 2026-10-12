@@ -144,7 +144,7 @@ turmaydi.
 |---|---|---|
 | `marketing` | `.dashboard` `.inbox` `.rules` `.knowledge` `.analytics` `.settings` | `InstagramController` (metod darajasida) |
 | `leads` | `.list` `.stats` `.forms` | `LeadsController` · `LeadStagesController` · `LeadFormsController` |
-| `students` | `.list` `.notes` `.attendance` `.turnstile` `.face` | `StudentsController` · `StudentAttendanceController` · `StudentTurnstileController` · `AdminFaceController` · `CertificatesController` |
+| `students` | `.list` `.notes` `.attendance` `.notices` `.turnstile` `.face` | `StudentsController` · `StudentAttendanceController` · `AttendanceNoticesController` (`.notices`, RRP — Nazorat → «Davomat xabarlari», `journal.md`) · `StudentTurnstileController` · `AdminFaceController` · `CertificatesController` |
 | `teachers` | `.list` `.attendance` `.substitutions` `.retention` | `TeachersController` · `TeacherAttendanceController` · `SubstituteTeachersController` · `RetentionLossController` (RRP, `retention-loss.md`) |
 | `schedule` | `.courses` `.analytics` `.curricula` `.grading` `.levelTests` | `SubjectsController` · `CourseAnalyticsController` · `CurriculumController` · `GradingController` · `LevelTestsController` |
 | `classes` | `.list` `.rooms` `.testResults` `.rating` | `ClassesController` · `JournalController` · `RoomsController` · `TestResultsController` · `RatingController` (`.rating`, RRP — `rating.md`) |

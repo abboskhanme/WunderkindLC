@@ -9,7 +9,7 @@ import { TodayLessonsMonitor } from '@/components/dashboard/TodayLessonsMonitor'
 import { CashboxBalanceStrip } from '@/components/dashboard/home/CashboxBalanceStrip'
 import { DatedFilterRow } from '@/components/dashboard/home/DatedFilterRow'
 import { DatedScheduleBoard } from '@/components/dashboard/home/DatedScheduleBoard'
-import { ContactsTodayBlock, MyTasksBlock } from '@/components/dashboard/home/HomeBlocks'
+import { AbsentNoticesBlock, ContactsTodayBlock, MyTasksBlock, RedListBlock } from '@/components/dashboard/home/HomeBlocks'
 import { HomeButton } from '@/components/dashboard/home/HomeControls'
 import { HomeStatCards } from '@/components/dashboard/home/HomeStatCards'
 import { HomeWidgetsDrawer } from '@/components/dashboard/home/HomeWidgetsDrawer'
@@ -208,12 +208,15 @@ export function AdminDashboard({ scheduleOnly = false }: {
         return <TodayLessonsMonitor key={key} compact />
       case 'myTasks':
         return <MyTasksBlock key={key} />
+      case 'absentNotices':
+        return <AbsentNoticesBlock key={key} />
+      case 'redList':
+        return <RedListBlock key={key} />
       case 'contactsToday':
         return <ContactsTodayBlock key={key} />
       case 'aiAnalysis':
         return <CenterAiAnalysisCard key={key} />
       default:
-        // `absentNotices`, `redList` — keyingi bosqichlar (homeWidgets.ts: available=false, bu yerga kelmaydi).
         return null
     }
   }
