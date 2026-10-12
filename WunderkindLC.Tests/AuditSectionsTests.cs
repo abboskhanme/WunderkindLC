@@ -31,6 +31,11 @@ public class AuditSectionsTests
     [InlineData("OnboardingStep", "vacancies")]
     [InlineData("Staff", "staff")]
     [InlineData("CenterMeta", "settings")]
+    // CRM upgrade Phase 2 (P2.9): messaging section + achievements in students.
+    [InlineData("Broadcast", "messages")]
+    [InlineData("AutoMessageRule", "messages")]
+    [InlineData("MessageTemplate", "messages")]
+    [InlineData("StudentAchievement", "students")]
     public void SectionOf_turni_togri_bolimga_soladi(string entityType, string expected)
         => Assert.Equal(expected, AuditSections.SectionOf(entityType));
 

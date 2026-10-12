@@ -88,13 +88,22 @@ public class AutoMessageTests
     // ===================== 1) Trigger katalogi (sof mantiq) =====================
 
     [Fact]
-    public void Triggerlar_10_ta_va_kalitlari_takrorlanmaydi()
+    public void Triggerlar_15_ta_va_kalitlari_takrorlanmaydi()
     {
-        // messaging.md: "10 trigger" katalogi AutoMessageTriggers da (2026-10-07: + attendance_present;
-        // 2026-10: 4 ta lid hodisasi SMS bilan birga olib tashlandi).
-        Assert.Equal(10, AutoMessageTriggers.All.Length);
-        Assert.Equal(10, AutoMessageTriggers.All.Select(t => t.Key).Distinct().Count());
+        // messaging.md: trigger katalogi AutoMessageTriggers da (2026-10-07: + attendance_present;
+        // 2026-10: 4 ta lid hodisasi SMS bilan birga olib tashlandi; 2026-10-12 CRM upgrade P2.5: + bot_connected,
+        // achievement, test_score, rating_top, rating_bottom).
+        Assert.Equal(15, AutoMessageTriggers.All.Length);
+        Assert.Equal(15, AutoMessageTriggers.All.Select(t => t.Key).Distinct().Count());
         Assert.Contains(AutoMessageTriggers.All, t => t.Key == AutoMessageTriggers.AttendancePresent);
+        foreach (var key in new[]
+                 {
+                     AutoMessageTriggers.BotConnected, AutoMessageTriggers.Achievement, AutoMessageTriggers.TestScore,
+                     AutoMessageTriggers.RatingTop, AutoMessageTriggers.RatingBottom,
+                 })
+            Assert.True(AutoMessageTriggers.IsKnown(key), key);
+        // test_score is distinct from the removed lead-level test_result.
+        Assert.False(AutoMessageTriggers.IsKnown("test_result"));
     }
 
     [Fact]
@@ -873,18 +882,14 @@ public class AutoMessageTests
     }
 
     [Fact]
-    public void Qarzdorlik_kunlari_toq_sanalar_ketma_ketligi()
+    public void Qarzdorlik_kuni_QOIDANING_OZIDAN__toq_kunlar_jadvali_yoq()
     {
-        // Hozirgi qoida (PaymentReminderService.cs:66): 1, 3, 5, ... 31. HOZIRGI XULQNI qayd etadi:
-        // 31 kunlik oyda 31-sana va keyingi oyning 1-sanasi KETMA-KET tushadi (ikki kun ketma-ket eslatma).
-        static bool Sends(int day) => day == 1 || (day - 1) % 2 == 0;
-
-        Assert.True(Sends(1));
-        Assert.False(Sends(2));
-        Assert.True(Sends(3));
-        Assert.True(Sends(29));
-        Assert.True(Sends(31));
-        Assert.True(Sends(1));   // keyingi oy boshi — 31 dan keyin darhol
+        // CRM upgrade (P2.5): the old "1st, then every odd day at 09:00" cadence was REMOVED — each payment_debt
+        // rule runs on its own day of month after its own time (more days = more rules).
+        var rule = new AutoMessageRule { Trigger = AutoMessageTriggers.PaymentDebt, ScheduleDayOfMonth = 10, ScheduleTime = "09:00" };
+        Assert.True(WunderkindLC.Application.Services.Messaging.AutoMessageSchedule.IsDue(rule, new DateTime(2026, 10, 10, 9, 0, 0)));
+        Assert.False(WunderkindLC.Application.Services.Messaging.AutoMessageSchedule.IsDue(rule, new DateTime(2026, 10, 3, 9, 0, 0)));   // odd day — no longer
+        Assert.False(WunderkindLC.Application.Services.Messaging.AutoMessageSchedule.IsDue(rule, new DateTime(2026, 10, 11, 9, 0, 0)));
     }
 
     /// <summary>Qarzdor o'quvchining BITTA fandagi a'zoligi: kurs + guruh + shu oyga hisob (qarz).

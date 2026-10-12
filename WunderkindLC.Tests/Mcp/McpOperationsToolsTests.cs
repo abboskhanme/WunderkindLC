@@ -465,7 +465,10 @@ public class McpOperationsToolsTests
         Assert.Equal("monthly", am3.GetProperty("type").GetString());
         Assert.Equal(5, am3.GetProperty("dayOfMonth").GetInt32());
         Assert.Equal("10:30", am3.GetProperty("time").GetString());
-        Assert.Equal(7, json.GetProperty("triggersWithoutRule").GetArrayLength());    // 10 hodisa − 3 qoida (2026-10: lid hodisalari olib tashlandi)
+        // 15 hodisa − 3 qoida (2026-10: lid hodisalari olib tashlandi; 2026-10-12 CRM upgrade P2.5: +5 Telegram hodisasi)
+        Assert.Equal(WunderkindLC.Application.Services.AutoMessageTriggers.All.Length - 3,
+            json.GetProperty("triggersWithoutRule").GetArrayLength());
+        Assert.Equal(12, json.GetProperty("triggersWithoutRule").GetArrayLength());
 
         // SMS/push kanallari va SMS provayderi chiqmaydi (o'chirilayotgan modullar).
         Assert.DoesNotContain("maxfiy-provayder", raw);
