@@ -29,6 +29,9 @@ namespace WunderkindLC.Infrastructure.Migrations
                     b.Property<string>("Id")
                         .HasColumnType("text");
 
+                    b.Property<bool>("IsExcused")
+                        .HasColumnType("boolean");
+
                     b.Property<bool>("IsLate")
                         .HasColumnType("boolean");
 
@@ -43,6 +46,44 @@ namespace WunderkindLC.Infrastructure.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("AbsenceReasons");
+                });
+
+            modelBuilder.Entity("WunderkindLC.Domain.AbsenceStreakAlert", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasColumnType("text");
+
+                    b.Property<string>("ContactRequestId")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<string>("GroupId")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<int>("Level")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("StreakStart")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)");
+
+                    b.Property<string>("StudentId")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("StudentId", "GroupId", "StreakStart", "Level")
+                        .IsUnique();
+
+                    b.ToTable("AbsenceStreakAlerts");
                 });
 
             modelBuilder.Entity("WunderkindLC.Domain.ActionReason", b =>
@@ -1273,6 +1314,18 @@ namespace WunderkindLC.Infrastructure.Migrations
                     b.Property<string>("Id")
                         .HasColumnType("text");
 
+                    b.Property<string>("AbsenceStreakReasonId")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("AbsentNoticeApproval")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<int>("AbsentNoticeDelayMinutes")
+                        .HasColumnType("integer");
+
                     b.Property<string>("Address")
                         .IsRequired()
                         .HasColumnType("text");
@@ -1292,6 +1345,27 @@ namespace WunderkindLC.Infrastructure.Migrations
                     b.Property<string>("AppStoreUrl")
                         .IsRequired()
                         .HasColumnType("text");
+
+                    b.Property<int>("AttendanceDeadlineMinutes")
+                        .HasColumnType("integer");
+
+                    b.Property<bool>("AttendanceDisciplineEnabled")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("AttendanceEscalateEnabled")
+                        .HasColumnType("boolean");
+
+                    b.Property<decimal>("AttendanceFineAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<bool>("AttendanceFineEnabled")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("AttendanceReminderMinutes")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
 
                     b.Property<int>("BackupScheduleHour")
                         .HasColumnType("integer");
@@ -5620,6 +5694,13 @@ namespace WunderkindLC.Infrastructure.Migrations
                     b.Property<bool>("AttendanceTaken")
                         .HasColumnType("boolean");
 
+                    b.Property<DateTime?>("AttendanceTakenAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<string>("AttendanceTakenById")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
                     b.Property<string>("ClassId")
                         .IsRequired()
                         .HasMaxLength(200)
@@ -5651,6 +5732,8 @@ namespace WunderkindLC.Infrastructure.Migrations
                         .HasColumnType("text");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("ClassId", "Date");
 
                     b.HasIndex("ClassId", "SubjectId", "Quarter");
 
@@ -8354,6 +8437,82 @@ namespace WunderkindLC.Infrastructure.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("TeacherAttendances");
+                });
+
+            modelBuilder.Entity("WunderkindLC.Domain.TeacherAttendanceFine", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasMaxLength(36)
+                        .HasColumnType("character varying(36)");
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<DateTime?>("AttendanceTakenAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<DateTime>("Deadline")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<string>("GroupId")
+                        .IsRequired()
+                        .HasMaxLength(36)
+                        .HasColumnType("character varying(36)");
+
+                    b.Property<string>("LessonDate")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)");
+
+                    b.Property<string>("LessonStart")
+                        .IsRequired()
+                        .HasMaxLength(5)
+                        .HasColumnType("character varying(5)");
+
+                    b.Property<string>("Month")
+                        .IsRequired()
+                        .HasMaxLength(7)
+                        .HasColumnType("character varying(7)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<string>("TeacherId")
+                        .IsRequired()
+                        .HasMaxLength(36)
+                        .HasColumnType("character varying(36)");
+
+                    b.Property<string>("WaiveReason")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)");
+
+                    b.Property<DateTime?>("WaivedAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<string>("WaivedById")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("WaivedByName")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("LessonDate");
+
+                    b.HasIndex("GroupId", "LessonDate")
+                        .IsUnique();
+
+                    b.HasIndex("TeacherId", "Month");
+
+                    b.ToTable("TeacherAttendanceFines");
                 });
 
             modelBuilder.Entity("WunderkindLC.Domain.TeacherReview", b =>
