@@ -290,6 +290,10 @@ namespace WunderkindLC.Infrastructure.Migrations
                     b.Property<string>("Id")
                         .HasColumnType("text");
 
+                    b.Property<string>("CancelReason")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
                     b.Property<string>("ClassId")
                         .IsRequired()
                         .HasMaxLength(200)
@@ -303,10 +307,35 @@ namespace WunderkindLC.Infrastructure.Migrations
                         .HasMaxLength(10)
                         .HasColumnType("character varying(10)");
 
+                    b.Property<DateTime?>("DecidedAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<string>("DecidedById")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("DecidedByName")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("DecisionNote")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)");
+
                     b.Property<string>("Kind")
                         .IsRequired()
                         .HasMaxLength(16)
                         .HasColumnType("character varying(16)");
+
+                    b.Property<string>("LessonEnd")
+                        .IsRequired()
+                        .HasMaxLength(5)
+                        .HasColumnType("character varying(5)");
+
+                    b.Property<string>("LessonStart")
+                        .IsRequired()
+                        .HasMaxLength(5)
+                        .HasColumnType("character varying(5)");
 
                     b.Property<int>("Period")
                         .HasColumnType("integer");
@@ -314,6 +343,9 @@ namespace WunderkindLC.Infrastructure.Migrations
                     b.Property<string>("ReasonId")
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
+
+                    b.Property<DateTime>("SendAfter")
+                        .HasColumnType("timestamp without time zone");
 
                     b.Property<string>("Status")
                         .IsConcurrencyToken()
@@ -331,12 +363,19 @@ namespace WunderkindLC.Infrastructure.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
 
+                    b.Property<bool>("TakenLate")
+                        .HasColumnType("boolean");
+
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp without time zone");
 
                     b.HasKey("Id");
 
+                    b.HasIndex("Date", "ClassId");
+
                     b.HasIndex("Status", "CreatedAt");
+
+                    b.HasIndex("Status", "SendAfter");
 
                     b.ToTable("AttendanceNotifyItems");
                 });
