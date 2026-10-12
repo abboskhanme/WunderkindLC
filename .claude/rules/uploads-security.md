@@ -107,6 +107,17 @@ javob berib bo'lmaydi. Buni yoqish — alohida ish.
   `[AdminPerm("students.list", ReadRequiresPerm = true)]`. Controllerda ochiq/o'quvchi/admin marshrutlari
   aralash bo'lgani uchun atribut **metod darajasida** qo'yilgan.
 
+### Telegram xabar biriktirmalari va yutuq rasmlari — `uploads/messaging/` (2026-10-12)
+- Fayl statik yo'ldan **berilmaydi** (`PrivateFolderFileProvider`, `Uploads:PublicCertificates` ga BOG'LIQ EMAS —
+  har doim yopiq). O'qiydiganlar: outbox ishchisi (Telegram'ga OQIM bilan) va ruxsatli endpointlar —
+  `GET api/admin/messaging/attachments/{id}/content` (`messages.broadcast`, o'qish ham), `GET api/admin/achievements/{id}/photo`
+  (`students.list`), kabinet `GET api/student/achievements/{id}/photo` (egalik `TargetAsync`). Javob `Cache-Control: private, no-store`.
+- Saqlangan manzil (`MessageAttachment.FileUrl`) HECH QACHON javobga chiqmaydi; diskka yo'l faqat
+  `MessageAttachmentStore.PhysicalPath` (naqsh `/uploads/messaging/<32 hex>.<ruxsat etilgan kengaytma>`) orqali.
+- Yuklash: kengaytma + Content-Type + sehrli baytlar uchalasi mos bo'lishi shart; nom GUID (`messaging.md` §0.5).
+- Papka `uploads/` ichida — tungi arxivga o'z-o'zidan kiradi; 60 kundan eski, Telegram'ga yuklangan va ishlatilmayotgan
+  fayl o'chiriladi (yutuq rasmi — hech qachon).
+
 ### Yuz bilan kirish selfilari — `uploads/face/`
 - Fayl statik yo'ldan **berilmaydi** (`PrivateFolderFileProvider`), faqat
   `GET /api/admin/face/checks/{id}/image` va `GET /api/admin/face/profile/{studentId}/image`

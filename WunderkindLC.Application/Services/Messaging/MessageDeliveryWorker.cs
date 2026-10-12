@@ -333,6 +333,26 @@ public class MessageDeliveryWorker(
         using var scope = services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<IAppDbContext>();
 
+        // Rows that can no longer go out (e.g. the bot token was missing for days) — expired, so retention applies.
+        var stale = await db.MessageDeliveries
+            .Where(d => d.Status == DeliveryStatus.Pending && d.ExpiresAt < now)
+            .OrderBy(d => d.ExpiresAt).Take(PruneBatch).ToListAsync(ct);
+        foreach (var d in stale)
+        {
+            d.Status = DeliveryStatus.Expired;
+            d.Error = "Muddati o'tdi — yuborilmadi";
+        }
+        if (stale.Count > 0)
+        {
+            try { await db.SaveChangesAsync(ct); }
+            catch (DbUpdateConcurrencyException) when (db is DbContext ctx)
+            {
+                // A row was claimed meanwhile — leave all of them for the next day (nothing half-written stays tracked).
+                foreach (var d in stale) ctx.Entry(d).State = EntityState.Detached;
+            }
+            await FinishCampaignsAsync(db, stale.Select(d => d.BroadcastId), ct);
+        }
+
         var cutoff = now.AddDays(-RetentionDays);
         for (var round = 0; round < 20; round++)
         {

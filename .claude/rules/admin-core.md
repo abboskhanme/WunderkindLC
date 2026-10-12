@@ -74,6 +74,8 @@ Audit: `AbsenceReason` — nima qo'shildi/o'chdi/qayta nomlandi ("Sozlamalar" bo
 - Biznes jadvallari to'liq (kitob, shartnoma, qo'ng'iroq, bog'lanish, topshiriq, vakansiya, KPI,
   chegirma, bonus ...). Texnik jurnallar/keshlar va biometrik/sessiya jadvallari ATAYIN kirmaydi va
   ro'yxati faylning o'zida — `excluded` (ilgari "BARCHA ma'lumotlar" deb yozilib, ko'p jadval yo'q edi).
+  2026-10-12: `messageDeliveries` (Telegram outbox jurnali — katta, 180 kun) KIRMAYDI; `messageAttachments`
+  (faqat metama'lumot) va `studentAchievements` KIRADI.
 - ⚠️ **Fayl GZIP — `wunderkindlc_backup_<vaqt>.json.gz` (2026-10-08).** JSON to'g'ridan-to'g'ri siqilgan
   oqimga yoziladi (`BuildGzipAsync`) — xom JSON bufer xotirada umuman turmaydi, hajm ~10 marta kichik.
   Ochish: 7-Zip / WinRAR yoki `gunzip` (ichida o'sha-o'sha JSON). Ilgari ~90 jadval bitta xom `byte[]` ga

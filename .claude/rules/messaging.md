@@ -1,9 +1,13 @@
 ---
-description: Xabar tizimi — yagona AVTO-XABAR (AutoMessageRule + 10 trigger; kabinet bildirishnomasi + Telegram), Telegram bot (majburiy obuna, guruhga lid yuborish), xabarlar frontendi. 2026-10 dan SMS, push, guruh chati va Local Call/SMS YO'Q.
+description: Xabar tizimi — TELEGRAM OUTBOX (MessageDelivery + ishchi, HTML, biriktirma, «Qabul qildim», bloklaganlar, qarindoshlik), yagona AVTO-XABAR (AutoMessageRule + 15 trigger), kampaniyalar, yutuqlar, Telegram bot, xabarlar frontendi. 2026-10 dan SMS, push, guruh chati va Local Call/SMS YO'Q.
 paths:
   - "WunderkindLC.Application/Services/AutoMessage*.cs"
   - "WunderkindLC.Application/Services/Message*.cs"
   - "WunderkindLC.Application/Services/Telegram*.cs"
+  - "WunderkindLC.Application/Services/Messaging/**"
+  - "WunderkindLC.Server/Controllers/MessagingController.cs"
+  - "WunderkindLC.Server/Controllers/StudentAchievementsController.cs"
+  - "WunderkindLC.Server/Crm/CrmMessagingSetup.cs"
   - "WunderkindLC.Application/Services/*Reminder*.cs"
   - "WunderkindLC.Application/Services/BirthdayGreetingService.cs"
   - "WunderkindLC.Application/Services/LeadNotifier.cs"
@@ -52,6 +56,134 @@ bilan belgilangan va tasdiqlangan o'chirishgacha turadi. Yangi kod ularga YOZMAS
 ⚠️ `GET api/admin/messages/classes` qoldi (e'lon "Guruh" auditoriyasi uchun guruhlar + Telegram'ga
 ulangan ota-onalar soni), lekin chat darvozasidan TASHQARIDA — `messages.broadcast` ruxsati bilan.
 
+## 0.5. TELEGRAM OUTBOX — CRM upgrade Phase 2 (2026-10-12, `docs/SPEC-crm-upgrade.md` §3)
+
+Kod: `Application/Services/Messaging/*`, `MessagingController` (`api/admin/messaging`), `Server/Crm/CrmMessagingSetup.cs`.
+Testlar: `TelegramHtmlTests`, `MessageDeliveryWorkerTests`, `MessageAudienceTests`, `MessagingFlowTests`, `MessagingRbacTests`.
+Migratsiya (integrator): `CrmMessaging` + `docs/migrations/Phase2.sql`.
+
+### 🔴 ENG MUHIM — ota-ona/o'quvchiga Telegram FAQAT OUTBOX orqali
+
+Har ota-ona/o'quvchiga ketadigan Telegram xabar — `MessageDelivery` QATORI (`TelegramOutbox.EnqueueAsync` /
+`Build`, chaqiruvchining `SaveChanges`i ichida) va uni `MessageDeliveryWorker` yuboradi. To'g'ridan-to'g'ri
+`telegram.SendMessageAsync` FAQAT: bot interaktiv javoblari (login, kod, support, kitob do'koni), shartnomalar,
+lid kartalari va XODIM/O'QITUVCHI operativ xabarlari (davomat eslatmasi, topshiriqlar). Yangi ota-ona xabari
+qo'shsangiz — `AutoMessageService.DispatchStudentAsync` yoki `TelegramOutbox` dan boshqa yo'l YO'Q.
+
+Nega: yuborishdan OLDIN aniq sanoq, oluvchi bo'yicha jurnal, «Qabul qildim», bloklaganlarni hisoblash, restartga
+chidamlilik va Telegram tezlik chegarasi — hammasi shu jadvaldan.
+
+### Ishchi (`MessageDeliveryWorker`, singleton = hosted service + `IOutboxSignal.Wake()`)
+
+| Holat | Nima bo'ladi |
+|---|---|
+| startup | har `sending` → `unknown` (QAYTA YUBORILMAYDI), `pending` davom etadi |
+| band qilish | `pending → sending` (`Status` — concurrency token) |
+| `Ok` | `sent`, `SentAt`, `TelegramMessageId`; birinchi yuklashda `MessageAttachment.TelegramFileId` saqlanadi |
+| `Blocked` (403, «bot was blocked», «chat not found»…) | `blocked` + o'sha CHATNING HAMMA ulanishlariga `BlockedAt` |
+| 429 | `pending`, `NextAttemptAt = now + retry_after`; butun ishchi pauza (≤ 60 s) |
+| «can't parse entities» | BIR marta darhol oddiy matn (`ToPlain`, parse_mode'siz) |
+| boshqa xato | 1 va 5 daqiqadan keyin qayta; 3-urinishda `failed` |
+| `ExpiresAt` o'tdi (kampaniya 12 soat, avto 6 soat) | `expired` — eskirgan «kelmadi» yuborilmaydi |
+
+- Tezlik: ≤ 20 xabar/soniya, bitta chatga ≥ 1,1 s oraliq ("erta" qator qoldiriladi, band qilinmaydi).
+- Uzun matn + fayl (> 1024 belgi): avval fayl IZOHSIZ, keyin matn; tugma va `TelegramMessageId` OXIRGI xabarda.
+  ⚠️ `pending` qatorda `TelegramMessageId` bo'lsa — fayl allaqachon ketgan, qayta urinish faqat MATNNI yuboradi.
+- Kampaniyada `pending/sending` qolmasa → `Broadcast.Status = done`.
+- Kunlik: 180 kundan eski jurnal o'chiriladi (5 000 lik partiyalar); 60 kundan eski, `file_id` si bor va hech qayerda
+  (navbat, yoqilgan qoida, YUTUQ) ishlatilmayotgan biriktirmaning LOKAL fayli o'chiriladi (`FileDeletedAt`).
+- Bot sozlanmagan bo'lsa ishchi yubormaydi (qatorlar `expired` bo'ladi); KAMPANIYA esa 400 bilan rad etiladi.
+
+### Matn — Telegram HTML (`TelegramHtml`, `MessageRender`)
+
+- Shablonda faqat `b/strong`, `i/em`, `u/ins`, `s/strike/del`, `code`, `pre`, `a href` (http/https/tg).
+  Boshqa teg, yolg'iz `<`/`>`/`&` — MATN sifatida escape. Yopilmagan/aralash teg → «Formatlash yopilmagan: <b>»,
+  boshqa havola → «Havola noto'g'ri: faqat http(s) manzil».
+- ⚠️ Token QIYMATLARI har doim escape (`MessageTokenizer.*(…, html: true)`): «Ali <b>» ismli o'quvchi Telegram'da
+  aynan shu MATN bo'lib chiqadi.
+- Kabinet qo'ng'iroqchasiga ODDIY matn (`ToPlain`) yoziladi. 4096 dan uzun avto-xabar — oddiy matn, 4000 da qirqilib «…».
+- Eski qoida matnida buzuq teg bo'lsa avto-xabar to'xtamaydi — butun shablon escape qilinib yuboriladi.
+- Noma'lum `{token}` → «Noma'lum o'zgaruvchi: {…}» (qoida saqlash, shablon, kampaniya — 400; preview — `errors`).
+- Sarlavhalar: avto «🔔 <qoida nomi>», qarz «💰 To'lov eslatmasi», e'lon/arxiv «📢 Markaz e'loni», qarz kampaniyasi — yo'q.
+
+### Kim oladi — qarindoshlik va auditoriya
+
+- **Ro'yxatdan o'tish (bot):** kontakt 4 raqamning ISTALGANI bilan solishtiriladi (`Phone`, `ParentPhone`,
+  `FatherPhone`, `MotherPhone` — `TelegramRegistrar`); `CenterMeta.TelegramPhoneMatchField` endi O'QILMAYDI.
+  Har mos o'quvchiga bitta ulanish, `Relation = TelegramRelations.Detect` (tartib: ota → ona → asosiy ota-ona → o'quvchi,
+  aks holda `other`). Mavjud ulanishda qarindoshlik faqat BO'SH bo'lsa yoziladi (admin tahriri bosilmaydi).
+  Yangi ulanishga «01» (`bot_connected`) — FAQAT o'sha chatga, bir marta (dedupe), tasdiq/login xabarlaridan keyin.
+- **Admin** qarindoshlikni profildan o'zgartiradi (`PUT students/{id}/telegram-links/{regId}`, audit).
+- **Bloklash:** yuborishda Blocked yoki `my_chat_member` (shaxsiy chat) `kicked` → `BlockedAt`; foydalanuvchi botga
+  yozsa / tugma bossa / `member` bo'lsa — belgi tozalanadi. Bloklagan chat sanoqlardan chiqadi («Bloklagan: N»).
+- **Auditoriya (`AudienceSpec`, `MessageAudienceResolver`):** `active` (arxivsiz, TIRIK a'zolik, standart holat
+  active+trial, muzlatilgan — ixtiyoriy, yopiq guruhlilar yo'q), `archive` (FAQAT arxivdagilar), `selected`,
+  `teachers`. «Barcha ota-onalar» = otasi/onasi/ota-onasi/boshqa — o'quvchining o'z chati KIRMAYDI.
+  ⚠️ Arxiv va faol ARALASHMAYDI: e'lon arxivga → «Arxivdagilarga alohida «Arxiv» xabaridan yuboring»,
+  arxiv xabari faolga → «Arxiv xabarida faqat arxivdagi o'quvchilar».
+- Avto-qoida auditoriyasi: `parents` — o'quvchining o'z chatidan boshqa hammasi, `students` — faqat `student` chat.
+- Shablonda o'quvchi tokeni bo'lmasa kampaniya BITTA chatga BITTA xabar (aka-uka ota-onasiga ikki marta emas).
+- ⚠️ **Sanoq = yaratiladigan qatorlar:** `audience/count` aynan `POST campaigns` ning rejalashtiruvchisini
+  (`CampaignService.PlanAsync`) chaqiradi. Ikkinchi sanoq yo'li YOZMANG.
+
+### «✅ Qabul qildim» (`MessageAckService`, callback `mack:{deliveryId}`)
+
+Birinchi bosish (xabar yuborilgan chatning O'ZI) → `AckAt`, tugma olib tashlanadi, «✅ Qabul qilindi. Rahmat!».
+Begona chat — «Bu xabar sizga tegishli emas», topilmasa — «Xabar topilmadi yoki eskirgan». "Ko'rdi" alohida holat
+EMAS (botga o'qildi belgisi kelmaydi). ⚠️ `mack:` umumiy bo'sh `answerCallbackQuery` dan OLDIN ushlanadi
+(`MessagingRbacTests` qulflaydi). Phase 5 `wtok:` qo'shadi — `mack:`/`wtdone:` bilan to'qnashmaydi.
+
+### Biriktirma (`MessageAttachments`, `MessageAttachmentStore`)
+
+Bitta xabarga bitta fayl: rasm jpg/png ≤ 10 MB, video mp4 ≤ 50 MB, hujjat pdf/docx/xlsx/pptx/doc/xls/ppt ≤ 50 MB.
+Kengaytma + Content-Type + sehrli baytlar — UCHALASI mos bo'lishi shart. Fayl `uploads/messaging/{guid}{ext}` —
+⚠️ STATIK BERILMAYDI (`PrivateFolderFileProvider` ro'yxatida), faqat ishchi va `attachments/{id}/content`
+(ruxsat bilan, `no-store`). Yuborish diskdan OQIM bilan (`"telegram-media"` mijozi, 120 s); `byte[]` ga yig'ilmaydi.
+
+### Jadvalli avto-xabarlar (`AutoMessageSchedule`)
+
+| Rejim | Triggerlar | Qachon |
+|---|---|---|
+| `monthly_day_time` | `payment_debt`, `rating_top`, `rating_bottom` | qoidaning O'Z kuni (31 → qisqa oyda oxirgi kun) va soatidan keyin |
+| `daily_time` | `birthday` | har kuni qoidaning soatidan keyin |
+| `custom` | `custom_schedule` | o'z kunlik/oylik oynasi (`CustomReminderService`) |
+
+⚠️ Qarzdorlik eslatmasining ESKI "1-sana, keyin har toq kun 09:00" jadvali OLIB TASHLANDI — ko'proq kun kerak
+bo'lsa ko'proq qoida. Xizmatlar har 10 daqiqada uyg'onadi; belgilar QOIDA bo'yicha: `payment_debt:{ruleId}`,
+oluvchi `payment_debt:{ruleId}:{studentId}` (tug'ilgan kunda `birthday:{ruleId}[:{studentId}]`).
+Mavjud qarz qoidalari migratsiyada 1-sana 09:00 ga o'tkaziladi.
+
+### Hodisa kaliti (dedupe) — `DispatchStudentAsync(…, eventKey, sourceId, onlyRuleId, attachmentId)`
+
+`eventKey` berilsa `{trigger}:{rule}:{student}:{chat}:{eventKey}` hech qachon ikki marta navbatga tushmaydi
+(unikal indeks — oxirgi himoya, `TelegramOutbox.SaveAsync` dublikatni DETACH qiladi). Phase 3 «kelmadi» navbati
+`eventKey = sourceId = item.Id` beradi va holatni `TelegramOutbox.SummaryBySourceAsync` dan o'qiydi; Phase 4
+(`test_score`, `rating_*`) — `onlyRuleId` va `AutoMessageSchedule.IsDue` bilan. Qaytadi: navbatga qo'yilgan son.
+
+### Yangi triggerlar (15 ta katalog)
+
+`bot_connected` («01», faqat ulangan chatga) · `achievement` (yutuq tabrigi, rasm bilan) · `test_score`,
+`rating_top`, `rating_bottom` (katalogda; yuborish — Phase 4). `payment_debt` va `attendance_absent` yangi qoidada
+«Qabul qildim» oldindan yoqilgan (`DefaultAck`). Qoida saqlash — `SendTelegram = true` (endi faqat `Enabled` hal
+qiladi), audit `AutoMessageRule` («Xabarlar» bo'limi).
+
+### Startup tuzatishlari (bir martalik, `SeedMarker`)
+
+`tg-relation-backfill-2026-10` — mavjud ulanishlarga qarindoshlik; `autorule-telegram-only-2026-10` — tashqi kanali
+YO'Q (faqat push) qoidalar o'chiriladi (nomlari logda), SMS qoidalari Telegram orqali qoladi (Phase 1 qarori).
+
+### Yutuqlar (`StudentAchievement`, `AchievementService`)
+
+IELTS/CEFR/sertifikat/olimpiada — profil «Yutuqlar» tabi va kabinet «Yutuqlarim». «Ota-onaga tabrik yuborish» —
+`achievement` trigger, kalit `{id}:{n}` (har qayta yuborishda yangi). Arxivdagiga tabrik yo'q. Qoida/chat yo'q
+bo'lsa yutuq baribir SAQLANADI va javobda `warning` (400 qaytarilsa foydalanuvchi qayta yuborib dublikat yaratardi).
+Rasm — biriktirma (faqat `photo`), hech qachon tozalanmaydi.
+
+### Ro'yxatlarda «Telegram» ustuni (U6b, `TelegramLinkSummary`)
+
+Faol o'quvchilar, o'qituvchining «O'quvchilarim» va guruh «O'quvchilar» tabi: ulangan (BLOKLANMAGAN) chatlar soni +
+qarindoshlik belgilari. ⚠️ Faqat SON va qarindoshlik — telefon, ism, chat id YO'Q (o'qituvchiga ham ko'rinadi).
+
 - **GURUH NOMI NOYOB (2026-10-07, `GroupNames`).** Nom BARCHA guruhlar (arxivdagilar ham) orasida
   bo'shliqsiz va registrsiz takrorlanmaydi — yaratish, qayta nomlash va «Tugatish»dagi yangi guruh 400
   "Bu nomli guruh allaqachon bor" oladi. Qayta nomlashda `Student.ClassName` yorlig'i va
@@ -62,13 +194,13 @@ ulangan ota-onalar soni), lekin chat darvozasidan TASHQARIDA — `messages.broad
 
 - **KALITLAR .env DA:** Telegram bot tokeni (`TELEGRAM_BOT_TOKEN`) — `AppSecrets` orqali .env dan
   o'qiladi, bazada saqlanmaydi va Sozlamalar sahifasidan kiritilmaydi (sahifada faqat holat + kerakli
-  .env qatori — `EnvSecretField`). UI'dan saqlanadiganlar: bot username/nomi, kanal, telefon moslash.
+  .env qatori — `EnvSecretField`). UI'dan saqlanadiganlar: bot username/nomi, kanal (telefon moslash sozlamasi 2026-10-12 dan O'QILMAYDI — 4 raqamning istalgani, §0.5).
   `FCM_SERVICE_ACCOUNT_JSON` .env da QOLDI — endi faqat yuz bilan kirishdagi Play Integrity
   tekshiruvining ZAXIRA kaliti (`GoogleServiceAccount`, `AppAttestation`). `ESKIZ_*` kalitlari
   `.env.example` va compose'dan olib tashlandi.
 
 - **Yagona AVTO-XABAR tizimi:** `AutoMessageRule` entity (migratsiya `AddAutoMessages`) — har qoida:
-  Trigger + Audience + Template (tokenli) + `SendTelegram` + jadval maydonlari. **10 trigger** katalogi
+  Trigger + Audience + Template (tokenli) + `SendTelegram` + jadval maydonlari. **15 trigger** katalogi (2026-10-12: + bot_connected, achievement, test_score, rating_top, rating_bottom — §0.5)
   `AutoMessageTriggers` (Application/Services): payment_received, monthly_charge, payment_debt,
   attendance_absent, **attendance_present** (2026-10-07: "Farzandingiz darsga keldi" —
   `DispatchNewlyPresentAsync`, har dars uchun BIR MARTA: saqlashdan OLDIN «keldi» bo'lganlarga qayta
@@ -92,8 +224,10 @@ ulangan ota-onalar soni), lekin chat darvozasidan TASHQARIDA — `messages.broad
   yuborish dispatcher orqali (extra {baho},{sana},{guruh}); qoida UMUMAN yo'q bo'lsa standart kabinet
   bildirishnomasi (default-on). Davomatda ham shu naqsh (`journal.md` §C8).
   **Token katalogi:** `MessageTokenCatalog` + `GET /api/admin/auto-messages/tokens` →
-  `[{token,label,group}]` (group: student|common|event; lid guruhi va `{link}`, `{natija}`, `{daraja}`,
-  `{ball}`, `{foiz}` 2026-10 da olib tashlandi); frontend token chiplarini shundan oladi.
+  `[{token,label,group,example}]` (group: student|common|event; lid guruhi va `{link}`, `{natija}`, `{daraja}`
+  2026-10 da olib tashlandi; 2026-10-12 dan `{ball}`, `{foiz}` QAYTDI va `{qarindosh}`, `{yutuq}`, `{yutuq_natija}`,
+  `{test}`, `{turi}`, `{orin}`, `{guruh_orin}`, `{reyting_orin}` qo'shildi; `example` — server preview namunasi);
+  frontend token chiplarini shundan oladi.
   **`{oqituvchi}` — GURUH O'QITUVCHISI F.I.Sh:** `MessageTokenizer.Student` ixtiyoriy `teacherName`
   parametridan to'ladi (`Teacher(...)`da — o'qituvchining o'zi). Chaqiruvchi nomni
   `MessageTokenizer.GroupTeacherNameAsync(db, group, student)` (bitta xabar) yoki
@@ -146,7 +280,13 @@ ulangan ota-onalar soni), lekin chat darvozasidan TASHQARIDA — `messages.broad
   o'quvchi sanalar, lekin xabar olmasdi; guruh nomi o'zgarsa guruhga umuman hech narsa ketmasdi.
   Guruh qamrovida `{guruh}` tokeni ham TANLANGAN guruh nomi bilan to'ladi.
 
-- **FRONTEND (2026-10):** Xabarlar sahifasi 3 tab — **Xabar yuborish (default)** | Avto xabarlar
+- **FRONTEND (2026-10-12, CRM upgrade P2.8):** Xabarlar sahifasi `?tab=` bilan 5 tab — «Xabar yuborish»
+  (`TelegramComposer`: auditoriya Faol/Arxiv/Tanlangan/O'qituvchilar + qarindoshlik chiplari, formatlash, bitta fayl,
+  «Qabul qildim», server PREVIEW va sanoq) · «Qarzdorlar» · «Avto xabarlar» · «Shablonlar» · «Tarix» (kampaniya
+  hisoboti — har o'quvchi va har chat holati, «Bekor qilish»; avto-xabarlar statistikasi). Preview HTML faqat
+  `lib/telegramHtml.ts` whitelist renderi bilan (`dangerouslySetInnerHTML` YO'Q). O'quvchi(lar)ga xabar —
+  `TelegramSendModal`. Quyidagi 3-tabli tavsif — TARIX (2026-10 holati).
+- **FRONTEND (2026-10, eski):** Xabarlar sahifasi 3 tab — **Xabar yuborish (default)** | Avto xabarlar
   (trigger'lar Category bo'yicha guruhlangan; har qoidada qat'iy «Kabinet (bildirishnoma) — doim» chipi +
   Telegram kaliti; «Standart qoidalar» → `seed-standard`) | Tarix (faqat Telegram e'lonlari).
   Composer — faqat Telegram: Barcha ota-onalar / Guruh / O'qituvchilar / Tanlab ("Tanlab" ro'yxatida
@@ -160,8 +300,9 @@ ulangan ota-onalar soni), lekin chat darvozasidan TASHQARIDA — `messages.broad
   yo'naltiriladi. Chat menyusi olib tashlandi: `/admin/chats` → `/admin/messages`,
   `/teacher/messages` → `/teacher`, `/student/chat` → `/student`; «Support Telegram» qoldi.
 
-- **To'lov eslatmasi:** `MessagesController` Telegram e'lonida `OnlyDebtors=true` (+ `{qarzdorlik}`
-  tokenlari). Avtomatik eslatma — `payment_debt` (pastdagi «QARZDORLIK ESLATMASI»).
+- **To'lov eslatmasi:** «Xabarlar → Qarzdorlar» tabi (`GET messaging/debtors` — avtomatik eslatma bilan bir xil
+  populyatsiya, har kurs qarzi, Telegram holati, oxirgi eslatma va «Qabul qildi») → `POST campaigns` `kind=debt`
+  (bo'sh matn = tizim matni, HAR FAN alohida). Avtomatik eslatma — `payment_debt` (pastdagi «QARZDORLIK ESLATMASI»).
 
 - **Lidni Telegram guruhga avto-yuborish:** Bot GURUHGA qo'shilsa (`my_chat_member` yangilanishi —
   `TelegramService.GetUpdatesAsync` allowed_updates'ga qo'shilgan) — `TelegramGroup` entity'ga yoziladi
@@ -490,6 +631,9 @@ yozsangiz, o'sha nomni `Program.cs` da ro'yxatdan o'tkazing** — nomlanmagan ko
 
 ## QARZDORLIK ESLATMASI — HAR FAN UCHUN ALOHIDA XABAR (2026-09-09)
 
+⚠️ 2026-10-12 dan matn `DebtMessages.BuildForStudentAsync` da (avtomatik eslatma ham, «Qarzdorlar» kampaniyasi ham
+shuni chaqiradi) va jadval QOIDA bo'yicha (§0.5 «Jadvalli avto-xabarlar»).
+
 `PaymentReminderService` (trigger `payment_debt`) o'quvchiga BITTA xabar yubormaydi: **har fan
 (kurs/guruh) uchun ALOHIDA xabar** tuziladi va u kabinet tarixiga va Telegram'ga alohida ketadi
 (2026-10 gacha push va SMS ham). Ikki fanda o'qiydigan o'quvchining ota-onasi ikkita eslatma oladi.
@@ -543,8 +687,8 @@ tug'ilgan kun va sinov darsi SMS'lari ham (o'sha paytdagi kanallar). Erkin eslat
 
 | Kalit | Qachon | Nima beradi |
 |---|---|---|
-| `payment_debt:{studentId}` · `birthday:{studentId}` · `custom_schedule:{ruleId}:{s\|t}:{id}` | yuborishdan OLDIN, atomik (`TryClaimAsync`) | ish yarmida yiqilsa — olganlarga TAKROR yo'q, qolganlarga keyingi uyg'onishda yetadi; ikki nusxa poygasida faqat bittasi yuboradi |
-| `payment_debt` · `birthday` · `custom_schedule:{ruleId}` | ish TO'LIQ tugagach | keyingi uyg'onish (restart ham) ishni umuman qayta boshlamaydi |
+| `payment_debt:{ruleId}:{studentId}` · `birthday:{ruleId}:{studentId}` · `custom_schedule:{ruleId}:{s\|t}:{id}` | yuborishdan OLDIN, atomik (`TryClaimAsync`) | ish yarmida yiqilsa — olganlarga TAKROR yo'q, qolganlarga keyingi uyg'onishda yetadi; ikki nusxa poygasida faqat bittasi yuboradi |
+| `payment_debt:{ruleId}` · `birthday:{ruleId}` · `custom_schedule:{ruleId}` | qoida TO'LIQ tugagach | keyingi uyg'onish (restart ham) ishni umuman qayta boshlamaydi (2026-10-12 dan QOIDA bo'yicha — har qoidaning o'z kuni/soati bor) |
 
 - ⚠️ Belgi yuborishdan OLDIN qo'yiladi: aynan yuborish paytida yiqilish bo'lsa o'sha BITTA oluvchi
   o'tkazib yuboriladi — takror xabar (ota-ona g'ashi) dan arzon. ATAYIN shunday.
