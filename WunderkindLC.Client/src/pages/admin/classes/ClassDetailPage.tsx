@@ -53,6 +53,7 @@ import { TransferGroupModal } from './TransferGroupModal'
 import { ClassMembersModal } from './ClassMembersModal'
 import { GroupStudentsTab, type MemberActionKind } from './detail/GroupStudentsTab'
 import { GroupAiPanel } from './GroupAiPanel'
+import { GroupRatingSection } from '@/components/rating/GroupRatingSection'
 import { ClassFormModal } from './ClassFormModal'
 import { TelegramMessageModal, type TelegramRecipient } from '../students/TelegramMessageModal'
 
@@ -1511,10 +1512,12 @@ export function ClassDetailPage() {
           {/* Reyting — o'quvchilarning o'rtacha bahosi va baholash statistikasi (bir yoki bir nechta oy yig'indisi) */}
           {tab === 'reyting' && (
             <div className="space-y-4">
+              {/* UMUMIY reyting (testlar + ball, CRM 4-bosqich) — tepada; pastdagi ball jadvali «Ball tafsiloti». */}
+              <GroupRatingSection groupId={id} />
               <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-[var(--shadow-1)]">
                 <div className="flex items-center gap-2">
                   <TrendingUp className="h-5 w-5 text-brand-600" />
-                  <h2 className="font-semibold text-slate-800">Reyting oylari</h2>
+                  <h2 className="font-semibold text-slate-800">Ball tafsiloti</h2>
                   {ratingMonths.length > 1 && (
                     <span className="rounded-full bg-violet-100 px-2.5 py-0.5 text-xs font-semibold text-violet-700">
                       {ratingMonths.length} oy yig'indisi
