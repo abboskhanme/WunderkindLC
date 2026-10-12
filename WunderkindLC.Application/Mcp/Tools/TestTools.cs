@@ -326,7 +326,8 @@ public sealed class TestTools(McpToolContext t)
         + "o'rin (guruh ichida, ball kamayishi, teng bo'lsa ism), o'quvchi, ball tarkibi (jurnal yig'indisi, baholar soni, "
         + "o'rtacha baho, bajarilgan mezonlar, tuzatish), har mezon bo'yicha bajarilganlar soni va davomat foizi (o'tilgan "
         + "darslar, kech kelish kelmaslik emas). month (YYYY-MM) berilsa — faqat shu oy; berilmasa — butun vaqt. Sukut bo'yicha "
-        + "faol va sinovdagi o'quvchilar (guruh sahifasi kabi); includeFrozen=true — muzlatilganlar ham. "
+        + "faol va sinovdagi o'quvchilar (guruh sahifasi kabi); includeFrozen=true — muzlatilganlar ham. Bu — guruh sahifasidagi "
+        + "«Ball tafsiloti»; ASOSIY reyting (testlar + ball, davr bo'yicha) — rating_group_report. "
         + "Group students ranked by collected ball with its breakdown.")]
     public async Task<string> RatingGroup(
         [Description("Guruh id (groups_list natijasidan)")] string groupId,
@@ -467,7 +468,8 @@ public sealed class TestTools(McpToolContext t)
         + "baho; sortBy=ball — jami ball (admin «O'quvchilar» ro'yxatidagi «Ball» saralashi). Har qatorda: o'rin, o'quvchi, "
         + "jami ball, o'rtacha ball, ball tushgan guruhlar soni, o'rtacha baho, davomat foizi, hozirgi guruhlari (har birida "
         + "shu guruhdagi ball). Arxivlangan va guruhsiz o'quvchilar kirmaydi. TOP N — sahifa hajmi (sukut 50, ko'pi bilan 200). "
-        + "Natija 5 daqiqa keshlanadi. Centre-wide student rating by collected ball.")]
+        + "Natija 5 daqiqa keshlanadi. Bu — eski (faqat yig'ilgan ball) markaz reytingi; paneldagi ASOSIY reyting (testlar + "
+        + "ball, oy / 3 oy / o'quv yili) — rating_report. Centre-wide student rating by collected ball (legacy).")]
     public async Task<string> RatingCenter(
         [Description("Saralash: avgBall (sukut — guruhlar bo'yicha o'rtacha ball) yoki ball (jami ball)")] string? sortBy = null,
         [Description("Sahifa (1 dan)")] int? page = null,

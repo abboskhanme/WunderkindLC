@@ -33,6 +33,12 @@ public static partial class McpAreas
     public static readonly McpArea TestResults = new("Testlar natijalari", ["classes.testResults"]);
     public static readonly McpArea NotAttended = new("Davomat qilinmagan guruhlar", ["classes.notAttended"]);
 
+    // Rating — tests + ball (CRM Phase 4). The panel's gates (RatingController): the report needs `classes.rating`; a
+    // group's table is also on the group page (`classes.list`); a student's block is also in the profile (`students.list`).
+    public static readonly McpArea Rating = new("Reyting", ["classes.rating"]);
+    public static readonly McpArea RatingGroup = new("Guruh reytingi", ["classes.rating", "classes.list"]);
+    public static readonly McpArea StudentRating = new("O'quvchi reytingi", ["students.list", "classes.rating"]);
+
     public static readonly McpArea Courses = new("Kurslar", ["schedule.courses"]);
     public static readonly McpArea Timetable = new("Dars jadvali", ["schedule.timetable"]);
     public static readonly McpArea CourseAnalytics = new("Kurslar analitikasi", ["schedule.analytics"]);

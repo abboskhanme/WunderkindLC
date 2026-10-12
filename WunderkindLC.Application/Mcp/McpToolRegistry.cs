@@ -32,6 +32,7 @@ public static class McpToolRegistry
         // CRM upgrade (2026-10, docs/SPEC-crm-upgrade.md U2m–U6m).
         typeof(Tools.MessagingTools),
         typeof(Tools.AttendanceControlTools),
+        typeof(Tools.RatingTools),
     ];
 
     /// <summary>Entity types read by at least one tool.</summary>
