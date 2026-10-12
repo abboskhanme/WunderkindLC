@@ -333,6 +333,28 @@ public class JournalPolicyTests
         Assert.Equal(dates.OrderBy(d => d, StringComparer.Ordinal).ToList(), dates); // tartiblangan
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void EffectiveLessonDatesInMonth_KochirishlarTARTIBIGA_bogliq_emas(bool reversed)
+    {
+        // Kechagi (8) dars bugunga (9), bugungi (9) dars ertaga (10) ko'chirilgan. Ilgari bitta o'tishda
+        // "8→9" dan keyin "9→10" kelsa, 9-ga ENDIGINA ko'chirilgan dars ham o'chib ketardi (bazadan
+        // tartibsiz keladi — natija tasodifiy edi). 9-kunda baribir dars bor (kechagisi).
+        var moves = new[]
+        {
+            new JournalService.LessonMove("2024-02-08", "2024-02-09"),
+            new JournalService.LessonMove("2024-02-09", "2024-02-10"),
+        };
+        var input = reversed ? moves.Reverse().ToArray() : moves;
+
+        var dates = JournalService.EffectiveLessonDatesInMonth(new[] { 0, 1, 2, 3, 4, 5, 6 }, "2024-02", input);
+
+        Assert.DoesNotContain("2024-02-08", dates);
+        Assert.Contains("2024-02-09", dates);
+        Assert.Contains("2024-02-10", dates);
+    }
+
     [Fact]
     public void EffectiveLessonDatesInMonth_BoshqaOygaKochirish_ShuOydaFAQATolibTashlanadi()
     {

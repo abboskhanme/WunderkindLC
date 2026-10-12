@@ -219,11 +219,14 @@ public static class JournalService
         IReadOnlyCollection<int> days, string month, IEnumerable<LessonMove> moves)
     {
         var set = LessonDatesInMonth(days, month).ToHashSet();
-        foreach (var mv in moves)
-        {
+        // Two passes, ORDER-INDEPENDENT: every source day leaves first, then every target day is added.
+        // A single pass depended on the (unordered) query order: "yesterday → today" followed by
+        // "today → tomorrow" removed the lesson that had just been moved IN to today.
+        var list = moves as IReadOnlyCollection<LessonMove> ?? moves.ToList();
+        foreach (var mv in list)
             if (mv.FromDate.Length >= 7 && mv.FromDate[..7] == month) set.Remove(mv.FromDate);
+        foreach (var mv in list)
             if (mv.ToDate.Length >= 7 && mv.ToDate[..7] == month) set.Add(mv.ToDate);
-        }
         return set.OrderBy(d => d, StringComparer.Ordinal).ToList();
     }
 
