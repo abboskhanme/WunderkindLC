@@ -5,7 +5,6 @@ namespace WunderkindLC.Application.Services;
 /// (GET /api/admin/auto-messages/tokens). Har token <see cref="MessageTokenizer"/> haqiqatan
 /// qo'llab-quvvatlaydigan nom (o'ylab topilmagan). Guruhlar:
 ///   "student" — o'quvchi/ota-ona xabarlari (MessageTokenizer.Student);
-///   "lead"    — lid xabarlari (MessageTokenizer.Lead);
 ///   "common"  — barcha xabarlar (markaz/sana/oy/yil);
 ///   "event"   — hodisaga xos qo'shimcha tokenlar (dispatcher extraTokens orqali beradi).
 /// </summary>
@@ -35,18 +34,6 @@ public static class MessageTokenCatalog
         new("{manzil}", "Manzil", "student"),
         new("{tugilgan}", "Tug'ilgan sana", "student"),
 
-        // ---------- Lid ----------
-        new("{fish}", "Lid F.I.Sh.", "lead"),
-        new("{telefon}", "Lid telefoni", "lead"),
-        new("{fan}", "Qiziqqan fan (kurs)", "lead"),
-        new("{oqituvchi}", "Sinov darsi guruhining o'qituvchisi F.I.Sh.", "lead"),
-        new("{ota}", "Otasining F.I.Sh.", "lead"),
-        new("{ota_telefon}", "Otasining telefoni", "lead"),
-        new("{ona}", "Onasining F.I.Sh.", "lead"),
-        new("{ona_telefon}", "Onasining telefoni", "lead"),
-        new("{oquvchi_telefon}", "Lidning o'z telefoni", "lead"),
-        new("{tugilgan}", "Tug'ilgan sana", "lead"),
-
         // ---------- Umumiy ----------
         new("{markaz}", "Markaz nomi", "common"),
         new("{sana}", "Joriy sana (kk.oo.yyyy)", "common"),
@@ -55,11 +42,6 @@ public static class MessageTokenCatalog
 
         // ---------- Hodisaga xos ----------
         new("{summa}", "Summa (to'lov / oylik hisob)", "event"),
-        new("{link}", "Havola (daraja-test)", "event"),
-        new("{natija}", "Test natijasi", "event"),
-        new("{daraja}", "Test darajasi", "event"),
-        new("{ball}", "Test bali", "event"),
-        new("{foiz}", "Test foizi", "event"),
         new("{kurs}", "Kurs nomi", "event"),
         new("{sabab}", "Davomat sababi (kelmadi)", "event"),
         new("{dars_sana}", "Dars sanasi", "event"),
@@ -68,32 +50,6 @@ public static class MessageTokenCatalog
         new("{baho}", "Qo'yilgan baho", "event"),
     };
 
-    /// <summary>
-    /// QO'LDA yuborishda ishlatib BO'LMAYDIGAN token — uni faqat o'z hodisasi to'ldira oladi.
-    /// </summary>
-    /// <remarks>
-    /// <para>Hozircha bitta: <c>{link}</c>. U <b>bir martalik</b> daraja-test havolasi va faqat
-    /// "Daraja testi yuborish" oqimida (<c>POST leads/{id}/send-test</c>) tug'iladi — boshqa
-    /// hech qayerda uni to'ldirishning iloji yo'q.</para>
-    ///
-    /// <para>⚠️ Haqiqiy hodisa (2026-09-07): lid oynasining "tayyor matn" ro'yxatida
-    /// <c>test_link</c> andozasi ham chiqardi. Operator uni tanlab, oddiy "SMS yuborish"
-    /// tugmasini bosdi — va abonentga <i>"Assalomu alaykum sizga {link} testi yuborildi"</i>
-    /// degan matn KETDI. Hech qanday xato ko'rinmadi: SMS muvaffaqiyatli yuborilgan edi.</para>
-    ///
-    /// <para>Qolgan "event" tokenlari bu ro'yxatga KIRMAYDI: masalan <c>{dars_vaqti}</c> ni
-    /// qo'lda yuborishda <see cref="MessageTokenizer"/> guruh jadvalidan to'ldira oladi.</para>
-    /// </remarks>
-    public static readonly string[] ManualForbidden = ["{link}"];
-
-    /// <summary>
-    /// Matnda qo'lda yuborib bo'lmaydigan token bormi — bo'lsa O'SHA tokenni qaytaradi.
-    /// </summary>
-    public static string? ForbiddenInManual(string? text)
-    {
-        if (string.IsNullOrEmpty(text)) return null;
-        foreach (var t in ManualForbidden)
-            if (text.Contains(t, StringComparison.OrdinalIgnoreCase)) return t;
-        return null;
-    }
+    // (Lid tokenlari, daraja testi tokenlari ({link}, {natija}, {daraja}, {ball}, {foiz}) va
+    //  ForbiddenInManual darvozasi 2026-10 da lidga SMS bilan birga olib tashlandi.)
 }

@@ -12,7 +12,6 @@ import {
   GraduationCap,
   LayoutDashboard,
   LifeBuoy,
-  MessageCircle,
   MessageSquareText,
   Trophy,
   UserRound,
@@ -36,13 +35,11 @@ export interface TeacherNavItem {
   hint: string
   icon: LucideIcon
   /** O'qituvchi bo'lim ruxsati (`TeacherPermissions`); yo'q bo'lsa band ko'rinmaydi */
-  perm?: 'journal' | 'schedule' | 'messages' | 'salary'
+  perm?: 'journal' | 'schedule' | 'salary'
   /** Faqat Support o'qituvchiga (`TeacherProfile.isSupport`) */
   supportOnly?: boolean
   /** Faqat aynan shu manzilda faol (bosh sahifa) */
   end?: boolean
-  /** Suhbat — o'qilmagan xabar nuqtasi */
-  badge?: boolean
   /** Guruh: menyu sahifasida sarlavha ostida chiqadi */
   section: 'main' | 'work' | 'account'
 }
@@ -54,9 +51,8 @@ export const TEACHER_NAV: TeacherNavItem[] = [
   { to: '/teacher/attendance', label: 'Davomat', hint: 'Dars bo\'yicha tezkor davomat', icon: ClipboardCheck, perm: 'journal', section: 'main' },
   { to: '/teacher/schedule', label: 'Dars jadvali', short: 'Jadval', hint: 'Haftalik jadval, ko\'chirilgan darslar', icon: CalendarDays, perm: 'schedule', section: 'main' },
   { to: '/teacher/salary', label: 'Maosh', hint: 'Oylik hisob, berilgan va qoldiq', icon: Wallet, perm: 'salary', section: 'work' },
-  { to: '/teacher/tests', label: 'Testlar', hint: 'Onlayn/oflayn test va natijalar', icon: FileCheck2, perm: 'journal', section: 'work' },
+  { to: '/teacher/tests', label: 'Testlar', hint: 'Test natijalari (ball kiritish)', icon: FileCheck2, perm: 'journal', section: 'work' },
   { to: '/teacher/rating', label: 'Reyting', hint: "O'quvchilar ball bo'yicha", icon: Trophy, section: 'work' },
-  { to: '/teacher/messages', label: 'Suhbat', hint: 'Guruh chatlari', icon: MessageCircle, perm: 'messages', badge: true, section: 'work' },
   { to: '/teacher/support', label: 'Support', hint: "Bo'sh vaqt va bron darslari", icon: LifeBuoy, supportOnly: true, section: 'work' },
   { to: '/teacher/feedback', label: 'Taklif va shikoyat', hint: 'Adminga xabar yuborish', icon: MessageSquareText, section: 'account' },
   { to: '/teacher/profile', label: 'Profil', hint: 'Ma\'lumotlar, sozlamalar, parol', icon: UserRound, section: 'account' },

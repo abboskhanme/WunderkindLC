@@ -27,7 +27,7 @@ namespace WunderkindLC.Server.Controllers;
 [ApiController]
 [AllowAnonymous]
 [Route("api/public/landing-lead")]
-public class PublicLandingController(AppDbContext db, TelegramService telegram, AutoMessageService autoMsg) : ControllerBase
+public class PublicLandingController(AppDbContext db, TelegramService telegram) : ControllerBase
 {
     public record LandingLeadRequest(string FullName, string Phone, string? Subject, string? Note);
 
@@ -144,11 +144,6 @@ public class PublicLandingController(AppDbContext db, TelegramService telegram, 
             // Telegram xabarnomasi IKKALA holatda ham ketadi (takroriyda sarlavha boshqacha).
             await LeadNotifier.NotifyNewLeadAsync(db, telegram, lead, isNewLead: isNewLead,
                 createdBy: string.IsNullOrWhiteSpace(note) ? "Sayt (ochiq forma)" : $"Sayt ({note})");
-
-            // ⚠️ Avto-xabar (tanishuv SMS'i) FAQAT YANGI lidga — takroriy arizada mijozga bir xil
-            // SMS qayta ketardi (markazga haqiqiy pul, mijozga spam). lead-forms.md §4.
-            if (isNewLead)
-                await autoMsg.DispatchLeadAsync(db, AutoMessageTriggers.LeadNew, lead);
         }
         catch (Exception ex)
         {

@@ -239,7 +239,7 @@ public static class LevelTestService
     /// SaveChanges shu yerda bajariladi.
     /// </summary>
     public static async Task<TestResultDto?> SubmitAsync(
-        IAppDbContext db, string slug, TestSubmitRequest req, TelegramService? telegram = null, AutoMessageService? autoMsg = null)
+        IAppDbContext db, string slug, TestSubmitRequest req, TelegramService? telegram = null)
     {
         var test = await db.LevelTests.FirstOrDefaultAsync(t => t.Slug == slug && t.IsActive);
         if (test is null) return null;
@@ -350,8 +350,8 @@ public static class LevelTestService
         if (telegram is not null)
             await LeadNotifier.NotifyNewLeadAsync(db, telegram, lead, submission, test.Title, isNewLead,
                 createdBy: "Daraja testi (o'quvchi o'zi topshirdi)");
-        // Avto xabar — "Test natijasi" hodisasiga yoqilgan qoidalar bo'yicha abituriyentga (lidga) SMS.
-        await DispatchTestResultAsync(db, autoMsg, lead, score, total, percent, level);
+        // (Abituriyentga "test_result" avto-SMS'i 2026-10 da SMS kanali bilan birga olib tashlandi —
+        //  natija menejerlarga Telegram kartasida boradi, mijozga esa shu sahifaning o'zida ko'rsatiladi.)
 
         var msg = total == 0
             ? "Rahmat! Ma'lumotlaringiz qabul qilindi — tez orada bog'lanamiz."
@@ -359,33 +359,6 @@ public static class LevelTestService
               + (string.IsNullOrEmpty(level) ? "." : $". Sizning darajangiz: {level}.")
               + " Tez orada siz bilan bog'lanamiz.";
         return new TestResultDto(score, total, percent, level, msg);
-    }
-
-    /// <summary>
-    /// «Test natijasi» (<c>test_result</c>) avto-xabari — ikkala topshirish yo'li (ommaviy havola va
-    /// bir martalik taklif) AYNAN shuni chaqiradi, ya'ni tokenlar ikki joyda ayri ketmaydi.
-    /// {natija}/{daraja}/{ball}/{foiz} tokenlari test natijasi bilan to'ldiriladi.
-    /// </summary>
-    public static async Task DispatchTestResultAsync(
-        IAppDbContext db, AutoMessageService? autoMsg, Lead lead, int score, int total, int percent, string? level)
-    {
-        if (autoMsg is null) return;
-        await autoMsg.DispatchLeadAsync(db, AutoMessageTriggers.TestResult, lead, extraTokens: TestResultTokens(score, total, percent, level));
-    }
-
-    /// <summary><c>test_result</c> tokenlari (sof — testlanadi).</summary>
-    public static Dictionary<string, string> TestResultTokens(int score, int total, int percent, string? level)
-    {
-        var natija = total > 0
-            ? $"{score}/{total} ({percent}%)" + (string.IsNullOrEmpty(level) ? "" : $" — {level}")
-            : "";
-        return new Dictionary<string, string>
-        {
-            ["{natija}"] = natija,
-            ["{daraja}"] = level ?? "",
-            ["{ball}"] = total > 0 ? $"{score}/{total}" : "",
-            ["{foiz}"] = total > 0 ? $"{percent}%" : "",
-        };
     }
 
     // ==================== Bir martalik havola (invite) ====================
@@ -409,7 +382,7 @@ public static class LevelTestService
     /// <summary>Bir martalik havola orqali topshirish: baholaydi, natijani MAVJUD lidga bog'laydi,
     /// havolani yopadi (UsedAt). Token yo'q/test yo'q/allaqachon ishlatilgan — null.</summary>
     public static async Task<TestResultDto?> SubmitInviteAsync(
-        IAppDbContext db, string token, TestSubmitRequest req, TelegramService? telegram = null, AutoMessageService? autoMsg = null)
+        IAppDbContext db, string token, TestSubmitRequest req, TelegramService? telegram = null)
     {
         var inv = await db.LevelTestInvites.FirstOrDefaultAsync(i => i.Token == token);
         if (inv is null || !string.IsNullOrEmpty(inv.UsedAt)) return null; // yo'q yoki allaqachon ishlatilgan
@@ -479,10 +452,6 @@ public static class LevelTestService
         if (telegram is not null && lead is not null)
             await LeadNotifier.NotifyNewLeadAsync(db, telegram, lead, submission, test.Title, isNewLead: false,
                 createdBy: "Daraja testi (taklif havolasi)");
-        // "Test natijasi" avto-SMS'i — ommaviy havoladagi topshirish bilan AYNAN bir xil (LRN-7: ilgari
-        // taklif havolasi orqali ishlagan abituriyentga natija SMS'i umuman ketmasdi).
-        if (lead is not null)
-            await DispatchTestResultAsync(db, autoMsg, lead, score, total, percent, level);
 
         var msg = total == 0
             ? "Rahmat! Javoblaringiz qabul qilindi."

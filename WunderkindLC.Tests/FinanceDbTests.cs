@@ -897,7 +897,7 @@ public class FinanceDbTests
         // bo'yicha saralash/oralik filtri buziladi (satrli taqqoslash: "2026-8-1" > "2026-12-31").
         // KUTILGAN: saqlashdan oldin `DateOnly.ToString("yyyy-MM-dd")` ga keltiriladi.
         // (PaymentIntake.AddAsync ni to'g'ridan-to'g'ri chaqirib bo'lmaydi — u AutoMessageService
-        // orqali Eskiz/FCM/Telegram/CTI xizmatlarini talab qiladi; shu sabab natija bazada tekshiriladi.)
+        // orqali Telegram xizmatini talab qiladi; shu sabab natija bazada tekshiriladi.)
         using var db = TestDb.Sqlite();
         var ctx = db.Context;
         var s = AddStudent(ctx);

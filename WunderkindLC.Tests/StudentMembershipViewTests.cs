@@ -285,27 +285,7 @@ public class StudentMembershipViewTests
 
     // ==================== boshqa yuzalar (regressiya) ====================
 
-    [Fact]
-    public async Task Chat_oquvchi_YANGI_guruh_kanalini_ham_koradi()
-    {
-        // ⚠️ Ilgari `ClassNamesForUserAsync` o'quvchiga FAQAT `ClassName` kanalini berardi:
-        // yangi guruhga o'tgan o'quvchi o'sha guruh chatiga UMUMAN kira olmasdi
-        // (`CanAccessAsync` shu ro'yxatga qaraydi).
-        using var db = TestDb.Sqlite();
-        var (s, a, b) = FrozenInAActiveInB(db.Context);
-        var user = new AppUser { Role = "student", FullName = s.FullName };
-        db.Context.Users.Add(user);
-        s.UserId = user.Id;
-        db.Context.SaveChanges();
-
-        var chat = new ChatService(db.Context, new FakeChatHub());
-        var names = await chat.ClassNamesForUserAsync(user.Id, "student");
-
-        Assert.Equal(new[] { b.Name }, names);
-        Assert.True(await chat.CanAccessAsync(user.Id, "student", b.Name));
-        // A guruhda MUZLATILGAN — u yerda hozir o'qimayapti, kanali ham ochilmaydi.
-        Assert.False(await chat.CanAccessAsync(user.Id, "student", a.Name));
-    }
+    // (Chat_oquvchi_YANGI_guruh_kanalini_ham_koradi — guruh chati 2026-10 da olib tashlandi.)
 
     [Fact]
     public async Task Ledger_JORIY_OYLIK_barcha_AKTIV_guruhlar_yigindisi()
@@ -368,12 +348,4 @@ public class StudentMembershipViewTests
         Assert.Equal(b.Id, journal!.Groups[0].GroupId);
     }
 
-}
-
-/// <summary>SignalR hub'ining bo'sh o'rnini bosuvchi — <see cref="ChatService"/> a'zolik
-/// ro'yxatini hisoblashda hub'ga umuman tegmaydi.</summary>
-internal sealed class FakeChatHub : Microsoft.AspNetCore.SignalR.IHubContext<WunderkindLC.Application.Hubs.ChatHub>
-{
-    public Microsoft.AspNetCore.SignalR.IHubClients Clients => throw new NotSupportedException();
-    public Microsoft.AspNetCore.SignalR.IGroupManager Groups => throw new NotSupportedException();
 }

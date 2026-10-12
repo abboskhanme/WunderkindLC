@@ -4,7 +4,6 @@ import { NavLink, useLocation, type Location } from 'react-router-dom'
 import { IconChevronLeft, IconChevronRight } from '@tabler/icons-react'
 import type { Role } from '@/types'
 import { useAuth } from '@/context/auth-context'
-import { useUnread } from '@/context/unread-context'
 import { navByRole, homeByRole, activeNavTo, type NavChild } from '@/config/navigation'
 import { can } from '@/lib/permissions'
 import { cn } from '@/lib/utils'
@@ -56,7 +55,6 @@ function useIsDesktop(): boolean {
 export function Sidebar({ open, collapsed = false, onToggleCollapse, onNavigate }: SidebarProps) {
   const location = useLocation()
   const { user } = useAuth()
-  const { unreadChannels } = useUnread()
   const isDesktop = useIsDesktop()
   const [openKey, setOpenKey] = useState<string | null>(null)
   const [anchor, setAnchor] = useState<DOMRect | null>(null)
@@ -88,7 +86,6 @@ export function Sidebar({ open, collapsed = false, onToggleCollapse, onNavigate 
   }
   const items = filterNav(navByRole[role])
   const activeTo = activeNavTo(items, location.pathname)
-  const unread = unreadChannels.size
 
   const cancelClose = () => window.clearTimeout(closeTimer.current)
   const scheduleClose = () => {
@@ -151,7 +148,6 @@ export function Sidebar({ open, collapsed = false, onToggleCollapse, onNavigate 
 
           const active = item.to === activeTo
           const isOpen = openKey === item.to
-          const badge = item.to === '#future' ? unread : 0
           return (
             <div key={item.to}>
               <button
@@ -166,14 +162,7 @@ export function Sidebar({ open, collapsed = false, onToggleCollapse, onNavigate 
                 className={itemClass(active, isOpen, collapsed)}
               >
                 <ActiveBar show={active || isOpen} />
-                <span className="relative shrink-0">
-                  <Icon className="h-5 w-5" />
-                  {badge > 0 && (
-                    <span className="absolute -right-2 -top-2 flex h-[15px] min-w-[15px] items-center justify-center rounded-full bg-[#e53e3e] px-1 text-[9px] font-bold leading-none text-white">
-                      {badge > 9 ? '9+' : badge}
-                    </span>
-                  )}
-                </span>
+                <Icon className="h-5 w-5 shrink-0" />
                 {!collapsed && <span className="whitespace-nowrap">{item.label}</span>}
               </button>
 

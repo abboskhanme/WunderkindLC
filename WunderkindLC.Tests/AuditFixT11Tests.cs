@@ -1,5 +1,3 @@
-using System.Net.WebSockets;
-using System.Text;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using WunderkindLC.Application.Services;
@@ -11,7 +9,7 @@ namespace WunderkindLC.Tests;
 
 /// <summary>
 /// T11 audit tuzatishlari (OPERATSIYALAR): NVR klipi (ffmpeg argumentlari, parolni tozalash),
-/// o'chirilgan CTI agent, takroriy topshiriq, arxivlangan doska,
+/// takroriy topshiriq, arxivlangan doska,
 /// botdan naqd kitob buyurtmasi (olib ketishda to'lov) va shartnoma raqami navbati.
 /// </summary>
 public class AuditFixT11Tests
@@ -68,115 +66,7 @@ public class AuditFixT11Tests
         Assert.DoesNotContain("pw", HikvisionNvr.ClipFailureReason("rtsp://a:pw@h/x: Invalid data found", 1));
     }
 
-    // =============================================================================================
-    //  OPS-3 — o'chirilgan CTI agent
-    // =============================================================================================
-
-    private sealed class FakeHttpClientFactory : IHttpClientFactory
-    {
-        public HttpClient CreateClient(string name) => new();
-    }
-
-    private static CtiSmsService Sms(CtiConnectionManager conn) =>
-        new(conn, new FcmService(new FakeHttpClientFactory(), NullLogger<FcmService>.Instance),
-            NullLogger<CtiSmsService>.Instance);
-
-    private sealed class FakeSocket : WebSocket
-    {
-        private WebSocketState _state = WebSocketState.Open;
-        public List<string> Sent { get; } = new();
-        public bool OutputClosed { get; private set; }
-        public override WebSocketCloseStatus? CloseStatus => null;
-        public override string? CloseStatusDescription => null;
-        public override WebSocketState State => _state;
-        public override string? SubProtocol => null;
-        public override void Abort() => _state = WebSocketState.Aborted;
-        public override void Dispose() { }
-        public override Task CloseAsync(WebSocketCloseStatus s, string? d, CancellationToken ct)
-        { _state = WebSocketState.Closed; return Task.CompletedTask; }
-        public override Task CloseOutputAsync(WebSocketCloseStatus s, string? d, CancellationToken ct)
-        { OutputClosed = true; _state = WebSocketState.CloseSent; return Task.CompletedTask; }
-        public override Task<WebSocketReceiveResult> ReceiveAsync(ArraySegment<byte> buffer, CancellationToken ct) =>
-            Task.FromResult(new WebSocketReceiveResult(0, WebSocketMessageType.Close, true));
-        public override Task SendAsync(ArraySegment<byte> buffer, WebSocketMessageType type, bool end, CancellationToken ct)
-        {
-            Sent.Add(Encoding.UTF8.GetString(buffer.Array!, buffer.Offset, buffer.Count));
-            return Task.CompletedTask;
-        }
-    }
-
-    [Fact]
-    public async Task Ochirilgan_STANDART_agent_SMS_uchun_TANLANMAYDI()
-    {
-        using var db = TestDb.Sqlite();
-        var ctx = db.Context;
-        var agent = new CtiAgent { Login = "ketgan", DisplayName = "Ketgan xodim", IsActive = false };
-        ctx.CtiAgents.Add(agent);
-        ctx.CenterMeta.Add(new CenterMeta { LocalSmsEnabled = true, LocalSmsDefaultAgentId = agent.Id });
-        await ctx.SaveChangesAsync();
-        var conn = new CtiConnectionManager();
-        var socket = new FakeSocket();
-        conn.AddOrReplace(agent.Id, socket);     // telefon hali ulanib turibdi
-
-        var res = await Sms(conn).SendSmsAsync(ctx, null, "998901234567", "To'lov eslatmasi");
-
-        Assert.False(res.Ok);
-        Assert.Contains("o'chirilgan", res.Error!);
-        Assert.Empty(socket.Sent);                                   // telefonga hech narsa ketmadi
-        Assert.Empty(await ctx.CtiCommandLogs.ToListAsync());
-        Assert.Equal("yetkazilmadi", (await ctx.SmsLogs.AsNoTracking().SingleAsync()).Status);
-
-        // Aniq tanlangan o'chirilgan agent ham rad etiladi.
-        var res2 = await Sms(conn).SendSmsAsync(ctx, agent.Id, "998901234567", "Salom");
-        Assert.False(res2.Ok);
-        Assert.Contains("o'chirilgan", res2.Error!);
-    }
-
-    [Fact]
-    public async Task SMS_buyruq_id_si_jurnal_va_SmsLog_bilan_BIR_XIL()
-    {
-        using var db = TestDb.Sqlite();
-        var ctx = db.Context;
-        var agent = new CtiAgent { Login = "a1", DisplayName = "Operator" };
-        ctx.CtiAgents.Add(agent);
-        await ctx.SaveChangesAsync();
-        var conn = new CtiConnectionManager();
-        var socket = new FakeSocket();
-        conn.AddOrReplace(agent.Id, socket);
-
-        var res = await Sms(conn).SendSmsAsync(ctx, agent.Id, "998901234567", "Salom");
-
-        Assert.True(res.Ok);
-        var cmd = await ctx.CtiCommandLogs.AsNoTracking().SingleAsync();
-        Assert.Equal(cmd.Id, res.CommandId);                                     // ack shu id bilan keladi
-        Assert.Equal(cmd.Id, (await ctx.SmsLogs.AsNoTracking().SingleAsync()).RequestId);
-        Assert.Contains($"\"commandId\":\"{cmd.Id}\"", socket.Sent.Single());
-    }
-
-    [Fact]
-    public async Task Agent_ochirilganda_logout_yuboriladi_va_ulanish_uziladi()
-    {
-        var conn = new CtiConnectionManager();
-        var socket = new FakeSocket();
-        conn.AddOrReplace("a1", socket);
-
-        Assert.True(await conn.DisconnectAsync("a1"));
-
-        Assert.Contains("\"action\":\"logout\"", socket.Sent.Single());
-        Assert.True(socket.OutputClosed);
-        Assert.False(conn.IsConnected("a1"));
-        Assert.False(await conn.DisconnectAsync("a1"));                          // ikkinchi marta — jim
-    }
-
-    [Fact]
-    public void Ochirilgan_agent_sababi_sozlamaga_yol_korsatadi()
-    {
-        var a = new CtiAgent { DisplayName = "Ali", IsActive = false };
-        Assert.Contains("Sozlamalar", CtiSmsService.InactiveAgentError(a, isDefault: true));
-        Assert.NotNull(CtiSmsService.InactiveAgentError(a, isDefault: false));
-        a.IsActive = true;
-        Assert.Null(CtiSmsService.InactiveAgentError(a, isDefault: true));
-    }
+    // (OPS-3 — o'chirilgan CTI agent testlari 2026-10 da Local Call / Local SMS bilan birga olib tashlandi.)
 
     // =============================================================================================
     //  OPS-7 / OPS-8 — topshiriqlar

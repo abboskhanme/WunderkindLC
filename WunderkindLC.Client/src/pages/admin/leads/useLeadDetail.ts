@@ -6,7 +6,7 @@ import { getTeachers } from '@/api/services/teachers'
 
 /**
  * Lid TARIXI (hodisalar) va SINOV DARSLARI — lid sahifasining o'ng paneli va amal oynalari
- * AYNAN shundan foydalanadi. `refresh` har amaldan (izoh, SMS, sinov, natija, aylantirish)
+ * AYNAN shundan foydalanadi. `refresh` har amaldan (izoh, test havolasi, sinov, natija, aylantirish)
  * keyin chaqiriladi — server tarixga yozgan hodisa darhol ko'rinsin.
  */
 export function useLeadActivity(leadId: string | null) {

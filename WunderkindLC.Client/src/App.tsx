@@ -14,7 +14,6 @@ import { Loader } from '@/components/ui/Loader'
 // har bir sahifa o'z chunk'ida faqat ochilganda yuklanadi.
 const LoginPage = lazy(() => import('@/pages/LoginPage').then((m) => ({ default: m.LoginPage })))
 const AdminDashboard = lazy(() => import('@/pages/admin/AdminDashboard').then((m) => ({ default: m.AdminDashboard })))
-const LocalCallPage = lazy(() => import('@/pages/admin/calls/local/LocalCallPage').then((m) => ({ default: m.LocalCallPage })))
 const GroupStudentsListPage = lazy(() => import('@/pages/admin/classes/GroupStudentsPage').then((m) => ({ default: m.GroupStudentsPage })))
 const TransactionTypesPage = lazy(() => import('@/pages/admin/finance/TransactionTypesPage').then((m) => ({ default: m.TransactionTypesPage })))
 const PlannedExpensePage = lazy(() => import('@/pages/admin/finance/PlannedExpensePage').then((m) => ({ default: m.PlannedExpensePage })))
@@ -107,7 +106,6 @@ const PrivacyPolicyPage = lazy(() => import('@/pages/public/PrivacyPolicyPage').
 const DataDeletionPage = lazy(() => import('@/pages/public/DataDeletionPage').then((m) => ({ default: m.DataDeletionPage })))
 const PublicCertificatesPage = lazy(() => import('@/pages/public/PublicCertificatesPage').then((m) => ({ default: m.PublicCertificatesPage })))
 const MessagesPage = lazy(() => import('@/pages/admin/messages/MessagesPage').then((m) => ({ default: m.MessagesPage })))
-const GroupChatPage = lazy(() => import('@/pages/admin/chats/GroupChatPage').then((m) => ({ default: m.GroupChatPage })))
 const SupportTelegramPage = lazy(() => import('@/pages/admin/messages/SupportTelegramPage').then((m) => ({ default: m.SupportTelegramPage })))
 const LocationPage = lazy(() => import('@/pages/admin/locations/LocationPage').then((m) => ({ default: m.LocationPage })))
 const CamerasPage = lazy(() => import('@/pages/admin/cameras/CamerasPage').then((m) => ({ default: m.CamerasPage })))
@@ -149,7 +147,6 @@ const InstagramSettings = lazy(() => import('@/pages/admin/marketing/InstagramSe
 const TeacherDashboard = lazy(() => import('@/pages/teacher/TeacherDashboard').then((m) => ({ default: m.TeacherDashboard })))
 const TeacherGroupsPage = lazy(() => import('@/pages/teacher/groups/TeacherGroupsPage').then((m) => ({ default: m.TeacherGroupsPage })))
 const TeacherGroupDetailPage = lazy(() => import('@/pages/teacher/groups/TeacherGroupDetailPage').then((m) => ({ default: m.TeacherGroupDetailPage })))
-const TeacherMessagesPage = lazy(() => import('@/pages/teacher/messages/MessagesPage').then((m) => ({ default: m.TeacherMessagesPage })))
 const TeacherProfilePage = lazy(() => import('@/pages/teacher/TeacherProfilePage').then((m) => ({ default: m.TeacherProfilePage })))
 const TeacherSupportPage = lazy(() => import('@/pages/teacher/support/SupportPage').then((m) => ({ default: m.TeacherSupportPage })))
 const TeacherFeedbackPage = lazy(() => import('@/pages/teacher/feedback/FeedbackPage').then((m) => ({ default: m.TeacherFeedbackPage })))
@@ -168,7 +165,6 @@ const SubjectProgressDetailScreen = lazy(() => import('@/pages/student/SubjectPr
 const StudentGradesScreen = lazy(() => import('@/pages/student/Grades').then((m) => ({ default: m.StudentGradesScreen })))
 const StudentAttendanceScreen = lazy(() => import('@/pages/student/Attendance').then((m) => ({ default: m.StudentAttendanceScreen })))
 const StudentStatisticsScreen = lazy(() => import('@/pages/student/Statistics').then((m) => ({ default: m.StudentStatisticsScreen })))
-const StudentChatScreen = lazy(() => import('@/pages/student/Chat').then((m) => ({ default: m.StudentChatScreen })))
 const StudentFinanceScreen = lazy(() => import('@/pages/student/Finance').then((m) => ({ default: m.StudentFinanceScreen })))
 const StudentFeedbackScreen = lazy(() => import('@/pages/student/Feedback').then((m) => ({ default: m.StudentFeedbackScreen })))
 const StudentProfileScreen = lazy(() => import('@/pages/student/Profile').then((m) => ({ default: m.StudentProfileScreen })))
@@ -279,9 +275,10 @@ export default function App() {
             {/* edutizim: "Birinchi darsga yozilganlar" va lid sahifasi (`/orders/info/:id`). */}
             <Route path="leads/birinchi-dars" element={<RequirePerm perm="leads.list"><FirstLessonLeadsPage /></RequirePerm>} />
             <Route path="leads/:id" element={<RequirePerm perm="leads.list"><LeadDetailPage /></RequirePerm>} />
-            {/* Bulutli Call Center olib tashlandi (2026-10-08) — eski havola/xatcho'p Local Call'ga tushadi. */}
-            <Route path="calls" element={<Navigate to="/admin/calls/local" replace />} />
-            <Route path="calls/local" element={<RequirePerm perm="calls.local"><LocalCallPage /></RequirePerm>} />
+            {/* Call Center (bulutli, keyin Local Call / CTI) olib tashlandi (2026-10) — eski havola/xatcho'p
+                bosh sahifaga tushadi. */}
+            <Route path="calls" element={<Navigate to="/admin" replace />} />
+            <Route path="calls/local" element={<Navigate to="/admin" replace />} />
             {/* HISOBOTLAR hub — barcha analitika/hisobotlar ro'yxati (`config/reports.ts`).
                 `RequirePerm` ATAYIN YO'Q: sahifa har bir havolani O'ZI ruxsat bo'yicha
                 filtrlaydi va bittasi ham ochiq bo'lmasa buni ochiq yozadi. Bitta kalit
@@ -370,8 +367,8 @@ export default function App() {
             <Route path="ai-check" element={<RequirePerm perm="app.aiCheck"><AiCheckPage /></RequirePerm>} />
             <Route path="ai-check/:studentId" element={<RequirePerm perm="app.aiCheck"><AiCheckStudentPage /></RequirePerm>} />
             <Route path="messages" element={<RequirePerm perm="messages.broadcast"><MessagesPage /></RequirePerm>} />
-            {/* Chats — guruh chati "Xabarlar"dan ajratilgan alohida sahifa */}
-            <Route path="chats" element={<RequirePerm perm="messages.chat"><GroupChatPage /></RequirePerm>} />
+            {/* Guruh chati olib tashlandi (2026-10) — eski havola Xabarlar bo'limiga tushadi. */}
+            <Route path="chats" element={<Navigate to="/admin/messages" replace />} />
             <Route path="support-telegram" element={<RequirePerm perm="messages.support"><SupportTelegramPage /></RequirePerm>} />
             <Route path="teacher-reports" element={<RequirePerm perm="teacherReports"><TeacherReportsPage /></RequirePerm>} />
             <Route path="contracts" element={<RequirePerm perm="contracts"><ContractsPage /></RequirePerm>} />
@@ -468,7 +465,8 @@ export default function App() {
             <Route path="schedule" element={<RequirePerm perm="schedule"><TeacherSchedulePage /></RequirePerm>} />
             <Route path="menu" element={<TeacherMenuPage />} />
             <Route path="groups/:id" element={<RequirePerm perm="journal"><TeacherGroupDetailPage /></RequirePerm>} />
-            <Route path="messages" element={<RequirePerm perm="messages"><TeacherMessagesPage /></RequirePerm>} />
+            {/* Guruh chati olib tashlandi (2026-10) — eski havola bosh sahifaga. */}
+            <Route path="messages" element={<Navigate to="/teacher" replace />} />
             <Route path="feedback" element={<TeacherFeedbackPage />} />
             <Route path="support" element={<TeacherSupportPage />} />
             <Route path="salary" element={<TeacherOwnSalaryPage />} />
@@ -490,7 +488,8 @@ export default function App() {
             <Route path="grades" element={<StudentGradesScreen />} />
             <Route path="attendance" element={<StudentAttendanceScreen />} />
             <Route path="statistics" element={<StudentStatisticsScreen />} />
-            <Route path="chat" element={<StudentChatScreen />} />
+            {/* Guruh chati olib tashlandi (2026-10) — eski havola bosh sahifaga. */}
+            <Route path="chat" element={<Navigate to="/student" replace />} />
             <Route path="finance" element={<StudentFinanceScreen />} />
             <Route path="feedback" element={<StudentFeedbackScreen />} />
             <Route path="profile" element={<StudentProfileScreen />} />

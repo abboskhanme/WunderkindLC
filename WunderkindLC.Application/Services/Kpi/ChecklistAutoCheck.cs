@@ -18,7 +18,7 @@ namespace WunderkindLC.Application.Services.Kpi;
 /// <para>⚠️ <b>SHUBHA XODIM FOYDASIGA.</b> Bu tekshiruvlar samaradorlik foiziga, u esa oylik
 /// bonusga tushadi — ya'ni <c>false</c> qaytarish PUL ushlashga olib boradi. Shuning uchun
 /// "hukm chiqarish uchun ma'lumot yo'q" holati HAR DOIM <c>true</c> (masalan o'sha kuni
-/// birorta ham kiruvchi qo'ng'iroq bo'lmagan bo'lsa, "tez javob berdi" bandi o'tadi).</para>
+/// birorta ham darsi bo'lgan guruh bo'lmasa, "jurnal to'ldirildi" bandi o'tadi).</para>
 ///
 /// <para>Natija — faqat MASLAHAT: yozuvni (<c>ChecklistEntry</c>) chaqiruvchi yozadi va xodim
 /// uni qo'lda ustidan belgilay oladi.</para>
@@ -33,10 +33,9 @@ public static class ChecklistAutoCheck
     public const string TasksOverdueZero = "auto:tasks.overdue_zero";
     /// <summary>Shu kunga muddati belgilangan topshiriqlarning HAMMASI yopilgan.</summary>
     public const string TasksDueDone = "auto:tasks.due_done";
-    /// <summary>Kechagi javobsiz KIRUVCHI qo'ng'iroqlarning hammasiga qayta qo'ng'iroq qilingan.</summary>
-    public const string CallsMissedReturned = "auto:calls.missed_returned";
-    /// <summary>Kiruvchi qo'ng'iroqlarga TEZ javob berilgan (≤ 15 soniya, kamida 90%).</summary>
-    public const string CallsAnswerSpeed = "auto:calls.answer_speed";
+    // (Qo'ng'iroq bandlari — "auto:calls.missed_returned", "auto:calls.answer_speed" — 2026-10 dan QO'LDA:
+    //  ularning manbai Local Call agent-ilovasi edi, u olib tashlandi. Seed kalitlari o'zgarmadi —
+    //  qo'llanmagan kalit sinf izohidagi qoida bo'yicha jimgina qo'lda belgilanadigan bandga aylanadi.)
     /// <summary>Kecha darsi bo'lgan HAR guruhning jurnali to'ldirilgan.</summary>
     public const string JournalYesterdayFilled = "auto:journal.yesterday_filled";
     /// <summary>Ochiq lidlarning hammasida ochiq topshiriq bor ("vazifasiz sdelka = 0").</summary>
@@ -48,15 +47,9 @@ public static class ChecklistAutoCheck
     /// </summary>
     public static IReadOnlySet<string> Supported { get; } = new HashSet<string>(StringComparer.Ordinal)
     {
-        TasksOverdueZero, TasksDueDone, CallsMissedReturned,
-        CallsAnswerSpeed, JournalYesterdayFilled, LeadsWithoutTaskZero,
+        TasksOverdueZero, TasksDueDone, JournalYesterdayFilled, LeadsWithoutTaskZero,
     };
 
-    /// <summary>Kiruvchi qo'ng'iroqqa "tez javob" chegarasi (soniya) — Excel'dagi «3 gudok».</summary>
-    public const int AnswerSpeedSeconds = 15;
-
-    /// <summary>Tez javob berilgan qo'ng'iroqlarning kerakli ULUSHI.</summary>
-    public const double AnswerSpeedShare = 0.90;
 
     /* =========================================================================================
      *  KIRISH NUQTASI
@@ -120,13 +113,6 @@ public static class ChecklistAutoCheck
                 result[LeadsWithoutTaskZero] = await LeadsHaveTasksAsync(db, userId, openTasks, ct);
         }
 
-        /* ---------- Qo'ng'iroqlar ---------- */
-        if (wanted.Contains(CallsMissedReturned))
-            result[CallsMissedReturned] = await MissedReturnedAsync(db, day, ct);
-
-        if (wanted.Contains(CallsAnswerSpeed))
-            result[CallsAnswerSpeed] = await AnswerSpeedAsync(db, userId, day, ct);
-
         /* ---------- Jurnal ---------- */
         if (wanted.Contains(JournalYesterdayFilled))
             result[JournalYesterdayFilled] = await JournalFilledAsync(db, prevIso, day.AddDays(-1), ct);
@@ -170,93 +156,6 @@ public static class ChecklistAutoCheck
 
         if (linked.Count == 0) return true;   // bog'lanish ishlatilmayapti — hukm chiqarmaymiz
         return leadSet.All(linked.Contains);
-    }
-
-    /// <summary>
-    /// «Kechagi javobsiz qo'ng'iroqlar qaytarildi»: KECHAGI har bir javobsiz KIRUVCHI
-    /// qo'ng'iroq uchun o'sha raqamga KEYINROQ chiquvchi qo'ng'iroq bo'lganmi.
-    /// </summary>
-    /// <remarks>
-    /// Manba — Local Call (<c>CtiCallRecord</c>, <see cref="KpiCallSource"/>): javobsiz =
-    /// <c>Direction == "missed"</c>, qaytarish = undan KEYINGI <c>"outgoing"</c>.
-    ///
-    /// ⚠️ Xodim kesimida EMAS, MARKAZ bo'yicha: javobsiz kiruvchi qo'ng'iroqni hech kim
-    /// ko'tarmagan, ya'ni uni kimgadir biriktirib bo'lmaydi; qaytarish ham ISTALGAN agent
-    /// telefonidan bo'lishi mumkin. Band «kechagi javobsizlar qaytarildimi» degan JAMOA
-    /// intizomi haqida.
-    ///
-    /// ⚠️ Raqamlar <c>PhoneUtil.Key</c> (oxirgi 9 raqam) bilan solishtiriladi — bazada
-    /// formatlar aralash ("+998 90 …", "998…", "90…").
-    /// </remarks>
-    private static async Task<bool> MissedReturnedAsync(IAppDbContext db, DateOnly day, CancellationToken ct)
-    {
-        var prev = day.AddDays(-1);
-        var from = prev.ToDateTime(TimeOnly.MinValue);
-        var to = day.AddDays(1).ToDateTime(TimeOnly.MinValue);   // kecha + bugun
-
-        var calls = await db.CtiCallRecords
-            .Where(c => c.StartedAt >= from && c.StartedAt < to)
-            .Select(c => new { c.Direction, c.RemoteNumber, c.StartedAt })
-            .ToListAsync(ct);
-
-        var missed = calls
-            .Where(c => c.Direction == KpiCallSource.Missed && DateOnly.FromDateTime(c.StartedAt) == prev)
-            .ToList();
-        if (missed.Count == 0) return true;
-
-        var outgoing = calls.Where(c => c.Direction == KpiCallSource.Outgoing).ToList();
-        foreach (var m in missed)
-        {
-            var key = PhoneUtil.Key(m.RemoteNumber);
-            if (key.Length == 0) continue;   // raqamsiz yozuv bo'yicha hukm chiqarmaymiz
-            var returned = outgoing.Any(o => o.StartedAt > m.StartedAt && PhoneUtil.Key(o.RemoteNumber) == key);
-            if (!returned) return false;
-        }
-        return true;
-    }
-
-    /// <summary>
-    /// «Kiruvchi qo'ng'iroqlar 3-gudokgacha olindi»: javob berilgan kiruvchi qo'ng'iroqlarning
-    /// kamida 90% i <see cref="AnswerSpeedSeconds"/> soniya ichida ko'tarilganmi.
-    /// </summary>
-    /// <remarks>
-    /// Manba — Local Call (<c>CtiCallRecord</c>): <c>Direction == "incoming"</c> va
-    /// <c>AnsweredAt</c> bor; tezlik = <c>AnsweredAt − StartedAt</c> (qo'ng'iroq jiringlay
-    /// boshlagan paytdan).
-    ///
-    /// ⚠️ Xodimning O'Z agent(lar)i VA hech kimga BIRIKTIRILMAGAN agentlar (yoki agent qatori
-    /// topilmagan yozuvlar) birga olinadi — boshqa XODIMGA biriktirilgan agentlarniki
-    /// chiqariladi. Umumiy (masalan qabulxona) telefoni ko'pincha hech kimga biriktirilmaydi;
-    /// faqat "o'zinikini" sanasak, ro'yxat deyarli har doim bo'sh bo'lib, tekshiruv ma'nosini
-    /// yo'qotardi.
-    ///
-    /// ⚠️ JAVOB BERILMAGAN qo'ng'iroqlar maxrajga KIRMAYDI — ular boshqa bandning
-    /// (<see cref="CallsMissedReturned"/>) mavzusi; bu yerda "qanchalik TEZ ko'tarildi"
-    /// so'ralyapti.
-    /// </remarks>
-    private static async Task<bool> AnswerSpeedAsync(
-        IAppDbContext db, string userId, DateOnly day, CancellationToken ct)
-    {
-        var from = day.ToDateTime(TimeOnly.MinValue);
-        var to = day.AddDays(1).ToDateTime(TimeOnly.MinValue);
-
-        // Boshqa xodimlarga biriktirilgan agentlar — ularning qo'ng'iroqlari bu xodimniki emas.
-        var otherAgentIds = await db.CtiAgents
-            .Where(a => a.StaffUserId != null && a.StaffUserId != "" && a.StaffUserId != userId)
-            .Select(a => a.Id)
-            .ToListAsync(ct);
-
-        var rows = await db.CtiCallRecords
-            .Where(c => c.Direction == KpiCallSource.Incoming && c.AnsweredAt != null
-                        && c.StartedAt >= from && c.StartedAt < to
-                        && !otherAgentIds.Contains(c.AgentId))
-            .Select(c => new { c.StartedAt, c.AnsweredAt })
-            .ToListAsync(ct);
-
-        if (rows.Count == 0) return true;   // baholanadigan qo'ng'iroq yo'q
-
-        var fast = rows.Count(r => (r.AnsweredAt!.Value - r.StartedAt).TotalSeconds <= AnswerSpeedSeconds);
-        return (double)fast / rows.Count >= AnswerSpeedShare;
     }
 
     /// <summary>

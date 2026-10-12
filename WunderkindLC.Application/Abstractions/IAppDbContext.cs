@@ -1,6 +1,9 @@
 using Microsoft.EntityFrameworkCore;
 using WunderkindLC.Domain;
 
+// Legacy entities (removed modules, 2026-10) stay mapped until a confirmed table drop.
+#pragma warning disable CS0618
+
 namespace WunderkindLC.Application.Abstractions;
 
 /// <summary>
@@ -189,7 +192,8 @@ public partial interface IAppDbContext
     // O'quv xonalari
     DbSet<Room> Rooms { get; }
 
-    // Eskiz.uz SMS — yuborish partiyalari, raqam bo'yicha jurnal, andozalar
+    // SMS — yuborish partiyalari va raqam bo'yicha jurnal: Legacy (removed 2026-10), jadvallar tasdiqlangan
+    // o'chirishgacha. SmsTemplates — qo'lda yuboriladigan xabar andozalari (QOLDI, endi Telegram uchun).
     DbSet<SmsBatch> SmsBatches { get; }
     DbSet<SmsLog> SmsLogs { get; }
     DbSet<SmsTemplate> SmsTemplates { get; }

@@ -141,11 +141,12 @@ o'qituvchi qoidasi bilan (muzlatilgan o'quvchi baholanmaydi), olib tashlash a'zo
   Ishchi — `AttendanceNotifyWorker` (singleton + fon xizmati, controller saqlagach `Wake()`, aks holda har
   daqiqada o'zi tekshiradi): har oluvchi yuborishdan OLDIN `sending` deb band qilinadi (concurrency token),
   restartda qolgan `pending` lar yuboriladi, aynan yuborish paytida uzilgani `unknown` (QAYTA yuborilmaydi —
-  `SmsQueueItem` bilan bir xil qoida). 6 soatdan eski qator yuborilmaydi (`expired` — kechagi "kelmadi"
+  eski ommaviy SMS navbati bilan bir xil qoida). 6 soatdan eski qator yuborilmaydi (`expired` — kechagi "kelmadi"
   ertasiga ketmasin). Qoida (trigger) yoqilmagan bo'lsa qator umuman yozilmaydi. Arxiv va joriy «keldi»
   holati YUBORISH paytida qayta tekshiriladi. Yakunlangan qatorlar 7 kundan keyin tozalanadi.
-- **Bitta hodisa — bitta xabar:** eski to'g'ridan-to'g'ri "Davomat" push'i faqat `attendance_absent` qoidasi
-  UMUMAN yo'q bo'lsa (baho push'i bilan bir xil naqsh); qoida bor bo'lsa xabarni faqat dispatcher yuboradi.
+- **Bitta hodisa — bitta xabar:** standart "Davomat" kabinet bildirishnomasi faqat `attendance_absent` qoidasi
+  UMUMAN yo'q bo'lsa (baho bildirishnomasi bilan bir xil naqsh); qoida bor bo'lsa xabarni faqat dispatcher
+  yuboradi. (2026-10: push olib tashlandi — standart xabar endi faqat kabinet qo'ng'iroqchasiga yoziladi.)
 - Arxivlangan o'quvchiga (eski yozuvlarda a'zoligi tirik bo'lishi mumkin) hech qanday davomat/baho xabari ketmaydi.
 
 ### Arxivlangan o'quvchi jurnalda (C1)

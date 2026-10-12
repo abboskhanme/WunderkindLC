@@ -3,7 +3,6 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import {
   CalendarClock,
   GraduationCap,
-  MessageSquare,
   Phone,
   Trash2,
   ClipboardCheck,
@@ -29,7 +28,7 @@ import {
 } from '@/api/services/leads'
 import { getStages } from '@/api/services/stages'
 import { markLeadLost, restoreLead, type LeadLossState } from '@/api/services/leadLoss'
-import { CallPickerModal } from '@/components/CallPickerModal'
+import { PhoneCallModal } from '@/components/PhoneCallModal'
 import { ReceiptModal } from '@/components/finance/ReceiptModal'
 import { DropdownMenu, type DropdownMenuItem } from '@/components/ui/DropdownMenu'
 import { Input, Select, Textarea } from '@/components/ui/Input'
@@ -46,7 +45,6 @@ import { LeadLostModal } from './LeadLostModal'
 import {
   LeadConvertPanel,
   LeadLevelTestPanel,
-  LeadSmsPanel,
   LeadTrialForm,
   LeadTrialList,
 } from './LeadPanels'
@@ -62,10 +60,11 @@ import { leadErrorText, useLeadEntryForm } from './useLeadEntryForm'
  *
  * ⚠️ Yangi mantiq YO'Q — ilgari `LeadDetailModal` da bo'lgan hamma amal shu yerda:
  * forma holati va «Lid kiritish formasi» qoidalari — `useLeadEntryForm` («Yangi lid» oynasi bilan
- * BITTA hook), SMS/daraja testi/aylantirish/sinov — `LeadPanels`, tarix — `useLeadActivity`.
+ * BITTA hook), daraja testi havolasi/aylantirish/sinov — `LeadPanels`, tarix — `useLeadActivity`.
+ * (Lidga SMS 2026-10 da SMS kanali bilan birga olib tashlandi — lidda Telegram yo'q.)
  */
 
-type ActionModal = 'sms' | 'test' | 'convert' | 'trial' | null
+type ActionModal = 'test' | 'convert' | 'trial' | null
 
 /** "Yorliq: qiymat" qatori (edutizimdagi inline qator). */
 function FieldRow({ label, required, children }: { label: string; required?: boolean; children: ReactNode }) {
@@ -324,8 +323,7 @@ export function LeadDetailPage() {
     ...(!isOpen || !canConvert
       ? []
       : [{ label: "O'quvchiga aylantirish", icon: GraduationCap, onClick: () => setModal('convert') }]),
-    { label: 'SMS yuborish', icon: MessageSquare, onClick: () => setModal('sms') },
-    { label: 'Daraja testi yuborish', icon: ClipboardCheck, onClick: () => setModal('test') },
+    { label: 'Daraja testi havolasi', icon: ClipboardCheck, onClick: () => setModal('test') },
     ...(callNumbers.length > 0 ? [{ label: "Qo'ng'iroq qilish", icon: Phone, onClick: () => setCallOpen(true) }] : []),
     ...(canEdit && !lead.convertedStudentId
       ? lost
@@ -339,8 +337,7 @@ export function LeadDetailPage() {
   ]
 
   const modalTitle: Record<Exclude<ActionModal, null>, string> = {
-    sms: 'SMS yuborish',
-    test: 'Daraja testi yuborish',
+    test: 'Daraja testi havolasi',
     convert: "O'quvchiga aylantirish",
     trial: 'Sinov darsiga yozish',
   }
@@ -753,7 +750,6 @@ export function LeadDetailPage() {
 
       {/* ===== Amal oynalari ===== */}
       <Modal open={!!modal} onClose={() => setModal(null)} title={modal ? modalTitle[modal] : ''} size="lg">
-        {modal === 'sms' && <LeadSmsPanel lead={lead} onSent={activity.refresh} />}
         {modal === 'test' && <LeadLevelTestPanel lead={lead} onSent={activity.refresh} />}
         {modal === 'convert' && (
           <LeadConvertPanel
@@ -795,7 +791,7 @@ export function LeadDetailPage() {
           setReceiptAuto(false)
         }}
       />
-      <CallPickerModal open={callOpen} onClose={() => setCallOpen(false)} title={lead.fullName} numbers={callNumbers} />
+      <PhoneCallModal open={callOpen} onClose={() => setCallOpen(false)} title={lead.fullName} numbers={callNumbers} />
       <ReasonPromptModal
         open={deleting}
         category="lead_delete"

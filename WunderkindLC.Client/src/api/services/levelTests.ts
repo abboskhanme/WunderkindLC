@@ -90,7 +90,8 @@ export async function getLevelTestStats(id: string): Promise<LevelTestStats> {
   return data
 }
 
-/** Bu testga yuborilgan bir martalik havolalar (lid + SMS holati + ishlangani). */
+/** Bu test uchun yaratilgan bir martalik havolalar (lid + holat + ishlangani). `smsStatus` — eski
+ *  yozuvlarda SMS holati ("sent"/xato matni), yangilarida havola yaratilgani. */
 export interface LevelTestInvite {
   id: string
   testId: string
@@ -185,7 +186,7 @@ export async function getLevelTestOverallStats(): Promise<LevelTestOverallStats>
   return data
 }
 
-/** Lidga daraja testi havolasini SMS qilib yuborish (bir martalik). */
+/** Lid uchun BIR MARTALIK daraja testi havolasini yaratadi (SMS yo'q — operator havolani o'zi yuboradi). */
 export async function sendLeadTest(leadId: string, testId: string): Promise<{ ok: boolean; status: string; link: string }> {
   const { data } = await api.post<{ ok: boolean; status: string; link: string }>(
     `/admin/leads/${leadId}/send-test`,

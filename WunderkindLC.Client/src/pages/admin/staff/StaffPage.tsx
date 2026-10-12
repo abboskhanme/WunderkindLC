@@ -278,7 +278,7 @@ export function StaffPage() {
         toast.success("Xodim o'chirildi", s.fullName)
         setDeleting(null)
         setTick((x) => x + 1)
-        // Xodimning telefoni standart Local SMS agenti edi — avtomatik SMS'lar to'xtadi (jimgina emas).
+        // Server o'chirishning e'tiborga loyiq oqibatini aytsa — jimgina emas, ko'rsatiladi.
         if (res.warning) alert(res.warning)
       })
       .catch((e) => alert(apiErrorMessage(e, "O'chirib bo'lmadi")))

@@ -102,7 +102,7 @@ Ikkitasi bir nechta mustaqil sahifaga xizmat qiladi, shuning uchun **sinf daraja
 
 | Controller | Sinf (o'qish) | Metodlar (yozish) |
 |---|---|---|
-| `SettingsController` | `settings` | `settings.school` · `settings.channels` · `settings.backup` · `settings.apk` · `settings.azure-speech` · `settings.gemini` · `settings.check` · `settings.turnstile` · `settings.cameras` · `settings.reasons` |
+| `SettingsController` | `settings` | `settings.school` · `settings.channels` · `settings.backup` · `settings.azure-speech` · `settings.gemini` · `settings.check` · `settings.turnstile` · `settings.cameras` · `settings.reasons` |
 | `InstagramController` | `marketing` (RRP) | `marketing.settings` · `marketing.inbox` · `marketing.rules` · `marketing.knowledge` |
 | `KpiController` | `kpi` (RRP) | `kpi.today` · `kpi.month` · `kpi.tickets` · `kpi.close` · `kpi.rules` |
 
@@ -148,14 +148,19 @@ turmaydi.
 | `teachers` | `.list` `.attendance` `.substitutions` `.retention` | `TeachersController` · `TeacherAttendanceController` · `SubstituteTeachersController` · `RetentionLossController` (RRP, `retention-loss.md`) |
 | `schedule` | `.courses` `.analytics` `.curricula` `.grading` `.levelTests` | `SubjectsController` · `CourseAnalyticsController` · `CurriculumController` · `GradingController` · `LevelTestsController` |
 | `classes` | `.list` `.rooms` `.testResults` | `ClassesController` · `JournalController` · `RoomsController` · `TestResultsController` |
-| `messages` | `.broadcast` `.chat` `.support` | `MessagesController` (+ `chat` metodi) · `AutoMessagesController` · `BotSupportController` |
+| `messages` | `.broadcast` `.support` | `MessagesController` · `AutoMessagesController` · `BotSupportController` (`.chat` 2026-10 da guruh chati bilan birga olib tashlandi) |
 | `app` | `.aiCheck` `.support` `.locations` `.parents` `.teachers` | `AiCheckController` · `SupportController` · `LocationsController` · `ParentsController` · `AppTeachersController` |
 | `finance` | `.main` `.bonus` `.discounts` | `FinanceController` · `RetentionBonusController` · `DiscountReportController` |
-| `calls` | `.local` | `Cti/CtiController` (bulutli `.cloud` 2026-10-08 da modul bilan birga olib tashlandi — `README-CTI.md`) |
 | `tasks` | `.board` `.dashboard` `.settings` | `WorkTasksController` (metod darajasida) |
 | `kpi` | `.today` `.month` `.tickets` `.close` `.rules` | `KpiController` (metod darajasida) |
-| `settings` | `.school` `.landing` `.reasons` `.channels` `.backup` `.apk` `.azure-speech` `.gemini` `.check` `.turnstile` `.cameras` `.posthog` `.archive` | `SettingsController` (metod darajasida) · `LandingCmsController` · `ActionReasonsController` · `LeadSourcesController` · `ArchiveController` |
+| `settings` | `.school` `.landing` `.reasons` `.channels` `.backup` `.azure-speech` `.gemini` `.check` `.turnstile` `.cameras` `.posthog` `.archive` | `SettingsController` (metod darajasida) · `LandingCmsController` · `ActionReasonsController` · `LeadSourcesController` · `ArchiveController` |
 | `vacancies` | `.list` `.onboarding` | `CareerController` (`vacancies.list`, RRP) · `OnboardingController` (`vacancies.onboarding`, RRP) |
+
+⚠️ 2026-10: `calls` bo'limi (`calls.local` — Local Call), `messages.chat` va `settings.apk` kalitlari
+modullar bilan birga OLIB TASHLANDI (`constants.ts` katalogidan ham; `PermissionCatalogTests` izchil).
+Eski rollarda/xodimlarda qolgan bu kalitlar zararsiz — hech qanday endpoint ularni so'ramaydi.
+O'qituvchi portal ruxsatlaridan `messages` (chat) ham olib tashlandi (`TeacherPermissions.All` =
+journal · schedule · salary).
 
 Sahifasiz bo'limlar (bittasi = bitta sahifa): `contacts` · `teacherReports` · `contracts` ·
 `books` · `kassa` · `audit` · `staff` · `feedback` · `cameras` · `ai` · `retentionBonus`.

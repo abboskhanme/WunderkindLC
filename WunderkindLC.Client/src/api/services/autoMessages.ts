@@ -4,7 +4,11 @@ import { messageTokens as fallbackTokens } from '@/config/messageTemplates'
 /**
  * Avto xabarlar (avtomatik xabar qoidalari) servisi.
  *
- * Backend PARALLEL yozilmoqda — bu yerdagi turlar/endpointlar kelishilgan KONTRAKT:
+ * KANALLAR (2026-10 dan): har yoqilgan qoida HAR DOIM kabinetga bildirishnoma yozadi (o'quvchi/
+ * o'qituvchi web kabinetidagi qo'ng'iroqcha), `sendTelegram` esa qo'shimcha ravishda Telegram bot
+ * orqali yuboradi. SMS va push olib tashlangan (markazda yagona tashqi kanal — Telegram).
+ *
+ * Endpointlar:
  *   GET    /admin/auto-messages/triggers  → AutoMessageTrigger[]  (katalog: qanday hodisalar bor)
  *   GET    /admin/auto-messages           → AutoMessageRule[]      (sozlangan qoidalar)
  *   POST   /admin/auto-messages           → AutoMessageRule        (id/createdAt siz body)
@@ -24,8 +28,6 @@ export interface AutoMessageTrigger {
   category?: string
   /** Shu hodisada ishlaydigan o'rinbosarlar (masalan "{fish}", "{summa}") */
   tokens: string[]
-  /** Qaysi kanallar shu hodisa uchun mavjud */
-  channels: { sms: boolean; push: boolean; telegram: boolean }
   /** Reja bo'yicha yuborishni qo'llab-quvvatlaydimi (har kuni / har oy) */
   supportsSchedule: boolean
   /** Yuborish qamrovi (dars boshida / to'ldirilmagan bo'lsa / hammasiga) mavjudmi */
@@ -48,8 +50,7 @@ export interface AutoMessageRule {
   /** Qoida nomi (ixtiyoriy yorliq) */
   name: string
   enabled: boolean
-  sendSms: boolean
-  sendPush: boolean
+  /** Telegram bot orqali ham yuborilsinmi (kabinet bildirishnomasi har doim yoziladi). */
   sendTelegram: boolean
   audience: string
   /** Xabar matni (o'rinbosarlar bilan) */
@@ -65,8 +66,6 @@ export interface AutoMessageRule {
   /** Oylik rejada — oyning nechanchi kuni (1-28) */
   scheduleDayOfMonth: number
   createdAt: string
-  /** SMS qaysi orqali yuborilsin: "eskiz" (standart) | "local" (CTI agent telefonidan). */
-  smsProvider: string
 }
 
 /** Yangi qoida yaratish / tahrirlash uchun (id va createdAt yo'q). */
@@ -106,9 +105,10 @@ export async function deleteAutoMessageRule(id: string): Promise<void> {
   await api.delete(`/admin/auto-messages/${id}`)
 }
 
-/** Keng tarqalgan hodisalar uchun tayyor SMS habarlar to'plamini yaratadi (mavjud SMS qoidalari o'tkazib yuboriladi). */
-export async function seedStandardSms(): Promise<{ created: number }> {
-  const { data } = await api.post<{ created: number }>('/admin/auto-messages/seed-sms')
+/** Keng tarqalgan hodisalar uchun tayyor Telegram xabar qoidalari to'plamini yaratadi
+ *  (shu hodisaga qoidasi bor hodisalar o'tkazib yuboriladi). */
+export async function seedStandardRules(): Promise<{ created: number }> {
+  const { data } = await api.post<{ created: number }>('/admin/auto-messages/seed-standard')
   return data
 }
 

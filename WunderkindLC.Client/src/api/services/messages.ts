@@ -1,39 +1,21 @@
-import * as signalR from '@microsoft/signalr'
 import type {
   Broadcast,
-  ChatMessage,
   MessageClass,
-  PushMessage,
-  PushRecipient,
   TelegramParent,
   TelegramStatus,
   TelegramTeacher,
 } from '@/types'
 import { api, USE_MOCK } from '../client'
 
-/** Xabarlar bo'limi uchun guruhlar ro'yxati (o'quvchi soni, ro'yxatdagi ota-onalar, oxirgi xabar) */
+/* ============================================================
+   "Xabarlar" bo'limi — markazning YAGONA tashqi kanali: Telegram bot.
+   SMS kanali, push (Firebase) va guruh chati 2026-10 da olib tashlandi.
+   ============================================================ */
+
+/** Xabarlar bo'limi uchun guruhlar ro'yxati (o'quvchi soni, Telegramga ulangan ota-onalar). */
 export async function getMessageClasses(): Promise<MessageClass[]> {
   if (USE_MOCK) return []
   const { data } = await api.get<MessageClass[]>('/admin/messages/classes')
-  return data
-}
-
-/** Guruh chati xabarlari. since berilsa — shu vaqtdan keyingilar. */
-export async function getChat(className: string, since?: string): Promise<ChatMessage[]> {
-  if (USE_MOCK) return []
-  const { data } = await api.get<ChatMessage[]>(
-    `/admin/messages/chat/${encodeURIComponent(className)}`,
-    { params: since ? { since } : undefined },
-  )
-  return data
-}
-
-/** Guruh chatiga xabar yuborish (admin sifatida) */
-export async function sendChat(className: string, text: string): Promise<ChatMessage> {
-  const { data } = await api.post<ChatMessage>(
-    `/admin/messages/chat/${encodeURIComponent(className)}`,
-    { text },
-  )
   return data
 }
 
@@ -76,7 +58,7 @@ export async function getTelegramRegistrations(className?: string): Promise<Tele
   return data
 }
 
-/** Telegramda ro'yxatdan o'tgan o'qituvchilar — "Tanlab" e'lon ro'yxati uchun */
+/** Telegramda ro'yxatdan o'tgan o'qituvchilar — "O'qituvchilar" auditoriyasi uchun */
 export async function getTelegramTeacherRegistrations(): Promise<TelegramTeacher[]> {
   if (USE_MOCK) return []
   const { data } = await api.get<TelegramTeacher[]>('/admin/messages/telegram/registrations/teachers')
@@ -90,282 +72,95 @@ export async function getTelegramStatus(): Promise<TelegramStatus> {
   return data
 }
 
-/* ---------- Push (Firebase / FCM) ---------- */
+/* ---------- "Tanlab" yuborish uchun oluvchilar ---------- */
 
-export interface SendPushReq {
-  /** Kimga: ota-onalar / o'qituvchilar / tanlangan (custom) */
-  audience: 'parents' | 'teachers' | 'selected'
-  /** parents uchun guruh (bo'sh = barcha guruh) */
-  className?: string
-  /** selected uchun tanlangan akkaunt id'lari */
-  userIds?: string[]
-  title: string
-  body: string
-  /** parents uchun: faqat qarzdorlar (SMS/Telegram bilan bir xil — umumiy balans manfiy). */
-  onlyDebtors?: boolean
-}
-
-/** Firebase push sozlanganmi (service account bormi) */
-export async function getPushStatus(): Promise<{ configured: boolean }> {
-  if (USE_MOCK) return { configured: false }
-  const { data } = await api.get<{ configured: boolean }>('/admin/messages/push/status')
-  return data
-}
-
-/** "Tanlab" push uchun oluvchilar ro'yxati (ota-onalar + o'qituvchilar) */
-export async function getPushRecipients(): Promise<PushRecipient[]> {
-  if (USE_MOCK) return []
-  const { data } = await api.get<PushRecipient[]>('/admin/messages/push/recipients')
-  return data
-}
-
-/** Yuborilgan push tarixi */
-export async function getPushMessages(): Promise<PushMessage[]> {
-  if (USE_MOCK) return []
-  const { data } = await api.get<PushMessage[]>('/admin/messages/push')
-  return data
-}
-
-export interface PushConfirmation {
-  name: string
-  group: string
-  confirmed: boolean
-  confirmedAt: string | null
-}
-/** Bitta e'lon bo'yicha kim tasdiqlagani (admin ko'rishi uchun). */
-export async function getPushConfirmations(id: string): Promise<PushConfirmation[]> {
-  if (USE_MOCK) return []
-  const { data } = await api.get<PushConfirmation[]>(`/admin/messages/push/${id}/confirmations`)
-  return data
-}
-
-/** Ilovaga push yuborish */
-export async function sendPush(req: SendPushReq): Promise<PushMessage> {
-  const { data } = await api.post<PushMessage>('/admin/messages/push/send', req)
-  return data
-}
-
-/* ---------- SMS (Eskiz.uz) ---------- */
-
-export interface SmsBatch {
-  id: string
-  audience: string
-  message: string
-  senderName: string
-  createdAt: string
-  recipientCount: number
-  sentCount: number
-  /** Yuborish manbai: "eskiz" (default) | "local" (CTI agent telefonidan). */
-  provider: string
-  /**
-   * Partiya FONDA yuborilmoqda (ko'p oluvchi) — `sentCount` hali 0. Holatni `watchSmsProgress`
-   * bilan kuzatiladi. Sabab: 100 ta SMS bir necha daqiqa oladi, so'rov esa ~100 soniyada uziladi.
-   */
-  queued?: boolean
-}
-/** Ommaviy partiyaning jonli holati (fonda yuborilayotgan SMS'lar). */
-export interface SmsProgress {
-  id: string
-  total: number
-  done: number
-  sent: number
-  finished: boolean
-  /** Ilova qayta ishga tushgandan keyin partiya DAVOM ETTIRILGAN (allaqachon ketganlarga qayta yuborilmaydi). */
-  resumed?: boolean
-  /** Restartda partiya juda eski bo'lgani uchun qolgani BEKOR qilingan — `done < total` xato emas. */
-  interrupted?: boolean
-}
-
-/** Partiya holati matni (natija qatori uchun) — to'xtatilgan/davom ettirilgan holatlar OCHIQ aytiladi. */
-export function smsProgressText(p: SmsProgress): string {
-  if (p.interrupted)
-    return `to'xtatildi: ${p.sent}/${p.total} yuborildi — server qayta ishga tushgani uchun qolgan ${p.total - p.done} ta bekor qilindi`
-  if (p.finished) return `yuborildi ${p.sent}/${p.total}`
-  return `yuborilmoqda${p.resumed ? ' (uzilishdan keyin davom etmoqda)' : ''} ${p.done}/${p.total}`
-}
-export interface SmsLog {
-  id: string
-  phoneNumber: string
-  recipientName: string
-  status: string
-  createdAt: string
-  /** Yuborish manbai: "eskiz" (default) | "local" (CTI agent telefonidan). */
-  provider: string
-}
-/** SMS qaysi orqali yuborilsin — Eskiz (standart) yoki Local Call agent telefonidan (SIM). */
-export type SmsProvider = 'eskiz' | 'local'
-export interface SendSmsReq {
-  /** Kimga: ota-onalar / o'quvchilar / o'qituvchilar / tanlangan (studentIds/teacherIds) */
-  audience: 'parents' | 'students' | 'teachers' | 'selected'
-  /** parents/students uchun guruh (bo'sh = barcha) */
-  className?: string
-  onlyDebtors: boolean
-  /** selected uchun tanlangan o'quvchi id'lari */
-  studentIds?: string[]
-  /** selected uchun tanlangan o'qituvchi id'lari (doim o'z raqamiga — toParent ularga taalluqli emas) */
-  teacherIds?: string[]
-  /** selected uchun: ota-ona (true) yoki o'quvchi (false) raqamiga */
-  toParent?: boolean
-  text: string
-  /** Yuborish manbai — bo'sh bo'lsa "eskiz". */
-  provider?: SmsProvider
-  /** provider="local" bo'lsa — aniq agent (bo'sh — Sozlamalardagi standart agent). */
-  agentId?: string
-}
-
-/** SMS holati: Eskiz sozlanganmi + sender, Local SMS yoqilganmi + standart agent. */
-export interface SmsStatus {
-  configured: boolean
-  from: string
-  localEnabled: boolean
-  localDefaultAgentId: string | null
-}
-export async function getSmsStatus(): Promise<SmsStatus> {
-  if (USE_MOCK) return { configured: false, from: '4546', localEnabled: false, localDefaultAgentId: null }
-  const { data } = await api.get<SmsStatus>('/admin/messages/sms/status')
-  return data
-}
-
-/** Yuborilgan SMS partiyalari (tarix) */
-export async function getSmsBatches(): Promise<SmsBatch[]> {
-  if (USE_MOCK) return []
-  const { data } = await api.get<SmsBatch[]>('/admin/messages/sms')
-  return data
-}
-
-/** Bitta SMS partiyasi bo'yicha raqamlar va holat */
-export async function getSmsLogs(id: string): Promise<SmsLog[]> {
-  if (USE_MOCK) return []
-  const { data } = await api.get<SmsLog[]>(`/admin/messages/sms/${id}/logs`)
-  return data
-}
-
-/** SMS yuborish (Eskiz orqali, har o'quvchiga moslab) */
-export async function sendSms(req: SendSmsReq): Promise<SmsBatch> {
-  const { data } = await api.post<SmsBatch>('/admin/messages/sms/send', req)
-  return data
-}
-
-/** Fonda ketayotgan partiyaning holati. */
-export async function getSmsProgress(id: string): Promise<SmsProgress> {
-  const { data } = await api.get<SmsProgress>(`/admin/messages/sms/${id}/progress`)
-  return data
-}
-
-/**
- * Fonda ketayotgan partiyani tugaguncha kuzatadi (har 2 soniyada). Qaytgan funksiya kuzatuvni
- * to'xtatadi — oyna yopilganda/komponent yo'q qilinganda CHAQIRISH SHART.
- * Xato bo'lsa to'xtamaydi (tarmoq uzilishi vaqtinchalik bo'lishi mumkin), keyingi urinishda davom etadi.
- */
-export function watchSmsProgress(id: string, onTick: (p: SmsProgress) => void): () => void {
-  let stopped = false
-  let timer: ReturnType<typeof setTimeout>
-  const tick = async () => {
-    if (stopped) return
-    try {
-      const p = await getSmsProgress(id)
-      if (stopped) return
-      onTick(p)
-      if (p.finished) return
-    } catch {
-      /* keyingi urinishda davom etamiz */
-    }
-    timer = setTimeout(tick, 2000)
-  }
-  timer = setTimeout(tick, 1200)
-  return () => {
-    stopped = true
-    clearTimeout(timer)
-  }
-}
-
-/** "Tanlab" SMS uchun oluvchi (o'quvchi). Telefon yo'q bo'lsa null. */
-export interface SmsRecipient {
+/** "Tanlab" yuborish uchun oluvchi (o'quvchi). `telegramChats` — botga ulangan chatlar soni. */
+export interface MessageRecipient {
   studentId: string
   fullName: string
   className: string
-  parentPhone: string | null
-  studentPhone: string | null
+  /** Shu o'quvchiga ulangan Telegram chatlari soni (0 — xabar bormaydi). */
+  telegramChats: number
 }
-/** "Tanlab" SMS uchun barcha arxivlanmagan o'quvchilar (ism bo'yicha). */
-export async function getSmsRecipients(): Promise<SmsRecipient[]> {
+/** "Tanlab" yuborish uchun barcha arxivlanmagan o'quvchilar (ism bo'yicha). */
+export async function getMessageRecipients(): Promise<MessageRecipient[]> {
   if (USE_MOCK) return []
-  const { data } = await api.get<SmsRecipient[]>('/admin/messages/sms/recipients')
+  const { data } = await api.get<MessageRecipient[]>('/admin/messages/recipients')
   return data
 }
 
-/** "Tanlab" SMS uchun o'qituvchi oluvchi. Phone yo'q bo'lsa null. */
-export interface SmsTeacherRecipient {
+/** "Tanlab" yuborish uchun o'qituvchi oluvchi. */
+export interface MessageTeacherRecipient {
   teacherId: string
   fullName: string
-  phone: string | null
+  /** O'qituvchiga ulangan Telegram chatlari soni (0 — xabar bormaydi). */
+  telegramChats: number
 }
-/** "Tanlab" SMS uchun barcha arxivlanmagan o'qituvchilar (ism bo'yicha). */
-export async function getSmsTeacherRecipients(): Promise<SmsTeacherRecipient[]> {
+/** "Tanlab" yuborish uchun barcha arxivlanmagan o'qituvchilar (ism bo'yicha). */
+export async function getMessageTeacherRecipients(): Promise<MessageTeacherRecipient[]> {
   if (USE_MOCK) return []
-  const { data } = await api.get<SmsTeacherRecipient[]>('/admin/messages/sms/recipients/teachers')
+  const { data } = await api.get<MessageTeacherRecipient[]>('/admin/messages/recipients/teachers')
   return data
 }
 
-/* ---------- Birlashgan tayyor matnlar (SMS andozalari + eslatma qoidalari) ---------- */
-/** Birlashgan tayyor matn. source: "sms" (Eskiz andozasi) | "reminder" (eslatma qoidasi matni). */
+/* ---------- Birlashgan tayyor matnlar (qo'lda andozalar + avto-xabar qoidalari) ---------- */
+/** Birlashgan tayyor matn. source: "manual" (qo'lda andoza) | "auto" (avto-xabar qoidasi matni). */
 export interface UnifiedTemplate {
-  source: 'sms' | 'reminder'
+  source: 'manual' | 'auto'
   name: string
   text: string
 }
-/** Barcha tayyor matnlar — uchala yuborish oynasida (e'lon/push/SMS) chip sifatida. */
+/** Barcha tayyor matnlar — yuborish oynalarida chip sifatida. */
 export async function getAllMessageTemplates(): Promise<UnifiedTemplate[]> {
   if (USE_MOCK) return []
   const { data } = await api.get<UnifiedTemplate[]>('/admin/messages/templates/all')
   return data
 }
 
-/* ---------- SMS andozalari (shablonlar) ---------- */
-/** Qo'lda yuboriladigan SMS andozasi. (Avto xabarlar endi AutoMessageRule'da — trigger/isAuto YO'Q.) */
-export interface SmsTemplate {
+/* ---------- Qo'lda xabar andozalari (shablonlar) ---------- */
+/** Qo'lda yuboriladigan xabar andozasi. (Avto xabarlar AutoMessageRule'da.) */
+export interface MessageTemplate {
   id: string
   name: string
   text: string
   order: number
 }
-export interface SaveSmsTemplateReq {
+export interface SaveMessageTemplateReq {
   name: string
   text: string
 }
-export async function getSmsTemplates(): Promise<SmsTemplate[]> {
+export async function getMessageTemplates(): Promise<MessageTemplate[]> {
   if (USE_MOCK) return []
-  const { data } = await api.get<SmsTemplate[]>('/admin/messages/sms/templates')
+  const { data } = await api.get<MessageTemplate[]>('/admin/messages/templates')
   return data
 }
-export async function createSmsTemplate(req: SaveSmsTemplateReq): Promise<SmsTemplate> {
-  const { data } = await api.post<SmsTemplate>('/admin/messages/sms/templates', req)
+export async function createMessageTemplate(req: SaveMessageTemplateReq): Promise<MessageTemplate> {
+  const { data } = await api.post<MessageTemplate>('/admin/messages/templates', req)
   return data
 }
-export async function updateSmsTemplate(id: string, req: SaveSmsTemplateReq): Promise<SmsTemplate> {
-  const { data } = await api.put<SmsTemplate>(`/admin/messages/sms/templates/${id}`, req)
+export async function updateMessageTemplate(id: string, req: SaveMessageTemplateReq): Promise<MessageTemplate> {
+  const { data } = await api.put<MessageTemplate>(`/admin/messages/templates/${id}`, req)
   return data
 }
-export async function deleteSmsTemplate(id: string): Promise<void> {
-  await api.delete(`/admin/messages/sms/templates/${id}`)
+export async function deleteMessageTemplate(id: string): Promise<void> {
+  await api.delete(`/admin/messages/templates/${id}`)
 }
-
-/** Lidga oid avto-xabar hodisalari (qolganlari o'quvchi/ota-ona konteksti). */
-const LEAD_TRIGGERS = new Set(['lead_new', 'trial_reminder', 'test_link', 'test_result'])
 
 /**
  * "Tayyor matn" ro'yxatiga TUSHMAYDIGAN hodisalar — matnida QO'LDA to'ldirib bo'lmaydigan
  * token bor.
  *
- * ⚠️ `test_link` andozasida `{link}` bor va u BIR MARTALIK havola: faqat "Daraja testi
- * yuborish" bo'limi uni tug'dira oladi. Ro'yxatda turgani uchun operator uni tanlab oddiy
- * "SMS yuborish" tugmasini bosgan va abonentga «...sizga {link} testi yuborildi» matni
- * KETGAN (2026-09-07). Hech qanday xato ko'rinmagan — SMS muvaffaqiyatli yuborilgan edi.
+ * ⚠️ `test_link` andozasida `{link}` bor va u BIR MARTALIK havola: faqat "Daraja testi"
+ * bo'limi uni tug'dira oladi. Bu hodisa 2026-10 da katalogdan olib tashlangan (lidga SMS edi),
+ * lekin bazada eski qoidasi qolgan bo'lishi mumkin — u ro'yxatga tushmasin.
  *
  * ⚠️ Bu faqat RO'YXAT filtri; matnni qo'lda ham yozish mumkin, shuning uchun haqiqiy
  * darvoza SERVERDA (`MessageTokenCatalog.ForbiddenInManual`).
  */
 const NOT_PICKABLE_TRIGGERS = new Set(['test_link'])
+
+/** Lidga oid ESKI avto-xabar hodisalari (SMS bilan birga olib tashlangan) — tanlovga tushmaydi. */
+const LEAD_TRIGGERS = new Set(['lead_new', 'trial_reminder', 'test_link', 'test_result'])
 
 /** Tanlash uchun tayyor matn (qo'lda shablon yoki "Xabar yaratish" avto qoidasi matni). */
 export interface PickableTemplate {
@@ -374,16 +169,14 @@ export interface PickableTemplate {
 }
 
 /**
- * SMS yuborish oynalarida ko'rsatiladigan TAYYOR matnlar — faqat FOYDALANUVCHI yaratganlari:
- *   • qo'lda SmsTemplate andozalari (barcha kontekstda) +
- *   • "Xabar yaratish" avto qoidalari matnlari (kontekstga qarab: lid oynasida lid hodisalari,
- *     aks holda o'quvchi/ota-ona hodisalari).
+ * Xabar yuborish oynalarida ko'rsatiladigan TAYYOR matnlar — faqat FOYDALANUVCHI yaratganlari:
+ *   • qo'lda andozalar + "Xabar yaratish" avto qoidalari matnlari (o'quvchi/ota-ona hodisalari).
  * Oldindan tayyor (hardcode/seed) matnlar YO'Q — hech narsa yaratilmasa ro'yxat bo'sh bo'ladi.
  */
-export async function getPickableTemplates(context: 'student' | 'lead'): Promise<PickableTemplate[]> {
+export async function getPickableTemplates(): Promise<PickableTemplate[]> {
   const { getAutoMessageRules } = await import('./autoMessages')
   const [manual, rules] = await Promise.all([
-    getSmsTemplates().catch(() => []),
+    getMessageTemplates().catch(() => []),
     getAutoMessageRules().catch(() => []),
   ])
   const manualItems: PickableTemplate[] = manual.map((t) => ({ name: t.name, text: t.text }))
@@ -392,71 +185,8 @@ export async function getPickableTemplates(context: 'student' | 'lead'): Promise
       (r) =>
         r.template.trim() !== '' &&
         !NOT_PICKABLE_TRIGGERS.has(r.trigger) &&
-        (context === 'lead' ? LEAD_TRIGGERS.has(r.trigger) : !LEAD_TRIGGERS.has(r.trigger)),
+        !LEAD_TRIGGERS.has(r.trigger),
     )
     .map((r) => ({ name: r.name, text: r.template }))
   return [...manualItems, ...autoItems]
-}
-
-/** provider="local" bo'lganda qaysi agent orqali yuborilsin (bo'sh — Sozlamalardagi standart agent). */
-export interface SmsProviderOpts {
-  provider?: SmsProvider
-  agentId?: string
-}
-
-/** Lidga SMS yuborish (lid telefon raqamiga). */
-export async function sendLeadSms(leadId: string, text: string, opts: SmsProviderOpts = {}): Promise<SmsBatch> {
-  const { data } = await api.post<SmsBatch>('/admin/messages/sms/lead', {
-    leadId, text, provider: opts.provider, agentId: opts.agentId,
-  })
-  return data
-}
-
-/** Lidlarga OMMAVIY SMS natijasi. */
-export interface LeadBulkSmsResult {
-  sent: number
-  failed: number
-  noPhone: number
-  /** Partiya FONDA yuborilmoqda — `sent` hali 0, `queuedCount` ta lid navbatda. */
-  queued?: boolean
-  queuedCount?: number
-  batchId?: string | null
-}
-/** Bir nechta lidga SMS yuborish (har biriga o'z raqamiga, tokenlar lidga moslab to'ldiriladi). */
-export async function sendLeadSmsBulk(
-  leadIds: string[], text: string, opts: SmsProviderOpts = {},
-): Promise<LeadBulkSmsResult> {
-  const { data } = await api.post<LeadBulkSmsResult>('/admin/messages/sms/lead-bulk', {
-    leadIds,
-    text,
-    provider: opts.provider,
-    agentId: opts.agentId,
-  })
-  return data
-}
-
-/**
- * Har bir kanal uchun oxirgi xabar vaqti — o'qilmagan xabarlarni aniqlash uchun.
- * Qaytadi: { [channelName]: ISO vaqt yoki null (xabari yo'q kanal) }
- */
-export async function getAdminLastMessages(): Promise<Record<string, string | null>> {
-  if (USE_MOCK) return {}
-  const { data } = await api.get<Record<string, string | null>>('/admin/messages/last-messages')
-  return data
-}
-
-/**
- * Guruh chati uchun real-time SignalR ulanishi. Yangi xabar kelganda onMessage chaqiriladi
- * (foydalanuvchi a'zo bo'lgan BARCHA guruhlar bo'yicha — komponent kerakli guruhni filtrlaydi).
- * Mock rejimida null qaytaradi.
- */
-export function connectChat(onMessage: (m: ChatMessage) => void): signalR.HubConnection | null {
-  if (USE_MOCK) return null
-  // Auth `at` cookie'si WS handshake'da avtomatik ketadi (backend OnMessageReceived cookie'ni o'qiydi).
-  const conn = new signalR.HubConnectionBuilder()
-    .withUrl('/hubs/chat', { withCredentials: true })
-    .withAutomaticReconnect()
-    .build()
-  conn.on('message', (m: ChatMessage) => onMessage(m))
-  return conn
 }

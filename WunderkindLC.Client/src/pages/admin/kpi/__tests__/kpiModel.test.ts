@@ -6,7 +6,6 @@ import {
   TICKET_STATUSES,
   TIER_TABLES,
   blockProgress,
-  callDirectionLabel,
   checkStateLabel,
   coefOf,
   coefTone,
@@ -209,19 +208,6 @@ describe('normStatus — kunlik reja va fakt (`KpiNormDto.plan` HAQIQIY son)', (
     expect(normStatus(5, 5, true)).toMatchObject({ ok: true, pct: 100, delta: '0' })
     // Chegaradan oshgani chiziqni 100% dan OSHIRMAYDI (bar konteynerdan chiqib ketmasin).
     expect(normStatus(9, 5, true)).toMatchObject({ ok: false, pct: 100, delta: '−4' })
-  })
-})
-
-describe("qo'ng'iroq yo'nalishi", () => {
-  it("`Call` entity'sining NATIV qiymatlari tarjima qilinadi", () => {
-    // ⚠️ Qisqartirilgan `in`/`out` ATAYIN ishlatilmaydi — ikki tomon mos kelmay qolardi.
-    expect(callDirectionLabel('inbound')).toBe('Kiruvchi')
-    expect(callDirectionLabel('outbound')).toBe('Chiquvchi')
-  })
-
-  it("noma'lum qiymat O'ZI qaytadi, bo'sh qiymat — tire", () => {
-    expect(callDirectionLabel('internal')).toBe('internal')
-    expect(callDirectionLabel('')).toBe('—')
   })
 })
 

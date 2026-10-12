@@ -16,23 +16,6 @@ const LANGS: [string, string][] = [
   ['en', 'English'],
 ]
 
-function getPush(): boolean {
-  // localStorage — faqat birinchi chizish uchun taxmin; haqiqiy qiymat serverdan keladi.
-  try {
-    return localStorage.getItem('student_push') !== 'off'
-  } catch {
-    return true
-  }
-}
-
-function rememberPush(on: boolean) {
-  try {
-    localStorage.setItem('student_push', on ? 'on' : 'off')
-  } catch {
-    /* brauzer xotirasi yopiq (maxfiy rejim) — server qiymati baribir asosiy */
-  }
-}
-
 /** Komponent TASHQARIDA — render ichida yaratilsa har chizishda qayta tug'ilardi (`react-hooks/static-components`). */
 const IconBox = ({ icon, color }: { icon: string; color: string }) => (
   <div
@@ -69,9 +52,7 @@ export function StudentSettingsScreen() {
   const nav = useNavigate()
   const [dark, setDark] = useState<boolean>(() => getStudentTheme() === 'dark')
   const [lang, setLang] = useState<string>('uz')
-  const [push, setPush] = useState<boolean>(getPush)
-  /** Saqlash xatosi — JIM QOLMAYDI: ilgari tugma "o'chdi" ko'rinardi, server esa eski holatda
-   *  qolardi (push kelaverardi). Xato bo'lsa tugma ham orqaga qaytariladi. */
+  /** Saqlash xatosi — JIM QOLMAYDI: xato bo'lsa tanlov ham orqaga qaytariladi. */
   const [saveError, setSaveError] = useState('')
   const [saving, setSaving] = useState(false)
 
@@ -81,10 +62,6 @@ export function StudentSettingsScreen() {
       .then((s) => {
         if (!alive) return
         if (s?.language) setLang(s.language)
-        if (typeof s?.notificationsEnabled === 'boolean') {
-          setPush(s.notificationsEnabled)
-          rememberPush(s.notificationsEnabled)
-        }
       })
       // Fon O'QISH: xato bo'lsa sahifa standart qiymatlar bilan ishlayveradi (saqlash xatosi alohida ko'rsatiladi).
       .catch(() => {})
@@ -112,24 +89,6 @@ export function StudentSettingsScreen() {
     } catch (e) {
       setLang(prev)
       setSaveError(apiErrorMessage(e, "Tilni saqlab bo'lmadi"))
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  const togglePush = async () => {
-    if (saving) return
-    const prev = push
-    const next = !push
-    setPush(next)
-    setSaveError('')
-    setSaving(true)
-    try {
-      await saveStudentSettings({ notificationsEnabled: next })
-      rememberPush(next)
-    } catch (e) {
-      setPush(prev)
-      setSaveError(apiErrorMessage(e, "Bildirishnoma sozlamasini saqlab bo'lmadi"))
     } finally {
       setSaving(false)
     }
@@ -189,22 +148,6 @@ export function StudentSettingsScreen() {
               {lang === l[0] && <Icon name="check" size={20} color="var(--accent)" />}
             </button>
           ))}
-        </Group>
-
-        {/* Bildirishnomalar */}
-        <Group title="Bildirishnomalar">
-          <div className="row gap12" style={{ padding: '12px 11px' }}>
-            <IconBox icon="bell" color="#EA580C" />
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 14.5, fontWeight: 700 }}>Push bildirishnoma</div>
-              <div className="muted" style={{ fontSize: 12 }}>
-                {push ? 'Yangi baho va xabar' : "O'chirilgan — telefonga push kelmaydi"}
-              </div>
-            </div>
-            <div className={'switch press' + (push ? ' on' : '')} onClick={togglePush}>
-              <i />
-            </div>
-          </div>
         </Group>
 
         {/* Akkaunt */}

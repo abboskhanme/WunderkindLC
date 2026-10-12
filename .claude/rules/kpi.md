@@ -14,7 +14,8 @@ Migratsiya: `AddKpiModule`. Manba — `kpi/` papkasidagi 5 fayl, tahlil va reja 
 
 ## 1. ENG MUHIM — KPI hech narsa YARATMAYDI, faqat O'QIYDI
 
-Lid — Lidlarda, to'lov — Kassada, davomat — Jurnalda, qo'ng'iroq — Local Call'da (CTI) qoladi.
+Lid — Lidlarda, to'lov — Kassada, davomat — Jurnalda qoladi (qo'ng'iroq manbai — Local Call — 2026-10 da
+olib tashlandi, §11.1).
 KPI moduli o'ziga tegishli **beshta** narsanigina yozadi:
 
 | Yozuv | Nima uchun |
@@ -195,9 +196,9 @@ chunki raqamning ma'nosi shu ta'riflarga bog'liq.
 
 ## 11. Cheklistni AVTOMATIK belgilash — `ChecklistAutoCheck`
 
-Hozir **6** kalit qo'llangan (`Supported`): `tasks.overdue_zero` · `tasks.due_done` ·
-`calls.missed_returned` · `calls.answer_speed` · `journal.yesterday_filled` ·
-`leads.without_task_zero`. Qolgan **16** tasi ATAYIN QO'LDA.
+Hozir **4** kalit qo'llangan (`Supported`): `tasks.overdue_zero` · `tasks.due_done` ·
+`journal.yesterday_filled` · `leads.without_task_zero`. Qolgan **18** tasi QO'LDA
+(`calls.missed_returned` va `calls.answer_speed` 2026-10 dan qo'lda — §11.1).
 
 ⚠️ **`Supported` da yo'q kalit JIM e'tiborsiz qoldiriladi** va band oddiy qo'lda belgilanadi.
 Shuning uchun seed to'liq yozilgan (66 band) — avtomatlashtirish bosqichma-bosqich qo'shiladi
@@ -214,36 +215,19 @@ topshiriqlaridan birortasi ham uning ochiq lidlariga ishora qilmasa, bog'lanish
 "ishlatilmayapti" deb hisoblanadi va band O'TADI. Aks holda tekshiruv HAR KUNI HAMMAGA
 "bajarilmadi" berib, bonusni jimgina kesib turardi.
 
-## 11.1. QO'NG'IROQLAR MANBAI — Local Call (`KpiCallSource`, 2026-10-08)
+## 11.1. QO'NG'IROQ KO'RSATKICHLARI — 2026-10 da OLIB TASHLANDI
 
-Bulutli telefoniya olib tashlangach (`README-CTI.md`) KPI'ning BARCHA qo'ng'iroq ko'rsatkichlari
-**`CtiCallRecord`** dan o'qiladi. Qoida bitta joyda — `Application/Services/Kpi/KpiCallSource.cs`
-(testlar: `ChecklistAutoCheckTests` + bulut olib tashlanishini qulflovchi test fayli).
+Manba bo'lgan Local Call (CTI agent ilovasi, `CtiCallRecord`) egasining qarori bilan olib tashlandi
+(`docs/ASSUMPTIONS.md` 2026-10-11) — tizimda qo'ng'iroqni ISBOTLAYDIGAN yozuv qolmadi. Shuning uchun:
 
-⚠️ **Xodim ↔ qo'ng'iroq — AGENT orqali** (`CtiAgent.StaffUserId`): CTI yozuvida xodim id'si YO'Q.
-Telefoni (agenti) xodimga BIRIKTIRILMAGAN bo'lsa, uning qo'ng'iroqlari hech kimning normasiga
-tushmaydi — bu xato emas, sozlama (Local Call → Agentlar).
+| Nima edi | Endi |
+|---|---|
+| «Teginish» va «Muloqot vaqti» kunlik normalari (`KpiCallSource`) | «Bugun» sahifasida YO'Q (`DailyTalkHoursNorm` ham) |
+| `calls.missed_returned`, `calls.answer_speed` avto-bandlari | `Supported` dan chiqarildi — seed kalitlari O'ZGARMADI, band oddiy QO'LDA belgilanadi (§11 qoidasi). ⚠️ Taxmin bilan "o'tdi"/"yiqildi" qo'yilmaydi — bonusga ta'sir qiladi |
+| Haftalik qo'ng'iroq sifat namunasi (`GET kpi/tickets/calls`, `KpiCallSampleDto`) | YO'Q; tiket oynasida qo'ng'iroq ID maydoni olib tashlandi, eski tiketdagi `CallId` tahrirda o'zgarishsiz qaytariladi |
 
-| Joy | Nima sanaladi | Nega |
-|---|---|---|
-| «Teginish» (kunlik norma) | xodim agent(lar)ining `incoming` + `outgoing` (javobsiz chiquvchi ham) | Chiquvchi — URINISH. ⚠️ `missed` (javobsiz kiruvchi) KIRMAYDI: operator hech kimga tegmagan, sanalsa bo'sh kun "bajarilgan" ko'rinardi |
-| «Muloqot vaqti» | o'sha yozuvlarning `DurationSec` yig'indisi | javobsizniki baribir 0 |
-| `calls.missed_returned` | KECHAGI `missed` → undan KEYIN shu raqamga (`PhoneUtil.Key`) `outgoing` bormi; MARKAZ bo'yicha, istalgan agentdan | Javobsiz qo'ng'iroqni hech kim ko'tarmagan — egasi yo'q. Mijozning o'zi qayta qilgani (`incoming`) "qaytarish" EMAS |
-| `calls.answer_speed` | `incoming` + `AnsweredAt` bor; xodimning O'Z agentlari VA hech kimga biriktirilmagan (umumiy) agentlar; boshqa XODIMGA biriktirilganlari chiqariladi | Umumiy (qabulxona) telefoni odatda biriktirilmaydi — faqat "o'zinikini" sanasak tekshiruv deyarli doim bo'sh bo'lardi |
-| Haftalik sifat namunasi (`tickets/calls`) | xodim agent(lar)i, 7 kun, `AudioUploaded` + `AudioPath`, `DurationSec > 60` | Yozuvsiz/qisqa qo'ng'iroqni tinglab baholab bo'lmaydi |
-
-- Namunadagi `direction` shartnomasi O'ZGARMADI: `incoming`/`missed` → `inbound`, `outgoing` →
-  `outbound` (`KpiCallSource.SampleDirection`) — klient `callDirectionLabel` shuni kutadi.
-- Yozuv TINGLASH — Local Call'ning audio endpointi (`GET /api/cti/calls/{id}/audio`), fayl manzili
-  javobda YO'Q. ⚠️ U Local Call egalik qoidasiga bo'ysunadi (agentning o'z xodimi + superadmin);
-  boshqasiga 403 va UI buni OCHIQ yozadi. KPI uchun alohida "hammasini eshitish" eshigi ATAYIN
-  ochilmadi — Local Call'dagi "faqat o'zinikini" qarori chetlab o'tilardi.
-- Isbot havolasi (`KpiNormDto.Link`) — `/admin/calls/local` (`KpiCallSource.Link`).
-- `KpiTicket.CallId` endi `CtiCallRecord.Id`; ESKI tiketlarda tarixiy `Call.Id` qolishi mumkin.
-- ⚠️ Eski `Calls` jadvali (bulut tarixi) KPI'da ISHLATILMAYDI — yangi ko'rsatkichni unga qurmang.
-- Seed matni (kiruvchi cheklist 3-band) yangilandi, lekin `KpiSeedService` mavjud bandni faqat
-  `No` bo'yicha qo'shadi — bazadagi ESKI matn o'z-o'zidan o'zgarmaydi (qoidalar sahifasidan
-  tahrirlanadi; admin tahririni jimgina bosib ketmaslik uchun avtomatik yangilanmaydi).
+⚠️ `KpiTicket.CallId` ustuni va eski `Calls`/`CtiCallRecords` jadvallari QOLDI (legacy, faqat tarix) —
+yangi ko'rsatkichni ularga QURMANG.
 
 ## 12. Oy boshi snapshoti — `KpiSnapshotService`
 

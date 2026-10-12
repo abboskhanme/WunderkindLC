@@ -330,13 +330,12 @@ public class LeadsController(
         await db.SaveChangesAsync();
         // Botda ro'yxatdan o'tgan admin/xodimlarga yangi lid xabarnomasi (kim kiritgani bilan).
         await LeadNotifier.NotifyNewLeadAsync(db, telegram, lead, createdBy: Actor(), logger: logger);
-        // Avto xabar — "Yangi lid kelganda" hodisasiga yoqilgan qoida bo'lsa, lidga avtomatik SMS.
-        await autoMsg.DispatchLeadAsync(db, AutoMessageTriggers.LeadNew, lead);
         return lead;
     }
 
-    /// <summary>Lidga BIR MARTALIK daraja-testi havolasini SMS qilib yuboradi (avto-SMS andoza, {link}).
-    /// Lid testni o'z ma'lumotini qayta kiritmasdan ishlaydi; natija shu lidga bog'lanadi.</summary>
+    /// <summary>Lid uchun BIR MARTALIK daraja-testi havolasini yaratadi va QAYTARADI — operator uni nusxalab
+    /// lidga o'zi yuboradi (Telegram/WhatsApp). Lid testni o'z ma'lumotini qayta kiritmasdan ishlaydi;
+    /// natija shu lidga bog'lanadi. (2026-10 gacha havola SMS bilan yuborilardi — SMS kanali olib tashlandi.)</summary>
     [HttpPost("{id}/send-test")]
     public async Task<ActionResult<SendLeadTestResultDto>> SendTest(string id, SendLeadTestRequest req)
     {
@@ -353,14 +352,13 @@ public class LeadsController(
         await db.SaveChangesAsync();
 
         var link = $"{Request.Scheme}://{Request.Host}/test/invite/{invite.Token}";
-        var (ok, status, reqId) = await autoMsg.SendLeadTestLinkAsync(db, lead, link);
-        invite.SmsStatus = ok ? "sent" : status;
-        invite.SmsRequestId = reqId;
-        AddEvent(lead.Id, "note", ok ? $"Daraja testi havolasi yuborildi: {test.Title}" : $"Test havolasi SMS xato: {status}");
+        // Legacy LevelTestInvite.SmsStatus column: "link" = the link was handed to the operator (no SMS).
+        invite.SmsStatus = "link";
+        AddEvent(lead.Id, "note", $"Daraja testi havolasi yaratildi: {test.Title}");
         await db.SaveChangesAsync();
         await LeadNotifier.SyncCardAsync(db, telegram, lead.Id, logger: logger);
 
-        return new SendLeadTestResultDto(ok, status, link);
+        return new SendLeadTestResultDto(true, "link", link);
     }
 
     [HttpPut("{id}")]

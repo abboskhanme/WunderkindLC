@@ -418,3 +418,21 @@
   manages their own login/password; the superadmin-only «AI ulanishlar» tile stays superadmin-only.
 - [2026-10-11] MCP volume alert: revoke the connection automatically? → No, flag + Telegram + warning log only
   → a heavy legitimate report must not cut the director off; the superadmin decides.
+- [2026-10-11] Phase 1 cleanup — what happens to SMS-only auto-message rules? → Rules saved with `SendSms` are
+  delivered over Telegram (`AutoMessageChannels.Telegram`); the next save clears the flag → birthday greetings,
+  debt reminders etc. keep reaching families without the admin re-configuring every rule.
+- [2026-10-11] Phase 1 — cabinet (bell) notification was written only for push-enabled rules; now? → Written for
+  EVERY enabled rule when the recipient has an account → no rule loses its in-app history when push disappears.
+- [2026-10-11] Phase 1 — SMS-only lead flows (lead_new, trial_reminder, test_link, test_result, single/bulk lead SMS)?
+  → Removed, not converted → a lead has no Telegram recipient; old rules stay inert (hidden as unknown triggers).
+- [2026-10-11] Phase 1 — "send level test" without SMS? → The invite link is still created and returned to the
+  operator (copy + send via Telegram/WhatsApp), `SmsStatus = "link"` → the funnel keeps working with no new channel.
+- [2026-10-11] Phase 1 — KPI call items (missed calls returned, answer speed, touches/talk-time norms, weekly call
+  sample)? → Removed / turned into manual checklist items → their only data source (Local Call agent app) is gone;
+  guessing would fine staff wrongly (bonus impact).
+- [2026-10-11] Phase 1 — removed tables/columns? → CODE ONLY: entities stay mapped and marked `[Obsolete]`, no
+  migration, no drop → a drop is a separate, confirmed step (data loss).
+- [2026-10-11] Phase 1 — CTI agent rows when a staff member is deleted? → Left untouched → agents can no longer
+  connect (`/ws`, `api/cti/*` removed); rewriting legacy rows adds risk without benefit.
+- [2026-10-11] Phase 1 — APK files under `uploads/app-*.apk` and the `cti-recordings` volume? → Left in place
+  (data) → deleting files is a separate, confirmed step.

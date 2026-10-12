@@ -52,33 +52,19 @@ public static class SupportService
     }
 
     /// <summary>
-    /// Support bron hodisasini IKKINCHI tomonga bildiradi: ilova tarixi (<see cref="NotificationStore"/>)
-    /// + push (FCM sozlangan bo'lsa). Ilgari bron, o'quvchining bekor qilishi va o'qituvchining band
-    /// slotni o'chirishi hech kimga bildirilmasdi — o'quvchi o'chirilgan darsga kelib turardi.
+    /// Support bron hodisasini IKKINCHI tomonga bildiradi: kabinet tarixi (<see cref="NotificationStore"/>).
+    /// Ilgari bron, o'quvchining bekor qilishi va o'qituvchining band slotni o'chirishi hech kimga
+    /// bildirilmasdi — o'quvchi o'chirilgan darsga kelib turardi. (Push 2026-10 da olib tashlandi.)
     /// SaveChanges'ni O'ZI chaqiradi; xato YUTILADI (bildirishnoma asosiy amalni buzmasin).
     /// </summary>
     public static async Task NotifyAsync(
-        IAppDbContext db, FcmService? fcm, string? userId, string title, string body,
-        CancellationToken ct = default)
+        IAppDbContext db, string? userId, string title, string body, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(userId)) return;
         try
         {
             NotificationStore.Add(db, userId, title, body, "support");
             await db.SaveChangesAsync(ct);
-
-            var json = AppSecrets.FcmServiceAccountJson;
-            if (fcm is null || !FcmService.IsConfigured(json)) return;
-            var tokens = await db.DeviceTokens.Where(d => d.UserId == userId)
-                .Select(d => d.Token).Distinct().ToListAsync(ct);
-            if (tokens.Count == 0) return;
-            var res = await fcm.SendAsync(json, tokens, title, body, ct);
-            if (res.InvalidTokens.Count > 0)
-            {
-                var dead = res.InvalidTokens.ToList();
-                db.DeviceTokens.RemoveRange(db.DeviceTokens.Where(d => dead.Contains(d.Token)));
-                await db.SaveChangesAsync(ct);
-            }
         }
         catch (OperationCanceledException) { throw; }
         catch (Exception)

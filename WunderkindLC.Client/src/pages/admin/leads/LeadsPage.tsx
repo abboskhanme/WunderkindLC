@@ -9,7 +9,7 @@ import {
   type DragEndEvent,
   type DragStartEvent,
 } from '@dnd-kit/core'
-import { IconLayoutColumns, IconList, IconMessage, IconPlus, IconSearch } from '@tabler/icons-react'
+import { IconLayoutColumns, IconList, IconPlus, IconSearch } from '@tabler/icons-react'
 import type { Lead, LeadSource, Stage } from '@/types'
 import {
   createLead,
@@ -28,13 +28,12 @@ import {
   updateStage,
   type StagePayload,
 } from '@/api/services/stages'
-import { CallPickerModal } from '@/components/CallPickerModal'
+import { PhoneCallModal } from '@/components/PhoneCallModal'
 import { DataTable, type DataColumn } from '@/components/ui/list/DataTable'
 import { FilterGrid, FilterInput, FilterSelect } from '@/components/ui/list/FilterGrid'
 import { FilterDateRange } from '@/components/ui/list/FilterDateRange'
 import { ListToolbar } from '@/components/ui/list/ListToolbar'
 import { PhoneChip } from '@/components/ui/list/PhoneChip'
-import { TintedIconButton } from '@/components/ui/list/TintedIconButton'
 import { TotalPill } from '@/components/ui/list/TotalPill'
 import { ViewToggle } from '@/components/ui/list/ViewToggle'
 import { TablePagination, usePagination } from '@/components/ui/TablePagination'
@@ -44,7 +43,6 @@ import { usePerm } from '@/lib/permissions'
 import { LeadColumn } from './LeadColumn'
 import { LeadCardContent } from './LeadCard'
 import { LeadFormModal, type LeadFormValues } from './LeadFormModal'
-import { LeadBulkSmsModal } from './LeadBulkSmsModal'
 import { StageFormModal } from './StageFormModal'
 import { LostColumn } from './LostColumn'
 import { LeadLostModal } from './LeadLostModal'
@@ -101,9 +99,6 @@ export function LeadsPage() {
 
   // Filtr paneli: manzilda filtr bo'lsa (masalan "orqaga" qaytilganda) — ochiq holda boshlanadi.
   const [filtersOpen, setFiltersOpen] = useState(filtersActive)
-  // "⋮" — qatorlarni tanlash rejimi (tanlanganlarga ommaviy SMS).
-  const [selectMode, setSelectMode] = useState(false)
-  const [selected, setSelected] = useState<Set<string>>(new Set())
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
 
   // modallar
@@ -111,7 +106,6 @@ export function LeadsPage() {
   const [stageFormOpen, setStageFormOpen] = useState(false)
   const [editingStage, setEditingStage] = useState<Stage | null>(null)
   const [callLead, setCallLead] = useState<Lead | null>(null)
-  const [bulkSmsLeads, setBulkSmsLeads] = useState<Lead[] | null>(null)
   /** "Yo'qotilgan" ustuniga tashlangan lid — sabab oynasi (holat jimgina o'zgarmaydi). */
   const [lostTarget, setLostTarget] = useState<Lead | null>(null)
 
@@ -141,12 +135,7 @@ export function LeadsPage() {
   }, [params, navigate])
 
   const openLead = (lead: Lead) => navigate(`/admin/leads/${lead.id}`)
-  const setView = (v: View) => {
-    // Tanlash rejimi faqat jadvalda — kanbanga o'tganda tanlov yashirin qolib ketmasin.
-    setSelectMode(false)
-    setSelected(new Set())
-    set({ view: v === 'kanban' ? 'kanban' : '' })
-  }
+  const setView = (v: View) => set({ view: v === 'kanban' ? 'kanban' : '' })
 
   /* ---------- Karta drag-and-drop ---------- */
   const handleDragStart = (e: DragStartEvent) => setActiveId(String(e.active.id))
@@ -394,51 +383,7 @@ export function LeadsPage() {
   )
   const pg = usePagination(sorted)
 
-  const toggleSelected = (id: string) =>
-    setSelected((prev) => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      return next
-    })
-  const allOnPageSelected = pg.paged.length > 0 && pg.paged.every((l) => selected.has(l.id))
-  const togglePage = () =>
-    setSelected((prev) => {
-      const next = new Set(prev)
-      for (const l of pg.paged) {
-        if (allOnPageSelected) next.delete(l.id)
-        else next.add(l.id)
-      }
-      return next
-    })
-
   const columns: DataColumn<Lead>[] = [
-    ...(selectMode
-      ? [
-          {
-            key: '__sel',
-            width: 44,
-            header: (
-              <input
-                type="checkbox"
-                aria-label="Sahifadagilarni tanlash"
-                checked={allOnPageSelected}
-                onChange={togglePage}
-                className="h-4 w-4 accent-brand-600"
-              />
-            ),
-            render: (l: Lead) => (
-              <input
-                type="checkbox"
-                aria-label={`${l.fullName} — tanlash`}
-                checked={selected.has(l.id)}
-                onChange={() => toggleSelected(l.id)}
-                className="h-4 w-4 accent-brand-600"
-              />
-            ),
-          } satisfies DataColumn<Lead>,
-        ]
-      : []),
     {
       key: 'id',
       header: 'ID',
@@ -499,16 +444,10 @@ export function LeadsPage() {
   ]
 
   /* ---------- Ko'rinish ---------- */
-  // ⚠️ Memo: `CallPickerModal` raqamlar massivi o'zgarganda holatini tozalaydi — har renderda
+  // ⚠️ Memo: `PhoneCallModal` raqamlar massivi o'zgarganda holatini tozalaydi — har renderda
   // yangi massiv berilsa oyna ochiq turganda tanlov o'z-o'zidan bekor bo'lib qolardi.
   const callNumbers = useMemo(() => (callLead ? leadCallNumbers(callLead) : []), [callLead])
   const canCreate = can('leads.list', 'create')
-  const openBulkSms = () => {
-    if (selectMode && selected.size > 0) setBulkSmsLeads(leads.filter((l) => selected.has(l.id)))
-    // Standart auditoriya — OCHIQ lidlar: aylantirilgan ham, yo'qotilgan ham emas ("bormayman"
-    // degan odamga ommaviy SMS ketmasin; kerak bo'lsa ular qo'lda tanlanadi).
-    else setBulkSmsLeads(leads.filter((l) => !l.convertedStudentId && !isLeadLost(l)))
-  }
 
   const viewToggle = (
     <ViewToggle<View>
@@ -546,23 +485,6 @@ export function LeadsPage() {
         }
         filtersOpen={filtersOpen}
         onToggleFilters={() => setFiltersOpen((o) => !o)}
-        extra={
-          <TintedIconButton
-            label={selectMode && selected.size > 0 ? `Tanlanganlarga SMS (${selected.size})` : 'Lidlarga SMS yuborish'}
-            onClick={openBulkSms}
-          >
-            <IconMessage className="h-5 w-5" />
-          </TintedIconButton>
-        }
-        onMore={
-          view === 'table'
-            ? () => {
-                setSelectMode((m) => !m)
-                setSelected(new Set())
-              }
-            : undefined
-        }
-        moreActive={selectMode}
         addLabel={canCreate ? (view === 'kanban' ? "Qo'shish" : "Buyurtma qo'shish") : undefined}
         onAdd={() => setLeadFormOpen(true)}
       />
@@ -670,27 +592,6 @@ export function LeadsPage() {
       {view === 'table' ? (
         <>
           <div className="flex items-center gap-2">
-            {selectMode && (
-              <p className="mb-2 mr-auto text-[13px] text-[#333]">
-                Tanlandi: <b>{selected.size}</b>
-                {selected.size > 0 && (
-                  <>
-                    {' · '}
-                    <button type="button" onClick={openBulkSms} className="font-medium text-brand-600 hover:underline">
-                      SMS yuborish
-                    </button>
-                    {' · '}
-                    <button
-                      type="button"
-                      onClick={() => setSelected(new Set())}
-                      className="font-medium text-[#757575] hover:underline"
-                    >
-                      Tozalash
-                    </button>
-                  </>
-                )}
-              </p>
-            )}
             <div className="ml-auto">
               <TotalPill total={visibleLeads.length} />
             </div>
@@ -808,13 +709,7 @@ export function LeadsPage() {
         onSubmit={handleStageSubmit}
         initial={editingStage}
       />
-      <LeadBulkSmsModal
-        open={!!bulkSmsLeads}
-        onClose={() => setBulkSmsLeads(null)}
-        leads={bulkSmsLeads ?? []}
-        stages={stages}
-      />
-      <CallPickerModal
+      <PhoneCallModal
         open={!!callLead}
         onClose={() => setCallLead(null)}
         title={callLead?.fullName}

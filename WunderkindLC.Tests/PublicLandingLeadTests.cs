@@ -151,22 +151,20 @@ public class PublicLandingLeadTests
             src);
     }
 
-    // ===================== 3) AVTO-XABAR faqat YANGI lidga =====================
+    // ===================== 3) LIDGA AVTO-SMS YO'Q, Telegram kartasi — HAR DOIM =====================
 
     [Fact]
-    public void Takroriy_lidga_lead_new_avto_xabari_qayta_yuborilmaydi()
+    public void Landing_lidiga_SMS_yoq_Telegram_kartasi_yangimi_bayrogi_bilan()
     {
         var src = LandingLead;
 
-        // Avto-xabar `isNewLead` darvozasi ostida bo'lishi SHART (lead-forms.md §4).
-        Assert.Matches(
-            new Regex(@"if\s*\(isNewLead\)\s*\r?\n\s*await\s+autoMsg\.DispatchLeadAsync\(", RegexOptions.Multiline),
-            src);
+        // 2026-10: lidga avto-SMS (lead_new) SMS kanali bilan birga olib tashlandi.
+        Assert.DoesNotContain("DispatchLeadAsync(", src);
+        Assert.DoesNotContain("AutoMessageService", src);
 
-        // Telegram xabarnomasi esa IKKALA holatda ham ketadi — u darvozalanmaydi, lekin
+        // Telegram xabarnomasi IKKALA holatda ham ketadi — u darvozalanmaydi, lekin
         // "yangimi" bayrog'i bilan chaqiriladi (sarlavha to'g'ri chiqsin).
         Assert.Contains("isNewLead: isNewLead", src);
-        Assert.Single(Regex.Matches(src, @"DispatchLeadAsync\("));
     }
 
     // ===================== 4) BOSQICH YO'Q — ustun YARATILMAYDI =====================

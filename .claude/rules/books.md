@@ -252,7 +252,8 @@ YO'Q, chunki pul kassirning oldida to'langan. Normalizatsiya moliya bo'limi bila
 
 ## 3. Bot oqimi (`BookShopBotService`, singleton)
 
-`OnlineTestBotService` bilan bir xil tuzilma. Barcha callback'lar `Handles(data)` orqali
+(eski `OnlineTestBotService` bilan bir xil tuzilma edi — u 2026-10 da olib tashlandi; uning eski
+callback'lari `TelegramBotService.IsLegacyOnlineTestCallback` da, kitob prefikslari bilan kesishmaydi). Barcha callback'lar `Handles(data)` orqali
 `TelegramBotService`dan yo'naltiriladi.
 
 ```

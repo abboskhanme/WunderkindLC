@@ -23,8 +23,7 @@ public sealed class MetaLeadgenService(
     IAppDbContext db,
     MetaAdsApi api,
     TelegramService telegram,
-    ILogger<MetaLeadgenService> logger,
-    AutoMessageService? autoMsg = null)
+    ILogger<MetaLeadgenService> logger)
 {
     /// <summary>Bitta webhook yozuvidagi BARCHA reklama lidlarini qayta ishlaydi.</summary>
     /// <returns>Qayta ishlashda chiqqan muammolar (bo'sh = hammasi joyida).</returns>
@@ -173,7 +172,7 @@ public sealed class MetaLeadgenService(
         // ── 3) CRM LIDI ──
         try
         {
-            var (leadId, isNew) = await MetaLeadBridge.UpsertAsync(db, row, meta.InstagramAdsLeadSource, ct, autoMsg);
+            var (leadId, isNew) = await MetaLeadBridge.UpsertAsync(db, row, meta.InstagramAdsLeadSource, ct);
             row.LeadId = leadId;
             row.IsNewLead = isNew;
         }

@@ -5,7 +5,7 @@ import {
   User, Phone, Wallet, BookOpen, MapPin, Cake, CalendarPlus, Percent, IdCard,
   School, Clock, CalendarDays, ChevronRight, History, ListChecks, ChevronDown, Check,
   CalendarClock, Award, Download, LifeBuoy, Sparkles, Pencil, MessageSquare,
-  PhoneIncoming, PhoneOutgoing, PhoneMissed, PhoneCall, MessageSquareText,
+  PhoneCall, MessageSquareText,
   Snowflake, CheckCircle2, RotateCcw, ArrowLeftRight, Plus, NotebookText, X,
   StickyNote, Gift, BadgePercent, Trash2,
   DoorOpen, LogIn, LogOut, RefreshCw, Wifi, WifiOff,
@@ -23,8 +23,6 @@ import {
   generateStudentCertificate,
   getStudentSupportFeedback,
   getStudentAiAnalyses,
-  getStudentCalls,
-  getStudentSms,
   getStudent,
   updateStudent,
   addPayment,
@@ -32,8 +30,6 @@ import {
   type StudentCompletedCourse,
   type StudentSupportFeedback,
   type StudentAiAnalysisRecord,
-  type StudentCall,
-  type StudentSms,
 } from '@/api/services/students'
 import type { StudentPayload } from '@/api/services/students'
 import {
@@ -98,8 +94,8 @@ import { studentDiscountLabel } from './discountLabel'
 import { ProfileCard } from './profile/ProfileCard'
 import { TelegramLinksSection } from './profile/TelegramLinksSection'
 import { IntakeChecklistCard } from '@/components/students/IntakeChecklistCard'
-import { SmsModal } from './SmsModal'
-import { CallPickerModal, type CallOption } from '@/components/CallPickerModal'
+import { TelegramMessageModal } from './TelegramMessageModal'
+import { PhoneCallModal, type CallOption } from '@/components/PhoneCallModal'
 import { ReasonPromptModal } from '@/components/ui/ReasonPromptModal'
 import { TransferGroupModal } from '../classes/TransferGroupModal'
 import { StudentJournalModal } from './StudentJournalModal'
@@ -230,20 +226,10 @@ export function StudentDetailPage() {
   const [certificates, setCertificates] = useState<StudentCompletedCourse[]>([])
   const [certGenerating, setCertGenerating] = useState<string | null>(null)
   const [supportFeedback, setSupportFeedback] = useState<StudentSupportFeedback[]>([])
-  /** Qo'ng'iroqlar tarixi (Local Call). */
-  const [calls, setCalls] = useState<StudentCall[]>([])
-  const [callsLoading, setCallsLoading] = useState(true)
-  /** SMS tarixi (Eskiz + Local, ota-ona/o'quvchi raqamlari bo'yicha). */
-  const [sms, setSms] = useState<StudentSms[]>([])
-  const [smsLoading, setSmsLoading] = useState(true)
-
   /**
-   * "Qo'ng'iroqlar tarixi" ARALASH lentasi: haqiqiy qo'ng'iroqlar (Local Call) va bog'lanish
-   * urinishlarida yozilgan javoblar BITTA vaqt o'qida.
-   *
-   * <p>Sabab: operator qo'ng'iroq qiladi, keyin navbatda "javobi nima dedi" ni yozadi — bular
-   * bitta hodisaning ikki tomoni. Ayri ro'yxatlarda ular bir-biridan uzoqda tushib qolar va
-   * "bu qo'ng'iroqda nima gaplashildi?" degan savol javobsiz qolardi.</p>
+   * "Qo'ng'iroqlar tarixi" lentasi — bog'lanish urinishlarida operator yozgan javoblar ("javobi
+   * nima dedi"), eng yangisi tepada. Markazning o'z telefoniyasi (Local Call / CTI) 2026-10 da
+   * olib tashlandi — qo'ng'iroq YOZUVLARI endi yo'q, lentada faqat shu javoblar.
    *
    * <p>Faqat MATN yozilgan urinishlar qo'shiladi — bo'sh javob lentani suyultirardi.</p>
    */
@@ -266,15 +252,15 @@ export function StudentDetailPage() {
     [contacts],
   )
 
-  /** Qo'ng'iroqlar + bog'lanish javoblari, eng yangisi tepada. */
-  const callFeed = useMemo(() => {
-    const items: { key: string; at: string; call?: StudentCall; note?: (typeof contactEvents)[number] }[] = [
-      ...calls.map((c) => ({ key: `call-${c.id}`, at: c.startedAt, call: c })),
-      ...contactEvents.map((e) => ({ key: `contact-${e.id}`, at: e.at, note: e })),
-    ]
+  /** Bog'lanish javoblari, eng yangisi tepada. */
+  const callFeed = useMemo(
     // ISO satrlar — leksikografik solishtirish vaqt tartibini beradi (formatlar bir xil).
-    return items.sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0))
-  }, [calls, contactEvents])
+    () =>
+      contactEvents
+        .map((e) => ({ key: `contact-${e.id}`, at: e.at, note: e }))
+        .sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0)),
+    [contactEvents],
+  )
   /** "Guruhlar" kartasi bosilganda — a'zolik boshqaruvi modali (muzlatish/aktivlashtirish/sinovga/almashtirish). */
   const [groupModal, setGroupModal] = useState<StudentGroupMembership | null>(null)
   const [groupActionDate, setGroupActionDate] = useState('')
@@ -295,8 +281,8 @@ export function StudentDetailPage() {
   /** "Qo'ng'iroq qilish" bosilganda — to'liq o'quvchi obyekti (barcha telefon raqamlari uchun). */
   const [callTarget, setCallTarget] = useState<Student | null>(null)
   const [callOpen, setCallOpen] = useState(false)
-  /** "SMS yuborish" bosilganda — SmsModal bitta o'quvchi bilan ochiladi. */
-  const [smsTarget, setSmsTarget] = useState<Student | null>(null)
+  /** "Telegram xabar" bosilganda — TelegramMessageModal bitta o'quvchi bilan ochiladi. */
+  const [msgOpen, setMsgOpen] = useState(false)
   /** "To'lov qilish" bosilganda — PaymentModal uchun to'liq o'quvchi obyekti. */
   const [paymentTarget, setPaymentTarget] = useState<Student | null>(null)
   /** Saqlangandan keyin sahifa ma'lumotini qayta yuklash uchun (o'zgarsa — pastdagi useEffect qayta ishga tushadi). */
@@ -458,24 +444,14 @@ export function StudentDetailPage() {
       .catch(() => {})
   }, [tab, id, tabLoadedFor])
 
-  // «Aloqa» tabi — bog'lanish talablari, qo'ng'iroqlar va SMS lentasi BIR JOYDA ko'rinadi,
-  // shuning uchun uchalasi ham shu tab ochilganda birga so'raladi.
+  // «Aloqa» tabi — bog'lanish talablari va ularning javoblari (qo'ng'iroqlar tarixi) shu tab
+  // ochilganda so'raladi.
   useEffect(() => {
     if (tab !== 'aloqa' || !id || tabLoadedFor.aloqa === id) return
     setTabLoadedFor((p) => ({ ...p, aloqa: id }))
     // Bog'lanish talablari — `contacts` ruxsati bo'lmasa server 403 qaytaradi, shuning uchun
     // umuman so'ramaymiz (konsolda keraksiz xato chiqmasin).
     if (canSeeContacts) getStudentContactRequests(id).then(setContacts).catch(() => setContacts([]))
-    setCallsLoading(true)
-    getStudentCalls(id)
-      .then(setCalls)
-      .catch(() => setCalls([]))
-      .finally(() => setCallsLoading(false))
-    setSmsLoading(true)
-    getStudentSms(id)
-      .then(setSms)
-      .catch(() => setSms([]))
-      .finally(() => setSmsLoading(false))
   }, [tab, id, tabLoadedFor, canSeeContacts])
 
   /* ── «Turniket» tabi — kirish/chiqish tarixi ────────────────────────────────────────── */
@@ -570,13 +546,13 @@ export function StudentDetailPage() {
   }, [id, reloadKey])
 
   // O'quvchi ALMASHGANDA (tepadagi qidiruv orqali bir profildan boshqasiga o'tilganda — bir xil route,
-  // faqat `id` o'zgaradi) keshlangan TO'LIQ Student obyektlari (callTarget/paymentTarget/smsTarget/editing)
-  // eski o'quvchiniki bo'lib qolmasin — aks holda "To'lov qilish"/"SMS"/"Qo'ng'iroq" ESKI o'quvchi ustidan
+  // faqat `id` o'zgaradi) keshlangan TO'LIQ Student obyektlari (callTarget/paymentTarget/editing)
+  // eski o'quvchiniki bo'lib qolmasin — aks holda "To'lov qilish"/"Xabar"/"Qo'ng'iroq" ESKI o'quvchi ustidan
   // bajariladi (bug: yangi o'quvchini emas, eski o'quvchini chiqarib to'langan deb ko'rsatardi).
   useEffect(() => {
     setCallTarget(null)
     setPaymentTarget(null)
-    setSmsTarget(null)
+    setMsgOpen(false)
     setEditing(null)
     setCallOpen(false)
     // Bonus ma'lumoti ham eski o'quvchiniki bo'lib qolmasin (yangisi tab ochilganda yuklanadi).
@@ -594,8 +570,6 @@ export function StudentDetailPage() {
     setSupportFeedback([])
     setAiRecords([])
     setContacts([])
-    setCalls([])
-    setSms([])
     // Turniket — ma'lumot ham, tanlangan kun/oy ham boshiga qaytadi (yangi o'quvchi uchun
     // "bugun" so'raladi, aks holda avvalgi profildagi sana bilan ochilardi).
     setTsData(null)
@@ -611,19 +585,10 @@ export function StudentDetailPage() {
       .catch(() => alert("O'quvchi ma'lumotini yuklab bo'lmadi"))
   }
 
-  /** "SMS yuborish" bosilganda — SmsModal uchun TO'LIQ Student kerak (raqamlar/tokenlar). */
-  const openSms = () => {
+  /** "Telegram xabar" bosilganda — oila Telegram chatlariga xabar (o'quvchi id + ismi yetarli). */
+  const openMessage = () => {
     if (!id) return
-    if (callTarget) {
-      setSmsTarget(callTarget)
-      return
-    }
-    getStudent(id)
-      .then((s) => {
-        setCallTarget(s)
-        setSmsTarget(s)
-      })
-      .catch(() => alert("O'quvchi ma'lumotini yuklab bo'lmadi"))
+    setMsgOpen(true)
   }
 
   /** "Qo'ng'iroq qilish" bosilganda — barcha telefon raqamlari uchun TO'LIQ Student kerak. */
@@ -940,7 +905,7 @@ export function StudentDetailPage() {
               discountLabel={studentDiscountLabel({ ...data, discountCount: discounts?.active.length })}
               canEditPhoto={canEditPhoto}
               onPhoto={() => setPhotoOpen(true)}
-              onSms={openSms}
+              onMessage={openMessage}
               onPay={openPayment}
               onCall={openCall}
               menuItems={[
@@ -1383,21 +1348,14 @@ export function StudentDetailPage() {
         </Section>
       )}
 
-      {/* Qo'ng'iroqlar tarixi (Local Call — agent-telefonlar orqali) */}
+      {/* Qo'ng'iroqlar tarixi — bog'lanish urinishlarida yozilgan javoblar ("javobi nima dedi") */}
       {tab === 'aloqa' && (
       <Section title="Qo'ng'iroqlar tarixi" icon={PhoneCall}>
-        {callsLoading ? (
-          <Empty>Yuklanmoqda...</Empty>
-        ) : callFeed.length === 0 ? (
-          <Empty>Bu o'quvchiga hali qo'ng'iroq qilinmagan.</Empty>
+        {callFeed.length === 0 ? (
+          <Empty>Bu o'quvchi bo'yicha hali javob yozilmagan.</Empty>
         ) : (
           <div className="divide-y divide-slate-100">
-            {/* Qo'ng'iroqlar va bog'lanish javoblari BITTA vaqt o'qida — "kim qo'ng'iroq qildi"
-                va "nima deyildi" yonma-yon tursin. */}
-            {callFeed.map((item) =>
-              item.call ? (
-                <StudentCallRow key={item.key} call={item.call} />
-              ) : (
+            {callFeed.map((item) => (
                 <div key={item.key} className="flex gap-3 py-3">
                   <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand-50 text-brand-600">
                     <MessageSquareText className="h-4 w-4" />
@@ -1405,45 +1363,27 @@ export function StudentDetailPage() {
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-1.5">
                       <span className="text-sm font-medium text-slate-700">
-                        {item.note!.isNote ? 'Izoh' : "Bog'lanildi"}
+                        {item.note.isNote ? 'Izoh' : "Bog'lanildi"}
                       </span>
-                      {item.note!.resultLabel && (
+                      {item.note.resultLabel && (
                         <span className="rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-600">
-                          {item.note!.resultLabel}
+                          {item.note.resultLabel}
                         </span>
                       )}
-                      {item.note!.nextStatusLabel && (
-                        <span className="text-xs text-slate-400">→ {item.note!.nextStatusLabel}</span>
+                      {item.note.nextStatusLabel && (
+                        <span className="text-xs text-slate-400">→ {item.note.nextStatusLabel}</span>
                       )}
-                      {item.note!.reasonLabel && (
-                        <span className="text-xs text-slate-400">· {item.note!.reasonLabel}</span>
+                      {item.note.reasonLabel && (
+                        <span className="text-xs text-slate-400">· {item.note.reasonLabel}</span>
                       )}
                     </div>
-                    <p className="mt-0.5 text-sm text-slate-600">{item.note!.response}</p>
+                    <p className="mt-0.5 text-sm text-slate-600">{item.note.response}</p>
                     <p className="mt-0.5 text-xs text-slate-400">
-                      {formatDateTime(item.note!.at)}
-                      {item.note!.actorName && ` · ${item.note!.actorName}`}
+                      {formatDateTime(item.note.at)}
+                      {item.note.actorName && ` · ${item.note.actorName}`}
                     </p>
                   </div>
                 </div>
-              ),
-            )}
-          </div>
-        )}
-      </Section>
-      )}
-
-      {/* SMS tarixi (Eskiz + Local — o'quvchi/ota-ona raqamlariga yuborilgan) */}
-      {tab === 'aloqa' && (
-      <Section title="SMS tarixi" icon={MessageSquare}>
-        {smsLoading ? (
-          <Empty>Yuklanmoqda...</Empty>
-        ) : sms.length === 0 ? (
-          <Empty>Bu o'quvchiga hali SMS yuborilmagan.</Empty>
-        ) : (
-          <div className="divide-y divide-slate-100">
-            {sms.map((s) => (
-              <StudentSmsRow key={s.id} sms={s} />
             ))}
           </div>
         )}
@@ -1927,7 +1867,7 @@ export function StudentDetailPage() {
       />
 
 
-      <CallPickerModal
+      <PhoneCallModal
         open={callOpen}
         onClose={() => setCallOpen(false)}
         title={data.fullName}
@@ -2030,10 +1970,10 @@ export function StudentDetailPage() {
         }}
       />
 
-      <SmsModal
-        open={!!smsTarget}
-        onClose={() => setSmsTarget(null)}
-        recipients={smsTarget ? [smsTarget] : []}
+      <TelegramMessageModal
+        open={msgOpen}
+        onClose={() => setMsgOpen(false)}
+        recipients={id ? [{ id, fullName: data.fullName }] : []}
       />
 
       {/* Muzlatish / aktivlashtirish / sinovga qaytarish / chiqarish — sabab (va sana) tanlash modali */}
@@ -2451,77 +2391,6 @@ function BackLink() {
     >
       <ArrowLeft className="h-4 w-4" /> {backLabel}
     </Link>
-  )
-}
-
-/** Soniyani mm:ss ko'rinishига aylantiradi. */
-function fmtDur(sec: number): string {
-  const m = Math.floor(sec / 60)
-  const s = sec % 60
-  return `${m}:${String(s).padStart(2, '0')}`
-}
-
-/** Qo'ng'iroqlar tarixidagi bitta qator — yo'nalish ikonasi, vaqt, davomiylik, agent, audio belgisi. */
-function StudentCallRow({ call }: { call: StudentCall }) {
-  // Yo'nalish + javob holati bo'yicha ikonka/rang: javobsiz kiruvchi — qizil (PhoneMissed),
-  // javob berilgan kiruvchi — yashil, chiquvchi — ko'k.
-  const missed = call.direction === 'incoming' && !call.answered
-  const Icon = missed ? PhoneMissed : call.direction === 'incoming' ? PhoneIncoming : PhoneOutgoing
-  const iconColor = missed ? 'text-red-500' : call.direction === 'incoming' ? 'text-emerald-500' : 'text-sky-500'
-
-  return (
-    <div className="flex items-center gap-3 py-2.5">
-      <Icon className={cn('h-4 w-4 flex-shrink-0', iconColor)} />
-      <div className="min-w-0 flex-1">
-        <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-sm">
-          <span className="font-medium text-slate-700">{formatDateTime(call.startedAt)}</span>
-          {call.answered && call.durationSec > 0 ? (
-            <span className="font-mono text-xs text-slate-500">{fmtDur(call.durationSec)}</span>
-          ) : (
-            <span className="text-xs font-medium text-red-500">javobsiz</span>
-          )}
-          {call.hasAudio && (
-            <span className="rounded bg-brand-50 px-1.5 py-0.5 text-[11px] font-medium text-brand-600">audio</span>
-          )}
-        </div>
-        <div className="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs text-slate-400">
-          <span className="font-mono">{formatPhone(call.phoneNumber)}</span>
-          {call.handler && <span>· {call.handler}</span>}
-        </div>
-      </div>
-    </div>
-  )
-}
-
-/** SMS holatini guruhlaydi (HistoryTab.tsx dagi bilan bir xil mantiq). */
-function smsStatusInfo(status: string): { label: string; tone: BadgeTone } {
-  const s = (status || '').toUpperCase()
-  if (s === 'DELIVRD' || s === 'DELIVERED' || s === 'YUBORILDI') return { label: 'Yetkazildi', tone: 'green' }
-  if (s === 'WAITING' || s === 'NEW' || s === 'ACCEPTED' || s === 'STORED')
-    return { label: 'Kutilmoqda', tone: 'amber' }
-  return { label: 'Yetkazilmadi', tone: 'red' }
-}
-
-/** SMS tarixidagi bitta qator — matn, holat, manba (Eskiz/Local), raqam, vaqt. */
-function StudentSmsRow({ sms }: { sms: StudentSms }) {
-  const st = smsStatusInfo(sms.status)
-  return (
-    <div className="flex items-start gap-3 py-2.5">
-      <MessageSquare className="mt-0.5 h-4 w-4 flex-shrink-0 text-slate-400" />
-      <div className="min-w-0 flex-1">
-        <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-sm">
-          <span className="font-medium text-slate-700">{formatDateTime(sms.createdAt)}</span>
-          <Badge tone={st.tone}>{st.label}</Badge>
-          <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[11px] font-medium text-slate-500">
-            {sms.provider === 'local' ? 'Local' : 'Eskiz'}
-          </span>
-        </div>
-        <p className="mt-1 whitespace-pre-wrap break-words text-sm text-slate-600">{sms.message}</p>
-        <div className="mt-0.5 text-xs text-slate-400">
-          <span className="font-mono">{formatPhone(sms.phoneNumber)}</span>
-        </div>
-      </div>
-    </div>
   )
 }
 
@@ -3418,7 +3287,7 @@ function monthRangeList(from: string, to: string): string[] {
   return out
 }
 
-/** Bo'sh raqamlarni tashlab, bir xil raqamni faqat birinchi label bilan qoldiradi (CallPickerModal uchun). */
+/** Bo'sh raqamlarni tashlab, bir xil raqamni faqat birinchi label bilan qoldiradi (PhoneCallModal uchun). */
 function dedupeCallOptions(options: CallOption[]): CallOption[] {
   const seen = new Set<string>()
   return options.filter((o) => {

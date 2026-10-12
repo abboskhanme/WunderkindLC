@@ -20,7 +20,6 @@ import {
   type TeacherOverview,
 } from '@/api/services/teacher'
 import { useAuth } from '@/context/auth-context'
-import { useUnread } from '@/context/unread-context'
 import { useTeacherPortal } from '@/context/teacher-portal-context'
 import { usePerm } from '@/lib/permissions'
 import { apiErrorMessage, cn, formatMoney, openTelegram, telegramUrl } from '@/lib/utils'
@@ -49,7 +48,6 @@ export function TeacherDashboard() {
   const { user } = useAuth()
   const { can } = usePerm()
   const portal = useTeacherPortal()
-  const { unreadChannels } = useUnread()
   const [data, setData] = useState<TeacherOverview | null>(null)
   const [pending, setPending] = useState<TeacherLesson[]>([])
   const [salary, setSalary] = useState<SalaryLedger | null>(null)
@@ -291,7 +289,6 @@ export function TeacherDashboard() {
             <div className="grid grid-cols-3 gap-2">
               {quick.map((q) => {
                 const Icon = q.icon
-                const dot = q.badge && unreadChannels.size > 0
                 return (
                   <Link
                     key={q.to}
@@ -300,7 +297,6 @@ export function TeacherDashboard() {
                   >
                     <span className="relative flex h-9 w-9 items-center justify-center rounded-lg bg-white text-brand-600 shadow-[0_1px_2px_rgba(0,0,0,0.05)]">
                       <Icon className="h-[18px] w-[18px]" />
-                      {dot && <span className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-[#e53e3e] ring-2 ring-white" />}
                     </span>
                     <span className="text-[11.5px] font-semibold leading-tight text-ink">{q.label}</span>
                   </Link>

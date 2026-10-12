@@ -3,6 +3,9 @@ using WunderkindLC.Application.Abstractions;
 using WunderkindLC.Application.Services;
 using WunderkindLC.Domain;
 
+// Legacy entities (removed modules, 2026-10) stay mapped until a confirmed table drop.
+#pragma warning disable CS0618
+
 namespace WunderkindLC.Infrastructure.Data;
 
 /// <summary>
@@ -160,7 +163,7 @@ public partial class AppDbContext(DbContextOptions<AppDbContext> options)
     // O'quv xonalari
     public DbSet<Room> Rooms => Set<Room>();
 
-    // Eskiz.uz SMS
+    // SMS (Legacy, removed 2026-10) + qo'lda xabar andozalari (SmsTemplates — QOLDI)
     public DbSet<SmsBatch> SmsBatches => Set<SmsBatch>();
     public DbSet<SmsLog> SmsLogs => Set<SmsLog>();
     public DbSet<SmsTemplate> SmsTemplates => Set<SmsTemplate>();

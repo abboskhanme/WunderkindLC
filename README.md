@@ -37,8 +37,8 @@ butun jarayonni boshqaradigan CRM tizimi. Bitta backend uch xil foydalanuvchiga 
 **Backend**
 - ASP.NET Core 8 (C#) — **Clean Architecture**
 - Entity Framework Core 8 + **PostgreSQL 16** (`Npgsql`, inkremental migratsiyalar)
-- **SignalR** (chat / turniket) + raw **WebSocket** (CTI agent telefonlari) · **JWT** auth
-- **FCM** (push) · **Telegram bot** · **OpenXML** (shartnoma/hisobot/Excel eksport)
+- **SignalR** (turniket jonli oqimi) · **JWT** auth
+- **Telegram bot** · **OpenXML** (shartnoma/hisobot/Excel eksport)
 
 **Frontend**
 - React 19 + TypeScript + **Vite**
@@ -73,11 +73,11 @@ WunderkindLC.slnx
 - **Kurslar + O'quv dasturi** — daraja → mavzu → band ierarxiyasi (Excel import)
 - **Moliya / Kassa** — kirim/chiqim, oylik hisoblash, **kurs/guruh bo'yicha daromad hisoboti**
 - **Maosh** — qat'iy yoki guruhdan yig'ilgan to'lovning foizi
-- **Xabarlar** — SMS (Eskiz yoki Local SIM) · Telegram · Push, avto-xabar qoidalari (13 trigger)
-- **Call Center** — **Local Call** (Android agent-telefonlar, `README-CTI.md`) — yagona telefoniya
+- **Xabarlar** — Telegram (yagona tashqi kanal) + kabinet bildirishnomasi, avto-xabar qoidalari (10 trigger).
+  2026-10 da SMS (Eskiz / Local SMS), push, guruh chati, ilova (APK) va Local Call olib tashlandi.
 - **Marketing — Instagram AI agenti** — izoh/DM ga avtojavob, inbox, javob qoidalari,
   bilim bazasi, avtomatik lid yaratish (`instagram/`)
-- **Daraja testi** + **onlayn test** (Telegram bot orqali PDF, avtomatik baholash)
+- **Daraja testi** (lidlar) · guruh testlari natijalari (oflayn — ball qo'lda; onlayn rejim 2026-10 da olib tashlandi)
 - **Kitoblar sotuvi** — ombor + botdan buyurtma + admin tasdiqlash + analitika
 - **Shartnomalar** — Word/matnli andoza (`@`-o'rinbosarlar) → har bir oluvchi uchun .docx hosil bo'ladi
   va saqlanadi; superadmin uni yakunlab **tayyor PDF nusxasini yuklaydi** — shundan keyin shartnoma
@@ -89,15 +89,15 @@ WunderkindLC.slnx
 ### 🟢 O'qituvchi ilovasi (mobil)
 - Guruhga kirib **oylik jurnal** (baho/davomat) yuritish
 - **O'quv dasturi o'tilishi** + tugash prognozi (sana bilan)
-- Guruh chati · O'z maoshi · Baholash
+- O'z maoshi · Baholash
 - **Shartnoma** — o'zi bilan tuzilgan shartnomaning elektron (PDF) nusxasi (Profil ichida)
 
 ### 🔵 O'quvchi ilovasi (mobil)
 - **Duolingo uslubidagi o'quv dasturi yo'l-xaritasi** (o'tilgan/qolgan + prognoz)
 - **Umumiy statistika** — diagrammalarda (baholar trendi, davomat, uy vazifa va xulq, feedback)
-- Baholar · Davomat · To'lovlar · Reyting · Chat
+- Baholar · Davomat · To'lovlar · Reyting
 - **Shartnoma** — o'quvchi va ota-ona bilan tuzilgan shartnomaning elektron (PDF) nusxasi
-- Telegram kanalga o'tish · Push bildirishnomalar
+- Telegram kanalga o'tish · kabinet bildirishnomalari
 
 ---
 
@@ -114,8 +114,8 @@ Batafsil: [`.claude/rules/billing.md`](.claude/rules/billing.md)
 
 ## 🔐 Maxfiy kalitlar — faqat `.env`
 
-Barcha maxfiy qiymatlar (Telegram bot tokeni, FCM service account JSON, Gemini/Azure kaliti,
-Eskiz login/paroli, turniket login/paroli) **`.env` dan** o'qiladi — yagona joy
+Barcha maxfiy qiymatlar (Telegram bot tokeni, Google service account JSON — Play Integrity zaxirasi,
+Gemini/Azure kaliti, turniket login/paroli) **`.env` dan** o'qiladi — yagona joy
 `AppSecrets` (Application/Services). Ular **bazada saqlanmaydi** va Sozlamalar sahifasidan
 kiritilmaydi: sahifada faqat "sozlangan / sozlanmagan" holati va qo'shiladigan `.env` qatori
 ko'rinadi. Sabab — baza dump'i yoki Telegram'ga yuboriladigan zaxira nusxa ichida kalit sizib
@@ -158,8 +158,8 @@ cp .env.example .env      # (bir marta) kalitlarni to'ldiring
 
 > ⚠️ **Dev'da botlar va tashqi integratsiyalar ATAYIN O'CHIQ** (`docker-compose.dev.yml`):
 > Telegram har yangilanishni faqat **bir marta** yetkazadi — lokal bot serverdagi bot bilan bir xil
-> token bilan ishlasa, jonli bot foydalanuvchilarga javob bermay qoladi. Shuningdek Eskiz (haqiqiy
-> SMS), telefoniya, turniket va kamera ham o'chirilgan. Botni lokal sinash uchun BotFather'da
+> token bilan ishlasa, jonli bot foydalanuvchilarga javob bermay qoladi. Shuningdek turniket va
+> kamera ham o'chirilgan. Botni lokal sinash uchun BotFather'da
 > **alohida test boti** oching va `.env` ga qo'shing: `DEV_TELEGRAM_BOT_TOKEN` / `DEV_CAREER_BOT_TOKEN`.
 
 Dev muhiti prod konfiguratsiyasidan **meros** oladi (kalitlar ikki joyda takrorlanmaydi) va
@@ -215,12 +215,10 @@ App ishga tushganda `Migrate()` mavjud bazaga `ALTER` qo'llaydi.
 
 ---
 
-## 🔔 Push bildirishnoma (Flutter)
+## 🔔 Bildirishnomalar
 
-1. **Firebase** loyiha → Service Account JSON ni **`.env`** ga qo'ying (`FCM_SERVICE_ACCOUNT_JSON`).
-2. Flutter ilovaga shu loyihaning `google-services.json` ni qo'ying, FCM tokenni `window.__FCM_TOKEN__`
-   ga (yoki `postMessage`) bering.
-3. Web (`AuthProvider`) login'da tokenni avtomatik ro'yxatdan o'tkazadi, logout'da o'chiradi.
+Push (FCM / Web Push) 2026-10 da olib tashlandi — o'rnatiladigan ilova ishlatilmaydi. Avto-xabarlar
+kabinet qo'ng'iroqchasiga va Telegram'ga ketadi (`.claude/rules/messaging.md` §0).
 
 ---
 
@@ -231,7 +229,7 @@ App ishga tushganda `Migrate()` mavjud bazaga `ALTER` qo'llaydi.
 - **Dars jadvali yo'q** — jurnal ustunlari qo'lda qo'shilgan darslardan (`LessonNote`) keladi
 - **3 ta mustaqil dizayn-tizimi** — admin (violet), teacher (teal), student (blue) — bir-biriga ta'sir qilmaydi
 - **1 GB RAM serverga sig'adi** — shu sabab SQL Server o'rniga PostgreSQL
-- **Kunlik avtomatik backup** — `pg_dump | gzip` + uploads/CTI audio `tar.gz`, 7 kun saqlanadi;
+- **Kunlik avtomatik backup** — `pg_dump | gzip` + uploads (va eski CTI audio) `tar.gz`, 7 kun saqlanadi;
   ixtiyoriy GPG shifrlash va rclone off-site nusxa
 
 ---
@@ -243,7 +241,6 @@ App ishga tushganda `Migrate()` mavjud bazaga `ALTER` qo'llaydi.
 | [`CLAUDE.md`](CLAUDE.md) | Arxitektura qarorlari, entity rename'lari, olib tashlangan modullar, build buyruqlari |
 | [`API_DOCUMENTATION.md`](API_DOCUMENTATION.md) | To'liq REST API ma'lumotnomasi (controller · yo'l · ruxsat) |
 | [`DEPLOY.md`](DEPLOY.md) | Prod deploy, Cloudflare Tunnel, backup/restore, serverni ko'chirish |
-| [`README-CTI.md`](README-CTI.md) | Local Call moduli — API xaritasi, WS/FCM oqimi, audio saqlash |
 | [`WORKLOG.md`](WORKLOG.md) | To'liq o'zgarishlar tarixi |
 | [`instagram/README.md`](instagram/README.md) | Instagram AI agenti — modul, sozlash qo'llanmasi (`SOZLASH.md`), protokol (`TEXNIK.md`) |
 | `.claude/rules/*.md` | Modulga xos qoidalar: billing · messaging · journal · tests · exercise · books · crm-leads · career · marketing-instagram |

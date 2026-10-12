@@ -10,7 +10,8 @@ namespace WunderkindLC.Tests;
 /// <summary>
 /// 2026-10-08 relizdan oldingi XAVFSIZLIK tekshiruvi tuzatishlari:
 /// <list type="number">
-///   <item>onlayn test boti orqali serverning ISTALGAN faylini o'qish (<c>TestResult.PdfUrl</c>);</item>
+///   <item>onlayn test boti orqali serverning ISTALGAN faylini o'qish (<c>TestResult.PdfUrl</c>) — 2026-10 dan
+///     bot oqimi butunlay olib tashlangan;</item>
 ///   <item>arxivdan qaytarishda o'zi tanlagan parol (parol darvozasisiz);</item>
 ///   <item>klientdan kelgan manzil bo'yicha fayl O'CHIRISH (CV, guruh o'chirish);</item>
 ///   <item>lidni ISTALGAN o'quvchiga bog'lash va ruxsatsiz guruhga qo'shish;</item>
@@ -101,11 +102,10 @@ public class SecurityFixTests
     }
 
     /* =========================================================================================
-     *  1) ONLAYN TEST PDF — yozishda tekshiruv (o'qituvchi ham, admin ham shu servisdan o'tadi)
+     *  1) ONLAYN TEST PDF — 2026-10 dan test PDF'ini YOZADIGAN va BOTGA YUBORADIGAN yo'l YO'Q
+     *     (onlayn test rejimi va bot oqimi olib tashlandi — testlar faqat oflayn). Eski qatorlardagi
+     *     PdfUrl faqat guruh o'chirilganda naqsh bo'yicha tozalanadi (pastdagi 3-bo'lim).
      * ========================================================================================= */
-
-    private static OnlineTestDto Online(string pdf) =>
-        new("online", pdf, "t.pdf", 4, 4, "ABCD", D(0) + "T00:00", D(0) + "T23:59");
 
     private static async Task<Group> GroupAsync(AppDbContext ctx)
     {
@@ -115,52 +115,13 @@ public class SecurityFixTests
         return g;
     }
 
-    [Theory]
-    [InlineData("/../.env")]
-    [InlineData("/uploads/../appsettings.json")]
-    [InlineData("/uploads/face/" + GuidHex + ".pdf")]
-    [InlineData("/uploads/certificates/cert-" + GuidHex + ".pdf")]
-    [InlineData("/uploads/t.pdf")]
-    public async Task Onlayn_test_YARATISHDA_begona_PdfUrl_rad_etiladi(string pdf)
-    {
-        using var db = TestDb.Sqlite();
-        var g = await GroupAsync(db.Context);
-
-        var (dto, err) = await TestResultService.CreateAsync(db.Context, g.Id, "Unit 1", D(0), 4, "o'qituvchi", Online(pdf));
-
-        Assert.Null(dto);
-        Assert.Equal(TestResultService.PdfUrlInvalidMessage, err);
-        Assert.Empty(await db.Context.TestResults.ToListAsync());
-    }
-
     [Fact]
-    public async Task Onlayn_test_TAHRIRDA_begona_PdfUrl_rad_etiladi_eskisi_qoladi()
+    public void Onlayn_test_boti_va_PDF_yozish_yoli_QAYTIB_KELMAGAN()
     {
-        using var db = TestDb.Sqlite();
-        var g = await GroupAsync(db.Context);
-        var (dto, err) = await TestResultService.CreateAsync(db.Context, g.Id, "Unit 1", D(0), 4, "admin", Online(ServerPdf));
-        Assert.Null(err);
-        db.Context.ChangeTracker.Clear();
-
-        var (ok, err2) = await TestResultService.UpdateAsync(db.Context, dto!.Id, "Unit 1", D(0), 4, Online("/../.env"));
-
-        Assert.False(ok);
-        Assert.Equal(TestResultService.PdfUrlInvalidMessage, err2);
-        db.Context.ChangeTracker.Clear();
-        Assert.Equal(ServerPdf, (await db.Context.TestResults.SingleAsync()).PdfUrl);
-    }
-
-    [Fact]
-    public async Task Onlayn_test_server_PDF_bilan_yaratiladi()
-    {
-        using var db = TestDb.Sqlite();
-        var g = await GroupAsync(db.Context);
-
-        var (dto, err) = await TestResultService.CreateAsync(db.Context, g.Id, "Unit 1", D(0), 4, "admin", Online(" " + ServerPdf + " "));
-
-        Assert.Null(err);
-        Assert.NotNull(dto);
-        Assert.Equal(ServerPdf, (await db.Context.TestResults.SingleAsync()).PdfUrl);
+        Assert.False(File.Exists(Path.Combine(RepoRoot, "WunderkindLC.Application", "Services", "OnlineTestBotService.cs")));
+        Assert.False(File.Exists(Path.Combine(RepoRoot, "WunderkindLC.Application", "Services", "OnlineTestService.cs")));
+        var svc = Source("WunderkindLC.Application", "Services", "TestResultService.cs");
+        Assert.DoesNotContain(".PdfUrl =", svc);
     }
 
     /* =========================================================================================
@@ -168,7 +129,6 @@ public class SecurityFixTests
      * ========================================================================================= */
 
     [Theory]
-    [InlineData("WunderkindLC.Application", "Services", "OnlineTestBotService.cs", "UploadUrlRules.ResolveFlat(env.ContentRootPath, test.PdfUrl)", "test.PdfUrl.TrimStart('/')")]
     [InlineData("WunderkindLC.Application", "Services", "BookShopBotService.cs", "UploadUrlRules.ResolveFlat(env.ContentRootPath, book.CoverUrl)", "book.CoverUrl.TrimStart('/')")]
     public void Bot_fayl_yuborishda_yol_uploads_ichida_hal_qilinadi(string p1, string p2, string file, string must, string mustNot)
     {

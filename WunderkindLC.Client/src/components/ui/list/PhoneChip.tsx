@@ -5,8 +5,8 @@ const chip =
 
 /**
  * edutizim jadvallaridagi telefon: kulrang yumaloq "chip". Bosilsa qo'ng'iroq (`tel:`).
- * `onCall` berilsa — `tel:` o'rniga o'sha chaqiriladi (masalan markazning qo'ng'iroq oynasi:
- * Local Call, `CallPickerModal`).
+ * `onCall` berilsa — `tel:` o'rniga o'sha chaqiriladi (masalan bir nechta raqamdan birini
+ * tanlatadigan `PhoneCallModal`).
  */
 export function PhoneChip({ phone, onCall }: { phone?: string | null; onCall?: () => void }) {
   if (!phone) return <span className="text-[#9ca3af]">—</span>

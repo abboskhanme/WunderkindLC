@@ -8,17 +8,18 @@ using WunderkindLC.Domain;
 namespace WunderkindLC.Application.Services;
 
 /// <summary>
-/// Tug'ilgan kun avto-SMS (fon xizmati). Har kuni ~09:00 (Toshkent) da tug'ilgan kuni BUGUN
-/// bo'lgan (arxivlanmagan) o'quvchilarga "Tug'ilgan kun" hodisasiga belgilangan andoza bo'yicha
-/// tabrik SMS yuboradi. Andoza yo'q / Eskiz sozlanmagan bo'lsa — jim o'tadi.
+/// Tug'ilgan kun tabrigi (fon xizmati). Har kuni ~09:00 (Toshkent) da tug'ilgan kuni BUGUN
+/// bo'lgan (arxivlanmagan) o'quvchilarga "Tug'ilgan kun" hodisasiga belgilangan qoida bo'yicha
+/// tabrik yuboradi (kabinet + Telegram — <see cref="AutoMessageService"/>). Qoida yo'q bo'lsa — jim o'tadi.
+/// (2026-10 gacha nomi <c>BirthdaySmsService</c> edi — SMS kanali olib tashlangach Telegram orqali.)
 /// <para>⚠️ Kuniga bir marta — belgi BAZADA (<see cref="JobRunMarker"/>): har o'quvchi yuborishdan
 /// OLDIN band qilinadi (<c>birthday:{studentId}</c>), ish tugagach <c>birthday</c> belgisi qo'yiladi.
-/// Ilgari belgi xotirada edi va har deploy (09:00 dan keyin) tabrik SMS'ini qayta yuborardi.</para>
+/// Ilgari belgi xotirada edi va har deploy (09:00 dan keyin) tabrikni qayta yuborardi.</para>
 /// </summary>
-public class BirthdaySmsService(
+public class BirthdayGreetingService(
     IServiceProvider services,
     AutoMessageService autoMsg,
-    ILogger<BirthdaySmsService> logger) : BackgroundService
+    ILogger<BirthdayGreetingService> logger) : BackgroundService
 {
     private const int SendHour = 9;
 
@@ -39,7 +40,7 @@ public class BirthdaySmsService(
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { break; }
             catch (Exception ex)
             {
-                logger.LogError(ex, "Tug'ilgan kun SMS siklida xatolik");
+                logger.LogError(ex, "Tug'ilgan kun tabrigi siklida xatolik");
             }
 
             try { await Task.Delay(TimeSpan.FromHours(1), stoppingToken); }
@@ -90,7 +91,7 @@ public class BirthdaySmsService(
             await autoMsg.DispatchStudentAsync(db, AutoMessageTriggers.Birthday, s, ct: ct);
             sent++;
         }
-        if (sent > 0) logger.LogInformation("Tug'ilgan kun SMS: {Count} o'quvchiga yuborildi.", sent);
+        if (sent > 0) logger.LogInformation("Tug'ilgan kun tabrigi: {Count} o'quvchiga yuborildi.", sent);
     }
 
     /// <summary>BirthDate (turli formatlar) bugungi oy+kunga to'g'ri keladimi.</summary>

@@ -811,50 +811,6 @@ export async function generateStudentCertificate(
   return data
 }
 
-/** O'quvchiga qilingan qo'ng'iroq (Local Call — agent-telefonlar orqali, eng oxirgisi birinchi). */
-export interface StudentCall {
-  id: string
-  /** Manba — hozircha doim "local" (Local Call). */
-  source: 'local'
-  direction: 'incoming' | 'outgoing'
-  phoneNumber: string
-  startedAt: string
-  durationSec: number
-  answered: boolean
-  hasAudio: boolean
-  handler: string
-}
-
-/** O'quvchiga qilingan barcha qo'ng'iroqlar tarixi (Local Call). */
-export async function getStudentCalls(studentId: string): Promise<StudentCall[]> {
-  if (USE_MOCK) {
-    await delay()
-    return []
-  }
-  const { data } = await api.get<StudentCall[]>(`/admin/students/${studentId}/calls`)
-  return data
-}
-
-/** O'quvchiga (yoki ota-onasiga) yuborilgan SMS — eng oxirgisi birinchi. Provider: eskiz|local. */
-export interface StudentSms {
-  id: string
-  phoneNumber: string
-  message: string
-  status: string
-  provider: string
-  createdAt: string
-}
-
-/** O'quvchiga yuborilgan barcha SMS'lar tarixi (Phone/ParentPhone/FatherPhone/MotherPhone bo'yicha). */
-export async function getStudentSms(studentId: string): Promise<StudentSms[]> {
-  if (USE_MOCK) {
-    await delay()
-    return []
-  }
-  const { data } = await api.get<StudentSms[]>(`/admin/students/${studentId}/sms`)
-  return data
-}
-
 /** Sertifikat faylini yuklab olish (admin). Auth header avtomatik qo'shiladi. */
 export async function downloadStudentCertificate(
   studentId: string,

@@ -28,7 +28,8 @@ ATAYIN ko'rsatilmaydi (soxta bo'sh sahifa qilinmaydi). Kerak bo'lsa — alohida 
 - O'ngda: `rows` → kulrang `#f0f2f2` qatorlar (44px rangli ikonka + sarlavha + izoh + strelka);
   `panel` → tayyor sozlama komponenti o'z kartasi bilan; `link` → alohida sahifa (↗ belgisi).
 - Tanlangan bo'lim — `?bolim=`. ⚠️ `?tab=` EMAS: "Xabar kanallari" paneli `tab` ni o'z ichki
-  tablari (sms/telegram/firebase) uchun ishlatadi.
+  tablari uchun ishlatardi (2026-10 dan panelda faqat Telegram bot qoldi — SMS/Firebase/Local SMS/APK
+  bo'limlari olib tashlandi; eski `?bolim=` qiymatlari `SettingsPage` da umumiy bo'limga yo'naltiriladi).
 
 ## 3. Ruxsat
 
@@ -40,8 +41,10 @@ sozlamalari) bor guruh hammaga ko'rinadi.
 
 ## 4. Eski manzillar
 
-`/admin/settings/{school,check,reasons,channels,apk,azure-speech,gemini}` →
-`LEGACY_SETTINGS_REDIRECTS` bo'yicha yangi guruh sahifasiga (xatcho'plar buzilmasin).
+`/admin/settings/{school,check,reasons,channels,azure-speech,gemini}` →
+`LEGACY_SETTINGS_REDIRECTS` bo'yicha yangi guruh sahifasiga (xatcho'plar buzilmasin). `apk` (ilova
+fayli) 2026-10 da olib tashlandi — `SettingsPage` uni `/admin/sozlamalar/ilova` ga, boshqa noma'lum yoki
+olib tashlangan bo'limlarni (`eskiz`, `firebase`, `local-sms`) umumiy sozlamalarga yo'naltiradi.
 Integratsiyalar (Zaxira, Turniket, Kamera, PostHog) edutizimda yo'q — `/admin/settings/*` da va
 menyuda Future → Sozlamalar ostida QOLADI.
 

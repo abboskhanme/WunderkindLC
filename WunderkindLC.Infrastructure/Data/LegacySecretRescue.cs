@@ -29,8 +29,7 @@ public static class LegacySecretRescue
         ("GeminiApiKey", "GEMINI_API_KEY"),
         ("AzureSpeechKey", "AZURE_SPEECH_KEY"),
         ("AzureSpeechRegion", "AZURE_SPEECH_REGION"),
-        ("EskizEmail", "ESKIZ_EMAIL"),
-        ("EskizPassword", "ESKIZ_PASSWORD"),
+        // (SMS provider keys are not rescued any more — the SMS channel was removed in 2026-10.)
         ("TurnstileUsername", "TURNSTILE_USERNAME"),
         ("TurnstilePassword", "TURNSTILE_PASSWORD"),
     ];

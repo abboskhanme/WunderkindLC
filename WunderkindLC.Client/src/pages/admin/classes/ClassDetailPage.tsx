@@ -54,7 +54,7 @@ import { ClassMembersModal } from './ClassMembersModal'
 import { GroupStudentsTab, type MemberActionKind } from './detail/GroupStudentsTab'
 import { GroupAiPanel } from './GroupAiPanel'
 import { ClassFormModal } from './ClassFormModal'
-import { SmsModal, type SmsRecipient } from '../students/SmsModal'
+import { TelegramMessageModal, type TelegramRecipient } from '../students/TelegramMessageModal'
 
 const weekdayShort = ['Du', 'Se', 'Cho', 'Pa', 'Ju', 'Sha', 'Ya']
 const uzMonths = [
@@ -176,10 +176,10 @@ export function ClassDetailPage() {
   const [group, setGroup] = useState<Group | null>(null)
   /** "Guruhni tahrirlash" — sarlavha "⋮" menyusidan. */
   const [editOpen, setEditOpen] = useState(false)
-  /** "SMS jo'natish" (guruhga) — sarlavha "⋮" menyusidan; faol a'zolarning to'liq ma'lumoti. */
-  const [smsOpen, setSmsOpen] = useState(false)
-  const [smsRecipients, setSmsRecipients] = useState<SmsRecipient[]>([])
-  const [smsLoading, setSmsLoading] = useState(false)
+  /** "Telegram xabar" (guruhga) — sarlavha "⋮" menyusidan; faol a'zolar ro'yxati. */
+  const [msgOpen, setMsgOpen] = useState(false)
+  const [msgRecipients, setMsgRecipients] = useState<TelegramRecipient[]>([])
+  const [msgLoading, setMsgLoading] = useState(false)
 
   // ---- O'ng ustundagi faol bo'lim (tab) ----
   const [tab, setTab] = useState<Tab>('oquvchilar')
@@ -237,30 +237,28 @@ export function ClassDetailPage() {
     }
   }
 
-  /** "SMS jo'natish" (guruhga) — faol a'zolarning to'liq (telefon raqamli) ma'lumotini yuklaydi.
+  /** "Telegram xabar" (guruhga) — faol a'zolar ro'yxatini yuklaydi.
    *  A'zolik holati va SHU GURUH balansi ham uzatiladi — modal ichida "aktiv/sinov/muzlatilgan" va
    *  "faqat qarzdorlar" filtrlari shularga tayanadi. */
-  const openGroupSms = async () => {
-    if (smsLoading) return
-    setSmsLoading(true)
+  const openGroupMessage = async () => {
+    if (msgLoading) return
+    setMsgLoading(true)
     try {
       // ⚠️ Guruhga CHEKLANGAN endpoint. Ilgari bu yerda `getStudents()` chaqirilib, markazning
       // BARCHA o'quvchisi (to'liq entity) tortilar va brauzerda ~15 a'zo filtrlanardi.
       // Holat va balansni ham server qaytaradi — a'zolar ro'yxati bilan AYNAN bir manbadan
       // (SHU GURUH balansi, umumiy `Student.Balance` emas).
       const rows = await getGroupSmsRecipients(id!)
-      setSmsRecipients(
+      setMsgRecipients(
         rows.map((r) => ({
-          id: r.studentId, fullName: r.fullName, phone: r.phone,
-          parentPhone: r.parentPhone, fatherPhone: r.fatherPhone, motherPhone: r.motherPhone,
-          status: r.status, balance: r.balance,
+          id: r.studentId, fullName: r.fullName, status: r.status, balance: r.balance,
         })),
       )
-      setSmsOpen(true)
+      setMsgOpen(true)
     } catch {
       alert("O'quvchilar ma'lumotini yuklab bo'lmadi")
     } finally {
-      setSmsLoading(false)
+      setMsgLoading(false)
     }
   }
 
@@ -829,8 +827,8 @@ export function ClassDetailPage() {
                             }]
                           : []),
                         {
-                          label: smsLoading ? 'Yuklanmoqda...' : 'SMS jo\'natish', icon: MessageSquare,
-                          onClick: openGroupSms,
+                          label: msgLoading ? 'Yuklanmoqda...' : 'Telegram xabar', icon: MessageSquare,
+                          onClick: openGroupMessage,
                         },
                         ...(can('classes.list', 'edit')
                           ? [{ label: 'Guruhni tahrirlash', icon: Pencil, onClick: () => setEditOpen(true) }]
@@ -1548,7 +1546,7 @@ export function ClassDetailPage() {
 
           {/* Imtihonlar — guruh testlari (yaratish/tahrirlash/o'chirish + ball kiritishga o'tish) */}
           {/* Imtihonlar — "Testlar natijalari" bo'limi bilan AYNAN bir xil panel:
-              onlayn (bot) va oflayn test shu yerning o'zida yaratiladi. */}
+              test shu yerning o'zida yaratiladi va ball kiritiladi. */}
           {tab === 'imtihonlar' && <GroupTestsPanel groupId={id} onOpenTest={(testId) => navigate(`/admin/test-results/${id}/tests/${testId}`)} />}
 
           {/* ALOQA — guruh o'quvchilarini "Bog'lanish kerak" navbatiga yuborish */}
@@ -1895,8 +1893,8 @@ export function ClassDetailPage() {
         initial={group}
       />
 
-      {/* Guruhga SMS jo'natish — sarlavha "⋮" menyusidan, faol a'zolarning barchasiga. */}
-      <SmsModal open={smsOpen} onClose={() => setSmsOpen(false)} recipients={smsRecipients} />
+      {/* Guruhga Telegram xabar — sarlavha "⋮" menyusidan, faol a'zolarning oilalariga. */}
+      <TelegramMessageModal open={msgOpen} onClose={() => setMsgOpen(false)} recipients={msgRecipients} />
 
       {/* Guruhni yakunlash modali (Hybrid: arxivlash + maqsad kursga yangi guruh) */}
       <CompleteAndTransferModal

@@ -20,7 +20,7 @@ namespace WunderkindLC.Application.Services;
 /// Qoldiq buyurtma tushganda TEGILMAYDI — faqat admin tasdiqlaganda ayiriladi
 /// (<see cref="BookSalesService"/>). Avtomatik to'lov tizimi (Click/Payme) ISHLATILMAYDI.
 ///
-/// <para><see cref="OnlineTestBotService"/> bilan bir xil tuzilma: <c>Handles(data)</c> orqali
+/// <para>Tuzilma: <c>Handles(data)</c> orqali
 /// <c>TelegramBotService</c> callback'larni shu servisga yo'naltiradi, vaqtinchalik holat
 /// <see cref="BookBotSession"/> da (chat bo'yicha bitta).</para>
 /// </summary>

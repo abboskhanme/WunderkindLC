@@ -543,50 +543,35 @@ public class AuditFixT5Tests
     }
 
     /* =========================================================================================
-     *  LRN-6 — ONLAYN TEST: kalit o'zgarsa qayta baholash; o'rin qoidasi bitta
+     *  LRN-6 — TEST: maksimal ball kamaysa mavjud ballar QISILADI
+     *  (onlayn qism — kalit o'zgarsa qayta baholash, tashqi ishtirokchilar — 2026-10 da onlayn test
+     *  rejimi bilan birga olib tashlandi; testlar faqat oflayn)
      * ========================================================================================= */
 
     [Fact]
-    public async Task Test_KALIT_ozgarsa_javoblar_QAYTA_baholanadi_tashqilar_ham()
+    public async Task Test_MAKSIMAL_ball_kamaysa_mavjud_ballar_QISILADI()
     {
         using var db = TestDb.Sqlite();
         var g = AddGroup(db);
         var s = AddStudent(db, g, "Ali");
-        var t = new TestResult
-        {
-            GroupId = g.Id, Name = "Unit 1", Date = Day(0), MaxScore = 4, Mode = "online",
-            PdfUrl = "/uploads/t.pdf", QuestionCount = 4, OptionCount = 4, AnswerKey = "ABCD",
-            StartAt = Day(0) + "T00:00", EndAt = Day(0) + "T23:59", Code = "KOD123",
-        };
+        var t = new TestResult { GroupId = g.Id, Name = "Unit 1", Date = Day(0), MaxScore = 10 };
         db.Context.TestResults.Add(t);
-        db.Context.TestScores.Add(new TestScore { TestResultId = t.Id, StudentId = s.Id, Score = 4, Answers = "ABCD", Source = "bot" });
-        db.Context.ExternalTestScores.Add(new ExternalTestScore { TestResultId = t.Id, ChatId = 7, FullName = "Mehmon", Score = 3, Answers = "ABCA" });
+        db.Context.TestScores.Add(new TestScore { TestResultId = t.Id, StudentId = s.Id, Score = 9 });
         await db.Context.SaveChangesAsync();
 
-        var r = await TestResultService.UpdateDetailedAsync(db.Context, t.Id, "Unit 1", Day(0), 4,
-            new OnlineTestDto("online", "/uploads/0123456789abcdef0123456789abcdef.pdf", "t.pdf", 4, 4, "ABCA", t.StartAt, t.EndAt, "KOD123", true));
+        var r = await TestResultService.UpdateDetailedAsync(db.Context, t.Id, "Unit 1", Day(0), 5);
 
         Assert.True(r.Ok);
-        Assert.Equal(2, r.Regraded);
-        Assert.Equal(3, (await db.Context.TestScores.SingleAsync()).Score);
-        Assert.Equal(4, (await db.Context.ExternalTestScores.SingleAsync()).Score);
+        Assert.Equal(1, r.Regraded);
+        Assert.Equal(5, (await db.Context.TestScores.SingleAsync()).Score);
     }
 
     [Fact]
-    public void Test_Regrade_qolda_ball_faqat_QISILADI()
+    public void Test_qolda_ball_faqat_QISILADI()
     {
-        var t = new TestResult { Mode = "online", AnswerKey = "AB", QuestionCount = 2, MaxScore = 2 };
-        Assert.Equal(2, TestResultService.Regrade(9, "", t, keyChanged: true));       // javobsiz — clamp
-        Assert.Equal(1, TestResultService.Regrade(2, "AC", t, keyChanged: true));     // javobli — qayta sanaladi
-        Assert.Equal(2, TestResultService.Regrade(2, "AC", t, keyChanged: false));    // kalit o'zgarmagan — tegilmaydi
-    }
-
-    [Fact]
-    public void Orin_qoidasi_tashqi_ishtirokchilar_bilan_birga()
-    {
-        // Markazdagilar: 8, 5; tashqi: 9, 5 → 5 ball olgan — 3-o'rin (yuqorida 9 va 8).
-        Assert.Equal(3, OnlineTestService.RankAmong(5, new decimal[] { 8, 5, 9, 5 }));
-        Assert.Equal(1, OnlineTestService.RankAmong(9, new decimal[] { 8, 5, 9, 5 }));
+        Assert.Equal(2, TestResultService.ClampScore(9, 2));
+        Assert.Equal(1, TestResultService.ClampScore(1, 2));
+        Assert.Equal(0, TestResultService.ClampScore(-3, 2));
     }
 
     /* =========================================================================================

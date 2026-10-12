@@ -142,6 +142,8 @@ ikki manbadan ko'chirilgan (ularning fayllari tegilmagan — o'zgarsa bu yerni h
   `IgConversation.PastLeadIds` tarixida qoladi — kanal tahlili va reklama ROI'si pul to'lagan ESKI
   lidni yo'qotmaydi, yangi lid esa Telegram guruhiga YANGI lid bo'lib tushadi
   (`marketing-instagram.md` §6.1, §6.4).
+- (2026-10: lidga avto-SMS — `lead_new`, `trial_reminder`, `test_link`, `test_result` — SMS kanali bilan
+  birga OLIB TASHLANDI; lidning Telegram manzili yo'q. Quyidagi qator TARIX.)
 - **`lead_new` avto-SMS** endi Instagram va Meta reklama lidlarida ham ketadi (YANGI + telefonli) —
   `InstagramLeadBridge`/`MetaLeadBridge` ichida (CRM-9). Takroriy murojaatga — yo'q.
 - **Aylantirilgan lid O'CHIRILMAYDI** (400): KPI "shartnoma", sotuv tushumi va qabul cheklisti
@@ -297,9 +299,9 @@ MATN bo'yicha guruhlaydi (id bo'yicha emas).
 | Bosh sahifa «Buyurtmalar» / «Birinchi darsga keladiganlar» | yo'qotilgan SANALMAYDI |
 | «Birinchi darsga yozilganlar» (`first-lesson`) | ro'yxatga TUSHMAYDI |
 | Lidlar ro'yxatidagi `firstLessonAt` | yo'qotilganda bo'sh |
-| Sinov darsi eslatma SMS (`TrialReminderService`) | YUBORILMAYDI (tiklansa yana ishlaydi) |
+| Sinov darsi eslatma SMS (`TrialReminderService`) | 2026-10 dan xizmatning O'ZI yo'q |
 | KPI cheklisti «ochiq lidlarga topshiriq bog'langan» | yo'qotilgan talab qilinmaydi |
-| Ommaviy SMS (tanlovsiz standart auditoriya) | kirmaydi; qo'lda tanlansa — ketadi |
+| Lidga ommaviy SMS | 2026-10 dan YO'Q (SMS kanali olib tashlandi) |
 
 ⚠️ **«Buyurtmadan ketganlar» (`OrdersLeft`) O'ZGARMADI** — avvalgidek faqat O'CHIRILGAN lidlar:
 kartochka ro'yxati arxiv sahifasi, yo'qotilganlar u yerda yo'q (sanoq ro'yxatdan farq qilmasin).

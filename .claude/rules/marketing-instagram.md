@@ -219,7 +219,7 @@ konversiya allaqachon bor). Parallel `InstagramLead` jadvali ham **yaratilmaydi*
 | Har suhbat lid bo'lmaydi | `InstagramContract.ShouldCreateLead` = `IsHot || kontakt bor`. Salom-alik va spam CRM'ni ifloslantirmaydi |
 | **Vaqtinchalik ism ALMASHADI** | `"username (Instagram)"`, `"Instagram mijozi"`, `"Reklama lidi (ismsiz)"`, `"Noma'lum…"` — `LeadIntake.IsPlaceholderName`. Keyin AI, forma, daraja testi, landing yoki reklama formasi haqiqiy ism bersa — o'sha yoziladi; menejer yozgan ism TEGILMAYDI (2026-10-07, IG-4: ilgari faqat `"Noma'lum…"` tanilardi va `"ali_v (Instagram)"` abadiy qolardi) |
 | **O'quvchiga aylantirilgan lid** | qayta ishlatilmaydi — `conv.LeadId` unga bog'langan bo'lsa ham YANGI lid ochiladi ("Avval o'quvchi bo'lgan: <ism>" izohi bilan — telefon bo'yicha, telefon bo'lmasa suhbat bog'langan aylantirilgan lid bo'yicha), suhbat yangi lidga ulanadi (CRM-1, `crm-leads.md`). Eski lid **TARIXGA** yoziladi — §6.4 |
-| **`lead_new` avto-SMS** | YANGI, telefoni bor lidga — lid formasi va landing bilan bir xil (`LeadIntake.DispatchLeadNewAsync`, CRM-9). Telefonsiz lidga ketmaydi; telefon keyin kelsa lid allaqachon MAVJUD — takroriyga SMS yo'q |
+| **`lead_new` avto-SMS** | 2026-10 dan YO'Q — SMS kanali olib tashlandi (`LeadIntake.DispatchLeadNewAsync` va ko'priklardagi `autoMsg` parametri ham). Lidning Telegram kartasi o'zgarmagan |
 
 ### 6.1. 🔴 TELEGRAM GURUHIGA KARTA — Instagram YAGONA ISTISNO edi
 
@@ -798,6 +798,8 @@ ikki joyda ikki xil qoida bo'lsa CRM'da bitta odam **ikkita kartochka** bo'lib q
 bo'lmasligi mumkin va jimgina tashlansa markaz **pul to'lagan** murojaatdan xabar topmasdi.
 Bu nom VAQTINCHALIK (`LeadIntake.IsPlaceholderName`) — keyin haqiqiy ism kelsa almashadi.
 
+⚠️ (2026-10: quyidagi `lead_new` avto-SMS'i SMS kanali bilan birga OLIB TASHLANDI — `MetaLeadBridge`
+endi hech narsa yubormaydi va "SaveChanges qilmaydi" qoidasining istisnosi ham yo'q. Matn TARIX.)
 ⚠️ **YANGI reklama lidiga `lead_new` avto-SMS'i ketadi** (telefoni bo'lsa) — `MetaLeadBridge`
 ichida (`autoMsg` parametri; chaqiruvchilar `MetaLeadgenService` va «Qayta olish»). Ilgari
 bu kanal (va Instagram) tanishuv SMS'ini umuman olmasdi — markaz qoidani yoqib qo'ygan bo'lsa

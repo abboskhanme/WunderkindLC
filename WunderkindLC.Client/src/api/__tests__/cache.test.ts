@@ -28,7 +28,7 @@ describe('scopeOf — mutatsiya qaysi resursga tegdi', () => {
   })
 
   it('boshqa yo\'llarda BITTA bo\'lak', () => {
-    expect(scopeOf('/cti/agents/5/dial')).toBe('/cti')
+    expect(scopeOf('/hubs/live/negotiate')).toBe('/hubs')
     expect(scopeOf('/school')).toBe('/school')
   })
 

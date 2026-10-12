@@ -21,7 +21,7 @@ katalog bilan bir xilligini qulflaydi.
 - **`inNav: true`** — SOF hisobot: sahifada hech qanday yozuvchi amal yo'q. U eski
   bo'limidan **KO'CHIRILDI** (masalan "Kurslar analitikasi" O'quv bo'limidan chiqdi).
 - **`inNav` yo'q** — ichida amal bor sahifa (Moliya — tranzaksiya kiritish, O'quvchilar
-  davomati — SMS, Kitoblar — qaytarish). U **o'z operativ bo'limida QOLADI**, hub'da esa
+  davomati — Telegram xabar, Kitoblar — qaytarish). U **o'z operativ bo'limida QOLADI**, hub'da esa
   havola bo'lib turadi.
 
 ⚠️ Sabab: kundalik ish yo'li uzilmasligi kerak. Kassir "Moliya"ni "Hisobotlar" ichidan

@@ -228,7 +228,7 @@ public static class LeadFormService
     /// </summary>
     public static async Task<SubmitOutcome> SubmitAsync(
         IAppDbContext db, string slug, LeadFormSubmitRequest req,
-        TelegramService? telegram = null, AutoMessageService? autoMsg = null)
+        TelegramService? telegram = null)
     {
         var form = await db.LeadForms.FirstOrDefaultAsync(f => f.Slug == slug && f.IsActive);
         if (form is null) return new SubmitOutcome(null, null);
@@ -370,10 +370,6 @@ public static class LeadFormService
         if (telegram is not null)
             await LeadNotifier.NotifyNewLeadAsync(db, telegram, lead, isNewLead: isNewLead,
                 createdBy: $"Forma: {form.Title}");
-
-        // Avto-xabar FAQAT yangi lidga — takroriy ariza uchun tanishuv SMS'i qayta ketmasin.
-        if (autoMsg is not null && isNewLead)
-            await autoMsg.DispatchLeadAsync(db, AutoMessageTriggers.LeadNew, lead);
 
         var msg = string.IsNullOrWhiteSpace(form.SuccessText)
             ? "Rahmat! Arizangiz qabul qilindi — tez orada siz bilan bog'lanamiz."

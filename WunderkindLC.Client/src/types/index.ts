@@ -1898,21 +1898,7 @@ export interface StudentFinanceRow {
   discountAmount: number
 }
 
-/* ---------- Xabarlar (chat + e'lon + telegram) ---------- */
-
-/** Guruh chatidagi bitta xabar */
-export interface ChatMessage {
-  id: string
-  /** Qaysi guruh chati (guruh nomi) */
-  className: string
-  senderUserId: string
-  senderName: string
-  /** admin | teacher | student */
-  senderRole: Role
-  text: string
-  /** ISO 8601 vaqt */
-  createdAt: string
-}
+/* ---------- Xabarlar (Telegram e'lon) ---------- */
 
 /** Admin "Xabarlar" bo'limidagi guruh kartasi */
 export interface MessageClass {
@@ -1921,8 +1907,6 @@ export interface MessageClass {
   studentCount: number
   /** Telegramda ro'yxatdan o'tgan (e'lon oluvchi) ota-onalar soni */
   parentCount: number
-  /** Oxirgi chat xabari vaqti (ISO) yoki null */
-  lastMessageAt: string | null
 }
 
 /** Telegram bot orqali yuborilgan e'lon */
@@ -1976,35 +1960,6 @@ export interface TelegramStatus {
   botUsername: string
 }
 
-/** Push uchun tanlanadigan oluvchi */
-export interface PushRecipient {
-  /** Akkaunt id (UserId) */
-  userId: string
-  name: string
-  /** "Ota-ona" yoki "O'qituvchi" */
-  group: string
-  /** Qo'shimcha (ota-ona uchun guruh) */
-  detail: string
-  /** Qurilma ulanganmi (push haqiqatan yetadimi) */
-  hasDevice: boolean
-}
-
-/** Yuborilgan push bildirishnoma (tarix) */
-export interface PushMessage {
-  id: string
-  audience: string
-  title: string
-  body: string
-  senderName: string
-  createdAt: string
-  recipientCount: number
-  sentCount: number
-  /** Nechta oluvchi "Tasdiqlash" bosgani */
-  confirmedCount: number
-  /** Jami oluvchi (bildirishnoma yozilganlar) */
-  targetCount: number
-}
-
 /** Ota-onalar bo'limidagi farzand (qisqacha) */
 export interface ParentChild {
   studentId: string
@@ -2012,11 +1967,6 @@ export interface ParentChild {
   className: string
   firstLoginAt: string | null
   lastLoginAt: string | null
-  /** Oxirgi faol qurilma nomi */
-  deviceName?: string
-  platform?: string
-  /** Push provayder app_id */
-  appId?: string
 }
 
 /** Ota-onalar ro'yxati qatori (telefon bo'yicha guruhlangan) */
@@ -2028,12 +1978,9 @@ export interface ParentRow {
   activatedAt: string | null
   lastSeenAt: string | null
   children: ParentChild[]
-  /** Oxirgi faol qurilma (farzandlar bo'yicha) */
-  deviceName?: string
-  platform?: string
 }
 
-/** Ilova → O'qituvchilar qatori (o'qituvchi ilova faolligi + qurilma) */
+/** O'qituvchilar (kabinet) qatori — o'qituvchi kabinetiga kirish faolligi */
 export interface TeacherAppRow {
   teacherId: string
   fullName: string
@@ -2041,9 +1988,6 @@ export interface TeacherAppRow {
   isActivated: boolean
   activatedAt: string | null
   lastSeenAt: string | null
-  deviceName: string
-  platform: string
-  appId: string
 }
 
 /** Admin xarita sahifasi uchun — joylashuvi bor bitta o'quvchi qatori */
@@ -2335,35 +2279,6 @@ export interface TestGroupOverview {
   testCount: number
 }
 
-/** Onlayn test sozlamalari (bot orqali ishlanadigan test). mode="offline" — eski tizim. */
-export interface OnlineTest {
-  /** "offline" (ballni o'qituvchi qo'lda kiritadi) | "online" (o'quvchi botdan ishlaydi) */
-  mode: 'offline' | 'online' | string
-  /** Savollar PDF fayli ("/uploads/xxx.pdf") — botga shu yuboriladi */
-  pdfUrl: string
-  pdfName: string
-  /** Savollar soni (onlayn testda maxScore shunga teng — har savol 1 ball) */
-  questionCount: number
-  /** Variantlar soni: 4 → A–D, 5 → A–E */
-  optionCount: number
-  /** To'g'ri javoblar ("ABCDA...", uzunligi = questionCount) */
-  answerKey: string
-  /** Javob qabul qilish oynasi (ISO "yyyy-MM-ddTHH:mm") */
-  startAt: string
-  endAt: string
-  /**
-   * TEST KODI — markazda o'qimaydigan odam ham botda shu kod bilan testni ishlaydi
-   * («📝 Testni ishlash» → «🔑 Test kodi bilan kirish» → KOD → F.I.Sh → test).
-   * Bo'sh yuborilsa server o'zi noyob kod yaratadi.
-   */
-  code: string
-  /**
-   * true — test guruh a'zolariga ham e'lon qilinadi (va kod bilan tashqi odam ham qo'shiladi);
-   * false — "FAQAT ONLAYN": guruhga e'lon qilinmaydi, faqat kod bilan ishlanadi.
-   */
-  groupOpen: boolean
-}
-
 /** Bitta test qatori (guruh testlar ro'yxatida). */
 export interface GroupTest {
   id: string
@@ -2376,11 +2291,6 @@ export interface GroupTest {
   studentCount: number
   scoredCount: number
   avgScore: number | null
-  online: OnlineTest
-  /** Botdan javob yuborgan o'quvchilar soni (onlayn test) */
-  submittedCount: number
-  /** Markazdan tashqari (test kodi bilan kirgan) ishtirokchilar soni */
-  externalCount: number
   /** true — test natijasi bo'yicha sertifikat beriladi */
   certificateEnabled: boolean
   /** Tanlangan sertifikat shabloni (bo'sh — standart shablon) */
@@ -2395,27 +2305,8 @@ export interface TestScoreRow {
   fullName: string
   score: number | null
   rank: number
-  /** Onlayn: botdan yuborilgan javoblar ("ABDCA...") */
-  answers: string
-  /** Onlayn: yuborilgan vaqt (ISO) */
-  submittedAt: string
-  /** "bot" — o'quvchi botdan yubordi; "" — qo'lda kiritilgan */
-  source: string
-  /** Guruhning faol a'zosimi. false — markazning BOSHQA guruhidagi o'quvchi kod bilan qo'shilgan. */
+  /** Guruhning faol a'zosimi. false — ball qo'yilgan, lekin hozir guruhning faol a'zosi emas. */
   member: boolean
-}
-
-/** MARKAZDAN TASHQARI ishtirokchi qatori — test kodi bilan kirgan, markazda o'qimaydigan odam. */
-export interface ExternalTestScoreRow {
-  id: string
-  fullName: string
-  /** Botga ulashgan telefon raqami (bo'lmasa bo'sh) */
-  phone: string
-  score: number
-  /** Shu ro'yxat ICHIDAGI o'rin */
-  rank: number
-  answers: string
-  submittedAt: string
 }
 
 /** Test tafsiloti — test + o'quvchilar ballari (ball desc bo'yicha saralangan). */
@@ -2428,11 +2319,8 @@ export interface TestResultDetail {
   maxScore: number
   createdAt: string
   createdBy: string
-  /** MARKAZDAGILAR — guruh a'zolari + kod bilan qo'shilgan markaz o'quvchilari */
+  /** Guruh a'zolari (+ ball qo'yilgan, lekin hozir faol a'zo bo'lmagan o'quvchilar) */
   rows: TestScoreRow[]
-  online: OnlineTest
-  /** MARKAZDAN TASHQARI — kod bilan kirgan, markazda o'qimaydigan ishtirokchilar */
-  externalRows: ExternalTestScoreRow[]
   /** true — test natijasi bo'yicha sertifikat beriladi */
   certificateEnabled: boolean
   /** Tanlangan sertifikat shabloni (bo'sh — standart shablon) */

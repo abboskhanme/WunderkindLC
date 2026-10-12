@@ -315,28 +315,14 @@ public class StaffController(AppDbContext db, AuditService audit) : ControllerBa
         ArchiveService.Snapshot(db, "staff", user.Id, user.FullName, user.Email ?? "",
             (object?)SecretScrub.ToScrubbedNode(user) ?? new { user.Id, user.FullName },
             reason.Length > 0 ? reason : null, actor);
-        // Jonli havolalar (KPI profili, ochiq lidlar, kassa, topshiriqlar, CTI agent, Telegram) — o'sha
+        // Jonli havolalar (KPI profili, ochiq lidlar, kassa, topshiriqlar, Telegram) — o'sha
         // tranzaksiyada bo'shatiladi; nima bo'shatilgani shu BITTA audit qatorida yoziladi.
-        // CTI agent id'lari OLDINDAN olinadi: bo'shatish agentning xodim bog'lanishini tozalaydi.
-        var agentIds = await db.CtiAgents.Where(a => a.StaffUserId == user.Id).Select(a => a.Id).ToListAsync();
         var released = await StaffRelease.ReleaseAsync(db, user.Id, user.FullName, actorId);
         audit.Record("Staff", user.Id, "delete",
             $"Xodim o'chirildi: {user.FullName}" + (reason.Length > 0 ? $" — sabab: {reason}" : "")
             + (released.Any ? $" — {released.Summary()}" : ""));
         db.Users.Remove(user);
         await db.SaveChangesAsync();
-
-        // ⚠️ O'chirilgan agentning JONLI ulanishi DARHOL uziladi (`CtiController.UpdateAgent` bilan bir xil):
-        // aks holda ishdan ketgan xodimning telefoni ochiq WebSocket va 12 soatlik token bilan qo'ng'iroq
-        // qilish/SMS yuborishda davom etardi.
-        if (agentIds.Count > 0)
-        {
-            var conn = HttpContext.RequestServices.GetRequiredService<CtiConnectionManager>();
-            foreach (var agentId in agentIds) await conn.DisconnectAsync(agentId);
-        }
-        // Standart Local SMS agenti o'chgan bo'lsa — avtomatik SMS'lar to'xtadi: javobda OCHIQ aytiladi.
-        if (released.DefaultSmsAgentName is { } agentName)
-            return Ok(new { warning = LocalSmsDefaultAgent.StoppedWarning(agentName) });
         return NoContent();
     }
 

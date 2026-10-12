@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import {
   GraduationCap, BookOpen, Wallet, LogOut, MessageSquare, ChevronRight,
-  Lock, Moon, Bell, LifeBuoy,
+  Lock, Moon, LifeBuoy,
 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import type { SalaryLedger, TeacherClass } from '@/types'
@@ -46,17 +46,11 @@ export function TeacherProfilePage() {
   const [loading, setLoading] = useState(true)
   const [isSupport, setIsSupport] = useState(false)
   const [dark, setDark] = useState<boolean>(() => getTeacherTheme() === 'dark')
-  const [push, setPush] = useState<boolean>(() => localStorage.getItem('teacher_push') !== 'off')
 
   const toggleDark = () => {
     const next = !dark
     setDark(next)
     setTeacherTheme(next ? 'dark' : 'light')
-  }
-  const togglePush = () => {
-    const next = !push
-    setPush(next)
-    localStorage.setItem('teacher_push', next ? 'on' : 'off')
   }
 
   useEffect(() => {
@@ -212,15 +206,6 @@ export function TeacherProfilePage() {
           sub={dark ? 'Yoqilgan' : "O'chirilgan"}
           on={dark}
           onToggle={toggleDark}
-          border
-        />
-        <ToggleRow
-          icon={Bell}
-          color="#3d68ff"
-          label="Bildirishnoma"
-          sub={push ? 'Yoqilgan' : "O'chirilgan"}
-          on={push}
-          onToggle={togglePush}
         />
       </div>
 

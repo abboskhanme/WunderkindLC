@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useMemo, useState } from 'react'
-import { Search, Smartphone, CheckCircle2, Circle, ChevronDown, X } from 'lucide-react'
+import { Search, Users, CheckCircle2, Circle, ChevronDown, X } from 'lucide-react'
 import type { ParentRow } from '@/types'
 import { getParents } from '@/api/services/parents'
 import { Card } from '@/components/ui/Card'
@@ -32,8 +32,9 @@ function timeAgo(iso: string | null): string {
 }
 
 /**
- * Admin "Ilova → Ota-onalar" sahifasi. Telefon bo'yicha guruhlangan ota-onalar:
- * ilova aktivlashtirilganmi, oxirgi marta qachon kirgan, farzandlari ro'yxati.
+ * Admin "Ilova → Ota-onalar (kabinet akkauntlari)" sahifasi. Telefon bo'yicha guruhlangan ota-onalar:
+ * o'quvchi kabinetiga (web / Telegram Mini App) kirganmi, oxirgi marta qachon kirgan, farzandlari.
+ * (Mobil ilova qurilma ustunlari 2026-10 da olib tashlandi — o'rnatiladigan ilova ishlatilmaydi.)
  */
 export function ParentsPage() {
   const [rows, setRows] = useState<ParentRow[]>([])
@@ -88,7 +89,7 @@ export function ParentsPage() {
     <div>
       <PageHeader
         title="Ota-onalar"
-        sub="Ilova foydalanuvchilari (ota-onalar) — telefon raqami bo'yicha guruhlangan"
+        sub="O'quvchi kabineti akkauntlari (ota-onalar) — telefon raqami bo'yicha guruhlangan"
       />
 
       {/* Statistik kartochkalar */}
@@ -96,19 +97,19 @@ export function ParentsPage() {
         <StatCard
           label="Jami ota-onalar"
           value={stats.total}
-          icon={Smartphone}
+          icon={Users}
           iconBg="bg-slate-100"
           iconColor="text-slate-600"
         />
         <StatCard
-          label="Ilovani aktivlashtirgan"
+          label="Kabinetga kirgan"
           value={stats.activated}
           icon={CheckCircle2}
           iconBg="bg-emerald-50"
           iconColor="text-emerald-600"
         />
         <StatCard
-          label="Hali aktivlashtirmagan"
+          label="Hali kirmagan"
           value={stats.inactive}
           icon={Circle}
           iconBg="bg-amber-50"
@@ -168,8 +169,7 @@ export function ParentsPage() {
                   <th>Telefon</th>
                   <th>Farzandlar</th>
                   <th>Holat</th>
-                  <th>Qurilma</th>
-                  <th>Aktivlashtirilgan</th>
+                  <th>Birinchi kirish</th>
                   <th>Oxirgi kirish</th>
                 </tr>
               </thead>
@@ -212,19 +212,6 @@ export function ParentsPage() {
                             </Badge>
                           )}
                         </td>
-                        <td className="text-slate-600">
-                          {r.deviceName ? (
-                            <span className="inline-flex items-center gap-1">
-                              <Smartphone className="h-3.5 w-3.5 text-slate-400" />
-                              {r.deviceName}
-                              {r.platform && (
-                                <span className="text-[11px] text-slate-400">({r.platform})</span>
-                              )}
-                            </span>
-                          ) : (
-                            '—'
-                          )}
-                        </td>
                         <td className="font-mono text-slate-600">
                           {formatDateTime(r.activatedAt)}
                         </td>
@@ -237,7 +224,7 @@ export function ParentsPage() {
                       </tr>
                       {isOpen && (
                         <tr className="bg-slate-50/40">
-                          <td colSpan={8} className="px-4 py-3">
+                          <td colSpan={7} className="px-4 py-3">
                             <div className="rounded-lg border border-slate-200 bg-white">
                               <table className="table">
                                 <thead>
@@ -246,8 +233,6 @@ export function ParentsPage() {
                                     <th>Guruh</th>
                                     <th>Birinchi kirish</th>
                                     <th>Oxirgi kirish</th>
-                                    <th>Qurilma</th>
-                                    <th>App ID</th>
                                   </tr>
                                 </thead>
                                 <tbody>
@@ -257,13 +242,6 @@ export function ParentsPage() {
                                       <td className="text-slate-600">{c.className}</td>
                                       <td className="font-mono text-slate-600">{formatDateTime(c.firstLoginAt)}</td>
                                       <td className="font-mono text-slate-600">{formatDateTime(c.lastLoginAt)}</td>
-                                      <td className="text-slate-600">
-                                        {c.deviceName || '—'}
-                                        {c.platform ? ` (${c.platform})` : ''}
-                                      </td>
-                                      <td className="text-slate-500">
-                                        <code className="font-mono text-xs">{c.appId || '—'}</code>
-                                      </td>
                                     </tr>
                                   ))}
                                 </tbody>

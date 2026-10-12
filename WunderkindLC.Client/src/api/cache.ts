@@ -212,15 +212,10 @@ const CROSS_INVALIDATION: Record<string, string[]> = {
   '/admin/contacts': ['/admin/students'],
   // O'qituvchi jurnaldan navbatga yuboradi — natija FAQAT admin modulida ko'rinadi (§3.7).
   '/teacher/groups': ['/admin/contacts', '/admin/students', '/admin/classes'],
-  // Qo'ng'iroqlar (Local Call): o'quvchi profilining qo'ng'iroqlar tarixi, «Bog'lanish kerak» va
-  // KPI sifat namunasi (transkript/AI tahlil) shu yozuvlarni o'qiydi.
-  '/cti': ['/admin/students', '/admin/contacts', '/admin/kpi'],
-  // Xabar/SMS/push yuborilishi qabul qiluvchining portal ro'yxatlarida ko'rinadi.
+  // Telegram xabar yuborilishi qabul qiluvchining portal ro'yxatlarida ko'rinadi.
   '/admin/messages': ['/admin/students', '/admin/notifications', '/student', '/teacher'],
   '/admin/reminders': ['/admin/messages'],
   '/admin/auto-messages': ['/admin/messages'],
-  '/teacher/chat': ['/admin/messages'],
-  '/student/chat': ['/admin/messages'],
   '/teacher/notifications': ['/admin/messages'],
   '/student/notifications': ['/admin/messages'],
   // Faqat "o'qildi" belgisi — boshqa hech narsaga tegmaydi (Topbar qo'ng'irog'i).

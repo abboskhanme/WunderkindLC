@@ -370,20 +370,6 @@ export interface KpiTicketMetaDto {
   staff: KpiStaffDto[]
 }
 
-/** Haftalik sifat nazorati uchun tasodifiy qo'ng'iroq namunasi — Local Call (CTI) yozuvidan. */
-export interface KpiCallSampleDto {
-  /** `CtiCallRecord.Id` — yozuv `fetchCtiCallAudioUrl(callId)` bilan tinglanadi. */
-  callId: string
-  phoneNumber: string
-  /** Server CTI qiymatini o'giradi: incoming/missed → `inbound`, outgoing → `outbound`. */
-  direction: 'inbound' | 'outbound'
-  startedAt: string
-  durationSeconds: number
-  hasRecording: boolean
-  transcript: string | null
-  aiAnalysis: string | null
-}
-
 // ---------- Yopish ----------
 
 /** Birlik iqtisodiyoti — 3% / 5% / 10% sog'lomlik indikatorlari. */
@@ -595,14 +581,6 @@ export async function deleteKpiTicket(id: string): Promise<void> {
 /** Sabablar katalogi + 13 audit mezoni + KPI profili bor xodimlar. */
 export async function getKpiTicketMeta(): Promise<KpiTicketMetaDto> {
   const { data } = await api.get<KpiTicketMetaDto>('/admin/kpi/tickets/reasons')
-  return data
-}
-
-/** Haftalik sifat nazorati: xodimning TASODIFIY qo'ng'iroqlari. */
-export async function getKpiCallSamples(userId: string, count = 5): Promise<KpiCallSampleDto[]> {
-  const { data } = await api.get<KpiCallSampleDto[]>('/admin/kpi/tickets/calls', {
-    params: clean({ userId, count }),
-  })
   return data
 }
 

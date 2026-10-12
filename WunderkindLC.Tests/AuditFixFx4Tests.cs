@@ -3,7 +3,6 @@ using System.Text.Json;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using WunderkindLC.Application.Abstractions;
 using WunderkindLC.Application.Dtos;
@@ -22,8 +21,8 @@ namespace WunderkindLC.Tests;
 ///     <see cref="AttendanceNotifyWorker"/>): jurnal bilan bitta SaveChanges, restartda yo'qolmaydi, takror yo'q;</item>
 ///   <item>R2-5 — <see cref="JobRunMarker"/> / <c>TryMarkAsync</c>: kontekstdagi "buzuq" qoldiq band qilishni
 ///     "allaqachon band" deb o'qitmaydi, haqiqiy poyga — false, boshqa xato — tashqariga;</item>
-///   <item>R2-7 — SMS navbati: ishga tushishda HAMMA <c>sending</c> → <c>unknown</c>;</item>
-///   <item>R3-3 / R3-7 — standart Local SMS agenti o'chsa ogohlantirish; xodim o'chirilganda agent to'liq uziladi;</item>
+///   <item>(R2-7 SMS navbati va R3-3 / R3-7 standart Local SMS agenti testlari 2026-10 da SMS / Local SMS
+///     bilan birga olib tashlandi);</item>
 ///   <item>R3-5 — Telegram zaxirasi GZIP, og'ir jadvallar ro'yxati.</item>
 /// </list>
 /// </summary>
@@ -70,7 +69,7 @@ public class AuditFixFx4Tests
     {
         db.Context.AutoMessageRules.Add(new AutoMessageRule
         {
-            Trigger = trigger, Enabled = true, SendPush = true, Audience = "parents",
+            Trigger = trigger, Enabled = true, Audience = "parents",
             Template = "{fish} — {sana} davomat",
         });
         db.Context.SaveChanges();
@@ -335,111 +334,6 @@ public class AuditFixFx4Tests
 
         await using var read = db.NewContext();
         Assert.True(await read.LessonReminderMarks.AnyAsync(m => m.Key == key));
-    }
-
-    /* =========================================================================================
-     *  R2-7 — SMS NAVBATI: ishga tushishda HAMMA `sending` → `unknown`
-     * ========================================================================================= */
-
-    [Fact]
-    public async Task Sms_navbati_YANGI_uzilgan_sending_ham_unknown_boladi()
-    {
-        using var db = TestDb.Sqlite();
-        var ctx = db.Context;
-        var http = new NoNetworkHttpClientFactory();
-        var config = new ConfigurationBuilder().Build();
-        var eskiz = new EskizService(config, http, NullLogger<EskizService>.Instance);
-        var fcm = new FcmService(http, NullLogger<FcmService>.Instance);
-        var cti = new CtiSmsService(new CtiConnectionManager(), fcm, NullLogger<CtiSmsService>.Instance);
-        SmsQueueService Queue() => new(new SingleServiceProvider(ctx), eskiz, cti, NullLogger<SmsQueueService>.Instance);
-
-        var batch = new SmsBatch { Audience = "Test", Message = "Salom", RecipientCount = 2 };
-        ctx.SmsBatches.Add(batch);
-        ctx.SaveChanges();
-        await Queue().EnqueueAsync(ctx, new SmsQueueService.Job(batch.Id, "eskiz", null, null, new[]
-        {
-            new SmsQueueService.Target("998901111111", "A", "Salom A"),
-            new SmsQueueService.Target("998902222222", "B", "Salom B"),
-        }));
-        // Tez restart: birinchi oluvchi atigi bir necha soniya oldin band qilingan edi.
-        var first = ctx.SmsQueueItems.OrderBy(i => i.Seq).First();
-        first.Status = "sending";
-        first.UpdatedAt = AppClock.Now;
-        ctx.SaveChanges();
-        ctx.ChangeTracker.Clear();
-
-        Reflect.RunAsyncMethod(Queue(), "ResumePendingAsync", CancellationToken.None);
-
-        var statuses = ctx.SmsQueueItems.OrderBy(i => i.Seq).Select(i => i.Status).ToList();
-        Assert.Equal(new[] { "unknown", "pending" }, statuses);   // ilgari "sending" abadiy qolardi
-    }
-
-    /* =========================================================================================
-     *  R3-3 / R3-7 — STANDART Local SMS agenti
-     * ========================================================================================= */
-
-    [Fact]
-    public void Standart_agent_muammosi_banner_matni()
-    {
-        var active = new CtiAgent { Id = "a1", Login = "a1", DisplayName = "Kassa telefoni", IsActive = true };
-        var off = new CtiAgent { Id = "a2", Login = "a2", DisplayName = "", IsActive = false };
-
-        Assert.Null(LocalSmsDefaultAgent.Problem(false, null, null));             // Local SMS o'chiq — muammo yo'q
-        Assert.Null(LocalSmsDefaultAgent.Problem(false, "a2", off));
-        Assert.Null(LocalSmsDefaultAgent.Problem(true, "a1", active));
-        Assert.Contains("tanlanmagan", LocalSmsDefaultAgent.Problem(true, null, null));
-        Assert.Contains("topilmadi", LocalSmsDefaultAgent.Problem(true, "yoq", null));
-        var p = LocalSmsDefaultAgent.Problem(true, "a2", off);
-        Assert.Contains("o'chirilgan", p);
-        Assert.Contains("\"a2\"", p);                                              // nomi bo'sh — login
-    }
-
-    [Fact]
-    public async Task Xodim_ochirilganda_STANDART_agent_ogohlantiriladi_va_agent_toliq_uziladi()
-    {
-        using var db = TestDb.Sqlite();
-        var ctx = db.Context;
-        const string uid = "staff-1";
-        ctx.Users.Add(new AppUser { Id = uid, FullName = "Operator", Email = "op", Role = Roles.Staff });
-        var agent = new CtiAgent
-        {
-            Login = "op-phone", DisplayName = "Operator telefoni", StaffUserId = uid, IsActive = true,
-            IsOnline = true, FcmToken = "FCM-1",
-        };
-        ctx.CtiAgents.Add(agent);
-        ctx.CenterMeta.Add(new CenterMeta { LocalSmsEnabled = true, LocalSmsDefaultAgentId = agent.Id });
-        await ctx.SaveChangesAsync();
-
-        var r = await StaffRelease.ReleaseAsync(ctx, uid, "Operator", actorId: "admin-1");
-        await ctx.SaveChangesAsync();
-
-        Assert.Equal("Operator telefoni", r.DefaultSmsAgentName);
-        Assert.Contains("standart Local SMS agenti edi", r.Summary());
-        await using var read = db.NewContext();
-        var saved = await read.CtiAgents.SingleAsync();
-        Assert.False(saved.IsActive);
-        Assert.False(saved.IsOnline);           // UpdateAgent bilan bir xil
-        Assert.Equal("", saved.FcmToken);       // o'chirilgan telefon push bilan uyg'otilmaydi
-        Assert.Contains("Operator telefoni", LocalSmsDefaultAgent.StoppedWarning(r.DefaultSmsAgentName!));
-    }
-
-    [Fact]
-    public async Task Standart_bolmagan_yoki_Local_SMS_ochiq_bolsa_ogohlantirish_yoq()
-    {
-        using var db = TestDb.Sqlite();
-        var ctx = db.Context;
-        var a = new CtiAgent { Login = "x", IsActive = true };
-        var b = new CtiAgent { Login = "y", IsActive = true };
-        ctx.CtiAgents.AddRange(a, b);
-        var meta = new CenterMeta { LocalSmsEnabled = true, LocalSmsDefaultAgentId = a.Id };
-        ctx.CenterMeta.Add(meta);
-        await ctx.SaveChangesAsync();
-
-        Assert.Equal(a.Id, await LocalSmsDefaultAgent.DefaultAmongAsync(ctx, new[] { a.Id }));
-        Assert.Null(await LocalSmsDefaultAgent.DefaultAmongAsync(ctx, new[] { b.Id }));
-        meta.LocalSmsEnabled = false;
-        await ctx.SaveChangesAsync();
-        Assert.Null(await LocalSmsDefaultAgent.DefaultAmongAsync(ctx, new[] { a.Id }));
     }
 
     /* =========================================================================================

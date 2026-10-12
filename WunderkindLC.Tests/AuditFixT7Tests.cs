@@ -417,28 +417,7 @@ public class AuditFixT7Tests
         Assert.Equal((last, first, middle), TeacherStudentEdit.SplitName(full));
     }
 
-    /* =========================================================================================
-     *  AUTH-6 — push o'chirilgan foydalanuvchiga push yuborilmaydi
-     * ========================================================================================= */
-
-    [Fact]
-    public async Task MutedTokens_faqat_push_ochirgan_foydalanuvchi_tokenlari()
-    {
-        using var t = TestDb.Sqlite();
-        t.Context.DeviceTokens.AddRange(
-            new DeviceToken { UserId = "u-off", Token = "tok-off" },
-            new DeviceToken { UserId = "u-on", Token = "tok-on" },
-            new DeviceToken { UserId = "u-none", Token = "tok-none" });
-        t.Context.UserSettings.AddRange(
-            new UserSettings { UserId = "u-off", NotificationsEnabled = false },
-            new UserSettings { UserId = "u-on", NotificationsEnabled = true });
-        await t.Context.SaveChangesAsync();
-
-        var muted = await FcmService.MutedTokensAsync(t.Context, new[] { "tok-off", "tok-on", "tok-none", "noma'lum" });
-
-        // Sozlama qatori yo'q foydalanuvchi — standart (YOQILGAN).
-        Assert.Equal(new[] { "tok-off" }, muted);
-    }
+    // (AUTH-6 — push o'chirilgan foydalanuvchiga push yuborilmaydi — 2026-10 da push bilan birga olib tashlandi.)
 
     /* =========================================================================================
      *  C1 (qism) — arxivdagi o'quvchi o'qituvchi bosh sahifasida YO'Q

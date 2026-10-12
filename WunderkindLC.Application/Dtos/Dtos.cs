@@ -400,31 +400,30 @@ public record NvrSegmentDto(string Start, string End);
 /// bo'lmasa — SABAB (jim bo'sh ro'yxat emas: sozlash shu matn bilan qilinadi).</summary>
 public record NvrSearchDto(bool Ok, string Error, List<NvrSegmentDto> Segments);
 
-/* ---------- Avto xabarlar (yagona SMS+Push+Telegram model) — Xabarlar → Avto xabarlar ---------- */
+/* ---------- Avto xabarlar (kabinet + Telegram) — Xabarlar → Avto xabarlar ---------- */
 
-/// <summary>Qaysi kanallar shu hodisada mavjud (frontend faqat shu toggle'larni ko'rsatadi).</summary>
-public record AutoMessageChannelsDto(bool Sms, bool Push, bool Telegram);
 /// <summary>Avto-xabar hodisasi katalogidagi bitta yozuv (frontend forma shundan quriladi).
 /// Category — guruhlash toifasi ("Lidlar" | "O'quv jarayoni" | "Moliya" | "Boshqa").</summary>
 public record AutoMessageTriggerInfoDto(
-    string Key, string Label, string Description, string[] Tokens, AutoMessageChannelsDto Channels,
+    string Key, string Label, string Description, string[] Tokens,
     bool SupportsSchedule, bool SupportsSendScope, string[] Audiences, string DefaultAudience,
     string DefaultTemplate, string Category, bool TemplateOptional = false);
 /// <summary>Xabar {token}i katalogdagi bitta yozuv. Group: "student" | "lead" | "common" | "event".</summary>
 public record MessageTokenDto(string Token, string Label, string Group);
-/// <summary>Avto-xabar qoidasi (o'qish uchun). SmsProvider: "eskiz" | "local".</summary>
+/// <summary>Avto-xabar qoidasi (o'qish uchun). Kabinet bildirishnomasi har doim yoziladi;
+/// <c>SendTelegram</c> — Telegram ham (eski SMS qoidasi ham shu yerda <c>true</c> bo'lib keladi —
+/// <c>AutoMessageChannels.Telegram</c>).</summary>
 public record AutoMessageRuleDto(
     string Id, string Trigger, string Name, bool Enabled,
-    bool SendSms, bool SendPush, bool SendTelegram, string Audience, string Template,
+    bool SendTelegram, string Audience, string Template,
     int OffsetMinutes, string SendScope, string ScheduleType, string ScheduleTime, int ScheduleDayOfMonth,
-    string CreatedAt, string SmsProvider);
+    string CreatedAt);
 /// <summary>Avto-xabar qoidasini saqlash (yaratish/tahrirlash).</summary>
 public record SaveAutoMessageRuleRequest(
     string Trigger, string Name, bool Enabled,
-    bool SendSms, bool SendPush, bool SendTelegram, string Audience, string Template,
+    bool SendTelegram, string Audience, string Template,
     int OffsetMinutes = 5, string SendScope = "lesson_start",
-    string ScheduleType = "daily", string ScheduleTime = "09:00", int ScheduleDayOfMonth = 1,
-    string SmsProvider = "eskiz");
+    string ScheduleType = "daily", string ScheduleTime = "09:00", int ScheduleDayOfMonth = 1);
 
 /// <summary>Moliyada o'quvchi qatori. Charged = jami to'liq oylik (chegirmasiz);
 /// Discount = jami berilgan chegirma; Paid = haqiqiy naqd to'lovlar yig'indisi (turli oylar uchun);
@@ -433,97 +432,6 @@ public record StudentFinanceRowDto(
     string StudentId, string FullName, string ClassName,
     decimal Charged, decimal Discount, decimal Paid, decimal Debt, decimal Advance,
     int DiscountPct = 0, decimal DiscountAmount = 0);
-
-/* ---------- CTI (Local Call) ---------- */
-
-/// <summary>Mobil (Android agent) login so'rovi. DIQQAT: maydonlar ATAYIN nullable va muqobil
-/// nomli (username/user, pass) — ilova versiyalari turlicha nom yuborishi mumkin; nullable
-/// bo'lmasa [ApiController] avtomatik 400 qaytaradi va ilova sababsiz "HTTP 400"da qoladi.</summary>
-public record CtiLoginRequest(
-    string? Login, string? Username, string? User, string? Password, string? Pass)
-{
-    /// <summary>Qaysi nom bilan kelgan bo'lsa ham login qiymati.</summary>
-    public string LoginValue => (Login ?? Username ?? User ?? "").Trim();
-    /// <summary>Qaysi nom bilan kelgan bo'lsa ham parol qiymati.</summary>
-    public string PasswordValue => Password ?? Pass ?? "";
-}
-/// <summary>Login javobi: JWT token, agent id va WebSocket manzili.</summary>
-public record CtiLoginResponse(string Token, string AgentId, string WsUrl);
-/// <summary>Ilova yuborgan qo'ng'iroq metadatasi (sanalar ISO string). Maydonlar nullable —
-/// avtomatik 400 o'rniga controller o'zi oqilona default qo'llaydi.</summary>
-public record CtiCallCreateRequest(
-    string? Direction, string? RemoteNumber, string? ContactName, string? StartedAt,
-    string? AnsweredAt, string? EndedAt, int DurationSec);
-/// <summary>Qo'ng'iroq yaratilgach — server tomonidagi id (audio/hodisalar shu bo'yicha yuboriladi).
-/// DIQQAT: javobda id ATAYIN 3 nom bilan ({serverCallId, id, callId}) — ilova versiyasi qaysi
-/// maydonni kutishidan qat'i nazar o'qiy oladi (aks holda "sinxronlanmagan" bo'lib qolib qayta yuboradi).</summary>
-public record CtiCallCreatedResponse(string ServerCallId)
-{
-    public string Id => ServerCallId;
-    public string CallId => ServerCallId;
-}
-/// <summary>Ilova yuborgan bitta qo'ng'iroq hodisasi (nullable — 400 o'rniga aniq xabar).</summary>
-public record CtiCallEventRequest(string? Type, string? At);
-/// <summary>Ilova FCM tokenini yangilash.</summary>
-public record CtiFcmTokenRequest(string? Token);
-
-/// <summary>Operator paneli — agent qatori (jonli holat konnektsiya menejeridan).</summary>
-public record CtiAgentDto(
-    string Id, string Login, string DisplayName, bool IsActive, bool IsOnline,
-    string? LastSeenAt, bool HasFcmToken, string? StaffUserId, string StaffUserName);
-/// <summary>Yangi agent yaratish. StaffUserId — SuperAdmin biriktirmoqchi bo'lsa (ixtiyoriy);
-/// oddiy xodim (SuperAdmin bo'lmagan) yaratsa har doim o'ziga biriktiriladi (server tomonda).</summary>
-public record CtiAgentCreateRequest(string Login, string Password, string DisplayName, string? StaffUserId);
-/// <summary>Agentni tahrirlash (Password bo'sh/null bo'lsa parol o'zgarmaydi). StaffUserId faqat
-/// SuperAdmin uchun qayta biriktirish imkoni beradi (boshqalar uchun e'tiborga olinmaydi).</summary>
-public record CtiAgentUpdateRequest(string DisplayName, bool IsActive, string? Password, string? StaffUserId);
-/// <summary>Click-to-call so'rovi.</summary>
-public record CtiDialRequest(string Number);
-/// <summary>Click-to-call natijasi: buyruq id + yetkazildimi (WS yoki FCM+WS orqali).</summary>
-public record CtiDialResponse(string CommandId, bool Delivered);
-/// <summary>Agent telefonining SIM-kartasidan SMS yuborish so'rovi (ixtiyoriy matn).</summary>
-public record CtiSmsRequest(string Number, string Text);
-/// <summary>SMS yuborish natijasi: buyruq id + yetkazildimi (WS yoki FCM+WS orqali).</summary>
-public record CtiSmsResponse(string CommandId, bool Delivered);
-/// <summary>Operator tarixidagi qo'ng'iroq qatori (sanalar ISO string).</summary>
-public record CtiCallDto(
-    string Id, string AgentId, string AgentName, string Direction, string RemoteNumber,
-    string ContactName, string? StudentId, string StudentName, string StartedAt,
-    string? AnsweredAt, string? EndedAt, int DurationSec, bool HasAudio, string Note);
-/// <summary>Sahifalangan CTI qo'ng'iroqlar ro'yxati.</summary>
-public record CtiCallListDto(int Total, List<CtiCallDto> Items);
-/// <summary>Raqam bo'yicha GURUHLANGAN qator — bitta raqam: jami/o'tkazib yuborilgan soni va
-/// OXIRGI qo'ng'iroq ma'lumotlari (tarix ro'yxati raqam-per-qator ko'rinishi uchun).</summary>
-public record CtiNumberGroupDto(
-    string RemoteNumber, string ContactName, string? StudentId, string StudentName,
-    int CallCount, int MissedCount, bool HasAudio,
-    string LastCallAt, string LastDirection, int LastDurationSec, string LastAgentName);
-/// <summary>Sahifalangan raqam-guruhlar ro'yxati (Total = jami NECHTA RAQAM).</summary>
-public record CtiNumberGroupListDto(int Total, List<CtiNumberGroupDto> Items);
-/// <summary>CTI qo'ng'irog'ining hodisasi (detal).</summary>
-public record CtiCallEventDto(string Type, string At);
-/// <summary>CTI qo'ng'irog'ining to'liq tafsiloti (qator + hodisalar).</summary>
-public record CtiCallDetailDto(
-    string Id, string AgentId, string AgentName, string Direction, string RemoteNumber,
-    string ContactName, string? StudentId, string StudentName, string StartedAt,
-    string? AnsweredAt, string? EndedAt, int DurationSec, bool HasAudio, string Note,
-    List<CtiCallEventDto> Events, string Transcript, string AiAnalysis);
-/// <summary>Operator izohini yangilash.</summary>
-public record CtiNoteRequest(string Note);
-/// <summary>Berilgan raqamga yuborilgan SMS — Local Call raqam tarixida qo'ng'iroqlar bilan birga
-/// ko'rsatish uchun (SmsLog'dan, Eskiz+Local ikkalasi ham). Provider: eskiz|local.</summary>
-public record CtiSmsHistoryDto(string Id, string Message, string Status, string Provider, string CreatedAt);
-
-/// <summary>O'quvchi profilidagi qo'ng'iroq (Local Call / CTI). Source: hozir doim "local" (maydon
-/// klient bilan kelishuv uchun qoldi). Direction: "incoming"|"outgoing" (javobsiz = Answered=false).
-/// Handler: agent nomi.</summary>
-public record StudentCallDto(
-    string Id, string Source, string Direction, string PhoneNumber,
-    string StartedAt, int DurationSec, bool Answered, bool HasAudio, string Handler);
-
-/// <summary>O'quvchiga (yoki ota-onasiga) yuborilgan SMS — profil "SMS tarixi" bo'limi uchun. Provider: eskiz|local.</summary>
-public record StudentSmsDto(
-    string Id, string PhoneNumber, string Message, string Status, string Provider, string CreatedAt);
 
 /* ---------- Subjects (Kurslar) ---------- */
 /// <param name="PriceBands">Sinf oraliqlari va narxlari (`TuitionPricing`). <c>null</c> — TEGILMAYDI
@@ -738,57 +646,28 @@ public record GroupFillRowDto(
 public record TestGroupOverviewDto(
     string GroupId, string Name, string CourseName, string TeacherId, string TeacherName,
     int StudentCount, int TestCount);
-/// <summary>Onlayn test sozlamalari — yaratish/tahrirlash va ro'yxat/tafsilotda BIR XIL shakl.
-/// <c>Mode</c>="offline" bo'lsa qolgan maydonlar e'tiborga olinmaydi (eski tizim o'zgarmaydi).</summary>
-/// <param name="Mode">"offline" (qo'lda ball) | "online" (bot orqali)</param>
-/// <param name="PdfUrl">Savollar PDF fayli ("/uploads/xxx.pdf") — botga shu yuboriladi</param>
-/// <param name="QuestionCount">Savollar soni (onlayn testda MaxScore shunga teng)</param>
-/// <param name="OptionCount">Variantlar soni: 4 → A–D, 5 → A–E</param>
-/// <param name="AnswerKey">To'g'ri javoblar ("ABCDA...", uzunligi = QuestionCount)</param>
-/// <param name="StartAt">Javob qabul qilish boshlanishi (ISO "yyyy-MM-ddTHH:mm")</param>
-/// <param name="EndAt">Javob qabul qilish tugashi (ISO "yyyy-MM-ddTHH:mm")</param>
-/// <param name="Code">TEST KODI — markazda o'qimaydigan odam ham botda shu kod bilan testni ishlaydi.
-/// Bo'sh yuborilsa server O'ZI noyob kod yaratadi (onlayn testda kod HAR DOIM bo'ladi).</param>
-/// <param name="GroupOpen">true — guruh a'zolariga ham e'lon qilinadi (va kod bilan tashqi odam ham
-/// qo'shiladi); false — "FAQAT ONLAYN": guruhga e'lon qilinmaydi, faqat kod bilan ishlanadi.</param>
-public record OnlineTestDto(
-    string Mode, string PdfUrl, string PdfName, int QuestionCount, int OptionCount,
-    string AnswerKey, string StartAt, string EndAt,
-    string Code = "", bool GroupOpen = true);
 /// <summary>Bitta test qatori (guruh testlar ro'yxatida) — soni/o'rtacha bilan.
-/// <c>Online</c> — onlayn test sozlamalari (Mode="offline" bo'lsa ham to'ldiriladi).
-/// <c>SubmittedCount</c> — botdan javob yuborgan O'QUVCHILAR soni (onlayn).
-/// <c>ExternalCount</c> — MARKAZDAN TASHQARI (kod bilan kirgan) ishtirokchilar soni.</summary>
+/// (Onlayn rejim maydonlari — PDF, javob kaliti, kod, tashqi ishtirokchilar — 2026-10 da olib tashlandi.)</summary>
 public record GroupTestDto(
     string Id, string GroupId, string Name, string Date, decimal MaxScore,
     string CreatedAt, string CreatedBy, int StudentCount, int ScoredCount, decimal? AvgScore,
-    OnlineTestDto Online, int SubmittedCount, int ExternalCount = 0,
     // Sertifikat: yoqilganmi, qaysi andoza, nechta sertifikat berilgan.
     bool CertificateEnabled = false, string CertificateTemplateId = "", int CertificateCount = 0);
 public record CreateTestResultRequest(
-    string GroupId, string Name, string Date, decimal MaxScore, OnlineTestDto? Online = null,
+    string GroupId, string Name, string Date, decimal MaxScore,
     bool CertificateEnabled = false, string? CertificateTemplateId = null);
 public record UpdateTestResultRequest(
-    string Name, string Date, decimal MaxScore, OnlineTestDto? Online = null,
+    string Name, string Date, decimal MaxScore,
     bool CertificateEnabled = false, string? CertificateTemplateId = null);
-/// <summary>Test natijasi qatori — bitta o'quvchining bali (ball bo'yicha saralanadi). Rank = 0 → ball kiritilmagan.
-/// <c>Answers</c>/<c>SubmittedAt</c> — onlayn testda botdan yuborilgan javoblar va vaqti (aks holda bo'sh).</summary>
-/// <param name="Member">Guruhning FAOL a'zosimi. <c>false</c> — markazning BOSHQA guruhidagi o'quvchi
-/// test KODI bilan qo'shilgan (bali bor, lekin bu guruh ro'yxatida yo'q).</param>
+/// <summary>Test natijasi qatori — bitta o'quvchining bali (ball bo'yicha saralanadi). Rank = 0 → ball kiritilmagan.</summary>
+/// <param name="Member">Guruhning FAOL a'zosimi. <c>false</c> — bali bor, lekin hozir bu guruhning faol
+/// a'zosi emas (masalan guruhdan chiqqan) — bali yo'qolmasin deb ro'yxatda qoldiriladi.</param>
 public record TestScoreRowDto(
-    string StudentId, string FullName, decimal? Score, int Rank,
-    string Answers = "", string SubmittedAt = "", string Source = "", bool Member = true);
-/// <summary>MARKAZDAN TASHQARI ishtirokchi qatori — test kodi bilan kirgan, markazda o'qimaydigan odam.
-/// <c>Rank</c> — shu ro'yxat ICHIDAGI o'rin (markazdagilar bilan aralashtirilmaydi).</summary>
-public record ExternalTestScoreRowDto(
-    string Id, string FullName, string Phone, decimal Score, int Rank,
-    string Answers, string SubmittedAt);
-/// <summary>Test tafsiloti — test ma'lumoti + faol o'quvchilar ballari (ball desc bo'yicha saralangan).
-/// <c>ExternalRows</c> — MARKAZDAN TASHQARI (kod bilan kirgan) ishtirokchilar, alohida ro'yxat.</summary>
+    string StudentId, string FullName, decimal? Score, int Rank, bool Member = true);
+/// <summary>Test tafsiloti — test ma'lumoti + faol o'quvchilar ballari (ball desc bo'yicha saralangan).</summary>
 public record TestResultDetailDto(
     string Id, string GroupId, string GroupName, string Name, string Date, decimal MaxScore,
-    string CreatedAt, string CreatedBy, List<TestScoreRowDto> Rows, OnlineTestDto Online,
-    List<ExternalTestScoreRowDto>? ExternalRows = null,
+    string CreatedAt, string CreatedBy, List<TestScoreRowDto> Rows,
     // Sertifikat: yoqilganmi, qaysi andoza va shu testda allaqachon berilganlari.
     bool CertificateEnabled = false, string CertificateTemplateId = "",
     List<TestCertificateDto>? Certificates = null);
@@ -839,29 +718,6 @@ public record TestCertificateJobDto(
 public record StudentGroupTestDto(
     string TestId, string GroupId, string GroupName, string Name, string Date,
     decimal MaxScore, decimal? Score, int Rank, int Total);
-
-/* ---------- ONLAYN TEST — o'quvchi ilovasi (bot oqimi bilan bir xil mantiq) ---------- */
-/// <summary>O'quvchi ko'radigan onlayn test qatori.
-/// <paramref name="State"/>: <c>upcoming</c> (hali boshlanmagan) | <c>open</c> (hozir ishlash mumkin) |
-/// <c>closed</c> (vaqti tugagan, topshirmagan) | <c>submitted</c> (topshirilgan).
-/// <paramref name="PdfUrl"/> — savollar fayli ("/uploads/..."), statik tarqatiladi.</summary>
-public record StudentOnlineTestDto(
-    string Id, string GroupId, string GroupName, string Name, string Date,
-    int QuestionCount, int OptionCount, string StartAt, string EndAt,
-    string PdfUrl, string PdfName, string State,
-    decimal? Score, string Answers, string SubmittedAt);
-
-/// <summary>Onlayn test tafsiloti — qator ma'lumoti + o'rin va (vaqt tugagach) javob kaliti.
-/// <paramref name="AnswerKey"/> test vaqti TUGAGUNCHA bo'sh keladi (kalit tarqalib ketmasin).</summary>
-public record StudentOnlineTestDetailDto(
-    string Id, string GroupId, string GroupName, string Name, string Date,
-    int QuestionCount, int OptionCount, string StartAt, string EndAt,
-    string PdfUrl, string PdfName, string State,
-    decimal? Score, string Answers, string SubmittedAt,
-    string AnswerKey, int Rank, int Participants);
-
-/// <summary>Javoblarni yuborish so'rovi — "ABCDA…" (javobsiz savol uchun '-' yoki bo'sh).</summary>
-public record OnlineTestSubmitRequest(string Answers);
 
 /* ---------- Leads (CRM) ---------- */
 /// <summary>Lid (bo'lajak o'quvchi) yaratish so'rovi.
@@ -1373,32 +1229,30 @@ public record StudentLocationRowDto(
     string StudentId, string FullName, string ClassName,
     double Latitude, double Longitude, string? Address, string? UpdatedAt);
 
-/// <summary>Ota-ona bo'limidagi bitta farzand (qisqacha) + qurilma ma'lumoti.
-/// <para>Otasi/onasi va balans — edutizim "Ota-ona" jadvali ustunlari (o'quvchi kesimida).</para></summary>
+/// <summary>Ota-ona bo'limidagi bitta farzand (qisqacha) + kabinetga kirish faolligi.
+/// <para>Otasi/onasi va balans — edutizim "Ota-ona" jadvali ustunlari (o'quvchi kesimida).
+/// Qurilma maydonlari 2026-10 da olib tashlandi (o'rnatiladigan ilova ishlatilmaydi).</para></summary>
 public record ParentChildDto(
     string StudentId, string FullName, string ClassName,
     string? FirstLoginAt, string? LastLoginAt,
-    string DeviceName = "", string Platform = "", string AppId = "",
     string FatherFullName = "", string FatherPhone = "",
     string MotherFullName = "", string MotherPhone = "",
     decimal Balance = 0m);
 
 /// <summary>
 /// Admin "Ota-onalar" bo'limidagi bir ota-ona qatori — telefon bo'yicha guruhlangan.
-/// IsActivated = farzandlardan kamida bittasi ilovaga kirgan (FirstLoginAt mavjud).
+/// IsActivated = farzandlardan kamida bittasi kabinetga kirgan (FirstLoginAt mavjud).
 /// ActivatedAt = farzandlar orasida eng erta FirstLoginAt; LastSeenAt = eng kech LastLoginAt.
-/// DeviceName/Platform = oxirgi faol qurilma (farzandlar bo'yicha).
 /// </summary>
 public record ParentRowDto(
     string FullName, string Phone, int ChildrenCount,
     bool IsActivated, string? ActivatedAt, string? LastSeenAt,
-    List<ParentChildDto> Children, string DeviceName = "", string Platform = "");
+    List<ParentChildDto> Children);
 
-/// <summary>Admin "Ilova → O'qituvchilar" bo'limidagi bir o'qituvchi qatori (ilova faolligi + qurilma).</summary>
+/// <summary>Admin "O'qituvchilar (kabinet)" bo'limidagi bir o'qituvchi qatori (kabinetga kirish faolligi).</summary>
 public record TeacherAppRowDto(
     string TeacherId, string FullName, string Phone,
-    bool IsActivated, string? ActivatedAt, string? LastSeenAt,
-    string DeviceName, string Platform, string AppId);
+    bool IsActivated, string? ActivatedAt, string? LastSeenAt);
 /// <summary>Guruh hisobotidagi bitta o'quvchi qatori.</summary>
 public record ClassStudentRowDto(StudentDto Student, Dictionary<string, double> Grades, double Average, double? Attendance);
 public record ClassPerformanceDataDto(List<SubjectDto> Subjects, List<ClassStudentRowDto> Rows);
@@ -1617,23 +1471,6 @@ public record SaveTelegramBackupConfigRequest(
     int ScheduleHour,
     int ScheduleMinute,
     bool Enabled);
-/// <summary>Ilova (APK) sozlamasi — Telegram bot ro'yxatdan o'tgan o'quvchi/o'qituvchiga yuboradigan fayl(lar).
-/// Nom + hajm (bayt; 0 = yuklanmagan).</summary>
-public record AppApkSettingsDto(string StudentApkName, long StudentApkSize, string TeacherApkName, long TeacherApkSize);
-/// <summary>Firebase (FCM push) sozlamasi. <b>ServiceAccount</b> — server push yuborishi uchun
-/// (MAXFIY: faqat .env, qiymati qaytmaydi). <b>WebConfigJson</b> + <b>VapidKey</b> — brauzer/PWA push
-/// token olishi uchun (OMMAVIY, bazada saqlanadi va UI'dan kiritiladi).
-/// Configured = native push tayyor; WebConfigured = web/PWA push tayyor.</summary>
-public record FirebaseSettingsDto(
-    bool Configured, string WebConfigJson, string VapidKey, bool WebConfigured,
-    EnvSecretDto? ServiceAccount = null);
-/// <summary><c>ServiceAccountJson</c> endi qabul qilinmaydi (bo'sh bo'lmasa — xato); u .env dan.</summary>
-public record SaveFirebaseSettingsRequest(string? ServiceAccountJson, string? WebConfigJson, string? VapidKey);
-
-/// <summary>Ommaviy (autentifikatsiyasiz) web/PWA push konfiguratsiyasi — brauzer Firebase JS SDK'ni
-/// ishga tushirib FCM token olishi uchun. Maxfiy emas (apiKey/vapidKey ommaviy kalitlar).</summary>
-public record PublicPushConfigDto(string WebConfigJson, string VapidKey, bool Configured);
-
 /// <summary>Turniket/FaceID integratsiya sozlamasi (o'qituvchilar davomati avtomatik).
 /// Parol javobda BO'SH qaytadi (xavfsizlik); HasPassword saqlanganini bildiradi.</summary>
 public record TurnstileSettingsDto(
@@ -1998,14 +1835,11 @@ public record StudentGroupItemDto(
     string State, string Status, bool IsActive, bool GroupArchived,
     string JoinedAt, string LeftAt);
 
-/// <summary>O'quvchi/foydalanuvchi shaxsiy sozlamasi (til, tema, bildirishnoma).</summary>
-public record UserSettingsDto(string Language, string Theme, bool NotificationsEnabled);
+/// <summary>O'quvchi/foydalanuvchi shaxsiy sozlamasi (til, tema).</summary>
+public record UserSettingsDto(string Language, string Theme);
 
 /// <summary>Sozlamani yangilash so'rovi. Berilgan maydonlar yangilanadi, qolganlari saqlanadi.</summary>
-public record SaveUserSettingsRequest(string? Language, string? Theme, bool? NotificationsEnabled);
-
-/// <summary>Push qurilma tokenini ro'yxatdan o'tkazish so'rovi.</summary>
-public record RegisterDeviceRequest(string Token, string? Platform, string? DeviceName, string? AppId);
+public record SaveUserSettingsRequest(string? Language, string? Theme);
 
 /// <summary>Portal umumiy konteksti: dars vaqtlari, davomat sabablari, davr(lar) + joriy chorak/hafta.</summary>
 public record PortalMetaDto(
@@ -2013,19 +1847,10 @@ public record PortalMetaDto(
     List<AbsenceReasonDto> AbsenceReasons, List<QuarterPeriodDto> Quarters,
     int CurrentQuarter = 1, int CurrentWeek = 1);
 
-/* ---------- Messaging (chat + e'lon + telegram) ---------- */
+/* ---------- Messaging (Telegram e'lon) ---------- */
 
-/// <summary>Guruh chatidagi bitta xabar. CreatedAt — ISO 8601 ("o" formati).</summary>
-public record ChatMessageDto(
-    string Id, string ClassName, string SenderUserId, string SenderName,
-    string SenderRole, string Text, string CreatedAt);
-
-/// <summary>Chatga xabar yuborish so'rovi (guruh URL'dan keladi).</summary>
-public record SendChatRequest(string Text);
-
-/// <summary>Admin uchun guruh chat/e'lon ro'yxati elementi.</summary>
-public record ChatClassDto(
-    string Name, int Grade, int StudentCount, int ParentCount, string? LastMessageAt);
+/// <summary>Admin uchun e'lon "Guruh" auditoriyasi elementi: o'quvchilar soni va Telegram chatlari soni.</summary>
+public record MessageClassDto(string Name, int Grade, int StudentCount, int ParentCount);
 
 /// <summary>Yuborilgan e'lon (Telegram). CreatedAt — ISO 8601.</summary>
 public record BroadcastDto(
@@ -2050,88 +1875,18 @@ public record TelegramParentDto(
 public record TelegramTeacherDto(
     string TeacherId, string TeacherName, string Phone, string ChatId, string CreatedAt);
 
-/// <summary>
-/// Ilovaga push yuborish so'rovi. Audience: "parents" (ClassName ixtiyoriy) | "teachers" |
-/// "selected" (UserIds tanlangan foydalanuvchilar). OnlyDebtors — "parents" da faqat qarzdorlar
-/// (SMS/Telegram bilan bir xil qoida — umumiy balans manfiy).
-/// </summary>
-public record SendPushRequest(string Audience, string? ClassName, List<string>? UserIds, string Title, string Body,
-    bool OnlyDebtors = false);
-/// <summary>Push uchun tanlanadigan oluvchi. UserId — akkaunt id; HasDevice = qurilma ulangan (push yetadi).</summary>
-public record PushRecipientDto(string UserId, string Name, string Group, string Detail, bool HasDevice);
-/// <summary>Yuborilgan push (tarix). CreatedAt — ISO. ConfirmedCount/TargetCount — tasdiqlash holati.</summary>
-public record PushMessageDto(
-    string Id, string Audience, string Title, string Body, string SenderName, string CreatedAt,
-    int RecipientCount, int SentCount, int ConfirmedCount = 0, int TargetCount = 0);
-/// <summary>Bitta e'lon (broadcast) bo'yicha oluvchining tasdiqlash holati — admin ko'rishi uchun.</summary>
-public record PushConfirmationDto(string Name, string Group, bool Confirmed, string? ConfirmedAt);
-
-/* ---------- SMS (Eskiz.uz) ---------- */
-/// <summary>
-/// SMS yuborish so'rovi. Audience: "parents" (o'quvchi ota-onasi raqami) | "students" (o'quvchi raqami) |
-/// "teachers" (o'qituvchi raqami) | "selected" (StudentIds — ota-ona/o'quvchi raqami + TeacherIds — o'qituvchi
-/// raqami). ClassName ixtiyoriy (parents/students uchun guruh filtri). OnlyDebtors — faqat qarzdorlar.
-/// ToParent — "selected"da o'quvchilar uchun ota-ona (true) yoki o'quvchi (false) raqamiga (o'qituvchilarga
-/// taalluqli emas — doim o'z raqamiga). Text ichida o'rinbosarlar bo'lishi mumkin ({fish} {sinf} {qarzdorlik} {balans} {telefon}).
-/// </summary>
-public record SendSmsRequest(string Audience, string? ClassName, bool OnlyDebtors, List<string>? StudentIds, string Text,
-    bool ToParent = true, List<string>? TeacherIds = null, string? Provider = null, string? AgentId = null);
-/// <summary>Yuborilgan SMS partiyasi (tarix). CreatedAt — ISO. Provider: eskiz|local.
-/// <paramref name="Queued"/> — partiya FONDA yuborilmoqda (ko'p oluvchi): SentCount hali 0, holatni
-/// <c>GET sms/{id}/progress</c> dan kuzatiladi. Qarang: <c>SmsQueueService</c>.</summary>
-public record SmsBatchDto(
-    string Id, string Audience, string Message, string SenderName, string CreatedAt,
-    int RecipientCount, int SentCount, string Provider, bool Queued = false);
-/// <summary>Ommaviy SMS partiyasining jonli holati: jami / ishlangan / yuborilgan + tugaganmi.
-/// <paramref name="Resumed"/> — ilova qayta ishga tushgandan keyin DAVOM ETTIRILGAN;
-/// <paramref name="Interrupted"/> — restartda juda eski bo'lgani uchun qolgani BEKOR qilingan.</summary>
-public record SmsProgressDto(string Id, int Total, int Done, int Sent, bool Finished,
-    bool Resumed = false, bool Interrupted = false);
-/// <summary>Bitta SMS jurnali (raqam bo'yicha) — partiya tafsilotida ko'rsatiladi. Provider: eskiz|local.</summary>
-public record SmsLogDto(string Id, string PhoneNumber, string RecipientName, string Status, string CreatedAt, string Provider);
-/// <summary>SMS holati — admin UI uchun: Eskiz sozlangan/sender/balans + Local SMS yoqilganmi/standart agent.</summary>
-public record SmsStatusDto(bool Configured, string From, decimal? Balance, bool LocalEnabled, string? LocalDefaultAgentId);
-/// <summary>SMS andozasi (shablon) — faqat QO'LDA yuborish uchun (avto-hodisalar AutoMessageRule'da).</summary>
+/* ---------- Qo'lda yoziladigan tayyor matnlar ---------- */
+/// <summary>Tayyor matn (andoza) — faqat QO'LDA yuborish uchun (avto-hodisalar AutoMessageRule'da).
+/// Nomi tarixiy (<c>SmsTemplate</c> jadvali) — endi Telegram e'lonida ishlatiladi.</summary>
 public record SmsTemplateDto(string Id, string Name, string Text, int Order);
-/// <summary>SMS andozasini saqlash (yaratish/tahrirlash).</summary>
+/// <summary>Andozani saqlash (yaratish/tahrirlash).</summary>
 public record SaveSmsTemplateRequest(string Name, string Text);
-/// <summary>Lidga SMS yuborish so'rovi (lid telefon raqamiga).</summary>
-public record SendLeadSmsRequest(string LeadId, string Text, string? Provider = null, string? AgentId = null);
-/// <summary>Bir nechta lidga birdan SMS yuborish so'rovi.</summary>
-public record SendLeadBulkSmsRequest(List<string> LeadIds, string Text, string? Provider = null, string? AgentId = null);
-/// <summary>Ommaviy lid SMS natijasi: yuborildi / xato / raqamsiz lidlar soni.
-/// <paramref name="Queued"/> — partiya FONDA yuborilmoqda (u holda Sent hali 0 va
-/// <paramref name="QueuedCount"/> ta lid navbatda; holat <c>sms/{BatchId}/progress</c> dan o'qiladi).</summary>
-public record LeadBulkSmsResultDto(
-    int Sent, int Failed, int NoPhone, bool Queued = false, int QueuedCount = 0, string? BatchId = null);
-/// <summary>Eskiz callback (yetkazib berish holati webhook'i) tanasi.</summary>
-public record EskizCallbackDto(string? request_id, string? message_id, string? phone_number, string? status, string? status_date);
-/// <summary>SMS (Eskiz) sozlamasi holati. Login/parol .env dan (qiymat qaytmaydi) — faqat
-/// jo'natuvchi nomi (From) UI'dan o'zgartiriladi.</summary>
-/// <param name="Nicknames">Eskiz kabinetida TASDIQLANGAN jo'natuvchi nomlari. Bo'sh ro'yxat =
-/// hech biri tasdiqlanmagan, ya'ni SMS "4546" dan ketadi va markaz nomi ko'rinmaydi.</param>
-/// <param name="FromApproved">Hozirgi <paramref name="From"/> shu ro'yxatda bormi. "4546" —
-/// Eskiz'ning umumiy raqami, u har doim ishlaydi va tasdiq talab qilmaydi.</param>
-public record EskizSettingsDto(
-    string Email, string From, bool Configured, decimal? Balance,
-    EnvSecretDto? Login = null, EnvSecretDto? Password = null,
-    List<string>? Nicknames = null, bool FromApproved = true);
-/// <summary>SMS (Eskiz) login/parol/sender saqlash so'rovi (bo'sh qoldirilsa eski saqlanadi).</summary>
-public record SaveEskizRequest(string? Email, string? Password, string? From);
-/// <summary>Local SMS (CTI agent telefonidan) sozlamasi holati. DelaySeconds — massaviy yuborishda
-/// ikkita SMS orasidagi kutish (soniya). <c>DefaultAgentProblem</c> — standart agent
-/// o'chirilgan/topilmagan/tanlanmagan bo'lsa banner matni (avtomatik Local SMS'lar to'xtagan), aks holda null.</summary>
-public record LocalSmsSettingsDto(bool Enabled, string? DefaultAgentId, int DelaySeconds, string? DefaultAgentProblem = null);
-/// <summary>Local SMS sozlamasini saqlash — DefaultAgentId bo'sh/null bo'lsa standart agent tozalanadi.</summary>
-public record SaveLocalSmsRequest(bool Enabled, string? DefaultAgentId, int DelaySeconds);
-/// <summary>
-/// "Tanlab" SMS uchun oluvchi (o'quvchi). ParentPhone = ParentPhone→FatherPhone→MotherPhone birinchi
-/// bo'sh bo'lmagani; StudentPhone = s.Phone. Ikkalasi ham bo'sh bo'lishi mumkin (raqam yo'q — UIda kulrang).
-/// </summary>
-public record SmsRecipientDto(string StudentId, string FullName, string ClassName, string? ParentPhone, string? StudentPhone);
-/// <summary>"Tanlab" SMS uchun o'qituvchi oluvchi. Phone bo'sh bo'lishi mumkin (raqam yo'q — UIda kulrang).</summary>
-public record SmsTeacherRecipientDto(string TeacherId, string FullName, string? Phone);
-/// <summary>Birlashgan tayyor matn. Source: "sms" (Eskiz andozasi) | "auto" (avto-xabar qoidasi shabloni).</summary>
+/// <summary>"Tanlab" e'lon uchun o'quvchi. <c>TelegramChats</c> — o'quvchiga ulangan Telegram chatlari soni
+/// (0 — e'lon unga yetib bormaydi).</summary>
+public record MessageRecipientDto(string StudentId, string FullName, string ClassName, int TelegramChats);
+/// <summary>"Tanlab" e'lon uchun o'qituvchi va uning ulangan Telegram chatlari soni.</summary>
+public record MessageTeacherRecipientDto(string TeacherId, string FullName, int TelegramChats);
+/// <summary>Birlashgan tayyor matn. Source: "manual" (qo'lda andoza) | "auto" (avto-xabar qoidasi shabloni).</summary>
 public record UnifiedTemplateDto(string Source, string Name, string Text);
 
 /* ---------- Fayl yuklash ---------- */

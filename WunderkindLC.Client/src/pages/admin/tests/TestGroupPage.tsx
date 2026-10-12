@@ -11,7 +11,7 @@ import { GroupTestsPanel } from './GroupTestsPanel'
 /**
  * Bitta guruhning testlari — sarlavha (guruh ma'lumoti) + testlar paneli.
  * Panel guruh (jurnal) sahifasidagi "Imtihonlar" tabi bilan AYNAN bir xil komponent
- * (`GroupTestsPanel`) — onlayn/oflayn test yaratish ikkala joyda ham bor.
+ * (`GroupTestsPanel`) — test yaratish ikkala joyda ham bor.
  */
 export function TestGroupPage() {
   const { groupId = '' } = useParams()

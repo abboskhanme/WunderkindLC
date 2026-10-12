@@ -1,17 +1,13 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { IconMessage } from '@tabler/icons-react'
-import type { Lead, Stage } from '@/types'
 import { getFirstLessonLeads, type FirstLessonFilter, type FirstLessonLead } from '@/api/services/leads'
-import { getStages } from '@/api/services/stages'
-import { CallPickerModal } from '@/components/CallPickerModal'
+import { PhoneCallModal } from '@/components/PhoneCallModal'
 import { DataTable, type DataColumn } from '@/components/ui/list/DataTable'
 import { FilterGrid, FilterInput, FilterSelect } from '@/components/ui/list/FilterGrid'
 import { FilterDateRange } from '@/components/ui/list/FilterDateRange'
 import { PhoneChip } from '@/components/ui/list/PhoneChip'
 import { TotalPill } from '@/components/ui/list/TotalPill'
 import { TablePagination, usePagination } from '@/components/ui/TablePagination'
-import { LeadBulkSmsModal } from './LeadBulkSmsModal'
 import { WD_FULL, leadCallNumbers, shortLeadId, tableDateTime } from './leadLabels'
 import { useUrlFilters } from './useUrlFilters'
 
@@ -38,15 +34,6 @@ function uniquePairs(items: { id?: string | null; name?: string | null }[]) {
   return [...m.entries()].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name))
 }
 
-/** Ommaviy SMS oynasi `Lead` kutadi — qatordan kerakli maydonlar bilan quriladi. */
-function asLead(r: FirstLessonLead): Lead {
-  return {
-    id: r.id, fullName: r.fullName, gender: 'male', birthDate: '', phone: r.phone,
-    fatherFullName: '', fatherPhone: r.fatherPhone, motherFullName: '', motherPhone: r.motherPhone,
-    stage: r.stage, note: r.note ?? undefined,
-  }
-}
-
 export function FirstLessonLeadsPage() {
   const navigate = useNavigate()
   const { values: f, set } = useUrlFilters(FILTER_KEYS)
@@ -55,11 +42,8 @@ export function FirstLessonLeadsPage() {
   // Select variantlari FILTRSIZ ro'yxatdan — aks holda bitta filtr tanlanganda qolganlarining
   // variantlari (va tanlangan qiymatning o'zi) yo'qolib qolardi.
   const [all, setAll] = useState<FirstLessonLead[]>([])
-  const [stages, setStages] = useState<Stage[]>([])
   const [loading, setLoading] = useState(true)
-  const [selected, setSelected] = useState<Set<string>>(new Set())
   const [callRow, setCallRow] = useState<FirstLessonLead | null>(null)
-  const [smsLeads, setSmsLeads] = useState<Lead[] | null>(null)
 
   // Qidiruv matni kechiktirib yuboriladi (har harfda so'rov ketmasin).
   const [q, setQ] = useState(f.q)
@@ -73,7 +57,6 @@ export function FirstLessonLeadsPage() {
 
   useEffect(() => {
     getFirstLessonLeads().then(setAll).catch(() => setAll([]))
-    getStages().then(setStages).catch(() => setStages([]))
   }, [])
 
   const filterKey = FILTER_KEYS.map((k) => f[k]).join('|')
@@ -105,47 +88,7 @@ export function FirstLessonLeadsPage() {
   )
 
   const pg = usePagination(rows)
-  const allOnPage = pg.paged.length > 0 && pg.paged.every((r) => selected.has(r.id))
-  const toggle = (id: string) =>
-    setSelected((prev) => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      return next
-    })
-  const togglePage = () =>
-    setSelected((prev) => {
-      const next = new Set(prev)
-      for (const r of pg.paged) {
-        if (allOnPage) next.delete(r.id)
-        else next.add(r.id)
-      }
-      return next
-    })
-
   const columns: DataColumn<FirstLessonLead>[] = [
-    {
-      key: '__sel',
-      width: 44,
-      header: (
-        <input
-          type="checkbox"
-          aria-label="Sahifadagilarni tanlash"
-          checked={allOnPage}
-          onChange={togglePage}
-          className="h-4 w-4 accent-brand-600"
-        />
-      ),
-      render: (r) => (
-        <input
-          type="checkbox"
-          aria-label={`${r.fullName} — tanlash`}
-          checked={selected.has(r.id)}
-          onChange={() => toggle(r.id)}
-          className="h-4 w-4 accent-brand-600"
-        />
-      ),
-    },
     {
       key: 'id',
       header: 'ID',
@@ -263,23 +206,6 @@ export function FirstLessonLeadsPage() {
       </FilterGrid>
 
       <div className="flex items-center gap-2">
-        {selected.size > 0 && (
-          <p className="mb-2 mr-auto text-[13px] text-[#333]">
-            Tanlandi: <b>{selected.size}</b>
-            {' · '}
-            <button
-              type="button"
-              onClick={() => setSmsLeads(rows.filter((r) => selected.has(r.id)).map(asLead))}
-              className="inline-flex items-center gap-1 font-medium text-brand-600 hover:underline"
-            >
-              <IconMessage className="h-4 w-4" /> SMS yuborish
-            </button>
-            {' · '}
-            <button type="button" onClick={() => setSelected(new Set())} className="font-medium text-[#757575] hover:underline">
-              Tozalash
-            </button>
-          </p>
-        )}
         <div className="ml-auto">
           <TotalPill total={rows.length} />
         </div>
@@ -301,13 +227,12 @@ export function FirstLessonLeadsPage() {
         footer={<TablePagination {...pg} />}
       />
 
-      <CallPickerModal
+      <PhoneCallModal
         open={!!callRow}
         onClose={() => setCallRow(null)}
         title={callRow?.fullName}
         numbers={callNumbers}
       />
-      <LeadBulkSmsModal open={!!smsLeads} onClose={() => setSmsLeads(null)} leads={smsLeads ?? []} stages={stages} />
     </div>
   )
 }

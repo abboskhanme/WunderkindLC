@@ -10,7 +10,7 @@ namespace WunderkindLC.Application.Services;
 /// <summary>
 /// "Erkin eslatma" (fon xizmati) — admin Sozlamalar → Eslatmalarda o'zi yozgan matn, tanlagan
 /// auditoriya (o'qituvchilar yoki o'quvchilar/ota-onalar) va jadval (har kuni yoki oyning muayyan
-/// kunida, belgilangan soatda) bo'yicha push (FCM) + Telegram orqali avtomatik yuboriladigan qoida
+/// kunida, belgilangan soatda) bo'yicha kabinet bildirishnomasi + Telegram orqali avtomatik yuboriladigan qoida
 /// (<see cref="WunderkindLC.Domain.AutoMessageRule"/>, Trigger==<see cref="AutoMessageTriggers.CustomSchedule"/>).
 ///
 /// Jadval aniq daqiqa talab qilgani uchun sikl HAR 1 DAQIQADA uyg'onadi (10 daqiqalik oyna).
@@ -24,16 +24,13 @@ namespace WunderkindLC.Application.Services;
 /// <para>⚠️ Oylik qoida 29–31-sanaga qo'yilgan bo'lsa, qisqa oyda OYNING OXIRGI KUNI yuboriladi
 /// (<see cref="IsScheduledDay"/>) — ilgari fevral/aprel kabi oylarda umuman o'tkazib yuborilardi.</para>
 ///
-/// <para>Auditoriya: <c>students</c> — o'quvchining O'Z raqamiga (SMS); <c>parents</c> — ota-ona
-/// raqamiga; <c>teachers</c> — o'qituvchilarga. Push/Telegram o'quvchi akkaunti/chatiga (o'quvchi va
-/// ota-ona bitta akkauntdan foydalanadi). Ilgari "students" ham ota-ona raqamiga ketardi.</para>
+/// <para>Auditoriya: <c>students</c> / <c>parents</c> — o'quvchi kabineti + o'quvchiga ulangan Telegram
+/// chatlari ({telefon} tokeni auditoriyaga qarab o'quvchi yoki ota-ona raqami); <c>teachers</c> —
+/// o'qituvchilarga. SMS/push 2026-10 da olib tashlandi (<see cref="AutoMessageChannels"/>).</para>
 /// </summary>
 public class CustomReminderService(
     IServiceProvider services,
     TelegramService telegram,
-    FcmService fcm,
-    EskizService eskiz,
-    CtiSmsService ctiSms,
     ILogger<CustomReminderService> logger) : BackgroundService
 {
     /// <summary>Belgi kaliti prefiksi: qoida — <c>custom_schedule:{ruleId}</c>, oluvchi —
@@ -82,8 +79,6 @@ public class CustomReminderService(
 
         var now = AppClock.Now;
         var meta = await db.CenterMeta.FirstOrDefaultAsync(ct);
-        var fcmJson = AppSecrets.FcmServiceAccountJson;
-        var pushReady = FcmService.IsConfigured(fcmJson);
         var centerName = meta?.Name ?? "";
 
         foreach (var rule in rules)
@@ -101,7 +96,7 @@ public class CustomReminderService(
 
             try
             {
-                await SendAsync(db, rule, today, centerName, fcmJson, pushReady, meta, ct);
+                await SendAsync(db, rule, today, centerName, ct);
                 await JobRunMarker.TryClaimAsync(db, ruleKey, today, ct);
                 await JobRunMarker.PruneAsync(db, ruleKey + ":", today.AddDays(-2), ct);
             }
@@ -113,24 +108,21 @@ public class CustomReminderService(
     }
 
     private async Task SendAsync(
-        IAppDbContext db, AutoMessageRule rule, DateOnly today, string centerName, string fcmJson, bool pushReady,
-        CenterMeta? meta, CancellationToken ct)
+        IAppDbContext db, AutoMessageRule rule, DateOnly today, string centerName, CancellationToken ct)
     {
         var ruleKey = JobRunMarker.For(JobKey, rule.Id);
         var title = string.IsNullOrWhiteSpace(rule.Name) ? "Eslatma" : rule.Name;
-        var deadTokens = new List<string>();
 
         if (rule.Audience == "teachers")
         {
-            // SMS ham yoqilgan bo'lsa UserId'siz o'qituvchilar ham raqam orqali oladi.
-            var teachers = await db.Teachers.Where(t => !t.IsArchived && (t.UserId != null || rule.SendSms)).ToListAsync(ct);
+            // Akkauntsiz o'qituvchi ham Telegram orqali olishi mumkin (ulanish TeacherId bo'yicha).
+            var teachers = await db.Teachers.Where(t => !t.IsArchived).ToListAsync(ct);
             foreach (var t in teachers)
             {
                 // OLUVCHI BELGISI — yuborishdan OLDIN (restartdan keyin takror ketmasin).
                 if (!await JobRunMarker.TryClaimAsync(db, $"{ruleKey}:t:{t.Id}", today, ct)) continue;
                 var body = MessageTokenizer.Teacher(rule.Template, t, centerName);
-                await DeliverAsync(db, rule, t.UserId, t.Id, isTeacher: true, t.Phone, t.FullName, title, body,
-                    fcmJson, pushReady, meta, deadTokens, ct);
+                await DeliverAsync(db, rule, t.UserId, t.Id, isTeacher: true, title, body, ct);
                 await db.SaveChangesAsync(ct);
             }
         }
@@ -148,56 +140,35 @@ public class CustomReminderService(
             foreach (var s in students)
             {
                 if (!await JobRunMarker.TryClaimAsync(db, $"{ruleKey}:s:{s.Id}", today, ct)) continue;
-                // AUDITORIYA: "students" — o'quvchining O'Z raqami birinchi, "parents" — ota-ona raqami
-                // (ilgari ikkalasi ham ota-onaga ketardi).
+                // {telefon} tokeni: "students" — o'quvchining O'Z raqami birinchi, "parents" — ota-ona raqami.
                 var phone = MessagingAudience.StudentPhone(s, rule.Audience);
                 var grp = groupByName.GetValueOrDefault(s.ClassName ?? "");
                 var body = MessageTokenizer.Student(rule.Template, s, s.ParentFullName, phone, centerName,
                     group: grp, teacherName: MessageTokenizer.TeacherNameOf(grp, teacherNames));
-                await DeliverAsync(db, rule, s.UserId, s.Id, isTeacher: false, phone, s.FullName, title, body,
-                    fcmJson, pushReady, meta, deadTokens, ct);
+                await DeliverAsync(db, rule, s.UserId, s.Id, isTeacher: false, title, body, ct);
                 await db.SaveChangesAsync(ct);
             }
         }
 
-        if (deadTokens.Count > 0)
-            db.DeviceTokens.RemoveRange(db.DeviceTokens.Where(d => deadTokens.Contains(d.Token)));
         await db.SaveChangesAsync(ct);
     }
 
+    /// <summary>Bitta oluvchiga yetkazish: kabinet bildirishnomasi (HAR DOIM, akkaunti bo'lsa) + Telegram
+    /// (<see cref="AutoMessageChannels.Telegram"/>).</summary>
     private async Task DeliverAsync(
         IAppDbContext db, AutoMessageRule rule, string? userId, string entityId, bool isTeacher,
-        string? smsPhone, string recipientName, string title, string body,
-        string fcmJson, bool pushReady, CenterMeta? meta, List<string> deadTokens, CancellationToken ct)
+        string title, string body, CancellationToken ct)
     {
-        if (rule.SendPush && userId is not null)
-        {
+        if (userId is not null)
             NotificationStore.Add(db, userId, title, body, "custom_schedule");
-            if (pushReady)
-            {
-                var tokens = await db.DeviceTokens.Where(d => d.UserId == userId)
-                    .Select(d => d.Token).Distinct().ToListAsync(ct);
-                if (tokens.Count > 0)
-                {
-                    var res = await fcm.SendAsync(fcmJson, tokens, title, body, ct);
-                    deadTokens.AddRange(res.InvalidTokens);
-                }
-            }
-        }
 
-        if (rule.SendTelegram && telegram.IsConfigured)
+        if (AutoMessageChannels.Telegram(rule) && telegram.IsConfigured)
         {
             var chatIds = isTeacher
                 ? await db.TelegramRegistrations.Where(r => r.TeacherId == entityId).Select(r => r.ChatId).Distinct().ToListAsync(ct)
                 : await db.TelegramRegistrations.Where(r => r.StudentId == entityId).Select(r => r.ChatId).Distinct().ToListAsync(ct);
             foreach (var chatId in chatIds)
                 await telegram.SendMessageAsync(chatId, $"🔔 {title}\n\n{body}", ct: ct);
-        }
-
-        if (rule.SendSms && !string.IsNullOrWhiteSpace(smsPhone) && AutoMessageSmsSender.IsReady(rule.SmsProvider, meta, eskiz))
-        {
-            await AutoMessageSmsSender.SendAsync(
-                db, eskiz, ctiSms, rule.SmsProvider, smsPhone, recipientName, body, "Erkin eslatma", ct);
         }
     }
 }

@@ -51,20 +51,6 @@ public class JwtTokenService(JwtOptions options)
         return Write(claims, TimeSpan.FromMinutes(_o.AccessMinutes));
     }
 
-    /// <summary>CTI (Local Call) Android agent-ilovasi uchun token — <see cref="AppUser"/>siz,
-    /// CtiAgent bo'yicha. Rol <see cref="Roles.CtiAgent"/> (faqat mobil API + WebSocket).</summary>
-    public string CreateAgentToken(string agentId, string displayName)
-    {
-        var claims = new List<Claim>
-        {
-            new(JwtRegisteredClaimNames.Sub, agentId),
-            new(ClaimTypes.NameIdentifier, agentId),
-            new(ClaimTypes.Name, displayName),
-            new(ClaimTypes.Role, Roles.CtiAgent),
-        };
-        return Write(claims);
-    }
-
     /// <summary>
     /// CHEKLANGAN token — login yuz tasdig'ini talab qilganda beriladi. Odatdagi token bilan
     /// bir xil, lekin ichida <c>scope=face</c> claim'i bor: shunday token BILAN faqat yuz

@@ -10,77 +10,30 @@ using System.Security.Claims;
 namespace WunderkindLC.Server.Controllers;
 
 /// <summary>
-/// Admin "Xabarlar" bo'limi: (1) guruh ota-onalariga Telegram bot orqali e'lon yuborish;
-/// (2) guruh chati (o'quvchilar + dars beruvchi o'qituvchilar + admin). Faqat "admin" roli.
+/// Admin "Xabarlar" bo'limi: guruh ota-onalariga (va o'qituvchilarga) Telegram bot orqali e'lon
+/// yuborish, oluvchilar ro'yxati va qo'lda yoziladigan tayyor matnlar (shablonlar).
+/// <para>2026-10: SMS (Eskiz / Local SMS), push va guruh chati olib tashlandi — Telegram yagona
+/// tashqi kanal (`.claude/rules/messaging.md`).</para>
 /// </summary>
 [ApiController]
 [Authorize]
 [AdminPerm("messages.broadcast")]
 [Route("api/admin/messages")]
-public class MessagesController(
-    AppDbContext db, ChatService chat, TelegramService telegram, FcmService fcm, EskizService eskiz,
-    SmsQueueService smsQueue) : ControllerBase
+public class MessagesController(AppDbContext db, TelegramService telegram) : ControllerBase
 {
     private string Uid => User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? "";
 
-    /// <summary>Joriy foydalanuvchining roli (chat darvozasi uchun) — claim tipiga bog'lanmasdan,
-    /// <c>IsInRole</c> orqali. Bu controllerga faqat admin/superadmin/staff kiradi (AdminPerm).</summary>
-    private string RoleName => User.IsInRole(Roles.SuperAdmin) ? Roles.SuperAdmin
-        : User.IsInRole(Roles.Admin) ? Roles.Admin
-        : User.IsInRole(Roles.Staff) ? Roles.Staff : "";
+    // ---------- Guruhlar ro'yxati (e'lon auditoriyasini tanlash uchun) ----------
 
-    /// <summary>
-    /// CHAT DARVOZASI: guruh chati va xodimlar kanali — "messages" bo'lim ruxsatini TALAB QILADI.
-    ///
-    /// <para>AdminPerm xodim uchun GET'larni ruxsatsiz o'tkazadi (bo'limlararo o'qish uchun ataylab).
-    /// Chat esa bo'limlararo ma'lumot emas — shu sabab bu yerda alohida tekshiriladi. Qoida va
-    /// asoslash: <see cref="ChatService.CanUseAdminChat"/>. Admin/superadmin uchun hech narsa
-    /// o'zgarmaydi — ular avvalgidek barcha kanallarni ko'radi.</para>
-    /// </summary>
-    private bool CanUseChat() => ChatService.CanUseAdminChat(
-        RoleName, User.FindAll(AdminPermAttribute.ClaimType).Select(c => c.Value));
-
-    /// <summary>"eskiz" (default) | "local" — bo'sh/notanish qiymat "eskiz"ga tushadi.</summary>
-    private static string NormalizeProvider(string? provider) =>
-        provider?.Trim().ToLowerInvariant() == "local" ? "local" : "eskiz";
-
-    /// <summary>Lid SMS'lari uchun kanal SOZLAMALARDAN olinadi (lid oynalarida provider tanlovi
-    /// yo'q): Local SMS yoqilgan bo'lsa (Sozlamalar → Xabar kanallari → SMS) "local", aks holda
-    /// "eskiz". Mijoz provider'ni ANIQ bergan bo'lsa (eski frontend/API) o'sha ishlatiladi —
-    /// xatti-harakat buzilmaydi.</summary>
-    private static string LeadSmsProviderOf(string? requested, CenterMeta? meta) =>
-        string.IsNullOrWhiteSpace(requested)
-            ? (meta?.LocalSmsEnabled == true ? "local" : "eskiz")
-            : NormalizeProvider(requested);
-
-    /// <summary>provider="local" bo'lsa CenterMeta.LocalSmsEnabled yoqilganini va (agentId berilmasa)
-    /// standart agent sozlanganini tekshiradi — batch boshlanishidan oldin tezkor xato qaytarish uchun.</summary>
-    private async Task<string?> ValidateLocalSmsAsync(string provider, string? agentId, CenterMeta? meta)
-    {
-        if (provider != "local") return null;
-        if (meta?.LocalSmsEnabled != true)
-            return "Local SMS yoqilmagan. Sozlamalar → Xabar kanallari → SMS'da yoqing.";
-        if (string.IsNullOrWhiteSpace(agentId) && string.IsNullOrWhiteSpace(meta.LocalSmsDefaultAgentId))
-            return "Standart Local SMS agent tanlanmagan. Sozlamalar → Xabar kanallari → SMS'da tanlang.";
-        return null;
-    }
-
-    // ---------- Guruhlar ro'yxati (chat/e'lon tanlash uchun) ----------
-
+    /// <summary>E'lon "Guruh" auditoriyasi uchun guruhlar: o'quvchilar soni va Telegram'ga ulangan
+    /// chatlar soni. (Ilgari guruh chati darvozasi ostida edi — chat 2026-10 da olib tashlandi.)</summary>
     [HttpGet("classes")]
-    public async Task<ActionResult<IEnumerable<ChatClassDto>>> Classes()
+    public async Task<ActionResult<IEnumerable<MessageClassDto>>> Classes()
     {
-        // Chat kanallari ro'yxati (oxirgi xabar vaqti bilan) — chat darvozasi ostida.
-        if (!CanUseChat()) return Forbid();
         var classes = await db.Classes.OrderBy(c => c.Grade).ThenBy(c => c.Name).ToListAsync();
         var regs = await db.TelegramRegistrations.Select(r => new { r.StudentId, r.ChatId }).ToListAsync();
-        var lastByClass = (await db.ChatMessages
-                .GroupBy(m => m.ClassName)
-                .Select(g => new { Name = g.Key, Last = g.Max(x => x.CreatedAt) })
-                .ToListAsync())
-            .ToDictionary(x => x.Name, x => x.Last);
 
-        // GURUH → O'QUVCHILAR: e'lon/SMS/push YUBORISHDA ishlatiladigan AYNAN o'sha qoida
+        // GURUH → O'QUVCHILAR: e'lon YUBORISHDA ishlatiladigan AYNAN o'sha qoida
         // (`MessagingAudience.GroupAudienceByNameAsync`: tirik a'zolik, arxivdagilarsiz, a'zoligi
         // umuman yo'q eski yozuvlarda — `ClassName` zaxirasi). Ya'ni ko'rsatilgan son = oluvchilar.
         // ⚠️ Ilgari sanoq a'zolikdan, yuborish esa eskirgan `ClassName` dan olinardi — ikkinchi
@@ -98,52 +51,10 @@ public class MessagesController(
             kv => kv.Value.SelectMany(sid => chatsByStudent.GetValueOrDefault(sid) ?? new List<long>())
                 .Distinct().Count());
 
-        return classes.Select(c => new ChatClassDto(
+        return classes.Select(c => new MessageClassDto(
             c.Name, c.Grade,
             studentCountByClass.GetValueOrDefault(c.Name, 0),
-            parentChatsByClass.GetValueOrDefault(c.Name, 0),
-            lastByClass.TryGetValue(c.Name, out var last) ? last.ToString("o") : null)).ToList();
-    }
-
-    /// <summary>
-    /// Har bir kanal uchun oxirgi xabar vaqti (ISO) — frontend o'qilmagan xabarlarni aniqlaydi.
-    /// Admin uchun barcha guruhlar + xodimlar kanali qaytadi. Xabari yo'q kanal uchun null.
-    /// Ruxsati yo'q xodimga — bo'sh ro'yxat (403 emas): bu endpointni har sahifada o'qilmagan
-    /// belgisi uchun umumiy kontekst chaqiradi, xato bermasligi kerak.
-    /// </summary>
-    [HttpGet("last-messages")]
-    public async Task<ActionResult<Dictionary<string, string?>>> LastMessages()
-    {
-        if (!CanUseChat()) return new Dictionary<string, string?>();
-        var channels = await chat.ClassNamesForUserAsync(Uid, Roles.Admin);
-        var lastByChannel = (await db.ChatMessages
-                .Where(m => channels.Contains(m.ClassName))
-                .GroupBy(m => m.ClassName)
-                .Select(g => new { Name = g.Key, Last = g.Max(x => x.CreatedAt) })
-                .ToListAsync())
-            .ToDictionary(x => x.Name, x => (string?)x.Last.ToString("o"));
-        return channels.Distinct().ToDictionary(c => c, c => lastByChannel.GetValueOrDefault(c, null));
-    }
-
-    // ---------- Guruh chati ----------
-
-    [HttpGet("chat/{className}")]
-    public async Task<ActionResult<IEnumerable<ChatMessageDto>>> Chat(string className, [FromQuery] string? since)
-    {
-        if (!CanUseChat()) return Forbid();
-        return await chat.GetMessagesAsync(className, ChatService.ParseSince(since));
-    }
-
-    [HttpPost("chat/{className}")]
-    // Guruh CHATI — "Chats" bo'limidagi alohida sahifa (ommaviy xabar yuborishdan boshqa ish).
-    [AdminPerm("messages.chat")]
-    public async Task<ActionResult<ChatMessageDto>> SendChat(string className, SendChatRequest req)
-    {
-        // POST'ni AdminPerm allaqachon "messages"/"messages:create" bilan darvozalaydi —
-        // bu yerdagi tekshiruv qatlam sifatida (o'qish bilan bir xil qoida) qoldirilgan.
-        if (!CanUseChat()) return Forbid();
-        var dto = await chat.PostAsync(className, Uid, req.Text);
-        return dto is null ? BadRequest(new { message = "Xabar bo'sh" }) : dto;
+            parentChatsByClass.GetValueOrDefault(c.Name, 0))).ToList();
     }
 
     // ---------- E'lon (Telegram) ----------
@@ -284,15 +195,6 @@ public class MessagesController(
         Group? group = null, string? teacherName = null) =>
         MessageTokenizer.Student(template, s, reg.ParentName, reg.Phone, centerName, null, group, teacherName);
 
-    /// <summary>Push/SMS matnini o'quvchi (ota-ona akkaunti) ma'lumotiga moslaydi.</summary>
-    private static string PersonalizePush(string text, Student s, string centerName,
-        Group? group = null, string? teacherName = null) =>
-        MessageTokenizer.Student(text, s, s.ParentFullName, s.ParentPhone, centerName, null, group, teacherName);
-
-    /// <summary>Push/SMS matnini o'qituvchiga moslaydi — o'quvchi-spetsifik tokenlar bo'sh.</summary>
-    private static string PersonalizeTeacherPush(string text, Teacher t, string centerName) =>
-        MessageTokenizer.Teacher(text, t, centerName);
-
     // ---------- Telegram ro'yxati (ota-onalar) ----------
 
     [HttpGet("telegram/registrations")]
@@ -341,485 +243,80 @@ public class MessagesController(
     public ActionResult<object> TelegramStatus() =>
         Ok(new { configured = telegram.IsConfigured, botUsername = telegram.BotUsername ?? "" });
 
-    // ---------- Push (Firebase / FCM) ----------
-
-    /// <summary>Firebase (push) sozlanganmi — admin UI ko'rsatishi uchun.</summary>
-    [HttpGet("push/status")]
-    public ActionResult<object> PushStatus() =>
-        // Service account .env dan (FCM_SERVICE_ACCOUNT_JSON) — bazadan emas.
-        Ok(new { configured = FcmService.IsConfigured(AppSecrets.FcmServiceAccountJson) });
-
-    /// <summary>Ro'yxatdan o'tgan qurilma tokenlari soni + so'nggilari — push nega yetib bormayotganini
-    /// tekshirish uchun (0 bo'lsa: ilova FCM tokenni ro'yxatdan o'tkazmayapti).</summary>
-    [HttpGet("push/devices")]
-    public async Task<ActionResult<object>> PushDevices()
-    {
-        var all = await db.DeviceTokens.OrderByDescending(d => d.LastSeenAt).ToListAsync();
-        var logins = await db.Users.ToDictionaryAsync(u => u.Id, u => u.Email);
-        var recent = all.Take(20).Select(d => new
-        {
-            login = logins.GetValueOrDefault(d.UserId, ""),
-            d.Platform,
-            d.DeviceName,
-            lastSeenAt = d.LastSeenAt.ToString("o"),
-            tokenTail = d.Token.Length > 12 ? "…" + d.Token[^12..] : d.Token,
-        });
-        return Ok(new { count = all.Count, recent });
-    }
-
-    /// <summary>"Tanlab" push uchun oluvchilar ro'yxati: o'quvchilar + o'qituvchilar.
-    /// DIQQAT: o'quvchi akkauntidan O'QUVCHI ham, OTA-ONA ham foydalanadi (bitta ilova) —
-    /// ota-ona telefonida ro'yxatdan o'tgan qurilma ham shu akkauntga bog'lanadi, shuning uchun
-    /// alohida "ota-ona" oluvchisi YO'Q va bo'lishi ham shart emas.</summary>
-    [HttpGet("push/recipients")]
-    public async Task<ActionResult<IEnumerable<PushRecipientDto>>> PushRecipients()
-    {
-        var students = await db.Students.Where(s => !s.IsArchived && s.UserId != null)
-            .Select(s => new { s.UserId, s.FullName, s.ClassName }).ToListAsync();
-        var teachers = await db.Teachers.Where(t => !t.IsArchived && t.UserId != null)
-            .Select(t => new { t.UserId, t.FullName }).ToListAsync();
-        var withDevice = (await db.DeviceTokens.Select(d => d.UserId).Distinct().ToListAsync()).ToHashSet();
-
-        var list = new List<PushRecipientDto>();
-        foreach (var s in students)
-            // Guruh yorlig'i: bitta akkaunt — o'quvchi ham, ota-ona ham shundan kiradi.
-            list.Add(new PushRecipientDto(s.UserId!, s.FullName, "O'quvchi / ota-ona", s.ClassName, withDevice.Contains(s.UserId!)));
-        foreach (var t in teachers)
-            list.Add(new PushRecipientDto(t.UserId!, t.FullName, "O'qituvchi", "", withDevice.Contains(t.UserId!)));
-        return list
-            .OrderBy(r => r.Group, StringComparer.Ordinal)
-            .ThenBy(r => r.Name, StringComparer.OrdinalIgnoreCase).ToList();
-    }
-
-    [HttpGet("push")]
-    public async Task<ActionResult<IEnumerable<PushMessageDto>>> PushHistory()
-    {
-        var list = await db.PushMessages.OrderByDescending(p => p.CreatedAt).Take(100).ToListAsync();
-        var ids = list.Select(p => p.Id).ToList();
-        // Har broadcast bo'yicha: jami oluvchi (tarix) + tasdiqlaganlar soni.
-        // ⚠️ Sanoq SQL darajasida (GROUP BY) — ilgari mos qatorlar XOTIRAGA tortilib, C# da
-        // guruhlanardi. `PushMessageId` indekssiz bo'lgani bilan qo'shilib, prodda bu so'rov
-        // 161 mln qator o'qigan edi (jadvalning deyarli hammasi, 8000+ marta).
-        var stats = (await db.UserNotifications.AsNoTracking()
-                .Where(n => ids.Contains(n.PushMessageId))
-                .GroupBy(n => n.PushMessageId)
-                .Select(g => new
-                {
-                    Id = g.Key,
-                    Target = g.Count(),
-                    Confirmed = g.Sum(n => n.ConfirmedAt != null ? 1 : 0),
-                })
-                .ToListAsync())
-            .ToDictionary(x => x.Id, x => (Target: x.Target, Confirmed: x.Confirmed));
-        return list.Select(p =>
-        {
-            stats.TryGetValue(p.Id, out var s);
-            return new PushMessageDto(p.Id, p.Audience, p.Title, p.Body, p.SenderName, p.CreatedAt.ToString("o"),
-                p.RecipientCount, p.SentCount, s.Confirmed, s.Target);
-        }).ToList();
-    }
-
-    /// <summary>Bitta e'lon (broadcast) bo'yicha kim tasdiqlagani — admin ko'rishi uchun.</summary>
-    [HttpGet("push/{id}/confirmations")]
-    public async Task<ActionResult<IEnumerable<PushConfirmationDto>>> PushConfirmations(string id)
-    {
-        // Faqat o'qish — tracking keraksiz (bu yerda hech narsa saqlanmaydi).
-        var notifs = await db.UserNotifications.AsNoTracking().Where(n => n.PushMessageId == id).ToListAsync();
-        if (notifs.Count == 0) return new List<PushConfirmationDto>();
-        var userIds = notifs.Select(n => n.UserId).Distinct().ToList();
-        var studentByUser = (await db.Students.AsNoTracking().Where(s => s.UserId != null && userIds.Contains(s.UserId)).ToListAsync())
-            .GroupBy(s => s.UserId!).ToDictionary(g => g.Key, g => g.First());
-        var teacherByUser = (await db.Teachers.AsNoTracking().Where(t => t.UserId != null && userIds.Contains(t.UserId)).ToListAsync())
-            .GroupBy(t => t.UserId!).ToDictionary(g => g.Key, g => g.First());
-        return notifs.Select(n =>
-        {
-            string name = "—", group = "";
-            if (studentByUser.TryGetValue(n.UserId, out var st)) { name = st.FullName; group = st.ClassName; }
-            else if (teacherByUser.TryGetValue(n.UserId, out var tch)) { name = tch.FullName; group = "O'qituvchi"; }
-            return new PushConfirmationDto(name, group, n.ConfirmedAt != null, n.ConfirmedAt?.ToString("o"));
-        }).OrderByDescending(c => c.Confirmed).ThenBy(c => c.Name, StringComparer.OrdinalIgnoreCase).ToList();
-    }
+    // ---------- "Tanlab" e'lon uchun oluvchilar ----------
 
     /// <summary>
-    /// Ilovaga push yuboradi. Audience "parents" (ixtiyoriy ClassName bilan) yoki "teachers".
-    /// Maqsadli foydalanuvchilarning ro'yxatdan o'tgan qurilma tokenlariga FCM orqali yuboriladi.
+    /// "Tanlab" e'lon uchun o'quvchilar — barcha arxivlanmagan o'quvchilar (ism bo'yicha) va har biriga
+    /// ULANGAN Telegram chatlari soni (0 bo'lsa — e'lon unga yetib bormaydi, UI buni ko'rsatadi).
     /// </summary>
-    [HttpPost("push/send")]
-    public async Task<ActionResult<PushMessageDto>> SendPush(SendPushRequest req)
-    {
-        var title = (req.Title ?? "").Trim();
-        var body = (req.Body ?? "").Trim();
-        if (title.Length == 0 && body.Length == 0)
-            return BadRequest(new { message = "Sarlavha yoki matn kerak" });
-        var audience = (req.Audience ?? "parents").Trim().ToLowerInvariant();
-
-        List<string> userIds;
-        string label;
-        string? groupScope = null;   // "Guruh" tanlangan bo'lsa — token konteksti shu guruhdan
-        if (audience == "selected")
-        {
-            userIds = (req.UserIds ?? new()).Where(x => !string.IsNullOrWhiteSpace(x)).Distinct().ToList();
-            if (userIds.Count == 0) return BadRequest(new { message = "Hech kim tanlanmadi" });
-            label = $"Tanlangan ({userIds.Count})";
-        }
-        else if (audience == "teachers")
-        {
-            userIds = await db.Teachers.Where(t => !t.IsArchived && t.UserId != null)
-                .Select(t => t.UserId!).ToListAsync();
-            label = "O'qituvchilar";
-        }
-        else
-        {
-            var cn = req.ClassName?.Trim() ?? "";
-            if (cn.Length > 0) { label = $"O'quvchilar — {cn}"; groupScope = cn; }
-            else label = "O'quvchilar (o'quvchi/ota-ona ilovasi)";
-            if (req.OnlyDebtors) label += " — qarzdorlar";
-            // Guruh — A'ZOLIK bo'yicha (eskirgan `ClassName` emas, guruhlar ro'yxatidagi sanoq bilan bir xil);
-            // "Faqat qarzdorlar" — SMS/Telegram bilan bir xil qoida (ilgari push uchun e'tiborsiz edi:
-            // "{qarzdorlik} qarzingiz bor" HAMMA ota-onaga "0 so'm" bilan ketardi); arxivdagi va guruhi
-            // YOPILGAN/TUGATILGAN o'quvchilar chiqariladi.
-            userIds = await MessagingAudience.ParentPushUserIdsAsync(db, cn, req.OnlyDebtors);
-        }
-
-        // Per-oluvchi moslash uchun: foydalanuvchi → o'quvchi/o'qituvchi + uning tokenlari.
-        var students = await db.Students.Where(s => s.UserId != null && userIds.Contains(s.UserId)).ToListAsync();
-        var studentByUser = students.GroupBy(s => s.UserId!).ToDictionary(g => g.Key, g => g.First());
-        var teachers = await db.Teachers.Where(t => t.UserId != null && userIds.Contains(t.UserId)).ToListAsync();
-        var teacherByUser = teachers.GroupBy(t => t.UserId!).ToDictionary(g => g.Key, g => g.First());
-        var tokensByUser = (await db.DeviceTokens.Where(d => userIds.Contains(d.UserId)).ToListAsync())
-            .GroupBy(d => d.UserId)
-            .ToDictionary(g => g.Key, g => g.Select(x => x.Token).Distinct().ToList());
-
-        var meta = await db.CenterMeta.FirstOrDefaultAsync();
-        var json = AppSecrets.FcmServiceAccountJson;
-        var centerName = meta?.Name ?? "";
-        var groupByName = await GroupByNameAsync();
-        var teacherNames = await TeacherNamesAsync();
-        var scopeGroup = groupScope is null ? null : groupByName.GetValueOrDefault(groupScope);
-        title = GroupScoped(title, groupScope);
-        body = GroupScoped(body, groupScope);
-        var recipientCount = tokensByUser.Sum(kv => kv.Value.Count);
-        var sent = 0;
-        var deadTokens = new List<string>();
-        // Har bir foydalanuvchiga matn o'rinbosarlari moslab yuboriladi (o'quvchi/ota-ona ma'lumoti bilan).
-        foreach (var (userId, toks) in tokensByUser)
-        {
-            var t = title;
-            var b = body;
-            if (studentByUser.TryGetValue(userId, out var st))
-            {
-                var grp = scopeGroup ?? groupByName.GetValueOrDefault(st.ClassName ?? "");
-                var tn = MessageTokenizer.TeacherNameOf(grp, teacherNames);
-                t = PersonalizePush(title, st, centerName, grp, tn);
-                b = PersonalizePush(body, st, centerName, grp, tn);
-            }
-            else if (teacherByUser.TryGetValue(userId, out var tch))
-            {
-                t = PersonalizeTeacherPush(title, tch, centerName);
-                b = PersonalizeTeacherPush(body, tch, centerName);
-            }
-            var res = await fcm.SendAsync(json, toks, t, b);
-            sent += res.Sent;
-            deadTokens.AddRange(res.InvalidTokens);
-        }
-
-        // O'lik tokenlarni bazadan tozalaymiz (ilova o'chirilgan / web token bekor qilingan).
-        if (deadTokens.Count > 0)
-            db.DeviceTokens.RemoveRange(db.DeviceTokens.Where(d => deadTokens.Contains(d.Token)));
-
-        // Ilova tarixiga — AUDIENCE'dagi HAR foydalanuvchi uchun (push yetmasa ham bildirishnoma ro'yxatida ko'rinadi).
-        var pushId = Guid.NewGuid().ToString();
-        foreach (var userId in userIds)
-        {
-            var t = title;
-            var b = body;
-            if (studentByUser.TryGetValue(userId, out var stn)) { var grp = scopeGroup ?? groupByName.GetValueOrDefault(stn.ClassName ?? ""); var tn = MessageTokenizer.TeacherNameOf(grp, teacherNames); t = PersonalizePush(title, stn, centerName, grp, tn); b = PersonalizePush(body, stn, centerName, grp, tn); }
-            else if (teacherByUser.TryGetValue(userId, out var tchn)) { t = PersonalizeTeacherPush(title, tchn, centerName); b = PersonalizeTeacherPush(body, tchn, centerName); }
-            NotificationStore.Add(db, userId, t, b, "announcement", pushId);
-        }
-
-        var user = await db.Users.FindAsync(Uid);
-        var pm = new PushMessage
-        {
-            Id = pushId,
-            Audience = label,
-            Title = title,
-            Body = body,
-            SenderUserId = Uid,
-            SenderName = user?.FullName ?? "Administrator",
-            CreatedAt = AppClock.Now,
-            RecipientCount = recipientCount,
-            SentCount = sent,
-        };
-        db.PushMessages.Add(pm);
-        await db.SaveChangesAsync();
-        return new PushMessageDto(pm.Id, pm.Audience, pm.Title, pm.Body, pm.SenderName,
-            pm.CreatedAt.ToString("o"), pm.RecipientCount, pm.SentCount);
-    }
-
-    // ---------- SMS (Eskiz.uz) ----------
-
-    /// <summary>SMS (Eskiz) sozlanganmi + sender — admin UI ko'rsatishi uchun (tarmoqsiz, tez).</summary>
-    [HttpGet("sms/status")]
-    public async Task<ActionResult<SmsStatusDto>> SmsStatus()
-    {
-        var m = await db.CenterMeta.FirstOrDefaultAsync();
-        return new SmsStatusDto(eskiz.IsConfigured(m), eskiz.SenderOf(m), null, m?.LocalSmsEnabled ?? false, m?.LocalSmsDefaultAgentId);
-    }
-
-    /// <summary>Yuborilgan SMS partiyalari (tarix, eng yangisi birinchi).</summary>
-    [HttpGet("sms")]
-    public async Task<ActionResult<IEnumerable<SmsBatchDto>>> SmsHistory()
-    {
-        var list = await db.SmsBatches.OrderByDescending(b => b.CreatedAt).Take(100).ToListAsync();
-        return list.Select(b => new SmsBatchDto(b.Id, b.Audience, b.Message, b.SenderName,
-            b.CreatedAt.ToString("o"), b.RecipientCount, b.SentCount, b.Provider)).ToList();
-    }
-
-    /// <summary>
-    /// Ommaviy (fonda ketayotgan) partiyaning JONLI holati — modal "Yuborilmoqda: 12/300" deb ko'rsatadi.
-    /// Avval xotiradagi navbat holati o'qiladi; u yerda bo'lmasa (ilova qayta ishga tushgan yoki partiya
-    /// ancha oldin tugagan) bazadagi yozuvlardan tiklanadi va tugagan deb qaytariladi.
-    /// </summary>
-    [HttpGet("sms/{id}/progress")]
-    public async Task<ActionResult<SmsProgressDto>> SmsProgress(string id)
-    {
-        // Avval xotira (jonli), keyin BAZA: navbat qatorlari bazada — restartdan keyin tugamagan partiya
-        // "tugadi 40/300" bo'lib KO'RINMAYDI (Finished=false — davom ettirilmoqda), juda eskisi bekor
-        // qilingan bo'lsa Interrupted=true bilan ochiq aytiladi.
-        var p = smsQueue.Get(id) ?? await SmsQueueService.ProgressFromDbAsync(db, id);
-        if (p is null) return NotFound();
-        return new SmsProgressDto(id, p.Total, p.Done, p.Sent, p.Finished, p.Resumed, p.Interrupted);
-    }
-
-    /// <summary>Bitta SMS partiyasi bo'yicha raqamlar va yetkazib berish holati.</summary>
-    [HttpGet("sms/{id}/logs")]
-    public async Task<ActionResult<IEnumerable<SmsLogDto>>> SmsLogs(string id)
-    {
-        var logs = await db.SmsLogs.Where(l => l.BatchId == id)
-            .OrderBy(l => l.RecipientName).ToListAsync();
-        return logs.Select(l => new SmsLogDto(l.Id, l.PhoneNumber, l.RecipientName, l.Status,
-            l.CreatedAt.ToString("o"), l.Provider)).ToList();
-    }
-
-    /// <summary>
-    /// "Tanlab" SMS uchun oluvchilar ro'yxati — barcha arxivlanmagan o'quvchilar (ism bo'yicha).
-    /// parentPhone = ParentPhone→FatherPhone→MotherPhone (birinchi bo'sh bo'lmagani); studentPhone = s.Phone.
-    /// </summary>
-    [HttpGet("sms/recipients")]
-    public async Task<ActionResult<IEnumerable<SmsRecipientDto>>> SmsRecipients()
+    [HttpGet("recipients")]
+    public async Task<ActionResult<IEnumerable<MessageRecipientDto>>> Recipients()
     {
         var students = await db.Students.AsNoTracking().Where(s => !s.IsArchived)
             .OrderBy(s => s.FullName)
-            .Select(s => new { s.Id, s.FullName, s.ClassName, s.Phone, s.ParentPhone, s.FatherPhone, s.MotherPhone })
+            .Select(s => new { s.Id, s.FullName, s.ClassName })
             .ToListAsync();
-        return students.Select(s =>
-        {
-            var parentPhone = !string.IsNullOrWhiteSpace(s.ParentPhone) ? s.ParentPhone
-                : !string.IsNullOrWhiteSpace(s.FatherPhone) ? s.FatherPhone
-                : !string.IsNullOrWhiteSpace(s.MotherPhone) ? s.MotherPhone : null;
-            var studentPhone = string.IsNullOrWhiteSpace(s.Phone) ? null : s.Phone;
-            return new SmsRecipientDto(s.Id, s.FullName, s.ClassName ?? "", parentPhone, studentPhone);
-        }).ToList();
+        var chats = (await db.TelegramRegistrations.AsNoTracking()
+                .Where(r => r.StudentId != null && r.StudentId != "")
+                .Select(r => new { r.StudentId, r.ChatId }).ToListAsync())
+            .GroupBy(r => r.StudentId!)
+            .ToDictionary(g => g.Key, g => g.Select(x => x.ChatId).Distinct().Count());
+        return students.Select(s => new MessageRecipientDto(
+            s.Id, s.FullName, s.ClassName ?? "", chats.GetValueOrDefault(s.Id, 0))).ToList();
     }
 
-    /// <summary>"Tanlab" SMS uchun o'qituvchi oluvchilar — barcha arxivlanmagan o'qituvchilar (ism bo'yicha).</summary>
-    [HttpGet("sms/recipients/teachers")]
-    public async Task<ActionResult<IEnumerable<SmsTeacherRecipientDto>>> SmsTeacherRecipients()
+    /// <summary>"Tanlab" e'lon uchun o'qituvchilar — barcha arxivlanmagan o'qituvchilar va ulangan
+    /// Telegram chatlari soni.</summary>
+    [HttpGet("recipients/teachers")]
+    public async Task<ActionResult<IEnumerable<MessageTeacherRecipientDto>>> TeacherRecipients()
     {
         var teachers = await db.Teachers.AsNoTracking().Where(t => !t.IsArchived)
             .OrderBy(t => t.FullName)
-            .Select(t => new { t.Id, t.FullName, t.Phone })
+            .Select(t => new { t.Id, t.FullName })
             .ToListAsync();
-        return teachers.Select(t =>
-            new SmsTeacherRecipientDto(t.Id, t.FullName, string.IsNullOrWhiteSpace(t.Phone) ? null : t.Phone))
-            .ToList();
+        var chats = (await db.TelegramRegistrations.AsNoTracking()
+                .Where(r => r.TeacherId != null && r.TeacherId != "")
+                .Select(r => new { r.TeacherId, r.ChatId }).ToListAsync())
+            .GroupBy(r => r.TeacherId!)
+            .ToDictionary(g => g.Key, g => g.Select(x => x.ChatId).Distinct().Count());
+        return teachers.Select(t => new MessageTeacherRecipientDto(
+            t.Id, t.FullName, chats.GetValueOrDefault(t.Id, 0))).ToList();
     }
 
     /// <summary>
-    /// SMS yuborish (Eskiz). Audience: parents (o'quvchi ota-onasi raqami) | students (o'quvchi raqami) |
-    /// teachers (o'qituvchi raqami) | selected (StudentIds — ota-ona raqami). Bir xil raqam bir marta.
-    /// Matn har o'quvchiga moslab to'ldiriladi ({fish} {sinf} {qarzdorlik} {balans} {telefon}).
-    /// </summary>
-    [HttpPost("sms/send")]
-    public async Task<ActionResult<SmsBatchDto>> SendSms(SendSmsRequest req)
-    {
-        var text = req.Text?.Trim() ?? "";
-        if (text.Length == 0) return BadRequest(new { message = "SMS matni kerak" });
-        var audience = (req.Audience ?? "parents").Trim().ToLowerInvariant();
-        var centerName = (await db.CenterMeta.FirstOrDefaultAsync())?.Name ?? "";
-
-        // (telefon, nom, moslangan matn) ro'yxatini yig'amiz.
-        var targets = new List<(string Phone, string Name, string Message)>();
-        string label;
-
-        if (audience == "teachers")
-        {
-            var teachers = await db.Teachers.Where(t => !t.IsArchived).ToListAsync();
-            foreach (var t in teachers)
-            {
-                if (string.IsNullOrWhiteSpace(t.Phone)) continue;
-                targets.Add((t.Phone, t.FullName, PersonalizeTeacherPush(text, t, centerName)));
-            }
-            label = "O'qituvchilar";
-        }
-        else
-        {
-            // O'quvchilar to'plami (parents/students/selected).
-            var q = db.Students.Where(s => !s.IsArchived);
-            var teacherIds = new List<string>();
-            string? groupScope = null;
-            if (audience == "selected")
-            {
-                var ids = (req.StudentIds ?? new()).Where(x => !string.IsNullOrWhiteSpace(x)).Distinct().ToList();
-                teacherIds = (req.TeacherIds ?? new()).Where(x => !string.IsNullOrWhiteSpace(x)).Distinct().ToList();
-                if (ids.Count == 0 && teacherIds.Count == 0) return BadRequest(new { message = "Hech kim tanlanmadi" });
-                q = q.Where(s => ids.Contains(s.Id));
-                label = $"Tanlangan ({ids.Count + teacherIds.Count})";
-            }
-            else
-            {
-                var cn = req.ClassName?.Trim() ?? "";
-                if (cn.Length > 0)
-                {
-                    // A'ZOLIK bo'yicha (eskirgan `ClassName` emas) — guruhlar ro'yxatidagi sanoq bilan bir xil.
-                    var memberIds = await MessagingAudience.GroupAudienceAsync(db, cn);
-                    q = q.Where(s => memberIds.Contains(s.Id));
-                    label = cn;
-                    groupScope = cn;
-                }
-                else label = "Barcha guruhlar";
-            }
-            var students = await q.ToListAsync();
-            if (req.OnlyDebtors) { students = students.Where(s => s.Balance < 0).ToList(); label += " — qarzdorlar"; }
-            // OMMAVIY yuborishda guruhi YOPILGAN/TUGATILGAN o'quvchilar chiqarib tashlanadi
-            // ("Tanlangan" rejimida esa admin kimni tanlagan bo'lsa — o'shanga yuboriladi).
-            if (audience != "selected")
-            {
-                var closed = await MessagingAudience.ClosedGroupStudentIdsAsync(db);
-                students = students.Where(s => !closed.Contains(s.Id)).ToList();
-            }
-            var groupByName = await GroupByNameAsync();
-            var teacherNames = await TeacherNamesAsync();
-            var scopeGroup = groupScope is null ? null : groupByName.GetValueOrDefault(groupScope);
-            var scopedText = GroupScoped(text, groupScope);
-
-            // O'quvchining o'z raqami: audience=="students" YOKI "selected" + ToParent=false. Aks holda ota-ona.
-            var toStudentPhone = audience == "students" || (audience == "selected" && !req.ToParent);
-            foreach (var s in students)
-            {
-                var phone = toStudentPhone
-                    ? s.Phone
-                    : (!string.IsNullOrWhiteSpace(s.ParentPhone) ? s.ParentPhone
-                        : !string.IsNullOrWhiteSpace(s.FatherPhone) ? s.FatherPhone : s.MotherPhone);
-                if (string.IsNullOrWhiteSpace(phone)) continue;
-                var grp = scopeGroup ?? groupByName.GetValueOrDefault(s.ClassName ?? "");
-                targets.Add((phone, s.FullName, MessageTokenizer.Student(scopedText, s, s.ParentFullName, phone, centerName,
-                    null, grp, MessageTokenizer.TeacherNameOf(grp, teacherNames))));
-            }
-            label = toStudentPhone ? $"O'quvchilar — {label}" : $"Ota-onalar — {label}";
-
-            // "Tanlab" rejimida tanlangan o'qituvchilar — doim o'z raqamiga (ToParent ularga taalluqli emas).
-            if (teacherIds.Count > 0)
-            {
-                var selTeachers = await db.Teachers.Where(t => teacherIds.Contains(t.Id)).ToListAsync();
-                foreach (var t in selTeachers)
-                {
-                    if (string.IsNullOrWhiteSpace(t.Phone)) continue;
-                    targets.Add((t.Phone, t.FullName, PersonalizeTeacherPush(text, t, centerName)));
-                }
-            }
-        }
-
-        // Bir xil raqamni bir marta (normallashtirilgan kalit bo'yicha).
-        var seen = new HashSet<string>();
-        targets = targets.Where(t => seen.Add(EskizService.NormalizePhone(t.Phone))).ToList();
-        if (targets.Count == 0) return BadRequest(new { message = "Raqamli oluvchi topilmadi" });
-
-        var meta = await db.CenterMeta.FirstOrDefaultAsync();
-        var provider = NormalizeProvider(req.Provider);
-        if (provider == "eskiz" && !eskiz.IsConfigured(meta))
-            return BadRequest(new { message = "Eskiz SMS sozlanmagan. Sozlamalar → SMS (Eskiz)da login/parol kiriting." });
-        if (await ValidateLocalSmsAsync(provider, req.AgentId, meta) is { } localErr)
-            return BadRequest(new { message = localErr });
-
-        var user = await db.Users.FindAsync(Uid);
-        return await StartBatchAsync(
-            label, text, targets.Select(t => new SmsQueueService.Target(t.Phone, t.Name, t.Message)).ToList(),
-            provider, req.AgentId, user?.FullName ?? "Administrator");
-    }
-
-    /// <summary>
-    /// SMS partiyasini BOSHLAYDI: <see cref="SmsBatch"/>ni darhol yozadi (tarixda o'sha zahoti ko'rinadi),
-    /// so'ng kichik bo'lsa shu yerda yuboradi, katta bo'lsa <see cref="SmsQueueService"/> navbatiga qo'yadi.
-    ///
-    /// <para>⚠️ Ommaviy yuborishni so'rov ichida qilib bo'lmaydi: har SMS alohida ketadi (Eskiz — HTTP
-    /// so'rov, Local — sozlangan kutish), 100 ta oluvchi bir necha daqiqa oladi, Cloudflare esa javobni
-    /// 100 soniyagina kutadi va ulanishni uzadi ("Yuborishda xatolik" — aslida SMS'lar ketayotgan bo'ladi).</para>
-    /// </summary>
-    private async Task<SmsBatchDto> StartBatchAsync(
-        string label, string text, List<SmsQueueService.Target> queueTargets,
-        string provider, string? agentId, string senderName, string? leadNote = null)
-    {
-        var batch = new SmsBatch
-        {
-            Id = Guid.NewGuid().ToString(),
-            Audience = label,
-            Message = text,
-            SenderUserId = Uid,
-            SenderName = senderName,
-            CreatedAt = AppClock.Now,
-            RecipientCount = queueTargets.Count,
-            SentCount = 0,
-            Provider = provider,
-        };
-        db.SmsBatches.Add(batch);
-        await db.SaveChangesAsync();
-
-        // Callback — avto-SMS'lar bilan AYNAN bir manzil (kanonik App:Host, bo'lmasa so'rov hosti).
-        var callbackUrl = eskiz.CallbackUrl(Request.Scheme, Request.Host.ToString());
-        var job = new SmsQueueService.Job(
-            batch.Id, provider, agentId, callbackUrl, queueTargets, leadNote, senderName);
-
-        var queued = SmsQueueService.ShouldQueue(queueTargets.Count);
-        // Navbat BAZAGA yoziladi — yuborish paytida restart bo'lsa partiya davom ettiriladi.
-        if (queued) await smsQueue.EnqueueAsync(db, job);
-        else await smsQueue.RunInlineAsync(db, job);   // SentCount'ni o'zi yangilab saqlaydi
-
-        return new SmsBatchDto(batch.Id, batch.Audience, batch.Message, batch.SenderName,
-            batch.CreatedAt.ToString("o"), batch.RecipientCount, batch.SentCount, batch.Provider, queued);
-    }
-
-    /// <summary>
-    /// Barcha tayyor matnlar (birlashgan): SMS andozalari (db.SmsTemplates) + avto-xabar qoidalari
-    /// shablonlari (db.AutoMessageRules, Template bo'sh bo'lmaganlari). Uchala yuborish oynasida (e'lon/push/SMS) chip.
+    /// Barcha tayyor matnlar (birlashgan): qo'lda yoziladigan andozalar (db.SmsTemplates — jadval nomi
+    /// tarixiy) + avto-xabar qoidalari shablonlari (db.AutoMessageRules, Template bo'sh bo'lmaganlari).
     /// </summary>
     [HttpGet("templates/all")]
     public async Task<ActionResult<IEnumerable<UnifiedTemplateDto>>> AllTemplates()
     {
         var sms = await db.SmsTemplates.AsNoTracking().OrderBy(t => t.Order).ThenBy(t => t.Name)
-            .Select(t => new UnifiedTemplateDto("sms", t.Name, t.Text)).ToListAsync();
-        var autos = await db.AutoMessageRules.AsNoTracking()
-            .Where(r => r.Template != "")
-            .OrderBy(r => r.Name)
-            .Select(r => new UnifiedTemplateDto("auto", r.Name, r.Template)).ToListAsync();
+            .Select(t => new UnifiedTemplateDto("manual", t.Name, t.Text)).ToListAsync();
+        // Katalogdan olib tashlangan (faqat-SMS lid) hodisalarning eski qoidalari tayyor matn bo'lib
+        // chiqmaydi — ularning {link}/{natija} kabi tokenlarini e'lon to'ldira olmaydi.
+        var autos = (await db.AutoMessageRules.AsNoTracking()
+                .Where(r => r.Template != "")
+                .OrderBy(r => r.Name)
+                .Select(r => new { r.Trigger, r.Name, r.Template }).ToListAsync())
+            .Where(r => AutoMessageTriggers.IsKnown(r.Trigger))
+            .Select(r => new UnifiedTemplateDto("auto", r.Name, r.Template)).ToList();
         return sms.Concat(autos).ToList();
     }
 
-    // ---------- SMS andozalari (shablonlar) — Sozlamalar → SMS (Eskiz) ----------
+    // ---------- Qo'lda yuboriladigan tayyor matnlar (andozalar) ----------
 
-    [HttpGet("sms/templates")]
-    public async Task<ActionResult<IEnumerable<SmsTemplateDto>>> SmsTemplates()
+    [HttpGet("templates")]
+    public async Task<ActionResult<IEnumerable<SmsTemplateDto>>> Templates()
     {
         var list = await db.SmsTemplates.OrderBy(t => t.Order).ThenBy(t => t.Name).ToListAsync();
         return list.Select(t => new SmsTemplateDto(t.Id, t.Name, t.Text, t.Order)).ToList();
     }
 
-    // Avto-hodisalar YAGONA "Avto xabarlar" (AutoMessageRule) moduliga ko'chdi — SMS andozalari endi
-    // faqat QO'LDA yuborish uchun.
+    // Avto-hodisalar YAGONA "Avto xabarlar" (AutoMessageRule) moduliga ko'chdi — andozalar faqat
+    // QO'LDA yuborish uchun.
 
-    [HttpPost("sms/templates")]
-    public async Task<ActionResult<SmsTemplateDto>> CreateSmsTemplate(SaveSmsTemplateRequest req)
+    [HttpPost("templates")]
+    public async Task<ActionResult<SmsTemplateDto>> CreateTemplate(SaveSmsTemplateRequest req)
     {
         var name = (req.Name ?? "").Trim();
         var text = (req.Text ?? "").Trim();
@@ -831,8 +328,8 @@ public class MessagesController(
         return new SmsTemplateDto(t.Id, t.Name, t.Text, t.Order);
     }
 
-    [HttpPut("sms/templates/{id}")]
-    public async Task<ActionResult<SmsTemplateDto>> UpdateSmsTemplate(string id, SaveSmsTemplateRequest req)
+    [HttpPut("templates/{id}")]
+    public async Task<ActionResult<SmsTemplateDto>> UpdateTemplate(string id, SaveSmsTemplateRequest req)
     {
         var t = await db.SmsTemplates.FindAsync(id);
         if (t is null) return NotFound();
@@ -844,8 +341,8 @@ public class MessagesController(
         return new SmsTemplateDto(t.Id, t.Name, t.Text, t.Order);
     }
 
-    [HttpDelete("sms/templates/{id}")]
-    public async Task<IActionResult> DeleteSmsTemplate(string id)
+    [HttpDelete("templates/{id}")]
+    public async Task<IActionResult> DeleteTemplate(string id)
     {
         var t = await db.SmsTemplates.FindAsync(id);
         if (t is null) return NotFound();
@@ -854,117 +351,6 @@ public class MessagesController(
         return NoContent();
     }
 
-    // ---------- Lidga SMS yuborish ----------
-
-    /// <summary>Lid uchun SMS matnini tayyorlaydi (token render — sinov darsi jadvali bilan) va
-    /// navbat oluvchisini qaytaradi. Telefon: Phone→Father→Mother; raqami yo'q lid uchun null.
-    /// YUBORMAYDI — yuborish <see cref="SmsQueueService"/> orqali (lid tarixi ham o'sha yerda yoziladi).</summary>
-    private async Task<SmsQueueService.Target?> BuildLeadTargetAsync(Lead lead, string text, string centerName)
-    {
-        var phone = !string.IsNullOrWhiteSpace(lead.Phone) ? lead.Phone
-            : !string.IsNullOrWhiteSpace(lead.FatherPhone) ? lead.FatherPhone : lead.MotherPhone;
-        if (string.IsNullOrWhiteSpace(phone)) return null;
-
-        // {dars_sana}/{dars_vaqti} uchun — lidning eng so'nggi sinov darsi (avval "pending"ini olamiz).
-        var trial = await db.TrialLessons.Where(t => t.LeadId == lead.Id && t.Result == "pending")
-                        .OrderByDescending(t => t.ScheduledAt).FirstOrDefaultAsync()
-                    ?? await db.TrialLessons.Where(t => t.LeadId == lead.Id)
-                        .OrderByDescending(t => t.ScheduledAt).FirstOrDefaultAsync();
-        var trialGroup = trial is not null && !string.IsNullOrWhiteSpace(trial.GroupId)
-            ? await db.Classes.FindAsync(trial.GroupId) : null;
-        // {oqituvchi} — sinov darsi guruhining o'qituvchisi.
-        var trialTeacher = await MessageTokenizer.GroupTeacherNameAsync(db, trialGroup);
-        var msg = MessageTokenizer.Lead(text, lead, phone, centerName,
-            group: trialGroup, trialAt: trial?.ScheduledAt, teacherName: trialTeacher);
-        return new SmsQueueService.Target(phone, lead.FullName, msg, lead.Id);
-    }
-
-    /// <summary>Lid tarixiga (timeline) yoziladigan izoh matni — yuborilgandan keyin navbat yozadi.</summary>
-    private static string LeadSmsNote(string text) =>
-        "SMS yuborildi: " + (text.Length > 140 ? text[..140] + "…" : text);
-
-    /// <summary>
-    /// Qo'lda yuborib bo'lmaydigan token (hozircha <c>{link}</c>) bo'lsa — xato matni, aks holda null.
-    /// </summary>
-    /// <remarks>
-    /// ⚠️ Bu tekshiruv SERVERDA turishi SHART. Klientda "tayyor matn" ro'yxatidan
-    /// <c>test_link</c> olib tashlandi, lekin matnni QO'LDA ham yozish/nusxalash mumkin —
-    /// va o'shanda abonentga <c>{link}</c> so'zining O'ZI ketardi (hech qanday xato
-    /// ko'rinmasdan, chunki SMS muvaffaqiyatli yuborilgan bo'lardi).
-    /// </remarks>
-    private static string? ManualTokenError(string text) =>
-        MessageTokenCatalog.ForbiddenInManual(text) is { } token
-            ? $"«{token}» tokenini qo'lda yuborib bo'lmaydi — u BIR MARTALIK havola va faqat "
-              + "«Daraja testi yuborish» bo'limidan (test tanlab) yuboriladi. "
-              + "Matndan olib tashlang yoki o'sha bo'limdan yuboring."
-            : null;
-
-    [HttpPost("sms/lead")]
-    public async Task<ActionResult<SmsBatchDto>> SendLeadSms(SendLeadSmsRequest req)
-    {
-        var text = (req.Text ?? "").Trim();
-        if (text.Length == 0) return BadRequest(new { message = "SMS matni kerak" });
-        if (ManualTokenError(text) is { } tokenErr) return BadRequest(new { message = tokenErr });
-        var lead = await db.Leads.FirstOrDefaultAsync(l => l.Id == req.LeadId);
-        if (lead is null) return NotFound();
-        var meta = await db.CenterMeta.FirstOrDefaultAsync();
-        // Kanal Sozlamalardan (lid oynasida tanlov yo'q): Local yoqilgan bo'lsa — local, aks holda eskiz.
-        var provider = LeadSmsProviderOf(req.Provider, meta);
-        if (provider == "eskiz" && !eskiz.IsConfigured(meta))
-            return BadRequest(new { message = "Eskiz SMS sozlanmagan. Sozlamalar → SMS (Eskiz)da login/parol kiriting." });
-        if (await ValidateLocalSmsAsync(provider, req.AgentId, meta) is { } localErr)
-            return BadRequest(new { message = localErr });
-
-        var user = await db.Users.FindAsync(Uid);
-        var target = await BuildLeadTargetAsync(lead, text, meta?.Name ?? "");
-        if (target is null) return BadRequest(new { message = "Lidda telefon raqami yo'q" });
-
-        return await StartBatchAsync($"Lid: {lead.FullName}", text, [target],
-            provider, req.AgentId, user?.FullName ?? "Administrator", LeadSmsNote(text));
-    }
-
-    /// <summary>Bir nechta lidga birdan SMS — har lidga sms/lead bilan bir xil mantiq
-    /// (tokenlar, telefon tanlash, LeadEvent), hammasi BITTA SmsBatch ostida.</summary>
-    [HttpPost("sms/lead-bulk")]
-    public async Task<ActionResult<LeadBulkSmsResultDto>> SendLeadBulkSms(SendLeadBulkSmsRequest req)
-    {
-        var text = (req.Text ?? "").Trim();
-        if (text.Length == 0) return BadRequest(new { message = "SMS matni kerak" });
-        if (ManualTokenError(text) is { } tokenErr) return BadRequest(new { message = tokenErr });
-        var ids = (req.LeadIds ?? new List<string>())
-            .Where(x => !string.IsNullOrWhiteSpace(x)).Distinct().ToList();
-        if (ids.Count == 0) return BadRequest(new { message = "Kamida bitta lid tanlang" });
-        var meta = await db.CenterMeta.FirstOrDefaultAsync();
-        // Kanal Sozlamalardan (lid oynasida tanlov yo'q): Local yoqilgan bo'lsa — local, aks holda eskiz.
-        var provider = LeadSmsProviderOf(req.Provider, meta);
-        if (provider == "eskiz" && !eskiz.IsConfigured(meta))
-            return BadRequest(new { message = "Eskiz SMS sozlanmagan. Sozlamalar → SMS (Eskiz)da login/parol kiriting." });
-        if (await ValidateLocalSmsAsync(provider, req.AgentId, meta) is { } localErr)
-            return BadRequest(new { message = localErr });
-
-        var leads = await db.Leads.Where(l => ids.Contains(l.Id)).ToListAsync();
-        var user = await db.Users.FindAsync(Uid);
-        var centerName = meta?.Name ?? "";
-
-        // Avval matnlar tayyorlanadi (faqat baza) — yuborishning O'ZI navbat orqali.
-        var targets = new List<SmsQueueService.Target>();
-        var noPhone = 0;
-        foreach (var lead in leads)
-        {
-            if (await BuildLeadTargetAsync(lead, text, centerName) is { } t) targets.Add(t);
-            else noPhone++;
-        }
-        var notFound = ids.Count - leads.Count;
-        if (targets.Count == 0) return new LeadBulkSmsResultDto(0, notFound, noPhone);
-
-        var batch = await StartBatchAsync($"Lidlar (ommaviy): {targets.Count} ta", text, targets,
-            provider, req.AgentId, user?.FullName ?? "Administrator", LeadSmsNote(text));
-
-        // Fonda ketayotgan bo'lsa natija hali noma'lum — modal navbat holatini ko'rsatadi.
-        return batch.Queued
-            ? new LeadBulkSmsResultDto(0, notFound, noPhone, true, targets.Count, batch.Id)
-            : new LeadBulkSmsResultDto(batch.SentCount, notFound + (targets.Count - batch.SentCount), noPhone,
-                false, 0, batch.Id);
-    }
+    // (Lidga SMS — sms/lead, sms/lead-bulk — 2026-10 da olib tashlandi: lidning Telegram manzili yo'q.)
 
 }

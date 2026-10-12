@@ -15,7 +15,6 @@ using WunderkindLC.Application.Services;
 using WunderkindLC.Infrastructure.Auth;
 using WunderkindLC.Infrastructure.Data;
 using WunderkindLC.Server.Controllers;
-using WunderkindLC.Server.Cti;
 using WunderkindLC.Server.Mcp;
 using WunderkindLC.Server.Crm;
 using System.IdentityModel.Tokens.Jwt;
@@ -127,7 +126,7 @@ builder.Services
         };
 
         // SignalR (WebSocket) token'ni Authorization header'da yubora olmaydi —
-        // chat hub uchun tokenni query string'dan ("access_token") qabul qilamiz.
+        // hub'lar (/hubs/live — turniket jonli oqimi) uchun tokenni query string'dan ("access_token") qabul qilamiz.
         options.Events = new JwtBearerEvents
         {
             OnMessageReceived = context =>
@@ -347,9 +346,8 @@ builder.Services.AddRateLimiter(options =>
     });
 });
 
-// Real-time guruh chati (SignalR)
+// SignalR — turniket jonli oqimi (LiveHub). Guruh chati (ChatHub) 2026-10 da olib tashlandi.
 builder.Services.AddSignalR();
-builder.Services.AddScoped<ChatService>();
 
 // IMPORT REJIMI — boshqa tizimdan ma'lumot ko'chirilayotgan bo'lsa (IMPORT_MODE=1), o'z-o'zidan
 // yoziladigan/yuboriladigan hamma narsa O'CHIRILADI (`ImportMode` — sababi o'sha faylda).
@@ -361,16 +359,15 @@ if (!WunderkindLC.Application.Services.ImportMode.Enabled)
 {
     // Oylik to'lovlarni avtomatik hisoblovchi fon xizmati
     builder.Services.AddHostedService<WunderkindLC.Application.Services.TuitionAccrualService>();
-    // Avtomatik to'lov eslatmasi (qarzdorlarga Telegram + push, 09:00 Toshkent).
+    // Avtomatik to'lov eslatmasi (qarzdorlarga kabinet + Telegram, 09:00 Toshkent).
     builder.Services.AddHostedService<WunderkindLC.Application.Services.PaymentReminderService>();
-    // O'qituvchiga davomat kiritish eslatmasi (dars boshlanishidan N daqiqa keyin, push + Telegram).
+    // O'qituvchiga davomat kiritish eslatmasi (dars boshlanishidan N daqiqa keyin, kabinet + Telegram).
     builder.Services.AddHostedService<WunderkindLC.Application.Services.LessonAttendanceReminderService>();
-    // Erkin eslatma (admin belgilagan matn+auditoriya+jadval, push + Telegram).
+    // Erkin eslatma (admin belgilagan matn+auditoriya+jadval, kabinet + Telegram).
     builder.Services.AddHostedService<WunderkindLC.Application.Services.CustomReminderService>();
-    // Tug'ilgan kun avto-SMS (09:00 Toshkent; "birthday" hodisasiga andoza bo'lsa).
-    builder.Services.AddHostedService<WunderkindLC.Application.Services.BirthdaySmsService>();
-    // Sinov darsi eslatmasi (09:00 Toshkent; ertaga bo'ladigan sinovlar; "trial_reminder" andoza bo'lsa).
-    builder.Services.AddHostedService<WunderkindLC.Application.Services.TrialReminderService>();
+    // Tug'ilgan kun tabrigi (09:00 Toshkent; "birthday" qoidasi bo'lsa — kabinet + Telegram).
+    builder.Services.AddHostedService<WunderkindLC.Application.Services.BirthdayGreetingService>();
+    // (Sinov darsi eslatmasi — lidga SMS edi; SMS kanali bilan birga 2026-10 da olib tashlandi.)
 }
 // Kunlik avtomatik backup — markaz ma'lumotlarini JSON qilib Telegram orqali adminga (jadval CenterMeta'da).
 builder.Services.AddHostedService<WunderkindLC.Application.Services.BackupSchedulerService>();
@@ -392,19 +389,7 @@ builder.Services.AddHttpClient();
 // bloklashdan boshqa hech narsa bermaydi (karta keyingi o'zgarishda baribir yangilanadi).
 // Long polling (`getUpdates`, 30 s kutadi) bu timeout'ga TUSHMAYDI — u o'z mijozini sozlaydi.
 builder.Services.AddHttpClient("telegram", c => c.Timeout = TimeSpan.FromSeconds(10));
-// ⚠️ "eskiz" NOMLI mijoz — `EskizService` shu nom bilan so'raydi. AYNAN SHU XATO telegram'da
-// bo'lgan va bu yerda TAKRORLANGAN edi: nom ro'yxatdan o'tmagani uchun default 100 SEKUND
-// timeout ishlardi.
-// Haqiqiy hodisa (2026-09-07, 16:51-16:56 Toshkent): Eskiz API'si ~5 daqiqa javob bermay
-// qoldi. Har "SMS yuborish" bosilishi 100 sekund osilib turdi (`TaskCanceledException:
-// ... HttpClient.Timeout of 100 seconds elapsing`), operator 7 marta bosdi — ya'ni admin
-// oynasi 12 daqiqa qotib turdi. Eskiz o'zi 0.5-1.5 sekundda javob beradi.
-// 25 sekund — sekin tarmoqqa ham yetarli, lekin osilishni foydalanuvchi kutadigan chegarada
-// ushlab qoladi.
-builder.Services.AddHttpClient("eskiz", c => c.Timeout = TimeSpan.FromSeconds(25));
 builder.Services.AddSingleton<TelegramService>();
-// Onlayn test (bot orqali ishlanadigan) oqimi — TelegramBotService shu servisga yo'naltiradi.
-builder.Services.AddSingleton<OnlineTestBotService>();
 // Kitob sotuvi (bot orqali buyurtma) oqimi — TelegramBotService shu servisga yo'naltiradi.
 builder.Services.AddSingleton<BookShopBotService>();
 builder.Services.AddHostedService<TelegramBotService>();
@@ -458,25 +443,10 @@ builder.Services.AddScoped<WunderkindLC.Application.Services.IgEmbeddingService>
 // chaqiradi; post o'chirilganda/tahrirlanganda controller ham shu servisdan foydalanadi.
 builder.Services.AddScoped<WunderkindLC.Application.Services.MarketingMediaCleanup>();
 
-// FCM (Firebase push) — service account CenterMeta'da; token keshi uchun singleton.
-builder.Services.AddSingleton<FcmService>();
-// Eskiz.uz SMS — login/parol CenterMeta'da; token keshi uchun singleton.
-builder.Services.AddSingleton<EskizService>();
-// YAGONA avto-xabar dispatcheri (SMS+Push+Telegram) — Eskiz/Fcm/Telegram singletonlariga tayanadi.
+// YAGONA avto-xabar dispatcheri (kabinet + Telegram) — Telegram singletoniga tayanadi.
+// (SMS, push va Local Call/Local SMS — CTI agent ilovasi — 2026-10 da olib tashlandi.)
 builder.Services.AddSingleton<AutoMessageService>();
-// CTI (Local Call) — YAGONA telefoniya: Android agent WebSocket ulanishlarini boshqaruvchi
-// (jonli onlayn + dial buyruq). Eski bulutli telefoniya 2026-10-08 da butunlay olib tashlandi
-// (README-CTI.md); uning `Calls` jadvali faqat TARIX sifatida qoldi.
-builder.Services.AddSingleton<CtiConnectionManager>();
-// Local SMS — agent telefonining SIM-kartasidan (send_sms) — Eskiz'ga muqobil provider sifatida
-// MessagesController/AutoMessageService/CtiController tomonidan ishlatiladi.
-builder.Services.AddSingleton<CtiSmsService>();
 
-// OMMAVIY SMS NAVBATI — ko'p oluvchili partiya so'rov ichida emas, FONDA yuboriladi (Cloudflare
-// javobni 100 s kutadi, 100 ta SMS esa bir necha daqiqa oladi). Singleton + fon ishchisi bir xil
-// nusxa: controller unga navbatga qo'yadi, ishchi esa bittalab yuboradi.
-builder.Services.AddSingleton<SmsQueueService>();
-builder.Services.AddHostedService(sp => sp.GetRequiredService<SmsQueueService>());
 // OMMAVIY DAVOMAT XABARLARI — navbat BAZADA (AttendanceNotifyItem), ishchi restartdan keyin qolganini
 // yuboradi. Singleton + fon ishchisi bir xil nusxa: jurnal controllerlari saqlagach `Wake()` qiladi.
 builder.Services.AddSingleton<WunderkindLC.Application.Services.AttendanceNotifyWorker>();
@@ -944,8 +914,8 @@ catch (Exception ex)
         var templates = new (string Code, string Name, string Desc, string[] Perms)[]
         {
             ("call_operator", "Qo'ng'iroq operatori",
-                "Qo'ng'iroq qabul qiladi (Call Center), lidlarni yaratadi va boshqaradi",
-                new[] { "calls", "leads", "messages" }),
+                "Lidlarni yaratadi va boshqaradi, ota-onalarga xabar yuboradi",
+                new[] { "leads", "messages" }),
             ("cashier", "Kassir",
                 "To'lovlarni kiritadi va boshqaradi, o'quvchi ma'lumotlarini ko'radi",
                 // "kassa" — pul qabul qilish ish o'rni (o'quvchini topib to'lov kiritish). Faqat
@@ -981,7 +951,7 @@ catch (Exception ex)
     // esa UI'dan boshqariladi (DB'da saqlanadi, deploy buzmaydi). Bo'sh qiymatlar e'tiborsiz qoldiriladi.
     //
     // DIQQAT: bu yerda FAQAT maxfiy BO'LMAGAN sozlamalar bor. Kalitlar (bot tokeni, FCM service
-    // account, Gemini/Azure kaliti, Eskiz login/paroli, turniket login/paroli) DB'ga UMUMAN
+    // account, Gemini/Azure kaliti, turniket login/paroli) DB'ga UMUMAN
     // yozilmaydi — ular to'g'ridan-to'g'ri .env dan o'qiladi (AppSecrets).
     try
     {
@@ -1002,10 +972,6 @@ catch (Exception ex)
         S("Telegram:BotName", v => meta.TelegramBotName = v);
         S("Telegram:Channel", v => meta.TelegramChannel = v);
         S("Telegram:AdminChatId", v => meta.TelegramAdminChatId = v);
-        // Eskiz SMS: jo'natuvchi nomi (From) ATAYIN bu yerda YO'Q — u UI'dan boshqariladigan
-        // yagona Eskiz sozlamasi. .env'dagi ESKIZ_FROM faqat DB'da qiymat bo'lmaganda zaxira
-        // sifatida ishlatiladi (EskizService.SenderOf); aks holda har deployda admin tanlagan
-        // tasdiqlangan nikname "4546" ga qaytib ketardi.
         // Turniket / FaceID (login/parol .env da)
         B("Turnstile:Enabled", v => meta.TurnstileEnabled = v);
         S("Turnstile:Vendor", v => meta.TurnstileVendor = v);
@@ -1107,23 +1073,23 @@ app.Use(async (context, next) =>
         headers["Content-Security-Policy"] =
             "default-src 'self'; " +
             "img-src 'self' data: blob: https:; " +
-            // blob: — Call Center yozuv pleyeri (audio auth bilan blob qilib ochiladi) va
-            // shunga o'xshash media; busiz prod'da <audio src="blob:..."> JIM bloklanadi.
+            // blob: — auth bilan blob qilib ochiladigan media (audio/video); busiz prod'da
+            // <audio src="blob:..."> JIM bloklanadi.
             "media-src 'self' blob:; " +
             // fonts.googleapis.com — landing/sertifikatlar sahifalari Google Fonts'ni
             // <link rel="stylesheet"> bilan yuklaydi (SPA emas, statik marketing sahifalari).
             // Busiz prod'da shrift STYLESHEET'i bloklanadi va sahifa zaxira shriftda chiqadi.
             "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
-            // gstatic — FCM web SW (firebase-messaging-sw.js) `firebasejs`'ni importScripts qiladi.
             // telegram.org — bot Menu Button orqali Web App sifatida ochilganda kerak bo'ladigan SDK
-            // (`/js/telegram-web-app.js`). Ikkalasi ham ANIQ yo'l bilan toraytirilgan — host darajasidagi
-            // ruxsat kerak emas, aks holda o'sha domendagi boshqa har qanday skript ham yuklanardi.
-            "script-src 'self' https://www.gstatic.com/firebasejs/ https://telegram.org/js/; " +
+            // (`/js/telegram-web-app.js`). ANIQ yo'l bilan toraytirilgan — host darajasidagi ruxsat
+            // kerak emas, aks holda o'sha domendagi boshqa har qanday skript ham yuklanardi.
+            // (Firebase web push SDK — gstatic — 2026-10 da push bilan birga olib tashlandi.)
+            "script-src 'self' https://telegram.org/js/; " +
             "worker-src 'self'; " +
-            // googleapis/gstatic — FCM web token olish (getToken) so'rovlari. Yalang `ws: wss:` ATAYIN
-            // OLIB TASHLANDI — u istalgan hostga WebSocket ochilishiga yo'l qo'yib, token oqib ketish
-            // kanali bo'lardi. Bizning WS/SignalR same-origin, CSP3'da 'self' same-origin wss'ni qamraydi.
-            "connect-src 'self' https://*.googleapis.com https://*.gstatic.com https://fcm.googleapis.com; " +
+            // Yalang `ws: wss:` ATAYIN YO'Q — u istalgan hostga WebSocket ochilishiga yo'l qo'yib, token
+            // oqib ketish kanali bo'lardi. Bizning SignalR same-origin, CSP3'da 'self' same-origin wss'ni
+            // qamraydi. (FCM web token so'rovlari — googleapis/gstatic — push bilan birga olib tashlandi.)
+            "connect-src 'self'; " +
             // fonts.gstatic.com — Google Fonts'ning .woff2 fayllari aynan shu hostdan keladi
             // (stylesheet googleapis'da, shriftning O'ZI gstatic'da — ikkalasi ham kerak).
             "font-src 'self' data: https://fonts.gstatic.com; " +
@@ -1363,70 +1329,7 @@ app.UseStaticFiles(new StaticFileOptions
 // Swagger ATAYLAB o'chirilgan (global) — butun API yuzasini ochib qo'ymaslik uchun
 // `/api/swagger` UI/JSON endpointlari berilmaydi.
 
-// CTI (Local Call) — Android agent WebSocket. UseWebSockets HTTPS-redirect'dan OLDIN: upgrade so'rovi
-// redirect qilinmasin. /ws terminal branch — SPA fallback'ga tushmaydi. Auth QO'LDA (query ?token=)
-// tekshiriladi (SignalR access_token uslubiga o'xshash), chunki brauzer/ilova WS'da header yubora olmaydi.
-app.UseWebSockets(new WebSocketOptions { KeepAliveInterval = TimeSpan.FromSeconds(30) });
-app.Map("/ws", wsApp => wsApp.Run(async ctx =>
-{
-    if (!ctx.WebSockets.IsWebSocketRequest)
-    {
-        ctx.Response.StatusCode = StatusCodes.Status400BadRequest;
-        return;
-    }
-
-    var token = ctx.Request.Query["token"].ToString();
-    var (valid, agentId) = ValidateAgentToken(token, jwtOptions);
-    if (!valid)
-    {
-        ctx.Response.StatusCode = StatusCodes.Status401Unauthorized;
-        return;
-    }
-    // ⚠️ Token imzosi yetmaydi: o'chirilgan agent 12 soatlik token bilan qayta ulanib
-    // dial/SMS buyruqlarini olaverardi. Bazadagi holat tekshiriladi.
-    using (var agentScope = ctx.RequestServices.CreateScope())
-    {
-        var agentDb = agentScope.ServiceProvider.GetRequiredService<AppDbContext>();
-        if (!await agentDb.CtiAgents.AsNoTracking().AnyAsync(a => a.Id == agentId && a.IsActive))
-        {
-            ctx.Response.StatusCode = StatusCodes.Status401Unauthorized;
-            return;
-        }
-    }
-
-    var manager = ctx.RequestServices.GetRequiredService<CtiConnectionManager>();
-    var scopeFactory = ctx.RequestServices.GetRequiredService<IServiceScopeFactory>();
-    var logger = ctx.RequestServices.GetRequiredService<ILoggerFactory>().CreateLogger("CtiWebSocket");
-    var lifetime = ctx.RequestServices.GetRequiredService<IHostApplicationLifetime>();
-
-    using var socket = await ctx.WebSockets.AcceptWebSocketAsync();
-    await CtiWebSocketHandler.HandleAsync(socket, agentId!, manager, scopeFactory, logger, lifetime.ApplicationStopping);
-}));
-
-// CTI WS token tekshiruvi: imzo/muddat/issuer/audience + rol == ctiagent. (agentId, valid) qaytaradi.
-static (bool Valid, string? AgentId) ValidateAgentToken(string token, JwtOptions o)
-{
-    if (string.IsNullOrWhiteSpace(token)) return (false, null);
-    try
-    {
-        var handler = new JwtSecurityTokenHandler();
-        var principal = handler.ValidateToken(token, new TokenValidationParameters
-        {
-            ValidateIssuer = true,
-            ValidateAudience = true,
-            ValidateLifetime = true,
-            ValidateIssuerSigningKey = true,
-            ValidIssuer = o.Issuer,
-            ValidAudience = o.Audience,
-            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(o.Key)),
-        }, out _);
-        if (!principal.IsInRole(Roles.CtiAgent)) return (false, null);
-        var agentId = principal.FindFirst(ClaimTypes.NameIdentifier)?.Value
-                      ?? principal.FindFirst(JwtRegisteredClaimNames.Sub)?.Value;
-        return string.IsNullOrEmpty(agentId) ? (false, null) : (true, agentId);
-    }
-    catch { return (false, null); }
-}
+// (CTI — Local Call / Local SMS agent ilovasi — WebSocket'i `/ws` 2026-10 da olib tashlandi.)
 
 app.UseHttpsRedirection();
 
@@ -1496,7 +1399,6 @@ app.UseOutputCache();
 
 app.MapControllers();
 app.MapWunderkindMcp();
-app.MapHub<ChatHub>("/hubs/chat");
 app.MapHub<LiveHub>("/hubs/live");
 
 // API "tirikligi": https://<domen>/api ochilganda SPA HTML emas, JSON qaytaradi.

@@ -67,14 +67,13 @@ Foiz bazasi va "Umumiy" rejim — `billing.md`.
 Akkaunt o'chirilganda (`DELETE api/admin/staff/{id}`) o'sha tranzaksiyada: KPI profili nofaol,
 OCHIQ lidlar (aylantirilmagan/yopilmagan/yo'qotilmagan) biriktirilmagan holatga, kassa mas'ulsiz
 (ism snapshot'i ham tozalanadi), bajarilmagan topshiriqlar mas'ulsiz (topshiriq tarixiga yozuv),
-CTI agent o'chiriladi, Telegram xodim bog'lanishi uziladi. Nima bo'shatilgani — o'sha BITTA audit
+Telegram xodim bog'lanishi uziladi (`StaffRelease.Result(KpiProfiles, OpenLeads, Cashboxes, OpenTasks,
+TelegramLinks)`). Nima bo'shatilgani — o'sha BITTA audit
 qatorida. Sabab: ilgari KPI'da "arvoh" qator qolar, o'chirilgan odamga topshiriq eslatmasi ketaverardi.
 
-⚠️ CTI agent `CtiController.UpdateAgent` dagi o'chirish bilan BIR XIL bo'shatiladi (2026-10-08): nofaol,
-`IsOnline=false`, FCM tokeni tozalanadi va saqlangandan KEYIN jonli WebSocket uziladi (`logout` buyrug'i,
-`CtiConnectionManager.DisconnectAsync`). Ilgari faqat `IsActive=false` edi — telefon ochiq ulanish bilan
-qo'ng'iroq/SMS'da davom etardi. Agent STANDART Local SMS agenti bo'lsa — audit matnida "⚠️ … standart Local
-SMS agenti edi — avtomatik Local SMS'lar to'xtadi" va javobda `warning` (messaging.md, `LocalSmsDefaultAgent`).
+⚠️ 2026-10: CTI agent (Local Call) qismi modul bilan birga OLIB TASHLANDI — xodim o'chirilganda eski
+`CtiAgents` qatorlariga tegilmaydi (agent ilovasi endi serverga ulana olmaydi: `/ws` va `api/cti/*` yo'q),
+javobda `warning` ham yo'q (`DELETE` → 204).
 
 ⚠️ TARIX tegilmaydi: yopilgan/yo'qotilgan lidlarning `AssigneeUserId` i (yo'qotish hisoboti, KPI),
 bajarilgan topshiriqlar, `ClosedByUserId`.

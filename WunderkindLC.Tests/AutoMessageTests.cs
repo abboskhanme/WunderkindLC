@@ -3,7 +3,6 @@ using WunderkindLC.Application.Abstractions;
 using WunderkindLC.Application.Services;
 using WunderkindLC.Domain;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -17,7 +16,7 @@ namespace WunderkindLC.Tests;
 // ---------------------------------------------------------------------------------------------
 
 /// <summary>Har qanday HTTP so'rovni DARHOL xatoga chiqaradigan HttpClient fabrikasi — testda
-/// hech qanday xizmat (Eskiz/Telegram/FCM) haqiqatan tarmoqqa chiqmasligini kafolatlaydi.</summary>
+/// hech qanday xizmat (Telegram) haqiqatan tarmoqqa chiqmasligini kafolatlaydi.</summary>
 internal sealed class NoNetworkHttpClientFactory : IHttpClientFactory
 {
     private sealed class BlockingHandler : HttpMessageHandler
@@ -49,21 +48,14 @@ internal sealed class SingleServiceProvider(IAppDbContext db)
 /// <summary>Testda ishlatiladigan real (lekin tarmoqsiz) xizmatlar to'plami.</summary>
 internal sealed class MessagingStack
 {
-    public EskizService Eskiz { get; }
-    public FcmService Fcm { get; }
     public TelegramService Telegram { get; }
-    public CtiSmsService Cti { get; }
     public AutoMessageService Auto { get; }
 
     public MessagingStack()
     {
         var http = new NoNetworkHttpClientFactory();
-        var config = new ConfigurationBuilder().Build();
-        Eskiz = new EskizService(config, http, NullLogger<EskizService>.Instance);
-        Fcm = new FcmService(http, NullLogger<FcmService>.Instance);
         Telegram = new TelegramService(http, NullLogger<TelegramService>.Instance);
-        Cti = new CtiSmsService(new CtiConnectionManager(), Fcm, NullLogger<CtiSmsService>.Instance);
-        Auto = new AutoMessageService(Eskiz, Fcm, Telegram, Cti, NullLogger<AutoMessageService>.Instance);
+        Auto = new AutoMessageService(Telegram, NullLogger<AutoMessageService>.Instance);
     }
 }
 
@@ -87,8 +79,8 @@ internal static class Reflect
 }
 
 /// <summary>
-/// AVTO-XABAR tizimi testlari: trigger katalogi, token katalogi, Eskiz raqam normalizatsiyasi,
-/// <see cref="AutoMessageService"/> dispatcheri va eslatma fon-xizmatlari (qarzdorlik, tug'ilgan
+/// AVTO-XABAR tizimi testlari: trigger katalogi, token katalogi, yetkazish kanallari
+/// (<see cref="AutoMessageChannels"/>), <see cref="AutoMessageService"/> dispatcheri va eslatma fon-xizmatlari (qarzdorlik, tug'ilgan
 /// kun, erkin jadval). Rasmiy manba: <c>.claude/rules/messaging.md</c>.
 /// </summary>
 public class AutoMessageTests
@@ -96,11 +88,12 @@ public class AutoMessageTests
     // ===================== 1) Trigger katalogi (sof mantiq) =====================
 
     [Fact]
-    public void Triggerlar_14_ta_va_kalitlari_takrorlanmaydi()
+    public void Triggerlar_10_ta_va_kalitlari_takrorlanmaydi()
     {
-        // messaging.md: "14 trigger" katalogi AutoMessageTriggers da (2026-10-07: + attendance_present).
-        Assert.Equal(14, AutoMessageTriggers.All.Length);
-        Assert.Equal(14, AutoMessageTriggers.All.Select(t => t.Key).Distinct().Count());
+        // messaging.md: "10 trigger" katalogi AutoMessageTriggers da (2026-10-07: + attendance_present;
+        // 2026-10: 4 ta lid hodisasi SMS bilan birga olib tashlandi).
+        Assert.Equal(10, AutoMessageTriggers.All.Length);
+        Assert.Equal(10, AutoMessageTriggers.All.Select(t => t.Key).Distinct().Count());
         Assert.Contains(AutoMessageTriggers.All, t => t.Key == AutoMessageTriggers.AttendancePresent);
     }
 
@@ -124,23 +117,30 @@ public class AutoMessageTests
     }
 
     [Fact]
-    public void Lid_hodisalarida_faqat_SMS_kanali_bor()
+    public void Lid_hodisalari_2026_10_dan_katalogda_YOQ()
     {
-        // messaging.md: "Lid hodisalarida faqat SMS ishlaydi (lidda push/telegram yo'q)".
-        var leadTriggers = new[]
+        // Lid hodisalari faqat lid telefoniga SMS edi (lidning Telegram manzili yo'q) — SMS kanali bilan
+        // birga olib tashlandi. Bazadagi eski qoidalar "noma'lum" bo'lib qoladi: ro'yxatda ko'rinmaydi va
+        // hech qachon ishga tushmaydi.
+        foreach (var key in new[] { "lead_new", "trial_reminder", "test_link", "test_result" })
         {
-            AutoMessageTriggers.LeadNew, AutoMessageTriggers.TrialReminder,
-            AutoMessageTriggers.TestLink, AutoMessageTriggers.TestResult,
-        };
-        foreach (var key in leadTriggers)
-        {
-            var t = AutoMessageTriggers.Get(key)!;
-            Assert.True(t.Sms, key);
-            Assert.False(t.Push, key);
-            Assert.False(t.Telegram, key);
-            Assert.Empty(t.Audiences);           // lidda auditoriya tanlanmaydi
-            Assert.Equal(AutoMessageTriggers.CategoryLeads, t.Category);
+            Assert.False(AutoMessageTriggers.IsKnown(key), key);
+            Assert.Null(AutoMessageTriggers.Get(key));
         }
+        Assert.DoesNotContain(AutoMessageTriggers.All, t => t.Category == AutoMessageTriggers.CategoryLeads);
+    }
+
+    // ===================== 1.5) Yetkazish kanallari (sof) =====================
+
+    [Fact]
+    public void Kanal_Telegram_bayrogi_yoki_ESKI_SMS_bayrogi_Telegramga_yetkazadi()
+    {
+        Assert.True(AutoMessageChannels.Telegram(new AutoMessageRule { SendTelegram = true }));
+        // Eski SMS qoidasi (2026-10 gacha saqlangan) Telegram orqali yetkaziladi — tabrik/eslatma yo'qolmasin.
+        Assert.True(AutoMessageChannels.Telegram(new AutoMessageRule { SendSms = true }));
+        Assert.False(AutoMessageChannels.Telegram(new AutoMessageRule()));
+        // Push bayrog'i endi hech narsani hal qilmaydi (kabinet yozuvi har doim yoziladi).
+        Assert.False(AutoMessageChannels.Telegram(new AutoMessageRule { SendPush = true }));
     }
 
     [Fact]
@@ -252,53 +252,7 @@ public class AutoMessageTests
         }
     }
 
-    // ===================== 3) Eskiz — raqam normalizatsiyasi (sof) =====================
-
-    [Theory]
-    [InlineData("901234567", "998901234567")]           // 9 xonali — 998 qo'shiladi
-    [InlineData("998901234567", "998901234567")]        // allaqachon to'liq
-    [InlineData("+998 90 123-45-67", "998901234567")]   // belgilar tozalanadi
-    [InlineData("8901234567", "998901234567")]          // 10 xonali, 998siz — oxirgi 9 tasi olinadi
-    public void Eskiz_NormalizePhone_togri_formatga_keltiradi(string input, string expected)
-    {
-        Assert.Equal(expected, EskizService.NormalizePhone(input));
-    }
-
-    [Fact]
-    public void Eskiz_NormalizePhone_bosh_qiymatda_bosh_satr()
-    {
-        Assert.Equal("", EskizService.NormalizePhone(null));
-        Assert.Equal("", EskizService.NormalizePhone(""));
-        Assert.Equal("", EskizService.NormalizePhone("   "));
-    }
-
-    [Fact]
-    public void Eskiz_NormalizePhone_qisqa_raqamni_uzaytirmaydi_va_tekshiruvdan_otmaydi()
-    {
-        // SendSmsAsync dagi qoida: mobile.Length < 12 → "Telefon raqami noto'g'ri".
-        var normalized = EskizService.NormalizePhone("12345");
-        Assert.Equal("12345", normalized);
-        Assert.True(normalized.Length < 12);
-    }
-
-    [Fact]
-    public void Eskiz_NormalizePhone_998_bilan_boshlangan_uzun_raqamni_qisqartirmaydi()
-    {
-        // HOZIRGI XULQ (xatoni qayd etuvchi yashil test): 998 bilan boshlangan 13 xonali raqam
-        // o'zgarishsiz qoladi va uzunlik tekshiruvidan (>= 12) o'tib ketadi.
-        var normalized = EskizService.NormalizePhone("9981234567890");
-        Assert.Equal("9981234567890", normalized);
-        Assert.True(normalized.Length >= 12, "uzunlik tekshiruvi bunday raqamni bloklamaydi");
-    }
-
-    [Fact(Skip = "XATO (EskizService.cs:49-55,118): NormalizePhone 998 bilan boshlangan 12 dan UZUN " +
-                 "raqamni qisqartirmaydi, SendSmsAsync esa faqat 'uzunligi < 12' ni rad etadi — " +
-                 "noto'g'ri terilgan uzun raqam Eskiz'ga yuboriladi. Tuzatish: 998 prefiksli raqam " +
-                 "uchun ham oxirgi 9 xonani olish (d = \"998\" + d[^9..]) yoki uzunlikni == 12 deb tekshirish.")]
-    public void Eskiz_NormalizePhone_uzun_raqamni_ham_9_xonagacha_qisqartirishi_kerak()
-    {
-        Assert.Equal("998234567890", EskizService.NormalizePhone("9981234567890"));
-    }
+    // 3) Eskiz raqam normalizatsiyasi testlari — 2026-10 da SMS kanali bilan birga olib tashlandi.
 
     // ===================== 4) AutoMessageService — dispatcher =====================
 
@@ -313,12 +267,13 @@ public class AutoMessageTests
         UserId = userId,
     };
 
-    private static AutoMessageRule PushRule(string trigger, string template) => new()
+    /// <summary>Faqat kabinet bildirishnomasi bilan ishlaydigan qoida (Telegram o'chiq) — kabinet yozuvi
+    /// 2026-10 dan HAR qoida uchun yoziladi (ilgari faqat push bayrog'i bilan).</summary>
+    private static AutoMessageRule Rule(string trigger, string template) => new()
     {
         Trigger = trigger,
         Name = "",
         Enabled = true,
-        SendPush = true,
         Template = template,
     };
 
@@ -343,7 +298,7 @@ public class AutoMessageTests
         using var db = TestDb.Sqlite();
         var ctx = db.Context;
         var s = NewStudent();
-        var rule = PushRule(AutoMessageTriggers.Birthday, "Tabriklaymiz {ism}!");
+        var rule = Rule(AutoMessageTriggers.Birthday, "Tabriklaymiz {ism}!");
         rule.Enabled = false;
         ctx.Students.Add(s);
         ctx.AutoMessageRules.Add(rule);
@@ -355,13 +310,13 @@ public class AutoMessageTests
     }
 
     [Fact]
-    public async Task Dispatch_push_kanali_bildirishnoma_tarixiga_yozadi()
+    public async Task Dispatch_kabinet_bildirishnomasi_tarixiga_yoziladi()
     {
         using var db = TestDb.Sqlite();
         var ctx = db.Context;
         var s = NewStudent();
         ctx.Students.Add(s);
-        ctx.AutoMessageRules.Add(PushRule(AutoMessageTriggers.Birthday, "Hurmatli {ism}, tug'ilgan kuningiz muborak!"));
+        ctx.AutoMessageRules.Add(Rule(AutoMessageTriggers.Birthday, "Hurmatli {ism}, tug'ilgan kuningiz muborak!"));
         ctx.SaveChanges();
 
         await new MessagingStack().Auto.DispatchStudentAsync(ctx, AutoMessageTriggers.Birthday, s);
@@ -380,7 +335,7 @@ public class AutoMessageTests
         using var db = TestDb.Sqlite();
         var ctx = db.Context;
         var s = NewStudent();
-        var rule = PushRule(AutoMessageTriggers.Birthday, "Tabrik");
+        var rule = Rule(AutoMessageTriggers.Birthday, "Tabrik");
         rule.Name = "Bizning tabrik";
         ctx.Students.Add(s);
         ctx.AutoMessageRules.Add(rule);
@@ -392,13 +347,13 @@ public class AutoMessageTests
     }
 
     [Fact]
-    public async Task Dispatch_push_ochiq_bolsa_ham_akkaunti_yoq_oquvchiga_yozilmaydi()
+    public async Task Dispatch_akkaunti_yoq_oquvchiga_kabinet_yozuvi_yozilmaydi()
     {
         using var db = TestDb.Sqlite();
         var ctx = db.Context;
         var s = NewStudent(userId: null);
         ctx.Students.Add(s);
-        ctx.AutoMessageRules.Add(PushRule(AutoMessageTriggers.Birthday, "Tabrik {ism}"));
+        ctx.AutoMessageRules.Add(Rule(AutoMessageTriggers.Birthday, "Tabrik {ism}"));
         ctx.SaveChanges();
 
         await new MessagingStack().Auto.DispatchStudentAsync(ctx, AutoMessageTriggers.Birthday, s);
@@ -407,22 +362,25 @@ public class AutoMessageTests
     }
 
     [Fact]
-    public async Task Dispatch_kanal_bayroqlari_mustaqil_push_yoqilmasa_yozuv_yoq()
+    public async Task Dispatch_ESKI_SMS_qoidasi_kabinetga_yoziladi_SMS_jurnali_yozilmaydi()
     {
         using var db = TestDb.Sqlite();
         var ctx = db.Context;
         var s = NewStudent();
-        var rule = PushRule(AutoMessageTriggers.Birthday, "Tabrik {ism}");
+        var rule = Rule(AutoMessageTriggers.Birthday, "Tabrik {ism}");
         rule.SendPush = false;
-        rule.SendSms = true;   // Eskiz sozlanmagan (.env yo'q) — yuborilmaydi
+        rule.SendSms = true;            // 2026-10 gacha saqlangan SMS qoidasi
+        rule.SmsProvider = "local";
         ctx.Students.Add(s);
         ctx.AutoMessageRules.Add(rule);
         ctx.SaveChanges();
 
         await new MessagingStack().Auto.DispatchStudentAsync(ctx, AutoMessageTriggers.Birthday, s);
 
-        Assert.Empty(ctx.UserNotifications);
+        // Kabinet yozuvi push bayrog'iga bog'liq emas; SMS kanali yo'q — eski jadvallarga hech narsa yozilmaydi.
+        Assert.Equal("Tabrik Ali", Assert.Single(ctx.UserNotifications).Body);
         Assert.Empty(ctx.SmsLogs);
+        Assert.Empty(ctx.SmsBatches);
     }
 
     [Fact]
@@ -432,8 +390,8 @@ public class AutoMessageTests
         var ctx = db.Context;
         var s = NewStudent();
         ctx.Students.Add(s);
-        ctx.AutoMessageRules.Add(PushRule(AutoMessageTriggers.Birthday, "Birinchi {ism}"));
-        ctx.AutoMessageRules.Add(PushRule(AutoMessageTriggers.Birthday, "Ikkinchi {ism}"));
+        ctx.AutoMessageRules.Add(Rule(AutoMessageTriggers.Birthday, "Birinchi {ism}"));
+        ctx.AutoMessageRules.Add(Rule(AutoMessageTriggers.Birthday, "Ikkinchi {ism}"));
         ctx.SaveChanges();
 
         await new MessagingStack().Auto.DispatchStudentAsync(ctx, AutoMessageTriggers.Birthday, s);
@@ -449,7 +407,7 @@ public class AutoMessageTests
         var ctx = db.Context;
         var s = NewStudent();
         ctx.Students.Add(s);
-        ctx.AutoMessageRules.Add(PushRule(AutoMessageTriggers.Birthday, "   "));
+        ctx.AutoMessageRules.Add(Rule(AutoMessageTriggers.Birthday, "   "));
         ctx.SaveChanges();
 
         await new MessagingStack().Auto.DispatchStudentAsync(ctx, AutoMessageTriggers.Birthday, s);
@@ -465,7 +423,7 @@ public class AutoMessageTests
         var teacher = new Teacher { FullName = "Karimov Karim", Phone = "903334455", UserId = "u-teacher" };
         var group = new Group { Name = "IELTS-1", TeacherId = teacher.Id };
         var s = NewStudent();
-        var rule = PushRule(AutoMessageTriggers.StudentAdded, "{ism} qo'shildi");
+        var rule = Rule(AutoMessageTriggers.StudentAdded, "{ism} qo'shildi");
         rule.Audience = "teachers";
         ctx.Teachers.Add(teacher);
         ctx.Classes.Add(group);
@@ -487,7 +445,7 @@ public class AutoMessageTests
         using var db = TestDb.Sqlite();
         var ctx = db.Context;
         var s = NewStudent();
-        var rule = PushRule(AutoMessageTriggers.StudentAdded, "{ism} qo'shildi");
+        var rule = Rule(AutoMessageTriggers.StudentAdded, "{ism} qo'shildi");
         rule.Audience = "teachers";
         ctx.Students.Add(s);
         ctx.AutoMessageRules.Add(rule);
@@ -499,80 +457,13 @@ public class AutoMessageTests
     }
 
     [Fact]
-    public async Task Dispatch_local_SMS_yoqilganda_SmsLog_va_SmsBatch_yoziladi()
-    {
-        using var db = TestDb.Sqlite();
-        var ctx = db.Context;
-        var s = NewStudent();
-        var rule = PushRule(AutoMessageTriggers.Birthday, "Tabrik {ism}");
-        rule.SendPush = false;
-        rule.SendSms = true;
-        rule.SmsProvider = "local";
-        ctx.CenterMeta.Add(new CenterMeta { Name = "Wunderkind", LocalSmsEnabled = true });
-        ctx.Students.Add(s);
-        ctx.AutoMessageRules.Add(rule);
-        ctx.SaveChanges();
-
-        await new MessagingStack().Auto.DispatchStudentAsync(ctx, AutoMessageTriggers.Birthday, s);
-
-        var log = Assert.Single(ctx.SmsLogs);
-        Assert.Equal("local", log.Provider);
-        Assert.Equal("Tabrik Ali", log.Message);
-        // Standart agent tanlanmagani uchun yetkazilmadi — lekin jurnal baribir yoziladi.
-        Assert.Equal("yetkazilmadi", log.Status);
-
-        var batch = Assert.Single(ctx.SmsBatches);
-        Assert.Equal("local", batch.Provider);
-        Assert.Equal(1, batch.RecipientCount);
-        Assert.Equal(0, batch.SentCount);
-        Assert.Contains("Avto (Tug'ilgan kun)", batch.Audience);
-        // SmsBatch.Message — XOM shablon (shaxsiylashtirilgan matn emas).
-        Assert.Equal("Tabrik {ism}", batch.Message);
-    }
-
-    [Fact]
-    public async Task Dispatch_local_SMS_ochirilgan_bolsa_yuborilmaydi()
-    {
-        using var db = TestDb.Sqlite();
-        var ctx = db.Context;
-        var s = NewStudent();
-        var rule = PushRule(AutoMessageTriggers.Birthday, "Tabrik {ism}");
-        rule.SendPush = false;
-        rule.SendSms = true;
-        rule.SmsProvider = "local";
-        ctx.CenterMeta.Add(new CenterMeta { Name = "Wunderkind", LocalSmsEnabled = false });
-        ctx.Students.Add(s);
-        ctx.AutoMessageRules.Add(rule);
-        ctx.SaveChanges();
-
-        await new MessagingStack().Auto.DispatchStudentAsync(ctx, AutoMessageTriggers.Birthday, s);
-
-        Assert.Empty(ctx.SmsLogs);
-        Assert.Empty(ctx.SmsBatches);
-    }
-
-    [Fact]
-    public void AutoMessageSmsSender_IsReady_provider_boyicha_qaror_qiladi()
-    {
-        var stack = new MessagingStack();
-        var metaOn = new CenterMeta { LocalSmsEnabled = true };
-        var metaOff = new CenterMeta { LocalSmsEnabled = false };
-
-        Assert.True(AutoMessageSmsSender.IsReady("local", metaOn, stack.Eskiz));
-        Assert.False(AutoMessageSmsSender.IsReady("local", metaOff, stack.Eskiz));
-        Assert.False(AutoMessageSmsSender.IsReady("local", null, stack.Eskiz));
-        // Eskiz .env'siz sozlanmagan — LocalSmsEnabled unga ta'sir qilmaydi.
-        Assert.False(AutoMessageSmsSender.IsReady("eskiz", metaOn, stack.Eskiz));
-    }
-
-    [Fact]
     public async Task DispatchAttendanceAbsent_sanani_kk_oo_yyyy_ga_ogiradi()
     {
         using var db = TestDb.Sqlite();
         var ctx = db.Context;
         var s = NewStudent();
         ctx.Students.Add(s);
-        ctx.AutoMessageRules.Add(PushRule(
+        ctx.AutoMessageRules.Add(Rule(
             AutoMessageTriggers.AttendanceAbsent, "{ism} {sana} kuni {guruh}da kelmadi. Sabab: {sabab}"));
         ctx.SaveChanges();
 
@@ -592,7 +483,7 @@ public class AutoMessageTests
         var ctx = db.Context;
         var s = NewStudent();
         ctx.Students.Add(s);
-        ctx.AutoMessageRules.Add(PushRule(
+        ctx.AutoMessageRules.Add(Rule(
             AutoMessageTriggers.MonthlyCharge, "{ism}: {oy} uchun {summa}"));
         ctx.SaveChanges();
 
@@ -616,7 +507,7 @@ public class AutoMessageTests
         var s = NewStudent();
         s.IsArchived = true;
         ctx.Students.Add(s);
-        ctx.AutoMessageRules.Add(PushRule(AutoMessageTriggers.MonthlyCharge, "{ism}: {summa}"));
+        ctx.AutoMessageRules.Add(Rule(AutoMessageTriggers.MonthlyCharge, "{ism}: {summa}"));
         ctx.SaveChanges();
 
         await new MessagingStack().Auto.DispatchMonthlyChargesAsync(
@@ -640,125 +531,7 @@ public class AutoMessageTests
         Assert.Empty(ctx.UserNotifications);
     }
 
-    [Fact]
-    public async Task DispatchLead_raqamsiz_lidga_yuborilmaydi()
-    {
-        using var db = TestDb.Sqlite();
-        var ctx = db.Context;
-        var lead = new Lead { FullName = "Yangi Lid" };
-        var rule = PushRule(AutoMessageTriggers.LeadNew, "Salom {fish}");
-        rule.SendPush = false;
-        rule.SendSms = true;
-        rule.SmsProvider = "local";
-        ctx.CenterMeta.Add(new CenterMeta { LocalSmsEnabled = true });
-        ctx.Leads.Add(lead);
-        ctx.AutoMessageRules.Add(rule);
-        ctx.SaveChanges();
-
-        await new MessagingStack().Auto.DispatchLeadAsync(ctx, AutoMessageTriggers.LeadNew, lead);
-
-        Assert.Empty(ctx.SmsLogs);
-    }
-
-    [Fact]
-    public async Task DispatchLead_SMS_ochiq_qoida_boyicha_yuboradi()
-    {
-        using var db = TestDb.Sqlite();
-        var ctx = db.Context;
-        var lead = new Lead { FullName = "Yangi Lid", Phone = "901234567", InterestSubject = "IELTS" };
-        var rule = PushRule(AutoMessageTriggers.LeadNew, "Salom {fish}! {fan} bo'yicha bog'lanamiz.");
-        rule.SendPush = false;
-        rule.SendSms = true;
-        rule.SmsProvider = "local";
-        ctx.CenterMeta.Add(new CenterMeta { LocalSmsEnabled = true });
-        ctx.Leads.Add(lead);
-        ctx.AutoMessageRules.Add(rule);
-        ctx.SaveChanges();
-
-        await new MessagingStack().Auto.DispatchLeadAsync(ctx, AutoMessageTriggers.LeadNew, lead);
-
-        var log = Assert.Single(ctx.SmsLogs);
-        Assert.Equal("Salom Yangi Lid! IELTS bo'yicha bog'lanamiz.", log.Message);
-        Assert.Equal("Yangi Lid", log.RecipientName);
-    }
-
-    [Fact]
-    public async Task DispatchLead_SMS_kanali_ochiq_bolmagan_qoidani_otkazib_yuboradi()
-    {
-        using var db = TestDb.Sqlite();
-        var ctx = db.Context;
-        var lead = new Lead { FullName = "Yangi Lid", Phone = "901234567" };
-        var rule = PushRule(AutoMessageTriggers.LeadNew, "Salom {fish}");
-        rule.SendSms = false;   // lidda faqat SMS ishlaydi — push bayrog'i behuda
-        ctx.CenterMeta.Add(new CenterMeta { LocalSmsEnabled = true });
-        ctx.Leads.Add(lead);
-        ctx.AutoMessageRules.Add(rule);
-        ctx.SaveChanges();
-
-        await new MessagingStack().Auto.DispatchLeadAsync(ctx, AutoMessageTriggers.LeadNew, lead);
-
-        Assert.Empty(ctx.SmsLogs);
-        Assert.Empty(ctx.UserNotifications);
-    }
-
-    [Fact]
-    public async Task SendLeadTestLink_qoida_yoq_bolsa_sabab_bilan_false()
-    {
-        using var db = TestDb.Sqlite();
-        var ctx = db.Context;
-        var lead = new Lead { FullName = "Lid", Phone = "901234567" };
-        ctx.Leads.Add(lead);
-        ctx.SaveChanges();
-
-        var (ok, status, requestId) = await new MessagingStack().Auto
-            .SendLeadTestLinkAsync(ctx, lead, "https://test/abc");
-
-        Assert.False(ok);
-        Assert.Contains("qoidasi yo'q", status);
-        Assert.Equal("", requestId);
-    }
-
-    [Fact]
-    public async Task SendLeadTestLink_raqamsiz_lidda_false()
-    {
-        using var db = TestDb.Sqlite();
-        var ctx = db.Context;
-        var lead = new Lead { FullName = "Lid" };
-        var rule = PushRule(AutoMessageTriggers.TestLink, "Havola: {link}");
-        rule.SendPush = false;
-        rule.SendSms = true;
-        rule.SmsProvider = "local";
-        ctx.CenterMeta.Add(new CenterMeta { LocalSmsEnabled = true });
-        ctx.Leads.Add(lead);
-        ctx.AutoMessageRules.Add(rule);
-        ctx.SaveChanges();
-
-        var (ok, status, _) = await new MessagingStack().Auto
-            .SendLeadTestLinkAsync(ctx, lead, "https://test/abc");
-
-        Assert.False(ok);
-        Assert.Equal("Lidda raqam yo'q", status);
-    }
-
-    [Fact]
-    public async Task SendLeadTestLink_link_tokenini_almashtiradi()
-    {
-        using var db = TestDb.Sqlite();
-        var ctx = db.Context;
-        var lead = new Lead { FullName = "Lid", Phone = "901234567" };
-        var rule = PushRule(AutoMessageTriggers.TestLink, "Havola: {link}");
-        rule.SendPush = false;
-        rule.SendSms = true;
-        rule.SmsProvider = "local";
-        ctx.CenterMeta.Add(new CenterMeta { LocalSmsEnabled = true });
-        ctx.Leads.Add(lead);
-        ctx.AutoMessageRules.Add(rule);
-        ctx.SaveChanges();
-
-        await new MessagingStack().Auto.SendLeadTestLinkAsync(ctx, lead, "https://test/abc");
-
-        Assert.Equal("Havola: https://test/abc", Assert.Single(ctx.SmsLogs).Message);
-    }
+    // (Lid avto-SMS va daraja testi havolasi SMS testlari 2026-10 da lidga SMS bilan birga olib tashlandi.)
 
     // ===================== 5) MessagingAudience — yopilgan guruh filtri =====================
 
@@ -867,8 +640,8 @@ public class AutoMessageTests
 
     // ===================== 6) Tug'ilgan kun eslatmasi (fon xizmati) =====================
 
-    private static BirthdaySmsService Birthday(IAppDbContext ctx, MessagingStack stack) =>
-        new(new SingleServiceProvider(ctx), stack.Auto, NullLogger<BirthdaySmsService>.Instance);
+    private static BirthdayGreetingService Birthday(IAppDbContext ctx, MessagingStack stack) =>
+        new(new SingleServiceProvider(ctx), stack.Auto, NullLogger<BirthdayGreetingService>.Instance);
 
     [Fact]
     public void Birthday_bugun_tugilgan_kunda_yuboradi()
@@ -879,7 +652,7 @@ public class AutoMessageTests
         var s = NewStudent();
         s.BirthDate = today.AddYears(-12).ToString("yyyy-MM-dd");
         ctx.Students.Add(s);
-        ctx.AutoMessageRules.Add(PushRule(AutoMessageTriggers.Birthday, "Tabrik {ism}"));
+        ctx.AutoMessageRules.Add(Rule(AutoMessageTriggers.Birthday, "Tabrik {ism}"));
         ctx.SaveChanges();
 
         Reflect.RunAsyncMethod(Birthday(ctx, new MessagingStack()), "RunAsync", today, CancellationToken.None);
@@ -896,7 +669,7 @@ public class AutoMessageTests
         var s = NewStudent();
         s.BirthDate = today.AddYears(-12).AddDays(1).ToString("yyyy-MM-dd");
         ctx.Students.Add(s);
-        ctx.AutoMessageRules.Add(PushRule(AutoMessageTriggers.Birthday, "Tabrik {ism}"));
+        ctx.AutoMessageRules.Add(Rule(AutoMessageTriggers.Birthday, "Tabrik {ism}"));
         ctx.SaveChanges();
 
         Reflect.RunAsyncMethod(Birthday(ctx, new MessagingStack()), "RunAsync", today, CancellationToken.None);
@@ -945,7 +718,7 @@ public class AutoMessageTests
         ctx.StudentGroups.AddRange(
             new StudentGroup { StudentId = closedGroupStudent.Id, GroupId = closedGroup.Id, IsActive = true },
             new StudentGroup { StudentId = ok.Id, GroupId = liveGroup.Id, IsActive = true });
-        ctx.AutoMessageRules.Add(PushRule(AutoMessageTriggers.Birthday, "Tabrik {fish}"));
+        ctx.AutoMessageRules.Add(Rule(AutoMessageTriggers.Birthday, "Tabrik {fish}"));
         ctx.SaveChanges();
 
         Reflect.RunAsyncMethod(Birthday(ctx, new MessagingStack()), "RunAsync", today, CancellationToken.None);
@@ -957,8 +730,7 @@ public class AutoMessageTests
     // ===================== 7) Qarzdorlik eslatmasi (fon xizmati) =====================
 
     private static PaymentReminderService Payment(IAppDbContext ctx, MessagingStack stack) =>
-        new(new SingleServiceProvider(ctx), stack.Telegram, stack.Fcm, stack.Eskiz, stack.Cti,
-            NullLogger<PaymentReminderService>.Instance);
+        new(new SingleServiceProvider(ctx), stack.Telegram, NullLogger<PaymentReminderService>.Instance);
 
     /// <summary>Joriy oyning TOQ kuni (1-sana) — eslatma shu kunlarda yuboriladi.</summary>
     private static DateOnly OddDay() => new(AppClock.Today.Year, AppClock.Today.Month, 1);
@@ -970,7 +742,6 @@ public class AutoMessageTests
     {
         Trigger = AutoMessageTriggers.PaymentDebt,
         Enabled = true,
-        SendPush = true,
         Template = template,
     };
 
@@ -1285,15 +1056,13 @@ public class AutoMessageTests
     // ===================== 8) Erkin (jadvalli) eslatma =====================
 
     private static CustomReminderService Custom(IAppDbContext ctx, MessagingStack stack) =>
-        new(new SingleServiceProvider(ctx), stack.Telegram, stack.Fcm, stack.Eskiz, stack.Cti,
-            NullLogger<CustomReminderService>.Instance);
+        new(new SingleServiceProvider(ctx), stack.Telegram, NullLogger<CustomReminderService>.Instance);
 
     private static AutoMessageRule ScheduleRule(string time, string audience = "students") => new()
     {
         Trigger = AutoMessageTriggers.CustomSchedule,
         Name = "Eslatma",
         Enabled = true,
-        SendPush = true,
         Audience = audience,
         Template = "Hurmatli {fish}! Eslatma.",
         ScheduleType = "daily",
@@ -1432,7 +1201,7 @@ public class AutoMessageTests
         ctx.Students.AddRange(fresh, again);
         var g = new Group { Name = "IELTS-1" };
         ctx.Classes.Add(g);
-        ctx.AutoMessageRules.Add(PushRule(AutoMessageTriggers.AttendancePresent, "{ism} {sana} kuni {guruh}da keldi"));
+        ctx.AutoMessageRules.Add(Rule(AutoMessageTriggers.AttendancePresent, "{ism} {sana} kuni {guruh}da keldi"));
         var iso = AppClock.Today.ToString("yyyy-MM-dd");
         foreach (var s in new[] { fresh, again })
             ctx.JournalEntries.Add(new JournalEntry

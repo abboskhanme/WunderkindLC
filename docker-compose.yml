@@ -96,7 +96,8 @@ services:
       Career__MiniAppUrl: "${CAREER_MINIAPP_URL:-}"
       # O'qituvchi boti (o'qituvchi paneli Mini App'i; ALOHIDA bot, token MAXFIY).
       TeacherBot__BotToken: "${TEACHER_BOT_TOKEN:-}"
-      # Push (Firebase) — service account JSON (MAXFIY, bir qatorli):
+      # Google service account JSON (MAXFIY, bir qatorli). Push 2026-10 da olib tashlandi — kalit endi
+      # faqat yuz bilan kirishdagi Play Integrity tekshiruvining ZAXIRA kaliti (PLAY_INTEGRITY_SA_JSON bo'sh bo'lsa):
       Fcm__ServiceAccountJson: "${FCM_SERVICE_ACCOUNT_JSON:-}"
       # AI Tahlil (Gemini) kaliti (MAXFIY):
       Gemini__ApiKey: "${GEMINI_API_KEY:-}"
@@ -108,12 +109,6 @@ services:
       # Speaking (Azure) — kalit MAXFIY, region ham env'dan:
       Azure__SpeechKey: "${AZURE_SPEECH_KEY:-}"
       Azure__SpeechRegion: "${AZURE_SPEECH_REGION:-}"
-      # SMS (Eskiz.uz) — login/parol MAXFIY; From (sender) maxfiy emas:
-      Eskiz__Email: "${ESKIZ_EMAIL:-}"
-      Eskiz__Password: "${ESKIZ_PASSWORD:-}"
-      # From (jo'natuvchi nomi) UI'dan boshqariladi — default QO'YILMAYDI, aks holda har
-      # deployda admin tanlagan tasdiqlangan nikname "4546" ga qaytib ketardi.
-      Eskiz__From: "${ESKIZ_FROM:-}"
       # Turniket / FaceID — Username/Password MAXFIY, qolgani UI'dan ham sozlanadi:
       Turnstile__Enabled: "${TURNSTILE_ENABLED:-}"
       Turnstile__Vendor: "${TURNSTILE_VENDOR:-}"
@@ -139,7 +134,7 @@ services:
       PlayIntegrity__ServiceAccountJson: "${PLAY_INTEGRITY_SA_JSON:-}"
       PlayIntegrity__Package: "${PLAY_INTEGRITY_PACKAGE:-}"
       # Kamera / to'lov eslatmasi / kunlik AI tahlil / backup (yoqish-o'chirish + vaqt):
-      # Import rejimi — ko'chirish paytida avto-hisob/eslatma/SMS o'chadi (docs/EDUTIZIM-IMPORT.md).
+      # Import rejimi — ko'chirish paytida avto-hisob/eslatma o'chadi (docs/EDUTIZIM-IMPORT.md).
       Import__Mode: "${IMPORT_MODE:-}"
       Camera__Enabled: "${CAMERA_ENABLED:-}"
       # 24/7 diskka YOZIB borish. Bo'sh -> bazadagi qiymat (default O'CHIQ).
@@ -167,8 +162,8 @@ services:
     volumes:
       - uploads:/app/uploads               # yuklangan fayllar (rasm, hujjat)
       - dpkeys:/app/keys                   # DataProtection kalitlari — deploylar oralig'ida saqlanadi
-      # CTI (Local Call) audio yozuvlari — ATAYIN /uploads (ochiq statik) ostida EMAS,
-      # faqat autentifikatsiyalangan /api/cti/calls/{id}/audio orqali beriladi.
+      # Legacy (removed 2026-10): eski CTI (Local Call) audio yozuvlari. Local Call olib tashlandi —
+      # endi hech narsa yozmaydi/bermaydi; volume (ma'lumot) tasdiqlangan o'chirishgacha saqlanadi.
       - cti-recordings:/app/recordings
     depends_on:
       postgres:
@@ -236,7 +231,7 @@ services:
         max-size: "10m"
         max-file: "3"
 
-  # Kunlik backup — Postgres dump (.sql.gz) + FAYL volume'lari (uploads + CTI audio, .tar.gz).
+  # Kunlik backup — Postgres dump (.sql.gz) + FAYL volume'lari (uploads + eski CTI audio, .tar.gz).
   # Ixtiyoriy: SHIFRLASH (BACKUP_ENCRYPT_PASSPHRASE -> .gpg) va OFF-SITE nusxa (RCLONE_REMOTE ->
   # S3/R2/Google Drive va h.k.). Ikkalasi ham bo'sh bo'lsa — faqat lokal (eski xatti-harakat).
   # DIQQAT (falokatdan tiklanish): faqat lokal backup xavfli — disk/server yo'qolsa baza+backup birga
@@ -261,7 +256,7 @@ services:
     volumes:
       - postgres-backups:/backups
       - uploads:/data/uploads:ro                # yuklangan fayllar (rasm/hujjat) — o'qish uchun
-      - cti-recordings:/data/recordings:ro      # CTI audio yozuvlari — o'qish uchun
+      - cti-recordings:/data/recordings:ro      # Legacy: eski CTI audio yozuvlari (2026-10 dan yozilmaydi) — o'qish uchun
       - ./backup-config:/config:ro              # ixtiyoriy: rclone.conf (off-site uchun). Bo'sh bo'lsa — e'tiborsiz.
     depends_on:
       postgres:

@@ -124,7 +124,7 @@ Ilgari shu tarzda tushib qolgan va 2026-08-05 da to'ldirilgan joylar:
 | `CenterMeta` | ushlab turish bonusi, AI tekshiruv, landing sozlamalari (`SettingsAudit`) | settings |
 | `StudentAiAccess` | o'quvchiga AI limit/premium/blok (`studentId` bilan — profil tarixida ham) | students |
 | `CertificateTemplate` | sertifikat andozasi qo'shish/o'chirish (HTML matn yozilmaydi) | settings |
-| `Staff` (delete) | o'chirishda bo'shatilgan havolalar (lid, kassa, topshiriq, KPI, CTI, Telegram) shu qatorda | staff |
+| `Staff` (delete) | o'chirishda bo'shatilgan havolalar (lid, kassa, topshiriq, KPI, Telegram; CTI 2026-10 gacha) shu qatorda | staff |
 
 `StudentBall` xaritada qoldi, lekin hozir uni YOZADIGAN endpoint yo'q (eski qatorlar uchun).
 

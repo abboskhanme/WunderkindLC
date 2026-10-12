@@ -649,16 +649,17 @@ function StatsPanel({ stats, invites }: { stats: LevelTestStats | null; invites:
         </div>
       </Card>
 
-      {/* Yuborilgan bir martalik havolalar — SMS holati + ishlangani */}
+      {/* Bir martalik havolalar — yaratilgan/(eski) SMS holati + ishlangani.
+          SMS kanali 2026-10 da olib tashlandi: yangi havola yaratiladi va operator uni o'zi yuboradi. */}
       {invites && invites.length > 0 && (
-        <Card title="Yuborilgan havolalar (SMS)" sub="Lidlarga yuborilgan bir martalik daraja-test havolalari">
+        <Card title="Bir martalik havolalar" sub="Lidlar uchun yaratilgan bir martalik daraja-test havolalari">
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
               <thead className="border-b border-slate-100 text-xs uppercase tracking-wide text-slate-400">
                 <tr>
                   <th className="px-3 py-2">Lid</th>
                   <th className="px-3 py-2">Telefon</th>
-                  <th className="px-3 py-2 text-center">SMS</th>
+                  <th className="px-3 py-2 text-center">Holat</th>
                   <th className="px-3 py-2 text-center">Ishlangan</th>
                   <th className="px-3 py-2 text-center">Natija</th>
                   <th className="px-3 py-2">Yuborilgan</th>
@@ -671,9 +672,12 @@ function StatsPanel({ stats, invites }: { stats: LevelTestStats | null; invites:
                     <td className="px-3 py-2 font-mono text-slate-500">{formatPhone(i.phone)}</td>
                     <td className="px-3 py-2 text-center">
                       {i.smsStatus === 'sent' ? (
-                        <span className="rounded-md bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700">Yuborilgan</span>
+                        // Eski yozuv — havola SMS bilan yuborilgan (SMS kanali olib tashlanmasdan oldin).
+                        <span className="rounded-md bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700">SMS yuborilgan</span>
+                      ) : !i.smsStatus || i.smsStatus === 'link' ? (
+                        <span className="rounded-md bg-sky-50 px-2 py-0.5 text-xs font-semibold text-sky-700">Havola yaratilgan</span>
                       ) : (
-                        <span className="rounded-md bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-700" title={i.smsStatus}>Xato</span>
+                        <span className="rounded-md bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-700" title={i.smsStatus}>SMS xato</span>
                       )}
                     </td>
                     <td className="px-3 py-2 text-center">

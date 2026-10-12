@@ -112,17 +112,16 @@ OYLIK = Oklad + ( Shartnoma × 35 000 × Konv.koef ) × Samar.koef − Tiket × 
 | Imzolangan shartnoma | QISMAN | `Lead.ConvertedStudentId`, `Contract.Status`, `StudentGroup.ActivatedAt`, `LeadOutcome.PayByStudent` | Hodisa bor, **kim yopgani** yo'q (`Contract.CreatedBy` yo'q). Vaqtincha `AuditLog.ActorId`; to'g'risi `Lead.ClosedByUserId` |
 | Samaradorlik | BOR | `WorkTask.DueDate/DueTime/CompletedAt/AssigneeId`, `WorkTasksController.Dashboard` | Excel «amoCRM» = bizda Topshiriqlar. Muddatida yopilgan / muddati kelgan |
 | Tiket | YO'Q | — | `KpiTicket` |
-| 3 gudokgacha javob | BOR | `CtiCallRecord.StartedAt`, `AnsweredAt`, `Direction=incoming` (Local Call) | 3 gudok ≈ 12–15 s |
-| Javobsizni 15 daq. ichida qaytarish | BOR | `CtiCallRecord.Direction/RemoteNumber` | `missed` → shu raqamga keyingi `outgoing` |
+| 3 gudokgacha javob | YO'Q (2026-10) | — (Local Call olib tashlandi) | qo'lda belgilanadi |
+| Javobsizni 15 daq. ichida qaytarish | YO'Q (2026-10) | — (Local Call olib tashlandi) | qo'lda belgilanadi |
 | DM javob 15 daq. | QISMAN | `IgConversation.LastInboundAt/LastOutboundAt`, `NeedsOperator` | Instagram bor. Telegram: `LeadTelegramMessage` da «kim javob berdi» yo'q |
 | Ehtiyoj maydonlari 95% | BOR | `Lead.AnswersJson`, `LeadEntryField` (majburiy) | |
-| Muloqot 2 soat+ | BOR | `CtiCallRecord.DurationSec` sum, xodimning agent(lar)i (`CtiAgent.StaffUserId`) bo'yicha | |
+| Muloqot 2 soat+ | YO'Q (2026-10) | — (Local Call olib tashlandi) | norma «Bugun» sahifasidan olib tashlandi |
 | Kechikkan vazifa / vazifasiz sdelka = 0 | BOR | `WorkTask` + `Lead` | Vazifasiz sdelka = ochiq lid, ustida ochiq topshiriq yo'q |
 | Lidni ishlagan operator / yopgan admin | YO'Q | `LeadEvent.ActorUserId` faqat harakat | `Lead.AssigneeUserId` + `Lead.ClosedByUserId` |
 
-⚠️ 2026-10-08 dan qo'ng'iroq ko'rsatkichlarining manbai — **Local Call** (`CtiCallRecord`): bulutli
-telefoniya olib tashlandi, xodim qo'ng'iroqqa agent-telefoni (`CtiAgent.StaffUserId`) orqali
-bog'lanadi. Batafsil — `.claude/rules/kpi.md` §11.1.
+⚠️ 2026-10 dan qo'ng'iroq ko'rsatkichlarining manbai YO'Q: bulutli telefoniya (2026-10-08) va Local Call
+(2026-10) olib tashlandi — qo'ng'iroq bandlari qo'lda belgilanadi. Batafsil — `.claude/rules/kpi.md` §11.1.
 
 ### 3.2 Chiquvchi admin
 

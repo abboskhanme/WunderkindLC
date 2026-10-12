@@ -36,7 +36,7 @@ public class McpAccessTests
     [Theory]
     [InlineData(Roles.Teacher)]
     [InlineData(Roles.Student)]
-    [InlineData(Roles.CtiAgent)]
+    [InlineData("ctiagent")]   // old CTI agent role (removed 2026-10) — still never allowed
     [InlineData("parent")]
     public void Oqituvchi_oquvchi_ota_ona_HECH_QACHON(string role) =>
         Assert.False(McpAccess.IsAllowed(U(role, "aiAccess")));

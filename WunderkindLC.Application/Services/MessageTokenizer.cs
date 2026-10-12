@@ -36,7 +36,7 @@ public static class MessageTokenizer
     }
 
     /// <summary>Faqat raqam — probelsiz, "so'm"siz (SMS {summa} uchun): 400000.
-    /// "so'm"ni andoza ichida yoziladi (masalan "{summa} so'm") — Eskiz moderatsiyasi uchun ham qulay.</summary>
+    /// "so'm"ni andoza ichida yoziladi (masalan "{summa} so'm").</summary>
     public static string MoneyPlain(decimal v) =>
         v.ToString("0", CultureInfo.InvariantCulture);
 
@@ -66,7 +66,7 @@ public static class MessageTokenizer
     ///   {dars_sana}    — guruh boshlanish sanasi "DD.MM.YYYY" (masalan 30.06.2026);
     ///   {dars_vaqti}   — dars vaqti "HH:mm" yoki "HH:mm–HH:mm" (masalan 11:20 yoki 11:20–12:50);
     ///   {dars_kunlari} — hafta kunlari (masalan "Du, Chor, Jum").
-    /// group=null bo'lsa (o'qituvchi/lid yoki guruh topilmasa) — tokenlar bo'sh qoladi.
+    /// group=null bo'lsa (o'qituvchi yoki guruh topilmasa) — tokenlar bo'sh qoladi.
     /// </summary>
     private static string Schedule(string text, DomainGroup? g)
     {
@@ -82,22 +82,13 @@ public static class MessageTokenizer
         return Schedule(text, sana, vaqt, kunlar);
     }
 
-    /// <summary>Dars jadvali tokenlarini aniq qiymatlar bilan almashtiradi (sinov darsi — TrialLesson.ScheduledAt uchun).</summary>
+    /// <summary>Dars jadvali tokenlarini aniq qiymatlar bilan almashtiradi.</summary>
     private static string Schedule(string text, string sana, string vaqt, string kunlar)
     {
         var r = Rep(text, "{dars_sana}", sana);
         r = Rep(r, "{dars_vaqti}", vaqt);
         r = Rep(r, "{dars_kunlari}", kunlar);
         return r;
-    }
-
-    /// <summary>Sinov darsi vaqti ("yyyy-MM-ddTHH:mm") → ({dars_sana}="DD.MM.YYYY", {dars_vaqti}="HH:mm").</summary>
-    private static (string sana, string vaqt) ParseTrial(string? iso)
-    {
-        if (iso is not { Length: >= 10 }) return ("", "");
-        var sana = $"{iso[8..10]}.{iso[5..7]}.{iso[..4]}";
-        var vaqt = iso.Length >= 16 ? iso[11..16] : "";
-        return (sana, vaqt);
     }
 
     /// <summary>Guruh dars kunlari (Days, 0=Du..6=Yak) → "Du, Chor, Jum".</summary>
@@ -211,37 +202,5 @@ public static class MessageTokenizer
         return Common(r, centerName, extra);
     }
 
-    /// <summary>Lid xabari — lid ma'lumotlari; o'quvchi-spetsifik tokenlar bo'sh.
-    /// trialAt berilsa (sinov darsi vaqti "yyyy-MM-ddTHH:mm") — {dars_sana}/{dars_vaqti} to'ladi,
-    /// {dars_kunlari} esa group berilса guruh kunlaridan keladi. teacherName — {oqituvchi} (sinov darsi
-    /// guruhining o'qituvchisi).</summary>
-    public static string Lead(string text, Lead l, string? contactPhone, string? centerName,
-        IReadOnlyDictionary<string, string>? extra = null, DomainGroup? group = null, string? trialAt = null,
-        string? teacherName = null)
-    {
-        var r = text;
-        r = Rep(r, "{fish}", l.FullName);
-        r = Rep(r, "{telefon}", contactPhone);
-        r = Rep(r, "{oquvchi_telefon}", l.Phone);
-        r = Rep(r, "{ota}", l.FatherFullName);
-        r = Rep(r, "{ota_telefon}", l.FatherPhone);
-        r = Rep(r, "{ona}", l.MotherFullName);
-        r = Rep(r, "{ona_telefon}", l.MotherPhone);
-        r = Rep(r, "{fan}", l.InterestSubject);
-        r = Rep(r, "{tugilgan}", l.BirthDate);
-        r = Rep(r, "{oqituvchi}", teacherName); // sinov darsi guruhining o'qituvchisi (berilmasa bo'sh)
-        foreach (var tok in new[]
-                 {
-                     "{ism}", "{familiya}", "{sharif}", "{sinf}", "{guruh}", "{qarzdorlik}", "{balans}",
-                     "{ota-ona}", "{ota_ona}", "{manzil}",
-                 })
-            r = Rep(r, tok, "");
-        // Sinov darsi jadvali: sana/vaqt sinov darsidan (trialAt), kunlar guruhdan.
-        // trialAt yo'q bo'lsa — guruh jadvaliga (yoki bo'shga) tushadi.
-        var (tsana, tvaqt) = ParseTrial(trialAt);
-        r = tsana.Length > 0
-            ? Schedule(r, tsana, tvaqt, group is null ? "" : FormatDays(group.Days))
-            : Schedule(r, group);
-        return Common(r, centerName, extra);
-    }
+    // (Lead(...) — lid xabari renderi — 2026-10 da lidga SMS bilan birga olib tashlandi.)
 }

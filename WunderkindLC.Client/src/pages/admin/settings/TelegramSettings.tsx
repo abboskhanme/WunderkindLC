@@ -19,7 +19,7 @@ import { apiErrorMessage } from '@/lib/utils'
  * Telegram bot sozlamasi (ota-onalarga e'lon yuborish uchun).
  * TOKEN bu yerda KIRITILMAYDI — u serverdagi `.env` faylida (TELEGRAM_BOT_TOKEN), bazada
  * saqlanmaydi. Bu sahifada faqat maxfiy bo'lmagan qismlar: bot nomi/username, kanal, telefon
- * moslash. Zaxira nusxa va APK yuklash alohida bo'limlarda.
+ * moslash. Zaxira nusxa alohida bo'limda.
  */
 export function TelegramSettings() {
   const [tokenSecret, setTokenSecret] = useState<EnvSecret | null>(null)
@@ -152,7 +152,7 @@ export function TelegramSettings() {
           />
           <p className="mt-1 text-xs text-slate-400">
             To'ldirilsa — o'quvchi va o'qituvchi ilovasida "Telegram kanalga o'tish" tugmasi chiqadi,
-            hamda botda MAJBURIY OBUNA yoqiladi (kod olish va onlayn testni ishlash uchun).
+            hamda botda MAJBURIY OBUNA yoqiladi (kirish kodini olish uchun).
           </p>
 
           {/* Majburiy obuna DIAGNOSTIKASI — Telegram getChatMember faqat bot kanalda ADMIN

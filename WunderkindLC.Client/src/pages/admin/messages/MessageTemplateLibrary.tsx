@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Plus, Pencil, Trash2, Settings2 } from 'lucide-react'
 import {
-  getSmsTemplates,
-  createSmsTemplate,
-  updateSmsTemplate,
-  deleteSmsTemplate,
-  type SmsTemplate,
+  getMessageTemplates,
+  createMessageTemplate,
+  updateMessageTemplate,
+  deleteMessageTemplate,
+  type MessageTemplate,
 } from '@/api/services/messages'
 import {
   getAutoMessageRules,
@@ -21,7 +21,7 @@ import { Input } from '@/components/ui/Input'
 import { apiErrorMessage, cn } from '@/lib/utils'
 
 type LibraryItem =
-  | { kind: 'manual'; id: string; name: string; text: string; raw: SmsTemplate }
+  | { kind: 'manual'; id: string; name: string; text: string; raw: MessageTemplate }
   | { kind: 'auto'; id: string; name: string; text: string; enabled: boolean }
 
 /**
@@ -41,12 +41,12 @@ export function MessageTemplateLibrary({
   onConfigureAuto: (ruleId: string) => void
   currentText?: string
 }) {
-  const [manual, setManual] = useState<SmsTemplate[]>([])
+  const [manual, setManual] = useState<MessageTemplate[]>([])
   const [autoRules, setAutoRules] = useState<AutoMessageRule[]>([])
   const [loading, setLoading] = useState(true)
 
   const [modalOpen, setModalOpen] = useState(false)
-  const [editing, setEditing] = useState<SmsTemplate | null>(null)
+  const [editing, setEditing] = useState<MessageTemplate | null>(null)
   const [name, setName] = useState('')
   const [text, setText] = useState('')
   const [saving, setSaving] = useState(false)
@@ -66,7 +66,7 @@ export function MessageTemplateLibrary({
   const reload = () => {
     setLoading(true)
     Promise.all([
-      getSmsTemplates().catch(() => []),
+      getMessageTemplates().catch(() => []),
       getAutoMessageRules().catch(() => []),
     ])
       .then(([m, a]) => {
@@ -100,7 +100,7 @@ export function MessageTemplateLibrary({
     setModalOpen(true)
   }
 
-  const openEdit = (t: SmsTemplate) => {
+  const openEdit = (t: MessageTemplate) => {
     setEditing(t)
     setName(t.name)
     setText(t.text)
@@ -113,9 +113,9 @@ export function MessageTemplateLibrary({
     setSaving(true)
     try {
       if (editing) {
-        await updateSmsTemplate(editing.id, { name: name.trim(), text: text.trim() })
+        await updateMessageTemplate(editing.id, { name: name.trim(), text: text.trim() })
       } else {
-        await createSmsTemplate({ name: name.trim(), text: text.trim() })
+        await createMessageTemplate({ name: name.trim(), text: text.trim() })
       }
       setModalOpen(false)
       reload()
@@ -126,11 +126,11 @@ export function MessageTemplateLibrary({
     }
   }
 
-  const remove = async (t: SmsTemplate) => {
+  const remove = async (t: MessageTemplate) => {
     if (!window.confirm(`"${t.name}" matnini o'chirasizmi?`)) return
     setRemoveErr('')
     try {
-      await deleteSmsTemplate(t.id)
+      await deleteMessageTemplate(t.id)
       reload()
     } catch (e) {
       setRemoveErr(apiErrorMessage(e, "Matnni o'chirib bo'lmadi"))

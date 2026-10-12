@@ -6,8 +6,7 @@
  * test ham aynan shu katalogga qaraydi (`__tests__/model.test.ts`).
  */
 import type { BadgeTone } from '@/components/ui/Badge'
-import type { CallOption } from '@/components/CallPickerModal'
-import type { StudentCall } from '@/api/services/students'
+import type { CallOption } from '@/components/PhoneCallModal'
 import type { ContactRequestItem } from '@/api/services/contacts'
 import type { GroupMonth } from '@/types'
 import { formatDate, formatTime } from '@/lib/utils'
@@ -23,7 +22,6 @@ export type ProfileTab =
   | 'tranzaksiyalar'
   | 'harakatlar'
   | 'ltv'
-  | 'sms'
   | 'shartnomalar'
   | 'manzil'
   // faqat BIZDA — edutizim tablaridan KEYIN, xuddi shu "pill" uslubida
@@ -71,7 +69,6 @@ export const PROFILE_TABS: readonly TabDef[] = [
   { key: 'tranzaksiyalar', label: 'Tranzaksiyalar tarixi' },
   { key: 'harakatlar', label: 'Harakatlar tarixi', visible: (a) => a.canAudit },
   { key: 'ltv', label: 'LTV' },
-  { key: 'sms', label: 'SMS' },
   { key: 'shartnomalar', label: 'Shartnomalar', visible: (a) => a.canContracts },
   { key: 'manzil', label: 'Manzil', visible: (a) => a.canLocations },
   { key: 'chegirma', label: 'Chegirma' },
@@ -198,15 +195,7 @@ export function membershipState(m: { status: string; isActive: boolean }): strin
   return m.status === 'completed' ? 'completed' : m.isActive ? m.status : 'left'
 }
 
-/** SMS holatini guruhlaydi (HistoryTab.tsx dagi bilan bir xil mantiq). */
-export function smsStatusInfo(status: string): { label: string; tone: BadgeTone } {
-  const s = (status || '').toUpperCase()
-  if (s === 'DELIVRD' || s === 'DELIVERED' || s === 'YUBORILDI') return { label: 'Yetkazildi', tone: 'green' }
-  if (s === 'WAITING' || s === 'NEW' || s === 'ACCEPTED' || s === 'STORED') return { label: 'Kutilmoqda', tone: 'amber' }
-  return { label: 'Yetkazilmadi', tone: 'red' }
-}
-
-/** Bo'sh raqamlarni tashlab, bir xil raqamni faqat birinchi label bilan qoldiradi (CallPickerModal uchun). */
+/** Bo'sh raqamlarni tashlab, bir xil raqamni faqat birinchi label bilan qoldiradi (PhoneCallModal uchun). */
 export function dedupeCallOptions(options: CallOption[]): CallOption[] {
   const seen = new Set<string>()
   return options.filter((o) => {
@@ -243,20 +232,17 @@ export interface ContactFeedEvent {
 export interface CallFeedItem {
   key: string
   at: string
-  call?: StudentCall
-  note?: ContactFeedEvent
+  note: ContactFeedEvent
 }
 
 /**
- * "Qo'ng'iroqlar tarixi" ARALASH lentasi: haqiqiy qo'ng'iroqlar (Local Call) va bog'lanish
- * urinishlarida yozilgan javoblar BITTA vaqt o'qida, eng yangisi tepada
- * (`.claude/rules/contacts.md` §7.6).
+ * "Qo'ng'iroqlar tarixi" lentasi: bog'lanish urinishlarida yozilgan javoblar, eng yangisi tepada
+ * (`.claude/rules/contacts.md` §7.6). Markazning o'z telefoniyasi (Local Call / CTI) 2026-10 da
+ * olib tashlandi — qo'ng'iroq YOZUVLARI endi yo'q, lentada faqat operator javoblari.
  *
- * <p>Sabab: operator qo'ng'iroq qiladi, keyin navbatda "javobi nima dedi" ni yozadi — bular
- * bitta hodisaning ikki tomoni. Faqat MATN yozilgan urinishlar qo'shiladi — bo'sh javob
- * lentani suyultirardi.</p>
+ * <p>Faqat MATN yozilgan urinishlar qo'shiladi — bo'sh javob lentani suyultirardi.</p>
  */
-export function buildCallFeed(calls: StudentCall[], contacts: ContactRequestItem[]): CallFeedItem[] {
+export function buildCallFeed(contacts: ContactRequestItem[]): CallFeedItem[] {
   const events: ContactFeedEvent[] = contacts.flatMap((c) =>
     (c.history ?? [])
       .filter((h) => (h.type === 'contact' || h.type === 'note') && h.response)
@@ -271,10 +257,7 @@ export function buildCallFeed(calls: StudentCall[], contacts: ContactRequestItem
         isNote: h.type === 'note',
       })),
   )
-  const items: CallFeedItem[] = [
-    ...calls.map((c) => ({ key: `call-${c.id}`, at: c.startedAt, call: c })),
-    ...events.map((e) => ({ key: `contact-${e.id}`, at: e.at, note: e })),
-  ]
+  const items: CallFeedItem[] = events.map((e) => ({ key: `contact-${e.id}`, at: e.at, note: e }))
   // ISO satrlar — leksikografik solishtirish vaqt tartibini beradi (formatlar bir xil).
   return items.sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0))
 }

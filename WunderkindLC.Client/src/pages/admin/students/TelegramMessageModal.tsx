@@ -1,25 +1,19 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Send, AlertTriangle, Check, ChevronDown, Search } from 'lucide-react'
 import {
-  getSmsStatus, getPickableTemplates, sendSms, watchSmsProgress,
-  type SmsProvider, type PickableTemplate,
+  getPickableTemplates, getTelegramStatus, sendBroadcast,
+  type PickableTemplate,
 } from '@/api/services/messages'
 import { getMessageTokens } from '@/api/services/autoMessages'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { MessageEditor, type TokenDef } from '@/components/messaging/MessageEditor'
-import { SmsProviderPicker } from '@/components/messaging/SmsProviderPicker'
-import { cn, formatMoney } from '@/lib/utils'
-import { formatPhone } from '@/lib/numberFormat'
+import { apiErrorMessage, cn, formatMoney } from '@/lib/utils'
 
-/** SMS oluvchi — SmsModal faqat shu maydonlarni ishlatadi (Student ham mos keladi). */
-export interface SmsRecipient {
+/** Telegram xabar oluvchisi — modal faqat shu maydonlarni ishlatadi (Student ham mos keladi). */
+export interface TelegramRecipient {
   id: string
   fullName: string
-  phone?: string | null
-  parentPhone?: string | null
-  fatherPhone?: string | null
-  motherPhone?: string | null
   /** A'zolik holati: 'active' (aktiv) | 'trial' (sinov) | 'frozen' (muzlatilgan).
    *  Berilmasa — "Holat" filtri ko'rinmaydi. */
   status?: string
@@ -34,7 +28,7 @@ interface Props {
   open: boolean
   onClose: () => void
   /** Bitta o'quvchi ham bo'lishi mumkin (masalan o'quvchi sahifasidan) — UI mos ko'rinadi. */
-  recipients: SmsRecipient[]
+  recipients: TelegramRecipient[]
 }
 
 /** To'lov holati bo'yicha filtr. */
@@ -51,38 +45,30 @@ const STATUS_META: { key: string; label: string; chip: string; badge: string }[]
 ]
 
 /** A'zolik holati — `status` yoki (Student uzatilganda) `memberState`dan. */
-function stateOf(r: SmsRecipient): string {
+function stateOf(r: TelegramRecipient): string {
   return (r.status ?? r.memberState ?? '').toLowerCase()
 }
 
-/** Tanlangan rejimga mos raqam (ota-ona raqamida ota/ona zaxirasi — server bilan bir xil tartib). */
-function phoneOf(r: SmsRecipient, toParent: boolean): string | null | undefined {
-  return toParent ? r.parentPhone || r.fatherPhone || r.motherPhone : r.phone
-}
-
-function isDebtor(r: SmsRecipient): boolean {
+function isDebtor(r: TelegramRecipient): boolean {
   return (r.balance ?? 0) < 0
 }
 
 /**
- * O'quvchilar ro'yxatidan tanlangan(lar)ga SMS yuborish (Eskiz). Shablon tanlab, ota-ona yoki
- * o'quvchi raqamiga jo'natiladi; matn har o'quvchiga moslab to'ldiriladi ({fish} {sinf} {qarzdorlik}...).
+ * Tanlangan o'quvchi(lar) oilasiga TELEGRAM xabar (bot orqali). Matn har o'quvchiga moslab
+ * to'ldiriladi ({fish} {sinf} {qarzdorlik}...). Xabar faqat botga ulangan (telefon raqamini
+ * yuborgan) oilalarga yetadi — natijada nechta chatga ketgani ko'rsatiladi.
  *
- * Ko'p oluvchi bo'lsa (masalan guruhga yuborish) — HOLAT (aktiv/sinov/muzlatilgan) va TO'LOV
- * (faqat qarzdorlar / qarzi yo'q) filtrlari, ustiga har bir oluvchini qo'lda belgilash/olib tashlash.
+ * SMS kanali 2026-10 da olib tashlandi — bu oyna avvalgi "SMS yuborish" o'rnida.
+ * Ko'p oluvchi bo'lsa (guruh, tanlanganlar, davomat) — HOLAT va TO'LOV filtrlari, ustiga har bir
+ * oluvchini qo'lda belgilash/olib tashlash. Yuborish — `POST messages/broadcast` (`scope=selected`).
  */
-export function SmsModal({ open, onClose, recipients }: Props) {
-  const [toParent, setToParent] = useState(true)
+export function TelegramMessageModal({ open, onClose, recipients }: Props) {
   const [message, setMessage] = useState('')
-  const [provider, setProvider] = useState<SmsProvider>('eskiz')
-  const [agentId, setAgentId] = useState('')
   const [configured, setConfigured] = useState(true)
   const [templates, setTemplates] = useState<PickableTemplate[]>([])
   const [tokens, setTokens] = useState<TokenDef[]>([])
   const [sending, setSending] = useState(false)
-  const [result, setResult] = useState<string | null>(null)
-  /** Fonda ketayotgan partiyani kuzatishni to'xtatuvchi (oyna yopilganda chaqiriladi). */
-  const stopWatchRef = useRef<(() => void) | null>(null)
+  const [result, setResult] = useState<{ ok: boolean; text: string } | null>(null)
 
   // ---- Oluvchilar filtri ----
   /** Tanlangan holatlar; bo'sh = hammasi. */
@@ -98,29 +84,19 @@ export function SmsModal({ open, onClose, recipients }: Props) {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- modal ochilganda holatni tozalaymiz (maqsadli)
     setMessage('')
     setResult(null)
-    setToParent(true)
-    setProvider('eskiz')
-    setAgentId('')
     setSending(false)
     setStatusSel(new Set())
     setDebtSel('all')
     setExcluded(new Set())
     setListOpen(false)
     setSearch('')
-    getSmsStatus().then((s) => setConfigured(s.configured))
-    getPickableTemplates('student').then(setTemplates).catch(() => setTemplates([]))
+    // Fon o'qish: holat olinmasa ogohlantirish chiqmaydi, yuborishda server sababni aytadi.
+    getTelegramStatus().then((s) => setConfigured(s.configured)).catch(() => setConfigured(true))
+    getPickableTemplates().then(setTemplates).catch(() => setTemplates([]))
     getMessageTokens()
       .then((ts) => setTokens(ts.filter((t) => t.group !== 'lead')))
       .catch(() => setTokens([]))
   }, [open])
-
-  // Oyna yopilganda (yoki komponent yo'q qilinganda) fon partiyasi kuzatuvini to'xtatamiz.
-  useEffect(() => {
-    if (open) return
-    stopWatchRef.current?.()
-    stopWatchRef.current = null
-  }, [open])
-  useEffect(() => () => stopWatchRef.current?.(), [])
 
   const multi = recipients.length > 1
 
@@ -144,11 +120,8 @@ export function SmsModal({ open, onClose, recipients }: Props) {
     [recipients, statusSel, debtSel],
   )
 
-  /** Filtrdan o'tgan va qo'lda olib tashlanmaganlar. */
+  /** Filtrdan o'tgan va qo'lda olib tashlanmaganlar — xabar SHULARNING oilasiga ketadi. */
   const chosen = useMemo(() => filtered.filter((r) => !excluded.has(r.id)), [filtered, excluded])
-  /** Shulardan raqami borlari — aslida SMS shularga ketadi. */
-  const sendable = useMemo(() => chosen.filter((r) => phoneOf(r, toParent)), [chosen, toParent])
-  const noPhoneCount = chosen.length - sendable.length
 
   const visibleRows = useMemo(() => {
     const q = search.trim().toLowerCase()
@@ -192,43 +165,25 @@ export function SmsModal({ open, onClose, recipients }: Props) {
   }
 
   const handleSend = async () => {
-    if (!message.trim() || sending || sendable.length === 0) return
+    if (!message.trim() || sending || chosen.length === 0) return
     setSending(true)
     setResult(null)
     try {
-      const b = await sendSms({
-        audience: 'selected',
-        studentIds: sendable.map((s) => s.id),
+      const b = await sendBroadcast({
+        scope: 'selected',
+        studentIds: chosen.map((s) => s.id),
         // Qarzdorlar filtri MIJOZ tomonida qo'llanadi (guruhda — shu guruh balansi bo'yicha,
         // serverdagi OnlyDebtors esa o'quvchining UMUMIY balansiga qarardi).
         onlyDebtors: false,
-        toParent,
         text: message.trim(),
-        provider,
-        agentId: agentId || undefined,
       })
-      if (b.recipientCount === 0) {
-        setResult('Raqamli oluvchi topilmadi — hech kimga yuborilmadi.')
-      } else if (b.queued) {
-        // Ko'p oluvchi: SMS'lar FONDA ketmoqda (so'rov ichida kutilsa proksi ulanishni uzardi).
-        // Oynani yopsa ham yuborish davom etadi — natija "Xabarlar → Tarix"da.
-        setResult(`Yuborilmoqda: 0/${b.recipientCount} — oynani yopsangiz ham davom etadi.`)
-        stopWatchRef.current?.()
-        stopWatchRef.current = watchSmsProgress(b.id, (p) =>
-          setResult(
-            p.finished
-              ? `SMS yuborildi: ${p.sent}/${p.total} raqamga.`
-              : `Yuborilmoqda: ${p.done}/${p.total} — oynani yopsangiz ham davom etadi.`,
-          ),
-        )
-      } else {
-        setResult(`SMS yuborildi: ${b.sentCount}/${b.recipientCount} raqamga.`)
-      }
-    } catch (e) {
       setResult(
-        (e as { response?: { data?: { message?: string } } })?.response?.data?.message ??
-          'Yuborishda xatolik',
+        b.recipientCount === 0
+          ? { ok: false, text: "Tanlanganlarning hech biri Telegram botga ulanmagan — hech kimga yuborilmadi." }
+          : { ok: true, text: `Telegram xabar yuborildi: ${b.sentCount}/${b.recipientCount} chatga.` },
       )
+    } catch (e) {
+      setResult({ ok: false, text: apiErrorMessage(e, 'Yuborishda xatolik') })
     } finally {
       setSending(false)
     }
@@ -238,61 +193,44 @@ export function SmsModal({ open, onClose, recipients }: Props) {
     <Modal
       open={open}
       onClose={onClose}
-      title="SMS yuborish"
+      title="Telegram xabar"
       size={multi ? 'lg' : 'md'}
       footer={
         <>
           <Button variant="secondary" onClick={onClose}>
             Yopish
           </Button>
-          <Button onClick={handleSend} disabled={!message.trim() || sending || sendable.length === 0}>
+          <Button onClick={handleSend} disabled={!message.trim() || sending || chosen.length === 0}>
             <Send className="h-4 w-4" />{' '}
-            {sending ? 'Yuborilmoqda...' : multi ? `Yuborish (${sendable.length})` : 'Yuborish'}
+            {sending ? 'Yuborilmoqda...' : multi ? `Yuborish (${chosen.length})` : 'Yuborish'}
           </Button>
         </>
       }
     >
       <div className="space-y-4">
-        {!configured && provider === 'eskiz' && (
+        {!configured && (
           <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-            <p>SMS (Eskiz) sozlanmagan. "Sozlamalar → Sotuv va marketing → Xabar kanallari"da login/parol kiriting.</p>
+            <p>Telegram bot sozlanmagan. "Sozlamalar → Sotuv va marketing → Xabar kanallari"da botni sozlang.</p>
           </div>
         )}
 
-        {/* Kimga: ota-ona yoki o'quvchi raqami */}
-        <div>
-          <div className="mb-1.5 text-sm font-medium text-slate-600">Kimga</div>
-          <div className="tabs inline-flex">
-            <button
-              type="button"
-              onClick={() => setToParent(true)}
-              className={cn('tab', toParent && 'active')}
-            >
-              Ota-ona raqami
-            </button>
-            <button
-              type="button"
-              onClick={() => setToParent(false)}
-              className={cn('tab', !toParent && 'active')}
-            >
-              O'quvchi raqami
-            </button>
-          </div>
-          {!multi && (
-            <p className="mt-1.5 rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-600">
-              {recipients.length === 1 ? (
-                <>
-                  <b>{recipients[0].fullName}</b>
-                  {' — '}
-                  {phoneOf(recipients[0], toParent) || <span className="text-red-500">raqam yo'q</span>}
-                </>
-              ) : (
-                <span className="text-slate-400">Oluvchi tanlanmagan</span>
-              )}
-            </p>
+        <p className="rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-600">
+          {!multi ? (
+            recipients.length === 1 ? (
+              <>
+                <b>{recipients[0].fullName}</b> — oilasiga (botga ulangan chatlariga) yuboriladi.
+              </>
+            ) : (
+              <span className="text-slate-400">Oluvchi tanlanmagan</span>
+            )
+          ) : (
+            <>Xabar tanlangan o'quvchilarning botga ulangan oilalariga (Telegram chatlariga) yuboriladi.</>
           )}
-        </div>
+          <span className="mt-0.5 block text-xs text-slate-400">
+            Botga ulanmagan oilaga xabar bormaydi — natijada nechta chatga ketgani ko'rsatiladi.
+          </span>
+        </p>
 
         {/* Oluvchilar filtri — faqat ko'p oluvchi bo'lganda (guruhga / tanlanganlarga yuborish) */}
         {multi && (
@@ -356,14 +294,11 @@ export function SmsModal({ open, onClose, recipients }: Props) {
 
             <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-2.5">
               <p className="text-sm text-slate-600">
-                Yuboriladi:{' '}
-                <b className={sendable.length === 0 ? 'text-red-500' : 'text-emerald-600'}>
-                  {sendable.length} ta
+                Tanlangan:{' '}
+                <b className={chosen.length === 0 ? 'text-red-500' : 'text-emerald-600'}>
+                  {chosen.length} ta
                 </b>{' '}
-                raqamga
-                {noPhoneCount > 0 && (
-                  <span className="text-amber-600"> · {noPhoneCount} tasida raqam yo'q</span>
-                )}
+                o'quvchi
               </p>
               <button
                 type="button"
@@ -407,7 +342,6 @@ export function SmsModal({ open, onClose, recipients }: Props) {
                     <p className="py-6 text-center text-sm text-slate-400">Filtrga mos oluvchi yo'q</p>
                   )}
                   {visibleRows.map((r) => {
-                    const phone = phoneOf(r, toParent)
                     const active = !excluded.has(r.id)
                     const st = STATUS_META.find((s) => s.key === stateOf(r))
                     return (
@@ -428,12 +362,7 @@ export function SmsModal({ open, onClose, recipients }: Props) {
                         >
                           {active && <Check className="h-3 w-3" />}
                         </span>
-                        <span className="min-w-0 flex-1 truncate">
-                          <span className="font-medium text-slate-700">{r.fullName}</span>
-                          <span className={cn('ml-1 text-xs', phone ? 'text-slate-400' : 'text-amber-600')}>
-                            · {phone ? formatPhone(phone) : "raqam yo'q"}
-                          </span>
-                        </span>
+                        <span className="min-w-0 flex-1 truncate font-medium text-slate-700">{r.fullName}</span>
                         {isDebtor(r) && (
                           <span className="shrink-0 rounded-md bg-red-50 px-1.5 py-0.5 text-[11px] font-semibold text-red-600">
                             {formatMoney(Math.abs(r.balance ?? 0))}
@@ -458,21 +387,13 @@ export function SmsModal({ open, onClose, recipients }: Props) {
           </div>
         )}
 
-        <SmsProviderPicker
-          provider={provider}
-          onProviderChange={setProvider}
-          agentId={agentId}
-          onAgentChange={setAgentId}
-        />
-
-        {/* Matn (shablon chiplari + tokenlar + SMS hisoblagich — yagona MessageEditor) */}
+        {/* Matn (shablon chiplari + tokenlar — yagona MessageEditor) */}
         <MessageEditor
           label="Xabar matni"
           value={message}
           onChange={setMessage}
           tokens={tokens}
           templates={templates.map((t) => ({ name: t.name, text: t.text }))}
-          showSmsCounter
           rows={5}
           placeholder="Hurmatli ota-ona, ..."
           hint="O'rinbosarlar har o'quvchiga moslab to'ldiriladi."
@@ -482,11 +403,11 @@ export function SmsModal({ open, onClose, recipients }: Props) {
           <p
             className={cn(
               'flex items-center gap-1.5 text-sm font-medium',
-              result.startsWith('SMS yuborildi') ? 'text-emerald-700' : 'text-amber-700',
+              result.ok ? 'text-emerald-700' : 'text-amber-700',
             )}
           >
-            {result.startsWith('SMS yuborildi') && <Check className="h-4 w-4" />}
-            {result}
+            {result.ok && <Check className="h-4 w-4" />}
+            {result.text}
           </p>
         )}
       </div>

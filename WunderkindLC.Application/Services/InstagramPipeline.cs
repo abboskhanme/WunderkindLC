@@ -416,7 +416,7 @@ public sealed class InstagramPipeline(IServiceProvider services, ILogger<Instagr
                 var (pid, pIsNew) = await InstagramLeadBridge.UpsertAsync(
                     db, conv,
                     InstagramContract.PhoneOnlyOutput(inboundPhone, guessedName, conv.Language),
-                    phoneSource, ct, autoMsg: services.GetService<AutoMessageService>());
+                    phoneSource, ct);
 
                 // Kontakt qoldirgan odam ta'rifga ko'ra qaynoq — Inbox'da ham shunday ko'rinsin.
                 conv.LeadScore = Math.Max(conv.LeadScore, IgConst.HotLeadScore);
@@ -740,7 +740,7 @@ public sealed class InstagramPipeline(IServiceProvider services, ILogger<Instagr
 
                     var source = string.IsNullOrWhiteSpace(meta.InstagramLeadSource) ? "Instagram" : meta.InstagramLeadSource;
                     var (leadId, isNew) = await InstagramLeadBridge.UpsertAsync(
-                        db, conv, output, source, ct, autoMsg: services.GetService<AutoMessageService>());
+                        db, conv, output, source, ct);
                     cardLeadId = leadId;
                     cardIsNewLead = isNew;
                     logger.LogInformation("Instagram lid {State} ({LeadId})", isNew ? "yaratildi" : "yangilandi", leadId);

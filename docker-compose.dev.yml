@@ -53,9 +53,6 @@ services:
       Telegram__BotToken: "${DEV_TELEGRAM_BOT_TOKEN:-}"
       Career__BotToken: "${DEV_CAREER_BOT_TOKEN:-}"
       TeacherBot__BotToken: "${DEV_TEACHER_BOT_TOKEN:-}"
-      # Eskiz — bo'sh: lokaldan HAQIQIY SMS ketib qolmasin (pul va mijozlar bezovtaligi).
-      Eskiz__Email: ""
-      Eskiz__Password: ""
       # Instagram — bo'sh: webhook lokal manzilga baribir kelmaydi, imzo kaliti esa
       # prod bilan bir xil bo'lsa lokal urinish jonli akkauntga ta'sir qilardi.
       Instagram__AppSecret: ""

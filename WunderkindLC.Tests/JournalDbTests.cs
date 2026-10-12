@@ -7,9 +7,9 @@ using Xunit;
 namespace WunderkindLC.Tests;
 
 /// <summary>
-/// O'QUV JARAYONI — bazaga tegadigan mantiq: onlayn testni topshirish
-/// (<see cref="OnlineTestService"/>), test natijalari va o'rinlar
+/// O'QUV JARAYONI — bazaga tegadigan mantiq: test natijalari va o'rinlar
 /// (<see cref="TestResultService"/>) hamda jurnalga yozish (<see cref="JournalService"/>).
+/// (Onlayn test rejimi 2026-10 da olib tashlandi — testlar faqat oflayn.)
 ///
 /// <para>Sanalar HAR DOIM <c>AppClock</c>ga NISBATAN quriladi — <c>AppClock</c> statik va testlar
 /// istalgan kunda ishlaydi.</para>
@@ -63,25 +63,15 @@ public class JournalDbTests
         return s;
     }
 
-    /// <summary>Onlayn test: vaqt oynasi bugungi kunga nisbatan (<paramref name="fromHours"/> ..
-    /// <paramref name="toHours"/> soat) quriladi.</summary>
-    private static TestResult AddOnlineTest(TestDb db, Group g, string key = "ABCD",
-        double fromHours = -1, double toHours = 1)
+    /// <summary>Oflayn test (ballni o'qituvchi qo'yadi).</summary>
+    private static TestResult AddTest(TestDb db, Group g, decimal maxScore = 4)
     {
         var t = new TestResult
         {
             GroupId = g.Id,
             Name = "Unit 1 test",
             Date = Day(0),
-            MaxScore = key.Length,
-            Mode = "online",
-            PdfUrl = "/uploads/test.pdf",
-            PdfName = "test.pdf",
-            QuestionCount = key.Length,
-            OptionCount = 4,
-            AnswerKey = key,
-            StartAt = Stamp(fromHours),
-            EndAt = Stamp(toHours),
+            MaxScore = maxScore,
             CreatedAt = AppClock.Now.ToString("yyyy-MM-ddTHH:mm:ss"),
         };
         db.Context.TestResults.Add(t);
@@ -89,157 +79,7 @@ public class JournalDbTests
         return t;
     }
 
-    /* =========================================================================================
-     *  1) ONLAYN TESTNI TOPSHIRISH — OnlineTestService.SubmitAsync
-     * ========================================================================================= */
-
-    [Fact]
-    public async Task Submit_JavoblarTekshiriladi_BallSaqlanadi()
-    {
-        using var db = TestDb.Sqlite();
-        var g = AddGroup(db);
-        var st = AddStudent(db, g, "Ali Aliyev");
-        var t = AddOnlineTest(db, g, "ABCD");
-
-        var (res, err) = await OnlineTestService.SubmitAsync(db.Context, st.Id, t.Id, "AB-D");
-
-        Assert.Null(err);
-        Assert.NotNull(res);
-        Assert.Equal(3, res!.Score);                 // 3 to'g'ri, 1 javobsiz
-        Assert.Equal("AB-D", res.Answers);           // pozitsiya saqlangan
-        var row = await db.Context.TestScores.SingleAsync();
-        Assert.Equal(OnlineTestService.SourceApp, row.Source);
-    }
-
-    [Fact]
-    public async Task Submit_IKKINCHImartaRadEtiladi()
-    {
-        using var db = TestDb.Sqlite();
-        var g = AddGroup(db);
-        var st = AddStudent(db, g, "Ali Aliyev");
-        var t = AddOnlineTest(db, g, "ABCD");
-
-        await OnlineTestService.SubmitAsync(db.Context, st.Id, t.Id, "ABCD");
-        var (res, err) = await OnlineTestService.SubmitAsync(db.Context, st.Id, t.Id, "AAAA");
-
-        Assert.Null(res);
-        Assert.Contains("allaqachon", err);
-        // Birinchi natija BUZILMAGAN bo'lishi kerak.
-        Assert.Equal(4, (await db.Context.TestScores.SingleAsync()).Score);
-    }
-
-    [Fact]
-    public async Task Submit_BOTorqaliTopshirilgan_IlovadanQaytaTopshirilmaydi()
-    {
-        using var db = TestDb.Sqlite();
-        var g = AddGroup(db);
-        var st = AddStudent(db, g, "Ali Aliyev");
-        var t = AddOnlineTest(db, g, "ABCD");
-        db.Context.TestScores.Add(new TestScore
-        {
-            TestResultId = t.Id, StudentId = st.Id, Score = 2, Answers = "AB--", Source = "bot",
-        });
-        await db.Context.SaveChangesAsync();
-
-        var (_, err) = await OnlineTestService.SubmitAsync(db.Context, st.Id, t.Id, "ABCD");
-
-        Assert.Contains("allaqachon", err);
-    }
-
-    [Fact]
-    public async Task Submit_QOLDAkiritilganBall_BLOKLAMAYDI()
-    {
-        using var db = TestDb.Sqlite();
-        var g = AddGroup(db);
-        var st = AddStudent(db, g, "Ali Aliyev");
-        var t = AddOnlineTest(db, g, "ABCD");
-        // Source="" — o'qituvchi qo'lda kiritgan ball, bu "o'quvchi topshirgan" degani EMAS.
-        db.Context.TestScores.Add(new TestScore { TestResultId = t.Id, StudentId = st.Id, Score = 1 });
-        await db.Context.SaveChangesAsync();
-
-        var (res, err) = await OnlineTestService.SubmitAsync(db.Context, st.Id, t.Id, "ABCD");
-
-        Assert.Null(err);
-        Assert.Equal(4, res!.Score);   // qo'lda qo'yilgan ball ustiga yozildi
-        Assert.Equal(1, await db.Context.TestScores.CountAsync());
-    }
-
-    [Fact]
-    public async Task Submit_TestHALIBOSHLANMAGAN_RadEtiladi()
-    {
-        using var db = TestDb.Sqlite();
-        var g = AddGroup(db);
-        var st = AddStudent(db, g, "Ali Aliyev");
-        var t = AddOnlineTest(db, g, "ABCD", fromHours: 24, toHours: 48);
-
-        var (res, err) = await OnlineTestService.SubmitAsync(db.Context, st.Id, t.Id, "ABCD");
-
-        Assert.Null(res);
-        Assert.Contains("boshlanmagan", err);
-        Assert.Empty(db.Context.TestScores);
-    }
-
-    [Fact]
-    public async Task Submit_TestVAQTITUGAGAN_RadEtiladi()
-    {
-        using var db = TestDb.Sqlite();
-        var g = AddGroup(db);
-        var st = AddStudent(db, g, "Ali Aliyev");
-        var t = AddOnlineTest(db, g, "ABCD", fromHours: -48, toHours: -24);
-
-        var (res, err) = await OnlineTestService.SubmitAsync(db.Context, st.Id, t.Id, "ABCD");
-
-        Assert.Null(res);
-        Assert.Contains("tugagan", err);
-        Assert.Empty(db.Context.TestScores);
-    }
-
-    [Fact]
-    public async Task Submit_BOSHQAguruhTesti_RadEtiladi()
-    {
-        using var db = TestDb.Sqlite();
-        var mine = AddGroup(db, "Mening guruhim");
-        var other = AddGroup(db, "Begona guruh");
-        var st = AddStudent(db, mine, "Ali Aliyev");
-        var t = AddOnlineTest(db, other, "ABCD");
-
-        var (res, err) = await OnlineTestService.SubmitAsync(db.Context, st.Id, t.Id, "ABCD");
-
-        Assert.Null(res);
-        Assert.Contains("guruhingizga tegishli emas", err);
-        Assert.Empty(db.Context.TestScores);
-    }
-
-    [Fact]
-    public async Task Submit_HAMMASIJAVOBSIZ_RadEtiladi()
-    {
-        using var db = TestDb.Sqlite();
-        var g = AddGroup(db);
-        var st = AddStudent(db, g, "Ali Aliyev");
-        var t = AddOnlineTest(db, g, "ABCD");
-
-        var (res, err) = await OnlineTestService.SubmitAsync(db.Context, st.Id, t.Id, "----");
-
-        Assert.Null(res);
-        Assert.Contains("bitta javob", err);
-        Assert.Empty(db.Context.TestScores);
-    }
-
-    [Fact]
-    public async Task Detail_JavobKALITI_faqatTESTTUGAGACHberiladi()
-    {
-        using var db = TestDb.Sqlite();
-        var g = AddGroup(db);
-        var st = AddStudent(db, g, "Ali Aliyev");
-        var ochiq = AddOnlineTest(db, g, "ABCD", fromHours: -1, toHours: 1);
-        var yopiq = AddOnlineTest(db, g, "ABCD", fromHours: -48, toHours: -24);
-
-        var d1 = await OnlineTestService.DetailAsync(db.Context, st.Id, ochiq.Id);
-        var d2 = await OnlineTestService.DetailAsync(db.Context, st.Id, yopiq.Id);
-
-        Assert.Equal("", d1!.AnswerKey);       // hali ochiq — kalit sir
-        Assert.Equal("ABCD", d2!.AnswerKey);   // vaqt tugagan — kalit ochiladi
-    }
+    // 1) Onlayn testni topshirish (OnlineTestService) — 2026-10 da onlayn rejim bilan birga olib tashlandi.
 
     /* =========================================================================================
      *  2) O'RINLAR — TestResultService.DetailAsync
@@ -254,7 +94,7 @@ public class JournalDbTests
         var bek = AddStudent(db, g, "Bek");
         var vali = AddStudent(db, g, "Vali");
         AddStudent(db, g, "Zafar");   // ball kiritilmagan
-        var t = AddOnlineTest(db, g, "ABCDABCDAB");
+        var t = AddTest(db, g, 10);
         db.Context.TestScores.AddRange(
             new TestScore { TestResultId = t.Id, StudentId = ali.Id, Score = 10 },
             new TestScore { TestResultId = t.Id, StudentId = bek.Id, Score = 10 },
@@ -276,7 +116,7 @@ public class JournalDbTests
         var g = AddGroup(db);
         AddStudent(db, g, "Anvar");                       // ballsiz — ismi alifboda birinchi
         var zafar = AddStudent(db, g, "Zafar");
-        var t = AddOnlineTest(db, g, "ABCD");
+        var t = AddTest(db, g, 4);
         db.Context.TestScores.Add(new TestScore { TestResultId = t.Id, StudentId = zafar.Id, Score = 1 });
         await db.Context.SaveChangesAsync();
 
@@ -298,7 +138,7 @@ public class JournalDbTests
         AddStudent(db, g, "Faol");
         AddStudent(db, g, "Muzlatilgan", status: "frozen");
         AddStudent(db, g, "Chiqarilgan", isActive: false);
-        var t = AddOnlineTest(db, g, "ABCD");
+        var t = AddTest(db, g, 4);
 
         var detail = await TestResultService.DetailAsync(db.Context, t.Id);
 
@@ -308,85 +148,6 @@ public class JournalDbTests
     /* =========================================================================================
      *  3) TEST YARATISH/TAHRIRLASH — TestResultService
      * ========================================================================================= */
-
-    // Savollar PDF manzili server saqlagan nom naqshida (`UploadUrlRules.IsServerPdf`) bo'lishi SHART.
-    private static OnlineTestDto Online(string key = "ABCD", string pdf = "/uploads/0123456789abcdef0123456789abcdef.pdf",
-        int? questionCount = null, string start = "", string end = "") =>
-        new("online", pdf, "t.pdf", questionCount ?? key.Length, 4, key, start, end);
-
-    [Fact]
-    public async Task Create_KALITuzunligiMOSEMAS_XatoVaYOZUVYARATILMAYDI()
-    {
-        using var db = TestDb.Sqlite();
-        var g = AddGroup(db);
-
-        var (dto, err) = await TestResultService.CreateAsync(
-            db.Context, g.Id, "Unit 1", Day(0), 10, "admin", Online("ABC", questionCount: 5));
-
-        Assert.Null(dto);
-        Assert.Contains("5 ta harfdan", err);
-        Assert.Empty(db.Context.TestResults);
-    }
-
-    [Fact]
-    public async Task Create_TUGASHboshlanishdanOLDIN_Xato()
-    {
-        using var db = TestDb.Sqlite();
-        var g = AddGroup(db);
-
-        var (dto, err) = await TestResultService.CreateAsync(
-            db.Context, g.Id, "Unit 1", Day(0), 4, "admin",
-            Online(start: Stamp(2), end: Stamp(1)));
-
-        Assert.Null(dto);
-        Assert.Contains("Tugash vaqti", err);
-        Assert.Empty(db.Context.TestResults);
-    }
-
-    [Fact]
-    public async Task Create_PDFYOQ_Xato()
-    {
-        using var db = TestDb.Sqlite();
-        var g = AddGroup(db);
-
-        var (dto, err) = await TestResultService.CreateAsync(
-            db.Context, g.Id, "Unit 1", Day(0), 4, "admin", Online(pdf: ""));
-
-        Assert.Null(dto);
-        Assert.Contains("PDF", err);
-        Assert.Empty(db.Context.TestResults);
-    }
-
-    [Fact]
-    public async Task Create_SavollarSoni_CHEGARADANtashqari_Xato()
-    {
-        using var db = TestDb.Sqlite();
-        var g = AddGroup(db);
-
-        var (_, tooMany) = await TestResultService.CreateAsync(
-            db.Context, g.Id, "Unit 1", Day(0), 4, "admin",
-            Online(new string('A', 201), questionCount: 201));
-        var (_, zero) = await TestResultService.CreateAsync(
-            db.Context, g.Id, "Unit 1", Day(0), 4, "admin", Online("", questionCount: 0));
-
-        Assert.Contains("1 dan 200 gacha", tooMany);
-        Assert.Contains("1 dan 200 gacha", zero);
-        Assert.Empty(db.Context.TestResults);
-    }
-
-    [Fact]
-    public async Task Create_ONLAYNtestda_MaxScoreSAVOLLARSONIgaTENGLASHADI()
-    {
-        using var db = TestDb.Sqlite();
-        var g = AddGroup(db);
-
-        // Kiritilgan maxScore (999) e'tiborsiz — onlaynda har savol 1 ball.
-        var (dto, err) = await TestResultService.CreateAsync(
-            db.Context, g.Id, "Unit 1", Day(0), 999, "admin", Online("ABCDA"));
-
-        Assert.Null(err);
-        Assert.Equal(5, dto!.MaxScore);
-    }
 
     [Fact]
     public async Task Create_NomiBoshYokiMaxScoreNol_Xato()
@@ -400,57 +161,6 @@ public class JournalDbTests
         Assert.Contains("nomi", noName);
         Assert.Contains("Maksimal ball", noScore);
         Assert.Empty(db.Context.TestResults);
-    }
-
-    [Fact]
-    public async Task Update_ONLINEnullBerilsa_REJIMOZGARMAYDI()
-    {
-        // tests.md:56-57 qoidasi: eski/qisqartirilgan forma onlayn testni oflaynga aylantirmasin
-        // (PDF, kalit va vaqt oynasi yo'qolib ketardi).
-        using var db = TestDb.Sqlite();
-        var g = AddGroup(db);
-        var t = AddOnlineTest(db, g, "ABCD");
-
-        var (ok, err) = await TestResultService.UpdateAsync(db.Context, t.Id, "Yangi nom", Day(1), 99, null);
-
-        Assert.True(ok);
-        Assert.Null(err);
-        var fresh = await db.Context.TestResults.SingleAsync();
-        Assert.Equal("online", fresh.Mode);
-        Assert.Equal("ABCD", fresh.AnswerKey);
-        Assert.Equal("/uploads/test.pdf", fresh.PdfUrl);
-        Assert.Equal(4, fresh.MaxScore);        // MaxScore savollar soniga qaytariladi (99 emas)
-    }
-
-    [Fact]
-    public async Task Update_ModeOFFLINEberilsa_RejimAlmashadi()
-    {
-        using var db = TestDb.Sqlite();
-        var g = AddGroup(db);
-        var t = AddOnlineTest(db, g, "ABCD");
-
-        var (ok, _) = await TestResultService.UpdateAsync(db.Context, t.Id, "Oflayn", Day(0), 20,
-            new OnlineTestDto("offline", "", "", 0, 4, "", "", ""));
-
-        Assert.True(ok);
-        var fresh = await db.Context.TestResults.SingleAsync();
-        Assert.Equal("offline", fresh.Mode);
-        Assert.Equal(20, fresh.MaxScore);
-    }
-
-    [Fact]
-    public async Task Update_PDFalmashtirilsa_TelegramKESHIbekorQilinadi()
-    {
-        using var db = TestDb.Sqlite();
-        var g = AddGroup(db);
-        var t = AddOnlineTest(db, g, "ABCD");
-        t.PdfFileId = "eski-file-id";
-        await db.Context.SaveChangesAsync();
-
-        await TestResultService.UpdateAsync(db.Context, t.Id, "Unit 1", Day(0), 4,
-            Online(pdf: "/uploads/fedcba9876543210fedcba9876543210.pdf"));
-
-        Assert.Equal("", (await db.Context.TestResults.SingleAsync()).PdfFileId);
     }
 
     /* =========================================================================================
@@ -691,102 +401,24 @@ public class JournalDbTests
      * ========================================================================================= */
 
     [Fact]
-    public async Task SetScore_NULLberilsa_BUTUNQATOROCHIRILADI_HOZIRGIXULQ()
+    public async Task SetScore_NULLberilsa_BALL_QATORI_OCHIRILADI()
     {
-        // HOZIRGI xulqni muzlatadi — pastdagi Skip'li test to'g'ri xulqni tasvirlaydi.
+        // Oflayn testda ballni tozalash = qatorni o'chirish (o'quvchi "ball kiritilmagan" bo'lib qoladi).
+        // (Onlayn topshiriqni saqlash masalasi — Skip'li test — onlayn rejim bilan 2026-10 da olib tashlandi.)
         using var db = TestDb.Sqlite();
         var g = AddGroup(db);
         var s = AddStudent(db, g, "Ali");
-        var t = AddOnlineTest(db, g, "ABCD");
-        await OnlineTestService.SubmitAsync(db.Context, s.Id, t.Id, "ABCD");
-
-        await TestResultService.SetScoreAsync(db.Context, t.Id, s.Id, null);
-
-        Assert.Empty(db.Context.TestScores);   // javoblar, vaqt va Source — hammasi yo'q bo'ldi
-    }
-
-    [Fact(Skip = "XATO (TestResultService.cs:295-298): ball tozalanganda ONLAYN topshiriq ham o'chib ketadi")]
-    public async Task SetScore_NULL_ONLAYNTOPSHIRIQSAQLANISHIKERAK()
-    {
-        // XATO (TestResultService.cs:295-298): `score is null` bo'lganda butun TestScore QATORI
-        // o'chiriladi. Onlayn testda o'sha qatorda o'quvchining JAVOBLARI, topshirgan VAQTI va
-        // Source="app"/"bot" saqlanadi — ya'ni o'qituvchi ballni tozalasa topshiriq izi butunlay
-        // yo'qoladi va o'quvchi testni QAYTA topshira oladi (kalit tarqalgan bo'lsa — 100%).
-        // To'g'risi: onlayn topshiriqda faqat Score qayta hisoblanishi/bo'shatilishi, javoblar
-        // esa joyida qolishi kerak.
-        using var db = TestDb.Sqlite();
-        var g = AddGroup(db);
-        var s = AddStudent(db, g, "Ali");
-        var t = AddOnlineTest(db, g, "ABCD");
-        await OnlineTestService.SubmitAsync(db.Context, s.Id, t.Id, "ABCD");
-
-        await TestResultService.SetScoreAsync(db.Context, t.Id, s.Id, null);
-
-        var row = await db.Context.TestScores.SingleAsync();
-        Assert.Equal("ABCD", row.Answers);
-        Assert.Equal(OnlineTestService.SourceApp, row.Source);
-        var (_, err) = await OnlineTestService.SubmitAsync(db.Context, s.Id, t.Id, "ABCD");
-        Assert.Contains("allaqachon", err);
-    }
-
-    [Fact]
-    public async Task Update_SavollarSoniKAMAYTIRILSA_BALLARCLAMPQILINISHIKERAK()
-    {
-        // TUZATILDI (2026-10-07 audit) — ilgari XATO edi (TestResultService.cs:160-190): ApplyOnline `t.MaxScore = count` deb yangi maksimalni
-        // yozadi, lekin ALLAQACHON qo'yilgan TestScore.Score qiymatlariga tegmaydi. Natijada
-        // "9/5 = 180%" kabi natijalar chiqadi va o'rtacha ball/reyting buziladi.
-        // To'g'risi: MaxScore kamayganda mavjud ballar yangi maksimalga qisilishi kerak
-        // (SetScoreAsync ichidagi Math.Clamp bilan bir xil qoida).
-        using var db = TestDb.Sqlite();
-        var g = AddGroup(db);
-        var s = AddStudent(db, g, "Ali");
-        var t = AddOnlineTest(db, g, "ABCDABCDAB");
-        db.Context.TestScores.Add(new TestScore { TestResultId = t.Id, StudentId = s.Id, Score = 9 });
+        var t = AddTest(db, g, 4);
+        db.Context.TestScores.Add(new TestScore { TestResultId = t.Id, StudentId = s.Id, Score = 3 });
         await db.Context.SaveChangesAsync();
 
-        await TestResultService.UpdateAsync(db.Context, t.Id, "Unit 1", Day(0), 10, Online("ABCDA"));
+        await TestResultService.SetScoreAsync(db.Context, t.Id, s.Id, null);
 
-        Assert.Equal(5, (await db.Context.TestScores.SingleAsync()).Score);
+        Assert.Empty(db.Context.TestScores);
     }
 
-    [Fact]
-    public async Task Update_TestSANASIozgarsa_VAQTOYNASIESKIkunda_HOZIRGIXULQ()
-    {
-        // HOZIRGI xulqni muzlatadi — pastdagi Skip'li test to'g'ri xulqni tasvirlaydi.
-        using var db = TestDb.Sqlite();
-        var g = AddGroup(db);
-        var t = AddOnlineTest(db, g, "ABCD");
-        var eskiKun = Day(0);
-
-        await TestResultService.UpdateAsync(db.Context, t.Id, "Unit 1", Day(7), 4,
-            Online(start: eskiKun + "T09:00", end: eskiKun + "T10:00"));
-
-        var fresh = await db.Context.TestResults.SingleAsync();
-        Assert.Equal(Day(7), fresh.Date);
-        Assert.StartsWith(eskiKun, fresh.StartAt);   // oyna ESKI kunda qolib ketdi
-    }
-
-    [Fact(Skip = "XATO (TestResultService.cs:170-175): test sanasi ko'chirilsa StartAt/EndAt eskisicha qoladi")]
-    public async Task Update_TestSANASIozgarsa_VAQTOYNASIHAMKOCHISHIKERAK()
-    {
-        // XATO (TestResultService.cs:170-175): `start`/`end` faqat BO'SH bo'lgandagina test sanasidan
-        // olinadi (`t.Date + "T00:00"`). Forma odatda mavjud vaqtlarni o'zgarishsiz qaytaradi, shuning
-        // uchun testni boshqa kunga ko'chirganda javob qabul qilish oynasi ESKI kunda qoladi — test
-        // yangi kunda "allaqachon tugagan" bo'lib ko'rinadi va hech kim topshira olmaydi.
-        // To'g'risi: sana o'zgarganda oynaning KUN qismi ham yangi sanaga ko'chishi kerak
-        // (soat qismi saqlangan holda).
-        using var db = TestDb.Sqlite();
-        var g = AddGroup(db);
-        var t = AddOnlineTest(db, g, "ABCD");
-        var eskiKun = Day(0);
-
-        await TestResultService.UpdateAsync(db.Context, t.Id, "Unit 1", Day(7), 4,
-            Online(start: eskiKun + "T09:00", end: eskiKun + "T10:00"));
-
-        var fresh = await db.Context.TestResults.SingleAsync();
-        Assert.StartsWith(Day(7), fresh.StartAt);
-        Assert.StartsWith(Day(7), fresh.EndAt);
-    }
+    // (Update_SavollarSoni… — maksimal ball kamayganda qisish — AuditFixT5Tests da oflayn shaklda;
+    //  onlayn vaqt oynasi testlari onlayn rejim bilan 2026-10 da olib tashlandi.)
 
     [Fact]
     public async Task Bulk_BOSHQAguruhOquvchisi_CHETLABOTILISHIKERAK()

@@ -14,7 +14,7 @@ namespace WunderkindLC.Domain;
 /// <para><see cref="Status"/> — concurrency token: bitta qatorni ikki ishchi band qila olmaydi.
 /// Yuborishdan OLDIN <c>sending</c> deb band qilinadi; aynan yuborish paytida ilova to'xtasa qator
 /// <c>unknown</c> bo'ladi va QAYTA yuborilmaydi (xabar ketgan bo'lishi mumkin — takror SMS dan
-/// bitta yo'qotish arzon, <c>SmsQueueItem</c> bilan bir xil qoida).</para>
+/// bitta yo'qotish arzon, eski ommaviy SMS navbati bilan bir xil qoida).</para>
 /// </summary>
 public partial class AttendanceNotifyItem
 {

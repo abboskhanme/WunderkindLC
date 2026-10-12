@@ -467,13 +467,14 @@ public sealed class OperationsTools(McpToolContext t)
     [McpServerTool(Name = "auto_message_rules", Title = "Avto-xabar qoidalari",
         ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
     [Description("Sozlangan avtomatik xabar qoidalari («Xabarlar → Avto xabarlar»): qaysi hodisada (to'lov qabul qilindi, "
-        + "qarzdorlik, darsga kelmadi, tug'ilgan kun, yangi lid va h.k.) kimga (ota-ona / o'quvchi / o'qituvchi) qanday matn "
+        + "qarzdorlik, darsga kelmadi, tug'ilgan kun va h.k.) kimga (ota-ona / o'quvchi / o'qituvchi) qanday matn "
         + "yuboriladi, qoida yoqilganmi, Telegram kanali yoqilganmi va jadval maydonlari (turi, vaqti, oy kuni, daqiqa "
-        + "siljishi, qamrov). Hodisa, toifa va yoqilgan/o'chirilgan bo'yicha filtr. Qoidasi yo'q hodisalar ham ro'yxatda. "
+        + "siljishi, qamrov). Kabinet bildirishnomasi har yoqilgan qoida uchun yoziladi. Hodisa, toifa va "
+        + "yoqilgan/o'chirilgan bo'yicha filtr. Qoidasi yo'q hodisalar ham ro'yxatda. "
         + "Configured automatic notification rules.")]
     public async Task<string> AutoMessageRules(
         [Description("Hodisa kaliti (masalan payment_debt, attendance_absent)")] string? trigger = null,
-        [Description("Toifa: Lidlar | O'quv jarayoni | Moliya | Boshqa")] string? category = null,
+        [Description("Toifa: O'quv jarayoni | Moliya | Boshqa")] string? category = null,
         [Description("Faqat yoqilganlar: true; faqat o'chirilganlar: false")] bool? enabled = null,
         CancellationToken ct = default)
     {
@@ -487,17 +488,20 @@ public sealed class OperationsTools(McpToolContext t)
         var q = db.AutoMessageRules.AsQueryable();
         if (trig.Length > 0) q = q.Where(r => r.Trigger == trig);
         if (enabled is not null) q = q.Where(r => r.Enabled == enabled.Value);
-        // Explicit projection: the SMS / push channel flags and the SMS provider are not read.
+        // Explicit projection: the SMS provider and the push flag are not read. The effective Telegram channel is
+        // the panel's rule (AutoMessageChannels.Telegram): a legacy SMS rule (removed 2026-10) is delivered over Telegram.
         var rows = await q.OrderBy(r => r.CreatedAt).ThenBy(r => r.Id).Take(McpToolContext.MaxPageSize + 1)
             .Select(r => new
             {
-                r.Id, r.Name, r.Trigger, r.Enabled, r.SendTelegram, r.Audience, r.Template,
+                r.Id, r.Name, r.Trigger, r.Enabled, SendTelegram = r.SendTelegram || r.SendSms, r.Audience, r.Template,
                 r.ScheduleType, r.ScheduleTime, r.ScheduleDayOfMonth, r.OffsetMinutes, r.SendScope, r.CreatedAt,
             }).ToListAsync(ct);
         var truncated = rows.Count > McpToolContext.MaxPageSize;
 
         var items = rows.Take(McpToolContext.MaxPageSize)
             .Select(r => new { r, info = AutoMessageTriggers.Get(r.Trigger) })
+            // Rules of triggers removed from the catalogue (2026-10: SMS-only lead events) never run — hidden, as in the panel.
+            .Where(x => x.info is not null)
             .Where(x => cat.Length == 0 || string.Equals(x.info?.Category, cat, StringComparison.OrdinalIgnoreCase))
             .Select(x => new
             {

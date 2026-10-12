@@ -15,7 +15,7 @@ namespace WunderkindLC.Server.Controllers;
 /// Ommaviy (autentifikatsiyasiz) daraja testi: bo'lajak o'quvchi `/test/{slug}` orqali kiradi,
 /// testni ishlaydi va topshiradi — natija CRM'da yangi LID bo'lib tushadi.
 ///
-/// <para><b>KESH (brand / push-config / manifest):</b> bu uch endpoint HAR sahifa yuklanishida
+/// <para><b>KESH (brand / manifest):</b> bu endpointlar HAR sahifa yuklanishida
 /// chaqiriladi va faqat <see cref="CenterMeta"/> (bitta qator) ni o'qiydi. Ikki qatlam:</para>
 /// <para>1) <see cref="DataCache"/> — DB o'qishning o'zi keshlanadi (dependsOn: CenterMeta);
 /// admin sozlamani saqlashi bilan interceptor versiyani oshiradi va kesh DARHOL yangilanadi.
@@ -30,7 +30,7 @@ namespace WunderkindLC.Server.Controllers;
 [AllowAnonymous]
 [Route("api/public/test")]
 public class PublicTestController(
-    AppDbContext db, TelegramService telegram, AutoMessageService autoMsg, DataCache dataCache) : ControllerBase
+    AppDbContext db, TelegramService telegram, DataCache dataCache) : ControllerBase
 {
     /// <summary>DataCache TTL — faqat xavfsizlik tarmog'i (asosiy yangilanish CenterMeta versiyasi orqali).</summary>
     private static readonly TimeSpan MetaTtl = TimeSpan.FromMinutes(10);
@@ -43,20 +43,6 @@ public class PublicTestController(
         {
             var m = await cdb.CenterMeta.AsNoTracking().FirstOrDefaultAsync();
             return new PublicBrandDto(m?.Name ?? "", m?.LogoUrl ?? "", m?.Phone ?? "", m?.Email ?? "");
-        });
-
-    /// <summary>Ommaviy web/PWA push konfiguratsiyasi — brauzer Firebase JS SDK'ni ishga tushirib
-    /// FCM token olishi uchun (web app config + VAPID ochiq kaliti). Maxfiy emas.</summary>
-    [HttpGet("/api/public/push-config")]
-    [OutputCache(Duration = 300)]
-    public async Task<PublicPushConfigDto> PushConfig() =>
-        await dataCache.GetOrCreateAsync("public:push-config", [nameof(CenterMeta)], MetaTtl, async cdb =>
-        {
-            var m = await cdb.CenterMeta.AsNoTracking().FirstOrDefaultAsync();
-            var web = m?.FcmWebConfigJson ?? "";
-            var vapid = m?.FcmVapidKey ?? "";
-            var configured = vapid.Trim().Length > 0 && !string.IsNullOrWhiteSpace(web);
-            return new PublicPushConfigDto(web, vapid, configured);
         });
 
     /// <summary>PWA manifest (DINAMIK) — markaz nomi va LOGOSI bilan. Ilova o'rnatilganda (Android/desktop)
@@ -140,7 +126,7 @@ public class PublicTestController(
     {
         var safeAge = Math.Clamp(req.Age, 0, 120);
         if (safeAge != req.Age) req = req with { Age = safeAge };
-        var result = await LevelTestService.SubmitInviteAsync(db, token, req, telegram, autoMsg);
+        var result = await LevelTestService.SubmitInviteAsync(db, token, req, telegram);
         if (result is null) return StatusCode(410, new { message = "Havola topilmadi yoki allaqachon ishlatilgan." });
         return result;
     }
@@ -164,7 +150,7 @@ public class PublicTestController(
         var safeAge = Math.Clamp(req.Age, 0, 120);
         if (safeAge != req.Age) req = req with { Age = safeAge };
 
-        var result = await LevelTestService.SubmitAsync(db, slug, req, telegram, autoMsg);
+        var result = await LevelTestService.SubmitAsync(db, slug, req, telegram);
         if (result is null) return NotFound(new { message = "Test topilmadi yoki faol emas" });
         return result;
     }

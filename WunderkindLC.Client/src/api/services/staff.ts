@@ -70,7 +70,7 @@ export async function updateStaff(id: string, payload: CreateStaffWithTemplatePa
   return data
 }
 
-/** `warning` — xodimning agenti STANDART Local SMS agenti edi: avtomatik Local SMS'lar to'xtadi. */
+/** `warning` — o'chirishning e'tiborga loyiq oqibati (server matni bilan); bo'lmasa `undefined`. */
 export async function deleteStaff(id: string, reasonId?: string): Promise<{ warning?: string }> {
   const { data } = await api.delete<{ warning?: string } | ''>(`/admin/staff/${id}`, {
     params: reasonId ? { reasonId } : undefined,

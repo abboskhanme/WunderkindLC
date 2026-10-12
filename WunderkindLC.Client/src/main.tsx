@@ -4,7 +4,7 @@ import { BrowserRouter } from 'react-router-dom'
 import './index.css'
 import App from './App.tsx'
 import { AuthProvider } from '@/context/AuthProvider'
-import { registerForInstall } from '@/api/services/webpush'
+import { registerForInstall } from '@/lib/pwa'
 import { loadPosthog } from '@/lib/posthog'
 
 createRoot(document.getElementById('root')!).render(
@@ -27,7 +27,7 @@ const scheduleIdle: (cb: () => void) => void =
 scheduleIdle(() => { void loadPosthog() })
 
 // PWA: startup'da service worker'ni ro'yxatdan o'tkazamiz (login'dan oldin) — sayt "o'rnatiladigan"
-// bo'ladi. Push tokeni esa login'da (student/teacher) olinadi. Best-effort — xatoni yutamiz.
+// bo'ladi. Best-effort — xatoni yutamiz.
 registerForInstall().catch(() => {})
 
 // Telegram bot Menu Button orqali Web App sifatida ochilganda — SDK'ga tayyor ekanini bildiramiz.

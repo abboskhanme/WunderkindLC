@@ -123,7 +123,7 @@ public sealed class AppAttestation(IHttpClientFactory httpFactory, ILogger<AppAt
 
     /// <summary>Android tomoni sozlanganmi (paket nomi + service account).</summary>
     public static bool Configured =>
-        PackageName.Length > 0 && FcmService.IsConfigured(ServiceAccountJson);
+        PackageName.Length > 0 && GoogleServiceAccount.IsConfigured(ServiceAccountJson);
 
     /// <summary>
     /// Integrity tokenini tekshiradi.
@@ -275,9 +275,8 @@ public sealed class AppAttestation(IHttpClientFactory httpFactory, ILogger<AppAt
 
     /// <summary>
     /// Service account JSON'dan OAuth access token (scope: <c>playintegrity</c>).
-    /// ⚠️ <see cref="FcmService"/> da shunga o'xshash kod bor — ATAYIN takrorlangan: u yerda
-    /// scope boshqa (<c>firebase.messaging</c>) va o'z keshi bor; ikkalasini bitta yordamchiga
-    /// yig'ish push oqimiga tegishni talab qilardi (bu yerda tegilmaydigan qism).
+    /// JSON parser — <see cref="GoogleServiceAccount"/> (push / FCM 2026-10 da olib tashlangan,
+    /// faqat parser qoldi).
     /// </summary>
     private async Task<string> GetAccessTokenAsync(CancellationToken ct)
     {
@@ -286,7 +285,7 @@ public sealed class AppAttestation(IHttpClientFactory httpFactory, ILogger<AppAt
             if (_cachedToken.Length > 0 && DateTime.UtcNow < _cachedExpiry) return _cachedToken;
         }
 
-        if (!FcmService.TryParse(ServiceAccountJson, out var c))
+        if (!GoogleServiceAccount.TryParse(ServiceAccountJson, out var c))
             throw new InvalidOperationException("Play Integrity service account JSON yaroqsiz");
 
         var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();

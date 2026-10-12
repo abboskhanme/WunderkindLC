@@ -28,8 +28,7 @@ namespace WunderkindLC.Application.Services;
 /// o'zi hisoblaydi.</para>
 ///
 /// <para>⚠️ <c>SaveChangesAsync</c> chaqirilmaydi — yozuvlar chaqiruvchining (pipeline)
-/// tranzaksiyasida saqlanadi. ISTISNO: YANGI lidga <c>lead_new</c> avto-SMS'i
-/// (<c>autoMsg</c> berilsa) — u yuborilgan SMS jurnalini o'zi saqlaydi.</para>
+/// tranzaksiyasida saqlanadi.</para>
 ///
 /// <para>⚠️ <b>Aylantirilgan lid</b> (o'quvchi bo'lgan) qayta ishlatilmaydi — suhbat unga bog'langan
 /// bo'lsa ham YANGI lid ochiladi ("Avval o'quvchi bo'lgan" izohi bilan) — CRM-1,
@@ -45,11 +44,9 @@ public static class InstagramLeadBridge
     public const string ActorName = "Instagram AI agenti";
 
     /// <summary>Suhbatdan lid yaratadi yoki mavjudini yangilaydi. Qaytaradi: lid id va yangimi.</summary>
-    /// <param name="autoMsg">Berilsa — YANGI, telefoni bor lidga <c>lead_new</c> avto-SMS'i yuboriladi
-    /// (lid formasi/landing bilan bir xil qoida; CRM-9). <c>null</c> — yuborilmaydi (testlar, eski chaqiruvchi).</param>
     public static async Task<(string LeadId, bool IsNew)> UpsertAsync(
         IAppDbContext db, IgConversation conv, IgAgentOutput output, string sourceName,
-        CancellationToken ct = default, AutoMessageService? autoMsg = null)
+        CancellationToken ct = default)
     {
         var now = AppClock.Iso();
         var source = string.IsNullOrWhiteSpace(sourceName) ? "Instagram" : sourceName.Trim();
@@ -141,9 +138,6 @@ public static class InstagramLeadBridge
         });
 
         await IgLeadLinks.RelinkAsync(db, conv, fresh.Id, ct);
-        // «Yangi lid kelganda» avto-SMS'i — lid formasi va landing bilan bir xil (CRM-9). Telefonsiz
-        // lidga yuborilmaydi; telefon keyin kelsa u allaqachon MAVJUD lid bo'ladi (takroriyga SMS yo'q).
-        await LeadIntake.DispatchLeadNewAsync(db, autoMsg, fresh, isNewLead: true, ct);
         return (fresh.Id, true);
     }
 

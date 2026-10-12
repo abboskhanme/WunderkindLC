@@ -1,7 +1,5 @@
 import type {
-  ChatMessage,
   GroupTest,
-  OnlineTest,
   PortalMeta,
   SalaryLedger,
   Subject,
@@ -237,38 +235,6 @@ export async function changeTeacherGroupRevision(groupId: string, delta: number)
   await api.post(`/teacher/curriculum/group/${groupId}/revision`, { delta })
 }
 
-/* ---------- Guruh chati ---------- */
-
-export async function getTeacherChatClasses(): Promise<string[]> {
-  if (USE_MOCK) return []
-  const { data } = await api.get<string[]>('/teacher/chat/classes')
-  return data
-}
-
-export async function getTeacherChat(className: string, since?: string): Promise<ChatMessage[]> {
-  if (USE_MOCK) return []
-  const { data } = await api.get<ChatMessage[]>(`/teacher/chat/${encodeURIComponent(className)}`, {
-    params: since ? { since } : undefined,
-  })
-  return data
-}
-
-export async function sendTeacherChat(className: string, text: string): Promise<ChatMessage> {
-  const { data } = await api.post<ChatMessage>(`/teacher/chat/${encodeURIComponent(className)}`, { text })
-  return data
-}
-
-/**
- * Har bir kanal uchun oxirgi xabar vaqti — o'qilmagan xabarlarni aniqlash uchun (unread-context).
- * Qaytadi: { [channelName]: ISO vaqt yoki null (xabari yo'q kanal) }
- */
-export async function getTeacherLastMessages(): Promise<Record<string, string | null>> {
-  if (USE_MOCK) return {}
-  const { data } = await api.get<Record<string, string | null>>('/teacher/chat/last-messages')
-  return data
-}
-
-
 /* ---------- O'quvchilar reytingi (o'z guruhlari, ball bo'yicha) ---------- */
 
 /**
@@ -302,8 +268,6 @@ export async function createTeacherTest(payload: {
   name: string
   date: string
   maxScore: number
-  /** Onlayn test sozlamalari; berilmasa (yoki mode="offline") — oflayn test. */
-  online?: OnlineTest
   /** true — test natijasi bo'yicha sertifikat beriladi */
   certificateEnabled?: boolean
   /** Sertifikat shabloni; bo'sh/null — standart shablon */
@@ -319,7 +283,6 @@ export async function updateTeacherTest(
     name: string
     date: string
     maxScore: number
-    online?: OnlineTest
     /** true — test natijasi bo'yicha sertifikat beriladi */
     certificateEnabled?: boolean
     /** Sertifikat shabloni; bo'sh/null — standart shablon */
@@ -327,26 +290,6 @@ export async function updateTeacherTest(
   },
 ): Promise<void> {
   await api.put(`/teacher/test-results/${id}`, payload)
-}
-
-/** Yuklangan fayl metadatasi (test savollari PDF'i va shunga o'xshash yuklamalar uchun) */
-export interface MaterialInput {
-  name: string
-  url: string
-  size: number
-  contentType: string
-  /** Ixtiyoriy hamrohlik audio (masalan shu materialni ovoz chiqarib o'qigan yozuv) */
-  audioUrl?: string | null
-}
-
-/** Onlayn test savollari (PDF) faylini yuklash; yuklangan fayl metadatasini qaytaradi. */
-export async function uploadTeacherTestFile(file: File): Promise<MaterialInput> {
-  const fd = new FormData()
-  fd.append('file', file)
-  const { data } = await api.post<MaterialInput>('/teacher/test-results/uploads', fd, {
-    headers: { 'Content-Type': 'multipart/form-data' },
-  })
-  return data
 }
 
 export async function deleteTeacherTest(id: string): Promise<void> {

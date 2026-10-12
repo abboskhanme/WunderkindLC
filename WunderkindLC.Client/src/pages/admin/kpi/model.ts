@@ -201,20 +201,6 @@ export function coefTone(coef: number): BadgeTone {
   return 'default'
 }
 
-/**
- * Qo'ng'iroq yo'nalishi — KPI namunasi shartnomasi (`inbound`/`outbound`). Server Local Call
- * (CTI) qiymatlarini shunga o'giradi: `incoming`/`missed` → `inbound`, `outgoing` → `outbound`
- * (`KpiCallSource.SampleDirection`).
- *
- * ⚠️ Qisqartirilgan `in`/`out` ATAYIN ishlatilmaydi: shartnoma qiymati to'liq, va uni yo'lda
- * qisqartirish ikki tomonni jimgina bir-biriga mos kelmaydigan qilib qo'yardi.
- */
-export function callDirectionLabel(direction: string): string {
-  if (direction === 'inbound') return 'Kiruvchi'
-  if (direction === 'outbound') return 'Chiquvchi'
-  return direction || '—'
-}
-
 /** Serverdagi `tone` matnini `Badge` rangiga o'giradi (noma'lum qiymat — neytral). */
 export function signalTone(tone: string): BadgeTone {
   if (tone === 'bad') return 'red'

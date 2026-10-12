@@ -1107,6 +1107,8 @@ public partial class TestResult
     public string CreatedBy { get; set; } = string.Empty;
 
     // ---------- ONLAYN test (bot orqali ishlanadi) ----------
+    // Legacy (removed 2026-10): columns kept until a confirmed drop. The online mode (bot PDF, answer
+    // key, test code, external participants) was removed — tests are offline only. Mode .. GroupOpen.
     /// <summary>Rejim: <c>"offline"</c> (an'anaviy — ballni o'qituvchi qo'lda kiritadi) |
     /// <c>"online"</c> (o'quvchi Telegram botdan PDF oladi va javoblarini yuboradi).</summary>
     public string Mode { get; set; } = "offline";
@@ -1230,6 +1232,8 @@ public class TestCertificate
 /// <para>Bir chat bir testni BIR MARTA ishlaydi — unikal kalit (TestResultId, ChatId).</para>
 /// <para>Test o'chirilsa natijalari ham kaskad o'chadi.</para>
 /// </summary>
+// Legacy (removed 2026-10): table kept until a confirmed drop.
+[Obsolete("Legacy (removed 2026-10): table kept until a confirmed drop.")]
 public class ExternalTestScore
 {
     public string Id { get; set; } = Guid.NewGuid().ToString();
@@ -1261,6 +1265,7 @@ public class TestScore
     public string StudentId { get; set; } = string.Empty;
     /// <summary>O'quvchi olgan ball (0 .. MaxScore).</summary>
     public decimal Score { get; set; }
+    // Legacy (removed 2026-10): columns (Answers, SubmittedAt, Source) kept until a confirmed drop.
     /// <summary>ONLAYN test: o'quvchi bot orqali yuborgan javoblar ("ABDCA...", javobsiz savol '-').
     /// Qo'lda kiritilgan ballda bo'sh.</summary>
     public string Answers { get; set; } = string.Empty;
@@ -1275,6 +1280,8 @@ public class TestScore
 /// bitta sessiya bo'ladi: o'quvchi testni ochganda yaratiladi, javoblar yuborilgach yoki bekor
 /// qilinganda o'chiriladi. Tugmali rejimda javoblar shu yerda to'planib boradi.
 /// </summary>
+// Legacy (removed 2026-10): table kept until a confirmed drop.
+[Obsolete("Legacy (removed 2026-10): table kept until a confirmed drop.")]
 public class TestBotSession
 {
     public string Id { get; set; } = Guid.NewGuid().ToString();
@@ -2046,6 +2053,7 @@ public partial class CenterMeta
     /// <summary>Bot orqali telefon ulashilganda o'quvchini QAYSI raqami bo'yicha qidirish: "parent" (default —
     /// Student.ParentPhone) yoki "student" (Student.Phone, o'quvchining o'zi raqami).</summary>
     public string TelegramPhoneMatchField { get; set; } = "parent";
+    // Legacy (removed 2026-10): column kept until a confirmed drop.
     /// <summary>O'quvchi ilovasi APK fayli — Telegram bot ro'yxatdan o'tgan o'quvchiga yuboradi.
     /// Name = ko'rsatiladigan nom; Path = serverdagi nisbiy yo'l (uploads/...); FileId = Telegram
     /// keshlangan file_id (bir marta yuklangach qayta yuklamasdan yuboriladi, yangi APK yuklanganda bo'shatiladi).</summary>
@@ -2059,12 +2067,14 @@ public partial class CenterMeta
     // Firebase SERVICE ACCOUNT JSON (maxfiy, ichida private_key) — .env: FCM_SERVICE_ACCOUNT_JSON
     // (AppSecrets.FcmServiceAccountJson). Quyidagi ikkitasi esa OMMAVIY (brauzerga beriladi) —
     // shuning uchun bazada qoladi va UI'dan kiritiladi.
+    // Legacy (removed 2026-10): column kept until a confirmed drop.
     /// <summary>
     /// Firebase WEB app konfiguratsiyasi (JSON: apiKey, authDomain, projectId, messagingSenderId,
     /// appId). Web (PWA) push uchun — brauzer FCM token olishi uchun zarur. Firebase Console →
     /// Project Settings → General → Your apps → Web app config. Ommaviy (maxfiy emas).
     /// </summary>
     public string FcmWebConfigJson { get; set; } = string.Empty;
+    // Legacy (removed 2026-10): column kept until a confirmed drop.
     /// <summary>
     /// Web Push (VAPID) ochiq kaliti — Firebase Console → Cloud Messaging → Web configuration →
     /// "Web Push certificates" (Key pair). Web (PWA) push uchun zarur.
@@ -2169,9 +2179,8 @@ public partial class CenterMeta
     /// <summary>Topshiriq eslatmasi yuboriladigan daqiqa (0-59). Default 30.</summary>
     public int WorkTaskReminderMinute { get; set; } = 30;
 
-    // ---------- Eskiz.uz SMS shlyuzi ----------
-    // Kabinet login/paroli — .env: ESKIZ_EMAIL / ESKIZ_PASSWORD (AppSecrets). Bearer token esa
-    // endi XOTIRADA keshlanadi (EskizService) — bazada saqlanmaydi.
+    // ---------- SMS shlyuzi (Legacy, removed 2026-10 — SMS kanali olib tashlandi) ----------
+    // Legacy (removed 2026-10): column kept until a confirmed drop.
     /// <summary>SMS jo'natuvchi nomi (sender) — tasdiqlangan nikname yoki test uchun "4546".
     /// Maxfiy emas: admin UI'dan o'zgartiradi (.env'dagi ESKIZ_FROM boshlang'ich qiymat beradi).</summary>
     public string EskizFrom { get; set; } = "4546";
@@ -2180,12 +2189,15 @@ public partial class CenterMeta
     public string CheckSettings { get; set; } = string.Empty;
 
     // ---------- Local SMS (CTI agent telefonining SIM-kartasidan) ----------
+    // Legacy (removed 2026-10): column kept until a confirmed drop.
     /// <summary>Local SMS (Eskiz o'rniga agent telefonidan) yoqilganmi. Yoqilmagan bo'lsa provider
     /// tanlovi qanday bo'lishidan qat'i nazar Eskiz'ga tushadi.</summary>
     public bool LocalSmsEnabled { get; set; }
+    // Legacy (removed 2026-10): column kept until a confirmed drop.
     /// <summary>Standart Local SMS agenti (CtiAgent.Id) — provider=local tanlanganda aniq agent
     /// ko'rsatilmasa (yoki avtomatik/fon xabarlarda) shu ishlatiladi.</summary>
     public string? LocalSmsDefaultAgentId { get; set; }
+    // Legacy (removed 2026-10): column kept until a confirmed drop.
     /// <summary>Massaviy Local SMS yuborishda ikkita SMS orasidagi minimal kutish (soniya) — agent
     /// telefonini/operatorni haddan tashqari yuklamaslik uchun. 0 = kutishsiz (default).</summary>
     public int LocalSmsDelaySeconds { get; set; }
@@ -2358,22 +2370,24 @@ public partial class CenterMeta
     public string InstagramCapiStageWon { get; set; } = "To'lov qildi";
 }
 
-/// <summary>Avto-xabar qoidasi — hodisa (Trigger) yuz berganda tanlangan kanallar orqali
-/// shablon asosida xabar yuboriladi. Admin "Xabarlar → Avto xabarlar"da boshqaradi.
-/// Eski SmsTemplate+IsAuto (faqat SMS) va ReminderRule (faqat push+telegram) modellarini
-/// BIRLASHTIRGAN yagona model — har qoida 3 kanalni (SMS/Push/Telegram) mustaqil yoqadi.</summary>
+/// <summary>Avto-xabar qoidasi — hodisa (Trigger) yuz berganda shablon asosida xabar yuboriladi:
+/// kabinet bildirishnomasi (har doim) + Telegram (<c>SendTelegram</c>). Admin "Xabarlar → Avto
+/// xabarlar"da boshqaradi. (2026-10: SMS va push kanallari olib tashlandi — ustunlari legacy.)</summary>
 public partial class AutoMessageRule
 {
     public string Id { get; set; } = Guid.NewGuid().ToString();
     public string Trigger { get; set; } = string.Empty;   // AutoMessageTriggers katalogidan
     public string Name { get; set; } = string.Empty;
     public bool Enabled { get; set; } = true;
+    /// <summary>Legacy (removed 2026-10): column kept until a confirmed drop. Still READ once:
+    /// a legacy SMS rule is delivered over Telegram (<c>AutoMessageChannels.Telegram</c>); the
+    /// next save of the rule clears it.</summary>
     public bool SendSms { get; set; }
+    // Legacy (removed 2026-10): column kept until a confirmed drop. Push channel removed; the cabinet
+    // notification is now written for every rule.
     public bool SendPush { get; set; }
     public bool SendTelegram { get; set; }
-    /// <summary>SMS qaysi orqali yuborilsin: "eskiz" (default) | "local" (CTI agent telefonidan,
-    /// CenterMeta.LocalSmsDefaultAgentId orqali — qoida avtomatik ishga tushgani uchun agent
-    /// tanlanmaydi, doim standart agent ishlatiladi).</summary>
+    // Legacy (removed 2026-10): column kept until a confirmed drop (SMS provider "eskiz" | "local").
     public string SmsProvider { get; set; } = "eskiz";
     public string Audience { get; set; } = "parents";     // parents|students|teachers
     public string Template { get; set; } = string.Empty;  // {ism} {fish} kabi tokenlar bilan
@@ -2420,6 +2434,8 @@ public class AuditLog
 /// Guruh chati xabari. A'zolar: shu guruh o'quvchilari, shu guruhga dars beradigan
 /// o'qituvchilar va admin. Chat guruh nomi (ClassName) bo'yicha guruhlanadi.
 /// </summary>
+// Legacy (removed 2026-10): table kept until a confirmed drop.
+[Obsolete("Legacy (removed 2026-10): table kept until a confirmed drop.")]
 public class ChatMessage
 {
     public string Id { get; set; } = Guid.NewGuid().ToString();
@@ -2449,6 +2465,8 @@ public partial class Broadcast
 }
 
 /// <summary>Ilovaga (FCM push) yuborilgan bildirishnoma — tarix uchun.</summary>
+// Legacy (removed 2026-10): table kept until a confirmed drop.
+[Obsolete("Legacy (removed 2026-10): table kept until a confirmed drop.")]
 public class PushMessage
 {
     public string Id { get; set; } = Guid.NewGuid().ToString();
@@ -2583,7 +2601,8 @@ public partial class UserSettings
     public string Language { get; set; } = "uz";
     /// <summary>Tema: light | dark | system. Default "system".</summary>
     public string Theme { get; set; } = "system";
-    /// <summary>Push bildirishnoma yoqilganmi.</summary>
+    // Legacy (removed 2026-10): column kept until a confirmed drop.
+    /// <summary>Push bildirishnoma yoqilganmi (push 2026-10 da olib tashlandi).</summary>
     public bool NotificationsEnabled { get; set; } = true;
     /// <summary>Oxirgi yangilanish vaqti (UTC, ISO).</summary>
     public DateTime UpdatedAt { get; set; } = AppClock.Now;
@@ -2593,6 +2612,8 @@ public partial class UserSettings
 /// Mobil/desktop ilovaning push bildirishnoma uchun ro'yxatdan o'tgan qurilma tokeni
 /// (FCM/APNs/WebPush). Bir foydalanuvchining bir nechta qurilmasi bo'lishi mumkin.
 /// </summary>
+// Legacy (removed 2026-10): table kept until a confirmed drop.
+[Obsolete("Legacy (removed 2026-10): table kept until a confirmed drop.")]
 public class DeviceToken
 {
     public string Id { get; set; } = Guid.NewGuid().ToString();
@@ -2803,9 +2824,10 @@ public class LevelTestInvite
     public string TestId { get; set; } = string.Empty;
     public string LeadId { get; set; } = string.Empty;
     public string CreatedAt { get; set; } = string.Empty;
-    /// <summary>SMS holati: "sent" | "failed" | "" (hali yuborilmagan).</summary>
+    /// <summary>Havola holati: "link" — havola operatorga berildi (2026-10 dan, SMS yo'q). Eski qatorlarda
+    /// SMS holati: "sent" | "failed" | "" (hali yuborilmagan).</summary>
     public string SmsStatus { get; set; } = string.Empty;
-    /// <summary>Eskiz RequestId (yetkazib berish holatini kuzatish uchun).</summary>
+    // Legacy (removed 2026-10): column kept until a confirmed drop (SMS provider request id).
     public string SmsRequestId { get; set; } = string.Empty;
     /// <summary>Bir marta ishlatilgan vaqt (ISO). Bo'sh = hali ishlanmagan (qayta kirsa bo'ladi).</summary>
     public string UsedAt { get; set; } = string.Empty;
@@ -3409,6 +3431,8 @@ public class CenterAiAnalysis
 /// SMS yuborish partiyasi (Xabarlar → SMS yuborish) — bitta yuborish (bir nechta raqamga).
 /// Push/E'lon tarixiga o'xshash: kim/qachon/qancha. Har bir raqam yozuvi <see cref="SmsLog"/>da.
 /// </summary>
+// Legacy (removed 2026-10): table kept until a confirmed drop.
+[Obsolete("Legacy (removed 2026-10): table kept until a confirmed drop.")]
 public class SmsBatch
 {
     public string Id { get; set; } = Guid.NewGuid().ToString();
@@ -3448,6 +3472,8 @@ public class SmsTemplate
 /// Yuborilgan bitta SMS jurnali (raqam bo'yicha). Eskiz qaytargan <c>RequestId</c> orqali yetkazib
 /// berish holati (callback webhook) yangilanadi.
 /// </summary>
+// Legacy (removed 2026-10): table kept until a confirmed drop.
+[Obsolete("Legacy (removed 2026-10): table kept until a confirmed drop.")]
 public class SmsLog
 {
     public string Id { get; set; } = Guid.NewGuid().ToString();
@@ -3559,6 +3585,8 @@ public class Call
 /// alohida; login/parol shu yerda). Ilova qo'ng'iroq metadata+audio yuboradi, WebSocket orqali
 /// serverdan <c>dial</c> buyrug'ini oladi. Oflaynda FCM push (data-message) bilan uyg'otiladi.
 /// </summary>
+// Legacy (removed 2026-10): table kept until a confirmed drop.
+[Obsolete("Legacy (removed 2026-10): table kept until a confirmed drop.")]
 public class CtiAgent
 {
     public string Id { get; set; } = Guid.NewGuid().ToString();
@@ -3586,6 +3614,8 @@ public class CtiAgent
 /// CTI qo'ng'iroq yozuvi (Android ilovadan yuboriladi). Id = <c>serverCallId</c> (ilova audio va
 /// hodisalarni shu bo'yicha yuklaydi). O'quvchi telefon bo'yicha topilsa <see cref="StudentId"/> to'ladi.
 /// </summary>
+// Legacy (removed 2026-10): table kept until a confirmed drop.
+[Obsolete("Legacy (removed 2026-10): table kept until a confirmed drop.")]
 public class CtiCallRecord
 {
     public string Id { get; set; } = Guid.NewGuid().ToString();
@@ -3619,6 +3649,8 @@ public class CtiCallRecord
 }
 
 /// <summary>CTI qo'ng'irog'ining oraliq hodisasi (jonli holat tarixi). Qo'ng'iroq o'chsa — kaskad o'chadi.</summary>
+// Legacy (removed 2026-10): table kept until a confirmed drop.
+[Obsolete("Legacy (removed 2026-10): table kept until a confirmed drop.")]
 public class CtiCallEvent
 {
     public string Id { get; set; } = Guid.NewGuid().ToString();
@@ -3630,6 +3662,8 @@ public class CtiCallEvent
 }
 
 /// <summary>Server→ilova yuborilgan buyruq jurnali (masalan click-to-call <c>dial</c>) va yetkazish holati.</summary>
+// Legacy (removed 2026-10): table kept until a confirmed drop.
+[Obsolete("Legacy (removed 2026-10): table kept until a confirmed drop.")]
 public class CtiCommandLog
 {
     public string Id { get; set; } = Guid.NewGuid().ToString();

@@ -1,7 +1,6 @@
 using WunderkindLC.Application.Abstractions;
 using WunderkindLC.Application.Services;
 using WunderkindLC.Domain;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
@@ -25,15 +24,14 @@ public class AuditFixT6Tests
     };
 
     private static PaymentReminderService Payment(IAppDbContext ctx, MessagingStack stack) =>
-        new(new SingleServiceProvider(ctx), stack.Telegram, stack.Fcm, stack.Eskiz, stack.Cti,
-            NullLogger<PaymentReminderService>.Instance);
+        new(new SingleServiceProvider(ctx), stack.Telegram, NullLogger<PaymentReminderService>.Instance);
 
-    private static BirthdaySmsService Birthday(IAppDbContext ctx, MessagingStack stack) =>
-        new(new SingleServiceProvider(ctx), stack.Auto, NullLogger<BirthdaySmsService>.Instance);
+    private static BirthdayGreetingService Birthday(IAppDbContext ctx, MessagingStack stack) =>
+        new(new SingleServiceProvider(ctx), stack.Auto, NullLogger<BirthdayGreetingService>.Instance);
 
     private static AutoMessageRule DebtRule(string audience = "parents") => new()
     {
-        Trigger = AutoMessageTriggers.PaymentDebt, Enabled = true, SendPush = true, Template = "",
+        Trigger = AutoMessageTriggers.PaymentDebt, Enabled = true, Template = "",
         Audience = audience,
     };
 
@@ -161,7 +159,7 @@ public class AuditFixT6Tests
         ctx.Students.Add(s);
         ctx.AutoMessageRules.Add(new AutoMessageRule
         {
-            Trigger = AutoMessageTriggers.Birthday, Enabled = true, SendPush = true, Template = "Tabrik {ism}",
+            Trigger = AutoMessageTriggers.Birthday, Enabled = true, Template = "Tabrik {ism}",
         });
         ctx.SaveChanges();
 
@@ -237,34 +235,7 @@ public class AuditFixT6Tests
         Assert.False(all.ContainsKey("Yopiq"));    // yopilgan guruh — ommaviy xabar yo'q
     }
 
-    // ===================== MSG-2 — push "Faqat qarzdorlar" =====================
-
-    [Fact]
-    public async Task Push_faqat_qarzdorlar_bayrogi_hisobga_olinadi()
-    {
-        using var db = TestDb.Sqlite();
-        var ctx = db.Context;
-        var g = new Group { Name = "G1" };
-        var debtor = NewStudent("Qarzdor", "u-debt");
-        debtor.Balance = -200000m;
-        var paid = NewStudent("Toza", "u-paid");
-        paid.Balance = 0m;
-        var archivedDebtor = NewStudent("Arxiv qarzdor", "u-arch");
-        archivedDebtor.Balance = -50000m;
-        archivedDebtor.IsArchived = true;
-        ctx.Classes.Add(g);
-        ctx.Students.AddRange(debtor, paid, archivedDebtor);
-        ctx.StudentGroups.AddRange(
-            new StudentGroup { StudentId = debtor.Id, GroupId = g.Id, IsActive = true, Status = "active" },
-            new StudentGroup { StudentId = paid.Id, GroupId = g.Id, IsActive = true, Status = "active" },
-            new StudentGroup { StudentId = archivedDebtor.Id, GroupId = g.Id, IsActive = true, Status = "active" });
-        ctx.SaveChanges();
-
-        Assert.Equal(new[] { "u-debt" }, await MessagingAudience.ParentPushUserIdsAsync(ctx, null, onlyDebtors: true));
-        Assert.Equal(new[] { "u-debt" }, await MessagingAudience.ParentPushUserIdsAsync(ctx, "G1", onlyDebtors: true));
-        var everyone = await MessagingAudience.ParentPushUserIdsAsync(ctx, "G1", onlyDebtors: false);
-        Assert.Equal(new[] { "u-debt", "u-paid" }, everyone.OrderBy(x => x).ToArray());
-    }
+    // (MSG-2 — push "Faqat qarzdorlar" testi 2026-10 da push bilan birga olib tashlandi.)
 
     // ===================== C1 qismi — arxivdagi o'quvchiga davomat xabari yo'q =====================
 
@@ -277,8 +248,8 @@ public class AuditFixT6Tests
         s.IsArchived = true;
         ctx.Students.Add(s);
         ctx.AutoMessageRules.AddRange(
-            new AutoMessageRule { Trigger = AutoMessageTriggers.AttendanceAbsent, Enabled = true, SendPush = true, Template = "Kelmadi {ism}" },
-            new AutoMessageRule { Trigger = AutoMessageTriggers.PaymentReceived, Enabled = true, SendPush = true, Template = "To'lov {ism}" });
+            new AutoMessageRule { Trigger = AutoMessageTriggers.AttendanceAbsent, Enabled = true, Template = "Kelmadi {ism}" },
+            new AutoMessageRule { Trigger = AutoMessageTriggers.PaymentReceived, Enabled = true, Template = "To'lov {ism}" });
         ctx.SaveChanges();
         var auto = new MessagingStack().Auto;
 
@@ -406,103 +377,7 @@ public class AuditFixT6Tests
         Assert.Equal("901112233", MessagingAudience.StudentPhone(s, "students"));   // zaxira — ota-ona
     }
 
-    // ===================== MSG-6 — ommaviy SMS navbati BAZADA =====================
-
-    private static SmsQueueService Queue(IAppDbContext db)
-    {
-        var http = new NoNetworkHttpClientFactory();
-        var config = new ConfigurationBuilder().Build();
-        var eskiz = new EskizService(config, http, NullLogger<EskizService>.Instance);
-        var fcm = new FcmService(http, NullLogger<FcmService>.Instance);
-        var cti = new CtiSmsService(new CtiConnectionManager(), fcm, NullLogger<CtiSmsService>.Instance);
-        return new SmsQueueService(new SingleServiceProvider(db), eskiz, cti, NullLogger<SmsQueueService>.Instance);
-    }
-
-    private static async Task<SmsBatch> EnqueueFive(Infrastructure.Data.AppDbContext ctx, SmsQueueService q)
-    {
-        var batch = new SmsBatch { Audience = "Test", Message = "Salom", RecipientCount = 5 };
-        ctx.SmsBatches.Add(batch);
-        ctx.SaveChanges();
-        var targets = Enumerable.Range(1, 5)
-            .Select(i => new SmsQueueService.Target($"99890000000{i}", $"O'quvchi {i}", $"Salom {i}")).ToList();
-        await q.EnqueueAsync(ctx, new SmsQueueService.Job(batch.Id, "eskiz", null, null, targets));
-        return batch;
-    }
-
-    [Fact]
-    public async Task Sms_navbati_RESTARTDAN_keyin_faqat_qolganlarga_davom_etadi()
-    {
-        using var db = TestDb.Sqlite();
-        var ctx = db.Context;
-        var batch = await EnqueueFive(ctx, Queue(ctx));   // ishchi ishga tushmadi — "restart" oldidan
-
-        // Restartgacha: 2 tasi ketgan, 1 tasi aynan YUBORISH paytida uzilgan.
-        var items = ctx.SmsQueueItems.OrderBy(i => i.Seq).ToList();
-        items[0].Status = "sent";
-        items[1].Status = "sent";
-        items[2].Status = "sending";
-        items[2].UpdatedAt = AppClock.Now.AddMinutes(-10);
-        ctx.SaveChanges();
-        ctx.ChangeTracker.Clear();
-
-        var q2 = Queue(ctx);   // YANGI jarayon
-        Reflect.RunAsyncMethod(q2, "ResumePendingAsync", CancellationToken.None);
-        Reflect.RunAsyncMethod(q2, "RunQueuedAsync", batch.Id, CancellationToken.None);
-
-        // Faqat 2 ta `pending` ga urinildi (har biriga jurnal) — ketganlarga ham, uzilganga ham QAYTA yo'q.
-        Assert.Equal(2, ctx.SmsLogs.Count(l => l.BatchId == batch.Id));
-        var statuses = ctx.SmsQueueItems.OrderBy(i => i.Seq).Select(i => i.Status).ToList();
-        Assert.Equal(new[] { "sent", "sent", "unknown", "failed", "failed" }, statuses);
-
-        var p = await SmsQueueService.ProgressFromDbAsync(ctx, batch.Id);
-        Assert.NotNull(p);
-        Assert.True(p!.Finished);
-        Assert.True(p.Resumed);
-        Assert.False(p.Interrupted);
-        Assert.Equal(5, p.Total);
-        Assert.Equal(5, p.Done);
-    }
-
-    [Fact]
-    public async Task Sms_navbati_tugamagan_partiya_bazadan_TUGADI_deb_korinmaydi()
-    {
-        // Ilgari: restartdan keyin progress bazadan "tugadi 0/5" bo'lib ko'rinardi.
-        using var db = TestDb.Sqlite();
-        var ctx = db.Context;
-        var batch = await EnqueueFive(ctx, Queue(ctx));
-
-        var p = await SmsQueueService.ProgressFromDbAsync(ctx, batch.Id);
-        Assert.NotNull(p);
-        Assert.False(p!.Finished);
-        Assert.Equal(5, p.Total);
-        Assert.Equal(0, p.Done);
-    }
-
-    [Fact]
-    public async Task Sms_navbati_juda_ESKI_partiya_davom_ettirilmaydi_va_TOXTATILDI_deb_korinadi()
-    {
-        using var db = TestDb.Sqlite();
-        var ctx = db.Context;
-        var batch = await EnqueueFive(ctx, Queue(ctx));
-        var job = ctx.SmsQueueJobs.Single();
-        job.CreatedAt = AppClock.Now - SmsQueueService.ResumeWindow - TimeSpan.FromHours(1);
-        var first = ctx.SmsQueueItems.OrderBy(i => i.Seq).First();
-        first.Status = "sent";
-        ctx.SaveChanges();
-        ctx.ChangeTracker.Clear();
-
-        var q2 = Queue(ctx);
-        Reflect.RunAsyncMethod(q2, "ResumePendingAsync", CancellationToken.None);
-        Reflect.RunAsyncMethod(q2, "RunQueuedAsync", batch.Id, CancellationToken.None);   // hech narsa qilmaydi
-
-        Assert.Equal(0, ctx.SmsLogs.Count(l => l.BatchId == batch.Id));   // kechagi e'lon bugun ketmadi
-        var p = await SmsQueueService.ProgressFromDbAsync(ctx, batch.Id);
-        Assert.NotNull(p);
-        Assert.True(p!.Finished);
-        Assert.True(p.Interrupted);
-        Assert.Equal(5, p.Total);
-        Assert.Equal(1, p.Done);   // 4 tasi bekor qilingan — "Total − Done" = yuborilmay qolganlar
-    }
+    // (MSG-6 — ommaviy SMS navbati testlari 2026-10 da SMS kanali bilan birga olib tashlandi.)
 
     // ===================== MSG-7 — support slotlari =====================
 
@@ -523,38 +398,16 @@ public class AuditFixT6Tests
     {
         using var db = TestDb.Sqlite();
         var ctx = db.Context;
-        await SupportService.NotifyAsync(ctx, null, "u-teacher", "Yangi support bron", "Ali bron qildi");
+        await SupportService.NotifyAsync(ctx, "u-teacher", "Yangi support bron", "Ali bron qildi");
         var n = Assert.Single(ctx.UserNotifications);
         Assert.Equal("u-teacher", n.UserId);
         Assert.Equal("support", n.Type);
 
-        await SupportService.NotifyAsync(ctx, null, null, "x", "y");   // akkauntsiz — jim
+        await SupportService.NotifyAsync(ctx, null, "x", "y");   // akkauntsiz — jim
         Assert.Single(ctx.UserNotifications);
     }
 
-    // ===================== Chat — eski HomeroomClass kirish BERMAYDI =====================
-
-    [Fact]
-    public async Task Almashtirilgan_oqituvchi_eski_HomeroomClass_guruhi_chatiga_kira_olmaydi()
-    {
-        using var db = TestDb.Sqlite();
-        var ctx = db.Context;
-        var oldTeacher = new Teacher { FullName = "Eski Ustoz", UserId = "u-old", HomeroomClass = "Ingliz A" };
-        var newTeacher = new Teacher { FullName = "Yangi Ustoz", UserId = "u-new" };
-        ctx.Teachers.AddRange(oldTeacher, newTeacher);
-        ctx.Classes.AddRange(
-            new Group { Name = "Ingliz A", TeacherId = newTeacher.Id },    // guruh YANGI o'qituvchiga o'tgan
-            new Group { Name = "Matem B", TeacherId = oldTeacher.Id });
-        ctx.SaveChanges();
-        var chat = new ChatService(ctx, null!);   // ro'yxat/kirish hub'ga tegmaydi
-
-        var oldNames = await chat.ClassNamesForUserAsync("u-old", Roles.Teacher);
-        Assert.DoesNotContain("Ingliz A", oldNames);          // eski rahbarlik nomi — kirish YO'Q
-        Assert.Contains("Matem B", oldNames);
-        Assert.Contains(ChatService.StaffChannel, oldNames);
-        Assert.False(await chat.CanAccessAsync("u-old", Roles.Teacher, "Ingliz A"));
-        Assert.True(await chat.CanAccessAsync("u-new", Roles.Teacher, "Ingliz A"));
-    }
+    // (Guruh chati — eski HomeroomClass testi 2026-10 da chat bilan birga olib tashlandi.)
 
     // ===================== ADM-8 — bot murojaati faqat ruxsatlilarga =====================
 

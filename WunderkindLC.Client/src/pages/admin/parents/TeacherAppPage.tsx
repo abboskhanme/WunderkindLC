@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Search, Smartphone, CheckCircle2, Circle, X } from 'lucide-react'
+import { Search, Users, CheckCircle2, Circle, X } from 'lucide-react'
 import type { TeacherAppRow } from '@/types'
 import { getTeacherAppUsers } from '@/api/services/parents'
 import { Card } from '@/components/ui/Card'
@@ -29,7 +29,8 @@ function timeAgo(iso: string | null): string {
   return `${Math.floor(months / 12)} yil oldin`
 }
 
-/** Admin "Ilova → O'qituvchilar" — o'qituvchilar ilova faolligi + qurilmasi (Ota-onalarga o'xshash). */
+/** Admin "Ilova → O'qituvchilar (kabinet)" — o'qituvchilarning kabinetga (web / Telegram Mini App) kirish
+ *  faolligi (Ota-onalarga o'xshash). Mobil ilova qurilma ustuni 2026-10 da olib tashlandi. */
 export function TeacherAppPage() {
   const [rows, setRows] = useState<TeacherAppRow[]>([])
   const [loading, setLoading] = useState(true)
@@ -69,26 +70,26 @@ export function TeacherAppPage() {
     <div>
       <PageHeader
         title="O'qituvchilar"
-        sub="Ilova foydalanuvchilari (o'qituvchilar) — faollik va qurilma ma'lumoti"
+        sub="O'qituvchi kabineti akkauntlari — kirish faolligi"
       />
 
       <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
         <StatCard
           label="Jami o'qituvchilar"
           value={stats.total}
-          icon={Smartphone}
+          icon={Users}
           iconBg="bg-slate-100"
           iconColor="text-slate-600"
         />
         <StatCard
-          label="Ilovani aktivlashtirgan"
+          label="Kabinetga kirgan"
           value={stats.activated}
           icon={CheckCircle2}
           iconBg="bg-emerald-50"
           iconColor="text-emerald-600"
         />
         <StatCard
-          label="Hali aktivlashtirmagan"
+          label="Hali kirmagan"
           value={stats.inactive}
           icon={Circle}
           iconBg="bg-amber-50"
@@ -144,8 +145,7 @@ export function TeacherAppPage() {
                   <th>F.I.SH</th>
                   <th>Telefon</th>
                   <th>Holat</th>
-                  <th>Qurilma</th>
-                  <th>Aktivlashtirilgan</th>
+                  <th>Birinchi kirish</th>
                   <th>Oxirgi kirish</th>
                 </tr>
               </thead>
@@ -163,17 +163,6 @@ export function TeacherAppPage() {
                         <Badge tone="amber">
                           <Circle className="h-3.5 w-3.5" /> Kirmagan
                         </Badge>
-                      )}
-                    </td>
-                    <td className="text-slate-600">
-                      {r.deviceName ? (
-                        <span className="inline-flex items-center gap-1">
-                          <Smartphone className="h-3.5 w-3.5 text-slate-400" />
-                          {r.deviceName}
-                          {r.platform && <span className="text-[11px] text-slate-400">({r.platform})</span>}
-                        </span>
-                      ) : (
-                        '—'
                       )}
                     </td>
                     <td className="font-mono text-slate-600">{formatDateTime(r.activatedAt)}</td>
