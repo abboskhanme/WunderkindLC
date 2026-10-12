@@ -1226,6 +1226,9 @@ export interface AbsenceReason {
   short: string
   /** "Kech keldi" turi — yo'qlik emas (davomatga ta'sir qilmaydi), baho qo'ysa bo'ladi */
   isLate: boolean
+  /** «Sababli (uzrli)» — uzrli yo'qlik (faqat analitika: ketma-ket kelmaslik seriyasini buzadi).
+   *  "Kech keldi" bilan birga bo'lmaydi (server 400). Eski javoblarda bo'lmasligi mumkin. */
+  isExcused?: boolean
 }
 
 export interface SchoolSettings {

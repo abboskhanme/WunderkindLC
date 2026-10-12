@@ -26,7 +26,8 @@ public static class Analytics
         IReadOnlyList<LessonNote> classNotes,
         IReadOnlyCollection<string>? lateReasonIds = null,
         IReadOnlyCollection<string>? activeMemberIds = null,
-        IReadOnlyCollection<string>? anyMemberIds = null)
+        IReadOnlyCollection<string>? anyMemberIds = null,
+        IReadOnlyDictionary<string, StudentJournalBuilder.Bounds>? boundsByStudent = null)
     {
         // "Kech keldi" turidagi sabablar davomatsizlik (absence) sifatida hisoblanmaydi.
         var lateSet = lateReasonIds is null ? new HashSet<string>() : new HashSet<string>(lateReasonIds);
@@ -53,8 +54,11 @@ public static class Analytics
 
         // Davomat FAQAT o'tilgan darslar bo'yicha (ptichka/baho/davomat). Bir kun ichidagi har dars
         // (sana+dars raqami) alohida hisoblanadi.
+        // (fan, sana, dars raqami) → davomati TO'LIQ olinganmi (AttendanceRules: faqat shunda belgisiz = keldi).
         var conductedNotes = classNotes.Where(n => n.Conducted)
-            .Select(n => (n.SubjectId, n.Date, n.Period)).ToHashSet();
+            .GroupBy(n => (n.SubjectId, n.Date, n.Period))
+            .ToDictionary(g => g.Key, g => g.Any(n => n.AttendanceTaken));
+        var groupStart = cls.StartDate is { Length: >= 10 } ? cls.StartDate[..10] : null;
 
         var subjectIds = assignedSubjectIds.Count > 0
             ? assignedSubjectIds.Distinct().ToList()
@@ -84,16 +88,27 @@ public static class Analytics
             var allGrades = studentEntries.Where(e => e.Grade.HasValue).Select(e => (double)e.Grade!.Value).ToList();
             double average = allGrades.Count > 0 ? Round1(allGrades.Average()) : 0;
 
-            // Shu o'quvchi qatnashadigan o'tilgan darslar.
-            var studentConducted = conductedNotes;
-            var conducted = studentConducted.Count;
-
-            // O'tilgan darslardagi davomatsizliklar (sababli/sababsiz/kasal — KECH KELDI bundan mustasno).
-            // Dars o'tilmagan bo'lsa — null.
-            var absent = studentEntries.Count(e =>
-                e.ReasonId != null && !lateSet.Contains(e.ReasonId)
-                && studentConducted.Contains((e.SubjectId, e.Date, e.Period)));
-            double? attendance = conducted > 0 ? Math.Round((double)(conducted - absent) / conducted * 100) : null;
+            // YAGONA ta'rif (AttendanceRules, SPEC P3.1): o'tilgan har dars uchun BITTA belgi — kech = keldi,
+            // davomat olingan + belgisiz = keldi, davomat olinmagan + belgisiz = BELGILANMAGAN (foizga kirmaydi),
+            // a'zolikdan tashqari kun (chegaralar berilgan bo'lsa) — hisobga olinmaydi. Dars bo'lmasa — null.
+            var bounds = boundsByStudent?.GetValueOrDefault(student.Id);
+            var entryByLesson = studentEntries
+                .GroupBy(e => (e.SubjectId, e.Date, e.Period))
+                .ToDictionary(g => g.Key, g => g.First());
+            var tally = AttendanceRules.Tally(conductedNotes.Select(kv =>
+            {
+                var date = kv.Key.Date;
+                var blocked = (groupStart is not null && string.CompareOrdinal(date, groupStart) < 0)
+                    || (bounds?.MemberStart is not null && string.CompareOrdinal(date, bounds.MemberStart) < 0)
+                    || (bounds?.MemberEnd is not null && string.CompareOrdinal(date, bounds.MemberEnd) > 0);
+                var e = entryByLesson.GetValueOrDefault(kv.Key);
+                // Sabab lug'ati bu yerda yo'q — "kelmadi/kech" uchun faqat IsLate kerak (sababli/sababsiz farqi
+                // foizga ta'sir qilmaydi).
+                var reason = e?.ReasonId is null ? null : new AbsenceReason { IsLate = lateSet.Contains(e.ReasonId) };
+                return AttendanceRules.Classify(true, kv.Value, blocked,
+                    AttendanceRules.BeforePresentDefault(date, bounds?.PresentDefaultFrom), e, reason);
+            }));
+            double? attendance = tally.Percent;
 
             return new ClassStudentRowDto(Map(student), grades, average, attendance);
         }).ToList();

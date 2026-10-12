@@ -52,6 +52,8 @@ import { ExtensionModal } from './ExtensionModal'
 import { TransferGroupModal } from './TransferGroupModal'
 import { ClassMembersModal } from './ClassMembersModal'
 import { GroupStudentsTab, type MemberActionKind } from './detail/GroupStudentsTab'
+import { autoPresent } from './detail/shared'
+import { attendanceMark, attendanceTally } from '@/lib/attendance'
 import { GroupAiPanel } from './GroupAiPanel'
 import { ClassFormModal } from './ClassFormModal'
 import { TelegramMessageModal, type TelegramRecipient } from '../students/TelegramMessageModal'
@@ -413,6 +415,8 @@ export function ClassDetailPage() {
   )
   // "O'tildi" deb belgilangan darslar — sababsiz o'quvchi shu kunda KELDI (yashil) deb ko'rsatiladi.
   const conductedSet = useMemo(() => new Set(journal?.conductedDates ?? []), [journal])
+  // Davomati TO'LIQ olingan darslar — belgisiz o'quvchi FAQAT shu kunlarda avto-"keldi" (SPEC P3.1).
+  const attendanceTakenSet = useMemo(() => new Set(journal?.attendanceTakenDates ?? []), [journal])
   // Muzlatilganlar jurnalga QO'SHILMAYDI — grid'da faqat faol/sinov o'quvchilar, muzlatilganlar pastda alohida.
   // O'quvchilari jurnalga kiritilgan va baholashga kiritilgan baholarning yig'indisi bo'yicha saralash.
   // Agar baholash ma'lumoti bo'lsa, unga bog'langan kombindan yig'indi; aks holda faqat jurnal baholari.
@@ -474,29 +478,37 @@ export function ClassDetailPage() {
   )
 
   /** Davomat tabidagi jadval — tanlangan oy uchun har o'quvchi davomat foizi (jurnal ma'lumotidan).
-   *  O'tilgan darslar = conductedDates ∩ (memberStart ≤ sana ≤ frozenAt); qoldirgan = sababli
-   *  (kech kelish MUSTASNO). Muzlatilgandan KEYINGI darslar hisobga olinmaydi — jurnal jadvali
-   *  va o'quvchi portali (StudentAttendanceController memberEnd) bilan bir xil konvensiya. */
+   *  YAGONA ta'rif (`attendanceMark` = server `AttendanceRules`, SPEC P3.1): o'tilgan = keldi + kech +
+   *  kelmadi; KECH = KELGAN; davomati olinmagan + belgisiz dars — BELGILANMAGAN (foizga kirmaydi).
+   *  A'zolikdan oldingi va muzlatilgandan KEYINGI darslar hisobga olinmaydi — o'quvchi portali
+   *  (StudentJournalBuilder) bilan bir xil. */
   const attendanceRows = useMemo(() => {
     if (!journal) return []
-    const conducted = journal.conductedDates ?? []
+    const groupStart = journal.group.startDate || ''
     return (journal.students ?? []).map((s) => {
       const start = s.memberStart || ''
       const end = s.frozenAt || ''
-      const held = conducted.filter((d) => (!start || d >= start) && (!end || d <= end))
-      let absent = 0
-      for (const d of held) {
+      const marks = journal.columns.map((c) => {
+        const d = c.date
         const e = entryMap.get(`${s.studentId}|${d}`)
-        if (e?.reasonId) {
-          const r = reasonById.get(e.reasonId)
-          if (r && !r.isLate) absent++
-        }
-      }
-      const heldCount = held.length
-      const pct = heldCount > 0 ? Math.round(((heldCount - absent) / heldCount) * 100) : null
-      return { studentId: s.studentId, fullName: s.fullName, status: s.status, held: heldCount, absent, pct }
+        const reason = e?.reasonId ? reasonById.get(e.reasonId) : undefined
+        return attendanceMark({
+          blocked: (!!groupStart && d < groupStart) || (!!start && d < start) || (!!end && d > end),
+          hasReason: !!e?.reasonId,
+          reasonIsLate: !!reason?.isLate,
+          explicitPresent: !!e?.present,
+          hasGrade: e?.grade != null,
+          hasMastery: e?.mastery != null,
+          conducted: conductedSet.has(d),
+          attendanceTaken: attendanceTakenSet.has(d),
+          date: d,
+          presentDefaultFrom: s.presentDefaultFrom,
+        })
+      })
+      const t = attendanceTally(marks)
+      return { studentId: s.studentId, fullName: s.fullName, status: s.status, held: t.held, absent: t.absent, pct: t.pct }
     })
-  }, [journal, entryMap, reasonById])
+  }, [journal, entryMap, reasonById, conductedSet, attendanceTakenSet])
 
   const g = journal?.group
   const today = localIsoDate(new Date())
@@ -1246,9 +1258,14 @@ export function ClassDetailPage() {
                             // BOR yoki sana o'quvchi tizimga kiritilganidan (presentDefaultFrom) keyin) —
                             // orqaga sanalgan a'zolikda ko'rib chiqilmagan darslar avto-"keldi" bo'lmaydi,
                             // lekin o'qituvchi "Keldi"/"hammasi keldi" bosgan (e.present) katak yashil bo'ladi.
-                            const present =
-                              e?.grade == null && !reason && conductedSet.has(c.date) &&
-                              (e?.present || !st.presentDefaultFrom || c.date >= st.presentDefaultFrom)
+                            const present = autoPresent({
+                              hasGrade: e?.grade != null,
+                              hasReason: !!reason,
+                              attendanceTaken: attendanceTakenSet.has(c.date),
+                              explicitPresent: !!e?.present,
+                              date: c.date,
+                              presentDefaultFrom: st.presentDefaultFrom,
+                            })
                             const masteryInfo = e?.mastery != null ? masteryDisplay(e.mastery) : { label: '', cls: '' }
                             return (
                               <td
@@ -1369,10 +1386,15 @@ export function ClassDetailPage() {
                                 // yaratilishidan oldingi darslar hech qachon avto-"keldi" bo'lmaydi.
                                 const isBeforeStart =
                                   (!!g.startDate && c.date < g.startDate) || (!!st.memberStart && c.date < st.memberStart)
-                                const present =
-                                  e?.grade == null && !reason && conductedSet.has(c.date) &&
-                                  (e?.present ||
-                                    ((!st.presentDefaultFrom || c.date >= st.presentDefaultFrom) && !afterFrozen && !isBeforeStart))
+                                const present = autoPresent({
+                                  hasGrade: e?.grade != null,
+                                  hasReason: !!reason,
+                                  attendanceTaken: attendanceTakenSet.has(c.date),
+                                  explicitPresent: !!e?.present,
+                                  date: c.date,
+                                  presentDefaultFrom: st.presentDefaultFrom,
+                                  blocked: afterFrozen || isBeforeStart,
+                                })
                                 const masteryInfo = e?.mastery != null ? masteryDisplay(e.mastery) : { label: '', cls: '' }
                                 return (
                                   <td key={c.date} className="border-b border-r border-slate-100 p-1 text-center">

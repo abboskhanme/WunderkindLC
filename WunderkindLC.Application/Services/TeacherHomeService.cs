@@ -141,19 +141,15 @@ public static class TeacherHomeService
     }
 
     /// <summary>
-    /// Bitta a'zolikning oylik davomati — <see cref="StudentJournalBuilder"/> qoidasida:
-    /// "jonli" dars = o'tilgan, bloklanmagan (a'zolikdan tashqari emas), noma'lum emas.
-    /// Foiz = (jonli − kelmagan) / jonli; kech kelgan KELGAN hisoblanadi (guruh "Davomat" tabi bilan bir xil).
+    /// Bitta a'zolikning oylik davomati — YAGONA ta'rif (<see cref="AttendanceRules.Tally"/>, SPEC P3.1):
+    /// o'tilgan = keldi + kech + kelmadi; kech kelgan KELGAN; davomati olinmagan (belgilanmagan) dars
+    /// foizga KIRMAYDI. O'quvchi portali, admin profili va guruh "Davomat" tabi bilan bir xil.
     /// </summary>
     public static (int Held, int Attended, int Absent, int Late, int? Pct) Attendance(
         IEnumerable<StudentJournalBuilder.Cell> cells)
     {
-        var live = cells.Where(c => !c.Blocked && c.Conducted && !c.Unknown).ToList();
-        var absent = live.Count(c => c.ReasonName is not null && !c.IsLate);
-        var late = live.Count(c => c.ReasonName is not null && c.IsLate);
-        var attended = live.Count(c => c.Present || c.Grade.HasValue || c.IsLate);
-        int? pct = live.Count == 0 ? null : (int)Math.Round((live.Count - absent) * 100.0 / live.Count);
-        return (live.Count, attended, absent, late, pct);
+        var t = AttendanceRules.Tally(cells.Select(c => c.Mark));
+        return (t.Held, t.Attended, t.Absent, t.Late, t.Percent);
     }
 
     /* =========================================================================================

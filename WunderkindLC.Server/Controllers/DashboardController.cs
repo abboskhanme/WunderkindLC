@@ -135,10 +135,10 @@ public class DashboardController(DataCache dataCache) : ControllerBase
                 .Select(g => new { g.Key, N = g.Count() }).ToListAsync())
             .ToDictionary(x => x.Key, x => x.N);
 
-        // Davomat qilingan = bugun shu guruhda "o'tildi" (Conducted) dars belgilangan.
-        var attendanceDone = (await db.LessonNotes.AsNoTracking()
-                .Where(n => n.Date == today && n.Conducted && groupIds.Contains(n.ClassId))
-                .Select(n => n.ClassId).ToListAsync()).ToHashSet();
+        // Davomat qilingan = bugun shu guruhda BIRINCHI davomat belgisi qo'yilgan (LessonNote.AttendanceTakenAt,
+        // SPEC P3.1) — eslatma va jarima bilan bir xil ta'rif. Ilgari "o'tildi" (Conducted) edi: bitta baho
+        // ham guruhni "davomat qilingan" qilib ko'rsatardi.
+        var attendanceDone = (await AttendanceTaking.FirstMarksAsync(db, today, groupIds)).Keys.ToHashSet();
 
         // Baho qo'yilgan = bugun jurnalga baho kiritilgan YOKI baholash (mezon) belgisi qo'yilgan.
         var journalGraded = (await db.JournalEntries.AsNoTracking()

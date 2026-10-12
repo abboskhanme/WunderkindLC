@@ -50,11 +50,14 @@ public static class StudentJournalBuilder
     /// dan farqi: <see cref="Unknown"/> bayrog'i, dars raqami va mavzu/uyga vazifa matni ham bor —
     /// o'quvchi ilovasidagi "har darsga" ro'yxati shulardan quriladi.
     /// </summary>
+    /// <param name="Mark">The ONE attendance classification (<see cref="AttendanceRules.Classify(bool,bool,bool,bool,JournalEntry?,AbsenceReason?)"/>)
+    /// — every count/percentage reads THIS, never <see cref="Present"/>/<see cref="IsLate"/> by hand.</param>
     public sealed record Cell(
         string Date, int Period, bool Conducted, bool Blocked, bool Present, bool Unknown,
         int? Grade, string? ReasonName, string? ReasonShort, bool IsLate,
         int Homework, int Behavior, MasteryLevel? Mastery,
-        string Topic, string HomeworkText);
+        string Topic, string HomeworkText,
+        LessonMark Mark = LessonMark.NotHeld, string? ReasonId = null, bool IsExcused = false);
 
     /// <summary>Bitta KUNDAGI dars yozuvlari jamlanmasi (bir kunda bir necha <see cref="LessonNote"/> bo'lishi mumkin).</summary>
     public sealed record LessonInfo(bool Conducted, bool AttendanceTaken, int Period, string Topic, string Homework);
@@ -158,11 +161,18 @@ public static class StudentJournalBuilder
                 && bounds.PresentDefaultFrom is not null
                 && string.CompareOrdinal(date, bounds.PresentDefaultFrom) < 0;
 
+            // YAGONA ta'rif (SPEC P3.1): kech = keldi; davomat OLINGAN + belgisiz = keldi; faqat "o'tildi" +
+            // belgisiz = BELGILANMAGAN (foizga kirmaydi).
+            var mark = AttendanceRules.Classify(
+                isConducted, note?.AttendanceTaken == true, blocked,
+                AttendanceRules.BeforePresentDefault(date, bounds.PresentDefaultFrom), e, reason);
+
             cells.Add(new Cell(
                 date, note?.Period ?? 1, isConducted, blocked, present, unknown,
                 e?.Grade, reason?.Name, reason?.Short, reason?.IsLate ?? false,
                 e?.Homework ?? 0, e?.Behavior ?? 0, e?.Mastery,
-                note?.Topic ?? "", note?.Homework ?? ""));
+                note?.Topic ?? "", note?.Homework ?? "",
+                mark, reason?.Id, reason?.IsExcused ?? false));
         }
         return cells;
     }
@@ -335,11 +345,9 @@ public static class StudentJournalBuilder
             db, studentId, new[] { group }, membershipByGroup, new[] { resolved }, reasons);
         var cells = byGroup.GetValueOrDefault(gid) ?? new List<Cell>();
 
-        var live = cells.Where(c => !c.Blocked && c.Conducted && !c.Unknown).ToList();
-        var absent = live.Count(c => c.ReasonName is not null && !c.IsLate);
-        var late = live.Count(c => c.ReasonName is not null && c.IsLate);
-        // "Keldi" — faqat rassmiy tasdiqlangan (present) yoki baho olingan kunlar.
-        var attended = live.Count(c => c.Present || c.Grade.HasValue);
+        // YAGONA ta'rif (AttendanceRules): o'tilgan = keldi + kech + kelmadi (sababli/sababsiz);
+        // belgilanmagan darslar foizga KIRMAYDI, kech kelgan KELGAN hisoblanadi.
+        var tally = AttendanceRules.Tally(cells.Select(c => c.Mark));
         var grades = cells.Where(c => c.Grade.HasValue).Select(c => (double)c.Grade!.Value).ToList();
 
         var dtoCells = cells.Select(c => new StudentJournalCellDto(
@@ -349,7 +357,7 @@ public static class StudentJournalBuilder
 
         return new StudentJournalDto(
             student.Id, student.FullName, options, gid, months, resolved, dtoCells,
-            live.Count, attended, absent, late,
+            tally.Held, tally.Attended, tally.Absent, tally.Late,
             grades.Count > 0 ? Math.Round(grades.Average(), 1) : 0);
     }
 
@@ -439,14 +447,17 @@ public static class StudentJournalBuilder
             var subjectName = subjectId.Length == 0 ? "" : courseNames.GetValueOrDefault(subjectId, "");
             foreach (var c in byGroup.GetValueOrDefault(g.Id) ?? new List<Cell>())
             {
-                if (c.Blocked || !c.Conducted) continue;
+                // Ro'yxatda: o'tilgan darslar + (kamdan-kam) o'tilmagan, lekin ANIQ belgilangan dars.
+                if (c.Blocked || !(c.Conducted || AttendanceRules.IsHeld(c.Mark))) continue;
                 if (string.CompareOrdinal(c.Date, from) < 0 || string.CompareOrdinal(c.Date, to) > 0) continue;
                 lessons.Add(new StudentPeriodLessonDto(
                     c.Date, c.Period, g.Id, g.Name, subjectId, subjectName,
                     c.Topic, c.HomeworkText, c.Conducted, c.Present,
                     c.Grade, c.ReasonName, c.ReasonShort, c.IsLate,
                     c.Homework, c.Behavior, c.Mastery));
-                if (!c.Unknown) live.Add((subjectId, subjectName, c));
+                // Jamlanma — faqat "o'tilgan" belgilar (AttendanceRules.IsHeld); BELGILANMAGAN darslar
+                // (davomat olinmagan, eski "noma'lum" ham) foizga kirmaydi.
+                if (AttendanceRules.IsHeld(c.Mark)) live.Add((subjectId, subjectName, c));
             }
         }
 
@@ -474,20 +485,17 @@ public static class StudentJournalBuilder
     }
 
     /// <summary>
-    /// Jamlanma — FAQAT "tirik" (o'tilgan, bloklanmagan, noma'lum bo'lmagan) kataklardan.
+    /// Jamlanma — FAQAT "o'tilgan" belgili kataklardan (<see cref="AttendanceRules.IsHeld"/>).
     /// <c>homeworkDone/Missed</c>: 1 = qildi, 2 = qilmadi; 3 (chala) ATAYIN ikkalasiga ham
     /// qo'shilmaydi — "chala qildi" na bajarilgan, na bajarilmagan.
     /// </summary>
     private static StudentPeriodSummaryDto SummaryOf(IReadOnlyList<Cell> live)
     {
-        var held = live.Count;
-        var attended = live.Count(c => c.Present || c.Grade.HasValue);
-        var absent = live.Count(c => c.ReasonName is not null && !c.IsLate);
-        var late = live.Count(c => c.ReasonName is not null && c.IsLate);
+        var t = AttendanceRules.Tally(live.Select(c => c.Mark));
         var grades = live.Where(c => c.Grade.HasValue).Select(c => (double)c.Grade!.Value).ToList();
         return new StudentPeriodSummaryDto(
-            held, attended, absent, late,
-            held > 0 ? (int)Math.Round(attended * 100.0 / held, MidpointRounding.AwayFromZero) : 0,
+            t.Held, t.Attended, t.Absent, t.Late,
+            t.Percent ?? 0,
             grades.Count,
             grades.Count > 0 ? Math.Round(grades.Average(), 1) : 0,
             live.Count(c => c.Homework == 1), live.Count(c => c.Homework == 2),

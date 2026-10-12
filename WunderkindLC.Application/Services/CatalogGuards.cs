@@ -150,6 +150,24 @@ public static class RoomRules
 /// </summary>
 public static class AbsenceReasonRules
 {
+    /// <summary>«Kech keldi» sababi bir vaqtda «sababli» bo'la olmaydi (SPEC P3.1).</summary>
+    public const string LateExcusedMessage = "\"Kech keldi\" sababi bir vaqtda \"sababli\" bo'la olmaydi";
+
+    /// <summary>
+    /// Bitta sabab bayroqlari mosligi: <c>IsLate &amp;&amp; IsExcused</c> — xato (kech kelgan o'quvchi
+    /// darsda bo'lgan, "uzrli yo'qlik" emas). <c>IsExcused</c> ishlatilgan sababda ham O'ZGARTIRILADI —
+    /// u faqat analitikaga (ketma-ket kelmaslik seriyasi) ta'sir qiladi, foizga emas.
+    /// </summary>
+    public static string? ExcusedError(bool isLate, bool isExcused) =>
+        isLate && isExcused ? LateExcusedMessage : null;
+
+    /// <summary>
+    /// Yangi bazalar uchun standart «sababli» bayrog'i va migratsiyadagi backfill qoidasi
+    /// (<c>docs/migrations/Phase3.sql</c>): kech EMAS va nomida «sababsiz» yo'q → sababli.
+    /// </summary>
+    public static bool DefaultExcused(string name, bool isLate) =>
+        !isLate && !(name ?? "").ToLowerInvariant().Contains("sababsiz");
+
     /// <summary>
     /// Yangi ro'yxatni tekshiradi: jurnalda ISHLATILGAN sababni olib tashlash ham, uning
     /// «kech keldi» (<c>IsLate</c>) belgisini almashtirish ham rad etiladi (sababi matnda, sanoq bilan).

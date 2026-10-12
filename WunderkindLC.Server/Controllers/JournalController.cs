@@ -79,7 +79,8 @@ public class JournalController(
         bool newAbsence;
         try
         {
-            newAbsence = await JournalService.SetEntryAsync(db, req, autoMsg);
+            newAbsence = await JournalService.SetEntryAsync(db, req, autoMsg,
+                actorId: User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value);
         }
         catch (InvalidOperationException ex)
         {
@@ -117,7 +118,8 @@ public class JournalController(
         try
         {
             await JournalService.BulkAttendanceAsync(db, req,
-                beforeSave: r => AttendanceNotify.EnqueueBulkAsync(db, req, r, wasPresent));
+                beforeSave: r => AttendanceNotify.EnqueueBulkAsync(db, req, r, wasPresent),
+                actorId: User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value);
         }
         catch (InvalidOperationException ex)
         {

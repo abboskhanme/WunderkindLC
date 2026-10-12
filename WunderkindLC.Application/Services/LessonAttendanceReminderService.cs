@@ -12,8 +12,8 @@ namespace WunderkindLC.Application.Services;
 /// bo'yicha 3 rejimda ishlaydi:
 /// <list type="bullet">
 /// <item>"lesson_start" (default) — har faol guruh uchun, dars boshlanish vaqtidan (<see cref="Group.StartTime"/>)
-/// qoida bo'yicha belgilangan daqiqa (odatda 5) o'tgach, agar shu kunga hali davomat kiritilmagan bo'lsa
-/// (<see cref="LessonNote.Conducted"/>), guruh o'qituvchisiga yuboriladi.</item>
+/// qoida bo'yicha belgilangan daqiqa (odatda 5) o'tgach, agar shu kunga hali davomat OLINMAGAN bo'lsa
+/// (<see cref="LessonNote.AttendanceTakenAt"/>), guruh o'qituvchisiga yuboriladi.</item>
 /// <item>"not_filled" — kunlik <see cref="WunderkindLC.Domain.AutoMessageRule.ScheduleTime"/>da: bugun darsi bo'lib (boshlangan)
 /// davomatini HALI kiritmagan o'qituvchilarga, har to'ldirilmagan guruh uchun alohida.</item>
 /// <item>"all" — kunlik <see cref="WunderkindLC.Domain.AutoMessageRule.ScheduleTime"/>da: BARCHA faol o'qituvchilarga
@@ -200,11 +200,11 @@ public class LessonAttendanceReminderService(
         }
     }
 
-    /// <summary>Shu kuni davomat allaqachon kiritilganmi (dars "o'tildi").</summary>
+    /// <summary>Shu kuni davomat allaqachon OLINGANMI — guruhning shu kungi istalgan darsida BIRINCHI davomat
+    /// belgisi bor (<see cref="LessonNote.AttendanceTakenAt"/>, SPEC P3.1). ⚠️ Ilgari "o'tildi" (Conducted)
+    /// ga qarardi — bitta baho ham darsni "o'tildi" qilar va eslatma davomatsiz to'xtab qolardi.</summary>
     private static Task<bool> ConductedAsync(IAppDbContext db, Group g, string todayStr, CancellationToken ct) =>
-        db.LessonNotes.AnyAsync(n =>
-            n.ClassId == g.Id && n.SubjectId == g.CourseId && n.Quarter == 1 &&
-            n.Date == todayStr && n.Conducted, ct);
+        db.LessonNotes.AnyAsync(n => n.ClassId == g.Id && n.Date == todayStr && n.AttendanceTakenAt != null, ct);
 
     /// <summary>
     /// Kunlik rejim: "all" — bugun darsi bor-yo'qligidan va to'ldirganidan qat'i nazar BARCHA faol

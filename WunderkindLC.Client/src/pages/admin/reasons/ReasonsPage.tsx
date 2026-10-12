@@ -108,7 +108,7 @@ export function ReasonsPage({ embedded = false }: { embedded?: boolean } = {}) {
 
   // ---- Davomat (kelmaganlik) sabablari ----
   const addAbsence = () =>
-    setAbsence((a) => [...a, { id: crypto.randomUUID(), name: '', short: '', isLate: false, points: 0 } as AbsenceReason])
+    setAbsence((a) => [...a, { id: crypto.randomUUID(), name: '', short: '', isLate: false, isExcused: false, points: 0 } as AbsenceReason])
   const patchAbsence = (i: number, patch: Partial<AbsenceReason>) =>
     setAbsence((a) => a.map((r, x) => (x === i ? { ...r, ...patch } : r)))
   const removeAbsence = (i: number) => setAbsence((a) => a.filter((_, x) => x !== i))
@@ -175,10 +175,24 @@ export function ReasonsPage({ embedded = false }: { embedded?: boolean } = {}) {
                   <input
                     type="checkbox"
                     checked={r.isLate}
-                    onChange={() => patchAbsence(i, { isLate: !r.isLate })}
+                    // «Kech» va «Sababli» bir vaqtda bo'lmaydi (server ham rad etadi) — biri yoqilsa ikkinchisi o'chadi.
+                    onChange={() => patchAbsence(i, { isLate: !r.isLate, isExcused: r.isLate ? r.isExcused : false })}
                     className="h-4 w-4 rounded border-slate-300 accent-brand-600"
                   />
                   Kech
+                </label>
+                <label
+                  className="inline-flex cursor-pointer items-center gap-1.5 whitespace-nowrap text-xs text-slate-600"
+                  title="Uzrli yo'qlik (kasallik, oilaviy sabab) — ketma-ket kelmaslik hisobini buzadi"
+                >
+                  <input
+                    type="checkbox"
+                    checked={!!r.isExcused}
+                    disabled={r.isLate}
+                    onChange={() => patchAbsence(i, { isExcused: !r.isExcused })}
+                    className="h-4 w-4 rounded border-slate-300 accent-brand-600 disabled:opacity-40"
+                  />
+                  Sababli (uzrli)
                 </label>
                 <button
                   type="button"

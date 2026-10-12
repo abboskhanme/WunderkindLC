@@ -160,10 +160,19 @@ public static class JournalService
                 .Where(n => n.ClassId == classId && n.SubjectId == subjectId && n.Conducted && n.Date.StartsWith(resolved))
                 .Select(n => n.Date).Distinct().ToListAsync();
 
+        // Davomati TO'LIQ olingan darslar — avto-"keldi" FAQAT shularda (AttendanceRules, SPEC P3.1).
+        var attendanceTakenDates = string.IsNullOrEmpty(subjectId)
+            ? new List<string>()
+            : await db.LessonNotes
+                .Where(n => n.ClassId == classId && n.SubjectId == subjectId && n.Conducted && n.AttendanceTaken
+                            && n.Date.StartsWith(resolved))
+                .Select(n => n.Date).Distinct().ToListAsync();
+
         var info = new GroupJournalInfoDto(
             cls.Id, cls.Name, subjectId, courseName, teacherName,
             cls.Days, cls.StartTime, cls.EndTime, cls.Room ?? "", cls.StartDate ?? "", cls.MonthlyFee);
-        return new GroupJournalDto(info, months, resolved, columns, students, entries, conductedDates, reschedules);
+        return new GroupJournalDto(info, months, resolved, columns, students, entries, conductedDates, reschedules,
+            attendanceTakenDates);
     }
 
     /// <summary>O'quvchining guruhdagi a'zoligi boshlangan sana ("yyyy-MM-dd"): aktivlashtirilgan bo'lsa
@@ -465,7 +474,7 @@ public static class JournalService
     /// </summary>
     public static async Task<bool> SetEntryAsync(
         IAppDbContext db, SetJournalEntryRequest req, AutoMessageService? autoMsg = null,
-        bool teacher = false)
+        bool teacher = false, string? actorId = null)
     {
         // Guruhning StartDate'i tekshirish — undan oldin dars bo'lmaydi.
         var cls = await db.Classes.FindAsync(req.ClassId);
@@ -520,13 +529,15 @@ public static class JournalService
         entry.Mastery = req.Mastery;
 
         // Baho/davomat/uyga vazifa/xulq/o'zlashtirish kiritilsa — shu darsni "o'tildi" deb avtomatik belgilaymiz.
+        LessonNote? lessonNote = null;
         if (req.Grade.HasValue || req.ReasonId is not null || entry.Present || req.Homework != 0 || req.Behavior != 0 || req.Mastery.HasValue)
         {
-            var note = await db.LessonNotes.FirstOrDefaultAsync(n =>
+            lessonNote = await db.LessonNotes.FirstOrDefaultAsync(n =>
                 n.ClassId == req.ClassId && n.SubjectId == req.SubjectId &&
                 n.Quarter == req.Quarter && n.Date == req.Date && n.Period == req.Period);
-            if (note is null)
-                db.LessonNotes.Add(new LessonNote
+            if (lessonNote is null)
+            {
+                lessonNote = new LessonNote
                 {
                     ClassId = req.ClassId,
                     SubjectId = req.SubjectId,
@@ -534,12 +545,31 @@ public static class JournalService
                     Date = req.Date,
                     Period = req.Period,
                     Conducted = true,
-                });
-            else if (!note.Conducted)
-                note.Conducted = true;
+                };
+                db.LessonNotes.Add(lessonNote);
+            }
+            else if (!lessonNote.Conducted)
+                lessonNote.Conducted = true;
+
+            // DAVOMAT OLINDI vaqti — darsning BIRINCHI davomat belgisi («keldi» yoki sabab). Baho yolg'iz
+            // davomat EMAS (SPEC P3.1): eslatma/jarima/monitor shu ustunga qaraydi.
+            if (AttendanceTaking.IsAttendanceMark(entry.Present, req.ReasonId))
+                AttendanceTaking.StampFirstMark(lessonNote, AppClock.Now, actorId);
         }
 
         await db.SaveChangesAsync();
+
+        // TO'LIQ davomat: saqlangandan keyin shu darsda KUTILGAN har o'quvchida belgi bor bo'lsa —
+        // LessonNote.AttendanceTaken (bitta-bitta belgilaydigan o'qituvchi ham "davomat olingan" holatiga
+        // yetadi; ommaviy davomat uni o'zi qo'yadi).
+        if (lessonNote is { AttendanceTaken: false }
+            && (entry.Present || req.ReasonId is not null || req.Grade.HasValue)
+            && await AttendanceTaking.LessonCompleteAsync(db, req.ClassId, req.SubjectId, req.Quarter,
+                req.Date, req.Period, teacher))
+        {
+            lessonNote.AttendanceTaken = true;
+            await db.SaveChangesAsync();
+        }
 
         // YANGI "kelmadi" hodisasimi: "kech" — kelmadi EMAS; sababni almashtirish — yangi hodisa EMAS.
         var newAbsence = req.ReasonId is not null
@@ -638,7 +668,7 @@ public static class JournalService
     /// </summary>
     public static async Task<BulkAttendanceResult> BulkAttendanceAsync(
         IAppDbContext db, BulkAttendanceRequest req, bool teacher = false,
-        Func<BulkAttendanceResult, Task>? beforeSave = null)
+        Func<BulkAttendanceResult, Task>? beforeSave = null, string? actorId = null)
     {
         const int quarter = 1;
         var empty = new BulkAttendanceResult(null, [], [], []);
@@ -683,16 +713,21 @@ public static class JournalService
             n.ClassId == req.ClassId && n.SubjectId == req.SubjectId &&
             n.Quarter == quarter && n.Date == req.Date && n.Period == req.Period);
         if (note is null)
-            db.LessonNotes.Add(new LessonNote
+        {
+            note = new LessonNote
             {
                 ClassId = req.ClassId, SubjectId = req.SubjectId, Quarter = quarter,
                 Date = req.Date, Period = req.Period, Conducted = true, AttendanceTaken = true,
-            });
+            };
+            db.LessonNotes.Add(note);
+        }
         else
         {
             note.Conducted = true;
             note.AttendanceTaken = true;
         }
+        // Ommaviy davomat — ham "birinchi belgi", ham "to'liq" (SPEC P3.1).
+        AttendanceTaking.StampFirstMark(note, AppClock.Now, actorId);
 
         // Hammasi KELMADI bo'lsa — sabab: berilgani, yo'q bo'lsa birinchi (kech bo'lmagan) sabab,
         // umuman sabab bo'lmasa standart "Sababsiz" avtomatik yaratiladi (yo'q tugmasi har doim ishlasin).

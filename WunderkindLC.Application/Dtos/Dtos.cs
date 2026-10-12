@@ -967,7 +967,7 @@ public record DailyAbsenceDto(
     string Date, int ConductedGroups, int MarkedStudents, int AbsentCount, int LateCount,
     List<AbsentStudentDto> Rows,
     // KELGANLAR (davomat olingan o'quvchilar − kelmaganlar; kech kelgan KELGAN) va SABABSIZ qoldirganlar
-    // (sabab nomida "sababsiz" — bulk davomat aynan shu nomli sababni avtomatik yaratadi). 2026-10-07.
+    // (sabab «Sababli» EMAS — AbsenceReason.IsExcused, 2026-10-12; ilgari nom ichidan "sababsiz" qidirilardi).
     int PresentCount = 0, int UnexcusedCount = 0);
 
 /// <summary>O'quvchi jurnalidagi bitta dars (faqat o'qish uchun).</summary>
@@ -1049,7 +1049,11 @@ public record GroupJournalStudentDto(
 public record GroupJournalDto(
     GroupJournalInfoDto Group, List<string> Months, string Month,
     List<JournalColumnDto> Columns, List<GroupJournalStudentDto> Students, List<JournalEntryDto> Entries,
-    List<string> ConductedDates, List<LessonRescheduleDto> Reschedules);
+    List<string> ConductedDates, List<LessonRescheduleDto> Reschedules,
+    // Davomati TO'LIQ olingan darslar (LessonNote.AttendanceTaken) — belgisiz o'quvchi faqat SHU kunlarda
+    // avto-"keldi" (AttendanceRules, SPEC P3.1). ConductedDates'dan farqi: bitta baho darsni "o'tildi"
+    // qiladi, lekin davomatni olmaydi.
+    List<string>? AttendanceTakenDates = null);
 /// <summary>Bitta darsning BIR MARTALIK boshqa kunga ko'chirilishi (shu oyga tegishli). ToDate — jurnalda
 /// ko'rinadigan yangi ustun; FromDate — asl (endi yo'q) kun; Time — yangi vaqt (ixtiyoriy, "HH:mm").</summary>
 public record LessonRescheduleDto(string Id, string FromDate, string ToDate, string? Time);
@@ -1076,7 +1080,7 @@ public record JournalPolicyDto(
 
 /* ---------- Settings ---------- */
 public record LessonTimeDto(int Period, string StartTime, string EndTime);
-public record AbsenceReasonDto(string Id, string Name, string Short, bool IsLate);
+public record AbsenceReasonDto(string Id, string Name, string Short, bool IsLate, bool IsExcused = false);
 /// <summary>Jadval/hafta navigatsiyasi uchun davr oralig'i. Markazda chorak tizimi YO'Q —
 /// bu o'quv yili oralig'idan sintez qilingan bitta davr (frontend hafta hisobi uchun).</summary>
 public record QuarterPeriodDto(int Quarter, string StartDate, string EndDate, bool GradesOpen);

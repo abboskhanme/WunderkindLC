@@ -34,9 +34,11 @@ public class StudentAttendanceController(AppDbContext db) : ControllerBase
             : (DateOnly.TryParse(date, out var d) ? d.ToString("yyyy-MM-dd") : null);
         if (day is null) return BadRequest(new { message = "Sana noto'g'ri" });
 
-        // Shu kunda "o'tildi" deb belgilangan darslar — davomat olingan guruhlar.
+        // Shu kunda DAVOMATI OLINGAN guruhlar — birinchi davomat belgisi qo'yilgan (LessonNote.AttendanceTakenAt,
+        // SPEC P3.1). Ilgari "o'tildi" (Conducted) edi: faqat baho qo'yilgan guruhning barcha a'zolari
+        // "kelgan" bo'lib sanalardi.
         var conductedGroupIds = await db.LessonNotes.AsNoTracking()
-            .Where(n => n.Date == day && n.Conducted)
+            .Where(n => n.Date == day && n.AttendanceTakenAt != null)
             .Select(n => n.ClassId).Distinct().ToListAsync();
 
         // Shu kundagi davomat sababi qo'yilgan yozuvlar (kelmadi yoki kechikdi).
@@ -102,8 +104,10 @@ public class StudentAttendanceController(AppDbContext db) : ControllerBase
 
         // Kelganlar — davomat olingan o'quvchilardan kelmaganlarni (distinct) ayirib; kech kelgan KELGAN.
         var absentStudents = rows.Where(r => !r.IsLate).Select(r => r.StudentId).Distinct().Count();
+        // SABABSIZ — sababning «Sababli (uzrli)» bayrog'idan (AbsenceReason.IsExcused, SPEC P3.1); ilgari nom
+        // ichidan "sababsiz" so'zi qidirilardi.
         var unexcused = rows.Count(r => !r.IsLate
-            && r.ReasonName.Contains("sababsiz", StringComparison.OrdinalIgnoreCase));
+            && !(reasons.TryGetValue(r.ReasonId, out var rr) && rr.IsExcused));
         return new DailyAbsenceDto(
             day, conductedGroupIds.Count, markedStudents,
             rows.Count(r => !r.IsLate), rows.Count(r => r.IsLate), rows,

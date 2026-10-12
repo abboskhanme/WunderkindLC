@@ -19,17 +19,20 @@ export interface RatingMonthData {
 }
 
 /**
- * Katak AVTOMATIK "keldi" (yashil ✓) hisoblanadimi — jurnal qoidasi (`journal.md`): dars o'tildi +
- * baho yo'q + sabab yo'q + (ANIQ "keldi" belgisi BOR yoki sana o'quvchi tizimga kiritilganidan —
- * `presentDefaultFrom` — keyin). `blocked` — muzlatilgandan keyingi / a'zolikdan oldingi dars:
- * u yerda faqat ANIQ belgi hisobga olinadi.
+ * Katak AVTOMATIK "keldi" (yashil ✓) hisoblanadimi — YAGONA ta'rif (`AttendanceRules`, SPEC P3.1): baho yo'q +
+ * sabab yo'q + (ANIQ "keldi" belgisi BOR yoki dars davomati TO'LIQ OLINGAN (`attendanceTaken`) va sana o'quvchi
+ * tizimga kiritilganidan — `presentDefaultFrom` — keyin). `blocked` — muzlatilgandan keyingi / a'zolikdan oldingi
+ * dars: u yerda faqat ANIQ belgi hisobga olinadi.
+ *
+ * ⚠️ Ilgari `conducted` ("o'tildi") ga qarardi: bitta o'quvchiga baho qo'yilgan darsda qolgan HAMMA o'quvchi
+ * "keldi" bo'lib ko'rinardi. Endi davomati olinmagan dars — BELGILANMAGAN (bo'sh, foizga kirmaydi).
  *
  * ⚠️ YAGONA joy: "Jurnal" va "Davomat" tablari ikkalasi ham shuni chaqiradi — qoida ayrilib ketmasin.
  */
 export function autoPresent(a: {
   hasGrade: boolean
   hasReason: boolean
-  conducted: boolean
+  attendanceTaken: boolean
   explicitPresent: boolean
   date: string
   presentDefaultFrom?: string
@@ -38,7 +41,7 @@ export function autoPresent(a: {
   return (
     !a.hasGrade &&
     !a.hasReason &&
-    a.conducted &&
-    (a.explicitPresent || ((!a.presentDefaultFrom || a.date >= a.presentDefaultFrom) && !a.blocked))
+    (a.explicitPresent ||
+      (a.attendanceTaken && (!a.presentDefaultFrom || a.date >= a.presentDefaultFrom) && !a.blocked))
   )
 }

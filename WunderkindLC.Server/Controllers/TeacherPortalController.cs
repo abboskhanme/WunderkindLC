@@ -318,7 +318,8 @@ public partial class TeacherPortalController(
         bool newAbsence;
         try
         {
-            newAbsence = await JournalService.SetEntryAsync(db, req, autoMsg, teacher: true);
+            newAbsence = await JournalService.SetEntryAsync(db, req, autoMsg, teacher: true,
+                actorId: User.FindFirst(ClaimTypes.NameIdentifier)?.Value);
         }
         catch (InvalidOperationException ex)
         {
@@ -469,7 +470,8 @@ public partial class TeacherPortalController(
         try
         {
             await JournalService.BulkAttendanceAsync(db, req, teacher: true,
-                beforeSave: r => AttendanceNotify.EnqueueBulkAsync(db, req, r, wasPresent));
+                beforeSave: r => AttendanceNotify.EnqueueBulkAsync(db, req, r, wasPresent),
+                actorId: User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value);
         }
         catch (InvalidOperationException ex)
         {

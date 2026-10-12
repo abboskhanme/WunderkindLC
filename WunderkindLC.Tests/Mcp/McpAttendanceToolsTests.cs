@@ -358,13 +358,15 @@ public class McpAttendanceToolsTests
         var totals = json.GetProperty("totals");
 
         Assert.Equal("Ali Valiyev", json.GetProperty("student").GetProperty("fullName").GetString());
-        Assert.Equal(6, totals.GetProperty("conducted").GetInt32());   // 7 dars, 7-sentabr (kiritilishidan oldin) — jamiga kirmaydi
-        Assert.Equal(2, totals.GetProperty("attended").GetInt32());    // 11 (standart keldi) + 18 (baho)
+        // YAGONA ta'rif (AttendanceRules, SPEC P3.1, 2026-10-12): 7 dars; 7-sentabr (kiritilishidan oldin) va
+        // 16-sentabr (davomat OLINMAGAN, belgisiz) — BELGILANMAGAN, jamiga kirmaydi; kech kelgan KELGAN.
+        Assert.Equal(5, totals.GetProperty("conducted").GetInt32());
+        Assert.Equal(3, totals.GetProperty("attended").GetInt32());    // 11 (standart keldi) + 14 (kech) + 18 (baho)
         Assert.Equal(2, totals.GetProperty("absent").GetInt32());
         Assert.Equal(1, totals.GetProperty("late").GetInt32());
-        Assert.Equal(33, totals.GetProperty("percent").GetInt32());
+        Assert.Equal(60, totals.GetProperty("percent").GetInt32());
         Assert.Equal(7, totals.GetProperty("lessonsListed").GetInt32());
-        Assert.Equal(1, totals.GetProperty("excludedFromTotals").GetInt32());
+        Assert.Equal(2, totals.GetProperty("excludedFromTotals").GetInt32());
 
         var items = json.GetProperty("items").EnumerateArray().ToList();
         Assert.Equal(
@@ -382,7 +384,7 @@ public class McpAttendanceToolsTests
         Assert.Equal(JsonValueKind.Null, items[0].GetProperty("reason").ValueKind);
 
         var byCourse = json.GetProperty("byCourse").EnumerateArray().ToList();
-        Assert.Equal(5, byCourse.Single(c => c.GetProperty("course").GetString() == "Ingliz tili").GetProperty("conducted").GetInt32());
+        Assert.Equal(4, byCourse.Single(c => c.GetProperty("course").GetString() == "Ingliz tili").GetProperty("conducted").GetInt32());
         Assert.Equal(2, json.GetProperty("groups").GetArrayLength());
         Assert.DoesNotContain("/uploads/", raw);
 
@@ -398,16 +400,17 @@ public class McpAttendanceToolsTests
 
         var g1 = McpTestHost.Parse(await host.Tool<AttendanceTools>(McpTestHost.Staff("students.list"))
             .StudentAttendance("s1", "2026-09-01", "2026-09-30", "g1"));
-        Assert.Equal(5, g1.GetProperty("totals").GetProperty("conducted").GetInt32());
+        // SPEC P3.1: 16-sentabr (davomat olinmagan) — belgilanmagan; kech kelgan (14) — KELGAN.
+        Assert.Equal(4, g1.GetProperty("totals").GetProperty("conducted").GetInt32());
         Assert.Equal(1, g1.GetProperty("totals").GetProperty("absent").GetInt32());
-        Assert.Equal(40, g1.GetProperty("totals").GetProperty("percent").GetInt32());
+        Assert.Equal(75, g1.GetProperty("totals").GetProperty("percent").GetInt32());
         Assert.Equal(6, g1.GetProperty("total").GetInt32());
 
         var week = McpTestHost.Parse(await host.Tool<AttendanceTools>(McpTestHost.SuperAdmin())
             .StudentAttendance("s1", "2026-09-10", "2026-09-14"));
         Assert.Equal(2, week.GetProperty("totals").GetProperty("conducted").GetInt32());
         Assert.Equal(1, week.GetProperty("totals").GetProperty("late").GetInt32());
-        Assert.Equal(50, week.GetProperty("totals").GetProperty("percent").GetInt32());
+        Assert.Equal(100, week.GetProperty("totals").GetProperty("percent").GetInt32());   // kech = keldi
 
         var page2 = McpTestHost.Parse(await host.Tool<AttendanceTools>(McpTestHost.SuperAdmin())
             .StudentAttendance("s1", "2026-09-01", "2026-09-30", page: 2, pageSize: 2));
