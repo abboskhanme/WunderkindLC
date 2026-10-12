@@ -8883,6 +8883,11 @@ namespace WunderkindLC.Infrastructure.Migrations
                     b.Property<bool>("GroupOpen")
                         .HasColumnType("boolean");
 
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
                     b.Property<decimal>("MaxScore")
                         .HasPrecision(18, 2)
                         .HasColumnType("numeric(18,2)");
@@ -8912,6 +8917,13 @@ namespace WunderkindLC.Infrastructure.Migrations
 
                     b.Property<int>("QuestionCount")
                         .HasColumnType("integer");
+
+                    b.Property<DateTime?>("ResultsSentAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<string>("ResultsSentById")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
 
                     b.Property<string>("StartAt")
                         .IsRequired()
