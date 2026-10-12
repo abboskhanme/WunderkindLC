@@ -47,8 +47,14 @@ public record LoginResponse(
 /// <summary>Refresh so'rovi (MOBIL). Web'da <c>rt</c> cookie ishlatiladi, body kerak emas.
 /// Nullable — cookie bilan kelganda body umuman bo'lmasligi mumkin.</summary>
 public record RefreshRequest(string? RefreshToken = null);
-/// <summary>O'quvchi/o'qituvchiga biriktirilgan tizim akkaunti ma'lumotlari (admin uchun).</summary>
-public record CredentialsDto(string Login, string Password, string Role);
+/// <summary>O'quvchi/o'qituvchiga biriktirilgan tizim akkaunti ma'lumotlari (admin uchun).
+/// <para>Appended for STUDENT accounts by the password vault (CRM Phase 6; null for teacher/staff):
+/// <paramref name="Known"/> — the password is known (vault or a still-unused initial password);
+/// <paramref name="Source"/> — create · reset · admin_set · self_change · backfill · initial;
+/// <paramref name="UpdatedAt"/> — when it was stored ("yyyy-MM-ddTHH:mm:ss"); <paramref name="VaultConfigured"/> —
+/// <c>CREDENTIAL_VAULT_KEY</c> is set.</para></summary>
+public record CredentialsDto(string Login, string Password, string Role,
+    bool? Known = null, string? Source = null, string? UpdatedAt = null, bool? VaultConfigured = null);
 /// <summary>Joriy foydalanuvchi o'z login (email) va/yoki parolini o'zgartirishi uchun.
 /// NewPassword bo'sh bo'lsa — parol o'zgarmaydi. CurrentPassword har doim talab qilinadi.
 /// <paramref name="Phone"/> — ixtiyoriy, kiritilsa PhoneUtil.Normalize() orqali standartlashtirilib saqlanadi

@@ -1,7 +1,10 @@
 ---
-description: Kirish va sessiyalar — refresh token, parol tiklash/almashtirishda sessiyalarni tugatish, parol darvozasi, «oxirgi kirish», yuz bilan kirish qamrovi.
+description: Kirish va sessiyalar — refresh token, parol tiklash/almashtirishda sessiyalarni tugatish, parol darvozasi, o'quvchi parollari seyfi, «oxirgi kirish», yuz bilan kirish qamrovi.
 paths:
   - "WunderkindLC.Infrastructure/Auth/**"
+  - "WunderkindLC.Application/Services/Accounts/**"
+  - "WunderkindLC.Server/Controllers/GroupCredentialsController.cs"
+  - "WunderkindLC.Server/Controllers/StudentsController.Credentials.cs"
   - "WunderkindLC.Server/Controllers/AuthController.cs"
   - "WunderkindLC.Server/Controllers/AdminFaceController.cs"
   - "WunderkindLC.Server/Controllers/StudentFaceController.cs"
@@ -10,7 +13,8 @@ paths:
 
 # Kirish va sessiyalar qoidalari
 
-Migratsiya KERAK EMAS — hammasi mavjud `RefreshTokens` / `Users` jadvallarida.
+Migratsiya KERAK EMAS — hammasi mavjud `RefreshTokens` / `Users` jadvallarida. Istisno — o'quvchi
+parollari seyfi (§6, `StudentCredentials` jadvali, CRM Phase 6 migratsiyasi `CrmAccounts`).
 
 ## 1. Sessiya = refresh token NASLI (`FamilyId`)
 
@@ -65,7 +69,8 @@ Yangi parol QAYTARILADI (yoki admin o'zi yozadi) — ya'ni bu akkauntga KIRISH. 
 
 | Yo'l | Darvoza |
 |---|---|
-| `Students/TeachersController.Credentials`, eksport | `HasFullAccess` |
+| `Students/TeachersController.Credentials`, eksport, **tanlanganlar eksportidagi «Parol» ustuni** | `HasFullAccess` |
+| Guruh «Login/parollar» (`GroupCredentialsController`: ro'yxat, `ensure`, Excel) | `HasFullAccess` (+ sinf `[AdminPerm("students.list", ReadRequiresPerm = true)]`) |
 | `Students/Teachers/StaffController.ResetPassword` | `HasFullAccess` |
 | `Students/Teachers/StaffController.Update` (formadagi yangi parol) | `HasFullAccess` |
 | `StudentsController.Restore`, `TeachersController.Restore` — **`NewPassword` berilsa** | `HasFullAccess`, HECH NARSA o'zgartirilishidan OLDIN (2026-10-08) |
@@ -80,7 +85,7 @@ Yangi parol QAYTARILADI (yoki admin o'zi yozadi) — ya'ni bu akkauntga KIRISH. 
 - `HasFullAccess` — `PermissionRules.HasFullSection`: yalang bo'lim (`students`) sahifa
   kalitini (`students.list`) ham ochadi (`permissions.md` §8).
 
-Tiklashda `SetInitialPassword` (hash + `InitialPassword`) — aks holda «Login/parol», Excel
+Tiklashda `SetInitialPassword` (hash + `InitialPassword` + seyf, §6) — aks holda «Login/parol», Excel
 eksport va botdagi login xabari ESKI, yaroqsiz parolni ko'rsatardi. Parolning O'ZI auditga
 yozilmaydi — faqat "qayta yaratildi" fakti (o'quvchi: `StudentDiscount` turi, login amallari bilan).
 
@@ -122,3 +127,96 @@ tekshiruvi "ilovani kim ishlatyapti"ni tasdiqlaydi, akkauntni butunlay yopmaydi.
 Yopish kerak bo'lsa (ALOHIDA ish, qaror egasiniki): yoki web uchun selfi oqimi (brauzer modeli
 — yangi bog'liqlik), yoki sozlama "yuz yoqilganda o'quvchi faqat ilovadan kiradi" — login
 `deviceId`siz kelsa token BERILMAYDI va o'zbekcha sabab ("ilova orqali kiring") qaytadi.
+
+## 6. O'QUVCHI PAROLLARI SEYFI — login/parol DOIM ko'rinadi (CRM Phase 6, 2026-10-12)
+
+Egasining qarori: "o'quvchi login + paroli administratorlarga doim ko'rinsin; guruh bo'yicha eksport".
+Ilgari ochiq parol faqat `InitialPassword` da — o'quvchi BIRINCHI marta kirguncha — turardi (§3.1), keyin
+faqat "Yangi parol" qolardi. SPEC: `docs/SPEC-crm-upgrade.md` §7 P6.1.
+
+### 6.1. Saqlash — `StudentCredentials` jadvali, AES-256-GCM
+
+- `StudentCredential { UserId (PK), PasswordCipher, Source, UpdatedAt }` — har o'quvchi akkauntiga bitta qator.
+  `Source`: `create` · `reset` · `admin_set` · `self_change` · `backfill`.
+- Shifrlash — `CredentialVault` (`FaceVault` nusxasi): kalit FAQAT `.env` → `CREDENTIAL_VAULT_KEY`
+  (base64, 32 bayt, `openssl rand -base64 32`) → compose `Credentials__VaultKey`. Bazada ham, zaxirada ham
+  YO'Q — baza dump'i o'zi parolni ochmaydi. DataProtection kalitlari (`dpkeys` volume) ATAYIN ishlatilmadi:
+  u volume zaxiraga kirmaydi.
+- ⚠️ **Kalit yo'q/buzuq → HECH NARSA saqlanmaydi** (fail-closed, ochiq matnda hech qachon). Startupda
+  ogohlantirish logi, profil kartasi va guruh oynasida «Parollarni saqlash o'chiq: .env da
+  CREDENTIAL_VAULT_KEY yo'q» (superadminga; boshqalarga umumiy matn). Bu holatda faqat hali ishlatilmagan
+  `InitialPassword` ko'rinadi (eskicha).
+- ⚠️ **Kalit yo'qolsa/almashsa** — saqlangan parollar ochilmaydi (`Unprotect` → `null`, istisno YO'Q):
+  "Parol saqlanmagan" bo'lib ko'rinadi, loginlar ishlayveradi; guruh oynasidan qayta yaratiladi.
+- **FAQAT o'quvchi** (`role = student`). O'qituvchi, xodim, admin va OTA-ONA (`parent`) paroli saqlanmaydi
+  (SPEC §10 #10).
+
+### 6.2. Yozish — "unutib bo'lmaydigan" yo'l: `StudentCredentialInterceptor`
+
+Parol FAQAT `AccountExtensions` orqali yoziladi (`SetInitialPassword(plain, source)`, `SetOwnPassword`,
+`BlockLogin`; `AccountFactory.CreateAccountFor` birinchisini `create` bilan chaqiradi). Ular hash'dan tashqari
+`AppUser.PendingPassword` ni (`[NotMapped]`, `[JsonIgnore]`) qo'yadi, interceptor esa AYNAN o'sha
+`SaveChanges` da (bitta tranzaksiya) seyf qatorini yozadi:
+
+| Hodisa | Seyf |
+|---|---|
+| `set` + kalit bor | qator yoziladi/yangilanadi |
+| `set` + kalit YO'Q | eski qator O'CHIRILADI (aks holda kalit qaytganda NOTO'G'RI parol ko'rinardi) |
+| `clear` (`BlockLogin` — arxiv) | qator o'chiriladi |
+| o'quvchi akkaunti o'chirildi | qator o'chiriladi (`StudentPurge` ham aniq o'chiradi) |
+| o'quvchi emas | hech narsa |
+
+Qaror — `StudentCredentials.Decide` (sof, testlangan). Interceptor `CrmAccountsSetup.AddCrmAccounts` da DI
+`IInterceptor` sifatida ro'yxatdan o'tadi (Program.cs tegilmaydi). Testlar kontekstni qo'lda quradi —
+`TestDb.Sqlite(new StudentCredentialInterceptor(vault))`.
+
+⚠️ **`PasswordHash` ga to'g'ridan-to'g'ri YOZMANG** — interceptor buni ko'rmaydi va seyfdagi parol jimgina
+eskiradi. `StudentCredentialLeakTests.No_direct_password_hash_writes_outside_AccountExtensions` qulflaydi.
+Yangi parol yo'li qo'shsangiz — `AccountExtensions` ni chaqiring (va §2 bo'yicha sessiyalarni tugating).
+
+Manba (source) chaqiruv joyida: akkaunt yaratish (o'quvchi formasi, import, liddan aylantirish, `Credentials`
+GET ning avto-yaratishi) → `create`; har "Yangi parol" va guruh `ensure` → `reset`; formadagi yangi parol va
+`Restore` dagi `NewPassword` → `admin_set` (standart); kabinetdagi o'z almashtirishi → `self_change`.
+
+`InitialPassword` xatti-harakati O'ZGARMADI (§3.1: kirishda tozalanadi, botdagi login xabari).
+
+### 6.3. Ko'rsatish — `StudentCredentials.Reveal`
+
+1. Seyf qatori ochildi → o'sha parol (`known`, manba, vaqt);
+2. aks holda hali ishlatilmagan `InitialPassword` (manba `initial`);
+3. aks holda `known: false` — «Parol saqlanmagan — «Yangi parol» bilan yarating».
+
+⚠️ `InitialPassword` bor bo'lsa u DOIM joriy parol (u hash bilan birga yoziladi va har kirish/o'z
+almashtirishda tozalanadi) — undan farq qiladigan seyf qatori eskirgan (faqat kalit o'chiq paytdagi tiklashdan
+keyin) va yutqazadi.
+
+**ESKI o'quvchilar:** seyfdan oldin kirib bo'lgan o'quvchi paroli hash'dan TIKLANMAYDI — `known: false`.
+Startupdagi bir martalik `StudentCredentialBackfill` (`SeedMarker` `student-credential-backfill-2026-10`)
+faqat hali ishlatilmagan `InitialPassword` larni seyfga ko'chiradi; kalit bo'lmasa belgi qo'yilmaydi va keyingi
+startupda qayta uriniladi. Qolganlari — guruh oynasidagi bir tugma bilan.
+
+### 6.4. Qayerda ko'rinadi (darvoza — §3, BITTA)
+
+| Joy | Endpoint |
+|---|---|
+| O'quvchi profili, chap ustun → «Kirish ma'lumotlari» (login + nusxa, parol yashirin 👁 + nusxa, manba/vaqt, «Yangi parol») | `GET students/{id}/credentials` (+ `known`, `source`, `updatedAt`, `vaultConfigured`) |
+| Guruh → «O'quvchilar» → «Login/parollar» oynasi | `GET classes/{groupId}/credentials` — tirik, arxivlanmagan a'zolar; HECH NARSA yaratmaydi |
+| ↳ «Paroli noma'lumlarga yangi parol yaratish (n)» (tasdiq: «Ularning eski parollari ishlamay qoladi») | `POST …/credentials/ensure` `{ onlyUnknown: true }` — akkaunti yo'qqa akkaunt, `known: false` larga yangi parol (`reset`) + sessiyalar tugaydi; MA'LUM parol tegilmaydi |
+| ↳ «Excel yuklab olish» — «№, F.I.SH., Login, Parol, Telegram, Holat», noma'lum → «(saqlanmagan)» | `GET …/credentials/export` → `login_parollar_{guruh}_{sana}.xlsx`, audit `Group` «Login/parollar eksport qilindi: …» (parolsiz) |
+| Barcha o'quvchilar eksporti / tanlanganlar eksporti | `GET students/export`, `POST students/export-selected` (Parol ustuni endi `HasFullAccess` ga — ilgari faqat superadmin) |
+
+- Klient nusxasi: `lib/studentCreds.ts` → `canStudentCreds` (admin/superadmin yoki yalang `students` /
+  `students.list`). **O'qituvchi HECH QACHON ko'rmaydi** (SPEC §10 #5) — o'qituvchi portali seyfga tegmaydi (test).
+- Parol qaytaradigan HAR javob — `Cache-Control: no-store`.
+- ⚠️ Parol HECH QACHON ro'yxat endpointlari javobiga (o'quvchilar ro'yxati, guruh a'zolari) qo'shilmaydi.
+- Kabinetdagi «Parolni o'zgartirish» ekranida (faqat o'quvchiga): «Eslatma: markaz administratorlari yangi
+  parolingizni ko'ra oladi».
+
+### 6.5. Hech qachon TUSHMAYDI
+
+- **Kunlik JSON zaxira** — `BackupService.ExcludedTables` da `studentCredentials` (+ `SecretScrub` nom bo'yicha
+  `…Password…` va `byte[]` ni baribir olib tashlaydi). `pg_dump` da shifrlangan holda bor — kalitsiz o'qilmaydi.
+- **Read-only MCP** — ustun nomida `Password` bor (`McpReadOnlyGrants.IsSensitiveColumn`) va jadval hech bir
+  vosita `Reads` ida yo'q. ⚠️ Ustun NOMINI o'zgartirmang (`PasswordCipher`) — himoya nom bo'yicha.
+- **Audit / log** — faqat "qayta yaratildi / eksport qilindi" fakti; `PendingPasswordChange.ToString()` parolni
+  chiqarmaydi; arxiv suratlari va API javoblari `PendingPassword` ni serializatsiya qilmaydi (`[JsonIgnore]`).

@@ -52,6 +52,8 @@ import { ExtensionModal } from './ExtensionModal'
 import { TransferGroupModal } from './TransferGroupModal'
 import { ClassMembersModal } from './ClassMembersModal'
 import { GroupStudentsTab, type MemberActionKind } from './detail/GroupStudentsTab'
+import { GroupCredentialsButton } from './detail/GroupCredentialsModal'
+import { canStudentCreds } from '@/lib/studentCreds'
 import { GroupAiPanel } from './GroupAiPanel'
 import { ClassFormModal } from './ClassFormModal'
 import { TelegramMessageModal, type TelegramRecipient } from '../students/TelegramMessageModal'
@@ -1054,6 +1056,12 @@ export function ClassDetailPage() {
               onAdd={() => setMembersOpen(true)}
               onChanged={() => { loadRoster(); reloadMembers() }}
               menu={[]}
+              toolbarExtra={
+                // Login/parollar (CRM Phase 6) — server `HasFullAccess("students.list")` ning nusxasi.
+                canStudentCreds(user?.role, user?.permissions) ? (
+                  <GroupCredentialsButton groupId={id} isSuperAdmin={user?.role === 'superadmin'} />
+                ) : undefined
+              }
               onMemberAction={(kind: MemberActionKind, m: GroupRosterRow) => {
                 openRoster(m)
                 if (kind === 'transfer') setRosterTransferOpen(true)

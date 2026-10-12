@@ -277,16 +277,17 @@ public class AuditFixT7Tests
      * ========================================================================================= */
 
     [Theory]
-    [InlineData("StudentsController.cs", "students.list")]
-    [InlineData("TeachersController.cs", "teachers.list")]
-    public void ResetPassword_Credentials_bilan_bir_xil_darvoza_va_yangi_InitialPassword(string file, string key)
+    // Student reset names its source for the password vault (CRM Phase 6: `reset`, auth-sessions.md §6).
+    [InlineData("StudentsController.cs", "students.list", "user.SetInitialPassword(pwd, PasswordSources.Reset)")]
+    [InlineData("TeachersController.cs", "teachers.list", "user.SetInitialPassword(pwd)")]
+    public void ResetPassword_Credentials_bilan_bir_xil_darvoza_va_yangi_InitialPassword(string file, string key, string setCall)
     {
         var body = Body(Source(file), "public async Task<ActionResult<CredentialsDto>> ResetPassword(");
         var gate = body.IndexOf($"HasFullAccess(User, \"{key}\")", StringComparison.Ordinal);
         Assert.True(gate > 0, "ResetPassword HasFullAccess bilan darvozalanmagan");
         Assert.True(gate < body.IndexOf("GeneratePassword", StringComparison.Ordinal));
         // Credentials / eksport / bot login xabari yangi parolni ko'rsatsin.
-        Assert.Contains("user.SetInitialPassword(pwd)", body);
+        Assert.Contains(setCall, body);
         Assert.DoesNotContain("PasswordHash =", body);
         // Parol tiklash tarixda ko'rinadi (parolning O'ZI emas).
         Assert.Contains("audit.Record(", body);

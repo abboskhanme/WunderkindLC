@@ -80,4 +80,6 @@ bajarilgan topshiriqlar, `ClosedByUserId`.
 
 ⚠️ Arxiv suratiga `PasswordHash` va ochiq `InitialPassword` TUSHMAYDI (`SecretScrub`) — surat kunlik
 Telegram zaxirasiga ham kiradi. Arxivdan tiklangan akkaunt PAROLSIZ bo'ladi: admin yangisini yaratadi.
+`AppUser.PendingPassword` (o'quvchi parollari seyfi uchun) `[JsonIgnore]` — suratga umuman tushmaydi; xodim
+paroli seyfda saqlanmaydi (faqat o'quvchi — `auth-sessions.md` §6).
 

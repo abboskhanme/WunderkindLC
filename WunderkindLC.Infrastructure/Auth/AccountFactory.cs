@@ -73,10 +73,10 @@ public static class AccountFactory
             FullName = fullName,
             Role = role,
             Email = GenerateUsername(db, fullName),
-            // Dastlabki parolni ochiq saqlaymiz — superadmin ko'rishi/eksport uchun (birinchi login'da tozalanadi).
-            InitialPassword = plainPassword,
-            PasswordHash = PasswordHasher.Hash(plainPassword),
         };
+        // Hash + dastlabki ochiq parol (birinchi login'da tozalanadi) + o'quvchi bo'lsa parollar seyfi
+        // (`StudentCredentialInterceptor`, manba `create`) — hammasi BITTA yo'ldan (`AccountExtensions`).
+        user.SetInitialPassword(plainPassword, PasswordSources.Create);
         db.Users.Add(user);
         return user;
     }

@@ -29,7 +29,9 @@ emas, EGASINING YANGI QARORI. Himoya qatlamlari (bittasi ham olib tashlanmasin):
    Prod'dagi kabi PostgreSQL'da tekshirilgan (2026-10-11): o'qish rejimi o'chirilsa ham yozish `permission denied`.
    ⚠️ Nomi nozik USTUN (`McpReadOnlyGrants.IsSensitiveColumn`: `…Url`, `…FileId`, `ChatId`, `Password`, `Token`,
    `Email`, `Permissions`, `Code`, `Answers`, joylashuv…) HECH QACHON berilmaydi — har jadvalda, kelajakdagi
-   migratsiyada qo'shilgani ham: bunday jadvalga USTUN darajasidagi grant beriladi. MCP konteksti modelidan ham
+   migratsiyada qo'shilgani ham: bunday jadvalga USTUN darajasidagi grant beriladi. O'quvchi parollari seyfi
+   (`StudentCredentials.PasswordCipher`) aynan shu nom qoidasi bilan yopiq — jadvalni hech bir vosita `Reads` iga
+   qo'shmang (`auth-sessions.md` §6.5). MCP konteksti modelidan ham
    o'sha ustunlar olib tashlangan (`McpReadOnlyModel`), ya'ni to'liq entity yuklash yopiq ustunni SELECT qilmaydi.
 4. O'z-o'zini tekshirish (`McpReadOnlyRole.SelfTest`) o'tmasa — MCP O'CHIQ (fail-closed). Yozadigan ulanishga
    QAYTISH YO'Q.

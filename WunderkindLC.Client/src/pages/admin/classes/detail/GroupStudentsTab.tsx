@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import {
   IconArrowBackUp,
@@ -73,6 +73,7 @@ export function GroupStudentsTab({
   onMemberAction,
   onChanged,
   menu,
+  toolbarExtra,
 }: {
   groupId: string
   groupName: string
@@ -88,6 +89,8 @@ export function GroupStudentsTab({
   onMemberAction: (kind: MemberActionKind, m: GroupRosterRow) => void
   onChanged: () => void
   menu: MoreMenuItem[]
+  /** Asboblar qatoriga qo'shimcha tugma(lar) — masalan «Login/parollar» (CRM Phase 6). */
+  toolbarExtra?: ReactNode
 }) {
   const navigate = useNavigate()
   const [archiveView, setArchiveView] = useState(false)
@@ -337,6 +340,7 @@ export function GroupStudentsTab({
             <IconPlus className="h-5 w-5" /> O'quvchi qo'shish
           </Button>
         )}
+        {!archiveView && toolbarExtra}
         <div className="ml-auto flex flex-wrap items-center gap-2">
           <Switch
             label="Arxiv o'quvchilar"

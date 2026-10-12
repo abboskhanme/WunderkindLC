@@ -1,6 +1,7 @@
 using WunderkindLC.Infrastructure.Data;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 
 namespace WunderkindLC.Tests;
 
@@ -28,11 +29,33 @@ public sealed class TestDb : IDisposable
     public AppDbContext Context { get; }
 
     private readonly SqliteConnection? _sqliteConnection;
+    private readonly IInterceptor[] _interceptors;
 
-    private TestDb(AppDbContext context, SqliteConnection? sqliteConnection = null)
+    private TestDb(AppDbContext context, SqliteConnection? sqliteConnection = null, IInterceptor[]? interceptors = null)
     {
         Context = context;
         _sqliteConnection = sqliteConnection;
+        _interceptors = interceptors ?? Array.Empty<IInterceptor>();
+    }
+
+    /// <summary>
+    /// <see cref="Sqlite()"/> + EF interceptors — the app gets them from DI (<c>IInterceptor</c>, CRM upgrade §0.2),
+    /// tests build the context by hand, so e.g. the student password vault interceptor is passed here.
+    /// <see cref="NewContext"/> keeps them.
+    /// </summary>
+    public static TestDb Sqlite(params IInterceptor[] interceptors)
+    {
+        var connection = new SqliteConnection("Filename=:memory:");
+        connection.Open();
+
+        var options = new DbContextOptionsBuilder<AppDbContext>()
+            .UseSqlite(connection)
+            .AddInterceptors(interceptors)
+            .Options;
+
+        var context = new AppDbContext(options);
+        context.Database.EnsureCreated();
+        return new TestDb(context, connection, interceptors);
     }
 
     /// <summary>
@@ -88,7 +111,7 @@ public sealed class TestDb : IDisposable
         if (_sqliteConnection is null)
             throw new InvalidOperationException("NewContext() faqat TestDb.Sqlite() bilan ishlaydi");
         return new AppDbContext(new DbContextOptionsBuilder<AppDbContext>()
-            .UseSqlite(_sqliteConnection).Options);
+            .UseSqlite(_sqliteConnection).AddInterceptors(_interceptors).Options);
     }
 
     public void Dispose()

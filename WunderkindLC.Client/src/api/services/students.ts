@@ -15,8 +15,8 @@ export interface UploadedFile {
 }
 
 /**
- * Barcha o'quvchilarni login/parol bilan Excel (.xlsx) ga yuklab oladi (faqat superadmin).
- * Parol faqat foydalanuvchi hali kirmagan bo'lsa to'ldiriladi (kirgach bo'sh).
+ * Barcha o'quvchilarni login/parol bilan Excel (.xlsx) ga yuklab oladi (server: `HasFullAccess("students.list")`).
+ * Parol — seyfdagi JORIY parol (CRM Phase 6); noma'lumi «(saqlanmagan)».
  */
 export async function downloadStudentCredentials(): Promise<void> {
   if (USE_MOCK) {
@@ -37,7 +37,7 @@ export async function downloadStudentCredentials(): Promise<void> {
 }
 
 /** TANLANGAN o'quvchilarning to'liq ma'lumotlarini Excel (.xlsx) ga yuklab oladi
- *  (profil + guruhlar + balans + login; parol faqat superadmin uchun). */
+ *  (profil + guruhlar + balans + login; «Parol» ustuni — to'liq «O'quvchilar» ruxsatiga, CRM Phase 6). */
 export async function downloadSelectedStudents(studentIds: string[]): Promise<void> {
   if (USE_MOCK) {
     alert('Eksport faqat real serverda ishlaydi (VITE_USE_MOCK=false).')

@@ -32,6 +32,14 @@ export interface Credentials {
   /** Ochiq parol (admin topshirishi uchun) */
   password: string
   role: Role
+  /** O'QUVCHI akkauntida (parollar seyfi, CRM Phase 6): parol ma'lummi. `false` — «Parol saqlanmagan». */
+  known?: boolean | null
+  /** create · reset · admin_set · self_change · backfill · initial */
+  source?: string | null
+  /** Parol saqlangan vaqt ("yyyy-MM-ddTHH:mm:ss", markaz vaqti) */
+  updatedAt?: string | null
+  /** `.env` da CREDENTIAL_VAULT_KEY bor — yo'q bo'lsa parollar saqlanmaydi */
+  vaultConfigured?: boolean | null
 }
 
 /* ---------- Admin dashboard ---------- */

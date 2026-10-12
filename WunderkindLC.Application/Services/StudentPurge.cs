@@ -232,6 +232,8 @@ public static class StudentPurge
             db.DeviceTokens.RemoveRange(await db.DeviceTokens.Where(x => x.UserId == userId).ToListAsync(ct));
             db.UserNotifications.RemoveRange(await db.UserNotifications.Where(x => x.UserId == userId).ToListAsync(ct));
             db.TrustedDevices.RemoveRange(await db.TrustedDevices.Where(x => x.UserId == userId).ToListAsync(ct));
+            // Parollar seyfi (CRM Phase 6) — akkaunt bilan birga.
+            db.StudentCredentials.RemoveRange(await db.StudentCredentials.Where(x => x.UserId == userId).ToListAsync(ct));
             db.ChatMessages.RemoveRange(await db.ChatMessages.Where(x => x.SenderUserId == userId).ToListAsync(ct));
             db.Users.Remove(user);
         }
