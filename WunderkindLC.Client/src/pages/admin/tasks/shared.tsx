@@ -116,6 +116,8 @@ export function TaskFilterBar({
           <option value="today">Bugungi</option>
           <option value="overdue">Kechikkan</option>
           <option value="done">Bajarilgan</option>
+          <option value="awaiting">Tasdiq kutmoqda</option>
+          <option value="approved">Tasdiqlangan</option>
         </Select>
       )}
 

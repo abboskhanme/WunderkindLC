@@ -1,10 +1,10 @@
 import { useDraggable } from '@dnd-kit/core'
 import { CSS } from '@dnd-kit/utilities'
-import { Archive, Eye, ListChecks, MessageSquare, Repeat, Trash2 } from 'lucide-react'
+import { Archive, BadgeCheck, Eye, Hourglass, ListChecks, MessageSquare, Repeat, Trash2, Undo2 } from 'lucide-react'
 import type { WorkTask } from '@/api/services/workTasks'
 import { DropdownMenu, type DropdownMenuItem } from '@/components/ui/DropdownMenu'
 import { cn } from '@/lib/utils'
-import { priorityOf, repeatLabel } from './model'
+import { TASK_STATES, priorityOf, repeatLabel, stateOf } from './model'
 import { AssigneeChip, DueChip } from './shared'
 
 export interface TaskCardActions {
@@ -36,6 +36,7 @@ export function TaskCardContent({
   dragging?: boolean
 }) {
   const p = priorityOf(task.priority)
+  const state = stateOf(task)
 
   const menu: DropdownMenuItem[] = []
   if (actions) {
@@ -122,6 +123,29 @@ export function TaskCardContent({
             className="inline-flex items-center gap-1 rounded-full bg-violet-50 px-2 py-0.5 text-[10.5px] font-semibold text-violet-600"
           >
             <Repeat className="h-3 w-3" />
+          </span>
+        )}
+
+        {/* Tasdiqlash bosqichi (CRM Phase 5) — faqat bajarilgan, tasdiq talab qiladigan topshiriqda. */}
+        {(state === 'awaiting_approval' || state === 'approved') && (
+          <span
+            className={cn(
+              'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10.5px] font-semibold',
+              TASK_STATES[state].chip,
+            )}
+          >
+            {state === 'approved' ? <BadgeCheck className="h-3 w-3" /> : <Hourglass className="h-3 w-3" />}
+            {TASK_STATES[state].label}
+          </span>
+        )}
+
+        {(task.returnCount ?? 0) > 0 && (
+          <span
+            title="Necha marta qaytarilgan"
+            className="inline-flex items-center gap-1 rounded-full bg-orange-50 px-2 py-0.5 text-[10.5px] font-semibold text-orange-700"
+          >
+            <Undo2 className="h-3 w-3" />
+            {task.returnCount}
           </span>
         )}
       </div>

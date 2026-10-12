@@ -1059,8 +1059,11 @@ public record GroupJournalDto(
 /// <summary>Bitta darsning BIR MARTALIK boshqa kunga ko'chirilishi (shu oyga tegishli). ToDate — jurnalda
 /// ko'rinadigan yangi ustun; FromDate — asl (endi yo'q) kun; Time — yangi vaqt (ixtiyoriy, "HH:mm").</summary>
 public record LessonRescheduleDto(string Id, string FromDate, string ToDate, string? Time);
-/// <summary>Darsni boshqa kunga ko'chirish so'rovi (bir martalik).</summary>
-public record RescheduleLessonRequest(string ClassId, string FromDate, string ToDate, string? Time);
+/// <summary>Darsni boshqa kunga ko'chirish so'rovi (bir martalik). <c>Force</c> + <c>ForceReason</c> —
+/// band xona/o'qituvchiga baribir ko'chirish: FAQAT admin jurnalida va FAQAT superadmin, sabab bilan
+/// (o'qituvchi yo'li ularni e'tiborsiz qoldiradi; CRM Phase 5).</summary>
+public record RescheduleLessonRequest(
+    string ClassId, string FromDate, string ToDate, string? Time, bool Force = false, string? ForceReason = null);
 /// <summary>Bitta dars (sana) uchun BARCHA o'quvchiga birdan davomat. <see cref="Absent"/>=false → hammasi KELDI
 /// (sabablar tozalanadi). =true → hammasi KELMADI: <see cref="ReasonId"/> berilsa shu sabab, aks holda standart
 /// "Sababsiz" (yo'q bo'lsa avtomatik yaratiladi). Ikkala holatda ham dars "o'tildi" (Conducted) bo'ladi.</summary>
@@ -1948,7 +1951,7 @@ public record ContractVisibilityRequest(bool Visible);
 /// <summary>O'quv xonasi (auditoriya).</summary>
 public record RoomDto(
     string Id, string Name, int Capacity, string? Building, string? Location,
-    bool IsActive, string CreatedAt);
+    bool IsActive, string CreatedAt, int? Floor = null);
 
 /// <summary>
 /// Xona samaradorlik metrikasi — bandlik, o'quvchi soni, haftalik bandlik foizi.
@@ -1973,11 +1976,13 @@ public record RoomUtilizationDto(
     List<string> GroupNames);
 
 /// <summary>Xona yaratish so'rovi.</summary>
-public record CreateRoomRequest(string Name, int Capacity, string? Building, string? Location);
+public record CreateRoomRequest(string Name, int Capacity, string? Building, string? Location, int? Floor = null);
 
 /// <summary>Xona tahrirlash so'rovi. <c>IsActive = null</c> — faollik TEGILMAYDI (ilgari majburiy
-/// <c>bool</c> edi: yubormagan klient xonani jimgina nofaol qilardi).</summary>
-public record UpdateRoomRequest(string Name, int Capacity, string? Building, string? Location, bool? IsActive = null);
+/// <c>bool</c> edi: yubormagan klient xonani jimgina nofaol qilardi). <c>Floor = null</c> — qavat TEGILMAYDI,
+/// <c>ClearFloor = true</c> — qavat tozalanadi («Qavat ko'rsatilmagan»), <c>RoomFloors.Resolve</c>.</summary>
+public record UpdateRoomRequest(string Name, int Capacity, string? Building, string? Location, bool? IsActive = null,
+    int? Floor = null, bool ClearFloor = false);
 
 /// <summary>
 /// Xona sig'im samaradorligi — Total Slots = Capacity × GroupCount,
@@ -3995,14 +4000,18 @@ public record WorkTaskAssigneeDto(
     string UserId, string FullName, string Role, string Position, string? AvatarUrl,
     bool HasTelegram, int OpenCount, int OverdueCount);
 
-/// <summary>Doskadagi/ro'yxatdagi bitta topshiriq (kartochka uchun yetarli barcha maydonlar).</summary>
+/// <summary>Doskadagi/ro'yxatdagi bitta topshiriq (kartochka uchun yetarli barcha maydonlar).
+/// TASDIQLASH (CRM Phase 5): <paramref name="State"/> — <c>open</c> | <c>overdue</c> | <c>awaiting_approval</c> |
+/// <c>approved</c> | <c>done</c> (<c>WorkTaskApproval.State</c>).</summary>
 public record WorkTaskDto(
     string Id, string BoardId, string ColumnId, string Title, string Description,
     string AssigneeId, string AssigneeName, string? AssigneeAvatarUrl,
     string CreatedById, string CreatedByName,
     int Priority, string? DueDate, string? DueTime, int Order, List<string> Tags,
     bool IsDone, bool IsOverdue, int StepsTotal, int StepsDone, int CommentCount,
-    string CreatedAt, string UpdatedAt, string? CompletedAt, string Repeat, bool IsArchived);
+    string CreatedAt, string UpdatedAt, string? CompletedAt, string Repeat, bool IsArchived,
+    bool ApprovalRequired = false, string? ApprovedAt = null, string ApprovedByName = "", int ReturnCount = 0,
+    string State = "open");
 
 /// <summary>Topshiriq ichidagi qadam (checklist bandi).</summary>
 public record WorkTaskStepDto(string Id, string Title, bool Done, string? DoneAt, int Order);
@@ -4018,9 +4027,12 @@ public record WorkTaskDetailDto(
 
 /// <summary>Topshiriq yaratish/tahrirlash payload'i. <paramref name="ColumnId"/> bo'sh bo'lsa —
 /// doskaning BIRINCHI ustuni olinadi.</summary>
+/// <para><c>ApprovalRequired</c> — «Bajarilgach tasdiqlash talab qilinsin»; <c>null</c>: yaratishda standart
+/// (mas'ul boshqa odam bo'lsa — yoqiq, <c>WorkTaskApproval.DefaultRequired</c>), tahrirda — tegilmaydi.</para>
 public record WorkTaskInput(
     string BoardId, string? ColumnId, string Title, string? Description, string? AssigneeId,
-    int Priority, string? DueDate, string? DueTime, List<string>? Tags, string? Repeat);
+    int Priority, string? DueDate, string? DueTime, List<string>? Tags, string? Repeat,
+    bool? ApprovalRequired = null);
 
 /// <summary>Sudrab ko'chirish: maqsad ustun + ustun ichidagi yangi o'rin.</summary>
 public record WorkTaskMoveInput(string ColumnId, int Order);
@@ -4033,9 +4045,12 @@ public record WorkTaskSettingsDto(bool Enabled, int Hour, int Minute);
 
 /// <summary>Nazorat panelidagi bitta xodim qatori. <paramref name="Rate"/> — bajarilish foizi
 /// (bajarilgan / jami, 0-100); <paramref name="DoneOnTime"/> — muddatida yopilganlar.</summary>
+/// <para><c>AwaitingApproval</c> / <c>Approved</c> — bajarilgan, tasdiq kutayotgan / tasdiqlangan;
+/// <c>Returned</c> — qaytarilish soni (yig'indi, CRM Phase 5).</para>
 public record WorkTaskStatRowDto(
     string UserId, string FullName, string Position, int Total, int Done, int Open,
-    int Overdue, int DueToday, int DoneOnTime, int DoneLate, int Rate);
+    int Overdue, int DueToday, int DoneOnTime, int DoneLate, int Rate,
+    int AwaitingApproval = 0, int Approved = 0, int Returned = 0);
 
 /// <summary>Kunlik dinamika nuqtasi (yaratilgan / bajarilgan).</summary>
 public record WorkTaskTrendPointDto(string Date, int Created, int Done);
@@ -4043,7 +4058,8 @@ public record WorkTaskTrendPointDto(string Date, int Created, int Done);
 /// <summary>Nazorat paneli — umumiy raqamlar, xodimlar kesimi, dinamika va "e'tibor talab qiladi".</summary>
 public record WorkTaskDashboardDto(
     int Total, int Done, int Open, int Overdue, int DueToday, int Rate,
-    List<WorkTaskStatRowDto> Rows, List<WorkTaskTrendPointDto> Trend, List<WorkTaskDto> Attention);
+    List<WorkTaskStatRowDto> Rows, List<WorkTaskTrendPointDto> Trend, List<WorkTaskDto> Attention,
+    int AwaitingApproval = 0, int Approved = 0);
 
 /// <summary>Rejalashtirilgan xarajat formasi (Moliya → «Rejalashtirilgan xarajatlar»).</summary>
 public record PlannedExpensePayload(

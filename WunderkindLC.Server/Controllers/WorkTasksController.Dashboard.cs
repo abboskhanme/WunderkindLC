@@ -96,6 +96,9 @@ public partial class WorkTasksController
         var done = tasks.Count(IsDone);
         var overdue = tasks.Count(IsOverdue);
         var dueToday = tasks.Count(t => !IsDone(t) && t.DueDate == todayIso);
+        // TASDIQLASH monitoringi (CRM Phase 5): bajarilgan, tasdiq kutayotgan / tasdiqlangan.
+        bool Awaiting(WorkTask t) => IsDone(t) && t.ApprovalRequired && t.ApprovedAt is null;
+        bool Approved(WorkTask t) => IsDone(t) && t.ApprovalRequired && t.ApprovedAt is not null;
 
         var names = await db.Users
             .Where(u => u.Role == Roles.Admin || u.Role == Roles.Staff || u.Role == Roles.SuperAdmin)
@@ -111,7 +114,8 @@ public partial class WorkTasksController
                 mine.Count(IsOverdue),
                 mine.Count(t => !IsDone(t) && t.DueDate == todayIso),
                 myDone.Count(OnTime), myDone.Count(t => !OnTime(t)),
-                mine.Count == 0 ? 0 : (int)Math.Round(myDone.Count * 100.0 / mine.Count));
+                mine.Count == 0 ? 0 : (int)Math.Round(myDone.Count * 100.0 / mine.Count),
+                mine.Count(Awaiting), mine.Count(Approved), mine.Sum(t => t.ReturnCount));
         })
             .Where(r => r.Total > 0)
             .OrderByDescending(r => r.Overdue).ThenByDescending(r => r.Open).ThenBy(r => r.FullName)
@@ -138,7 +142,8 @@ public partial class WorkTasksController
         return new WorkTaskDashboardDto(
             total, done, total - done, overdue, dueToday,
             total == 0 ? 0 : (int)Math.Round(done * 100.0 / total),
-            rows, trend, await MapAsync(attention));
+            rows, trend, await MapAsync(attention),
+            tasks.Count(Awaiting), tasks.Count(Approved));
     }
 
     // ---------- Kunlik eslatma sozlamalari ----------

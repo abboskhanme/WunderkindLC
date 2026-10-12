@@ -127,6 +127,8 @@ export async function rescheduleLesson(
   fromDate: string,
   toDate: string,
   time?: string,
+  /** Band xona/o'qituvchiga baribir ko'chirish sababi — FAQAT superadmin (aks holda 409, CRM Phase 5). */
+  forceReason?: string,
 ): Promise<LessonReschedule> {
   if (USE_MOCK) {
     await delay(120)
@@ -134,6 +136,7 @@ export async function rescheduleLesson(
   }
   const { data } = await api.post<LessonReschedule>('/admin/journal/reschedule', {
     classId, fromDate, toDate, time: time || null,
+    ...(forceReason ? { force: true, forceReason } : {}),
   })
   return data
 }

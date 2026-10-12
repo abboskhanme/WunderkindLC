@@ -69,7 +69,19 @@ export interface WorkTask {
   completedAt: string | null
   repeat: string
   isArchived: boolean
+  /** «Bajarilgach tasdiqlash talab qilinsin» (boshqa odamga berilganda standart yoqiq). */
+  approvalRequired?: boolean
+  /** Tasdiqlangan vaqt (null — hali tasdiqlanmagan). */
+  approvedAt?: string | null
+  approvedByName?: string
+  /** Necha marta qaytarilgan. */
+  returnCount?: number
+  /** open | overdue | awaiting_approval | approved | done (server `WorkTaskApproval.State`). */
+  state?: WorkTaskState
 }
+
+/** Topshiriq holati — server `WorkTaskApproval.State` bilan bir xil (CRM Phase 5). */
+export type WorkTaskState = 'open' | 'overdue' | 'awaiting_approval' | 'approved' | 'done'
 
 export interface WorkTaskStep {
   id: string
@@ -114,6 +126,8 @@ export interface WorkTaskInput {
   dueTime?: string | null
   tags?: string[]
   repeat?: string
+  /** Yaratishda yuborilmasa — standart (mas'ul boshqa odam bo'lsa yoqiq); tahrirda yuborilmasa — tegilmaydi. */
+  approvalRequired?: boolean
 }
 
 export interface WorkTaskStatRow {
@@ -128,6 +142,12 @@ export interface WorkTaskStatRow {
   doneOnTime: number
   doneLate: number
   rate: number
+  /** Bajarilgan, tasdiq kutayotgan. */
+  awaitingApproval?: number
+  /** Tasdiqlangan. */
+  approved?: number
+  /** Qaytarilishlar soni (yig'indi). */
+  returned?: number
 }
 
 export interface WorkTaskTrendPoint {
@@ -146,6 +166,8 @@ export interface WorkTaskDashboard {
   rows: WorkTaskStatRow[]
   trend: WorkTaskTrendPoint[]
   attention: WorkTask[]
+  awaitingApproval?: number
+  approved?: number
 }
 
 export interface WorkTaskSettings {
@@ -157,9 +179,12 @@ export interface WorkTaskSettings {
 /** Ro'yxat filtrlari — doska, ro'yxat va kalendar AYNAN shu endpointdan oziqlanadi. */
 export interface WorkTaskQuery {
   boardId?: string
+  /** `me` — joriy foydalanuvchi. */
   assigneeId?: string
+  /** Topshiriq bergan (`me` — joriy foydalanuvchi). */
+  createdById?: string
   q?: string
-  /** open | done | overdue | today */
+  /** open | done | overdue | today | awaiting | approved */
   status?: string
   priority?: number
   from?: string
@@ -245,6 +270,18 @@ export async function updateTask(id: string, input: WorkTaskInput): Promise<Work
 /** Sudrab ko'chirish — maqsad ustun va ustun ichidagi o'rin. */
 export async function moveTask(id: string, columnId: string, order: number): Promise<WorkTask> {
   const { data } = await api.put<WorkTask>(`/admin/work-tasks/${id}/move`, { columnId, order })
+  return data
+}
+
+/** Tasdiqlash — faqat topshiriq bergan xodim yoki admin (aks holda 403 + sabab). */
+export async function approveTask(id: string): Promise<WorkTask> {
+  const { data } = await api.put<WorkTask>(`/admin/work-tasks/${id}/approve`)
+  return data
+}
+
+/** Sabab bilan qaytarish — topshiriq doskaning birinchi ustuniga tushadi, mas'ulga xabar ketadi. */
+export async function returnTask(id: string, reason: string): Promise<WorkTask> {
+  const { data } = await api.put<WorkTask>(`/admin/work-tasks/${id}/return`, { reason })
   return data
 }
 

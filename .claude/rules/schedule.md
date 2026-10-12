@@ -3,7 +3,9 @@
 "Future → Jadval: bo'sh oraliqlar" (`/admin/jadval/bosh-oraliqlar`, ruxsat `schedule.timetable`).
 
 > ⚠️ 2026-09-18 dan `/admin/jadval` (menyuda **Guruh → Dars jadvali**) — edutizimdagidek bosh
-> sahifaning jadval to'ri (`AdminDashboard scheduleOnly`, `GET /api/admin/schedule/grid`).
+> sahifaning jadvali (`AdminDashboard scheduleOnly`). ⚠️ 2026-10 dan (CRM Phase 5) u **SANALI**:
+> «Kun» / «Hafta», `GET /api/admin/schedule/dated` — §8. Eski hafta-kuni shabloni (`schedule/grid`,
+> kun tugmalari) sahifalardan olib tashlandi; endpoint qoldi (eski eksport `?day=`).
 > Quyidagi bo'sh oraliq/tavsiya tahlili edutizimda YO'Q, shuning uchun "Future" ga ko'chdi
 > (`docs/EDUTIZIM-PARITY.md`). Qoidalar o'zgarmadi.
 Migratsiya KERAK EMAS — modul mavjud `Group` maydonlaridan hisoblanadi.
@@ -35,8 +37,9 @@ EMAS**: u har xonada har kuni rost bo'lardi va ro'yxatni foydasiz uzun qilardi. 
 orada qolib ketgan teshik — *"4-soatda dars bor, 5-soat bo'sh, 6-soatda yana dars"*.
 
 ⚠️ **Ustma-ust tushgan darslar avval BIRLASHTIRILADI** (`MergeSlots`). Xona/o'qituvchi ikki
-marta band qilingan bo'lishi mumkin — `RoomConflictService` to'qnashuvni faqat OGOHLANTIRADI,
-rad etmaydi. Birlashtirmasak "10:30 → 10:00" kabi manfiy teshik chiqardi.
+marta band qilingan bo'lishi mumkin — 2026-10 gacha to'qnashuv faqat OGOHLANTIRILARDI (eski
+ma'lumotda qolgan), endi esa QAT'IY taqiq (§8), lekin superadmin sabab bilan o'tkaza oladi.
+Birlashtirmasak "10:30 → 10:00" kabi manfiy teshik chiqardi.
 
 ⚠️ Standart chegara **60 daqiqa** (`DefaultMinGapMinutes`): bazadagi eng qisqa dars 60 daqiqa,
 ya'ni undan kalta oraliqqa baribir hech narsa sig'maydi.
@@ -98,3 +101,61 @@ sifatida ko'rib chiqilsin (bu qoidaga tayanadi, uni almashtirmaydi).
 - Bandlikni `IsFree` bilan tekshiring (yarim-ochiq oraliq: `[start, end)` — tegib turgan darslar
   to'qnashmaydi).
 - Tashlab yuborilgan guruhlar SONINI qaytaring — jimgina yo'qotmang.
+
+## 8. SANALI JADVAL, QAVATLAR va TO'QNASHUV TAQIG'I (CRM Phase 5, 2026-10)
+
+Migratsiya `CrmWorkspace` — `Rooms.Floor` (`int?`). Backfill YO'Q (eski xonalar «Qavat ko'rsatilmagan»).
+
+### 8.1. «Kun» / «Hafta» — haqiqiy sanadagi darslar
+
+`GET /api/admin/schedule/dated?from=&to=` (`schedule.timetable`; bo'sh — bugun; ko'pi bilan **7 kun**,
+teskari/buzuq oraliq — 400). Manba — **`AttendanceWatch.LessonsOn`** (o'qituvchi jadvali, darslar monitoringi va
+davomat eslatmasi bilan BITTA manba): guruh kunlari + bir martalik KO'CHIRISHLAR (dars YANGI sana/vaqtida,
+`moved`), guruh umri (`StartDate`..`EndDate`/arxiv), O'RINBOSAR (`substituteTeacherName`). Qoida va yuklash —
+`DatedSchedule` (`Build` sof, `DatedScheduleTests`). Kesh — `DataCache` `schedule:dated:{from}:{to}` (bog'liq
+turlar: Group, Teacher, Subject, Room, StudentGroup, Student, LessonNote, LessonReschedule,
+SubstituteTeacherAssignment).
+
+- Javob: `rooms` (BARCHA faol xona + darsi bor nofaol/eski matnli xona — dars jimgina yo'qolmasin), `teachers`
+  (arxivlanmaganlar + dars o'tadiganlar), `lessons` (`members` = `SeatHolders`, `attendanceTaken` = jurnalda
+  «o'tildi»), `skippedGroups` (kunsiz/vaqti buzuq guruhlar SONI).
+- Klient (`lib/scheduleDated.ts`, testlari bilan): manzilda `?date=&view=day|week&groupBy=room|teacher&layout=list`
+  + filtrlar (`teacher`, `group`, `course`, `room`, `floor`, `status`), `replace` bilan. ⚠️ O'QITUVCHI filtri
+  EGASI ham, O'RINBOSARI ham bo'yicha; «o'qituvchi bo'yicha» ustunlarda dars — shu kuni uni O'TADIGAN odamda.
+- «Kun» — mavjud to'r/ro'yxat komponentlari (`ScheduleGridView`/`ListView`), xona ustunlari **QAVAT sarlavhalari**
+  ostida («1-qavat», …, «Qavat ko'rsatilmagan»), qavat o'sish tartibida, qavat ichida tabiiy nom. «Hafta»
+  (`WeekBoard`) — qatorlar xona (qavat bo'yicha) yoki o'qituvchi, ustunlar Dushanba–Yakshanba, katakda
+  «14:00 Guruh» chiplari, «ko'chirilgan» / «o'rinbosar: …» belgilari.
+- Eksport: `GET export?date=yyyy-MM-dd` — SANALI kun (`DatedSchedule.ToGrid` → o'sha `ScheduleGridExport`);
+  `?day=` (shablon) eski havolalar uchun qoldi.
+
+### 8.2. Qavat — `Room.Floor`
+
+−2..50 (`RoomFloors`, sof). Tahrirda `floor` yuborilmasa — TEGILMAYDI (`IsActive` dagi qoida), tozalash —
+`clearFloor: true`. Audit `Room` — qavat o'zgarishi matnda («qavat: 1-qavat → 2-qavat»).
+
+### 8.3. ⚠️ TO'QNASHUV — QAT'IY TAQIQ (409)
+
+Qoida — **`ScheduleConflicts`** (sof, `ScheduleConflictsTests`); `RoomConflictService` faqat IO o'rami. Ikki guruh
+to'qnashadi: ikkalasi arxivlanmagan, kunlari va vaqti to'g'ri, umumiy hafta kuni, yarim-ochiq vaqtlari kesishadi,
+**sana oraliqlari** `[StartDate|−∞, EndDate|+∞]` kesishadi va **xona** (`RoomId`) yoki **o'qituvchi** (`TeacherId`)
+bir xil.
+
+| Joy | Nima |
+|---|---|
+| `ClassesController.Create` · `Update` · `Unarchive` | 409 `{ roomConflict, message: "Jadvalda to'qnashuv bor — saqlanmadi", conflicts, canForce }` |
+| `Update` | ⚠️ FAQAT jadval maydoni (xona, o'qituvchi, kunlar, vaqt, boshlanish/tugash sanasi) O'ZGARGANDA (`ScheduleChanged`) — bazada allaqachon to'qnashib turgan guruhning nomini tuzatish bloklanmaydi |
+| `JournalService.RescheduleLessonAsync` | yangi sana/vaqt o'sha kunning HAQIQIY darslari bilan (xona yoki shu kuni darsni o'tadigan o'qituvchi) — `RescheduleConflicts`; rad matni «Bu vaqtda xona/o'qituvchi band: {guruh} {HH:mm–HH:mm}» |
+| O'rinbosar tayinlash | o'zgarmadi — faqat ogohlantirish |
+| `CompleteAndTransfer` (superadmin) | tekshirilmaydi: yangi guruh yopilayotgan guruhning o'rnini oladi |
+
+- ⚠️ **Baribir saqlash — FAQAT SUPERADMIN va SABAB bilan** (`ScheduleConflicts.Decide`, hard rol
+  `User.IsInRole(SuperAdmin)` — `[AdminPerm]` admin'ni ham o'tkazardi). `force=true&forceReason=...`; sababsiz —
+  409 «Baribir saqlash uchun sababni yozing». Audit `Group`: «Jadval to'qnashuvi bilan saqlandi: {ro'yxat} — sabab: …».
+  Boshqalar uchun `force` E'TIBORSIZ (jimgina o'tkazilmaydi). Dars ko'chirishda ham shu: faqat admin jurnali
+  (`JournalController`, `RescheduleLessonRequest.Force/ForceReason`), o'qituvchi yo'li hech qachon majburlamaydi
+  (`ScheduleConflictException` → 400 matn bilan).
+- `GET /api/admin/schedule/conflicts` — bazada QOLGAN to'qnashuv juftliklari (`ScheduleConflicts.AllPairs`); jadval
+  sahifasida «Jadvalda {n} ta to'qnashuv bor» banneri.
+- Klient: `lib/scheduleConflicts.ts` (`scheduleConflictOf` — 409 ni o'qish) + `ScheduleConflictModal` — forma
+  YOPILMAYDI, superadmin «Sabab» + «Baribir saqlash» ni ko'radi, xato oynaning o'zida.

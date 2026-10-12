@@ -147,12 +147,26 @@ public class JournalController(
     [HttpPost("reschedule")]
     public async Task<ActionResult<LessonRescheduleDto>> Reschedule(RescheduleLessonRequest req)
     {
+        // Band xona/o'qituvchiga ko'chirish — QAT'IY taqiq (409); faqat SUPERADMIN sabab bilan "baribir"
+        // ko'chira oladi (CRM Phase 5, ScheduleConflicts.Decide — guruh formasi bilan bir xil qoida).
+        var isSuper = User.IsInRole(WunderkindLC.Domain.Roles.SuperAdmin);
+        var decision = ScheduleConflicts.Decide(1, req.Force, req.ForceReason, isSuper);
         try
         {
             var actor = User.FindFirst(System.Security.Claims.ClaimTypes.Name)?.Value;
             var rec = await JournalService.RescheduleLessonAsync(
-                db, req.ClassId, req.FromDate, req.ToDate, req.Time, actor, isAdmin: IsAdminPath, audit);
+                db, req.ClassId, req.FromDate, req.ToDate, req.Time, actor, isAdmin: IsAdminPath, audit,
+                forceConflict: decision.Verdict == ScheduleConflicts.Verdict.Forced, forceReason: decision.Reason);
             return new LessonRescheduleDto(rec.Id, rec.FromDate, rec.ToDate, rec.Time);
+        }
+        catch (ScheduleConflictException ex)
+        {
+            return StatusCode(StatusCodes.Status409Conflict, new
+            {
+                roomConflict = true,
+                message = decision.Message == ScheduleConflicts.ReasonRequiredMessage ? decision.Message : ex.Message,
+                canForce = isSuper,
+            });
         }
         catch (InvalidOperationException ex)
         {

@@ -977,6 +977,8 @@ export interface Room {
   location?: string
   isActive: boolean
   createdAt: string
+  /** Qavat (−2..50); null — ko'rsatilmagan (CRM Phase 5, sanali jadvalda qavat sarlavhalari). */
+  floor?: number | null
 }
 
 export interface RoomUtilization {

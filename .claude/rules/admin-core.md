@@ -26,6 +26,8 @@ Audit (2026-10-07) natijasida yozilgan. Qoidalarning sof qismi — `CatalogGuard
   guruh formasida xona bo'sh ko'rinib, keyingi saqlashda tushib qolardi. Tahrirda `isActive: false`
   ham AYNAN shu darvozadan o'tadi.
 - Nom noyobligi faqat FAOL xonalar orasida.
+- **Qavat** (`Room.Floor`, −2..50, CRM Phase 5): tahrirda yuborilmasa TEGILMAYDI, `clearFloor` — tozalaydi
+  (`RoomFloors`). Sanali jadval xona ustunlarini shu bo'yicha guruhlaydi (`schedule.md` §8.2).
 - Har yaratish/tahrir/o'chirish — audit `Room` ("Guruhlar" bo'limi).
 
 ## 2. Kurslar katalogi (`SubjectsController`)

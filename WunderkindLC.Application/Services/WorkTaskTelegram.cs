@@ -101,6 +101,30 @@ public static class WorkTaskTelegram
             .ToArray(),
     };
 
+    // ---------- TASDIQLASH (CRM Phase 5, topshiriqlar.md §8) ----------
+
+    /// <summary>Callback data: "wtok:{taskId}" — topshiriq bergan xodim (yoki admin) bajarilganini TASDIQLAYDI.</summary>
+    public const string CallbackApprove = "wtok:";
+
+    /// <summary>Topshiriq bergan xodimga: mas'ul bajardi — tasdiqlang.</summary>
+    public static string ApprovalRequestText(WorkTask t, string assigneeName) =>
+        $"✅ {(string.IsNullOrWhiteSpace(assigneeName) ? "Mas'ul" : assigneeName)} topshiriqni bajardi: «{t.Title}». Tasdiqlang.";
+
+    /// <summary>"Tasdiqlash" tugmasi.</summary>
+    public static object ApproveKeyboard(string taskId) => new
+    {
+        inline_keyboard = new[]
+        {
+            new object[] { new { text = "✅ Tasdiqlash", callback_data = CallbackApprove + taskId } },
+        },
+    };
+
+    /// <summary>Mas'ulga: topshiriq tasdiqlandi.</summary>
+    public static string ApprovedText(WorkTask t) => $"👍 Topshiriq tasdiqlandi: «{t.Title}»";
+
+    /// <summary>Mas'ulga: topshiriq sabab bilan qaytarildi.</summary>
+    public static string ReturnedText(WorkTask t, string reason) => $"↩️ Topshiriq qaytarildi: «{t.Title}» — {reason}";
+
     /// <summary>Telegram tugma matni uzun bo'lmasligi uchun qisqartma.</summary>
     private static string Cut(string s, int max = 40) =>
         s.Length <= max ? s : s[..(max - 1)].TrimEnd() + "…";

@@ -17,7 +17,7 @@ namespace WunderkindLC.Server.Controllers;
 [Authorize]
 [AdminPerm("schedule.timetable")]
 [Route("api/admin/schedule")]
-public class ScheduleController(ScheduleService schedule) : ControllerBase
+public partial class ScheduleController(ScheduleService schedule) : ControllerBase
 {
     /// <summary>Haftalik jadval: barcha darslar, xonalar/o'qituvchilar ro'yxati va tig'izlik.</summary>
     [HttpGet]
@@ -50,9 +50,25 @@ public class ScheduleController(ScheduleService schedule) : ControllerBase
         [FromQuery] string? teacherId = null,
         [FromQuery] string? roomId = null,
         [FromQuery] string? groupId = null,
-        [FromQuery] string? status = null)
+        [FromQuery] string? status = null,
+        [FromQuery] string? date = null)
     {
         var today = AppClock.Today;
+        // `date` (CRM Phase 5) — the DATED day: real lessons of that date (moves, substitutes, lifetime);
+        // `day` (weekday template) is kept for old links.
+        if (!string.IsNullOrWhiteSpace(date))
+        {
+            var (d, _, error) = DatedSchedule.ParseRange(date, date, today);
+            if (error is not null) return BadRequest(new { message = error });
+            var dayIdx = ((int)d.DayOfWeek + 6) % 7;
+            var dated = await LoadDatedAsync(d, d);
+            var datedFilter = ScheduleGridExport.MakeFilter(
+                dayIdx, groupBy, fromHour, toHour, courseId, teacherId, roomId, todayDay: dayIdx, groupId, status);
+            var datedBytes = ExcelExport.Build(ScheduleGridExport.Sheets(DatedSchedule.ToGrid(dated, dayIdx), datedFilter));
+            return File(datedBytes,
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                $"dars_jadvali_{d:yyyy-MM-dd}.xlsx");
+        }
         var filter = ScheduleGridExport.MakeFilter(
             day, groupBy, fromHour, toHour, courseId, teacherId, roomId,
             todayDay: ((int)today.DayOfWeek + 6) % 7, groupId, status);

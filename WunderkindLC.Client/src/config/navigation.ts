@@ -233,6 +233,9 @@ export const navByRole: Record<Role, NavItem[]> = {
         },
         // Faqat ROLLAR ro'yxati va ularning ruxsatlari.
         { label: 'Rollar', to: '/admin/boshqaruv/rollar', perm: 'staff' },
+        // Topshiriqlar (Kanban + tasdiqlash) — CRM Phase 5 da Future'dan QAYTARILDI: topshiriq bergan
+        // xodim bajarilganini tasdiqlaydi, ya'ni bo'lim kundalik ish bo'ldi. Marshrut o'zgarmagan.
+        { label: 'Topshiriqlar', to: '/admin/topshiriqlar', perm: 'tasks' },
         // HR: vakansiyalar + qabul voronkasi va 30 kunlik moslashuv (uchrashuv talabi, Future'dan chiqarildi).
         { label: 'Vakansiyalar', to: '/admin/boshqaruv/vacancies', perm: 'vacancies.list' },
         // Yangi xodimning 30 kunlik moslashuvi — ariza "Ishga qabul qilindi" bo'lganda o'zi boshlanadi.
@@ -354,9 +357,7 @@ export const navByRole: Record<Role, NavItem[]> = {
           label: 'Boshqaruv',
           to: '#future-admin',
           children: [
-            // Topshiriqlar (Kanban) — hozircha ishlatilmaydi (2026-09-26), shu sabab asosiy menyudan
-            // Future'ga olindi. Marshrut o'zgarmadi: eski havolalar ishlayveradi.
-            { label: 'Topshiriqlar', to: '/admin/topshiriqlar', perm: 'tasks' },
+            // Topshiriqlar 2026-10 da (CRM Phase 5) asosiy «Boshqaruv» guruhiga qaytdi.
             { label: 'KPI', to: '/admin/boshqaruv/kpi', perm: 'kpi' },
             { label: 'Kameralar', to: '/admin/boshqaruv/cameras', perm: 'cameras' },
           ],

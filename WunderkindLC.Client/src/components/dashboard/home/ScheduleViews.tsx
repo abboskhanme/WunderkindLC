@@ -15,6 +15,7 @@ import {
   type GridColumn,
   type GroupBy,
 } from '@/lib/scheduleGrid'
+import { groupRuns } from '@/lib/scheduleDated'
 import { cn } from '@/lib/utils'
 
 /**
@@ -28,6 +29,8 @@ const TIME_W = 120
 const COL_W = 150
 const ROW_H = 30
 const HEAD_H = 40
+/** Ustunlar GURUHI (qavat) sarlavhasi qatori — faqat `GridColumn.group` berilganda. */
+const GROUP_H = 26
 
 const LIST_OWNER_W = 130
 const LIST_SLOT_W = 150
@@ -76,6 +79,9 @@ function useByColumn(lessons: ScheduleGridGroup[], groupBy: GroupBy) {
 export function ScheduleGridView(p: ViewProps) {
   const byColumn = useByColumn(p.lessons, p.groupBy)
   const bodyH = p.slots.length * ROW_H
+  // Qavat sarlavhalari (sanali jadval): ketma-ket bir xil `group` li ustunlar ustida bitta katak.
+  const hasGroups = p.columns.some((c) => c.group)
+  const runs = hasGroups ? groupRuns(p.columns) : []
 
   return (
     <div
@@ -88,21 +94,42 @@ export function ScheduleGridView(p: ViewProps) {
         <div className="sticky top-0 z-20 flex bg-white">
           <div
             className={cn('sticky left-0 z-30 shrink-0 border-b border-r bg-[#F9FAFB]', BORDER)}
-            style={{ width: TIME_W, height: HEAD_H }}
+            style={{ width: TIME_W, height: HEAD_H + (hasGroups ? GROUP_H : 0) }}
           />
-          {p.columns.map((c) => (
-            <div
-              key={c.key || '__none'}
-              title={c.name}
-              className={cn(
-                'flex shrink-0 items-center justify-center truncate border-b border-r px-2 text-[14px] font-semibold text-[#374151]',
-                BORDER,
-              )}
-              style={{ width: COL_W, height: HEAD_H }}
-            >
-              <span className="truncate">{c.name}</span>
+          <div className="flex flex-col">
+            {hasGroups && (
+              <div className="flex">
+                {runs.map((r, i) => (
+                  <div
+                    key={`${r.group}:${i}`}
+                    title={r.group}
+                    className={cn(
+                      'flex shrink-0 items-center justify-center truncate border-b border-r bg-[#EEF2FF] px-2 text-[12px] font-semibold text-[#3D68FF]',
+                      BORDER,
+                    )}
+                    style={{ width: r.items.length * COL_W, height: GROUP_H }}
+                  >
+                    <span className="truncate">{r.group}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div className="flex">
+              {p.columns.map((c) => (
+                <div
+                  key={c.key || '__none'}
+                  title={c.name}
+                  className={cn(
+                    'flex shrink-0 items-center justify-center truncate border-b border-r px-2 text-[14px] font-semibold text-[#374151]',
+                    BORDER,
+                  )}
+                  style={{ width: COL_W, height: HEAD_H }}
+                >
+                  <span className="truncate">{c.name}</span>
+                </div>
+              ))}
             </div>
-          ))}
+          </div>
         </div>
 
         <div className="flex">
@@ -167,6 +194,15 @@ export function ScheduleGridView(p: ViewProps) {
 export function ScheduleListView(p: ViewProps) {
   const byColumn = useByColumn(p.lessons, p.groupBy)
   const width = LIST_OWNER_W + p.slots.length * LIST_SLOT_W
+  // Qavat sarlavhasi — har yangi guruh oldidan bitta qator (sanali jadval).
+  const groupStarts = new Set<string>()
+  if (p.columns.some((c) => c.group)) {
+    let prev: string | undefined
+    for (const c of p.columns) {
+      if (c.group !== prev) groupStarts.add(c.key || '__none')
+      prev = c.group
+    }
+  }
 
   return (
     <div
@@ -200,7 +236,18 @@ export function ScheduleListView(p: ViewProps) {
           const lanes = items.reduce((m, x) => Math.max(m, x.lanes), 1)
           const rowH = Math.max(LIST_ROW_H, lanes * (LIST_BAR_H + 2) + 4)
           return (
-            <div key={c.key || '__none'} className="flex">
+            <div key={c.key || '__none'}>
+            {groupStarts.has(c.key || '__none') && (
+              <div className={cn('border-b bg-[#EEF2FF]', BORDER)} style={{ width }}>
+                <div
+                  className="sticky left-0 inline-flex h-[26px] items-center px-3 text-[12px] font-semibold text-[#3D68FF]"
+                  style={{ width: LIST_OWNER_W }}
+                >
+                  <span className="truncate">{c.group}</span>
+                </div>
+              </div>
+            )}
+            <div className="flex">
               <div
                 title={c.name}
                 className={cn(
@@ -242,6 +289,7 @@ export function ScheduleListView(p: ViewProps) {
                   )
                 })}
               </div>
+            </div>
             </div>
           )
         })}
@@ -287,6 +335,9 @@ function LessonBlock({
             </div>
           ) : null,
         )}
+        {lesson.badge && (
+          <div className="truncate text-[10px] font-semibold italic leading-[14px]">{lesson.badge}</div>
+        )}
         {footer && (
           <div className="mt-0.5 flex items-center gap-1 text-[10px] font-semibold leading-[14px]">
             <FooterIcon size={12} stroke={2} className="shrink-0" />
@@ -303,6 +354,7 @@ function LessonBlock({
               .slice(1)
               .filter((v): v is NonNullable<typeof v> => v !== null && v.text !== '')
               .map((v) => v.text)
+              .concat(lesson.badge ? [lesson.badge] : [])
               .join('  •  ')}
           </div>
         </div>
@@ -350,6 +402,7 @@ export function LessonTooltip({ info, date }: { info: HoverInfo; date: Date }) {
       ['Dars vaqti', `${l.start} - ${l.end}`],
       ["O'qituvchi", l.teacherName],
       ['Kurs', l.courseName],
+      ['Belgi', l.badge ?? ''],
       ['Sana', formatIsoDate(toIso(date))],
       ['Boshlangan vaqti', formatIsoDate(l.startDate)],
       ['Tugash vaqti', formatIsoDate(l.endDate)],

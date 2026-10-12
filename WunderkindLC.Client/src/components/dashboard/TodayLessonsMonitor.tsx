@@ -78,7 +78,11 @@ const ATT_FILTERS: { value: AttFilter; label: string }[] = [
   { value: 'done', label: 'Davomat qilgan' },
 ]
 
-export function TodayLessonsMonitor() {
+/**
+ * `compact` — bosh sahifa vidjeti (CRM Phase 5): oy tanlash va sana maydoni yashiriladi (‹ › va «Bugun»
+ * qoladi), ro'yxat bitta ustunda. Ma'lumot va qoidalar AYNAN o'sha.
+ */
+export function TodayLessonsMonitor({ compact = false }: { compact?: boolean } = {}) {
   const todayStr = fmtDate(new Date())
   const [date, setDate] = useState(todayStr)
   const [attFilter, setAttFilter] = useState<AttFilter>('all')
@@ -155,6 +159,7 @@ export function TodayLessonsMonitor() {
       }
       actions={
         <div className="flex flex-wrap items-center justify-end gap-1.5">
+          {!compact && (
           <select
             value={date.slice(0, 7)}
             onChange={(e) => onMonthChange(e.target.value)}
@@ -167,6 +172,7 @@ export function TodayLessonsMonitor() {
               </option>
             ))}
           </select>
+          )}
           <button
             type="button"
             onClick={() => shiftDay(-1)}
@@ -175,6 +181,7 @@ export function TodayLessonsMonitor() {
           >
             <ChevronLeft className="h-4 w-4" />
           </button>
+          {!compact && (
           <input
             type="date"
             value={date}
@@ -183,6 +190,7 @@ export function TodayLessonsMonitor() {
             className="h-8 rounded-lg border border-slate-200 bg-white px-2 text-xs font-semibold text-slate-700 outline-none focus:border-blue-300"
             aria-label="Sana tanlash"
           />
+          )}
           <button
             type="button"
             onClick={() => shiftDay(1)}
@@ -272,7 +280,7 @@ export function TodayLessonsMonitor() {
             </div>
           ) : (
           /* Keng ekranda 2 ustun — bitta o'qituvchi bloki bo'linmasdan (break-inside-avoid) joylashadi. */
-          <div className="gap-x-6 md:columns-2">
+          <div className={cn('gap-x-6', !compact && 'md:columns-2')}>
             {byTeacher.map((t) => (
               <div key={t.teacher} className="mb-4 break-inside-avoid">
                 <p className="mb-1.5 text-xs font-bold uppercase tracking-wide text-slate-500">

@@ -134,7 +134,11 @@ export function TasksDashboardPage() {
           icon={CircleCheckBig}
           iconBg="bg-emerald-50"
           iconColor="text-emerald-600"
-          hint={`${data?.rate ?? 0}% bajarilish`}
+          hint={
+            (data?.awaitingApproval ?? 0) > 0
+              ? `${data?.rate ?? 0}% bajarilish · ${data?.awaitingApproval} ta tasdiq kutmoqda`
+              : `${data?.rate ?? 0}% bajarilish`
+          }
         />
         <StatCard
           label="Ochiq"
@@ -217,6 +221,9 @@ export function TasksDashboardPage() {
                   <th className="num">Kechikkan</th>
                   <th className="num">Bugungi</th>
                   <th className="num">Muddatida</th>
+                  <th className="num" title="Bajarilgan, topshiriq bergan xodim tasdig'ini kutmoqda">Tasdiq kutmoqda</th>
+                  <th className="num">Tasdiqlangan</th>
+                  <th className="num" title="Necha marta sabab bilan qaytarilgan">Qaytarilgan</th>
                   <th>Bajarilish</th>
                 </tr>
               </thead>
@@ -243,6 +250,11 @@ export function TasksDashboardPage() {
                       <span className="text-slate-300"> / </span>
                       <span className={cn(r.doneLate > 0 && 'text-amber-600')}>{r.doneLate}</span>
                     </td>
+                    <td className={cn('num', (r.awaitingApproval ?? 0) > 0 && 'font-semibold text-amber-600')}>
+                      {r.awaitingApproval ?? 0}
+                    </td>
+                    <td className="num text-emerald-600">{r.approved ?? 0}</td>
+                    <td className={cn('num', (r.returned ?? 0) > 0 && 'text-orange-600')}>{r.returned ?? 0}</td>
                     <td className="min-w-[9rem]">
                       <div className="flex items-center gap-2">
                         <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-slate-100">

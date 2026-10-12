@@ -10,7 +10,7 @@ namespace WunderkindLC.Application.Services;
 /// mantiq — YAGONA nusxa. Aks holda botda yopilgan takroriy topshiriq keyingi nusxasini
 /// tug'dirmasdan qolib ketardi (panelda esa tug'dirardi).
 /// </summary>
-public static class WorkTaskFlow
+public static partial class WorkTaskFlow
 {
     /// <summary>
     /// TAKRORIY topshiriq yopilganda keyingi nusxasini tug'diradi: muddat kun/hafta/oyga suriladi,
@@ -105,8 +105,10 @@ public static class WorkTaskFlow
     /// ("muddatida yopildi") va botdagi "allaqachon bajarilgan" tekshiruvi ustun bilan ziddiyatga tushardi.
     /// </remarks>
     /// <returns>Holat o'zgardimi.</returns>
+    /// <param name="telegram">For the approval request to the creator (<see cref="OnCompletedAsync"/>); <c>null</c> — bell only.</param>
     public static async Task<bool> SyncCompletionAsync(
-        IAppDbContext db, WorkTask t, bool columnIsDone, string actorId, CancellationToken ct = default)
+        IAppDbContext db, WorkTask t, bool columnIsDone, string actorId, CancellationToken ct = default,
+        TelegramService? telegram = null)
     {
         if (columnIsDone && t.CompletedAt is null)
         {
@@ -119,6 +121,7 @@ public static class WorkTaskFlow
                 Text = "Ustun «bajarildi» deb belgilandi — topshiriq yopildi",
             });
             await SpawnRepeatAsync(db, t, ct);
+            await OnCompletedAsync(db, t, actorId, telegram, ct);
             return true;
         }
         if (!columnIsDone && t.CompletedAt is not null)
@@ -126,6 +129,7 @@ public static class WorkTaskFlow
             t.CompletedAt = null;
             t.CompletedById = "";
             t.UpdatedAt = AppClock.Now;
+            OnReopened(t);
             db.WorkTaskEvents.Add(new WorkTaskEvent
             {
                 TaskId = t.Id, ActorId = actorId, Kind = "reopened",

@@ -25,7 +25,7 @@ public class RoomsController(AppDbContext db, RoomUtilizationService utilization
     /// bandlik hisoboti va guruh formasi xonalarga tayanadi.</summary>
     private const string AuditRoom = "Room";
 
-    private static object Snapshot(Room r) => new { r.Name, r.Capacity, r.Building, r.Location, r.IsActive };
+    private static object Snapshot(Room r) => new { r.Name, r.Capacity, r.Building, r.Location, r.IsActive, r.Floor };
 
     [HttpGet]
     public async Task<List<RoomDto>> GetAll() =>
@@ -42,6 +42,8 @@ public class RoomsController(AppDbContext db, RoomUtilizationService utilization
             return BadRequest(new { message = "Xona nomi kerak" });
         if (req.Capacity < 1 || req.Capacity > 1000)
             return BadRequest(new { message = "Sig'im 1–1000 oralig'ida bo'lishi kerak" });
+        if (!RoomFloors.IsValid(req.Floor))
+            return BadRequest(new { message = RoomFloors.InvalidMessage });
 
         var name = req.Name.Trim();
         if (await db.Rooms.AnyAsync(r => r.IsActive && r.Name.ToLower() == name.ToLower()))
@@ -53,10 +55,11 @@ public class RoomsController(AppDbContext db, RoomUtilizationService utilization
             Capacity = req.Capacity,
             Building = req.Building?.Trim(),
             Location = req.Location?.Trim(),
+            Floor    = req.Floor,
         };
         db.Rooms.Add(room);
         audit.Record(AuditRoom, room.Id, "create",
-            $"Xona qo'shildi: {room.Name} (sig'im {room.Capacity})", after: Snapshot(room));
+            $"Xona qo'shildi: {room.Name} (sig'im {room.Capacity}, {RoomFloors.Label(room.Floor)})", after: Snapshot(room));
         await db.SaveChangesAsync();
         return ToDto(room);
     }
@@ -71,6 +74,8 @@ public class RoomsController(AppDbContext db, RoomUtilizationService utilization
             return BadRequest(new { message = "Xona nomi kerak" });
         if (req.Capacity < 1 || req.Capacity > 1000)
             return BadRequest(new { message = "Sig'im 1–1000 oralig'ida bo'lishi kerak" });
+        if (!RoomFloors.IsValid(req.Floor))
+            return BadRequest(new { message = RoomFloors.InvalidMessage });
 
         var name = req.Name.Trim();
         // ⚠️ `IsActive` YUBORILMASA (null) — TEGILMAYDI. Ilgari maydon majburiy `bool` edi, klient uni
@@ -89,8 +94,12 @@ public class RoomsController(AppDbContext db, RoomUtilizationService utilization
         room.Building = req.Building?.Trim();
         room.Location = req.Location?.Trim();
         room.IsActive = isActive;
+        // Qavat: yuborilmasa TEGILMAYDI, `clearFloor` — tozalanadi (RoomFloors.Resolve).
+        var oldFloor = room.Floor;
+        room.Floor = RoomFloors.Resolve(room.Floor, req.Floor, req.ClearFloor);
 
-        audit.Record(AuditRoom, room.Id, "update", $"Xona tahrirlandi: {room.Name}",
+        audit.Record(AuditRoom, room.Id, "update", $"Xona tahrirlandi: {room.Name}"
+            + (oldFloor != room.Floor ? $" — qavat: {RoomFloors.Label(oldFloor)} → {RoomFloors.Label(room.Floor)}" : ""),
             before: before, after: Snapshot(room));
         await db.SaveChangesAsync();
         return ToDto(room);
@@ -170,7 +179,7 @@ public class RoomsController(AppDbContext db, RoomUtilizationService utilization
 
     private static RoomDto ToDto(Room r) =>
         new(r.Id, r.Name, r.Capacity, r.Building, r.Location,
-            r.IsActive, r.CreatedAt.ToString("o"));
+            r.IsActive, r.CreatedAt.ToString("o"), r.Floor);
 
     private static RoomUtilizationDto ToUtilizationDto(
         RoomUtilizationService.RoomUtilizationMetric m) =>

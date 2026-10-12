@@ -30,6 +30,8 @@ import { cn, formatMoney, formatDate, apiErrorMessage, gradeBadgeCls, balanceTex
 import { ballGrade } from '@/lib/studentBall'
 import { backState, type BackState } from '@/lib/nav'
 import { localIsoDate } from '@/lib/localDate'
+import { scheduleConflictOf, type ScheduleConflictInfo } from '@/lib/scheduleConflicts'
+import { ScheduleConflictModal } from '@/components/schedule/ScheduleConflictModal'
 import { Card } from '@/components/ui/Card'
 import { DropdownMenu } from '@/components/ui/DropdownMenu'
 import { AuditHistoryList } from '@/components/audit/AuditHistoryList'
@@ -150,6 +152,9 @@ export function ClassDetailPage() {
   const [rTime, setRTime] = useState('')
   const [rSaving, setRSaving] = useState(false)
   const [rError, setRError] = useState<string | null>(null)
+  // Jadval to'qnashuvi (409, CRM Phase 5): guruh tahririda va dars ko'chirishda — oyna (superadmin sabab bilan o'tkazadi).
+  const [editConflict, setEditConflict] = useState<{ values: ClassPayload; info: ScheduleConflictInfo } | null>(null)
+  const [rescheduleConflict, setRescheduleConflict] = useState<ScheduleConflictInfo | null>(null)
   /** CHAP ustundagi a'zolar ro'yxati (TO'LIQ tarix — chiqqan/muzlatilgan/sinov/aktiv). */
   const [members, setMembers] = useState<GroupMember[]>([])
   /** A'zolar / «O'quvchilar» jadvali YUKLANMADI — bo'sh ro'yxat ("a'zo yo'q") bilan adashtirilmasin. */
@@ -223,20 +228,20 @@ export function ClassDetailPage() {
 
   /** "Guruhni tahrirlash" tasdiqlangach — oddiy saqlash (fee-prompt/xona-konflikt kengaytirilgan
    *  oynasisiz; kerak bo'lsa to'liq tahrirlash Guruhlar ro'yxati sahifasidan qilinadi). */
-  const handleEditSubmit = async (values: ClassPayload) => {
+  const handleEditSubmit = async (values: ClassPayload, forceReason?: string) => {
     if (!id) return
     try {
-      const res = await updateClass(id, values)
-      const any = res as unknown as Record<string, unknown>
-      if (any.roomConflict) {
-        alert("Bu xona shu vaqtda band — boshqa xona yoki vaqt tanlang.")
-        return
-      }
+      const res = await updateClass(id, values, undefined, forceReason)
       setGroup(res)
       setEditOpen(false)
+      setEditConflict(null)
       load(journal?.month)
     } catch (err) {
-      alert(apiErrorMessage(err, "Saqlab bo'lmadi"))
+      // Majburiy saqlash (oyna ichidan) xatosi — oynaning o'zida ko'rsatiladi.
+      if (forceReason) throw err
+      const info = scheduleConflictOf(err)
+      if (info) setEditConflict({ values, info })
+      else alert(apiErrorMessage(err, "Saqlab bo'lmadi"))
     }
   }
 
@@ -698,17 +703,22 @@ export function ClassDetailPage() {
   }, [journal])
 
   // Darsni boshqa kunga ko'chirish (bulk modaldan): asl kun = bulkDate, yangi kun = rToDate.
-  const doReschedule = async () => {
+  const doReschedule = async (forceReason?: string) => {
     if (!journal || !bulkDate || !rToDate) return
     setRSaving(true)
     setRError(null)
     try {
-      await rescheduleLesson(journal.group.id, bulkDate, rToDate, rTime || undefined)
+      await rescheduleLesson(journal.group.id, bulkDate, rToDate, rTime || undefined, forceReason)
       setBulkDate(null)
       setRescheduleOpen(false)
+      setRescheduleConflict(null)
       load(journal.month)
     } catch (err) {
-      setRError(apiErrorMessage(err, "Ko'chirib bo'lmadi"))
+      if (forceReason) throw err
+      // Band xona/o'qituvchi: superadmin'ga «Baribir ko'chirish» oynasi, boshqalarga — sabab matni.
+      const info = scheduleConflictOf(err)
+      if (info?.canForce) setRescheduleConflict(info)
+      else setRError(apiErrorMessage(err, "Ko'chirib bo'lmadi"))
     } finally {
       setRSaving(false)
     }
@@ -1777,7 +1787,7 @@ export function ClassDetailPage() {
                   <button
                     type="button"
                     disabled={rSaving || !rToDate}
-                    onClick={doReschedule}
+                    onClick={() => doReschedule()}
                     className="inline-flex items-center gap-1.5 rounded-lg bg-sky-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-sky-700 disabled:opacity-50"
                   >
                     <CalendarClock className="h-4 w-4" /> {rSaving ? 'Ko\'chirilmoqda...' : 'Ko\'chirish'}
@@ -1900,9 +1910,23 @@ export function ClassDetailPage() {
       <ClassFormModal
         open={editOpen}
         onClose={() => setEditOpen(false)}
-        onSubmit={handleEditSubmit}
+        onSubmit={(values) => handleEditSubmit(values)}
         initial={group}
       />
+      {editConflict && (
+        <ScheduleConflictModal
+          info={editConflict.info}
+          onClose={() => setEditConflict(null)}
+          onForce={(reason) => handleEditSubmit(editConflict.values, reason)}
+        />
+      )}
+      {rescheduleConflict && (
+        <ScheduleConflictModal
+          info={rescheduleConflict}
+          onClose={() => setRescheduleConflict(null)}
+          onForce={(reason) => doReschedule(reason)}
+        />
+      )}
 
       {/* Guruhga Telegram xabar — sarlavha "⋮" menyusidan, faol a'zolarning oilalariga. */}
       <TelegramMessageModal open={msgOpen} onClose={() => setMsgOpen(false)} recipients={msgRecipients} />
