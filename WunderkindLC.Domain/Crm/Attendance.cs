@@ -108,3 +108,42 @@ public class AbsenceStreakAlert
     public string? ContactRequestId { get; set; }
     public DateTime CreatedAt { get; set; }
 }
+
+/// <summary>
+/// U3b (SPEC P3.3) — the attendance-notice queue becomes a MANAGER-CONTROLLED schedule: «kelmadi» goes at lesson
+/// end + <see cref="CenterMeta.AbsentNoticeDelayMinutes"/> (not at the moment of the mark), a manager can hold,
+/// approve or cancel it before that, and notices from LATE-taken attendance wait for approval
+/// (<see cref="CenterMeta.AbsentNoticeApproval"/>). «Keldi» stays immediate (SendAfter = mark time).
+/// <para>Statuses (<see cref="Status"/>, concurrency token): <c>pending</c> (goes at SendAfter) · <c>awaiting</c>
+/// (needs approval) · <c>held</c> (stopped by a manager) · <c>approved</c> · <c>sending</c> · <c>done</c> ·
+/// <c>failed</c> · <c>unknown</c> · <c>expired</c> · <c>cancelled</c>. Rules: <c>AbsentNoticeRules</c>.</para>
+/// </summary>
+public partial class AttendanceNotifyItem
+{
+    /// <summary>Earliest send time (centre local time). Absent: lesson end + delay (never before the mark);
+    /// present: the mark time. Migration backfill: = CreatedAt.</summary>
+    public DateTime SendAfter { get; set; } = AppClock.Now;
+
+    /// <summary>Lesson start on that date ("HH:mm", moved lessons at their new time); "" = unknown.</summary>
+    public string LessonStart { get; set; } = string.Empty;
+
+    /// <summary>Lesson end on that date ("HH:mm"); "" = unknown.</summary>
+    public string LessonEnd { get; set; } = string.Empty;
+
+    /// <summary>Attendance of the group's day was FIRST taken after lesson start + deadline minutes.</summary>
+    public bool TakenLate { get; set; }
+
+    /// <summary>Manager who held / approved / cancelled the notice (AppUser id).</summary>
+    public string? DecidedById { get; set; }
+
+    public string? DecidedByName { get; set; }
+
+    public DateTime? DecidedAt { get; set; }
+
+    /// <summary>Optional manager note (≤ 300 chars).</summary>
+    public string? DecisionNote { get; set; }
+
+    /// <summary>Why a notice was cancelled: <c>manager</c> · <c>changed</c> (the journal no longer says
+    /// absent/present) · <c>archived</c> (student archived before sending).</summary>
+    public string? CancelReason { get; set; }
+}

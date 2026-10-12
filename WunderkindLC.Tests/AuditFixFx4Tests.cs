@@ -78,6 +78,20 @@ public class AuditFixFx4Tests
     private static AttendanceNotifyWorker Worker(IAppDbContext ctx) =>
         new(new SingleServiceProvider(ctx), new MessagingStack().Auto, NullLogger<AttendanceNotifyWorker>.Instance);
 
+    /// <summary>
+    /// CRM U3b (2026-10-12): «kelmadi» endi dars TUGAGACH + kechikish bilan ketadi va kech olingan davomatda menejer
+    /// tasdig'ini kutadi. Bu testlar navbatning O'ZINI (jurnal bilan bitta saqlash, bir marta yuborish, restart)
+    /// qulflaydi — shuning uchun tasdiqlash «Avtomatik» qilinadi va ishchi xabar vaqti KELGAN paytda ishlatiladi.
+    /// </summary>
+    private static void AutoApproval(TestDb db)
+    {
+        db.Context.CenterMeta.Add(new CenterMeta { AbsentNoticeApproval = AttendanceSettingsRules.ApprovalAuto });
+        db.Context.SaveChanges();
+    }
+
+    /// <summary>Navbatdagi eng kech SendAfter — shu paytda hamma qator yuborishga tayyor.</summary>
+    private static DateTime Due(TestDb db) => db.Context.AttendanceNotifyItems.AsNoTracking().Max(i => i.SendAfter);
+
     /// <summary>Admin/o'qituvchi controllerlari bilan AYNI yo'l: navbat `beforeSave` da qo'shiladi.</summary>
     private static Task<JournalService.BulkAttendanceResult> Bulk(
         TestDb db, BulkAttendanceRequest req, IReadOnlySet<string>? wasPresent = null) =>
@@ -97,6 +111,7 @@ public class AuditFixFx4Tests
         var vali = AddStudent(db, g, "Vali", "u-vali");
         var sababsiz = Reason(db);
         AddRule(db, AutoMessageTriggers.AttendanceAbsent);
+        AutoApproval(db);
 
         await Bulk(db, new BulkAttendanceRequest(g.Id, g.CourseId!, Day(0), 1,
             new List<string> { ali.Id, vali.Id }, sababsiz.Id, Absent: true));
@@ -112,14 +127,15 @@ public class AuditFixFx4Tests
         }
         Assert.Empty(db.Context.UserNotifications);   // so'rovning o'zida hech narsa yuborilmadi
 
+        var due = Due(db);
         var worker = Worker(db.Context);
-        Assert.Equal(2, await worker.ProcessPendingAsync(CancellationToken.None));
+        Assert.Equal(2, await worker.ProcessDueAsync(due, CancellationToken.None));
         var users = db.Context.UserNotifications.Select(n => n.UserId).OrderBy(x => x).ToList();
         Assert.Equal(new[] { "u-ali", "u-vali" }, users);
         Assert.All(db.Context.AttendanceNotifyItems.ToList(), i => Assert.Equal("done", i.Status));
 
         // Takror ishlov (masalan restart) — hech kimga ikkinchi xabar yo'q.
-        Assert.Equal(0, await Worker(db.Context).ProcessPendingAsync(CancellationToken.None));
+        Assert.Equal(0, await Worker(db.Context).ProcessDueAsync(due, CancellationToken.None));
         Assert.Equal(2, db.Context.UserNotifications.Count());
     }
 
@@ -187,6 +203,7 @@ public class AuditFixFx4Tests
         var vali = AddStudent(db, g, "Vali", "u-vali");
         var sababsiz = Reason(db);
         AddRule(db, AutoMessageTriggers.AttendanceAbsent);
+        AutoApproval(db);
         await Bulk(db, new BulkAttendanceRequest(g.Id, g.CourseId!, Day(0), 1,
             new List<string> { ali.Id, vali.Id }, sababsiz.Id, Absent: true));
 
@@ -198,7 +215,7 @@ public class AuditFixFx4Tests
 
         var worker = Worker(db.Context);   // YANGI jarayon
         await worker.RecoverAsync(CancellationToken.None);
-        await worker.ProcessPendingAsync(CancellationToken.None);
+        await worker.ProcessDueAsync(Due(db), CancellationToken.None);
 
         Assert.Equal(new[] { "u-vali" }, db.Context.UserNotifications.Select(n => n.UserId).ToArray());
         var statuses = db.Context.AttendanceNotifyItems.ToDictionary(i => i.StudentId, i => i.Status);
@@ -217,7 +234,8 @@ public class AuditFixFx4Tests
         await Bulk(db, new BulkAttendanceRequest(g.Id, g.CourseId!, Day(0), 1,
             new List<string> { ali.Id }, sababsiz.Id, Absent: true));
         var item = db.Context.AttendanceNotifyItems.Single();
-        item.CreatedAt = AppClock.Now - AttendanceNotifyWorker.MaxAge - TimeSpan.FromMinutes(5);
+        // U3b: eskirish SendAfter dan sanaladi (dars tugashi + kechikish), yaratilgan vaqtdan emas.
+        item.SendAfter = AppClock.Now - AttendanceNotifyWorker.MaxAge - TimeSpan.FromMinutes(5);
         db.Context.SaveChanges();
 
         await Worker(db.Context).ProcessPendingAsync(CancellationToken.None);

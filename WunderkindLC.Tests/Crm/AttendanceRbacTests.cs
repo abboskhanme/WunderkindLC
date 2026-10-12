@@ -56,6 +56,42 @@ public class AttendanceRbacTests
         Assert.True(PermissionRules.CanWrite(["classes:edit"], "classes", "PUT"));
     }
 
+    /* ---------- U3b: absent-notice control page — `students.notices`, reading gated too ---------- */
+
+    [Fact]
+    public void Absent_notices_read_and_write_require_students_notices()
+    {
+        var src = Controller("AttendanceNoticesController.cs");
+        Assert.True(Gated(src, "students.notices", readRequiresPerm: true));
+        // No method-level [AdminPerm] that would replace (widen) the class gate.
+        Assert.Single(Regex.Matches(src, @"^\s*\[AdminPerm\(", RegexOptions.Multiline));
+        Assert.DoesNotContain("[AllowAnonymous]", src);
+
+        // A staff user without the key gets 403 on GET (ReadRequiresPerm) and on PUT.
+        Assert.False(PermissionRules.HasSection(["students.list"], "students.notices"));
+        Assert.False(PermissionRules.HasSection(["students.attendance"], "students.notices"));
+        Assert.False(PermissionRules.HasSection(["classes"], "students.notices"));
+        Assert.False(PermissionRules.CanWrite(["students.list"], "students.notices", "PUT"));
+        Assert.False(PermissionRules.CanWrite([], "students.notices", "PUT"));
+        // The page key (or the whole section) opens it.
+        Assert.True(PermissionRules.HasSection(["students.notices"], "students.notices"));
+        Assert.True(PermissionRules.HasSection(["students"], "students.notices"));
+        Assert.True(PermissionRules.CanWrite(["students.notices"], "students.notices", "PUT"));
+        Assert.True(PermissionRules.CanWrite(["students.notices:edit"], "students.notices", "PUT"));
+    }
+
+    [Fact]
+    public void Journal_single_cell_paths_queue_notices_instead_of_sending_in_the_request()
+    {
+        foreach (var file in new[] { "JournalController.cs", "TeacherPortalController.cs" })
+        {
+            var src = Controller(file);
+            Assert.Contains("AttendanceNotify.EnqueueSingleAsync(db, req, newAbsence, wasPresent)", src);
+            Assert.DoesNotContain("DispatchNewlyPresentAsync", src);
+            Assert.DoesNotContain("AttendanceNotify.DispatchAbsencesAsync", src);
+        }
+    }
+
     /* ---------- U3c: attendance fines — `finance.main`, reading gated too ---------- */
 
     [Fact]

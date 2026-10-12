@@ -25,11 +25,8 @@ public partial class TeacherPortalController(
     TestCertificateService testCerts, TestCertificateJobs testCertJobs,
     ContactQueueService queue, AuditService audit) : ControllerBase
 {
-    /// <summary>"Darsga kelmadi" avto-xabari (attendance_absent) — o'quvchi(lar)ga guruh+sabab bilan.
-    /// Exception yutiladi (jurnal javobini bloklamaydi).</summary>
-    private Task DispatchAbsencesAsync(string classId, string date, string? reasonId, IEnumerable<string> studentIds) =>
-        // Qoida (arxivlangan o'quvchi chetlab o'tiladi va h.k.) — AttendanceNotify'da, admin jurnali bilan BITTA.
-        AttendanceNotify.DispatchAbsencesAsync(db, autoMsg, classId, date, reasonId, studentIds);
+    // (CRM U3b: "darsga kelmadi" xabari endi so'rov ichida yuborilmaydi — `AttendanceNotify.EnqueueSingleAsync`
+    // navbatiga tushadi, admin jurnali bilan BITTA yo'l; eski `DispatchAbsencesAsync` yordamchisi olib tashlandi.)
 
     /// <summary>Tokendagi foydalanuvchi id'si bo'yicha joriy o'qituvchini topadi.</summary>
     private async Task<Teacher?> Me()
@@ -325,11 +322,15 @@ public partial class TeacherPortalController(
         {
             return BadRequest(new { message = ex.Message });
         }
-        // Faqat YANGI "kelmadi" ("kech" — kelmadi emas; sabab almashishi — yangi hodisa emas).
-        if (newAbsence)
-            await DispatchAbsencesAsync(req.ClassId, req.Date, req.ReasonId, one);
-        if (req.Present)
-            await autoMsg.DispatchNewlyPresentAsync(db, req.ClassId, req.SubjectId, req.Date, req.Period, one, wasPresent);
+        // CRM U3b (SPEC P3.3) — admin jurnali bilan BITTA yo'l: xabar NAVBATGA ("kelmadi" dars tugagach + kechikish,
+        // menejer to'xtata oladi; «keldi» darhol). Faqat YANGI "kelmadi" ("kech" — kelmadi emas; sabab almashishi —
+        // yangi hodisa emas). "Kelmadi" «keldi»ga tuzatilsa yuborilmagan xabar bekor bo'ladi (ReconcileAsync).
+        await AttendanceNotify.ReconcileAsync(db, AppClock.Now, req.ClassId, req.Date, one);
+        if (await AttendanceNotify.EnqueueSingleAsync(db, req, newAbsence, wasPresent) > 0)
+        {
+            await db.SaveChangesAsync();
+            HttpContext.RequestServices.GetRequiredService<AttendanceNotifyWorker>().Wake();
+        }
         return NoContent();
     }
 
@@ -352,6 +353,8 @@ public partial class TeacherPortalController(
         var memberError = await JournalService.MemberWriteErrorAsync(db, classId, studentId, date, teacher: true);
         if (memberError is not null) return BadRequest(new { message = memberError });
         await JournalService.ClearEntryAsync(db, classId, subjectId, quarter, studentId, date, period);
+        // Katak tozalandi — hali yuborilmagan "kelmadi"/«keldi» xabari bekor (CRM U3b).
+        await AttendanceNotify.ReconcileAsync(db, AppClock.Now, classId, date, [studentId]);
         return NoContent();
     }
 
@@ -477,6 +480,8 @@ public partial class TeacherPortalController(
         {
             return BadRequest(new { message = ex.Message });
         }
+        // «Hammasi keldi» — shu o'quvchilarning hali yuborilmagan "kelmadi" xabarlari bekor (CRM U3b).
+        await AttendanceNotify.ReconcileAsync(db, AppClock.Now, req.ClassId, req.Date, req.StudentIds);
         HttpContext.RequestServices.GetRequiredService<AttendanceNotifyWorker>().Wake();
         return NoContent();
     }

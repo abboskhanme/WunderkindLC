@@ -119,6 +119,8 @@ export const adminPermissions: AdminPermSection[] = [
       { key: 'students.list', label: "O'quvchilar ro'yxati va profili" },
       { key: 'students.notes', label: 'Izohlarga javoblar' },
       { key: 'students.attendance', label: "O'quvchilar davomati" },
+      // CRM U3b: Nazorat → «Davomat xabarlari» — «kelmadi» xabarini to'xtatish/tasdiqlash/bekor qilish.
+      { key: 'students.notices', label: 'Davomat xabarlari nazorati' },
       { key: 'students.turnstile', label: 'Turniket' },
       { key: 'students.face', label: 'Yuz bilan kirish' },
     ],
