@@ -5,6 +5,7 @@ import posthog from '@/lib/posthog'
 import { AuthContext } from './auth-context'
 import { login as loginRequest, otpLogin, fetchMe } from '@/api/services/auth'
 import { api, USE_MOCK } from '@/api/client'
+import { linkTelegramChat } from '@/lib/telegramLink'
 
 // JWT endi localStorage'da EMAS — HttpOnly `at` cookie'sida (XSS token o'g'irlay olmaydi).
 // Faqat `user` optimistik startup uchun saqlanadi (maxfiy sir emas), haqiqat manbai — GET /auth/me.
@@ -86,6 +87,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (user) identifyUser(user)
   }, [identifyUser, user])
+
+  // Telegram «📱 Panel» (Mini App) ichida kirilgan bo'lsa — bot chatini shu akkauntga bog'laymiz (telefon
+  // so'ralmaydi, 2026-10-12). Oddiy brauzerda initData bo'sh — hech narsa qilinmaydi.
+  const userId = user?.id
+  useEffect(() => {
+    if (!USE_MOCK && userId) void linkTelegramChat(userId)
+  }, [userId])
 
   // Real rejimda sessiyani startupda /me bilan tekshiramiz. Token HttpOnly cookie'da bo'lgani uchun
   // JS uni ko'rmaydi — haqiqat manbai `at` cookie bilan ketadigan GET /auth/me javobi.

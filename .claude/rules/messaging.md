@@ -108,7 +108,19 @@ chidamlilik va Telegram tezlik chegarasi — hammasi shu jadvaldan.
 
 ### Kim oladi — qarindoshlik va auditoriya
 
-- **Ro'yxatdan o'tish (bot):** kontakt 4 raqamning ISTALGANI bilan solishtiriladi (`Phone`, `ParentPhone`,
+- **ULANISH — PANEL ORQALI, TELEFON SO'RALMAYDI (2026-10-12, egasining qarori «bitta botda ishlaydi hamma»):** /start
+  va har qanday matnga bot «📱 Panel» (Mini App) tugmasini beradi (`TelegramBotService.StartKeyboard` — Panel ENG TEPADA,
+  kitob (yoqilgan bo'lsa), adminga murojaat; `request_contact` YO'Q). Foydalanuvchi Panel ichida login/parol (yoki kod)
+  bilan kirgach klient `POST api/telegram/link {initData}` yuboradi (`lib/telegramLink.ts`, sessiyada bir marta, xato
+  jim — ikkilamchi amal). Server Telegram imzosini ASOSIY bot tokeni bilan tekshiradi (`TelegramInitData`) va chatni
+  FAQAT so'rovchining O'Z akkauntiga bog'laydi (`TelegramMiniAppLink`): o'quvchi akkaunti → shu o'quvchi (qarindoshlik
+  «Boshqa» — admin o'zgartiradi), ota-ona akkaunti → telefoni mos farzandlar (qarindoshlik telefondan), o'qituvchi →
+  `TeacherId`, admin/xodim → `UserId`. ⚠️ Bitta chatda o'qituvchi/xodim uchun BITTA qator (unikal `StudentId+ChatId`,
+  `StudentId=""`) — ikkala akkaunt bo'lsa id'lar o'sha qatorga qo'shiladi, BOSHQA o'qituvchi/xodim akkaunti ulanmaydi.
+  Yangi ulanishda: audit (`Student`/`TeacherSalary`/`Staff`, chat id'siz), botda «✅ Telegram bot ulandi» + yangilangan
+  klaviatura, o'quvchiga «01» (`bot_connected`). Testlar: `TelegramMiniAppLinkTests`, `telegramLink.test.ts`.
+  Eski yo'l (kontakt yuborish) hamon qabul qilinadi, lekin bot uni SO'RAMAYDI.
+- **Ro'yxatdan o'tish (bot, ESKI yo'l — kontakt kelsa):** kontakt 4 raqamning ISTALGANI bilan solishtiriladi (`Phone`, `ParentPhone`,
   `FatherPhone`, `MotherPhone` — `TelegramRegistrar`); `CenterMeta.TelegramPhoneMatchField` endi O'QILMAYDI.
   Har mos o'quvchiga bitta ulanish, `Relation = TelegramRelations.Detect` (tartib: ota → ona → asosiy ota-ona → o'quvchi,
   aks holda `other`). Mavjud ulanishda qarindoshlik faqat BO'SH bo'lsa yoziladi (admin tahriri bosilmaydi).

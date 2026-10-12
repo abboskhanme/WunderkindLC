@@ -153,6 +153,8 @@ kirgan foydalanuvchini rol bo'yicha o'zi yo'naltiradi (o'qituvchi → `/teacher`
 (ilgari «🎓 O'qituvchi paneli» va «🎒 O'quvchi kabineti» ikki tugma edi).
 
 Portal asosiy botda `web_app` tugmasi bilan Telegram ICHIDA ochiladi (`TelegramBotService`):
+- ⚠️ 2026-10-12 dan «📱 Panel» HAR chatga (ulanmagan chatga ham — `StartKeyboard`), telefon so'ralmaydi; chat Panel
+  ichida login qilinganda bog'lanadi (`messaging.md` §0.5 «ULANISH — PANEL ORQALI»). Quyidagi ikki band — tarix.
 - reply-klaviaturada ENG TEPADA — chat FAOL o'qituvchiga (`IsTeacherChatAsync`) YOKI arxivlanmagan
   o'quvchiga (`IsStudentChatAsync`) bog'langan bo'lsa; salomdagi izoh satri rolga qarab
   (`PanelGreetingLine`), tugma esa bitta;
@@ -188,6 +190,10 @@ Foydalanuvchi talabi: o'qituvchilar panelni **alohida bot** orqali ochsin (`@Wun
   ichida login/parol bilan (§5 dagi qaror — yangi kirish yo'li ochilmaydi).
 - Asosiy botdagi o'qituvchi tugmasi va o'qituvchiga boradigan xabarlar (davomat eslatmasi,
   e'lonlar, shartnomalar) **o'zgarmadi** — ular hamon asosiy botdan ketadi.
+- ⚠️ **PROD'DA O'CHIQ (2026-10-12, egasining qarori «bitta botda ishlaydi hamma»):** @Wundora_LC_bot tokeni
+  `TELEGRAM_BOT_TOKEN` ga (ASOSIY bot) ko'chirildi, `TEACHER_BOT_TOKEN` bo'sh. Asosiy bot tokeni prod'da umuman
+  kiritilmagan edi — xabarlar ketmasdi, ota-onalar ulana olmasdi. ⚠️ BITTA tokenni ikki xizmatga BERMANG: ikkala
+  long polling bir-birini `getUpdates` 409 bilan uzib, yangilanishlarni bo'lib olardi.
 - ⚠️ Dev'da `DEV_TEACHER_BOT_TOKEN` (bo'sh = bot o'chiq): prod tokeni bilan lokal `getUpdates`
   jonli botning xabarlarini o'g'irlardi. Testlar: `TeacherBotServiceTests`.
 

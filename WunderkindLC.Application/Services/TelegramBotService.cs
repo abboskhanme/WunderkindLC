@@ -15,12 +15,11 @@ namespace WunderkindLC.Application.Services;
 
 /// <summary>
 /// Telegram botni long polling (getUpdates) orqali yurituvchi fon xizmati.
-/// Oqim: foydalanuvchi /start bosadi → MAJBURIY kanal obunasi darhol tekshiriladi (sozlangan
-/// bo'lsa — bo'lmasa shu yerda to'xtaydi, "✅ Tekshirish" tugmasi bilan) → telefon raqamini
-/// ulashadi → raqam o'quvchi (ParentPhone) yoki o'qituvchi (Phone) bilan solishtiriladi
-/// (ro'yxatdan o'tgan); obuna YANA tekshiriladi (ehtiyot chorasi — /start bilan kontakt orasida
-/// kanaldan chiqib ketgan bo'lishi mumkin) → keyin TelegramRegistration yoziladi va kirish
-/// ma'lumotlari yuboriladi. Token sozlanmagan bo'lsa xizmat kutadi (sayt baribir ishlaydi).
+/// Oqim (2026-10-12 dan — bitta bot hamma uchun, TELEFON SO'RALMAYDI): /start → MAJBURIY kanal obunasi
+/// (sozlangan bo'lsa) → «📱 Panel» tugmasi (Mini App). Foydalanuvchi Panel ichida login/parol bilan kirganda
+/// chat uning akkauntiga bog'lanadi (<see cref="Messaging.TelegramMiniAppLink"/>, <c>POST api/telegram/link</c>).
+/// Eski yo'l — kontakt ulashish — hamon qabul qilinadi (raqam mos kelsa ulanadi), lekin bot uni SO'RAMAYDI.
+/// Token sozlanmagan bo'lsa xizmat kutadi (sayt baribir ishlaydi).
 /// (2026-10: ilova (APK) fayli yuborish va bot orqali ONLAYN TEST olib tashlandi.)
 /// Support rejimi: /support → Mode="support" → keyingi matnlar adminga ketadi.
 /// </summary>
@@ -58,17 +57,6 @@ public class TelegramBotService(
     /// </summary>
     public const string PanelButtonText = "📱 Panel";
     public const string PanelUrl = WebAppUrl;
-
-    /// <summary>Telefon so'rovchi yagona yo'riqnoma. XAVFSIZLIK: raqam FAQAT «Telefon raqamni yuborish»
-    /// tugmasi orqali (Telegram kontakti) qabul qilinadi — matn sifatida yozilgan raqam profilga
-    /// BOG'LANMAYDI, aks holda begona (hatto admin) raqamini yozib akkauntni egallash mumkin edi.</summary>
-    private const string PhonePrompt =
-        "📱 Telefon raqamingizni yuboring:\n\n" +
-        "👉 Pastdagi «📱 Telefon raqamni yuborish» tugmasini bosing.\n\n" +
-        "⚠️ Raqamni matn sifatida yozish ishlamaydi — xavfsizlik uchun raqam faqat shu tugma orqali " +
-        "(Telegram akkauntingizdan) qabul qilinadi.\n" +
-        "Raqamingiz markaz ma'lumotlari bilan solishtirilib, profilingizga bog'lanadi.\n" +
-        "Administratorga murojaat uchun «" + SupportButtonText + "» tugmasini bosing.";
 
     /// <summary>Foydalanuvchi raqamni matn qilib yozganda yoki BEGONA kontakt yuborganda javob.</summary>
     private const string OwnContactOnlyPrompt =
@@ -325,11 +313,12 @@ public class TelegramBotService(
             else
             {
                 await LogInAsync(chatId, text, ct);
-                // XAVFSIZLIK: matn sifatida yozilgan raqam profilga BOG'LANMAYDI (istalgan odamning
-                // raqamini yozib akkauntni egallash mumkin edi). Raqamga o'xshash matnga — aniq
-                // tushuntirish, boshqa matnga — umumiy yo'riqnoma. Har holda jim qolmaymiz.
-                await SendAsync(chatId, LooksLikePhone(text) ? OwnContactOnlyPrompt : PhonePrompt,
-                    ContactKeyboard, ct);
+                // 2026-10-12: telefon so'ralmaydi — har qanday boshqa matnga «📱 Panel» yo'riqnomasi (jim qolmaymiz).
+                // Matn sifatida yozilgan raqam baribir hech narsaga BOG'LANMAYDI.
+                var registered = await db.TelegramRegistrations.AnyAsync(r => r.ChatId == chatId, ct);
+                var books = await BookSalesEnabledAsync(db, ct);
+                await SendAsync(chatId, StartHintText,
+                    registered ? RegisteredKeyboard(books, panel: true) : StartKeyboard(books), ct);
             }
         }
     }
@@ -477,8 +466,7 @@ public class TelegramBotService(
         {
             if (!_pendingPhone.TryGetValue(chatId, out var phone))
             {
-                await SendAsync(chatId,
-                    "Telefon raqamingizni qayta yuboring.", ContactKeyboard, ct);
+                await SendStartWelcomeAsync(chatId, cq, ct);
                 return;
             }
             await HandleContactAsync(chatId, phone, "", ct);
@@ -502,8 +490,7 @@ public class TelegramBotService(
                 var db = scope.ServiceProvider.GetRequiredService<IAppDbContext>();
                 await SendAsync(chatId,
                     "✅ Rahmat! Endi pastdagi tugmalardan foydalanishingiz mumkin.",
-                    RegisteredKeyboard(await BookSalesEnabledAsync(db, ct),
-                        await IsTeacherChatAsync(db, chatId, ct) || await IsStudentChatAsync(db, chatId, ct)), ct);
+                    RegisteredKeyboard(await BookSalesEnabledAsync(db, ct), panel: true), ct);
             }
         }
         else if (IsLegacyOnlineTestCallback(data))
@@ -703,16 +690,22 @@ public class TelegramBotService(
                 var isStudent = await IsStudentChatAsync(db, chatId, ct);
                 await SendAsync(chatId,
                     "Assalomu alaykum! 👋\n\nPastdagi tugmalardan foydalaning:\n"
-                    + PanelGreetingLine(isTeacher, isStudent)
+                    + (isTeacher || isStudent ? PanelGreetingLine(isTeacher, isStudent) : $"• {PanelButtonText} — tizimga kirish\n")
                     + $"• {OtpButtonText} — tizimga kirish uchun bir martalik kod\n"
                     + (books ? $"• {BookShopBotService.BooksButtonText} — sotuvdagi kitoblarga buyurtma\n" : "")
                     + $"• {SupportButtonText} — administratorga savol",
-                    RegisteredKeyboard(books, isTeacher || isStudent), ct);
+                    RegisteredKeyboard(books, panel: true), ct);
                 return;
             }
         }
 
-        await SendAsync(chatId, "Assalomu alaykum! 👋\n\n" + PhonePrompt, ContactKeyboard, ct);
+        // 2026-10-12 (owner: one bot for everyone, NO phone sharing): the chat is linked when its owner logs in
+        // inside «📱 Panel» (TelegramLinkController / TelegramMiniAppLink), not by a phone number.
+        using (var scope = sp.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<IAppDbContext>();
+            await SendAsync(chatId, StartWelcomeText, StartKeyboard(await BookSalesEnabledAsync(db, ct)), ct);
+        }
     }
 
     /// <summary>Telefon kelganda: moslik → MAJBURIY obuna → register + kirish ma'lumotlari.</summary>
@@ -752,7 +745,7 @@ public class TelegramBotService(
                 $"Bu raqam ({phone}) markaz o'quvchilari ro'yxatida topilmadi — tizimga kirish ma'lumotlari "
                 + "berilmaydi. Ma'lumotingiz noto'g'ri bo'lsa, markaz ma'muriyatiga murojaat qiling."
                 + (booksOn ? $"\n\n📚 Kitob sotib olish ochiq — «{BookShopBotService.BooksButtonText}»." : ""),
-                GuestKeyboard, ct, "HTML");
+                StartKeyboard(booksOn), ct, "HTML");
             return;
         }
 
@@ -858,7 +851,7 @@ public class TelegramBotService(
 
         await SendAsync(chatId,
             "✅ Ro'yxatdan o'tdingiz:\n• " + string.Join("\n• ", linked),
-            RegisteredKeyboard(meta?.BookSalesEnabled ?? true, teachers.Count > 0 || students.Any(s => !s.IsArchived)), ct);
+            RegisteredKeyboard(meta?.BookSalesEnabled ?? true, panel: true), ct);
 
         // Admin/xodim — yangi lid xabarnomalari haqida ma'lumot.
         if (admins.Count > 0)
@@ -1075,7 +1068,10 @@ public class TelegramBotService(
         var regs = await db.TelegramRegistrations.Where(r => r.ChatId == chatId).ToListAsync(ct);
         if (regs.Count == 0)
         {
-            await SendAsync(chatId, "Avval ro'yxatdan o'tishingiz kerak — telefon raqamingizni yuboring.", ContactKeyboard, ct);
+            await SendAsync(chatId,
+                "Bir martalik kod faqat botga ulangan akkauntga beriladi. Avval «" + PanelButtonText
+                + "» tugmasi orqali login va parolingiz bilan kiring — shundan keyin bot sizni taniydi.",
+                StartKeyboard(await BookSalesEnabledAsync(db, ct)), ct);
             return;
         }
 
@@ -1277,18 +1273,6 @@ public class TelegramBotService(
         return "https://t.me/" + ch.TrimStart('@');
     }
 
-    /// <summary>Matn telefon raqamiga o'xshaydimi — foydalanuvchi tugmasiz, raqamni YOZIB yuborgan bo'lsa
-    /// uni kontakt ulashgandek qabul qilamiz. Faqat raqam va telefon belgilari (+ - ( ) bo'sh joy) bo'lib,
-    /// 7–12 ta raqam bo'lsa "ha" (oddiy matn/murojaatni telefon deb yanglishmaslik uchun).</summary>
-    private static bool LooksLikePhone(string text)
-    {
-        var t = text.Trim();
-        if (t.Length == 0) return false;
-        var digits = PhoneUtil.DigitsOnly(t);
-        if (digits.Length is < 7 or > 12) return false;
-        return t.All(c => char.IsDigit(c) || c is '+' or '-' or '(' or ')' or ' ');
-    }
-
     /// <summary>XAVFSIZLIK SEAM: kelgan <c>contact</c> yuboruvchining O'ZIGA tegishlimi?
     /// Telegram "request_contact" tugmasi orqali yuborilgan kontaktda <c>contact.user_id</c> bo'ladi va u
     /// <c>message.from.id</c> ga TENG bo'ladi. Manzillar kitobidan tanlangan BEGONA kontaktda esa user_id
@@ -1341,19 +1325,26 @@ public class TelegramBotService(
         return new { keyboard = rows.ToArray(), resize_keyboard = true, one_time_keyboard = false };
     }
 
-    /// <summary>Faqat KITOB sotib olish + adminga murojaat — markaz ro'yxatida topilmagan (o'quvchi/
-    /// o'qituvchi emas) mijoz uchun. Kitob sotuvi hamma uchun ochiq: sotib olish uchun markazda
-    /// o'qish shart emas, telefon raqamini ulashish kifoya.</summary>
-    private static object GuestKeyboard => new
+    /// <summary>Botga hali ULANMAGAN chat klaviaturasi (2026-10-12, egasining qarori — telefon so'ralmaydi):
+    /// «📱 Panel» ENG TEPADA (login/parol bilan kirilgach chat akkauntga bog'lanadi — <see cref="TelegramMiniAppLink"/>),
+    /// (yoqilgan bo'lsa) kitob sotib olish, adminga murojaat.</summary>
+    public static object StartKeyboard(bool books)
     {
-        keyboard = new object[][]
-        {
-            new object[] { new { text = BookShopBotService.BooksButtonText } },
-            new object[] { new { text = SupportButtonText } },
-        },
-        resize_keyboard = true,
-        one_time_keyboard = false,
-    };
+        var rows = new List<object[]> { new object[] { new { text = PanelButtonText, web_app = new { url = PanelUrl } } } };
+        if (books) rows.Add(new object[] { new { text = BookShopBotService.BooksButtonText } });
+        rows.Add(new object[] { new { text = SupportButtonText } });
+        return new { keyboard = rows.ToArray(), resize_keyboard = true, is_persistent = true, one_time_keyboard = false };
+    }
+
+    /// <summary>Ulanmagan chatga /start javobi.</summary>
+    public const string StartWelcomeText =
+        "Assalomu alaykum! 👋\n\n"
+        + "Pastdagi «" + PanelButtonText + "» tugmasini bosing va login/parolingiz bilan kiring — o'quvchi va ota-ona "
+        + "kabineti yoki o'qituvchi paneli shu yerda ochiladi.\n\n"
+        + "🔔 Panelga bir marta kirganingizdan keyin markaz xabarlari (davomat, to'lov, e'lonlar) shu chatga keladi.";
+
+    /// <summary>Tanilmagan matnga javob.</summary>
+    public const string StartHintText = "Panelni ochish uchun pastdagi «" + PanelButtonText + "» tugmasini bosing 👇";
 
     /// <summary>Shu chat FAOL (arxivlanmagan) o'qituvchiga bog'langanmi — «📱 Panel» tugmasi shunda
     /// (yoki o'quvchiga bog'langan bo'lsa) ko'rsatiladi. Arxivlangan o'qituvchining eski bog'lanishi tugmani qaytarmaydi.</summary>
@@ -1396,9 +1387,8 @@ public class TelegramBotService(
         var db = scope.ServiceProvider.GetRequiredService<IAppDbContext>();
         var registered = await db.TelegramRegistrations.AnyAsync(r => r.ChatId == chatId, ct);
         var keyboard = registered
-            ? RegisteredKeyboard(await BookSalesEnabledAsync(db, ct),
-                await IsTeacherChatAsync(db, chatId, ct) || await IsStudentChatAsync(db, chatId, ct))
-            : ContactKeyboard;
+            ? RegisteredKeyboard(await BookSalesEnabledAsync(db, ct), panel: true)
+            : StartKeyboard(await BookSalesEnabledAsync(db, ct));
         await SendAsync(chatId, LegacyTestRemovedText, keyboard, ct);
     }
 
