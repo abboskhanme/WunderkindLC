@@ -31,6 +31,7 @@ public static class McpToolRegistry
         typeof(Tools.BackOfficeTools),
         // CRM upgrade (2026-10, docs/SPEC-crm-upgrade.md U2m–U6m).
         typeof(Tools.MessagingTools),
+        typeof(Tools.AttendanceControlTools),
     ];
 
     /// <summary>Entity types read by at least one tool.</summary>
@@ -85,6 +86,12 @@ public static class McpReadOnlyGrants
             nameof(CenterMeta.JournalApplyToAdmins), nameof(CenterMeta.SalaryRequireJournal), nameof(CenterMeta.SalaryGraceDays),
             nameof(CenterMeta.JournalHideUnpaidPrevMonth), nameof(CenterMeta.JournalHideUnpaidAfterDay),
             nameof(CenterMeta.JournalUnpaidCutoffDay), nameof(CenterMeta.SalaryChargedBaseFrom),
+            // CRM upgrade (2026-10): plain numbers/flags, no secrets — attendance discipline (attendance_discipline) and
+            // the rating test weight (RatingEngine.TestWeightAsync — without it the reduced model could not read the
+            // weight and the composite score would silently differ from the panel's).
+            nameof(CenterMeta.AttendanceDisciplineEnabled), nameof(CenterMeta.AttendanceDeadlineMinutes),
+            nameof(CenterMeta.AttendanceFineEnabled), nameof(CenterMeta.AttendanceFineAmount),
+            nameof(CenterMeta.RatingTestWeight),
         ],
     };
 
