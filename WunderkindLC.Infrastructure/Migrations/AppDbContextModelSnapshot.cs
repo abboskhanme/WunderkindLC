@@ -366,6 +366,13 @@ namespace WunderkindLC.Infrastructure.Migrations
                     b.Property<string>("Id")
                         .HasColumnType("text");
 
+                    b.Property<bool>("AckButton")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("AttachmentId")
+                        .HasMaxLength(36)
+                        .HasColumnType("character varying(36)");
+
                     b.Property<string>("Audience")
                         .IsRequired()
                         .HasColumnType("text");
@@ -822,6 +829,17 @@ namespace WunderkindLC.Infrastructure.Migrations
                     b.Property<string>("Id")
                         .HasColumnType("text");
 
+                    b.Property<bool>("AckRequired")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("AttachmentId")
+                        .HasMaxLength(36)
+                        .HasColumnType("character varying(36)");
+
+                    b.Property<string>("AudienceJson")
+                        .IsRequired()
+                        .HasColumnType("text");
+
                     b.Property<string>("ClassName")
                         .IsRequired()
                         .HasMaxLength(200)
@@ -829,6 +847,16 @@ namespace WunderkindLC.Infrastructure.Migrations
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp without time zone");
+
+                    b.Property<DateTime?>("FinishedAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasDefaultValue("broadcast");
 
                     b.Property<int>("RecipientCount")
                         .HasColumnType("integer");
@@ -843,6 +871,13 @@ namespace WunderkindLC.Infrastructure.Migrations
 
                     b.Property<int>("SentCount")
                         .HasColumnType("integer");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasDefaultValue("done");
 
                     b.Property<string>("Text")
                         .IsRequired()
@@ -6314,6 +6349,177 @@ namespace WunderkindLC.Infrastructure.Migrations
                     b.ToTable("MembershipReasonLogs");
                 });
 
+            modelBuilder.Entity("WunderkindLC.Domain.MessageAttachment", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasMaxLength(36)
+                        .HasColumnType("character varying(36)");
+
+                    b.Property<string>("ContentType")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<string>("CreatedById")
+                        .HasMaxLength(36)
+                        .HasColumnType("character varying(36)");
+
+                    b.Property<string>("CreatedByName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<DateTime?>("FileDeletedAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<string>("FileName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("FileUrl")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<long>("SizeBytes")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("TelegramFileId")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("MessageAttachments");
+                });
+
+            modelBuilder.Entity("WunderkindLC.Domain.MessageDelivery", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasMaxLength(36)
+                        .HasColumnType("character varying(36)");
+
+                    b.Property<DateTime?>("AckAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<bool>("AckRequired")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("AttachmentId")
+                        .HasMaxLength(36)
+                        .HasColumnType("character varying(36)");
+
+                    b.Property<int>("Attempts")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("BroadcastId")
+                        .HasMaxLength(36)
+                        .HasColumnType("character varying(36)");
+
+                    b.Property<long>("ChatId")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<string>("CreatedById")
+                        .HasMaxLength(36)
+                        .HasColumnType("character varying(36)");
+
+                    b.Property<string>("DedupeKey")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("Error")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)");
+
+                    b.Property<DateTime>("ExpiresAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<DateTime>("NextAttemptAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<string>("RecipientName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("RegistrationId")
+                        .HasMaxLength(36)
+                        .HasColumnType("character varying(36)");
+
+                    b.Property<string>("Relation")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<DateTime?>("SentAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<string>("SourceId")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("Status")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<string>("StudentId")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("TeacherId")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<long?>("TelegramMessageId")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Text")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Trigger")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BroadcastId");
+
+                    b.HasIndex("DedupeKey")
+                        .IsUnique();
+
+                    b.HasIndex("SourceId");
+
+                    b.HasIndex("Status", "NextAttemptAt");
+
+                    b.HasIndex("StudentId", "CreatedAt");
+
+                    b.ToTable("MessageDeliveries");
+                });
+
             modelBuilder.Entity("WunderkindLC.Domain.MonthlyCharge", b =>
                 {
                     b.Property<string>("Id")
@@ -7176,6 +7382,71 @@ namespace WunderkindLC.Infrastructure.Migrations
                     b.HasIndex("UserId");
 
                     b.ToTable("Students");
+                });
+
+            modelBuilder.Entity("WunderkindLC.Domain.StudentAchievement", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasMaxLength(36)
+                        .HasColumnType("character varying(36)");
+
+                    b.Property<string>("AttachmentId")
+                        .HasMaxLength(36)
+                        .HasColumnType("character varying(36)");
+
+                    b.Property<DateTime?>("CongratulatedAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<int>("CongratulationCount")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<string>("CreatedById")
+                        .HasMaxLength(36)
+                        .HasColumnType("character varying(36)");
+
+                    b.Property<string>("CreatedByName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("Date")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<string>("Note")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<string>("Result")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<string>("StudentId")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("StudentId");
+
+                    b.ToTable("StudentAchievements");
                 });
 
             modelBuilder.Entity("WunderkindLC.Domain.StudentAiAccess", b =>
@@ -8160,6 +8431,9 @@ namespace WunderkindLC.Infrastructure.Migrations
                     b.Property<string>("Id")
                         .HasColumnType("text");
 
+                    b.Property<DateTime?>("BlockedAt")
+                        .HasColumnType("timestamp without time zone");
+
                     b.Property<long>("ChatId")
                         .HasColumnType("bigint");
 
@@ -8173,6 +8447,13 @@ namespace WunderkindLC.Infrastructure.Migrations
                     b.Property<string>("Phone")
                         .IsRequired()
                         .HasColumnType("text");
+
+                    b.Property<string>("Relation")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasDefaultValue("");
 
                     b.Property<string>("StudentId")
                         .IsRequired()
@@ -8188,6 +8469,8 @@ namespace WunderkindLC.Infrastructure.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("ChatId");
+
+                    b.HasIndex("StudentId", "BlockedAt");
 
                     b.HasIndex("StudentId", "ChatId")
                         .IsUnique();
