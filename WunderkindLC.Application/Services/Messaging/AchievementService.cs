@@ -89,5 +89,5 @@ public static class AchievementService
     public static AchievementDto ToDto(StudentAchievement a, string studentName, int messages = 0) => new(
         a.Id, a.StudentId, studentName, a.Kind, KindLabel(a.Kind), a.Title, a.Result, a.Date, a.Note,
         a.AttachmentId is not null, a.CongratulatedAt?.ToString("yyyy-MM-ddTHH:mm:ss"),
-        a.CreatedAt.ToString("yyyy-MM-ddTHH:mm:ss"), a.CreatedByName, messages);
+        a.CreatedAt.ToString("yyyy-MM-ddTHH:mm:ss"), a.CreatedByName, messages, AttachmentId: a.AttachmentId);
 }

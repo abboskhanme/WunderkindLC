@@ -8,7 +8,7 @@ import {
   PhoneCall, MessageSquareText,
   Snowflake, CheckCircle2, RotateCcw, ArrowLeftRight, Plus, NotebookText, X,
   StickyNote, Gift, BadgePercent, Trash2,
-  DoorOpen, LogIn, LogOut, RefreshCw, Wifi, WifiOff,
+  DoorOpen, LogIn, LogOut, RefreshCw, Wifi, WifiOff, Trophy,
 } from 'lucide-react'
 import { genderLabel } from '@/config/constants'
 import {
@@ -93,8 +93,10 @@ import { DiscountSection } from './DiscountSection'
 import { studentDiscountLabel } from './discountLabel'
 import { ProfileCard } from './profile/ProfileCard'
 import { TelegramLinksSection } from './profile/TelegramLinksSection'
+import { TelegramDeliveriesSection } from './profile/TelegramDeliveriesSection'
+import { AchievementsSection } from './profile/AchievementsSection'
 import { IntakeChecklistCard } from '@/components/students/IntakeChecklistCard'
-import { TelegramMessageModal } from './TelegramMessageModal'
+import { TelegramSendModal } from '@/components/messaging/TelegramSendModal'
 import { PhoneCallModal, type CallOption } from '@/components/PhoneCallModal'
 import { ReasonPromptModal } from '@/components/ui/ReasonPromptModal'
 import { TransferGroupModal } from '../classes/TransferGroupModal'
@@ -148,6 +150,7 @@ type Tab =
   | 'fikr'
   | 'testlar'
   | 'sertifikatlar'
+  | 'yutuqlar'
   | 'aloqa'
   | 'izohlar'
   | 'turniket'
@@ -281,7 +284,7 @@ export function StudentDetailPage() {
   /** "Qo'ng'iroq qilish" bosilganda — to'liq o'quvchi obyekti (barcha telefon raqamlari uchun). */
   const [callTarget, setCallTarget] = useState<Student | null>(null)
   const [callOpen, setCallOpen] = useState(false)
-  /** "Telegram xabar" bosilganda — TelegramMessageModal bitta o'quvchi bilan ochiladi. */
+  /** "Telegram xabar" bosilganda — TelegramSendModal bitta o'quvchi bilan ochiladi. */
   const [msgOpen, setMsgOpen] = useState(false)
   /** "To'lov qilish" bosilganda — PaymentModal uchun to'liq o'quvchi obyekti. */
   const [paymentTarget, setPaymentTarget] = useState<Student | null>(null)
@@ -1011,6 +1014,9 @@ export function StudentDetailPage() {
             <button type="button" className={cn('tab', tab === 'sertifikatlar' && 'active')} onClick={() => setTab('sertifikatlar')}>
               <Award className="mr-1 inline h-3.5 w-3.5" /> Sertifikatlar
             </button>
+            <button type="button" className={cn('tab', tab === 'yutuqlar' && 'active')} onClick={() => setTab('yutuqlar')}>
+              <Trophy className="mr-1 inline h-3.5 w-3.5" /> Yutuqlar
+            </button>
             <button type="button" className={cn('tab', tab === 'aloqa' && 'active')} onClick={() => setTab('aloqa')}>
               <PhoneCall className="mr-1 inline h-3.5 w-3.5" /> Aloqa
             </button>
@@ -1392,7 +1398,24 @@ export function StudentDetailPage() {
 
       {/* Telegram ulanishlari (ota-ona boti) — kim ulangan, eskirganini «Uzish» (`TelegramLinks`). */}
       {tab === 'aloqa' && id && (
-        <TelegramLinksSection studentId={id} canUnlink={can('students.list', 'delete')} />
+        <TelegramLinksSection
+          studentId={id}
+          canUnlink={can('students.list', 'delete')}
+          canEdit={can('students.list', 'edit')}
+        />
+      )}
+
+      {/* Telegram xabarlari (CRM upgrade P2.7) — holati va «Qabul qildi» vaqti bilan. */}
+      {tab === 'aloqa' && id && <TelegramDeliveriesSection studentId={id} />}
+
+      {/* Yutuqlar (CRM upgrade U2c) — IELTS / CEFR / sertifikat / olimpiada + ota-onaga tabrik. */}
+      {tab === 'yutuqlar' && id && (
+        <AchievementsSection
+          studentId={id}
+          canCreate={can('students.list', 'create')}
+          canEdit={can('students.list', 'edit')}
+          canDelete={can('students.list', 'delete')}
+        />
       )}
 
       {/* Tugatgan kurslar va sertifikatlar */}
@@ -1970,10 +1993,11 @@ export function StudentDetailPage() {
         }}
       />
 
-      <TelegramMessageModal
+      <TelegramSendModal
         open={msgOpen}
         onClose={() => setMsgOpen(false)}
         recipients={id ? [{ id, fullName: data.fullName }] : []}
+        kind={data.isArchived ? 'archive' : 'broadcast'}
       />
 
       {/* Muzlatish / aktivlashtirish / sinovga qaytarish / chiqarish — sabab (va sana) tanlash modali */}

@@ -15,6 +15,7 @@ import {
   clearApiCache,
   installApiCache,
   invalidationScopesFor,
+  isNonMutatingPost,
   keyInScope,
   scopeOf,
 } from '../cache'
@@ -217,6 +218,21 @@ describe('kesh adapteri', () => {
     await instance.get('/auth/me')
     expect(calls).toHaveLength(2)
     expect(apiCacheSize()).toBe(0)
+  })
+
+  it('Telegram preview/sanoq POST\'lari keshni TOZALAMAYDI, kampaniya esa o\'quvchilarnikini tashlaydi', async () => {
+    const { instance, calls } = makeClient()
+    await instance.get('/admin/students')
+    await instance.post('/admin/messaging/preview', {})
+    await instance.post('/admin/messaging/audience/count', {})
+    calls.length = 0
+    await instance.get('/admin/students') // tegilmagan → keshdan
+    expect(calls).toEqual([])
+    expect(isNonMutatingPost('/admin/messaging/preview?x=1')).toBe(true)
+    expect(isNonMutatingPost('/admin/messaging/campaigns')).toBe(false)
+    await instance.post('/admin/messaging/campaigns', {})
+    await instance.get('/admin/students') // profil «Telegram xabarlari» o'zgardi → tarmoq
+    expect(calls).toEqual(['POST /admin/messaging/campaigns', 'GET /admin/students'])
   })
 
   it('cacheKeyOf — params tartibi kalitni o\'zgartirmaydi', () => {

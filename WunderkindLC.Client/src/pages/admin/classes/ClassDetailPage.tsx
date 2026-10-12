@@ -54,7 +54,7 @@ import { ClassMembersModal } from './ClassMembersModal'
 import { GroupStudentsTab, type MemberActionKind } from './detail/GroupStudentsTab'
 import { GroupAiPanel } from './GroupAiPanel'
 import { ClassFormModal } from './ClassFormModal'
-import { TelegramMessageModal, type TelegramRecipient } from '../students/TelegramMessageModal'
+import { TelegramSendModal, type TelegramRecipient } from '@/components/messaging/TelegramSendModal'
 
 const weekdayShort = ['Du', 'Se', 'Cho', 'Pa', 'Ju', 'Sha', 'Ya']
 const uzMonths = [
@@ -663,6 +663,15 @@ export function ClassDetailPage() {
     return membersSortAsc ? list : list.reverse()
   }, [members, membersSortAsc])
 
+  // «O'quvchilar» tabidagi «Telegram» ustuni (U6b): Telegram sanog'i faqat `members` javobida keladi.
+  const telegramByStudent = useMemo(
+    () =>
+      Object.fromEntries(
+        members.map((m) => [m.studentId, { linked: m.telegramLinked ?? 0, relations: m.telegramRelations ?? [] }]),
+      ),
+    [members],
+  )
+
   // Bu sahifadan o'quvchi profiliga o'tilganda "Orqaga" havolasi o'quvchilar ro'yxatiga emas,
   // SHU GURUHGA qaytarsin — havolalarga `state` sifatida uzatiladi (qarang `lib/nav.ts`).
   /** "O'quvchilar" tabi jadvalini yuklash (tab ochilganda va har o'zgarishdan keyin). */
@@ -1045,6 +1054,7 @@ export function ClassDetailPage() {
               groupName={journal?.group?.name ?? group?.name ?? ''}
               groupFee={group?.monthlyFee ?? 0}
               roster={roster}
+              telegram={telegramByStudent}
               loading={rosterLoading}
               back={memberBack}
               canManage={can('classes.list', 'create')}
@@ -1894,7 +1904,7 @@ export function ClassDetailPage() {
       />
 
       {/* Guruhga Telegram xabar — sarlavha "⋮" menyusidan, faol a'zolarning oilalariga. */}
-      <TelegramMessageModal open={msgOpen} onClose={() => setMsgOpen(false)} recipients={msgRecipients} />
+      <TelegramSendModal open={msgOpen} onClose={() => setMsgOpen(false)} recipients={msgRecipients} />
 
       {/* Guruhni yakunlash modali (Hybrid: arxivlash + maqsad kursga yangi guruh) */}
       <CompleteAndTransferModal

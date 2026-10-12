@@ -72,6 +72,9 @@ public class MessagingRbacTests
         var header = ClassHeader(src, "StudentAchievementsController");
         Assert.Matches(new Regex(@"\[AdminPerm\(""students\.list"",\s*ReadRequiresPerm\s*=\s*true\)\]"), header);
         Assert.Contains("[Route(\"api/admin/achievements\")]", header);
+        // Own photo upload under the same gate (POST → create) — no messaging permission needed; photos only.
+        Assert.Contains("[HttpPost(\"photo\")]", src);
+        Assert.Contains("Yutuq uchun faqat rasm (jpg, png) biriktiriladi", src);
         Assert.DoesNotContain("AllowAnonymous", src);
         Assert.Single(Regex.Matches(src, @"\[AdminPerm\("));
     }

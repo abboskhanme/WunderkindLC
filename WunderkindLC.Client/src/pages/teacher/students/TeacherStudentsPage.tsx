@@ -6,6 +6,7 @@ import { apiErrorMessage, cn } from '@/lib/utils'
 import { currentMonth, shiftMonth } from '@/lib/month'
 import { monthTitle, pctTone } from '@/lib/teacherPortal'
 import { Avatar, EmptyState, Segmented, SkeletonRows, StatTile, TCard, TPage } from '@/components/teacher/TeacherUi'
+import { TelegramLinkCell } from '@/components/messaging/TelegramLinkCell'
 
 type StatusFilter = 'all' | 'active' | 'trial' | 'frozen' | 'low'
 
@@ -180,6 +181,7 @@ export function TeacherStudentsPage() {
                     <th className="px-3 py-2.5">O'quvchi</th>
                     <th className="px-3 py-2.5">Guruh</th>
                     <th className="px-3 py-2.5">Holat</th>
+                    <th className="px-3 py-2.5">Telegram</th>
                     <th className="px-3 py-2.5">Davomat</th>
                     <th className="px-3 py-2.5 text-center">Keldi</th>
                     <th className="px-3 py-2.5 text-center">Kelmadi</th>
@@ -207,6 +209,9 @@ export function TeacherStudentsPage() {
                       </td>
                       <td className="px-3 py-2.5">
                         <StatusBadge status={r.status} />
+                      </td>
+                      <td className="px-3 py-2.5">
+                        <TelegramLinkCell linked={r.telegramLinked} relations={r.telegramRelations} />
                       </td>
                       <td className="px-3 py-2.5">
                         <PctBar pct={r.attendancePct} held={r.held} />
@@ -253,6 +258,7 @@ function StudentCard({ r }: { r: TeacherStudentRow }) {
           {r.absent > 0 && ` · ${r.absent} ta kelmagan`}
         </p>
         {r.debtMonths > 0 && <p className="text-[11.5px] font-semibold text-red-600">To'lov kutilmoqda ({r.debtMonths} oy)</p>}
+        <TelegramLinkCell linked={r.telegramLinked} relations={r.telegramRelations} className="mt-0.5 text-[12px]" />
       </div>
       <div className="w-[62px] shrink-0 text-right">
         <p className={cn('text-[16px] font-bold', pctTone(r.attendancePct).text)}>

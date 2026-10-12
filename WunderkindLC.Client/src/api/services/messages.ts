@@ -131,19 +131,19 @@ export interface SaveMessageTemplateReq {
 }
 export async function getMessageTemplates(): Promise<MessageTemplate[]> {
   if (USE_MOCK) return []
-  const { data } = await api.get<MessageTemplate[]>('/admin/messages/templates')
+  const { data } = await api.get<MessageTemplate[]>('/admin/messaging/templates')
   return data
 }
 export async function createMessageTemplate(req: SaveMessageTemplateReq): Promise<MessageTemplate> {
-  const { data } = await api.post<MessageTemplate>('/admin/messages/templates', req)
+  const { data } = await api.post<MessageTemplate>('/admin/messaging/templates', req)
   return data
 }
 export async function updateMessageTemplate(id: string, req: SaveMessageTemplateReq): Promise<MessageTemplate> {
-  const { data } = await api.put<MessageTemplate>(`/admin/messages/templates/${id}`, req)
+  const { data } = await api.put<MessageTemplate>(`/admin/messaging/templates/${id}`, req)
   return data
 }
 export async function deleteMessageTemplate(id: string): Promise<void> {
-  await api.delete(`/admin/messages/templates/${id}`)
+  await api.delete(`/admin/messaging/templates/${id}`)
 }
 
 /**

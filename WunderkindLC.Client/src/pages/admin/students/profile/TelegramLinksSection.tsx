@@ -2,12 +2,14 @@ import { useEffect, useState } from 'react'
 import { Send, Unlink } from 'lucide-react'
 import {
   getStudentTelegramLinks,
+  setStudentTelegramRelation,
   unlinkStudentTelegram,
   type StudentTelegramLink,
 } from '@/api/services/students'
 import { Card } from '@/components/ui/Card'
 import { apiErrorMessage, cn, formatDateTime } from '@/lib/utils'
 import { formatPhone } from '@/lib/numberFormat'
+import { RELATIONS, normalizeRelation, relationIcon, relationLabel } from '@/lib/relations'
 import { Empty } from './shared'
 
 /**
@@ -18,8 +20,19 @@ import { Empty } from './shared'
  * Raqami o'quvchining joriy raqamlariga mos KELMAYDIGAN ulanish sariq belgi bilan ko'rsatiladi.
  * O'qish — fon so'rovi: ruxsat yo'q (403) yoki xato bo'lsa bo'lim chizilmaydi (profilning asosiy
  * ma'lumoti emas). Uzish xatosi — `alert` (ro'yxat qatoridagi amal, `error-visibility.md`).
+ *
+ * CRM upgrade P2.8: har chatning QARINDOSHLIGI (otasi/onasi/…) — `students.list:edit` bilan
+ * tahrirlanadi (server faqat kontakt raqamidan taxmin qiladi); botni bloklagan chat qizil belgi bilan.
  */
-export function TelegramLinksSection({ studentId, canUnlink }: { studentId: string; canUnlink: boolean }) {
+export function TelegramLinksSection({
+  studentId,
+  canUnlink,
+  canEdit = false,
+}: {
+  studentId: string
+  canUnlink: boolean
+  canEdit?: boolean
+}) {
   const [links, setLinks] = useState<StudentTelegramLink[] | null>(null)
   const [busyId, setBusyId] = useState<string | null>(null)
   const [tick, setTick] = useState(0)
@@ -53,6 +66,19 @@ export function TelegramLinksSection({ studentId, canUnlink }: { studentId: stri
     }
   }
 
+  // Lokal yamoq faqat MUVAFFAQIYATDAN keyin (optimistik emas — `error-visibility.md` §3).
+  const changeRelation = async (link: StudentTelegramLink, relation: string) => {
+    setBusyId(link.id)
+    try {
+      const saved = await setStudentTelegramRelation(studentId, link.id, relation)
+      setLinks((prev) => prev?.map((l) => (l.id === link.id ? { ...l, ...saved } : l)) ?? prev)
+    } catch (err) {
+      alert(apiErrorMessage(err, "Qarindoshlikni saqlab bo'lmadi"))
+    } finally {
+      setBusyId(null)
+    }
+  }
+
   if (links === null) return null
 
   return (
@@ -69,6 +95,9 @@ export function TelegramLinksSection({ studentId, canUnlink }: { studentId: stri
             <li key={l.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2.5 first:pt-0 last:pb-0">
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-base leading-none" aria-hidden>
+                    {relationIcon(l.relation)}
+                  </span>
                   <span className="text-sm font-medium text-slate-700">{l.parentName || 'Ismsiz'}</span>
                   {l.phone && <span className="font-mono text-xs text-slate-500">{formatPhone(l.phone)}</span>}
                   {!l.phoneMatches && (
@@ -79,9 +108,38 @@ export function TelegramLinksSection({ studentId, canUnlink }: { studentId: stri
                       Raqam mos emas
                     </span>
                   )}
+                  {l.blocked && (
+                    <span
+                      className="rounded-md bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700"
+                      title={
+                        l.blockedAt
+                          ? `Bloklangan: ${formatDateTime(l.blockedAt)}. Botga qayta yozsa o'zi tiklanadi.`
+                          : "Botga qayta yozsa o'zi tiklanadi."
+                      }
+                    >
+                      Botni bloklagan
+                    </span>
+                  )}
                 </div>
                 <p className="mt-0.5 text-xs text-slate-400">Ulangan: {formatDateTime(l.createdAt)}</p>
               </div>
+              {canEdit ? (
+                <select
+                  aria-label="Kim ulangan"
+                  value={normalizeRelation(l.relation)}
+                  disabled={busyId === l.id}
+                  onChange={(e) => changeRelation(l, e.target.value)}
+                  className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs font-medium text-slate-700 outline-none focus:border-brand-400 disabled:opacity-50"
+                >
+                  {RELATIONS.map((r) => (
+                    <option key={r} value={r}>
+                      {relationLabel(r)}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <span className="text-xs font-medium text-slate-500">{relationLabel(l.relation)}</span>
+              )}
               {canUnlink && (
                 <button
                   type="button"

@@ -11,6 +11,7 @@ import { TablePagination, usePagination } from '@/components/ui/TablePagination'
 import { Loader } from '@/components/ui/Loader'
 import { balanceTextCls, formatMoney } from '@/lib/utils'
 import { groupsText } from '@/lib/studentGroups'
+import { matchesTelegramFilter, type TelegramFilter } from '@/lib/relations'
 
 /** Jadval ustuni — `DataColumn` ning o'quvchi qatoriga moslangan ko'rinishi. */
 export type StudentColumn = DataColumn<Student>
@@ -22,6 +23,8 @@ interface StudentListBoardProps {
   columns: StudentColumn[]
   /** Bo'sh holat matni o'rniga hech narsa kerak emas — `DataTable` o'zi yozadi. */
   emptyHint?: string
+  /** CRM upgrade U6b: «Telegram: Ulangan / Ulanmagan» filtri (ro'yxatda `telegramLinked` bo'lsa). */
+  telegramFilter?: boolean
 }
 
 /**
@@ -32,7 +35,7 @@ interface StudentListBoardProps {
  * ⚠️ Filtr va qidiruv KLIENTDA: ro'yxat bir so'rovda keladi (`GET /admin/students`), ya'ni har
  * bosishda server so'rovi ketmaydi. Katta markazda ro'yxat sahifalanadi (`usePagination`).
  */
-export function StudentListBoard({ load, columns }: StudentListBoardProps) {
+export function StudentListBoard({ load, columns, telegramFilter = false }: StudentListBoardProps) {
   const { data, loading, error } = useAsync(load, [])
   const students = useMemo(() => data ?? [], [data])
 
@@ -41,6 +44,7 @@ export function StudentListBoard({ load, columns }: StudentListBoardProps) {
   const [group, setGroup] = useState('')
   const [balance, setBalance] = useState('')
   const [moderator, setModerator] = useState('')
+  const [telegram, setTelegram] = useState<'' | Exclude<TelegramFilter, 'all'>>('')
 
   const groupOptions = useMemo(
     () => [...new Set(students.flatMap((s) => s.groups ?? []).filter(Boolean))].sort(),
@@ -59,6 +63,7 @@ export function StudentListBoard({ load, columns }: StudentListBoardProps) {
       if (balance === 'debt' && s.balance >= 0) return false
       if (balance === 'credit' && s.balance <= 0) return false
       if (moderator && (s.moderator ?? '') !== moderator) return false
+      if (telegram && !matchesTelegramFilter(s.telegramLinked, telegram)) return false
       if (!needle) return true
       const phones = [s.phone, s.parentPhone, s.fatherPhone, s.motherPhone]
         .filter(Boolean)
@@ -70,7 +75,7 @@ export function StudentListBoard({ load, columns }: StudentListBoardProps) {
         (digits.length >= 3 && phones.includes(digits))
       )
     })
-  }, [students, q, group, balance, moderator])
+  }, [students, q, group, balance, moderator, telegram])
 
   // "Qarzdor" / "Haqdor" — edutizimdagidek jadval TEPASIDA, ko'rinayotgan ro'yxat bo'yicha.
   const debt = shown.reduce((sum, s) => sum + (s.balance < 0 ? -s.balance : 0), 0)
@@ -104,6 +109,16 @@ export function StudentListBoard({ load, columns }: StudentListBoardProps) {
             <option value="debt">Qarzdor</option>
             <option value="credit">Haqdor</option>
           </FilterSelect>
+          {telegramFilter && (
+            <FilterSelect
+              placeholder="Telegram: Hammasi"
+              value={telegram}
+              onChange={(e) => setTelegram(e.target.value as '' | Exclude<TelegramFilter, 'all'>)}
+            >
+              <option value="linked">Telegram: Ulangan</option>
+              <option value="none">Telegram: Ulanmagan</option>
+            </FilterSelect>
+          )}
           {moderatorOptions.length > 0 && (
             <FilterSelect placeholder="Moderator" value={moderator} onChange={(e) => setModerator(e.target.value)}>
               {moderatorOptions.map((m) => (

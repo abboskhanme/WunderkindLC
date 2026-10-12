@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Award } from 'lucide-react'
+import { Award, Trophy } from 'lucide-react'
 import { getStudentCertificates, type StudentCertificateDto } from '@/api/services/studentPortal'
+import { fetchMyAchievementPhotoUrl, getMyAchievements, type Achievement } from '@/api/services/achievements'
+import { useBlobUrl } from '@/components/messaging/useBlobUrl'
 import { Icon, fmtDate } from '@/pages/student/lib'
 
 /* ============================================================
@@ -156,8 +158,53 @@ function CertCard({
   )
 }
 
+/** «Yutuqlarim» kartasi (CRM upgrade U2c) — rasm yopiq endpointdan blob qilib olinadi. */
+function AchievementCard({ a }: { a: Achievement }) {
+  const photo = useBlobUrl(a.hasPhoto ? a.id : null, fetchMyAchievementPhotoUrl)
+  return (
+    <div className="card row gap12" style={{ borderRadius: 18, padding: 14, marginBottom: 12, alignItems: 'center' }}>
+      {photo ? (
+        <img
+          src={photo}
+          alt={a.title}
+          style={{ width: 64, height: 64, borderRadius: 14, objectFit: 'cover', flex: 'none' }}
+        />
+      ) : (
+        <div
+          style={{
+            width: 64,
+            height: 64,
+            borderRadius: 14,
+            background: '#FEF3C7',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            flex: 'none',
+          }}
+        >
+          <Trophy size={28} color="#D97706" strokeWidth={2} />
+        </div>
+      )}
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div className="faint" style={{ fontSize: 11, fontWeight: 700, marginBottom: 2 }}>
+          {a.kindLabel.toUpperCase()}
+        </div>
+        <div style={{ fontSize: 15, fontWeight: 800, letterSpacing: '-.2px', lineHeight: 1.25, overflowWrap: 'anywhere' }}>
+          {a.title}
+        </div>
+        <div className="row gap8" style={{ marginTop: 4, fontSize: 12.5, flexWrap: 'wrap' }}>
+          {a.result && <span style={{ fontWeight: 800, color: '#B45309' }}>{a.result}</span>}
+          <span className="muted">{fmtDate(a.date)}</span>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export function CertificatesPage() {
   const navigate = useNavigate()
+  // Yutuqlar — ikkilamchi (fon) o'qish: xato bo'lsa bo'lim shunchaki chiqmaydi, sertifikatlar buzilmaydi.
+  const [achievements, setAchievements] = useState<Achievement[]>([])
   const [certs, setCerts] = useState<StudentCertificateDto[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -170,6 +217,20 @@ export function CertificatesPage() {
       .then((d) => alive && setCerts(d))
       .catch((e) => alive && setError(e?.message || String(e)))
       .finally(() => alive && setLoading(false))
+    return () => {
+      alive = false
+    }
+  }, [])
+
+  useEffect(() => {
+    let alive = true
+    getMyAchievements()
+      .then((d) => {
+        if (alive) setAchievements(d)
+      })
+      .catch(() => {
+        /* fon o'qish — «Yutuqlarim» bo'limi ko'rinmaydi */
+      })
     return () => {
       alive = false
     }
@@ -237,6 +298,20 @@ export function CertificatesPage() {
       {head}
       <div className="scroll" style={{ paddingBottom: 24 }}>
         <div className="pad">
+          {achievements.length > 0 && (
+            <div style={{ marginBottom: 18 }}>
+              <div className="row gap8" style={{ alignItems: 'center', marginBottom: 10 }}>
+                <Trophy size={18} color="#D97706" strokeWidth={2.2} />
+                <div style={{ fontSize: 16, fontWeight: 800, letterSpacing: '-.2px' }}>Yutuqlarim</div>
+                <span className="muted" style={{ fontSize: 12.5 }}>
+                  {achievements.length} ta
+                </span>
+              </div>
+              {achievements.map((a) => (
+                <AchievementCard key={a.id} a={a} />
+              ))}
+            </div>
+          )}
           {certs.length === 0 ? (
             /* Bo'sh holat */
             <div
@@ -245,7 +320,7 @@ export function CertificatesPage() {
                 flexDirection: 'column',
                 alignItems: 'center',
                 justifyContent: 'center',
-                minHeight: '55dvh',
+                minHeight: achievements.length > 0 ? '30dvh' : '55dvh',
                 gap: 14,
                 textAlign: 'center',
               }}

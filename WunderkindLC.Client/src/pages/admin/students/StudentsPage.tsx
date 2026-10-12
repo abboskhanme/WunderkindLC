@@ -45,7 +45,9 @@ import { Loader } from '@/components/ui/Loader'
 import { Modal } from '@/components/ui/Modal'
 import { MoneyInput } from '@/components/ui/NumberInput'
 import { StudentFormModal } from './StudentFormModal'
-import { TelegramMessageModal } from './TelegramMessageModal'
+import { TelegramSendModal } from '@/components/messaging/TelegramSendModal'
+import { TelegramLinkCell } from '@/components/messaging/TelegramLinkCell'
+import { TELEGRAM_FILTERS, matchesTelegramFilter, type TelegramFilter } from '@/lib/relations'
 import { NeedContactModal } from './contacts/NeedContactModal'
 import { PaymentModal } from './PaymentModal'
 import { ReceiptModal } from '@/components/finance/ReceiptModal'
@@ -180,6 +182,8 @@ export function StudentsPage() {
   const [balanceFilter, setBalanceFilter] = usePersistentState<BalanceFilter>(
     'students.balanceFilter', 'all', fresh<BalanceFilter>(preset === 'debtors' ? 'debt' : 'all'),
   )
+  /** CRM upgrade U6b: «Telegram: Hammasi / Ulangan / Ulanmagan» — faqat «Faol» tabida, klientda. */
+  const [telegramFilter, setTelegramFilter] = useState<TelegramFilter>('all')
   /**
    * QARZ SUMMASI oralig'i ("shu summadan baland / shu summadan past qarzdorlar").
    * MATN sifatida saqlanadi: bo'sh satr = chegara qo'yilmagan, bu `0` dan FARQ qiladi
@@ -427,7 +431,8 @@ export function StudentsPage() {
     const hasPhoto = !!(s.birthCertificateUrl && s.birthCertificateUrl.trim())
     const matchPhoto =
       photoFilter === 'all' || (photoFilter === 'with' ? hasPhoto : !hasPhoto)
-    return matchSearch && matchClass && matchTeacher && matchGender && matchBalance && matchDebtRange && matchActive && matchGrade && matchBirthday && matchPhoto
+    const matchTelegram = tab !== 'active' || matchesTelegramFilter(s.telegramLinked, telegramFilter)
+    return matchSearch && matchClass && matchTeacher && matchGender && matchBalance && matchDebtRange && matchActive && matchGrade && matchBirthday && matchPhoto && matchTelegram
   })
     .sort((a, b) => {
       if (sort === 'ball-desc' || sort === 'ball-asc') {
@@ -439,7 +444,7 @@ export function StudentsPage() {
       // "Yangi kiritilgani tepada": tizimga kiritilgan vaqt (bo'lmasa qabul sanasi) bo'yicha kamayish.
       return (b.createdAt || b.enrollmentDate || '').localeCompare(a.createdAt || a.enrollmentDate || '')
     }),
-  [source, search, classFilter, teacherFilter, genderFilter, balanceFilter, debtRangeOn, debtMinNum, debtMaxNum, activeFilter, gradeFilter, birthdayToday, todayMonthDay, photoFilter, sort, ballMap])
+  [source, search, classFilter, teacherFilter, genderFilter, balanceFilter, debtRangeOn, debtMinNum, debtMaxNum, activeFilter, gradeFilter, birthdayToday, todayMonthDay, photoFilter, sort, ballMap, tab, telegramFilter])
 
   /** Filtrlangan ro'yxatdagi JAMI qarz (musbat son) — toolbar o'ng tomonida ko'rsatiladi. */
   const filteredDebtTotal = useMemo(
@@ -521,6 +526,7 @@ export function StudentsPage() {
     activeFilter !== 'all' ||
     gradeFilter !== 'all' ||
     photoFilter !== 'all' ||
+    telegramFilter !== 'all' ||
     birthdayToday ||
     sort !== 'default'
   const clearFilters = () => {
@@ -536,6 +542,7 @@ export function StudentsPage() {
     setActiveFilter('all')
     setGradeFilter('all')
     setPhotoFilter('all')
+    setTelegramFilter('all')
     setBirthdayToday(false)
     setSort('default')
   }
@@ -1075,6 +1082,20 @@ export function StudentsPage() {
             <option value="with">Rasmi bor</option>
             <option value="without">Rasmi yo'q</option>
           </select>
+          {tab === 'active' && (
+            <select
+              value={telegramFilter}
+              onChange={(e) => setTelegramFilter(e.target.value as TelegramFilter)}
+              className={control}
+              title="Telegram botga ulanganmi"
+            >
+              {TELEGRAM_FILTERS.map((f) => (
+                <option key={f.key} value={f.key}>
+                  Telegram: {f.label}
+                </option>
+              ))}
+            </select>
+          )}
           <button
             type="button"
             onClick={() => setBirthdayToday((v) => !v)}
@@ -1254,6 +1275,7 @@ export function StudentsPage() {
                   <th>Tug'ilgan kun</th>
                   <th>Ota-ona</th>
                   <th>Telefon</th>
+                  {tab === 'active' && <th>Telegram</th>}
                   <th className="num" title="Jurnal baholari + bajarilgan baholash mezonlari">
                     Ball
                   </th>
@@ -1362,6 +1384,11 @@ export function StudentsPage() {
                     <td className="whitespace-nowrap font-mono text-slate-600">{formatDate(s.birthDate)}</td>
                     <td className="whitespace-nowrap text-slate-600">{s.parentFullName}</td>
                     <td className="whitespace-nowrap font-mono text-slate-600">{formatPhone(s.parentPhone)}</td>
+                    {tab === 'active' && (
+                      <td>
+                        <TelegramLinkCell linked={s.telegramLinked} relations={s.telegramRelations} blocked={s.telegramBlocked} />
+                      </td>
+                    )}
                     <td className="num">
                       {(ballMap[s.id] ?? 0) > 0 ? (
                         <span className="inline-flex items-center justify-end gap-1 font-mono font-semibold text-brand-700">
@@ -1454,7 +1481,7 @@ export function StudentsPage() {
                 ))}
                 {filtered.length === 0 && (
                   <tr>
-                    <td colSpan={tab === 'archived' ? 14 : 12} className="px-4 py-12 text-center text-slate-400">
+                    <td colSpan={tab === 'archived' ? 14 : 13} className="px-4 py-12 text-center text-slate-400">
                       {tab === 'archived' ? 'Arxivda o\'quvchi yo\'q' : 'Hech narsa topilmadi'}
                     </td>
                   </tr>
@@ -1522,10 +1549,12 @@ export function StudentsPage() {
         initial={editing}
       />
       <StudentViewModal student={viewing} onClose={() => setViewing(null)} />
-      <TelegramMessageModal
+      <TelegramSendModal
         open={msgRecipients.length > 0}
         onClose={() => setMsgRecipients([])}
         recipients={msgRecipients}
+        // Arxiv tabidan — FAQAT arxiv xabari (faol va arxiv o'quvchilar aralashmaydi, P2.7).
+        kind={tab === 'archived' ? 'archive' : 'broadcast'}
       />
 
       {/* Tanlangan o'quvchilarni "Bog'lanish kerak" navbatiga qo'shish. Ochiq talabi

@@ -16,7 +16,7 @@ import { PageHeader } from '@/components/ui/PageHeader'
 import { Button } from '@/components/ui/Button'
 import { Loader } from '@/components/ui/Loader'
 import { PhoneCallModal, type CallOption } from '@/components/PhoneCallModal'
-import { TelegramMessageModal, type TelegramRecipient } from './TelegramMessageModal'
+import { TelegramSendModal, type TelegramRecipient } from '@/components/messaging/TelegramSendModal'
 
 type ChipFilter = 'absent' | 'late' | 'all'
 
@@ -386,7 +386,7 @@ export function StudentAbsencePage() {
         </>
       )}
 
-      <TelegramMessageModal open={msgOpen} onClose={() => setMsgOpen(false)} recipients={msgRecipients} />
+      <TelegramSendModal open={msgOpen} onClose={() => setMsgOpen(false)} recipients={msgRecipients} />
 
       <PhoneCallModal
         open={!!callStudent}

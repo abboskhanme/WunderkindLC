@@ -18,7 +18,7 @@ public partial class StudentPortalController
         if (s is null) return NotFound(new { message = "O'quvchi topilmadi" });
         var list = await db.StudentAchievements.AsNoTracking().Where(a => a.StudentId == s.Id).ToListAsync();
         return list.OrderByDescending(a => a.Date, StringComparer.Ordinal).ThenByDescending(a => a.CreatedAt)
-            .Select(a => AchievementService.ToDto(a, s.FullName) with { CreatedByName = "" })
+            .Select(a => AchievementService.ToDto(a, s.FullName) with { CreatedByName = "", AttachmentId = null })
             .ToList();
     }
 

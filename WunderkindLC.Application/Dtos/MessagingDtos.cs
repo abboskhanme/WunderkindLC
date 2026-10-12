@@ -106,7 +106,9 @@ public sealed record SetTelegramRelationRequest(string? Relation);
 public sealed record AchievementDto(
     string Id, string StudentId, string StudentName, string Kind, string KindLabel, string Title, string Result,
     string Date, string Note, bool HasPhoto, string? CongratulatedAt, string CreatedAt, string CreatedByName,
-    int Messages = 0, string? Warning = null);
+    int Messages = 0, string? Warning = null,
+    // The photo's attachment id — the edit form sends it back (an omitted id removes the photo). Admin API only.
+    string? AttachmentId = null);
 
 public sealed record SaveAchievementRequest(
     string? StudentId, string? Kind, string? Title, string? Result, string? Date, string? Note,

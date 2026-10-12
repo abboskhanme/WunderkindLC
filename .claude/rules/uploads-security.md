@@ -115,6 +115,8 @@ javob berib bo'lmaydi. Buni yoqish — alohida ish.
 - Saqlangan manzil (`MessageAttachment.FileUrl`) HECH QACHON javobga chiqmaydi; diskka yo'l faqat
   `MessageAttachmentStore.PhysicalPath` (naqsh `/uploads/messaging/<32 hex>.<ruxsat etilgan kengaytma>`) orqali.
 - Yuklash: kengaytma + Content-Type + sehrli baytlar uchalasi mos bo'lishi shart; nom GUID (`messaging.md` §0.5).
+  Ikki yuklash endpointi: `POST api/admin/messaging/attachments` (`messages.broadcast`) va yutuq rasmi uchun
+  `POST api/admin/achievements/photo` (`students.list`, faqat jpg/png) — yutuq bilan ishlaydigan xodimga xabar ruxsati shart emas.
 - Papka `uploads/` ichida — tungi arxivga o'z-o'zidan kiradi; 60 kundan eski, Telegram'ga yuklangan va ishlatilmayotgan
   fayl o'chiriladi (yutuq rasmi — hech qachon).
 

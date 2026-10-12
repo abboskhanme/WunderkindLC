@@ -1,5 +1,6 @@
 import { api, USE_MOCK } from '../client'
 import { messageTokens as fallbackTokens } from '@/config/messageTemplates'
+import type { MessageAttachment } from './messaging'
 
 /**
  * Avto xabarlar (avtomatik xabar qoidalari) servisi.
@@ -40,6 +41,14 @@ export interface AutoMessageTrigger {
   defaultTemplate: string
   /** Matn IXTIYORIY — bo'sh qoldirilsa tizim matnni o'zi tuzadi (qarzdorlik eslatmasi kabi). */
   templateOptional?: boolean
+  /** Jadval rejimi (CRM upgrade P2.5): `monthly_day_time` (oyning kuni + soat) · `daily_time` (soat) ·
+   *  `custom` (erkin eslatma — o'z kunlik/oylik jadvali) · `none` (hodisa bo'yicha). */
+  scheduleMode?: 'monthly_day_time' | 'daily_time' | 'custom' | 'none'
+  /** Yangi qoidada «✅ Qabul qildim» tugmasi oldindan yoqilganmi. */
+  defaultAck?: boolean
+  /** Yangi qoidaning oyning kuni / soati (jadvalli hodisalar). */
+  defaultDay?: number
+  defaultTime?: string
 }
 
 /** Bitta avto xabar qoidasi. */
@@ -63,13 +72,19 @@ export interface AutoMessageRule {
   scheduleType: string
   /** Reja vaqti "HH:mm" */
   scheduleTime: string
-  /** Oylik rejada — oyning nechanchi kuni (1-28) */
+  /** Oylik rejada — oyning nechanchi kuni (1-31; 31 — qisqa oyda oyning oxirgi kuni) */
   scheduleDayOfMonth: number
   createdAt: string
+  /** «✅ Qabul qildim» tugmasi har Telegram xabarida. */
+  ackButton?: boolean
+  /** Har xabar bilan ketadigan fayl (masalan tabrik kartasi). */
+  attachmentId?: string | null
+  /** Biriktirma ma'lumoti (faqat o'qishda keladi). */
+  attachment?: MessageAttachment | null
 }
 
-/** Yangi qoida yaratish / tahrirlash uchun (id va createdAt yo'q). */
-export type AutoMessageRuleInput = Omit<AutoMessageRule, 'id' | 'createdAt'>
+/** Yangi qoida yaratish / tahrirlash uchun (id, createdAt va biriktirma ma'lumoti yo'q). */
+export type AutoMessageRuleInput = Omit<AutoMessageRule, 'id' | 'createdAt' | 'attachment'>
 
 /** Hodisalar katalogi. */
 export async function getAutoMessageTriggers(): Promise<AutoMessageTrigger[]> {
@@ -122,6 +137,8 @@ export interface MessageToken {
   label: string
   /** Guruh: "student" | "lead" | "common" | "event" */
   group: string
+  /** Preview'dagi namuna qiymat (hodisa tokenlari). */
+  example?: string
 }
 
 /**

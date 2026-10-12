@@ -625,7 +625,8 @@ Telegram OUTBOX: preview, sanoq, biriktirma, kampaniya, hisobot, qarzdorlar, sha
 Talaba profili: `PUT /api/admin/students/{id}/telegram-links/{regId}` `{ relation }` (`students.list` edit) ·
 `GET /api/admin/students/{id}/telegram-deliveries?limit=50` (`students.list` yoki `messages.broadcast`, o'qish darvozasi).
 Yutuqlar: `api/admin/achievements` (`students.list`, o'qish ham) — `GET ?studentId&kind&from&to`, `POST` (+`congratulate`),
-`PUT {id}`, `DELETE {id}`, `POST {id}/congratulate`, `GET {id}/photo`; kabinet `GET /api/student/achievements[/{id}/photo]`.
+`PUT {id}`, `DELETE {id}`, `POST {id}/congratulate`, `POST photo` (faqat jpg/png ≤ 10 MB — o'z yuklash endpointi),
+`GET {id}/photo`; kabinet `GET /api/student/achievements[/{id}/photo]`.
 
 ### RemindersController
 `api/admin/reminders` · Ruxsat: `[Authorize]` + `[AdminPerm("settings")]` · **`[Obsolete]`** (frontend `auto-messages`ga ko'chgan, lekin API ishlaydi). Eski avto push-eslatma qoidalari.

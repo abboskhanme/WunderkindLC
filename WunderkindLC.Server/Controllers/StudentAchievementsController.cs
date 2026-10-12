@@ -116,6 +116,28 @@ public class StudentAchievementsController(
         return new CongratulatedDto(n);
     }
 
+    /// <summary>
+    /// Photo upload for an achievement — under THIS controller's gate (<c>students.list</c>, POST → create), so a
+    /// staff member who manages achievements does not need the messaging permission. Photos only (jpg/png ≤ 10 MB,
+    /// extension + Content-Type + magic bytes). Same private storage as message attachments.
+    /// </summary>
+    [HttpPost("photo")]
+    [RequestSizeLimit(10_485_760 + 65_536)]
+    [RequestFormLimits(MultipartBodyLengthLimit = 10_485_760 + 65_536)]
+    public async Task<ActionResult<MessageAttachmentDto>> UploadPhoto(IFormFile? file)
+    {
+        if (file is null || file.Length == 0) return BadRequest(new { message = MessageAttachmentRules.ErrEmpty });
+        var ext = Path.GetExtension(file.FileName ?? "").ToLowerInvariant();
+        if (ext is not (".jpg" or ".jpeg" or ".png"))
+            return BadRequest(new { message = "Yutuq uchun faqat rasm (jpg, png) biriktiriladi" });
+        await using var stream = file.OpenReadStream();
+        var (a, error) = await MessageAttachments.CreateAsync(db, store, stream, file.FileName, file.ContentType,
+            file.Length, ActorId, ActorName);
+        if (error is not null) return BadRequest(new { message = error });
+        await db.SaveChangesAsync();
+        return new MessageAttachmentDto(a!.Id, a.Kind, a.FileName, a.SizeBytes, a.ContentType);
+    }
+
     /// <summary>The achievement photo (private storage — never a static <c>/uploads</c> path).</summary>
     [HttpGet("{id}/photo")]
     public async Task<IActionResult> Photo(string id)
