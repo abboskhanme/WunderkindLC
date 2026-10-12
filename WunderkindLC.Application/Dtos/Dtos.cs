@@ -299,7 +299,10 @@ public record MonthSalaryDto(
     /// <paramref name="ChargedBase"/> oylarida <paramref name="Expected"/> dan kichik bo'lishi mumkin:
     /// farq — qarzdorlar to'lasa qo'shiladigan qism (foydalanuvchi qarori, 2026-10-07: rasmiy oylik
     /// hisoblangandan, o'qituvchiga esa "hozir tushgan puldan" ham ko'rsatiladi). Aks holda = Expected.</summary>
-    decimal CollectedExpected = 0);
+    decimal CollectedExpected = 0,
+    /// <summary>DAVOMAT JARIMALARI (CRM Phase 3, U3c) — shu oyning FAOL jarimalari, <c>Expected</c> dan ayrilgan
+    /// (ushlanmalardan keyingi qoldiqdan oshmaydi). <paramref name="AttendanceFineCount"/> — jarimali darslar soni.</summary>
+    decimal AttendanceFines = 0, int AttendanceFineCount = 0);
 /// <summary>
 /// Maosh hisobida bitta guruhning ulushi (davr bo'yicha): qaysi rejim (foiz/qat'iy), qiymati,
 /// shu davrda guruhdan yig'ilgan to'lov bazasi va shu guruh keltirgan hisoblangan maosh.
@@ -315,7 +318,8 @@ public record SalaryLedgerDto(
     List<MonthSalaryDto> Months, List<PaymentDto> Payments,
     string SalaryMode = "fixed", decimal SalaryPercent = 0,
     List<GroupSalaryLineDto>? Groups = null,
-    decimal TotalDeduction = 0, bool JournalLinked = false);
+    decimal TotalDeduction = 0, bool JournalLinked = false,
+    decimal TotalAttendanceFines = 0);
 
 /// <summary>O'qituvchi guruhlari maosh sozlamasini yangilash (per-guruh foiz/qat'iy summa).</summary>
 public record GroupSalaryItemDto(string GroupId, string Mode, decimal Percent, decimal Fixed);
@@ -324,7 +328,8 @@ public record SalaryReportRowDto(
     string TeacherId, string TeacherName, decimal Salary, decimal TotalPaid, int PaymentsCount,
     int Months, decimal Expected, decimal Remaining,
     string SalaryMode = "fixed", decimal SalaryPercent = 0,
-    decimal Deduction = 0, int MissedLessons = 0);
+    decimal Deduction = 0, int MissedLessons = 0,
+    decimal AttendanceFines = 0);
 
 /// <summary>O'qituvchilar davomati — oylik board (o'qituvchilar + belgilangan kunlar).</summary>
 public record TeacherNameDto(string Id, string FullName, string StartDate = "");

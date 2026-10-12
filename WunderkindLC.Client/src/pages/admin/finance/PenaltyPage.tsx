@@ -8,16 +8,50 @@ import { TablePagination, usePagination } from '@/components/ui/TablePagination'
 import { Loader } from '@/components/ui/Loader'
 import { useAsync } from '@/hooks/useAsync'
 import { usePerm } from '@/lib/permissions'
-import { formatMoney } from '@/lib/utils'
+import { cn, formatMoney } from '@/lib/utils'
+import { tabFromUrl } from '@/lib/tabParam'
+import { AttendanceFinesTab } from './AttendanceFinesTab'
+
+const PENALTY_TABS = ['list', 'davomat'] as const
+type PenaltyTab = (typeof PENALTY_TABS)[number]
 
 /**
- * Moliya → «Jarima» (edutizim `/finance/penalty`): xodimdan ushlangan summalar ro'yxati.
+ * Moliya → «Jarima»: ikki tab — «Jarimalar» (xodimdan ushlangan summalar, edutizim `/finance/penalty`) va
+ * «Davomat jarimalari» (CRM Phase 3, U3c — davomat o'z vaqtida olinmagan darslar). Boshlang'ich tab
+ * `?tab=davomat` bilan ham ochiladi (`lib/tabParam.ts`).
+ */
+export function PenaltyPage() {
+  const [tab, setTab] = useState<PenaltyTab>(() => tabFromUrl(PENALTY_TABS, 'list'))
+  return (
+    <div>
+      <div className="mb-3 flex w-fit rounded-lg border border-[#dbe0e6] bg-white p-1">
+        {PENALTY_TABS.map((k) => (
+          <button
+            key={k}
+            type="button"
+            onClick={() => setTab(k)}
+            className={cn(
+              'h-8 rounded-md px-3 text-[13px] font-medium transition-colors',
+              tab === k ? 'bg-brand-600 text-white' : 'text-[#333] hover:bg-[#f0f2f2]',
+            )}
+          >
+            {k === 'list' ? 'Jarimalar' : 'Davomat jarimalari'}
+          </button>
+        ))}
+      </div>
+      {tab === 'list' ? <PenaltyList /> : <AttendanceFinesTab />}
+    </div>
+  )
+}
+
+/**
+ * «Jarimalar» — xodimdan ushlangan summalar ro'yxati.
  *
  * ⚠️ Yangi jadval YO'Q — jarima oddiy CHIQIM tranzaksiyasi (`category = "penalty"`), ya'ni u
  * kassa, kirim-chiqim va P&L hisobotlariga o'z-o'zidan kiradi. "Jarima qo'shish" Moliya
  * bo'limidagi "Yangi amal" formasini shu toifa bilan ochadi.
  */
-export function PenaltyPage() {
+function PenaltyList() {
   const { can } = usePerm()
   const navigate = useNavigate()
   const [q, setQ] = useState('')

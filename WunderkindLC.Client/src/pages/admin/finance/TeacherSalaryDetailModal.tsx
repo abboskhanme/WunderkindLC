@@ -81,6 +81,14 @@ export function TeacherSalaryDetailModal({ teacher, from, to, onClose }: Props) 
             </div>
           </div>
 
+          {/* Davomat jarimalari (CRM Phase 3) — oylar jadvalida har oy qatorida ham */}
+          {(ledger.totalAttendanceFines ?? 0) > 0 && (
+            <p className="rounded-lg bg-red-50 px-3 py-2 text-xs text-red-800">
+              Davomat jarimasi (davr bo'yicha): −{formatMoney(ledger.totalAttendanceFines ?? 0)} — hisoblangan maoshdan
+              ayrilgan. Tafsilot: Moliya → Jarima → «Davomat jarimalari».
+            </p>
+          )}
+
           {/* Qisqa ko'rsatkichlar */}
           <div className={cn('grid gap-3', journal ? 'grid-cols-4' : 'grid-cols-3')}>
             <SummaryCell label="Hisoblangan" value={formatMoney(ledger.totalExpected)} />
@@ -169,6 +177,11 @@ export function TeacherSalaryDetailModal({ teacher, from, to, onClose }: Props) 
                           )}
                           <td className="num text-slate-600">
                             {formatMoney(m.expected)}
+                            {(m.attendanceFines ?? 0) > 0 && (
+                              <div className="text-[11px] text-red-600">
+                                davomat jarimasi −{formatMoney(m.attendanceFines ?? 0)} ({m.attendanceFineCount ?? 0} ta dars)
+                              </div>
+                            )}
                             {/* Foizli maoshda pul hali yig'ilmagan oy (masalan guruh yopilgan oy)
                                 0 bo'lib ko'rinardi — yonida "hisob bo'yicha" turadi. */}
                             {(m.potentialExpected ?? 0) > m.expected && (

@@ -7,6 +7,8 @@ import { getTeacherSalary, getMyRetentionBonuses, getTeacherDebtSummary, type Te
 import type { TeacherRetentionSummary } from '@/api/services/retentionBonus'
 import type { SalaryLedger } from '@/types'
 import { formatMoney } from '@/lib/utils'
+import { getMyAttendanceFines } from '@/api/services/attendanceFines'
+import { AttendanceFineLine } from '@/components/salary/AttendanceFineLine'
 import { Loader } from '@/components/ui/Loader'
 
 /**
@@ -353,6 +355,16 @@ export function TeacherSalaryPage() {
                       </p>
                     </div>
                   </div>
+
+                  {/* Davomat jarimasi (CRM Phase 3) — "Hisoblandi" dan allaqachon ayrilgan; bosilsa sanalar */}
+                  {(m.attendanceFines ?? 0) > 0 && (
+                    <AttendanceFineLine
+                      className="px-3.5 pb-3"
+                      amount={m.attendanceFines ?? 0}
+                      count={m.attendanceFineCount ?? 0}
+                      load={() => getMyAttendanceFines(m.month)}
+                    />
+                  )}
 
                   {/* Ushlanma sababi: qaysi guruhda qaysi darslar belgilanmagan */}
                   {open && (

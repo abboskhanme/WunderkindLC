@@ -99,6 +99,9 @@ public static class AuditSections
         // "O'qituvchilar" bo'limida: amal guruhning tarkibiga emas, KIM dars o'tishiga va kimning
         // MAOSHIGA (o'rinbosarga haq, asosiy o'qituvchidan ushlanma) tegishli.
         ["substitute_teacher"] = "teachers",
+        // "TeacherAttendanceFine" — DAVOMAT JARIMASI (CRM Phase 3, U3c): yozildi (tizim), bekor qilindi,
+        // tiklandi, kun bo'yicha bekor qilindi. Maoshga tegishli → O'qituvchilar; EntityId "{groupId}:{fineId}".
+        ["TeacherAttendanceFine"] = "teachers",
 
         // --- Moliya ---
         ["FinanceTransaction"] = "finance",

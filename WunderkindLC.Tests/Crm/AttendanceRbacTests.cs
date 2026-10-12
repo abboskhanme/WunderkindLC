@@ -55,4 +55,30 @@ public class AttendanceRbacTests
         Assert.True(PermissionRules.CanWrite(["classes"], "classes", "PUT"));
         Assert.True(PermissionRules.CanWrite(["classes:edit"], "classes", "PUT"));
     }
+
+    /* ---------- U3c: attendance fines — `finance.main`, reading gated too ---------- */
+
+    [Fact]
+    public void Attendance_fines_read_and_write_require_finance_main()
+    {
+        Assert.True(Gated(Controller("AttendanceFinesController.cs"), "finance.main", readRequiresPerm: true));
+        // A staff user without the key (or with a sibling page of finance) gets 403 on GET and PUT.
+        Assert.False(PermissionRules.HasSection(["students.list"], "finance.main"));
+        Assert.False(PermissionRules.HasSection(["finance.bonus"], "finance.main"));
+        Assert.False(PermissionRules.CanWrite(["classes"], "finance.main", "PUT"));
+        Assert.True(PermissionRules.HasSection(["finance"], "finance.main"));
+        Assert.True(PermissionRules.CanWrite(["finance.main"], "finance.main", "PUT"));
+    }
+
+    [Fact]
+    public void Teacher_sees_only_own_fines_behind_the_salary_permission()
+    {
+        var portal = Controller("TeacherPortalController.cs");
+        Assert.Contains("[Authorize(Roles = \"teacher\")]", portal);
+        var fines = Controller("TeacherPortalController.Fines.cs");
+        Assert.Contains("TeacherPermissions.Salary", fines);
+        // Own rows only: the teacher id comes from the token (Me()), never from the query string.
+        Assert.Contains("ListAsync(db, month, t.Id", fines);
+        Assert.DoesNotContain("[FromQuery] string? teacherId", fines);
+    }
 }

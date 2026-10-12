@@ -389,7 +389,8 @@ public class FinanceController(AppDbContext db, AuditService audit, AutoMessageS
                 te.Id, te.FullName, ledger.Salary, ledger.TotalPaid, ledger.Payments.Count,
                 ledger.Months.Count, ledger.TotalExpected, ledger.Remaining,
                 te.SalaryMode, te.SalaryPercent,
-                ledger.TotalDeduction, ledger.Months.Sum(m => m.MissedLessons)));
+                ledger.TotalDeduction, ledger.Months.Sum(m => m.MissedLessons),
+                AttendanceFines: ledger.TotalAttendanceFines));
         }
         return result;
     }

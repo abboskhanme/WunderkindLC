@@ -298,6 +298,17 @@ public static class SalaryLedger
             .GroupBy(PayMonth)
             .ToDictionary(g => g.Key, g => g.Sum(x => x.Amount));
 
+        // DAVOMAT JARIMALARI (CRM Phase 3, U3c): FAOL (bekor qilinmagan) jarimalar dars OYI bo'yicha.
+        // FinanceTransaction EMAS — kassaga tegmaydi, faqat maosh hisobidan ayriladi.
+        var fineRows = await db.TeacherAttendanceFines.AsNoTracking()
+            .Where(f => f.TeacherId == teacher.Id && f.Status == AttendanceDiscipline.FineActive
+                        && string.Compare(f.Month, startMonth) >= 0 && string.Compare(f.Month, toMonth) <= 0)
+            .Select(f => new { f.Month, f.Amount })
+            .ToListAsync();
+        var finesByMonth = fineRows
+            .GroupBy(f => f.Month, StringComparer.Ordinal)
+            .ToDictionary(g => g.Key, g => (Sum: g.Sum(x => x.Amount), Count: g.Count()), StringComparer.Ordinal);
+
         // Maosh jurnalga bog'langanmi? (Guruhlar → "Jurnal boshqaruvi"). Yoqilgan bo'lsa — belgilanmagan
         // darslar o'tilmagan hisoblanadi va shu oy maoshidan ushlanadi.
         var policy = await JournalPolicy.GetAsync(db);
@@ -638,13 +649,18 @@ public static class SalaryLedger
             }
 
             var expected = baseExpected - deduction;
+            // DAVOMAT JARIMASI: ushlanmadan keyingi qoldiqdan oshmaydi (maosh manfiy bo'lmaydi). Jurnal ushlanmasidan
+            // MUSTAQIL — ikkalasi birga qo'llanishi mumkin (SPEC §10 #1).
+            var fineInfo = finesByMonth.GetValueOrDefault(month);
+            var fineApplied = decimal.Round(Math.Min(fineInfo.Sum, Math.Max(0m, expected)), 2);
+            expected -= fineApplied;
             var paid = paidByMonth.GetValueOrDefault(month, 0m);
             var remaining = expected - paid;
             // Hisoblanmagan oyga (masalan arxivdan keyingi oy) pul berilgan bo'lsa ham — "to'langan", "to'lanmagan" EMAS.
             var status = remaining <= 0 ? (expected <= 0 && paid <= 0 ? "unpaid" : "paid") : paid > 0 ? "partial" : "unpaid";
             // Potentsial maoshdan ham o'sha ushlanma ayriladi — aks holda "hammasi to'lansa" raqami
             // jurnal ushlanmasini hisobga olmay, haqiqiydan katta ko'rinardi.
-            var potentialExpected = basePotential - deduction;
+            var potentialExpected = Math.Max(0m, basePotential - deduction - fineApplied);
             if (potentialExpected < expected) potentialExpected = expected;   // yig'ilgan hisoblangandan oshib ketgan holat
 
             // «Hozir chiqadigan» — faqat hisoblangan baza oylarida farq qiladi (yig'ilgan bazada u = expected).
@@ -655,7 +671,7 @@ public static class SalaryLedger
                     ? decimal.Round(grossCollectedSum, 2)
                     : Math.Max(0m, decimal.Round(TotalCollected(month) * teacher.SalaryPercent / 100m, 2) - monthSubstituteDeduction);
                 var dedCollected = journalLinked && plannedTotal > 0 ? decimal.Round(collectedGroupDeduction, 2) : 0m;
-                collectedExpected = Math.Min(expected, Math.Max(0m, baseCollected + monthSubstituteFee - dedCollected));
+                collectedExpected = Math.Min(expected, Math.Max(0m, baseCollected + monthSubstituteFee - dedCollected - fineApplied));
             }
 
             months.Add(new MonthSalaryDto(
@@ -672,7 +688,8 @@ public static class SalaryLedger
                 // Legacy-foizda baza oyning JAMI bazasidan (guruh ulushlaridan emas).
                 decimal.Round(!anyConfigured && teacher.SalaryMode == "percent" ? TotalSalaryBase(month) : monthSalaryBase, 2),
                 UsesChargedBase(month, bases.ChargedFrom),
-                decimal.Round(collectedExpected, 2)));
+                decimal.Round(collectedExpected, 2),
+                AttendanceFines: fineApplied, AttendanceFineCount: fineInfo.Count));
         }
 
         var totalExpected = months.Sum(m => m.Expected);
@@ -704,7 +721,8 @@ public static class SalaryLedger
             teacher.Id, teacher.FullName, plannedMonthly,
             totalExpected, totalPaid, totalExpected - totalPaid,
             months, paymentDtos, teacher.SalaryMode, teacher.SalaryPercent, groupLines,
-            months.Sum(m => m.Deduction), journalLinked);
+            months.Sum(m => m.Deduction), journalLinked,
+            TotalAttendanceFines: months.Sum(m => m.AttendanceFines));
     }
 
     /// <summary>
