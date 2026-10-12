@@ -109,6 +109,14 @@ Tests touching push / chat: `ChatAccessTests`, `AuditFixT6Tests`, `AutoMessageTe
 
 Tables are NOT dropped in the removal phase (code only) — dropping is a separate, confirmed step.
 
+**Status (2026-10-11): DONE — Phase 1 cleanup.** Push, group chat, APK, Local Call / Local SMS (CTI),
+the whole SMS channel (Eskiz) and the online mode of group tests are removed from backend and client.
+Telegram is the only outbound channel; every enabled auto-message rule also writes the cabinet
+notification. Legacy entities/columns are kept and marked `[Obsolete]` (list in
+`.claude/rules/messaging.md` §0 and `.claude/rules/tests.md`). Decisions: `docs/ASSUMPTIONS.md`
+"Phase 1" entries. Note: item 1 of "MUST STAY" changed — with CTI gone, `FcmService` is gone too; the
+service-account JSON stays only as the Play Integrity fallback (`GoogleServiceAccount`).
+
 ## Open questions
 
 Answered by the user on 2026-10-11 — see the `[2026-10-11]` entries in `docs/ASSUMPTIONS.md`.

@@ -184,7 +184,7 @@ export function LevelTestStatsPage() {
                           </td>
                           <td className="px-3 py-2 text-center font-mono text-slate-700">{r.submissions}</td>
                           <td className="px-3 py-2 text-center font-mono text-slate-500">{r.avgPercent}%</td>
-                          {/* Havola = SMS bilan yuborilgan bir martalik taklif (ishlangani / jami) */}
+                          {/* Havola = lid uchun yaratilgan bir martalik taklif (ishlangani / jami) */}
                           <td className="px-3 py-2 text-center font-mono text-slate-500">
                             {r.invites > 0 ? `${r.invitesUsed}/${r.invites}` : <span className="text-slate-300">—</span>}
                           </td>
@@ -254,8 +254,8 @@ export function LevelTestStatsPage() {
                 )}
               </Card>
 
-              {/* Havolalar — lidga SMS bilan yuborilgan bir martalik taklif (ommaviy slug'dan farqli) */}
-              <Card title="Yuborilgan havolalar" sub="Lidga SMS bilan yuborilgan bir martalik test havolalari">
+              {/* Havolalar — lid uchun yaratilgan bir martalik taklif (ommaviy slug'dan farqli) */}
+              <Card title="Bir martalik havolalar" sub="Lidlar uchun yaratilgan bir martalik test havolalari">
                 <div className="flex items-center gap-4 py-2">
                   <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-brand-50 text-brand-600">
                     <Send className="h-5 w-5" />
@@ -267,8 +267,8 @@ export function LevelTestStatsPage() {
                     </div>
                     <div className="text-xs text-slate-400">
                       {stats.invites > 0
-                        ? `Yuborilganlarning ${Math.round((stats.invitesUsed / stats.invites) * 100)}% i ishlangan`
-                        : 'Hali havola yuborilmagan'}
+                        ? `Havolalarning ${Math.round((stats.invitesUsed / stats.invites) * 100)}% i ishlangan`
+                        : 'Hali havola yaratilmagan'}
                     </div>
                   </div>
                 </div>

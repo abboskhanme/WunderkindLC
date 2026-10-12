@@ -53,7 +53,7 @@ public class MessageTokenizerTests
     [InlineData(0, "0")]
     public void MoneyPlain_ProbelsizVaSomsiz(int qiymat, string kutilgan)
     {
-        // SMS uchun: "so'm" andozaning o'zida yoziladi (Eskiz moderatsiyasi uchun qulay).
+        // "so'm" andozaning o'zida yoziladi (masalan "{summa} so'm").
         Assert.Equal(kutilgan, MessageTokenizer.MoneyPlain(qiymat));
     }
 
@@ -252,21 +252,7 @@ public class MessageTokenizerTests
         Assert.Equal("Karimov Aziz", MessageTokenizer.Teacher("{oqituvchi}", t, null));
     }
 
-    [Fact]
-    public void Lead_LidTokenlari()
-    {
-        var l = new DomainLead
-        {
-            FullName = "Sobirov Jasur",
-            Phone = "+998-90-444-55-66",
-            InterestSubject = "Matematika",
-            FatherFullName = "Sobirov Anvar",
-        };
-
-        var r = MessageTokenizer.Lead("{fish}|{fan}|{ota}|{oquvchi_telefon}|{guruh}|{balans}", l, null, null);
-
-        Assert.Equal("Sobirov Jasur|Matematika|Sobirov Anvar|+998-90-444-55-66||", r);
-    }
+    // (Lead_LidTokenlari — lid xabari renderi 2026-10 da lidga SMS bilan birga olib tashlandi.)
 
     /* =========================================================================================
      *  Dars jadvali tokenlari
@@ -309,16 +295,7 @@ public class MessageTokenizerTests
         Assert.Equal("09:00", r);
     }
 
-    [Fact]
-    public void Lead_SinovDarsiVaqti_DarsSanaVaqtiniBeradi()
-    {
-        var l = new DomainLead { FullName = "Jasur" };
-
-        var r = MessageTokenizer.Lead("{dars_sana} {dars_vaqti}", l, null, null,
-            trialAt: "2026-08-15T14:30");
-
-        Assert.Equal("15.08.2026 14:30", r);
-    }
+    // (Lead_SinovDarsiVaqti — sinov darsi SMS eslatmasi bilan 2026-10 da olib tashlandi.)
 
     /* =========================================================================================
      *  TeacherNameOf

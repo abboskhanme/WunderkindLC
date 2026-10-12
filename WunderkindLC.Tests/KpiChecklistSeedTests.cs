@@ -40,6 +40,9 @@ public class KpiChecklistSeedTests
         "auto:groups.ending_soon",
         "auto:students.left_today",
         "auto:students.reason_filled",
+        // 2026-10: Local Call (manba) olib tashlandi — qo'ng'iroq bandlari QO'LDA (kpi.md §11.1).
+        "auto:calls.missed_returned",
+        "auto:calls.answer_speed",
     };
 
     /* =========================================================================================

@@ -23,7 +23,7 @@ namespace WunderkindLC.Server.Controllers;
 [Authorize(Roles = "student,parent,admin")]
 [Route("api/student")]
 public class StudentPortalController(
-    AppDbContext db, ChatService chat, IWebHostEnvironment env, ReferenceCache refCache,
+    AppDbContext db, IWebHostEnvironment env, ReferenceCache refCache,
     TelegramService telegram, IConfiguration config, DataCache dataCache,
     ContractService contracts) : ControllerBase
 {
@@ -79,7 +79,7 @@ public class StudentPortalController(
 
     /// <summary>
     /// O'quvchining ASOSIY guruhi — bitta guruh ko'rsatilishi SHART bo'lgan joylar uchun
-    /// (bugungi darslar, davomat, o'quv dasturi, chat kanali).
+    /// (bugungi darslar, davomat, o'quv dasturi).
     ///
     /// <para>⚠️ Tanlov A'ZOLIK bo'yicha: faol → sinov → muzlatilgan, keyin eng yangi qo'shilgani
     /// (<see cref="MembershipLifecycle.PrimaryMembership"/>). Ilgari bu yerda
@@ -94,12 +94,11 @@ public class StudentPortalController(
     private async Task<string?> ClassIdOf(Student s) => (await PrimaryGroupAsync(s))?.Id;
 
     /// <summary>
-    /// BILDIRISHNOMA IDENTIFIKATORI — ota-ona ham, o'quvchi ham BITTA ilovadan foydalanadi,
-    /// shuning uchun push va bildirishnoma tarixi HAR DOIM o'quvchining akkauntiga bog'lanadi.
+    /// BILDIRISHNOMA IDENTIFIKATORI — ota-ona ham, o'quvchi ham BITTA kabinetdan foydalanadi,
+    /// shuning uchun bildirishnoma tarixi HAR DOIM o'quvchining akkauntiga bog'lanadi.
     ///
     /// <para>student → o'z `UserId`si; parent → FARZANDINING `Student.UserId`si.
-    /// Shu sabab: (1) ota-ona telefonida ro'yxatdan o'tgan qurilma o'quvchiga yuborilgan pushni
-    /// oladi; (2) ota-ona ilovada bildirishnomalar tarixini KO'RADI (ilgari bo'sh chiqardi —
+    /// Shu sabab ota-ona kabinetda bildirishnomalar tarixini KO'RADI (ilgari bo'sh chiqardi —
     /// hamma narsa `Student.UserId` ga yozilardi, ota-onaning esa alohida akkaunti bor).</para>
     ///
     /// <para>Ota-onada bir nechta farzand bo'lsa — birinchisi (butun portal shu konvensiyada:
@@ -214,45 +213,8 @@ public class StudentPortalController(
         return await TestResultService.StudentResultsAsync(db, s.Id);
     }
 
-    // ---------- ONLAYN TEST (ilovada ishlanadi — Telegram bot bilan bir xil mantiq) ----------
-
-    /// <summary>O'quvchining faol guruhlaridagi ONLAYN testlar: hozirgi/kelgusi va oxirgi 7 kunda
-    /// tugaganlar. Har qatorda savollar PDF'i, vaqt oynasi va holat (ochiq/topshirilgan/…) keladi.
-    /// student — o'ziniki; parent — farzandiniki; admin — <c>?studentId=...</c>.</summary>
-    [HttpGet("online-tests")]
-    public async Task<ActionResult<List<StudentOnlineTestDto>>> OnlineTests([FromQuery] string? studentId)
-    {
-        if (User.IsInRole("admin") && string.IsNullOrWhiteSpace(studentId)) return NeedStudentId();
-        var s = await TargetAsync(studentId);
-        if (s is null) return NotFound();
-        return await OnlineTestService.ListForStudentAsync(db, s.Id);
-    }
-
-    /// <summary>Bitta onlayn test tafsiloti (o'z javoblari, o'rni; javob kaliti FAQAT vaqt tugagach).</summary>
-    [HttpGet("online-tests/{id}")]
-    public async Task<ActionResult<StudentOnlineTestDetailDto>> OnlineTest(string id, [FromQuery] string? studentId)
-    {
-        if (User.IsInRole("admin") && string.IsNullOrWhiteSpace(studentId)) return NeedStudentId();
-        var s = await TargetAsync(studentId);
-        if (s is null) return NotFound();
-        var dto = await OnlineTestService.DetailAsync(db, s.Id, id);
-        return dto is null ? NotFound(new { message = "Test topilmadi" }) : dto;
-    }
-
-    /// <summary>Javoblarni yuborish ("ABCDA…"). Avtomatik tekshiriladi va ball
-    /// <see cref="TestScore"/>ga yoziladi — bot orqali topshirish bilan bir xil natija.
-    /// Bir marta topshiriladi; admin boshqa o'quvchi nomidan yubora olmaydi.</summary>
-    [HttpPost("online-tests/{id}/submit")]
-    [Authorize(Roles = "student,parent")]
-    public async Task<ActionResult<StudentOnlineTestDetailDto>> SubmitOnlineTest(
-        string id, OnlineTestSubmitRequest req)
-    {
-        var s = await TargetAsync(null);
-        if (s is null) return NotFound();
-        var (result, error) = await OnlineTestService.SubmitAsync(db, s.Id, id, req.Answers ?? "");
-        if (error is not null) return BadRequest(new { message = error });
-        return result is null ? NotFound(new { message = "Test topilmadi" }) : result;
-    }
+    // (ONLAYN TEST — online-tests/* — 2026-10 da olib tashlandi: guruh testlari faqat oflayn,
+    //  natijalarni o'qituvchi/admin kiritadi; o'quvchi natijasini test-results dan ko'radi.)
 
     /// <summary>
     /// O'quvchining TO'LIQ "shaxsiy daftari" — admin ko'radigan detal sahifasi bilan AYNAN bir xil
@@ -284,7 +246,7 @@ public class StudentPortalController(
         return new SchoolNameDto(m?.Name ?? "", m?.TelegramChannel ?? "", m?.LogoUrl ?? "");
     }
 
-    /// <summary>Ilova bildirishnomalari tarixi (yuborilgan push'lar) — o'qilmaganlar soni bilan.</summary>
+    /// <summary>Kabinet bildirishnomalari tarixi — o'qilmaganlar soni bilan.</summary>
     [HttpGet("notifications")]
     public async Task<ActionResult<NotificationsResponseDto>> Notifications()
     {
@@ -656,7 +618,7 @@ public class StudentPortalController(
     }
 
 
-    // ---------- Foydalanuvchi sozlamalari (til, tema, bildirishnoma) ----------
+    // ---------- Foydalanuvchi sozlamalari (til, tema) ----------
 
     /// <summary>Foydalanuvchi sozlamasini qaytaradi. Student — o'ziniki; admin — `?studentId` o'quvchining
     /// foydalanuvchisi (o'quvchiga akkaunt biriktirilmagan bo'lsa default qaytadi).</summary>
@@ -673,25 +635,23 @@ public class StudentPortalController(
         }
         else
         {
-            // O'quvchi ham, ota-ona ham BITTA "oila" akkaunti sozlamasini ko'radi — push aynan shu
-            // identifikatorga boradi (`NotificationUserIdAsync`, `SaveSettings` izohi).
+            // O'quvchi ham, ota-ona ham BITTA "oila" akkaunti sozlamasini ko'radi
+            // (`NotificationUserIdAsync`, `SaveSettings` izohi).
             targetUid = await NotificationUserIdAsync();
         }
         if (string.IsNullOrWhiteSpace(targetUid))
-            return new UserSettingsDto("uz", "system", true);
+            return new UserSettingsDto("uz", "system");
         var us = await db.UserSettings.FindAsync(targetUid);
         return us is null
-            ? new UserSettingsDto("uz", "system", true)
-            : new UserSettingsDto(us.Language, us.Theme, us.NotificationsEnabled);
+            ? new UserSettingsDto("uz", "system")
+            : new UserSettingsDto(us.Language, us.Theme);
     }
 
     /// <summary>Sozlamani yangilash (qator yo'q bo'lsa yaratiladi). O'quvchi va ota-ona — o'ziniki
     /// (admin impersonate qila olmaydi).
     /// <para>⚠️ Qator — BILDIRISHNOMA IDENTIFIKATORIDA (<see cref="NotificationUserIdAsync"/>: ota-ona
-    /// uchun farzandining akkaunti). Sabab: ota-onaning qurilma tokeni ham farzand akkauntiga
-    /// bog'lanadi va push o'sha yerga boradi; <c>NotificationsEnabled</c> esa push yuborishda
-    /// O'QILADI (<c>FcmService</c>). Ilgari bu endpoint faqat <c>student</c> ga ochiq edi — ota-ona
-    /// ilovada tugmani bosar, so'rov 403 bilan jim yiqilardi va push kelaverardi.</para></summary>
+    /// uchun farzandining akkaunti) — o'quvchi va ota-ona BITTA "oila" sozlamasini ko'radi.
+    /// (Push yoqish/o'chirish bayrog'i 2026-10 da push bilan birga olib tashlandi.)</para></summary>
     [HttpPut("settings")]
     [Authorize(Roles = "student,parent")]
     public async Task<ActionResult<UserSettingsDto>> SaveSettings(SaveUserSettingsRequest req)
@@ -706,10 +666,9 @@ public class StudentPortalController(
         }
         if (!string.IsNullOrWhiteSpace(req.Language)) st.Language = req.Language!.Trim();
         if (!string.IsNullOrWhiteSpace(req.Theme)) st.Theme = req.Theme!.Trim();
-        if (req.NotificationsEnabled.HasValue) st.NotificationsEnabled = req.NotificationsEnabled.Value;
         st.UpdatedAt = AppClock.Now;
         await db.SaveChangesAsync();
-        return new UserSettingsDto(st.Language, st.Theme, st.NotificationsEnabled);
+        return new UserSettingsDto(st.Language, st.Theme);
     }
 
     /// <summary>
@@ -774,75 +733,7 @@ public class StudentPortalController(
         return new StudentLocationDto(s.Latitude, s.Longitude, s.LocationAddress, s.LocationUpdatedAt);
     }
 
-    // ---------- Push bildirishnoma (qurilma tokeni) ----------
-
-    /// <summary>Push (FCM/APNs/Web) qurilma tokenini ro'yxatdan o'tkazadi (yangi bo'lsa qo'shadi,
-    /// mavjud bo'lsa LastSeenAt yangilanadi). Token boshqa foydalanuvchiga bog'langan bo'lsa
-    /// joriy foydalanuvchiga ko'chiriladi (qurilma boshqa akkauntga kirgan deb hisoblanadi).
-    /// OTA-ONA ham SHU ilovadan kiradi, shuning uchun uning qurilmasi ham qabul qilinadi —
-    /// token FARZANDINING akkauntiga bog'lanadi (<see cref="NotificationUserIdAsync"/>), aks holda
-    /// ota-ona telefoniga push hech qachon yetib bormasdi.</summary>
-    [HttpPost("notifications/register")]
-    [Authorize(Roles = "student,parent")]
-    public async Task<ActionResult> RegisterDevice(RegisterDeviceRequest req)
-    {
-        var uid = await NotificationUserIdAsync();
-        if (uid is null) return Unauthorized();
-        var token = req.Token?.Trim();
-        if (string.IsNullOrWhiteSpace(token)) return BadRequest(new { message = "Token bo'sh" });
-        var platform = string.IsNullOrWhiteSpace(req.Platform) ? "android" : req.Platform!.Trim().ToLowerInvariant();
-        var deviceName = (req.DeviceName ?? "").Trim();
-        var appId = (req.AppId ?? "").Trim();
-
-        var existing = await db.DeviceTokens.FirstOrDefaultAsync(d => d.Token == token);
-        if (existing is null)
-        {
-            db.DeviceTokens.Add(new DeviceToken
-            {
-                UserId = uid,
-                Token = token,
-                Platform = platform,
-                DeviceName = deviceName,
-                AppId = appId,
-            });
-        }
-        else
-        {
-            existing.UserId = uid;
-            existing.Platform = platform;
-            if (deviceName.Length > 0) existing.DeviceName = deviceName;
-            if (appId.Length > 0) existing.AppId = appId;
-            existing.LastSeenAt = AppClock.Now;
-        }
-
-        // BITTA AKKAUNT — BITTA QURILMA: shu akkauntning boshqa (eski) qurilma tokenlari
-        // o'chiriladi, ya'ni push FAQAT ENG OXIRGI kirilgan qurilmaga boradi.
-        // Sabab: o'quvchi akkauntidan O'QUVCHI ham, OTA-ONA ham foydalanadi (bitta ilova) va
-        // eski/ikkinchi telefon qolib ketsa bir xil xabar bir necha qurilmaga ketardi.
-        var stale = await db.DeviceTokens
-            .Where(d => d.UserId == uid && d.Token != token)
-            .ToListAsync();
-        if (stale.Count > 0) db.DeviceTokens.RemoveRange(stale);
-
-        await db.SaveChangesAsync();
-        return Ok(new { ok = true });
-    }
-
-    /// <summary>Qurilma tokenini o'chiradi (logout/disable). Topilmasa ham 200 qaytaradi.</summary>
-    [HttpDelete("notifications/register")]
-    [Authorize(Roles = "student,parent")]
-    public async Task<ActionResult> UnregisterDevice([FromQuery] string token)
-    {
-        if (string.IsNullOrWhiteSpace(token)) return BadRequest(new { message = "Token bo'sh" });
-        var uid = await NotificationUserIdAsync();
-        var d = await db.DeviceTokens.FirstOrDefaultAsync(x => x.Token == token && x.UserId == uid);
-        if (d is not null)
-        {
-            db.DeviceTokens.Remove(d);
-            await db.SaveChangesAsync();
-        }
-        return Ok(new { ok = true });
-    }
+    // (Push qurilma tokeni — notifications/register — 2026-10 da olib tashlandi.)
 
     // ---------- To'lovlar (o'ziniki) ----------
 
@@ -855,36 +746,7 @@ public class StudentPortalController(
         return await StudentLedger.BuildAsync(db, s);
     }
 
-    // ---------- Guruh chati (o'z guruhi) ----------
-
-    [HttpGet("chat")]
-    public async Task<ActionResult<IEnumerable<ChatMessageDto>>> Chat(
-        [FromQuery] string? since, [FromQuery] string? studentId)
-    {
-        if (User.IsInRole("admin") && string.IsNullOrWhiteSpace(studentId)) return NeedStudentId();
-        var s = await TargetAsync(studentId);
-        if (s is null) return NotFound();
-        // Chat kanali — ASOSIY guruh (qarang: PrimaryGroupAsync). Ilgari `ClassName` ishlatilardi,
-        // ya'ni o'quvchi ESKI (muzlatilgan) guruhining chatini ochardi.
-        var channel = (await PrimaryGroupAsync(s))?.Name ?? s.ClassName;
-        if (string.IsNullOrEmpty(channel)) return new List<ChatMessageDto>();
-        return await chat.GetMessagesAsync(channel, ChatService.ParseSince(since));
-    }
-
-    /// <summary>Chatga xabar yuborish — faqat student rolida (admin o'zining /api/admin/messages
-    /// orqali yozadi; bu yerda admin impersonate qila olmaydi).</summary>
-    [HttpPost("chat")]
-    [Authorize(Roles = "student")]
-    public async Task<ActionResult<ChatMessageDto>> SendChat(SendChatRequest req)
-    {
-        var s = await MeAsync();
-        if (s is null) return NotFound();
-        var channel = (await PrimaryGroupAsync(s))?.Name ?? s.ClassName;
-        if (string.IsNullOrEmpty(channel)) return BadRequest(new { message = "Guruh biriktirilmagan" });
-        var uid = User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? "";
-        var dto = await chat.PostAsync(channel, uid, req.Text);
-        return dto is null ? BadRequest(new { message = "Xabar bo'sh" }) : dto;
-    }
+    // (Guruh chati — chat — 2026-10 da olib tashlandi.)
 
     // ==================== AI tekshiruv (Speaking / Writing) ====================
 
@@ -1343,7 +1205,7 @@ public class StudentPortalController(
                 : NotFound();
         // O'qituvchiga bildirish — ilgari bron hech kimga ko'rinmasdi (o'qituvchi faqat ro'yxatni ochganda bilardi).
         var teacher = await db.Teachers.AsNoTracking().FirstOrDefaultAsync(t => t.Id == target.TeacherId);
-        await SupportService.NotifyAsync(db, HttpContext.RequestServices.GetService<FcmService>(), teacher?.UserId,
+        await SupportService.NotifyAsync(db, teacher?.UserId,
             "Yangi support bron", $"{s.FullName} {SupportService.When(target)} ga support darsini bron qildi.");
         return NoContent();
     }
@@ -1363,7 +1225,7 @@ public class StudentPortalController(
         await db.SaveChangesAsync();
         // O'qituvchiga bildirish — u bo'shagan vaqtga o'quvchini kutib o'tirmasin.
         var teacher = await db.Teachers.AsNoTracking().FirstOrDefaultAsync(t => t.Id == slot.TeacherId);
-        await SupportService.NotifyAsync(db, HttpContext.RequestServices.GetService<FcmService>(), teacher?.UserId,
+        await SupportService.NotifyAsync(db, teacher?.UserId,
             "Support bron bekor qilindi", $"{s.FullName} {SupportService.When(slot)} dagi support bronini bekor qildi.");
         return NoContent();
     }

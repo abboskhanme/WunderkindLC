@@ -170,8 +170,7 @@ export interface StudentFinance {
   payments: StudentPayment[]
 }
 
-export interface StudentChatMessage { id: string; className: string; senderUserId: string; senderName: string; senderRole: string; text: string; createdAt: string }
-export interface UserSettings { language: string; theme: string; notificationsEnabled: boolean }
+export interface UserSettings { language: string; theme: string }
 export interface TelegramStatus { configured: boolean; botUsername: string; botName: string; deepLink: string; registered: boolean }
 
 // ---------- Profil / auth / meta ----------
@@ -451,16 +450,6 @@ export async function getStudentSubjectProgressDetail(subjectId: string, quarter
 // ---------- Finance ----------
 export async function getStudentFinance(studentId?: string) {
   const { data } = await api.get<StudentFinance>('/student/finance', { params: sid(studentId) })
-  return data
-}
-
-// ---------- Chat ----------
-export async function getStudentChat(since?: string, studentId?: string) {
-  const { data } = await api.get<StudentChatMessage[]>('/student/chat', { params: { since, ...sid(studentId) } })
-  return data
-}
-export async function sendStudentChat(text: string) {
-  const { data } = await api.post<StudentChatMessage>('/student/chat', { text })
   return data
 }
 

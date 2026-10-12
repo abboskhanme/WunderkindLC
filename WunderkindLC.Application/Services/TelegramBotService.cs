@@ -18,18 +18,24 @@ namespace WunderkindLC.Application.Services;
 /// bo'lsa — bo'lmasa shu yerda to'xtaydi, "✅ Tekshirish" tugmasi bilan) → telefon raqamini
 /// ulashadi → raqam o'quvchi (ParentPhone) yoki o'qituvchi (Phone) bilan solishtiriladi
 /// (ro'yxatdan o'tgan); obuna YANA tekshiriladi (ehtiyot chorasi — /start bilan kontakt orasida
-/// kanaldan chiqib ketgan bo'lishi mumkin) → keyin TelegramRegistration yoziladi va mos ILOVA
-/// (APK) fayli yuboriladi. Token sozlanmagan bo'lsa xizmat kutadi (ilova baribir ishlaydi).
+/// kanaldan chiqib ketgan bo'lishi mumkin) → keyin TelegramRegistration yoziladi va kirish
+/// ma'lumotlari yuboriladi. Token sozlanmagan bo'lsa xizmat kutadi (sayt baribir ishlaydi).
+/// (2026-10: ilova (APK) fayli yuborish va bot orqali ONLAYN TEST olib tashlandi.)
 /// Support rejimi: /support → Mode="support" → keyingi matnlar adminga ketadi.
 /// </summary>
 public class TelegramBotService(
-    IServiceProvider sp, TelegramService telegram, IHostEnvironment env,
-    OnlineTestBotService onlineTest, BookShopBotService bookShop,
+    IServiceProvider sp, TelegramService telegram,
+    BookShopBotService bookShop,
     ILogger<TelegramBotService> logger) : BackgroundService
 {
-    private const string ApkMime = "application/vnd.android.package-archive";
-    private const string ApkCaption =
-        "📲 Ilovani o'rnatish: faylni yuklab oling, ochib o'rnating (noma'lum manbalardan o'rnatishga ruxsat bering).";
+    /// <summary>ESKI «📝 Testni ishlash» tugmasi matni — bot orqali onlayn test 2026-10 da olib tashlandi,
+    /// lekin foydalanuvchilarga ilgari yuborilgan klaviaturalarda tugma hali turibdi. Bosilsa — tushuntirish
+    /// va yangilangan klaviatura (jim "telefon yuboring" javobiga tushmasin).</summary>
+    internal const string LegacyTestButtonText = "📝 Testni ishlash";
+    /// <summary>ESKI "test kodi kutilyapti" rejimi (<c>BotUser.Mode</c>) — uchrasa tozalanadi.</summary>
+    internal const string LegacyTestCodeMode = "testcode";
+    private const string LegacyTestRemovedText =
+        "ℹ️ Onlayn testlar endi bot orqali ishlanmaydi. Test natijalari kabinetda («📱 Panel») ko'rinadi.";
     /// <summary>Veb (brauzer) versiyasi — ilova fayli bo'lmasa yoki kompyuterdan kirish uchun.</summary>
     private const string WebAppUrl = "https://lc.wunderkindedu.uz/";
     /// <summary>Telefon klaviaturasidagi "adminga murojaat" tugmasi matni (reply keyboard).</summary>
@@ -249,14 +255,10 @@ public class TelegramBotService(
             if (!await RequireSubscriptionAsync(chatId, OtpButtonText, ct)) return;
             await HandleOtpRequestAsync(chatId, ct);
         }
-        else if (text == "/test" || text == OnlineTestBotService.TestButtonText)
+        else if (text == "/test" || text == LegacyTestButtonText)
         {
             await LogInAsync(chatId, text, ct);
-            // MAJBURIY OBUNA: onlayn testni ishlash ham obunani talab qiladi.
-            if (!await RequireSubscriptionAsync(chatId, OnlineTestBotService.TestButtonText, ct)) return;
-            using var scope = sp.CreateScope();
-            var db = scope.ServiceProvider.GetRequiredService<IAppDbContext>();
-            await onlineTest.ShowListAsync(db, chatId, ct);
+            await SendLegacyTestNoticeAsync(chatId, ct);
         }
         else if (text == "/kitoblar" || text == BookShopBotService.BooksButtonText)
         {
@@ -274,21 +276,14 @@ public class TelegramBotService(
             var db = scope.ServiceProvider.GetRequiredService<IAppDbContext>();
             var botUser = await db.BotUsers.FirstOrDefaultAsync(u => u.ChatId == chatId, ct);
 
-            // ONLAYN TEST — TEST KODI kutilyapti (markazda o'qimaydigan odam ham testni ishlay oladi).
-            // Bu tekshiruv sessiya tekshiruvidan OLDIN: kod bosqichida hali sessiya yo'q.
-            if (botUser?.Mode == OnlineTestBotService.ModeAwaitingCode)
+            // ESKI onlayn test "kod kutilyapti" rejimi (bot orqali test 2026-10 da olib tashlandi) —
+            // rejim tozalanadi va foydalanuvchiga tushuntiriladi.
+            if (botUser?.Mode == LegacyTestCodeMode)
             {
-                await LogInAsync(chatId, "[test kodi yuborildi]", ct);
-                await onlineTest.HandleCodeAsync(db, chatId, text, ct);
-                return;
-            }
-
-            // ONLAYN TEST: matn rejimida javoblar kutilyapti (faol sessiya bor) — avval shuni sinaymiz.
-            // Javobga o'xshamasa (ParseAnswers bo'sh qaytarsa) — pastdagi oddiy oqim davom etadi.
-            if (botUser?.Mode != "support" && await onlineTest.HasSessionAsync(db, chatId, ct)
-                && await onlineTest.HandleTextAsync(db, chatId, text, ct))
-            {
-                await LogInAsync(chatId, "[test javoblari yuborildi]", ct);
+                botUser.Mode = "";
+                await db.SaveChangesAsync(ct);
+                await LogInAsync(chatId, text, ct);
+                await SendLegacyTestNoticeAsync(chatId, ct);
                 return;
             }
 
@@ -456,41 +451,10 @@ public class TelegramBotService(
                         await IsTeacherChatAsync(db, chatId, ct) || await IsStudentChatAsync(db, chatId, ct)), ct);
             }
         }
-        else if (OnlineTestBotService.Handles(data))
+        else if (IsLegacyOnlineTestCallback(data))
         {
-            using var scope = sp.CreateScope();
-            var db = scope.ServiceProvider.GetRequiredService<IAppDbContext>();
-            if (data.StartsWith(OnlineTestBotService.CbOpen, StringComparison.Ordinal))
-            {
-                // MAJBURIY OBUNA: eski xabardagi tugma orqali ham chetlab o'tib bo'lmasin.
-                if (!await RequireSubscriptionAsync(chatId, OnlineTestBotService.TestButtonText, ct)) return;
-                await onlineTest.OpenTestAsync(db, chatId, data, ct);
-            }
-            else if (data == OnlineTestBotService.CbCode)
-            {
-                // MAJBURIY OBUNA: test kodi bilan kirish ham obunani talab qiladi (markazda
-                // o'qimaydigan ishtirokchi ham kanalga obuna bo'ladi).
-                if (!await RequireSubscriptionAsync(chatId, OnlineTestBotService.TestButtonText, ct)) return;
-                await onlineTest.AskCodeAsync(db, chatId, ct);
-            }
-            else if (data.StartsWith(OnlineTestBotService.CbAnswer, StringComparison.Ordinal))
-                await onlineTest.AnswerAsync(db, chatId, data, ct);
-            else if (data.StartsWith(OnlineTestBotService.CbGoto, StringComparison.Ordinal))
-                await onlineTest.GotoAsync(db, chatId, data, ct);
-            else if (data == OnlineTestBotService.CbModeButtons)
-                await onlineTest.SetModeAsync(db, chatId, buttons: true, ct);
-            else if (data == OnlineTestBotService.CbModeText)
-                await onlineTest.SetModeAsync(db, chatId, buttons: false, ct);
-            else if (data == OnlineTestBotService.CbFinish)
-                await onlineTest.FinishAsync(db, chatId, ct);
-            else if (data == OnlineTestBotService.CbConfirm)
-                await onlineTest.SubmitAsync(db, chatId, ct);
-            else if (data == OnlineTestBotService.CbEdit)
-                await onlineTest.EditAsync(db, chatId, ct);
-            else if (data == OnlineTestBotService.CbCancel)
-                await onlineTest.CancelAsync(db, chatId, ct);
-            else if (data == OnlineTestBotService.CbList)
-                await onlineTest.ShowListAsync(db, chatId, ct);
+            // Eski xabarlardagi onlayn test tugmalari (bot orqali test 2026-10 da olib tashlandi).
+            await SendLegacyTestNoticeAsync(chatId, ct);
         }
         else if (BookShopBotService.Handles(data))
         {
@@ -580,7 +544,7 @@ public class TelegramBotService(
     }
 
     /// <summary>
-    /// MAJBURIY OBUNA DARVOZASI — botning HAR bir "foydali" amali (bir martalik kod, onlayn test)
+    /// MAJBURIY OBUNA DARVOZASI — botning HAR bir "foydali" amali (bir martalik kod, kitob buyurtmasi)
     /// shu yerdan o'tadi. Ilgari tekshiruv FAQAT /start va telefon yuborishda bo'lgani uchun,
     /// ro'yxatdan o'tib olgan foydalanuvchi kanaldan chiqib ketsa ham kod olishda va boshqa
     /// amallarda hech narsa tekshirilmasdi — shu teshik yopildi.
@@ -664,7 +628,7 @@ public class TelegramBotService(
         await UpsertBotUserOnStartAsync(chatId, fromHolder, ct);
 
         // Allaqachon ro'yxatdan o'tgan bo'lsa — telefonni qayta so'ramasdan MENYUNI ko'rsatamiz
-        // (shu bilan yangi «Testni ishlash» tugmasi eski foydalanuvchilarda ham paydo bo'ladi).
+        // (shu bilan yangilangan klaviatura eski foydalanuvchilarda ham paydo bo'ladi).
         using (var scope = sp.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<IAppDbContext>();
@@ -677,7 +641,6 @@ public class TelegramBotService(
                     "Assalomu alaykum! 👋\n\nPastdagi tugmalardan foydalaning:\n"
                     + PanelGreetingLine(isTeacher, isStudent)
                     + $"• {OtpButtonText} — tizimga kirish uchun bir martalik kod\n"
-                    + $"• {OnlineTestBotService.TestButtonText} — sizga ochilgan onlayn testlar\n"
                     + (books ? $"• {BookShopBotService.BooksButtonText} — sotuvdagi kitoblarga buyurtma\n" : "")
                     + $"• {SupportButtonText} — administratorga savol",
                     RegisteredKeyboard(books, isTeacher || isStudent), ct);
@@ -688,7 +651,7 @@ public class TelegramBotService(
         await SendAsync(chatId, "Assalomu alaykum! 👋\n\n" + PhonePrompt, ContactKeyboard, ct);
     }
 
-    /// <summary>Telefon kelganda: moslik → MAJBURIY obuna → register + APK.</summary>
+    /// <summary>Telefon kelganda: moslik → MAJBURIY obuna → register + kirish ma'lumotlari.</summary>
     private async Task HandleContactAsync(long chatId, string? phone, string senderName, CancellationToken ct)
     {
         var key = PhoneUtil.Key(phone);
@@ -726,9 +689,7 @@ public class TelegramBotService(
             await SendAsync(chatId,
                 $"Bu raqam ({phone}) markaz o'quvchilari ro'yxatida topilmadi — tizimga kirish ma'lumotlari "
                 + "berilmaydi. Ma'lumotingiz noto'g'ri bo'lsa, markaz ma'muriyatiga murojaat qiling."
-                + $"\n\n📝 <b>Test kodi</b> berilgan bo'lsa — «{OnlineTestBotService.TestButtonText}» tugmasi orqali "
-                + "markazda o'qimasangiz ham testni ishlashingiz mumkin."
-                + (booksOn ? $"\n📚 Kitob sotib olish ham ochiq — «{BookShopBotService.BooksButtonText}»." : ""),
+                + (booksOn ? $"\n\n📚 Kitob sotib olish ochiq — «{BookShopBotService.BooksButtonText}»." : ""),
                 GuestKeyboard, ct, "HTML");
             return;
         }
@@ -757,10 +718,10 @@ public class TelegramBotService(
         await CompleteAsync(db, meta, chatId, phone!, senderName, matchedStudents, matchedTeachers, matchedAdmins, ct);
     }
 
-    /// <summary>Obuna o'tdi: TelegramRegistration yozadi, login/parol yuboradi, BotUser yangilaydi va mos APK(lar)ni yuboradi.
-    /// Admin/xodim moslansa — UserId yozuvi (yangi lid xabarnomalari uchun); APK yuborilmaydi.
+    /// <summary>Obuna o'tdi: TelegramRegistration yozadi, login/parol yuboradi va BotUser yangilaydi.
+    /// Admin/xodim moslansa — UserId yozuvi (yangi lid xabarnomalari uchun).
     /// DIQQAT: ro'yxatdan o'tish (TelegramRegistration — xabar/e'lon olish uchun) HAMMA mos o'quvchida
-    /// bajariladi, lekin login/parol va APK faqat AKTIV o'quvchiga yuboriladi
+    /// bajariladi, lekin login/parol faqat AKTIV o'quvchiga yuboriladi
     /// (<see cref="ActiveStudentIdsAsync"/>).</summary>
     private async Task CompleteAsync(
         IAppDbContext db, CenterMeta? meta, long chatId, string phone, string senderName,
@@ -863,18 +824,13 @@ public class TelegramBotService(
         // BotUser — telefon va moslik yorlig'ini yangilash/yaratish.
         await UpsertBotUserAfterContactAsync(db, chatId, digits, linked, ct);
 
-        // Mos ILOVA (APK) — FAQAT kirish ma'lumoti berilgan o'quvchi/o'qituvchi uchun (admin web paneldan
-        // foydalanadi; faol bo'lmagan o'quvchiga ilova ham yuborilmaydi — login/parolsiz foydasi yo'q).
-        // Veb-versiya havolasi FAQAT hech kimga login xabari (u allaqachon havolani o'z ichiga oladi)
-        // yuborilmagan bo'lsa qo'shimcha yuboriladi — aks holda bir xil link ikki marta takrorlanib qolardi.
-        if (loginStudents.Count > 0 || teachers.Count > 0)
-        {
-            var sentAny = await SendAppApkAsync(db, meta, chatId, loginStudents.Count > 0, teachers.Count > 0, ct);
-            if (!sentAny && !sentLogin)
-                await SendAsync(chatId,
-                    $"🌐 Tizimga veb-versiya orqali kiring:\n{WebAppUrl}",
-                    ct: ct);
-        }
+        // Veb-versiya havolasi — FAQAT kirish ma'lumoti berilgan o'quvchi/o'qituvchi uchun va faqat login
+        // xabari (u allaqachon havolani o'z ichiga oladi) yuborilmagan bo'lsa — aks holda bir xil link ikki
+        // marta takrorlanib qolardi. (Ilova (APK) fayli yuborish 2026-10 da olib tashlandi.)
+        if ((loginStudents.Count > 0 || teachers.Count > 0) && !sentLogin)
+            await SendAsync(chatId,
+                $"🌐 Tizimga veb-versiya orqali kiring:\n{WebAppUrl}",
+                ct: ct);
     }
 
     /// <summary>Berilgan o'quvchilardan bot orqali KIRISH MA'LUMOTI olishga haqli bo'lganlarining id'lari.
@@ -1208,61 +1164,6 @@ public class TelegramBotService(
         }
     }
 
-    /// <summary>Roli bo'yicha APK(lar)ni yuboradi (keshlangan file_id bo'lsa qayta yuklamasdan).
-    /// O'quvchi/o'qituvchi APK'si yo'q bo'lsa ikkinchisiga qaytadi. Kamida bittasi yuborilsa true.</summary>
-    private async Task<bool> SendAppApkAsync(
-        IAppDbContext db, CenterMeta? meta, long chatId, bool student, bool teacher, CancellationToken ct)
-    {
-        if (meta is null) return false;
-
-        // Mavjud bo'lsa slot (nom/yo'l/file_id + file_id keshini yozuvchi).
-        (string name, string path, string fileId, Action<string> setId)? StudentSlot =
-            (meta.StudentApkPath.Length > 0 || meta.StudentApkFileId.Length > 0)
-                ? (meta.StudentApkName, meta.StudentApkPath, meta.StudentApkFileId, id => meta.StudentApkFileId = id)
-                : null;
-        (string name, string path, string fileId, Action<string> setId)? TeacherSlot =
-            (meta.TeacherApkPath.Length > 0 || meta.TeacherApkFileId.Length > 0)
-                ? (meta.TeacherApkName, meta.TeacherApkPath, meta.TeacherApkFileId, id => meta.TeacherApkFileId = id)
-                : null;
-
-        var slots = new List<(string name, string path, string fileId, Action<string> setId)>();
-        if (student && (StudentSlot ?? TeacherSlot) is { } s1) slots.Add(s1);
-        if (teacher && (TeacherSlot ?? StudentSlot) is { } s2) slots.Add(s2);
-
-        var seen = new HashSet<string>();
-        var any = false;
-        var changed = false;
-        foreach (var slot in slots)
-        {
-            var dedupeKey = slot.path.Length > 0 ? slot.path : slot.fileId;
-            if (!seen.Add(dedupeKey)) continue;
-
-            string? newId;
-            if (slot.fileId.Length > 0)
-            {
-                newId = await telegram.SendDocumentReturningIdAsync(
-                    chatId, slot.fileId, null, FileName(slot.name), ApkMime, ApkCaption, ct);
-            }
-            else
-            {
-                var abs = Path.Combine(env.ContentRootPath, slot.path);
-                if (!File.Exists(abs)) continue;
-                var bytes = await File.ReadAllBytesAsync(abs, ct);
-                newId = await telegram.SendDocumentReturningIdAsync(
-                    chatId, null, bytes, FileName(slot.name), ApkMime, ApkCaption, ct);
-            }
-
-            if (newId is not null)
-            {
-                any = true;
-                if (newId.Length > 0 && newId != slot.fileId) { slot.setId(newId); changed = true; }
-            }
-        }
-
-        if (changed) await db.SaveChangesAsync(ct);
-        return any;
-    }
-
     /// <summary>Backup faylini Telegram chat'ga yuboradi (SendDocument).
     /// <paramref name="chatId"/> — admin chat ID (CenterMeta.TelegramAdminChatId).
     /// <paramref name="fileData"/> — backup fayl baytlari.
@@ -1300,10 +1201,6 @@ public class TelegramBotService(
             return false;
         }
     }
-
-    private static string FileName(string name) =>
-        string.IsNullOrWhiteSpace(name) ? "app.apk"
-        : name.EndsWith(".apk", StringComparison.OrdinalIgnoreCase) ? name : name + ".apk";
 
     private static string ChannelUrl(string ch)
     {
@@ -1350,15 +1247,12 @@ public class TelegramBotService(
         return string.Join(" ", new[] { fn, ln }.Where(x => !string.IsNullOrWhiteSpace(x)));
     }
 
-    /// <summary>Telefon so'rovchi klaviatura (request_contact) + "Testni ishlash" + "Adminga murojaat".
-    /// <para>«📝 Testni ishlash» ATAYIN bu yerda ham bor: markazda o'qimaydigan odam TEST KODI bilan
-    /// testni ishlay olishi kerak — u telefon raqamini ulashishi shart emas.</para></summary>
+    /// <summary>Telefon so'rovchi klaviatura (request_contact) + "Adminga murojaat".</summary>
     private static object ContactKeyboard => new
     {
         keyboard = new object[][]
         {
             new object[] { new { text = "📱 Telefon raqamni yuborish", request_contact = true } },
-            new object[] { new { text = OnlineTestBotService.TestButtonText } },
             new object[] { new { text = SupportButtonText } },
         },
         resize_keyboard = true,
@@ -1366,7 +1260,7 @@ public class TelegramBotService(
     };
 
     /// <summary>Ro'yxatdan o'tgan (telefoni tasdiqlangan) foydalanuvchi klaviaturasi: bir martalik
-    /// kirish kodi → ONLAYN TESTNI ISHLASH → (yoqilgan bo'lsa) KITOB SOTIB OLISH → adminga murojaat.
+    /// kirish kodi → (yoqilgan bo'lsa) KITOB SOTIB OLISH → adminga murojaat.
     /// Ro'yxatdan o'tish tugagach (va ro'yxatdan o'tgan foydalanuvchi /start bosganda) o'rnatiladi.</summary>
     public static object RegisteredKeyboard(bool books = true, bool panel = false)
     {
@@ -1374,7 +1268,6 @@ public class TelegramBotService(
         // O'qituvchi yoki o'quvchi/ota-onaga — BITTA «📱 Panel» tugmasi ENG TEPADA; portalni rol tanlaydi.
         if (panel) rows.Add(new object[] { new { text = PanelButtonText, web_app = new { url = PanelUrl } } });
         rows.Add(new object[] { new { text = OtpButtonText } });
-        rows.Add(new object[] { new { text = OnlineTestBotService.TestButtonText } });
         if (books) rows.Add(new object[] { new { text = BookShopBotService.BooksButtonText } });
         rows.Add(new object[] { new { text = SupportButtonText } });
         return new { keyboard = rows.ToArray(), resize_keyboard = true, one_time_keyboard = false };
@@ -1387,7 +1280,6 @@ public class TelegramBotService(
     {
         keyboard = new object[][]
         {
-            new object[] { new { text = OnlineTestBotService.TestButtonText } },
             new object[] { new { text = BookShopBotService.BooksButtonText } },
             new object[] { new { text = SupportButtonText } },
         },
@@ -1420,6 +1312,27 @@ public class TelegramBotService(
     /// <summary>Kitoblar sotuvi botda yoqilganmi (Sozlamalar → Kitoblar sotuvi).</summary>
     private static async Task<bool> BookSalesEnabledAsync(IAppDbContext db, CancellationToken ct) =>
         (await db.CenterMeta.AsNoTracking().FirstOrDefaultAsync(ct))?.BookSalesEnabled ?? true;
+
+    /// <summary>ESKI onlayn test inline tugmalarining callback qiymatlari (2026-10 da olib tashlangan oqim):
+    /// eski xabarlarda tugma qolgan — bosilsa tushuntirish yuboriladi (sof funksiya).</summary>
+    internal static bool IsLegacyOnlineTestCallback(string data) =>
+        data.StartsWith("ot:", StringComparison.Ordinal) || data.StartsWith("oa:", StringComparison.Ordinal)
+        || data.StartsWith("og:", StringComparison.Ordinal)
+        || data is "ocode" or "omb" or "omt" or "ofin" or "ocon" or "oedit" or "ocan" or "olist";
+
+    /// <summary>Eski onlayn test tugmasi/buyrug'i bosilganda — tushuntirish + YANGILANGAN klaviatura
+    /// (ro'yxatdan o'tgan bo'lsa menyu, aks holda telefon so'rovi).</summary>
+    private async Task SendLegacyTestNoticeAsync(long chatId, CancellationToken ct)
+    {
+        using var scope = sp.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<IAppDbContext>();
+        var registered = await db.TelegramRegistrations.AnyAsync(r => r.ChatId == chatId, ct);
+        var keyboard = registered
+            ? RegisteredKeyboard(await BookSalesEnabledAsync(db, ct),
+                await IsTeacherChatAsync(db, chatId, ct) || await IsStudentChatAsync(db, chatId, ct))
+            : ContactKeyboard;
+        await SendAsync(chatId, LegacyTestRemovedText, keyboard, ct);
+    }
 
     /// <summary>Kanal havolasi + "✅ Tekshirish" inline tugmalari. <paramref name="callbackData"/> —
     /// tugma bosilganda qaysi oqim davom etishini bildiradi ("check_sub" — kontakt oqimi,

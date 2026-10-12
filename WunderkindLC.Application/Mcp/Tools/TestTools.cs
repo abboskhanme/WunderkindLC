@@ -14,10 +14,10 @@ namespace WunderkindLC.Application.Mcp.Tools;
 /// journal.md (BALL = Σ manual journal grades + Σ done criteria + Σ manual adjustments, per group;
 /// "Reyting hamma joyda YIG'ILGAN BALL bo'yicha"; LRN-1 — criteria grades are not counted twice).
 ///
-/// <para>⚠️ The online-test part (bot PDF, answer key, code, «only by code», external participants) is
-/// being removed: its columns are never projected and <c>ExternalTestScore</c> / <c>TestBotSession</c>
-/// are never read. That is why <see cref="TestResultService.DetailAsync"/> (it reads external scores and
-/// certificates) is NOT called — its in-centre ranking is reproduced here with the same rule.</para>
+/// <para>⚠️ The online-test part (bot PDF, answer key, code, «only by code», external participants) was
+/// removed in 2026-10 (legacy columns/tables kept until a confirmed drop): its columns are never projected
+/// and <c>ExternalTestScore</c> / <c>TestBotSession</c> are never read. <see cref="TestResultService.DetailAsync"/>
+/// (it reads certificates) is NOT called — its in-centre ranking is reproduced here with the same rule.</para>
 /// </summary>
 [McpServerToolType]
 public sealed class TestTools(McpToolContext t)

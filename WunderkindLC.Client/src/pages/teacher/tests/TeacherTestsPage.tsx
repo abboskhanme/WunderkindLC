@@ -18,7 +18,7 @@ function initialsOf(name: string): string {
 
 /**
  * O'qituvchi — Testlar. Guruhni tanlaydi, keyin `TeacherGroupTestsPanel` ochiladi (testlar ro'yxati,
- * onlayn/oflayn test yaratish, ball qo'yish). AYNAN shu panel guruh (jurnal) sahifasidagi
+ * test yaratish, ball qo'yish). AYNAN shu panel guruh (jurnal) sahifasidagi
  * "Imtihonlar" tabida ham ishlatiladi — funksiya ikkala joyda bir xil.
  */
 export function TeacherTestsPage() {

@@ -8,12 +8,11 @@ namespace WunderkindLC.Application.Services;
 /// Fon xizmatlari esa ularni ko'rib DARHOL ish boshlaydi: oylik hisob yoziladi
 /// (<see cref="TuitionService.AccrueDue"/> — startupda va har 12 soatda BUTUN tarixni skanerlaydi,
 /// `.claude/rules/membership-periods.md` §6), har yangi hisob uchun ota-onaga avto-xabar ketadi,
-/// qarzdorlik eslatmasi SMS'i yuboriladi. Ya'ni yarim ko'chirilgan ma'lumot ustida
+/// qarzdorlik eslatmasi yuboriladi. Ya'ni yarim ko'chirilgan ma'lumot ustida
 /// <b>ota-onalarga yuzlab YOLG'ON qarz xabari</b> jo'nab ketishi mumkin.</para>
 ///
-/// <para><b>Nima to'xtaydi:</b> oylik hisob (accrual), qarzdorlik/dars/tug'ilgan kun/sinov
-/// eslatmalari va SMS yuborish (<see cref="EskizService.SendSmsAsync"/> darhol "import rejimi"
-/// xatosini qaytaradi). Qolgan hamma narsa — API, panel, hisobotlar — odatdagidek ishlaydi.</para>
+/// <para><b>Nima to'xtaydi:</b> oylik hisob (accrual) va qarzdorlik/dars/tug'ilgan kun
+/// eslatmalari. Qolgan hamma narsa — API, panel, hisobotlar — odatdagidek ishlaydi.</para>
 ///
 /// <para><b>Yoqish:</b> <c>IMPORT_MODE=1</c> (yoki <c>Import__Mode=true</c>) muhit o'zgaruvchisi
 /// va konteynerni qayta ishga tushirish. Import tugagach O'CHIRISH ESDAN CHIQMASIN — aks holda

@@ -22,7 +22,7 @@ On half-imported data that means **hundreds of false debt messages to parents**.
 So the import runs with `IMPORT_MODE=1` (env, passed through `docker-compose.yml` as `Import__Mode`):
 
 - no tuition accrual, no payment/lesson/birthday/trial reminders (their hosted services are not registered);
-- `EskizService.SendSmsAsync` refuses to send with "Import rejimi yoqilgan";
+- (SMS sending used to refuse with "Import rejimi yoqilgan"; the SMS channel was removed in 2026-10;)
 - a loud warning is written at startup.
 
 ⚠️ **Turn it off after the import** (empty `IMPORT_MODE`, restart) — otherwise monthly charges are

@@ -1,6 +1,6 @@
 import { SETTINGS_GROUPS, groupPermAny } from './settingsGroups'
 import type { ComponentType } from 'react'
-import { LayoutDashboard, NotebookText, MessageSquare } from 'lucide-react'
+import { LayoutDashboard, NotebookText } from 'lucide-react'
 // Admin menyusi — edutizim bilan BIR XIL ikonkalar (Tabler outline, edutizim ham shularni ishlatadi).
 import {
   IconClipboardCheck,
@@ -305,9 +305,7 @@ export const navByRole: Record<Role, NavItem[]> = {
           label: 'Aloqa',
           to: '#future-comms',
           children: [
-            { label: 'Guruh chati', to: '/admin/chats', perm: 'messages.chat' },
             { label: 'Support Telegram', to: '/admin/support-telegram', perm: 'messages.support' },
-            { label: 'Call Center — Local Call', to: '/admin/calls/local', perm: 'calls.local' },
           ],
         },
         {
@@ -315,9 +313,9 @@ export const navByRole: Record<Role, NavItem[]> = {
           to: '#future-app',
           children: [
             { label: 'AI check', to: '/admin/ai-check', perm: 'app.aiCheck' },
-            { label: 'Ota-onalar (ilova akkauntlari)', to: '/admin/parents', perm: 'app.parents' },
+            { label: 'Ota-onalar (kabinet akkauntlari)', to: '/admin/parents', perm: 'app.parents' },
             { label: 'Support', to: '/admin/support', perm: 'app.support' },
-            { label: "O'qituvchilar (ilova)", to: '/admin/app/teachers', perm: 'app.teachers' },
+            { label: "O'qituvchilar (kabinet)", to: '/admin/app/teachers', perm: 'app.teachers' },
           ],
         },
         {
@@ -377,9 +375,8 @@ export const navByRole: Record<Role, NavItem[]> = {
   teacher: [
     { label: 'Bosh sahifa', to: '/teacher', icon: LayoutDashboard },
     { label: 'Jurnal', to: '/teacher/journal', icon: NotebookText, perm: 'journal' },
-    // Asosiy navigatsiyada "Test" (onlayn/oflayn test yaratish).
+    // Asosiy navigatsiyada "Test" (test natijalarini kiritish).
     { label: 'Test', to: '/teacher/tests', icon: IconClipboardCheck, perm: 'journal' },
-    { label: 'Xabarlar', to: '/teacher/messages', icon: MessageSquare, perm: 'messages' },
   ],
   student: [{ label: 'Bosh sahifa', to: '/student', icon: LayoutDashboard }],
   parent: [{ label: 'Bosh sahifa', to: '/parent', icon: LayoutDashboard }],

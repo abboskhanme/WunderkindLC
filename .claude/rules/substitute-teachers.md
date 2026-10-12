@@ -303,7 +303,7 @@ so'rov yo'q; o'quvchilar soni, ko'chirishlar va yig'ilgan pul bittadan guruhlang
 - **O'rinbosarning boshqa guruhdagi darsi bilan VAQT kesishuvi tekshirilmaydi** — guruhlarning
   dars vaqtlari (`StartTime`) turlicha bo'lishi mumkin, "bir kunda ikki guruh" haqiqiy konflikt
   emas. Bir GURUHda bir KUNGA ikki tayinlov esa taqiqlangan (qo'sh to'lov).
-- **O'rinbosar guruh chatiga qo'shilmaydi** va o'quvchilar ro'yxatining pul/hujjat qismini
+- **O'rinbosar guruh chatiga qo'shilmaydi** (chat 2026-10 da butunlay olib tashlandi) va o'quvchilar ro'yxatining pul/hujjat qismini
   ko'rmaydi — tayinlov faqat DARS o'tish uchun.
 - **Uzoq muddatga mo'ljallanmagan** (`MaxDates = 60`): butun kurs davomida boshqa odam
   o'qitadigan bo'lsa — guruhning ASOSIY o'qituvchisini almashtirish kerak, aks holda maosh,

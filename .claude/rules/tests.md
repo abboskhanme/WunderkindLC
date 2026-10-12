@@ -1,11 +1,10 @@
 ---
-description: Test natijalari (oflayn — ball qo'lda), ONLAYN TEST (Telegram bot orqali PDF + avtomatik baholash) va TEST SERTIFIKATI (Word andoza → PDF).
+description: Test natijalari (FAQAT oflayn — ball qo'lda; onlayn test 2026-10 da olib tashlandi) va TEST SERTIFIKATI (Word andoza → PDF).
 paths:
   - "WunderkindLC.Application/Services/TestResultService.cs"
   - "WunderkindLC.Application/Services/TestCertificateService.cs"
   - "WunderkindLC.Application/Services/DocxToPdfConverter.cs"
   - "WunderkindLC.Application/Services/DocxTemplate.cs"
-  - "WunderkindLC.Application/Services/OnlineTestBotService.cs"
   - "WunderkindLC.Application/Services/LevelTestService.cs"
   - "WunderkindLC.Server/Controllers/TestResultsController.cs"
   - "WunderkindLC.Server/Controllers/LevelTestsController.cs"
@@ -41,98 +40,36 @@ paths:
   • o'qituvchi — `pages/teacher/tests/TeacherGroupTestsPanel.tsx` (`TeacherGroupTestsPanel` +
     `TeacherTestFormModal`): `TeacherTestsPage` va jurnal sahifasidagi "Imtihonlar" tabi
     (`TeacherGroupDetailPage`).
-  Ya'ni **jurnalning ichida ham onlayn/oflayn test yaratiladi** (avval u yerdagi forma faqat
-  oflayn edi). Ruxsat: superadmin/admin cheklovsiz, xodim `classes.testResults` (`usePerm` + `[AdminPerm("classes.testResults")]`),
+  Ya'ni **jurnalning ichida ham test yaratiladi** (2026-10 dan faqat oflayn). Ruxsat: superadmin/admin cheklovsiz, xodim `classes.testResults` (`usePerm` + `[AdminPerm("classes.testResults")]`),
   o'qituvchi `journal` + `OwnsGroup` — hammasi bir xil `TestResultService`ga boradi.
 
-- **ONLAYN TEST (bot orqali)** (migratsiya `AddOnlineTests`): test yaratishda rejim tanlanadi —
-  **oflayn** (eski: ball qo'lda) yoki **onlayn**. Onlaynda `TestResult`da: `Mode="online"`, `PdfUrl`
-  (savollar fayli) + `PdfFileId` (Telegram keshi), `QuestionCount`, `OptionCount` (A–D/A–E), `AnswerKey`
-  ("ABCDA…"), `StartAt`/`EndAt` (javob qabul qilish oynasi); `MaxScore` = savollar soni (har savol 1
-  ball). Javoblar `TestScore.Answers/SubmittedAt/Source="bot"` da — ya'ni **oddiy test natijalari bilan
-  BIR JOYDA** (reyting/o'rtacha/profil o'zgarishsiz ishlaydi). Bot oqimi: `OnlineTestBotService` —
-  «📝 Testni ishlash» reply tugmasi (kod olish ↔ adminga murojaat orasida), chatga bog'langan
-  o'quvchining faol guruhlaridagi testlar → PDF → javob kiritish **2 usulda** (tugmalar bilan —
-  `editMessageText` bilan joyida yangilanadigan varaqa; yoki bitta xabarda "abcda"/"1a 2b") →
-  avtomatik tekshirish → natija (foiz/baho/o'rin). Bir marta topshiriladi; javob kaliti FAQAT vaqt
-  tugagach ochiladi. Vaqtinchalik holat: `TestBotSession` (ChatId unikal).
-  DIQQAT: `TestResultService.UpdateAsync`ga `Online` berilmasa rejim O'ZGARMAYDI (eski/qisqartirilgan
-  forma onlayn testni oflaynga aylantirmasin).
-  ⚠️ **`PdfUrl` — FAQAT server saqlagan PDF** (`/uploads/<32 hex>.pdf`, `UploadUrlRules.IsServerPdf`;
-  boshqasi 400 «Savollar fayli noto'g'ri — PDF faylni shu oynadan qayta yuklang»). Tekshiruv
-  `TestResultService.ApplyOnlineAsync` da — admin ham, o'qituvchi ham shu yerdan o'tadi. Bot faylni
-  `UploadUrlRules.ResolveFlat` bilan o'qiydi (faqat `uploads/` ning o'zidagi fayl). Sabab (2026-10-08,
-  KRITIK): bot `PdfUrl` ni ilova ildiziga nisbatan hech qanday tekshiruvsiz o'qib Telegram hujjati
-  qilib yuborardi — o'qituvchi `"/../.env"` yozib, serverning maxfiy fayllarini (tokenlar, kalitlar)
-  botdan olardi. Guruh o'chirilganda savollar PDF'i ham faqat shu naqshda bo'lsa va boshqa test,
-  shartnoma yoki o'quv dasturi materiali (`CourseItem.PdfUrl`) uni ishlatmasa o'chiriladi
-  (`GroupDeletion`); sertifikat fayllari — faqat `/uploads/certificates/cert-<guid>.docx|pdf`.
-  **QAYTA BAHOLASH (2026-10-07):** kalit yoki savollar soni o'zgarsa javoblari saqlangan HAR natija
-  (`TestScore` ham, `ExternalTestScore` ham) yangi kalit bo'yicha qayta sanaladi; javobsiz (qo'lda qo'yilgan)
-  ball faqat `[0, MaxScore]` ga qisiladi (`TestResultService.Regrade`). Ball o'zgargan bo'lsa va test bo'yicha
-  sertifikat berilgan bo'lsa — sertifikatlar fonda QAYTA yaratiladi (`TestCertificateJobs`, idempotent).
-  ⚠️ Ilgari kalitdagi xato tuzatilsa ham hech kimning bali o'zgarmas, savollar 10 → 5 qilinsa "9/5 = 180%"
-  chiqardi (sertifikatda ham).
+- **2026-10: ONLAYN TEST REJIMI OLIB TASHLANDI** (egasining qarori, `docs/ASSUMPTIONS.md` 2026-10-11).
+  Testlar FAQAT oflayn — ballni o'qituvchi/admin qo'yadi. Kod bilan birga ketdi: `OnlineTestBotService`
+  (bot PDF + javob kiritish), `OnlineTestService` (o'quvchi kabinetidagi onlayn test, `GET/POST
+  /api/student/online-tests`), test KODI va markazdan tashqari ishtirokchilar, o'qituvchining
+  `POST /api/teacher/test-results/uploads`, formalardagi rejim/PDF/kalit/vaqt oynasi maydonlari,
+  `TestResultService` dagi `ApplyOnline*`/`Regrade`/`NewCodeAsync`/`FindByCode`, `GroupTestDto`
+  ning onlayn maydonlari va `TestResultDetailDto.ExternalRows`.
+  • **Bot:** «📝 Testni ishlash» tugmasi klaviaturalardan olib tashlandi; eski tugma, `/test` buyrug'i,
+    eski inline tugmalar (`ot:`, `oa:`, `og:`, `ocode`…) va `testcode` rejimidagi chat — tushuntirish matni
+    + yangilangan klaviatura oladi (`TelegramBotService.IsLegacyOnlineTestCallback`).
+  • **BAZA TEGILMAGAN:** `TestResult` ning onlayn ustunlari (`Mode` … `GroupOpen`), `TestScore.Answers/
+    SubmittedAt/Source`, `TestBotSessions`, `ExternalTestScores` — legacy (`[Obsolete]` entity'lar),
+    tasdiqlangan o'chirishgacha turadi. Guruh o'chirilganda eski qatorlar va savollar PDF'i tozalanadi
+    (`GroupDeletion`, quyidagi naqsh qoidasi bilan).
+  • Daraja testi (lidlar, `LevelTestService`) va o'quv dasturi testlari bunga KIRMAYDI — ular qoldi.
 
-- **TEST KODI + MARKAZDAN TASHQARI ISHTIROKCHILAR** (migratsiya `AddOnlineTestCodeAndExternalScores`):
-  markazda O'QIMAYDIGAN odam ham onlayn testni ishlay oladi.
-  • `TestResult.Code` — NOYOB test kodi (6 belgi, alifboda 0/O/1/I/L YO'Q — kodni odam qo'lda yozadi).
-    Onlayn testda HAR DOIM bo'ladi: forma bo'sh yuborsa server o'zi yaratadi (`TestResultService.NewCodeAsync`),
-    qo'lda kiritilsa `NormalizeCode` bilan tozalanadi (katta harf + faqat harf-raqam) va uniklik
-    tekshiriladi. Uniklik DB indeksi bilan EMAS, servisda (oflayn testlarda kod bo'sh — filtrli
-    unikal indeks provayderga bog'liq bo'lardi). Oflaynga o'girilsa kod BO'SHATILADI.
-  • `TestResult.GroupOpen` — **"guruhga ham yaratilsinmi yoki faqat onlaynmi"**: `true` (standart) —
-    guruh a'zolari botda/ilovada testni ro'yxatdan ko'radi VA tashqi odam kod bilan qo'shiladi;
-    `false` — "FAQAT KOD": guruhga E'LON QILINMAYDI (`OnlineTestBotService.AvailableTestsAsync` va
-    `OnlineTestService.ListForStudentAsync/DetailAsync/SubmitAsync` filtrlaydi), faqat kod bilan.
-    Test HAR DOIM guruh ichida yaratiladi — natijalari o'sha guruh ichida ko'rinadi.
-    ⚠️ Migratsiyada `GroupOpen` ustuni `defaultValue: true` (EF o'zi false qo'yardi) — aks holda
-    barcha ESKI onlayn testlar o'quvchilar ro'yxatidan birdaniga yo'qolardi; mavjud onlayn
-    testlarga kod ham SQL bilan backfill qilinadi.
-  • `ExternalTestScore` (TestResultId, **ChatId**, FullName, Phone, Score, Answers, SubmittedAt) —
-    tashqi ishtirokchi `Student` EMAS, shuning uchun bali `TestScore` ga (StudentId FK) yozilmaydi.
-    Unikal kalit (TestResultId, ChatId) — bir chat bir marta topshiradi; test o'chsa FK CASCADE.
-  • **BOT OQIMI:** «📝 Testni ishlash» → chat o'quvchiga bog'lanmagan bo'lsa DARHOL kod so'raladi
-    (`BotUser.Mode="testcode"`), bog'langan bo'lsa ro'yxat + «🔑 Test kodi bilan kirish» tugmasi.
-    Kod → `HandleCodeAsync`: chatda 1 o'quvchi bo'lsa uning nomidan boshlanadi, 2+ bo'lsa kim
-    ishlashi so'raladi, 0 bo'lsa **F.I.Sh** so'raladi (`TestBotSession.Stage="name"` +
-    `ExternalName`) va keyin odatdagi PDF → javob kiritish oqimi. `SubmitAsync` `StudentId` bo'sh
-    bo'lsa `ExternalTestScore` ga yozadi (telefon `BotUser.Phone` dan). O'rin (rank) markazdagi va
-    tashqi ballarni BIRGA sanaydi — qoida BITTA: `OnlineTestService.RankAmong` (bot ham, o'quvchi ilovasi ham;
-    ilgari ilova tashqilarni sanamasdi va bitta test ikki xil o'rin ko'rsatardi).
-    Natija xabarida "o'qituvchingizga yuborildi" DEYILMAYDI — o'qituvchiga hech narsa yuborilmaydi, natija
-    «Testlar natijalari» bo'limida ko'rinadi (matn shuni aytadi).
-    MAJBURIY OBUNA bu yo'lda ham ishlaydi (`RequireSubscriptionAsync` — `/test` va `ocode` tugmasida).
-    Klaviaturalar: «📝 Testni ishlash» endi `ContactKeyboard` va `GuestKeyboard` da ham bor
-    (tashqi odam telefon ulashmasa ham testni ishlay olishi kerak).
-  • **NATIJALAR IKKI RO'YXAT** (`TestResultService.DetailAsync`): `Rows` = **Markazdagilar** (guruhning
-    faol a'zolari + kod bilan qo'shilgan BOSHQA guruh o'quvchilari — ular `Member=false`),
-    `ExternalRows` = **Markazdan tashqari** (o'z ichida alohida saralanadi). UI: admin
-    `TestDetailPage` va o'qituvchi `TeacherGroupTestsPanel` — ikkala ro'yxat sarlavha bilan; tashqi
-    ballar QO'LDA tahrirlanmaydi (faqat botdan keladi). Ro'yxatda `GroupTestDto.ExternalCount`.
-  • Formalar (`GroupTestsPanel` `TestFormModal` + `TeacherTestFormModal`): "Testni kimlar ishlaydi?"
-    (Guruh + kod / Faqat kod bilan) va "Test kodi" (nusxalash tugmasi bilan) — IKKALASIDA bir xil.
+- **MAKSIMAL BALL KAMAYSA ballar QISILADI** (`TestResultService.UpdateDetailedAsync` → `ClampScore`,
+  `[0, MaxScore]`): ilgari "9/5 = 180%" chiqardi (sertifikatda ham). Ball o'zgargan bo'lsa (`Regraded > 0`)
+  va test bo'yicha sertifikat berilgan bo'lsa — sertifikatlar fonda QAYTA yaratiladi
+  (`TestCertificateJobs`, idempotent).
 
-- **ONLAYN TEST — O'QUVCHI ILOVASIDA** (`OnlineTestService`, Application/Services): bot bilan
-  YAGONA mantiq — faol (muzlatilmagan) guruhlardagi `Mode="online"` testlar, oxirgi 7 kun oynasi,
-  vaqt oynasi ichida BIR MARTA topshirish, natija o'sha `TestScore`ga (alohida jadval YO'Q).
-  Manba: bot `Source="bot"`, ilova `Source="app"` — `OnlineTestService.IsStudentSubmission`
-  ikkalasini "o'quvchi topshirdi" deb biladi (bot ham shu tekshiruvni ishlatadi), o'qituvchi
-  qo'lda kiritgan ball (`Source=""`) topshirishni bloklamaydi.
-  API: `GET/POST /api/student/online-tests[...]` (`StudentPortalController`). Javob kaliti FAQAT
-  test vaqti tugagach qaytariladi. Ilova ekrani: `ilova/student/lib/screens/online_test_screen.dart`
-  (PDF tepada + A/B/C tugmalari), "Test" tabidan ochiladi.
-  **DIQQAT (gotcha):** ilova javoblarni POZITSIYA bo'yicha yuboradi ("A-C-D", `-` = javobsiz) —
-  bunga `OnlineTestBotService.ParseAnswers` YARAMAYDI (u erkin matndan faqat harflarni yig'adi,
-  `-` ni tashlab yuboradi → javoblar siljiydi). Shu sabab alohida `OnlineTestService.Normalize`.
-  REJIM TANLASH TO'RTALA JOYDA HAM BOR (yuqoridagi ikkita YAGONA panel orqali): admin
-  `TestFormModal` (`pages/admin/tests/GroupTestsPanel.tsx`) va o'qituvchi `TeacherTestFormModal`
-  (`pages/teacher/tests/TeacherGroupTestsPanel.tsx`) — bir xil maydonlar va bir xil tekshiruvlar;
-  admin PDF'ni `POST /api/admin/uploads` (admin/superadmin/staff — bo'lim ruxsati talab qilinmaydi),
-  o'qituvchi esa `POST /api/teacher/test-results/uploads` orqali yuklaydi
-  (ruxsat "journal"). O'qituvchi test tafsilotida ham onlayn
-  ma'lumot bloki bor (savollar soni, vaqt oynasi, PDF, javob kaliti — yopiq holatda, botdan yuborgan
-  o'quvchilar soni) va har qatorda o'quvchining javoblari ko'rinadi.
+- ⚠️ **ESKI `PdfUrl` — o'qilmaydi, faqat tozalanadi.** 2026-10-08 (KRITIK) hodisa: bot `PdfUrl` ni
+  tekshiruvsiz o'qib Telegram hujjati qilib yuborardi (`"/../.env"`). Bot oqimi endi YO'Q va servis
+  `PdfUrl` ni YOZMAYDI (`SecurityFixTests` qulflaydi). Guruh o'chirilganda savollar PDF'i faqat server
+  naqshida (`UploadUrlRules.IsServerPdf`) bo'lsa VA boshqa test, shartnoma yoki o'quv dasturi materiali
+  (`CourseItem.PdfUrl`) uni ishlatmasa o'chiriladi; sertifikat fayllari — faqat
+  `/uploads/certificates/cert-<guid>.docx|pdf`.
 
 ## TEST SERTIFIKATI — Word andoza → PDF (migratsiya `AddTestCertificates`)
 

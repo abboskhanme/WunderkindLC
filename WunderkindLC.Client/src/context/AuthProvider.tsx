@@ -5,8 +5,6 @@ import posthog from '@/lib/posthog'
 import { AuthContext } from './auth-context'
 import { login as loginRequest, otpLogin, fetchMe } from '@/api/services/auth'
 import { api, USE_MOCK } from '@/api/client'
-import { setFcmToken, getFcmToken, registerDevice, unregisterDevice, pushBase } from '@/api/services/push'
-import { initWebPush, isWebPushSupported } from '@/api/services/webpush'
 
 // JWT endi localStorage'da EMAS — HttpOnly `at` cookie'sida (XSS token o'g'irlay olmaydi).
 // Faqat `user` optimistik startup uchun saqlanadi (maxfiy sir emas), haqiqat manbai — GET /auth/me.
@@ -41,12 +39,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const logout = useCallback(() => {
-    // Push: qurilma tokenini o'chirib qo'yamiz. Auth `at` cookie'si hali o'chirilmagan bo'lishi
-    // uchun buni logout endpointidan OLDIN qilamiz — so'rov cookie bilan avtomatik avtorizatsiyalanadi.
-    const role = readStoredUser()?.role
-    const fcm = getFcmToken()
-    if (role && fcm) unregisterDevice(role, fcm).catch(() => {})
-
     // Serverga chiqish signalini yuboramiz — u `at`, `csrf` va `up_at` cookie'larini o'chiradi
     // (umumiy kompyuterda keyingi odam login'siz kira olmasin). Best-effort: server yetib
     // bormasa ham (offline va h.k.) foydalanuvchi baribir chiqishi shart, shuning uchun xatoni
@@ -66,9 +58,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.setItem(USER_KEY, JSON.stringify(u))
     identifyUser(u)
     setUser(u)
-    // Push: Flutter token mavjud bo'lsa — qurilmani shu foydalanuvchiga bog'laymiz.
-    const fcm = getFcmToken()
-    if (fcm) registerDevice(u.role, fcm).catch(() => {})
     return u
   }, [identifyUser])
 
@@ -112,54 +101,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       })
       .catch(() => logout())
   }, [identifyUser, logout])
-
-  // Web/PWA push: NATIVE token bo'lmasa (oddiy brauzer/PWA), student/teacher kirganda Firebase JS
-  // SDK orqali FCM token olib, joriy foydalanuvchiga bog'laymiz. Native ilovada window.__FCM_TOKEN__
-  // bo'lgani uchun bu blok o'tkazib yuboriladi. initWebPush idempotent (tokenni keshlaydi).
-  useEffect(() => {
-    if (!user) return
-    if (getFcmToken()) return // native token mavjud — web push shart emas
-    if (!pushBase(user.role)) return // faqat student/teacher'da register endpointi bor
-    if (!isWebPushSupported()) return
-    const role = user.role
-    initWebPush()
-      .then((token) => {
-        if (!token) return
-        setFcmToken(token)
-        registerDevice(role, token, 'web').catch(() => {})
-      })
-      .catch(() => {})
-  }, [user])
-
-  // Flutter native FCM tokenini eshitamiz: window.postMessage({type:'fcm-token', token})
-  // yoki window.__FCM_TOKEN__. Token kelganda — agar kirilgan bo'lsa darhol register qilamiz
-  // (token yangilanganda ham qayta bog'lanadi).
-  useEffect(() => {
-    const tryRegister = (token: string) => {
-      setFcmToken(token)
-      const u = readStoredUser()
-      // Sessiya bor-yo'qligini cookie'dan bila olmaymiz; saqlangan user bo'lsa register qilamiz —
-      // sessiya haqiqiy bo'lmasa so'rov 401 bo'lib jimgina yutiladi.
-      if (u) registerDevice(u.role, token).catch(() => {})
-    }
-    // Flutter to'g'ridan-to'g'ri chaqirishi uchun global funksiya (eng ishonchli yo'l).
-    window.registerFcmToken = (token: string) => {
-      if (typeof token === 'string' && token) tryRegister(token)
-    }
-    // Flutter ilova ochilishida window.__FCM_TOKEN__ ni oldindan qo'ygan bo'lishi mumkin.
-    const initial = getFcmToken()
-    if (initial) tryRegister(initial)
-
-    const onMsg = (e: MessageEvent) => {
-      const d = e.data as { type?: string; token?: string } | null
-      if (d && d.type === 'fcm-token' && typeof d.token === 'string' && d.token) tryRegister(d.token)
-    }
-    window.addEventListener('message', onMsg)
-    return () => {
-      window.removeEventListener('message', onMsg)
-      delete window.registerFcmToken
-    }
-  }, [])
 
   const value = useMemo(
     () => ({ user, isAuthenticated: !!user, login, loginWithCode, logout, updateUser }),

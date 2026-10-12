@@ -6,7 +6,11 @@
 
 - **Backend:** ASP.NET Core 8 (C#), Clean Architecture
 - **Auth:** JWT (Bearer token) — `POST /api/auth/login` orqali olinadi
-- **Real-time:** SignalR (`/hubs/chat`, `/hubs/live`) + CTI uchun raw WebSocket (`/ws?token=`)
+- **Real-time:** SignalR (`/hubs/live`)
+
+> ⚠️ **2026-10:** SMS (Eskiz / Local SMS), push (FCM / Web Push), guruh chati, ilova (APK), Local Call (CTI) va
+> guruh testlarining onlayn rejimi olib tashlandi — ularning endpointlari bu hujjatdan ham chiqarildi
+> (`.claude/rules/messaging.md` §0, `.claude/rules/tests.md`).
 - **Format:** so'rov/javob — JSON (fayl yuklash — `multipart/form-data`)
 
 ---
@@ -28,7 +32,6 @@ xodim qayta login qilmasdan darrov yangi ruxsat bilan ishlaydi).
 | `teacher` | O'qituvchi — o'qituvchi ilovasi (`/api/teacher`). Support o'qituvchi = `teacher` + `IsSupport`. |
 | `student` | O'quvchi/ota-ona — o'quvchi ilovasi (`/api/student`). |
 | `platformowner` | Platforma egasi (yagona) — barcha modullar, tizim sozlamalari. |
-| `ctiagent` | CTI (Local Call) Android agent — FAQAT mobil API (`/api/mobile`) va WebSocket. |
 
 ### 1.3. `[AdminPerm("...")]` darvozasi (staff uchun)
 Admin controllerlar `[AdminPerm("<kalit>")]` bilan himoyalangan:
@@ -38,11 +41,11 @@ Admin controllerlar `[AdminPerm("<kalit>")]` bilan himoyalangan:
 - **boshqa rollar** (teacher/student) — taqiqlanadi.
 
 **Ruxsat kalitlari:** `app`, `settings`, `messages`, `students`, `teachers`, `teacherReports`,
-`classes`, `calls`, `contracts`, `staff`, `schedule`, `leads`, `kassa`, `finance`, `cameras`, `feedback`.
+`classes`, `contracts`, `staff`, `schedule`, `leads`, `kassa`, `finance`, `cameras`, `feedback`.
 
 ### 1.4. Ochiq (autentifikatsiyasiz) endpointlar
 `[AllowAnonymous]`: `POST /api/auth/login`, ommaviy test/brending (`/api/public/*`), landing lid
-(`/api/public/landing-lead`), SMS callback (`/api/sms/callback`), sertifikat tekshiruvi.
+(`/api/public/landing-lead`), sertifikat tekshiruvi.
 
 ---
 
@@ -80,19 +83,12 @@ Admin controllerlar `[AdminPerm("<kalit>")]` bilan himoyalangan:
 | POST | /api/admin/settings/telegram-backup | Telegram backup sozlamalarini saqlaydi (validatsiya bilan). |
 | POST | /api/admin/settings/telegram-backup/test | Admin chat ID ga test xabari yuboradi. |
 | POST | /api/admin/settings/telegram-backup/run | Baza backupini HOZIR Telegram orqali adminga yuboradi. |
-| GET | /api/admin/settings/firebase | Firebase/FCM: web config + VAPID (ommaviy) va service account HOLATI (.env: FCM_SERVICE_ACCOUNT_JSON). |
-| PUT | /api/admin/settings/firebase | Web config + VAPID saqlaydi. Service account yuborilsa 400 (u .env da). |
 | GET | /api/admin/settings/azure-speech | Azure Speech holati (region + kalit holati; ikkalasi .env dan). |
 | PUT | /api/admin/settings/azure-speech | Saqlamaydi — kalit/region yuborilsa 400 (.env: AZURE_SPEECH_KEY / AZURE_SPEECH_REGION). |
 | GET | /api/admin/settings/gemini | Gemini holati (model + kalit holati; kalit .env: GEMINI_API_KEY). |
 | PUT | /api/admin/settings/gemini | Saqlamaydi — kalit yuborilsa 400 (kalit faqat .env da). |
 | GET | /api/admin/settings/check | To'lov cheki (termal kvitansiya) sozlamalari. |
 | PUT | /api/admin/settings/check | To'lov cheki sozlamalarini saqlaydi. |
-| GET | /api/admin/settings/eskiz | Eskiz SMS holati (login .env dan, sender, holat, balans). |
-| PUT | /api/admin/settings/eskiz | Faqat sender (From) saqlanadi. Login/parol yuborilsa 400 (.env: ESKIZ_EMAIL / ESKIZ_PASSWORD). |
-| GET | /api/admin/settings/app-apk | Yuklangan o'quvchi/o'qituvchi APK ma'lumotlari. |
-| POST | /api/admin/settings/app-apk/{role} | Rol (`student`/`teacher`) uchun APK yuklaydi (maks 50 MB). |
-| DELETE | /api/admin/settings/app-apk/{role} | Rol uchun APK ni o'chiradi. |
 | GET | /api/admin/settings/turnstile | Turniket/FaceID sozlamalari. |
 | PUT | /api/admin/settings/turnstile | Turniket sozlamalari + qurilma moslamasi. Login/parol yuborilsa 400 (.env: TURNSTILE_USERNAME / TURNSTILE_PASSWORD). |
 | GET | /api/admin/settings/cameras | Kamera sozlamalari (yoqilgan, soni). |
@@ -173,7 +169,6 @@ Admin controllerlar `[AdminPerm("<kalit>")]` bilan himoyalangan:
 | POST | /api/admin/students/{id}/payments | To'lov kiritadi (balans + kirim + avto-xabar). |
 | GET | /api/admin/students/{id}/ledger | To'lov tarixi (oylar bo'yicha). |
 | PUT | /api/admin/students/{id}/charges/{month} | Oy hisoblangan summasini qo'lda (superadmin; `groupId`). |
-| GET | /api/admin/students/{id}/calls | Local Call (CTI) qo'ng'iroqlari (max 100). |
 | GET | /api/admin/students/{id}/notes | Profil izohlari (yangisi tepada; canEdit/canDelete bilan). |
 | POST | /api/admin/students/{id}/notes | Yangi izoh (muallif + vaqt bilan). |
 | PUT | /api/admin/students/notes/{noteId} | Izoh matnini tahrirlaydi (muallifi/superadmin; `editedAt`). |
@@ -414,8 +409,8 @@ Bazaviy route yo'q · Ruxsat: har action o'zi (student portal / admin / public).
 | Metod | Yo'l | Vazifasi |
 |---|---|---|
 | GET | /api/admin/leads | Barcha lidlar + birinchi dars davomati + takroriy murojaat (`repeatCount`/`lastRepeatAt`). |
-| POST | /api/admin/leads | Yangi lid (+ Telegram + avto-SMS). |
-| POST | /api/admin/leads/{id}/send-test | Lidga bir martalik daraja-testi havolasi (SMS). |
+| POST | /api/admin/leads | Yangi lid (+ Telegram kartasi). |
+| POST | /api/admin/leads/{id}/send-test | Lid uchun bir martalik daraja-testi havolasini yaratadi va qaytaradi (operator nusxalab yuboradi; SMS 2026-10 da olib tashlandi). |
 | PUT | /api/admin/leads/{id} | Lid ma'lumotlarini tahrirlaydi. |
 | PATCH | /api/admin/leads/{id} | Lidni boshqa bosqichga ko'chiradi. |
 | DELETE | /api/admin/leads/{id} | O'chiradi (sabab; arxiv + audit). |
@@ -457,7 +452,7 @@ ro'yxati) lidlar bo'limidagi "test yuborish" oynasiga kerak (`LeadDetailModal`),
 | POST | /api/admin/level-tests | Yangi test. |
 | PUT | /api/admin/level-tests/{id} | Tahrirlaydi. |
 | DELETE | /api/admin/level-tests/{id} | O'chiradi. |
-| GET | /api/admin/level-tests/{id}/invites | Yuborilgan havolalar (lid + SMS holati). `ReadRequiresPerm`. |
+| GET | /api/admin/level-tests/{id}/invites | Yaratilgan havolalar (lid + holat: `link`, eski qatorlarda SMS holati). `ReadRequiresPerm`. |
 | GET | /api/admin/level-tests/overall-stats | «Test statistikasi» sahifasi: voronka (topshirdi → lid → o'quvchi → to'ladi) test/bosqich/daraja kesimida + 30 kunlik oqim. `ReadRequiresPerm`. `DataCache` da (`level-tests:overall-stats`, TTL 10 daq; bog'liq turlar: LevelTest, LevelTestSubmission, LevelTestInvite, Lead, LeadStage, StudentGroup, FinanceTransaction, **Group, Teacher** — javobda guruh nomi va o'qituvchi F.I.Sh ham bor). `Rows` — eng yangi **500** ta, jami son alohida `RowsTotal` da (sanoqlar cheklovdan mustaqil). |
 | GET | /api/admin/level-tests/{id}/submissions | Topshirganlar ro'yxati. `ReadRequiresPerm`. |
 | GET | /api/admin/level-tests/{id}/stats | Bitta test statistikasi — sonlar **TAKRORSIZ LIDLAR** bo'yicha (`LevelTestService.DistinctByLead`, umumiy sahifa bilan bir xil); `Leads` maydoni foizlar uchun maxraj. `ReadRequiresPerm`. |
@@ -574,40 +569,26 @@ staff'ga GET har doim ochiq bo'lgani uchun mavjud endpointlar ishlatiladi.
 ## 8. Xabarlar, avto-xabar, bot, support
 
 ### MessagesController
-`api/admin/messages` · Ruxsat: `[Authorize]` + `[AdminPerm("messages")]`. "Xabarlar" — guruh chati, Telegram e'lon, Push (FCM), SMS (Eskiz) yuborish + tarixi, andozalar.
+`api/admin/messages` · Ruxsat: `[Authorize]` + `[AdminPerm("messages")]`. "Xabarlar" — Telegram e'lon (yagona tashqi kanal) + tarixi, oluvchilar, andozalar.
 
 | Metod | Yo'l | Vazifasi |
 |---|---|---|
-| GET | /api/admin/messages/classes | Guruhlar (o'quvchi, chat soni, oxirgi xabar). |
-| GET | /api/admin/messages/last-messages | Har kanal oxirgi xabar vaqti. |
-| GET | /api/admin/messages/chat/{className} | Guruh chati xabarlari (`since`). |
-| POST | /api/admin/messages/chat/{className} | Guruh chatiga xabar. |
+| GET | /api/admin/messages/classes | Guruhlar (o'quvchilar va Telegram'ga ulangan ota-onalar soni). |
 | GET | /api/admin/messages/broadcasts | Telegram e'lonlari tarixi (`className`, oxirgi 100). |
 | POST | /api/admin/messages/broadcast | Telegram e'lon (scope class/all/selected; qarzdorlar; mail-merge). |
 | GET | /api/admin/messages/telegram/registrations | Ro'yxatdan o'tgan ota-onalar (`className`). |
 | GET | /api/admin/messages/telegram/registrations/teachers | Ro'yxatdan o'tgan o'qituvchilar. |
 | GET | /api/admin/messages/telegram/status | Telegram bot holati. |
-| GET | /api/admin/messages/push/status | Firebase sozlanganmi. |
-| GET | /api/admin/messages/push/devices | Qurilma tokenlari soni + so'nggilari. |
-| GET | /api/admin/messages/push/recipients | "Tanlab" push oluvchilar. |
-| GET | /api/admin/messages/push | Push e'lonlari tarixi (oxirgi 100). |
-| GET | /api/admin/messages/push/{id}/confirmations | Kim tasdiqlagani. |
-| POST | /api/admin/messages/push/send | Push yuborish (parents/teachers/selected; mail-merge). |
-| GET | /api/admin/messages/sms/status | SMS (Eskiz) holati + sender. |
-| GET | /api/admin/messages/sms | SMS partiyalari tarixi (oxirgi 100). |
-| GET | /api/admin/messages/sms/{id}/logs | Partiyadagi raqamlar + yetkazish holati. |
-| GET | /api/admin/messages/sms/recipients | "Tanlab" SMS oluvchilar. |
-| GET | /api/admin/messages/sms/recipients/teachers | O'qituvchi SMS oluvchilar. |
-| POST | /api/admin/messages/sms/send | SMS yuboradi (parents/students/teachers/selected; qarzdorlar; mail-merge). |
-| GET | /api/admin/messages/templates/all | Barcha tayyor matnlar (SMS + avto-qoida shablonlari). |
-| GET | /api/admin/messages/sms/templates | SMS andozalari. |
-| POST | /api/admin/messages/sms/templates | Yangi andoza. |
-| PUT | /api/admin/messages/sms/templates/{id} | Tahrirlaydi. |
-| DELETE | /api/admin/messages/sms/templates/{id} | O'chiradi. |
-| POST | /api/admin/messages/sms/lead | Bitta lidga SMS (sinov tokenlari; lid tarixiga). |
+| GET | /api/admin/messages/recipients | "Tanlab" e'lon oluvchilar (o'quvchilar + Telegram chatlari soni). |
+| GET | /api/admin/messages/recipients/teachers | "Tanlab" e'lon uchun o'qituvchilar. |
+| GET | /api/admin/messages/templates/all | Barcha tayyor matnlar (qo'lda andozalar + avto-qoida shablonlari). |
+| GET | /api/admin/messages/templates | Qo'lda andozalar. |
+| POST | /api/admin/messages/templates | Yangi andoza. |
+| PUT | /api/admin/messages/templates/{id} | Tahrirlaydi. |
+| DELETE | /api/admin/messages/templates/{id} | O'chiradi. |
 
 ### AutoMessagesController
-`api/admin/auto-messages` · Ruxsat: `[Authorize]` + `[AdminPerm("messages")]`. Yagona avto-xabar qoidalari CRUD (hodisa → SMS/Push/Telegram).
+`api/admin/auto-messages` · Ruxsat: `[Authorize]` + `[AdminPerm("messages")]`. Yagona avto-xabar qoidalari CRUD (hodisa → kabinet bildirishnomasi + Telegram).
 
 | Metod | Yo'l | Vazifasi |
 |---|---|---|
@@ -616,6 +597,7 @@ staff'ga GET har doim ochiq bo'lgani uchun mavjud endpointlar ishlatiladi.
 | POST | /api/admin/auto-messages | Yangi qoida (validatsiya). |
 | PUT | /api/admin/auto-messages/{id} | Tahrirlaydi. |
 | DELETE | /api/admin/auto-messages/{id} | O'chiradi. |
+| POST | /api/admin/auto-messages/seed-standard | Standart Telegram qoidalarini qo'shadi (bor triggerlar o'tkazib yuboriladi). |
 
 ### RemindersController
 `api/admin/reminders` · Ruxsat: `[Authorize]` + `[AdminPerm("settings")]` · **`[Obsolete]`** (frontend `auto-messages`ga ko'chgan, lekin API ishlaydi). Eski avto push-eslatma qoidalari.
@@ -648,37 +630,11 @@ staff'ga GET har doim ochiq bo'lgani uchun mavjud endpointlar ishlatiladi.
 
 ---
 
-## 9. Qo'ng'iroqlar (Call Center — Local Call / CTI)
+## 9. Qo'ng'iroqlar — OLIB TASHLANDI
 
-Telefoniya — FAQAT Local Call (CTI). Eski bulutli telefoniya (`api/admin/calls`,
-`api/telephony`) 2026-10-08 da olib tashlandi; uning `Calls` jadvali faqat tarix sifatida qoldi.
-
-### CtiController
-`api/cti` · Ruxsat: `[Authorize]` + `[AdminPerm("calls.local")]`; har xodim FAQAT o'ziga biriktirilgan agent(lar)ni ko'radi/eshitadi (superadmin — hammasini). CTI (Local Call) OPERATOR API — agentlar, tarix, click-to-call.
-
-| Metod | Yo'l | Vazifasi |
-|---|---|---|
-| GET | /api/cti/agents | Barcha agentlar (isOnline jonli). |
-| POST | /api/cti/agents | Yangi agent (login band emasligi). |
-| PUT | /api/cti/agents/{id} | Tahrirlaydi (parol bo'sh = o'zgarmaydi). |
-| POST | /api/cti/agents/{id}/dial | Click-to-call: `dial` buyrug'i (WS yoki FCM+poll; raqam +998 formatga keltiriladi). |
-| GET | /api/cti/calls | CTI tarixi (filtr, sahifalash). |
-| GET | /api/cti/calls/grouped | Raqam bo'yicha guruhlangan. |
-| GET | /api/cti/calls/{id} | Bitta qo'ng'iroq (hodisalar bilan). |
-| GET | /api/cti/calls/{id}/audio | Audio yozuvi (range, path-traversal himoyasi). |
-| PUT | /api/cti/calls/{id}/note | Operator izohini yangilaydi. |
-
-### CtiMobileController — MOBIL (Android) API
-`api/mobile` · Ruxsat: `[Authorize(Roles = ctiagent)]` (`auth/login` — `[AllowAnonymous]`). Agent-ilovasi shartnomasi (o'zgartirilmaydi); har agent faqat o'z yozuviga.
-
-| Metod | Yo'l | Vazifasi |
-|---|---|---|
-| POST | /api/mobile/auth/login | Login+parol → JWT, agentId, WebSocket manzili. |
-| POST | /api/mobile/calls | Qo'ng'iroq metadatasi → yozuv (o'quvchiga moslash, IDEMPOTENT). |
-| POST | /api/mobile/calls/{serverCallId}/audio | Audio yozuvni yuklaydi (multipart, 50MB). |
-| POST | /api/mobile/calls/{serverCallId}/events | Hodisa (ringing/answered/ended) + yozuvni yangilaydi. |
-| POST | /api/mobile/agents/heartbeat | Agent tirikligi (onlayn + faollik vaqti). |
-| POST | /api/mobile/agents/fcm-token | FCM qurilma tokenini yangilaydi. |
+Bulutli telefoniya (`api/admin/calls`, `api/telephony`) 2026-10-08 da, Local Call / CTI (`api/cti`,
+`api/mobile`, `/ws`) 2026-10 da olib tashlandi. `Calls`, `CtiAgents`, `CtiCallRecords`, `CtiCallEvents`,
+`CtiCommandLogs` jadvallari faqat tarix sifatida qoldi.
 
 ---
 
@@ -725,19 +681,15 @@ Telefoniya — FAQAT Local Call (CTI). Eski bulutli telefoniya (`api/admin/calls
 | GET | /api/student/notifications | Bildirishnomalar (o'qilmagan soni). |
 | POST | /api/student/notifications/read | Barchasini o'qilgan deb belgilaydi. |
 | POST | /api/student/notifications/{id}/confirm | Bittasini tasdiqlaydi. |
-| POST | /api/student/notifications/register | Push qurilma tokenini ro'yxatga. |
-| DELETE | /api/student/notifications/register | Qurilma tokenini o'chiradi. |
 | GET | /api/student/grades | Baholar hisoboti. |
 | GET | /api/student/rating | Reyting (o'z guruhi + markaz TOP 15). |
 | GET | /api/student/attendance | Davomat (chorak + kunlik). |
 | GET | /api/student/finance | To'lovlar (ledger). |
-| GET | /api/student/settings | Foydalanuvchi sozlamasi (til/tema/bildirishnoma). |
+| GET | /api/student/settings | Foydalanuvchi sozlamasi (til/tema). |
 | PUT | /api/student/settings | Sozlamani yangilaydi. |
 | PUT | /api/student/password | Parolni almashtiradi. |
 | GET | /api/student/location | Saqlangan joylashuvni o'qiydi. |
 | PUT | /api/student/location | Uy joylashuvini yangilaydi (GPS). |
-| GET | /api/student/chat | Guruh chati xabarlari. |
-| POST | /api/student/chat | Chatga xabar. |
 | GET | /api/student/ai-check/status | AI tekshiruv holati (limit/premium/blok). |
 | GET | /api/student/ai-check/history | AI tekshiruv tarixi. |
 | GET | /api/student/ai-check/history/{id} | Bitta yozuv (to'liq). |
@@ -765,8 +717,6 @@ Telefoniya — FAQAT Local Call (CTI). Eski bulutli telefoniya (`api/admin/calls
 | GET | /api/teacher/notifications | Bildirishnomalar. |
 | POST | /api/teacher/notifications/read | Barchasini o'qilgan. |
 | POST | /api/teacher/notifications/{id}/confirm | Bittasini tasdiqlaydi. |
-| POST | /api/teacher/notifications/register | Push token ro'yxatga. |
-| DELETE | /api/teacher/notifications/register | Tokenni o'chiradi. |
 | GET | /api/teacher/classes | Dars beradigan guruhlar (kurslari bilan). |
 | GET | /api/teacher/salary | Maosh ledgeri (faqat o'ziniki). |
 | GET | /api/teacher/journal/group | Guruh oylik jurnali. |
@@ -779,10 +729,6 @@ Telefoniya — FAQAT Local Call (CTI). Eski bulutli telefoniya (`api/admin/calls
 | GET | /api/teacher/curriculum/group/{groupId} | Guruh sillabus o'tilishi + prognoz. |
 | POST | /api/teacher/curriculum/group/{groupId}/cover | Bandni o'tilgan/o'tilmagan. |
 | POST | /api/teacher/curriculum/group/{groupId}/revision | Takrorlash darsi. |
-| GET | /api/teacher/chat/last-messages | Har kanal oxirgi xabar vaqti. |
-| GET | /api/teacher/chat/classes | Chat kanallari. |
-| GET | /api/teacher/chat/{className} | Kanal xabarlari. |
-| POST | /api/teacher/chat/{className} | Kanalga xabar. |
 | POST | /api/teacher/feedback | Taklif/shikoyat (matn + rasm). |
 | GET | /api/teacher/support/slots | O'z bo'sh slotlari (oy bo'yicha). |
 | POST | /api/teacher/support/slots | Bo'sh vaqt bloki (bo'lish + takror). |
@@ -799,7 +745,6 @@ Telefoniya — FAQAT Local Call (CTI). Eski bulutli telefoniya (`api/admin/calls
 | Metod | Yo'l | Vazifasi |
 |---|---|---|
 | GET | /api/public/brand | Ommaviy brending (nom/logo/telefon). |
-| GET | /api/public/push-config | Web/PWA push konfiguratsiyasi (Firebase + VAPID). |
 | GET | /api/public/manifest.webmanifest | Dinamik PWA manifest. |
 | GET | /api/public/test/{slug} | Slug bo'yicha faol test (javobsiz). |
 | GET | /api/public/test/invite/{token} | Havola bo'yicha test (lid oldindan to'ldirilgan). |
@@ -811,7 +756,7 @@ Telefoniya — FAQAT Local Call (CTI). Eski bulutli telefoniya (`api/admin/calls
 
 | Metod | Yo'l | Vazifasi |
 |---|---|---|
-| POST | /api/public/landing-lead | Saytdan lid (ism+telefon+yo'nalish) — Telegram + avto-xabar. |
+| POST | /api/public/landing-lead | Saytdan lid (ism+telefon+yo'nalish) — Telegram kartasi. |
 
 ### PublicCareerController
 `api/career` · Ruxsat: `[AllowAnonymous]` + Telegram imzosi. Karyera **Mini App**i (`/vakansiya`) uchun.
@@ -823,13 +768,6 @@ Autentifikatsiya `X-Telegram-Init-Data` sarlavhasi orqali (KARYERA boti tokeni b
 | GET | /api/career/bootstrap | Boshlang'ich holat: biz haqimizda + faol vakansiyalar + o'z arizalari + bosqichlar. |
 | POST | /api/career/cv | CV yuklash — FAQAT PDF, 10MB (`public-lead` limiti). |
 | POST | /api/career/apply | Vakansiyaga ariza (`public-lead` limiti; bitta vakansiyaga bitta ariza). |
-
-### SmsCallbackController
-`api/sms` · Ruxsat: `[AllowAnonymous]` (Eskiz serveri chaqiradi). SMS yetkazish holati webhook'i.
-
-| Metod | Yo'l | Vazifasi |
-|---|---|---|
-| POST | /api/sms/callback | Eskiz yetkazish holati (`request_id` → SmsLog; doim 200). |
 
 ---
 
@@ -905,7 +843,5 @@ REST emas, lekin API sirtining bir qismi:
 
 | Yo'l | Turi | Vazifasi |
 |---|---|---|
-| /hubs/chat | SignalR | Guruh chati real-time xabarlari. |
 | /hubs/live | SignalR | Jonli hodisalar (turniket/qo'ng'iroq holati broadcast). |
-| /ws?token=... | Raw WebSocket | CTI agent-telefon ulanishi (SignalR EMAS; `dial` buyrug'i). |
 | /api/health | GET | Health-check (`{status:"healthy"}`). |

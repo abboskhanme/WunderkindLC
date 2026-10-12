@@ -7,6 +7,9 @@ using WunderkindLC.Application.Services;
 using WunderkindLC.Domain;
 using Xunit;
 
+// Legacy entities of removed modules (2026-10): purge / backup / MCP no-read coverage still seeds them.
+#pragma warning disable CS0618
+
 namespace WunderkindLC.Tests;
 
 /// <summary>
@@ -321,8 +324,6 @@ public class AuditFixT10Tests
         var openTask = new WorkTask { Title = "Qo'ng'iroq", AssigneeId = uid };
         var doneTask = new WorkTask { Title = "Bajarilgan", AssigneeId = uid, CompletedAt = AppClock.Now };
         ctx.WorkTasks.AddRange(openTask, doneTask);
-        var agent = new CtiAgent { Login = "a1", StaffUserId = uid, IsActive = true };
-        ctx.CtiAgents.Add(agent);
         var staffLink = new TelegramRegistration { UserId = uid, ChatId = 1 };
         var parentLink = new TelegramRegistration { UserId = uid, StudentId = "s1", ChatId = 2 };
         ctx.TelegramRegistrations.AddRange(staffLink, parentLink);
@@ -331,7 +332,7 @@ public class AuditFixT10Tests
         var r = await StaffRelease.ReleaseAsync(ctx, uid, "Operator", actorId: "admin-1");
         await ctx.SaveChangesAsync();
 
-        Assert.Equal(new StaffRelease.Result(1, 1, 1, 1, 1, 2), r);
+        Assert.Equal(new StaffRelease.Result(1, 1, 1, 1, 2), r);
         Assert.Contains("1 ta ochiq lid", r.Summary());
 
         await using var read = db.NewContext();
@@ -346,9 +347,6 @@ public class AuditFixT10Tests
         Assert.Equal("", (await read.WorkTasks.SingleAsync(t => t.Id == openTask.Id)).AssigneeId);
         Assert.Equal(uid, (await read.WorkTasks.SingleAsync(t => t.Id == doneTask.Id)).AssigneeId);
         Assert.Equal(1, await read.WorkTaskEvents.CountAsync(e => e.TaskId == openTask.Id));
-        var savedAgent = await read.CtiAgents.SingleAsync();
-        Assert.False(savedAgent.IsActive);
-        Assert.Null(savedAgent.StaffUserId);
         // Xodim bog'lanishi o'chdi; ota-ona bog'lanishi qoldi (faqat xodim qismi uzildi).
         Assert.False(await read.TelegramRegistrations.AnyAsync(x => x.Id == staffLink.Id));
         var parent = await read.TelegramRegistrations.SingleAsync(x => x.Id == parentLink.Id);

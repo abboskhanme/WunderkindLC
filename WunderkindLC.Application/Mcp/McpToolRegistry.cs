@@ -86,7 +86,9 @@ public static class McpReadOnlyGrants
         ],
     };
 
-    /// <summary>Sessions, one-time codes, biometrics, device and integration secrets, the MCP tables themselves.</summary>
+    /// <summary>Sessions, one-time codes, biometrics, device and integration secrets, the MCP tables themselves.
+    /// Legacy tables of removed modules (DeviceToken, CtiAgent, TestBotSession) stay listed while they exist.</summary>
+#pragma warning disable CS0618 // legacy entities (removed 2026-10), tables kept until a confirmed drop
     public static readonly Type[] Forbidden =
     [
         typeof(RefreshToken), typeof(LoginOtpCode), typeof(TrustedDevice), typeof(FaceChallenge),
@@ -95,6 +97,7 @@ public static class McpReadOnlyGrants
         typeof(CareerBotUser), typeof(TestBotSession), typeof(BookBotSession), typeof(ArchivedRecord),
         typeof(McpClient), typeof(McpGrant), typeof(McpAuthCode), typeof(McpToken), typeof(McpAuditEntry),
     ];
+#pragma warning restore CS0618
 
     /// <summary>Name endings of sensitive columns: file links (<c>PhotoUrl</c>, <c>CvUrl</c>…) and Telegram file ids.</summary>
     private static readonly string[] SensitiveSuffixes = ["Url", "FileId"];

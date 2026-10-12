@@ -501,7 +501,9 @@ o'quvchi uchun ikkita yengil so'rov). O'quvchi profilining **"Aloqa"** tabida:
 
 - **"Bog'lanish tarixi"** — talab darajasi: sabab, bosqich, muddat ("NIMA UCHUN va qaysi
   bosqichda");
-- **"Qo'ng'iroqlar tarixi"** — ARALASH lenta: haqiqiy qo'ng'iroqlar (Local Call) va bog'lanish
+- **"Qo'ng'iroqlar tarixi"** — 2026-10 dan faqat bog'lanish javoblari (Local Call qo'ng'iroqlari modul
+  bilan birga olib tashlandi; `profile/model.ts` `buildCallFeed`). Ilgari: ARALASH lenta — haqiqiy
+  qo'ng'iroqlar (Local Call) va bog'lanish
   javoblari BITTA vaqt o'qida, eng yangisi tepada.
 
 ⚠️ Javob matni **faqat lentada** chiqadi, yuqoridagi bo'limda TAKRORLANMAYDI — aks holda bir

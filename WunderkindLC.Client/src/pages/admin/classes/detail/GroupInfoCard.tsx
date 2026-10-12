@@ -64,7 +64,7 @@ const chip = 'inline-flex items-center rounded-full bg-[#ebebeb] px-2 py-0.5 tex
  * yorliq chapda, qalin qiymat o'ngda; bo'limlar "Dars jadvali", "Akademik ma'lumot", "Guruh
  * faoliyat muddati". Pastda "Guruhni arxivlash" (qizil) va "Tahrirlash" (ko'k).
  *
- * Qolgan guruh amallari (SMS, talabalarni boshqarish, sertifikat bilan tugatish, guruhni yopish)
+ * Qolgan guruh amallari (Telegram xabar, talabalarni boshqarish, sertifikat bilan tugatish, guruhni yopish)
  * sarlavhadagi "⋮" da — ular edutizimda yo'q, bizda bor.
  */
 export function GroupInfoCard({

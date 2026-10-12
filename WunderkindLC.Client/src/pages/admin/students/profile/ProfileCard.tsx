@@ -20,7 +20,7 @@ import { schoolGradeLabel } from '@/lib/schoolGrades'
 
 /**
  * edutizim profil kartasi (chap, ~280px): 96px dumaloq rasm + kamera belgisi, ism, telefon +
- * nusxa olish, uchta asosiy tugma (SMS · Balans/to'lov · Qo'ng'iroq) va ko'rsatkichlar ro'yxati.
+ * nusxa olish, uchta asosiy tugma (Telegram xabar · Balans/to'lov · Qo'ng'iroq) va ko'rsatkichlar ro'yxati.
  *
  * Raqamlar YANGI hisob emas — `StudentNotebook` (balans, davomat) va chegirma registri
  * (sahifa bir marta yuklaydi) dan olinadi.
@@ -32,7 +32,7 @@ export function ProfileCard({
   canEditPhoto,
   menuItems,
   onPhoto,
-  onSms,
+  onMessage,
   onPay,
   onCall,
 }: {
@@ -45,7 +45,7 @@ export function ProfileCard({
   /** "⋮" menyusidagi qo'shimcha amallar (AI tahlil, Bog'lanish kerak, Jurnal ...). */
   menuItems: DropdownMenuItem[]
   onPhoto: () => void
-  onSms: () => void
+  onMessage: () => void
   onPay: () => void
   onCall: () => void
 }) {
@@ -134,7 +134,7 @@ export function ProfileCard({
 
         {/* Uchta asosiy amal */}
         <div className="mt-3 flex items-center gap-1">
-          <CardIconButton label="SMS yuborish" onClick={onSms}>
+          <CardIconButton label="Telegram xabar" onClick={onMessage}>
             <IconMessage className="h-5 w-5" />
           </CardIconButton>
           <CardIconButton label="Balans · To'lov qilish" onClick={onPay}>

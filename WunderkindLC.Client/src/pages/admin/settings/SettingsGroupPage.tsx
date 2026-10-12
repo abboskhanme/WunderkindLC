@@ -17,7 +17,6 @@ import { AccountSettings } from '@/pages/admin/account/AccountSettings'
 import { SchoolSettings } from './SchoolSettings'
 import { CheckSettings } from './CheckSettings'
 import { ChannelsSettings } from './ChannelsSettings'
-import { ApkSettings } from './ApkSettings'
 import { AzureSpeechSettings } from './AzureSpeechSettings'
 import { GeminiSettings } from './GeminiSettings'
 import { McpSettings } from './McpSettings'
@@ -29,7 +28,7 @@ import { useAuth } from '@/context/auth-context'
  * (rangli ikonka + sarlavha + izoh + strelka) bo'lib chiqadi.
  *
  * Tuzilma `config/settingsGroups.ts` da (menyu bilan YAGONA manba). Tanlangan bo'lim —
- * `?bolim=` (`?tab=` emas: "Xabar kanallari" paneli uni o'z ichki tablari uchun ishlatadi).
+ * `?bolim=`.
  *
  * Marshrutda `RequirePerm` YO'Q — sahifa har bandni o'zi ruxsat bo'yicha filtrlaydi
  * (hisobotlar hub'idagi naqsh): guruhda ko'rinadigan band qolmasa buni ochiq aytadi.
@@ -102,7 +101,7 @@ export function SettingsGroupPage() {
 
       {/* ── O'ng: kontent ── */}
       <div className="min-w-0 flex-1">
-        <ItemContent item={item} channelTab={params.get('tab')} onOpenModal={setModal} />
+        <ItemContent item={item} onOpenModal={setModal} />
       </div>
 
       <SettingsModals modal={modal} onClose={() => setModal(null)} />
@@ -112,11 +111,9 @@ export function SettingsGroupPage() {
 
 function ItemContent({
   item,
-  channelTab,
   onOpenModal,
 }: {
   item: SettingsItem
-  channelTab: string | null
   onOpenModal: (m: SettingsModalKey) => void
 }) {
   if (item.kind === 'rows')
@@ -127,7 +124,7 @@ function ItemContent({
         ))}
       </div>
     )
-  if (item.kind === 'panel' && item.panel) return <Panel panel={item.panel} channelTab={channelTab} />
+  if (item.kind === 'panel' && item.panel) return <Panel panel={item.panel} />
   return null
 }
 
@@ -160,7 +157,7 @@ function SettingsRowButton({ row, onOpenModal }: { row: SettingsRow; onOpenModal
 }
 
 /** Tayyor sozlama komponentlari (o'z kartasi bilan chiziladi). */
-function Panel({ panel, channelTab }: { panel: SettingsPanelKey; channelTab: string | null }): ReactNode {
+function Panel({ panel }: { panel: SettingsPanelKey }): ReactNode {
   switch (panel) {
     case 'check':
       return <CheckSettings />
@@ -175,13 +172,7 @@ function Panel({ panel, channelTab }: { panel: SettingsPanelKey; channelTab: str
     case 'reasons':
       return <ReasonsPage embedded />
     case 'channels':
-      return (
-        <ChannelsSettings
-          initialTab={channelTab === 'telegram' || channelTab === 'firebase' ? channelTab : 'sms'}
-        />
-      )
-    case 'apk':
-      return <ApkSettings />
+      return <ChannelsSettings />
     case 'azure':
       return <AzureSpeechSettings />
     case 'gemini':

@@ -1,5 +1,4 @@
 import { useRef } from 'react'
-import { cn } from '@/lib/utils'
 
 /** Matnga qo'yiladigan o'rinbosar (token) ta'rifi. */
 export interface TokenDef {
@@ -14,24 +13,9 @@ export interface TemplateDef {
 }
 
 /**
- * SMS uzunligi → bo'laklar soni (GSM-7: 160/153, Unicode: 70/67).
- * Unicode aniqlash: ASCII bo'lmagan belgi bormi (o'zbek lotin apostrofi ham unicode hisoblanadi).
- */
-export function smsParts(text: string): { len: number; parts: number } {
-  const len = text.length
-  // eslint-disable-next-line no-control-regex
-  const unicode = /[^\x00-\x7F]/.test(text)
-  if (len === 0) return { len: 0, parts: 0 }
-  const single = unicode ? 70 : 160
-  const multi = unicode ? 67 : 153
-  const parts = len <= single ? 1 : Math.ceil(len / multi)
-  return { len, parts }
-}
-
-/**
  * Yagona xabar matni tahrirlagichi: textarea + token chiplari (kursor joyiga qo'yadi) +
- * ixtiyoriy shablon chiplari + ixtiyoriy SMS hisoblagich (belgi/SMS soni).
- * Composer, SmsModal, Avto xabarlar qoidasi, Lid SMS oynalari — hammasi shu komponentni ishlatadi.
+ * ixtiyoriy shablon chiplari. Composer, Telegram xabar oynasi va avto xabar qoidasi — hammasi shu
+ * komponentni ishlatadi. (SMS belgi/bo'lak hisoblagichi SMS kanali bilan birga olib tashlandi.)
  */
 export function MessageEditor({
   value,
@@ -39,7 +23,6 @@ export function MessageEditor({
   tokens = [],
   templates,
   onTemplatePick,
-  showSmsCounter = false,
   rows = 5,
   placeholder,
   label,
@@ -54,8 +37,6 @@ export function MessageEditor({
   templates?: TemplateDef[]
   /** Shablon bosilganda (berilmasa — matn to'g'ridan-to'g'ri qo'yiladi) */
   onTemplatePick?: (text: string, name: string) => void
-  /** SMS rejimida belgi/SMS soni hisoblagichi */
-  showSmsCounter?: boolean
   rows?: number
   placeholder?: string
   /** Textarea ustidagi yorliq */
@@ -81,8 +62,6 @@ export function MessageEditor({
       el.setSelectionRange(pos, pos)
     })
   }
-
-  const { len, parts } = smsParts(value)
 
   return (
     <div className={className}>
@@ -113,7 +92,7 @@ export function MessageEditor({
         onChange={(e) => onChange(e.target.value)}
       />
 
-      {(tokens.length > 0 || showSmsCounter) && (
+      {tokens.length > 0 && (
         <div className="mt-1 flex items-start justify-between gap-2">
           <div className="flex flex-wrap gap-1.5">
             {tokens.map((t) => (
@@ -128,11 +107,6 @@ export function MessageEditor({
               </button>
             ))}
           </div>
-          {showSmsCounter && (
-            <span className={cn('shrink-0 font-mono text-xs text-slate-400', parts > 3 && 'text-amber-600')}>
-              {len} belgi · {parts} SMS
-            </span>
-          )}
         </div>
       )}
 

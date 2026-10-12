@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useState, type MouseEvent as ReactMouseEvent } from 'react'
-import { Plus, Trash2, AlertTriangle, Sparkles, Hand, Zap } from 'lucide-react'
+import { Plus, Trash2, AlertTriangle, Sparkles, Hand, Zap, Bell, MessageCircle } from 'lucide-react'
 import {
   getAutoMessageTriggers,
   getAutoMessageRules,
   createAutoMessageRule,
   updateAutoMessageRule,
   deleteAutoMessageRule,
-  seedStandardSms,
+  seedStandardRules,
   getMessageTokens,
   audienceLabel,
   sendScopeOptions,
@@ -17,11 +17,11 @@ import {
   type MessageToken,
 } from '@/api/services/autoMessages'
 import {
-  getSmsTemplates,
-  createSmsTemplate,
-  updateSmsTemplate,
-  deleteSmsTemplate,
-  type SmsTemplate,
+  getMessageTemplates,
+  createMessageTemplate,
+  updateMessageTemplate,
+  deleteMessageTemplate,
+  type MessageTemplate,
 } from '@/api/services/messages'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
@@ -31,19 +31,13 @@ import { Select, Input } from '@/components/ui/Input'
 import { NumberInput } from '@/components/ui/NumberInput'
 import { Modal } from '@/components/ui/Modal'
 import { cn, apiErrorMessage } from '@/lib/utils'
-import { CHANNEL_LIST, CHANNELS, type ChannelKey } from '@/config/channels'
 import { MessageEditor } from '@/components/messaging/MessageEditor'
-import { SmsProviderPicker } from '@/components/messaging/SmsProviderPicker'
 
 /** Bo'limlar tartibi (trigger.category bo'yicha guruhlash). */
 const CATEGORY_ORDER = ['Lidlar', "O'quv jarayoni", 'Moliya', 'Boshqa'] as const
 
 /** Backend `category` bermasa — client-side fallback xarita. */
 const CATEGORY_FALLBACK: Record<string, string> = {
-  lead_new: 'Lidlar',
-  trial_reminder: 'Lidlar',
-  test_link: 'Lidlar',
-  test_result: 'Lidlar',
   student_added: "O'quv jarayoni",
   attendance_absent: "O'quv jarayoni",
   attendance_present: "O'quv jarayoni",
@@ -60,31 +54,15 @@ function triggerCategory(t: AutoMessageTrigger): string {
   return (CATEGORY_ORDER as readonly string[]).includes(c) ? c : 'Boshqa'
 }
 
-/** Qoidada YOQILGAN barcha kanallar (yagona tartibda) — badge uchun. */
-function ruleChannels(r: Pick<AutoMessageRule, 'sendSms' | 'sendTelegram' | 'sendPush'>): ChannelKey[] {
-  const out: ChannelKey[] = []
-  for (const c of CHANNEL_LIST) {
-    if (c.key === 'sms' && r.sendSms) out.push('sms')
-    if (c.key === 'telegram' && r.sendTelegram) out.push('telegram')
-    if (c.key === 'push' && r.sendPush) out.push('push')
-  }
-  return out
-}
-
-/** Trigger uchun mavjud kanallar (yagona tartibda). */
-function availableChannels(t: AutoMessageTrigger | undefined): ChannelKey[] {
-  if (!t) return ['sms']
-  return CHANNEL_LIST.filter((c) => t.channels[c.key]).map((c) => c.key)
-}
-
-/** Yagona ro'yxat elementi — qo'lda matn (SmsTemplate) yoki avtomatik qoida (AutoMessageRule). */
-type Item = { kind: 'manual'; tpl: SmsTemplate } | { kind: 'auto'; rule: AutoMessageRule }
+/** Yagona ro'yxat elementi — qo'lda matn (MessageTemplate) yoki avtomatik qoida (AutoMessageRule). */
+type Item = { kind: 'manual'; tpl: MessageTemplate } | { kind: 'auto'; rule: AutoMessageRule }
 
 /**
  * "Xabar yaratish" — YAGONA joy. Har xabar QO'LDA (tanlab yuboriladigan tayyor matn) yoki AVTOMATIK
- * (hodisa yuz berganda o'zi ketadigan) bo'lishi mumkin (yaratishda tanlanadi). Avtomatikda bir nechta
- * kanal (SMS/Telegram/Push) tanlash mumkin — tanlanganlarning hammasidan ketadi. Element ustiga bosilsa
- * tahrirlash ochiladi.
+ * (hodisa yuz berganda o'zi ketadigan) bo'lishi mumkin (yaratishda tanlanadi). Avtomatik xabar HAR
+ * DOIM kabinetga bildirishnoma yozadi (o'quvchi/o'qituvchi web kabinetidagi qo'ng'iroqcha), Telegram
+ * esa qo'shimcha kanal (yoqiladi/o'chiriladi). SMS va push 2026-10 da olib tashlangan. Element ustiga
+ * bosilsa tahrirlash ochiladi.
  */
 export function AutoMessagesTab({
   highlightRuleId,
@@ -102,7 +80,7 @@ export function AutoMessagesTab({
 } = {}) {
   const [triggers, setTriggers] = useState<AutoMessageTrigger[]>([])
   const [autoRules, setAutoRules] = useState<AutoMessageRule[]>([])
-  const [manualTpls, setManualTpls] = useState<SmsTemplate[]>([])
+  const [manualTpls, setManualTpls] = useState<MessageTemplate[]>([])
   const [allTokens, setAllTokens] = useState<MessageToken[]>([])
   const [loading, setLoading] = useState(true)
   const [failed, setFailed] = useState(false)
@@ -113,7 +91,7 @@ export function AutoMessagesTab({
   const [modal, setModal] = useState<'new' | Item | null>(null)
 
   const reload = () =>
-    Promise.all([getAutoMessageRules().catch(() => []), getSmsTemplates().catch(() => [])]).then(
+    Promise.all([getAutoMessageRules().catch(() => []), getMessageTemplates().catch(() => [])]).then(
       ([r, m]) => {
         setAutoRules(r)
         setManualTpls(m)
@@ -124,7 +102,7 @@ export function AutoMessagesTab({
     Promise.all([
       getAutoMessageTriggers(),
       getAutoMessageRules(),
-      getSmsTemplates(),
+      getMessageTemplates(),
       getMessageTokens(),
     ])
       .then(([t, r, m, tk]) => {
@@ -158,12 +136,12 @@ export function AutoMessagesTab({
     setSeedMsg('')
     setErr('')
     try {
-      const { created } = await seedStandardSms()
+      const { created } = await seedStandardRules()
       await reload()
       setSeedMsg(
         created > 0
-          ? `${created} ta tayyor SMS xabar qo'shildi. Kerak bo'lsa tahrirlang.`
-          : 'Barcha standart SMS xabarlar allaqachon mavjud.',
+          ? `${created} ta tayyor avto xabar qo'shildi (Telegram + kabinet). Kerak bo'lsa tahrirlang.`
+          : 'Barcha standart avto xabarlar allaqachon mavjud.',
       )
     } catch (e) {
       setErr(apiErrorMessage(e, "Namunaviy xabarlarni qo'shib bo'lmadi"))
@@ -187,7 +165,7 @@ export function AutoMessagesTab({
     const name = item.kind === 'manual' ? item.tpl.name : item.rule.name
     if (!window.confirm(`"${name || 'Xabar'}" o'chirilsinmi?`)) return
     try {
-      if (item.kind === 'manual') await deleteSmsTemplate(item.tpl.id)
+      if (item.kind === 'manual') await deleteMessageTemplate(item.tpl.id)
       else await deleteAutoMessageRule(item.rule.id)
       await reload()
     } catch (e2) {
@@ -240,7 +218,7 @@ export function AutoMessagesTab({
         <div className="flex items-center gap-2">
           {canCreate && (
             <Button variant="secondary" onClick={doSeed} disabled={seeding}>
-              <Sparkles className="h-4 w-4" /> {seeding ? 'Qo\'shilmoqda...' : 'Namunaviy SMS'}
+              <Sparkles className="h-4 w-4" /> {seeding ? 'Qo\'shilmoqda...' : 'Namunaviy xabarlar'}
             </Button>
           )}
           {canCreate && (
@@ -260,13 +238,13 @@ export function AutoMessagesTab({
             <div>
               <h4 className="font-semibold text-slate-700">Hali xabar yaratilmagan</h4>
               <p className="mt-1 text-sm text-slate-500">
-                "Yangi xabar" bilan boshlang yoki tayyor SMS to'plamini qo'shing.
+                "Yangi xabar" bilan boshlang yoki tayyor avto xabarlar to'plamini qo'shing.
               </p>
             </div>
             <div className="flex gap-2">
               {canCreate && (
                 <Button variant="secondary" onClick={doSeed} disabled={seeding}>
-                  <Sparkles className="h-4 w-4" /> Namunaviy SMS qo'shish
+                  <Sparkles className="h-4 w-4" /> Namunaviy xabarlar qo'shish
                 </Button>
               )}
               {canCreate && (
@@ -337,17 +315,18 @@ export function AutoMessagesTab({
                             <Zap className="h-3 w-3" /> Avto
                           </span>
                         </Badge>
-                        {ruleChannels(item.rule).map((ck) => {
-                          const c = CHANNELS[ck]
-                          const Icon = c.icon
-                          return (
-                            <Badge key={ck} tone={c.tone}>
-                              <span className="inline-flex items-center gap-1">
-                                <Icon className="h-3 w-3" /> {c.label}
-                              </span>
-                            </Badge>
-                          )
-                        })}
+                        <Badge tone="default">
+                          <span className="inline-flex items-center gap-1">
+                            <Bell className="h-3 w-3" /> Kabinet
+                          </span>
+                        </Badge>
+                        {item.rule.sendTelegram && (
+                          <Badge tone="blue">
+                            <span className="inline-flex items-center gap-1">
+                              <MessageCircle className="h-3 w-3" /> Telegram
+                            </span>
+                          </Badge>
+                        )}
                       </>
                     ) : (
                       <Badge tone="default">Qo'lda</Badge>
@@ -435,12 +414,8 @@ function MessageFormModal({
   const [category, setCategory] = useState(initialTrigger ? triggerCategory(initialTrigger) : CATEGORY_ORDER[0])
   const [triggerKey, setTriggerKey] = useState(initialTrigger?.key ?? '')
   const [audience, setAudience] = useState(editRule?.audience ?? initialTrigger?.defaultAudience ?? 'parents')
-  const [channels, setChannels] = useState<Record<ChannelKey, boolean>>(
-    editRule
-      ? { sms: editRule.sendSms, telegram: editRule.sendTelegram, push: editRule.sendPush }
-      : { sms: true, telegram: false, push: false },
-  )
-  const [smsProvider, setSmsProvider] = useState<'eskiz' | 'local'>(editRule?.smsProvider === 'local' ? 'local' : 'eskiz')
+  // Telegram — yagona tashqi kanal; yangi qoidada standart YOQIQ (kabinet bildirishnomasi har doim yoziladi).
+  const [sendTelegram, setSendTelegram] = useState<boolean>(editRule ? editRule.sendTelegram : true)
   const [sendScope, setSendScope] = useState(editRule?.sendScope || sendScopeOptions[0].value)
   // Davomat eslatmasi «dars boshlanishiga nisbatan»: oldin (manfiy) yoki keyin. Maydonda MUSBAT son,
   // yo'nalish alohida — server `OffsetMinutes` ni ishorali saqlaydi (masalan −90 = darsdan 1,5 soat oldin).
@@ -455,27 +430,23 @@ function MessageFormModal({
   const [error, setError] = useState('')
 
   const trigger = triggers.find((t) => t.key === triggerKey)
-  const chans = availableChannels(trigger)
 
-  // Matn ostidagi o'zgaruvchilar: avtomatikda hodisa konteksti; qo'ldada o'quvchi+umumiy+hodisa.
+  // Matn ostidagi o'zgaruvchilar: o'quvchi+umumiy+hodisa (lid hodisalari SMS bilan olib tashlangan).
   const editorTokens = useMemo(() => {
-    const isLead = auto && !!trigger && trigger.audiences.length === 0
-    const groups = isLead ? ['lead', 'common', 'event'] : ['student', 'common', 'event']
+    const groups = ['student', 'common', 'event']
     const seen = new Set<string>()
     const list = allTokens
       .filter((t) => groups.includes(t.group) && !seen.has(t.token) && seen.add(t.token))
       .map((t) => ({ token: t.token, label: t.label }))
     if (list.length > 0) return list
     return (trigger?.tokens ?? []).map((tk) => ({ token: tk, label: tk }))
-  }, [allTokens, trigger, auto])
+  }, [allTokens, trigger])
 
   const applyTriggerDefaults = (t: AutoMessageTrigger | undefined) => {
     if (!t) return
     setName(t.label)
     setAudience(t.defaultAudience)
     setBody(t.defaultTemplate ?? '')
-    const avail = availableChannels(t)
-    setChannels({ sms: avail.includes('sms'), telegram: false, push: !avail.includes('sms') && avail.includes('push') })
     setSendScope(sendScopeOptions[0].value)
     setScheduleType('daily')
     setScheduleTime('09:00')
@@ -496,8 +467,6 @@ function MessageFormModal({
     applyTriggerDefaults(triggers.find((t) => t.key === key))
   }
 
-  const toggleChannel = (key: ChannelKey) => setChannels((c) => ({ ...c, [key]: !c[key] }))
-
   const save = async () => {
     if (!name.trim()) {
       setError('Nom kerak')
@@ -509,12 +478,6 @@ function MessageFormModal({
       if (auto) {
         if (!trigger) {
           setError('Hodisa tanlang')
-          setSaving(false)
-          return
-        }
-        const picked = chans.filter((c) => channels[c])
-        if (picked.length === 0) {
-          setError('Kamida bitta kanal tanlang')
           setSaving(false)
           return
         }
@@ -532,9 +495,7 @@ function MessageFormModal({
           trigger: trigger.key,
           name: name.trim(),
           enabled: editRule?.enabled ?? true,
-          sendSms: picked.includes('sms'),
-          sendTelegram: picked.includes('telegram'),
-          sendPush: picked.includes('push'),
+          sendTelegram,
           audience,
           template: body,
           // Bo'sh surilish = 0 (dars boshlanishida).
@@ -544,19 +505,18 @@ function MessageFormModal({
           // Vaqt kerak: reja (custom_schedule) YOKI qamrov "not_filled"/"all" (davomat eslatmasi kunlik vaqti).
           scheduleTime: trigger.supportsSchedule || trigger.supportsSendScope ? scheduleTime : '',
           scheduleDayOfMonth: scheduleDayOfMonth ?? 1,
-          smsProvider,
         }
         if (editRule) await updateAutoMessageRule(editRule.id, input)
         else await createAutoMessageRule(input)
       } else {
-        // Qo'lda matn (SmsTemplate)
+        // Qo'lda matn (MessageTemplate)
         if (!body.trim()) {
           setError('Xabar matni kerak')
           setSaving(false)
           return
         }
-        if (editTpl) await updateSmsTemplate(editTpl.id, { name: name.trim(), text: body.trim() })
-        else await createSmsTemplate({ name: name.trim(), text: body.trim() })
+        if (editTpl) await updateMessageTemplate(editTpl.id, { name: name.trim(), text: body.trim() })
+        else await createMessageTemplate({ name: name.trim(), text: body.trim() })
       }
       await onSaved()
     } catch (e) {
@@ -595,7 +555,7 @@ function MessageFormModal({
             <p className="text-xs text-slate-500">
               {auto
                 ? 'Hodisa yuz berganda (masalan to\'lov kelganda) o\'zi yuboriladi.'
-                : 'Faqat tayyor matn — SMS yuborish oynalarida tanlab yuborasiz.'}
+                : 'Faqat tayyor matn — Telegram xabar yuborish oynalarida tanlab yuborasiz.'}
             </p>
           </div>
           <button
@@ -654,52 +614,42 @@ function MessageFormModal({
           </Select>
         )}
 
-        {/* Kanallar — bir nechta tanlash mumkin (avtomatikda) */}
+        {/* Kanallar — kabinet bildirishnomasi DOIM, Telegram — tanlanadi */}
         {auto && (
           <div>
-            <p className="mb-1.5 text-sm font-medium text-slate-600">Kanallar (bir nechta tanlash mumkin)</p>
+            <p className="mb-1.5 text-sm font-medium text-slate-600">Kanallar</p>
             <div className="flex flex-wrap gap-2">
-              {chans.map((key) => {
-                const c = CHANNELS[key]
-                const Icon = c.icon
-                const on = channels[key]
-                return (
-                  <button
-                    key={key}
-                    type="button"
-                    onClick={() => toggleChannel(key)}
-                    className={cn(
-                      'inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-medium transition-colors',
-                      on ? 'border-brand-400 bg-brand-50 text-brand-700' : 'border-slate-200 text-slate-600 hover:bg-slate-50',
-                    )}
-                  >
-                    <span
-                      className={cn(
-                        'flex h-4 w-4 items-center justify-center rounded border',
-                        on ? 'border-brand-500 bg-brand-500 text-white' : 'border-slate-300',
-                      )}
-                    >
-                      {on && '✓'}
-                    </span>
-                    <Icon className="h-4 w-4" /> {c.label}
-                  </button>
-                )
-              })}
+              <span
+                className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-500"
+                title="O'quvchi/o'qituvchi web kabinetidagi bildirishnomalar ro'yxatiga har doim yoziladi"
+              >
+                <Bell className="h-4 w-4" /> Kabinet (bildirishnoma) — doim
+              </span>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={sendTelegram}
+                onClick={() => setSendTelegram((v) => !v)}
+                className={cn(
+                  'inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-medium transition-colors',
+                  sendTelegram ? 'border-brand-400 bg-brand-50 text-brand-700' : 'border-slate-200 text-slate-600 hover:bg-slate-50',
+                )}
+              >
+                <span
+                  className={cn(
+                    'flex h-4 w-4 items-center justify-center rounded border',
+                    sendTelegram ? 'border-brand-500 bg-brand-500 text-white' : 'border-slate-300',
+                  )}
+                >
+                  {sendTelegram && '✓'}
+                </span>
+                <MessageCircle className="h-4 w-4" /> Telegram
+              </button>
             </div>
-            {chans.length === 1 && chans[0] === 'sms' && (
-              <p className="mt-1 text-xs text-slate-400">Bu hodisada faqat SMS mavjud (lidda ilova/telegram yo'q).</p>
-            )}
+            <p className="mt-1 text-xs text-slate-400">
+              Telegram — faqat botga ulangan oilalar (va o'qituvchilar) oladi.
+            </p>
           </div>
-        )}
-
-        {auto && channels.sms && chans.includes('sms') && (
-          <SmsProviderPicker
-            provider={smsProvider}
-            onProviderChange={setSmsProvider}
-            agentId=""
-            onAgentChange={() => {}}
-            allowAgentOverride={false}
-          />
         )}
 
         {auto && trigger?.supportsSendScope && (
@@ -768,7 +718,6 @@ function MessageFormModal({
                 value={body}
                 onChange={setBody}
                 tokens={editorTokens}
-                showSmsCounter={auto ? channels.sms : true}
                 rows={4}
                 placeholder={
                   auto && trigger?.templateOptional

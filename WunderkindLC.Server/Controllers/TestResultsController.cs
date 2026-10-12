@@ -50,7 +50,7 @@ public class TestResultsController(
     public async Task<ActionResult<GroupTestDto>> Create(CreateTestResultRequest req)
     {
         var (dto, err) = await TestResultService.CreateAsync(
-            db, req.GroupId, req.Name, req.Date, req.MaxScore, Actor(), req.Online,
+            db, req.GroupId, req.Name, req.Date, req.MaxScore, Actor(),
             req.CertificateEnabled, req.CertificateTemplateId);
         return err != null ? BadRequest(new { message = err }) : dto!;
     }
@@ -60,10 +60,10 @@ public class TestResultsController(
     public async Task<IActionResult> Update(string id, UpdateTestResultRequest req)
     {
         var r = await TestResultService.UpdateDetailedAsync(
-            db, id, req.Name, req.Date, req.MaxScore, req.Online,
+            db, id, req.Name, req.Date, req.MaxScore,
             req.CertificateEnabled, req.CertificateTemplateId);
         if (!r.Ok) return BadRequest(new { message = r.Error });
-        // Kalit/savollar soni o'zgarib ballar QAYTA HISOBLANGAN bo'lsa — berilgan sertifikatlar ham yangi
+        // Maksimal ball kamayib ballar QISILGAN bo'lsa — berilgan sertifikatlar ham yangi
         // ball (foiz, o'rin) bilan qayta yaratiladi: fonda, idempotent (raqami saqlanadi, bali tozalanganniki o'chadi).
         if (r.Regraded > 0 && await TestResultService.HasCertificatesAsync(db, id))
             await certJobs.StartAsync(db, certs, id, Actor());

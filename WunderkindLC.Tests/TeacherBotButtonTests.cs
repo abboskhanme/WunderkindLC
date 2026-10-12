@@ -63,8 +63,8 @@ public class TeacherBotButtonTests
     {
         var texts = Buttons(Rows(TelegramBotService.RegisteredKeyboard(books: true, panel: true)))
             .Select(b => b.GetProperty("text").GetString()).ToList();
-        Assert.Contains(OnlineTestBotService.TestButtonText, texts);
+        Assert.DoesNotContain(TelegramBotService.LegacyTestButtonText, texts);   // onlayn test 2026-10 da olib tashlandi
         Assert.Contains(BookShopBotService.BooksButtonText, texts);
-        Assert.Equal(5, texts.Count);   // panel · kod · test · kitob · adminga murojaat
+        Assert.Equal(4, texts.Count);   // panel · kod · kitob · adminga murojaat
     }
 }

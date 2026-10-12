@@ -13,7 +13,6 @@ interface Tab {
 const TABS: Tab[] = [
   { to: '/student', label: 'Dashboard', icon: 'home', end: true },
   { to: '/student/progress', label: 'Progress', icon: 'chart' },
-  { to: '/student/chat', label: 'Chat', icon: 'chat' },
   { to: '/student/profile', label: 'Profil', icon: 'user' },
 ]
 
@@ -28,7 +27,7 @@ export function setStudentTheme(t: 'light' | 'dark') {
 
 /**
  * O'quvchi portali — MOBIL ilova qobig'i (telefon/web). Dizayn: student.html (blue UI-kit).
- * 480px markazlashtirilgan ustun, pastki 4-tab navigatsiya, light/dark tema.
+ * 480px markazlashtirilgan ustun, pastki tab navigatsiya, light/dark tema.
  */
 export function StudentMobileLayout() {
   const [theme, setTheme] = useState<'light' | 'dark'>(getStudentTheme)

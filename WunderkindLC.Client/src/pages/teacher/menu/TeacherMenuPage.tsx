@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { ChevronRight, KeyRound, LogOut, Moon, Sun } from 'lucide-react'
 import { useAuth } from '@/context/auth-context'
-import { useUnread } from '@/context/unread-context'
 import { useTeacherPortal } from '@/context/teacher-portal-context'
 import { usePerm } from '@/lib/permissions'
 import { cn } from '@/lib/utils'
@@ -24,7 +23,6 @@ import { TPage } from '@/components/teacher/TeacherUi'
 export function TeacherMenuPage() {
   const { user, logout } = useAuth()
   const { can } = usePerm()
-  const { unreadChannels } = useUnread()
   const portal = useTeacherPortal()
   const navigate = useNavigate()
   const [dark, setDark] = useState(() => getTeacherTheme() === 'dark')
@@ -64,13 +62,11 @@ export function TeacherMenuPage() {
             <ul className="divide-y divide-line-soft overflow-hidden rounded-xl border border-line bg-white shadow-[var(--shadow-card)]">
               {s.items.map((i) => {
                 const Icon = i.icon
-                const dot = i.badge && unreadChannels.size > 0
                 return (
                   <li key={i.to}>
                     <Link to={i.to} className="flex items-center gap-3 px-3.5 py-3 transition-colors hover:bg-panel2 active:bg-panel3">
                       <span className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-brand-50 text-brand-600">
                         <Icon className="h-5 w-5" />
-                        {dot && <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full bg-[#e53e3e] ring-2 ring-white" />}
                       </span>
                       <span className="min-w-0 flex-1">
                         <span className="block text-[14.5px] font-bold text-ink">{i.label}</span>

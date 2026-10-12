@@ -10,9 +10,10 @@ namespace WunderkindLC.Server.Controllers;
 
 /// <summary>
 /// "Xabarlar → Avto xabarlar" — YAGONA avto-xabar qoidalari CRUD'i. Har qoida
-/// <see cref="AutoMessageTriggers"/> katalogidagi bitta hodisaga bog'lanadi va SMS / Push / Telegram
-/// kanallarini mustaqil yoqadi. Haqiqiy yuborish: hodisa nuqtalarida <see cref="AutoMessageService"/>
-/// (yoki jadvalli hodisalarda tegishli fon-xizmat) shu qoidalarni o'qib yuboradi.
+/// <see cref="AutoMessageTriggers"/> katalogidagi bitta hodisaga bog'lanadi. Yetkazish — kabinet
+/// bildirishnomasi (har doim) + Telegram (<see cref="AutoMessageChannels"/>; SMS/push 2026-10 da olib
+/// tashlandi). Haqiqiy yuborish: hodisa nuqtalarida <see cref="AutoMessageService"/> (yoki jadvalli
+/// hodisalarda tegishli fon-xizmat) shu qoidalarni o'qib yuboradi.
 /// </summary>
 [ApiController]
 [Authorize]
@@ -25,12 +26,11 @@ public class AutoMessagesController(AppDbContext db) : ControllerBase
     public ActionResult<IEnumerable<AutoMessageTriggerInfoDto>> Triggers() =>
         AutoMessageTriggers.All.Select(t => new AutoMessageTriggerInfoDto(
             t.Key, t.Label, t.Description, t.Tokens,
-            new AutoMessageChannelsDto(t.Sms, t.Push, t.Telegram),
             t.SupportsSchedule, t.SupportsSendScope, t.Audiences, t.DefaultAudience,
             t.DefaultTemplate, t.Category, t.TemplateOptional)).ToList();
 
     /// <summary>Xabar {token}lari katalogi — shablon tahrirlagichda "token qo'shish" ro'yxati.
-    /// group: "student" | "lead" | "common" | "event".</summary>
+    /// group: "student" | "common" | "event".</summary>
     [HttpGet("tokens")]
     public ActionResult<IEnumerable<MessageTokenDto>> Tokens() =>
         MessageTokenCatalog.All.Select(t => new MessageTokenDto(t.Token, t.Label, t.Group)).ToList();
@@ -39,7 +39,9 @@ public class AutoMessagesController(AppDbContext db) : ControllerBase
     public async Task<ActionResult<IEnumerable<AutoMessageRuleDto>>> List()
     {
         var list = await db.AutoMessageRules.OrderBy(r => r.CreatedAt).ToListAsync();
-        return list.Select(ToDto).ToList();
+        // Katalogdan olib tashlangan hodisalarning qoidalari (2026-10: faqat-SMS lid hodisalari) bazada
+        // qoladi, lekin hech qayerda ishlamaydi — ro'yxatda ko'rsatilmaydi (UI ularning formasini chiza olmaydi).
+        return list.Where(r => AutoMessageTriggers.IsKnown(r.Trigger)).Select(ToDto).ToList();
     }
 
     [HttpPost]
@@ -80,12 +82,12 @@ public class AutoMessagesController(AppDbContext db) : ControllerBase
         return NoContent();
     }
 
-    /// <summary>Keng tarqalgan hodisalar uchun TAYYOR SMS habarlar to'plamini yaratadi (har biri bitta kanal — SMS).
-    /// Trigger uchun allaqachon SMS qoidasi bo'lsa — o'tkazib yuboriladi (dublikat qilmaydi). Yaratilgan sonini qaytaradi.</summary>
-    [HttpPost("seed-sms")]
-    public async Task<ActionResult<object>> SeedStandardSms()
+    /// <summary>Keng tarqalgan hodisalar uchun TAYYOR Telegram qoidalari to'plamini yaratadi (katalog matni va
+    /// auditoriyasi bilan). Trigger uchun allaqachon Telegram qoidasi bo'lsa (eski SMS qoidasi ham Telegram
+    /// sanaladi — <see cref="AutoMessageChannels"/>) — o'tkazib yuboriladi. Yaratilgan sonini qaytaradi.</summary>
+    [HttpPost("seed-standard")]
+    public async Task<ActionResult<object>> SeedStandard()
     {
-        // Standart SMS to'plami — katalog matnlari (DefaultTemplate) va auditoriyasi bilan.
         string[] standard =
         {
             AutoMessageTriggers.PaymentReceived,
@@ -93,20 +95,17 @@ public class AutoMessagesController(AppDbContext db) : ControllerBase
             AutoMessageTriggers.PaymentDebt,
             AutoMessageTriggers.AttendanceAbsent,
             AutoMessageTriggers.Birthday,
-            AutoMessageTriggers.LeadNew,
-            AutoMessageTriggers.TrialReminder,
         };
 
-        // Shu triggerlar uchun ALLAQACHON SMS qoidasi bor bo'lsa — takrorlamaymiz.
-        var existingSmsTriggers = (await db.AutoMessageRules
-                .Where(r => r.SendSms && standard.Contains(r.Trigger))
+        var existing = (await db.AutoMessageRules
+                .Where(r => (r.SendTelegram || r.SendSms) && standard.Contains(r.Trigger))
                 .Select(r => r.Trigger).ToListAsync())
             .ToHashSet();
 
         var created = 0;
         foreach (var key in standard)
         {
-            if (existingSmsTriggers.Contains(key)) continue;
+            if (existing.Contains(key)) continue;
             var info = AutoMessageTriggers.Get(key);
             if (info is null) continue;
             db.AutoMessageRules.Add(new AutoMessageRule
@@ -114,8 +113,7 @@ public class AutoMessagesController(AppDbContext db) : ControllerBase
                 Trigger = key,
                 Name = info.Label,
                 Enabled = true,
-                SendSms = true, SendPush = false, SendTelegram = false,
-                SmsProvider = "eskiz",
+                SendTelegram = true,
                 Audience = info.DefaultAudience,
                 Template = info.DefaultTemplate,
             });
@@ -125,17 +123,16 @@ public class AutoMessagesController(AppDbContext db) : ControllerBase
         return new { created };
     }
 
-    /// <summary>Qoidani so'rovdan to'ldiradi — kanallar hodisada MAVJUD bo'lganlari bilan cheklanadi,
-    /// audience/scope/schedule maydonlari faqat tegishli hodisada ma'noli.</summary>
+    /// <summary>Qoidani so'rovdan to'ldiradi — audience/scope/schedule maydonlari faqat tegishli hodisada ma'noli.
+    /// ⚠️ Eski SMS bayrog'i (<c>SendSms</c>) saqlashda TOZALANADI: shundan keyin Telegram'ni faqat
+    /// <c>SendTelegram</c> hal qiladi (<see cref="AutoMessageChannels.Telegram"/>).</summary>
     private static void Apply(AutoMessageRule rule, SaveAutoMessageRuleRequest req, AutoMessageTriggers.TriggerInfo info)
     {
         rule.Trigger = req.Trigger;
         rule.Name = (req.Name ?? "").Trim();
         rule.Enabled = req.Enabled;
-        // Faqat hodisada mavjud kanallar yoqiladi.
-        rule.SendSms = req.SendSms && info.Sms;
-        rule.SendPush = req.SendPush && info.Push;
-        rule.SendTelegram = req.SendTelegram && info.Telegram;
+        rule.SendTelegram = req.SendTelegram;
+        rule.SendSms = false;   // legacy (SMS removed 2026-10) — the admin's explicit choice wins from now on
         rule.Audience = info.Audiences.Contains(req.Audience) ? req.Audience : info.DefaultAudience;
         rule.Template = (req.Template ?? "").Trim();
         // Manfiy = darsdan OLDIN (uchrashuv talabi: «darsdan 1–1,5 soat oldin davomat olishni unutmang»).
@@ -147,17 +144,13 @@ public class AutoMessagesController(AppDbContext db) : ControllerBase
         rule.ScheduleType = req.ScheduleType == "monthly" ? "monthly" : "daily";
         rule.ScheduleTime = req.ScheduleTime;
         rule.ScheduleDayOfMonth = req.ScheduleDayOfMonth is >= 1 and <= 31 ? req.ScheduleDayOfMonth : 1;
-        rule.SmsProvider = req.SmsProvider == "local" ? "local" : "eskiz";
     }
 
     private static string? Validate(SaveAutoMessageRuleRequest req, AutoMessageTriggers.TriggerInfo? info)
     {
         if (info is null) return "Noma'lum hodisa turi";
         if (string.IsNullOrWhiteSpace(req.Name)) return "Nom kerak";
-
-        // Kamida bitta MAVJUD kanal yoqilgan bo'lsin.
-        var anyChannel = (req.SendSms && info.Sms) || (req.SendPush && info.Push) || (req.SendTelegram && info.Telegram);
-        if (!anyChannel) return "Kamida bitta kanal (SMS/Push/Telegram) yoqilishi kerak";
+        // Kanal tekshiruvi YO'Q: kabinet bildirishnomasi har doim yoziladi, Telegram — ixtiyoriy.
 
         // Shablon: hodisa tokenlar ishlatadigan bo'lsa kerak — LEKIN matn ixtiyoriy hodisalarda (masalan
         // qarzdorlik eslatmasi — bo'sh qoldirilsa tizim matnni o'zi tuzadi) bo'sh bo'lishi mumkin.
@@ -184,7 +177,7 @@ public class AutoMessagesController(AppDbContext db) : ControllerBase
     }
 
     private static AutoMessageRuleDto ToDto(AutoMessageRule r) =>
-        new(r.Id, r.Trigger, r.Name, r.Enabled, r.SendSms, r.SendPush, r.SendTelegram, r.Audience, r.Template,
+        new(r.Id, r.Trigger, r.Name, r.Enabled, AutoMessageChannels.Telegram(r), r.Audience, r.Template,
             r.OffsetMinutes, r.SendScope, r.ScheduleType, r.ScheduleTime, r.ScheduleDayOfMonth,
-            r.CreatedAt.ToString("o"), r.SmsProvider);
+            r.CreatedAt.ToString("o"));
 }

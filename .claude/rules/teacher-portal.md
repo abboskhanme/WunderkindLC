@@ -68,7 +68,7 @@ Qoidalar QAYTA YOZILMAGAN, chaqiriladi:
 qator qolgan bo'lishi mumkin (arxiv = o'quvchi ketgan).
 ⚠️ Eski `Teacher.HomeroomClass` (matnli "guruh rahbarligi") guruhga KIRISH bermaydi — u UI'da
 tahrirlanmaydi va o'qituvchi almashgandan keyin ham qolardi. Kirish — `Group.TeacherId`
-(`TaughtClassIdsAsync`) va o'rinbosar sanalari. Guruh chati (`ChatService`) ham shu qoidaga
+(`TaughtClassIdsAsync`) va o'rinbosar sanalari. Guruh chati (`ChatService`, 2026-10 da olib tashlangan) ham shu qoidaga
 o'tkazildi — kanallar faqat `TeacherGroupAccess` dan.
 ⚠️ Guruh JURNALI (`journal/group`) da ham summa YO'Q (2026-10-07): `Balance` = 0, rang `Debtor` bayrog'i va
 `DebtMonths` dan (o'rinbosarga ham). Ilgari har o'quvchining qarz summasi jurnal javobida kelardi.

@@ -187,6 +187,9 @@ Endi kanban kartasida **«Takroriy ×N»** chipi (`LeadCard`, oxirgi sana toolti
 Avtomatik birinchi bosqichga QAYTARILMAYDI: menejerning kanbandagi qo'lda qo'ygan holatini
 tizim o'zgartirib yubormasin.
 
+⚠️ (2026-10: lidga avto-SMS — `lead_new`/`test_result` — SMS kanali bilan birga OLIB TASHLANDI. Quyidagi
+qoida TARIX: hozir forma/landing/daraja testi lidga hech qanday SMS yubormaydi, Telegram kartasi esa
+o'zgarmagan.)
 ⚠️ **Avto-xabar (`lead_new`) FAQAT yangi lidga** yuboriladi — takroriy arizaga tanishuv SMS'i
 qayta ketmasin. Telegram xabarnomasi esa ikkalasida ham ketadi (sarlavha "mavjud lid yangilandi").
 2026-10-07 dan Instagram va Meta reklama lidlari ham shu qoidada (`LeadIntake.DispatchLeadNewAsync`,
@@ -322,7 +325,7 @@ tarixi yo'qolmaydi — cheklov faqat SANOQqa tegishli).
 | Kesim | Nima |
 |---|---|
 | KPI (5 ta) | Testlar · Topshirdi · Lid · Aktiv o'quvchi · To'lov qildi |
-| `ByTest` | Har test bo'yicha voronka + **havola yuborilgan/ishlangan** (SMS invite) + o'rtacha % |
+| `ByTest` | Har test bo'yicha voronka + **havola yaratilgan/ishlangan** (taklif havolasi; 2026-10 gacha SMS bilan yuborilardi, endi operator nusxalab yuboradi) + o'rtacha % |
 | `ByStage` | Testdan kelgan takrorsiz lidlar hozir kanbanning qaysi ustunida |
 | `Daily` | Oxirgi 30 kunlik oqim (bo'sh kunlar ham — grafik uzilmasin) |
 | `ByLevel` | Darajalar bo'yicha taqsimot |

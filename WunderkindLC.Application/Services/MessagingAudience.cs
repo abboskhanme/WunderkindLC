@@ -91,30 +91,7 @@ public static class MessagingAudience
         IAppDbContext db, string groupName, CancellationToken ct = default) =>
         (await GroupAudienceByNameAsync(db, groupName, ct)).GetValueOrDefault(groupName) ?? new HashSet<string>();
 
-    /// <summary>
-    /// Ommaviy PUSH — "o'quvchi/ota-ona ilovasi" auditoriyasining akkaunt id'lari (takrorsiz).
-    /// <paramref name="groupName"/> berilsa — <see cref="GroupAudienceAsync"/> (a'zolik bo'yicha);
-    /// <paramref name="onlyDebtors"/> — faqat umumiy balansi manfiylar (SMS/Telegram bilan bir xil qoida;
-    /// ilgari push uchun bu bayroq yo'q edi va qarz matni HAMMA ota-onaga "0 so'm" bilan ketardi).
-    /// Arxivdagi va guruhi yopilgan/tugatilgan o'quvchilar chiqariladi.
-    /// </summary>
-    public static async Task<List<string>> ParentPushUserIdsAsync(
-        IAppDbContext db, string? groupName, bool onlyDebtors, CancellationToken ct = default)
-    {
-        var q = db.Students.AsNoTracking().Where(s => !s.IsArchived && s.UserId != null);
-        if (!string.IsNullOrWhiteSpace(groupName))
-        {
-            var memberIds = await GroupAudienceAsync(db, groupName.Trim(), ct);
-            q = q.Where(s => memberIds.Contains(s.Id));
-        }
-        if (onlyDebtors) q = q.Where(s => s.Balance < 0);
-        var closed = await ClosedGroupStudentIdsAsync(db, ct);
-        return (await q.Select(s => new { s.Id, UserId = s.UserId! }).ToListAsync(ct))
-            .Where(x => !closed.Contains(x.Id))
-            .Select(x => x.UserId)
-            .Distinct()
-            .ToList();
-    }
+    // (ParentPushUserIdsAsync — ommaviy push auditoriyasi — 2026-10 da push bilan birga olib tashlandi.)
 
     /// <summary>
     /// Avto-xabar AUDITORIYASIGA qarab o'quvchi kartasidagi telefon: <c>students</c> — o'quvchining

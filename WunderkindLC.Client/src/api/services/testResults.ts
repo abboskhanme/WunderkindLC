@@ -1,7 +1,6 @@
 import { api } from '../client'
 import type {
   GroupTest,
-  OnlineTest,
   StudentTestResult,
   TestGroupOverview,
   TestResultDetail,
@@ -30,8 +29,6 @@ export interface TestPayload {
   name: string
   date: string
   maxScore: number
-  /** Onlayn test sozlamalari; berilmasa (yoki mode="offline") — eski (oflayn) test. */
-  online?: OnlineTest
   /** true — test natijasi bo'yicha sertifikat beriladi */
   certificateEnabled?: boolean
   /** Sertifikat shabloni; bo'sh/null — standart shablon */
@@ -49,7 +46,6 @@ export async function updateTest(
     name: string
     date: string
     maxScore: number
-    online?: OnlineTest
     /** true — test natijasi bo'yicha sertifikat beriladi */
     certificateEnabled?: boolean
     /** Sertifikat shabloni; bo'sh/null — standart shablon */

@@ -48,19 +48,10 @@ export const languageOptions: { value: ClassLanguage; label: string }[] = [
   { value: 'ru', label: 'Rus' },
 ]
 
-/**
- * Xodimlar (barcha o'qituvchi + admin) umumiy guruh chati uchun maxsus kanal kaliti.
- * Backenddagi ChatService.StaffChannel bilan bir xil bo'lishi shart.
- */
-export const STAFF_CHANNEL = '__xodimlar__'
-/** Xodimlar kanalining ko'rsatiladigan nomi */
-export const STAFF_CHANNEL_LABEL = 'Xodimlar'
-
 /** O'qituvchi web paneli bo'limlari (admin ruxsat beradi). Kalitlar backend bilan bir xil. */
 export const teacherPermissions: { key: string; label: string }[] = [
   { key: 'journal', label: 'Jurnal' },
   { key: 'schedule', label: 'Dars jadvali' },
-  { key: 'messages', label: 'Xabarlar (chat)' },
   { key: 'salary', label: 'Maosh' },
 ]
 
@@ -176,8 +167,7 @@ export const adminPermissions: AdminPermSection[] = [
     key: 'messages',
     label: 'Xabarlar',
     pages: [
-      { key: 'messages.broadcast', label: 'Ommaviy xabarlar (SMS/Push)' },
-      { key: 'messages.chat', label: 'Guruh chati' },
+      { key: 'messages.broadcast', label: 'Ommaviy xabarlar (Telegram)' },
       { key: 'messages.support', label: 'Support Telegram' },
     ],
   },
@@ -189,7 +179,7 @@ export const adminPermissions: AdminPermSection[] = [
       { key: 'app.support', label: 'Support (ilova)' },
       { key: 'app.locations', label: 'Joylashuv' },
       { key: 'app.parents', label: 'Ota-onalar' },
-      { key: 'app.teachers', label: "O'qituvchilar (ilova)" },
+      { key: 'app.teachers', label: "O'qituvchilar (kabinet)" },
     ],
   },
   { key: 'teacherReports', label: "O'qituvchilar hisoboti" },
@@ -217,13 +207,6 @@ export const adminPermissions: AdminPermSection[] = [
     ],
   },
   {
-    key: 'calls',
-    label: 'Call Center',
-    pages: [
-      { key: 'calls.local', label: 'Local Call' },
-    ],
-  },
-  {
     key: 'settings',
     label: 'Sozlamalar',
     // ⚠️ Kalitning ikkinchi qismi `/admin/settings/:section` URL segmenti bilan AYNAN bir xil —
@@ -235,7 +218,6 @@ export const adminPermissions: AdminPermSection[] = [
       { key: 'settings.reasons', label: 'Sabablar' },
       { key: 'settings.channels', label: 'Xabar kanallari' },
       { key: 'settings.backup', label: 'Zaxira nusxa' },
-      { key: 'settings.apk', label: 'Mobil ilova (APK)' },
       { key: 'settings.azure-speech', label: 'Speaking (Azure)' },
       { key: 'settings.gemini', label: 'AI Tahlil (Gemini)' },
       { key: 'settings.check', label: "To'lov cheki" },

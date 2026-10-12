@@ -547,37 +547,8 @@ public class KpiController(AppDbContext db, AuditService audit) : ControllerBase
                 .ToList());
     }
 
-    /// <summary>Haftalik sifat nazorati uchun kamida <c>count</c> ta TASODIFIY qo'ng'iroq.</summary>
-    /// <remarks>
-    /// ⚠️ Manba — Local Call (<c>CtiCallRecord</c>): xodimning agent(lar)i
-    /// (<c>CtiAgent.StaffUserId</c>) qo'ng'iroqlari. Filtr ATAYIN qattiq: oxirgi 7 kun, YOZUVI
-    /// SERVERDA va 60 soniyadan uzun (<see cref="KpiCallSource.SampleCandidatesAsync"/>).
-    /// Qisqa/yozuvsiz qo'ng'iroqni tinglab bo'lmaydi — namunaga tushsa rahbar uni o'tkazib
-    /// yuborar va nazorat aslida bo'lmasdi.
-    ///
-    /// ⚠️ Yozuv FAYLI manzili qaytmaydi (faqat <c>HasRecording</c> bayrog'i): fayl Local Call'ning
-    /// avtorizatsiyalangan audio endpointidan tinglanadi (<c>GET /api/cti/calls/{id}/audio</c>,
-    /// <c>.claude/rules/uploads-security.md</c> printsipi).
-    /// </remarks>
-    [HttpGet("tickets/calls")]
-    [AdminPerm("kpi.tickets", ReadRequiresPerm = true)]
-    public async Task<ActionResult<List<KpiCallSampleDto>>> CallSamples(
-        [FromQuery] string? userId, [FromQuery] int count = 5, CancellationToken ct = default)
-    {
-        if (!ResolveUser(userId, out var uid, out var err)) return StatusCode(403, new { message = err });
-        var take = Math.Clamp(count, 1, 25);
-        var since = AppClock.Now.AddDays(-7);
-
-        var rows = await KpiCallSource.SampleCandidatesAsync(db, uid, since, ct);
-
-        // TASODIFIY tanlov XOTIRADA: `ORDER BY random()` indeksdan foydalana olmaydi va bu
-        // yerda ro'yxat baribir kichik (bir xodimning haftalik qo'ng'iroqlari).
-        var rnd = Random.Shared;
-        return rows
-            .OrderBy(_ => rnd.Next())
-            .Take(take)
-            .ToList();
-    }
+    // (Haftalik qo'ng'iroq namunasi — GET tickets/calls — 2026-10 da olib tashlandi: manbai Local Call
+    //  agent-ilovasi edi. Tiketlar qo'ng'iroqsiz yaratilaveradi; eski tiketlardagi CallId — tarix.)
 
     private static string? ValidateTicket(SaveKpiTicketRequest req)
     {

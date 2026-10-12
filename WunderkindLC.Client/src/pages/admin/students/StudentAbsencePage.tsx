@@ -15,8 +15,8 @@ import { Badge } from '@/components/ui/Badge'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { Button } from '@/components/ui/Button'
 import { Loader } from '@/components/ui/Loader'
-import { CallPickerModal, type CallOption } from '@/components/CallPickerModal'
-import { SmsModal, type SmsRecipient } from './SmsModal'
+import { PhoneCallModal, type CallOption } from '@/components/PhoneCallModal'
+import { TelegramMessageModal, type TelegramRecipient } from './TelegramMessageModal'
 
 type ChipFilter = 'absent' | 'late' | 'all'
 
@@ -35,7 +35,7 @@ function shiftDate(iso: string, days: number): string {
   return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`
 }
 
-/** Bo'sh raqamlarni tashlab, bir xil raqamni faqat birinchi label bilan qoldiradi (CallPickerModal uchun). */
+/** Bo'sh raqamlarni tashlab, bir xil raqamni faqat birinchi label bilan qoldiradi (PhoneCallModal uchun). */
 function dedupeCallOptions(options: CallOption[]): CallOption[] {
   const seen = new Set<string>()
   return options.filter((o) => {
@@ -55,11 +55,11 @@ export function StudentAbsencePage() {
   const [search, setSearch] = useState('')
   const [groupFilter, setGroupFilter] = useState('all')
 
-  /** Qo'ng'iroq qilish — CallPickerModal uchun tanlangan o'quvchi */
+  /** Qo'ng'iroq qilish — PhoneCallModal uchun tanlangan o'quvchi */
   const [callStudent, setCallStudent] = useState<AbsentStudent | null>(null)
-  /** Ommaviy SMS uchun tanlangan o'quvchilar (studentId) + modal holati. */
+  /** Ommaviy Telegram xabar uchun tanlangan o'quvchilar (studentId) + modal holati. */
   const [selected, setSelected] = useState<Set<string>>(new Set())
-  const [smsOpen, setSmsOpen] = useState(false)
+  const [msgOpen, setMsgOpen] = useState(false)
 
   /** «Davomat olinmagan guruhlar» — Darslar monitoringi bilan BITTA manba (`today-lessons`). */
   const [lessons, setLessons] = useState<TodayLessonMonitor[]>([])
@@ -118,7 +118,7 @@ export function StudentAbsencePage() {
     return true
   })
 
-  // Tanlash (ommaviy SMS) — o'quvchi bir nechta guruhda bo'lsa ham bitta studentId.
+  // Tanlash (ommaviy Telegram xabar) — o'quvchi bir nechta guruhda bo'lsa ham bitta studentId.
   const filteredStudentIds = useMemo(() => {
     const seen = new Set<string>()
     for (const r of filtered) seen.add(r.studentId)
@@ -143,19 +143,12 @@ export function StudentAbsencePage() {
       return new Set([...prev, ...filteredStudentIds])
     })
 
-  // Tanlangan o'quvchilar (studentId bo'yicha takrorlanmas) — SmsModal uchun.
-  const smsRecipients: SmsRecipient[] = useMemo(() => {
-    const byId = new Map<string, SmsRecipient>()
+  // Tanlangan o'quvchilar (studentId bo'yicha takrorlanmas) — Telegram xabar oynasi uchun.
+  const msgRecipients: TelegramRecipient[] = useMemo(() => {
+    const byId = new Map<string, TelegramRecipient>()
     for (const r of filtered) {
       if (!selected.has(r.studentId) || byId.has(r.studentId)) continue
-      byId.set(r.studentId, {
-        id: r.studentId,
-        fullName: r.fullName,
-        phone: r.phone,
-        parentPhone: r.parentPhone,
-        fatherPhone: r.fatherPhone,
-        motherPhone: r.motherPhone,
-      })
+      byId.set(r.studentId, { id: r.studentId, fullName: r.fullName })
     }
     return [...byId.values()]
   }, [filtered, selected])
@@ -175,8 +168,8 @@ export function StudentAbsencePage() {
         sub="Shu kunda darsga kelmagan/kechikkan o'quvchilar — ota-onaga darrov qo'ng'iroq qilish uchun."
         actions={
           <div className="flex items-center gap-2">
-            <Button onClick={() => setSmsOpen(true)} disabled={selected.size === 0}>
-              <MessageSquare className="h-4 w-4" /> SMS yuborish{selected.size > 0 ? ` (${selected.size})` : ''}
+            <Button onClick={() => setMsgOpen(true)} disabled={selected.size === 0}>
+              <MessageSquare className="h-4 w-4" /> Telegram xabar{selected.size > 0 ? ` (${selected.size})` : ''}
             </Button>
             <Button variant="secondary" onClick={handleExport} disabled={filtered.length === 0}>
               <Download className="h-4 w-4" /> CSV
@@ -393,9 +386,9 @@ export function StudentAbsencePage() {
         </>
       )}
 
-      <SmsModal open={smsOpen} onClose={() => setSmsOpen(false)} recipients={smsRecipients} />
+      <TelegramMessageModal open={msgOpen} onClose={() => setMsgOpen(false)} recipients={msgRecipients} />
 
-      <CallPickerModal
+      <PhoneCallModal
         open={!!callStudent}
         onClose={() => setCallStudent(null)}
         title={callStudent?.fullName}

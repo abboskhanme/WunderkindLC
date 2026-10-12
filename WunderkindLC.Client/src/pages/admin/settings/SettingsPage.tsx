@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Navigate, useParams, useSearchParams } from 'react-router-dom'
+import { Navigate, useParams } from 'react-router-dom'
 import { Check, Plus, Trash2 } from 'lucide-react'
 import type { AbsenceReason } from '@/types'
 import {
@@ -14,7 +14,6 @@ import { PageHeader } from '@/components/ui/PageHeader'
 import { SchoolSettings } from './SchoolSettings'
 import { ChannelsSettings } from './ChannelsSettings'
 import { BackupSettings } from './BackupSettings'
-import { ApkSettings } from './ApkSettings'
 import { AzureSpeechSettings } from './AzureSpeechSettings'
 import { GeminiSettings } from './GeminiSettings'
 import { TurnstileSettings } from './TurnstileSettings'
@@ -33,7 +32,6 @@ const sectionTitles: Record<string, string> = {
   school: "Markaz ma'lumotlari",
   channels: 'Xabar kanallari',
   backup: 'Zaxira nusxa',
-  apk: 'Mobil ilova (APK)',
   'azure-speech': 'Speaking (Azure)',
   gemini: 'AI Tahlil (Gemini)',
   check: "To'lov cheki",
@@ -42,20 +40,11 @@ const sectionTitles: Record<string, string> = {
   posthog: 'PostHog Analitika',
 }
 
-/** Eski alohida sozlama sahifalari — endi "Xabar kanallari" ichidagi tab. */
-const legacyChannelTab: Record<string, 'sms' | 'telegram' | 'firebase'> = {
-  eskiz: 'sms',
-  telegram: 'telegram',
-  firebase: 'firebase',
-}
-
-function channelTabFromQuery(tab: string | null): 'sms' | 'telegram' | 'firebase' {
-  return tab === 'telegram' || tab === 'firebase' ? tab : 'sms'
-}
+/** Eski alohida Telegram bot sahifasi — endi "Xabar kanallari" ichida. */
+const legacyChannelSections = new Set(['telegram'])
 
 export function SettingsPage() {
   const { section = 'school' } = useParams()
-  const [searchParams] = useSearchParams()
   const [reasons, setReasons] = useState<AbsenceReason[]>([])
   const [loading, setLoading] = useState(true)
   const [rStatus, setRStatus] = useState<Status>('idle')
@@ -97,16 +86,14 @@ export function SettingsPage() {
   }
 
   if (section === 'reminders') return <Navigate to="/admin/messages" replace />
-  if (section in legacyChannelTab) {
-    return <Navigate to={`/admin/sozlamalar/sotuv?bolim=kanallar&tab=${legacyChannelTab[section]}`} replace />
-  }
+  if (legacyChannelSections.has(section)) return <Navigate to="/admin/sozlamalar/sotuv?bolim=kanallar" replace />
+  // Mobil ilova (APK) olib tashlandi (2026-10) — eski xatcho'p "Ilova sozlamalari" guruhiga.
+  if (section === 'apk') return <Navigate to="/admin/sozlamalar/ilova" replace />
   // edutizim tuzilishiga ko'chgan bo'limlar — yangi guruh sahifasiga (xatcho'plar ishlayversin).
-  // "Xabar kanallari" ning ichki tabi (`?tab=`) saqlanadi.
-  if (section in LEGACY_SETTINGS_REDIRECTS) {
-    const tab = searchParams.get('tab')
-    const to = LEGACY_SETTINGS_REDIRECTS[section] + (tab ? `&tab=${encodeURIComponent(tab)}` : '')
-    return <Navigate to={to} replace />
-  }
+  if (section in LEGACY_SETTINGS_REDIRECTS) return <Navigate to={LEGACY_SETTINGS_REDIRECTS[section]} replace />
+  // Olib tashlangan bo'limlar (SMS provayderlari, push, ...) va noma'lum segment — eski xatcho'p bo'sh
+  // sahifa ochmasin, sozlamalar bosh sahifasiga tushadi.
+  if (!(section in sectionTitles)) return <Navigate to="/admin/sozlamalar/umumiy" replace />
 
   return (
     <div>
@@ -176,16 +163,11 @@ export function SettingsPage() {
           {/* Markaz ma'lumotlari */}
           {section === 'school' && <SchoolSettings />}
 
-          {/* Xabar kanallari: SMS (Eskiz) / Telegram bot / Push (Firebase) */}
-          {section === 'channels' && (
-            <ChannelsSettings initialTab={channelTabFromQuery(searchParams.get('tab'))} />
-          )}
+          {/* Xabar kanallari: Telegram bot */}
+          {section === 'channels' && <ChannelsSettings />}
 
           {/* Zaxira nusxa (Telegram backup) */}
           {section === 'backup' && <BackupSettings />}
-
-          {/* Mobil ilova (APK) */}
-          {section === 'apk' && <ApkSettings />}
 
           {/* Speaking (Azure) */}
           {section === 'azure-speech' && <AzureSpeechSettings />}

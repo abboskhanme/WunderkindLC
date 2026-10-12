@@ -1,6 +1,5 @@
 import { Suspense, useEffect, useState } from 'react'
 import { Outlet } from 'react-router-dom'
-import { UnreadProvider } from '@/context/unread-context'
 import { Loader } from '@/components/ui/Loader'
 import { Sidebar } from './Sidebar'
 import { Topbar } from './Topbar'
@@ -52,7 +51,7 @@ export function AppLayout() {
   }, [])
 
   return (
-    <UnreadProvider>
+    <>
       <CommandPalette />
       {/* edutizim tartibi: yuqori panel BUTUN eni bo'ylab, uning ostida yon menyu + kontent */}
       <div className="flex h-screen flex-col overflow-hidden">
@@ -76,14 +75,13 @@ export function AppLayout() {
 
           <main className="flex-1 overflow-y-auto bg-[var(--bg)] px-3 py-2.5 sm:px-[15px]">
             {/* Suspense LAYOUT ICHIDA — lazy sahifa chunk'i yuklanayotganda faqat kontent
-                maydoni almashadi; Sidebar/Topbar joyida qoladi (qayta mount bo'lmaydi,
-                SignalR/unread ulanishlari uzilmaydi). */}
+                maydoni almashadi; Sidebar/Topbar joyida qoladi (qayta mount bo'lmaydi). */}
             <Suspense fallback={<Loader className="h-full min-h-[240px]" />}>
               <Outlet />
             </Suspense>
           </main>
         </div>
       </div>
-    </UnreadProvider>
+    </>
   )
 }

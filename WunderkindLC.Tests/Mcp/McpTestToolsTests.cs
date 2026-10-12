@@ -6,6 +6,9 @@ using WunderkindLC.Application.Services;
 using WunderkindLC.Domain;
 using Xunit;
 
+// Legacy entities of removed modules (2026-10): purge / backup / MCP no-read coverage still seeds them.
+#pragma warning disable CS0618
+
 namespace WunderkindLC.Tests.Mcp;
 
 /// <summary>

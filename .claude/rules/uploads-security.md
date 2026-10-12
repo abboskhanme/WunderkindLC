@@ -160,7 +160,7 @@ server tomonidan FAYL sifatida o'qilsa (botga yuborilsa) yoki O'CHIRILSA — ikk
    `..`, absolut yo'l → `null`) yoki `StudentPurge.ResolveUploadPath` / `FaceStorage.ResolvePath` orqali.
    HECH QACHON `Path.Combine(ContentRootPath, url.TrimStart('/'))` emas.
 
-⚠️ 2026-10-08 (KRITIK): onlayn test boti `PdfUrl` ni ilova ildiziga nisbatan tekshiruvsiz o'qirdi —
+⚠️ 2026-10-08 (KRITIK; 2026-10 dan onlayn test boti butunlay olib tashlangan): onlayn test boti `PdfUrl` ni ilova ildiziga nisbatan tekshiruvsiz o'qirdi —
 o'qituvchi `"/../.env"` yozib serverning maxfiy faylini botdan olardi. Kitob muqovasi (`CoverUrl`)
 ham xuddi shu yo'l bilan o'qilardi. O'chirishda esa: nomzod CV manzili va guruhdagi test PDF'i
 BEGONA faylga (shartnoma, dars PDF'i) ishora qilib, uni diskdan o'chirtira olardi — endi faqat naqshga

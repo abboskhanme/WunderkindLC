@@ -16,8 +16,8 @@ namespace WunderkindLC.Tests;
 ///
 /// <para>Qamrov: C5 (konversiya = to'liq o'quvchi yaratish: telefonlar, akkaunt, a'zolik, audit,
 /// guruh to'lgan, dublikat, mavjudga bog'lash, sinov darsi) · CRM-1 (aylantirilgan lidga takroriy
-/// murojaat yopishmaydi; CAPI) · CRM-3/4/5 (o'chirish) · CRM-9 (lead_new Meta/Instagram) ·
-/// IG-4 (vaqtinchalik ismlar) · LRN-7 (taklif havolasida test_result) · sinov natijasini tuzatish.</para>
+/// murojaat yopishmaydi; CAPI) · CRM-3/4/5 (o'chirish) · CRM-9 (reklama lidi yangi/takroriy; lid SMS'i
+/// 2026-10 da olib tashlandi) · IG-4 (vaqtinchalik ismlar) · sinov natijasini tuzatish.</para>
 /// </summary>
 public class AuditFixT8Tests
 {
@@ -452,90 +452,27 @@ public class AuditFixT8Tests
         Assert.Equal("Menejer yozgan", (await db.Leads.SingleAsync(l => l.Id == "b")).FullName);
     }
 
-    // ============================ CRM-9 / LRN-7 — avto-xabarlar ============================
-
-    private static void SmsRule(AppDbContext db, string trigger, string template)
-    {
-        db.CenterMeta.Add(new CenterMeta { Name = "Wunderkind", LocalSmsEnabled = true });
-        db.AutoMessageRules.Add(new AutoMessageRule
-        {
-            Trigger = trigger, Name = "", Enabled = true, SendSms = true, SmsProvider = "local", Template = template,
-        });
-    }
+    // ============================ CRM-9 — reklama lidi: yangi / takroriy ============================
+    // (Lid avto-SMS — lead_new, test_result — 2026-10 da SMS kanali bilan birga olib tashlandi; lidning
+    //  Telegram manzili yo'q. Qolgan qoida: takroriy murojaat yangi lid emas.)
 
     [Fact]
-    public async Task Yangi_reklama_lidiga_lead_new_SMS_ketadi_takroriyga_ketmaydi()
+    public async Task Yangi_reklama_lidi_YANGI_takroriy_murojaat_YANGI_EMAS()
     {
         using var t = TestDb.Sqlite();
         var db = t.Context;
-        SmsRule(db, AutoMessageTriggers.LeadNew, "Salom {fish}");
-        await db.SaveChangesAsync();
-        var auto = new MessagingStack().Auto;
 
         var (_, isNew) = await MetaLeadBridge.UpsertAsync(
-            db, new IgAdLead { FullName = "Aliyev Ali", Phone = "+998901234567" }, "", autoMsg: auto);
+            db, new IgAdLead { FullName = "Aliyev Ali", Phone = "+998901234567" }, "");
         await db.SaveChangesAsync();
         Assert.True(isNew);
-        Assert.Equal("Salom Aliyev Ali", Assert.Single(db.SmsLogs).Message);
 
         var (_, isNew2) = await MetaLeadBridge.UpsertAsync(
-            db, new IgAdLead { FullName = "Aliyev Ali", Phone = "+998901234567" }, "", autoMsg: auto);
+            db, new IgAdLead { FullName = "Aliyev Ali", Phone = "+998901234567" }, "");
         await db.SaveChangesAsync();
         Assert.False(isNew2);
-        Assert.Single(db.SmsLogs); // takroriy murojaatga tanishuv SMS'i qayta ketmaydi
-    }
-
-    [Fact]
-    public async Task Yangi_Instagram_lidiga_telefon_bolsa_lead_new_SMS_ketadi()
-    {
-        using var t = TestDb.Sqlite();
-        var db = t.Context;
-        SmsRule(db, AutoMessageTriggers.LeadNew, "Salom");
-        var conv = new IgConversation { IgUserId = "3", Username = "ali", Status = IgConst.StatusBot };
-        db.IgConversations.Add(conv);
-        await db.SaveChangesAsync();
-
-        await InstagramLeadBridge.UpsertAsync(db, conv,
-            new IgAgentOutput("", "uz-Latn", "buying_intent", 80, true, false, false, "Ali", "901234567", "", ""),
-            "Instagram", autoMsg: new MessagingStack().Auto);
-        await db.SaveChangesAsync();
-
-        Assert.Single(db.SmsLogs);
-    }
-
-    [Fact]
-    public async Task Taklif_havolasi_orqali_topshirilganda_test_result_SMS_ketadi()
-    {
-        using var t = TestDb.Sqlite();
-        var db = t.Context;
-        SmsRule(db, AutoMessageTriggers.TestResult, "Natija: {natija}");
-        var test = new LevelTest { Title = "Ingliz tili", Slug = "eng", IsActive = true };
-        var q = new LevelTestQuestion { TestId = test.Id, Text = "2+2?", Options = ["3", "4"], CorrectIndex = 1 };
-        var lead = new Lead { FullName = "Aliyev Ali", Phone = "+998901234567", CreatedAt = "2026-09-01T10:00:00" };
-        var invite = new LevelTestInvite { TestId = test.Id, LeadId = lead.Id, CreatedAt = "2026-09-02T10:00:00" };
-        db.LevelTests.Add(test);
-        db.LevelTestQuestions.Add(q);
-        db.Leads.Add(lead);
-        db.LevelTestInvites.Add(invite);
-        await db.SaveChangesAsync();
-
-        var r = await LevelTestService.SubmitInviteAsync(db, invite.Token,
-            new TestSubmitRequest("", "", 0, new Dictionary<string, int> { [q.Id] = 1 }),
-            autoMsg: new MessagingStack().Auto);
-
-        Assert.NotNull(r);
-        Assert.Equal("Natija: 1/1 (100%)", Assert.Single(db.SmsLogs).Message);
-    }
-
-    [Fact]
-    public void Test_result_tokenlari_ikkala_yol_uchun_bir_xil()
-    {
-        var tokens = LevelTestService.TestResultTokens(7, 10, 70, "B1");
-        Assert.Equal("7/10 (70%) — B1", tokens["{natija}"]);
-        Assert.Equal("B1", tokens["{daraja}"]);
-        Assert.Equal("7/10", tokens["{ball}"]);
-        Assert.Equal("70%", tokens["{foiz}"]);
-        Assert.Equal("", LevelTestService.TestResultTokens(0, 0, 0, null)["{natija}"]);
+        Assert.Single(db.Leads);
+        Assert.Empty(db.SmsLogs);   // SMS kanali yo'q — eski jadvalga hech narsa yozilmaydi
     }
 
     // ============================ Sinov natijasini tuzatish ============================

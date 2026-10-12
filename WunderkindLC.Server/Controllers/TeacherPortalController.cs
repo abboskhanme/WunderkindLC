@@ -20,8 +20,8 @@ namespace WunderkindLC.Server.Controllers;
 [Authorize(Roles = "teacher")]
 [Route("api/teacher")]
 public partial class TeacherPortalController(
-    AppDbContext db, ChatService chat, IWebHostEnvironment env, ReferenceCache refCache,
-    FcmService fcm, AutoMessageService autoMsg, ContractService contracts,
+    AppDbContext db, IWebHostEnvironment env, ReferenceCache refCache,
+    AutoMessageService autoMsg, ContractService contracts,
     TestCertificateService testCerts, TestCertificateJobs testCertJobs,
     ContactQueueService queue, AuditService audit) : ControllerBase
 {
@@ -88,7 +88,7 @@ public partial class TeacherPortalController(
         return new SchoolNameDto(m?.Name ?? "", m?.TelegramChannel ?? "", m?.LogoUrl ?? "");
     }
 
-    /// <summary>Ilova bildirishnomalari tarixi (yuborilgan push'lar) — o'qilmaganlar soni bilan.</summary>
+    /// <summary>Kabinet bildirishnomalari tarixi — o'qilmaganlar soni bilan.</summary>
     [HttpGet("notifications")]
     public async Task<ActionResult<NotificationsResponseDto>> Notifications()
     {
@@ -160,54 +160,8 @@ public partial class TeacherPortalController(
         return PhysicalFile(path, "application/pdf", $"shartnoma-{c.Number}.pdf");
     }
 
-    // ---------- Push qurilma (bildirishnoma) ----------
-
-    /// <summary>Qurilma push tokenini ro'yxatdan o'tkazadi (token, platform, qurilma nomi, app_id).</summary>
-    [HttpPost("notifications/register")]
-    public async Task<ActionResult> RegisterDevice(RegisterDeviceRequest req)
-    {
-        var uid = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        if (uid is null) return Unauthorized();
-        var token = req.Token?.Trim();
-        if (string.IsNullOrWhiteSpace(token)) return BadRequest(new { message = "Token bo'sh" });
-        var platform = string.IsNullOrWhiteSpace(req.Platform) ? "android" : req.Platform!.Trim().ToLowerInvariant();
-        var deviceName = (req.DeviceName ?? "").Trim();
-        var appId = (req.AppId ?? "").Trim();
-
-        var existing = await db.DeviceTokens.FirstOrDefaultAsync(d => d.Token == token);
-        if (existing is null)
-        {
-            db.DeviceTokens.Add(new DeviceToken
-            {
-                UserId = uid,
-                Token = token,
-                Platform = platform,
-                DeviceName = deviceName,
-                AppId = appId,
-            });
-        }
-        else
-        {
-            existing.UserId = uid;
-            existing.Platform = platform;
-            if (deviceName.Length > 0) existing.DeviceName = deviceName;
-            if (appId.Length > 0) existing.AppId = appId;
-            existing.LastSeenAt = AppClock.Now;
-        }
-        await db.SaveChangesAsync();
-        return Ok(new { ok = true });
-    }
-
-    /// <summary>Qurilma tokenini o'chiradi (logout). Topilmasa ham 200.</summary>
-    [HttpDelete("notifications/register")]
-    public async Task<ActionResult> UnregisterDevice([FromQuery] string token)
-    {
-        if (string.IsNullOrWhiteSpace(token)) return BadRequest(new { message = "Token bo'sh" });
-        var uid = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        var d = await db.DeviceTokens.FirstOrDefaultAsync(x => x.Token == token && x.UserId == uid);
-        if (d is not null) { db.DeviceTokens.Remove(d); await db.SaveChangesAsync(); }
-        return Ok(new { ok = true });
-    }
+    // (Push qurilma tokenini ro'yxatdan o'tkazish — notifications/register — 2026-10 da olib tashlandi:
+    //  o'rnatiladigan ilova ishlatilmaydi. Bildirishnomalar kabinetdagi qo'ng'iroqchada.)
 
     // ---------- Dars beradigan guruhlar ----------
 
@@ -364,7 +318,7 @@ public partial class TeacherPortalController(
         bool newAbsence;
         try
         {
-            newAbsence = await JournalService.SetEntryAsync(db, req, fcm, autoMsg, teacher: true);
+            newAbsence = await JournalService.SetEntryAsync(db, req, autoMsg, teacher: true);
         }
         catch (InvalidOperationException ex)
         {
@@ -736,53 +690,7 @@ public partial class TeacherPortalController(
         return Ok(new { ok = true, revisionLessons });
     }
 
-    // ---------- Guruh chati (dars beradigan guruhlar + guruh rahbarligi) ----------
-
-    /// <summary>
-    /// Har bir kanal uchun oxirgi xabar vaqti (ISO) — frontend o'qilmagan xabarlarni aniqlaydi.
-    /// O'qituvchining barcha kanallari (guruhlar + xodimlar) qaytadi. Xabari yo'q kanal uchun null.
-    /// </summary>
-    [HttpGet("chat/last-messages")]
-    public async Task<ActionResult<Dictionary<string, string?>>> ChatLastMessages()
-    {
-        if (!await HasPerm(TeacherPermissions.Messages)) return Forbid();
-        var uid = User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? "";
-        var channels = await chat.ClassNamesForUserAsync(uid, "teacher");
-        var lastByChannel = (await db.ChatMessages
-                .Where(m => channels.Contains(m.ClassName))
-                .GroupBy(m => m.ClassName)
-                .Select(g => new { Name = g.Key, Last = g.Max(x => x.CreatedAt) })
-                .ToListAsync())
-            .ToDictionary(x => x.Name, x => (string?)x.Last.ToString("o"));
-        return channels.ToDictionary(c => c, c => lastByChannel.GetValueOrDefault(c, null));
-    }
-
-    [HttpGet("chat/classes")]
-    public async Task<ActionResult<IEnumerable<string>>> ChatClasses()
-    {
-        if (!await HasPerm(TeacherPermissions.Messages)) return Forbid();
-        var uid = User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? "";
-        return await chat.ClassNamesForUserAsync(uid, "teacher");
-    }
-
-    [HttpGet("chat/{className}")]
-    public async Task<ActionResult<IEnumerable<ChatMessageDto>>> Chat(string className, [FromQuery] string? since)
-    {
-        if (!await HasPerm(TeacherPermissions.Messages)) return Forbid();
-        var uid = User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? "";
-        if (!await chat.CanAccessAsync(uid, "teacher", className)) return Forbid();
-        return await chat.GetMessagesAsync(className, ChatService.ParseSince(since));
-    }
-
-    [HttpPost("chat/{className}")]
-    public async Task<ActionResult<ChatMessageDto>> SendChat(string className, SendChatRequest req)
-    {
-        if (!await HasPerm(TeacherPermissions.Messages)) return Forbid();
-        var uid = User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? "";
-        if (!await chat.CanAccessAsync(uid, "teacher", className)) return Forbid();
-        var dto = await chat.PostAsync(className, uid, req.Text);
-        return dto is null ? BadRequest(new { message = "Xabar bo'sh" }) : dto;
-    }
+    // (Guruh chati — chat/* — 2026-10 da olib tashlandi.)
 
     // ---------- Taklif va shikoyatlar (o'qituvchi → admin) ----------
 
@@ -963,7 +871,7 @@ public partial class TeacherPortalController(
         if (!string.IsNullOrEmpty(bookedBy) && !SupportService.IsPast(slot, AppClock.Now))
         {
             var student = await db.Students.AsNoTracking().FirstOrDefaultAsync(x => x.Id == bookedBy);
-            await SupportService.NotifyAsync(db, fcm, student?.UserId, "Support darsi bekor qilindi",
+            await SupportService.NotifyAsync(db, student?.UserId, "Support darsi bekor qilindi",
                 $"{me.FullName} {SupportService.When(slot)} dagi support darsini bekor qildi. Boshqa bo'sh vaqtni bron qilishingiz mumkin.");
         }
         return NoContent();
@@ -999,8 +907,7 @@ public partial class TeacherPortalController(
     /// olingan zahoti bu yo'l ham yopiladi.</para>
     ///
     /// <para>Nega aynan "journal": o'qituvchi ilovasidagi «Testlar» bo'limi shu ruxsat bilan
-    /// ochiladi (qarang: <c>test-results/uploads</c> va <c>certificate-templates</c> — ular
-    /// allaqachon shuni tekshirardi). Ya'ni bu tekshiruv yangi qoida emas, mavjud qoidani
+    /// ochiladi (qarang: <c>certificate-templates</c> — u allaqachon shuni tekshirardi). Ya'ni bu tekshiruv yangi qoida emas, mavjud qoidani
     /// qolgan endpointlarga ham yoyish.</para>
     /// </summary>
     private async Task<bool> OwnsGroup(string classId)
@@ -1032,25 +939,6 @@ public partial class TeacherPortalController(
         return d is null ? NotFound() : d;
     }
 
-    /// <summary>Onlayn test savollari (PDF) faylini yuklash — testlar bo'limi uchun (maks ~20MB).
-    /// Ruxsat: "journal" (o'qituvchi ilovasidagi «Testlar» bo'limi shu ruxsat bilan ochiladi).</summary>
-    [HttpPost("test-results/uploads")]
-    [RequestSizeLimit(20_000_000)]
-    public async Task<ActionResult<UploadedFileDto>> TeacherTestUpload(IFormFile file)
-    {
-        if (!await HasPerm(TeacherPermissions.Journal)) return Forbid();
-        if (Application.Services.UploadGuard.Validate(file) is { } error)
-            return BadRequest(new { message = error });
-
-        var dir = System.IO.Path.Combine(env.ContentRootPath, "uploads");
-        System.IO.Directory.CreateDirectory(dir);
-        var stored = Application.Services.UploadGuard.SafeName(file);
-        await using (var fs = System.IO.File.Create(System.IO.Path.Combine(dir, stored)))
-            await file.CopyToAsync(fs);
-
-        return new UploadedFileDto(file.FileName, $"/uploads/{stored}", file.Length, file.ContentType ?? "");
-    }
-
     /// <summary>Yangi test yaratish (o'z guruhiga).</summary>
     [HttpPost("test-results")]
     public async Task<ActionResult<GroupTestDto>> TeacherTestCreate(CreateTestResultRequest req)
@@ -1059,7 +947,7 @@ public partial class TeacherPortalController(
         if (me is null) return NotFound();
         if (!await OwnsGroup(req.GroupId)) return Forbid();
         var (dto, err) = await TestResultService.CreateAsync(
-            db, req.GroupId, req.Name, req.Date, req.MaxScore, me.FullName, req.Online,
+            db, req.GroupId, req.Name, req.Date, req.MaxScore, me.FullName,
             req.CertificateEnabled, req.CertificateTemplateId);
         return err != null ? BadRequest(new { message = err }) : dto!;
     }
@@ -1072,10 +960,10 @@ public partial class TeacherPortalController(
         if (groupId is null) return NotFound();
         if (!await OwnsGroup(groupId)) return Forbid();
         var r = await TestResultService.UpdateDetailedAsync(
-            db, id, req.Name, req.Date, req.MaxScore, req.Online,
+            db, id, req.Name, req.Date, req.MaxScore,
             req.CertificateEnabled, req.CertificateTemplateId);
         if (!r.Ok) return BadRequest(new { message = r.Error });
-        // Kalit/savollar soni o'zgarib ballar QAYTA HISOBLANGAN bo'lsa — berilgan sertifikatlar ham
+        // Maksimal ball kamayib ballar QISILGAN bo'lsa — berilgan sertifikatlar ham
         // yangi ball bilan qayta yaratiladi (fonda, idempotent).
         if (r.Regraded > 0 && await TestResultService.HasCertificatesAsync(db, id))
         {

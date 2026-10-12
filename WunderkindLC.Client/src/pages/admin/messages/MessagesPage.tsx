@@ -28,7 +28,7 @@ export function MessagesPage() {
     <div>
       <PageHeader
         title="Xabarlar"
-        sub="Xabar yuborish, avto xabarlar va tarix (guruh chati — «Chats» bo'limida)"
+        sub="Telegram orqali xabar yuborish, avto xabarlar va tarix"
         actions={
           <div className="tabs">
             <TabButton active={tab === 'send'} onClick={() => setTab('send')} icon={Send}>

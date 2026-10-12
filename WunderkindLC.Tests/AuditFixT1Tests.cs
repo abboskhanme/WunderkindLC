@@ -5,6 +5,9 @@ using WunderkindLC.Domain;
 using WunderkindLC.Infrastructure.Data;
 using Xunit;
 
+// Legacy entities of removed modules (2026-10): purge / backup / MCP no-read coverage still seeds them.
+#pragma warning disable CS0618
+
 namespace WunderkindLC.Tests;
 
 /// <summary>
@@ -530,23 +533,22 @@ public class AuditFixT1Tests
     }
 
     [Fact]
-    public async Task Qayta_nomlashda_chat_yorliq_va_rahbarlik_yangi_nomga_kochadi()
+    public async Task Qayta_nomlashda_yorliq_va_rahbarlik_yangi_nomga_kochadi()
     {
+        // (Guruh chati 2026-10 da olib tashlandi — qayta nomlash endi chat xabarlarini ko'chirmaydi.)
         using var db = TestDb.Sqlite();
         var ctx = db.Context;
         var t = AddTeacher(ctx, "Ustoz");
         t.HomeroomClass = "Eski";
         var g = AddGroup(ctx, "Eski", teacherId: t.Id);
         var s = AddStudent(ctx, className: "Eski");
-        ctx.ChatMessages.Add(new ChatMessage { ClassName = "Eski", Text = "salom" });
         await ctx.SaveChangesAsync();
 
         g.Name = "Yangi";
         var res = await GroupNames.MigrateRenameAsync(ctx, g, "Eski", "Yangi");
         await ctx.SaveChangesAsync();
 
-        Assert.Equal(new GroupNames.RenameResult(1, 1, 1), res);
-        Assert.Equal("Yangi", (await ctx.ChatMessages.AsNoTracking().SingleAsync()).ClassName);
+        Assert.Equal(new GroupNames.RenameResult(1, 1), res);
         Assert.Equal("Yangi", (await ctx.Students.AsNoTracking().SingleAsync()).ClassName);
         Assert.Equal("Yangi", (await ctx.Teachers.AsNoTracking().SingleAsync()).HomeroomClass);
     }
@@ -562,13 +564,12 @@ public class AuditFixT1Tests
         var theirs = AddStudent(ctx, "Boshqaniki", className: "Eski");
         AddMember(ctx, mine, g);
         AddMember(ctx, theirs, twin);
-        ctx.ChatMessages.Add(new ChatMessage { ClassName = "Eski", Text = "salom" });
         await ctx.SaveChangesAsync();
 
         var res = await GroupNames.MigrateRenameAsync(ctx, g, "Eski", "Yangi");
         await ctx.SaveChangesAsync();
 
-        Assert.Equal(0, res.ChatMessages);   // chatni nom bo'yicha ajratib bo'lmaydi — o'sha guruhda qoladi
+        Assert.Equal(1, res.Students);       // faqat SHU guruh a'zosining yorlig'i
         Assert.Equal("Yangi", (await ctx.Students.AsNoTracking().SingleAsync(x => x.Id == mine.Id)).ClassName);
         Assert.Equal("Eski", (await ctx.Students.AsNoTracking().SingleAsync(x => x.Id == theirs.Id)).ClassName);
     }

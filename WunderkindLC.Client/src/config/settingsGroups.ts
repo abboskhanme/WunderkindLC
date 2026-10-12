@@ -17,7 +17,6 @@ import {
   IconBuildingCommunity,
   IconChecklist,
   IconClockHour4,
-  IconDeviceMobile,
   IconFileText,
   IconGift,
   IconLayoutGrid,
@@ -38,7 +37,7 @@ import {
 export type SettingsGroupKey = 'umumiy' | 'moliya' | 'oquv' | 'sotuv' | 'ilova'
 
 /** Bo'lim ichida chiziladigan TAYYOR sozlama komponenti (kalit → komponent `SettingsGroupPage` da). */
-export type SettingsPanelKey = 'check' | 'school' | 'account' | 'reasons' | 'channels' | 'apk' | 'azure' | 'gemini' | 'mcp'
+export type SettingsPanelKey = 'check' | 'school' | 'account' | 'reasons' | 'channels' | 'azure' | 'gemini' | 'mcp'
 
 /** Qatordan ochiladigan oyna (mavjud modallar). */
 export type SettingsModalKey = 'journal-edit' | 'journal-payment' | 'journal-salary' | 'retention'
@@ -66,8 +65,8 @@ export interface SettingsRow extends Gated {
 
 /** Chap kartadagi bitta band. */
 export interface SettingsItem extends Gated {
-  /** Manzildagi `?bolim=` qiymati (`?tab=` emas: "Xabar kanallari" paneli `tab` ni o'z ichki
-   *  tablari — sms/telegram/firebase — uchun ishlatadi). */
+  /** Manzildagi `?bolim=` qiymati (`?tab=` emas: eski xatcho'plarda `tab` "Xabar kanallari"ning
+   *  ichki tablari uchun ishlatilgan). */
   key: string
   label: string
   icon: Icon
@@ -208,7 +207,6 @@ export const SETTINGS_GROUPS: SettingsGroup[] = [
     label: 'Ilova sozlamalari',
     to: '/admin/sozlamalar/ilova',
     items: [
-      { key: 'apk', label: 'Mobil ilova', icon: IconDeviceMobile, kind: 'panel', panel: 'apk', perm: 'settings.apk' },
       { key: 'azure', label: 'Speaking (Azure)', icon: IconMicrophone, kind: 'panel', panel: 'azure', perm: 'settings.azure-speech' },
       { key: 'gemini', label: 'AI tahlil (Gemini)', icon: IconSparkles, kind: 'panel', panel: 'gemini', perm: 'settings.gemini' },
     ],
@@ -249,13 +247,14 @@ export function groupPermAny(g: SettingsGroup): string[] | null {
   return [...new Set(perms)]
 }
 
-/** Eski `/admin/settings/:section` manzillari → yangi guruh sahifasi (xatcho'plar ishlayversin). */
+/** Eski `/admin/settings/:section` manzillari → yangi guruh sahifasi (xatcho'plar ishlayversin).
+ *  ⚠️ `apk` (mobil ilova APK) bo'limi 2026-10 da olib tashlandi — u `SettingsPage` da guruh
+ *  sahifasiga (bo'limsiz) yo'naltiriladi, shuning uchun bu ro'yxatda yo'q. */
 export const LEGACY_SETTINGS_REDIRECTS: Record<string, string> = {
   school: '/admin/sozlamalar/umumiy?bolim=markaz',
   check: '/admin/sozlamalar/umumiy?bolim=chek',
   reasons: '/admin/sozlamalar/oquv?bolim=sabablar',
   channels: '/admin/sozlamalar/sotuv?bolim=kanallar',
-  apk: '/admin/sozlamalar/ilova?bolim=apk',
   'azure-speech': '/admin/sozlamalar/ilova?bolim=azure',
   gemini: '/admin/sozlamalar/ilova?bolim=gemini',
 }

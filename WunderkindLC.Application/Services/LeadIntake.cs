@@ -122,18 +122,6 @@ public static class LeadIntake
     public static async Task<string> FirstStageIdAsync(IAppDbContext db, CancellationToken ct = default) =>
         await db.LeadStages.OrderBy(s => s.Order).Select(s => s.Id).FirstOrDefaultAsync(ct) ?? "";
 
-    /// <summary>
-    /// YANGI lidga «Yangi lid kelganda» (<c>lead_new</c>) avto-xabarini yuboradi — telefoni bo'lsa.
-    /// Ommaviy forma, landing, Instagram va Meta reklama lidlari AYNAN shu yerdan chaqiradi
-    /// (qoida bitta: takroriy murojaatga tanishuv SMS'i qayta ketmaydi).
-    /// Xato JIM yutiladi (<see cref="AutoMessageService.DispatchLeadAsync"/> siyosati).
-    /// </summary>
-    public static async Task DispatchLeadNewAsync(
-        IAppDbContext db, AutoMessageService? autoMsg, Lead lead, bool isNewLead, CancellationToken ct = default)
-    {
-        if (autoMsg is null || !isNewLead) return;
-        if (string.IsNullOrWhiteSpace(lead.Phone) && string.IsNullOrWhiteSpace(lead.FatherPhone)
-            && string.IsNullOrWhiteSpace(lead.MotherPhone)) return;
-        await autoMsg.DispatchLeadAsync(db, AutoMessageTriggers.LeadNew, lead, ct: ct);
-    }
+    // (DispatchLeadNewAsync — yangi lidga "lead_new" avto-SMS'i — 2026-10 da SMS kanali bilan birga
+    //  olib tashlandi: lidning Telegram manzili yo'q, boshqa yetkazish yo'li ham yo'q.)
 }

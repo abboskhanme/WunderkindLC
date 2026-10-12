@@ -14,7 +14,7 @@ namespace WunderkindLC.Server.Controllers;
 [AdminPerm("classes.list")]
 [Route("api/admin/journal")]
 public class JournalController(
-    AppDbContext db, FcmService fcm, AutoMessageService autoMsg, AuditService audit,
+    AppDbContext db, AutoMessageService autoMsg, AuditService audit,
     AttendanceNotifyWorker notifyWorker) : ControllerBase
 {
     /// <summary>Bu controller — ADMIN jurnali (xodim ham shu yerdan yozadi): jurnal siyosati faqat
@@ -79,7 +79,7 @@ public class JournalController(
         bool newAbsence;
         try
         {
-            newAbsence = await JournalService.SetEntryAsync(db, req, fcm, autoMsg);
+            newAbsence = await JournalService.SetEntryAsync(db, req, autoMsg);
         }
         catch (InvalidOperationException ex)
         {

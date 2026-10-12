@@ -120,8 +120,8 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
         if (teacher.IsArchived)
             return BadRequest(new { message = ArchivedTeacherMessage(teacher) });
 
-        // NOM — bo'shliqsiz, BARCHA guruhlar (arxivdagilar ham) orasida takrorlanmaydi: guruh chati
-        // nom bilan bog'langan, bir xil nomli yangi guruh eski guruhning yozishmasini meros olardi.
+        // NOM — bo'shliqsiz, BARCHA guruhlar (arxivdagilar ham) orasida takrorlanmaydi: «asosiy guruh»
+        // yorlig'i va e'lonning "Guruh" auditoriyasi nom bilan bog'langan (`GroupNames` izohi).
         var name = GroupNames.Clean(p.Name);
         if (name.Length == 0) return BadRequest(new { message = "Guruh nomini kiriting" });
         if (await GroupNames.IsTakenAsync(db, name, null))
@@ -396,14 +396,13 @@ public class ClassesController(AppDbContext db, AuditService audit, ILogger<Clas
                 $"{await CourseNameAsync(oldCourseId)} → {await CourseNameAsync(cls.CourseId)}");
         }
 
-        // QAYTA NOMLASH — guruh chati, «asosiy guruh» yorlig'i va eski rahbarlik NOM bilan bog'langan:
-        // yangi nomga ko'chirilmasa chat tarixi "yo'qolar", o'quvchilar esa nomi yo'q guruhda qolardi.
+        // QAYTA NOMLASH — «asosiy guruh» yorlig'i va eski rahbarlik NOM bilan bog'langan:
+        // yangi nomga ko'chirilmasa o'quvchilar nomi yo'q guruhda qolardi.
         // Yozuvlar kuzatiladi — guruh bilan BITTA SaveChanges'da saqlanadi.
         if (renamed)
         {
             var moved = await GroupNames.MigrateRenameAsync(db, cls, oldName, cls.Name);
             var parts = new List<string>();
-            if (moved.ChatMessages > 0) parts.Add($"{moved.ChatMessages} ta chat xabari");
             if (moved.Students > 0) parts.Add($"{moved.Students} ta o'quvchi yorlig'i");
             if (moved.Teachers > 0) parts.Add($"{moved.Teachers} ta o'qituvchi rahbarligi");
             audit.Record(AuditService.EntityGroup, cls.Id, "update",

@@ -1,9 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { AlertTriangle, CalendarClock, CheckCircle2, GraduationCap, Link2, Receipt, Send } from 'lucide-react'
+import { AlertTriangle, CalendarClock, Check, CheckCircle2, Copy, GraduationCap, Link2, Receipt } from 'lucide-react'
 import type { Group, Lead, LevelTestListItem, Teacher, TrialLesson } from '@/types'
-import { getPickableTemplates, sendLeadSms, type PickableTemplate } from '@/api/services/messages'
-import { getMessageTokens } from '@/api/services/autoMessages'
 import { getLevelTests, sendLeadTest } from '@/api/services/levelTests'
 import {
   convertLead,
@@ -12,7 +10,6 @@ import {
   type ConvertLeadResult,
   type DuplicateStudent,
 } from '@/api/services/leads'
-import { MessageEditor, type TokenDef } from '@/components/messaging/MessageEditor'
 import { Button } from '@/components/ui/Button'
 import { Input, Select } from '@/components/ui/Input'
 import { apiErrorMessage, formatDate, formatDateTime } from '@/lib/utils'
@@ -36,107 +33,57 @@ function errMessage(err: unknown, fallback: string): string {
   return (err as { response?: { data?: { message?: string } } })?.response?.data?.message ?? fallback
 }
 
-const leadPhoneOf = (lead: Lead) => lead.phone || lead.fatherPhone || lead.motherPhone || ''
-
-/* ------------------------------------------------------------------ SMS */
-
-export function LeadSmsPanel({ lead, onSent }: { lead: Lead; onSent: () => void }) {
-  const [templates, setTemplates] = useState<PickableTemplate[]>([])
-  const [tokens, setTokens] = useState<TokenDef[]>([])
-  const [text, setText] = useState('')
-  const [sending, setSending] = useState(false)
-  const [result, setResult] = useState<string | null>(null)
-  const phone = leadPhoneOf(lead)
-
-  useEffect(() => {
-    getPickableTemplates('lead').then(setTemplates).catch(() => setTemplates([]))
-    // Lid uchun faqat lid + umumiy guruh tokenlari mos keladi
-    getMessageTokens()
-      .then((ts) => setTokens(ts.filter((t) => t.group === 'lead' || t.group === 'common')))
-      .catch(() => setTokens([]))
-  }, [])
-
-  const send = async () => {
-    if (!text.trim() || sending) return
-    setSending(true)
-    setResult(null)
-    try {
-      // Kanal (Eskiz/Local) tanlanmaydi — server Sozlamalardagi qiymatdan o'zi oladi.
-      const b = await sendLeadSms(lead.id, text.trim())
-      setResult(b.sentCount > 0 ? 'SMS yuborildi ✓' : 'Yuborildi (holat kutilmoqda)')
-      setText('')
-      onSent()
-    } catch (err: unknown) {
-      setResult(errMessage(err, 'Yuborishda xatolik'))
-    } finally {
-      setSending(false)
-    }
-  }
-
-  if (!phone) return <p className="text-sm text-slate-400">Lidda telefon raqami yo'q.</p>
-  return (
-    <div className="space-y-3">
-      <p className="text-xs text-slate-400">
-        Raqam: <span className="font-mono text-slate-600">{formatPhone(phone)}</span>
-      </p>
-      <MessageEditor
-        value={text}
-        onChange={setText}
-        tokens={tokens}
-        templates={templates.map((t) => ({ name: t.name, text: t.text }))}
-        showSmsCounter
-        rows={3}
-        placeholder="SMS matni (shablon tanlang yoki yozing)..."
-      />
-      <div className="flex items-center justify-between gap-3">
-        {result && (
-          <p className={`text-sm font-medium ${result.includes('✓') ? 'text-emerald-700' : 'text-amber-700'}`}>
-            {result}
-          </p>
-        )}
-        <Button className="ml-auto" onClick={send} disabled={!text.trim() || sending}>
-          <Send className="h-4 w-4" /> {sending ? 'Yuborilmoqda...' : 'SMS yuborish'}
-        </Button>
-      </div>
-    </div>
-  )
-}
-
 /* ------------------------------------------------------------------ Daraja testi */
 
+/**
+ * Daraja testi — lid uchun BIR MARTALIK havola yaratadi. SMS kanali 2026-10 da olib tashlandi
+ * (lidda Telegram yo'q), shuning uchun havola avtomatik yuborilmaydi: operator uni nusxalab
+ * lidga o'zi yuboradi (Telegram/WhatsApp). Natija shu lidga bog'lanadi.
+ */
 export function LeadLevelTestPanel({ lead, onSent }: { lead: Lead; onSent: () => void }) {
   const [tests, setTests] = useState<LevelTestListItem[]>([])
   const [testId, setTestId] = useState('')
-  const [sending, setSending] = useState(false)
-  const [result, setResult] = useState<string | null>(null)
-  const phone = leadPhoneOf(lead)
+  const [creating, setCreating] = useState(false)
+  const [link, setLink] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  const [copied, setCopied] = useState(false)
 
   useEffect(() => {
     getLevelTests().then((ts) => setTests(ts.filter((t) => t.isActive))).catch(() => setTests([]))
   }, [])
 
-  const send = async () => {
-    if (!testId || sending) return
-    setSending(true)
-    setResult(null)
+  const create = async () => {
+    if (!testId || creating) return
+    setCreating(true)
+    setError(null)
+    setLink('')
+    setCopied(false)
     try {
       const r = await sendLeadTest(lead.id, testId)
-      setResult(r.ok ? 'Test havolasi SMS yuborildi ✓' : `Yuborilmadi: ${r.status}`)
+      setLink(r.link)
       onSent()
     } catch (err: unknown) {
-      setResult(errMessage(err, 'Yuborishda xatolik'))
+      setError(errMessage(err, "Havolani yaratib bo'lmadi"))
     } finally {
-      setSending(false)
+      setCreating(false)
     }
   }
 
-  if (!phone) return <p className="text-sm text-slate-400">Lidda telefon raqami yo'q.</p>
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(link)
+      setCopied(true)
+    } catch {
+      /* brauzer clipboard'ga ruxsat bermadi — havola maydonda ko'rinib turibdi, qo'lda nusxalanadi */
+    }
+  }
+
   if (tests.length === 0) return <p className="text-sm text-slate-400">Faol daraja testi yo'q.</p>
   return (
     <div className="space-y-3">
       <p className="text-xs text-slate-400">
-        Tanlangan test uchun <b>bir martalik havola</b> SMS qilib yuboriladi. Lid ma'lumotini qayta
-        kiritmaydi; natija shu lidga bog'lanadi. (SMS andoza: "daraja testi havolasi" — {'{link}'} tokeni)
+        Tanlangan test uchun <b>bir martalik havola</b> yaratiladi. Lid ma'lumotini qayta kiritmaydi;
+        natija shu lidga bog'lanadi.
       </p>
       <div className="flex items-center gap-2">
         <Select value={testId} onChange={(e) => setTestId(e.target.value)} className="flex-1">
@@ -147,14 +94,26 @@ export function LeadLevelTestPanel({ lead, onSent }: { lead: Lead; onSent: () =>
             </option>
           ))}
         </Select>
-        <Button onClick={send} disabled={!testId || sending}>
-          <Send className="h-4 w-4" /> {sending ? 'Yuborilmoqda...' : 'Yuborish'}
+        <Button onClick={create} disabled={!testId || creating}>
+          <Link2 className="h-4 w-4" /> {creating ? 'Yaratilmoqda...' : 'Havola yaratish'}
         </Button>
       </div>
-      {result && (
-        <p className={`text-sm font-medium ${result.includes('✓') ? 'text-emerald-700' : 'text-amber-700'}`}>
-          {result}
-        </p>
+      {error && <p className="text-sm font-medium text-red-600">{error}</p>}
+      {link && (
+        <div className="space-y-1.5 rounded-lg border border-emerald-200 bg-emerald-50 p-2.5">
+          <div className="flex items-center gap-2">
+            <input
+              readOnly
+              value={link}
+              onFocus={(e) => e.currentTarget.select()}
+              className="min-w-0 flex-1 rounded-md border border-emerald-200 bg-white px-2 py-1.5 font-mono text-xs text-slate-700 outline-none"
+            />
+            <Button variant="secondary" onClick={copy}>
+              {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />} {copied ? 'Nusxalandi' : 'Nusxalash'}
+            </Button>
+          </div>
+          <p className="text-xs text-emerald-800">Havolani nusxalab lidga yuboring (Telegram/WhatsApp).</p>
+        </div>
       )}
     </div>
   )

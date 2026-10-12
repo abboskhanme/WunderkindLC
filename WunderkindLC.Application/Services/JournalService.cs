@@ -464,7 +464,7 @@ public static class JournalService
     /// (<see cref="MemberWriteError"/>).</para>
     /// </summary>
     public static async Task<bool> SetEntryAsync(
-        IAppDbContext db, SetJournalEntryRequest req, FcmService? fcm = null, AutoMessageService? autoMsg = null,
+        IAppDbContext db, SetJournalEntryRequest req, AutoMessageService? autoMsg = null,
         bool teacher = false)
     {
         // Guruhning StartDate'i tekshirish — undan oldin dars bo'lmaydi.
@@ -488,7 +488,7 @@ public static class JournalService
         var entry = await db.JournalEntries.FirstOrDefaultAsync(e =>
             e.ClassId == req.ClassId && e.SubjectId == req.SubjectId && e.Quarter == req.Quarter &&
             e.StudentId == req.StudentId && e.Date == req.Date && e.Period == req.Period);
-        // Push uchun — yangi/o'zgargan baho yoki sababnigina xabar qilamiz.
+        // Bildirishnoma uchun — yangi/o'zgargan baho yoki sababnigina xabar qilamiz.
         var oldGrade = entry?.Grade;
         var oldReason = entry?.ReasonId;
 
@@ -545,23 +545,23 @@ public static class JournalService
         var newAbsence = req.ReasonId is not null
             && AttendanceNotify.IsNewAbsence(oldReason, req.ReasonId, await AttendanceNotify.LateReasonIdsAsync(db));
 
-        // Avtomatik push: farzandi baho olsa yoki davomatda belgilansa, oila ilovasiga xabar.
-        await NotifyEntryAsync(db, fcm, autoMsg, req, student, cls, oldGrade, newAbsence);
+        // Avtomatik bildirishnoma: farzandi baho olsa yoki davomatda belgilansa — oila kabinetiga xabar.
+        await NotifyEntryAsync(db, autoMsg, req, student, cls, oldGrade, newAbsence);
 
         return newAbsence;
     }
 
-    /// <summary>Baho/davomat yozuvi o'zgarganda oila ilovasiga push yuboradi (fire-and-forget).
+    /// <summary>Baho/davomat yozuvi o'zgarganda oila kabinetiga bildirishnoma yozadi.
     /// BAHO: agar "grade_entered" avto-xabar qoidasi MAVJUD bo'lsa (yoqilgan-o'chirilganidan qat'i nazar) —
     /// yuborish to'liq <see cref="AutoMessageService"/>ga o'tadi (qoida o'chiq bo'lsa hech narsa yuborilmaydi);
-    /// qoida UMUMAN yo'q bo'lsa — eski to'g'ridan-to'g'ri push saqlanadi (default-on, PaymentReminderService
-    /// patterni).
+    /// qoida UMUMAN yo'q bo'lsa — standart kabinet bildirishnomasi yoziladi (default-on). (Push 2026-10 da
+    /// olib tashlandi — ilgari shu yerda FCM ham yuborilardi.)
     /// <para>DAVOMAT — AYNAN shu naqsh: faqat YANGI "kelmadi" (<paramref name="newAbsence"/>; "kech" HECH
     /// QACHON) va faqat "attendance_absent" qoidasi UMUMAN yo'q bo'lsa. Qoida bor bo'lsa xabarni chaqiruvchi
     /// (controller) dispatcher orqali yuboradi — ilgari ikkalasi BIRGA ketar va ota-ona bitta hodisa uchun
-    /// IKKI push olardi. Arxivlangan o'quvchiga hech narsa ketmaydi.</para></summary>
+    /// IKKI xabar olardi. Arxivlangan o'quvchiga hech narsa ketmaydi.</para></summary>
     private static async Task NotifyEntryAsync(
-        IAppDbContext db, FcmService? fcm, AutoMessageService? autoMsg, SetJournalEntryRequest req,
+        IAppDbContext db, AutoMessageService? autoMsg, SetJournalEntryRequest req,
         Student? student, Group? group, int? oldGrade, bool newAbsence)
     {
         // Xabar KONTEKSTI — aynan shu dars guruhi ({guruh}, {oqituvchi}, {dars_*} tokenlari shundan).
@@ -610,17 +610,9 @@ public static class JournalService
             type = "attendance";
         }
 
-        // Tarixga yozamiz — push sozlanmagan yoki token bo'lmasa ham ilovada ko'rinadi.
+        // Kabinet tarixiga yozamiz (o'quvchi/ota-ona kabinetidagi qo'ng'iroqcha).
         NotificationStore.Add(db, student.UserId, title, body, type);
         await db.SaveChangesAsync();
-
-        // Push (FCM sozlangan + token bor bo'lsa) — fire-and-forget, jurnal javobini bloklamaymiz.
-        var json = AppSecrets.FcmServiceAccountJson;
-        if (fcm is null || !FcmService.IsConfigured(json)) return;
-        var tokens = await db.DeviceTokens.Where(d => d.UserId == student.UserId)
-            .Select(d => d.Token).Distinct().ToListAsync();
-        if (tokens.Count == 0) return;
-        _ = fcm.SendAsync(json, tokens, title, body);
     }
 
     /// <summary>Ommaviy davomat natijasi.</summary>

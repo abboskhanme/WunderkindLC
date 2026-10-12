@@ -56,9 +56,11 @@ public static class AppSecrets
     /// faqat shu bot ishlamaydi — asosiy bot va o'qituvchi paneli odatdagidek ishlaydi.</summary>
     public static string TeacherBotToken => Read("TeacherBot:BotToken", EnvKeys.TeacherBotToken);
 
-    /* ---------- Push (Firebase / FCM) ---------- */
+    /* ---------- Google service account (ex-Firebase) ---------- */
 
-    /// <summary>Firebase service account JSON (to'liq, bir qatorda) — serverdan push yuborish uchun.
+    /// <summary>Google (ex-Firebase) service account JSON (to'liq, bir qatorda). Push 2026-10 da olib
+    /// tashlangan — kalit endi faqat Play Integrity ZAXIRASI sifatida o'qiladi
+    /// (<see cref="PlayIntegrityServiceAccountJson"/> bo'sh bo'lsa; yuz bilan kirish).
     /// Ichida <c>private_key</c> bor: eng maxfiy qiymatlardan biri.</summary>
     public static string FcmServiceAccountJson => Read("Fcm:ServiceAccountJson", EnvKeys.FcmServiceAccountJson);
 
@@ -72,12 +74,6 @@ public static class AppSecrets
     /// <summary>Resurs hududi (maxfiy emas, lekin kalit bilan birga sozlanadi — yarmi UI'da,
     /// yarmi .env'da bo'lib qolmasin).</summary>
     public static string AzureSpeechRegion => Read("Azure:SpeechRegion", EnvKeys.AzureSpeechRegion);
-
-    /* ---------- SMS (Eskiz.uz) ---------- */
-
-    /// <summary>Eskiz kabinet login (email) — parol bilan birga hisob ma'lumoti.</summary>
-    public static string EskizEmail => Read("Eskiz:Email", EnvKeys.EskizEmail);
-    public static string EskizPassword => Read("Eskiz:Password", EnvKeys.EskizPassword);
 
     /* ---------- Turniket / FaceID qurilmasi ---------- */
 
@@ -170,7 +166,6 @@ public static class AppSecrets
     public static bool TeacherBotConfigured => TeacherBotToken.Length > 0;
     public static bool GeminiConfigured => GeminiApiKey.Length > 0;
     public static bool AzureSpeechConfigured => AzureSpeechKey.Length > 0 && AzureSpeechRegion.Length > 0;
-    public static bool EskizConfigured => EskizEmail.Length > 0 && EskizPassword.Length > 0;
     public static bool TurnstileCredentialsConfigured => TurnstileUsername.Length > 0 && TurnstilePassword.Length > 0;
     /// <summary>NVR login/paroli berilganmi — arxivni olib kelish shusiz mumkin emas.</summary>
     public static bool NvrCredentialsConfigured => NvrUsername.Length > 0 && NvrPassword.Length > 0;
@@ -194,8 +189,6 @@ public static class AppSecrets
         public const string GeminiApiKey = "GEMINI_API_KEY";
         public const string AzureSpeechKey = "AZURE_SPEECH_KEY";
         public const string AzureSpeechRegion = "AZURE_SPEECH_REGION";
-        public const string EskizEmail = "ESKIZ_EMAIL";
-        public const string EskizPassword = "ESKIZ_PASSWORD";
         public const string TurnstileUsername = "TURNSTILE_USERNAME";
         public const string TurnstilePassword = "TURNSTILE_PASSWORD";
         public const string NvrUsername = "NVR_USERNAME";

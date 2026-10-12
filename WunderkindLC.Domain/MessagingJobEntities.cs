@@ -39,6 +39,8 @@ public class BackgroundJobRun
 ///
 /// <para>PK — <see cref="SmsBatch"/> id'si (bitta partiya = bitta navbat ishi).</para>
 /// </summary>
+// Legacy (removed 2026-10): table kept until a confirmed drop.
+[Obsolete("Legacy (removed 2026-10): table kept until a confirmed drop.")]
 public class SmsQueueJob
 {
     /// <summary><see cref="SmsBatch.Id"/> — PK.</summary>
@@ -62,6 +64,8 @@ public class SmsQueueJob
 }
 
 /// <summary>Ommaviy SMS partiyasining BITTA oluvchisi (<see cref="SmsQueueJob"/>).</summary>
+// Legacy (removed 2026-10): table kept until a confirmed drop.
+[Obsolete("Legacy (removed 2026-10): table kept until a confirmed drop.")]
 public class SmsQueueItem
 {
     public string Id { get; set; } = Guid.NewGuid().ToString();

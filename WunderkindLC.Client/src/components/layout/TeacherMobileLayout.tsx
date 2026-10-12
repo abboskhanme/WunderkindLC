@@ -1,7 +1,6 @@
 import { Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { ArrowLeft, KeyRound, LayoutGrid, LogOut, Moon, Sun, UserRound } from 'lucide-react'
-import { UnreadProvider, useUnread } from '@/context/unread-context'
 import { useAuth } from '@/context/auth-context'
 import { TeacherPortalContext, type TeacherPortalInfo } from '@/context/teacher-portal-context'
 import { getTeacherProfile, getTeacherSchool } from '@/api/services/teacher'
@@ -36,17 +35,8 @@ import { todayIso } from '@/lib/month'
  * sahifasi shundan quriladi).
  */
 export function TeacherMobileLayout() {
-  return (
-    <UnreadProvider>
-      <Shell />
-    </UnreadProvider>
-  )
-}
-
-function Shell() {
   const { user } = useAuth()
   const { can } = usePerm()
-  const { unreadChannels } = useUnread()
   const location = useLocation()
   const mainRef = useRef<HTMLElement>(null)
   const [theme, setTheme] = useState<'light' | 'dark'>(getTeacherTheme)
@@ -78,7 +68,6 @@ function Shell() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- `can` har renderda yangi, ruxsatlar esa user bilan o'zgaradi
     [user?.permissions, info.isSupport],
   )
-  const hasUnread = unreadChannels.size > 0
 
   return (
     <TeacherPortalContext.Provider value={info}>
@@ -86,10 +75,9 @@ function Shell() {
         <Topbar info={info} dark={theme === 'dark'} />
 
         <div className="flex min-h-0 flex-1">
-          <SideNav items={items} hasUnread={hasUnread} />
+          <SideNav items={items} />
           <main ref={mainRef} className="min-w-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain">
-            {/* Suspense QOBIQ ICHIDA — sahifa yuklanayotganda menyu/tablar joyida qoladi,
-                UnreadProvider (SignalR) qayta ulanmaydi. */}
+            {/* Suspense QOBIQ ICHIDA — sahifa yuklanayotganda menyu/tablar joyida qoladi. */}
             <div className="mx-auto h-full w-full max-w-[1280px]">
               <Suspense fallback={<Loader className="min-h-[240px]" />}>
                 <Outlet />
@@ -98,7 +86,7 @@ function Shell() {
           </main>
         </div>
 
-        <BottomTabs items={items} hasUnread={hasUnread} />
+        <BottomTabs items={items} />
       </div>
     </TeacherPortalContext.Provider>
   )
@@ -243,7 +231,7 @@ function MenuButton({ icon: Icon, label, onClick }: { icon: typeof UserRound; la
 
 /* ─────────────────────────── Yon menyu (≥1024px) ─────────────────────────── */
 
-function SideNav({ items, hasUnread }: { items: TeacherNavItem[]; hasUnread: boolean }) {
+function SideNav({ items }: { items: TeacherNavItem[] }) {
   const sections = (['main', 'work', 'account'] as const)
     .map((s) => ({ key: s, items: items.filter((i) => i.section === s) }))
     .filter((s) => s.items.length > 0)
@@ -278,12 +266,7 @@ function SideNav({ items, hasUnread }: { items: TeacherNavItem[]; hasUnread: boo
                           isActive ? 'opacity-100' : 'opacity-0 group-hover:opacity-100',
                         )}
                       />
-                      <span className="relative shrink-0">
-                        <Icon className="h-5 w-5" />
-                        {item.badge && hasUnread && (
-                          <span className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-[#e53e3e] ring-2 ring-white" />
-                        )}
-                      </span>
+                      <Icon className="h-5 w-5 shrink-0" />
                       <span className="truncate">{item.label}</span>
                     </>
                   )}
@@ -299,16 +282,15 @@ function SideNav({ items, hasUnread }: { items: TeacherNavItem[]; hasUnread: boo
 
 /* ─────────────────────────── Pastki tablar (<1024px) ─────────────────────────── */
 
-function BottomTabs({ items, hasUnread }: { items: TeacherNavItem[]; hasUnread: boolean }) {
+function BottomTabs({ items }: { items: TeacherNavItem[] }) {
   const { pathname } = useLocation()
   const tabs = TEACHER_TABS.map((to) => items.find((i) => i.to === to)).filter((i): i is TeacherNavItem => !!i)
   // Tabda yo'q bo'lim ochiq bo'lsa (Maosh, Testlar, ...) — "Menyu" tabi faol ko'rinadi.
   const activeTab = tabs.find((t) => navMatches(t, pathname))?.to ?? '/teacher/menu'
-  const menuHasBadge = hasUnread && items.some((i) => i.badge)
 
   const all = [
-    ...tabs.map((t) => ({ to: t.to, label: t.short ?? t.label, icon: t.icon, badge: false })),
-    { to: '/teacher/menu', label: 'Menyu', icon: LayoutGrid, badge: menuHasBadge },
+    ...tabs.map((t) => ({ to: t.to, label: t.short ?? t.label, icon: t.icon })),
+    { to: '/teacher/menu', label: 'Menyu', icon: LayoutGrid },
   ]
 
   return (
@@ -325,10 +307,7 @@ function BottomTabs({ items, hasUnread }: { items: TeacherNavItem[]; hasUnread: 
                   active ? 'bg-brand-50' : 'bg-transparent',
                 )}
               >
-                <span className="relative">
-                  <Icon className={cn('h-[21px] w-[21px]', active ? 'text-brand-600' : 'text-faint')} strokeWidth={active ? 2.4 : 2} />
-                  {t.badge && <span className="absolute -right-1.5 -top-1 h-2 w-2 rounded-full bg-[#e53e3e] ring-2 ring-white" />}
-                </span>
+                <Icon className={cn('h-[21px] w-[21px]', active ? 'text-brand-600' : 'text-faint')} strokeWidth={active ? 2.4 : 2} />
               </span>
               <span className={cn('text-[11px] tracking-tight', active ? 'font-bold text-brand-600' : 'font-semibold text-faint')}>
                 {t.label}

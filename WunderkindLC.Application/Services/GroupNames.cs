@@ -8,11 +8,12 @@ namespace WunderkindLC.Application.Services;
 /// GURUH NOMI — takrorlanmaslik qoidasi va nom o'zgarganda NOMGA bog'langan ma'lumotni ko'chirish
 /// (<b>YAGONA joy</b>).
 ///
-/// <para><b>NEGA NOM NOYOB BO'LISHI SHART:</b> guruh chati (<see cref="ChatMessage.ClassName"/>),
-/// o'quvchining «asosiy guruh» yorlig'i (<see cref="Student.ClassName"/>) va eski o'qituvchi
-/// rahbarligi (<see cref="Teacher.HomeroomClass"/>) guruhga Id bilan emas, NOMI bilan bog'langan.
-/// Ikki guruh bir xil nomda bo'lsa yangi guruh eski guruhning chatini (begona o'quvchilar
-/// yozishmasini) meros oladi — maxfiylik buziladi; nom o'zgarsa esa chat tarixi "yo'qolib" qolardi.</para>
+/// <para><b>NEGA NOM NOYOB BO'LISHI SHART:</b> o'quvchining «asosiy guruh» yorlig'i
+/// (<see cref="Student.ClassName"/>), eski o'qituvchi rahbarligi (<see cref="Teacher.HomeroomClass"/>)
+/// va Telegram e'lonining "Guruh" auditoriyasi (<c>MessagingAudience.GroupAudienceByNameAsync</c>)
+/// guruhga Id bilan emas, NOMI bilan bog'langan. Ikki guruh bir xil nomda bo'lsa e'lon begona guruh
+/// ota-onalariga ham ketardi, yorliq esa noto'g'ri guruhni ko'rsatardi. (Guruh chati ham nom bilan
+/// bog'langan edi — u 2026-10 da olib tashlandi, eski yozishmalar ko'chirilmaydi.)</para>
 ///
 /// <para>Qoida: nom bo'shliqlari tozalangan va REGISTRSIZ holda BARCHA guruhlar (arxivdagilar ham)
 /// orasida takrorlanmaydi. ⚠️ Bazada UNIKAL INDEKS YO'Q — ATAYIN: prod'da allaqachon dublikatlar
@@ -62,16 +63,16 @@ public static class GroupNames
     }
 
     /// <summary>Qayta nomlashda ko'chirilgan qatorlar soni.</summary>
-    public readonly record struct RenameResult(int ChatMessages, int Students, int Teachers);
+    public readonly record struct RenameResult(int Students, int Teachers);
 
     /// <summary>
     /// Guruh NOMI o'zgarganda nomga bog'langan ma'lumotni yangi nomga ko'chiradi:
-    /// guruh chati (<see cref="ChatMessage.ClassName"/>), o'quvchilarning «asosiy guruh» yorlig'i
-    /// (<see cref="Student.ClassName"/>) va eski rahbarlik (<see cref="Teacher.HomeroomClass"/>).
+    /// o'quvchilarning «asosiy guruh» yorlig'i (<see cref="Student.ClassName"/>) va eski rahbarlik
+    /// (<see cref="Teacher.HomeroomClass"/>).
     ///
     /// <para>⚠️ ESKI nom bilan BOSHQA guruh ham bo'lsa (prod'dagi eski dublikat) — ma'lumotni nom
-    /// bo'yicha ajratib bo'lmaydi: chat KO'CHIRILMAYDI (u o'sha guruhda qoladi), yorliq esa faqat
-    /// SHU guruh a'zolarida (tarixdagilar ham) va SHU guruh o'qituvchisida almashtiriladi.</para>
+    /// bo'yicha ajratib bo'lmaydi: yorliq faqat SHU guruh a'zolarida (tarixdagilar ham) va SHU guruh
+    /// o'qituvchisida almashtiriladi.</para>
     ///
     /// <para>Yozuvlar KUZATILADI (tracked) — <c>SaveChanges</c> chaqiruvchida, ya'ni qayta nomlash
     /// bilan BITTA saqlashda (kesh ham avtomatik yangilanadi). Audit chaqiruvchida.</para>
@@ -80,20 +81,10 @@ public static class GroupNames
         IAppDbContext db, Group group, string oldName, string newName, CancellationToken ct = default)
     {
         if (string.Equals(oldName, newName, StringComparison.Ordinal) || string.IsNullOrEmpty(oldName))
-            return new RenameResult(0, 0, 0);
+            return new RenameResult(0, 0);
 
         var shared = await db.Classes.AsNoTracking()
             .AnyAsync(c => c.Id != group.Id && c.Name == oldName, ct);
-
-        var chats = 0;
-        if (!shared)
-        {
-            foreach (var m in await db.ChatMessages.Where(m => m.ClassName == oldName).ToListAsync(ct))
-            {
-                m.ClassName = newName;
-                chats++;
-            }
-        }
 
         var studentsQ = db.Students.Where(s => s.ClassName == oldName);
         if (shared)
@@ -109,6 +100,6 @@ public static class GroupNames
         var teachers = await teachersQ.ToListAsync(ct);
         foreach (var t in teachers) t.HomeroomClass = newName;
 
-        return new RenameResult(chats, students.Count, teachers.Count);
+        return new RenameResult(students.Count, teachers.Count);
     }
 }

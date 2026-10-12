@@ -20,7 +20,7 @@ namespace WunderkindLC.Server;
 /// <c>&lt;img src="/uploads/..."&gt;</c> ga <c>Authorization</c> sarlavhasini YUBORMAYDI. Shuning
 /// uchun login qilgan foydalanuvchiga <c>Path=/uploads</c> ga cheklangan cookie qo'yiladi —
 /// brauzer uni rasm so'rovlarida o'zi yuboradi va frontend kodiga tegish kerak bo'lmaydi.
-/// Bu loyihadagi mavjud yondashuv bilan bir xil: <c>/ws</c> va SignalR ham sarlavha yubora
+/// Bu loyihadagi mavjud yondashuv bilan bir xil: SignalR (va 2026-10 gacha CTI <c>/ws</c>) ham sarlavha yubora
 /// olmagani uchun tokenni boshqa yo'l bilan oladi.</para>
 ///
 /// <para><b>Cookie qanday paydo bo'ladi?</b> Alohida "login" qadami YO'Q: SPA har qanday

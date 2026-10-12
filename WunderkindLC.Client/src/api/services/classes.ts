@@ -56,7 +56,7 @@ export async function getClass(id: string): Promise<Group> {
   return data
 }
 
-/** Guruhning FAOL a'zosi — SMS modali uchun (telefonlar + a'zolik holati + SHU GURUH balansi). */
+/** Guruhning FAOL a'zosi — Telegram xabar oynasi uchun (a'zolik holati + SHU GURUH balansi; telefonlar ishlatilmaydi). */
 export interface GroupSmsRecipient {
   studentId: string
   fullName: string
@@ -69,7 +69,7 @@ export interface GroupSmsRecipient {
 }
 
 /**
- * Guruh a'zolarining SMS uchun kerakli ma'lumoti.
+ * Guruh a'zolarining xabar oynasi uchun kerakli ma'lumoti (endpoint nomi tarixiy — `sms-recipients`).
  *
  * ⚠️ Ilgari SMS modali `getStudents()` bilan markazning BARCHA o'quvchisini (to'liq entity —
  * passport, manzil, chegirma va h.k.) tortib olib, brauzerda ~15 a'zoni filtrlardi. Endi

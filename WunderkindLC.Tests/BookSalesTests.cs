@@ -344,19 +344,23 @@ public class BookSalesTests
     }
 
     [Fact]
-    public void Handles_OnlineTestPrefikslariBilanToqnashmaydi()
+    public void Handles_ESKI_onlayn_test_callbacklari_bilan_toqnashmaydi()
     {
-        // TelegramBotService avval OnlineTestBotService.Handles ni sinaydi — ikkisi kesishsa
-        // kitob tugmalari onlayn testga ketib qolardi.
-        foreach (var d in new[]
+        // Onlayn test 2026-10 da olib tashlandi, lekin eski xabarlarda uning tugmalari qolgan: bosilsa
+        // TelegramBotService tushuntirish yuboradi. Kitob servisi ularni olmasligi, eski-test detektori
+        // esa kitob tugmalarini olmasligi kerak — kesishsa kitob tugmasi "test olib tashlandi" derdi.
+        foreach (var d in new[] { "ot:1", "oa:1:A", "og:2", "omb", "omt", "ofin", "ocon", "oedit", "ocan", "olist", "ocode" })
+        {
+            Assert.False(BookShopBotService.Handles(d), $"Kitob servisi eski onlayn test callback'ini oldi: {d}");
+            Assert.True(TelegramBotService.IsLegacyOnlineTestCallback(d), $"Eski test tugmasi tanilmadi: {d}");
+        }
+        foreach (var p in new[]
                  {
-                     OnlineTestBotService.CbOpen + "1", OnlineTestBotService.CbAnswer + "1:A",
-                     OnlineTestBotService.CbGoto + "2", OnlineTestBotService.CbModeButtons,
-                     OnlineTestBotService.CbModeText, OnlineTestBotService.CbFinish,
-                     OnlineTestBotService.CbConfirm, OnlineTestBotService.CbEdit,
-                     OnlineTestBotService.CbCancel, OnlineTestBotService.CbList,
+                     BookShopBotService.CbBook, BookShopBotService.CbQty, BookShopBotService.CbQtyOther,
+                     BookShopBotService.CbPayCash, BookShopBotService.CbPayCard, BookShopBotService.CbConfirm,
+                     BookShopBotService.CbSendReceipt, BookShopBotService.CbList, BookShopBotService.CbCancel,
                  })
-            Assert.False(BookShopBotService.Handles(d), $"Kitob servisi onlayn test callback'ini oldi: {d}");
+            Assert.False(TelegramBotService.IsLegacyOnlineTestCallback(p + "x"), $"Kitob tugmasi eski test deb olindi: {p}");
     }
 
     [Fact]

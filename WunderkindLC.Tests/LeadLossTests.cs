@@ -298,40 +298,7 @@ public class LeadLossTests
         Assert.Equal(new[] { "a" }, picked.Keys.ToArray());
     }
 
-    private static TrialReminderService Reminder(IAppDbContext ctx, MessagingStack stack) =>
-        new(new SingleServiceProvider(ctx), stack.Auto, NullLogger<TrialReminderService>.Instance);
-
-    [Fact]
-    public void Sinov_eslatmasi_YOQOTILGAN_lidga_yuborilmaydi()
-    {
-        using var db = TestDb.Sqlite();
-        var ctx = db.Context;
-        var today = AppClock.Today;
-        ctx.CenterMeta.Add(new CenterMeta { Name = "Wunderkind", LocalSmsEnabled = true });
-        ctx.AutoMessageRules.Add(new AutoMessageRule
-        {
-            Trigger = AutoMessageTriggers.TrialReminder, Enabled = true, SendSms = true,
-            SmsProvider = "local", Template = "Salom {fish}! Ertaga sinov darsingiz bor.",
-        });
-        var active = new Lead { FullName = "Faol Lid", Phone = "901111111", CreatedAt = AppClock.Iso() };
-        var lost = new Lead
-        {
-            FullName = "Yoqotilgan Lid", Phone = "902222222", CreatedAt = AppClock.Iso(),
-            LostAt = AppClock.Iso(), LostReason = "Narx qimmatlik qildi",
-        };
-        ctx.Leads.AddRange(active, lost);
-        foreach (var l in new[] { active, lost })
-            ctx.TrialLessons.Add(new TrialLesson
-            {
-                LeadId = l.Id, ScheduledAt = $"{today.AddDays(1):yyyy-MM-dd}T15:30", Result = "pending",
-            });
-        ctx.SaveChanges();
-
-        Reflect.RunAsyncMethod(Reminder(ctx, new MessagingStack()), "RunAsync", today, CancellationToken.None);
-
-        var log = Assert.Single(ctx.SmsLogs);
-        Assert.Contains("Faol Lid", log.Message);
-    }
+    // (Sinov_eslatmasi_YOQOTILGAN_lidga_yuborilmaydi — sinov darsi SMS eslatmasi 2026-10 da olib tashlandi.)
 
     // ============================== 5) Telegram kartasi ==============================
 

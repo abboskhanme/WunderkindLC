@@ -1,5 +1,5 @@
 /**
- * E'lon (Telegram) va Push (Firebase) bo'limlari uchun umumiy tayyor xabar andozalari va
+ * E'lon (Telegram) bo'limi uchun umumiy tayyor xabar andozalari va
  * o'rinbosarlar. O'rinbosarlar yuborishda har bir o'quvchiga moslab to'ldiriladi (backend).
  */
 export const messageTemplates: { label: string; text: string }[] = [

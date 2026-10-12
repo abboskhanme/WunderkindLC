@@ -22,7 +22,7 @@ namespace WunderkindLC.Server.Controllers;
 [AllowAnonymous]
 [Route("api/public/form")]
 public class PublicLeadFormController(
-    AppDbContext db, TelegramService telegram, AutoMessageService autoMsg, DataCache dataCache)
+    AppDbContext db, TelegramService telegram, DataCache dataCache)
     : ControllerBase
 {
     /// <summary>Slug bo'yicha faol formani oladi. Topilmasa 404.</summary>
@@ -50,7 +50,7 @@ public class PublicLeadFormController(
     [EnableRateLimiting("public-lead")]
     public async Task<ActionResult<LeadFormSubmitResultDto>> Submit(string slug, LeadFormSubmitRequest req)
     {
-        var (result, error) = await LeadFormService.SubmitAsync(db, slug, req, telegram, autoMsg);
+        var (result, error) = await LeadFormService.SubmitAsync(db, slug, req, telegram);
         if (error is not null) return BadRequest(new { message = error });
         if (result is null) return NotFound(new { message = "Forma topilmadi yoki faol emas" });
         return result;

@@ -983,7 +983,7 @@ public partial class InstagramController(
         // yangi (qaytgan o'quvchi uchun ochilgan) lid e'lon qilinsin. Qoida pipeline bilan YAGONA.
         var firstLink = !await IgLeadLinks.HasLiveLeadAsync(db, c.LeadId, ct);
         var (leadId, isNew) = await InstagramLeadBridge.UpsertAsync(
-            db, c, output, source, ct, autoMsg: HttpContext.RequestServices.GetService<AutoMessageService>());
+            db, c, output, source, ct);
         if (string.IsNullOrEmpty(leadId))
             return BadRequest(new { message = "Lid yaratilmadi — keyinroq qaytadan urinib ko'ring." });
 
@@ -1734,7 +1734,7 @@ public partial class InstagramController(
         try
         {
             (leadId, isNew) = await MetaLeadBridge.UpsertAsync(
-                db, row, meta.InstagramAdsLeadSource, ct, HttpContext.RequestServices.GetService<AutoMessageService>());
+                db, row, meta.InstagramAdsLeadSource, ct);
         }
         catch (Exception ex)
         {

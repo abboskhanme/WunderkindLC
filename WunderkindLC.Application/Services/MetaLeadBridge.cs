@@ -22,8 +22,7 @@ namespace WunderkindLC.Application.Services;
 ///
 /// <para>⚠️ <c>SaveChangesAsync</c> chaqirilmaydi — yozuvlar chaqiruvchining (pipeline)
 /// tranzaksiyasida saqlanadi. <see cref="Lead.PhoneKey"/> ham QO'LDA yozilmaydi
-/// (<c>AppDbContext.SaveChanges</c> o'zi hisoblaydi). ISTISNO: YANGI lidga <c>lead_new</c>
-/// avto-SMS'i (<c>autoMsg</c> berilsa) — u yuborilgan SMS jurnalini o'zi saqlaydi.</para>
+/// (<c>AppDbContext.SaveChanges</c> o'zi hisoblaydi).</para>
 /// </summary>
 public static class MetaLeadBridge
 {
@@ -38,12 +37,9 @@ public static class MetaLeadBridge
     /// </summary>
     /// <param name="adLead">Bazaga yozilayotgan reklama lidi (maydonlari to'ldirilgan).</param>
     /// <param name="sourceName">`CenterMeta.InstagramAdsLeadSource` — lid manbasining NOMI.</param>
-    /// <param name="autoMsg">Berilsa — YANGI, telefoni bor lidga <c>lead_new</c> avto-SMS'i yuboriladi
-    /// (lid formasi/landing bilan bir xil qoida; CRM-9).</param>
     /// <returns>Lid id va u YANGI yaratildimi.</returns>
     public static async Task<(string LeadId, bool IsNew)> UpsertAsync(
-        IAppDbContext db, IgAdLead adLead, string sourceName, CancellationToken ct = default,
-        AutoMessageService? autoMsg = null)
+        IAppDbContext db, IgAdLead adLead, string sourceName, CancellationToken ct = default)
     {
         var now = AppClock.Iso();
         var source = string.IsNullOrWhiteSpace(sourceName) ? DefaultSource : sourceName.Trim();
@@ -105,8 +101,6 @@ public static class MetaLeadBridge
             ToStage = stage,
         });
 
-        // «Yangi lid kelganda» avto-SMS'i — lid formasi va landing bilan bir xil (CRM-9).
-        await LeadIntake.DispatchLeadNewAsync(db, autoMsg, fresh, isNewLead: true, ct);
         return (fresh.Id, true);
     }
 

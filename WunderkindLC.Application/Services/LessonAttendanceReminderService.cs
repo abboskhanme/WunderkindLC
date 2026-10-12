@@ -19,7 +19,7 @@ namespace WunderkindLC.Application.Services;
 /// <item>"all" — kunlik <see cref="WunderkindLC.Domain.AutoMessageRule.ScheduleTime"/>da: BARCHA faol o'qituvchilarga
 /// (davomatni to'ldirganlarga ham).</item>
 /// </list>
-/// Kanal: push (FCM) + Telegram + ichki bildirishnoma. Andoza/vaqt "Sozlamalar → Eslatmalar"da boshqariladi;
+/// Kanal: kabinet bildirishnomasi (har doim) + Telegram (<see cref="AutoMessageChannels"/>). Andoza/vaqt "Sozlamalar → Eslatmalar"da boshqariladi;
 /// bir nechta qoida bo'lishi mumkin. Dars vaqti aniq daqiqa talab qilgani uchun sikl HAR 1 DAQIQADA uyg'onadi.
 ///
 /// <para><b>Kunning darslari</b> — o'qituvchi jadvali va «Darslar monitoringi» bilan BITTA manba
@@ -36,9 +36,6 @@ namespace WunderkindLC.Application.Services;
 public class LessonAttendanceReminderService(
     IServiceProvider services,
     TelegramService telegram,
-    FcmService fcm,
-    EskizService eskiz,
-    CtiSmsService ctiSms,
     ILogger<LessonAttendanceReminderService> logger) : BackgroundService
 {
     /// <summary>Belgilar shuncha kundan keyin o'chiriladi (faqat takrordan himoya uchun kerak).</summary>
@@ -86,11 +83,8 @@ public class LessonAttendanceReminderService(
         var lessons = await LessonsTodayAsync(db, today, ct);
 
         var meta = await db.CenterMeta.FirstOrDefaultAsync(ct);
-        var fcmJson = AppSecrets.FcmServiceAccountJson;
-        var pushReady = FcmService.IsConfigured(fcmJson);
         var todayStr = today.ToString("yyyy-MM-dd");
         var now = AppClock.Now;
-        var deadTokens = new List<string>();
 
         foreach (var rule in rules)
         {
@@ -105,9 +99,8 @@ public class LessonAttendanceReminderService(
 
                 try
                 {
-                    await SendDailyAsync(db, rule, lessons, todayStr, now, meta?.Name ?? "",
-                        fcmJson, pushReady, meta, deadTokens, ct);
-                    // Yetkazish yozuvlari (ilova tarixi, SMS jurnali) SHU YERDA saqlanadi — keyingi belgi
+                    await SendDailyAsync(db, rule, lessons, todayStr, now, meta?.Name ?? "", ct);
+                    // Yetkazish yozuvlari (kabinet tarixi) SHU YERDA saqlanadi — keyingi belgi
                     // ularning xatosi bilan yiqilmasin (TryMarkAsync izohi).
                     await db.SaveChangesAsync(ct);
                 }
@@ -134,7 +127,7 @@ public class LessonAttendanceReminderService(
 
                 try
                 {
-                    await SendAsync(db, rule, l, todayStr, meta?.Name ?? "", fcmJson, pushReady, meta, deadTokens, ct);
+                    await SendAsync(db, rule, l, todayStr, meta?.Name ?? "", ct);
                     await db.SaveChangesAsync(ct);
                 }
                 catch (Exception ex)
@@ -144,8 +137,6 @@ public class LessonAttendanceReminderService(
             }
         }
 
-        if (deadTokens.Count > 0)
-            db.DeviceTokens.RemoveRange(db.DeviceTokens.Where(d => deadTokens.Contains(d.Token)));
         await db.SaveChangesAsync(ct);
     }
 
@@ -222,7 +213,7 @@ public class LessonAttendanceReminderService(
     /// </summary>
     private async Task SendDailyAsync(
         IAppDbContext db, AutoMessageRule rule, List<AttendanceWatch.DayLesson> todayLessons, string todayStr, DateTime now,
-        string centerName, string fcmJson, bool pushReady, CenterMeta? meta, List<string> deadTokens, CancellationToken ct)
+        string centerName, CancellationToken ct)
     {
         if (rule.SendScope == ReminderSendScopes.All)
         {
@@ -234,7 +225,7 @@ public class LessonAttendanceReminderService(
             foreach (var teacher in teachers)
             {
                 var body = MessageTokenizer.Teacher(template, teacher, centerName);
-                await DeliverAsync(db, rule, teacher, title, body, fcmJson, pushReady, meta, deadTokens, ct);
+                await DeliverAsync(db, rule, teacher, title, body, ct);
             }
             return;
         }
@@ -243,13 +234,13 @@ public class LessonAttendanceReminderService(
         foreach (var l in todayLessons)
         {
             if (TimeSpan.TryParse(l.StartTime, out var start) && start > now.TimeOfDay) continue;
-            await SendAsync(db, rule, l, todayStr, centerName, fcmJson, pushReady, meta, deadTokens, ct);
+            await SendAsync(db, rule, l, todayStr, centerName, ct);
         }
     }
 
     private async Task SendAsync(
         IAppDbContext db, AutoMessageRule rule, AttendanceWatch.DayLesson lesson, string todayStr, string centerName,
-        string fcmJson, bool pushReady, CenterMeta? meta, List<string> deadTokens, CancellationToken ct)
+        CancellationToken ct)
     {
         var g = lesson.Group;
         // Davomat allaqachon kiritilgan bo'lsa — jim o'tkaziladi.
@@ -278,42 +269,24 @@ public class LessonAttendanceReminderService(
         var body = MessageTokenizer.Teacher(template, teacher, centerName, extra: extra, group: g);
         var title = string.IsNullOrWhiteSpace(rule.Name) ? "Davomat eslatmasi" : rule.Name;
 
-        await DeliverAsync(db, rule, teacher, title, body, fcmJson, pushReady, meta, deadTokens, ct);
+        await DeliverAsync(db, rule, teacher, title, body, ct);
     }
 
-    /// <summary>Bitta o'qituvchiga qoidada YOQILGAN kanallar orqali yetkazish: push (FCM) + Telegram + SMS.</summary>
+    /// <summary>Bitta o'qituvchiga yetkazish: kabinet bildirishnomasi (HAR DOIM, akkaunti bo'lsa) + Telegram
+    /// (<see cref="AutoMessageChannels.Telegram"/>).</summary>
     private async Task DeliverAsync(
-        IAppDbContext db, AutoMessageRule rule, Teacher teacher, string title, string body,
-        string fcmJson, bool pushReady, CenterMeta? meta, List<string> deadTokens, CancellationToken ct)
+        IAppDbContext db, AutoMessageRule rule, Teacher teacher, string title, string body, CancellationToken ct)
     {
-        if (rule.SendPush && teacher.UserId is not null)
-        {
+        if (teacher.UserId is not null)
             NotificationStore.Add(db, teacher.UserId, title, body, "lesson_attendance");
-            if (pushReady)
-            {
-                var tokens = await db.DeviceTokens.Where(d => d.UserId == teacher.UserId)
-                    .Select(d => d.Token).Distinct().ToListAsync(ct);
-                if (tokens.Count > 0)
-                {
-                    var res = await fcm.SendAsync(fcmJson, tokens, title, body, ct);
-                    deadTokens.AddRange(res.InvalidTokens);
-                }
-            }
-        }
 
-        if (rule.SendTelegram && telegram.IsConfigured)
+        if (AutoMessageChannels.Telegram(rule) && telegram.IsConfigured)
         {
             var chatIds = await db.TelegramRegistrations
                 .Where(r => r.TeacherId == teacher.Id)
                 .Select(r => r.ChatId).Distinct().ToListAsync(ct);
             foreach (var chatId in chatIds)
                 await telegram.SendMessageAsync(chatId, $"🔔 {title}\n\n{body}", ct: ct);
-        }
-
-        if (rule.SendSms && !string.IsNullOrWhiteSpace(teacher.Phone) && AutoMessageSmsSender.IsReady(rule.SmsProvider, meta, eskiz))
-        {
-            await AutoMessageSmsSender.SendAsync(
-                db, eskiz, ctiSms, rule.SmsProvider, teacher.Phone, teacher.FullName, body, "Davomat eslatmasi", ct);
         }
     }
 }

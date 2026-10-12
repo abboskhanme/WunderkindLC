@@ -44,7 +44,6 @@ public static class KpiMetricsService
     private const string LinkClasses = "/admin/classes";
     private const string LinkTasks = "/admin/topshiriqlar";
     /// <summary>Qo'ng'iroqlar isboti — Local Call bo'limi (yagona telefoniya, <see cref="KpiCallSource"/>).</summary>
-    private const string LinkCalls = KpiCallSource.Link;
     private const string LinkTickets = "/admin/boshqaruv/kpi/tiketlar";
     private const string LinkToday = "/admin/boshqaruv/kpi/bugun";
     private const string LinkHistory = "/admin/settings/history";
@@ -1219,8 +1218,6 @@ public static class KpiMetricsService
 
     private static double DailyTouches(KpiRuleSetJson r) => Math.Round(DailyLeads(r) * r.TouchesPerLead, 2);
 
-    /// <summary>Kunlik muloqot vaqti normasi (spetsifikatsiya §16: 2 soat).</summary>
-    private const double DailyTalkHoursNorm = 2.0;
 
     private static async Task<List<KpiNormDto>> IntakeNormsAsync(
         IAppDbContext db, string userId, string dayIso, KpiRuleSetJson rules, CancellationToken ct)
@@ -1238,25 +1235,17 @@ public static class KpiMetricsService
         var contracts = await db.Leads.AsNoTracking()
             .CountAsync(l => l.ClosedAt == dayIso && l.ClosedByUserId == userId, ct);
 
-        // Qo'ng'iroqlar — Local Call (`CtiCallRecord`), xodimning agent(lar)i bo'yicha.
-        // Vaqtlar `DateTime` (boshqa entitylardan FARQLI). «Teginish» — kiruvchi + chiquvchi,
-        // javobsiz kiruvchi KIRMAYDI (`KpiCallSource.IsTouch`).
-        var from = (ParseDate(dayIso) ?? AppClock.Today).ToDateTime(TimeOnly.MinValue);
-        var to = from.AddDays(1);
-        var (touches, talkSeconds) = await KpiCallSource.DailyTotalsAsync(db, userId, from, to, ct);
-
+        // (Qo'ng'iroq normalari — «Teginish» va «Muloqot vaqti» — 2026-10 dan YO'Q: manbai Local Call
+        //  agent-ilovasi edi, u olib tashlandi. O'lchab bo'lmaydigan normani 0 deb ko'rsatish xodimni
+        //  yolg'on "bajarmadi" holatiga tushirardi.)
         return
         [
             new KpiNormDto("leads", "Yangi lid", leads, DailyLeads(rules), "ta", false, LinkLeads,
                 "Bugun yaratilgan lidlar (mas'ul — siz yoki biriktirilmagan)"),
-            new KpiNormDto("touches", "Teginish (qo'ng'iroq/xabar)", touches, DailyTouches(rules), "ta",
-                false, LinkCalls, $"Bitta lidga {rules.TouchesPerLead:0.##} teginish rejasi"),
             new KpiNormDto("trialCame", "Sinovga kelgan", trials, DailyTrials(rules), "ta", false, LinkLeads,
                 "Bugun sinov darsiga KELGANLAR (markaz bo'yicha)"),
             new KpiNormDto("contracts", "Shartnoma", contracts, DailyContracts(rules), "ta", false, LinkLeads,
                 "Siz yopgan shartnomalar"),
-            new KpiNormDto("talkTime", "Muloqot vaqti", Math.Round(talkSeconds / 3600.0, 2),
-                DailyTalkHoursNorm, "soat", false, LinkCalls, "Bugungi qo'ng'iroqlar davomiyligi"),
         ];
     }
 

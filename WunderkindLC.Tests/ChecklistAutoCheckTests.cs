@@ -133,163 +133,20 @@ public class ChecklistAutoCheckTests
     }
 
     /* =========================================================================================
-     *  QO'NG'IROQLAR — manba Local Call (`CtiCallRecord`), xodim = agentning `StaffUserId` si
+     *  QO'NG'IROQLAR — 2026-10 dan QO'LDA (manba — Local Call agent-ilovasi — olib tashlandi)
      * ========================================================================================= */
 
-    private const string MyAgent = "agent-u1";
-
-    private static CtiCallRecord Missed(string phone, DateTime at, string agent = MyAgent) => new()
-    {
-        AgentId = agent,
-        RemoteNumber = phone,
-        Direction = "missed",
-        StartedAt = at,
-    };
-
-    private static CtiCallRecord Out(string phone, DateTime at, string agent = MyAgent) => new()
-    {
-        AgentId = agent,
-        RemoteNumber = phone,
-        Direction = "outgoing",
-        StartedAt = at,
-        DurationSec = 90,
-    };
-
-    private static CtiCallRecord Answered(int i, DateTime start, int answerSeconds, string agent = MyAgent) => new()
-    {
-        AgentId = agent,
-        RemoteNumber = $"90000000{i}",
-        Direction = "incoming",
-        StartedAt = start,
-        AnsweredAt = start.AddSeconds(answerSeconds),
-        DurationSec = 60,
-    };
-
-    /// <summary>Xodimning agenti + boshqa xodimning agenti + hech kimga biriktirilmagan agent.</summary>
-    private static void SeedAgents(TestDb db)
-    {
-        db.Context.CtiAgents.Add(new CtiAgent { Id = MyAgent, Login = "u1-tel", StaffUserId = User });
-        db.Context.CtiAgents.Add(new CtiAgent { Id = "agent-u2", Login = "u2-tel", StaffUserId = "u2" });
-        db.Context.CtiAgents.Add(new CtiAgent { Id = "agent-free", Login = "qabulxona", StaffUserId = null });
-    }
-
     [Fact]
-    public async Task Kechagi_javobsiz_qongiroq_qaytarilgan_bolsa_OTADI()
+    public async Task Qongiroq_bandlari_AVTO_tekshirilmaydi_qolda_belgilanadi()
     {
         using var db = TestDb.Sqlite();
-        db.Context.CtiCallRecords.Add(Missed("+998 90 123 45 67", At(Prev, 22)));
-        // Format boshqacha — solishtiruv oxirgi 9 raqam bo'yicha.
-        db.Context.CtiCallRecords.Add(Out("998901234567", At(Day, 9, 30)));
-        await db.Context.SaveChangesAsync();
-
-        Assert.True(await RunOne(db, ChecklistAutoCheck.CallsMissedReturned));
-    }
-
-    [Fact]
-    public async Task Qaytarish_BOSHQA_agent_telefonidan_bolsa_ham_OTADI()
-    {
-        // Band MARKAZ bo'yicha: javobsizni istalgan telefon qaytarishi mumkin.
-        using var db = TestDb.Sqlite();
-        SeedAgents(db);
-        db.Context.CtiCallRecords.Add(Missed("901234567", At(Prev, 22), agent: "agent-free"));
-        db.Context.CtiCallRecords.Add(Out("+998901234567", At(Day, 9, 30), agent: "agent-u2"));
-        await db.Context.SaveChangesAsync();
-
-        Assert.True(await RunOne(db, ChecklistAutoCheck.CallsMissedReturned));
-    }
-
-    [Fact]
-    public async Task Qaytarilmagan_javobsiz_qongiroq_bolsa_YIQILADI()
-    {
-        using var db = TestDb.Sqlite();
-        db.Context.CtiCallRecords.Add(Missed("901234567", At(Prev, 22)));
-        db.Context.CtiCallRecords.Add(Out("909999999", At(Day, 9, 30)));   // boshqa raqam
-        await db.Context.SaveChangesAsync();
-
-        Assert.False(await RunOne(db, ChecklistAutoCheck.CallsMissedReturned));
-    }
-
-    [Fact]
-    public async Task Javobsiz_qongiroqdan_OLDINGI_chiquvchi_hisobga_KIRMAYDI()
-    {
-        using var db = TestDb.Sqlite();
-        db.Context.CtiCallRecords.Add(Out("901234567", At(Prev, 10)));
-        db.Context.CtiCallRecords.Add(Missed("901234567", At(Prev, 22)));
-        await db.Context.SaveChangesAsync();
-
-        Assert.False(await RunOne(db, ChecklistAutoCheck.CallsMissedReturned));
-    }
-
-    [Fact]
-    public async Task Javobsizga_KIRUVCHI_qayta_qongiroq_qaytarish_EMAS()
-    {
-        // Mijozning o'zi qayta qo'ng'iroq qilgani "biz qaytardik" degani emas.
-        using var db = TestDb.Sqlite();
-        db.Context.CtiCallRecords.Add(Missed("901234567", At(Prev, 22)));
-        var callback = Answered(0, At(Day, 9), 5);
-        callback.RemoteNumber = "901234567";
-        db.Context.CtiCallRecords.Add(callback);
-        await db.Context.SaveChangesAsync();
-
-        Assert.False(await RunOne(db, ChecklistAutoCheck.CallsMissedReturned));
-    }
-
-    [Fact]
-    public async Task Kecha_javobsiz_qongiroq_bolmasa_OTADI()
-    {
-        using var db = TestDb.Sqlite();
-        Assert.True(await RunOne(db, ChecklistAutoCheck.CallsMissedReturned));
-    }
-
-    [Fact]
-    public async Task Tez_javob_ulushi_90_foizdan_yuqori_bolsa_OTADI()
-    {
-        using var db = TestDb.Sqlite();
-        SeedAgents(db);
-        for (var i = 0; i < 9; i++)
-            db.Context.CtiCallRecords.Add(Answered(i, At(Day, 10, i), 5));
-        // Javobsiz qo'ng'iroq maxrajga KIRMAYDI (boshqa bandning mavzusi).
-        db.Context.CtiCallRecords.Add(Missed("909999999", At(Day, 11)));
-        await db.Context.SaveChangesAsync();
-
-        Assert.True(await RunOne(db, ChecklistAutoCheck.CallsAnswerSpeed));
-    }
-
-    [Fact]
-    public async Task Sekin_javoblar_kop_bolsa_YIQILADI()
-    {
-        using var db = TestDb.Sqlite();
-        SeedAgents(db);
-        for (var i = 0; i < 4; i++)
-        {
-            // Hech kimga biriktirilmagan (umumiy) telefondagi kiruvchi ham sanaladi.
-            var agent = i == 0 ? "agent-free" : MyAgent;
-            db.Context.CtiCallRecords.Add(Answered(i, At(Day, 10, i), i == 0 ? 40 : 5, agent));
-        }
-        await db.Context.SaveChangesAsync();
-
-        Assert.False(await RunOne(db, ChecklistAutoCheck.CallsAnswerSpeed));
-    }
-
-    [Fact]
-    public async Task BOSHQA_xodim_agentidagi_sekin_javob_bu_xodimga_TUSHMAYDI()
-    {
-        using var db = TestDb.Sqlite();
-        SeedAgents(db);
-        db.Context.CtiCallRecords.Add(Answered(0, At(Day, 10), 5));
-        db.Context.CtiCallRecords.Add(Answered(1, At(Day, 10, 1), 60, agent: "agent-u2"));
-        await db.Context.SaveChangesAsync();
-
-        Assert.True(await RunOne(db, ChecklistAutoCheck.CallsAnswerSpeed));
-        // O'sha qo'ng'iroq u2 ning o'zi uchun esa hisobga kiradi.
-        Assert.False(await RunOne(db, ChecklistAutoCheck.CallsAnswerSpeed, user: "u2"));
-    }
-
-    [Fact]
-    public async Task Kiruvchi_qongiroq_bolmagan_kun_OTADI()
-    {
-        using var db = TestDb.Sqlite();
-        Assert.True(await RunOne(db, ChecklistAutoCheck.CallsAnswerSpeed));
+        var map = await ChecklistAutoCheck.RunAsync(db.Context, User, Day,
+            new[] { "auto:calls.missed_returned", "auto:calls.answer_speed" });
+        // Qo'llanmagan kalit javobga tushmaydi — band oddiy qo'lda belgilanadigan bandga aylanadi
+        // (yolg'on "o'tdi"/"yiqildi" bonusga ta'sir qilmasin).
+        Assert.Empty(map);
+        Assert.DoesNotContain("auto:calls.missed_returned", ChecklistAutoCheck.Supported);
+        Assert.DoesNotContain("auto:calls.answer_speed", ChecklistAutoCheck.Supported);
     }
 
     /* =========================================================================================

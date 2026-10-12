@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Bot, Loader2, Phone, Play, Plus, Shuffle, Square, Trash2 } from 'lucide-react'
+import { Phone, Plus, Trash2 } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
@@ -12,19 +12,14 @@ import { monthRange, todayIso } from '@/lib/month'
 import { formatMonth } from '@/config/constants'
 import {
   deleteKpiTicket,
-  getKpiCallSamples,
   getKpiTicketMeta,
   getKpiTickets,
   saveKpiTicket,
-  type KpiCallSampleDto,
-  type KpiProfileDto,
   type KpiTicketDto,
   type KpiTicketMetaDto,
 } from '@/api/services/kpi'
-import { fetchCtiCallAudioUrl } from '@/api/services/cti'
 import {
   TICKET_STATUSES,
-  callDirectionLabel,
   ticketStatus,
   useKpiParams,
   useKpiStaff,
@@ -64,7 +59,6 @@ export function KpiTicketsPage() {
     open: false,
     ticket: null,
   })
-  const [callsOpen, setCallsOpen] = useState(false)
 
   // Katalog (sabablar + 13 mezon + xodimlar) — bir marta.
   useEffect(() => {
@@ -159,16 +153,10 @@ export function KpiTicketsPage() {
           </Select>
           <MonthPicker month={month} onChange={setMonth} />
           {canCreate && (
-            <>
-              <Button variant="secondary" onClick={() => setCallsOpen(true)}>
-                <Shuffle className="h-4 w-4" />
-                Haftalik tekshiruv
-              </Button>
-              <Button onClick={() => setModal({ open: true, ticket: null })}>
-                <Plus className="h-4 w-4" />
-                Tiket qo'yish
-              </Button>
-            </>
+            <Button onClick={() => setModal({ open: true, ticket: null })}>
+              <Plus className="h-4 w-4" />
+              Tiket qo'yish
+            </Button>
           )}
         </>
       }
@@ -191,7 +179,7 @@ export function KpiTicketsPage() {
             title={`${formatMonth(month)} uchun tiket yo'q`}
             hint={
               canCreate
-                ? "Sifat nazoratini «Haftalik tekshiruv» tugmasidan boshlash qulay: tasodifiy 5 qo'ng'iroq tanlanadi."
+                ? "Kuzatilgan xatoni «Tiket qo'yish» tugmasi bilan yozing."
                 : "Tiket qo'yish uchun «KPI → Tiketlar» bo'yicha qo'shish ruxsati kerak."
             }
           />
@@ -232,39 +220,6 @@ export function KpiTicketsPage() {
         />
       )}
 
-      {callsOpen && (
-        <CallSamplesModal
-          key={`calls-${userId}`}
-          open
-          profiles={profiles}
-          defaultUserId={userId}
-          onClose={() => setCallsOpen(false)}
-          onTicket={(callId, forUserId) => {
-            setCallsOpen(false)
-            setModal({
-              open: true,
-              ticket: {
-                id: '',
-                userId: forUserId,
-                userName: '',
-                date: todayIso(),
-                reasonCode: '',
-                reasonLabel: '',
-                criterionNo: null,
-                criterionLabel: null,
-                callId,
-                note: null,
-                status: 'proposed',
-                issuedBy: null,
-                issuedAt: '',
-                disputeNote: null,
-                resolvedBy: null,
-                resolvedAt: null,
-              },
-            })
-          }}
-        />
-      )}
     </KpiShell>
   )
 }
@@ -390,7 +345,9 @@ function TicketModal({
   const [criterionNo, setCriterionNo] = useState(
     ticket?.criterionNo != null ? String(ticket.criterionNo) : '',
   )
-  const [callId, setCallId] = useState(ticket?.callId ?? '')
+  // Qo'ng'iroq ID — eski tiketlarda (Local Call olib tashlanmasdan oldin) bog'langan bo'lishi mumkin:
+  // tahrirlashda O'ZGARMASDAN qaytariladi, yangi tiketga qo'yilmaydi (manbasi yo'q).
+  const callId = ticket?.callId ?? ''
   const [note, setNote] = useState(ticket?.note ?? '')
   const [statusValue, setStatusValue] = useState(ticket?.status || 'proposed')
   const [disputeNote, setDisputeNote] = useState(ticket?.disputeNote ?? '')
@@ -504,13 +461,6 @@ function TicketModal({
           ))}
         </Select>
 
-        <Input
-          label="Qo'ng'iroq ID (ixtiyoriy)"
-          value={callId}
-          placeholder="Sifat nazoratidagi qo'ng'iroq"
-          onChange={(e) => setCallId(e.target.value)}
-        />
-
         <Select
           label="Holat"
           value={statusValue}
@@ -554,248 +504,4 @@ function TicketModal({
       </div>
     </Modal>
   )
-}
-
-/**
- * HAFTALIK SIFAT NAZORATI: xodimning tasodifiy 5 qo'ng'irog'i.
- *
- * <p>Har qatorda yozuv, transkript va (bo'lsa) AI tahlili ochiladi — rahbar tinglab,
- * darhol tiket qo'yishi mumkin. Tanlash TASODIFIY: xodim qaysi qo'ng'iroq tekshirilishini
- * oldindan bilmasligi kerak.</p>
- *
- * <p>Qo'ng'iroqlar — Local Call (CTI) yozuvlari. Yozuv Local Call'ning avtorizatsiyalangan audio
- * endpointidan (`GET /cti/calls/{id}/audio`) blob qilib tinglanadi — fayl manzili javobda YO'Q.
- * ⚠️ U endpoint Local Call qoidasiga bo'ysunadi: agentning O'Z xodimi va superadmin eshitadi,
- * boshqalarga 403 — bu holat ochiq yoziladi (jim "ishlamadi" emas).</p>
- */
-function CallSamplesModal({
-  open,
-  profiles,
-  defaultUserId,
-  onClose,
-  onTicket,
-}: {
-  open: boolean
-  profiles: KpiProfileDto[]
-  defaultUserId: string
-  onClose: () => void
-  onTicket: (callId: string, userId: string) => void
-}) {
-  const [userId, setUserId] = useState(defaultUserId || profiles[0]?.userId || '')
-  const [calls, setCalls] = useState<KpiCallSampleDto[]>([])
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [openId, setOpenId] = useState<string | null>(null)
-  const [tick, setTick] = useState(0)
-  const [requested, setRequested] = useState(false)
-  // Tinglanayotgan yozuv (blob URL) — bir vaqtda bittasi.
-  const [audio, setAudio] = useState<{ id: string; url: string } | null>(null)
-  const [audioLoading, setAudioLoading] = useState<string | null>(null)
-  const [audioError, setAudioError] = useState<{ id: string; text: string } | null>(null)
-
-  // Blob URL'ni bo'shatish: boshqa yozuv ochilganda (eski qiymat) va oyna yopilganda.
-  useEffect(() => () => {
-    if (audio) URL.revokeObjectURL(audio.url)
-  }, [audio])
-
-  const listen = async (id: string) => {
-    if (audio?.id === id) {
-      setAudio(null)
-      return
-    }
-    setAudioLoading(id)
-    setAudioError(null)
-    try {
-      setAudio({ id, url: await fetchCtiCallAudioUrl(id) })
-    } catch (err) {
-      const status = (err as { response?: { status?: number } })?.response?.status
-      setAudioError({
-        id,
-        text:
-          status === 403
-            ? "Bu yozuvni tinglash uchun «Local Call» ruxsati va shu agent-telefon sizga biriktirilgan bo'lishi kerak (superadmin hammasini eshitadi)."
-            : apiErrorMessage(err, "Yozuvni yuklab bo'lmadi"),
-      })
-    } finally {
-      setAudioLoading(null)
-    }
-  }
-
-  useEffect(() => {
-    if (!requested || !userId) return
-    let alive = true
-    getKpiCallSamples(userId, 5)
-      .then((list) => {
-        if (!alive) return
-        setCalls(list)
-        setError(null)
-        setLoading(false)
-      })
-      .catch((err) => {
-        if (!alive) return
-        setError(apiErrorMessage(err, 'Qo‘ng‘iroqlarni yuklab bo‘lmadi'))
-        setLoading(false)
-      })
-    return () => {
-      alive = false
-    }
-  }, [userId, tick, requested])
-
-  const request = () => {
-    if (!userId) return alert('Xodimni tanlang.')
-    setRequested(true)
-    setLoading(true)
-    setTick((t) => t + 1)
-  }
-
-  return (
-    <Modal
-      open={open}
-      onClose={onClose}
-      title="Haftalik sifat nazorati — 5 tasodifiy qo'ng'iroq"
-      size="xl"
-      footer={
-        <Button variant="secondary" onClick={onClose}>
-          Yopish
-        </Button>
-      }
-    >
-      <div className="mb-4 flex flex-wrap items-end gap-2">
-        <StaffPicker
-          profiles={profiles}
-          value={userId}
-          onChange={setUserId}
-          label="Xodim"
-          includeAll
-        />
-        <Button onClick={request} disabled={loading}>
-          <Shuffle className="h-4 w-4" />
-          {loading ? 'Tanlanmoqda...' : 'Tasodifiy 5 ta olish'}
-        </Button>
-      </div>
-
-      {error && <ErrorBanner text={error} onRetry={request} />}
-
-      {!requested ? (
-        <EmptyState
-          title="Tekshiruv boshlanmagan"
-          hint="Xodimni tanlab «Tasodifiy 5 ta olish» tugmasini bosing. Tanlov TASODIFIY: xodim qaysi qo'ng'iroq tinglanishini oldindan bilmasligi kerak."
-        />
-      ) : loading ? (
-        <Loader label="Tanlanmoqda..." />
-      ) : calls.length === 0 ? (
-        <EmptyState
-          title="Bu xodimda tekshiriladigan qo'ng'iroq topilmadi"
-          hint="Qo'ng'iroqlar Local Call'dan olinadi (xodimga biriktirilgan agent-telefon, oxirgi 7 kun, yozuvi bor, 60 soniyadan uzun) — agent biriktirilmagan yoki yozuv yuklanmagan bo'lsa namuna ham bo'lmaydi."
-        />
-      ) : (
-        <div className="divide-y divide-slate-100 rounded-xl border border-slate-200">
-          {calls.map((c) => (
-            <div key={c.callId} className="px-4 py-3">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="min-w-0">
-                  <p className="text-sm font-semibold text-slate-800">
-                    {c.phoneNumber}
-                    <span className="ml-2 text-[11.5px] font-medium text-slate-400">
-                      {callDirectionLabel(c.direction)} ·{' '}
-                      {formatDate(c.startedAt.slice(0, 10))} · {formatDuration(c.durationSeconds)}
-                    </span>
-                  </p>
-                  <div className="mt-1 flex flex-wrap gap-1.5">
-                    {c.hasRecording ? (
-                      <Badge tone="green">yozuv bor</Badge>
-                    ) : (
-                      <Badge tone="default">yozuv yo'q</Badge>
-                    )}
-                    {c.transcript && <Badge tone="blue">transkript</Badge>}
-                    {c.aiAnalysis && (
-                      <Badge tone="violet">
-                        <Bot className="h-3 w-3" />
-                        AI tahlil
-                      </Badge>
-                    )}
-                  </div>
-                </div>
-                <div className="flex shrink-0 gap-1.5">
-                  {c.hasRecording && (
-                    <Button
-                      variant="ghost"
-                      onClick={() => listen(c.callId)}
-                      disabled={audioLoading === c.callId}
-                    >
-                      {audioLoading === c.callId ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : audio?.id === c.callId ? (
-                        <Square className="h-4 w-4" />
-                      ) : (
-                        <Play className="h-4 w-4" />
-                      )}
-                      {audio?.id === c.callId ? "To'xtatish" : 'Tinglash'}
-                    </Button>
-                  )}
-                  {(c.transcript || c.aiAnalysis) && (
-                    <Button
-                      variant="ghost"
-                      onClick={() => setOpenId(openId === c.callId ? null : c.callId)}
-                    >
-                      {openId === c.callId ? 'Yopish' : 'Ochish'}
-                    </Button>
-                  )}
-                  <Button variant="secondary" onClick={() => onTicket(c.callId, userId)}>
-                    Tiket qo'yish
-                  </Button>
-                </div>
-              </div>
-
-              {audio?.id === c.callId && (
-                <audio className="mt-3 w-full" controls autoPlay src={audio.url} />
-              )}
-              {audioError?.id === c.callId && (
-                <p className="mt-2 text-[12.5px] font-medium text-red-600">{audioError.text}</p>
-              )}
-
-              {openId === c.callId && (
-                <div className="mt-3 space-y-3">
-                  {c.transcript && (
-                    <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-                      <p className="mb-1 text-[11px] font-bold uppercase tracking-wide text-slate-400">
-                        Transkript
-                      </p>
-                      <p className="whitespace-pre-wrap text-[12.5px] text-slate-700">
-                        {c.transcript}
-                      </p>
-                    </div>
-                  )}
-                  {c.aiAnalysis && (
-                    <div className="rounded-lg border border-brand-200 bg-brand-50 p-3">
-                      <p className="mb-1 text-[11px] font-bold uppercase tracking-wide text-brand-600">
-                        AI tahlil
-                      </p>
-                      <p className="whitespace-pre-wrap text-[12.5px] text-slate-700">
-                        {c.aiAnalysis}
-                      </p>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
-
-      <p className="mt-4 text-[11.5px] text-slate-400">
-        Bu yerdan qo'yilgan tiket <b>«Taklif qilindi»</b> holatida yaratiladi — pulga ta'sir
-        qilmaydi. Jarima faqat siz uni ro'yxatda TASDIQLAGANINGIZDAN keyin, «Qoidalar»
-        sahifasidagi tiket jarimasi summasida hisobga olinadi.
-      </p>
-    </Modal>
-  )
-}
-
-/** Soniyalarni "3:45" ko'rinishiga o'giradi. */
-function formatDuration(seconds: number): string {
-  if (!Number.isFinite(seconds) || seconds <= 0) return '0:00'
-  const m = Math.floor(seconds / 60)
-  const s = Math.floor(seconds % 60)
-  return `${m}:${String(s).padStart(2, '0')}`
 }

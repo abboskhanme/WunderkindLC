@@ -45,13 +45,13 @@ import { Loader } from '@/components/ui/Loader'
 import { Modal } from '@/components/ui/Modal'
 import { MoneyInput } from '@/components/ui/NumberInput'
 import { StudentFormModal } from './StudentFormModal'
-import { SmsModal } from './SmsModal'
+import { TelegramMessageModal } from './TelegramMessageModal'
 import { NeedContactModal } from './contacts/NeedContactModal'
 import { PaymentModal } from './PaymentModal'
 import { ReceiptModal } from '@/components/finance/ReceiptModal'
 import { PaymentHistoryModal } from './PaymentHistoryModal'
 import { ReasonPromptModal } from '@/components/ui/ReasonPromptModal'
-import { CallPickerModal, type CallOption } from '@/components/CallPickerModal'
+import { PhoneCallModal, type CallOption } from '@/components/PhoneCallModal'
 import { matchesSchoolGrade, schoolGradeDistribution, type SchoolGradeFilter } from '@/lib/schoolGrades'
 import { studentListPresetFromUrl } from '@/lib/homeCards'
 
@@ -121,7 +121,7 @@ function initials(name: string): string {
   return ((parts[0]?.[0] ?? '') + (parts[1]?.[0] ?? '')).toUpperCase() || '?'
 }
 
-/** Bo'sh raqamlarni tashlab, bir xil raqamni faqat birinchi label bilan qoldiradi (CallPickerModal uchun). */
+/** Bo'sh raqamlarni tashlab, bir xil raqamni faqat birinchi label bilan qoldiradi (PhoneCallModal uchun). */
 function dedupeCallOptions(options: CallOption[]): CallOption[] {
   const seen = new Set<string>()
   return options.filter((o) => {
@@ -219,13 +219,13 @@ export function StudentsPage() {
   // Yangi o'quvchi yaratilgach login/parolni ko'rsatish uchun (Eye tugmasi esa shaxsiy daftarga boradi).
   const [viewing, setViewing] = useState<Student | null>(null)
   const openNotebook = (s: Student) => navigate(`/admin/students/${s.id}`)
-  const [smsRecipients, setSmsRecipients] = useState<Student[]>([])
+  const [msgRecipients, setMsgRecipients] = useState<Student[]>([])
   const [paying, setPaying] = useState<Student | null>(null)
   /** To'lov cheki — to'lov kiritilgach shu tranzaksiya cheki ochiladi. */
   const [receiptTx, setReceiptTx] = useState<string | null>(null)
   const [receiptAuto, setReceiptAuto] = useState(false)
   const [historyOf, setHistoryOf] = useState<Student | null>(null)
-  /** Qo'ng'iroq qilish — CallPickerModal uchun tanlangan o'quvchi */
+  /** Qo'ng'iroq qilish — PhoneCallModal uchun tanlangan o'quvchi */
   const [callStudent, setCallStudent] = useState<Student | null>(null)
   const [deleting, setDeleting] = useState<Student | null>(null)
   /** Tanlanganlarni arxivga ko'chirish — sabab kiritish uchun */
@@ -1132,8 +1132,8 @@ export function StudentsPage() {
             <span className="text-sm font-semibold text-brand-700">
               {selected.size} ta tanlandi
             </span>
-            <Button variant="secondary" onClick={() => setSmsRecipients(selectedStudents)}>
-              <Send className="h-4 w-4" /> SMS yuborish
+            <Button variant="secondary" onClick={() => setMsgRecipients(selectedStudents)}>
+              <Send className="h-4 w-4" /> Telegram xabar
             </Button>
             {/* Tanlanganlarni bog'lanish navbatiga qo'shish — sabab bir marta tanlanadi. */}
             {can('contacts', 'create') && (
@@ -1522,10 +1522,10 @@ export function StudentsPage() {
         initial={editing}
       />
       <StudentViewModal student={viewing} onClose={() => setViewing(null)} />
-      <SmsModal
-        open={smsRecipients.length > 0}
-        onClose={() => setSmsRecipients([])}
-        recipients={smsRecipients}
+      <TelegramMessageModal
+        open={msgRecipients.length > 0}
+        onClose={() => setMsgRecipients([])}
+        recipients={msgRecipients}
       />
 
       {/* Tanlangan o'quvchilarni "Bog'lanish kerak" navbatiga qo'shish. Ochiq talabi
@@ -1556,7 +1556,7 @@ export function StudentsPage() {
         onClose={() => setHistoryOf(null)}
         onPaid={() => getStudents().then(setStudents).catch(() => {})}
       />
-      <CallPickerModal
+      <PhoneCallModal
         open={!!callStudent}
         onClose={() => setCallStudent(null)}
         title={callStudent?.fullName}
