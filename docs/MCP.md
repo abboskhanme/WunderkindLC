@@ -15,6 +15,8 @@ Ulanish **FAQAT O'QISH uchun** (markaz egasining qat'iy talabi):
 - Parol **AI ga berilmaydi**: ulashda brauzerda **bizning** kirish sahifamiz ochiladi, login va
   parol faqat o'sha yerga, markaz serveriga kiritiladi.
 - Login, parol, tokenlar, Telegram chat raqamlari, hujjat skanlari hech qachon AI ga chiqmaydi.
+  **O'quvchilarning login/parollari** (paneldagi «Kirish ma'lumotlari» seyfi) AI uchun butunlay yopiq — bazadagi
+  jadvalning birorta ustuni ham faqat-o'qish roliga berilmaydi, kimdir qo'lda ochsa ham AI ulanishi o'zi o'chadi.
 - Har bir AI so'rovi jurnalga yoziladi (Sozlamalar → Umumiy → **AI ulanishlar**).
 
 ## 1. Kimga ruxsat bor
@@ -89,19 +91,27 @@ ko'chirishdan oldin o'zingiz tekshiring.
 | Mavzu | Namuna savollar | Kerakli ruxsat |
 |---|---|---|
 | Umumiy holat | "Markazda nechta faol, sinovdagi va muzlatilgan o'quvchi bor?" | (ulanish ruxsati yetarli; qarz — Moliya) |
-| O'quvchilar | "Valiyev Ali haqida ma'lumot", "Telegramga ulanmagan faol o'quvchilar" | O'quvchilar ro'yxati va profili |
-| Guruhlar | "English A1 guruhi a'zolari", "Oktabr jurnali xulosasi", "Xonalar bandligi" | Guruhlar va jurnal / Xonalar / Kurslar |
-| Davomat | "Bugun kim kelmadi?", "Davomati olinmagan darslar", "Alining oxirgi oydagi davomati" | O'quvchilar davomati / Davomat qilinmagan guruhlar |
-| Moliya | "Eng katta 10 ta qarzdor", "Sentabr kirim va chiqim", "Kassalar qoldig'i", "O'qituvchilar maoshi" | Moliya (kirim/chiqim, hisobotlar, maosh) |
+| O'quvchilar | "Valiyev Ali haqida ma'lumot", "Telegramga ulanmagan faol o'quvchilar", "Alining otasi va onasi botga ulanganmi?", "Oktabrda IELTS olganlar" | O'quvchilar ro'yxati va profili |
+| Guruhlar | "English A1 guruhi a'zolari", "Oktabr jurnali xulosasi", "Xonalar bandligi", "2-qavatdagi xonalar" | Guruhlar va jurnal / Xonalar / Kurslar |
+| Davomat | "Bugun kim kelmadi?", "Sababsiz kelmaganlar", "Davomati olinmagan darslar", "Alining oxirgi oydagi davomati", "Ketma-ket 3 dars kelmaganlar (qizil ro'yxat)" | O'quvchilar davomati / Davomat qilinmagan guruhlar |
+| Davomat intizomi | "Bu hafta qaysi o'qituvchi davomatni kech oldi?", "Kecha davomat olinmagan darslar" | Davomat qilinmagan guruhlar (jarima summasi — Moliya) |
+| Moliya | "Eng katta 10 ta qarzdor", "Sentabr kirim va chiqim", "Kassalar qoldig'i", "O'qituvchilar maoshi", "Oktabr davomat jarimalari" | Moliya (kirim/chiqim, hisobotlar, maosh, jarimalar) |
+| Telegram xabarlar | "Kechagi e'lonni nechta ota-ona qabul qildi?", "Kimlar botni bloklagan?", "Bu hafta nechta «kelmadi» xabari ketdi?" | Telegram xabarlar (o'quvchining o'z xabarlari — O'quvchilar ham) |
 | Lidlar | "Oxirgi 30 kun voronkasi", "Yo'qotilgan lidlar sabablari" | Lidlar / CRM statistika |
-| Testlar va reyting | "Guruh testlari natijalari", "Markaz reytingi TOP-20" | Testlar natijalari / Guruhlar |
-| O'qituvchilar va jadval | "O'qituvchilar ro'yxati", "Seshanba kungi jadval", "Bo'sh xonalar" | O'qituvchilar / Dars jadvali |
-| Boshqa | "Bog'lanish navbati", "Topshiriqlar", "O'zgarishlar tarixi" | Bog'lanish kerak / Topshiriqlar / O'zgarishlar tarixi |
+| Testlar va reyting | "Guruh testlari natijalari", "Oktabr reytingi TOP-20 (testlar + ball)", "Alining 3 oylik reytingi", "English A1 o'quv yili reytingi" | Testlar natijalari / Reyting (guruh reytingi — Guruhlar ham, o'quvchi reytingi — O'quvchilar ham) |
+| O'qituvchilar va jadval | "O'qituvchilar ro'yxati", "Shu haftaning jadvali", "Jadvalda to'qnashuvlar bormi?", "Bo'sh xonalar" | O'qituvchilar / Dars jadvali |
+| Boshqa | "Bog'lanish navbati", "Tasdiq kutayotgan topshiriqlar", "O'zgarishlar tarixi" | Bog'lanish kerak / Topshiriqlar / O'zgarishlar tarixi |
 
 Ruxsat yo'q bo'limni so'rasangiz, AI "Ruxsat yo'q" javobini oladi — bu jurnalda ham ko'rinadi.
 
 Cheklovlar: bitta ro'yxat ko'pi bilan **200 qator** (qarzdorlar va maosh — 50); sana oralig'i ko'pi bilan
-**1 yil**; bitta so'rov ko'pi bilan **60 soniya**; bitta ulanishdan daqiqasiga 120 tadan ortiq so'rov qabul qilinmaydi.
+**1 yil** (Telegram xabarlar jurnali — 92 kun, davomat intizomi — 31 kun, haftalik jadval — 7 kun); bitta so'rov ko'pi
+bilan **60 soniya**; bitta ulanishdan daqiqasiga 120 tadan ortiq so'rov qabul qilinmaydi.
+
+Raqamlar panel bilan **bir xil**: davomat — yagona ta'rif (kech kelgan KELGAN, «sababsiz» — sababning «Sababli (uzrli)»
+belgisi bo'yicha, davomat «olingan» — birinchi «keldi»/«kelmadi» belgisi; faqat baho davomat emas); reyting — testlar +
+ball (Hisobotlar → Reyting bilan bir xil hisob). Qizil ro'yxat va reyting **5 daqiqagacha** eskirgan bo'lishi mumkin
+(server keshi).
 
 ## 5. Ulanishlarni ko'rish va bekor qilish
 
