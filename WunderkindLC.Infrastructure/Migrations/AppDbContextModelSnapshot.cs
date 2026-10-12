@@ -6679,6 +6679,9 @@ namespace WunderkindLC.Infrastructure.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp without time zone");
 
+                    b.Property<int?>("Floor")
+                        .HasColumnType("integer");
+
                     b.Property<bool>("IsActive")
                         .HasColumnType("boolean");
 
@@ -8675,6 +8678,10 @@ namespace WunderkindLC.Infrastructure.Migrations
                     b.Property<string>("UserId")
                         .HasColumnType("text");
 
+                    b.Property<string>("HomeLayout")
+                        .IsRequired()
+                        .HasColumnType("text");
+
                     b.Property<string>("Language")
                         .IsRequired()
                         .HasColumnType("text");
@@ -8784,6 +8791,16 @@ namespace WunderkindLC.Infrastructure.Migrations
                     b.Property<string>("Id")
                         .HasColumnType("text");
 
+                    b.Property<bool>("ApprovalRequired")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime?>("ApprovedAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<string>("ApprovedById")
+                        .IsRequired()
+                        .HasColumnType("text");
+
                     b.Property<string>("AssigneeId")
                         .IsRequired()
                         .HasMaxLength(200)
@@ -8827,6 +8844,9 @@ namespace WunderkindLC.Infrastructure.Migrations
                     b.Property<bool>("IsArchived")
                         .HasColumnType("boolean");
 
+                    b.Property<DateTime?>("LastReturnedAt")
+                        .HasColumnType("timestamp without time zone");
+
                     b.Property<int>("Order")
                         .HasColumnType("integer");
 
@@ -8843,6 +8863,9 @@ namespace WunderkindLC.Infrastructure.Migrations
                     b.Property<string>("RepeatOfId")
                         .IsRequired()
                         .HasColumnType("text");
+
+                    b.Property<int>("ReturnCount")
+                        .HasColumnType("integer");
 
                     b.Property<List<string>>("Tags")
                         .IsRequired()
