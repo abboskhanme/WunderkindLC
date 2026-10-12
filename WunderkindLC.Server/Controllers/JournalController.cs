@@ -27,20 +27,8 @@ public class JournalController(
         [FromQuery] string classId, [FromQuery] string subjectId, [FromQuery] int quarter)
         => await JournalService.ComputeColumnsAsync(db, classId, subjectId, quarter);
 
-    /// <summary>Berilgan sanada o'tilgan darslar (guruh+fan+dars raqami): ptichka yoki baho/davomat bo'lganlar.</summary>
-    [HttpGet("conducted")]
-    public async Task<ActionResult<IEnumerable<ConductedLessonDto>>> Conducted([FromQuery] string date)
-    {
-        var fromNotes = await db.LessonNotes
-            .Where(n => n.Date == date && n.Conducted)
-            .Select(n => new ConductedLessonDto(n.ClassId, n.SubjectId, n.Period))
-            .ToListAsync();
-        var fromEntries = await db.JournalEntries
-            .Where(e => e.Date == date && (e.Grade != null || e.ReasonId != null))
-            .Select(e => new ConductedLessonDto(e.ClassId, e.SubjectId, e.Period))
-            .ToListAsync();
-        return fromNotes.Concat(fromEntries).Distinct().ToList();
-    }
+    // `GET journal/conducted` (o'tilgan darslar, eski bosh sahifa) 2026-10-12 da OLIB TASHLANDI: klientda chaqiruvchisi
+    // yo'q edi va "o'tildi" ni "davomat olindi" deb ko'rsatardi (yagona ta'rif — journal.md, AttendanceTaking).
 
     [HttpGet]
     public async Task<ActionResult<IEnumerable<JournalEntryDto>>> GetEntries(

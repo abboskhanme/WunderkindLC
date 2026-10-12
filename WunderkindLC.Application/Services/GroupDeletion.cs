@@ -72,7 +72,8 @@ public static class GroupDeletion
     ///     o'qituvchi tarixi (<c>GroupTeacherAssignments</c>), AI tahlillari, «Chegirma (kelmagan
     ///     darslar)» qatorlari (ularning hisobi ham o'chadi), ketish sabablari jurnali (a'zoliklar
     ///     o'chgani uchun ularni hech kim o'qimaydi), guruh CHATI (nom bo'shaydi — yangi shu nomli
-    ///     guruh eski yozishmani meros olmasin; nom boshqa guruhda ham bo'lsa tegilmaydi).</item>
+    ///     guruh eski yozishmani meros olmasin; nom boshqa guruhda ham bo'lsa tegilmaydi), davomat
+    ///     JARIMALARI (<c>TeacherAttendanceFines</c>) va ketma-ket kelmaslik belgilari (<c>AbsenceStreakAlerts</c>).</item>
     ///   <item><b>BEKOR QILINADI</b>: shu guruhga qaratilgan AMALDAGI chegirmalar (tarix snapshot bilan qoladi).</item>
     ///   <item><b>QOLADI</b> (tarix/boshqa bo'lim): o'qituvchi haqidagi fikrlar, lid sinov darslari,
     ///     uzaytirish hodisalari (snapshot nomlar bilan), o'quvchining mashq urinishlari, xabar
@@ -152,6 +153,14 @@ public static class GroupDeletion
         var reasonLogs = await db.MembershipReasonLogs.Where(x => x.GroupId == id).ToListAsync(ct);
         db.MembershipReasonLogs.RemoveRange(reasonLogs);
         other += reasonLogs.Count;
+        // CRM Phase 3: guruhning davomat JARIMALARI (yo'q guruh bo'yicha maoshdan ushlanma qolmasin — o'chirish faqat
+        // pulsiz, xato ochilgan guruhga ruxsat etiladi) va ketma-ket kelmaslik belgilari (hosila ma'lumot).
+        var fines = await db.TeacherAttendanceFines.Where(x => x.GroupId == id).ToListAsync(ct);
+        db.TeacherAttendanceFines.RemoveRange(fines);
+        other += fines.Count;
+        var streaks = await db.AbsenceStreakAlerts.Where(x => x.GroupId == id).ToListAsync(ct);
+        db.AbsenceStreakAlerts.RemoveRange(streaks);
+        other += streaks.Count;
 
         // GURUH CHATI nom bilan bog'langan (GroupNames) — nom bo'shagach yangi guruh uni meros
         // olmasin. Eski dublikat (shu nomli boshqa guruh) bo'lsa chat o'sha guruhniki, tegilmaydi.

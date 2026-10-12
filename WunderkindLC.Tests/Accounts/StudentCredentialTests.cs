@@ -623,6 +623,21 @@ public class StudentCredentialLeakTests
     }
 
     [Fact]
+    public void Group_ensure_is_refused_with_400_while_the_vault_is_off_before_anything_changes()
+    {
+        // Review fix (2026-10-12): with no CREDENTIAL_VAULT_KEY the new passwords could not be stored — the old ones
+        // would stop working and the new ones would vanish after the first login. 400 + Uzbek reason, nothing written.
+        var src = Controller("GroupCredentialsController.cs");
+        var i = src.IndexOf("public async Task<IActionResult> Ensure(", StringComparison.Ordinal);
+        var body = src[i..src.IndexOf("\n    }", i, StringComparison.Ordinal)];
+        var check = body.IndexOf("if (!vault.Configured) return BadRequest(new { message = VaultOffMessage });", StringComparison.Ordinal);
+        Assert.True(check > 0, "no vault check in Ensure");
+        Assert.True(check < body.IndexOf("GroupCredentials.EnsureAsync(", StringComparison.Ordinal), "the vault check must come before EnsureAsync");
+        Assert.True(body.IndexOf("if (!MaySee) return Forbidden();", StringComparison.Ordinal) < check, "the permission gate stays first");
+        Assert.Contains("CREDENTIAL_VAULT_KEY", src[src.IndexOf("VaultOffMessage =", StringComparison.Ordinal)..]);
+    }
+
+    [Fact]
     public void Student_credentials_and_exports_use_the_vault_the_single_gate_and_no_store()
     {
         var src = Controller("StudentsController.cs");

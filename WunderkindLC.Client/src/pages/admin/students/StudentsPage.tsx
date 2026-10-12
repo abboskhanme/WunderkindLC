@@ -1153,9 +1153,12 @@ export function StudentsPage() {
             <span className="text-sm font-semibold text-brand-700">
               {selected.size} ta tanlandi
             </span>
-            <Button variant="secondary" onClick={() => setMsgRecipients(selectedStudents)}>
-              <Send className="h-4 w-4" /> Telegram xabar
-            </Button>
+            {/* Yuborish `messages.broadcast` ruxsatini talab qiladi — ruxsatsizga tugma ko'rsatilmaydi. */}
+            {can('messages.broadcast', 'create') && (
+              <Button variant="secondary" onClick={() => setMsgRecipients(selectedStudents)}>
+                <Send className="h-4 w-4" /> Telegram xabar
+              </Button>
+            )}
             {/* Tanlanganlarni bog'lanish navbatiga qo'shish — sabab bir marta tanlanadi. */}
             {can('contacts', 'create') && (
               <Button variant="secondary" onClick={() => setContactOpen(true)}>

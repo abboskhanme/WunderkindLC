@@ -53,6 +53,25 @@ public static class JobRunMarker
     }
 
     /// <summary>
+    /// Berilgan kalitlardan QAYSILARI shu sanada band qilingan (FAQAT o'qish, bitta so'rov). Kalit FORMATI o'zgargan
+    /// kunlik ishlar ESKI kalitlarni ham "bajarildi" deb o'qishi uchun (deploy kuni takror yubormaslik —
+    /// <c>BirthdayGreetingService</c>, <c>PaymentReminderService</c>).
+    /// </summary>
+    public static async Task<HashSet<string>> DoneKeysAsync(
+        IAppDbContext db, IEnumerable<string> keys, DateOnly date, CancellationToken ct = default)
+    {
+        var list = keys.Distinct(StringComparer.Ordinal).ToList();
+        if (list.Count == 0) return new HashSet<string>(StringComparer.Ordinal);
+        var d = DateKey(date);
+        var done = new HashSet<string>(StringComparer.Ordinal);
+        // Katta ro'yxat bitta IN ga sig'maydi (parametr chegarasi) — bo'laklab.
+        foreach (var chunk in list.Chunk(500))
+            done.UnionWith(await db.BackgroundJobRuns.AsNoTracking()
+                .Where(r => chunk.Contains(r.Key) && r.LastRunDate == d).Select(r => r.Key).ToListAsync(ct));
+        return done;
+    }
+
+    /// <summary>
     /// Kalitni shu sana uchun ATOMIK band qiladi. <c>true</c> — chaqiruvchi yutdi (ishni bajarishi
     /// kerak); <c>false</c> — shu sanada allaqachon band qilingan (boshqa nusxa yoki oldingi urinish).
     /// Bazaga yozib bo'lmasa (poyga EMAS) — xato tashqariga chiqadi (jimgina "band" deb o'qilmaydi).

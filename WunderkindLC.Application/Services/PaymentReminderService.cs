@@ -36,6 +36,16 @@ public class PaymentReminderService(
     /// <summary>Kalitlar prefiksi: qoida — <c>payment_debt:{ruleId}</c>, oluvchi — <c>payment_debt:{ruleId}:{studentId}</c>.</summary>
     public const string JobKey = AutoMessageTriggers.PaymentDebt;
 
+    /// <summary>
+    /// ESKI (2026-10-12 gacha) kalitlar: butun ish — <c>payment_debt</c>, oluvchi — <c>payment_debt:{studentId}</c>.
+    /// Deploy KUNI eski xizmat ertalab eslatib bo'lgan bo'lsa, yangi (qoida bo'yicha) kalitlar bo'sh — ular BUGUN uchun
+    /// "bajarildi" deb o'qiladi, aks holda har qarzdor ikkinchi eslatma olardi.
+    /// </summary>
+    public const string LegacyJobKey = JobKey;
+
+    /// <summary>Eski oluvchi kaliti (<c>payment_debt:{studentId}</c>).</summary>
+    public static string LegacyRecipientKey(string studentId) => JobRunMarker.For(JobKey, studentId);
+
     public static readonly TimeSpan TickInterval = TimeSpan.FromMinutes(10);
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -79,6 +89,8 @@ public class PaymentReminderService(
             {
                 var db = scope.ServiceProvider.GetRequiredService<IAppDbContext>();
                 if (await JobRunMarker.IsDoneAsync(db, key, today, ct)) continue;
+                // Deploy kuni: eski xizmat bugun BUTUN ishni tugatgan — qayta yuborilmaydi.
+                if (await JobRunMarker.IsDoneAsync(db, LegacyJobKey, today, ct)) continue;
             }
             if (!await RunRuleAsync(rule.Id, today, ct)) continue;
             using (var scope = services.CreateScope())
@@ -171,6 +183,8 @@ public class PaymentReminderService(
         var groupByName = (await db.Classes.ToListAsync(ct)).GroupBy(c => c.Name).ToDictionary(g => g.Key, g => g.First());
         var teacherNames = await MessageTokenizer.TeacherNamesByIdAsync(db, ct);
         var day = today.ToString("yyyy-MM-dd");
+        // Deploy kuni: eski xizmat bugun eslatib ulgurgan qarzdorlar (eski oluvchi kaliti) — takror yo'q.
+        var legacyDone = await JobRunMarker.DoneKeysAsync(db, debtors.Select(s => LegacyRecipientKey(s.Id)), today, ct);
 
         int queued = 0, cabinet = 0, students = 0, messages = 0, alreadySent = 0, noGroupDebt = 0;
         var unclaimedFailures = 0;
@@ -180,6 +194,7 @@ public class PaymentReminderService(
             var claimed = false;
             try
             {
+                if (legacyDone.Contains(LegacyRecipientKey(s.Id))) { alreadySent++; continue; }
                 var items = await DebtMessages.BuildForStudentAsync(db, s, groupByName, ct);
                 if (items.Count == 0) { noGroupDebt++; continue; }
 

@@ -329,8 +329,11 @@ public class RatingEngineTests
     // ------------------------------------------------------------------ legacy SchoolAsync
 
     /// <summary>
-    /// The legacy <c>RatingService.SchoolAsync</c> exactly as it was before the SQL rewrite (it loaded the whole
-    /// journal into memory). Kept here only as the reference the new implementation must match.
+    /// The legacy <c>RatingService.SchoolAsync</c> as it was before the SQL rewrite (it loaded the whole journal into
+    /// memory) — kept as the in-memory REFERENCE the SQL implementation must match. Its attendance is the ONE definition
+    /// (review fix 2026-10-12): every conducted lesson classified one by one with <see cref="AttendanceRules.Classify(bool,bool,bool,bool,JournalEntry?,AbsenceReason?)"/>,
+    /// the implicit «keldi» only when attendance was taken AND the day is inside the membership window
+    /// (<see cref="MembershipAttendance.ImplicitWindow"/>). Before, it was (conducted − absent) ÷ conducted.
     /// </summary>
     private static async Task<List<StudentRatingRowDto>> LegacySchoolAsync(AppDbContext db)
     {
@@ -338,18 +341,25 @@ public class RatingEngineTests
         var students = await db.Students.Where(s => !s.IsArchived).ToListAsync();
         var classes = await db.Classes.ToListAsync();
         var classById = classes.ToDictionary(c => c.Id);
-        var lateIds = (await db.AbsenceReasons.Where(r => r.IsLate).Select(r => r.Id).ToListAsync()).ToHashSet();
-        var groupsByStudent = (await db.StudentGroups.Where(m => m.IsActive).ToListAsync())
+        var reasons = (await db.AbsenceReasons.ToListAsync()).ToDictionary(r => r.Id);
+        var live = await db.StudentGroups.Where(m => m.IsActive).ToListAsync();
+        var groupsByStudent = live
             .GroupBy(m => m.StudentId)
             .ToDictionary(g => g.Key, g => g
                 .OrderBy(m => MembershipLifecycle.StateRank(m.Status))
                 .ThenByDescending(m => m.JoinedAt ?? string.Empty, StringComparer.Ordinal)
                 .Select(m => m.GroupId).Distinct().ToList());
+        var memberOf = live
+            .GroupBy(m => (m.StudentId, m.GroupId))
+            .ToDictionary(g => g.Key, g => g
+                .OrderBy(m => MembershipLifecycle.StateRank(m.Status))
+                .ThenByDescending(m => m.JoinedAt, StringComparer.Ordinal).First());
         var entriesByClass = (await db.JournalEntries.ToListAsync())
             .GroupBy(e => e.ClassId).ToDictionary(g => g.Key, g => g.ToList());
-        var conductedByClass = (await db.LessonNotes.Where(n => n.Conducted).ToListAsync())
+        var lessonsByClass = (await db.LessonNotes.Where(n => n.Conducted).ToListAsync())
             .GroupBy(n => n.ClassId)
-            .ToDictionary(g => g.Key, g => g.Select(n => (n.SubjectId, n.Date, n.Period)).ToHashSet());
+            .ToDictionary(g => g.Key, g => g.GroupBy(n => (n.SubjectId, n.Date, n.Period))
+                .Select(x => (Key: x.Key, Taken: x.Any(n => n.AttendanceTaken))).ToList());
 
         var result = new List<StudentRatingRowDto>();
         foreach (var st in students)
@@ -359,21 +369,29 @@ public class RatingEngineTests
                 : classes.Where(c => !string.IsNullOrEmpty(st.ClassName) && c.Name == st.ClassName).Select(c => c.Id).ToList();
             if (groupIds.Count == 0) continue;
             var grades = new List<double>();
-            int conducted = 0, absent = 0;
+            var marks = new List<LessonMark>();
             foreach (var gid in groupIds)
             {
                 var mine = entriesByClass.TryGetValue(gid, out var ents)
                     ? ents.Where(e => e.StudentId == st.Id).ToList() : new List<JournalEntry>();
                 grades.AddRange(mine.Where(e => e.Grade.HasValue).Select(e => (double)e.Grade!.Value));
-                if (conductedByClass.TryGetValue(gid, out var cond))
+                if (!lessonsByClass.TryGetValue(gid, out var lessons)) continue;
+                var window = memberOf.TryGetValue((st.Id, gid), out var m)
+                    ? MembershipAttendance.ImplicitWindow(new MembershipAttendance.Member(
+                        m.Id, m.StudentId, m.GroupId, m.Status, m.JoinedAt, m.ActivatedAt, m.FrozenAt, m.LeftAt, m.RecordedAt))
+                    : ((string?)null, (string?)null);   // legacy ClassName fallback — no membership, no window
+                foreach (var (key, taken) in lessons)
                 {
-                    conducted += cond.Count;
-                    absent += mine.Count(e => e.ReasonId != null && !lateIds.Contains(e.ReasonId)
-                        && cond.Contains((e.SubjectId, e.Date, e.Period)));
+                    // One cell: a reason row wins over «keldi»/grade rows of the same lesson (Classify's order).
+                    var cell = mine.Where(x => (x.SubjectId, x.Date, x.Period) == key).ToList();
+                    var e = cell.FirstOrDefault(x => x.ReasonId != null) ?? cell.FirstOrDefault();
+                    var reason = e?.ReasonId is null ? null : reasons.GetValueOrDefault(e.ReasonId) ?? new AbsenceReason();
+                    marks.Add(AttendanceRules.Classify(true, taken && MembershipAttendance.InWindow(key.Date, window),
+                        false, false, e, reason));
                 }
             }
             var average = grades.Count > 0 ? Math.Round(grades.Average(), 1) : 0;
-            double? attendance = conducted > 0 ? Math.Round((double)(conducted - absent) / conducted * 100) : null;
+            double? attendance = AttendanceRules.Tally(marks).Percent;
             var firstCls = classById.TryGetValue(groupIds[0], out var c0) ? c0 : null;
             var b = balls.GetValueOrDefault(st.Id);
             result.Add(new StudentRatingRowDto(
@@ -395,11 +413,17 @@ public class RatingEngineTests
             new AbsenceReason { Id = "late", Name = "Kech", Short = "Kch", IsLate = true });
         db.Classes.Add(new Group { Id = "g3", Name = "Old group", CourseId = "s1", Grade = 7 });
         db.Students.Add(new Student { Id = "e", FullName = "Ergashev Erkin", ClassName = "Old group" });
-        db.StudentGroups.Add(new StudentGroup { StudentId = "b", GroupId = "g2", IsActive = true, Status = "frozen", JoinedAt = "2026-10-01" });
+        // b is frozen in g2 on 10-05 — the taken lesson of 10-06 is outside its window (no implicit «keldi»).
+        db.StudentGroups.Add(new StudentGroup
+        {
+            StudentId = "b", GroupId = "g2", IsActive = true, Status = "frozen", JoinedAt = "2026-10-01", FrozenAt = "2026-10-05",
+        });
         db.StudentGroups.Add(new StudentGroup { StudentId = "c", GroupId = "g1", IsActive = true, Status = "trial", JoinedAt = "2026-10-02" });
-        foreach (var (g, s, d, per) in new[] { ("g1", "s1", "2026-10-05", 1), ("g1", "s1", "2026-10-07", 1), ("g1", "s1", "2026-10-07", 1),
-                     ("g2", "s2", "2026-10-06", 1), ("g3", "s1", "2026-10-06", 2) })
-            db.LessonNotes.Add(new LessonNote { ClassId = g, SubjectId = s, Date = d, Period = per, Conducted = true });
+        // Attendance TAKEN on 10-05 (g1), 10-06 (g2, g3) — implicit «keldi» there; 10-07 only conducted (one grade is
+        // not attendance) — unmarked students are NOT counted.
+        foreach (var (g, s, d, per, taken) in new[] { ("g1", "s1", "2026-10-05", 1, true), ("g1", "s1", "2026-10-07", 1, false),
+                     ("g1", "s1", "2026-10-07", 1, false), ("g2", "s2", "2026-10-06", 1, true), ("g3", "s1", "2026-10-06", 2, true) })
+            db.LessonNotes.Add(new LessonNote { ClassId = g, SubjectId = s, Date = d, Period = per, Conducted = true, AttendanceTaken = taken });
         db.LessonNotes.Add(new LessonNote { ClassId = "g1", SubjectId = "s1", Date = "2026-10-09", Period = 1, Conducted = false });
         db.JournalEntries.AddRange(
             new JournalEntry { StudentId = "a", ClassId = "g1", SubjectId = "s1", Date = "2026-10-07", Period = 2, ReasonId = "sick" },
@@ -411,7 +435,7 @@ public class RatingEngineTests
     }
 
     [Fact]
-    public async Task Legacy_SchoolAsync_keeps_its_numbers_and_matches_MCP()
+    public async Task SchoolAsync_matches_the_in_memory_reference_and_MCP()
     {
         using var host = new McpTestHost();
         SeedLegacy(host.Rw);

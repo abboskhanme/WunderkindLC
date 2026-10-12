@@ -182,13 +182,14 @@ export type LessonPhase = 'done' | 'substituted' | 'now' | 'pending' | 'upcoming
 
 /**
  * Darsning holati. Tartib muhim:
- * 1) o'tildi (jurnalda belgilangan) — boshqa hech narsa qiziq emas;
+ * 1) davomat OLINGAN (`attendanceTaken` — yagona ta'rif; bitta baho bilan "o'tildi" bo'lgan dars EMAS) —
+ *    boshqa hech narsa qiziq emas;
  * 2) boshqa odam o'tadi — o'qituvchidan davomat kutilmaydi;
  * 3) vaqt bo'yicha: hozir / tugagan-u belgilanmagan (kutilmoqda) / bugun keyinroq / kelajak.
  * O'tgan kundagi belgilanmagan dars ham "kutilmoqda" — u hali to'ldirilishi kerak.
  */
 export function lessonPhase(l: TeacherLesson, today: string, now: string): LessonPhase {
-  if (l.conducted) return 'done'
+  if (l.attendanceTaken) return 'done'
   if (l.substitutedBy) return 'substituted'
   if (l.date < today) return 'pending'
   if (l.date > today) return 'future'

@@ -1283,7 +1283,7 @@ public static class KpiMetricsService
     }
 
     /// <summary>Ketma-ket kelmagan o'quvchilar (2 va 3 dars).</summary>
-    private sealed record Streaks(List<KpiAlertRowDto> Two, List<KpiAlertRowDto> Three);
+    internal sealed record Streaks(List<KpiAlertRowDto> Two, List<KpiAlertRowDto> Three);
 
     /// <remarks>
     /// ⚠️ Ketma-ketlik SAQLANMAYDI — u har so'rovda jurnaldan hisoblanadi. Saqlansa, davomat
@@ -1295,11 +1295,16 @@ public static class KpiMetricsService
     /// yo'qlik / kech / keldi seriyani to'xtatadi, belgilanmagan dars o'tkazib yuboriladi. O'quvchi bo'yicha eng
     /// uzun seriya olinadi (takrorsiz o'quvchilar). Ilgari "Present emas" bo'lgan HAR yozuv (baho, kech ham)
     /// sanalardi va guruhlar aralashardi.</para>
+    /// <para>⚠️ FAQAT YANGI seriyalar (review fix 2026-10-12): oxirgi yo'qlik ≤ 14 kun oldin
+    /// (<see cref="AbsenceStreaks.IsFresh"/>) — avtomatik «Bog'lanish kerak» qoidasi bilan BIR XIL. Aks holda oylar oldin
+    /// kelmay qo'ygan (guruhdan chiqarilmagan) o'quvchilar "Norma 0" ko'rsatkichini abadiy qizil qilib turardi.</para>
     /// </remarks>
-    private static async Task<Streaks> AbsenceStreaksAsync(IAppDbContext db, string dayIso, CancellationToken ct)
+    internal static async Task<Streaks> AbsenceStreaksAsync(IAppDbContext db, string dayIso, CancellationToken ct)
     {
         var day = ParseDate(dayIso) ?? AppClock.Today;
-        var rows = await AbsenceStreakLoader.ComputeAsync(db, day, ct);
+        var rows = (await AbsenceStreakLoader.ComputeAsync(db, day, ct))
+            .Where(r => AbsenceStreaks.IsFresh(r.Streak, day))
+            .ToList();
 
         var two = new List<KpiAlertRowDto>();
         var three = new List<KpiAlertRowDto>();

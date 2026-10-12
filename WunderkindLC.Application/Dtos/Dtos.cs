@@ -1041,8 +1041,6 @@ public record SetJournalEntryRequest(
     int? Grade, string? ReasonId, int Homework = 0, int Behavior = 0, MasteryLevel? Mastery = null,
     bool Present = false);
 public record JournalTopicDto(string Date, int Period, string Topic, string? Homework, bool Conducted);
-/// <summary>Berilgan sanada o'tilgan (conducted) darslar — guruh+fan+dars raqami.</summary>
-public record ConductedLessonDto(string ClassId, string SubjectId, int Period);
 
 /* ---------- Guruh OYLIK jurnali (guruh sahifasidan) ---------- */
 /// <summary>Guruh jurnali sarlavhasi: guruh + kurs + o'qituvchi + jadval ma'lumotlari.</summary>
@@ -1920,8 +1918,6 @@ public record TelegramTeacherDto(
 /// <summary>Tayyor matn (andoza) — faqat QO'LDA yuborish uchun (avto-hodisalar AutoMessageRule'da).
 /// Nomi tarixiy (<c>SmsTemplate</c> jadvali) — endi Telegram e'lonida ishlatiladi.</summary>
 public record SmsTemplateDto(string Id, string Name, string Text, int Order);
-/// <summary>Andozani saqlash (yaratish/tahrirlash).</summary>
-public record SaveSmsTemplateRequest(string Name, string Text);
 /// <summary>"Tanlab" e'lon uchun o'quvchi. <c>TelegramChats</c> — o'quvchiga ulangan Telegram chatlari soni
 /// (0 — e'lon unga yetib bormaydi).</summary>
 public record MessageRecipientDto(string StudentId, string FullName, string ClassName, int TelegramChats);

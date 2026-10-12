@@ -362,8 +362,12 @@ export interface TeacherLesson {
   substitutedBy: string
   /** Boshqa kundan shu kunga ko'chirilgan dars */
   moved: boolean
-  /** Jurnalda "o'tildi" (davomat/baho kiritilgan) */
+  /** Jurnalda "o'tildi" (bitta baho ham yetadi) — DAVOMAT OLINDI degani EMAS. */
   conducted: boolean
+  /** Davomat olingan: shu kuni guruhning birinchi davomat belgisi bor (`LessonNote.AttendanceTakenAt` — eslatma, jarima
+   *  va monitor bilan bir xil yagona ta'rif, journal.md). Dars holati, «Davomat kutilmoqda» va tezkor davomat SHUNGA
+   *  qaraydi. Eski server javobida bo'lmasligi mumkin (undefined = olinmagan). */
+  attendanceTaken?: boolean
 }
 
 export interface TeacherGroupCard {

@@ -268,42 +268,10 @@ public class MessagesController(AppDbContext db, TelegramService telegram) : Con
 
     // Avto-hodisalar YAGONA "Avto xabarlar" (AutoMessageRule) moduliga ko'chdi — andozalar faqat
     // QO'LDA yuborish uchun.
-
-    [HttpPost("templates")]
-    public async Task<ActionResult<SmsTemplateDto>> CreateTemplate(SaveSmsTemplateRequest req)
-    {
-        var name = (req.Name ?? "").Trim();
-        var text = (req.Text ?? "").Trim();
-        if (name.Length == 0 || text.Length == 0) return BadRequest(new { message = "Nom va matn kerak" });
-        var order = (await db.SmsTemplates.MaxAsync(t => (int?)t.Order) ?? 0) + 1;
-        var t = new SmsTemplate { Name = name, Text = text, Order = order };
-        db.SmsTemplates.Add(t);
-        await db.SaveChangesAsync();
-        return new SmsTemplateDto(t.Id, t.Name, t.Text, t.Order);
-    }
-
-    [HttpPut("templates/{id}")]
-    public async Task<ActionResult<SmsTemplateDto>> UpdateTemplate(string id, SaveSmsTemplateRequest req)
-    {
-        var t = await db.SmsTemplates.FindAsync(id);
-        if (t is null) return NotFound();
-        var name = (req.Name ?? "").Trim();
-        var text = (req.Text ?? "").Trim();
-        if (name.Length == 0 || text.Length == 0) return BadRequest(new { message = "Nom va matn kerak" });
-        t.Name = name; t.Text = text;
-        await db.SaveChangesAsync();
-        return new SmsTemplateDto(t.Id, t.Name, t.Text, t.Order);
-    }
-
-    [HttpDelete("templates/{id}")]
-    public async Task<IActionResult> DeleteTemplate(string id)
-    {
-        var t = await db.SmsTemplates.FindAsync(id);
-        if (t is null) return NotFound();
-        db.SmsTemplates.Remove(t);
-        await db.SaveChangesAsync();
-        return NoContent();
-    }
+    //
+    // ⚠️ Eski `POST/PUT/DELETE messages/templates` 2026-10-12 da OLIB TASHLANDI (klientda chaqiruvchisi yo'q edi):
+    // shablonni YOZISH yagona yo'ldan — `MessagingController` (`messaging/templates`: Telegram HTML tekshiruvi,
+    // noma'lum token, audit). Bu yerda faqat O'QISH qoldi.
 
     // (Lidga SMS — sms/lead, sms/lead-bulk — 2026-10 da olib tashlandi: lidning Telegram manzili yo'q.)
 

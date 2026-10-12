@@ -23,7 +23,7 @@ import {
 const lesson = (p: Partial<TeacherLesson> = {}): TeacherLesson => ({
   groupId: 'g1', groupName: 'A1', courseName: 'Ingliz tili', date: '2026-09-27',
   startTime: '14:00', endTime: '15:30', room: '101', studentCount: 10,
-  isSubstitute: false, substitutedBy: '', moved: false, conducted: false, ...p,
+  isSubstitute: false, substitutedBy: '', moved: false, conducted: false, attendanceTaken: false, ...p,
 })
 
 describe('sana yordamchilari', () => {
@@ -62,7 +62,9 @@ describe('lessonPhase — dars holati', () => {
   const today = '2026-09-27'
 
   it("o'tilgan dars boshqa hamma narsadan ustun", () => {
-    expect(lessonPhase(lesson({ conducted: true, substitutedBy: 'X' }), today, '10:00')).toBe('done')
+    expect(lessonPhase(lesson({ attendanceTaken: true, substitutedBy: 'X' }), today, '10:00')).toBe('done')
+    // Yagona ta'rif: bitta baho bilan "o'tildi" bo'lgan dars davomati OLINGAN emas — hali kutilmoqda.
+    expect(lessonPhase(lesson({ conducted: true, date: '2026-09-01' }), today, '10:00')).toBe('pending')
   })
 
   it("boshqa odam o'tadigan dars — davomat kutilmaydi", () => {

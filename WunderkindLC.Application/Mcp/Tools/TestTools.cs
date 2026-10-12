@@ -368,8 +368,9 @@ public sealed class TestTools(McpToolContext t)
         + "BALL = qo'lda qo'yilgan jurnal baholari yig'indisi + bajarilgan baholash mezonlari soni + qo'lda tuzatish "
         + "(guruhdagi ball manfiy bo'lmaydi); mezondan avtomatik yozilgan jurnal bahosi ikki marta sanalmaydi. Har qatorda: "
         + "o'rin (guruh ichida, ball kamayishi, teng bo'lsa ism), o'quvchi, ball tarkibi (jurnal yig'indisi, baholar soni, "
-        + "o'rtacha baho, bajarilgan mezonlar, tuzatish), har mezon bo'yicha bajarilganlar soni va davomat foizi (o'tilgan "
-        + "darslar, kech kelish kelmaslik emas). month (YYYY-MM) berilsa — faqat shu oy; berilmasa — butun vaqt. Sukut bo'yicha "
+        + "o'rtacha baho, bajarilgan mezonlar, tuzatish), har mezon bo'yicha bajarilganlar soni va davomat foizi (yagona "
+        + "ta'rif: kech — kelgan, davomati olinmagan darsdagi belgisiz o'quvchi hisobga kirmaydi). month (YYYY-MM) berilsa — "
+        + "faqat shu oy; berilmasa — butun vaqt. Sukut bo'yicha "
         + "faol va sinovdagi o'quvchilar (guruh sahifasi kabi); includeFrozen=true — muzlatilganlar ham. Bu — guruh sahifasidagi "
         + "«Ball tafsiloti»; ASOSIY reyting (testlar + ball, davr bo'yicha) — rating_group_report. "
         + "Group students ranked by collected ball with its breakdown.")]
@@ -401,20 +402,14 @@ public sealed class TestTools(McpToolContext t)
         // BALL — the server formula (per group, month-aware) the teacher/centre ratings use.
         var balls = await StudentBallService.ComputeByGroupAsync(db, new List<string> { gid }, mon);
 
-        // Attendance — StudentBallService.TeacherAsync: conducted lessons of the group (in the month), absences
-        // with a NON-late reason on a conducted lesson.
-        var lateIds = (await db.AbsenceReasons.Where(r => r.IsLate).Select(r => r.Id).ToListAsync(ct)).ToHashSet();
+        // Attendance — StudentBallService.TeacherAsync: the ONE definition (MembershipAttendance — late = attended,
+        // an unmarked student of a lesson whose attendance was NOT taken is not counted). Conducted lessons of the
+        // group (in the month) stay in the summary.
         var notesQ = db.LessonNotes.Where(n => n.ClassId == gid && n.Conducted);
         if (mon is not null) notesQ = notesQ.Where(n => n.Date.StartsWith(mon));
         var conducted = (await notesQ.Select(n => new { n.SubjectId, n.Date, n.Period }).ToListAsync(ct))
             .Select(n => (n.SubjectId, n.Date, n.Period)).ToHashSet();
-        var absQ = db.JournalEntries.Where(e => e.ClassId == gid && e.ReasonId != null);
-        if (mon is not null) absQ = absQ.Where(e => e.Date.StartsWith(mon));
-        var absentByStudent = (await absQ.Select(e => new { e.StudentId, e.SubjectId, e.Date, e.Period, e.ReasonId })
-                .ToListAsync(ct))
-            .Where(e => !lateIds.Contains(e.ReasonId!) && conducted.Contains((e.SubjectId, e.Date, e.Period)))
-            .GroupBy(e => e.StudentId)
-            .ToDictionary(g => g.Key, g => g.Count());
+        var attendanceBy = await MembershipAttendance.ComputeAsync(db, new List<string> { gid }, mon, ct: ct);
 
         // Criteria attached to the group (the "Reyting" tab's columns) and each student's done marks per criterion.
         var assigned = await db.GroupGradingCriteria.Where(a => a.GroupId == gid)
@@ -436,11 +431,9 @@ public sealed class TestTools(McpToolContext t)
         var raw = memberships.Where(m => names.ContainsKey(m.StudentId)).Select(m =>
         {
             var b = balls.GetValueOrDefault((m.StudentId, gid)) ?? new StudentBallService.BallStat(0, 0, 0);
-            var absent = absentByStudent.GetValueOrDefault(m.StudentId, 0);
-            double? attendance = conducted.Count > 0
-                ? Math.Round((double)(conducted.Count - absent) / conducted.Count * 100)
-                : null;
-            return new GroupRatingRow(m.StudentId, names[m.StudentId], m.Status, b, conducted.Count, absent, attendance);
+            var att = attendanceBy.GetValueOrDefault((m.StudentId, gid), MembershipAttendance.Stat.Empty);
+            return new GroupRatingRow(m.StudentId, names[m.StudentId], m.Status, b, conducted.Count,
+                att.Held, att.Attended, att.Absent, att.Percent);
         }).ToList();
 
         // Rank inside the group: ball desc, then name — TeacherAsync's rule.
@@ -469,7 +462,11 @@ public sealed class TestTools(McpToolContext t)
             {
                 c.id, c.name, done = marks.GetValueOrDefault((x.Row.StudentId, c.id), 0),
             }),
-            attendance = new { lessonsConducted = x.Row.Conducted, absent = x.Row.Absent, percent = x.Row.Attendance },
+            attendance = new
+            {
+                lessonsConducted = x.Row.Conducted, held = x.Row.Held, attended = x.Row.Attended,
+                absent = x.Row.Absent, percent = x.Row.Attendance,
+            },
         }).ToList();
 
         return t.Json(new
@@ -490,7 +487,8 @@ public sealed class TestTools(McpToolContext t)
             },
             criteria,
             note = "BALL = jurnal yig'indisi (faqat QO'LDA qo'yilgan baholar) + bajarilgan mezonlar + tuzatish, guruhda 0 dan "
-                + "past tushmaydi. «averageGrade» — qo'lda qo'yilgan baholar o'rtachasi; davomatda kech kelish kelmaslik emas.",
+                + "past tushmaydi. «averageGrade» — qo'lda qo'yilgan baholar o'rtachasi; davomat — yagona ta'rif: kech = kelgan, "
+                + "davomati olinmagan darsdagi belgisiz o'quvchi foizga kirmaydi («held» — hisobga kirgan darslar).",
             total = ranked.Count, page = p, pageSize = size,
             items,
         }, items.Count);
@@ -498,7 +496,7 @@ public sealed class TestTools(McpToolContext t)
 
     private sealed record GroupRatingRow(
         string StudentId, string FullName, string Status, StudentBallService.BallStat Ball,
-        int Conducted, int Absent, double? Attendance);
+        int Conducted, int Held, int Attended, int Absent, int? Attendance);
 
     // =====================================================================================
     //  rating_center — RatingService.SchoolAsync (portal centre rating) + StudentBallService
@@ -562,7 +560,8 @@ public sealed class TestTools(McpToolContext t)
             },
             note = "«ball» — barcha guruhlardagi ball yig'indisi (har guruhda alohida 0 dan past emas); «avgBall» — ball ÷ "
                 + "ball tushgan guruhlar soni (markaz o'rni shu bo'yicha); «averageGrade» va davomat — o'quvchining hozirgi "
-                + "guruhlari bo'yicha (kech kelish kelmaslik emas). Natija 5 daqiqagacha eskirgan bo'lishi mumkin.",
+                + "guruhlari bo'yicha (kech — kelgan; davomati olinmagan darsdagi belgisiz o'quvchi hisobga kirmaydi). Natija "
+                + "5 daqiqagacha eskirgan bo'lishi mumkin.",
             total = ordered.Count, page = p, pageSize = size,
             items,
         }, items.Count);
@@ -591,7 +590,6 @@ public sealed class TestTools(McpToolContext t)
             .Select(s => new { s.Id, s.FullName, s.ClassName }).ToListAsync(ct);
         var classes = await db.Classes.Select(c => new { c.Id, c.Name }).ToListAsync(ct);
         var classById = classes.GroupBy(c => c.Id).ToDictionary(g => g.Key, g => g.First().Name);
-        var lateIds = await db.AbsenceReasons.Where(r => r.IsLate).Select(r => r.Id).ToListAsync(ct);
 
         var groupsByStudent = (await db.StudentGroups.Where(m => m.IsActive)
                 .Select(m => new { m.StudentId, m.GroupId, m.Status, m.JoinedAt }).ToListAsync(ct))
@@ -608,47 +606,36 @@ public sealed class TestTools(McpToolContext t)
                 .ToListAsync(ct))
             .ToDictionary(x => (x.StudentId, x.ClassId), x => (Sum: (long)x.Sum, x.N));
 
-        // Conducted lessons per group = distinct (subject, date, period) of conducted lesson notes.
-        var conductedByClass = (await db.LessonNotes.Where(n => n.Conducted)
-                .Select(n => new { n.ClassId, n.SubjectId, n.Date, n.Period }).Distinct()
-                .GroupBy(n => n.ClassId)
-                .Select(g => new { ClassId = g.Key, N = g.Count() })
-                .ToListAsync(ct))
-            .ToDictionary(x => x.ClassId, x => x.N);
+        var groupsOf = students.ToDictionary(st => st.Id, st =>
+            groupsByStudent.TryGetValue(st.Id, out var gs) && gs.Count > 0
+                ? gs
+                : classes.Where(c => !string.IsNullOrEmpty(st.ClassName) && c.Name == st.ClassName)
+                    .Select(c => c.Id).ToList());
 
-        // Absences (a NON-late reason) on a conducted lesson, per (student, group).
-        var conductedNotes = db.LessonNotes.Where(n => n.Conducted);
-        var absences = (await db.JournalEntries
-                .Where(e => e.ReasonId != null && !lateIds.Contains(e.ReasonId!)
-                            && conductedNotes.Any(n => n.ClassId == e.ClassId && n.SubjectId == e.SubjectId
-                                                       && n.Date == e.Date && n.Period == e.Period))
-                .GroupBy(e => new { e.StudentId, e.ClassId })
-                .Select(g => new { g.Key.StudentId, g.Key.ClassId, N = g.Count() })
-                .ToListAsync(ct))
-            .ToDictionary(x => (x.StudentId, x.ClassId), x => x.N);
+        // Attendance — the ONE definition with SQL aggregates (MembershipAttendance), exactly as the service; the
+        // legacy ClassName-fallback pairs have no membership window.
+        var fallbackPairs = students
+            .Where(st => !(groupsByStudent.TryGetValue(st.Id, out var gs) && gs.Count > 0))
+            .SelectMany(st => groupsOf[st.Id].Select(gid => (st.Id, gid)))
+            .ToList();
+        var attendanceBy = await MembershipAttendance.ComputeAsync(db, unboundedPairs: fallbackPairs, ct: ct);
 
         var result = new List<CenterRow>();
         foreach (var st in students)
         {
-            var groupIds = groupsByStudent.TryGetValue(st.Id, out var gs) && gs.Count > 0
-                ? gs
-                : classes.Where(c => !string.IsNullOrEmpty(st.ClassName) && c.Name == st.ClassName)
-                    .Select(c => c.Id).ToList();
+            var groupIds = groupsOf[st.Id];
             if (groupIds.Count == 0) continue;   // groupless students are not ranked
 
             long sum = 0;
-            int count = 0, conducted = 0, absent = 0;
+            int count = 0;
+            var att = MembershipAttendance.Stat.Empty;
             foreach (var gid in groupIds)
             {
                 if (grades.TryGetValue((st.Id, gid), out var g)) { sum += g.Sum; count += g.N; }
-                if (conductedByClass.TryGetValue(gid, out var c))
-                {
-                    conducted += c;
-                    absent += absences.GetValueOrDefault((st.Id, gid), 0);
-                }
+                att = att.Plus(attendanceBy.GetValueOrDefault((st.Id, gid), MembershipAttendance.Stat.Empty));
             }
             var average = count > 0 ? Math.Round((double)sum / count, 1) : 0;
-            double? attendance = conducted > 0 ? Math.Round((double)(conducted - absent) / conducted * 100) : null;
+            double? attendance = att.Percent;
 
             var b = balls.GetValueOrDefault(st.Id);
             var mainGroup = classById.TryGetValue(groupIds[0], out var n0) ? n0 : st.ClassName;

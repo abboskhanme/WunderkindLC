@@ -192,14 +192,12 @@ public class DashboardController(DataCache dataCache) : ControllerBase
         int MembersOf(Group c) => membersByClass.TryGetValue(c.Id, out var n) ? n : 0;
         int ActiveOf(Group c) => activeByClass.TryGetValue(c.Id, out var n) ? n : 0;
 
-        // Davomat FAQAT o'tilgan darslar bo'yicha (Conducted=true). O'tilmagan darslar hisobga olinmaydi.
-        var conductedByClass = (await db.LessonNotes.AsNoTracking().Where(n => n.Conducted).ToListAsync())
-            .GroupBy(n => n.ClassId)
-            .ToDictionary(g => g.Key, g => g.Select(n => (n.SubjectId, n.Date, n.Period)).ToHashSet());
-
-        // "Kech keldi" turidagi sabablar davomatsizlik sifatida hisoblanmaydi.
-        var lateReasonIds = (await db.AbsenceReasons.AsNoTracking().Where(r => r.IsLate).Select(r => r.Id).ToListAsync())
-            .ToHashSet();
+        // Davomat — YAGONA ta'rif (MembershipAttendance, journal.md «YAGONA DAVOMAT TA'RIFI»): har tirik a'zo × o'tilgan
+        // dars, kech = KELGAN, davomati OLINMAGAN darsdagi belgisiz o'quvchi foizga KIRMAYDI. Ilgari "o'tilgan dars ×
+        // a'zolar − sababli" edi: bitta baho butun guruhni "kelgan" qilardi.
+        var attendanceByGroup = (await MembershipAttendance.ComputeAsync(db))
+            .GroupBy(kv => kv.Key.GroupId)
+            .ToDictionary(g => g.Key, g => g.Aggregate(MembershipAttendance.Stat.Empty, (acc, kv) => acc.Plus(kv.Value)));
 
         double AvgGrade(IEnumerable<JournalEntry> es)
         {
@@ -207,38 +205,29 @@ public class DashboardController(DataCache dataCache) : ControllerBase
             return grades.Count > 0 ? Math.Round(grades.Average(), 1) : 0;
         }
 
-        // Guruh davomati: o'tilgan darslar × o'quvchilar = imkoniyatlar; davomatsizliklar ayriladi.
-        // O'tilgan dars bo'lmasa — ma'lumot yo'q (null), o'rtachaga qo'shilmaydi.
-        (long Opp, int Abs) ClassAttParts(Group c)
-        {
-            if (!conductedByClass.TryGetValue(c.Id, out var set) || set.Count == 0) return (0, 0);
-            var studentsN = MembersOf(c);
-            if (studentsN == 0) return (0, 0);
-            var abs = entries.Count(e => e.ClassId == c.Id && e.ReasonId != null
-                && !lateReasonIds.Contains(e.ReasonId) && set.Contains((e.SubjectId, e.Date, e.Period)));
-            return ((long)set.Count * studentsN, abs);
-        }
-        double? Rate(long opp, int abs) => opp > 0 ? Math.Round((double)(opp - abs) / opp * 100) : null;
+        // Guruh davomati: hisobga kirgan (o'tilgan) darslar bo'yicha kelganlar foizi. Hech narsa hisobga kirmasa —
+        // ma'lumot yo'q (null), o'rtachaga qo'shilmaydi.
+        MembershipAttendance.Stat ClassAtt(Group c) =>
+            attendanceByGroup.GetValueOrDefault(c.Id, MembershipAttendance.Stat.Empty);
+        double? Rate(MembershipAttendance.Stat s) => s.Percent;
 
         // Guruh statistikasi o'qituvchi bo'yicha belgilanadi (grafik x o'qida o'qituvchi, guruh nomi hoverda).
         var teacherNames = (await db.Teachers.AsNoTracking().Select(t => new { t.Id, t.FullName }).ToListAsync())
             .ToDictionary(t => t.Id, t => t.FullName);
-        long totalOpp = 0;
-        var totalAbs = 0;
+        var total = MembershipAttendance.Stat.Empty;
         var classPerformance = classes
             // Bir o'qituvchining guruhlari yonma-yon tursin (grafikda guruhlanadi).
             .OrderBy(c => teacherNames.GetValueOrDefault(c.TeacherId ?? "", "")).ThenBy(c => c.Name)
             .Select(c =>
             {
-                var (opp, abs) = ClassAttParts(c);
-                totalOpp += opp;
-                totalAbs += abs;
+                var att = ClassAtt(c);
+                total = total.Plus(att);
                 return new ClassPerformanceItemDto(
-                    c.Id, c.Name, AvgGrade(entries.Where(e => e.ClassId == c.Id)), Rate(opp, abs),
+                    c.Id, c.Name, AvgGrade(entries.Where(e => e.ClassId == c.Id)), Rate(att),
                     teacherNames.GetValueOrDefault(c.TeacherId ?? "", "—"));
             }).ToList();
 
-        var stats = new AdminStatsDto(studentsCount, teachersCount, AvgGrade(entries), Rate(totalOpp, totalAbs));
+        var stats = new AdminStatsDto(studentsCount, teachersCount, AvgGrade(entries), Rate(total));
 
         // O'quvchilar bo'yicha taqsimot — faqat arxivlanmaganlar.
         var activeStudents = await db.Students.AsNoTracking().Where(s => !s.IsArchived).Select(s => new { s.Id, s.Balance }).ToListAsync();

@@ -48,7 +48,7 @@ public sealed class AttendanceDisciplineService(
                 Func<long, string, CancellationToken, Task>? send = telegram.IsConfigured
                     ? (chatId, text, ct) => telegram.SendMessageAsync(chatId, text, ct: ct)
                     : null;
-                var r = await RunOnceAsync(db, audit, send, AppClock.Now, stoppingToken);
+                var r = await RunOnceAsync(db, audit, send, AppClock.Now, stoppingToken, logger);
                 if (r.Reminders + r.Fines + r.Escalations > 0)
                     logger.LogInformation("Davomat intizomi: {R} eslatma, {F} jarima, {E} administratorga xabar",
                         r.Reminders, r.Fines, r.Escalations);
@@ -70,7 +70,7 @@ public sealed class AttendanceDisciplineService(
     /// </summary>
     public static async Task<RunResult> RunOnceAsync(
         IAppDbContext db, AuditService audit, Func<long, string, CancellationToken, Task>? send, DateTime now,
-        CancellationToken ct = default)
+        CancellationToken ct = default, ILogger? log = null)
     {
         var meta = await db.CenterMeta.AsNoTracking().FirstOrDefaultAsync(ct);
         if (meta is null || !meta.AttendanceDisciplineEnabled) return new RunResult(0, 0, 0);
@@ -91,7 +91,8 @@ public sealed class AttendanceDisciplineService(
                 var l = item.Lesson;
                 var g = l.Group;
                 var takenAt = taken.TryGetValue(g.Id, out var t) ? t : (DateTime?)null;
-                var d = AttendanceDiscipline.Decide(todayStr, l.StartTime, now, takenAt, settings, isToday: true);
+                var d = AttendanceDiscipline.Decide(todayStr, l.StartTime, now, takenAt, settings, isToday: true,
+                    meta.AttendanceDisciplineSince, meta.AttendanceFineSince);
                 if (d.Start is null) continue;
                 var teacherId = LessonAttendanceReminderService.RecipientTeacherId(l);
                 var courseName = names.Courses.GetValueOrDefault(g.CourseId ?? "", "");
@@ -111,7 +112,7 @@ public sealed class AttendanceDisciplineService(
                 if (d.FineDue && teacherId.Length > 0)
                 {
                     fine = await TryCreateFineAsync(db, audit, g, teacherId, todayStr, l.StartTime, d.Deadline!.Value,
-                        settings.FineAmount, takenAt, now, names, ct);
+                        settings.FineAmount, takenAt, now, names, ct, log);
                     if (fine is not null)
                     {
                         fines++;
@@ -159,11 +160,12 @@ public sealed class AttendanceDisciplineService(
             {
                 var l = item.Lesson;
                 var takenAt = taken.TryGetValue(l.Group.Id, out var t) ? t : (DateTime?)null;
-                var d = AttendanceDiscipline.Decide(yStr, l.StartTime, now, takenAt, settings, isToday: false);
+                var d = AttendanceDiscipline.Decide(yStr, l.StartTime, now, takenAt, settings, isToday: false,
+                    meta.AttendanceDisciplineSince, meta.AttendanceFineSince);
                 var teacherId = LessonAttendanceReminderService.RecipientTeacherId(l);
                 if (!d.FineDue || teacherId.Length == 0) continue;
                 if (await TryCreateFineAsync(db, audit, l.Group, teacherId, yStr, l.StartTime, d.Deadline!.Value,
-                        settings.FineAmount, takenAt, now, names, ct) is not null)
+                        settings.FineAmount, takenAt, now, names, ct, log) is not null)
                     fines++;
             }
         }
@@ -230,7 +232,7 @@ public sealed class AttendanceDisciplineService(
     /// </summary>
     private static async Task<TeacherAttendanceFine?> TryCreateFineAsync(
         IAppDbContext db, AuditService audit, Group g, string teacherId, string date, string startTime, DateTime deadline,
-        decimal amount, DateTime? takenAt, DateTime now, Names names, CancellationToken ct)
+        decimal amount, DateTime? takenAt, DateTime now, Names names, CancellationToken ct, ILogger? log = null)
     {
         if (!names.Teachers.TryGetValue(teacherId, out var teacher)) return null;
         if (await db.TeacherAttendanceFines.AsNoTracking().AnyAsync(f => f.GroupId == g.Id && f.LessonDate == date, ct))
@@ -259,14 +261,18 @@ public sealed class AttendanceDisciplineService(
             await db.SaveChangesAsync(ct);
             return fine;
         }
-        catch (DbUpdateException)
+        catch (DbUpdateException ex)
         {
-            // Parallel nusxa ulgurdi (unikal indeks) — qatorlarimizni kontekstdan chiqaramiz (aks holda keyingi
-            // SaveChanges ham shu buzuq INSERT ni qayta urinardi).
+            // Qatorlarimizni kontekstdan chiqaramiz (aks holda keyingi SaveChanges ham shu buzuq INSERT ni qayta urinardi).
             db.TeacherAttendanceFines.Entry(fine).State = EntityState.Detached;
             var auditId = AttendanceFineAudit.EntityId(g.Id, fine.Id);
             foreach (var a in db.AuditLogs.Local.Where(a => a.EntityId == auditId).ToList())
                 db.AuditLogs.Entry(a).State = EntityState.Detached;
+            // Parallel nusxa ulgurgan (unikal indeks) — JIM, bu kutilgan poyga. Aks holda (qator YO'Q) — haqiqiy xato:
+            // jarima yozilmadi va buni logda ko'rish SHART (keyingi daqiqada qayta urinadi).
+            var raced = await db.TeacherAttendanceFines.AsNoTracking().AnyAsync(f => f.GroupId == g.Id && f.LessonDate == date, ct);
+            if (!raced)
+                log?.LogWarning(ex, "Davomat jarimasi yozilmadi: guruh {Group}, sana {Date}", g.Id, date);
             return null;
         }
     }

@@ -212,9 +212,12 @@ function DailyAbsenceView() {
         sub="Shu kunda darsga kelmagan/kechikkan o'quvchilar — ota-onaga darrov qo'ng'iroq qilish uchun."
         actions={
           <div className="flex items-center gap-2">
-            <Button onClick={() => setMsgOpen(true)} disabled={selected.size === 0}>
-              <MessageSquare className="h-4 w-4" /> Telegram xabar{selected.size > 0 ? ` (${selected.size})` : ''}
-            </Button>
+            {/* Yuborish `messages.broadcast` ruxsatini talab qiladi — ruxsatsizga tugma ko'rsatilmaydi. */}
+            {can('messages.broadcast', 'create') && (
+              <Button onClick={() => setMsgOpen(true)} disabled={selected.size === 0}>
+                <MessageSquare className="h-4 w-4" /> Telegram xabar{selected.size > 0 ? ` (${selected.size})` : ''}
+              </Button>
+            )}
             <Button variant="secondary" onClick={handleExport} disabled={filtered.length === 0}>
               <Download className="h-4 w-4" /> CSV
             </Button>

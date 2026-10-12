@@ -211,6 +211,24 @@ public class AbsenceStreakTests
     }
 
     [Fact]
+    public async Task Kpi_streak_norm_counts_only_fresh_streaks_like_the_contact_rule()
+    {
+        // Review fix (2026-10-12): KPI «Ketma-ket 3 dars kelmaganlar» uses the same 14-day freshness as the automatic
+        // «Bog'lanish kerak» — a student who stopped coming a month ago (still a member) does not keep the norm red.
+        using var db = TestDb.Sqlite();
+        var s = SeedDb(db);
+        foreach (var d in new[] { 30, 25, 20 }) Lesson(db, s, s.G1, D(d), s.Unexcused);
+        var today = Today.ToString("yyyy-MM-dd");
+
+        var stale = await Application.Services.Kpi.KpiMetricsService.AbsenceStreaksAsync(db.Context, today, default);
+        Assert.Empty(stale.Three);
+
+        foreach (var d in new[] { 5, 3, 1 }) Lesson(db, s, s.G2, D(d), s.Unexcused);
+        var fresh = await Application.Services.Kpi.KpiMetricsService.AbsenceStreaksAsync(db.Context, today, default);
+        Assert.Equal(s.Student.Id, Assert.Single(fresh.Three).Id);
+    }
+
+    [Fact]
     public async Task Two_groups_at_level_3_in_one_run_mean_one_action()
     {
         using var db = TestDb.Sqlite();
