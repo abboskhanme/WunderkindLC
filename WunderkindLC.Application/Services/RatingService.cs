@@ -23,34 +23,61 @@ namespace WunderkindLC.Application.Services;
 /// </summary>
 public static class RatingService
 {
-    /// <summary>Barcha o'quvchilarning reyting qatori (har biri bir marta: ball + o'rtacha baho + davomat).</summary>
+    /// <summary>Barcha o'quvchilarning reyting qatori (har biri bir marta: ball + o'rtacha baho + davomat).
+    /// <para>⚠️ <b>SQL AGREGATLARI bilan</b> (2026-10, CRM reyting dvigateli bilan birga): ilgari butun
+    /// <c>JournalEntries</c> jadvali (<c>ToListAsync()</c> — prod'da o'n millionlab qator) xotiraga yuklanib,
+    /// o'rtacha baho va qoldirilgan darslar sanalardi. Endi AYNAN o'sha raqamlar GROUP BY / EXISTS so'rovlaridan
+    /// keladi (MCP <c>TestTools.ComputeCenterAsync</c> naqshi) — bazadan faqat (o'quvchi, guruh) bo'yicha bitta
+    /// qator chiqadi. Kontrakt va raqamlar O'ZGARMADI (<c>RatingEngineTests</c> eski algoritm bilan solishtiradi):
+    /// o'rtacha baho — BARCHA baholar (mezondan yozilgani ham); davomat = (o'tilgan − kech bo'lmagan sababli
+    /// qoldirilgan) ÷ o'tilgan (kech kelgan — kelgan).</para></summary>
     public static async Task<List<StudentRatingRowDto>> SchoolAsync(IAppDbContext db)
     {
         // Ball PER-GURUH hisoblanadi, keyin o'quvchi bo'yicha jamlanadi: `Ball` — yig'indi,
         // `AvgBall` — markaz reytingi saralanadigan o'rtacha, `GroupBalls` — guruh kesimi.
         var balls = StudentBallService.AggregateByStudent(await StudentBallService.ComputeByGroupAsync(db));
-        // Arxivlanganlar reytingda qatnashmaydi.
-        var students = await db.Students.Where(s => !s.IsArchived).ToListAsync();
-        var classes = await db.Classes.ToListAsync();
-        var classById = classes.ToDictionary(c => c.Id);
-        var lateIds = (await db.AbsenceReasons.Where(r => r.IsLate).Select(r => r.Id).ToListAsync()).ToHashSet();
+        // Arxivlanganlar reytingda qatnashmaydi. To'liq entity — javobdagi StudentDto uchun (jadval kichik).
+        var students = await db.Students.AsNoTracking().Where(s => !s.IsArchived).ToListAsync();
+        var classes = await db.Classes.AsNoTracking().Select(c => new { c.Id, c.Name, c.Grade }).ToListAsync();
+        var classById = classes.GroupBy(c => c.Id).ToDictionary(g => g.Key, g => g.First());
+        var lateIds = await db.AbsenceReasons.AsNoTracking().Where(r => r.IsLate).Select(r => r.Id).ToListAsync();
 
         // Faol a'zoliklar (M2M) — har o'quvchining guruhlari. Tartib USTUNLIK bo'yicha
         // (faol → sinov → muzlatilgan, keyin eng yangi qo'shilgani): birinchi element "vakil guruh"
         // sifatida ishlatiladi, ya'ni u muzlatilgan (eski) guruh bo'lib qolmasin.
-        var groupsByStudent = (await db.StudentGroups.Where(m => m.IsActive).ToListAsync())
+        var groupsByStudent = (await db.StudentGroups.AsNoTracking().Where(m => m.IsActive)
+                .Select(m => new { m.StudentId, m.GroupId, m.Status, m.JoinedAt }).ToListAsync())
             .GroupBy(m => m.StudentId)
             .ToDictionary(g => g.Key, g => g
                 .OrderBy(m => MembershipLifecycle.StateRank(m.Status))
                 .ThenByDescending(m => m.JoinedAt ?? string.Empty, StringComparer.Ordinal)
                 .Select(m => m.GroupId).Distinct().ToList());
 
-        // Jurnal yozuvlari va o'tilgan darslar — bir marta yuklab, guruh bo'yicha guruhlaymiz.
-        var entriesByClass = (await db.JournalEntries.ToListAsync())
-            .GroupBy(e => e.ClassId).ToDictionary(g => g.Key, g => g.ToList());
-        var conductedByClass = (await db.LessonNotes.Where(n => n.Conducted).ToListAsync())
-            .GroupBy(n => n.ClassId)
-            .ToDictionary(g => g.Key, g => g.Select(n => (n.SubjectId, n.Date, n.Period)).ToHashSet());
+        // Σ baho / soni — (o'quvchi, guruh) bo'yicha, SQL'da. Barcha baholar (o'rtacha shunday hisoblanardi).
+        var grades = (await db.JournalEntries.AsNoTracking().Where(e => e.Grade != null)
+                .GroupBy(e => new { e.StudentId, e.ClassId })
+                .Select(g => new { g.Key.StudentId, g.Key.ClassId, Sum = g.Sum(x => x.Grade ?? 0), N = g.Count() })
+                .ToListAsync())
+            .ToDictionary(x => (x.StudentId, x.ClassId), x => (Sum: (long)x.Sum, x.N));
+
+        // O'tilgan darslar soni guruh bo'yicha = o'tilgan dars yozuvlarining TAKRORSIZ (fan, sana, para) soni.
+        var conductedByClass = (await db.LessonNotes.AsNoTracking().Where(n => n.Conducted)
+                .Select(n => new { n.ClassId, n.SubjectId, n.Date, n.Period }).Distinct()
+                .GroupBy(n => n.ClassId)
+                .Select(g => new { ClassId = g.Key, N = g.Count() })
+                .ToListAsync())
+            .ToDictionary(x => x.ClassId, x => x.N);
+
+        // O'tilgan darsdagi qoldirishlar (kech bo'lmagan sabab) — (o'quvchi, guruh) bo'yicha, EXISTS bilan.
+        var conductedNotes = db.LessonNotes.AsNoTracking().Where(n => n.Conducted);
+        var absences = (await db.JournalEntries.AsNoTracking()
+                .Where(e => e.ReasonId != null && !lateIds.Contains(e.ReasonId!)
+                            && conductedNotes.Any(n => n.ClassId == e.ClassId && n.SubjectId == e.SubjectId
+                                                       && n.Date == e.Date && n.Period == e.Period))
+                .GroupBy(e => new { e.StudentId, e.ClassId })
+                .Select(g => new { g.Key.StudentId, g.Key.ClassId, N = g.Count() })
+                .ToListAsync())
+            .ToDictionary(x => (x.StudentId, x.ClassId), x => x.N);
 
         var result = new List<StudentRatingRowDto>();
         foreach (var st in students)
@@ -62,29 +89,25 @@ public static class RatingService
                     .Select(c => c.Id).ToList();
             if (groupIds.Count == 0) continue; // guruhsiz o'quvchi reytingda yo'q
 
-            var grades = new List<double>();
-            int conducted = 0, absent = 0;
+            long sum = 0;
+            int count = 0, conducted = 0, absent = 0;
             foreach (var gid in groupIds)
             {
-                var mine = entriesByClass.TryGetValue(gid, out var ents)
-                    ? ents.Where(e => e.StudentId == st.Id).ToList()
-                    : new List<JournalEntry>();
-                grades.AddRange(mine.Where(e => e.Grade.HasValue).Select(e => (double)e.Grade!.Value));
-                if (conductedByClass.TryGetValue(gid, out var cond))
+                if (grades.TryGetValue((st.Id, gid), out var g)) { sum += g.Sum; count += g.N; }
+                if (conductedByClass.TryGetValue(gid, out var c))
                 {
-                    conducted += cond.Count;
-                    absent += mine.Count(e => e.ReasonId != null && !lateIds.Contains(e.ReasonId)
-                        && cond.Contains((e.SubjectId, e.Date, e.Period)));
+                    conducted += c;
+                    absent += absences.GetValueOrDefault((st.Id, gid), 0);
                 }
             }
 
-            var average = grades.Count > 0 ? Math.Round(grades.Average(), 1) : 0;
+            var average = count > 0 ? Math.Round((double)sum / count, 1) : 0;
             double? attendance = conducted > 0 ? Math.Round((double)(conducted - absent) / conducted * 100) : null;
 
             // VAKIL GURUH — a'zolik bo'yicha birinchisi (yuqorida ustunlik tartibida saralangan).
             // ⚠️ Ilgari `ClassName` (BIRINCHI qo'shilgan guruh yorlig'i) ustun edi: eski guruhida
             // muzlatilib yangisida o'qiyotgan o'quvchi reytingda ESKI guruh nomi bilan chiqardi.
-            var firstCls = classById.TryGetValue(groupIds[0], out var c0) ? c0 : null;
+            var firstCls = classById.GetValueOrDefault(groupIds[0]);
             var className = firstCls?.Name ?? st.ClassName;
             var gradeLevel = firstCls?.Grade ?? 0;
 
