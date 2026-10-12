@@ -1596,6 +1596,16 @@ export interface TeacherReportOverview {
   months: string[]
   month: string
   rows: TeacherReportRow[]
+  /** Kartochkalar — har O'QUVCHI bir marta (qatorlar yig'indisi emas). Eski server bermaydi. */
+  totals?: TeacherReportTotals | null
+}
+
+/** came/left — tanlangan davr oqimi; activeNow/trialNow — hozirgi holat (davrga bog'liq emas). */
+export interface TeacherReportTotals {
+  came: number
+  activeNow: number
+  trialNow: number
+  left: number
 }
 
 /* ---------- Shartnomalar ---------- */

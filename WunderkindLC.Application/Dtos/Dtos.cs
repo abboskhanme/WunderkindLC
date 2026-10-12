@@ -1242,7 +1242,13 @@ public record TeacherReportRowDto(
 /// Month = "" bo'lsa Umumiy (barcha oylar yig'indisi).
 /// </summary>
 public record TeacherReportOverviewDto(
-    List<string> Months, string Month, List<TeacherReportRowDto> Rows);
+    List<string> Months, string Month, List<TeacherReportRowDto> Rows, TeacherReportTotalsDto? Totals = null);
+
+/// <summary>O'qituvchilar hisobotining yuqori kartochkalari — har O'QUVCHI bir marta (qatorlar yig'indisi EMAS:
+/// ikki guruhda o'qiydigan o'quvchi ikki marta sanalardi). <c>Came</c>/<c>Left</c> — tanlangan davr OQIMI,
+/// <c>ActiveNow</c>/<c>TrialNow</c> — HOZIRGI holat (davrga bog'liq emas; aktiv guruhi bor o'quvchi sinovga kirmaydi).
+/// <c>Left</c> — davrda guruhdan chiqqan va hozir HECH bir guruhda o'qimayotganlar (guruh almashtirgan ketgan emas).</summary>
+public record TeacherReportTotalsDto(int Came, int ActiveNow, int TrialNow, int Left);
 
 /// <summary>O'qituvchi hisoboti — guruh/fan kesimida bitta qator (batafsil ko'rinish).</summary>
 public record TeacherReportBreakdownDto(

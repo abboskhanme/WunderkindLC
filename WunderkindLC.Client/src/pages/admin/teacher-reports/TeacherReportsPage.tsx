@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Archive, Activity, TrendingDown, HelpCircle, Users, UserCheck, UserMinus, ArrowUpRight } from 'lucide-react'
-import type { TeacherReportRow, TeacherReportDetail } from '@/types'
+import type { TeacherReportRow, TeacherReportDetail, TeacherReportTotals } from '@/types'
 import { getTeacherReport, getTeacherReportDetail } from '@/api/services/teacherReports'
 import { formatDate, cn } from '@/lib/utils'
 import { formatMonth } from '@/config/constants'
@@ -10,6 +10,7 @@ import { PageHeader } from '@/components/ui/PageHeader'
 import { CardTabs } from '@/components/ui/CardTabs'
 import { teacherTabs } from '@/config/sectionTabs'
 import { StatCard } from '@/components/ui/StatCard'
+import { teacherReportTotals } from '@/lib/teacherReportTotals'
 import { Badge } from '@/components/ui/Badge'
 import type { BadgeTone } from '@/components/ui/Badge'
 import { Loader } from '@/components/ui/Loader'
@@ -24,6 +25,7 @@ const statusMeta: Record<TeacherReportRow['status'], { label: string; tone: Badg
 export function TeacherReportsPage() {
   const [rows, setRows] = useState<TeacherReportRow[]>([])
   const [months, setMonths] = useState<string[]>([])
+  const [serverTotals, setServerTotals] = useState<TeacherReportTotals | null>(null)
   // "" = Umumiy (barcha oylar yig'indisi) — standart
   const [selectedMonth, setSelectedMonth] = useState('')
   const [loading, setLoading] = useState(true)
@@ -38,6 +40,7 @@ export function TeacherReportsPage() {
       .then((o) => {
         setRows(o.rows)
         setMonths(o.months)
+        setServerTotals(o.totals ?? null)
       })
       .finally(() => setLoading(false))
   }, [selectedMonth])
@@ -59,12 +62,7 @@ export function TeacherReportsPage() {
     none: rows.filter((r) => r.status === 'none').length,
   }
 
-  const totals = {
-    came: rows.reduce((s, r) => s + r.came, 0),
-    active: rows.reduce((s, r) => s + r.active, 0),
-    left: rows.reduce((s, r) => s + r.left, 0),
-    remaining: rows.reduce((s, r) => s + r.remaining, 0),
-  }
+  const totals = teacherReportTotals({ rows, totals: serverTotals })
 
   return (
     <div>
@@ -136,20 +134,23 @@ export function TeacherReportsPage() {
           icon={Users}
           iconBg="bg-blue-50"
           iconColor="text-blue-600"
+          hint="Har o'quvchi bir marta"
         />
         <StatCard
-          label="Faol o'quvchilar"
-          value={totals.active}
+          label="Faol o'quvchilar (hozir)"
+          value={totals.studying}
           icon={UserCheck}
           iconBg="bg-emerald-50"
           iconColor="text-emerald-600"
+          hint={`Aktiv ${totals.active} · sinov ${totals.trial}`}
         />
         <StatCard
-          label="Qolgan (hozir faol)"
-          value={totals.remaining}
+          label="Aktiv o'quvchilar (hozir)"
+          value={totals.active}
           icon={Users}
           iconBg="bg-brand-50"
           iconColor="text-brand-600"
+          hint="Sinovdagilarsiz"
         />
         <StatCard
           label="Ketgan o'quvchilar"
@@ -157,6 +158,7 @@ export function TeacherReportsPage() {
           icon={UserMinus}
           iconBg="bg-red-50"
           iconColor="text-red-500"
+          hint="Guruh almashtirganlar kirmaydi"
         />
       </div>
 
@@ -177,7 +179,7 @@ export function TeacherReportsPage() {
                   <th className="num">Uy vaz.</th>
                   <th>Oxirgi faollik</th>
                   <th className="num">Kelgan</th>
-                  <th className="num">Faol</th>
+                  <th className="num" title="Davrda aktivlashgan a'zoliklar (konversiya) — hozirgi holat emas">Aktivl.</th>
                   <th className="num">Sinov</th>
                   <th className="num">Muzl.</th>
                   <th className="num">Ketgan</th>
@@ -275,7 +277,7 @@ export function TeacherReportsPage() {
               </p>
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7">
                 <LifecycleMetric label="Kelgan" value={detail.came} color="text-slate-700" />
-                <LifecycleMetric label="Faol" value={detail.active} color="text-emerald-600" />
+                <LifecycleMetric label="Aktivlashgan" value={detail.active} color="text-emerald-600" />
                 <LifecycleMetric label="Sinov" value={detail.trial} color="text-blue-500" />
                 <LifecycleMetric label="Muzlatilgan" value={detail.frozen} color="text-amber-500" />
                 <LifecycleMetric label="Ketgan" value={detail.left} color="text-red-500" />

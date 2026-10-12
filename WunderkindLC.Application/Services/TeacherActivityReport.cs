@@ -31,19 +31,19 @@ public static class TeacherActivityReport
     /// <summary>Umumiy ko'rinish: barcha o'qituvchilar bo'yicha bitta-bitta qator + mavjud oylar ro'yxati.</summary>
     public static async Task<TeacherReportOverviewDto> BuildOverviewAsync(IAppDbContext db, string? month = null)
     {
-        var (c, teachers, _, _, lifecycle, months) = await ComputeAsync(db, month);
+        var (c, teachers, _, _, lifecycle, months, totals) = await ComputeAsync(db, month);
         var rows = teachers
             .Select(t => Row(t.Id, t.FullName, t.IsArchived, KeysFor(c, t.Id), c.LastActivity.GetValueOrDefault(t.Id),
                 lifecycle.GetValueOrDefault(t.Id, new LifecycleCounts())))
             .OrderBy(r => r.IsArchived).ThenBy(r => r.FullName, StringComparer.OrdinalIgnoreCase)
             .ToList();
-        return new TeacherReportOverviewDto(months, month ?? "", rows);
+        return new TeacherReportOverviewDto(months, month ?? "", rows, totals);
     }
 
     /// <summary>Bitta o'qituvchining batafsil hisoboti (guruh/fan yoyilmasi bilan).</summary>
     public static async Task<TeacherReportDetailDto?> BuildDetailAsync(IAppDbContext db, string teacherId, string? month = null)
     {
-        var (c, teachers, classNames, subjectNames, lifecycle, _) = await ComputeAsync(db, month);
+        var (c, teachers, classNames, subjectNames, lifecycle, _, _) = await ComputeAsync(db, month);
         var teacher = teachers.FirstOrDefault(t => t.Id == teacherId);
         if (teacher is null) return null;
 
@@ -128,7 +128,8 @@ public static class TeacherActivityReport
         Dictionary<string, string> ClassNames,
         Dictionary<string, string> SubjectNames,
         Dictionary<string, LifecycleCounts> Lifecycle,
-        List<string> Months)> ComputeAsync(IAppDbContext db, string? month = null)
+        List<string> Months,
+        TeacherReportTotalsDto Totals)> ComputeAsync(IAppDbContext db, string? month = null)
     {
         // null/bo'sh = Umumiy (filtr yo'q)
         var filterMonth = string.IsNullOrEmpty(month) ? null : month;
@@ -237,14 +238,33 @@ public static class TeacherActivityReport
             if (!lifecycle.TryGetValue(tId, out var lc)) lifecycle[tId] = lc = new LifecycleCounts();
             return lc;
         }
+        // Kartochkalar uchun TAKRORSIZ (o'quvchi bo'yicha) to'plamlar — qatorlar yig'indisi ikki guruhdagi
+        // o'quvchini ikki marta sanardi (2026-10-12: «Faol o'quvchilar 730», haqiqatda 681 aktiv + 20 sinov).
+        var cameIds = new HashSet<string>();
+        var leftIds = new HashSet<string>();
+        var activeNow = new HashSet<string>();
+        var trialNow = new HashSet<string>();
+        var liveNow = new HashSet<string>();
         foreach (var sg in memberships)
         {
             if (!groupTeacher.TryGetValue(sg.GroupId, out var tId)) continue;
 
+            // HOZIRGI holat — Tally bilan bir xil ta'rif (chiqqan/arxivdagi — tirik emas).
+            if (sg.IsActive && !archivedStudents.Contains(sg.StudentId) && string.IsNullOrEmpty(sg.LeftAt))
+            {
+                liveNow.Add(sg.StudentId);
+                if (sg.Status == "trial") trialNow.Add(sg.StudentId);
+                else if (sg.Status != "frozen") activeNow.Add(sg.StudentId);
+            }
+
             // OQIM (event oyi bo'yicha, o'sha paytdagi o'qituvchiga)
             var joinedMonth = MonthOf(sg.JoinedAt);
             if ((filterMonth == null || joinedMonth == filterMonth)
-                && own.OwnerOn(sg.GroupId, sg.JoinedAt) is { } tCame) Lc(tCame).Came++;
+                && own.OwnerOn(sg.GroupId, sg.JoinedAt) is { } tCame)
+            {
+                Lc(tCame).Came++;
+                cameIds.Add(sg.StudentId);
+            }
             // Aktivlashish — yopilgan davrlar ham hisobga olinadi (qayta aktivlashtirilgan a'zolikda
             // joriy ActivatedAt eski hodisani ustidan yozib yuborardi).
             if (filterMonth == null)
@@ -259,7 +279,11 @@ public static class TeacherActivityReport
                 && own.OwnerOn(sg.GroupId, sg.FrozenAt) is { } tFr) Lc(tFr).Frozen++;
             var leftMonth = MonthOf(sg.LeftAt);
             if (leftMonth != "" && (filterMonth == null || leftMonth == filterMonth)
-                && own.OwnerOn(sg.GroupId, sg.LeftAt) is { } tLeft) Lc(tLeft).Left++;
+                && own.OwnerOn(sg.GroupId, sg.LeftAt) is { } tLeft)
+            {
+                Lc(tLeft).Left++;
+                leftIds.Add(sg.StudentId);
+            }
 
             // QOLGAN uchun a'zoliklarni yig'amiz (joriy suratkash, hozirgi o'qituvchi)
             if (!byTeacher.TryGetValue(tId, out var list)) byTeacher[tId] = list = new();
@@ -280,6 +304,10 @@ public static class TeacherActivityReport
             : await TuitionService.AcademicYearStartMonthAsync(db);
         var months = TuitionService.MonthRange(startMonth, TuitionService.CurrentMonth()).ToList();
 
-        return (c, teachers, classNames, subjectNames, lifecycle, months);
+        trialNow.ExceptWith(activeNow);   // aktiv guruhi bor o'quvchi "sinovda" emas
+        leftIds.ExceptWith(liveNow);      // guruh almashtirgan / boshqa guruhda o'qiyotgan — ketgan emas
+        var totals = new TeacherReportTotalsDto(cameIds.Count, activeNow.Count, trialNow.Count, leftIds.Count);
+
+        return (c, teachers, classNames, subjectNames, lifecycle, months, totals);
     }
 }
