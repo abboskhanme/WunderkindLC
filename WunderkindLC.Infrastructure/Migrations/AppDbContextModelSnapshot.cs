@@ -1391,6 +1391,9 @@ namespace WunderkindLC.Infrastructure.Migrations
                     b.Property<bool>("AttendanceDisciplineEnabled")
                         .HasColumnType("boolean");
 
+                    b.Property<DateTime?>("AttendanceDisciplineSince")
+                        .HasColumnType("timestamp without time zone");
+
                     b.Property<bool>("AttendanceEscalateEnabled")
                         .HasColumnType("boolean");
 
@@ -1400,6 +1403,9 @@ namespace WunderkindLC.Infrastructure.Migrations
 
                     b.Property<bool>("AttendanceFineEnabled")
                         .HasColumnType("boolean");
+
+                    b.Property<DateTime?>("AttendanceFineSince")
+                        .HasColumnType("timestamp without time zone");
 
                     b.Property<string>("AttendanceReminderMinutes")
                         .IsRequired()
