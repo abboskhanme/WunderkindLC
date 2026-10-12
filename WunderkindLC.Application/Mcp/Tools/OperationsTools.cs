@@ -266,28 +266,33 @@ public sealed class OperationsTools(McpToolContext t)
 
     [McpServerTool(Name = "tasks_list", Title = "Topshiriqlar ro'yxati",
         ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
-    [Description("Xodimlarga berilgan topshiriqlar (Kanban): doska, mas'ul xodim, holat (sukut — ochiq | done — bajarilgan | "
-        + "overdue — muddati o'tgan | today — bugun muddati | all), muddat oralig'i va nom/tavsif bo'yicha qidirish. «Bajarilgan» "
-        + "— topshiriq yopiluvchi ustunda turibdi. Har qatorda doska, ustun, mas'ul, muhimlik, muddat, kechikkanmi, bajarilgan "
-        + "vaqti, kim yaratgani va qadamlar (cheklist) bajarilishi. Arxivlangan topshiriqlar va (doska tanlanmasa) arxivlangan "
+    [Description("Xodimlarga berilgan topshiriqlar (Kanban): doska, mas'ul xodim, topshiriq bergan xodim, holat (sukut — ochiq | "
+        + "done — bajarilgan | overdue — muddati o'tgan | today — bugun muddati | awaiting — bajarildi, TASDIQ KUTMOQDA | "
+        + "approved — tasdiqlangan | all), muddat oralig'i va nom/tavsif bo'yicha qidirish. «Bajarilgan» — topshiriq yopiluvchi "
+        + "ustunda turibdi. Boshqa xodimga berilgan topshiriq bajarilgach topshiriq bergan (yoki admin) TASDIQLAYDI yoki sabab "
+        + "bilan QAYTARADI. Har qatorda doska, ustun, mas'ul, muhimlik, muddat, kechikkanmi, bajarilgan vaqti, kim yaratgani, "
+        + "qadamlar (cheklist) bajarilishi va tasdiq holati (state: open — ochiq, overdue — kechikkan, awaiting_approval — tasdiq "
+        + "kutmoqda, approved — tasdiqlangan, done — bajarildi (tasdiq talab qilinmaydi); kim/qachon tasdiqlagan, necha marta "
+        + "qaytarilgan). Arxivlangan topshiriqlar va (doska tanlanmasa) arxivlangan "
         + "doskalar sukut bo'yicha kirmaydi. Sahifalangan (ko'pi bilan 200 qator). "
         + "List work tasks with board, assignee, state, due-date and text filters.")]
     public async Task<string> TasksList(
         [Description("Doska id")] string? boardId = null,
         [Description("Mas'ul xodim id; biriktirilmaganlar uchun «none»")] string? assigneeId = null,
-        [Description("open (sukut) | done | overdue | today | all")] string? state = null,
+        [Description("open (sukut) | done | overdue | today | awaiting (tasdiq kutmoqda) | approved (tasdiqlangan) | all")] string? state = null,
         [Description("Muddat — dan, YYYY-MM-DD")] string? dueFrom = null,
         [Description("Muddat — gacha (shu kun ham kiradi), YYYY-MM-DD")] string? dueTo = null,
         [Description("Topshiriq nomi yoki tavsifi bo'lagi")] string? search = null,
         [Description("Arxivlangan topshiriq va doskalarni ham qo'shish: true")] bool? includeArchived = null,
+        [Description("Topshiriq bergan (yaratgan) xodim id")] string? createdById = null,
         [Description("Sahifa (1 dan)")] int? page = null,
         [Description("Sahifa hajmi (1..200, sukut 50)")] int? pageSize = null,
         CancellationToken ct = default)
     {
         t.Require(McpAreas.Tasks);
         var st = (state ?? "open").Trim().ToLowerInvariant();
-        if (st is not ("open" or "done" or "overdue" or "today" or "all"))
-            throw new McpException("«state»: open | done | overdue | today | all.");
+        if (st is not ("open" or "done" or "overdue" or "today" or "awaiting" or "approved" or "all"))
+            throw new McpException("«state»: open | done | overdue | today | awaiting | approved | all.");
         string? fromIso = string.IsNullOrWhiteSpace(dueFrom) ? null : McpToolContext.Iso(McpToolContext.Date(dueFrom, default, "dueFrom"));
         string? toIso = string.IsNullOrWhiteSpace(dueTo) ? null : McpToolContext.Iso(McpToolContext.Date(dueTo, default, "dueTo"));
         var db = t.Db;
@@ -330,13 +335,21 @@ public sealed class OperationsTools(McpToolContext t)
             "overdue" => q.Where(x => !doneCols.Contains(x.ColumnId) && x.DueDate != null && x.DueDate != ""
                                       && x.DueDate.CompareTo(today) < 0),
             "today" => q.Where(x => !doneCols.Contains(x.ColumnId) && x.DueDate == today),
+            // Approval step (CRM Phase 5, WorkTaskApproval.State): done + required + not yet approved / approved.
+            "awaiting" => q.Where(x => doneCols.Contains(x.ColumnId) && x.ApprovalRequired && x.ApprovedAt == null),
+            "approved" => q.Where(x => doneCols.Contains(x.ColumnId) && x.ApprovalRequired && x.ApprovedAt != null),
             _ => q,
         };
+        if (!string.IsNullOrWhiteSpace(createdById))
+        {
+            var cid = createdById.Trim();
+            q = q.Where(x => x.CreatedById == cid);
+        }
 
         var total = await q.CountAsync(ct);
         var p = McpToolContext.Page(page);
         var size = McpToolContext.PageSize(pageSize);
-        var ordered = st == "done"
+        var ordered = st is "done" or "awaiting" or "approved"
             ? q.OrderByDescending(x => x.CompletedAt).ThenByDescending(x => x.CreatedAt).ThenBy(x => x.Id)
             : q.OrderBy(x => x.DueDate == null || x.DueDate == "").ThenBy(x => x.DueDate)
                 .ThenByDescending(x => x.Priority).ThenByDescending(x => x.CreatedAt).ThenBy(x => x.Id);
@@ -345,6 +358,7 @@ public sealed class OperationsTools(McpToolContext t)
             {
                 x.Id, x.BoardId, x.ColumnId, x.Title, x.Description, x.AssigneeId, x.CreatedById, x.Priority,
                 x.DueDate, x.DueTime, x.CreatedAt, x.CompletedAt, x.Repeat, x.IsArchived,
+                x.ApprovalRequired, x.ApprovedAt, x.ApprovedById, x.ReturnCount, x.LastReturnedAt,
             }).ToListAsync(ct);
 
         var ids = rows.Select(r => r.Id).ToList();
@@ -358,13 +372,15 @@ public sealed class OperationsTools(McpToolContext t)
             .GroupBy(i => i.TaskId)
             .Select(g => new { TaskId = g.Key, Total = g.Count(), Done = g.Sum(i => i.Done ? 1 : 0) })
             .ToDictionaryAsync(g => g.TaskId, ct);
-        var names = await t.UserNamesAsync(rows.SelectMany(r => new[] { r.AssigneeId, r.CreatedById }), ct);
+        var names = await t.UserNamesAsync(rows.SelectMany(r => new[] { r.AssigneeId, r.CreatedById, r.ApprovedById }), ct);
 
         var items = rows.Select(r =>
         {
             var col = cols.GetValueOrDefault(r.ColumnId);
             var board = boards.GetValueOrDefault(r.BoardId);
             var isDone = col?.IsDone ?? false;
+            var overdue = !isDone && !string.IsNullOrWhiteSpace(r.DueDate) && string.CompareOrdinal(r.DueDate, today) < 0;
+            var taskState = WorkTaskApproval.State(isDone, overdue, r.ApprovalRequired, r.ApprovedAt);
             var step = steps.GetValueOrDefault(r.Id);
             return new
             {
@@ -376,12 +392,22 @@ public sealed class OperationsTools(McpToolContext t)
                 r.Priority,
                 priorityLabel = PriorityLabel(r.Priority),
                 r.DueDate, r.DueTime,
-                isOverdue = !isDone && !string.IsNullOrWhiteSpace(r.DueDate) && string.CompareOrdinal(r.DueDate, today) < 0,
+                isOverdue = overdue,
                 completedAt = r.CompletedAt?.ToString("yyyy-MM-ddTHH:mm:ss"),
                 createdBy = names.GetValueOrDefault(r.CreatedById, ""),
                 createdAt = r.CreatedAt.ToString("yyyy-MM-ddTHH:mm:ss"),
                 checklist = new { done = step?.Done ?? 0, total = step?.Total ?? 0 },
                 r.Repeat, r.IsArchived,
+                state = taskState,
+                stateLabel = WorkTaskApproval.StateLabels.GetValueOrDefault(taskState, taskState),
+                approval = new
+                {
+                    required = r.ApprovalRequired,
+                    approvedAt = r.ApprovedAt?.ToString("yyyy-MM-ddTHH:mm:ss"),
+                    approvedBy = string.IsNullOrEmpty(r.ApprovedById) ? null : names.GetValueOrDefault(r.ApprovedById, ""),
+                    returnCount = r.ReturnCount,
+                    lastReturnedAt = r.LastReturnedAt?.ToString("yyyy-MM-ddTHH:mm:ss"),
+                },
             };
         }).ToList();
 

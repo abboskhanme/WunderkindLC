@@ -34,7 +34,8 @@ public sealed class ScheduleTools(McpToolContext t)
         + "to'ri bilan bir xil); «date» (YYYY-MM-DD) berilsa — o'sha sananing HAQIQIY darslari: ko'chirilgan darslar (yangi kun "
         + "va vaqt), guruh boshlanish/tugash sanalari va o'rinbosar o'qituvchi hisobga olinadi. Ikkalasi ham berilmasa — bugungi "
         + "sana. Har darsda: guruh, kurs, o'qituvchi (sanada — darsni haqiqatan o'tadigan odam), xona, boshlanish/tugash vaqti, "
-        + "a'zolar soni (o'rin egallaganlar: faol + sinov, muzlatilgan va arxivdagi o'quvchi emas). «skippedGroups» — vaqti yoki "
+        + "a'zolar soni (o'rin egallaganlar: faol + sinov, muzlatilgan va arxivdagi o'quvchi emas); sanada xona qavati ham. "
+        + "Bir necha kun (hafta) — schedule_week, to'qnashuvlar — schedule_conflicts. «skippedGroups» — vaqti yoki "
         + "kunlari buzuq/to'ldirilmagan, shuning uchun jadvalga TUSHMAGAN guruhlar (nomlari bilan). Filtrlar: o'qituvchi, xona. "
         + "Sahifalangan. One day's timetable: weekly template for a weekday, or the real lessons of a date.")]
     public async Task<string> ScheduleDay(
@@ -130,8 +131,10 @@ public sealed class ScheduleTools(McpToolContext t)
             .Select(x => new { x.Id, x.FullName }).ToDictionaryAsync(x => x.Id, x => x.FullName, ct);
         var courseNames = await db.Subjects.Where(s => courseIds.Contains(s.Id))
             .Select(s => new { s.Id, s.Name }).ToDictionaryAsync(s => s.Id, s => s.Name, ct);
-        var roomNames = await db.Rooms.Where(r => roomIds.Contains(r.Id))
-            .Select(r => new { r.Id, r.Name }).ToDictionaryAsync(r => r.Id, r => r.Name, ct);
+        var roomRows = await db.Rooms.Where(r => roomIds.Contains(r.Id))
+            .Select(r => new { r.Id, r.Name, r.Floor }).ToListAsync(ct);
+        var roomNames = roomRows.ToDictionary(r => r.Id, r => r.Name);
+        var roomFloors = roomRows.ToDictionary(r => r.Id, r => r.Floor);
         // Members — the grid's definition (seat holders: active + trial, not frozen, student not archived).
         var members = await MembershipLifecycle.SeatHolders(db.StudentGroups, db.Students)
             .Where(sg => groupIds.Contains(sg.GroupId))
@@ -156,7 +159,12 @@ public sealed class ScheduleTools(McpToolContext t)
                     teacher = new { id = actualId, name = teacherNames.GetValueOrDefault(actualId ?? "", "") },
                     substitute,
                     groupTeacher = new { id = g.TeacherId, name = teacherNames.GetValueOrDefault(g.TeacherId ?? "", "") },
-                    room = new { id = ScheduleGridExport.RoomKey(g.RoomId, roomName), name = roomName },
+                    room = new
+                    {
+                        id = ScheduleGridExport.RoomKey(g.RoomId, roomName), name = roomName,
+                        // CRM Phase 5: the room's floor (null — «Qavat ko'rsatilmagan» or a legacy text room).
+                        floor = !string.IsNullOrEmpty(g.RoomId) ? roomFloors.GetValueOrDefault(g.RoomId) : null,
+                    },
                     startTime = ScheduleRules.FormatTime(start), endTime = ScheduleRules.FormatTime(end),
                     minutes = end - start,
                     moved = l.Moved,
@@ -267,6 +275,142 @@ public sealed class ScheduleTools(McpToolContext t)
             total = list.Count, page = p, pageSize = size,
             note = "«peakScore» — shu oraliqda markazda nechta dars ketyapti (qanchalik tig'iz). Haftalik shablon bo'yicha; "
                 + "vaqti buzuq guruhlar hisobga olinmagan.",
+            items,
+        }, items.Count);
+    }
+    // =====================================================================================
+    //  schedule_week — ScheduleController.Dated (DatedSchedule, CRM Phase 5 «Kun» / «Hafta»)
+    // =====================================================================================
+
+    [McpServerTool(Name = "schedule_week", Title = "Dars jadvali (kun / hafta, sanalar bo'yicha)",
+        ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
+    [Description("Sanalar bo'yicha HAQIQIY dars jadvali — bosh sahifa va «Dars jadvali»dagi «Kun» / «Hafta» ko'rinishi bilan bir "
+        + "xil (bir so'rovda ko'pi bilan 7 kun; sukut — bugun): ko'chirilgan darslar yangi sana va vaqtida, o'rinbosar "
+        + "o'qituvchi nomi bilan, guruh boshlanish/tugash sanalari hisobga olinadi. Har darsda: sana, guruh, kurs, o'qituvchi "
+        + "(va o'rinbosar), xona va uning QAVATI, boshlanish/tugash vaqti, ko'chirilganmi, o'rin egallaganlar va sig'im, "
+        + "jurnalda «o'tildi» belgisi, holati. Xonalar ro'yxati qavatlar bo'yicha (qavat ko'rsatilmaganlar oxirida), "
+        + "o'qituvchilar ro'yxati, vaqti buzuq guruhlar soni. Filtrlar: o'qituvchi (o'rinbosar ham), xona, qavat, guruh, kurs. "
+        + "Darslar sana va vaqt bo'yicha, sahifalangan. Real lessons of a date range (≤ 7 days) with rooms grouped by floor.")]
+    public async Task<string> ScheduleWeek(
+        [Description("Sana — dan, YYYY-MM-DD (sukut — bugun)")] string? from = null,
+        [Description("Sana — gacha, YYYY-MM-DD (sukut — 'from'; oraliq ko'pi bilan 7 kun)")] string? to = null,
+        [Description("O'qituvchi id (guruh egasi yoki o'sha kuni o'rinbosar)")] string? teacherId = null,
+        [Description("Xona id (rooms_list dan; eski matnli xona uchun «name:<nomi>»)")] string? roomId = null,
+        [Description("Qavat (−2..50)")] int? floor = null,
+        [Description("Guruh id")] string? groupId = null,
+        [Description("Kurs id")] string? courseId = null,
+        [Description("Sahifa (1 dan)")] int? page = null,
+        [Description("Sahifa hajmi (1..200, sukut 50)")] int? pageSize = null,
+        CancellationToken ct = default)
+    {
+        t.Require(McpAreas.Timetable);
+        var (f, tt, error) = DatedSchedule.ParseRange(from, to, McpToolContext.Today);
+        if (error is not null) throw new McpException(error + " (YYYY-MM-DD, ko'pi bilan 7 kun).");
+        var tid = string.IsNullOrWhiteSpace(teacherId) ? null : teacherId.Trim();
+        var rid = string.IsNullOrWhiteSpace(roomId) ? null : roomId.Trim();
+        var gid = string.IsNullOrWhiteSpace(groupId) ? null : groupId.Trim();
+        var cid = string.IsNullOrWhiteSpace(courseId) ? null : courseId.Trim();
+
+        // The panel's own loader and pure builder (the same numbers as GET api/admin/schedule/dated).
+        var dated = DatedSchedule.Build(await DatedSchedule.LoadAsync(t.Db, f, tt, ct), f, tt);
+
+        var lessons = dated.Lessons
+            .Where(l => tid is null || l.TeacherId == tid || l.SubstituteTeacherId == tid)
+            .Where(l => rid is null || l.RoomId == rid)
+            .Where(l => floor is null || l.Floor == floor)
+            .Where(l => gid is null || l.GroupId == gid)
+            .Where(l => cid is null || l.CourseId == cid)
+            .ToList();
+        var p = McpToolContext.Page(page);
+        var size = McpToolContext.PageSize(pageSize);
+        var items = lessons.Skip((p - 1) * size).Take(size).Select(l => new
+        {
+            l.Date,
+            dayLabel = ScheduleRules.DayShort((((int)DateOnly.ParseExact(l.Date, "yyyy-MM-dd").DayOfWeek) + 6) % 7),
+            group = new { id = l.GroupId, name = l.GroupName, status = l.Status },
+            course = new { id = l.CourseId, name = l.CourseName },
+            teacher = new { id = l.TeacherId, name = l.TeacherName },
+            substitute = l.SubstituteTeacherId.Length == 0 ? null : new { id = l.SubstituteTeacherId, name = l.SubstituteTeacherName },
+            room = new { id = l.RoomId, name = l.RoomName, floor = l.Floor, floorLabel = RoomFloors.Label(l.Floor) },
+            startTime = l.Start, endTime = l.End, moved = l.Moved,
+            members = l.Members, capacity = l.Capacity,
+            conducted = l.AttendanceTaken,
+        }).ToList();
+
+        var floors = dated.Rooms
+            .GroupBy(r => r.Floor)
+            .Select(g => new
+            {
+                floor = g.Key, label = RoomFloors.Label(g.Key),
+                rooms = g.Select(r => new
+                {
+                    r.Id, r.Name, r.Capacity,
+                    lessons = lessons.Count(l => l.RoomId == r.Id),
+                }),
+            })
+            .ToList();
+
+        return t.Json(new
+        {
+            from = dated.From, to = dated.To,
+            floors,
+            teachers = dated.Teachers.Select(x => new { x.Id, x.Name, lessons = lessons.Count(l => (l.SubstituteTeacherId.Length > 0 ? l.SubstituteTeacherId : l.TeacherId) == x.Id) }),
+            skippedGroups = dated.SkippedGroups,
+            note = "«conducted» — jurnalda dars «o'tildi» deb belgilangan (dars monitoringi bilan bir xil). Xonalar — barcha faol "
+                + "xonalar (bo'shi ham) va dars bo'lgan har xona; qavatlar o'sish tartibida, ko'rsatilmaganlar oxirida. "
+                + "Bayram/dam olish kunlari modeli yo'q.",
+            total = lessons.Count, page = p, pageSize = size,
+            items,
+        }, items.Count);
+    }
+
+    // =====================================================================================
+    //  schedule_conflicts — ScheduleController.Conflicts (RoomConflictService.AllPairsAsync)
+    // =====================================================================================
+
+    [McpServerTool(Name = "schedule_conflicts", Title = "Jadvaldagi to'qnashuvlar",
+        ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
+    [Description("Jadvaldagi MAVJUD to'qnashuvlar — «Dars jadvali» sahifasidagi «Jadvalda N ta to'qnashuv bor» ogohlantirishi "
+        + "bilan bir xil: ikki faol guruh bir xil XONADA (room) yoki bir xil O'QITUVCHI bilan (teacher) umumiy hafta kunida "
+        + "ustma-ust vaqtda (tegib turgan darslar to'qnashuv emas) va ustma-ust sana oralig'ida. Har juftlikda: turi, ikkala "
+        + "guruh, umumiy kunlar va vaqt. Yangi to'qnashuvni panel saqlamaydi (faqat superadmin sabab bilan) — bu ro'yxat oldindan "
+        + "bor bo'lganlarni ko'rsatadi. Filtr: turi (room | teacher), guruh. Existing double bookings (room or teacher).")]
+    public async Task<string> ScheduleConflictPairs(
+        [Description("Turi: room | teacher")] string? kind = null,
+        [Description("Faqat shu guruh ishtirok etgan juftliklar")] string? groupId = null,
+        CancellationToken ct = default)
+    {
+        t.Require(McpAreas.Timetable);
+        var k = (kind ?? "").Trim().ToLowerInvariant();
+        if (k.Length > 0 && k is not (Services.ScheduleConflicts.KindRoom or Services.ScheduleConflicts.KindTeacher))
+            throw new McpException("«kind»: room | teacher.");
+        var gid = string.IsNullOrWhiteSpace(groupId) ? null : groupId.Trim();
+        ct.ThrowIfCancellationRequested();
+
+        var pairs = (await new RoomConflictService(t.Db).AllPairsAsync())
+            .Where(x => k.Length == 0 || x.Kind == k)
+            .Where(x => gid is null || x.GroupAId == gid || x.GroupBId == gid)
+            .ToList();
+        var items = pairs.Take(McpToolContext.MaxPageSize).Select(x => new
+        {
+            x.Kind,
+            kindLabel = x.Kind == Services.ScheduleConflicts.KindRoom ? "Xona band" : "O'qituvchi band",
+            groupA = new { id = x.GroupAId, name = x.GroupAName },
+            groupB = new { id = x.GroupBId, name = x.GroupBName },
+            days = x.Days,
+            dayLabels = GroupTools.DayLabels(x.Days),
+            slot = x.Slot,
+        }).ToList();
+
+        return t.Json(new
+        {
+            total = pairs.Count,
+            truncated = pairs.Count > items.Count,
+            byKind = new
+            {
+                room = pairs.Count(x => x.Kind == Services.ScheduleConflicts.KindRoom),
+                teacher = pairs.Count(x => x.Kind == Services.ScheduleConflicts.KindTeacher),
+            },
             items,
         }, items.Count);
     }
