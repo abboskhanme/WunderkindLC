@@ -137,20 +137,16 @@ public class TelegramMiniAppLinkTests
     }
 
     [Fact]
-    public void Ulanmagan_chat_klaviaturasi_PANEL_tepada_telefon_SOROLMAYDI()
+    public void Ulanmagan_chat_klaviaturasi_FAQAT_Panel_kitob_support_telefon_YOQ()
     {
-        foreach (var books in new[] { true, false })
-        {
-            var rows = JsonDocument.Parse(JsonSerializer.Serialize(TelegramBotService.StartKeyboard(books)))
-                .RootElement.GetProperty("keyboard").EnumerateArray().ToList();
-            var first = rows[0].EnumerateArray().First();
-            Assert.Equal(TelegramBotService.PanelButtonText, first.GetProperty("text").GetString());
-            Assert.Equal(TelegramBotService.PanelUrl, first.GetProperty("web_app").GetProperty("url").GetString());
-            var all = rows.SelectMany(r => r.EnumerateArray()).ToList();
-            Assert.DoesNotContain(all, b => b.TryGetProperty("request_contact", out _));
-            Assert.Equal(books, all.Any(b => b.GetProperty("text").GetString() == BookShopBotService.BooksButtonText));
-        }
+        var rows = JsonDocument.Parse(JsonSerializer.Serialize(TelegramBotService.StartKeyboard()))
+            .RootElement.GetProperty("keyboard").EnumerateArray().ToList();
+        var button = Assert.Single(Assert.Single(rows).EnumerateArray());
+        Assert.Equal(TelegramBotService.PanelButtonText, button.GetProperty("text").GetString());
+        Assert.Equal(TelegramBotService.PanelUrl, button.GetProperty("web_app").GetProperty("url").GetString());
+        Assert.False(button.TryGetProperty("request_contact", out _));
         Assert.DoesNotContain("telefon", TelegramBotService.StartWelcomeText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("login/parol", TelegramBotService.GateText);
     }
 
     // ===== Keyboard-button Mini App: sendData token (2026-10-13) =====

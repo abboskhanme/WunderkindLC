@@ -8,7 +8,7 @@ using System.Net;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
 
-// Test loyihasi xavfsizlik seam'lariga (IsOwnContact) kira olishi uchun.
+// Test loyihasi ichki konstantalar/sof funksiyalarga (LegacyTestButtonText, IsLegacyOnlineTestCallback) kira olishi uchun.
 [assembly: InternalsVisibleTo("WunderkindLC.Tests")]
 
 namespace WunderkindLC.Application.Services;
@@ -18,7 +18,8 @@ namespace WunderkindLC.Application.Services;
 /// Oqim (2026-10-12 dan — bitta bot hamma uchun, TELEFON SO'RALMAYDI): /start → MAJBURIY kanal obunasi
 /// (sozlangan bo'lsa) → «📱 Panel» tugmasi (Mini App). Foydalanuvchi Panel ichida login/parol bilan kirganda
 /// chat uning akkauntiga bog'lanadi (<see cref="Messaging.TelegramMiniAppLink"/>, <c>POST api/telegram/link</c>).
-/// Eski yo'l — kontakt ulashish — hamon qabul qilinadi (raqam mos kelsa ulanadi), lekin bot uni SO'RAMAYDI.
+/// 🔒 2026-10-13: ulanmagan chat /start va Panel'dan boshqa hech narsadan foydalana olmaydi (<see cref="Messaging.BotAccess"/>);
+/// telefon/kontakt orqali ulanish OLIB TASHLANDI — raqam hech qachon kirish bermaydi.
 /// Token sozlanmagan bo'lsa xizmat kutadi (sayt baribir ishlaydi).
 /// (2026-10: ilova (APK) fayli yuborish va bot orqali ONLAYN TEST olib tashlandi.)
 /// Support rejimi: /support → Mode="support" → keyingi matnlar adminga ketadi.
@@ -57,15 +58,6 @@ public class TelegramBotService(
     /// </summary>
     public const string PanelButtonText = "📱 Panel";
     public const string PanelUrl = WebAppUrl;
-
-    /// <summary>Foydalanuvchi raqamni matn qilib yozganda yoki BEGONA kontakt yuborganda javob.</summary>
-    private const string OwnContactOnlyPrompt =
-        "❗️ Raqam qabul qilinmadi.\n\n" +
-        "Iltimos, O'ZINGIZNING raqamingizni pastdagi «📱 Telefon raqamni yuborish» tugmasi orqali yuboring.\n" +
-        "Qo'lda yozilgan yoki boshqa odamning kontakti qabul qilinmaydi.";
-
-    /// <summary>Obunadan oldin kontakt yuborgan, lekin hali obuna bo'lmaganlar: chatId → telefon.</summary>
-    private readonly ConcurrentDictionary<long, string> _pendingPhone = new();
 
     /// <summary>Obuna tekshiruvi keshi: chatId → shu vaqtgacha qayta so'ramaymiz. Har tugma bosishda
     /// Telegram API'ga murojaat qilmaslik uchun (obuna holati tez-tez o'zgarmaydi).</summary>
@@ -215,9 +207,11 @@ public class TelegramBotService(
         if (!msg.TryGetProperty("chat", out var chat) || !chat.TryGetProperty("id", out var chatIdEl)) return;
         var chatId = chatIdEl.GetInt64();
 
+        // Faqat SHAXSIY chat. Guruhlarda bot hech narsaga javob bermaydi — u yerda faqat lid kartalari (my_chat_member).
+        if (!chat.TryGetProperty("type", out var chatTypeEl) || chatTypeEl.GetString() != "private") return;
+
         // CRM upgrade P2.4: a private chat that writes to the bot is deliverable again (clears «Bloklagan»).
-        if (chat.TryGetProperty("type", out var chatTypeEl) && chatTypeEl.GetString() == "private")
-            await UnblockAsync(chatId, ct);
+        await UnblockAsync(chatId, ct);
 
         // «🔔 Bot xabarlarini yoqish» — pastki klaviaturadan ochilgan Panel `sendData` bilan yuborgan bir martalik kod
         // (bunday ochilishda Telegram initData BERMAYDI — TelegramLinkTokens). Kod LOGGA yozilmaydi.
@@ -229,21 +223,30 @@ public class TelegramBotService(
             return;
         }
 
-        // Kontakt ulashildi. XAVFSIZLIK: faqat O'ZINING kontakti qabul qilinadi — Telegramda manzillar
-        // kitobidan BEGONA odamning kontaktini ham yuborish mumkin, u holda o'sha odamning profili
-        // (login/parol, kirish kodi) hujumchining chatiga bog'lanib qolardi.
-        if (msg.TryGetProperty("contact", out var contact))
+        var text = msg.TryGetProperty("text", out var t) ? t.GetString() ?? "" : "";
+
+        if (text.StartsWith("/start"))
         {
-            var phone = contact.TryGetProperty("phone_number", out var p) ? p.GetString() : null;
-            if (!IsOwnContact(msg))
-            {
-                await LogInAsync(chatId, "[begona kontakt yuborildi — rad etildi]", ct);
-                logger.LogWarning("Bot: begona kontakt rad etildi, chatId {Id}", chatId);
-                await SendAsync(chatId, OwnContactOnlyPrompt, ContactKeyboard, ct);
-                return;
-            }
-            await LogInAsync(chatId, $"[telefon raqami ulashildi: {phone}]", ct);
-            await HandleContactAsync(chatId, phone, SenderName(msg), ct);
+            await LogInAsync(chatId, text, ct);
+            if (!await CheckSubscriptionForStartAsync(chatId, ct)) return;
+            await SendStartWelcomeAsync(chatId, msg, ct);
+            return;
+        }
+
+        // 🔒 2026-10-13 (egasi: "login paroli bo'lmagan odam umuman foydalana olmasligi kerak"): botga ULANMAGAN chat
+        // boshqa HECH NARSADAN foydalana olmaydi — kitob, adminga murojaat, kod, kontakt, fayl (BotAccess). Javob tarixga
+        // yozilmaydi: begona odamning yozishmasi «Support Telegram»ga tushmasin.
+        if (!BotAccess.Allowed(await IsLinkedChatAsync(chatId, ct), BotAccess.Action.Message))
+        {
+            await telegram.SendMessageAsync(chatId, GateText, PanelInline, ct);
+            return;
+        }
+
+        // Telefon raqami endi KERAK EMAS (kirish faqat login/parol bilan) — yuborilgan kontakt hech narsaga bog'lanmaydi.
+        if (msg.TryGetProperty("contact", out _))
+        {
+            await SendAsync(chatId, "ℹ️ Telefon raqami kerak emas — pastdagi tugmalardan foydalaning.",
+                await LinkedKeyboardAsync(ct), ct);
             return;
         }
 
@@ -253,19 +256,11 @@ public class TelegramBotService(
             if (await HandleFileMessageAsync(chatId, msg, ct)) return;
         }
 
-        var text = msg.TryGetProperty("text", out var t) ? t.GetString() ?? "" : "";
-
-        if (text.StartsWith("/start"))
+        if (text == "/support" || text == SupportButtonText)
         {
             await LogInAsync(chatId, text, ct);
-            if (!await CheckSubscriptionForStartAsync(chatId, ct)) return;
-            await SendStartWelcomeAsync(chatId, msg, ct);
-        }
-        else if (text == "/support" || text == SupportButtonText)
-        {
-            await LogInAsync(chatId, text, ct);
-            // ATAYIN obuna talab qilinmaydi: adminga murojaat — yagona "zaxira yo'l". Kanalni topa
-            // olmagan yoki muammosi bor foydalanuvchi hech bo'lmasa yozib so'ray olishi kerak.
+            // ATAYIN obuna talab qilinmaydi: ulangan foydalanuvchi uchun adminga murojaat — "zaxira yo'l" (kanalni topa
+            // olmagan bo'lsa ham yozib so'ray olsin). Ulanmagan chatga u ham yopiq (BotAccess).
             await HandleSupportCommandAsync(chatId, ct);
         }
         else if (text == "/kod" || text == OtpButtonText)
@@ -323,12 +318,8 @@ public class TelegramBotService(
             else
             {
                 await LogInAsync(chatId, text, ct);
-                // 2026-10-12: telefon so'ralmaydi — har qanday boshqa matnga «📱 Panel» yo'riqnomasi (jim qolmaymiz).
-                // Matn sifatida yozilgan raqam baribir hech narsaga BOG'LANMAYDI.
-                var registered = await db.TelegramRegistrations.AnyAsync(r => r.ChatId == chatId, ct);
-                var books = await BookSalesEnabledAsync(db, ct);
-                await SendAsync(chatId, StartHintText,
-                    registered ? RegisteredKeyboard(books, panel: true) : StartKeyboard(books), ct);
+                // Tanilmagan matn — jim qolmaymiz: «📱 Panel» yo'riqnomasi.
+                await SendAsync(chatId, StartHintText, RegisteredKeyboard(await BookSalesEnabledAsync(db, ct), panel: true), ct);
             }
         }
     }
@@ -470,18 +461,17 @@ public class TelegramBotService(
         }
 
         if (cbId.Length > 0) await telegram.AnswerCallbackAsync(cbId, ct: ct);
+
+        // 🔒 Ulanmagan chat — faqat /start obunasini qayta tekshirish (BotAccess); eski xabarlardagi kitob/support
+        // tugmalari ham yopiq. Tarixga yozilmaydi.
+        if (!BotAccess.Allowed(await IsLinkedChatAsync(chatId, ct), BotAccess.Action.Callback, data))
+        {
+            await telegram.SendMessageAsync(chatId, GateText, PanelInline, ct);
+            return;
+        }
         await LogInAsync(chatId, $"[tugma bosildi: {data}]", ct);
 
-        if (data == "check_sub")
-        {
-            if (!_pendingPhone.TryGetValue(chatId, out var phone))
-            {
-                await SendStartWelcomeAsync(chatId, cq, ct);
-                return;
-            }
-            await HandleContactAsync(chatId, phone, "", ct);
-        }
-        else if (data == "check_sub_start")
+        if (data is "check_sub_start" or "check_sub")
         {
             if (!await CheckSubscriptionForStartAsync(chatId, ct)) return;
             await SendStartWelcomeAsync(chatId, cq, ct);
@@ -714,187 +704,11 @@ public class TelegramBotService(
         using (var scope = sp.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<IAppDbContext>();
-            await SendAsync(chatId, "Assalomu alaykum! 👋", StartKeyboard(await BookSalesEnabledAsync(db, ct)), ct);
+            await SendAsync(chatId, "Assalomu alaykum! 👋", StartKeyboard(), ct);
             // Xabar ICHIDAGI (inline) tugma: shu yo'l bilan ochilgan Panel Telegram initData oladi va login'dan keyin
             // chat O'ZI ulanadi. Pastki klaviatura tugmasi initData bermaydi (u yerda Panel'dagi «Bot xabarlarini yoqish»).
             await SendAsync(chatId, StartWelcomeText, PanelInline, ct);
         }
-    }
-
-    /// <summary>Telefon kelganda: moslik → MAJBURIY obuna → register + kirish ma'lumotlari.</summary>
-    private async Task HandleContactAsync(long chatId, string? phone, string senderName, CancellationToken ct)
-    {
-        var key = PhoneUtil.Key(phone);
-        if (key.Length < 7)
-        {
-            await SendAsync(chatId, "Telefon raqami noto'g'ri. Qaytadan urinib ko'ring.", ct: ct);
-            return;
-        }
-
-        using var scope = sp.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<IAppDbContext>();
-
-        var meta = await db.CenterMeta.FirstOrDefaultAsync(ct);
-        // CRM upgrade P2.4: o'quvchi 4 ta raqamning ISTALGANI bo'yicha taniladi (o'quvchi, asosiy ota-ona, ota,
-        // ona) — ota, ona va o'quvchining o'zi har biri o'z Telegramini ulay oladi. `TelegramPhoneMatchField`
-        // endi o'qilmaydi (ustun qoldi).
-        var matchedStudents = await TelegramRegistrar.MatchStudentsAsync(db, phone, ct);
-        var matchedTeachers = (await db.Teachers.Where(t => !t.IsArchived).ToListAsync(ct))
-            .Where(t => PhoneUtil.Key(t.Phone) == key).ToList();
-        // Admin/xodim — telefon AppUser.Phone bilan moslashsa (yangi lid xabarnomalarini olish uchun).
-        var matchedAdmins = (await db.Users
-                .Where(u => u.Role == Roles.Admin || u.Role == Roles.SuperAdmin || u.Role == Roles.Staff)
-                .ToListAsync(ct))
-            .Where(u => PhoneUtil.Key(u.Phone) == key).ToList();
-
-        // Markaz ro'yxatida topilmadi — tizimga KIRISH berilmaydi, lekin raqam saqlanadi va
-        // KITOB SOTUVI ochiq qoladi (kitob sotib olish uchun markazda o'qish shart emas).
-        if (matchedStudents.Count == 0 && matchedTeachers.Count == 0 && matchedAdmins.Count == 0)
-        {
-            _pendingPhone.TryRemove(chatId, out _);
-            await UpsertBotUserAfterContactAsync(db, chatId, PhoneUtil.DigitsOnly(phone!), new List<string>(), ct);
-            var booksOn = meta?.BookSalesEnabled ?? true;
-            await SendAsync(chatId,
-                $"Bu raqam ({phone}) markaz o'quvchilari ro'yxatida topilmadi — tizimga kirish ma'lumotlari "
-                + "berilmaydi. Ma'lumotingiz noto'g'ri bo'lsa, markaz ma'muriyatiga murojaat qiling."
-                + (booksOn ? $"\n\n📚 Kitob sotib olish ochiq — «{BookShopBotService.BooksButtonText}»." : ""),
-                StartKeyboard(booksOn), ct, "HTML");
-            return;
-        }
-
-        var channel = meta?.TelegramChannel ?? "";
-
-        // MAJBURIY obuna (ommaviy @kanal sozlangan bo'lsa).
-        var channelUser = TelegramService.ChannelUsername(channel);
-        if (channelUser is not null)
-        {
-            var status = await telegram.GetChatMemberStatusAsync(channelUser, chatId, ct);
-            if (status is "left" or "kicked")
-            {
-                _pendingPhone[chatId] = phone!;
-                await SendAsync(chatId,
-                    "📢 Davom etish uchun avval markaz kanaliga obuna bo'ling, so'ng \"✅ Tekshirish\" tugmasini bosing.",
-                    SubscribeKeyboard(ChannelUrl(channel)), ct);
-                return;
-            }
-            // status null (bot kanal admini emas / tekshirib bo'lmadi) → bloklamaymiz (fail-open), ogohlantiramiz.
-            if (status is null)
-                logger.LogWarning("Telegram obuna tekshirib bo'lmadi (bot kanal admini bo'lishi kerak): {Ch}", channelUser);
-        }
-
-        _pendingPhone.TryRemove(chatId, out _);
-        await CompleteAsync(db, meta, chatId, phone!, senderName, matchedStudents, matchedTeachers, matchedAdmins, ct);
-    }
-
-    /// <summary>Obuna o'tdi: TelegramRegistration yozadi, login/parol yuboradi va BotUser yangilaydi.
-    /// Admin/xodim moslansa — UserId yozuvi (yangi lid xabarnomalari uchun).
-    /// DIQQAT: ro'yxatdan o'tish (TelegramRegistration — xabar/e'lon olish uchun) HAMMA mos o'quvchida
-    /// bajariladi, lekin login/parol faqat AKTIV o'quvchiga yuboriladi
-    /// (<see cref="ActiveStudentIdsAsync"/>).</summary>
-    private async Task CompleteAsync(
-        IAppDbContext db, CenterMeta? meta, long chatId, string phone, string senderName,
-        List<Student> students, List<Teacher> teachers, List<AppUser> admins, CancellationToken ct)
-    {
-        var digits = PhoneUtil.DigitsOnly(phone);
-        var linked = new List<string>();
-
-        // O'quvchi(lar)ning HOZIR o'qiyotgan barcha guruhlari (M2M, faol a'zolik — trial/active/frozen)
-        // + har guruhning o'qituvchisi F.I.SH. Eski (bitta) Student.ClassName EMAS — u ko'p guruhli
-        // o'quvchida yoki guruh almashtirilganda eskirgan bo'lishi mumkin.
-        var studentIds = students.Select(s => s.Id).ToList();
-        var memberships = studentIds.Count == 0 ? new List<StudentGroup>()
-            : await db.StudentGroups.Where(sg => studentIds.Contains(sg.StudentId) && sg.IsActive).ToListAsync(ct);
-        var memberGroupIds = memberships.Select(m => m.GroupId).Distinct().ToList();
-        var memberClasses = memberGroupIds.Count == 0 ? new List<Group>()
-            : await db.Classes.Where(c => memberGroupIds.Contains(c.Id)).ToListAsync(ct);
-        var memberTeacherIds = memberClasses.Select(c => c.TeacherId)
-            .Where(tid => !string.IsNullOrEmpty(tid)).Distinct().ToList();
-        var memberTeacherNames = memberTeacherIds.Count == 0 ? new Dictionary<string, string>()
-            : await db.Teachers.Where(t => memberTeacherIds.Contains(t.Id)).ToDictionaryAsync(t => t.Id, t => t.FullName, ct);
-        var classesByStudent = memberships
-            .GroupBy(m => m.StudentId)
-            .ToDictionary(g => g.Key, g => g
-                .Select(m => memberClasses.FirstOrDefault(c => c.Id == m.GroupId))
-                .Where(c => c is not null).Cast<Group>().ToList());
-
-        // Bitta ulanish har mos o'quvchiga (aka-uka bitta ota-ona chatini bo'lishadi), qarindoshlik aniqlanadi;
-        // mavjud ulanishda qarindoshlik faqat bo'sh bo'lsa yoziladi (admin tahriri bosilmaydi), blok belgisi tozalanadi.
-        var newLinks = await TelegramRegistrar.UpsertStudentLinksAsync(db, chatId, phone, senderName, students, ct);
-        foreach (var s in students)
-        {
-            var studentClasses = classesByStudent.GetValueOrDefault(s.Id, new List<Group>());
-            if (studentClasses.Count > 0)
-            {
-                var groupLabels = studentClasses.Select(c =>
-                {
-                    var teacherName = !string.IsNullOrEmpty(c.TeacherId) && memberTeacherNames.TryGetValue(c.TeacherId, out var tn)
-                        ? tn : "";
-                    return teacherName.Length > 0 ? $"{c.Name} (o'qituvchi: {teacherName})" : c.Name;
-                });
-                linked.Add($"{s.FullName} — {string.Join(", ", groupLabels)}");
-            }
-            else
-            {
-                linked.Add($"{s.FullName} ({s.ClassName})");
-            }
-        }
-        // O'qituvchi va admin/xodim — chatning YAGONA "o'quvchisiz" qatori (unikal StudentId+ChatId): ikkala akkaunt
-        // bitta raqamga mos kelsa id'lar o'sha qatorga qo'shiladi (ilgari ikkinchi qator unikal indeksda yiqilardi).
-        foreach (var tch in teachers)
-        {
-            await TelegramMiniAppLink.AttachNonStudentAsync(db, chatId, senderName, digits, teacherId: tch.Id, userId: null, ct);
-            linked.Add($"{tch.FullName} (xodim)");
-        }
-        foreach (var u in admins)
-        {
-            await TelegramMiniAppLink.AttachNonStudentAsync(db, chatId, senderName, digits, teacherId: null, userId: u.Id, ct);
-            linked.Add($"{u.FullName} (admin)");
-        }
-        await db.SaveChangesAsync(ct);
-
-        await SendAsync(chatId,
-            "✅ Ro'yxatdan o'tdingiz:\n• " + string.Join("\n• ", linked),
-            RegisteredKeyboard(meta?.BookSalesEnabled ?? true, panel: true), ct);
-
-        // Admin/xodim — yangi lid xabarnomalari haqida ma'lumot.
-        if (admins.Count > 0)
-            await SendAsync(chatId,
-                "🔔 Yangi lid tushganda shu yerga xabar olasiz.", ct: ct);
-
-        // LOGIN/PAROL — FAQAT "aktiv" o'quvchiga (arxivlangan va aktiv bo'lmaganlar chetlab o'tiladi;
-        // o'qituvchi/admin uchun bu cheklov yo'q). Matn o'zida veb-versiya havolasini ham o'z ichiga oladi.
-        var activeStudentIds = await ActiveStudentIdsAsync(db, students, ct);
-        var loginStudents = students.Where(s => activeStudentIds.Contains(s.Id)).ToList();
-        var sentLogin = await SendLoginInfoAsync(db, chatId, loginStudents, teachers, admins, ct);
-
-        // Chetlab o'tilganlarga sababini aytamiz — aks holda "hech narsa kelmadi" bo'lib qoladi.
-        var skippedNames = students.Where(s => !activeStudentIds.Contains(s.Id)).Select(s => s.FullName).ToList();
-        if (skippedNames.Count > 0)
-            await SendAsync(chatId,
-                "ℹ️ Kirish ma'lumotlari yuborilmadi — hisob hozircha faol emas:\n• "
-                + string.Join("\n• ", skippedNames)
-                + "\nMarkaz ma'muriyatiga murojaat qiling.", ct: ct);
-
-        // BotUser — telefon va moslik yorlig'ini yangilash/yaratish.
-        await UpsertBotUserAfterContactAsync(db, chatId, digits, linked, ct);
-
-        // Veb-versiya havolasi — FAQAT kirish ma'lumoti berilgan o'quvchi/o'qituvchi uchun va faqat login
-        // xabari (u allaqachon havolani o'z ichiga oladi) yuborilmagan bo'lsa — aks holda bir xil link ikki
-        // marta takrorlanib qolardi. (Ilova (APK) fayli yuborish 2026-10 da olib tashlandi.)
-        if ((loginStudents.Count > 0 || teachers.Count > 0) && !sentLogin)
-            await SendAsync(chatId,
-                $"🌐 Tizimga veb-versiya orqali kiring:\n{WebAppUrl}",
-                ct: ct);
-
-        // «01» minnatdorchilik (CRM upgrade P2.4) — tasdiq va login xabarlaridan KEYIN, FAQAT yangi ulangan chatga,
-        // har yangi (arxivlanmagan) o'quvchi ulanishi uchun (outbox dedupe — bir chatga bir o'quvchi bo'yicha bir marta).
-        if (autoMsg is not null)
-            foreach (var reg in newLinks)
-            {
-                var st = students.FirstOrDefault(x => x.Id == reg.StudentId);
-                if (st is null || st.IsArchived) continue;
-                await autoMsg.DispatchBotConnectedAsync(db, st, reg, ct);
-            }
     }
 
     /// <summary>Berilgan o'quvchilardan bot orqali KIRISH MA'LUMOTI olishga haqli bo'lganlarining id'lari.
@@ -915,48 +729,6 @@ public class TelegramBotService(
         return active.ToHashSet();
     }
 
-    /// <summary>Mos AppUser(lar) uchun login va (mavjud bo'lsa) dastlabki parolni yuboradi.
-    /// Kamida bitta xabar yuborilsa true (matn o'zida veb-versiya havolasini ham qo'shadi — chaqiruvchi
-    /// shu holatda alohida "veb-versiya" xabarini qayta yubormasligi kerak).</summary>
-    private async Task<bool> SendLoginInfoAsync(
-        IAppDbContext db, long chatId,
-        List<Student> students, List<Teacher> teachers, List<AppUser> admins, CancellationToken ct)
-    {
-        try
-        {
-            var seen = new HashSet<string>();
-
-            foreach (var s in students)
-            {
-                if (string.IsNullOrEmpty(s.UserId)) continue;
-                var user = await db.Users.FirstOrDefaultAsync(u => u.Id == s.UserId, ct);
-                if (user is null || !seen.Add(user.Id)) continue;
-                await SendAsync(chatId, BuildLoginText(user), PanelInline, ct, parseMode: "HTML");
-            }
-
-            foreach (var tch in teachers)
-            {
-                if (string.IsNullOrEmpty(tch.UserId)) continue;
-                var user = await db.Users.FirstOrDefaultAsync(u => u.Id == tch.UserId, ct);
-                if (user is null || !seen.Add(user.Id)) continue;
-                await SendAsync(chatId, BuildLoginText(user), PanelInline, ct, parseMode: "HTML");
-            }
-
-            foreach (var u in admins)
-            {
-                if (!seen.Add(u.Id)) continue;
-                await SendAsync(chatId, BuildLoginText(u), null, ct, parseMode: "HTML");
-            }
-
-            return seen.Count > 0;
-        }
-        catch (Exception ex)
-        {
-            logger.LogWarning(ex, "Login info yuborishda xato: chatId {Id}", chatId);
-            return false;
-        }
-    }
-
     /// <summary>O'qituvchi va o'quvchi/ota-ona login xabari ostidagi tugma — panel shu yerning o'zida (Mini App)
     /// ochiladi; qaysi portal ekanini rol hal qiladi (<see cref="PanelUrl"/>).</summary>
     public static readonly object PanelInline = new
@@ -975,52 +747,6 @@ public class TelegramBotService(
         (false, true) => $"• {PanelButtonText} — balans, dars jadvali, test natijalari, reyting\n",
         _ => "",
     };
-
-    /// <summary>HTML parse_mode bilan yuboriladi — &lt;code&gt; ichidagi login/parol Telegram mijozida
-    /// bosilganda avtomatik nusxa olinadi (tap-to-copy).</summary>
-    private static string BuildLoginText(AppUser user)
-    {
-        var login = WebUtility.HtmlEncode(user.Email);
-        if (!string.IsNullOrEmpty(user.InitialPassword))
-        {
-            var parol = WebUtility.HtmlEncode(user.InitialPassword);
-            return $"🔑 Kirish ma'lumotlari:\nLogin: <code>{login}</code>\nParol: <code>{parol}</code>\nTizimga kirish uchun web-versiya\n🌐 {WebAppUrl}";
-        }
-        return $"🔑 Login: <code>{login}</code>\nParolingizni avval olgansiz.\nTizimga kirish uchun web-versiya\n🌐 {WebAppUrl}\n(Esdan chiqsa — «{SupportButtonText}» tugmasi orqali administratorga murojaat qiling.)";
-    }
-
-    /// <summary>Kontakt ulashilgandan keyin BotUser yozuvini yangilaydi yoki yaratadi.</summary>
-    private async Task UpsertBotUserAfterContactAsync(
-        IAppDbContext db, long chatId, string digits, List<string> linkedLabels, CancellationToken ct)
-    {
-        try
-        {
-            var linkedStr = string.Join("; ", linkedLabels);
-            var botUser = await db.BotUsers.FirstOrDefaultAsync(u => u.ChatId == chatId, ct);
-            if (botUser is null)
-            {
-                db.BotUsers.Add(new BotUser
-                {
-                    ChatId = chatId,
-                    Phone = digits,
-                    Linked = linkedStr,
-                    StartedAt = AppClock.Iso(),
-                    Mode = ""
-                });
-            }
-            else
-            {
-                botUser.Phone = digits;
-                // Moslik topilmasa (mehmon — faqat kitob sotib oluvchi) eski yorliq TOZALANMAYDI.
-                if (linkedStr.Length > 0) botUser.Linked = linkedStr;
-            }
-            await db.SaveChangesAsync(ct);
-        }
-        catch (Exception ex)
-        {
-            logger.LogWarning(ex, "BotUser upsert xatosi (contact): chatId {Id}", chatId);
-        }
-    }
 
     /// <summary>/start kelganda BotUser yozuvini yaratadi yoki mavjudini ism/username bilan yangilaydi.</summary>
     private async Task UpsertBotUserOnStartAsync(long chatId, JsonElement msg, CancellationToken ct)
@@ -1118,7 +844,7 @@ public class TelegramBotService(
         }
 
         // Shu chatga bog'langan har bir AppUser (o'quvchi/o'qituvchi/xodim) — bir nechta farzandi bo'lgan
-        // ota-onaga har biriga alohida kod (SendLoginInfoAsync bilan bir xil "chatId → user(lar)" mantiq).
+        // ota-onaga har biriga alohida kod ("chatId → user(lar)" mantiq).
         // O'quvchilar bir marta o'qiladi (N+1 emas) va login/parol bilan BIR XIL siyosat qo'llanadi:
         // faqat AKTIV o'quvchi kod oladi (arxiv/sinov/muzlatilgan/login cheklangan — olmaydi).
         var regStudentIds = regs.Where(r => !string.IsNullOrEmpty(r.StudentId))
@@ -1303,24 +1029,7 @@ public class TelegramBotService(
         return "https://t.me/" + ch.TrimStart('@');
     }
 
-    /// <summary>XAVFSIZLIK SEAM: kelgan <c>contact</c> yuboruvchining O'ZIGA tegishlimi?
-    /// Telegram "request_contact" tugmasi orqali yuborilgan kontaktda <c>contact.user_id</c> bo'ladi va u
-    /// <c>message.from.id</c> ga TENG bo'ladi. Manzillar kitobidan tanlangan BEGONA kontaktda esa user_id
-    /// boshqa bo'ladi (yoki umuman bo'lmaydi — Telegramda ro'yxatdan o'tmagan raqam).
-    /// Maydon yo'q bo'lsa yoki turi noto'g'ri bo'lsa — <c>false</c> (istisno tashlamaydi).</summary>
-    internal static bool IsOwnContact(JsonElement message)
-    {
-        if (message.ValueKind != JsonValueKind.Object) return false;
-        if (!message.TryGetProperty("contact", out var contact) || contact.ValueKind != JsonValueKind.Object) return false;
-        if (!message.TryGetProperty("from", out var from) || from.ValueKind != JsonValueKind.Object) return false;
-        // DIQQAT: TryGetInt64 raqam bo'lmagan turda ISTISNO tashlaydi — avval ValueKind tekshiriladi.
-        if (!contact.TryGetProperty("user_id", out var uidEl) || uidEl.ValueKind != JsonValueKind.Number
-            || !uidEl.TryGetInt64(out var userId)) return false;
-        if (!from.TryGetProperty("id", out var fromIdEl) || fromIdEl.ValueKind != JsonValueKind.Number
-            || !fromIdEl.TryGetInt64(out var fromId)) return false;
-        return userId == fromId;
-    }
-
+    /// <summary>Telegram foydalanuvchisining ismi (from.first_name + last_name) — ulanish yozuvidagi <c>ParentName</c>.</summary>
     private static string SenderName(JsonElement msg)
     {
         if (!msg.TryGetProperty("from", out var from)) return "";
@@ -1329,19 +1038,7 @@ public class TelegramBotService(
         return string.Join(" ", new[] { fn, ln }.Where(x => !string.IsNullOrWhiteSpace(x)));
     }
 
-    /// <summary>Telefon so'rovchi klaviatura (request_contact) + "Adminga murojaat".</summary>
-    private static object ContactKeyboard => new
-    {
-        keyboard = new object[][]
-        {
-            new object[] { new { text = "📱 Telefon raqamni yuborish", request_contact = true } },
-            new object[] { new { text = SupportButtonText } },
-        },
-        resize_keyboard = true,
-        one_time_keyboard = false,
-    };
-
-    /// <summary>Ro'yxatdan o'tgan (telefoni tasdiqlangan) foydalanuvchi klaviaturasi: bir martalik
+    /// <summary>Botga ULANGAN foydalanuvchi klaviaturasi: bir martalik
     /// kirish kodi → (yoqilgan bo'lsa) KITOB SOTIB OLISH → adminga murojaat.
     /// Ro'yxatdan o'tish tugagach (va ro'yxatdan o'tgan foydalanuvchi /start bosganda) o'rnatiladi.</summary>
     public static object RegisteredKeyboard(bool books = true, bool panel = false)
@@ -1355,20 +1052,42 @@ public class TelegramBotService(
         return new { keyboard = rows.ToArray(), resize_keyboard = true, one_time_keyboard = false };
     }
 
-    /// <summary>Botga hali ULANMAGAN chat klaviaturasi (2026-10-12, egasining qarori — telefon so'ralmaydi):
-    /// «📱 Panel» ENG TEPADA (login/parol bilan kirilgach chat akkauntga bog'lanadi — <see cref="TelegramMiniAppLink"/>),
-    /// (yoqilgan bo'lsa) kitob sotib olish, adminga murojaat.</summary>
-    public static object StartKeyboard(bool books)
+    /// <summary>Botga hali ULANMAGAN chat klaviaturasi (2026-10-13, egasining qarori): FAQAT «📱 Panel» — kitob ham,
+    /// adminga murojaat ham YO'Q (login/parolsiz odam botdan foydalanmaydi — <see cref="BotAccess"/>). Kirgach chat
+    /// akkauntga bog'lanadi (<see cref="TelegramMiniAppLink"/>) va <see cref="RegisteredKeyboard"/> chiqadi.</summary>
+    public static object StartKeyboard() => new
     {
-        var rows = new List<object[]> { new object[] { new { text = PanelButtonText, web_app = new { url = PanelUrl } } } };
-        if (books) rows.Add(new object[] { new { text = BookShopBotService.BooksButtonText } });
-        rows.Add(new object[] { new { text = SupportButtonText } });
-        return new { keyboard = rows.ToArray(), resize_keyboard = true, is_persistent = true, one_time_keyboard = false };
+        keyboard = new[] { new object[] { new { text = PanelButtonText, web_app = new { url = PanelUrl } } } },
+        resize_keyboard = true,
+        is_persistent = true,
+        one_time_keyboard = false,
+    };
+
+    /// <summary>Ulanmagan chat /start'dan boshqa narsa yozsa yoki tugma bossa — javob (+ <see cref="PanelInline"/>).</summary>
+    public const string GateText =
+        "🔒 Bu bot faqat markaz o'quvchilari, ota-onalari va xodimlari uchun.\n\n"
+        + "Foydalanish uchun quyidagi «📱 Panelni ochish» tugmasini bosing va markaz bergan login/parol bilan kiring — "
+        + "shundan keyin bot sizni taniydi.\n"
+        + "Login/parolingiz bo'lmasa, markaz ma'muriyatiga murojaat qiling.";
+
+    /// <summary>Chat biror akkauntga ulanganmi (<see cref="BotAccess"/>).</summary>
+    private async Task<bool> IsLinkedChatAsync(long chatId, CancellationToken ct)
+    {
+        using var scope = sp.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<IAppDbContext>();
+        return await db.TelegramRegistrations.AnyAsync(r => r.ChatId == chatId, ct);
+    }
+
+    private async Task<object> LinkedKeyboardAsync(CancellationToken ct)
+    {
+        using var scope = sp.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<IAppDbContext>();
+        return RegisteredKeyboard(await BookSalesEnabledAsync(db, ct), panel: true);
     }
 
     /// <summary>Ulanmagan chatga /start javobi.</summary>
     public const string StartWelcomeText =
-        "Quyidagi «📱 Panelni ochish» tugmasini bosing va login/parolingiz bilan kiring — o'quvchi va ota-ona "
+        "Quyidagi «📱 Panelni ochish» tugmasini bosing va markaz bergan login/parolingiz bilan kiring — o'quvchi va ota-ona "
         + "kabineti yoki o'qituvchi paneli shu yerda ochiladi.\n\n"
         + "🔔 Panelga bir marta kirganingizdan keyin markaz xabarlari (davomat, to'lov, e'lonlar) shu chatga keladi.";
 
@@ -1417,7 +1136,7 @@ public class TelegramBotService(
         var registered = await db.TelegramRegistrations.AnyAsync(r => r.ChatId == chatId, ct);
         var keyboard = registered
             ? RegisteredKeyboard(await BookSalesEnabledAsync(db, ct), panel: true)
-            : StartKeyboard(await BookSalesEnabledAsync(db, ct));
+            : StartKeyboard();
         await SendAsync(chatId, LegacyTestRemovedText, keyboard, ct);
     }
 

@@ -1,105 +1,61 @@
-using System.Text.Json;
 using WunderkindLC.Application.Services;
+using WunderkindLC.Application.Services.Messaging;
 using Xunit;
 
 namespace WunderkindLC.Tests;
 
 /// <summary>
-/// Telegram botning XAVFSIZLIK tekshiruvlari.
-///
-/// Fon: bot telefon raqamini qabul qilib, uni markaz profiliga (o'quvchi/o'qituvchi/admin)
-/// bog'laydi va o'sha chatga login/parol hamda bir martalik kirish kodini yuboradi. Shuning uchun
-/// raqam FAQAT yuboruvchining O'ZIGA tegishli bo'lishi shart: Telegramda manzillar kitobidan
-/// BEGONA odamning (hatto superadminning) kontaktini yuborish mumkin — bu to'liq akkaunt egallashga
-/// olib kelardi. <see cref="TelegramBotService.IsOwnContact"/> shu darvozani yopadi.
+/// Botdan FAQAT login/parol bilan Panel'ga kirib ulangan chat foydalanadi (2026-10-13, egasining qarori). Ilgari bot
+/// telefon raqami (kontakt) bilan ro'yxatdan o'tkazib, kirish ma'lumotlarini yuborardi — bu yo'l OLIB TASHLANDI: raqam
+/// hech qachon kirish bermaydi, ulanmagan chatga kitob, adminga murojaat, kod va boshqa tugmalar yopiq.
 /// </summary>
 public class BotSecurityTests
 {
-    /// <summary>JSON matnidan <see cref="JsonElement"/> yasaydi (Telegram "message" obyekti).</summary>
-    private static JsonElement Msg(string json) => JsonDocument.Parse(json).RootElement;
+    [Theory]
+    [InlineData(BotAccess.Action.Start, true)]
+    [InlineData(BotAccess.Action.LinkFromPanel, true)]
+    [InlineData(BotAccess.Action.Message, false)]
+    [InlineData(BotAccess.Action.Callback, false)]
+    public void Ulanmagan_chat_faqat_start_va_Panel_orqali_ulanish(BotAccess.Action action, bool allowed) =>
+        Assert.Equal(allowed, BotAccess.Allowed(linked: false, action, callbackData: "kitob:1"));
+
+    [Theory]
+    [InlineData("check_sub_start", true)]
+    [InlineData("check_sub", true)]
+    [InlineData("support", false)]
+    [InlineData("check_sub_menu", false)]
+    [InlineData("mack:x", false)]
+    [InlineData(null, false)]
+    public void Ulanmagan_chatda_faqat_start_obunasini_tekshirish_tugmasi(string? data, bool allowed) =>
+        Assert.Equal(allowed, BotAccess.Allowed(linked: false, BotAccess.Action.Callback, data));
+
+    [Theory]
+    [InlineData(BotAccess.Action.Message)]
+    [InlineData(BotAccess.Action.Callback)]
+    public void Ulangan_chat_hamma_narsadan_foydalanadi(BotAccess.Action action) =>
+        Assert.True(BotAccess.Allowed(linked: true, action, "support"));
 
     [Fact]
-    public void IsOwnContact_OzKontakti_True()
+    public void Telefon_orqali_royxatdan_otish_YOQ_va_darvoza_kitob_supportdan_OLDIN()
     {
-        // "📱 Telefon raqamni yuborish" tugmasi orqali yuborilgan kontakt: user_id == from.id.
-        var msg = Msg("""
-        {
-          "from": { "id": 123456789, "first_name": "Ali" },
-          "contact": { "phone_number": "998901234567", "user_id": 123456789 }
-        }
-        """);
+        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "WunderkindLC.slnx"))) dir = dir.Parent;
+        Assert.NotNull(dir);
+        var src = File.ReadAllText(Path.Combine(dir!.FullName, "WunderkindLC.Application", "Services", "TelegramBotService.cs"));
 
-        Assert.True(TelegramBotService.IsOwnContact(msg));
-    }
+        // No phone → account matching and no credentials sent from the bot anymore.
+        Assert.DoesNotContain("MatchStudentsAsync", src);
+        Assert.DoesNotContain("request_contact", src);
+        Assert.DoesNotContain("InitialPassword", src);
 
-    [Fact]
-    public void IsOwnContact_BegonaKontakt_False()
-    {
-        // Hujum ssenariysi: hujumchi manzillar kitobidan BOSHQA odamning (masalan admin) kontaktini
-        // yuboradi — user_id from.id ga teng emas.
-        var msg = Msg("""
-        {
-          "from": { "id": 111, "first_name": "Hujumchi" },
-          "contact": { "phone_number": "998901112233", "user_id": 999 }
-        }
-        """);
-
-        Assert.False(TelegramBotService.IsOwnContact(msg));
-    }
-
-    [Fact]
-    public void IsOwnContact_UserIdYoq_False()
-    {
-        // Telegramda ro'yxatdan o'tmagan raqam qo'lda kontakt sifatida yuborilsa user_id UMUMAN bo'lmaydi.
-        // Egasini aniqlash imkoni yo'q — rad etamiz.
-        var msg = Msg("""
-        {
-          "from": { "id": 111, "first_name": "Ali" },
-          "contact": { "phone_number": "998901112233", "first_name": "Vali" }
-        }
-        """);
-
-        Assert.False(TelegramBotService.IsOwnContact(msg));
-    }
-
-    [Fact]
-    public void IsOwnContact_KontaktYoq_False()
-    {
-        var msg = Msg("""{ "from": { "id": 111 }, "text": "901234567" }""");
-
-        Assert.False(TelegramBotService.IsOwnContact(msg));
-    }
-
-    [Fact]
-    public void IsOwnContact_FromYoq_False()
-    {
-        // "from" bo'lmasa (masalan kanal nomidan yuborilgan xabar) — kimligini bilib bo'lmaydi.
-        var msg = Msg("""{ "contact": { "phone_number": "998901112233", "user_id": 111 } }""");
-
-        Assert.False(TelegramBotService.IsOwnContact(msg));
-    }
-
-    [Fact]
-    public void IsOwnContact_UserIdSatrBolsa_FalseVaIstisnoYoq()
-    {
-        // Noto'g'ri tur (raqam o'rniga satr) — false qaytishi va ISTISNO TASHLAMASLIGI kerak,
-        // aks holda bitta buzuq xabar bot siklini yiqitardi.
-        var msg = Msg("""
-        {
-          "from": { "id": 111 },
-          "contact": { "phone_number": "998901112233", "user_id": "111" }
-        }
-        """);
-
-        var ex = Record.Exception(() => Assert.False(TelegramBotService.IsOwnContact(msg)));
-        Assert.Null(ex);
-    }
-
-    [Fact]
-    public void IsOwnContact_KontaktObyektEmas_False()
-    {
-        // Himoya: kutilmagan tuzilma (contact — null yoki massiv) ham xotirjam rad etilsin.
-        Assert.False(TelegramBotService.IsOwnContact(Msg("""{ "from": { "id": 1 }, "contact": null }""")));
-        Assert.False(TelegramBotService.IsOwnContact(Msg("""{ "from": { "id": 1 }, "contact": [] }""")));
+        // The gate runs before every linked-only feature of a message.
+        var gate = src.IndexOf("BotAccess.Allowed(await IsLinkedChatAsync(chatId, ct), BotAccess.Action.Message)", StringComparison.Ordinal);
+        Assert.True(gate > 0);
+        foreach (var feature in new[] { "HandleFileMessageAsync(chatId, msg, ct)", "HandleSupportCommandAsync(chatId, ct);",
+                     "HandleOtpRequestAsync(chatId, ct);", "bookShop.ShowCatalogAsync(db, chatId, ct)", "msg.TryGetProperty(\"contact\"" })
+            Assert.True(src.IndexOf(feature, StringComparison.Ordinal) > gate, feature);
+        // …and before every callback except «Qabul qildim» (the ack service checks the chat itself).
+        var cbGate = src.IndexOf("BotAccess.Allowed(await IsLinkedChatAsync(chatId, ct), BotAccess.Action.Callback, data)", StringComparison.Ordinal);
+        Assert.True(cbGate > 0 && src.IndexOf("bookShop.OpenBookAsync", StringComparison.Ordinal) > cbGate);
     }
 }
