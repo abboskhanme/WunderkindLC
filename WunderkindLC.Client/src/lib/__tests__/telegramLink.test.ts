@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { linkTelegramChat } from '../telegramLink'
+import { isKeyboardLaunch, linkTelegramChat } from '../telegramLink'
 
 function setInitData(initData: string | undefined) {
   ;(window as unknown as { Telegram?: unknown }).Telegram =
@@ -39,5 +39,26 @@ describe('linkTelegramChat — Panel login links the bot chat', () => {
     await expect(linkTelegramChat('u1', post)).resolves.toBeUndefined()
     await linkTelegramChat('u1', post)
     expect(post).toHaveBeenCalledTimes(2)
+  })
+})
+
+describe('isKeyboardLaunch — reply-keyboard Panel (Telegram gives no initData there)', () => {
+  const set = (webApp: unknown) => {
+    ;(window as unknown as { Telegram?: unknown }).Telegram = webApp === undefined ? undefined : { WebApp: webApp }
+  }
+  afterEach(() => set(undefined))
+
+  it('true only inside Telegram, with sendData and EMPTY initData', () => {
+    const sendData = () => {}
+    set({ platform: 'android', initData: '', sendData })
+    expect(isKeyboardLaunch()).toBe(true)
+    set({ platform: 'android', initData: 'user=1&hash=x', sendData }) // inline/menu launch — auto link instead
+    expect(isKeyboardLaunch()).toBe(false)
+    set({ platform: 'unknown', initData: '', sendData }) // SDK loaded in a normal browser
+    expect(isKeyboardLaunch()).toBe(false)
+    set({ platform: 'ios', initData: '' }) // no sendData
+    expect(isKeyboardLaunch()).toBe(false)
+    set(undefined)
+    expect(isKeyboardLaunch()).toBe(false)
   })
 })

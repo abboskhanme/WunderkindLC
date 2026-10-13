@@ -41,3 +41,24 @@ export async function linkTelegramChat(userId: string, post: Post = defaultPost)
     inFlight.delete(userId)
   }
 }
+
+/**
+ * Opened from the bot's REPLY-KEYBOARD «📱 Panel» button: inside Telegram, but Telegram never gives initData there
+ * (core.telegram.org/bots/webapps — the launch data "is empty if the Mini App was launched from a keyboard button"),
+ * so the automatic link above cannot run. Such launches can `sendData` instead (2026-10-13).
+ */
+export function isKeyboardLaunch(): boolean {
+  const w = window.Telegram?.WebApp
+  return !!w && typeof w.sendData === 'function' && !w.initData && !!w.platform && w.platform !== 'unknown'
+}
+
+export async function getTelegramLinkStatus(): Promise<{ configured: boolean; linked: boolean }> {
+  const { data } = await api.get<{ configured: boolean; linked: boolean }>('/telegram/link-status')
+  return data
+}
+
+/** One-time token → `sendData` → the bot links THIS chat to the logged-in account. The Mini App closes. */
+export async function sendBotLinkRequest(): Promise<void> {
+  const { data } = await api.post<{ data: string }>('/telegram/link-token')
+  window.Telegram?.WebApp?.sendData?.(data.data)
+}

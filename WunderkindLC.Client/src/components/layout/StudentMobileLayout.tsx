@@ -2,6 +2,7 @@ import { Suspense, useEffect, useState, type CSSProperties } from 'react'
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { CalendarDays, GraduationCap, House, Trophy, UserRound, Wallet, type LucideIcon } from 'lucide-react'
 import { Loader } from '@/components/ui/Loader'
+import { TelegramLinkBanner } from '@/components/telegram/TelegramLinkBanner'
 import { TABS, backFallback, tabOf, type TabKey } from '@/pages/student/nav'
 import {
   OWN_BG,
@@ -149,6 +150,7 @@ export function StudentMobileLayout() {
       {/* Content: every screen is a flex:1 .screen with its own inner .scroll. */}
       <div className="st-main" style={{ flex: 1, minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
         {/* Suspense INSIDE the layout — the shell (tab bar) stays while a screen chunk loads. */}
+        <TelegramLinkBanner variant="student" />
         <Suspense fallback={<Loader className="flex-1" />}>
           <Outlet />
         </Suspense>

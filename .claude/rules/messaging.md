@@ -120,6 +120,17 @@ chidamlilik va Telegram tezlik chegarasi — hammasi shu jadvaldan.
   Yangi ulanishda: audit (`Student`/`TeacherSalary`/`Staff`, chat id'siz), botda «✅ Telegram bot ulandi» + yangilangan
   klaviatura, o'quvchiga «01» (`bot_connected`). Testlar: `TelegramMiniAppLinkTests`, `telegramLink.test.ts`.
   Eski yo'l (kontakt yuborish) hamon qabul qilinadi, lekin bot uni SO'RAMAYDI.
+  ⚠️ **PASTKI KLAVIATURA TUGMASI initData BERMAYDI (2026-10-13).** Telegram: reply-klaviaturadagi `web_app` tugmadan
+  ochilgan Mini App'ning launch data'si BO'SH (core.telegram.org/bots/webapps) — yuqoridagi avtomatik ulanish faqat
+  XABAR ICHIDAGI (inline) tugmadan ishlaydi. Shuning uchun: (1) `/start` (ulanmagan chat) salomdan keyin
+  `StartWelcomeText` ni INLINE «📱 Panelni ochish» (`PanelInline`) bilan yuboradi, kod so'ralganda ham shu tugma;
+  (2) klaviaturadan ochilgan Panel (`isKeyboardLaunch`: Telegram ichida, `sendData` bor, initData bo'sh) akkaunt hali
+  ulanmagan bo'lsa (`GET api/telegram/link-status`) «🔔 Bot xabarlarini yoqish» bannerini ko'rsatadi
+  (`components/telegram/TelegramLinkBanner`, kabinet va o'qituvchi qobig'ida) → `POST api/telegram/link-token`
+  (bir martalik, akkauntga bog'langan, 10 daqiqa, xotirada — `TelegramLinkTokens`) → `Telegram.WebApp.sendData`
+  (`wlclink:{token}`, Mini App yopiladi) → bot `web_app_data` ni o'sha chat uchun qabul qiladi (kod LOGGA yozilmaydi)
+  → `TelegramLinkFlow` (initData yo'li bilan AYNAN bir xil: audit, tasdiq, «01»). Bitta «o'quvchisiz» qator qoidasi
+  (o'qituvchi/xodim) — `TelegramMiniAppLink.AttachNonStudentAsync`, botning telefon yo'li ham shuni ishlatadi.
 - **Ro'yxatdan o'tish (bot, ESKI yo'l — kontakt kelsa):** kontakt 4 raqamning ISTALGANI bilan solishtiriladi (`Phone`, `ParentPhone`,
   `FatherPhone`, `MotherPhone` — `TelegramRegistrar`); `CenterMeta.TelegramPhoneMatchField` endi O'QILMAYDI.
   Har mos o'quvchiga bitta ulanish, `Relation = TelegramRelations.Detect` (tartib: ota → ona → asosiy ota-ona → o'quvchi,

@@ -33,6 +33,8 @@ declare global {
     expand(): void
     /** Signed launch data — EMPTY when the page is opened outside Telegram (SDK still loads). */
     initData?: string
+    /** Only for Mini Apps opened from a reply-keyboard button: posts `web_app_data` to the bot and CLOSES the app. */
+    sendData?(data: string): void
     platform?: string
     version?: string
     colorScheme?: 'light' | 'dark'

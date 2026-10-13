@@ -20,6 +20,8 @@ public static class CrmMessagingSetup
         services.AddSingleton<MessageDeliveryWorker>();
         services.AddSingleton<IOutboxSignal>(sp => sp.GetRequiredService<MessageDeliveryWorker>());
         services.AddHostedService(sp => sp.GetRequiredService<MessageDeliveryWorker>());
+        // Keyboard-button Mini App → bot linking (sendData tokens, in memory — TelegramLinkTokens).
+        services.AddSingleton<TelegramLinkTokens>();
         return services;
     }
 

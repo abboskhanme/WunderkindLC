@@ -219,6 +219,16 @@ public class TelegramBotService(
         if (chat.TryGetProperty("type", out var chatTypeEl) && chatTypeEl.GetString() == "private")
             await UnblockAsync(chatId, ct);
 
+        // «🔔 Bot xabarlarini yoqish» — pastki klaviaturadan ochilgan Panel `sendData` bilan yuborgan bir martalik kod
+        // (bunday ochilishda Telegram initData BERMAYDI — TelegramLinkTokens). Kod LOGGA yozilmaydi.
+        if (msg.TryGetProperty("web_app_data", out var webAppData))
+        {
+            var data = webAppData.TryGetProperty("data", out var d) ? d.GetString() : null;
+            await LogInAsync(chatId, "[Panel: botga ulash so'rovi]", ct);
+            await HandleWebAppLinkAsync(chatId, data, SenderName(msg), ct);
+            return;
+        }
+
         // Kontakt ulashildi. XAVFSIZLIK: faqat O'ZINING kontakti qabul qilinadi — Telegramda manzillar
         // kitobidan BEGONA odamning kontaktini ham yuborish mumkin, u holda o'sha odamning profili
         // (login/parol, kirish kodi) hujumchining chatiga bog'lanib qolardi.
@@ -704,7 +714,10 @@ public class TelegramBotService(
         using (var scope = sp.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<IAppDbContext>();
-            await SendAsync(chatId, StartWelcomeText, StartKeyboard(await BookSalesEnabledAsync(db, ct)), ct);
+            await SendAsync(chatId, "Assalomu alaykum! 👋", StartKeyboard(await BookSalesEnabledAsync(db, ct)), ct);
+            // Xabar ICHIDAGI (inline) tugma: shu yo'l bilan ochilgan Panel Telegram initData oladi va login'dan keyin
+            // chat O'ZI ulanadi. Pastki klaviatura tugmasi initData bermaydi (u yerda Panel'dagi «Bot xabarlarini yoqish»).
+            await SendAsync(chatId, StartWelcomeText, PanelInline, ct);
         }
     }
 
@@ -825,26 +838,16 @@ public class TelegramBotService(
                 linked.Add($"{s.FullName} ({s.ClassName})");
             }
         }
+        // O'qituvchi va admin/xodim — chatning YAGONA "o'quvchisiz" qatori (unikal StudentId+ChatId): ikkala akkaunt
+        // bitta raqamga mos kelsa id'lar o'sha qatorga qo'shiladi (ilgari ikkinchi qator unikal indeksda yiqilardi).
         foreach (var tch in teachers)
         {
-            var exists = await db.TelegramRegistrations.AnyAsync(r => r.TeacherId == tch.Id && r.ChatId == chatId, ct);
-            if (!exists)
-                db.TelegramRegistrations.Add(new TelegramRegistration
-                {
-                    TeacherId = tch.Id, StudentId = "", ChatId = chatId, ParentName = senderName,
-                    Phone = digits, CreatedAt = AppClock.Now,
-                });
+            await TelegramMiniAppLink.AttachNonStudentAsync(db, chatId, senderName, digits, teacherId: tch.Id, userId: null, ct);
             linked.Add($"{tch.FullName} (xodim)");
         }
         foreach (var u in admins)
         {
-            var exists = await db.TelegramRegistrations.AnyAsync(r => r.UserId == u.Id && r.ChatId == chatId, ct);
-            if (!exists)
-                db.TelegramRegistrations.Add(new TelegramRegistration
-                {
-                    UserId = u.Id, StudentId = "", ChatId = chatId, ParentName = senderName,
-                    Phone = digits, CreatedAt = AppClock.Now,
-                });
+            await TelegramMiniAppLink.AttachNonStudentAsync(db, chatId, senderName, digits, teacherId: null, userId: u.Id, ct);
             linked.Add($"{u.FullName} (admin)");
         }
         await db.SaveChangesAsync(ct);
@@ -1056,6 +1059,33 @@ public class TelegramBotService(
         }
     }
 
+    /// <summary>Panel'dan kelgan <c>web_app_data</c> (<see cref="TelegramLinkTokens"/>): kod egasining akkaunti SHU chatga
+    /// ulanadi — <see cref="TelegramMiniAppLink"/> + <see cref="TelegramLinkFlow"/> (initData yo'li bilan AYNAN bir xil).
+    /// Mini App yopiladi, shuning uchun chat har doim javob oladi.</summary>
+    private async Task HandleWebAppLinkAsync(long chatId, string? data, string senderName, CancellationToken ct)
+    {
+        try
+        {
+            using var scope = sp.CreateScope();
+            var who = scope.ServiceProvider.GetService<TelegramLinkTokens>()?.Redeem(data);
+            if (who is null)
+            {
+                await SendAsync(chatId,
+                    "⏳ Ulanish so'rovi eskirgan. Panelni qayta oching va «🔔 Bot xabarlarini yoqish» tugmasini bosing.", ct: ct);
+                return;
+            }
+            var db = scope.ServiceProvider.GetRequiredService<IAppDbContext>();
+            var audit = scope.ServiceProvider.GetRequiredService<AuditService>();
+            var o = await TelegramMiniAppLink.LinkAsync(db, who.Value.UserId, who.Value.Role, chatId, senderName, ct);
+            await TelegramLinkFlow.CompleteAsync(db, audit, telegram, autoMsg, logger, o, chatId, replyWhenNothingNew: true, ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogWarning(ex, "Panel orqali botga ulashda xato: chat {Chat}", chatId);
+            await SendAsync(chatId, "❗️ Ulab bo'lmadi. Birozdan keyin qayta urinib ko'ring.", ct: ct);
+        }
+    }
+
     /// <summary>/kod buyrug'i yoki "🔑 Yangi kod olish" tugmasi: shu chatga bog'langan HAR bir AppUser
     /// uchun bir martalik kirish kodi (8 belgi, 60 soniya, bir martalik) yaratadi va yuboradi — parol
     /// o'rniga login sahifasida ishlatiladi. Cooldown: chat bo'yicha 5 daqiqada bir marta (bitta chatda
@@ -1071,7 +1101,7 @@ public class TelegramBotService(
             await SendAsync(chatId,
                 "Bir martalik kod faqat botga ulangan akkauntga beriladi. Avval «" + PanelButtonText
                 + "» tugmasi orqali login va parolingiz bilan kiring — shundan keyin bot sizni taniydi.",
-                StartKeyboard(await BookSalesEnabledAsync(db, ct)), ct);
+                PanelInline, ct);
             return;
         }
 
@@ -1338,8 +1368,7 @@ public class TelegramBotService(
 
     /// <summary>Ulanmagan chatga /start javobi.</summary>
     public const string StartWelcomeText =
-        "Assalomu alaykum! 👋\n\n"
-        + "Pastdagi «" + PanelButtonText + "» tugmasini bosing va login/parolingiz bilan kiring — o'quvchi va ota-ona "
+        "Quyidagi «📱 Panelni ochish» tugmasini bosing va login/parolingiz bilan kiring — o'quvchi va ota-ona "
         + "kabineti yoki o'qituvchi paneli shu yerda ochiladi.\n\n"
         + "🔔 Panelga bir marta kirganingizdan keyin markaz xabarlari (davomat, to'lov, e'lonlar) shu chatga keladi.";
 

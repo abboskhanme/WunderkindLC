@@ -5,6 +5,7 @@ import { useAuth } from '@/context/auth-context'
 import { TeacherPortalContext, type TeacherPortalInfo } from '@/context/teacher-portal-context'
 import { getTeacherProfile, getTeacherSchool } from '@/api/services/teacher'
 import { Loader } from '@/components/ui/Loader'
+import { TelegramLinkBanner } from '@/components/telegram/TelegramLinkBanner'
 import { TeacherNotifications } from '@/components/teacher/TeacherNotifications'
 import { usePerm } from '@/lib/permissions'
 import { cn } from '@/lib/utils'
@@ -79,6 +80,7 @@ export function TeacherMobileLayout() {
           <main ref={mainRef} className="min-w-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain">
             {/* Suspense QOBIQ ICHIDA — sahifa yuklanayotganda menyu/tablar joyida qoladi. */}
             <div className="mx-auto h-full w-full max-w-[1280px]">
+              <TelegramLinkBanner variant="teacher" />
               <Suspense fallback={<Loader className="min-h-[240px]" />}>
                 <Outlet />
               </Suspense>

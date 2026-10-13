@@ -1,6 +1,5 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
 using WunderkindLC.Application.Abstractions;
 using WunderkindLC.Application.Services;
@@ -39,47 +38,41 @@ public class TelegramLinkController(
         var senderName = string.Join(" ", new[] { tg.FirstName, tg.LastName }.Where(x => !string.IsNullOrWhiteSpace(x)));
 
         var o = await TelegramMiniAppLink.LinkAsync(db, uid, role, tg.ChatId, senderName, ct);
-
-        // One audit row per NEW link (never the chat id).
-        foreach (var reg in o.NewStudentLinks)
-        {
-            var s = o.Students.First(x => x.Id == reg.StudentId);
-            audit.Record(AuditService.EntityStudent, s.Id, "update",
-                $"Telegram ulandi (Panel orqali kirishda): {s.FullName}", studentId: s.Id);
-        }
-        foreach (var t in o.NewTeachers)
-            audit.Record("TeacherSalary", t.Id, "update",
-                $"Telegram ulandi (Panel orqali kirishda): {t.FullName}", teacherId: t.Id);
-        if (o.NewStaffLink && o.Staff is not null)
-            audit.Record("Staff", o.Staff.Id, "update", $"Telegram ulandi (Panel orqali kirishda): {o.Staff.FullName}");
-
-        await db.SaveChangesAsync(ct);
-
-        if (o.AnyNew)
-        {
-            // Bot confirmation + refreshed keyboard (Panel · one-time code · …); a failure must not fail the link.
-            try
-            {
-                var books = (await db.CenterMeta.AsNoTracking().FirstOrDefaultAsync(ct))?.BookSalesEnabled ?? true;
-                await telegram.SendMessageAsync(tg.ChatId, TelegramMiniAppLink.ConfirmationText(o),
-                    TelegramBotService.RegisteredKeyboard(books, panel: true), ct);
-            }
-            catch (Exception ex) when (ex is not OperationCanceledException)
-            {
-                logger.LogWarning(ex, "Telegram ulanish tasdig'i yuborilmadi");
-            }
-            // «01» thank-you (outbox, deduped) — same as the old phone registration.
-            foreach (var reg in o.NewStudentLinks)
-            {
-                var s = o.Students.First(x => x.Id == reg.StudentId);
-                await autoMsg.DispatchBotConnectedAsync(db, s, reg, ct);
-            }
-        }
+        await TelegramLinkFlow.CompleteAsync(db, audit, telegram, autoMsg, logger, o, tg.ChatId, replyWhenNothingNew: false, ct);
 
         return Ok(new
         {
             linked = o.Students.Count + o.Teachers.Count + (o.Staff is null ? 0 : 1),
             created = o.NewStudentLinks.Count + o.NewTeachers.Count + (o.NewStaffLink ? 1 : 0),
         });
+    }
+
+    /// <summary>Does this account already receive bot messages? Drives the «Bot xabarlarini yoqish» banner of a Mini App
+    /// opened from the reply keyboard (no initData there — see <see cref="TelegramLinkTokens"/>).</summary>
+    [HttpGet("link-status")]
+    public async Task<IActionResult> LinkStatus(CancellationToken ct)
+    {
+        var uid = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (string.IsNullOrEmpty(uid)) return Unauthorized();
+        var role = User.FindFirst(ClaimTypes.Role)?.Value ?? "";
+        return Ok(new { configured = telegram.IsConfigured, linked = await TelegramMiniAppLink.IsLinkedAsync(db, uid, role, ct) });
+    }
+
+    /// <summary>One-time <c>sendData</c> payload bound to the CALLER's account; the bot redeems it for the chat it arrives
+    /// in (<c>web_app_data</c> service message — only the user's own Mini App can post it into their chat).</summary>
+    [HttpPost("link-token")]
+    public IActionResult LinkToken([FromServices] TelegramLinkTokens tokens)
+    {
+        if (!telegram.IsConfigured) return BadRequest(new { message = "Telegram bot sozlanmagan" });
+        var uid = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (string.IsNullOrEmpty(uid)) return Unauthorized();
+        try
+        {
+            return Ok(new { data = tokens.Issue(uid, User.FindFirst(ClaimTypes.Role)?.Value ?? "") });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
     }
 }

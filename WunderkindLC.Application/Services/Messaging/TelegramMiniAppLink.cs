@@ -30,41 +30,55 @@ public static class TelegramMiniAppLink
         public bool AnyNew => NewStudentLinks.Count > 0 || NewTeachers.Count > 0 || NewStaffLink;
     }
 
-    public static async Task<Outcome> LinkAsync(
-        IAppDbContext db, string userId, string role, long chatId, string senderName, CancellationToken ct = default)
-    {
-        var students = new List<Student>();
-        var teachers = new List<Teacher>();
-        AppUser? staff = null;
-        var phone = "";
+    /// <summary>Whose chat this account links: its own students / a parent's children (+ the parent's phone for the
+    /// relation) / the teacher / the staff user. Unknown roles (platform owner) link nothing.</summary>
+    private sealed record Targets(List<Student> Students, string Phone, List<Teacher> Teachers, AppUser? Staff);
 
+    private static async Task<Targets> TargetsAsync(IAppDbContext db, string userId, string role, CancellationToken ct)
+    {
         switch (role)
         {
             case Roles.Student:
-                students = await db.Students.Where(s => s.UserId == userId && !s.IsArchived).ToListAsync(ct);
-                break;
+                return new(await db.Students.Where(s => s.UserId == userId && !s.IsArchived).ToListAsync(ct), "", new(), null);
             case ParentRole:
                 // Same rule as StudentPortalController.TargetAsync: the login is the parent's phone.
                 var parent = await db.Users.FirstOrDefaultAsync(u => u.Id == userId, ct);
                 var norm = PhoneUtil.Normalize(parent?.Email);
-                if (!string.IsNullOrEmpty(norm))
-                {
-                    phone = norm;
-                    students = await db.Students
-                        .Where(s => !s.IsArchived
-                                    && (s.ParentPhone == norm || s.FatherPhone == norm || s.MotherPhone == norm))
-                        .ToListAsync(ct);
-                }
-                break;
+                if (string.IsNullOrEmpty(norm)) return new(new(), "", new(), null);
+                var children = await db.Students
+                    .Where(s => !s.IsArchived && (s.ParentPhone == norm || s.FatherPhone == norm || s.MotherPhone == norm))
+                    .ToListAsync(ct);
+                return new(children, norm, new(), null);
             case Roles.Teacher:
-                teachers = await db.Teachers.Where(t => t.UserId == userId && !t.IsArchived).ToListAsync(ct);
-                break;
+                return new(new(), "", await db.Teachers.Where(t => t.UserId == userId && !t.IsArchived).ToListAsync(ct), null);
             case Roles.Admin:
             case Roles.SuperAdmin:
             case Roles.Staff:
-                staff = await db.Users.FirstOrDefaultAsync(u => u.Id == userId, ct);
-                break;
+                return new(new(), "", new(), await db.Users.FirstOrDefaultAsync(u => u.Id == userId, ct));
+            default:
+                return new(new(), "", new(), null);
         }
+    }
+
+    /// <summary>Does the account already receive bot messages somewhere (a non-blocked link)? Drives the Mini App
+    /// «Bot xabarlarini yoqish» banner — the chat itself is unknown there (keyboard launches carry no initData).</summary>
+    public static async Task<bool> IsLinkedAsync(IAppDbContext db, string userId, string role, CancellationToken ct = default)
+    {
+        var t = await TargetsAsync(db, userId, role, ct);
+        var sIds = t.Students.Select(s => s.Id).ToList();
+        var tIds = t.Teachers.Select(x => x.Id).ToList();
+        var uId = t.Staff?.Id;
+        if (sIds.Count == 0 && tIds.Count == 0 && uId is null) return true;   // nothing to link — no banner
+        return await db.TelegramRegistrations.AnyAsync(r => r.BlockedAt == null
+            && ((r.StudentId != "" && sIds.Contains(r.StudentId))
+                || (r.TeacherId != null && tIds.Contains(r.TeacherId))
+                || (uId != null && r.UserId == uId)), ct);
+    }
+
+    public static async Task<Outcome> LinkAsync(
+        IAppDbContext db, string userId, string role, long chatId, string senderName, CancellationToken ct = default)
+    {
+        var (students, phone, teachers, staff) = await TargetsAsync(db, userId, role, ct);
 
         // Students: the shared registrar (relation = from the parent's phone, else "other" — admin-editable).
         var newStudentLinks = students.Count == 0
@@ -75,41 +89,9 @@ public static class TelegramMiniAppLink
         // single StudentId = "" row, so a person with a teacher AND a staff account gets both ids on that row.
         var newTeachers = new List<Teacher>();
         foreach (var t in teachers)
-        {
-            var row = await NonStudentRowAsync(db, chatId, ct);
-            if (row is null)
-            {
-                db.TelegramRegistrations.Add(NewNonStudentRow(chatId, senderName, teacherId: t.Id, userId: null));
-                newTeachers.Add(t);
-            }
-            else if (row.TeacherId == t.Id) row.BlockedAt = null;
-            else if (string.IsNullOrEmpty(row.TeacherId))
-            {
-                row.TeacherId = t.Id;
-                row.BlockedAt = null;
-                newTeachers.Add(t);
-            }
-            // else: the chat already belongs to ANOTHER teacher account — left as is (one teacher per chat).
-        }
-
-        var newStaff = false;
-        if (staff is not null)
-        {
-            var row = await NonStudentRowAsync(db, chatId, ct);
-            if (row is null)
-            {
-                db.TelegramRegistrations.Add(NewNonStudentRow(chatId, senderName, teacherId: null, userId: staff.Id));
-                newStaff = true;
-            }
-            else if (row.UserId == staff.Id) row.BlockedAt = null;
-            else if (string.IsNullOrEmpty(row.UserId))
-            {
-                row.UserId = staff.Id;
-                row.BlockedAt = null;
-                newStaff = true;
-            }
-            // else: the chat already belongs to ANOTHER staff account — left as is.
-        }
+            if (await AttachNonStudentAsync(db, chatId, senderName, "", teacherId: t.Id, userId: null, ct)) newTeachers.Add(t);
+        var newStaff = staff is not null
+            && await AttachNonStudentAsync(db, chatId, senderName, "", teacherId: null, userId: staff.Id, ct);
 
         return new Outcome(students, newStudentLinks, teachers, newTeachers, staff, newStaff);
     }
@@ -118,11 +100,40 @@ public static class TelegramMiniAppLink
         db.TelegramRegistrations.Local.FirstOrDefault(r => r.ChatId == chatId && r.StudentId == "")
         ?? await db.TelegramRegistrations.FirstOrDefaultAsync(r => r.ChatId == chatId && r.StudentId == "", ct);
 
-    private static TelegramRegistration NewNonStudentRow(long chatId, string senderName, string? teacherId, string? userId) => new()
+    /// <summary>
+    /// Links a teacher OR a staff account to the chat's single non-student row (unique index (StudentId, ChatId) allows
+    /// one StudentId = "" row per chat): reuses it when that slot is free, refreshes it when already linked, and never
+    /// throws on the index. Returns true for a NEW link. Does NOT save. Also used by the bot's phone registration.
+    /// </summary>
+    public static async Task<bool> AttachNonStudentAsync(
+        IAppDbContext db, long chatId, string senderName, string phoneDigits, string? teacherId, string? userId,
+        CancellationToken ct = default)
     {
-        TeacherId = teacherId, UserId = userId, StudentId = "", ChatId = chatId, ParentName = senderName, Phone = "",
-        CreatedAt = AppClock.Now,
-    };
+        var row = await NonStudentRowAsync(db, chatId, ct);
+        if (row is null)
+        {
+            db.TelegramRegistrations.Add(new TelegramRegistration
+            {
+                TeacherId = teacherId, UserId = userId, StudentId = "", ChatId = chatId, ParentName = senderName,
+                Phone = phoneDigits, CreatedAt = AppClock.Now,
+            });
+            return true;
+        }
+        if (teacherId is not null)
+        {
+            if (row.TeacherId == teacherId) { row.BlockedAt = null; return false; }
+            if (!string.IsNullOrEmpty(row.TeacherId)) return false;   // the chat belongs to ANOTHER teacher account
+            row.TeacherId = teacherId;
+        }
+        else
+        {
+            if (row.UserId == userId) { row.BlockedAt = null; return false; }
+            if (!string.IsNullOrEmpty(row.UserId)) return false;      // the chat belongs to ANOTHER staff account
+            row.UserId = userId;
+        }
+        row.BlockedAt = null;
+        return true;
+    }
 
     /// <summary>The bot's confirmation after a NEW link: who the chat now receives messages for.</summary>
     public static string ConfirmationText(Outcome o)
