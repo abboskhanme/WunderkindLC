@@ -8,4 +8,5 @@ public partial interface IAppDbContext
 {
     DbSet<TeacherAttendanceFine> TeacherAttendanceFines { get; }
     DbSet<AbsenceStreakAlert> AbsenceStreakAlerts { get; }
+    DbSet<TeacherFine> TeacherFines { get; }
 }

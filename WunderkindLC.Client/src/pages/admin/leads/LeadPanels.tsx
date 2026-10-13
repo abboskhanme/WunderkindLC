@@ -10,7 +10,10 @@ import {
   type ConvertLeadResult,
   type DuplicateStudent,
 } from '@/api/services/leads'
+import { activateMember, getActivationQuote, type ActivationQuote } from '@/api/services/classes'
 import { Button } from '@/components/ui/Button'
+import { activationNextMonthsText, activationQuoteText } from '@/lib/activationQuote'
+import { localIsoDate } from '@/lib/localDate'
 import { Input, Select } from '@/components/ui/Input'
 import { apiErrorMessage, formatDate, formatDateTime } from '@/lib/utils'
 import { formatPhone } from '@/lib/numberFormat'
@@ -129,29 +132,77 @@ export function LeadLevelTestPanel({ lead, onSent }: { lead: Lead; onSent: () =>
  *  - DUBLIKAT (409) — shu odam allaqachon o'quvchi: «Mavjud o'quvchiga bog'lash» yoki
  *    «Baribir yangi o'quvchi yaratish»;
  *  - xato — panel ichida qizil satr (forma yopilmaydi, tanlov qoladi).
+ *
+ * «DARHOL AKTIVLASHTIRISH» (2026-10-13, owner: "birinchi darsga yozilganni 1-2 ta knopka bilan aktiv o'quvchi qilish"):
+ * guruh tanlansa (va `classes.list` qo'shish ruxsati bo'lsa) belgi oldindan yoqiq — aylantirishdan KEYIN o'sha
+ * sanadan odatdagi «Aktivlashtirish» (`POST classes/{id}/members/{sid}/activate`) chaqiriladi: birinchi (qisman) oy
+ * hisobi, catch-up, audit — hammasi o'sha yagona yo'ldan. Oyna birinchi oy QANDAY hisoblanishini oldindan ko'rsatadi
+ * (`GET classes/{id}/activation-quote` — aktivlashtirish yozadigan summaning o'zi). To'lov — alohida (owner qarori).
+ * Aylantirish o'tib aktivlashtirish yiqilsa — natijada sabab va «Qayta aktivlashtirish» tugmasi.
  */
 export function LeadConvertPanel({
   lead,
   groups,
   teacherOptions,
   canViewStudents = false,
+  canActivate = false,
+  initialTeacherId = '',
+  initialGroupId = '',
+  initialDate = '',
   onConverted,
 }: {
-  lead: Lead
+  lead: Pick<Lead, 'id' | 'convertedStudentId'>
   groups: Group[]
   teacherOptions: Teacher[]
   /** O'quvchi profiliga havola ko'rsatilsinmi (`students.list` ko'rish ruxsati). */
   canViewStudents?: boolean
+  /** «Darhol aktivlashtirish» ko'rsatilsinmi (`classes.list` qo'shish ruxsati — aktivlashtirish endpointi shu). */
+  canActivate?: boolean
+  /** Sinov darsidan oldindan to'ldirish («Birinchi darsga yozilganlar»). */
+  initialTeacherId?: string
+  initialGroupId?: string
+  initialDate?: string
   onConverted: (studentId: string) => void
 }) {
-  const [teacherId, setTeacherId] = useState('')
-  const [groupId, setGroupId] = useState('')
-  const [date, setDate] = useState('')
+  const [teacherId, setTeacherId] = useState(initialTeacherId)
+  const [groupId, setGroupId] = useState(initialGroupId)
+  const [date, setDate] = useState(initialDate)
+  const [activate, setActivate] = useState(true)
+  const [quote, setQuote] = useState<{ key: string; q: ActivationQuote | null; error: string | null } | null>(null)
   const [converting, setConverting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [duplicates, setDuplicates] = useState<DuplicateStudent[] | null>(null)
   const [result, setResult] = useState<ConvertLeadResult | null>(null)
+  /** Aylantirishdan keyingi aktivlashtirish: 'done' | xato matni | null (qilinmagan). */
+  const [activation, setActivation] = useState<{ ok: boolean; error?: string; quote?: ActivationQuote | null } | null>(null)
   const teacherGroups = useMemo(() => groups.filter((g) => g.teacherId === teacherId), [groups, teacherId])
+  const willActivate = canActivate && activate && !!groupId
+  const quoteKey = `${groupId}|${date}`
+
+  // Birinchi oy hisobi — guruh/sana o'zgarganda (fon o'qish: xato bo'lsa oyna baribir ishlaydi, sabab ko'rinadi).
+  useEffect(() => {
+    if (!willActivate) return
+    let alive = true
+    getActivationQuote(groupId, date || undefined)
+      .then((q) => alive && setQuote({ key: quoteKey, q, error: null }))
+      .catch((err: unknown) =>
+        alive && setQuote({ key: quoteKey, q: null, error: apiErrorMessage(err, "Birinchi oy hisobini olib bo'lmadi") }))
+    return () => {
+      alive = false
+    }
+  }, [willActivate, groupId, date, quoteKey])
+  const shownQuote = quote?.key === quoteKey ? quote : null
+
+  /** Aylantirishdan keyin — odatdagi aktivlashtirish (yagona yo'l). */
+  const runActivation = async (studentId: string, r: ConvertLeadResult) => {
+    if (!willActivate || r.groupFull) return
+    try {
+      await activateMember(groupId, studentId, date || localIsoDate(new Date()))
+      setActivation({ ok: true, quote: shownQuote?.q ?? null })
+    } catch (err: unknown) {
+      setActivation({ ok: false, error: apiErrorMessage(err, "Aktivlashtirib bo'lmadi") })
+    }
+  }
 
   const convert = async (opts: { force?: boolean; linkStudentId?: string } = {}) => {
     if (converting) return
@@ -161,6 +212,7 @@ export function LeadConvertPanel({
       const r = await convertLead(lead.id, { enrollmentDate: date || undefined, groupId: groupId || undefined }, opts)
       setDuplicates(null)
       setResult(r)
+      await runActivation(r.studentId, r)
       onConverted(r.studentId)
     } catch (err: unknown) {
       const dups = duplicateStudentsOf(err)
@@ -169,6 +221,13 @@ export function LeadConvertPanel({
     } finally {
       setConverting(false)
     }
+  }
+
+  const retryActivation = async () => {
+    if (!result || converting) return
+    setConverting(true)
+    await runActivation(result.studentId, result)
+    setConverting(false)
   }
 
   if (result)
@@ -190,6 +249,23 @@ export function LeadConvertPanel({
         )}
         {result.alreadyMember && (
           <p className="text-sm text-slate-500">O'quvchi allaqachon «{result.groupName}» guruhida edi.</p>
+        )}
+        {activation?.ok && (
+          <div className="inline-flex items-start gap-2 rounded-lg bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-700">
+            <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
+            <span>
+              Aktivlashtirildi.
+              {activation.quote && <span className="block font-normal">{activationQuoteText(activation.quote)}</span>}
+            </span>
+          </div>
+        )}
+        {activation && !activation.ok && (
+          <div className="space-y-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[13px] text-red-700">
+            <p>O'quvchi yaratildi, lekin aktivlashtirilmadi: {activation.error}</p>
+            <Button variant="secondary" className="text-xs" disabled={converting} onClick={() => void retryActivation()}>
+              Qayta aktivlashtirish
+            </Button>
+          </div>
         )}
         {canViewStudents && (
           <Link to={`/admin/students/${result.studentId}`} className="inline-block text-sm font-medium text-brand-600 hover:underline">
@@ -239,6 +315,34 @@ export function LeadConvertPanel({
         />
       </div>
 
+      {canActivate && groupId && (
+        <div className="space-y-1.5 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm">
+          <label className="flex cursor-pointer items-center gap-2 font-semibold text-slate-800">
+            <input
+              type="checkbox"
+              className="h-4 w-4 rounded border-slate-300"
+              checked={activate}
+              onChange={(e) => setActivate(e.target.checked)}
+            />
+            Darhol aktivlashtirish ({date ? formatDate(date) : 'bugundan'})
+          </label>
+          {activate ? (
+            shownQuote?.q ? (
+              <p className="text-[13px] text-slate-600">
+                Birinchi oy — {activationQuoteText(shownQuote.q)}{' '}
+                <span className="text-slate-500">{activationNextMonthsText(shownQuote.q)}</span>
+              </p>
+            ) : shownQuote?.error ? (
+              <p className="text-[13px] text-red-600">{shownQuote.error}</p>
+            ) : (
+              <p className="text-[13px] text-slate-400">Birinchi oy hisoblanmoqda…</p>
+            )
+          ) : (
+            <p className="text-[13px] text-slate-500">O'quvchi guruhga SINOV holatida qo'shiladi — keyin alohida aktivlashtiriladi.</p>
+          )}
+        </div>
+      )}
+
       {duplicates && (
         <div className="space-y-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
           <p className="font-semibold">Bu odam allaqachon o'quvchi sifatida bor (ism va telefon mos keldi)</p>
@@ -272,7 +376,7 @@ export function LeadConvertPanel({
 
       <Button onClick={() => convert()} disabled={converting}>
         <GraduationCap className="h-4 w-4" />
-        {converting ? 'Aylantirilmoqda...' : "O'quvchiga aylantirish"}
+        {converting ? 'Saqlanmoqda...' : willActivate ? "Aktiv o'quvchi qilish" : "O'quvchiga aylantirish"}
       </Button>
     </div>
   )

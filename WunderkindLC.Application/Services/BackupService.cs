@@ -183,6 +183,7 @@ public static class BackupService
         await Add("cashboxTransfers", db.CashboxTransfers);
         // Davomat jarimalari (U3c) — maoshdan ushlanadi, ya'ni PUL.
         await Add("teacherAttendanceFines", db.TeacherAttendanceFines);
+        await Add("teacherFines", db.TeacherFines);
         await Add("studentDiscounts", db.StudentDiscounts);
         await Add("lessonDiscounts", db.LessonDiscounts);
         await Add("studentExtensions", db.StudentExtensions);

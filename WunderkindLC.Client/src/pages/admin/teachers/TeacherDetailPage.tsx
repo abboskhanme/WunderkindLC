@@ -72,6 +72,7 @@ import {
 } from '@/api/services/retentionBonus'
 import { getAttendanceFines } from '@/api/services/attendanceFines'
 import { AttendanceFineLine } from '@/components/salary/AttendanceFineLine'
+import { ManualFineLine } from '@/components/salary/ManualFineLine'
 
 import { DateInput } from '@/components/ui/DateInput'
 type Tab = 'info' | 'groups' | 'rating' | 'salary' | 'bonus' | 'performance' | 'fikrlar' | 'ai'
@@ -1440,6 +1441,11 @@ export function TeacherDetailPage() {
                     : undefined
                 }
               />
+            )}
+
+            {/* Qo'lda jarima (Moliya → Jarima) — sabablari bilan */}
+            {selMonthData && (selMonthData.manualFines ?? 0) > 0 && (
+              <ManualFineLine className="mt-3" amount={selMonthData.manualFines ?? 0} items={selMonthData.manualFineItems} />
             )}
 
             {/* Jurnal ushlanmasi tafsiloti (bo'lsa) */}

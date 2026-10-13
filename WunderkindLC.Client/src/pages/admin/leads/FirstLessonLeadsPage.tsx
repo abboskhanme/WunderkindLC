@@ -10,6 +10,11 @@ import { TotalPill } from '@/components/ui/list/TotalPill'
 import { TablePagination, usePagination } from '@/components/ui/TablePagination'
 import { WD_FULL, leadCallNumbers, shortLeadId, tableDateTime } from './leadLabels'
 import { useUrlFilters } from './useUrlFilters'
+import { LeadConvertPanel } from './LeadPanels'
+import { useLeadGroupOptions } from './useLeadDetail'
+import { Modal } from '@/components/ui/Modal'
+import { usePerm } from '@/lib/permissions'
+import { localIsoDate } from '@/lib/localDate'
 
 /**
  * LIDLAR → «Birinchi darsga yozilganlar» (edutizim `/orders/come-orders`).
@@ -34,6 +39,13 @@ function uniquePairs(items: { id?: string | null; name?: string | null }[]) {
   return [...m.entries()].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name))
 }
 
+/** Aktivlashtirish sanasi — birinchi dars kuni; u hali kelmagan bo'lsa bugun (kelajakdan aktivlashtirilmaydi). */
+function enrollEnrollDate(firstLessonAt: string): string {
+  const day = (firstLessonAt || '').slice(0, 10)
+  const today = localIsoDate(new Date())
+  return /^\d{4}-\d{2}-\d{2}$/.test(day) && day < today ? day : today
+}
+
 export function FirstLessonLeadsPage() {
   const navigate = useNavigate()
   const { values: f, set } = useUrlFilters(FILTER_KEYS)
@@ -44,6 +56,12 @@ export function FirstLessonLeadsPage() {
   const [all, setAll] = useState<FirstLessonLead[]>([])
   const [loading, setLoading] = useState(true)
   const [callRow, setCallRow] = useState<FirstLessonLead | null>(null)
+  // «Aktiv o'quvchi qilish» — lidni o'quvchiga aylantirish + darhol aktivlashtirish, BITTA oynada (LeadConvertPanel).
+  const [enrollRow, setEnrollRow] = useState<FirstLessonLead | null>(null)
+  const [reloadTick, setReloadTick] = useState(0)
+  const { can } = usePerm()
+  const canConvert = can('leads.list', 'create') && can('students.list', 'create')
+  const groupOpts = useLeadGroupOptions(!!enrollRow)
 
   // Qidiruv matni kechiktirib yuboriladi (har harfda so'rov ketmasin).
   const [q, setQ] = useState(f.q)
@@ -77,7 +95,7 @@ export function FirstLessonLeadsPage() {
       cancelled = true
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filterKey])
+  }, [filterKey, reloadTick])
 
   const courseOptions = useMemo(() => [...new Set(all.map((r) => r.course).filter(Boolean))].sort(), [all])
   const levelOptions = useMemo(() => [...new Set(all.map((r) => r.level).filter(Boolean))].sort(), [all])
@@ -137,6 +155,26 @@ export function FirstLessonLeadsPage() {
         </span>
       ),
     },
+    ...(canConvert
+      ? [
+          {
+            key: 'enroll',
+            header: '',
+            render: (r: FirstLessonLead) => (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setEnrollRow(r)
+                }}
+                className="whitespace-nowrap rounded-lg bg-brand-600 px-2.5 py-1 text-[12px] font-semibold text-white hover:bg-brand-700"
+              >
+                Aktiv o'quvchi qilish
+              </button>
+            ),
+          } satisfies DataColumn<FirstLessonLead>,
+        ]
+      : []),
   ]
 
   const callNumbers = useMemo(() => (callRow ? leadCallNumbers(callRow) : []), [callRow])
@@ -226,6 +264,33 @@ export function FirstLessonLeadsPage() {
         emptyHint="Lid sahifasidagi «⋮» menyudan «Sinov darsiga yozish» orqali qo'shiladi."
         footer={<TablePagination {...pg} />}
       />
+
+      <Modal
+        open={!!enrollRow}
+        onClose={() => {
+          setEnrollRow(null)
+          // Aylantirilgan lid ro'yxatdan chiqadi — oyna yopilgach yangilanadi (natija oynada ko'rinib tursin).
+          setReloadTick((t) => t + 1)
+        }}
+        title={enrollRow ? `Aktiv o'quvchi qilish — ${enrollRow.fullName}` : ''}
+        size="lg"
+      >
+        {enrollRow && (
+          <LeadConvertPanel
+            key={enrollRow.id}
+            lead={{ id: enrollRow.id, convertedStudentId: null }}
+            groups={groupOpts.groups}
+            teacherOptions={groupOpts.teacherOptions}
+            canViewStudents={can('students.list', 'view')}
+            canActivate={can('classes.list', 'create')}
+            initialTeacherId={enrollRow.teacherId}
+            initialGroupId={enrollRow.groupId}
+            // Birinchi dars sanasidan (kelajakda bo'lsa — bugundan): o'quvchi o'sha darsdan o'qiy boshlagan.
+            initialDate={enrollEnrollDate(enrollRow.firstLessonAt)}
+            onConverted={() => {}}
+          />
+        )}
+      </Modal>
 
       <PhoneCallModal
         open={!!callRow}

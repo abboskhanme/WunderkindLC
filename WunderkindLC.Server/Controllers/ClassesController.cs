@@ -1230,6 +1230,23 @@ public partial class ClassesController(AppDbContext db, AuditService audit, ILog
         return dto;
     }
 
+    /// <summary>
+    /// «Aktiv o'quvchi qilish» oynasi (lidni o'quvchiga aylantirish + darhol aktivlashtirish) — shu guruhga shu sanadan
+    /// aktivlashtirilsa BIRINCHI oyga qancha yozilishi va qanday hisoblangani. Hech narsa yozmaydi; yangi o'quvchi
+    /// (sinfsiz, chegirmasiz) — aktivlashtirish aynan shunday hisoblaydi (`TuitionService.ActivationQuoteAsync`).
+    /// </summary>
+    [HttpGet("{id}/activation-quote")]
+    public async Task<ActionResult<ActivationQuoteDto>> ActivationQuote(string id, [FromQuery] string? date)
+    {
+        var cls = await db.Classes.AsNoTracking().FirstOrDefaultAsync(c => c.Id == id);
+        if (cls is null) return NotFound(new { message = "Guruh topilmadi" });
+        if (!TryNormalizeDate(date, out var parsed))
+            return BadRequest(new { message = "Sana noto'g'ri (yyyy-MM-dd)" });
+        var q = await TuitionService.ActivationQuoteAsync(db, cls, parsed ?? AppClock.Today.ToString("yyyy-MM-dd"));
+        if (q is null) return BadRequest(new { message = "Sana noto'g'ri (yyyy-MM-dd)" });
+        return new ActivationQuoteDto(q.Month, q.Monthly, q.LessonsInMonth, q.LessonsLeft, q.LessonFee, q.Amount, q.FullMonth);
+    }
+
     /// <summary>Bitta a'zolikni AKTIVLASHTIRISH — hisob-kitobning YAGONA manbai: yakka
     /// <see cref="ActivateMember"/> ham, OMMAVIY <see cref="BulkApplyAsync"/> ham AYNAN shuni chaqiradi
     /// (aks holda ikki oqim vaqt o'tib bir-biridan ayrilib ketardi).

@@ -378,3 +378,16 @@ KASSAGA yoziladi — pul HAQIQATAN olingan/qaytarilgan paytda, `BookSalesService
 - Bo'lim analitikasi (tushum, nasiya, qaytarish) avvalgidek SHU yerda hisoblanadi — moliya yozuvi faqat
   kassa qoldig'i va umumiy moliya hisobotlari uchun.
 - Testlar: `BookFinanceTests`.
+
+## 8. TO'LOV OYNASIDA «KITOB SOTUVI» (2026-10-13)
+
+Owner: "to'lov turlari ichida kitob sotuvi bo'lishi kerak". O'quvchi to'lov oynasi (`PaymentModal` — Kassa portali va
+admin) tepasida «O'qish to'lovi | Kitob sotuvi» (`StudentBookSale`): kitob · soni · naqd/karta (karta — oxirgi 4 raqam +
+vaqt) → shu o'quvchiga QO'LDA SOTUV.
+
+- Mantiq BITTA joyda — **`BookManualSale.CreateAsync`** (Application; §2.1 dagi `BooksController.ManualSale` endi shuni
+  chaqiradi): qoldiq, karta maydonlari, nasiya qoidasi, `ApproveAsync` (ombor + `BookFinance` kirimi), audit.
+- Kanal: admin — mavjud «Kitoblar» endpointlari (`books` ruxsati, tur faqat `can('books','create')` bo'lsa ko'rinadi);
+  Kassa — `GET api/admin/kassa/books` + `POST api/admin/kassa/students/{id}/book-sale` (`kassa` ruxsati yetadi).
+- ⚠️ Bu yerda NASIYA YO'Q (server 400) — pul shu zahoti olinadi; nasiya «Kitoblar» bo'limida. Kitob puli o'quvchi
+  BALANSIGA tegmaydi (§7).

@@ -1,16 +1,14 @@
 import { useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { getTransactions } from '@/api/services/finance'
 import { DataTable } from '@/components/ui/list/DataTable'
 import { ListToolbar } from '@/components/ui/list/ListToolbar'
 import { TotalPill } from '@/components/ui/list/TotalPill'
 import { TablePagination, usePagination } from '@/components/ui/TablePagination'
-import { Loader } from '@/components/ui/Loader'
 import { useAsync } from '@/hooks/useAsync'
-import { usePerm } from '@/lib/permissions'
 import { cn, formatMoney } from '@/lib/utils'
 import { tabFromUrl } from '@/lib/tabParam'
 import { AttendanceFinesTab } from './AttendanceFinesTab'
+import { TeacherFinesTab } from './TeacherFinesTab'
 
 const PENALTY_TABS = ['list', 'davomat'] as const
 type PenaltyTab = (typeof PENALTY_TABS)[number]
@@ -39,21 +37,24 @@ export function PenaltyPage() {
           </button>
         ))}
       </div>
-      {tab === 'list' ? <PenaltyList /> : <AttendanceFinesTab />}
+      {tab === 'list' ? (
+        <>
+          <TeacherFinesTab />
+          <LegacyPenaltyList />
+        </>
+      ) : (
+        <AttendanceFinesTab />
+      )}
     </div>
   )
 }
 
 /**
- * «Jarimalar» — xodimdan ushlangan summalar ro'yxati.
- *
- * ⚠️ Yangi jadval YO'Q — jarima oddiy CHIQIM tranzaksiyasi (`category = "penalty"`), ya'ni u
- * kassa, kirim-chiqim va P&L hisobotlariga o'z-o'zidan kiradi. "Jarima qo'shish" Moliya
- * bo'limidagi "Yangi amal" formasini shu toifa bilan ochadi.
+ * ESKI jarimalar — 2026-10-13 gacha CHIQIM sifatida kiritilgan (`category = "penalty"`): ular kassadan pul chiqqandek
+ * ko'rinadi va maoshdan USHLANMAGAN. Yangi jarima endi `TeacherFinesTab` da (maoshdan ushlanadi); bu ro'yxat faqat
+ * tarix uchun, faqat qatori bo'lsa ko'rinadi. Yangi `penalty` chiqimini server rad etadi.
  */
-function PenaltyList() {
-  const { can } = usePerm()
-  const navigate = useNavigate()
+function LegacyPenaltyList() {
   const [q, setQ] = useState('')
   const [filtersOpen, setFiltersOpen] = useState(false)
   const { data, loading, error } = useAsync(() => getTransactions({ direction: 'expense' }), [])
@@ -71,18 +72,18 @@ function PenaltyList() {
 
   const pg = usePagination(rows)
 
-  if (loading && !data) return <Loader className="min-h-[240px]" />
-  if (error) return <p className="text-[13px] text-red-600">{error}</p>
+  if (loading && !data) return null
+  if (error) return <p className="mt-6 text-[13px] text-red-600">{error}</p>
+  if ((data ?? []).every((t) => t.category !== 'penalty')) return null
 
   return (
-    <div>
-      <ListToolbar
-        filtersOpen={filtersOpen}
-        onToggleFilters={() => setFiltersOpen((v) => !v)}
-        addLabel={can('finance.main', 'create') ? "Jarima qo'shish" : undefined}
-        // "Yangi amal" formasi Moliya bo'limida — jarima ham oddiy chiqim sifatida kiritiladi.
-        onAdd={can('finance.main', 'create') ? () => navigate('/admin/finance?tab=overview') : undefined}
-      />
+    <div className="mt-8">
+      <p className="mb-1 text-[14px] font-semibold text-black">Eski yozuvlar — chiqim sifatida kiritilgan</p>
+      <p className="mb-2.5 text-[12px] text-[#6b7280]">
+        2026-10-13 gacha jarima kassadan CHIQIM bo'lib yozilardi va maoshdan ushlanmasdi. Bu yozuvlar tarix uchun
+        ko'rsatiladi; yangi jarima yuqorida qo'yiladi.
+      </p>
+      <ListToolbar filtersOpen={filtersOpen} onToggleFilters={() => setFiltersOpen((v) => !v)} />
 
       {filtersOpen && (
         <div className="mb-2.5">

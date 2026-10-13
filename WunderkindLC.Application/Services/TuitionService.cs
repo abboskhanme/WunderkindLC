@@ -415,6 +415,14 @@ public static class TuitionService
         return count;
     }
 
+    /// <summary>Aktivlashtirish oyi hisobining TARKIBI — oyna «birinchi oy qanday hisoblandi» ni ko'rsatishi uchun
+    /// (<see cref="ActivationQuoteAsync"/>). <c>LessonFee</c> — qisman oyda ishlatilgan bir dars narxi (0 — pro-rata).</summary>
+    public sealed record ActivationQuote(
+        string Month, decimal Monthly, int LessonsInMonth, int LessonsLeft, decimal LessonFee, decimal Amount)
+    {
+        public bool FullMonth => LessonsInMonth > 0 && LessonsLeft >= LessonsInMonth;
+    }
+
     /// <summary>Aktivlashtirilgan oyning QISMAN to'lovi (chegirmasiz) — <see cref="ChargeActivationProrateAsync"/>
     /// yozadigan summaning O'ZI, hech narsa yozmasdan. <c>Monthly</c> — shu oy uchun o'quvchining oyligi
     /// (sinf oralig'i bo'yicha), <c>Gross</c> — qolgan darslar bo'yicha qisman summa (0 — narx yo'q, sana
@@ -422,21 +430,40 @@ public static class TuitionService
     private static async Task<(decimal Monthly, decimal Gross)> ActivationGrossAsync(
         IAppDbContext db, Student s, Group cls, string dateIso, decimal? lessonFee, PricingBook? pricing)
     {
-        if (dateIso.Length < 10 || !DateOnly.TryParse(dateIso, out var d)) return (0m, 0m);
+        var q = await ActivationBreakdownAsync(db, s, cls, dateIso, lessonFee, pricing);
+        return q is null ? (0m, 0m) : (q.Monthly, q.Amount);
+    }
+
+    /// <summary>
+    /// «Aktiv o'quvchi qilish» oynasi uchun — shu guruhga shu sanadan aktivlashtirilsa BIRINCHI oyga qancha yoziladi va
+    /// QANDAY hisoblangani (chegirmasiz; yangi o'quvchida chegirma bo'lmaydi). Hech narsa yozmaydi.
+    /// <paramref name="s"/> berilmasa — sinfi yo'q yangi o'quvchi (guruhning asosiy narxi), aynan aktivlashtirish
+    /// shunday hisoblaydi. Formula <see cref="ChargeActivationProrateAsync"/> bilan BITTA (shu yerdan olinadi).
+    /// </summary>
+    public static Task<ActivationQuote?> ActivationQuoteAsync(IAppDbContext db, Group cls, string dateIso, Student? s = null) =>
+        ActivationBreakdownAsync(db, s ?? new Student(), cls, dateIso, null, null);
+
+    private static async Task<ActivationQuote?> ActivationBreakdownAsync(
+        IAppDbContext db, Student s, Group cls, string dateIso, decimal? lessonFee, PricingBook? pricing)
+    {
+        if (dateIso.Length < 10 || !DateOnly.TryParse(dateIso, out var d)) return null;
+        var month = dateIso[..7];
         // SINFGA QARAB NARX (`TuitionPricing`): oraliq topilsa uning oyligi va bir dars narxi.
         var (monthly, bandLesson) = (pricing ?? await PricingBook.LoadForCourseAsync(db, cls.CourseId))
-            .Resolve(cls, s, dateIso[..7]);
-        if (monthly <= 0) return (monthly, 0m);
+            .Resolve(cls, s, month);
+        if (monthly <= 0) return new ActivationQuote(month, monthly, 0, 0, 0m, 0m);
         var monthStart = new DateOnly(d.Year, d.Month, 1);
         var monthEnd = new DateOnly(d.Year, d.Month, DateTime.DaysInMonth(d.Year, d.Month));
         var totalInMonth = LessonsInRange(cls.Days, monthStart, monthEnd);
         var remaining = LessonsInRange(cls.Days, d, monthEnd);
-        if (totalInMonth <= 0 || remaining <= 0) return (monthly, 0m); // shu oyda dars yo'q — qisman to'lov yo'q
+        // shu oyda dars yo'q / oyning oxirgi darsidan keyin — qisman to'lov yo'q
+        if (totalInMonth <= 0 || remaining <= 0) return new ActivationQuote(month, monthly, totalInMonth, remaining, 0m, 0m);
 
         // Formula: birinchi darsdan (remaining == jami) → to'liq oylik; aks holda qolgan dars ×
         // kursning bir dars yaxlit narxi (LessonPrice; kiritilmagan bo'lsa eski pro-rata).
         var fee = bandLesson ?? lessonFee ?? await LessonFeeForCourseAsync(db, cls.CourseId);
-        return (monthly, ProratedLessonCharge(monthly, fee, remaining, totalInMonth));
+        return new ActivationQuote(month, monthly, totalInMonth, remaining, fee,
+            ProratedLessonCharge(monthly, fee, remaining, totalInMonth));
     }
 
     /// <summary>Aktivlashtirilgan oyning QISMAN to'lovini hisoblab o'quvchiga yozadi (balans kamayadi,

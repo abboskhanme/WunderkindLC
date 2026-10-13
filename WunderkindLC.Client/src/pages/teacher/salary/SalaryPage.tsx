@@ -9,6 +9,7 @@ import type { SalaryLedger } from '@/types'
 import { formatMoney } from '@/lib/utils'
 import { getMyAttendanceFines } from '@/api/services/attendanceFines'
 import { AttendanceFineLine } from '@/components/salary/AttendanceFineLine'
+import { ManualFineLine } from '@/components/salary/ManualFineLine'
 import { Loader } from '@/components/ui/Loader'
 
 /**
@@ -364,6 +365,11 @@ export function TeacherSalaryPage() {
                       count={m.attendanceFineCount ?? 0}
                       load={() => getMyAttendanceFines(m.month)}
                     />
+                  )}
+
+                  {/* Qo'lda jarima (Moliya → Jarima) — "Hisoblandi" dan allaqachon ayrilgan, sabablari bilan */}
+                  {(m.manualFines ?? 0) > 0 && (
+                    <ManualFineLine className="px-3.5 pb-3" amount={m.manualFines ?? 0} items={m.manualFineItems} />
                   )}
 
                   {/* Ushlanma sababi: qaysi guruhda qaysi darslar belgilanmagan */}

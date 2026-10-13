@@ -1007,3 +1007,19 @@ SPEC: `docs/SPEC-crm-upgrade.md` P3.4. Sozlama — «Davomat intizomi» (`journa
   `finance.main` bilan), `TeacherSalaryDetailModal`, o'qituvchi portali → Maosh (`GET api/teacher/attendance-fines`,
   faqat O'Z jarimalari, `TeacherPermissions.Salary`).
 - Backup: jadval zaxiraga KIRADI (pul). Testlar: `AttendanceDisciplineTests` (qaror, xizmat, maosh).
+
+## QO'LDA JARIMA — maoshdan ushlanadi (2026-10-13, migratsiya `CrmTeacherFines`)
+
+Owner: "jarima maoshdan ushlansin". Moliya → «Jarima» → «Jarimalar» (`TeacherFinesTab`, server `TeacherFinesController`
+`api/admin/teacher-fines`, `[AdminPerm("finance.main", ReadRequiresPerm = true)]`): o'qituvchi · maosh oyi (joriy yoki
+o'tgan, kelajak — 400) · summa · SABAB (majburiy). Qoidalar — `TeacherFines` (sof, `EnrollBooksFinesTests`).
+
+- ⚠️ **`FinanceTransaction` EMAS — kassaga TEGMAYDI.** `SalaryLedger` FAOL jarimalarni oy bo'yicha `Expected` dan ayiradi —
+  davomat jarimasidan KEYIN, qolgan qoldiqdan oshmaydi (maosh manfiy bo'lmaydi); `PotentialExpected`/`CollectedExpected`
+  dan ham. DTO: `MonthSalaryDto.ManualFines/ManualFineCount/ManualFineItems` (summa + sabab), `SalaryLedgerDto.TotalManualFines`.
+- Ko'rinishi: o'qituvchi profili → Maosh, o'qituvchi kabineti → Maosh (sababi bilan, `ManualFineLine`), `TeacherSalaryDetailModal`.
+- O'chirilmaydi — **bekor qilinadi** (sabab 1..300) va **tiklanadi**; audit `TeacherFine` → «O'qituvchilar», `EntityId =
+  "{teacherId}:{fineId}"`. Zaxiraga KIRADI (`teacherFines`). MCP `teacher_salaries` uchun jadval faqat-o'qish ro'yxatida.
+- ⚠️ **ESKI xato yo'l yopildi:** ilgari «Jarima qo'shish» Moliya → «Yangi amal» da `penalty` toifali CHIQIM yozardi — kassadan pul
+  chiqqandek ko'rinar, maoshdan hech narsa ushlanmasdi. Endi `FinanceController.Create` `penalty` ni 400 bilan rad etadi;
+  eski qatorlar tegilmaydi va «Jarima» sahifasida «Eski yozuvlar — chiqim sifatida kiritilgan» bo'lib (faqat bo'lsa) turadi.

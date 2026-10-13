@@ -37,6 +37,8 @@ public sealed class FinanceTools(McpToolContext t)
         // SalaryLedger subtracts ACTIVE attendance fines (CRM Phase 3, U3c) — the read-only role needs the table,
         // otherwise teacher_salaries fails with "permission denied". The fine LIST is teacher_attendance_fines.
         typeof(TeacherAttendanceFine),
+        // …and ACTIVE manual fines (2026-10-13, `TeacherFine`, Moliya → Jarima) — same reason.
+        typeof(TeacherFine),
     ];
 
     /// <summary>The discount report accepts at most this many months.</summary>

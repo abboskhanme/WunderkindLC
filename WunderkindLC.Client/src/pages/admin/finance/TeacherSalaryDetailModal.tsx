@@ -182,6 +182,14 @@ export function TeacherSalaryDetailModal({ teacher, from, to, onClose }: Props) 
                                 davomat jarimasi −{formatMoney(m.attendanceFines ?? 0)} ({m.attendanceFineCount ?? 0} ta dars)
                               </div>
                             )}
+                            {(m.manualFines ?? 0) > 0 && (
+                              <div
+                                className="text-[11px] text-red-600"
+                                title={(m.manualFineItems ?? []).map((f) => `${f.reason}: −${formatMoney(f.amount)}`).join('\n')}
+                              >
+                                jarima −{formatMoney(m.manualFines ?? 0)} ({m.manualFineCount ?? 0} ta)
+                              </div>
+                            )}
                             {/* Foizli maoshda pul hali yig'ilmagan oy (masalan guruh yopilgan oy)
                                 0 bo'lib ko'rinardi — yonida "hisob bo'yicha" turadi. */}
                             {(m.potentialExpected ?? 0) > m.expected && (

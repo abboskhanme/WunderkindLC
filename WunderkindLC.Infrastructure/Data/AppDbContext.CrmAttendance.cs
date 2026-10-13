@@ -8,6 +8,7 @@ public partial class AppDbContext
 {
     public DbSet<TeacherAttendanceFine> TeacherAttendanceFines => Set<TeacherAttendanceFine>();
     public DbSet<AbsenceStreakAlert> AbsenceStreakAlerts => Set<AbsenceStreakAlert>();
+    public DbSet<TeacherFine> TeacherFines => Set<TeacherFine>();
 
     partial void ConfigureCrmAttendance(ModelBuilder b)
     {
@@ -20,6 +21,21 @@ public partial class AppDbContext
         b.Entity<CenterMeta>().Property(x => x.AttendanceFineAmount).HasPrecision(18, 2);
         b.Entity<CenterMeta>().Property(x => x.AbsentNoticeApproval).HasMaxLength(16);
         b.Entity<CenterMeta>().Property(x => x.AbsenceStreakReasonId).HasMaxLength(200);
+
+        // ---- 2026-10-13: MANUAL teacher fines (deducted from salary, not a cash movement) ----
+        var mf = b.Entity<TeacherFine>();
+        mf.Property(x => x.Id).HasMaxLength(36);
+        mf.Property(x => x.TeacherId).HasMaxLength(36);
+        mf.Property(x => x.Month).HasMaxLength(7);
+        mf.Property(x => x.Amount).HasPrecision(18, 2);
+        mf.Property(x => x.Reason).HasMaxLength(500);
+        mf.Property(x => x.Status).HasMaxLength(16);
+        mf.Property(x => x.CreatedById).HasMaxLength(200);
+        mf.Property(x => x.CreatedByName).HasMaxLength(200);
+        mf.Property(x => x.WaivedById).HasMaxLength(200);
+        mf.Property(x => x.WaivedByName).HasMaxLength(200);
+        mf.Property(x => x.WaiveReason).HasMaxLength(300);
+        mf.HasIndex(x => new { x.TeacherId, x.Month });
 
         // ---- U3c: teacher attendance fines ----
         var f = b.Entity<TeacherAttendanceFine>();

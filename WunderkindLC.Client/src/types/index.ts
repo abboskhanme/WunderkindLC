@@ -1842,6 +1842,11 @@ export interface MonthSalary {
   attendanceFines?: number
   /** Jarimali darslar soni. */
   attendanceFineCount?: number
+  /** QO'LDA JARIMA (Moliya → Jarima, 2026-10-13) — shu oyda `expected` dan ayrilgan summa. */
+  manualFines?: number
+  manualFineCount?: number
+  /** Faol qo'lda jarimalar: summa + sabab. */
+  manualFineItems?: { amount: number; reason: string }[] | null
 }
 
 /** Maosh hisobida bitta guruhning ulushi (davr bo'yicha) */
@@ -1891,6 +1896,8 @@ export interface SalaryLedger {
   journalLinked?: boolean
   /** Davr bo'yicha jami davomat jarimasi (maoshdan ayrilgan). */
   totalAttendanceFines?: number
+  /** Davr bo'yicha jami qo'lda jarima (maoshdan ayrilgan). */
+  totalManualFines?: number
 }
 
 export interface SalaryReportRow {

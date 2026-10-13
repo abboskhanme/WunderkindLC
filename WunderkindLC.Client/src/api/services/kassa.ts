@@ -123,3 +123,34 @@ export async function getMyKassaPayments(from?: string, to?: string): Promise<Ca
   const { data } = await api.get<CashierPayments>('/admin/kassa/my-payments', { params: { from, to } })
   return data
 }
+
+// ---------- «Kitob sotuvi» — to'lov oynasidagi tur (kassa ruxsati bilan; nasiya YO'Q) ----------
+
+export interface KassaBook {
+  id: string
+  title: string
+  price: number
+  stock: number
+}
+
+export async function getKassaBooks(): Promise<KassaBook[]> {
+  const { data } = await api.get<KassaBook[]>('/admin/kassa/books')
+  return data
+}
+
+export interface KassaBookSale {
+  id: string
+  number: number
+  bookTitle: string
+  qty: number
+  total: number
+  paymentMethod: string
+}
+
+export async function sellKassaBook(
+  studentId: string,
+  body: { bookId: string; qty: number; paymentMethod: 'cash' | 'card'; cardLast4?: string; paidTime?: string },
+): Promise<KassaBookSale> {
+  const { data } = await api.post<KassaBookSale>(`/admin/kassa/students/${studentId}/book-sale`, body)
+  return data
+}

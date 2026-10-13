@@ -156,6 +156,11 @@ public partial class FinanceController(AppDbContext db, AuditService audit, Auto
         // Vozvrat faqat to'lovning «Pul qaytarish» tugmasi orqali (asl to'lovga bog'lanadi, chegarasi tekshiriladi).
         if (p.Direction == "expense" && p.Category == "refund")
             return BadRequest(new { message = "Vozvrat faqat to'lov yonidagi «Pul qaytarish» tugmasi orqali yoziladi" });
+        // JARIMA chiqim EMAS (2026-10-13, owner: "maoshdan ushlansin"): u «Moliya → Jarima» da qo'yiladi va o'qituvchi
+        // maoshidan ushlanadi (`TeacherFinesController`). Ilgari bu yerda CHIQIM yozilardi — kassadan pul chiqqandek
+        // ko'rinar, maoshdan hech narsa ushlanmasdi. Eski `penalty` qatorlari tegilmaydi.
+        if (p.Category == "penalty")
+            return BadRequest(new { message = "Jarima endi «Moliya → Jarima» bo'limida qo'yiladi — o'qituvchi maoshidan ushlanadi, kassadan pul chiqmaydi" });
 
         // QOG'OZ KVITANSIYA raqami BIR MARTA ishlatiladi (StudentsController.AddPayment bilan bir xil qoida).
         var newReceiptNo = PaymentFields.NormalizeReceiptNo(p.ReceiptNo);

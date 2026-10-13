@@ -308,7 +308,14 @@ public record MonthSalaryDto(
     decimal CollectedExpected = 0,
     /// <summary>DAVOMAT JARIMALARI (CRM Phase 3, U3c) — shu oyning FAOL jarimalari, <c>Expected</c> dan ayrilgan
     /// (ushlanmalardan keyingi qoldiqdan oshmaydi). <paramref name="AttendanceFineCount"/> — jarimali darslar soni.</summary>
-    decimal AttendanceFines = 0, int AttendanceFineCount = 0);
+    decimal AttendanceFines = 0, int AttendanceFineCount = 0,
+    /// <summary>QO'LDA JARIMALAR (2026-10-13, `TeacherFine`) — shu oyning FAOL jarimalari, davomat jarimasidan KEYIN
+    /// <c>Expected</c> dan ayrilgan (qoldiqdan oshmaydi). <paramref name="ManualFineCount"/> — nechta jarima.</summary>
+    decimal ManualFines = 0, int ManualFineCount = 0,
+    /// <summary>Shu oyning FAOL qo'lda jarimalari (summa + sabab) — o'qituvchi ham, admin ham "nega ushlandi" ni ko'radi.</summary>
+    List<ManualFineItemDto>? ManualFineItems = null);
+
+public record ManualFineItemDto(decimal Amount, string Reason);
 /// <summary>
 /// Maosh hisobida bitta guruhning ulushi (davr bo'yicha): qaysi rejim (foiz/qat'iy), qiymati,
 /// shu davrda guruhdan yig'ilgan to'lov bazasi va shu guruh keltirgan hisoblangan maosh.
@@ -325,7 +332,15 @@ public record SalaryLedgerDto(
     string SalaryMode = "fixed", decimal SalaryPercent = 0,
     List<GroupSalaryLineDto>? Groups = null,
     decimal TotalDeduction = 0, bool JournalLinked = false,
-    decimal TotalAttendanceFines = 0);
+    decimal TotalAttendanceFines = 0, decimal TotalManualFines = 0);
+
+/// <summary>Moliya → «Jarima» — o'qituvchiga QO'LDA qo'yilgan jarima (maoshdan ushlanadi, kassaga tegmaydi).</summary>
+public record TeacherFineDto(string Id, string TeacherId, string TeacherName, string Month, decimal Amount, string Reason,
+    string Status, DateTime CreatedAt, string CreatedByName, DateTime? WaivedAt, string? WaivedByName, string? WaiveReason);
+
+public record TeacherFineRequest(string TeacherId, string Month, decimal Amount, string Reason);
+
+public record TeacherFineWaiveRequest(string? Reason);
 
 /// <summary>O'qituvchi guruhlari maosh sozlamasini yangilash (per-guruh foiz/qat'iy summa).</summary>
 public record GroupSalaryItemDto(string GroupId, string Mode, decimal Percent, decimal Fixed);
@@ -526,6 +541,11 @@ public record MembershipStatusRequest(
 public record ActivationDateRequest(string? Date, bool Preview = false);
 /// <summary>Bitta oy hisobining o'zgarishi (effektiv summa; <c>null</c> — hisob yo'q).</summary>
 public record ActivationDateMonthDto(string Month, decimal? Before, decimal? After);
+/// <summary>«Aktiv o'quvchi qilish» oynasi — shu sanadan aktivlashtirilsa birinchi oy qanday hisoblanadi
+/// (`TuitionService.ActivationQuoteAsync`, chegirmasiz). <c>LessonFee</c> 0 — pro-rata (kursda bir dars narxi yo'q).</summary>
+public record ActivationQuoteDto(string Month, decimal Monthly, int LessonsInMonth, int LessonsLeft, decimal LessonFee,
+    decimal Amount, bool FullMonth);
+
 public record ActivationDateResultDto(bool Saved, string OldDate, string NewDate, decimal BalanceBefore,
     decimal BalanceAfter, List<ActivationDateMonthDto> Months, List<string> LockedMonths);
 /// <summary>

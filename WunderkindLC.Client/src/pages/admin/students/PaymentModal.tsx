@@ -23,6 +23,8 @@ import posthog from '@/lib/posthog'
 import { toast } from '@/lib/toast'
 import { newRequestId } from '@/lib/requestId'
 import { LessonDiscountPanel } from './LessonDiscountPanel'
+import { StudentBookSale } from '@/components/payments/StudentBookSale'
+import { usePerm } from '@/lib/permissions'
 import { cashboxOptionLabel, showCashboxPicker, useCashboxOptions } from '@/hooks/useCashboxOptions'
 import { currentMonth as localCurrentMonth, shiftMonth, todayIso } from '@/lib/month'
 
@@ -114,6 +116,8 @@ export function PaymentModal({
   onSubmit,
 }: Props) {
   const [amount, setAmount] = useState<number | null>(null)
+  const [kindState, setKindState] = useState<{ sid: string; kind: 'tuition' | 'book' }>({ sid: '', kind: 'tuition' })
+  const { can } = usePerm()
   const [month, setMonth] = useState<string>(currentMonth())
   const [rows, setRows] = useState<Row[]>([])
   const [groups, setGroups] = useState<StudentGroupMembership[]>([])
@@ -369,6 +373,10 @@ export function PaymentModal({
   const newBalance = student ? student.balance + balanceAdj + (amount ?? 0) : 0
   const monthOptions = rows.length > 0 ? rows.map((r) => r.month) : trialSelected ? trialMonths() : [currentMonth()]
   const isOpen = open ?? !!student
+  // To'lov turi o'quvchi bo'yicha (oyna boshqa o'quvchiga ochilsa — yana «O'qish to'lovi»).
+  const kind: 'tuition' | 'book' = kindState.sid === (student?.id ?? '') ? kindState.kind : 'tuition'
+  const setKind = (k: 'tuition' | 'book') => setKindState({ sid: student?.id ?? '', kind: k })
+  const canSellBooks = channel === 'kassa' || (channel === 'admin' && can('books', 'create'))
   const saveDisabled =
     !student || (amount ?? 0) <= 0 || !month || (needGroup && !groupId) || loading || loadingMonths || submitting || blocked
 
@@ -386,7 +394,34 @@ export function PaymentModal({
   const body = (
     <div className="space-y-4">
       {headerSlot}
-      {student &&
+      {/* TO'LOV TURI (2026-10-13): o'qish to'lovi yoki KITOB SOTUVI — kitob shu o'quvchiga sotiladi
+          (`StudentBookSale`, balansga tegmaydi). Kassa portalida `kassa` ruxsati yetadi, adminda — «Kitoblar». */}
+      {student && canSellBooks && (
+        <div className="grid grid-cols-2 gap-1 rounded-lg border border-[#dbe0e6] bg-white p-1" role="tablist" aria-label="To'lov turi">
+          {(['tuition', 'book'] as const).map((k) => (
+            <button
+              key={k}
+              type="button"
+              role="tab"
+              aria-selected={kind === k}
+              onClick={() => setKind(k)}
+              className={cn(
+                'h-8 rounded-md text-[13px] font-semibold transition-colors',
+                kind === k ? 'bg-brand-600 text-white' : 'text-[#333] hover:bg-[#f0f2f2]',
+              )}
+            >
+              {k === 'tuition' ? "O'qish to'lovi" : 'Kitob sotuvi'}
+            </button>
+          ))}
+        </div>
+      )}
+      {student && kind === 'book' && (
+        <>
+          <p className="text-sm font-semibold text-black">{student.fullName}</p>
+          <StudentBookSale key={student.id} studentId={student.id} channel={channel === 'kassa' ? 'kassa' : 'admin'} />
+        </>
+      )}
+      {student && kind === 'tuition' &&
         (loading ? (
           <Loader label="Yuklanmoqda..." />
         ) : (
@@ -712,7 +747,7 @@ export function PaymentModal({
             <Button variant="secondary" onClick={onClose}>
               Bekor qilish
             </Button>
-            {primaryAction}
+            {kind === 'tuition' && primaryAction}
           </>
         }
       >
@@ -726,7 +761,7 @@ export function PaymentModal({
       open={isOpen}
       onClose={onClose}
       title={title}
-      footer={<DrawerActions onBack={onClose}>{primaryAction}</DrawerActions>}
+      footer={<DrawerActions onBack={onClose}>{kind === 'tuition' ? primaryAction : null}</DrawerActions>}
     >
       {body}
     </RightDrawer>

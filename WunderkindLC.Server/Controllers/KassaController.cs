@@ -28,7 +28,7 @@ namespace WunderkindLC.Server.Controllers;
 [Authorize]
 [AdminPerm("kassa")]
 [Route("api/admin/kassa")]
-public class KassaController(AppDbContext db, AuditService audit, AutoMessageService autoMsg) : ControllerBase
+public partial class KassaController(AppDbContext db, AuditService audit, AutoMessageService autoMsg) : ControllerBase
 {
     /// <summary>Bir qidiruvda qaytariladigan maksimal o'quvchi (kassaga shundan ortig'i kerak emas).</summary>
     private const int SearchLimit = 30;

@@ -332,6 +332,29 @@ export async function removeGroupMember(id: string, studentId: string, reasonId?
  * - `false` — bu fan bonus hisobotida ko'rinmaydi;
  * - berilmasa (`undefined`) — tegilmaydi (eski xatti-harakat saqlanadi).
  */
+/** Shu guruhga shu sanadan aktivlashtirilsa BIRINCHI oy qanday hisoblanadi (server `ActivationQuoteAsync`, chegirmasiz). */
+export interface ActivationQuote {
+  month: string
+  monthly: number
+  lessonsInMonth: number
+  lessonsLeft: number
+  /** Qisman oyda bir dars narxi; 0 — pro-rata (kursda bir dars narxi kiritilmagan). */
+  lessonFee: number
+  amount: number
+  fullMonth: boolean
+}
+
+export async function getActivationQuote(groupId: string, date?: string): Promise<ActivationQuote> {
+  if (USE_MOCK) {
+    await delay(100)
+    return { month: (date || '2026-10-01').slice(0, 7), monthly: 300000, lessonsInMonth: 12, lessonsLeft: 9, lessonFee: 25000, amount: 225000, fullMonth: false }
+  }
+  const { data } = await api.get<ActivationQuote>(`/admin/classes/${groupId}/activation-quote`, {
+    params: date ? { date } : undefined,
+  })
+  return data
+}
+
 export async function activateMember(
   id: string,
   studentId: string,

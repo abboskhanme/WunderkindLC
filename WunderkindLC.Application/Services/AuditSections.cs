@@ -110,6 +110,8 @@ public static class AuditSections
         // "TeacherAttendanceFine" — DAVOMAT JARIMASI (CRM Phase 3, U3c): yozildi (tizim), bekor qilindi,
         // tiklandi, kun bo'yicha bekor qilindi. Maoshga tegishli → O'qituvchilar; EntityId "{groupId}:{fineId}".
         ["TeacherAttendanceFine"] = "teachers",
+        // "TeacherFine" — QO'LDA jarima (2026-10-13): qo'yildi / bekor qilindi / tiklandi (maoshdan ushlanadi).
+        ["TeacherFine"] = "teachers",
 
         // --- Moliya ---
         ["FinanceTransaction"] = "finance",

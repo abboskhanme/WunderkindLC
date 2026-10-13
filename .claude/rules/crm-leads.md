@@ -90,6 +90,17 @@ paths:
   saqlanib turishi uchun qolgan — yangi kod ularni ISHLATMASIN. Lidlar ichidagi qidiruv:
   ism/telefon/ota-ona/manba (telefon raqamlar bo'yicha).
 
+## «AKTIV O'QUVCHI QILISH» — bitta oynada (2026-10-13)
+
+Owner: "birinchi darsga yozilganni 1-2 ta knopka bilan aktiv o'quvchi qilish". «Birinchi darsga yozilganlar» qatoridagi
+**«Aktiv o'quvchi qilish»** (va lid sahifasidagi «O'quvchiga aylantirish») — `LeadConvertPanel`: sinov darsidan guruh,
+o'qituvchi va sana (birinchi dars kuni; kelajakda bo'lsa — bugun) oldindan to'ladi; **«Darhol aktivlashtirish»**
+(`classes.list:create` bo'lsa, standart yoqiq) belgilansa aylantirishdan KEYIN odatdagi `POST classes/{id}/members/{sid}/activate`
+chaqiriladi (qisman oy, catch-up, audit — yagona yo'l). Oyna birinchi oy QANDAY hisoblanishini oldindan ko'rsatadi:
+`GET classes/{id}/activation-quote?date=` → `TuitionService.ActivationQuoteAsync` (aktivlashtirish yozadigan summaning
+O'ZI — `ActivationGrossAsync` bilan bitta formula; matn `lib/activationQuote.ts`). To'lov — alohida (owner qarori).
+Aylantirish o'tib aktivlashtirish yiqilsa — sabab va «Qayta aktivlashtirish».
+
 ## O'QUVCHIGA AYLANTIRISH — `LeadConversion` (2026-10-07, audit C5)
 
 Ilgari `POST {id}/convert` o'quvchi yaratishning "yupqa" IKKINCHI yo'li edi: lidning o'z telefoni

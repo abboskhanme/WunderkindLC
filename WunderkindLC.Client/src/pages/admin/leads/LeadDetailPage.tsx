@@ -757,6 +757,7 @@ export function LeadDetailPage() {
             groups={groups}
             teacherOptions={teacherOptions}
             canViewStudents={can('students.list', 'view')}
+            canActivate={can('classes.list', 'create')}
             // Oyna OCHIQ qoladi: natija (guruh to'lgani yoki bog'langani) panelda ko'rinsin.
             onConverted={(studentId) => {
               setLead({ ...lead, convertedStudentId: studentId })

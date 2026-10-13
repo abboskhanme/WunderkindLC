@@ -160,3 +160,27 @@ public partial class AttendanceNotifyItem
     /// absent/present) · <c>archived</c> (student archived before sending).</summary>
     public string? CancelReason { get; set; }
 }
+
+/// <summary>
+/// MANUAL fine on a teacher (2026-10-13, owner: "jarima maoshdan ushlansin"). Deducted from that month's salary in
+/// <c>SalaryLedger</c> exactly like <see cref="TeacherAttendanceFine"/> (never below zero, never a cash movement —
+/// NOT a <c>FinanceTransaction</c>). Waived, not deleted (who/when/why stays).
+/// </summary>
+public class TeacherFine
+{
+    public string Id { get; set; } = Guid.NewGuid().ToString();
+    public string TeacherId { get; set; } = string.Empty;
+    /// <summary>"yyyy-MM" — the salary month it is deducted from.</summary>
+    public string Month { get; set; } = string.Empty;
+    public decimal Amount { get; set; }
+    public string Reason { get; set; } = string.Empty;
+    /// <summary><c>active</c> · <c>waived</c>.</summary>
+    public string Status { get; set; } = "active";
+    public DateTime CreatedAt { get; set; }
+    public string? CreatedById { get; set; }
+    public string CreatedByName { get; set; } = string.Empty;
+    public DateTime? WaivedAt { get; set; }
+    public string? WaivedById { get; set; }
+    public string? WaivedByName { get; set; }
+    public string? WaiveReason { get; set; }
+}
