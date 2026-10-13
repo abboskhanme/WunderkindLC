@@ -12,7 +12,7 @@ namespace WunderkindLC.Server.Controllers;
 [Authorize]
 [AdminPerm("finance.main")]
 [Route("api/admin/finance")]
-public class FinanceController(AppDbContext db, AuditService audit, AutoMessageService autoMsg, DataCache dataCache) : ControllerBase
+public partial class FinanceController(AppDbContext db, AuditService audit, AutoMessageService autoMsg, DataCache dataCache) : ControllerBase
 {
     private async Task<Dictionary<string, string>> StudentNames() =>
         await db.Students.ToDictionaryAsync(s => s.Id, s => s.FullName);

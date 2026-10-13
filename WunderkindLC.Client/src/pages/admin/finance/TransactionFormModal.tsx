@@ -13,6 +13,7 @@ import type { FinanceTransactionPayload } from '@/api/services/finance'
 import { getTeachers, getSalaryMonth } from '@/api/services/teachers'
 import { getClasses } from '@/api/services/classes'
 import { getStudents, getStudentLedger, getGroupLedger } from '@/api/services/students'
+import { LessonDiscountPanel } from '@/pages/admin/students/LessonDiscountPanel'
 import { Button } from '@/components/ui/Button'
 import {
   RightDrawer,
@@ -245,6 +246,34 @@ export function TransactionFormModal({ open, onClose, onSubmit, initial, preset,
       getGroupLedger(id, groupId)
         .then((l) => applyRows(l.months.map(toRow)))
         .catch(fail)
+  }
+
+  /**
+   * «Chegirma (kelmagan darslar)» qo'llangan/bekor qilingandan keyin — oylar qoldig'i va balans QAYTA yuklanadi,
+   * tanlangan oy o'zgarmaydi, summa yangi qoldiqqa tenglanadi (kassir eski summani to'lab yubormasin) —
+   * `PaymentModal.reloadLedger` bilan bir xil.
+   */
+  const reloadAfterDiscount = (keepMonth: string) => {
+    const id = form.studentId
+    if (!id || !classId) return
+    const req = ++ledgerReqRef.current
+    const fail = (err: unknown) => {
+      if (req === ledgerReqRef.current) setError(apiErrorMessage(err, "O'quvchining oylar holatini yuklab bo'lmadi"))
+    }
+    getGroupLedger(id, classId)
+      .then((l) => {
+        if (req !== ledgerReqRef.current) return
+        const rows = l.months.map(toRow)
+        setLedgerMonths(rows)
+        const cur = rows.find((x) => x.month === keepMonth)
+        setForm((f) => ({ ...f, month: keepMonth, amount: cur && cur.remaining > 0 ? cur.remaining : null }))
+      })
+      .catch(fail)
+    getStudentLedger(id)
+      .then((l) => {
+        if (req === ledgerReqRef.current) setStudentBalance(l.balance)
+      })
+      .catch(fail)
   }
 
   const onMonthChange = (mo: string) => {
@@ -818,6 +847,19 @@ export function TransactionFormModal({ open, onClose, onSubmit, initial, preset,
                   )}
                 </DrawerSelect>
               </DrawerField>
+            )}
+
+            {/* «Chegirma» — kelmagan darslar uchun shu oyning oyligidan ayirish (o'quvchi profili va Kassa bilan
+                bir xil panel; faqat GURUH bo'yicha hisobi bor oyda, yangi to'lovda). */}
+            {!initial && classId && form.studentId && form.month && ledgerMonths.some((m) => m.month === form.month) && (
+              <LessonDiscountPanel
+                key={`${form.studentId}:${classId}:${form.month}`}
+                channel="finance"
+                studentId={form.studentId}
+                groupId={classId}
+                month={form.month}
+                onChanged={() => reloadAfterDiscount(form.month!)}
+              />
             )}
           </>
         )}

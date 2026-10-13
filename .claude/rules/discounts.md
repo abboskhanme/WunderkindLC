@@ -422,9 +422,12 @@ qulfsiz bo'lib qolmasin.
 - Maosh foizi bazasi (`Amount`) O'ZGARMAYDI — oddiy chegirma kabi markaz ko'taradi.
 - Chegirmalar hisobotiga (§9) o'z-o'zidan tushadi — u `MonthlyCharge.Discount` dan yig'iladi.
 
-**Ruxsat:** to'lov ruxsatlari ostida — `StudentsController` (`students.list`) va `KassaController`
-(`kassa`) da bir xil marshrutlar (`{id}/lesson-discounts` · `/quote` · `/{discountId}/cancel`),
-mantiq BITTA joyda (`LessonDiscountHttp` → `LessonDiscountService`). Yangi ruxsat kaliti YO'Q.
+**Ruxsat:** to'lov ruxsatlari ostida — `StudentsController` (`students.list`), `KassaController`
+(`kassa`) va 2026-10-13 dan `FinanceController` (`finance.main`, `FinanceController.LessonDiscounts.cs` — Moliya →
+«Yangi moliyaviy amal» → o'quvchi to'lovi oynasi, `TransactionFormModal`, klient kanali `'finance'`) da bir xil
+marshrutlar (`{id}/lesson-discounts` · `/quote` · `/{discountId}/cancel`), mantiq BITTA joyda (`LessonDiscountHttp` →
+`LessonDiscountService`). Yangi ruxsat kaliti YO'Q. ⚠️ To'lov kiritiladigan YANGI oyna qo'shsangiz — chegirma panelini
+ham o'sha yo'lning ruxsati bilan ulang (`LessonDiscountChannelsTests`). Ilgari Moliya oynasida panel yo'q edi.
 Qo'llash va bekor qilish `PaymentIdempotency.LockAsync("student:{id}")` ostida (to'lov bilan
 bir xil qulf). **Audit:** `StudentDiscount` turi, matn «Chegirma (kelmagan darslar): …».
 **To'liq o'chirish** (`StudentPurge`) qatorlarni ham o'chiradi. Testlar: `LessonDiscountTests`.

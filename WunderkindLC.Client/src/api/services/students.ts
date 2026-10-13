@@ -996,7 +996,9 @@ export async function getStudentNoteDays(month?: string): Promise<{ date: string
 /* ---------- «Chegirma» — kelmagan darslar (to'lov oynasida; server `LessonDiscountService`) ---------- */
 
 /** Qaysi yo'l: admin paneli (`students.list`) yoki kassa portali (`kassa`) — ruxsat shunga qarab. */
-export type LessonDiscountChannel = 'admin' | 'kassa'
+/** Qaysi yo'l bilan (ruxsat shunga qarab): o'quvchi profili (`students.list`), Kassa portali (`kassa`), Moliya → «Yangi
+ * moliyaviy amal» → o'quvchi to'lovi (`finance.main`). Mantiq serverda bitta (`LessonDiscountHttp`). */
+export type LessonDiscountChannel = 'admin' | 'kassa' | 'finance'
 
 export interface LessonDiscountQuote {
   groupId: string
@@ -1029,7 +1031,9 @@ export interface LessonDiscount {
 const lessonDiscountBase = (channel: LessonDiscountChannel, studentId: string) =>
   channel === 'kassa'
     ? `/admin/kassa/students/${studentId}/lesson-discounts`
-    : `/admin/students/${studentId}/lesson-discounts`
+    : channel === 'finance'
+      ? `/admin/finance/students/${studentId}/lesson-discounts`
+      : `/admin/students/${studentId}/lesson-discounts`
 
 export async function getLessonDiscounts(channel: LessonDiscountChannel, studentId: string): Promise<LessonDiscount[]> {
   if (USE_MOCK) return []
