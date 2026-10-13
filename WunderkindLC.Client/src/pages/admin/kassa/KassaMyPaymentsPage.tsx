@@ -6,6 +6,7 @@ import { formatMoney, formatDate, formatTime, cn } from '@/lib/utils'
 import { paymentMethodLabel, formatMonth } from '@/config/constants'
 import { localIsoDate, shiftLocalDay } from '@/lib/localDate'
 
+import { DateInput } from '@/components/ui/DateInput'
 /** Davr: aniq KUN (kalendardan tanlanadi) yoki tez tanlov — 7 kun / shu oy. */
 type Period = 'day' | 'week' | 'month'
 
@@ -105,8 +106,7 @@ export function KassaMyPaymentsPage() {
         >
           <ChevronLeft className="h-5 w-5" />
         </button>
-        <input
-          type="date"
+        <DateInput
           value={day}
           max={today()}
           onChange={(e) => {

@@ -9,6 +9,7 @@ import {
 } from '@/api/services/instagram'
 import { Icon, MarketingPage, MkCard, MkEmpty, MkError, MkLoading, MkStat } from './mk'
 
+import { DateInput } from '@/components/ui/DateInput'
 /**
  * REKLAMA LIDLARI — Instagram/Facebook target reklamasidagi forma (Instant Form) orqali
  * kelgan murojaatlar.
@@ -96,11 +97,11 @@ export function InstagramAdLeads() {
           <div style={{ display: 'flex', gap: 14, alignItems: 'flex-end', flexWrap: 'wrap' }}>
             <div style={{ minWidth: 150 }}>
               <label className="field-label">Boshlanishi</label>
-              <input className="input" type="date" value={from} onChange={(e) => patchFilter(() => setFrom(e.target.value))} />
+              <DateInput className="input" value={from} onChange={(e) => patchFilter(() => setFrom(e.target.value))} />
             </div>
             <div style={{ minWidth: 150 }}>
               <label className="field-label">Tugashi</label>
-              <input className="input" type="date" value={to} onChange={(e) => patchFilter(() => setTo(e.target.value))} />
+              <DateInput className="input" value={to} onChange={(e) => patchFilter(() => setTo(e.target.value))} />
             </div>
             <div style={{ flex: 1, minWidth: 200 }}>
               <label className="field-label">Qidiruv</label>

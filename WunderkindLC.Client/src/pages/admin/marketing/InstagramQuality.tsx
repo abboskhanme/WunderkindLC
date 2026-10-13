@@ -7,6 +7,7 @@ import { Icon, MarketingPage, MkCard, MkEmpty, MkError, MkLoading, MkStat } from
 import { formatNumber } from '@/lib/numberFormat'
 import { localIsoDate } from '@/lib/localDate'
 
+import { DateInput } from '@/components/ui/DateInput'
 /** Yakka seriya rangi — `course-analytics.md`: yashil/qizil juftlik ISHLATILMAYDI. */
 const C_BAR = '#0284c7'
 
@@ -121,11 +122,11 @@ export function InstagramQuality() {
           <div style={{ display: 'flex', gap: 14, alignItems: 'flex-end', flexWrap: 'wrap' }}>
             <div style={{ minWidth: 150 }}>
               <label className="field-label">Boshlanishi</label>
-              <input className="input" type="date" value={from} onChange={(e) => patch(() => setFrom(e.target.value))} />
+              <DateInput className="input" value={from} onChange={(e) => patch(() => setFrom(e.target.value))} />
             </div>
             <div style={{ minWidth: 150 }}>
               <label className="field-label">Tugashi</label>
-              <input className="input" type="date" value={to} onChange={(e) => patch(() => setTo(e.target.value))} />
+              <DateInput className="input" value={to} onChange={(e) => patch(() => setTo(e.target.value))} />
             </div>
             <div className="seg">
               {([[7, '7 kun'], [30, '30 kun'], [90, '90 kun']] as const).map(([d, l]) => (

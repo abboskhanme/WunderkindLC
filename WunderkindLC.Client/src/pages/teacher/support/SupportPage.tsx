@@ -20,6 +20,7 @@ import {
 import { Loader } from '@/components/ui/Loader'
 import { formatDate } from '@/lib/utils'
 
+import { DateInput } from '@/components/ui/DateInput'
 /**
  * O'qituvchi (support) — "Support". O'qituvchi bo'sh vaqt bloklarini qo'shadi
  * (har odamga ajratilgan davomiylik bo'yicha avtomatik slotlarga bo'linadi);
@@ -287,8 +288,7 @@ export function TeacherSupportPage() {
           {addMode === 'pick' && (
             <div>
               <label className="mb-1 block text-[12px] font-semibold text-faint">Sana</label>
-              <input
-                type="date"
+              <DateInput
                 value={pickDate}
                 onChange={(e) => setPickDate(e.target.value)}
                 className="w-full rounded-lg border border-line bg-white px-3 py-2.5 text-[14px] text-ink outline-none focus:border-teal-500"
@@ -301,8 +301,7 @@ export function TeacherSupportPage() {
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="mb-1 block text-[12px] font-semibold text-faint">Boshlanish sanasi</label>
-                <input
-                  type="date"
+                <DateInput
                   value={dailyStart}
                   onChange={(e) => setDailyStart(e.target.value)}
                   className="w-full rounded-lg border border-line bg-white px-3 py-2.5 text-[14px] text-ink outline-none focus:border-teal-500"
@@ -310,8 +309,7 @@ export function TeacherSupportPage() {
               </div>
               <div>
                 <label className="mb-1 block text-[12px] font-semibold text-faint">Tugash sanasi</label>
-                <input
-                  type="date"
+                <DateInput
                   value={dailyEnd}
                   onChange={(e) => setDailyEnd(e.target.value)}
                   className="w-full rounded-lg border border-line bg-white px-3 py-2.5 text-[14px] text-ink outline-none focus:border-teal-500"

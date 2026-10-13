@@ -33,6 +33,7 @@ import { ballGrade } from '@/lib/studentBall'
 import { attendanceMark, attendanceTally } from '@/lib/attendance'
 import { autoPresent } from '@/pages/admin/classes/detail/shared'
 
+import { DateInput } from '@/components/ui/DateInput'
 const weekdayShort = ['Du', 'Se', 'Cho', 'Pa', 'Ju', 'Sha', 'Ya']
 const uzMonths = [
   'Yanvar', 'Fevral', 'Mart', 'Aprel', 'May', 'Iyun',
@@ -1002,8 +1003,7 @@ export function TeacherGroupDetailPage() {
                 <div className="grid grid-cols-2 gap-2">
                   <div>
                     <label className="mb-1 block text-xs text-mute">Yangi sana</label>
-                    <input
-                      type="date"
+                    <DateInput
                       value={rToDate}
                       onChange={(e) => setRToDate(e.target.value)}
                       className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-ink outline-none focus:border-brand-400"

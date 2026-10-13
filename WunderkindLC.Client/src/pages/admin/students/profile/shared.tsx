@@ -1,4 +1,5 @@
 import type { InputHTMLAttributes, ReactNode, SelectHTMLAttributes } from 'react'
+import { DateInput } from '@/components/ui/DateInput'
 import { Link, useLocation } from 'react-router-dom'
 import { IconArrowLeft, IconChevronDown } from '@tabler/icons-react'
 import { cn } from '@/lib/utils'
@@ -143,8 +144,10 @@ export function FormField({ label, required, children }: { label: string; requir
   )
 }
 
-export function TextField({ className, ...rest }: InputHTMLAttributes<HTMLInputElement>) {
-  return <input className={cn(fieldCls, className)} {...rest} />
+export function TextField({ className, type, ...rest }: InputHTMLAttributes<HTMLInputElement>) {
+  // Sana — har doim kun.oy.yil (DateInput).
+  if (type === 'date') return <DateInput className={cn(fieldCls, className)} {...rest} />
+  return <input type={type} className={cn(fieldCls, className)} {...rest} />
 }
 
 export function SelectField({ className, children, ...rest }: SelectHTMLAttributes<HTMLSelectElement>) {

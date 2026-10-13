@@ -1,6 +1,7 @@
 import { IconCalendar, IconX } from '@tabler/icons-react'
 import { cn } from '@/lib/utils'
 
+import { DateInput } from '@/components/ui/DateInput'
 /**
  * edutizimdagi "Oraliqni tanlang" filtri: kalendar ikonkasi + ikki sana (dan — gacha) bitta
  * ramkada, 34px. Qiymat bo'lsa o'ngda "×" — tozalash. Sanalar ISO ("yyyy-MM-dd").
@@ -27,8 +28,7 @@ export function DateRangeFilter({
       title="Oraliqni tanlang"
     >
       <IconCalendar className="h-4 w-4 shrink-0 text-[#6b7280]" />
-      <input
-        type="date"
+      <DateInput
         aria-label="Boshlanish sanasi"
         value={from}
         max={to || undefined}
@@ -36,8 +36,7 @@ export function DateRangeFilter({
         className={input}
       />
       <span className="text-[#9e9e9e]">—</span>
-      <input
-        type="date"
+      <DateInput
         aria-label="Tugash sanasi"
         value={to}
         min={from || undefined}

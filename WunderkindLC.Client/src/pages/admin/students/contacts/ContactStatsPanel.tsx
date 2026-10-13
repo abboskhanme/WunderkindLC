@@ -15,6 +15,7 @@ import { Loader } from '@/components/ui/Loader'
 import { apiErrorMessage, cn, formatDate, formatDateTime } from '@/lib/utils'
 import { localIsoDate } from '@/lib/localDate'
 
+import { DateInput } from '@/components/ui/DateInput'
 /** "YYYY-MM-DD" — bugundan `days` kun oldin. */
 function daysAgo(days: number): string {
   const d = new Date()
@@ -165,16 +166,16 @@ export function ContactStatsPanel() {
             ))}
             <label className="flex flex-col gap-1 text-xs font-medium text-slate-500">
               Sanadan
-              <input
-                type="date" value={from}
+              <DateInput
+ value={from}
                 onChange={(e) => { setDay(''); setCustom({ from: e.target.value, to }) }}
                 className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 outline-none focus:border-brand-400"
               />
             </label>
             <label className="flex flex-col gap-1 text-xs font-medium text-slate-500">
               Sanagacha
-              <input
-                type="date" value={to}
+              <DateInput
+ value={to}
                 onChange={(e) => { setDay(''); setCustom({ from, to: e.target.value }) }}
                 className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 outline-none focus:border-brand-400"
               />

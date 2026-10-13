@@ -1,6 +1,7 @@
 import { IconCalendar } from '@tabler/icons-react'
 import { cn } from '@/lib/utils'
 
+import { DateInput } from '@/components/ui/DateInput'
 /**
  * edutizim filtr to'ridagi SANA ORALIG'I ("Sana", "Oraliqni tanlang") — bitta 34px katakda ikki
  * sana: "dan — gacha". Chegaralar bir-birini cheklaydi (dan ≤ gacha). Bo'sh qiymat = chegara yo'q.
@@ -29,8 +30,7 @@ export function FilterDateRange({
       )}
     >
       <IconCalendar className="h-4 w-4 shrink-0 text-[#6b7280]" />
-      <input
-        type="date"
+      <DateInput
         value={from}
         max={to || undefined}
         onChange={(e) => onChange(e.target.value, to)}
@@ -38,8 +38,7 @@ export function FilterDateRange({
         className="min-w-0 flex-1 bg-transparent outline-none"
       />
       <span className="text-[#9ca3af]">—</span>
-      <input
-        type="date"
+      <DateInput
         value={to}
         min={from || undefined}
         onChange={(e) => onChange(from, e.target.value)}

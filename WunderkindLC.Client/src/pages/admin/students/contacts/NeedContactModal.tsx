@@ -8,6 +8,7 @@ import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { apiErrorMessage } from '@/lib/utils'
 
+import { DateInput } from '@/components/ui/DateInput'
 /** Navbatga qo'shiladigan o'quvchi (minimal shakl — ro'yxat ham, profil ham shuni beradi). */
 export interface ContactTarget {
   id: string
@@ -208,8 +209,7 @@ export function NeedContactModal({
             <label className="mb-1 block text-sm font-medium text-slate-600">
               Qachon bog'lanilsin (ixtiyoriy)
             </label>
-            <input
-              type="date"
+            <DateInput
               value={dueDate}
               onChange={(e) => setDueDate(e.target.value)}
               className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 outline-none focus:border-brand-400"

@@ -14,6 +14,7 @@ import {
 } from '@/api/services/instagramAds'
 import { Icon, MarketingPage, MkCard, MkEmpty, MkError, MkLoading, MkNotice, MkStat } from './mk'
 
+import { DateInput } from '@/components/ui/DateInput'
 /**
  * REKLAMA STATISTIKASI (Meta Ads Insights) — "pul qayerga ketdi va nima olib keldi".
  *
@@ -361,11 +362,11 @@ export function InstagramAdsStats() {
           <div style={{ display: 'flex', gap: 14, alignItems: 'flex-end', flexWrap: 'wrap' }}>
             <div style={{ minWidth: 150 }}>
               <label className="field-label">Boshlanishi</label>
-              <input className="input" type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
+              <DateInput className="input" value={from} onChange={(e) => setFrom(e.target.value)} />
             </div>
             <div style={{ minWidth: 150 }}>
               <label className="field-label">Tugashi</label>
-              <input className="input" type="date" value={to} onChange={(e) => setTo(e.target.value)} />
+              <DateInput className="input" value={to} onChange={(e) => setTo(e.target.value)} />
             </div>
 
             <div className="seg">

@@ -1,4 +1,5 @@
 import { useEffect } from 'react'
+import { DateInput } from '@/components/ui/DateInput'
 import type {
   InputHTMLAttributes,
   ReactNode,
@@ -112,8 +113,10 @@ const drawerControl =
   'h-9 w-full rounded-lg border border-[#dbe0e6] bg-[#f0f2f2] px-3 text-[14px] text-black outline-none transition-colors placeholder:text-[#9ca3af] focus:border-brand-600 focus:bg-white focus:ring-1 focus:ring-brand-600 disabled:cursor-not-allowed disabled:opacity-60'
 
 /** Kulrang to'ldirilgan 36px maydon. */
-export function DrawerInput({ className, ...rest }: InputHTMLAttributes<HTMLInputElement>) {
-  return <input className={cn(drawerControl, className)} {...rest} />
+export function DrawerInput({ className, type, ...rest }: InputHTMLAttributes<HTMLInputElement>) {
+  // Sana — har doim kun.oy.yil (DateInput).
+  if (type === 'date') return <DateInput className={cn(drawerControl, className)} {...rest} />
+  return <input type={type} className={cn(drawerControl, className)} {...rest} />
 }
 
 /** Kulrang to'ldirilgan tanlov (o'ngda uchburchak). */

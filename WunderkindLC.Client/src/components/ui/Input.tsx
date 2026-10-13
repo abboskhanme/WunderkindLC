@@ -1,4 +1,5 @@
 import type { InputHTMLAttributes, SelectHTMLAttributes, TextareaHTMLAttributes, ReactNode } from 'react'
+import { DateInput } from '@/components/ui/DateInput'
 import { cn } from '@/lib/utils'
 
 // edutizim (MUI outlined): 34px, radius 8, kulrang ramka, fokusda ko'k
@@ -26,10 +27,15 @@ function Label({ label, required, children }: FieldWrap & { children: ReactNode 
 
 interface InputProps extends InputHTMLAttributes<HTMLInputElement>, FieldWrap {}
 
-export function Input({ label, required, className, ...rest }: InputProps) {
+export function Input({ label, required, className, type, ...rest }: InputProps) {
   return (
     <Label label={label} required={required}>
-      <input className={cn(base, className)} {...rest} />
+      {/* Sana — har doim kun.oy.yil (brauzer tilidan qat'i nazar), qiymat ISO — DateInput. */}
+      {type === 'date' ? (
+        <DateInput className={cn(base, className)} {...rest} />
+      ) : (
+        <input type={type} className={cn(base, className)} {...rest} />
+      )}
     </Label>
   )
 }

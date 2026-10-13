@@ -48,6 +48,21 @@ yaxlitlab ko'rsatadi VA formaga yaxlit sonni qaytaradi (ekrandagi = yuboriladiga
   - Jadvaldagi qisqa ko'rinish (`PhoneChip` → `formatPhoneShort`, "93 854 70 83") edutizim
     bilan bir xil bo'lishi uchun ATAYIN qoldirilgan.
 
+## 2.5. SANA — `type="date"` TO'G'RIDAN-TO'G'RI ISHLATILMAYDI (2026-10-13)
+
+Foydalanuvchi shikoyati: "sanada oy birinchi bo'lib qolgan". Brauzerning `<input type="date">` i sanani BRAUZER TILIDA
+ko'rsatadi — inglizcha (AQSh) Chrome'da "10/15/2026". Markazda sana HAR DOIM **kun.oy.yil** ("15.10.2026").
+
+- Komponent — `components/ui/DateInput.tsx` (qoidalari `lib/dateInput.ts`, testlari bilan). Props — `<input type="date">`
+  niki: `value`/`defaultValue`/`onChange` qiymati avvalgidek ISO "yyyy-MM-dd", `onChange` HAQIQIY `ChangeEvent` oladi
+  (yashirin native maydondan, `name` bilan — `FormData` ham ishlaydi). Server va formalar O'ZGARMAYDI.
+- Yozish: faqat raqamlar, nuqtalar o'zi qo'yiladi; qiymat faqat TO'LIQ, kalendarda bor va `min`/`max` ichidagi sana
+  bo'lganda yuboriladi, chala matn maydondan chiqqanda eski qiymatga qaytadi. O'ngdagi tugma — brauzer kalendari.
+- Umumiy maydonlar (`Input`, `DrawerInput`, `FilterInput`, `TextField`) `type="date"` ni O'ZI `DateInput`ga yo'naltiradi.
+- `className` dagi joylashuv klasslari (kenglik, flex, margin) o'ramga o'tadi; kenglik takrorlansa OXIRGISI qoladi.
+- ⚠️ Yangi `<input type="date">` YOZMANG — `components/ui/__tests__/noNativeDateInput.test.ts` qizaradi.
+- `type="month"` (oy tanlash) hali native — u ham brauzer tilida ("October 2026"); kerak bo'lsa alohida ish.
+
 ## 3. Testlar
 
 `lib/__tests__/numberFormat.test.ts` (format qoidalari), `components/ui/__tests__/NumberInput.test.tsx`

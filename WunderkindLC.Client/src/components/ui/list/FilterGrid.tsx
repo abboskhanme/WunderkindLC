@@ -1,4 +1,5 @@
 import type { InputHTMLAttributes, ReactNode, SelectHTMLAttributes } from 'react'
+import { DateInput } from '@/components/ui/DateInput'
 import { IconChevronDown, IconSearch } from '@tabler/icons-react'
 import { cn } from '@/lib/utils'
 
@@ -21,14 +22,18 @@ const field =
 export function FilterInput({
   search,
   className,
+  type,
   ...rest
 }: InputHTMLAttributes<HTMLInputElement> & { search?: boolean }) {
+  // Sana — har doim kun.oy.yil (DateInput).
+  if (type === 'date') return <DateInput className={cn(field, 'px-3', className)} {...rest} />
   return (
     <div className="relative">
       {search && (
         <IconSearch className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#6b7280]" />
       )}
       <input
+        type={type}
         className={cn(field, search ? 'pl-8 pr-3' : 'px-3', 'placeholder:text-[#6b7280]', className)}
         {...rest}
       />

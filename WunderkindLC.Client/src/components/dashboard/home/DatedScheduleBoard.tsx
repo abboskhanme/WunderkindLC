@@ -40,6 +40,7 @@ import { LessonTooltip, ScheduleGridView, ScheduleListView, type HoverInfo } fro
 import { ScheduleSettingsDrawer } from './ScheduleSettingsDrawer'
 import { WeekBoard } from './WeekBoard'
 
+import { DateInput } from '@/components/ui/DateInput'
 function readFields(): FieldSettings {
   try {
     return parseFieldSettings(localStorage.getItem(FIELD_SETTINGS_KEY))
@@ -167,8 +168,7 @@ export function DatedScheduleBoard({
             />
           </div>
           <span className="text-[14px] font-semibold text-black">{rangeTitle(params.view, params.date)}</span>
-          <input
-            type="date"
+          <DateInput
             aria-label="Sana tanlash"
             value={params.date}
             onChange={(e) => e.target.value && onChange({ date: e.target.value })}

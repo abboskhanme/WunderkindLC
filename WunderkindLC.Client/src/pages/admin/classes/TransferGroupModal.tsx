@@ -10,6 +10,7 @@ import { Select } from '@/components/ui/Input'
 import { apiErrorMessage } from '@/lib/utils'
 import { todayIso } from '@/lib/month'
 
+import { DateInput } from '@/components/ui/DateInput'
 interface Props {
   open: boolean
   onClose: () => void
@@ -168,8 +169,7 @@ export function TransferGroupModal({
               <span className="mb-1 block text-sm font-medium text-slate-600">
                 Eski guruhdan chiqish sanasi
               </span>
-              <input
-                type="date"
+              <DateInput
                 value={freezeDate}
                 onChange={(e) => setFreezeDate(e.target.value)}
                 className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 outline-none focus:border-brand-400"
@@ -179,8 +179,7 @@ export function TransferGroupModal({
               <span className="mb-1 block text-sm font-medium text-slate-600">
                 Yangi guruhda aktivlashtirish sanasi
               </span>
-              <input
-                type="date"
+              <DateInput
                 value={activateDate}
                 onChange={(e) => setActivateDate(e.target.value)}
                 className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 outline-none focus:border-brand-400"

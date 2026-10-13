@@ -8,6 +8,7 @@ import { PageHeader } from '@/components/ui/PageHeader'
 import { cn } from '@/lib/utils'
 import { localIsoDate } from '@/lib/localDate'
 
+import { DateInput } from '@/components/ui/DateInput'
 /**
  * SOZLAMALAR → O'ZGARISHLAR TARIXI — markazda kim, qachon, nimani o'zgartirgani.
  *
@@ -132,11 +133,11 @@ export function AuditLogPage() {
           <div className="flex flex-wrap items-end gap-3">
             <label className="flex flex-col gap-1 text-xs font-medium text-slate-500">
               Sanadan
-              <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className={control} />
+              <DateInput value={from} onChange={(e) => setFrom(e.target.value)} className={control} />
             </label>
             <label className="flex flex-col gap-1 text-xs font-medium text-slate-500">
               Sanagacha
-              <input type="date" value={to} onChange={(e) => setTo(e.target.value)} className={control} />
+              <DateInput value={to} onChange={(e) => setTo(e.target.value)} className={control} />
             </label>
             <label className="flex flex-col gap-1 text-xs font-medium text-slate-500">
               Amal

@@ -31,6 +31,7 @@ import { localIsoDate, shiftLocalDay } from '@/lib/localDate'
 import { usePerm } from '@/lib/permissions'
 import { apiErrorMessage, cn } from '@/lib/utils'
 
+import { DateInput } from '@/components/ui/DateInput'
 const ACTIONS: NoticeAction[] = ['hold', 'approve', 'cancel']
 
 const dateFromUrl = (): string => {
@@ -170,8 +171,7 @@ export function AbsentNoticesPage() {
             >
               <ChevronLeft className="h-4 w-4" />
             </button>
-            <input
-              type="date"
+            <DateInput
               value={date}
               max={todayStr}
               onChange={(e) => changeDate(e.target.value)}

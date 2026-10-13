@@ -6,6 +6,7 @@ import { addContactAttempt, type ContactMeta, type ContactRequestItem } from '@/
 import { apiErrorMessage, cn } from '@/lib/utils'
 import { localIsoDate } from '@/lib/localDate'
 
+import { DateInput } from '@/components/ui/DateInput'
 /** "YYYY-MM-DD" — bugundan `days` kun keyin. */
 function inDays(days: number): string {
   const d = new Date()
@@ -220,8 +221,7 @@ export function ContactAttemptModal({
                   Qayta qo'ng'iroq sanasi
                 </label>
                 <div className="flex flex-wrap items-center gap-2">
-                  <input
-                    type="date"
+                  <DateInput
                     value={dueDate}
                     onChange={(e) => setDueDate(e.target.value)}
                     className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 outline-none focus:border-brand-400"

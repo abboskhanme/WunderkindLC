@@ -20,6 +20,7 @@ import { TelegramSendModal, type TelegramRecipient } from '@/components/messagin
 import { AttendanceRedList } from './AttendanceRedList'
 import { tabFromUrl } from '@/lib/tabParam'
 
+import { DateInput } from '@/components/ui/DateInput'
 const ABSENCE_TABS = ['kunlik', 'qizil'] as const
 type AbsenceTab = (typeof ABSENCE_TABS)[number]
 
@@ -236,8 +237,7 @@ function DailyAbsenceView() {
           >
             <ChevronLeft className="h-4 w-4" />
           </button>
-          <input
-            type="date"
+          <DateInput
             value={date}
             max={today()}
             onChange={(e) => setDate(e.target.value)}

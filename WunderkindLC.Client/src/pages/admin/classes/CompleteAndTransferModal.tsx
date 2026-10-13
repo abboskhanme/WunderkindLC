@@ -9,6 +9,7 @@ import { formatNumber } from '@/lib/numberFormat'
 import { apiErrorMessage } from '@/lib/utils'
 import { todayIso } from '@/lib/month'
 
+import { DateInput } from '@/components/ui/DateInput'
 /** "YYYY-MM-DD" bugungi sana (brauzer mintaqasida — `toISOString` UTC'da kunni surib yuborardi). */
 const today = todayIso
 
@@ -146,8 +147,7 @@ export function CompleteAndTransferModal({
           >
             GURUH YOPILADIGAN SANA
           </label>
-          <input
-            type="date"
+          <DateInput
             value={closeDate}
             onChange={(e) => setCloseDate(e.target.value)}
             style={dateInputStyle}
@@ -319,8 +319,7 @@ export function CompleteAndTransferModal({
                 >
                   YANGI GURUHDA AKTIVLASHTIRISH SANASI
                 </label>
-                <input
-                  type="date"
+                <DateInput
                   value={activateDate}
                   min={closeDate || undefined}
                   onChange={(e) => setActivateDate(e.target.value)}

@@ -6,6 +6,7 @@ import { Button } from './Button'
 import { cn } from '@/lib/utils'
 import { localIsoDate } from '@/lib/localDate'
 
+import { DateInput } from '@/components/ui/DateInput'
 interface Props {
   open: boolean
   /** Sabablar kategoriyasi (ReasonsPage'dagi kalit). */
@@ -106,8 +107,7 @@ export function ReasonPromptModal({
         {showDate && (
           <div>
             <span className="mb-1 block text-sm font-medium text-slate-600">Sana</span>
-            <input
-              type="date"
+            <DateInput
               value={date}
               onChange={(e) => setDate(e.target.value)}
               className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 outline-none focus:border-brand-400"

@@ -12,6 +12,7 @@ import { MoneyInput, NumberInput } from '@/components/ui/NumberInput'
 import { languageOptions } from '@/config/constants'
 import { cn } from '@/lib/utils'
 
+import { DateInput } from '@/components/ui/DateInput'
 interface Props {
   open: boolean
   onClose: () => void
@@ -380,9 +381,8 @@ export function ClassFormModal({ open, onClose, onSubmit, initial }: Props) {
 
         <div className="grid grid-cols-2 gap-3">
           <EduField label="Boshlanish sanasi">
-            <input
+            <DateInput
               className={eduInputCls}
-              type="date"
               value={form.startDate ?? ''}
               onChange={(e) => update('startDate', e.target.value)}
             />
@@ -391,9 +391,8 @@ export function ClassFormModal({ open, onClose, onSubmit, initial }: Props) {
             label="Tugash sanasi"
             hint="Bo'sh — guruh davom etadi. Shu sanadan keyin darslar jadvalda ko'rinmaydi."
           >
-            <input
+            <DateInput
               className={eduInputCls}
-              type="date"
               value={form.endDate ?? ''}
               min={form.startDate || undefined}
               onChange={(e) => update('endDate', e.target.value)}

@@ -73,6 +73,7 @@ import {
 import { getAttendanceFines } from '@/api/services/attendanceFines'
 import { AttendanceFineLine } from '@/components/salary/AttendanceFineLine'
 
+import { DateInput } from '@/components/ui/DateInput'
 type Tab = 'info' | 'groups' | 'rating' | 'salary' | 'bonus' | 'performance' | 'fikrlar' | 'ai'
 
 /**
@@ -1549,8 +1550,7 @@ export function TeacherDetailPage() {
                   </label>
                   <label className="block">
                     <span className="text-xs text-slate-500">Sana (berilgan kun)</span>
-                    <input
-                      type="date"
+                    <DateInput
                       value={payDate}
                       onChange={(e) => setPayDate(e.target.value)}
                       className="mt-1 w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm focus:border-brand-400 focus:outline-none"

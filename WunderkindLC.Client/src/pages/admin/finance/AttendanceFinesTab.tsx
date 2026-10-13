@@ -16,6 +16,7 @@ import { currentMonth, shiftMonth } from '@/lib/month'
 import { apiErrorMessage, cn, formatMoney } from '@/lib/utils'
 import { localIsoDate } from '@/lib/localDate'
 
+import { DateInput } from '@/components/ui/DateInput'
 type StatusFilter = '' | 'active' | 'waived'
 
 const STATUS_CHIPS: { key: StatusFilter; label: string }[] = [
@@ -270,8 +271,7 @@ function WaiveModal({
         {withDate && (
           <label className="block text-sm">
             <span className="mb-1 block text-slate-600">Sana</span>
-            <input
-              type="date"
+            <DateInput
               value={date}
               onChange={(e) => setDate(e.target.value)}
               className="h-9 w-48 rounded-lg border border-slate-200 px-3 text-sm outline-none focus:border-brand-400"

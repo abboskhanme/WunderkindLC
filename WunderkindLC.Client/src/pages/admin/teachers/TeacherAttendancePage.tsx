@@ -21,6 +21,7 @@ import { teacherTabs } from '@/config/sectionTabs'
 import { usePerm } from '@/lib/permissions'
 import { Loader } from '@/components/ui/Loader'
 
+import { DateInput } from '@/components/ui/DateInput'
 // Bo'sh → keldi → kelmadi → kechikdi → bo'sh
 const CYCLE: Record<string, string> = { '': 'present', present: 'absent', absent: 'late', late: '' }
 
@@ -180,8 +181,7 @@ function DashboardSection() {
               className="w-52 rounded-lg border border-slate-200 bg-white py-2 pl-8 pr-3 text-sm text-slate-700 outline-none focus:border-brand-400"
             />
           </div>
-          <input
-            type="date"
+          <DateInput
             value={date}
             onChange={(e) => setDate(e.target.value)}
             className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 outline-none focus:border-brand-400"

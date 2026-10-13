@@ -40,6 +40,7 @@ import { Avatar, EmptyState, PhaseChip, SkeletonRows, TCard, TPage } from '@/com
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 
+import { DateInput } from '@/components/ui/DateInput'
 type Mark = 'present' | 'late' | 'absent' | 'none'
 interface RowState {
   mark: Mark
@@ -314,8 +315,7 @@ export function TeacherAttendancePage() {
           >
             <ChevronLeft className="h-4 w-4" />
           </button>
-          <input
-            type="date"
+          <DateInput
             value={date}
             max={today}
             onChange={(e) => e.target.value && setQuery({ date: e.target.value, group: groupParam || null })}

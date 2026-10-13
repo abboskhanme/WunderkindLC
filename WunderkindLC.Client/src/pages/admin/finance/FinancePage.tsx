@@ -58,6 +58,7 @@ import { usePerm } from '@/lib/permissions'
 import { tabFromUrl } from '@/lib/tabParam'
 import { todayIso } from '@/lib/month'
 
+import { DateInput } from '@/components/ui/DateInput'
 // ⚠️ MAHALLIY sana (UTC+5): `toISOString()` UTC beradi — 00:00–05:00 orasida "kecha" chiqardi.
 const todayStr = todayIso()
 const yearOf = (d: string) => Number(d.slice(0, 4))
@@ -564,9 +565,9 @@ export function FinancePage() {
       {tab !== 'bonuses' && (
         <div className="toolbar">
           <span className="text-sm font-medium text-slate-600">Davr:</span>
-          <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className={control} />
+          <DateInput value={from} onChange={(e) => setFrom(e.target.value)} className={control} />
           <span className="text-slate-400">—</span>
-          <input type="date" value={to} onChange={(e) => setTo(e.target.value)} className={control} />
+          <DateInput value={to} onChange={(e) => setTo(e.target.value)} className={control} />
 
           {/* Davr ICHIDAGI bitta oy — barcha bo'limlarga birdek qo'llanadi (guruhlar,
               o'qituvchilar, to'lovlar, kassirlar, vozvrat, umumiy). */}

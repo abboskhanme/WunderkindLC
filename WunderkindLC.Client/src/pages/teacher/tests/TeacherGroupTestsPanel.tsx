@@ -40,6 +40,7 @@ import { TestScoreGrid, type TestScoreGridHandle } from '@/pages/admin/tests/Tes
 import { SendResultsPanel } from '@/pages/admin/tests/SendResultsPanel'
 import { TestMonthFilter } from '@/pages/admin/tests/TestMonthFilter'
 
+import { DateInput } from '@/components/ui/DateInput'
 /**
  * Bitta guruh testlari — o'qituvchi ilovasidagi YAGONA komponent. Ikki joyda AYNAN bir xil ishlaydi:
  *  • pastki navigatsiyadagi "Test" bo'limi (`TeacherTestsPage` — guruh tanlangandan keyin);
@@ -213,7 +214,7 @@ function TeacherTestFormModal({
         <div className="grid grid-cols-2 gap-3">
           <div>
             <span className={label}>Sana</span>
-            <input type="date" className={field} value={date} onChange={(e) => setDate(e.target.value)} />
+            <DateInput className={field} value={date} onChange={(e) => setDate(e.target.value)} />
           </div>
           <div>
             {legacy ? (

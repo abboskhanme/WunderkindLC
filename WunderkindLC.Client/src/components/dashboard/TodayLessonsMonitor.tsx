@@ -17,6 +17,7 @@ import { Card } from '@/components/ui/Card'
 import { Loader } from '@/components/ui/Loader'
 import { cn } from '@/lib/utils'
 
+import { DateInput } from '@/components/ui/DateInput'
 const DAYS = ['Dushanba', 'Seshanba', 'Chorshanba', 'Payshanba', 'Juma', 'Shanba', 'Yakshanba']
 const MONTHS = [
   'Yanvar',
@@ -182,8 +183,7 @@ export function TodayLessonsMonitor({ compact = false }: { compact?: boolean } =
             <ChevronLeft className="h-4 w-4" />
           </button>
           {!compact && (
-          <input
-            type="date"
+          <DateInput
             value={date}
             max={todayStr}
             onChange={(e) => e.target.value && setDate(e.target.value)}

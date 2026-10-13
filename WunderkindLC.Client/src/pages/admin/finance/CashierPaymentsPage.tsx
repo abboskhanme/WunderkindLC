@@ -13,6 +13,7 @@ import { ReceiptModal } from '@/components/finance/ReceiptModal'
 import { formatMoney, formatDate, formatTime, exportToCsv, cn } from '@/lib/utils'
 import { paymentMethodLabel, formatMonth } from '@/config/constants'
 
+import { DateInput } from '@/components/ui/DateInput'
 const control =
   'rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-brand-400'
 
@@ -124,9 +125,9 @@ export function CashierPaymentsPage() {
       {/* Davr */}
       <div className="toolbar mb-4 flex flex-wrap items-center gap-2">
         <span className="text-sm font-medium text-slate-600">Davr:</span>
-        <input type="date" value={from} onChange={(e) => setRange(e.target.value, to)} className={control} />
+        <DateInput value={from} onChange={(e) => setRange(e.target.value, to)} className={control} />
         <span className="text-slate-400">—</span>
-        <input type="date" value={to} onChange={(e) => setRange(from, e.target.value)} className={control} />
+        <DateInput value={to} onChange={(e) => setRange(from, e.target.value)} className={control} />
       </div>
 
       {loading ? (

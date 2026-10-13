@@ -8,6 +8,7 @@ import { Icon, MarketingPage, MkCard, MkEmpty, MkError, MkLoading, MkStat } from
 import { formatNumber } from '@/lib/numberFormat'
 import { localIsoDate } from '@/lib/localDate'
 
+import { DateInput } from '@/components/ui/DateInput'
 /**
  * GRAFIK RANGLARI — TEKSHIRILGAN (`.claude/rules/course-analytics.md`).
  * Yashil/qizil juftlik ATAYIN olinmadi: deuteranopiyada ular deyarli ajralmaydi.
@@ -108,11 +109,11 @@ export function InstagramAnalytics() {
           <div style={{ display: 'flex', gap: 14, alignItems: 'flex-end', flexWrap: 'wrap' }}>
             <div style={{ minWidth: 150 }}>
               <label className="field-label">Boshlanishi</label>
-              <input className="input" type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
+              <DateInput className="input" value={from} onChange={(e) => setFrom(e.target.value)} />
             </div>
             <div style={{ minWidth: 150 }}>
               <label className="field-label">Tugashi</label>
-              <input className="input" type="date" value={to} onChange={(e) => setTo(e.target.value)} />
+              <DateInput className="input" value={to} onChange={(e) => setTo(e.target.value)} />
             </div>
             <div className="seg">
               <button onClick={() => quick(7)}>7 kun</button>

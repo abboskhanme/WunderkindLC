@@ -107,6 +107,7 @@ import { StudentJournalModal } from './StudentJournalModal'
 import { StudentPurgeModal } from './StudentPurgeModal'
 import { MissedLessonsSection } from '@/components/students/MissedLessonsSection'
 
+import { DateInput } from '@/components/ui/DateInput'
 const uzMonths = [
   'Yanvar', 'Fevral', 'Mart', 'Aprel', 'May', 'Iyun',
   'Iyul', 'Avgust', 'Sentabr', 'Oktabr', 'Noyabr', 'Dekabr',
@@ -2143,8 +2144,7 @@ export function StudentDetailPage() {
           </div>
           <div>
             <span className="mb-1 block text-sm font-medium text-slate-600">Qo'shilgan sana</span>
-            <input
-              type="date"
+            <DateInput
               value={addGroupDate}
               onChange={(e) => setAddGroupDate(e.target.value)}
               className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 outline-none focus:border-brand-400"

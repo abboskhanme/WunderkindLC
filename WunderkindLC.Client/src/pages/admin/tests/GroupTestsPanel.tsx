@@ -19,6 +19,7 @@ import { fmtScore, testKindLabel } from '@/lib/ratingPeriods'
 import { formatSentAt, MAX_QUESTIONS, MIN_QUESTIONS, TEST_KINDS, type TestKind } from '@/lib/testScoreGrid'
 import { TestMonthFilter } from './TestMonthFilter'
 
+import { DateInput } from '@/components/ui/DateInput'
 /**
  * Guruh testlari — YAGONA admin komponenti. Ikki joyda AYNAN bir xil ishlaydi:
  *  • "O'quv bo'limi → Testlar natijalari" → guruh sahifasi (`TestGroupPage`);
@@ -378,7 +379,7 @@ function TestFormModal({
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="mb-1 block text-xs font-medium text-slate-500">Sana</label>
-            <input type="date" className={control} value={date} onChange={(e) => setDate(e.target.value)} />
+            <DateInput className={control} value={date} onChange={(e) => setDate(e.target.value)} />
           </div>
           <div>
             {legacy ? (

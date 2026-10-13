@@ -25,6 +25,7 @@ import { useAuth } from '@/context/auth-context'
 import { StudentFormModal } from '../students/StudentFormModal'
 import { TransferGroupModal } from './TransferGroupModal'
 
+import { DateInput } from '@/components/ui/DateInput'
 /** O'quvchi holatiga qarab "o'chirish" sabab kategoriyasi. */
 function removeCategory(status: string): string {
   return status === 'active' ? 'remove_active' : status === 'frozen' ? 'remove_frozen' : 'remove_trial'
@@ -620,8 +621,7 @@ Kerak bo'lsa "Parolni tiklash" orqali yangi parol bering.`)
             </p>
             <div>
               <span className="mb-1 block text-sm font-medium text-slate-600">Sana</span>
-              <input
-                type="date"
+              <DateInput
                 value={actionDate}
                 onChange={(e) => setActionDate(e.target.value)}
                 className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 outline-none focus:border-brand-400"
