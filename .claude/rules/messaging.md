@@ -630,6 +630,10 @@ ya'ni oradagi vaqtda o'chirilgan lidning kartasi bazada qolgan bo'lishi mumkin v
   timeout'ini ko'taradi (`timeoutSec + 15`). `CreateClient` har chaqiruvda yangi `HttpClient`
   qaytargani uchun bu boshqa chaqiruvlarga ta'sir qilmaydi. **Yangi long polling qo'shsangiz shu
   naqshni ishlating** — aks holda so'rov 10 sekundda uzilib, bot yangilanish ololmay qoladi.
+  ⚠️ **Polling siklida `catch (OperationCanceledException)` FAQAT `when (stoppingToken.IsCancellationRequested)`
+  bilan `break` qiladi.** HttpClient timeout'i ham `TaskCanceledException` — shartsiz `break` botni bitta tarmoq
+  uzilishida JIMGINA o'ldirardi (asosiy botda 2026-10-14 prod'da shunday bo'ldi: log yo'q, Telegram'da xabarlar
+  javobsiz yig'ilib qoldi). Qolgan bekor qilish — log + 3 s kutib qayta urinish. Test: `TelegramBotPollingTests`.
 
 ### Chaqiruv nuqtalari
 

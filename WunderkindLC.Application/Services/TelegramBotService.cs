@@ -97,7 +97,17 @@ public class TelegramBotService(
                     await HandleUpdateAsync(upd, stoppingToken);
                 }
             }
-            catch (OperationCanceledException) { break; }
+            // ⚠️ Cancellation comes in TWO kinds (same fix as CareerBotService/TeacherBotService):
+            //  1) the app is stopping (stoppingToken) — really end the loop;
+            //  2) an HttpClient timeout — also a TaskCanceledException. An unconditional `break` here
+            //     killed the main bot silently on one network hiccup (prod 2026-10-14: updates piled up
+            //     unanswered until the container was restarted).
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { break; }
+            catch (OperationCanceledException ex)
+            {
+                logger.LogWarning(ex, "Telegram getUpdates uzildi (timeout) — qayta urinamiz");
+                if (!await DelayAsync(3000, stoppingToken)) break;
+            }
             catch (Exception ex)
             {
                 logger.LogWarning(ex, "Telegram getUpdates xatosi");
