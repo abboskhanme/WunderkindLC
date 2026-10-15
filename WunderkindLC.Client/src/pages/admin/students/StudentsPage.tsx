@@ -310,6 +310,11 @@ export function StudentsPage() {
 
   // Joriy tab manbai.
   const source = tab === 'active' ? students : archived
+  /** Telegram filtridagi sonlar (faol tab bo'yicha): ulangan / ulanmagan ota-onalar. */
+  const telegramCounts = useMemo(() => {
+    const linked = students.filter((s) => (s.telegramLinked ?? 0) > 0).length
+    return { all: students.length, linked, none: students.length - linked } as Record<TelegramFilter, number>
+  }, [students])
   // Sinflar kesimi — Holat filtridagi kabi JORIY ro'yxat (faol/arxiv tabi) bo'yicha sanaladi.
   const gradeCounts = useMemo(() => schoolGradeDistribution(source.map((s) => s.schoolGradeNow)), [source])
 
@@ -1072,11 +1077,11 @@ export function StudentsPage() {
               value={telegramFilter}
               onChange={(e) => setTelegramFilter(e.target.value as TelegramFilter)}
               className={control}
-              title="Telegram botga ulanganmi"
+              title="Ota-ona Telegram botga ulanganmi"
             >
               {TELEGRAM_FILTERS.map((f) => (
                 <option key={f.key} value={f.key}>
-                  Telegram: {f.label}
+                  Telegram: {f.label} ({telegramCounts[f.key]})
                 </option>
               ))}
             </select>

@@ -229,8 +229,12 @@ Rasm — biriktirma (faqat `photo`), hech qachon tozalanmaydi.
 
 ### Ro'yxatlarda «Telegram» ustuni (U6b, `TelegramLinkSummary`)
 
-Faol o'quvchilar, o'qituvchining «O'quvchilarim» va guruh «O'quvchilar» tabi: ulangan (BLOKLANMAGAN) chatlar soni +
-qarindoshlik belgilari. ⚠️ Faqat SON va qarindoshlik — telefon, ism, chat id YO'Q (o'qituvchiga ham ko'rinadi).
+Faol o'quvchilar, o'qituvchining «O'quvchilarim» va guruh «O'quvchilar» tabi: ⚠️ 2026-10-15 dan WunderkindLMS dagidek
+yashil «Ulangan» / sariq «Ulanmagan» (`TelegramLinkCell`); chatlar soni va qarindoshlik — faqat tooltip'da (ilgari
+ikonka + son chiqardi va Mini App orqali ulangan, qarindoshligi «Boshqa» bo'lgan ota-onalar «❔ 1» bo'lib ko'rinardi —
+egasi buni "boshqa narsa" deb tushundi). «Ulangan» = kamida bitta BLOKLANMAGAN chat. O'quvchilar ro'yxatidagi filtr
+«Telegram: Hammasi / Ulangan / Ulanmagan» sonlari bilan. ⚠️ Faqat SON va qarindoshlik — telefon, ism, chat id YO'Q
+(o'qituvchiga ham ko'rinadi).
 
 - **GURUH NOMI NOYOB (2026-10-07, `GroupNames`).** Nom BARCHA guruhlar (arxivdagilar ham) orasida
   bo'shliqsiz va registrsiz takrorlanmaydi — yaratish, qayta nomlash va «Tugatish»dagi yangi guruh 400

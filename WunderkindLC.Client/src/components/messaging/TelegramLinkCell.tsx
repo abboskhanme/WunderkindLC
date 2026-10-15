@@ -1,10 +1,12 @@
-import { relationIcon, relationLabel, sortRelations } from '@/lib/relations'
+import { CheckCircle2, Circle } from 'lucide-react'
+import { relationLabel, sortRelations } from '@/lib/relations'
 import { cn } from '@/lib/utils'
 
 /**
- * «Telegram» ustuni (CRM upgrade U6b): ulangan chatlarning qarindoshlik ikonkalari (👨 👩 👪 🧑 ❔)
- * + soni; ulanmagan bo'lsa qizil «Ulanmagan»; bloklaganlar kulrang sanoq. Raqam/ism YO'Q — o'qituvchi
- * ko'rinishida ham xavfsiz.
+ * «Telegram» ustuni: ota-ona (yoki o'quvchi) botga ULANGANMI — yashil «Ulangan» / sariq «Ulanmagan»
+ * (2026-10-15, WunderkindLMS dagidek; ilgari qarindoshlik ikonkalari + son chiqardi va qarindoshligi
+ * noma'lum ulanishlar «❔ 1» bo'lib ko'rinardi). Kim ulangani va nechta chat — tooltip'da. Bloklaganlar
+ * kulrang sanoq. Raqam/ism YO'Q — o'qituvchi ko'rinishida ham xavfsiz.
  */
 export function TelegramLinkCell({
   linked,
@@ -18,19 +20,19 @@ export function TelegramLinkCell({
   className?: string
 }) {
   const n = linked ?? 0
-  const rels = sortRelations(relations ?? [])
+  const who = sortRelations(relations ?? []).map(relationLabel).join(', ')
   return (
     <span className={cn('inline-flex flex-wrap items-center gap-1 whitespace-nowrap', className)}>
       {n === 0 ? (
-        <span className="rounded-md bg-red-50 px-1.5 py-0.5 text-[11px] font-semibold text-red-600">Ulanmagan</span>
+        <span className="inline-flex items-center gap-1 rounded-md bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700">
+          <Circle className="h-3.5 w-3.5" /> Ulanmagan
+        </span>
       ) : (
-        <span className="inline-flex items-center gap-0.5" title={rels.map(relationLabel).join(', ')}>
-          {rels.map((r) => (
-            <span key={r} aria-label={relationLabel(r)}>
-              {relationIcon(r)}
-            </span>
-          ))}
-          <span className="ml-0.5 text-[12px] font-semibold text-slate-600">{n}</span>
+        <span
+          className="inline-flex items-center gap-1 rounded-md bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700"
+          title={`Telegram botga ulangan: ${n} ta chat${who ? ` (${who})` : ''}`}
+        >
+          <CheckCircle2 className="h-3.5 w-3.5" /> Ulangan
         </span>
       )}
       {(blocked ?? 0) > 0 && (
