@@ -27,6 +27,11 @@ katalog bilan bir xilligini qulflaydi.
 ⚠️ Sabab: kundalik ish yo'li uzilmasligi kerak. Kassir "Moliya"ni "Hisobotlar" ichidan
 qidirib yurmasin.
 
+⚠️ **ISTISNO — «Taklif va shikoyatlar»** (`/admin/boshqaruv/feedback`, ruxsat `feedback`, 2026-10-15): sahifada
+«hal qilindi / qayta ochish» amali bor, lekin egasi uni asosiy «Hisobotlar» menyusida ko'rishni so'radi — `inNav: true`,
+`mainReportRoutes` da, Nazorat guruhidan OLIB TASHLANDI. Ota-ona/o'quvchi (`POST api/student/feedback`) va o'qituvchi
+(`POST api/teacher/feedback`) yuborgan taklif/shikoyat shu sahifaga tushadi.
+
 ⚠️ **Menyudan ko'chirganda eski joyidan O'CHIRING.** Ikki joyda turgan band "olib kirish"ni
 chala qilib ko'rsatadi; test (`ko'chirilgan hisobotlar ESKI menyu guruhlarida qolmagan`) buni
 ushlaydi.

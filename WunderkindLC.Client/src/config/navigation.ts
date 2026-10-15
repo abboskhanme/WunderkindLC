@@ -40,6 +40,8 @@ export const mainReportRoutes = new Set([
   '/admin/hisobotlar/ketish-sabablari',
   // O'quvchilar reytingi (testlar + ball) — CRM 4-bosqich: asosiy "Hisobotlar" guruhida.
   '/admin/hisobotlar/reyting',
+  // Taklif va shikoyatlar — egasining qarori (2026-10-15): Nazorat'dan asosiy "Hisobotlar"ga ko'chirildi.
+  '/admin/boshqaruv/feedback',
 ])
 
 /**
@@ -217,7 +219,6 @@ export const navByRole: Record<Role, NavItem[]> = {
       icon: IconShieldCheck,
       children: [
         { label: 'Davomat', to: '/admin/students/davomat', perm: 'students.attendance' },
-        { label: 'Fikr-mulohaza', to: '/admin/boshqaruv/feedback', perm: 'feedback' },
         { label: 'Xodimlar reytingi', to: '/admin/teacher-reports', perm: 'teacherReports' },
         { label: 'Davomat qilinmagan guruhlar', to: '/admin/nazorat/davomat-qilinmagan', perm: 'classes.notAttended' },
         // CRM U3b: «kelmadi» xabari ota-onaga ketishidan oldin to'xtatish/tasdiqlash/bekor qilish.
@@ -271,6 +272,8 @@ export const navByRole: Record<Role, NavItem[]> = {
         { label: 'Ketish sabablari', to: '/admin/hisobotlar/ketish-sabablari', perm: 'teachers.retention' },
         // O'quvchilar reytingi (testlar + ball) — CRM 4-bosqich (`.claude/rules/rating.md`).
         { label: 'Reyting', to: '/admin/hisobotlar/reyting', perm: 'classes.rating' },
+        // Ota-ona/o'quvchi/o'qituvchi kabinetidan yuborilgan taklif va shikoyatlar (2026-10-15, Nazorat'dan ko'chirildi).
+        { label: 'Taklif va shikoyatlar', to: '/admin/boshqaruv/feedback', perm: 'feedback' },
       ],
     },
     {

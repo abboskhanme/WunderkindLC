@@ -117,6 +117,15 @@ export const reportGroups: ReportGroup[] = [
         description: "Bonusga chiqqan o'quvchilar, berilgan va bekor qilingan bonuslar",
       },
       {
+        // ⚠️ ISTISNO (egasining qarori, 2026-10-15): sahifada «hal qilindi / qayta ochish» amali bor (§2 bo'yicha u
+        // operativ bo'limda qolardi), lekin egasi uni «Hisobotlar» menyusida ko'rishni so'radi — Nazorat'dan KO'CHIRILDI.
+        label: 'Taklif va shikoyatlar',
+        to: '/admin/boshqaruv/feedback',
+        perm: 'feedback',
+        description: "Ota-ona, o'quvchi va o'qituvchilar kabinetdan yuborgan taklif va shikoyatlar — hal qilinganmi",
+        inNav: true,
+      },
+      {
         label: 'Sinflar kesimi',
         to: '/admin/hisobotlar/sinflar',
         perm: 'students.list',
