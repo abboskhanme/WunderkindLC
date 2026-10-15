@@ -139,6 +139,15 @@ chidamlilik va Telegram tezlik chegarasi — hammasi shu jadvaldan.
   (`wlclink:{token}`, Mini App yopiladi) → bot `web_app_data` ni o'sha chat uchun qabul qiladi (kod LOGGA yozilmaydi)
   → `TelegramLinkFlow` (initData yo'li bilan AYNAN bir xil: audit, tasdiq, «01»). Bitta «o'quvchisiz» qator qoidasi
   (o'qituvchi/xodim) — `TelegramMiniAppLink.AttachNonStudentAsync`.
+- **🔁 TASDIQSIZ ULANISH (2026-10-15, egasi: "ulangan, kirgan bo'lsa bo'ldi — tasdiqlash so'raydigan joy bo'lsa olib
+  tashla"):** (1) bot startupda chat MENYU tugmasini Panel'ga bog'laydi (`TelegramService.SetMenuButtonAsync`) — menyudan
+  ochilgan Mini App initData oladi; (2) ulanmagan chat klaviaturasidagi «📱 Panel» endi ODDIY MATN tugmasi — bosilsa bot
+  `StartWelcomeText` + inline «📱 Panelni ochish» beradi (GateText emas); (3) eski web_app klaviaturasidan ochilgan Panel'da
+  `sendData` ulanishi AVTOMATIK (sessiyada bir marta, `tg-autolink:{userId}`) — «🔔 Bot xabarlarini yoqish» banneri faqat
+  avtomatik urinish ulamagan bo'lsa (qayta urinish uchun) chiqadi. Testlar: `TelegramMiniAppLinkTests`.
+  ⚠️ Brauzerdan kirgan akkauntni Telegram chatiga ulab BO'LMAYDI (chat id yo'q) — unga xabarlar kabinet
+  bildirishnomasi bo'lib boradi. O'quvchilar ro'yxatidagi «Telegram» ustunida bu holat ko'k «Kabinetga kirgan»
+  (`appFirstLoginAt`), filtrda «Faqat kabinetga kirgan» (`matchesTelegramFilter(..., cabinet)`).
 - **Ro'yxatdan o'tish (bot, ESKI yo'l — 2026-10-13 dan OLIB TASHLANGAN, tarix uchun):** kontakt 4 raqamning ISTALGANI bilan solishtiriladi (`Phone`, `ParentPhone`,
   `FatherPhone`, `MotherPhone` — `TelegramRegistrar`); `CenterMeta.TelegramPhoneMatchField` endi O'QILMAYDI.
   Har mos o'quvchiga bitta ulanish, `Relation = TelegramRelations.Detect` (tartib: ota → ona → asosiy ota-ona → o'quvchi,

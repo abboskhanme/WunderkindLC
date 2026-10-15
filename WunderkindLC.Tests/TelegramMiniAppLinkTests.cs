@@ -143,10 +143,29 @@ public class TelegramMiniAppLinkTests
             .RootElement.GetProperty("keyboard").EnumerateArray().ToList();
         var button = Assert.Single(Assert.Single(rows).EnumerateArray());
         Assert.Equal(TelegramBotService.PanelButtonText, button.GetProperty("text").GetString());
-        Assert.Equal(TelegramBotService.PanelUrl, button.GetProperty("web_app").GetProperty("url").GetString());
+        // 2026-10-15: ODDIY matn tugmasi — klaviaturadagi web_app tugmasi initData bermaydi (chat ulanmasdi).
+        Assert.False(button.TryGetProperty("web_app", out _));
         Assert.False(button.TryGetProperty("request_contact", out _));
         Assert.DoesNotContain("telefon", TelegramBotService.StartWelcomeText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("login/parol", TelegramBotService.GateText);
+    }
+
+    /// <summary>
+    /// 2026-10-15 (egasi: "ulangan, kirgan bo'lsa bo'ldi — tasdiqlash so'ralmasin"): Panel faqat initData BERADIGAN
+    /// yo'llardan ochiladi — inline «📱 Panelni ochish» va bot menyu tugmasi — shunda login bilan chat O'ZI ulanadi.
+    /// </summary>
+    [Fact]
+    public void Ulanmagan_chatda_Panel_tugmasi_inline_Panel_beradi_va_menyu_tugmasi_Panelga_bog_lanadi()
+    {
+        var inline = JsonDocument.Parse(JsonSerializer.Serialize(TelegramBotService.PanelInline)).RootElement
+            .GetProperty("inline_keyboard")[0][0];
+        Assert.Equal(TelegramBotService.PanelUrl, inline.GetProperty("web_app").GetProperty("url").GetString());
+
+        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "WunderkindLC.slnx"))) dir = dir.Parent;
+        var bot = File.ReadAllText(Path.Combine(dir!.FullName, "WunderkindLC.Application", "Services", "TelegramBotService.cs"));
+        Assert.Contains("var reply = text == PanelButtonText ? StartWelcomeText : GateText;", bot);
+        Assert.Contains("await telegram.SetMenuButtonAsync(PanelUrl,", bot);
     }
 
     // ===== Keyboard-button Mini App: sendData token (2026-10-13) =====

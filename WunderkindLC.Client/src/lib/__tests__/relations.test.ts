@@ -71,6 +71,11 @@ describe('relations — Telegram qarindoshlik', () => {
     expect(matchesTelegramFilter(0, 'linked')).toBe(false)
     expect(matchesTelegramFilter(undefined, 'none')).toBe(true)
     expect(matchesTelegramFilter(1, 'none')).toBe(false)
+    // 2026-10-15: kabinetga kirgan, lekin bot chati yo'q — alohida holat
+    expect(matchesTelegramFilter(0, 'cabinet', true)).toBe(true)
+    expect(matchesTelegramFilter(0, 'none', true)).toBe(false)
+    expect(matchesTelegramFilter(2, 'cabinet', true)).toBe(false)
+    expect(matchesTelegramFilter(2, 'linked', true)).toBe(true)
   })
 })
 

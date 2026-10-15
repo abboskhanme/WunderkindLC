@@ -310,10 +310,11 @@ export function StudentsPage() {
 
   // Joriy tab manbai.
   const source = tab === 'active' ? students : archived
-  /** Telegram filtridagi sonlar (faol tab bo'yicha): ulangan / ulanmagan ota-onalar. */
+  /** Telegram filtridagi sonlar (faol tab bo'yicha) — filtrning O'ZI bilan sanaladi (son = ro'yxat). */
   const telegramCounts = useMemo(() => {
-    const linked = students.filter((s) => (s.telegramLinked ?? 0) > 0).length
-    return { all: students.length, linked, none: students.length - linked } as Record<TelegramFilter, number>
+    const count = (f: TelegramFilter) =>
+      students.filter((s) => matchesTelegramFilter(s.telegramLinked, f, !!s.appFirstLoginAt)).length
+    return { all: students.length, linked: count('linked'), cabinet: count('cabinet'), none: count('none') }
   }, [students])
   // Sinflar kesimi — Holat filtridagi kabi JORIY ro'yxat (faol/arxiv tabi) bo'yicha sanaladi.
   const gradeCounts = useMemo(() => schoolGradeDistribution(source.map((s) => s.schoolGradeNow)), [source])
@@ -433,7 +434,7 @@ export function StudentsPage() {
     const hasPhoto = !!(s.birthCertificateUrl && s.birthCertificateUrl.trim())
     const matchPhoto =
       photoFilter === 'all' || (photoFilter === 'with' ? hasPhoto : !hasPhoto)
-    const matchTelegram = tab !== 'active' || matchesTelegramFilter(s.telegramLinked, telegramFilter)
+    const matchTelegram = tab !== 'active' || matchesTelegramFilter(s.telegramLinked, telegramFilter, !!s.appFirstLoginAt)
     return matchSearch && matchClass && matchTeacher && matchBalance && matchDebtRange && matchActive && matchGrade && matchBirthday && matchPhoto && matchTelegram
   })
     .sort((a, b) => {
@@ -1382,7 +1383,12 @@ export function StudentsPage() {
                     <td className="whitespace-nowrap font-mono text-slate-600">{formatPhone(s.parentPhone)}</td>
                     {tab === 'active' && (
                       <td>
-                        <TelegramLinkCell linked={s.telegramLinked} relations={s.telegramRelations} blocked={s.telegramBlocked} />
+                        <TelegramLinkCell
+                          linked={s.telegramLinked}
+                          relations={s.telegramRelations}
+                          blocked={s.telegramBlocked}
+                          cabinet={!!s.appFirstLoginAt}
+                        />
                       </td>
                     )}
                     <td className="num">

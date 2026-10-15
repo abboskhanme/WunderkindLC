@@ -80,6 +80,9 @@ public class TelegramBotService(
             {
                 logger.LogInformation("Telegram bot ishga tushdi (long polling).");
                 announced = true;
+                // Menyu tugmasi → Panel: shu yo'ldan ochilgan Mini App initData oladi va login bilan chat O'ZI ulanadi
+                // (pastki klaviatura tugmasi initData bermaydi) — 2026-10-15, ota-onadan tasdiq so'ralmasin.
+                await telegram.SetMenuButtonAsync(PanelUrl, "Panel", stoppingToken);
             }
 
             try
@@ -248,7 +251,10 @@ public class TelegramBotService(
         // yozilmaydi: begona odamning yozishmasi «Support Telegram»ga tushmasin.
         if (!BotAccess.Allowed(await IsLinkedChatAsync(chatId, ct), BotAccess.Action.Message))
         {
-            await telegram.SendMessageAsync(chatId, GateText, PanelInline, ct);
+            // Ulanmagan chatdagi «📱 Panel» (endi ODDIY matn tugmasi — StartKeyboard) — inline tugma beriladi: undan
+            // ochilgan Panel initData oladi va login bilan chat avtomatik ulanadi. Qolgan hammasi — GateText.
+            var reply = text == PanelButtonText ? StartWelcomeText : GateText;
+            await telegram.SendMessageAsync(chatId, reply, PanelInline, ct);
             return;
         }
 
@@ -1064,10 +1070,13 @@ public class TelegramBotService(
 
     /// <summary>Botga hali ULANMAGAN chat klaviaturasi (2026-10-13, egasining qarori): FAQAT «📱 Panel» — kitob ham,
     /// adminga murojaat ham YO'Q (login/parolsiz odam botdan foydalanmaydi — <see cref="BotAccess"/>). Kirgach chat
-    /// akkauntga bog'lanadi (<see cref="TelegramMiniAppLink"/>) va <see cref="RegisteredKeyboard"/> chiqadi.</summary>
+    /// akkauntga bog'lanadi (<see cref="TelegramMiniAppLink"/>) va <see cref="RegisteredKeyboard"/> chiqadi.
+    /// <para>⚠️ 2026-10-15: tugma ODDIY MATN (web_app EMAS). Klaviaturadagi web_app tugmasidan ochilgan Panel initData
+    /// olmasdi — chat ulanmas va ota-onadan «🔔 Bot xabarlarini yoqish» bosish talab qilinardi. Endi bosilsa bot inline
+    /// «📱 Panelni ochish» beradi (initData bilan) — login bilan chat AVTOMATIK ulanadi.</para></summary>
     public static object StartKeyboard() => new
     {
-        keyboard = new[] { new object[] { new { text = PanelButtonText, web_app = new { url = PanelUrl } } } },
+        keyboard = new[] { new object[] { new { text = PanelButtonText } } },
         resize_keyboard = true,
         is_persistent = true,
         one_time_keyboard = false,

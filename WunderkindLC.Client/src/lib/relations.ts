@@ -102,18 +102,29 @@ export function countLine(c: CountLineInput): string {
   return parts.join(' · ')
 }
 
-/** «Telegram» ustuni filtri (U6b, klientda). */
-export type TelegramFilter = 'all' | 'linked' | 'none'
+/**
+ * «Telegram» ustuni filtri (U6b, klientda). 2026-10-15 (egasi: "akkauntga kirgan bo'lsa hisob qilinsin"): uchinchi
+ * holat — `cabinet`: botga ulangan chat YO'Q, lekin o'quvchi akkaunti bilan kabinetga kirilgan (xabarlar kabinetdagi
+ * bildirishnomaga keladi, Telegram'ga emas).
+ */
+export type TelegramFilter = 'all' | 'linked' | 'cabinet' | 'none'
 
 export const TELEGRAM_FILTERS: { key: TelegramFilter; label: string }[] = [
   { key: 'all', label: 'Hammasi' },
-  { key: 'linked', label: 'Ulangan' },
+  { key: 'linked', label: 'Botga ulangan' },
+  { key: 'cabinet', label: 'Faqat kabinetga kirgan' },
   { key: 'none', label: 'Ulanmagan' },
 ]
 
-/** Qator filtrga mos keladimi (ulangan = bloklamagan chat kamida bitta). */
-export function matchesTelegramFilter(linked: number | null | undefined, filter: TelegramFilter): boolean {
+/** Qator filtrga mos keladimi (ulangan = bloklamagan chat kamida bitta; `cabinet` — akkauntga kirilganmi). */
+export function matchesTelegramFilter(
+  linked: number | null | undefined,
+  filter: TelegramFilter,
+  cabinet = false,
+): boolean {
   if (filter === 'all') return true
   const n = linked ?? 0
-  return filter === 'linked' ? n > 0 : n === 0
+  if (filter === 'linked') return n > 0
+  if (filter === 'cabinet') return n === 0 && cabinet
+  return n === 0 && !cabinet
 }

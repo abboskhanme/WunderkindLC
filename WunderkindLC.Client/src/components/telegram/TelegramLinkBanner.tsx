@@ -5,9 +5,11 @@ import { apiErrorMessage } from '@/lib/utils'
 import { getTelegramLinkStatus, isKeyboardLaunch, sendBotLinkRequest } from '@/lib/telegramLink'
 
 /**
- * «🔔 Bot xabarlarini yoqish» — only in a Mini App opened from the bot's reply keyboard (no initData there) while the
- * account receives no bot messages yet. The button sends a one-time token through `Telegram.WebApp.sendData`; the bot
- * links the chat and answers there (the Mini App closes). Rules: `.claude/rules/messaging.md` §0.5.
+ * Bot linking for a Mini App opened from the bot's reply keyboard (no initData there) while the account receives no
+ * bot messages yet. 2026-10-15 (owner: "kirgan bo'lsa bo'ldi — tasdiqlash so'ralmasin"): the one-time token is sent
+ * through `Telegram.WebApp.sendData` AUTOMATICALLY, once per session — no button press; the bot links the chat and
+ * answers there (the Mini App closes). The «🔔 Bot xabarlarini yoqish» banner appears only if that automatic attempt
+ * failed (retry). Rules: `.claude/rules/messaging.md` §0.5.
  */
 export function TelegramLinkBanner({ variant }: { variant: 'student' | 'teacher' }) {
   // Soft read: a secondary widget must never break the shell it sits in (e.g. a layout rendered without the provider).
@@ -19,9 +21,28 @@ export function TelegramLinkBanner({ variant }: { variant: 'student' | 'teacher'
   useEffect(() => {
     if (!userId || !isKeyboardLaunch()) return
     let alive = true
+    const key = `tg-autolink:${userId}`
     getTelegramLinkStatus()
-      .then((s) => {
-        if (alive) setShow(s.configured && !s.linked)
+      .then(async (s) => {
+        if (!alive || !s.configured || s.linked) return
+        let tried = false
+        try {
+          tried = !!sessionStorage.getItem(key)
+          sessionStorage.setItem(key, '1')
+        } catch {
+          // storage blocked — still link automatically (the bot answers idempotently)
+        }
+        if (tried) {
+          setShow(true) // the automatic attempt already ran this session and did not link — offer a manual retry
+          return
+        }
+        try {
+          await sendBotLinkRequest() // the Mini App closes; the bot replies «✅ ulandi» in the chat
+        } catch (err) {
+          if (!alive) return
+          setError(apiErrorMessage(err, "Ulab bo'lmadi — qayta urinib ko'ring"))
+          setShow(true)
+        }
       })
       // Background read: on failure the banner simply stays hidden (error-visibility.md §4).
       .catch(() => {})
