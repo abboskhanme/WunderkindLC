@@ -48,6 +48,8 @@ public record TeacherStudentRowDto(
     string CourseName, string Status, string MemberStart, int DebtMonths,
     int Held, int Attended, int Absent, int Late, int? AttendancePct,
     // CRM upgrade U6b: «Telegram ulangan / ulanmagan» — counts and relations only (no phones, names, chat ids).
-    int TelegramLinked = 0, List<string>? TelegramRelations = null);
+    int TelegramLinked = 0, List<string>? TelegramRelations = null,
+    // 2026-10-15: kabinetga kirilgan — «Ulangan» (TelegramLinkSummary.Cabinet).
+    bool CabinetLoggedIn = false);
 
 public record TeacherStudentsDto(string Month, List<TeacherStudentRowDto> Rows);

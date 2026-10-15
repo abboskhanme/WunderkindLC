@@ -510,7 +510,9 @@ public record GroupMemberDto(
     string StudentId, string FullName, string JoinedAt, string? LeftAt, bool IsActive,
     string Status, string ActivatedAt, string FrozenAt, decimal Balance, bool YearFreeze,
     // CRM upgrade U6b: usable Telegram chats (not blocked) + their relations — counts only, no phones/chat ids.
-    int TelegramLinked = 0, List<string>? TelegramRelations = null);
+    int TelegramLinked = 0, List<string>? TelegramRelations = null,
+    // 2026-10-15: o'quvchi akkaunti bilan kabinetga kirilgan — ro'yxatda ham «Ulangan» (TelegramLinkSummary).
+    bool CabinetLoggedIn = false);
 /// <summary>
 /// Guruhning FAOL a'zosi — SMS modali uchun (telefonlar + a'zolik holati + SHU GURUH balansi).
 /// <para>⚠️ Telefonlar ATAYIN <see cref="GroupMemberDto"/> ga qo'shilmadi, alohida DTO qilindi:
@@ -3932,7 +3934,7 @@ public record TeacherContactRequest(List<string> StudentIds, string? ReasonId = 
 /// raqam Telegram botiga kirish omili). Balans/ota-ona ma'lumoti ATAYIN yo'q.
 /// </summary>
 public record TeacherGroupStudentDto(string Id, string FullName, string Phone, int? SchoolGradeNow, string Status,
-    int TelegramLinked = 0, List<string>? TelegramRelations = null);
+    int TelegramLinked = 0, List<string>? TelegramRelations = null, bool CabinetLoggedIn = false);
 
 /// <summary>O'qituvchi tahriri — faqat IKKI maydon (<c>TeacherStudentEdit</c>). Sinf: null — tegilmaydi, 0 — tozalash.
 /// ⚠️ Telefon maydoni ATAYIN YO'Q (H1, 2026-10-12): klient yuborsa ham JSON bog'lovchisi uni tashlab yuboradi.</summary>

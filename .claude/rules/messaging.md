@@ -148,7 +148,10 @@ chidamlilik va Telegram tezlik chegarasi — hammasi shu jadvaldan.
   ⚠️ Brauzerdan kirgan akkauntni Telegram chatiga ulab BO'LMAYDI (chat id yo'q) — unga xabarlar kabinet
   bildirishnomasi bo'lib boradi. ⚠️ Egasining qarori (2026-10-15): O'quvchilar ro'yxati va «Aktiv o'quvchilar»dagi
   «Telegram» ustuni va filtrida akkauntga KIRGAN (`appFirstLoginAt`) o'quvchi ham **«Ulangan»** (`isTelegramLinked`) —
-  alohida holat YO'Q, farq faqat tooltip'da. Bot sanoqlari (kampaniya auditoriyasi, «Bloklagan») bunga tegmaydi.
+  alohida holat YO'Q, farq faqat tooltip'da. O'qituvchining «O'quvchilarim», guruh «O'quvchilar» tabi (o'qituvchi va
+  admin) ham shu qoida: `TelegramLinkSummary` → `TelegramLinkInfo.Cabinet` → DTO `CabinetLoggedIn`. MCP
+  (`students_search`, `student_profile`) — «linked» ham shu ta'rif, `telegram.chats` esa haqiqiy bot chatlari. Bot
+  sanoqlari (kampaniya auditoriyasi, «Bloklagan», Qarzdorlar tabi) bunga tegmaydi — ular Telegram YETKAZISHI haqida.
 - **Ro'yxatdan o'tish (bot, ESKI yo'l — 2026-10-13 dan OLIB TASHLANGAN, tarix uchun):** kontakt 4 raqamning ISTALGANI bilan solishtiriladi (`Phone`, `ParentPhone`,
   `FatherPhone`, `MotherPhone` — `TelegramRegistrar`); `CenterMeta.TelegramPhoneMatchField` endi O'QILMAYDI.
   Har mos o'quvchiga bitta ulanish, `Relation = TelegramRelations.Detect` (tartib: ota → ona → asosiy ota-ona → o'quvchi,

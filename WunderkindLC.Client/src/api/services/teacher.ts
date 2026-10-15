@@ -436,6 +436,8 @@ export interface TeacherStudentRow {
   telegramLinked?: number
   /** U6b: ulangan chatlarning qarindoshliklari. */
   telegramRelations?: string[] | null
+  /** 2026-10-15: kabinetga kirilgan — «Ulangan» deb sanaladi. */
+  cabinetLoggedIn?: boolean
 }
 
 export interface TeacherStudents {
@@ -480,6 +482,8 @@ export interface TeacherGroupStudent {
   /** CRM upgrade U6b: botga ulangan Telegram chatlari soni (tahrir javobida 0 keladi — saqlab qoling). */
   telegramLinked?: number
   telegramRelations?: string[] | null
+  /** 2026-10-15: kabinetga kirilgan — «Ulangan» deb sanaladi. */
+  cabinetLoggedIn?: boolean
 }
 
 /** O'qituvchi o'zgartira oladigan FAQAT uch maydon. `schoolGrade`: 0 — tozalash. */

@@ -482,7 +482,7 @@ public static class TeacherHomeService
         rows = rows.Select(r =>
         {
             var tg = telegram.GetValueOrDefault(r.StudentId) ?? Messaging.TelegramLinkInfo.None;
-            return r with { TelegramLinked = tg.Linked, TelegramRelations = tg.Relations };
+            return r with { TelegramLinked = tg.Linked, TelegramRelations = tg.Relations, CabinetLoggedIn = tg.Cabinet };
         }).ToList();
 
         return new TeacherStudentsDto(resolved, rows

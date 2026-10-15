@@ -99,7 +99,7 @@ To'liq ro'yxat — `docs/SPEC-mcp.md` §9. Har biri panel funksiyasini CHAQIRADI
 
 | Mavzu | Qoida |
 |---|---|
-| Telegram xabarlar (`MessagingTools`, `messages_history`) | sanoqlar `MessagingReports` dan (yetkazish jurnali; eski e'lon — saqlangan sanoq). Chat id, fayl manzili, Telegram file_id — HECH QACHON (ustun ham tanlanmaydi). «Telegram ulangan» = BLOKLANMAGAN chat bor (U6b ustuni) |
+| Telegram xabarlar (`MessagingTools`, `messages_history`) | sanoqlar `MessagingReports` dan (yetkazish jurnali; eski e'lon — saqlangan sanoq). Chat id, fayl manzili, Telegram file_id — HECH QACHON (ustun ham tanlanmaydi). «Telegram ulangan» = BLOKLANMAGAN chat bor (U6b ustuni); ⚠️ `students_search`/`student_profile` dagi «linked» 2026-10-15 dan panel bilan bir xil: chat YOKI kabinetga kirilgan (`AppUser.FirstLoginAt` — `RestrictedColumns[AppUser]` ga qo'shilgan), `telegram.chats` — haqiqiy chatlar |
 | Davomat (`AttendanceTools`, `AttendanceControlTools`) | «olingan» = `LessonNote.AttendanceTakenAt` (birinchi belgi, `AttendanceTaking`); «sababsiz» = `AbsenceReason.IsExcused == false` — NOMDAN taxmin qilinmaydi; belgi — `AttendanceRules`; qizil ro'yxat — `AbsenceStreakLoader`; intizom — `AttendanceDiscipline.Decide`; jarima summasi — faqat moliya ruxsati bilan |
 | Reyting (`RatingTools`) | `RatingEngine` (Centre / GroupTable / StudentBlockAsync) — `RatingController` ruxsatlari bilan; `rating_group`/`rating_center` — ESKI faqat-ball ko'rinishi (davomati 2026-10-12 dan YAGONA ta'rifda —
 `MembershipAttendance`, panel bilan bir xil; `rating_group` da `held`/`attended` ham); `rating_top_bottom` — `TopBottomService.BuildAsync` (oylik avto-xabar yuboradigan AYNAN o'sha ro'yxat; sukut — O'TGAN oy) |

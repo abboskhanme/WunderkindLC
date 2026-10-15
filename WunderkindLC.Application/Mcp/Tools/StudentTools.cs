@@ -16,14 +16,18 @@ public sealed class StudentTools(McpToolContext t)
     [
         typeof(Student), typeof(StudentGroup), typeof(Group), typeof(Subject), typeof(Teacher),
         typeof(TelegramRegistration), typeof(JournalEntry), typeof(AbsenceReason), typeof(LessonNote),
+        // «linked» = chat YOKI kabinetga kirilgan — faqat Users.Id + FirstLoginAt (ustun grant'i, RestrictedColumns).
+        typeof(AppUser),
     ];
 
     [McpServerTool(Name = "students_search", Title = "O'quvchilarni qidirish",
         ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
     [Description("O'quvchilar ro'yxati: ism yoki telefon bo'yicha qidirish; holat (faol/sinov/muzlatilgan), guruh, arxiv va "
-        + "qarz filtrlari. Har qatorda guruhlari, maktab sinfi va Telegram holati: botga ulangan (bloklamagan) chatlar soni, "
-        + "ular kimniki (father — otasi, mother — onasi, parent — ota-onasi, student — o'zi, other — boshqa) va botni "
-        + "bloklaganlar soni (chat id chiqmaydi). "
+        + "qarz filtrlari. Har qatorda guruhlari, maktab sinfi va Telegram holati. «telegramLinked» (ULANGAN) — panel bilan bir "
+        + "xil: botga ulangan (bloklamagan) chat bor YOKI o'quvchi akkaunti bilan kabinetga kirilgan («cabinetLoggedIn»); "
+        + "kabinetga kirganlarga xabar kabinet bildirishnomasi bo'lib boradi, TELEGRAM'ga esa faqat «telegram.chats» > 0 "
+        + "bo'lganlarga (chatlar kimniki: father — otasi, mother — onasi, parent — ota-onasi, student — o'zi, other — boshqa; "
+        + "botni bloklaganlar soni; chat id chiqmaydi). "
         + "Balans faqat moliya ruxsati bo'lsa. Sahifalangan (ko'pi bilan 200 qator). "
         + "Search students by name/phone with status, group, archive and debt filters.")]
     public async Task<string> StudentsSearch(
@@ -32,7 +36,7 @@ public sealed class StudentTools(McpToolContext t)
         [Description("A'zolik holati: active | trial | frozen | none (guruhsiz)")] string? memberState = null,
         [Description("Guruh id (groups_list natijasidan)")] string? groupId = null,
         [Description("Faqat qarzdorlar: true (moliya ruxsati kerak)")] bool? debtorsOnly = null,
-        [Description("Telegram: linked (bloklanmagan chat bor) | unlinked")] string? telegram = null,
+        [Description("Telegram: linked (bot chati bor yoki kabinetga kirilgan — panel bilan bir xil) | unlinked")] string? telegram = null,
         [Description("Sahifa (1 dan)")] int? page = null,
         [Description("Sahifa hajmi (1..200, sukut 50)")] int? pageSize = null,
         CancellationToken ct = default)
@@ -91,9 +95,16 @@ public sealed class StudentTools(McpToolContext t)
         switch ((telegram ?? "").Trim().ToLowerInvariant())
         {
             case "": break;
-            // Linked = at least one USABLE chat (not blocked) — the panel's «Telegram» column (TelegramLinkSummary).
-            case "linked": q = q.Where(s => db.TelegramRegistrations.Any(r => r.StudentId == s.Id && r.BlockedAt == null)); break;
-            case "unlinked": q = q.Where(s => !db.TelegramRegistrations.Any(r => r.StudentId == s.Id && r.BlockedAt == null)); break;
+            // Linked = a USABLE chat (not blocked) OR the student's account has logged in — the panel's «Telegram» column
+            // (owner, 2026-10-15: "kirganlarning hammasi ulangan deb olinsin").
+            case "linked":
+                q = q.Where(s => db.TelegramRegistrations.Any(r => r.StudentId == s.Id && r.BlockedAt == null)
+                                 || db.Users.Any(u => u.Id == s.UserId && u.FirstLoginAt != null && u.FirstLoginAt != ""));
+                break;
+            case "unlinked":
+                q = q.Where(s => !db.TelegramRegistrations.Any(r => r.StudentId == s.Id && r.BlockedAt == null)
+                                 && !db.Users.Any(u => u.Id == s.UserId && u.FirstLoginAt != null && u.FirstLoginAt != ""));
+                break;
             default: throw new McpException("«telegram»: linked | unlinked.");
         }
 
@@ -105,12 +116,13 @@ public sealed class StudentTools(McpToolContext t)
             {
                 s.Id, s.FullName, s.Phone, s.ParentFullName, s.ParentPhone, s.FatherPhone, s.MotherPhone,
                 s.SchoolGrade, s.SchoolGradeYear, s.EnrollmentDate, s.IsArchived, s.ArchivedAt, s.ArchiveReason,
-                s.Balance,
+                s.Balance, s.UserId,
             }).ToListAsync(ct);
 
         var ids = rows.Select(r => r.Id).ToList();
         var memberships = await live.Where(m => ids.Contains(m.StudentId)).ToListAsync(ct);
         var tgLinks = await TelegramLinksAsync(ids, ct);
+        var loggedIn = await LoggedInUsersAsync(rows.Select(r => r.UserId), ct);
 
         var items = rows.Select(r =>
         {
@@ -123,7 +135,8 @@ public sealed class StudentTools(McpToolContext t)
                 r.EnrollmentDate,
                 memberState = StateOf(own.Select(m => (m.Status, m.YearFreeze))),
                 groups = own.Select(m => new { id = m.GroupId, name = m.GroupName, status = m.Status }),
-                telegramLinked = tgLinks.GetValueOrDefault(r.Id)?.Linked > 0,
+                telegramLinked = tgLinks.GetValueOrDefault(r.Id)?.Linked > 0 || (r.UserId is not null && loggedIn.Contains(r.UserId)),
+                cabinetLoggedIn = r.UserId is not null && loggedIn.Contains(r.UserId),
                 telegram = TelegramOf(tgLinks.GetValueOrDefault(r.Id)),
                 r.IsArchived, r.ArchivedAt, r.ArchiveReason,
                 balance = finance ? r.Balance : (decimal?)null,
@@ -192,6 +205,7 @@ public sealed class StudentTools(McpToolContext t)
         var teachers = await db.Teachers.Where(x => teacherIds.Contains(x.Id))
             .Select(x => new { x.Id, x.FullName }).ToDictionaryAsync(x => x.Id, x => x.FullName, ct);
         var telegram = (await TelegramLinksAsync([st.Id], ct)).GetValueOrDefault(st.Id);
+        var cabinetLoggedIn = (await LoggedInUsersAsync([st.UserId], ct)).Count > 0;
 
         var subjectName = nb.Subjects.ToDictionary(s => s.Id, s => s.Name);
         var grades = nb.Grades.Select(g => new
@@ -222,7 +236,9 @@ public sealed class StudentTools(McpToolContext t)
             }),
             telegram = new
             {
-                linked = telegram?.Linked > 0,
+                // Panel bilan bir xil: bot chati YOKI kabinetga kirilgan (2026-10-15). Telegram'ga xabar — faqat chats > 0.
+                linked = telegram?.Linked > 0 || cabinetLoggedIn,
+                cabinetLoggedIn,
                 chats = telegram?.Linked ?? 0,
                 blocked = telegram?.Blocked ?? 0,
                 relations = (telegram?.Relations ?? []).Select(x => new { relation = x.Relation, label = x.Label, chats = x.Chats }),
@@ -238,6 +254,16 @@ public sealed class StudentTools(McpToolContext t)
             balance = finance ? st.Balance : (decimal?)null,
             note = finance ? null : "Balans ko'rsatilmadi: moliya ruxsati yo'q.",
         }, 1);
+    }
+
+    /// <summary>Akkaunti kabinetga kamida bir marta KIRGAN foydalanuvchilar (id lar faqat ichkarida — javobga chiqmaydi).</summary>
+    private async Task<HashSet<string>> LoggedInUsersAsync(IEnumerable<string?> userIds, CancellationToken ct)
+    {
+        var ids = userIds.Where(id => !string.IsNullOrEmpty(id)).Select(id => id!).Distinct().ToList();
+        if (ids.Count == 0) return new HashSet<string>(StringComparer.Ordinal);
+        var rows = await t.Db.Users.Where(u => ids.Contains(u.Id) && u.FirstLoginAt != null && u.FirstLoginAt != "")
+            .Select(u => u.Id).ToListAsync(ct);
+        return rows.ToHashSet(StringComparer.Ordinal);
     }
 
     /// <summary>Telegram status of one student: usable chats, their relations, chats that blocked the bot.</summary>

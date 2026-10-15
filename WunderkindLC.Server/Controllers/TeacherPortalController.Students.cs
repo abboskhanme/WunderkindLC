@@ -66,6 +66,7 @@ public partial class TeacherPortalController
                 {
                     TelegramLinked = tg?.Linked ?? 0,
                     TelegramRelations = tg?.Relations ?? new List<string>(),
+                    CabinetLoggedIn = tg?.Cabinet ?? false,
                 };
             })
             .ToList();

@@ -751,6 +751,7 @@ public partial class ClassesController(AppDbContext db, AuditService audit, ILog
                 Balance = balances.GetValueOrDefault(r.StudentId, 0m),
                 TelegramLinked = telegram.GetValueOrDefault(r.StudentId)?.Linked ?? 0,
                 TelegramRelations = telegram.GetValueOrDefault(r.StudentId)?.Relations ?? new List<string>(),
+                CabinetLoggedIn = telegram.GetValueOrDefault(r.StudentId)?.Cabinet ?? false,
             })
             .ToList();
     }

@@ -78,7 +78,7 @@ export function GroupStudentsTab({
   telegram,
 }: {
   /** CRM upgrade U6b: studentId → Telegram (ulangan chatlar soni + qarindoshliklar) — `members` javobidan. */
-  telegram?: Record<string, { linked: number; relations: string[] }>
+  telegram?: Record<string, { linked: number; relations: string[]; cabinet?: boolean }>
   groupId: string
   groupName: string
   groupFee: number
@@ -296,7 +296,11 @@ export function GroupStudentsTab({
             key: 'telegram',
             header: 'Telegram',
             render: (m: GroupRosterRow) => (
-              <TelegramLinkCell linked={telegram[m.studentId]?.linked ?? 0} relations={telegram[m.studentId]?.relations} />
+              <TelegramLinkCell
+                linked={telegram[m.studentId]?.linked ?? 0}
+                relations={telegram[m.studentId]?.relations}
+                cabinet={telegram[m.studentId]?.cabinet}
+              />
             ),
           },
         ]

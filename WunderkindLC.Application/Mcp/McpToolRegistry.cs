@@ -69,6 +69,8 @@ public static class McpReadOnlyGrants
         [
             nameof(AppUser.Id), nameof(AppUser.FullName), nameof(AppUser.Role), nameof(AppUser.Phone),
             nameof(AppUser.Position), nameof(AppUser.RoleTemplateId),
+            // Birinchi kirish VAQTI (2026-10-15): «ulangan» = bot chati YOKI kabinetga kirilgan (panel bilan bir xil).
+            nameof(AppUser.FirstLoginAt),
         ],
         // Change history: never the before/after snapshots (they can hold old values of any field) —
         // tools return only the human-readable summary.

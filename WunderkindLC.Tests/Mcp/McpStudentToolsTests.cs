@@ -135,6 +135,35 @@ public class McpStudentToolsTests
         Assert.Equal(expected.Length, json.GetProperty("total").GetInt32());
     }
 
+    /// <summary>2026-10-15 (egasi): «ulangan» = bot chati YOKI kabinetga kirilgan — panel bilan bir xil son. Telegram'ga
+    /// xabar faqat chati borga — `telegram.chats` alohida qoladi.</summary>
+    [Fact]
+    public async Task Kabinetga_kirgan_oquvchi_ham_ULANGAN_lekin_telegram_chatlari_0()
+    {
+        using var host = new McpTestHost();
+        Seed(host);
+        host.Rw.Users.Add(new AppUser { Id = "u-s2", FullName = "Sinov O'quvchi", Role = Roles.Student, Email = "u-s2", FirstLoginAt = "2026-10-10T09:00:00" });
+        host.Rw.Students.Single(s => s.Id == "s2").UserId = "u-s2";
+        host.Rw.SaveChanges();
+
+        var tools = host.Tool<StudentTools>(McpTestHost.SuperAdmin());
+        var all = McpTestHost.Parse(await tools.StudentsSearch()).GetProperty("items").EnumerateArray().ToList();
+        var s2 = all.Single(i => i.GetProperty("id").GetString() == "s2");
+        Assert.True(s2.GetProperty("telegramLinked").GetBoolean());
+        Assert.True(s2.GetProperty("cabinetLoggedIn").GetBoolean());
+        Assert.Equal(0, s2.GetProperty("telegram").GetProperty("chats").GetInt32());
+
+        var linked = McpTestHost.Parse(await tools.StudentsSearch(telegram: "linked"))
+            .GetProperty("items").EnumerateArray().Select(i => i.GetProperty("id").GetString()).OrderBy(x => x);
+        Assert.Equal(new[] { "s1", "s2" }, linked);
+
+        var profile = McpTestHost.Parse(await tools.StudentProfile("s2"));
+        Assert.True(profile.GetProperty("telegram").GetProperty("linked").GetBoolean());
+        Assert.Equal(0, profile.GetProperty("telegram").GetProperty("chats").GetInt32());
+        host.AssertReadsOnlyDeclared(typeof(StudentTools));
+        host.AssertNoSecretColumns();
+    }
+
     [Fact]
     public async Task Search_sahifalash_va_chegara()
     {

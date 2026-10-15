@@ -1114,6 +1114,8 @@ export interface GroupMember {
   telegramLinked?: number
   /** U6b: shu chatlarning qarindoshliklari. */
   telegramRelations?: string[] | null
+  /** 2026-10-15: o'quvchi akkaunti bilan kabinetga kirilgan — «Ulangan» deb sanaladi. */
+  cabinetLoggedIn?: boolean
 }
 
 /** O'quvchining guruh a'zoligi */

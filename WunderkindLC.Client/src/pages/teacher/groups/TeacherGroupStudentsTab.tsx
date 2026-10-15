@@ -57,7 +57,7 @@ export function TeacherGroupStudentsTab({ groupId }: { groupId: string }) {
   const rows = useMemo(() => {
     // Tahrir javobida Telegram sanog'i kelmaydi (0) — ro'yxatdagi qiymat saqlanadi (U6b).
     const list = (data ?? []).map((r) =>
-      edited[r.id] ? { ...edited[r.id], telegramLinked: r.telegramLinked, telegramRelations: r.telegramRelations } : r,
+      edited[r.id] ? { ...edited[r.id], telegramLinked: r.telegramLinked, telegramRelations: r.telegramRelations, cabinetLoggedIn: r.cabinetLoggedIn } : r,
     )
     const needle = q.trim().toLowerCase()
     const digits = needle.replace(/\D/g, '')
@@ -128,7 +128,12 @@ export function TeacherGroupStudentsTab({ groupId }: { groupId: string }) {
                       {[grade || 'Sinf kiritilmagan', s.phone ? formatPhone(s.phone) : 'Telefon yo\'q'].join(' · ')}
                     </span>
                   </span>
-                  <TelegramLinkCell linked={s.telegramLinked} relations={s.telegramRelations} className="shrink-0 text-[12px]" />
+                  <TelegramLinkCell
+                    linked={s.telegramLinked}
+                    relations={s.telegramRelations}
+                    cabinet={s.cabinetLoggedIn}
+                    className="shrink-0 text-[12px]"
+                  />
                   <span className="flex shrink-0 items-center gap-1 rounded-lg px-2 py-1.5 text-[12.5px] font-semibold text-brand-600">
                     <Pencil className="h-4 w-4" />
                     <span className="hidden sm:inline">Tahrirlash</span>

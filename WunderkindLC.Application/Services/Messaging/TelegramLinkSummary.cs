@@ -3,8 +3,10 @@ using WunderkindLC.Application.Abstractions;
 
 namespace WunderkindLC.Application.Services.Messaging;
 
-/// <summary>Telegram status of one student for lists: usable chats, their relations, blocked chats.</summary>
-public sealed record TelegramLinkInfo(int Linked, List<string> Relations, int Blocked)
+/// <summary>Telegram status of one student for lists: usable chats, their relations, blocked chats, and
+/// <paramref name="Cabinet"/> — the student's account has logged in at least once (owner, 2026-10-15: a logged-in
+/// account counts as «Ulangan» in every list; Telegram messages still go only to <paramref name="Linked"/> chats).</summary>
+public sealed record TelegramLinkInfo(int Linked, List<string> Relations, int Blocked, bool Cabinet = false)
 {
     public static readonly TelegramLinkInfo None = new(0, new List<string>(), 0);
 }
@@ -26,7 +28,7 @@ public static class TelegramLinkSummary
                 .Select(r => new { r.StudentId, r.ChatId, r.Relation, Blocked = r.BlockedAt != null })
                 .ToListAsync(ct))
             .Where(r => ids.Contains(r.StudentId));
-        return rows.GroupBy(r => r.StudentId).ToDictionary(g => g.Key, g =>
+        var map = rows.GroupBy(r => r.StudentId).ToDictionary(g => g.Key, g =>
         {
             var usable = g.Where(r => !r.Blocked).ToList();
             return new TelegramLinkInfo(
@@ -35,5 +37,17 @@ public static class TelegramLinkSummary
                     .OrderBy(r => Array.IndexOf(TelegramRelations.All, r)).ToList(),
                 g.Where(r => r.Blocked).Select(r => r.ChatId).Distinct().Count());
         });
+
+        // Kabinetga KIRGAN akkauntlar (o'quvchi akkaunti bilan kamida bir marta login) — ro'yxatlarda ham «Ulangan».
+        var idList = ids.ToList();
+        var loggedIn = await (from s in db.Students.AsNoTracking()
+                              join u in db.Users.AsNoTracking() on s.UserId equals u.Id
+                              where idList.Contains(s.Id) && u.FirstLoginAt != null && u.FirstLoginAt != ""
+                              select s.Id).ToListAsync(ct);
+        foreach (var id in loggedIn)
+            map[id] = map.TryGetValue(id, out var info)
+                ? info with { Cabinet = true }
+                : TelegramLinkInfo.None with { Relations = new List<string>(), Cabinet = true };
+        return map;
     }
 }

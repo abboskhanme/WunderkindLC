@@ -211,7 +211,7 @@ export function TeacherStudentsPage() {
                         <StatusBadge status={r.status} />
                       </td>
                       <td className="px-3 py-2.5">
-                        <TelegramLinkCell linked={r.telegramLinked} relations={r.telegramRelations} />
+                        <TelegramLinkCell linked={r.telegramLinked} relations={r.telegramRelations} cabinet={r.cabinetLoggedIn} />
                       </td>
                       <td className="px-3 py-2.5">
                         <PctBar pct={r.attendancePct} held={r.held} />
@@ -258,7 +258,12 @@ function StudentCard({ r }: { r: TeacherStudentRow }) {
           {r.absent > 0 && ` · ${r.absent} ta kelmagan`}
         </p>
         {r.debtMonths > 0 && <p className="text-[11.5px] font-semibold text-red-600">To'lov kutilmoqda ({r.debtMonths} oy)</p>}
-        <TelegramLinkCell linked={r.telegramLinked} relations={r.telegramRelations} className="mt-0.5 text-[12px]" />
+        <TelegramLinkCell
+          linked={r.telegramLinked}
+          relations={r.telegramRelations}
+          cabinet={r.cabinetLoggedIn}
+          className="mt-0.5 text-[12px]"
+        />
       </div>
       <div className="w-[62px] shrink-0 text-right">
         <p className={cn('text-[16px] font-bold', pctTone(r.attendancePct).text)}>

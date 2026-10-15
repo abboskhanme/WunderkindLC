@@ -689,7 +689,10 @@ export function ClassDetailPage() {
   const telegramByStudent = useMemo(
     () =>
       Object.fromEntries(
-        members.map((m) => [m.studentId, { linked: m.telegramLinked ?? 0, relations: m.telegramRelations ?? [] }]),
+        members.map((m) => [
+          m.studentId,
+          { linked: m.telegramLinked ?? 0, relations: m.telegramRelations ?? [], cabinet: !!m.cabinetLoggedIn },
+        ]),
       ),
     [members],
   )
