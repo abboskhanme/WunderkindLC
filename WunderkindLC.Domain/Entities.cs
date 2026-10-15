@@ -316,8 +316,7 @@ public partial class Student
     /// </summary>
     public string? BirthCertificateUrl { get; set; }
     public string Address { get; set; } = string.Empty;
-    /// <summary>male | female | "" (ko'rsatilmagan — jins IXTIYORIY, <see cref="StudentGender"/>).</summary>
-    public string Gender { get; set; } = "male";
+    // ⚠️ JINS YO'Q (2026-10-15, foydalanuvchi qarori): ustun bazadan o'chirildi (migratsiya `DropStudentGender`).
     /// <summary>O'quvchining o'z telefon raqami (lid formasiga mos).</summary>
     public string Phone { get; set; } = string.Empty;
     /// <summary>To'liq ota-ona FISH — ASOSIY kontakt (ota, bo'lmasa ona) dan to'ldiriladi. Ota-ona

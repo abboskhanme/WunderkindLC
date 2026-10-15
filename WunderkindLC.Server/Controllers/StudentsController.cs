@@ -724,7 +724,6 @@ public partial class StudentsController(
             MiddleName = middleName,
             BirthDate = p.BirthDate,
             Address = p.Address,
-            Gender = StudentGender.Normalize(p.Gender), // ixtiyoriy — bo'sh qoladi
             Phone = PhoneUtil.Normalize(p.Phone ?? ""),
             BirthCertificateUrl = string.IsNullOrWhiteSpace(p.BirthCertificateUrl) ? null : p.BirthCertificateUrl,
             ParentFullName = parentFull,
@@ -847,7 +846,6 @@ public partial class StudentsController(
         }
         student.BirthDate = p.BirthDate;
         student.Address = p.Address;
-        student.Gender = StudentGender.Normalize(p.Gender);
         student.Phone = PhoneUtil.Normalize(p.Phone ?? "");
         if (p.BirthCertificateUrl is not null)
             student.BirthCertificateUrl = string.IsNullOrWhiteSpace(p.BirthCertificateUrl) ? null : p.BirthCertificateUrl;
@@ -1673,7 +1671,7 @@ public partial class StudentsController(
 
         var headers = new List<string>
         {
-            "F.I.SH.", "Tug'ilgan sana", "Jinsi", "Telefon", "Manzil", "Guruhlar",
+            "F.I.SH.", "Tug'ilgan sana", "Telefon", "Manzil", "Guruhlar",
             "Ota F.I.SH.", "Ota tel", "Ona F.I.SH.", "Ona tel", "Balans", "Login",
         };
         if (showPasswords) headers.Add("Parol");
@@ -1685,7 +1683,6 @@ public partial class StudentsController(
             {
                 s.FullName,
                 s.BirthDate,
-                StudentGender.ExportLabel(s.Gender),
                 s.Phone,
                 s.Address,
                 groupsByStudent.GetValueOrDefault(s.Id, ""),
@@ -1974,7 +1971,6 @@ public partial class StudentsController(
                         FullName: StudentImportPlan.CleanName(r.FullName),
                         BirthDate: NormalizeDate(r.BirthDate),
                         Address: "",
-                        Gender: StudentGender.Normalize(r.Gender),
                         ParentFullName: null,
                         ParentPhone: null,
                         ClassName: cls?.Name ?? "", // guruh bo'lsa guruh nomi, aks holda bo'sh

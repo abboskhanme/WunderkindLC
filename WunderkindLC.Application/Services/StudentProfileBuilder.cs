@@ -152,7 +152,7 @@ public static class StudentProfileBuilder
         // mumkin. Zaxira tarmog'i `StudentReportBuilder` ichida.
         return new StudentNotebookDto(
             st.Id, st.FullName, report.ClassName, report.HomeroomTeacher,
-            st.ParentFullName, st.ParentPhone, st.Gender, st.BirthDate,
+            st.ParentFullName, st.ParentPhone, st.BirthDate,
             st.EnrollmentDate, st.Balance, st.BirthCertificateUrl,
             st.Address, st.DiscountPct, st.DiscountAmount, st.DiscountNote,
             st.ParentPassportUrl,

@@ -7395,10 +7395,6 @@ namespace WunderkindLC.Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
-                    b.Property<string>("Gender")
-                        .IsRequired()
-                        .HasColumnType("text");
-
                     b.Property<bool>("IsArchived")
                         .HasColumnType("boolean");
 

@@ -42,8 +42,9 @@ moslanadi (`billing.md` «SINFGA QARAB OYLIK»). Yangi sinf yozish yo'li qo'shsa
   `GET /admin/students` (yangi endpoint YO'Q), standart qamrov — AKTIV o'quvchilar.
 
 - **Excel importi** — shablonda «Sinf (1-11 yoki bitirgan)» ustuni. Ustunlar SARLAVHA bo'yicha topiladi
-  (`StudentImportPlan.MapColumns`, 2026-10-09): «Jinsi» ustuni shablondan olib tashlangan (jins
-  ixtiyoriy), lekin eski shablon bilan to'ldirilgan fayllar (Jinsi + Sinf) ham to'g'ri o'qiladi; F.I.SH
+  (`StudentImportPlan.MapColumns`, 2026-10-09): «Jinsi» ustuni shablondan olib tashlangan (2026-10-15 dan
+  o'quvchida jins UMUMAN yo'q — ustun o'qiladi-yu, qiymati e'tiborsiz), lekin eski shablon bilan to'ldirilgan fayllar
+  (Jinsi + Sinf) ham to'g'ri o'qiladi; F.I.SH
   sarlavhasi topilmasa — eski o'rinli tartib. Qabul qilinadi: `7`, `7-sinf`, `7 sinf`, `7 класс`, `7.0` (Excel raqami),
   `bitirgan`/`tugatgan` → 12. ⚠️ Harfli sinf (`7a`, `8-B`) markazda YO'Q — xato qator bo'lib qaytadi
   (foydalanuvchi qarori). Bo'sh — kiritilmagan. Mavjud o'quvchida sinf YO'Q bo'lsa importdagisi

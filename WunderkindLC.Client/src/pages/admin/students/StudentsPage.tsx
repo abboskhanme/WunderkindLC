@@ -3,7 +3,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { usePersistentState } from '@/hooks/usePersistentState'
 import { StudentViewModal } from './StudentViewModal'
 import { Plus, Search, Pencil, Trash2, Send, Download, X, Wallet, History, Archive, RotateCcw, FileDown, Upload, ChevronLeft, ChevronRight, Lock, LockOpen, Loader2, Phone, PhoneCall, Cake, Medal, Snowflake, CalendarClock, CheckCircle2 } from 'lucide-react'
-import type { Gender, Student, Teacher } from '@/types'
+import type { Student, Teacher } from '@/types'
 import type { StudentPayload, StudentImportResult } from '@/api/services/students'
 import {
   getStudents,
@@ -29,7 +29,6 @@ import {
   bulkMembershipSummary,
 } from '@/api/services/classes'
 import { getTeachers } from '@/api/services/teachers'
-import { genderLabel, genderLabels } from '@/config/constants'
 import { formatDate, formatMoney, exportToCsv, cn, apiErrorMessage } from '@/lib/utils'
 import { todayIso } from '@/lib/month'
 import { bulkArchiveMessage, splitBulkArchive } from './bulkArchive'
@@ -178,7 +177,6 @@ export function StudentsPage() {
   }, [searchInput, search, setSearch])
   const [classFilter, setClassFilter] = usePersistentState('students.classFilter', 'all', fresh('all'))
   const [teacherFilter, setTeacherFilter] = usePersistentState('students.teacherFilter', 'all', fresh('all'))
-  const [genderFilter, setGenderFilter] = usePersistentState<'all' | Gender>('students.genderFilter', 'all', fresh<'all' | Gender>('all'))
   const [balanceFilter, setBalanceFilter] = usePersistentState<BalanceFilter>(
     'students.balanceFilter', 'all', fresh<BalanceFilter>(preset === 'debtors' ? 'debt' : 'all'),
   )
@@ -399,7 +397,6 @@ export function StudentsPage() {
     const matchTeacher =
       teacherFilter === 'all' ||
       states.some((g) => g.teacherId === teacherFilter && memberMatches(g.status))
-    const matchGender = genderFilter === 'all' || s.gender === genderFilter
     const matchBalance =
       balanceFilter === 'all' ||
       (balanceFilter === 'debt' ? s.balance < 0 : s.balance >= 0)
@@ -432,7 +429,7 @@ export function StudentsPage() {
     const matchPhoto =
       photoFilter === 'all' || (photoFilter === 'with' ? hasPhoto : !hasPhoto)
     const matchTelegram = tab !== 'active' || matchesTelegramFilter(s.telegramLinked, telegramFilter)
-    return matchSearch && matchClass && matchTeacher && matchGender && matchBalance && matchDebtRange && matchActive && matchGrade && matchBirthday && matchPhoto && matchTelegram
+    return matchSearch && matchClass && matchTeacher && matchBalance && matchDebtRange && matchActive && matchGrade && matchBirthday && matchPhoto && matchTelegram
   })
     .sort((a, b) => {
       if (sort === 'ball-desc' || sort === 'ball-asc') {
@@ -444,7 +441,7 @@ export function StudentsPage() {
       // "Yangi kiritilgani tepada": tizimga kiritilgan vaqt (bo'lmasa qabul sanasi) bo'yicha kamayish.
       return (b.createdAt || b.enrollmentDate || '').localeCompare(a.createdAt || a.enrollmentDate || '')
     }),
-  [source, search, classFilter, teacherFilter, genderFilter, balanceFilter, debtRangeOn, debtMinNum, debtMaxNum, activeFilter, gradeFilter, birthdayToday, todayMonthDay, photoFilter, sort, ballMap, tab, telegramFilter])
+  [source, search, classFilter, teacherFilter, balanceFilter, debtRangeOn, debtMinNum, debtMaxNum, activeFilter, gradeFilter, birthdayToday, todayMonthDay, photoFilter, sort, ballMap, tab, telegramFilter])
 
   /** Filtrlangan ro'yxatdagi JAMI qarz (musbat son) — toolbar o'ng tomonida ko'rsatiladi. */
   const filteredDebtTotal = useMemo(
@@ -467,7 +464,7 @@ export function StudentsPage() {
   // qidirib bir o'quvchini belgilab, keyin boshqasini qidirib belgilay olishi uchun.
   useEffect(() => {
     setPage(1)
-  }, [search, classFilter, teacherFilter, genderFilter, balanceFilter, debtMin, debtMax, activeFilter, gradeFilter, photoFilter, birthdayToday, sort, tab, pageSize])
+  }, [search, classFilter, teacherFilter, balanceFilter, debtMin, debtMax, activeFilter, gradeFilter, photoFilter, birthdayToday, sort, tab, pageSize])
   // Faqat tab (faol/arxiv/hammasi) almashganda tanlovni tozalaymiz — bu boshqa ro'yxat.
   useEffect(() => {
     setSelected(new Set())
@@ -520,7 +517,6 @@ export function StudentsPage() {
     search !== '' ||
     classFilter !== 'all' ||
     teacherFilter !== 'all' ||
-    genderFilter !== 'all' ||
     balanceFilter !== 'all' ||
     debtRangeOn ||
     activeFilter !== 'all' ||
@@ -535,7 +531,6 @@ export function StudentsPage() {
     setSearch('')
     setClassFilter('all')
     setTeacherFilter('all')
-    setGenderFilter('all')
     setBalanceFilter('all')
     setDebtMin('')
     setDebtMax('')
@@ -565,12 +560,11 @@ export function StudentsPage() {
   const handleExport = () => {
     exportToCsv(
       'oquvchilar.csv',
-      ['F.I.SH', 'Guruh', 'Holat', 'Jinsi', "Tug'ilgan kun", 'Manzil', 'Ota-ona', 'Telefon', 'Balans', 'Chegirma'],
+      ['F.I.SH', 'Guruh', 'Holat', "Tug'ilgan kun", 'Manzil', 'Ota-ona', 'Telefon', 'Balans', 'Chegirma'],
       selectedStudents.map((s) => [
         s.fullName,
         s.groups && s.groups.length > 0 ? s.groups.join(', ') : s.className,
         memberStateInfo(s).label,
-        genderLabel(s.gender),
         formatDate(s.birthDate),
         s.address,
         s.parentFullName,
@@ -961,15 +955,6 @@ export function StudentsPage() {
               ))}
           </select>
           <select
-            value={genderFilter}
-            onChange={(e) => setGenderFilter(e.target.value as 'all' | Gender)}
-            className={control}
-          >
-            <option value="all">Barcha jinslar</option>
-            <option value="male">{genderLabels.male}</option>
-            <option value="female">{genderLabels.female}</option>
-          </select>
-          <select
             value={balanceFilter}
             onChange={(e) => {
               const v = e.target.value as BalanceFilter
@@ -1280,7 +1265,6 @@ export function StudentsPage() {
                   <th>F.I.SH</th>
                   <th>Guruh</th>
                   <th>Holat</th>
-                  <th>Jinsi</th>
                   <th>Tug'ilgan kun</th>
                   <th>Ota-ona</th>
                   <th>Telefon</th>
@@ -1342,7 +1326,6 @@ export function StudentsPage() {
                               {s.fullName}
                             </Link>
                           </strong>
-                          <span>{genderLabel(s.gender)}</span>
                         </div>
                       </div>
                     </td>
@@ -1389,7 +1372,6 @@ export function StudentsPage() {
                         )
                       })()}
                     </td>
-                    <td className="whitespace-nowrap text-slate-600">{genderLabel(s.gender) || '—'}</td>
                     <td className="whitespace-nowrap font-mono text-slate-600">{formatDate(s.birthDate)}</td>
                     <td className="whitespace-nowrap text-slate-600">{s.parentFullName}</td>
                     <td className="whitespace-nowrap font-mono text-slate-600">{formatPhone(s.parentPhone)}</td>
@@ -1490,7 +1472,7 @@ export function StudentsPage() {
                 ))}
                 {filtered.length === 0 && (
                   <tr>
-                    <td colSpan={tab === 'archived' ? 14 : 13} className="px-4 py-12 text-center text-slate-400">
+                    <td colSpan={tab === 'archived' ? 13 : 12} className="px-4 py-12 text-center text-slate-400">
                       {tab === 'archived' ? 'Arxivda o\'quvchi yo\'q' : 'Hech narsa topilmadi'}
                     </td>
                   </tr>

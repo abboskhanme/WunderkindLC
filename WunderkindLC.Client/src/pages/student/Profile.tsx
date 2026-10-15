@@ -12,7 +12,6 @@ import {
   Phone,
   Settings,
   Sparkles,
-  UserRound,
   type LucideIcon,
 } from 'lucide-react'
 import { useAuth } from '@/context/auth-context'
@@ -90,11 +89,9 @@ export function StudentProfileScreen() {
   const p = me.data
   const fullName = p?.fullName || user?.fullName || ''
   const current = (groups.data ?? []).filter((g) => g.state in GROUP_STATE)
-  const gender = p?.gender ? (p.gender === 'male' ? "O'g'il bola" : 'Qiz bola') : ''
   const info: [LucideIcon, string, string][] = [
     p?.birthDate ? [CalendarDays, "Tug'ilgan sana", fmtDate(p.birthDate)] : null,
     p?.enrollmentDate ? [GraduationCap, "O'qishga qabul qilingan", fmtDate(p.enrollmentDate)] : null,
-    gender ? [UserRound, 'Jinsi', gender] : null,
   ].filter((x): x is [LucideIcon, string, string] => !!x)
 
   return (

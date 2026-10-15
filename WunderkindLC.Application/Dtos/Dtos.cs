@@ -80,7 +80,7 @@ public record ChangePasswordRequest(string CurrentPassword, string NewPassword);
 /// avtomatik 998 prefiksi qo'shiladi. Standartlashtirilgan format: +998-XX-XXX-XX-XX.
 /// </summary>
 public record StudentPayload(
-    string FullName, string BirthDate, string Address, string Gender,
+    string FullName, string BirthDate, string Address,
     string? ParentFullName, string? ParentPhone, string ClassName, string? EnrollmentDate,
     string? NewPassword = null,
     int? DiscountPct = null, decimal? DiscountAmount = null, string? DiscountNote = null,
@@ -1198,7 +1198,7 @@ public record TodayLessonsDto(string Date, int DayIndex, List<TodayLessonMonitor
 /* ---------- Class performance / rating ---------- */
 public record SubjectDto(string Id, string Name, decimal Price = 0);
 public record StudentDto(
-    string Id, string FullName, string BirthDate, string Address, string Gender,
+    string Id, string FullName, string BirthDate, string Address,
     string ParentFullName, string ParentPhone, string ClassName, string EnrollmentDate, decimal Balance,
     int DiscountPct = 0, decimal DiscountAmount = 0, string DiscountNote = "",
     string LastName = "", string FirstName = "", string MiddleName = "",
@@ -1436,7 +1436,7 @@ public record MonthlyAttendanceDto(
 public record StudentNotebookDto(
     // Profil
     string Id, string FullName, string ClassName, string HomeroomTeacher,
-    string ParentFullName, string ParentPhone, string Gender, string BirthDate,
+    string ParentFullName, string ParentPhone, string BirthDate,
     string EnrollmentDate, decimal Balance, string? PhotoUrl,
     // Shaxsiy ma'lumotlar
     string Address, int DiscountPct, decimal DiscountAmount, string DiscountNote,
@@ -1809,7 +1809,7 @@ public record TeacherClassDto(
 /* ---------- Student portal (ilova) ---------- */
 /// <summary>O'quvchining o'z profili (ilovada ko'rsatish uchun).</summary>
 public record StudentProfileDto(
-    string Id, string FullName, string ClassName, string BirthDate, string Gender,
+    string Id, string FullName, string ClassName, string BirthDate,
     string ParentFullName, string ParentPhone, string EnrollmentDate,
     string? PhotoUrl = null, string? ParentPhotoUrl = null);
 /// <summary>O'quvchi jadvalidagi bitta dars (fan, o'qituvchi, kun, dars raqami, vaqt).</summary>

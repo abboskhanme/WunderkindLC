@@ -395,7 +395,7 @@ public class RatingEngineTests
             var firstCls = classById.TryGetValue(groupIds[0], out var c0) ? c0 : null;
             var b = balls.GetValueOrDefault(st.Id);
             result.Add(new StudentRatingRowDto(
-                new StudentDto(st.Id, st.FullName, st.BirthDate, st.Address, st.Gender, st.ParentFullName, st.ParentPhone,
+                new StudentDto(st.Id, st.FullName, st.BirthDate, st.Address, st.ParentFullName, st.ParentPhone,
                     st.ClassName, st.EnrollmentDate, st.Balance, LoginBlocked: st.LoginBlocked),
                 firstCls?.Name ?? st.ClassName, firstCls?.Grade ?? 0, average, attendance, b?.Ball ?? 0, groupIds,
                 AvgBall: b?.AvgBall ?? 0, GroupCount: b?.GroupCount ?? 0,

@@ -41,7 +41,6 @@ export function payloadFromStudent(initial: Student): StudentPayload {
     birthDate: initial.birthDate,
     birthCertificateUrl: initial.birthCertificateUrl ?? null,
     address: initial.address,
-    gender: initial.gender,
     phone: initial.phone ?? '',
     fatherFullName: initial.fatherFullName ?? '',
     fatherPhone: initial.fatherPhone ?? '',

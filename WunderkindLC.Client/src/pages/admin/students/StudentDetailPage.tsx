@@ -11,7 +11,6 @@ import {
   DoorOpen, LogIn, LogOut, RefreshCw, Wifi, WifiOff, Trophy,
 } from 'lucide-react'
 import { StudentRatingSection } from '@/components/rating/StudentRatingSection'
-import { genderLabel } from '@/config/constants'
 import {
   Bar, BarChart, Cell, CartesianGrid, Legend,
   ResponsiveContainer, Tooltip, XAxis, YAxis,
@@ -959,7 +958,6 @@ export function StudentDetailPage() {
                 <h2 className="font-semibold text-slate-800">Shaxsiy ma'lumotlar</h2>
               </div>
               <dl className="divide-y divide-slate-100">
-                <InfoLine icon={User} label="Jinsi" value={genderLabel(data.gender) || '—'} />
                 <InfoLine icon={Cake} label="Tug'ilgan kun" value={data.birthDate ? formatDate(data.birthDate) : '—'} />
                 <InfoLine icon={CalendarPlus} label="Qabul sanasi" value={data.enrollmentDate ? formatDate(data.enrollmentDate) : '—'} />
                 <InfoLine icon={BookOpen} label="Sinf" value={schoolGradeLabel(data.schoolGradeNow) || '—'} />

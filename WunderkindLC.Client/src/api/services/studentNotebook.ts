@@ -37,7 +37,6 @@ export interface StudentNotebook {
   homeroomTeacher: string
   parentFullName: string
   parentPhone: string
-  gender: string
   birthDate: string
   enrollmentDate: string
   balance: number

@@ -22,7 +22,8 @@ namespace WunderkindLC.Application.Services;
 /// </summary>
 public static class StudentImportPlan
 {
-    /// <summary>Exceldan o'qilgan qator (ustunlar shablon tartibida).</summary>
+    /// <summary>Exceldan o'qilgan qator (ustunlar shablon tartibida). <c>Gender</c> — eski «Jinsi» ustuni FAQAT
+    /// ustunlar siljimasligi uchun o'qiladi; 2026-10-15 dan o'quvchida jins yo'q, qiymati hech qayerga yozilmaydi.</summary>
     public sealed record Row(
         int ExcelRow, string FullName, string Phone, string FatherName, string FatherPhone,
         string MotherName, string MotherPhone, string Group, string Status, string BirthDate,

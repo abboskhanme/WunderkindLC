@@ -202,7 +202,7 @@ public sealed class StudentTools(McpToolContext t)
 
         return t.Json(new
         {
-            st.Id, st.FullName, st.Phone, st.Gender, st.BirthDate, st.Address, st.EnrollmentDate,
+            st.Id, st.FullName, st.Phone, st.BirthDate, st.Address, st.EnrollmentDate,
             schoolGrade = st.SchoolGradeNow,
             st.IsArchived, st.ArchivedAt, st.ArchiveReason,
             parent = new

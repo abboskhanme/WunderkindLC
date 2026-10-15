@@ -101,7 +101,7 @@ export function PrivacyPolicyPage() {
               <ul className="mt-2 list-disc space-y-2 pl-5">
                 <li>
                   <b>Hisob va shaxsiy ma'lumotlar:</b> login va parol, ism-familiya, tug'ilgan sana,
-                  jinsi, o'quvchi va ota-onaning telefon raqami, guruh/sinf, qabul sanasi, profil
+                  o'quvchi va ota-onaning telefon raqami, guruh/sinf, qabul sanasi, profil
                   surati (agar yuklangan bo'lsa). Bu ma'lumotlarni <b>o'quv markazi kiritadi</b>;
                   ilovada siz ularni asosan ko'rasiz.
                 </li>

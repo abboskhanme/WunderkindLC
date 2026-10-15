@@ -13,7 +13,6 @@ export interface StudentProfile {
   fullName: string
   className: string
   birthDate: string
-  gender: string
   parentFullName: string
   parentPhone: string
   enrollmentDate: string

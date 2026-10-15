@@ -14,7 +14,7 @@ public static class Analytics
     private static double Round1(double v) => Math.Round(v, 1);
 
     private static StudentDto Map(Student s) => new(
-        s.Id, s.FullName, s.BirthDate, s.Address, s.Gender,
+        s.Id, s.FullName, s.BirthDate, s.Address,
         s.ParentFullName, s.ParentPhone, s.ClassName, s.EnrollmentDate, s.Balance);
 
     public static ClassResult BuildClass(

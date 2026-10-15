@@ -5,7 +5,6 @@ import type { PhoneMatch, StudentPayload } from '@/api/services/students'
 import { archiveStudent, updateStudent } from '@/api/services/students'
 import { PhoneInput } from '@/components/ui/PhoneInput'
 import { ReasonPromptModal } from '@/components/ui/ReasonPromptModal'
-import { genderOptions } from '@/config/constants'
 import { apiErrorMessage } from '@/lib/utils'
 import { readBackState } from '@/lib/nav'
 import { PhoneDupeModal } from '../PhoneDupeModal'
@@ -132,20 +131,6 @@ export function EditTab({
               <TextField value={form.middleName ?? ''} onChange={(e) => update('middleName', e.target.value)} />
             </FormField>
           )}
-          {/* Jins IXTIYORIY (2026-10-09) — «Tanlang» = ko'rsatilmagan. */}
-          <FormField label="Jinsi">
-            <SelectField
-              value={form.gender}
-              onChange={(e) => update('gender', e.target.value as StudentPayload['gender'])}
-            >
-              <option value="">Tanlang</option>
-              {genderOptions.map((g) => (
-                <option key={g.value} value={g.value}>
-                  {g.label}
-                </option>
-              ))}
-            </SelectField>
-          </FormField>
           <FormField label="Tug'ilgan sanasi">
             <TextField type="date" value={form.birthDate} onChange={(e) => update('birthDate', e.target.value)} />
           </FormField>

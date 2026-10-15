@@ -196,7 +196,7 @@ public partial class StudentPortalController(
         // Guruh nomi — ASOSIY (tirik) a'zolikdan; `ClassName` faqat zaxira (qarang: PrimaryGroupAsync).
         var primary = await PrimaryGroupAsync(s);
         return new StudentProfileDto(
-            s.Id, s.FullName, primary?.Name ?? s.ClassName, s.BirthDate, s.Gender,
+            s.Id, s.FullName, primary?.Name ?? s.ClassName, s.BirthDate,
             s.ParentFullName, s.ParentPhone, s.EnrollmentDate,
             s.BirthCertificateUrl, s.ParentPassportUrl);
     }
@@ -454,7 +454,7 @@ public partial class StudentPortalController(
         // Bugungi darslar/baholar va oylik — ASOSIY GURUH bo'yicha (qarang: PrimaryGroupAsync).
         var cls = await PrimaryGroupAsync(s);
         var profile = new StudentProfileDto(
-            s.Id, s.FullName, cls?.Name ?? s.ClassName, s.BirthDate, s.Gender,
+            s.Id, s.FullName, cls?.Name ?? s.ClassName, s.BirthDate,
             s.ParentFullName, s.ParentPhone, s.EnrollmentDate,
             s.BirthCertificateUrl, s.ParentPassportUrl);
         var meta = await refCache.MetaAsync();

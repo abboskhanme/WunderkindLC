@@ -34,8 +34,6 @@ const empty: StudentPayload = {
   birthDate: '',
   birthCertificateUrl: null,
   address: '',
-  // Jins IXTIYORIY va formada SO'RALMAYDI (2026-10-09) — `''` = ko'rsatilmagan ("Erkak" deb taxmin qilinmaydi).
-  gender: '',
   phone: '',
   fatherFullName: '',
   fatherPhone: '',
@@ -267,8 +265,7 @@ export function StudentFormModal({ open, onClose, onSubmit, initial }: Props) {
               />
             )}
           </div>
-          {/* «Jinsi» maydoni OLIB TASHLANDI (2026-10-09, jins ixtiyoriy). Tahrirda saqlangan qiymat
-              `payloadFromStudent` orqali o'zgarishsiz qaytadi; kerak bo'lsa profil «Tahrirlash» tabida. */}
+          {/* Jins o'quvchidan butunlay olib tashlangan (2026-10-15). */}
           <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
             <Input
               label="Tug'ilgan kun"

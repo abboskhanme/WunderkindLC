@@ -22,7 +22,7 @@ public class StudentPhotoTests
         var s = new Student { FullName = "Ali Valiyev", BirthCertificateUrl = "/uploads/foto.jpg" };
 
         var dto = new Application.Dtos.StudentProfileDto(
-            s.Id, s.FullName, s.ClassName, s.BirthDate, s.Gender,
+            s.Id, s.FullName, s.ClassName, s.BirthDate,
             s.ParentFullName, s.ParentPhone, s.EnrollmentDate,
             s.BirthCertificateUrl, s.ParentPassportUrl);
 

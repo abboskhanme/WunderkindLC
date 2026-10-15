@@ -85,7 +85,6 @@ public class AuditService(IAppDbContext db, IHttpContextAccessor http)
         s.FullName,
         s.Phone,
         s.BirthDate,
-        s.Gender,
         s.Address,
         s.ParentFullName,
         s.ParentPhone,

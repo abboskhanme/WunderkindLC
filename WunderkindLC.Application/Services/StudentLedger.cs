@@ -248,7 +248,7 @@ public static class StudentLedger
     }
 
     private static StudentDto Map(Student s, string? groupLabel = null) => new(
-        s.Id, s.FullName, s.BirthDate, s.Address, s.Gender,
+        s.Id, s.FullName, s.BirthDate, s.Address,
         s.ParentFullName, s.ParentPhone,
         string.IsNullOrEmpty(groupLabel) ? s.ClassName : groupLabel,
         s.EnrollmentDate, s.Balance,
