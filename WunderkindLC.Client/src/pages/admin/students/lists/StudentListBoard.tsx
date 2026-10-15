@@ -63,7 +63,7 @@ export function StudentListBoard({ load, columns, telegramFilter = false }: Stud
       if (balance === 'debt' && s.balance >= 0) return false
       if (balance === 'credit' && s.balance <= 0) return false
       if (moderator && (s.moderator ?? '') !== moderator) return false
-      if (telegram && !matchesTelegramFilter(s.telegramLinked, telegram)) return false
+      if (telegram && !matchesTelegramFilter(s.telegramLinked, telegram, !!s.appFirstLoginAt)) return false
       if (!needle) return true
       const phones = [s.phone, s.parentPhone, s.fatherPhone, s.motherPhone]
         .filter(Boolean)

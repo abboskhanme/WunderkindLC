@@ -10,11 +10,18 @@ import {
   type StudentColumn,
 } from './StudentListBoard'
 
-/** TELEGRAM (CRM upgrade U6b): qarindoshlik ikonkalari + soni; ulanmagan — qizil «Ulanmagan». */
+/** TELEGRAM: «Ulangan» = botga ulangan chat bor YOKI akkauntga kirilgan (egasining qarori, 2026-10-15). */
 const telegramColumn: StudentColumn = {
   key: 'telegram',
   header: 'Telegram',
-  render: (s) => <TelegramLinkCell linked={s.telegramLinked} relations={s.telegramRelations} blocked={s.telegramBlocked} />,
+  render: (s) => (
+    <TelegramLinkCell
+      linked={s.telegramLinked}
+      relations={s.telegramRelations}
+      blocked={s.telegramBlocked}
+      cabinet={!!s.appFirstLoginAt}
+    />
+  ),
 }
 
 /**

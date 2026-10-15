@@ -1,4 +1,4 @@
-import { CheckCircle2, Circle, MonitorSmartphone } from 'lucide-react'
+import { CheckCircle2, Circle } from 'lucide-react'
 import { relationLabel, sortRelations } from '@/lib/relations'
 import { cn } from '@/lib/utils'
 
@@ -18,7 +18,7 @@ export function TelegramLinkCell({
   linked?: number | null
   relations?: readonly string[] | null
   blocked?: number | null
-  /** O'quvchi akkaunti bilan kabinetga kirilganmi — chat ulanmagan bo'lsa «Kabinetga kirgan» (2026-10-15). */
+  /** O'quvchi akkaunti bilan kabinetga kirilganmi — kirgan bo'lsa ham «Ulangan» (egasining qarori, 2026-10-15). */
   cabinet?: boolean
   className?: string
 }) {
@@ -26,21 +26,18 @@ export function TelegramLinkCell({
   const who = sortRelations(relations ?? []).map(relationLabel).join(', ')
   return (
     <span className={cn('inline-flex flex-wrap items-center gap-1 whitespace-nowrap', className)}>
-      {n === 0 && cabinet ? (
-        <span
-          className="inline-flex items-center gap-1 rounded-md bg-sky-50 px-2 py-0.5 text-xs font-medium text-sky-700"
-          title="Akkauntga kirgan — xabarlar kabinetdagi bildirishnomaga keladi. Telegram'ga ham kelishi uchun Panelni bot ichidan ochsin."
-        >
-          <MonitorSmartphone className="h-3.5 w-3.5" /> Kabinetga kirgan
-        </span>
-      ) : n === 0 ? (
+      {n === 0 && !cabinet ? (
         <span className="inline-flex items-center gap-1 rounded-md bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700">
           <Circle className="h-3.5 w-3.5" /> Ulanmagan
         </span>
       ) : (
         <span
           className="inline-flex items-center gap-1 rounded-md bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700"
-          title={`Telegram botga ulangan: ${n} ta chat${who ? ` (${who})` : ''}`}
+          title={
+            n > 0
+              ? `Telegram botga ulangan: ${n} ta chat${who ? ` (${who})` : ''}`
+              : "Kabinetga kirgan — Telegram chati keyingi safar Panel bot ichidan ochilganda o'zi ulanadi"
+          }
         >
           <CheckCircle2 className="h-3.5 w-3.5" /> Ulangan
         </span>

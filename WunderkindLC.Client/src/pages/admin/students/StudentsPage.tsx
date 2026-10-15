@@ -314,7 +314,7 @@ export function StudentsPage() {
   const telegramCounts = useMemo(() => {
     const count = (f: TelegramFilter) =>
       students.filter((s) => matchesTelegramFilter(s.telegramLinked, f, !!s.appFirstLoginAt)).length
-    return { all: students.length, linked: count('linked'), cabinet: count('cabinet'), none: count('none') }
+    return { all: students.length, linked: count('linked'), none: count('none') }
   }, [students])
   // Sinflar kesimi — Holat filtridagi kabi JORIY ro'yxat (faol/arxiv tabi) bo'yicha sanaladi.
   const gradeCounts = useMemo(() => schoolGradeDistribution(source.map((s) => s.schoolGradeNow)), [source])

@@ -103,28 +103,28 @@ export function countLine(c: CountLineInput): string {
 }
 
 /**
- * «Telegram» ustuni filtri (U6b, klientda). 2026-10-15 (egasi: "akkauntga kirgan bo'lsa hisob qilinsin"): uchinchi
- * holat — `cabinet`: botga ulangan chat YO'Q, lekin o'quvchi akkaunti bilan kabinetga kirilgan (xabarlar kabinetdagi
- * bildirishnomaga keladi, Telegram'ga emas).
+ * «Telegram» ustuni filtri (U6b, klientda). ⚠️ 2026-10-15 (egasi: "chat botga bog'langan deb olsin hammasi kirganlarni"):
+ * «Ulangan» = botga ulangan chat BOR **yoki** o'quvchi akkaunti bilan kabinetga KIRILGAN (`cabinet`). Alohida
+ * "faqat kabinet" holati YO'Q — farq faqat katakning tooltip'ida.
  */
-export type TelegramFilter = 'all' | 'linked' | 'cabinet' | 'none'
+export type TelegramFilter = 'all' | 'linked' | 'none'
 
 export const TELEGRAM_FILTERS: { key: TelegramFilter; label: string }[] = [
   { key: 'all', label: 'Hammasi' },
-  { key: 'linked', label: 'Botga ulangan' },
-  { key: 'cabinet', label: 'Faqat kabinetga kirgan' },
+  { key: 'linked', label: 'Ulangan' },
   { key: 'none', label: 'Ulanmagan' },
 ]
 
-/** Qator filtrga mos keladimi (ulangan = bloklamagan chat kamida bitta; `cabinet` — akkauntga kirilganmi). */
+/** Ulanganmi: bloklamagan chat kamida bitta YOKI akkauntga kirilgan. */
+export const isTelegramLinked = (linked: number | null | undefined, cabinet = false): boolean =>
+  (linked ?? 0) > 0 || cabinet
+
+/** Qator filtrga mos keladimi (`cabinet` — o'quvchi akkaunti bilan kabinetga kirilganmi). */
 export function matchesTelegramFilter(
   linked: number | null | undefined,
   filter: TelegramFilter,
   cabinet = false,
 ): boolean {
   if (filter === 'all') return true
-  const n = linked ?? 0
-  if (filter === 'linked') return n > 0
-  if (filter === 'cabinet') return n === 0 && cabinet
-  return n === 0 && !cabinet
+  return filter === 'linked' ? isTelegramLinked(linked, cabinet) : !isTelegramLinked(linked, cabinet)
 }

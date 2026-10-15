@@ -146,8 +146,9 @@ chidamlilik va Telegram tezlik chegarasi — hammasi shu jadvaldan.
   `sendData` ulanishi AVTOMATIK (sessiyada bir marta, `tg-autolink:{userId}`) — «🔔 Bot xabarlarini yoqish» banneri faqat
   avtomatik urinish ulamagan bo'lsa (qayta urinish uchun) chiqadi. Testlar: `TelegramMiniAppLinkTests`.
   ⚠️ Brauzerdan kirgan akkauntni Telegram chatiga ulab BO'LMAYDI (chat id yo'q) — unga xabarlar kabinet
-  bildirishnomasi bo'lib boradi. O'quvchilar ro'yxatidagi «Telegram» ustunida bu holat ko'k «Kabinetga kirgan»
-  (`appFirstLoginAt`), filtrda «Faqat kabinetga kirgan» (`matchesTelegramFilter(..., cabinet)`).
+  bildirishnomasi bo'lib boradi. ⚠️ Egasining qarori (2026-10-15): O'quvchilar ro'yxati va «Aktiv o'quvchilar»dagi
+  «Telegram» ustuni va filtrida akkauntga KIRGAN (`appFirstLoginAt`) o'quvchi ham **«Ulangan»** (`isTelegramLinked`) —
+  alohida holat YO'Q, farq faqat tooltip'da. Bot sanoqlari (kampaniya auditoriyasi, «Bloklagan») bunga tegmaydi.
 - **Ro'yxatdan o'tish (bot, ESKI yo'l — 2026-10-13 dan OLIB TASHLANGAN, tarix uchun):** kontakt 4 raqamning ISTALGANI bilan solishtiriladi (`Phone`, `ParentPhone`,
   `FatherPhone`, `MotherPhone` — `TelegramRegistrar`); `CenterMeta.TelegramPhoneMatchField` endi O'QILMAYDI.
   Har mos o'quvchiga bitta ulanish, `Relation = TelegramRelations.Detect` (tartib: ota → ona → asosiy ota-ona → o'quvchi,
