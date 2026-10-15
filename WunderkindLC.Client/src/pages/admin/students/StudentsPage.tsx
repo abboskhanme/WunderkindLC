@@ -674,10 +674,10 @@ export function StudentsPage() {
   }
 
   /** Arxiv sababi tanlandi — backend'ga yuborish. */
-  const doArchive = (reasonId?: string) => {
+  const doArchive = (reasonId?: string, _date?: string, _retentionBonus?: boolean, note?: string) => {
     if (!archiveTarget) return
     const s = archiveTarget
-    archiveStudent(s.id, undefined, reasonId)
+    return archiveStudent(s.id, undefined, reasonId, note)
       .then(() => {
         // Faol ro'yxatdan olib tashlab, arxivga qo'shamiz. Arxiv = ketdi: server o'quvchini BARCHA
         // guruhlaridan chiqargan (balans ham o'zgargan bo'lishi mumkin) — arxiv ro'yxati serverdan
@@ -1726,6 +1726,7 @@ export function StudentsPage() {
         }
         confirmLabel="Arxivga ko'chirish"
         tone="red"
+        showNote
         onConfirm={doArchive}
         onClose={() => setArchiveTarget(null)}
       />

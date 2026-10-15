@@ -7,6 +7,10 @@ import { cn } from '@/lib/utils'
 import { localIsoDate } from '@/lib/localDate'
 
 import { DateInput } from '@/components/ui/DateInput'
+
+/** Izoh uzunligi — serverdagi `LeaveNotes.MaxLength` bilan bir xil. */
+const NOTE_MAX = 500
+
 interface Props {
   open: boolean
   /** Sabablar kategoriyasi (ReasonsPage'dagi kalit). */
@@ -24,10 +28,21 @@ interface Props {
    */
   showRetentionBonus?: boolean
   /**
+   * Erkin «Izoh» maydoni ko'rsatilsinmi — o'quvchi KETADIGAN oqimlarda (guruhdan chiqarish,
+   * arxivga ko'chirish). Ko'rsatilmasa `onConfirm` ga `note` umuman uzatilmaydi (undefined);
+   * bo'sh izoh ham `undefined`. Server uni o'quvchi profilidagi izohlarga yozadi (`LeaveNotes`).
+   */
+  showNote?: boolean
+  /**
    * Tasdiqlash. Promise qaytarsa — tugma u tugaguncha qulf, keyin (masalan xatodan so'ng) qayta
    * yoqiladi. `void` qaytarsa — oyna yopilguncha qulf (eski xatti-harakat).
    */
-  onConfirm: (reasonId: string | undefined, date?: string, retentionBonus?: boolean) => void | Promise<unknown>
+  onConfirm: (
+    reasonId: string | undefined,
+    date?: string,
+    retentionBonus?: boolean,
+    note?: string,
+  ) => void | Promise<unknown>
   onClose: () => void
 }
 
@@ -37,13 +52,14 @@ interface Props {
  */
 export function ReasonPromptModal({
   open, category, title, message, confirmLabel, tone = 'red', showDate, defaultDate,
-  showRetentionBonus, onConfirm, onClose,
+  showRetentionBonus, showNote, onConfirm, onClose,
 }: Props) {
   const [reasons, setReasons] = useState<ActionReason[]>([])
   const [selected, setSelected] = useState<string | undefined>(undefined)
   const [date, setDate] = useState('')
   /** Ushlab turish bonusi hisoblansinmi — standart holatda BELGILANGAN. */
   const [retentionBonus, setRetentionBonus] = useState(false)
+  const [note, setNote] = useState('')
   const [submitting, setSubmitting] = useState(false)
   /** SINXRON qulf — `submitting` keyingi renderda yangilanadi, tez ikkinchi bosish o'tib ketmasin. */
   const inFlightRef = useRef(false)
@@ -54,6 +70,7 @@ export function ReasonPromptModal({
     inFlightRef.current = false
     setSubmitting(false)
     setRetentionBonus(false)
+    setNote('')
     setDate(defaultDate ?? localIsoDate(new Date()))
     getActionReasons()
       .then((all) => setReasons(all.filter((r) => r.category === category)))
@@ -87,6 +104,7 @@ export function ReasonPromptModal({
                 selected,
                 showDate ? date : undefined,
                 showRetentionBonus ? retentionBonus : undefined,
+                showNote ? note.trim() || undefined : undefined,
               )
               if (r instanceof Promise)
                 void r.finally(() => {
@@ -159,6 +177,25 @@ export function ReasonPromptModal({
             <p className="text-xs text-slate-400">Sabab tanlanmaydi — to'g'ridan-to'g'ri davom etadi.</p>
           )}
         </div>
+
+        {showNote && (
+          <label className="block">
+            <span className="mb-1 block text-sm font-medium text-slate-600">
+              Izoh <span className="text-xs font-normal text-slate-400">(ixtiyoriy)</span>
+            </span>
+            <textarea
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              maxLength={NOTE_MAX}
+              rows={3}
+              placeholder="Masalan: ota-onasi bilan gaplashildi, narx qimmatlik qildi"
+              className="w-full resize-y rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 outline-none focus:border-brand-400"
+            />
+            <span className="mt-1 block text-xs text-slate-400">
+              O'quvchi profilidagi izohlarga yoziladi.
+            </span>
+          </label>
+        )}
       </div>
     </Modal>
   )

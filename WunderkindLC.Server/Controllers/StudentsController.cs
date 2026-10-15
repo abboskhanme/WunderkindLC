@@ -1297,6 +1297,9 @@ public partial class StudentsController(
     [HttpPost("{id}/archive")]
     public async Task<IActionResult> Archive(string id, ArchiveStudentRequest req)
     {
+        var (noteText, noteError) = LeaveNotes.Clean(req.Note);
+        if (noteError is not null) return BadRequest(new { message = noteError });
+
         var student = await db.Students.FindAsync(id);
         if (student is null) return NotFound();
         if (student.IsArchived)
@@ -1347,6 +1350,9 @@ public partial class StudentsController(
                 + (leave.Closed > 0 ? $" — {leave.Closed} ta guruhdan chiqarildi: {string.Join(", ", leave.GroupNames)}" : "")
                 + (string.IsNullOrWhiteSpace(student.ArchiveReason) ? "" : $": \"{student.ArchiveReason}\""),
             studentId: student.Id);
+        // Erkin izoh — profil izohlariga (`LeaveNotes`), arxiv sababi (`ArchiveReason`) o'zgarmaydi.
+        if (noteText is not null)
+            LeaveNotes.Add(db, student.Id, LeaveNotes.ArchiveText(noteText), ActorId ?? "", Actor);
 
         await db.SaveChangesAsync();
         return Ok(new { closedMemberships = leave.Closed, restored = leave.Restored, groups = leave.GroupNames });

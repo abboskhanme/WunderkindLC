@@ -1203,8 +1203,9 @@ public record StudentDto(
     bool IsArchived = false, string? ArchivedAt = null, string? ArchiveReason = null,
     bool LoginBlocked = false);
 
-/// <summary>O'quvchini arxivlash so'rovi — sababini saqlaydi (ReasonId yo'ki Reason).</summary>
-public record ArchiveStudentRequest(string? Reason = null, string? ReasonId = null);
+/// <summary>O'quvchini arxivlash so'rovi — sababini saqlaydi (ReasonId yo'ki Reason).
+/// <c>Note</c> — ixtiyoriy erkin izoh, o'quvchi profilidagi izohlarga yoziladi (<c>LeaveNotes</c>).</summary>
+public record ArchiveStudentRequest(string? Reason = null, string? ReasonId = null, string? Note = null);
 
 /// <summary>O'quvchi rasmini (profil surati) o'rnatish/o'chirish. <c>PhotoUrl</c> — serverga
 /// yuklangan fayl manzili ("/uploads/..."); bo'sh yoki null bo'lsa rasm O'CHIRILADI.

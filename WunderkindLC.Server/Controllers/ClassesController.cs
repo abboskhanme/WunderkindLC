@@ -1026,10 +1026,14 @@ public partial class ClassesController(AppDbContext db, AuditService audit, ILog
     /// 2026-10-06). Muzlatilgan a'zolik hisobi muzlatishda allaqachon yopilgan, sinovda hisob yo'q.</para>
     /// </summary>
     /// <param name="date">Chiqish sanasi ("yyyy-MM-dd"); bo'sh — bugun. Kelajak sana bo'lmaydi.</param>
+    /// <param name="note">Ixtiyoriy erkin izoh — o'quvchi profilidagi izohlarga yoziladi (<see cref="LeaveNotes"/>).</param>
     [HttpDelete("{id}/members/{studentId}")]
     public async Task<IActionResult> RemoveMember(string id, string studentId, [FromQuery] string? reasonId = null,
-                                                  [FromQuery] string? date = null)
+                                                  [FromQuery] string? date = null, [FromQuery] string? note = null)
     {
+        var (noteText, noteError) = LeaveNotes.Clean(note);
+        if (noteError is not null) return BadRequest(new { message = noteError });
+
         var sg = await db.StudentGroups
             .FirstOrDefaultAsync(x => x.GroupId == id && x.StudentId == studentId && x.IsActive);
         if (sg is null) return NotFound(new { message = "Faol a'zolik topilmadi" });
@@ -1079,6 +1083,9 @@ public partial class ClassesController(AppDbContext db, AuditService audit, ILog
                     + (restored > 0 ? $" — keyingi oylar hisobi bekor qilindi: {AuditService.Money(restored)} so'm" : "")
                     + (reason.Length > 0 ? $" — sabab: {reason}" : ""),
                 studentId: studentId);
+            // Izoh audit matniga EMAS (sabab o'sha matn oxiridan o'qiladi) — profil izohlariga.
+            if (noteText is not null)
+                LeaveNotes.Add(db, studentId, LeaveNotes.GroupLeaveText(cls?.Name ?? id, leftAt, noteText), ActorId, Actor);
         }
     }
 

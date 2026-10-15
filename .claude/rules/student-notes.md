@@ -92,3 +92,18 @@ eslatmalar bo'ladi. Bunday jamlanma "bo'limlararo o'qish" uchun kerak emas
 
 Izoh QO'SHISH — `students:create` (server `PermissionRules.CanWrite`); UI'da ham forma shu bilan
 darvozalangan, aks holda faqat ko'rish ruxsati bor xodim tugmani bosib 403 olardi.
+
+## 5. KETISH IZOHI — chiqarish va arxivlash oynasidan (2026-10-15)
+
+«Guruhdan chiqarish» (`RemoveMember`, guruh sahifasi · a'zolar oynasi · o'quvchi profili) va «Arxivga
+ko'chirish» (yakka — profil «Tahrirlash» va ro'yxat; ommaviyda YO'Q) oynalarida ixtiyoriy **«Izoh»**
+maydoni (`ReasonPromptModal` → `showNote`). Server uni ODDIY izoh qilib shu jadvalga yozadi
+(`LeaveNotes`, amal bilan bitta tranzaksiyada, muallif — amalni qilgan xodim):
+«Guruhdan chiqarildi («A guruh», 15.10.2026): …» / «Arxivga ko'chirildi: …».
+
+- Bo'sh izoh — hech narsa yozilmaydi; 500 belgidan uzun — 400 (jimgina qirqilmaydi).
+- ⚠️ Izoh `Membership` audit matniga QO'SHILMAYDI: KPI, AI tahlil va «Ketish sabablari» sababni o'sha matn
+  OXIRIDAN («— sabab: X») o'qiydi (`MembershipReasons.ReasonFromAuditSummary`) — izoh sababga yopishardi.
+  `LeaveNotesTests` buni qulflaydi.
+- Arxiv sababi (`ArchiveReason`) izohdan mustaqil — o'zgarmaydi.
+

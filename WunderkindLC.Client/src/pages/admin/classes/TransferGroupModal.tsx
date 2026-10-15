@@ -1,9 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { ArrowLeftRight } from 'lucide-react'
-import type { ActionReason, Group, Teacher } from '@/types'
+import type { Group, Teacher } from '@/types'
 import { getClasses, transferMember } from '@/api/services/classes'
 import { getTeachers } from '@/api/services/teachers'
-import { getActionReasons } from '@/api/services/actionReasons'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Select } from '@/components/ui/Input'
@@ -18,45 +17,34 @@ interface Props {
   studentName: string
   fromGroupId: string
   fromGroupName: string
-  /**
-   * Eski guruhdagi a'zolik holati — chiqish SABABLARI shu holatning kategoriyasidan olinadi
-   * (guruhdan chiqarishdagi bilan bir xil: remove_active / remove_frozen / remove_trial).
-   * Berilmasa — aktiv (guruh almashtirish odatda aktiv o'quvchi uchun).
-   */
-  memberStatus?: string
   /** Muvaffaqiyatli o'tkazilgach — chaqiruvchi ro'yxatini yangilash uchun. */
   onDone: () => void
 }
-
-/** Eski guruhdan chiqish sababi kategoriyasi — `RemoveMember` dagi bilan bir xil xarita. */
-const leaveCategory = (status?: string) =>
-  status === 'frozen' ? 'remove_frozen' : status === 'trial' ? 'remove_trial' : 'remove_active'
 
 /**
  * O'quvchini joriy guruhdan boshqa (mavjud) guruhga o'tkazish: o'quvchi eski guruhdan CHIQADI
  * (hisob shu sanagacha, «Guruhdan chiqarilganlar» tarixida qoladi — muzlatilgan bo'lib QOLMAYDI),
  * yangi guruh darhol aktivlashtiriladi — bitta modal, ikkita sana bilan.
+ *
+ * ⚠️ SABAB SO'RALMAYDI (foydalanuvchi qarori, 2026-10-15): guruh almashtirish ketish emas. Server
+ * `reasonId` ni hamon qabul qiladi (ixtiyoriy), lekin oyna uni yubormaydi.
  */
 export function TransferGroupModal({
-  open, onClose, studentId, studentName, fromGroupId, fromGroupName, memberStatus, onDone,
+  open, onClose, studentId, studentName, fromGroupId, fromGroupName, onDone,
 }: Props) {
   const [groups, setGroups] = useState<Group[]>([])
   const [teachers, setTeachers] = useState<Teacher[]>([])
-  const [reasons, setReasons] = useState<ActionReason[]>([])
   const [teacherId, setTeacherId] = useState('')
   const [toGroupId, setToGroupId] = useState('')
-  const [reasonId, setReasonId] = useState('')
   const [freezeDate, setFreezeDate] = useState(todayIso())
   const [activateDate, setActivateDate] = useState(todayIso())
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
-  const category = leaveCategory(memberStatus)
 
   useEffect(() => {
     if (!open) return
     setTeacherId('')
     setToGroupId('')
-    setReasonId('')
     setFreezeDate(todayIso())
     setActivateDate(todayIso())
     setError('')
@@ -69,11 +57,7 @@ export function TransferGroupModal({
         setGroups([])
         setTeachers([])
       })
-    // Sabablar — ikkilamchi ma'lumot: yuklanmasa ham o'tkazish ishlaydi (sabab ixtiyoriy).
-    getActionReasons()
-      .then((all) => setReasons(all.filter((r) => r.category === category).sort((a, b) => a.order - b.order)))
-      .catch(() => setReasons([]))
-  }, [open, fromGroupId, category])
+  }, [open, fromGroupId])
 
   // Faqat guruhi bor o'qituvchilar tanlov ro'yxatida ko'rinadi.
   const teacherOptions = useMemo(
@@ -93,7 +77,7 @@ export function TransferGroupModal({
     setSaving(true)
     setError('')
     try {
-      await transferMember(fromGroupId, studentId, toGroupId, freezeDate, activateDate, reasonId || undefined)
+      await transferMember(fromGroupId, studentId, toGroupId, freezeDate, activateDate)
       onDone()
       onClose()
     } catch (err) {
@@ -188,17 +172,6 @@ export function TransferGroupModal({
           </div>
         )}
 
-        {toGroupId && (
-          <Select label="Eski guruhdan chiqish sababi" value={reasonId} onChange={(e) => setReasonId(e.target.value)}>
-            <option value="">— sabab ko'rsatilmagan —</option>
-            {reasons.map((r) => (
-              <option key={r.id} value={r.id}>
-                {r.label}
-              </option>
-            ))}
-          </Select>
-        )}
-
         {error && <p className="text-sm text-red-600">{error}</p>}
 
         <p className="text-xs text-slate-400">
@@ -206,8 +179,7 @@ export function TransferGroupModal({
           o'quvchi eski guruhdan chiqadi (guruhning tarixida qoladi); yangi guruhda esa shu sanadan
           qisman oylik hisoblanib darhol aktivlashtiriladi. O'quvchi shu oy uchun eski guruhga allaqachon to'lagan bo'lsa —
           ortib qolgan summa avtomatik YANGI guruhga o'tkaziladi (to'lagan o'quvchi yangi guruhda
-          qarzdor bo'lib ko'rinmasligi uchun). Shu fandagi chegirma ham yangi guruhga o'tadi; sabab
-          «Ketish sabablari» hisobotida ko'rinadi.
+          qarzdor bo'lib ko'rinmasligi uchun). Shu fandagi chegirma ham yangi guruhga o'tadi.
         </p>
       </div>
     </Modal>

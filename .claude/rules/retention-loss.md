@@ -74,7 +74,7 @@ surati, `CreatedAt`). Yagona yozuvchi — `MembershipReasons.Record`, chaqirilad
 | Amal | `Action` | `Date` |
 |---|---|---|
 | Guruhdan chiqarish (`RemoveMember`) | `remove` | chiqish sanasi |
-| Guruh almashtirish, eski tomoni (`TransferMember`) | `transfer` | eski guruhdan chiqish sanasi |
+| Guruh almashtirish, eski tomoni (`TransferMember`) | `transfer` | eski guruhdan chiqish sanasi. ⚠️ 2026-10-15 dan oyna sabab SO'RAMAYDI (foydalanuvchi qarori) — server `reasonId` ni hamon qabul qiladi, lekin yangi almashtirishlar sababsiz |
 | Muzlatish, yakka va ommaviy (`FreezeCoreAsync`) | `freeze` | muzlatish sanasi |
 | Guruhni yopish (`Close` → `CloseMembersAsync`) | `close` | yopish sanasi |
 | O'quvchini ARXIVLASH (`StudentsController.Archive` → `StudentArchiving`) | `remove` | arxiv sanasi (sabab — arxiv sababi) |

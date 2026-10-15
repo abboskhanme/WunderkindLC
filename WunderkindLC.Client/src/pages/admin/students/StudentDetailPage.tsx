@@ -688,6 +688,7 @@ export function StudentDetailPage() {
     reasonId: string | undefined,
     date?: string,
     retentionBonus?: boolean,
+    note?: string,
   ) => {
     if (!id || !groupModal || !groupReasonAction || groupBusy) return
     setGroupBusy(true)
@@ -702,7 +703,7 @@ export function StudentDetailPage() {
         // Bonus ptichkasi faqat aktivlashtirish oynasida ko'rinadi — qolgan oqimlarda `undefined`.
         await activateMember(groupModal.groupId, id, date ?? groupActionDate, retentionBonus)
       } else if (groupReasonAction === 'remove') {
-        await removeGroupMember(groupModal.groupId, id, reasonId, date)
+        await removeGroupMember(groupModal.groupId, id, reasonId, date, note)
       } else {
         await returnMemberToTrial(groupModal.groupId, id, reasonId)
       }
@@ -2064,6 +2065,7 @@ export function StudentDetailPage() {
         showDate={groupReasonAction === 'freeze' || groupReasonAction === 'yearFreeze' || groupReasonAction === 'activate'
           || (groupReasonAction === 'remove' && groupModal?.status === 'active')}
         showRetentionBonus={groupReasonAction === 'activate' && canSetBonus}
+        showNote={groupReasonAction === 'remove'}
         defaultDate={groupActionDate}
         onConfirm={confirmGroupReason}
         onClose={() => setGroupReasonAction(null)}

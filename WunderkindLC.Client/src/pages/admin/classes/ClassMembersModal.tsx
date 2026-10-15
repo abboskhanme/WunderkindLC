@@ -223,7 +223,12 @@ Kerak bo'lsa "Parolni tiklash" orqali yangi parol bering.`)
   }
 
   /** Sabab modali tasdiqlangach amalni bajaradi. */
-  const confirmReasonAction = async (reasonId: string | undefined, date?: string) => {
+  const confirmReasonAction = async (
+    reasonId: string | undefined,
+    date?: string,
+    _retentionBonus?: boolean,
+    note?: string,
+  ) => {
     if (!group || !reasonAction || busy) return
     const { kind, m } = reasonAction
     setBusy(true)
@@ -231,7 +236,7 @@ Kerak bo'lsa "Parolni tiklash" orqali yangi parol bering.`)
       // «Aktiv muzlatish» — AYNAN o'sha endpoint, farq faqat bayroqda.
       if (kind === 'freeze' || kind === 'yearFreeze')
         await freezeMember(group.id, m.studentId, date ?? localIsoDate(new Date()), reasonId, kind === 'yearFreeze')
-      else if (kind === 'remove') await removeGroupMember(group.id, m.studentId, reasonId, date)
+      else if (kind === 'remove') await removeGroupMember(group.id, m.studentId, reasonId, date, note)
       else await returnMemberToTrial(group.id, m.studentId, reasonId)
       const fresh = await getGroupMembers(group.id)
       setMembers(fresh)
@@ -682,6 +687,7 @@ Kerak bo'lsa "Parolni tiklash" orqali yangi parol bering.`)
         tone={reasonAction?.kind === 'freeze' || reasonAction?.kind === 'yearFreeze' ? 'sky' : reasonAction?.kind === 'return' ? 'brand' : 'red'}
         showDate={reasonAction?.kind === 'freeze' || reasonAction?.kind === 'yearFreeze'
           || (reasonAction?.kind === 'remove' && reasonAction.m.status === 'active')}
+        showNote={reasonAction?.kind === 'remove'}
         onConfirm={confirmReasonAction}
         onClose={() => setReasonAction(null)}
       />
@@ -732,7 +738,6 @@ Kerak bo'lsa "Parolni tiklash" orqali yangi parol bering.`)
           studentName={transferMemberTarget?.fullName ?? ''}
           fromGroupId={group.id}
           fromGroupName={group.name}
-          memberStatus={transferMemberTarget?.status}
           onDone={async () => {
             const fresh = await getGroupMembers(group.id)
             setMembers(fresh)

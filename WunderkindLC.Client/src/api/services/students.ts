@@ -307,13 +307,19 @@ export interface ArchiveStudentResult {
 /**
  * O'quvchini arxivga ko'chirish (sabab yoki reasonId bilan). Login bloklanadi va o'quvchi BARCHA
  * guruhlaridan «Guruhdan chiqarish» bilan bir xil chiqariladi (server: `StudentArchiving`).
+ * `note` — ixtiyoriy erkin izoh, o'quvchi profilidagi izohlarga yoziladi (server `LeaveNotes`).
  */
-export async function archiveStudent(id: string, reason?: string, reasonId?: string): Promise<ArchiveStudentResult> {
+export async function archiveStudent(
+  id: string,
+  reason?: string,
+  reasonId?: string,
+  note?: string,
+): Promise<ArchiveStudentResult> {
   if (USE_MOCK) {
     await delay(150)
     return { closedMemberships: 0, restored: 0, groups: [] }
   }
-  const { data } = await api.post<ArchiveStudentResult>(`/admin/students/${id}/archive`, { reason, reasonId })
+  const { data } = await api.post<ArchiveStudentResult>(`/admin/students/${id}/archive`, { reason, reasonId, note })
   return data ?? { closedMemberships: 0, restored: 0, groups: [] }
 }
 

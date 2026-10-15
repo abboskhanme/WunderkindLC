@@ -100,14 +100,13 @@ export function EditTab({
     await save(payload)
   }
 
-  const doArchive = (reasonId?: string) => {
-    archiveStudent(student.id, undefined, reasonId)
+  const doArchive = (reasonId?: string, _date?: string, _retentionBonus?: boolean, note?: string) =>
+    archiveStudent(student.id, undefined, reasonId, note)
       .then(() => {
         setArchiveOpen(false)
         navigate('/admin/students')
       })
       .catch((e) => alert(apiErrorMessage(e, 'Arxivlashda xatolik')))
-  }
 
   return (
     <ProfileSection>
@@ -236,6 +235,7 @@ export function EditTab({
         message={`"${student.fullName}" o'quvchini arxivga ko'chirasiz. U BARCHA guruhlaridan chiqariladi (joriy oy qatnashgan darslar bo'yicha yopiladi) — arxivdan qaytarilsa guruhga qayta qo'shiladi. Tarixiy ma'lumotlar (jurnal, davomat, to'lovlar) saqlanadi, oylik to'lov hisoblanmaydi va login bloklanadi.`}
         confirmLabel="Arxivga ko'chirish"
         tone="red"
+        showNote
         onConfirm={doArchive}
         onClose={() => setArchiveOpen(false)}
       />

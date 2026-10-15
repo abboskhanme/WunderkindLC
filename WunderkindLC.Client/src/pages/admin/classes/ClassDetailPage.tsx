@@ -575,6 +575,7 @@ export function ClassDetailPage() {
     reasonId: string | undefined,
     date?: string,
     retentionBonus?: boolean,
+    note?: string,
   ) => {
     if (!rosterTarget || !rosterReason || rosterBusy) return
     setRosterBusy(true)
@@ -584,7 +585,7 @@ export function ClassDetailPage() {
         await freezeMember(id, rosterTarget.studentId, date ?? rosterDate, reasonId, rosterReason === 'yearFreeze')
       // Bonus ptichkasi faqat aktivlashtirish oynasida bo'ladi — boshqa oqimlarda `undefined`.
       else if (rosterReason === 'activate') await activateMember(id, rosterTarget.studentId, date ?? rosterDate, retentionBonus)
-      else if (rosterReason === 'remove') await removeGroupMember(id, rosterTarget.studentId, reasonId, date)
+      else if (rosterReason === 'remove') await removeGroupMember(id, rosterTarget.studentId, reasonId, date, note)
       else await returnMemberToTrial(id, rosterTarget.studentId, reasonId)
       setRosterReason(null)
       setRosterTarget(null)
@@ -1888,6 +1889,7 @@ export function ClassDetailPage() {
         showDate={rosterReason === 'freeze' || rosterReason === 'yearFreeze' || rosterReason === 'activate'
           || (rosterReason === 'remove' && rosterTarget?.status === 'active')}
         showRetentionBonus={rosterReason === 'activate' && canSetBonus}
+        showNote={rosterReason === 'remove'}
         defaultDate={rosterDate}
         onConfirm={confirmRosterReason}
         onClose={() => setRosterReason(null)}
@@ -1918,7 +1920,6 @@ export function ClassDetailPage() {
           studentName={rosterTarget.fullName}
           fromGroupId={id}
           fromGroupName={g?.name ?? ''}
-          memberStatus={rosterTarget.status}
           onDone={() => {
             setRosterTransferOpen(false)
             setRosterTarget(null)
