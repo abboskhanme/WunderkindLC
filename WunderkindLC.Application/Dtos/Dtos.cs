@@ -202,10 +202,14 @@ public record PhoneMatchDto(
 /* ---------- Excel'dan ommaviy import ---------- */
 public record StudentImportRowErrorDto(int Row, string Message);
 
-/* ---------- «Chegirma» — kelmagan darslar (`LessonDiscountService`) ---------- */
-public record LessonDiscountRequest(string GroupId, string Month, int Lessons, string? Reason);
+/* ---------- «Chegirma» — kelgan darslar bo'yicha (`LessonDiscountService`, `discounts.md` §13.1) ---------- */
+/// <param name="Lessons">ESKI maydon (kelmagan darslar) — server endi qabul qilmaydi: eski sahifadan kelgan
+/// so'rov uni "kelgan" deb o'qisa noto'g'ri summa ayrilardi.</param>
+/// <param name="Attended">Kelgan darslar soni (0..oydagi darslar).</param>
+public record LessonDiscountRequest(string GroupId, string Month, int Lessons, string? Reason, int? Attended = null);
 public record LessonDiscountQuoteDto(
-    string GroupId, string Month, int Lessons, int LessonsInMonth, decimal LessonPrice, decimal Remaining, decimal Amount);
+    string GroupId, string Month, int Attended, int LessonsInMonth, decimal LessonPrice, decimal AttendedPrice,
+    decimal MonthAmount, decimal Payable, decimal Remaining, decimal Amount);
 /* ---------- Kassalar (`docs/SPEC-kassalar.md`) ---------- */
 
 /// <summary>Kassa kartasi: qoldiq (butun tarix) + tanlangan davrdagi kirim/chiqim.</summary>
@@ -225,7 +229,8 @@ public record CashboxPayload(string? Name, string? ResponsibleUserId);
 
 public record LessonDiscountDto(
     string Id, string GroupId, string GroupName, string Month, int Lessons, decimal LessonPrice, decimal Amount,
-    string Reason, string CreatedAt, string CreatedByName, bool Cancelled, string? CancelledAt, string? CancelledByName);
+    string Reason, string CreatedAt, string CreatedByName, bool Cancelled, string? CancelledAt, string? CancelledByName,
+    int? AttendedLessons = null);
 /// <param name="Existing">Bazada (yoki shu faylda yuqoriroqda) BOR bo'lib chiqqan qatorlar — yangi o'quvchi yaratilmadi.</param>
 /// <param name="AddedToGroups">Ulardan mavjud o'quvchi yangi guruhga qo'shilgani.</param>
 /// <param name="Warnings">Xato emas, lekin ko'rib chiqilsin: mavjud o'quvchi / ismdosh / guruhdan chiqqan.</param>

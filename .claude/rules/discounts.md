@@ -431,3 +431,27 @@ ham o'sha yo'lning ruxsati bilan ulang (`LessonDiscountChannelsTests`). Ilgari M
 Qo'llash va bekor qilish `PaymentIdempotency.LockAsync("student:{id}")` ostida (to'lov bilan
 bir xil qulf). **Audit:** `StudentDiscount` turi, matn «Chegirma (kelmagan darslar): …».
 **To'liq o'chirish** (`StudentPurge`) qatorlarni ham o'chiradi. Testlar: `LessonDiscountTests`.
+
+### 13.1. KELGAN DARSLAR bo'yicha (2026-10-15, foydalanuvchi talabi)
+
+Oyna endi **«Kelgan darslar soni»** ni so'raydi (0 ham mumkin), kelmagan darslar sonini EMAS. O'quvchi faqat
+kelgan darslari uchun to'laydi:
+
+```
+kelgan dars narxi = bir dars narxi × o'quvchining o'z ulushi   (ulush = oy hisobi ÷ to'liq summa; 10% chegirmali → 0,9)
+kelgan darslar puli = kelgan darslar × kelgan dars narxi
+ayriladi           = min(oy hisobi − kelgan darslar puli, to'lanmagan qoldiq), manfiy bo'lmaydi
+```
+
+- `LessonDiscountService.QuoteAttendedAsync` / `ApplyAttendedAsync` (sof qismi `AttendedPrice`, `AttendedAmountFor`);
+  hisob mexanizmi (qulf, balans, bekor qilish) eski yo'l bilan BITTA — `ApplyCoreAsync`. Testlar: `LessonDiscountAttendedTests`.
+- ⚠️ NEGA "oydagi darslar − kelgan" EMAS: oy o'rtasida aktivlashgan o'quvchining hisobi QISMAN — "kelmagan" deb oyning
+  hamma darsidan sanalsa qisman hisob butunlay yechilib ketardi. "Oy hisobi − kelgan darslar puli" qisman oyda ham to'g'ri.
+- ⚠️ Shu (guruh, oy) da AMALDAGI chegirma bo'lsa ikkinchisi RAD etiladi (butun oy haqidagi gap — ustiga qo'shilsa ikki
+  marta ayrilardi). O'zgartirish — avval «Bekor qilish». Panelda tugma o'rniga shu yoziladi.
+- Yozuv: `LessonDiscount.AttendedLessons` (migratsiya `AddLessonDiscountAttended`, nullable), `Lessons = 0`,
+  `LessonPrice` = kelgan dars narxi. ESKI yozuvlar (`AttendedLessons = null`) «N dars kelmagan» bo'lib ko'rinadi.
+- ⚠️ HTTP `attended` siz so'rovni (`?lessons=` / `Lessons`) 400 bilan rad etadi — keshdagi eski sahifa KELMAGAN darslarni
+  yuborardi va server uni "kelgan" deb o'qisa deyarli butun oy ayrilardi. Matn: «sahifani yangilang».
+- Audit: «Chegirma (kelgan darslar bo'yicha): N dars keldi × narx — ayrildi X so'm …».
+

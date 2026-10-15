@@ -999,7 +999,7 @@ export async function getStudentNoteDays(month?: string): Promise<{ date: string
   return data
 }
 
-/* ---------- «Chegirma» — kelmagan darslar (to'lov oynasida; server `LessonDiscountService`) ---------- */
+/* ---------- «Chegirma» — KELGAN darslar bo'yicha (to'lov oynasida; server `LessonDiscountService`) ---------- */
 
 /** Qaysi yo'l: admin paneli (`students.list`) yoki kassa portali (`kassa`) — ruxsat shunga qarab. */
 /** Qaysi yo'l bilan (ruxsat shunga qarab): o'quvchi profili (`students.list`), Kassa portali (`kassa`), Moliya → «Yangi
@@ -1009,12 +1009,21 @@ export type LessonDiscountChannel = 'admin' | 'kassa' | 'finance'
 export interface LessonDiscountQuote {
   groupId: string
   month: string
-  lessons: number
+  /** Kelgan darslar soni (so'rovdagi). */
+  attended: number
   /** Shu oydagi jami darslar (guruh kunlari bo'yicha). */
   lessonsInMonth: number
+  /** Bir dars narxi (kurs / sinf oralig'i yoki oylik ÷ darslar). */
   lessonPrice: number
+  /** Kelgan dars uchun narx — o'quvchining o'z chegirmasi bilan. */
+  attendedPrice: number
+  /** Shu oy hisobi (chegirmalar ayrilgan). */
+  monthAmount: number
+  /** Kelgan darslar puli = attended × attendedPrice. */
+  payable: number
   /** Oyning to'lanmagan qoldig'i — ayriladigan summa undan oshmaydi. */
   remaining: number
+  /** Ayriladigan summa = oy hisobi − kelgan darslar puli (qoldiq bilan cheklangan). */
   amount: number
 }
 
@@ -1023,7 +1032,10 @@ export interface LessonDiscount {
   groupId: string
   groupName: string
   month: string
+  /** Kelmagan darslar — faqat ESKI (2026-10-15 gacha) yozuvlarda; yangilarida 0. */
   lessons: number
+  /** Kelgan darslar — yangi yozuvlarda; eski yozuvlarda `null`. */
+  attendedLessons: number | null
   lessonPrice: number
   amount: number
   reason: string
@@ -1033,6 +1045,10 @@ export interface LessonDiscount {
   cancelledAt: string | null
   cancelledByName: string | null
 }
+
+/** Qo'llangan chegirmaning qisqa yozuvi: «9 dars keldi» (yangi) yoki «3 dars kelmagan» (eski yozuv). */
+export const lessonDiscountLabel = (d: Pick<LessonDiscount, 'lessons' | 'attendedLessons'>) =>
+  d.attendedLessons != null ? `${d.attendedLessons} dars keldi` : `${d.lessons} dars kelmagan`
 
 const lessonDiscountBase = (channel: LessonDiscountChannel, studentId: string) =>
   channel === 'kassa'
@@ -1048,17 +1064,17 @@ export async function getLessonDiscounts(channel: LessonDiscountChannel, student
 }
 
 export async function quoteLessonDiscount(
-  channel: LessonDiscountChannel, studentId: string, groupId: string, month: string, lessons: number,
+  channel: LessonDiscountChannel, studentId: string, groupId: string, month: string, attended: number,
 ): Promise<LessonDiscountQuote> {
   const { data } = await api.get<LessonDiscountQuote>(`${lessonDiscountBase(channel, studentId)}/quote`, {
-    params: { groupId, month, lessons },
+    params: { groupId, month, attended },
   })
   return data
 }
 
 export async function applyLessonDiscount(
   channel: LessonDiscountChannel, studentId: string,
-  payload: { groupId: string; month: string; lessons: number; reason: string },
+  payload: { groupId: string; month: string; attended: number; reason: string },
 ): Promise<LessonDiscount> {
   const { data } = await api.post<LessonDiscount>(lessonDiscountBase(channel, studentId), payload)
   return data

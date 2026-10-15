@@ -863,9 +863,14 @@ public class LessonDiscount
     public string GroupId { get; set; } = string.Empty;
     /// <summary>"yyyy-MM".</summary>
     public string Month { get; set; } = string.Empty;
-    /// <summary>Kelmagan darslar soni.</summary>
+    /// <summary>Kelmagan darslar soni (2026-10-15 gacha bo'lgan yozuvlar). Yangi yozuvlarda 0 — ular
+    /// <see cref="AttendedLessons"/> bo'yicha.</summary>
     public int Lessons { get; set; }
-    /// <summary>Hisoblashda olingan bir dars narxi (snapshot).</summary>
+    /// <summary>KELGAN darslar soni (2026-10-15 dan): o'quvchi shu darslar uchun to'laydi, ayirma chegirma.
+    /// <c>null</c> — eski (kelmagan darslar bo'yicha) yozuv.</summary>
+    public int? AttendedLessons { get; set; }
+    /// <summary>Hisoblashda olingan bir dars narxi (snapshot; kelgan darslar yozuvida — o'quvchining o'z
+    /// chegirmasi bilan).</summary>
     public decimal LessonPrice { get; set; }
     /// <summary>HAQIQATDA ayrilgan summa (to'lanmagan qoldiq bilan cheklangan bo'lishi mumkin).</summary>
     public decimal Amount { get; set; }

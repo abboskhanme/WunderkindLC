@@ -4,6 +4,7 @@ import {
   applyLessonDiscount,
   cancelLessonDiscount,
   getLessonDiscounts,
+  lessonDiscountLabel,
   quoteLessonDiscount,
   type LessonDiscount,
   type LessonDiscountChannel,
@@ -16,9 +17,10 @@ import { apiErrorMessage, cn, formatMoney } from '@/lib/utils'
 import { toast } from '@/lib/toast'
 
 /**
- * To'lov oynasidagi «CHEGIRMA» — kelmagan darslar uchun oylikdan ayirish (WunderkindLMS dagi
- * «kasallik chegirmasi» naqshi). Kassir darslar sonini va sababni kiritadi; server shu oyning
- * to'lanmagan qoldig'idan `darslar × bir dars narxi` ni ayiradi (`LessonDiscountService`).
+ * To'lov oynasidagi «CHEGIRMA» — KELGAN darslar bo'yicha (2026-10-15 dan; ilgari kelmagan darslar soni
+ * so'ralardi). Kassir kelgan darslar sonini va sababni kiritadi; o'quvchi faqat kelgan darslari uchun
+ * to'laydi: server `oy hisobi − kelgan darslar × bir dars narxi` ni (to'lanmagan qoldiq bilan cheklab)
+ * ayiradi (`LessonDiscountService.ApplyAttendedAsync`, `discounts.md` §13.1).
  *
  * Tanlangan guruh + oy uchun ishlaydi; o'zgarishdan keyin `onChanged` — oyna oylar qoldig'ini
  * qayta yuklaydi. Qo'llangan chegirma shu yerda ko'rinadi va bekor qilinadi (xato bo'lsa).
@@ -38,7 +40,7 @@ export function LessonDiscountPanel({
   onChanged: (balanceDelta: number) => void
 }) {
   const [open, setOpen] = useState(false)
-  const [lessons, setLessons] = useState<number | null>(null)
+  const [attended, setAttended] = useState<number | null>(null)
   const [reason, setReason] = useState('')
   const [quote, setQuote] = useState<LessonDiscountQuote | null>(null)
   const [quoteError, setQuoteError] = useState<string | null>(null)
@@ -63,12 +65,12 @@ export function LessonDiscountPanel({
     }
   }, [channel, studentId, listTick])
 
-  // Hisob-kitob (preview) — darslar soni o'zgarganda, kichik kechikish bilan.
+  // Hisob-kitob (preview) — kelgan darslar soni o'zgarganda, kichik kechikish bilan. 0 ham to'g'ri qiymat.
   useEffect(() => {
-    if (!open || !lessons || lessons < 1) return
+    if (!open || attended == null || attended < 0) return
     let alive = true
     const t = setTimeout(() => {
-      quoteLessonDiscount(channel, studentId, groupId, month, lessons)
+      quoteLessonDiscount(channel, studentId, groupId, month, attended)
         .then((q) => {
           if (!alive) return
           setQuote(q)
@@ -84,22 +86,22 @@ export function LessonDiscountPanel({
       alive = false
       clearTimeout(t)
     }
-  }, [open, lessons, channel, studentId, groupId, month])
+  }, [open, attended, channel, studentId, groupId, month])
 
   const standing = list.filter((d) => !d.cancelled && d.groupId === groupId && d.month === month)
-  const fresh = quote && quote.lessons === lessons ? quote : null
+  const fresh = quote && attended != null && quote.attended === attended ? quote : null
   const canApply = !!fresh && fresh.amount > 0 && reason.trim().length > 0 && !busy
 
   const apply = async () => {
-    if (inFlight.current || !canApply || !lessons) return
+    if (inFlight.current || !canApply || attended == null) return
     inFlight.current = true
     setBusy(true)
     setError(null)
     try {
-      const d = await applyLessonDiscount(channel, studentId, { groupId, month, lessons, reason: reason.trim() })
-      toast.success('Chegirma qo\'llandi', `${d.lessons} dars — ${formatMoney(d.amount)}`)
+      const d = await applyLessonDiscount(channel, studentId, { groupId, month, attended, reason: reason.trim() })
+      toast.success('Chegirma qo\'llandi', `${lessonDiscountLabel(d)} — ${formatMoney(d.amount)}`)
       setOpen(false)
-      setLessons(null)
+      setAttended(null)
       setReason('')
       setQuote(null)
       setListTick((x) => x + 1)
@@ -138,7 +140,7 @@ export function LessonDiscountPanel({
         <div key={d.id} className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-[13px] text-emerald-800">
           <div className="flex items-start justify-between gap-2">
             <span>
-              Chegirma qo'llangan: <b>{d.lessons} dars</b> — <b className="font-mono">{formatMoney(d.amount)}</b>
+              Chegirma qo'llangan: <b>{lessonDiscountLabel(d)}</b> — <b className="font-mono">{formatMoney(d.amount)}</b>
               <span className="block text-xs text-emerald-700">
                 Sabab: {d.reason}
                 {d.createdByName ? ` · ${d.createdByName}` : ''}
@@ -165,13 +167,16 @@ export function LessonDiscountPanel({
         </div>
       ))}
 
-      {!open ? (
+      {/* Shu oyga chegirma bor — ikkinchisi qo'shilmaydi ("kelgan darslar" butun oy haqidagi gap), server ham rad etadi. */}
+      {standing.length > 0 ? (
+        <p className="px-1 text-xs text-slate-500">Chegirmani o'zgartirish uchun avval qo'llanganini bekor qiling.</p>
+      ) : !open ? (
         <button
           type="button"
           onClick={() => setOpen(true)}
           className="inline-flex items-center gap-1.5 rounded-lg px-1 text-[13px] font-semibold text-brand-600 hover:underline"
         >
-          <BadgePercent className="h-4 w-4" /> Chegirma (kelmagan darslar)
+          <BadgePercent className="h-4 w-4" /> Chegirma (kelgan darslar bo'yicha)
         </button>
       ) : (
         <div className="space-y-3 rounded-xl border border-slate-200 p-3">
@@ -182,8 +187,8 @@ export function LessonDiscountPanel({
               <X className="h-4 w-4" />
             </button>
           </div>
-          <DrawerField label="Kelmagan darslar soni" required>
-            <NumberInput as={DrawerInput} value={lessons} onChange={setLessons} />
+          <DrawerField label="Kelgan darslar soni" required>
+            <NumberInput as={DrawerInput} value={attended} onChange={setAttended} />
           </DrawerField>
           <DrawerField label="Sabab" required>
             <DrawerInput
@@ -194,21 +199,31 @@ export function LessonDiscountPanel({
             />
           </DrawerField>
 
-          {quoteError && lessons ? <p className="text-[13px] text-red-600">{quoteError}</p> : null}
+          {quoteError && attended != null ? <p className="text-[13px] text-red-600">{quoteError}</p> : null}
           {fresh && (
-            <p className={cn('rounded-lg px-3 py-2 text-[13px]', fresh.amount > 0 ? 'bg-slate-50 text-slate-700' : 'bg-amber-50 text-amber-700')}>
-              1 dars — <span className="font-mono">{formatMoney(fresh.lessonPrice)}</span> (oyda {fresh.lessonsInMonth} ta dars).{' '}
+            <div className={cn('space-y-0.5 rounded-lg px-3 py-2 text-[13px]', fresh.amount > 0 ? 'bg-slate-50 text-slate-700' : 'bg-amber-50 text-amber-700')}>
+              <p>
+                1 dars — <span className="font-mono">{formatMoney(fresh.attendedPrice)}</span> (oyda {fresh.lessonsInMonth} ta dars).
+              </p>
+              <p>
+                Kelgan darslar puli: <span className="font-mono">{formatMoney(fresh.payable)}</span> · oy hisobi:{' '}
+                <span className="font-mono">{formatMoney(fresh.monthAmount)}</span>
+              </p>
               {fresh.amount > 0 ? (
-                <>
+                <p>
                   Ayriladi: <b className="font-mono">{formatMoney(fresh.amount)}</b>
-                  {fresh.amount < fresh.lessons * fresh.lessonPrice && (
+                  {fresh.amount < fresh.monthAmount - fresh.payable && (
                     <> — to'lanmagan qoldiq ({formatMoney(fresh.remaining)}) bilan cheklandi</>
                   )}
-                </>
+                </p>
               ) : (
-                <>Bu oy to'langan — chegirma qo'llanmaydi.</>
+                <p>
+                  {fresh.remaining <= 0
+                    ? "Bu oy to'langan — chegirma qo'llanmaydi."
+                    : "Kelgan darslar puli oy hisobidan kam emas — chegirma kerak emas."}
+                </p>
               )}
-            </p>
+            </div>
           )}
           {error && <p className="text-[13px] text-red-600">{error}</p>}
           <button

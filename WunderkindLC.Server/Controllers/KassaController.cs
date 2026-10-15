@@ -115,8 +115,8 @@ public partial class KassaController(AppDbContext db, AuditService audit, AutoMe
 
     [HttpGet("students/{id}/lesson-discounts/quote")]
     public Task<ActionResult<LessonDiscountQuoteDto>> LessonDiscountQuote(
-        string id, [FromQuery] string? groupId, [FromQuery] string? month, [FromQuery] int lessons) =>
-        LessonDiscountHttp.QuoteAsync(db, id, groupId, month, lessons);
+        string id, [FromQuery] string? groupId, [FromQuery] string? month, [FromQuery] int? attended) =>
+        LessonDiscountHttp.QuoteAsync(db, id, groupId, month, attended);
 
     [HttpPost("students/{id}/lesson-discounts")]
     public Task<ActionResult<LessonDiscountDto>> ApplyLessonDiscount(string id, LessonDiscountRequest req) =>

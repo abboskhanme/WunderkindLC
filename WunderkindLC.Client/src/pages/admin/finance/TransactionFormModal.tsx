@@ -249,7 +249,7 @@ export function TransactionFormModal({ open, onClose, onSubmit, initial, preset,
   }
 
   /**
-   * «Chegirma (kelmagan darslar)» qo'llangan/bekor qilingandan keyin — oylar qoldig'i va balans QAYTA yuklanadi,
+   * «Chegirma (kelgan darslar bo'yicha)» qo'llangan/bekor qilingandan keyin — oylar qoldig'i va balans QAYTA yuklanadi,
    * tanlangan oy o'zgarmaydi, summa yangi qoldiqqa tenglanadi (kassir eski summani to'lab yubormasin) —
    * `PaymentModal.reloadLedger` bilan bir xil.
    */
@@ -849,7 +849,7 @@ export function TransactionFormModal({ open, onClose, onSubmit, initial, preset,
               </DrawerField>
             )}
 
-            {/* «Chegirma» — kelmagan darslar uchun shu oyning oyligidan ayirish (o'quvchi profili va Kassa bilan
+            {/* «Chegirma» — kelgan darslar bo'yicha shu oyning oyligidan ayirish (o'quvchi profili va Kassa bilan
                 bir xil panel; faqat GURUH bo'yicha hisobi bor oyda, yangi to'lovda). */}
             {!initial && classId && form.studentId && form.month && ledgerMonths.some((m) => m.month === form.month) && (
               <LessonDiscountPanel

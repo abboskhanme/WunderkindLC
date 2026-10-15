@@ -44,7 +44,7 @@ interface Props {
    * oyna). Telefondagi kassa portali (`/kassa`) o'zgarmasligi uchun `modal` ni tanlaydi.
    */
   presentation?: 'drawer' | 'modal'
-  /** «Chegirma» (kelmagan darslar) qaysi yo'l bilan yoziladi: admin paneli yoki kassa portali (ruxsat shunga qarab). */
+  /** «Chegirma» (kelgan darslar bo'yicha) qaysi yo'l bilan yoziladi: admin paneli yoki kassa portali (ruxsat shunga qarab). */
   channel?: LessonDiscountChannel
   onClose: () => void
   onSubmit: (
@@ -597,7 +597,7 @@ export function PaymentModal({
                   </DrawerSelect>
                 </DrawerField>
 
-                {/* «Chegirma» — kelmagan darslar uchun shu oyning oyligidan ayirish (faqat guruh bo'yicha hisob). */}
+                {/* «Chegirma» — kelgan darslar bo'yicha shu oyning oyligidan ayirish (faqat guruh bo'yicha hisob). */}
                 {groupId && studentId && selected && (
                   <LessonDiscountPanel
                     key={`${studentId}:${groupId}:${month}`}
