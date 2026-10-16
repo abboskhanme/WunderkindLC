@@ -737,7 +737,7 @@ public partial class ClassesController(AppDbContext db, AuditService audit, ILog
                           where sg.GroupId == id && !(sg.IsActive && s.IsArchived)
                           orderby sg.IsActive descending, s.FullName
                           select new GroupMemberDto(s.Id, s.FullName, sg.JoinedAt, sg.LeftAt, sg.IsActive,
-                              sg.Status, sg.ActivatedAt, sg.FrozenAt, s.Balance, sg.YearFreeze, 0, null))
+                              sg.Status, sg.ActivatedAt, sg.FrozenAt, s.Balance, sg.YearFreeze, 0, null, false))
                          .ToListAsync();
         // Balans — SHU GURUH bo'yicha (umumiy Student.Balance emas): boshqa guruhdagi qarz bu ro'yxatni
         // qizil qilib qo'ymasin (jurnal ro'yxati bilan bir xil mantiq).
