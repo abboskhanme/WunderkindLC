@@ -3,7 +3,9 @@
  * Bir xil HTML ham jonli ko'rib chiqish (preview), ham print uchun ishlatiladi —
  * shuning uchun preview va chop etilgan chek doim mos keladi.
  *
- * Format: 80mm termal chek (58mm da ham normal — kenglik foizli/auto).
+ * Format: 80mm termal chek. ⚠️ 80mm printer qog'ozning hammasiga emas, faqat ~72mm (576 nuqta) ga
+ * bosadi: ilgari matn 80mm ga yoyilib, o'ng chetdagi harflar kesilib qolardi (2026-10-17). Shuning
+ * uchun chek eni RECEIPT_WIDTH (72mm), chapga tekislangan.
  */
 import { paymentMethodLabel } from '@/config/constants'
 import type { CheckSettings } from '@/config/checkSettings'
@@ -96,11 +98,17 @@ export function receiptHtml(d: ReceiptData, s: CheckSettings): string {
   `
 }
 
-/** Chek uchun termal CSS (preview konteyneri va print iframe — ikkalasida ham). */
+/** Chekning bosiladigan eni — 80mm termal printerning bosish maydoni. */
+export const RECEIPT_WIDTH = '72mm'
+
+/**
+ * Chek uchun termal CSS (preview konteyneri va print iframe — ikkalasida ham).
+ * Eni va ichki chetlari ikkalasida BIR XIL — qatorlar preview'da qayerda bo'linsa, qog'ozda ham o'sha yerda.
+ */
 export const receiptCss = `
-  .receipt { width: 280px; margin: 0 auto; background: #fff; color: #000;
+  .receipt { width: ${RECEIPT_WIDTH}; box-sizing: border-box; margin: 0 auto; background: #fff; color: #000;
     font-family: 'Courier New', ui-monospace, monospace; font-size: 12px; line-height: 1.45;
-    padding: 10px 12px; }
+    padding: 10px 2mm; }
   .receipt .hdr { text-align: center; }
   .receipt .logo { max-width: 96px; max-height: 96px; object-fit: contain; margin: 0 auto 4px; display: block; }
   .receipt .name { font-size: 16px; font-weight: 700; letter-spacing: .5px; }
@@ -123,7 +131,7 @@ export function printReceipt(d: ReceiptData, s: CheckSettings): void {
       @page { size: 80mm auto; margin: 0; }
       html, body { margin: 0; padding: 0; background: #fff; }
       ${receiptCss}
-      .receipt { width: 100%; box-sizing: border-box; }
+      .receipt { width: 100%; max-width: ${RECEIPT_WIDTH}; margin: 0; }
     </style></head>
     <body><div class="receipt">${receiptHtml(d, s)}</div></body></html>`
 
