@@ -1028,3 +1028,50 @@ o'tgan, kelajak — 400) · summa · SABAB (majburiy). Qoidalar — `TeacherFine
 - ⚠️ **ESKI xato yo'l yopildi:** ilgari «Jarima qo'shish» Moliya → «Yangi amal» da `penalty` toifali CHIQIM yozardi — kassadan pul
   chiqqandek ko'rinar, maoshdan hech narsa ushlanmasdi. Endi `FinanceController.Create` `penalty` ni 400 bilan rad etadi;
   eski qatorlar tegilmaydi va «Jarima» sahifasida «Eski yozuvlar — chiqim sifatida kiritilgan» bo'lib (faqat bo'lsa) turadi.
+
+## KASSA TURI, BOSHLANG'ICH QOLDIQ, CHIQIM TASDIG'I, MAOSH REESTRI (2026-10-17, SPEC-backlog F3)
+
+Migratsiya `FinanceOpsPayroll`. Egasining qarorlari: chiqim tasdig'i — faqat KATTA summalar; xodim maoshi — fiks + KPI;
+to'lov turi — avans / yakuniy.
+
+### Kassa (`Cashbox.Kind`, `OpeningBalance`, `OpeningDate`)
+
+- Turi `cash` | `bank` — faqat ko'rinish (kartada «BANK»).
+- **Boshlang'ich qoldiq:** sana berilsa qoldiq = boshlang'ich + shu kundan (shu kun ham) keyingi harakatlar; oldingilari
+  boshlang'ich summaning ICHIDA (`CashboxService.Counts`). Sana bo'sh — boshlang'ich + butun tarix (eski xulq; standart 0).
+  `BalancesAsync` / `TotalAsync` / ko'chirma — bitta qoida. Ko'chirish (kassadan kassaga) ham shu sanadan keyin sanaladi.
+- **Ko'chirma** `GET cashboxes/{id}/statement?from&to` (`finance.main`, RRP; ≤ 1 yil): davr boshidagi qoldiq, kirim,
+  chiqim, ko'chirishlar, yakuniy qoldiq + qatorlar. Davr boshi boshlang'ich sanadan oldin bo'lsa — o'sha sanadan.
+- Tahrir (faqat superadmin, avvalgidek): `kind` / `openingBalance` / `openingDate` yuborilmasa TEGILMAYDI, `""` sana —
+  olib tashlaydi; har o'zgarish auditda («boshlang'ich qoldiq 0 → 5 000 000 so'm»).
+- Chiqimda ham to'lov usuli (`Method`) tanlanadi (ilgari faqat kirimda).
+
+### Chiqim tasdig'i (`ExpenseRequest`, `ExpenseApproval`, `ExpenseRequestsController`)
+
+- `CenterMeta.ExpenseApprovalThreshold` (0 — o'chiq; FAQAT superadmin o'zgartiradi, HARD rol). Qo'lda kiritilgan CHIQIM
+  (maosh to'lovi ham) summasi chegaradan KATTA va kirituvchi superadmin emas → `POST finance/transactions` **202**
+  `{pending, requestId, message}`: `ExpenseRequest` yoziladi, kassadan HECH NARSA chiqmaydi.
+- ⚠️ `ExpenseRequest` — `FinanceTransaction` EMAS (kassadan kassaga ko'chirish naqshi): P&L, kassa, maosh, KPI va 25+
+  o'quvchi joy uni ko'rmaydi. Tasdiqlanganda AYNAN shu maydonlardan oddiy tranzaksiya yoziladi
+  (`ExpenseApproval.ToTransaction`; sana — kiritilgan sana, kiritgan — so'rov egasi, `ExpenseRequestId` bilan).
+- **Kim tasdiqlaydi:** superadmin yoki `expenseApproval` ANIQ berilgan xodim (`IsSuperAdminOrGranted` — admin ham, yalang
+  `finance` ham YETMAYDI). ⚠️ Kiritgan odam o'zi tasdiqlay olmaydi (`DecisionBlock`). Rad etish — sabab majburiy; kirituvchi
+  hali ko'rilmagan so'rovni qaytarib oladi. Hammasi bitta qulf ostida (`finance:expreq:{id}`), auditda, kirituvchiga va
+  tasdiqlovchilarga qo'ng'iroqcha.
+- Vozvrat (superadmin) va kitob qaytarish (avtomatik) bu yo'ldan O'TMAYDI.
+- Klient: Moliya → «Chiqimlar tasdig'i» (`?tab=approvals`); `createTransaction` 202 da `PendingExpense` qaytaradi
+  (`isPendingExpense`) — chek ochilmaydi, «Tasdiq kutilmoqda» toast'i.
+
+### Maosh reestri (`PayrollRegister`, `PayrollController`, `StaffSalary`)
+
+- Moliya → «Maosh reestri» (`?tab=payroll`), `GET finance/payroll?month=` (`finance.main`, RRP): oy uchun o'qituvchilar
+  (`SalaryLedger` — o'zgarishsiz) va xodimlar: KPI profili bo'lsa tasdiqlangan `KpiMonthResult.Salary`, tasdiqlanmagan oyda
+  KPI okladi (`kpi-pending`), aks holda `StaffSalary` (versiyalangan, `PUT payroll/staff/{userId}/salary`). Admin/superadmin
+  faqat maoshi yoki to'lovi bo'lsa ro'yxatda.
+- To'lov — odatdagi maosh chiqimi: xodimga `FinanceTransaction.StaffUserId` (faqat `salary`, faqat panel akkaunti),
+  turi `SalaryPayKind` = `advance` | `final` (o'qituvchi to'lovida ham; faqat ko'rinish — hisob summa bo'yicha).
+  Chegaradan katta bo'lsa — tasdiq kutadi.
+- ⚠️ KPI "summani aytadi, pulni to'lamaydi" (`kpi.md` §1) saqlandi: reestr faqat O'QIYDI.
+- O'qituvchi profili → «Guruhlar»: joriy oy bo'yicha guruhlaridagi o'quvchilar · to'laganlar · to'lamaganlar · qarz
+  (`finance/teacher-payments`, faqat `finance.main` ko'radiganlarga).
+- Testlar: `FinanceOpsTests`.

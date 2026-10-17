@@ -140,14 +140,17 @@ public class FinanceReportsTests
         Student(ctx, "s1", "Ali");
         Charge(ctx, "s1", "2026-10", 1_000_000m);
         Pay(ctx, "s1", "2026-09", 300_000m);   // sentabrda hisob yo'q (masalan sinovdagi avans)
+        Student(ctx, "s2", "Vali");
+        Charge(ctx, "s2", "2026-09", 20_000m);  // importda sentabr hisobi kichik, to'lov esa katta
+        Pay(ctx, "s2", "2026-09", 220_000m);
         await ctx.SaveChangesAsync();
 
         var r = await DebtReport.BuildAsync(ctx, new DebtReport.Query("2026-09", "2026-10"), Today);
         Assert.Equal(1_000_000m, r.Total.Debt);
-        Assert.Equal((1, 300_000m), (r.Unmatched.Count, r.Unmatched.Amount));
+        Assert.Equal((2, 500_000m), (r.Unmatched.Count, r.Unmatched.Amount));   // 300 000 hisobsiz + 200 000 ortiqcha
 
         var inv = await InvoiceReport.BuildAsync(ctx, new InvoiceReport.Query("2026-09", "2026-10"), Today);
-        Assert.Equal(300_000m, inv.Unmatched.Amount);
+        Assert.Equal(500_000m, inv.Unmatched.Amount);
     }
 
     [Fact]

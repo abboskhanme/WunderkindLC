@@ -14,6 +14,7 @@ import {
   getFinanceMonthly,
   getTransactions,
   createTransaction,
+  isPendingExpense,
   updateTransaction,
   deleteTransaction,
   accrueTuition,
@@ -56,6 +57,8 @@ import { CashboxesPanel } from './CashboxesPanel'
 import { ActivationChargeRepairModal } from './ActivationChargeRepairModal'
 import { usePerm } from '@/lib/permissions'
 import { tabFromUrl } from '@/lib/tabParam'
+import { ExpenseApprovalsTab } from './ExpenseApprovalsTab'
+import { PayrollTab } from './PayrollTab'
 import { todayIso } from '@/lib/month'
 
 import { DateInput } from '@/components/ui/DateInput'
@@ -83,7 +86,7 @@ type MethodFilter = 'all' | 'cash' | 'card' | 'bank'
 type ReceiptFilter = 'all' | 'with' | 'without'
 /** To'lovlar ro'yxatining saralanishi — sana yoki kvitansiya raqami bo'yicha. */
 type PaySort = 'date-desc' | 'date-asc' | 'receipt-asc' | 'receipt-desc'
-const FINANCE_TABS = ['overview', 'groups', 'teachers', 'payments', 'refunds', 'cashiers', 'bonuses'] as const
+const FINANCE_TABS = ['overview', 'groups', 'teachers', 'payments', 'refunds', 'cashiers', 'bonuses', 'approvals', 'payroll'] as const
 
 const paySortOptions: { value: PaySort; label: string }[] = [
   { value: 'date-desc', label: 'Sana: yangi → eski' },
@@ -255,8 +258,13 @@ export function FinancePage() {
       toast.success('Saqlandi')
     } else {
       const tx = await createTransaction(values)
-      if (values.direction === 'income') newTxId = tx.id
-      toast.success(values.direction === 'income' ? 'Kirim saqlandi' : 'Chiqim saqlandi', formatMoney(values.amount))
+      if (isPendingExpense(tx)) {
+        // Chegaradan katta chiqim — kassadan hali chiqmadi, mas'ul tasdiqlaydi (SPEC-backlog F3).
+        toast.info('Tasdiq kutilmoqda', tx.message)
+      } else {
+        if (values.direction === 'income') newTxId = tx.id
+        toast.success(values.direction === 'income' ? 'Kirim saqlandi' : 'Chiqim saqlandi', formatMoney(values.amount))
+      }
     }
     setFormOpen(false)
     setEditing(null)
@@ -591,8 +599,11 @@ export function FinancePage() {
       {/* ============ BONUS (o'quvchini ushlab turish bonuslari hisoboti) ============
           Sahifaning umumiy yuklanishidan MUSTAQIL: ma'lumot faqat shu tab ochilganda so'raladi. */}
       {tab === 'bonuses' && <RetentionBonusTab />}
+      {/* SPEC-backlog-2026-10-17 F3 — o'z yuklanishi bilan (sahifaning umumiy ma'lumotiga bog'liq emas). */}
+      {tab === 'approvals' && <ExpenseApprovalsTab />}
+      {tab === 'payroll' && <PayrollTab />}
 
-      {tab === 'bonuses' ? null : loading || !summary ? (
+      {tab === 'bonuses' || tab === 'approvals' || tab === 'payroll' ? null : loading || !summary ? (
         <Loader label="Yuklanmoqda..." />
       ) : (
         <>

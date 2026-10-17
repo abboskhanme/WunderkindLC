@@ -43,7 +43,9 @@ import {
   updateTeacherPhoto,
   type GroupSalaryItem,
 } from '@/api/services/teachers'
-import { createTransaction } from '@/api/services/finance'
+import { createTransaction, isPendingExpense } from '@/api/services/finance'
+import { toast } from '@/lib/toast'
+import { TeacherPaymentsSummary } from './TeacherPaymentsSummary'
 import { getClasses } from '@/api/services/classes'
 import { getSubjects } from '@/api/services/subjects'
 import { genderLabels, formatMonth } from '@/config/constants'
@@ -204,6 +206,8 @@ export function TeacherDetailPage() {
   const [payInfoLoading, setPayInfoLoading] = useState(false)
   const [payDate, setPayDate] = useState(() => localIsoDate(new Date()))
   const [payNote, setPayNote] = useState('')
+  /** Maosh to'lovi turi (SPEC-backlog F3): avans yoki yakuniy — reestrda alohida ko'rinadi. */
+  const [payKind, setPayKind] = useState<'advance' | 'final'>('final')
   const [payBusy, setPayBusy] = useState(false)
   const [payError, setPayError] = useState<string | null>(null)
   /** KASSA: qaysi kassadan berilmoqda (`null` — tanlanmagan, foydalanuvchining standart kassasi). */
@@ -370,10 +374,11 @@ export function TeacherDetailPage() {
     setPayBusy(true)
     setPayError(null)
     try {
-      await createTransaction({
+      const res = await createTransaction({
         date: payDate,
         direction: 'expense',
         category: 'salary',
+        salaryPayKind: payKind,
         amount: payAmount,
         teacherId: id,
         // QAYSI OY UCHUN — formada tanlangan oy (sanadan mustaqil)
@@ -382,6 +387,12 @@ export function TeacherDetailPage() {
         // Bo'sh — server standart kassani tanlaydi (beruvchining o'z kassasi / «Asosiy kassa»).
         cashboxId: payCashboxId || undefined,
       })
+      // Chegaradan katta maosh — tasdiq kutadi (kassadan hali chiqmadi, maoshda ham "berilgan" emas).
+      if (isPendingExpense(res)) {
+        toast.info('Tasdiq kutilmoqda', res.message)
+        setPayOpen(false)
+        return
+      }
       // Natija ko'rinsin: yuqoridagi panel to'lov qilingan OYga o'tadi
       const m = await getSalaryMonth(id, payMonth)
       setSelMonth(payMonth)
@@ -776,6 +787,8 @@ export function TeacherDetailPage() {
       {/* GROUPS TAB */}
       {tab === 'groups' && (
         <div className="space-y-4">
+          {/* TZ 1.5 (SPEC-backlog-2026-10-17): guruhlaridagi o'quvchilar to'lovi — joriy oy. Moliya ko'radiganlarga. */}
+          {id && can('finance.main', 'view') && <TeacherPaymentsSummary teacherId={id} teacherName={teacher.fullName} />}
           {groups.length === 0 ? (
             <Card>
               <div className="state">
@@ -1582,6 +1595,17 @@ export function TeacherDetailPage() {
                     </select>
                   </label>
                 )}
+                <label className="mt-3 block">
+                  <span className="text-xs text-slate-500">To'lov turi</span>
+                  <select
+                    value={payKind}
+                    onChange={(e) => setPayKind(e.target.value as 'advance' | 'final')}
+                    className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-sm focus:border-brand-400 focus:outline-none"
+                  >
+                    <option value="final">Yakuniy (oylik)</option>
+                    <option value="advance">Avans</option>
+                  </select>
+                </label>
                 <label className="mt-3 block">
                   <span className="text-xs text-slate-500">Izoh</span>
                   <input

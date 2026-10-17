@@ -226,8 +226,9 @@ export function DebtReportPage() {
           </p>
           {data.unmatched.count > 0 && (
             <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">
-              Hisobi yozilmagan oylarga {data.unmatched.count} ta to'lov ({formatMoney(data.unmatched.amount)}) tushgan
-              (masalan sinovdagi avans) — ular bu yerdagi qarzni yopmaydi, balansda avans bo'lib turibdi.
+              {formatMoney(data.unmatched.amount)} to'lov ({data.unmatched.count} ta oy) hech bir qarzni yopmagan: hisobi
+              yo'q oyga yoki oy hisobidan ortiqcha to'langan (masalan sinovdagi avans, boshqa oyga bog'langan to'lov). U
+              o'quvchi balansida avans bo'lib turibdi — kerak bo'lsa to'lovni to'g'ri oyga o'tkazing.
             </p>
           )}
 

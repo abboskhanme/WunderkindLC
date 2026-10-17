@@ -191,6 +191,9 @@ export const navByRole: Record<Role, NavItem[]> = {
             { label: 'Bonus', to: '/admin/finance?tab=bonuses', perm: 'finance.main' },
             { label: 'Jarima', to: '/admin/moliya/jarima', perm: 'finance.main' },
             { label: 'Oylik chiqarish', to: '/admin/finance?tab=teachers', perm: 'finance.main' },
+            // Egasining TZ'si (2026-10-17, SPEC-backlog F3): xodimlar maoshi reestri va katta chiqimlar tasdig'i.
+            { label: 'Maosh reestri', to: '/admin/finance?tab=payroll', perm: 'finance.main' },
+            { label: "Chiqimlar tasdig'i", to: '/admin/finance?tab=approvals', perm: 'finance.main' },
           ],
         },
         {

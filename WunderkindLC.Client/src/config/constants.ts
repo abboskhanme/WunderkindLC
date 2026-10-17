@@ -296,6 +296,10 @@ export const adminPermissions: AdminPermSection[] = [
   // xodim (markaz egasi bonusga kirishni o'zida qoldirishni tanlagan). Tekshiruv:
   // `useSuperOrGranted('retentionBonus')` — `can()` bu yerda YARAMAYDI, u admin uchun true qaytaradi.
   { key: 'retentionBonus', label: 'Bonus ptichkasi (aktivlashtirishda)' },
+  // CHIQIMLARNI TASDIQLASH (SPEC-backlog-2026-10-17 F3) — chegaradan katta chiqim shu ruxsatli mas'ul (bosh buxgalter)
+  // yoki superadmin tasdiqlagach kassadan chiqadi. `retentionBonus` kabi QATTIQ: oddiy admin ham, yalang `finance` ham
+  // yetmaydi — faqat ANIQ berilgan kalit (`useSuperOrGranted('expenseApproval')`, server `IsSuperAdminOrGranted`).
+  { key: 'expenseApproval', label: 'Chiqimlarni tasdiqlash (bosh buxgalter)' },
   // AI ULANISH (read-only MCP) — xodim o'z AI ilovasini (Claude, ChatGPT) tizimga ulab, ma'lumotni
   // FAQAT O'QIY oladi. Admin/superadmin bu ruxsatsiz ham ulanadi. AI faqat xodimning O'Z bo'limlarini
   // ko'radi (shu matritsadagi qolgan ruxsatlar bo'yicha) — bu kalit faqat "ulanish mumkin" degani.

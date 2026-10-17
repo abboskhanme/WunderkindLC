@@ -174,6 +174,9 @@ jadvalda controller ko'rsatilmagan).
 
 ## 8. Nozik kalitlar — `can()` YARAMAYDIGAN joylar
 
+- **`expenseApproval`** (2026-10-17, SPEC-backlog F3) — chegaradan katta chiqimni TASDIQLASH: superadmin yoki ANIQ berilgan
+  xodim (`IsSuperAdminOrGranted`), oddiy admin ham, yalang `finance` ham yetmaydi; sahifasiz alohida kalit — rol matritsasida
+  `finance` ga yig'ilib (ixchamlanib) yo'qolmasin. `ExpenseRequestsController` (`billing.md`).
 - **`retentionBonus`** (aktivlashtirishdagi «Bonus hisoblansin» ptichkasi) —
   `useSuperOrGranted` / `AdminPermAttribute.IsSuperAdminOrGranted`: oddiy `admin` roli ham
   KO'RMAYDI, faqat superadmin va ANIQ ruxsat berilgan xodim. Sahifa kalitlari bu yerda

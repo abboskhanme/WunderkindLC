@@ -217,7 +217,9 @@ public record CashboxDto(
     string Id, string Name, string? ResponsibleUserId, string? ResponsibleName, bool IsMain, bool IsArchived,
     decimal Balance, decimal PeriodIncome, decimal PeriodExpense, string CreatedAt,
     // Davr ichidagi KO'CHIRISHLAR (kirim/chiqim EMAS — alohida ko'rsatiladi).
-    decimal PeriodTransferIn = 0m, decimal PeriodTransferOut = 0m);
+    decimal PeriodTransferIn = 0m, decimal PeriodTransferOut = 0m,
+    // Kassa turi (cash | bank) va BOSHLANG'ICH QOLDIQ (SPEC-backlog F3 K1).
+    string Kind = "cash", decimal OpeningBalance = 0m, string? OpeningDate = null);
 
 /// <summary>To'lov oynasidagi tanlov uchun (qoldiqsiz).</summary>
 public record CashboxOptionDto(string Id, string Name, string? ResponsibleName, bool Mine);
@@ -225,7 +227,21 @@ public record CashboxOptionDto(string Id, string Name, string? ResponsibleName, 
 /// <summary><paramref name="DefaultId"/> — shu foydalanuvchining standart kassasi (oldindan tanlanadi).</summary>
 public record CashboxOptionsDto(List<CashboxOptionDto> Items, string? DefaultId);
 
-public record CashboxPayload(string? Name, string? ResponsibleUserId);
+/// <param name="Kind">cash | bank; null — o'zgarmaydi (yaratishda cash).</param>
+/// <param name="OpeningBalance">Boshlang'ich qoldiq; null — o'zgarmaydi.</param>
+/// <param name="OpeningDate">"yyyy-MM-dd"; null — o'zgarmaydi, "" — sana olib tashlanadi (butun tarix).</param>
+public record CashboxPayload(string? Name, string? ResponsibleUserId,
+    string? Kind = null, decimal? OpeningBalance = null, string? OpeningDate = null);
+
+/// <summary>Kassa ko'chirmasining qatori (nomlar bilan). <paramref name="Kind"/>: income · expense · transfer_in · transfer_out.</summary>
+public record CashboxStatementRowDto(
+    string Id, string Date, string Kind, string Category, string? TypeName, decimal Amount, string? Note,
+    string? Party, string? CreatedBy);
+
+public record CashboxStatementDto(
+    string CashboxId, string CashboxName, string Kind, string From, string To,
+    decimal Opening, decimal Income, decimal Expense, decimal TransferIn, decimal TransferOut, decimal Closing,
+    List<CashboxStatementRowDto> Rows);
 
 public record LessonDiscountDto(
     string Id, string GroupId, string GroupName, string Month, int Lessons, decimal LessonPrice, decimal Amount,
@@ -1593,7 +1609,9 @@ public record FinanceTransactionDto(
     // har tahrir turni forma zaxirasi bilan almashtirardi: vozvrat "Arenda", maosh turisiz qolardi).
     string? TypeId = null,
     // Bo'lingan to'lov (guruh almashtirish) — oila ildizi (`FinanceTransaction.SplitFromId`).
-    string? SplitFromId = null);
+    string? SplitFromId = null,
+    // XODIM maoshi va maosh to'lovi turi (advance | final) — SPEC-backlog F3.
+    string? StaffUserId = null, string? SalaryPayKind = null);
 
 /// <summary>
 /// "Kiritgan" filtri uchun bitta variant — TO'LOV KIRITA OLADIGAN xodim/admin. Ro'yxatga
@@ -1653,7 +1671,9 @@ public record FinanceTransactionPayload(
     // Klient kaliti — bitta oyna ochilishining barcha urinishlarida bir xil (PaymentIdempotency).
     string? RequestId = null,
     // Qaysi kassa. Yaratishda bo'sh — standart kassa; tahrirda bo'sh — o'zgarmaydi.
-    string? CashboxId = null);
+    string? CashboxId = null,
+    // XODIM maoshi (o'qituvchi emas) — panel akkaunti id'si; maosh to'lovi turi: advance | final (SPEC-backlog F3).
+    string? StaffUserId = null, string? SalaryPayKind = null);
 public record CategoryAmountDto(string Category, decimal Amount);
 public record FinanceSummaryDto(
     decimal TotalIncome, decimal TotalExpense, decimal Net,

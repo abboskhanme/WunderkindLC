@@ -15,8 +15,8 @@ public record DebtTotalsDto(
     decimal Charged, decimal Discount, decimal Net, decimal Paid, decimal Debt,
     decimal CollectionPct, int Debtors);
 
-/// <summary>Hisobi YO'Q oyga tushgan to'lovlar (sinovdagi avans, guruhga teglanmagan eski to'lov) — qarzni yopmaydi,
-/// shuning uchun hisobotda alohida aytiladi (jimgina yo'qolmasin).</summary>
+/// <summary>Hech bir qarzni YOPMAGAN to'lovlar: hisobi yo'q oyga tushgani (sinovdagi avans, teglanmagan eski to'lov) va
+/// oy hisobidan ORTIQCHA to'langan qismi — hisobotda alohida aytiladi (jimgina yo'qolmasin).</summary>
 public record UnmatchedPaymentsDto(int Count, decimal Amount);
 
 /// <summary>Qarz yoshi guruhi: <c>notdue</c> (muddat kuni ham shu) · <c>0-6</c> (1–6 kun) · <c>7-29</c> · <c>30-59</c> · <c>60+</c>.</summary>

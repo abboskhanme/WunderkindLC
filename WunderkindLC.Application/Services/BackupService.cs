@@ -181,6 +181,9 @@ public static class BackupService
         // Kassalar va kassadan kassaga ko'chirishlar — kassa QOLDIG'I shulardan tiklanadi.
         await Add("cashboxes", db.Cashboxes);
         await Add("cashboxTransfers", db.CashboxTransfers);
+        // SPEC-backlog-2026-10-17 F3: chiqim tasdig'i so'rovlari va xodim oyliklari (pul).
+        await Add("expenseRequests", db.ExpenseRequests);
+        await Add("staffSalaries", db.StaffSalaries);
         // Davomat jarimalari (U3c) — maoshdan ushlanadi, ya'ni PUL.
         await Add("teacherAttendanceFines", db.TeacherAttendanceFines);
         await Add("teacherFines", db.TeacherFines);

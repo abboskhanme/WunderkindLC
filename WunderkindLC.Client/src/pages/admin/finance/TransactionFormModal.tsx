@@ -444,7 +444,8 @@ export function TransactionFormModal({ open, onClose, onSubmit, initial, preset,
         // "Qaysi oy uchun": maosh chiqimida bo'sh qolmasin (standart — sana oyi)
         month: isSalaryCat(direction, category) ? f.date?.slice(0, 7) : undefined,
         teacherId: undefined,
-        method: direction === 'income' ? (f.method ?? 'cash') : undefined,
+        // To'lov usuli chiqimda ham (SPEC-backlog F3 K1: "chiqim operatsiyalarida to'lov turlari").
+        method: f.method ?? 'cash',
       }
     })
     setTuitionTeacherId('')
@@ -519,7 +520,7 @@ export function TransactionFormModal({ open, onClose, onSubmit, initial, preset,
       // maosh shu maydon bo'yicha oyga bog'lanadi (SalaryLedger.BuildAsync)
       // (maoshda bo'sh qolsa sana oyi zaxira; o'quvchi to'lovi mantig'i o'zgarmagan)
       month: isSalaryExpense ? month : isTuitionIncome ? form.month : undefined,
-      method: form.direction === 'income' ? (form.method || 'cash') : undefined,
+      method: isRefundEdit ? undefined : form.method || 'cash',
       // Bo'sh — server standart kassani tanlaydi (kiritganning o'z kassasi / «Asosiy kassa»).
       cashboxId: cashboxId || undefined,
       })
@@ -873,8 +874,8 @@ export function TransactionFormModal({ open, onClose, onSubmit, initial, preset,
             onChange={(v) => update('amount', v)}
           />
         </DrawerField>
-        {form.direction === 'income' && !isRefundEdit && (
-          <DrawerField label="To'lov turi" group>
+        {!isRefundEdit && (
+          <DrawerField label={form.direction === 'income' ? "To'lov turi" : "To'lov usuli (qanday berildi)"} group>
             <DrawerChoice
               options={paymentMethods}
               value={form.method ?? 'cash'}

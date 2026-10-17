@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
-import { Archive, ArrowLeftRight, Crown, Pencil, Plus, RotateCcw, Wallet } from 'lucide-react'
+import { Archive, ArrowLeftRight, Crown, FileText, Pencil, Plus, RotateCcw, Wallet } from 'lucide-react'
 import {
   archiveCashbox,
   createCashbox,
@@ -17,6 +17,12 @@ import { RightDrawer, DrawerActions, DrawerField, DrawerInput, DrawerSelect } fr
 import { apiErrorMessage, balanceTextCls, cn, formatMoney } from '@/lib/utils'
 import { toast } from '@/lib/toast'
 import { CashboxTransferForm, CashboxTransfersCard } from './CashboxTransfers'
+import { CashboxStatementModal } from './CashboxStatementModal'
+import { MoneyInput } from '@/components/ui/NumberInput'
+import { DateInput } from '@/components/ui/DateInput'
+
+/** "2026-10-01" → "01.10.2026". */
+const dmy = (iso: string) => (iso.length >= 10 ? `${iso.slice(8, 10)}.${iso.slice(5, 7)}.${iso.slice(0, 4)}` : iso)
 
 /**
  * Moliya → «Kassalar»: kassa KARTALARI (qoldiq + davr ichidagi kirim/chiqim), `docs/SPEC-kassalar.md`.
@@ -36,6 +42,8 @@ export function CashboxesPanel({ from, to, isSuperAdmin }: { from: string; to: s
   const [editing, setEditing] = useState<Cashbox | 'new' | null>(null)
   /** Ko'chirish oynasi: `null` — yopiq; `fromId` — oldindan tanlangan "qayerdan" (kartadagi tugma). */
   const [transfer, setTransfer] = useState<{ fromId: string | null } | null>(null)
+  /** Ko'chirma (statement) oynasi ochilgan kassa. */
+  const [statementId, setStatementId] = useState<string | null>(null)
   const inFlight = useRef(false)
 
   useEffect(() => {
@@ -117,6 +125,11 @@ export function CashboxesPanel({ from, to, isSuperAdmin }: { from: string; to: s
                           ASOSIY
                         </span>
                       )}
+                      {b.kind === 'bank' && (
+                        <span className="shrink-0 rounded bg-sky-50 px-1.5 py-0.5 text-[10px] font-semibold text-sky-700">
+                          BANK
+                        </span>
+                      )}
                     </p>
                     <p className="mt-0.5 truncate text-xs text-slate-500">
                       {b.responsibleName ? (
@@ -128,8 +141,14 @@ export function CashboxesPanel({ from, to, isSuperAdmin }: { from: string; to: s
                       )}
                     </p>
                   </div>
+                  <div className="flex shrink-0 gap-1">
+                    <button type="button" aria-label="Ko'chirma" title="Ko'chirma (davr harakatlari)"
+                      onClick={() => setStatementId(b.id)}
+                      className="rounded-md p-1.5 text-slate-400 hover:bg-slate-100 hover:text-brand-600">
+                      <FileText className="h-4 w-4" />
+                    </button>
                   {isSuperAdmin && (
-                    <div className="flex shrink-0 gap-1">
+                    <>
                       {active.length >= 2 && (
                         <button type="button" aria-label="Boshqa kassaga ko'chirish" title="Boshqa kassaga ko'chirish"
                           onClick={() => setTransfer({ fromId: b.id })}
@@ -147,10 +166,17 @@ export function CashboxesPanel({ from, to, isSuperAdmin }: { from: string; to: s
                           <Archive className="h-4 w-4" />
                         </button>
                       )}
-                    </div>
+                    </>
                   )}
+                  </div>
                 </div>
                 <p className={cn('mt-3 font-mono text-xl font-semibold', balanceTextCls(b.balance))}>{formatMoney(b.balance)}</p>
+                {(b.openingBalance !== 0 || b.openingDate) && (
+                  <p className="mt-0.5 text-xs text-slate-400">
+                    Boshlang'ich: <span className="font-mono">{formatMoney(b.openingBalance)}</span>
+                    {b.openingDate ? ` · ${dmy(b.openingDate)} dan` : ''}
+                  </p>
+                )}
                 <p className="mt-1 text-xs text-slate-500">
                   Davrda: <span className="font-mono text-emerald-600">+{formatMoney(b.periodIncome)}</span>
                   {' · '}
@@ -232,6 +258,7 @@ export function CashboxesPanel({ from, to, isSuperAdmin }: { from: string; to: s
       <CashboxTransfersCard from={from} to={to} tick={tick} isSuperAdmin={isSuperAdmin}
         onChanged={() => setTick((x) => x + 1)} />
 
+      {statementId && <CashboxStatementModal cashboxId={statementId} onClose={() => setStatementId(null)} />}
       {isSuperAdmin && transfer !== null && (
         <CashboxTransferForm
           key={transfer.fromId ?? 'any'}
@@ -264,6 +291,9 @@ export function CashboxesPanel({ from, to, isSuperAdmin }: { from: string; to: s
 function CashboxForm({ box, onClose, onSaved }: { box: Cashbox | null; onClose: () => void; onSaved: () => void }) {
   const [name, setName] = useState(box?.name ?? '')
   const [responsibleId, setResponsibleId] = useState(box?.responsibleUserId ?? '')
+  const [kind, setKind] = useState<'cash' | 'bank'>(box?.kind ?? 'cash')
+  const [openingBalance, setOpeningBalance] = useState<number | null>(box ? box.openingBalance : null)
+  const [openingDate, setOpeningDate] = useState(box?.openingDate ?? '')
   const [staff, setStaff] = useState<Staff[]>([])
   const [staffError, setStaffError] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -287,7 +317,10 @@ function CashboxForm({ box, onClose, onSaved }: { box: Cashbox | null; onClose: 
     setSaving(true)
     setError(null)
     try {
-      const payload = { name: name.trim(), responsibleUserId: responsibleId || null }
+      const payload = {
+        name: name.trim(), responsibleUserId: responsibleId || null,
+        kind, openingBalance: openingBalance ?? 0, openingDate,
+      }
       if (box) await updateCashbox(box.id, payload)
       else await createCashbox(payload)
       toast.success(box ? 'Kassa saqlandi' : 'Kassa yaratildi', payload.name)
@@ -337,6 +370,19 @@ function CashboxForm({ box, onClose, onSaved }: { box: Cashbox | null; onClose: 
             ))}
           </DrawerSelect>
           {staffError && <p className="mt-1 text-xs text-red-600">{staffError}</p>}
+        </DrawerField>
+        <DrawerField label="Turi">
+          <DrawerSelect value={kind} onChange={(e) => setKind(e.target.value as 'cash' | 'bank')}>
+            <option value="cash">Naqd pul kassasi</option>
+            <option value="bank">Bank hisob raqami</option>
+          </DrawerSelect>
+        </DrawerField>
+        <DrawerField label="Boshlang'ich qoldiq"
+          hint="Sana kiritilsa — qoldiq shu kundagi summa + undan keyingi harakatlar (oldingilari bu summaning ichida). Sana bo'sh — butun tarix.">
+          <MoneyInput as={DrawerInput} value={openingBalance} onChange={setOpeningBalance} />
+        </DrawerField>
+        <DrawerField label="Boshlang'ich qoldiq sanasi">
+          <DateInput value={openingDate} onChange={(e) => setOpeningDate(e.target.value)} />
         </DrawerField>
       </form>
     </RightDrawer>

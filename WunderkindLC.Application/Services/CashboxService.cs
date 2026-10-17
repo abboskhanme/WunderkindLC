@@ -35,6 +35,15 @@ public static class CashboxService
 
     // ============================ Sof qoidalar ============================
 
+    /// <summary>BOSHLANG'ICH QOLDIQ (SPEC-backlog F3 K1): sana berilgan kassada undan OLDINGI harakatlar qoldiqqa
+    /// kirmaydi (ular boshlang'ich qoldiqning ichida). Sana yo'q — butun tarix (eski xulq).</summary>
+    public static bool Counts(string date, string? openingDate) =>
+        string.IsNullOrEmpty(openingDate) || string.CompareOrdinal(date, openingDate) >= 0;
+
+    /// <summary>Kassa turi: <c>cash</c> | <c>bank</c>; boshqa qiymat — null (rad).</summary>
+    public static string? NormalizeKind(string? kind) =>
+        (kind ?? "").Trim().ToLowerInvariant() switch { "" or "cash" => "cash", "bank" => "bank", _ => null };
+
     /// <summary>Foydalanuvchining standart kassasi: o'zi mas'ul faol kassa → «Asosiy kassa» → birinchi faol.</summary>
     public static Cashbox? PickDefault(IEnumerable<Cashbox> boxes, string? userId)
     {
@@ -120,6 +129,9 @@ public static class CashboxService
                                                                        CancellationToken ct = default)
     {
         // Xotirada yig'iladi: SQLite (testlar) decimal yig'indini tarjima qila olmaydi; qatorlar yengil.
+        var openings = await db.Cashboxes.AsNoTracking()
+            .Select(b => new { b.Id, b.OpeningBalance, b.OpeningDate })
+            .ToDictionaryAsync(b => b.Id, ct);
         var rows = await db.FinanceTransactions.AsNoTracking()
             .Where(t => t.CashboxId != null)
             .Select(t => new { t.CashboxId, t.Direction, t.Amount, t.Date })
@@ -134,14 +146,20 @@ public static class CashboxService
         var byBox = rows.ToLookup(r => r.CashboxId!);
         var inBy = transfers.ToLookup(t => t.ToCashboxId);
         var outBy = transfers.ToLookup(t => t.FromCashboxId);
-        var ids = byBox.Select(g => g.Key).Concat(inBy.Select(g => g.Key)).Concat(outBy.Select(g => g.Key)).Distinct();
+        var ids = byBox.Select(g => g.Key).Concat(inBy.Select(g => g.Key)).Concat(outBy.Select(g => g.Key))
+            .Concat(openings.Where(o => o.Value.OpeningBalance != 0m).Select(o => o.Key)).Distinct();
         return ids.ToDictionary(id => id, id =>
         {
             var own = byBox[id];
             var inT = inBy[id];
             var outT = outBy[id];
+            var op = openings.GetValueOrDefault(id);
+            var od = op?.OpeningDate;
             return new Balance(
-                own.Sum(r => r.Direction == "income" ? r.Amount : -r.Amount) + inT.Sum(t => t.Amount) - outT.Sum(t => t.Amount),
+                (op?.OpeningBalance ?? 0m)
+                + own.Where(r => Counts(r.Date, od)).Sum(r => r.Direction == "income" ? r.Amount : -r.Amount)
+                + inT.Where(t => Counts(t.Date, od)).Sum(t => t.Amount)
+                - outT.Where(t => Counts(t.Date, od)).Sum(t => t.Amount),
                 own.Where(r => r.Direction == "income" && InPeriod(r.Date)).Sum(r => r.Amount),
                 own.Where(r => r.Direction != "income" && InPeriod(r.Date)).Sum(r => r.Amount),
                 inT.Where(t => InPeriod(t.Date)).Sum(t => t.Amount),
@@ -152,16 +170,69 @@ public static class CashboxService
     /// <summary>Bitta kassaning HOZIRGI qoldig'i (butun tarix, ko'chirishlar bilan). Kassa yo'q/bo'sh — 0.</summary>
     public static async Task<decimal> TotalAsync(IAppDbContext db, string cashboxId, CancellationToken ct = default)
     {
+        var op = await db.Cashboxes.AsNoTracking().Where(b => b.Id == cashboxId)
+            .Select(b => new { b.OpeningBalance, b.OpeningDate }).FirstOrDefaultAsync(ct);
         var rows = await db.FinanceTransactions.AsNoTracking()
             .Where(t => t.CashboxId == cashboxId)
-            .Select(t => new { t.Direction, t.Amount })
+            .Select(t => new { t.Direction, t.Amount, t.Date })
             .ToListAsync(ct);
         var transfers = await db.CashboxTransfers.AsNoTracking()
             .Where(t => t.FromCashboxId == cashboxId || t.ToCashboxId == cashboxId)
-            .Select(t => new { t.ToCashboxId, t.Amount })
+            .Select(t => new { t.ToCashboxId, t.Amount, t.Date })
             .ToListAsync(ct);
-        return rows.Sum(r => r.Direction == "income" ? r.Amount : -r.Amount)
-               + transfers.Sum(t => t.ToCashboxId == cashboxId ? t.Amount : -t.Amount);
+        return (op?.OpeningBalance ?? 0m)
+               + rows.Where(r => Counts(r.Date, op?.OpeningDate)).Sum(r => r.Direction == "income" ? r.Amount : -r.Amount)
+               + transfers.Where(t => Counts(t.Date, op?.OpeningDate)).Sum(t => t.ToCashboxId == cashboxId ? t.Amount : -t.Amount);
+    }
+
+    /// <summary>Kassa ko'chirmasining bitta qatori. <paramref name="Kind"/>: income · expense · transfer_in · transfer_out.</summary>
+    public sealed record StatementRow(
+        string Date, string Kind, string Category, string? TypeId, decimal Amount, string? Note,
+        string? StudentId, string? TeacherId, string? StaffUserId, string? OtherCashboxId, string? CreatedBy, string Id);
+
+    /// <summary>Kassa KO'CHIRMASI (SPEC-backlog F3 K1): davr boshidagi qoldiq, kirim, chiqim, ko'chirishlar va yakuniy
+    /// qoldiq + davr harakatlari. Davr boshi boshlang'ich qoldiq sanasidan oldin bo'lsa — o'sha sanadan boshlanadi.</summary>
+    public sealed record Statement(
+        string From, string To, decimal Opening, decimal Income, decimal Expense, decimal TransferIn, decimal TransferOut,
+        decimal Closing, List<StatementRow> Rows);
+
+    public static async Task<Statement?> StatementAsync(IAppDbContext db, string cashboxId, string from, string to,
+                                                        CancellationToken ct = default)
+    {
+        var box = await db.Cashboxes.AsNoTracking().FirstOrDefaultAsync(b => b.Id == cashboxId, ct);
+        if (box is null) return null;
+        var start = !string.IsNullOrEmpty(box.OpeningDate) && string.CompareOrdinal(box.OpeningDate, from) > 0
+            ? box.OpeningDate! : from;
+        var txs = await db.FinanceTransactions.AsNoTracking()
+            .Where(t => t.CashboxId == cashboxId && string.Compare(t.Date, to) <= 0)
+            .Select(t => new { t.Id, t.Date, t.Direction, t.Category, t.TypeId, t.Amount, t.Note, t.StudentId, t.TeacherId, t.StaffUserId, t.CreatedBy })
+            .ToListAsync(ct);
+        var transfers = await db.CashboxTransfers.AsNoTracking()
+            .Where(t => (t.FromCashboxId == cashboxId || t.ToCashboxId == cashboxId) && string.Compare(t.Date, to) <= 0)
+            .Select(t => new { t.Id, t.Date, t.FromCashboxId, t.ToCashboxId, t.Amount, t.Note, t.CreatedByName })
+            .ToListAsync(ct);
+
+        bool Before(string d) => Counts(d, box.OpeningDate) && string.CompareOrdinal(d, start) < 0;
+        bool Inside(string d) => string.CompareOrdinal(d, start) >= 0;
+        var opening = box.OpeningBalance
+                      + txs.Where(t => Before(t.Date)).Sum(t => t.Direction == "income" ? t.Amount : -t.Amount)
+                      + transfers.Where(t => Before(t.Date)).Sum(t => t.ToCashboxId == cashboxId ? t.Amount : -t.Amount);
+
+        var rows = txs.Where(t => Inside(t.Date))
+            .Select(t => new StatementRow(t.Date, t.Direction == "income" ? "income" : "expense", t.Category, t.TypeId,
+                t.Amount, t.Note, t.StudentId, t.TeacherId, t.StaffUserId, null, t.CreatedBy, t.Id))
+            .Concat(transfers.Where(t => Inside(t.Date)).Select(t => t.ToCashboxId == cashboxId
+                ? new StatementRow(t.Date, "transfer_in", "transfer", null, t.Amount, t.Note, null, null, null, t.FromCashboxId, t.CreatedByName, t.Id)
+                : new StatementRow(t.Date, "transfer_out", "transfer", null, t.Amount, t.Note, null, null, null, t.ToCashboxId, t.CreatedByName, t.Id)))
+            .OrderBy(r => r.Date, StringComparer.Ordinal).ThenBy(r => r.Kind, StringComparer.Ordinal)
+            .ToList();
+
+        decimal Sum(string kind) => rows.Where(r => r.Kind == kind).Sum(r => r.Amount);
+        var income = Sum("income");
+        var expense = Sum("expense");
+        var tin = Sum("transfer_in");
+        var tout = Sum("transfer_out");
+        return new Statement(start, to, opening, income, expense, tin, tout, opening + income - expense + tin - tout, rows);
     }
 
     /// <summary>«Asosiy kassa» bo'lmasa yaratadi (yangi baza). SaveChanges — chaqiruvchida. true = qo'shildi.</summary>

@@ -1873,6 +1873,19 @@ public class FinanceTransaction
     /// ILDIZI: ko'p marta bo'linsa ham hammasi birinchi to'lovga bog'lanadi). Bekor qilish butun oilani birga
     /// bekor qiladi, vozvrat esa har qatordan alohida (`PaymentSplits`). null — bo'linmagan oddiy yozuv.</summary>
     public string? SplitFromId { get; set; }
+
+    /* ---------- MAOSH REESTRI va CHIQIM TASDIG'I (SPEC-backlog-2026-10-17 F3) ---------- */
+
+    /// <summary>XODIM maoshi (o'qituvchi emas): qaysi panel akkauntiga (<see cref="AppUser"/>.Id) berilgan —
+    /// <c>Category = "salary"</c> bilan. O'qituvchi maoshi avvalgidek <see cref="TeacherId"/> da.</summary>
+    public string? StaffUserId { get; set; }
+
+    /// <summary>Maosh to'lovi turi: <c>advance</c> (avans) · <c>final</c> (yakuniy) · null (belgilanmagan, eski yozuvlar).
+    /// Faqat KO'RINISH — hisob-kitob (<c>SalaryLedger</c>, reestr) to'lovlarni summa bo'yicha qo'shadi.</summary>
+    public string? SalaryPayKind { get; set; }
+
+    /// <summary>Chegaradan katta chiqim TASDIQ bilan o'tgan bo'lsa — qaysi so'rovdan (<see cref="ExpenseRequest"/>.Id).</summary>
+    public string? ExpenseRequestId { get; set; }
 }
 
 /// <summary>
@@ -1890,6 +1903,14 @@ public class Cashbox
     public string? ResponsibleName { get; set; }
     /// <summary>Arxivlangan kassa yangi to'lov qabul qilmaydi; qoldig'i va tarixi saqlanadi.</summary>
     public bool IsArchived { get; set; }
+    /// <summary>Kassa turi: <c>cash</c> (naqd) · <c>bank</c> (hisob raqam) — SPEC-backlog F3 K1. Faqat ko'rinish/filtr.</summary>
+    public string Kind { get; set; } = "cash";
+    /// <summary>BOSHLANG'ICH QOLDIQ — <see cref="OpeningDate"/> kunining boshidagi pul. Sana berilsa qoldiq =
+    /// boshlang'ich + shu kundan (shu kun ham) keyingi harakatlar; oldingilari hisobga olinmaydi (ular boshlang'ich
+    /// qoldiqning ichida). Sana bo'sh — boshlang'ich + BUTUN tarix (eski xulq: 0 + butun tarix).</summary>
+    public decimal OpeningBalance { get; set; }
+    /// <summary>Boshlang'ich qoldiq sanasi ("yyyy-MM-dd") yoki null.</summary>
+    public string? OpeningDate { get; set; }
     /// <summary>Markaz vaqti, "yyyy-MM-ddTHH:mm:ss".</summary>
     public string CreatedAt { get; set; } = string.Empty;
     public string? CreatedByName { get; set; }

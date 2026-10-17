@@ -21,6 +21,11 @@ export interface Cashbox {
   periodTransferIn: number
   periodTransferOut: number
   createdAt: string
+  /** Kassa turi: naqd yoki bank hisob raqami (SPEC-backlog F3). */
+  kind: 'cash' | 'bank'
+  /** Boshlang'ich qoldiq — `openingDate` kunining boshidagi pul (sana bo'lsa undan oldingi harakatlar hisobga olinmaydi). */
+  openingBalance: number
+  openingDate: string | null
 }
 
 /** To'lov oynasidagi «Kassa» tanlovi uchun (qoldiqsiz). `mine` — foydalanuvchi o'zi mas'ul. */
@@ -40,6 +45,46 @@ export interface CashboxOptions {
 export interface CashboxPayload {
   name: string
   responsibleUserId?: string | null
+  kind?: 'cash' | 'bank'
+  openingBalance?: number
+  /** "" — sana olib tashlanadi (butun tarix). */
+  openingDate?: string
+}
+
+export interface CashboxStatementRow {
+  id: string
+  date: string
+  kind: 'income' | 'expense' | 'transfer_in' | 'transfer_out'
+  category: string
+  typeName: string | null
+  amount: number
+  note: string | null
+  /** O'quvchi / o'qituvchi / xodim / boshqa kassa nomi. */
+  party: string | null
+  createdBy: string | null
+}
+
+export interface CashboxStatement {
+  cashboxId: string
+  cashboxName: string
+  kind: 'cash' | 'bank'
+  from: string
+  to: string
+  opening: number
+  income: number
+  expense: number
+  transferIn: number
+  transferOut: number
+  closing: number
+  rows: CashboxStatementRow[]
+}
+
+/** Kassa ko'chirmasi (`finance.main`): davr boshidagi qoldiq, harakatlar va yakuniy qoldiq. */
+export async function getCashboxStatement(id: string, from: string, to: string): Promise<CashboxStatement> {
+  const { data } = await api.get<CashboxStatement>(`/admin/cashboxes/${encodeURIComponent(id)}/statement`, {
+    params: { from, to },
+  })
+  return data
 }
 
 /** Faol kassalar + standart kassa (to'lov oynasi). Admin panelidagi har kim o'qiy oladi. */

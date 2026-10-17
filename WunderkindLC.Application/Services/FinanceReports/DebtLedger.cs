@@ -39,7 +39,7 @@ public sealed record LedgerCell(
 /// <para>⚠️ To'lov oynasidan FARQLARI (ataylab, hujjatlangan): (1) oyna SINOVDAGI a'zolik uchun oy ko'rsatmaydi —
 /// bu yerda sinovga qaytarilgan a'zolikning qolgan hisobi ham qarz (qatorda «Sinov» belgisi); (2) hisobi YO'Q oyga
 /// tushgan to'lov (sinovdagi avans, guruhga teglanmagan eski to'lov) hech bir qarzni yopmaydi — u
-/// <see cref="Unmatched"/> bilan alohida aytiladi.</para>
+/// <see cref="Unmatched"/> bilan alohida aytiladi — hisobidan ORTIQCHA to'langan qism ham (u boshqa oyni yopmaydi).</para>
 ///
 /// <para>⚠️ Markaz bo'yicha <c>Student.Balance</c> (umumiy balans) bilan farq qilishi MUMKIN: o'quvchi kelgusi
 /// oyni oldindan to'lab, eski oyni to'lamagan bo'lsa — balans musbat, bu yerda esa eski oy qarz. Bu ATAYIN
@@ -125,11 +125,12 @@ public static class DebtLedger
         ("60+", "60+ kun"),
     ];
 
-    /// <summary>Hisobi yo'q kataklarga tushgan to'lovlar (soni va summasi).</summary>
+    /// <summary>Hech bir qarzni YOPMAGAN to'lov: hisobi yo'q oyga tushgani va hisobidan ORTIQCHA to'langani
+    /// (masalan importda qarz oktabrga yozilgan, to'lov esa sentabrga bog'langan). Kataklar soni va ortiqcha summa.</summary>
     public static UnmatchedPaymentsDto Unmatched(IEnumerable<LedgerCell> cells)
     {
-        var list = cells.Where(c => !c.HasCharge && c.Paid > 0).ToList();
-        return new UnmatchedPaymentsDto(list.Count, list.Sum(c => c.Paid));
+        var list = cells.Select(c => Math.Max(0m, c.Paid) - c.Applied).Where(x => x > 0).ToList();
+        return new UnmatchedPaymentsDto(list.Count, list.Sum());
     }
 
     /// <summary>Kataklar yig'indisi. <c>Debtors</c> — qarzi bor DISTINCT o'quvchilar.</summary>

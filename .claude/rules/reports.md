@@ -65,7 +65,8 @@ sahifa birinchi ko'rinishda qotib qolardi. Yuqoridagi "tarixga yozuv qo'shilmasi
 bu yerda kuchsiz: navigatsiyaning O'ZI menyudan kelyapti, ya'ni tarix baribir yoziladi.
 
 ⚠️ Menyuda faqat edutizimda BOR bandlar turadi (Kassalar · Bonus · Oylik chiqarish ·
-Tranzakisyalar). Bizdagi qo'shimcha ko'rinishlar — `overview`, `groups`, `refunds` — menyuga
+Tranzakisyalar). ISTISNO (egasining TZ'si, 2026-10-17): «Maosh reestri» (`?tab=payroll`) va «Chiqimlar tasdig'i»
+(`?tab=approvals`) — ish sahifalari, Moliya → Amallar'da. Bizdagi qo'shimcha ko'rinishlar — `overview`, `groups`, `refunds` — menyuga
 QO'SHILMAYDI (foydalanuvchi talabi: Moliya menyusi edutizimdagidek qolsin); ular «Hisobotlar»
 hub'idan ochiladi (`config/reports.ts`).
 

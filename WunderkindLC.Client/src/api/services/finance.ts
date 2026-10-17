@@ -47,6 +47,10 @@ export interface FinanceTransactionPayload {
   studentId?: string
   /** Chiqim "salary" bo'lsa — qaysi o'qituvchiga (oylik maosh) */
   teacherId?: string
+  /** Chiqim "salary" — XODIMGA (o'qituvchi emas, panel akkaunti) maosh (SPEC-backlog F3). */
+  staffUserId?: string
+  /** Maosh to'lovi turi: avans yoki yakuniy. */
+  salaryPayKind?: 'advance' | 'final'
   /**
    * QAYSI OY UCHUN ("YYYY-MM") — `date` (pul harakat qilgan kun) bilan ARALASHTIRMANG.
    * Kirim "tuition" (o'quvchi to'lovi) va chiqim "salary" (o'qituvchi maoshi) uchun to'ldiriladi;
@@ -150,9 +154,19 @@ export async function getTransactions(filters: TransactionFilters = {}): Promise
   return data
 }
 
+/** Chegaradan katta chiqim — kassadan darhol chiqmadi, tasdiq kutmoqda (server 202). */
+export interface PendingExpense {
+  pending: true
+  requestId: string
+  message: string
+}
+
+export const isPendingExpense = (x: FinanceTransaction | PendingExpense): x is PendingExpense =>
+  (x as PendingExpense).pending === true
+
 export async function createTransaction(
   payload: FinanceTransactionPayload,
-): Promise<FinanceTransaction> {
+): Promise<FinanceTransaction | PendingExpense> {
   if (USE_MOCK) {
     await delay(250)
     const studentName = payload.studentId
@@ -162,8 +176,8 @@ export async function createTransaction(
     financeMock.unshift(tx)
     return tx
   }
-  const { data } = await api.post<FinanceTransaction>('/admin/finance/transactions', payload)
-  return data
+  const res = await api.post<FinanceTransaction | PendingExpense>('/admin/finance/transactions', payload)
+  return res.status === 202 ? { ...(res.data as PendingExpense), pending: true } : res.data
 }
 
 /** Bitta to'lov uchun chek (kvitansiya) ma'lumotlari — termal chek chizish/print uchun. */

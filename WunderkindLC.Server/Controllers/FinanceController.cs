@@ -49,7 +49,8 @@ public partial class FinanceController(AppDbContext db, AuditService audit, Auto
             t.CashboxId is not null && cashboxNames is not null && cashboxNames.TryGetValue(t.CashboxId, out var cb) ? cb : null,
             t.BookOrderId,
             t.TypeId,
-            t.SplitFromId);
+            t.SplitFromId,
+            t.StaffUserId, t.SalaryPayKind);
 
     /// <summary>
     /// KITOB SOTUVIDAN yozilgan qator Moliyada o'zgartirilmaydi (`BookFinance`): summasi kitob
@@ -161,6 +162,18 @@ public partial class FinanceController(AppDbContext db, AuditService audit, Auto
         // ko'rinar, maoshdan hech narsa ushlanmasdi. Eski `penalty` qatorlari tegilmaydi.
         if (p.Category == "penalty")
             return BadRequest(new { message = "Jarima endi «Moliya → Jarima» bo'limida qo'yiladi — o'qituvchi maoshidan ushlanadi, kassadan pul chiqmaydi" });
+        // MAOSH REESTRI (SPEC-backlog F3): to'lov turi (avans / yakuniy) va XODIM maoshi (o'qituvchi emas).
+        if (!ExpenseApproval.TryPayKind(p.SalaryPayKind, out var payKind))
+            return BadRequest(new { message = "Maosh to'lovi turi «avans» yoki «yakuniy» bo'lsin" });
+        var staffUserId = string.IsNullOrWhiteSpace(p.StaffUserId) ? null : p.StaffUserId.Trim();
+        if (staffUserId is not null)
+        {
+            if (p.Category != "salary" || p.Direction != "expense" || p.TeacherId is not null || p.StudentId is not null)
+                return BadRequest(new { message = "Xodim faqat maosh chiqimida tanlanadi" });
+            if (!await db.Users.AnyAsync(u => u.Id == staffUserId
+                                              && (u.Role == Roles.Staff || u.Role == Roles.Admin || u.Role == Roles.SuperAdmin)))
+                return BadRequest(new { message = "Xodim topilmadi" });
+        }
 
         // QOG'OZ KVITANSIYA raqami BIR MARTA ishlatiladi (StudentsController.AddPayment bilan bir xil qoida).
         var newReceiptNo = PaymentFields.NormalizeReceiptNo(p.ReceiptNo);
@@ -184,6 +197,36 @@ public partial class FinanceController(AppDbContext db, AuditService audit, Auto
         var knownTx = knownTxId is null ? null : await db.FinanceTransactions.FirstOrDefaultAsync(t => t.Id == knownTxId);
         if (knownTx is not null)
             return ToDto(knownTx, await StudentNames(), await TeacherNames(), typeNames: await TypeNames());
+        // Shu oyna allaqachon TASDIQ SO'ROVI yaratgan bo'lsa — ikkinchi so'rov emas, o'sha javob.
+        if (knownTxId is not null && await db.ExpenseRequests.AnyAsync(r => r.Id == knownTxId))
+            return PendingResult(knownTxId);
+
+        // CHIQIM TASDIG'I (SPEC-backlog F3 K2): chegaradan katta chiqim kassadan DARHOL chiqmaydi — so'rov bo'lib
+        // tasdiq kutadi (`ExpenseApproval`). U `FinanceTransaction` emas: hech bir hisobot/qoldiq/maosh uni o'qimaydi.
+        var threshold = await db.CenterMeta.AsNoTracking().Select(m => m.ExpenseApprovalThreshold).FirstOrDefaultAsync();
+        if (ExpenseApproval.NeedsApproval(threshold, p.Amount, p.Direction, User.IsInRole(Roles.SuperAdmin)))
+        {
+            var req = new ExpenseRequest
+            {
+                Date = p.Date, Category = p.Category,
+                TypeId = string.IsNullOrWhiteSpace(p.TypeId) ? null : p.TypeId,
+                Amount = p.Amount, Note = p.Note, Comment = p.Comment,
+                TeacherId = p.TeacherId, StaffUserId = staffUserId,
+                Month = string.IsNullOrWhiteSpace(p.Month) ? null : p.Month.Trim(),
+                Method = string.IsNullOrWhiteSpace(p.Method) ? null : p.Method.Trim().ToLowerInvariant(),
+                CashboxId = cashbox.CashboxId, SalaryPayKind = payKind,
+                CreatedBy = User.FindFirst(System.Security.Claims.ClaimTypes.Name)?.Value,
+                CreatedById = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value,
+            };
+            db.ExpenseRequests.Add(req);
+            audit.Record(AuditService.EntityFinanceTransaction, req.Id, "create",
+                $"Chiqim tasdiqqa yuborildi: {req.Category} — {AuditService.Money(req.Amount)} so'm (chegara {AuditService.Money(threshold)} so'm)",
+                teacherId: req.TeacherId);
+            await ExpenseRequestsController.NotifyApproversAsync(db, req);
+            await db.SaveChangesAsync();
+            PaymentIdempotency.Remember(reqKey, req.Id, DateTime.UtcNow);
+            return PendingResult(req.Id);
+        }
 
         // IDEMPOTENCY CHECK: oxirgi 5 soniyada bir xil tranzaksiya bo'lsa — dublikat qo'shmasdan
         // mavjudni qaytaramiz (admin double-click yoki network retry uchun).
@@ -233,6 +276,8 @@ public partial class FinanceController(AppDbContext db, AuditService audit, Auto
             CreatedBy = User.FindFirst(System.Security.Claims.ClaimTypes.Name)?.Value, // mas'ul (chek uchun)
             CreatedById = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value,
             CashboxId = cashbox.CashboxId,
+            StaffUserId = staffUserId,
+            SalaryPayKind = payKind,
         };
         db.FinanceTransactions.Add(tx);
         // O'quvchiga bog'langan tuition kirimi balansni oshiradi (izchillik — o'chirishda qaytariladi).
@@ -246,8 +291,8 @@ public partial class FinanceController(AppDbContext db, AuditService audit, Auto
             : await db.Subjects.Where(su => su.Id == payGroup!.CourseId).Select(su => su.Name).FirstOrDefaultAsync();
 
         var dir = tx.Direction == "income" ? "Kirim" : "Chiqim";
-        var summary = tx is { Category: "salary", TeacherId: not null }
-            ? $"Maosh berildi: {AuditService.Money(tx.Amount)} so'm"
+        var summary = tx is { Category: "salary" } && (tx.TeacherId is not null || tx.StaffUserId is not null)
+            ? $"Maosh berildi{(payKind is null ? "" : $" ({ExpenseApproval.PayKindLabel(payKind)})")}: {AuditService.Money(tx.Amount)} so'm"
             : $"{dir} qo'shildi: {tx.Category} — {AuditService.Money(tx.Amount)} so'm"
                 + (payGroup is null ? "" : $" — {payGroup.Name}")
                 + (payTeacherName is null ? "" : $" · {payTeacherName}");
@@ -285,6 +330,14 @@ public partial class FinanceController(AppDbContext db, AuditService audit, Auto
 
         return ToDto(tx, await StudentNames(), await TeacherNames(), typeNames: await TypeNames());
     }
+
+    /// <summary>202 — chiqim tasdiq kutmoqda (klient «Tasdiq kutilmoqda» deb yozadi, kassa qoldig'i o'zgarmagan).</summary>
+    private ObjectResult PendingResult(string requestId) => StatusCode(StatusCodes.Status202Accepted, new
+    {
+        pending = true,
+        requestId,
+        message = "Chiqim tasdiqqa yuborildi — mas'ul tasdiqlagach kassadan chiqadi",
+    });
 
     [HttpPut("transactions/{id}")]
     public async Task<ActionResult<FinanceTransactionDto>> Update(string id, FinanceTransactionPayload p)

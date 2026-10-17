@@ -152,8 +152,8 @@ export function InvoicesReportPage() {
 
           {data.unmatched.count > 0 && (
             <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">
-              Hisobi yozilmagan oylarga {data.unmatched.count} ta to'lov ({formatMoney(data.unmatched.amount)}) tushgan
-              (masalan sinovdagi avans) — ular hech bir fakturani yopmaydi.
+              {formatMoney(data.unmatched.amount)} to'lov ({data.unmatched.count} ta oy) hech bir fakturani yopmagan: hisobi
+              yo'q oyga yoki faktura summasidan ortiqcha to'langan.
             </p>
           )}
           <Card title="Fakturalar" sub={`${formatMonth(data.from)} — ${formatMonth(data.to)} · to'lov muddati har oyning ${data.dueDay}-sanasi`} tight>
