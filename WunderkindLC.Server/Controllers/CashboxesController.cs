@@ -210,9 +210,13 @@ public class CashboxesController(AppDbContext db, AuditService audit) : Controll
     private static string? OpeningError(CashboxPayload p)
     {
         if (p.Kind is not null && CashboxService.NormalizeKind(p.Kind) is null) return "Kassa turi «naqd» yoki «bank» bo'lsin";
-        if (!string.IsNullOrWhiteSpace(p.OpeningDate)
-            && !DateOnly.TryParseExact(p.OpeningDate.Trim(), "yyyy-MM-dd", out _))
-            return "Boshlang'ich qoldiq sanasi noto'g'ri (yyyy-MM-dd)";
+        if (!string.IsNullOrWhiteSpace(p.OpeningDate))
+        {
+            if (!DateOnly.TryParseExact(p.OpeningDate.Trim(), "yyyy-MM-dd", out var od))
+                return "Boshlang'ich qoldiq sanasi noto'g'ri (yyyy-MM-dd)";
+            // Kelajak sana barcha joriy harakatlarni qoldiqdan chiqarib yuborardi (ko'chirishning minus tekshiruvi ham).
+            if (od > AppClock.Today) return "Boshlang'ich qoldiq sanasi kelajakda bo'lmasin";
+        }
         return null;
     }
 

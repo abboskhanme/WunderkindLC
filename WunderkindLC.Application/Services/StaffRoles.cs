@@ -60,6 +60,22 @@ public static class StaffRoles
         return members.Count;
     }
 
+    /// <summary>FAQAT SUPERADMIN beradigan/oladigan kalitlar (2026-10-17, F3 revyu): <c>expenseApproval</c> — admin o'zi
+    /// yaratgan xodim akkauntiga bu kalitni berib, o'z so'rovlarini o'zi tasdiqlab yubora olmasin ("admin tasdiqlamaydi"
+    /// qoidasini chetlab o'tish yo'li). Rol, individual ruxsat va rol bilan xodim qo'shish — hammasi shu tekshiruvdan.</summary>
+    public static readonly string[] SuperAdminOnlyKeys = [ExpenseApproval.PermKey];
+
+    public const string SuperAdminOnlyMessage =
+        "«Chiqim tasdig'i» (expenseApproval) ruxsatini faqat superadmin beradi yoki oladi";
+
+    private static List<string> SuperOnly(IEnumerable<string>? perms) =>
+        (perms ?? []).Where(p => SuperAdminOnlyKeys.Any(k => p == k || p.StartsWith(k + ":", StringComparison.Ordinal)))
+            .Distinct().Order(StringComparer.Ordinal).ToList();
+
+    /// <summary>Ruxsatlar o'zgarishi faqat-superadmin kalitlariga TEGADIMI (qo'shilishi ham, olinishi ham).</summary>
+    public static bool ChangesSuperAdminOnly(IEnumerable<string>? before, IEnumerable<string>? after) =>
+        !SuperOnly(before).SequenceEqual(SuperOnly(after));
+
     /// <summary>Xodimni rolga biriktiradi (ruxsatlari darhol roldan). <paramref name="role"/> = null — individual.</summary>
     public static void Assign(AppUser user, StaffRoleTemplate? role)
     {

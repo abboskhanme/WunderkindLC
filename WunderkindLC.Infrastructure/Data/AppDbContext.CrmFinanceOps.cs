@@ -23,6 +23,9 @@ public partial class AppDbContext
         b.Entity<FinanceTransaction>().Property(x => x.SalaryPayKind).HasMaxLength(16);
         b.Entity<FinanceTransaction>().Property(x => x.ExpenseRequestId).HasMaxLength(64);
         b.Entity<FinanceTransaction>().HasIndex(x => new { x.StaffUserId, x.Month });
+        // Bitta tasdiq so'rovi — ko'pi bilan BITTA tranzaksiya (jarayon qulfidan tashqari baza himoyasi, F3 revyu).
+        b.Entity<FinanceTransaction>().HasIndex(x => x.ExpenseRequestId).IsUnique()
+            .HasFilter("\"ExpenseRequestId\" IS NOT NULL");
 
         b.Entity<ExpenseRequest>(e =>
         {

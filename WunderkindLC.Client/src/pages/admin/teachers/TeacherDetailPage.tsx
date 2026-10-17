@@ -45,6 +45,7 @@ import {
 } from '@/api/services/teachers'
 import { createTransaction, isPendingExpense } from '@/api/services/finance'
 import { toast } from '@/lib/toast'
+import { newRequestId } from '@/lib/requestId'
 import { TeacherPaymentsSummary } from './TeacherPaymentsSummary'
 import { getClasses } from '@/api/services/classes'
 import { getSubjects } from '@/api/services/subjects'
@@ -209,6 +210,10 @@ export function TeacherDetailPage() {
   /** Maosh to'lovi turi (SPEC-backlog F3): avans yoki yakuniy — reestrda alohida ko'rinadi. */
   const [payKind, setPayKind] = useState<'advance' | 'final'>('final')
   const [payBusy, setPayBusy] = useState(false)
+  // Bir oyna ochilishi = bitta so'rov kaliti + SINXRON qulf: ikki marta bosish/qayta urinish ikkinchi maosh (yoki ikkinchi
+  // tasdiq so'rovi) yozmasin (`billing.md` «To'lov BIR MARTA o'tadi»).
+  const payReqId = useRef(newRequestId())
+  const payInFlight = useRef(false)
   const [payError, setPayError] = useState<string | null>(null)
   /** KASSA: qaysi kassadan berilmoqda (`null` — tanlanmagan, foydalanuvchining standart kassasi). */
   const [payCashbox, setPayCashbox] = useState<string | null>(null)
@@ -315,6 +320,7 @@ export function TeacherDetailPage() {
     setPayNote(salaryNoteFor(selMonth, 'all'))
     setPayError(null)
     setPayCashbox(null)
+    payReqId.current = newRequestId()
     setPayOpen(true)
   }
 
@@ -371,6 +377,8 @@ export function TeacherDetailPage() {
   const submitPay = async () => {
     // Summa bo'sh/0 bo'lsa tugma o'chiq turadi — bu yerga yetib kelmaydi.
     if (!id || !payMonth || payAmount === null || payAmount <= 0) return
+    if (payInFlight.current) return
+    payInFlight.current = true
     setPayBusy(true)
     setPayError(null)
     try {
@@ -386,7 +394,9 @@ export function TeacherDetailPage() {
         note: payNote.trim() || undefined,
         // Bo'sh — server standart kassani tanlaydi (beruvchining o'z kassasi / «Asosiy kassa»).
         cashboxId: payCashboxId || undefined,
+        requestId: payReqId.current,
       })
+      payReqId.current = newRequestId()
       // Chegaradan katta maosh — tasdiq kutadi (kassadan hali chiqmadi, maoshda ham "berilgan" emas).
       if (isPendingExpense(res)) {
         toast.info('Tasdiq kutilmoqda', res.message)
@@ -404,6 +414,7 @@ export function TeacherDetailPage() {
     } catch (err) {
       setPayError(apiErrorMessage(err, "To'lov qilib bo'lmadi"))
     } finally {
+      payInFlight.current = false
       setPayBusy(false)
     }
   }

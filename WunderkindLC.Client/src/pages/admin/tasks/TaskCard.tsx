@@ -1,6 +1,6 @@
 import { useDraggable } from '@dnd-kit/core'
 import { CSS } from '@dnd-kit/utilities'
-import { Archive, BadgeCheck, Eye, Hourglass, ListChecks, MessageSquare, Repeat, Trash2, Undo2 } from 'lucide-react'
+import { Archive, BadgeCheck, Eye, Hourglass, ListChecks, MessageSquare, Phone, Repeat, Trash2, Undo2 } from 'lucide-react'
 import type { WorkTask } from '@/api/services/workTasks'
 import { DropdownMenu, type DropdownMenuItem } from '@/components/ui/DropdownMenu'
 import { cn } from '@/lib/utils'
@@ -136,6 +136,15 @@ export function TaskCardContent({
           >
             {state === 'approved' ? <BadgeCheck className="h-3 w-3" /> : <Hourglass className="h-3 w-3" />}
             {TASK_STATES[state].label}
+          </span>
+        )}
+
+        {task.leadId && (
+          <span
+            title={task.leadName ? `Lid: ${task.leadName}` : "Lid o'chirilgan"}
+            className="inline-flex items-center gap-1 rounded-full bg-sky-50 px-2 py-0.5 text-[10.5px] font-semibold text-sky-700"
+          >
+            <Phone className="h-3 w-3" /> Lid
           </span>
         )}
 

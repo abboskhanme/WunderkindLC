@@ -20,6 +20,7 @@ import { MoneyInput } from '@/components/ui/NumberInput'
 import { financeCategoryLabel } from '@/config/constants'
 import { apiErrorMessage, cn, formatMoney } from '@/lib/utils'
 import { toast } from '@/lib/toast'
+import { cashboxOptionLabel, useCashboxOptions } from '@/hooks/useCashboxOptions'
 
 const STATUS: Array<[ExpenseRequestStatus | '', string]> = [
   ['pending', 'Kutilmoqda'],
@@ -54,6 +55,7 @@ export function ExpenseApprovalsTab() {
   const [tick, setTick] = useState(0)
   const [busy, setBusy] = useState<string | null>(null)
   const [rejecting, setRejecting] = useState<ExpenseRequest | null>(null)
+  const [approving, setApproving] = useState<ExpenseRequest | null>(null)
   const [threshold, setThreshold] = useState<number | null>(null)
   const [thresholdBusy, setThresholdBusy] = useState(false)
   const [thresholdError, setThresholdError] = useState('')
@@ -194,8 +196,7 @@ export function ExpenseApprovalsTab() {
                         <div className="inline-flex gap-1">
                           {r.canDecide && (
                             <>
-                              <Button className="!px-2.5 !py-1 text-xs" disabled={busy === r.id}
-                                onClick={() => void run(r.id, () => approveExpense(r.id), 'Tasdiqlandi — kassadan chiqdi', "Tasdiqlab bo'lmadi")}>
+                              <Button className="!px-2.5 !py-1 text-xs" disabled={busy === r.id} onClick={() => setApproving(r)}>
                                 <Check className="h-4 w-4" /> Tasdiqlash
                               </Button>
                               <Button className="!px-2.5 !py-1 text-xs" variant="secondary" disabled={busy === r.id} onClick={() => setRejecting(r)}>
@@ -220,6 +221,14 @@ export function ExpenseApprovalsTab() {
         </Card>
       )}
 
+      {approving && (
+        <ApproveModal
+          request={approving}
+          onClose={() => setApproving(null)}
+          onDone={() => { setApproving(null); setTick((n) => n + 1) }}
+        />
+      )}
+
       {rejecting && (
         <RejectModal
           request={rejecting}
@@ -228,6 +237,68 @@ export function ExpenseApprovalsTab() {
         />
       )}
     </div>
+  )
+}
+
+/**
+ * Tasdiqlash — qaysi KASSADAN chiqishini ko'rsatadi va tanlashga imkon beradi: so'rovdagi kassa arxivlangan bo'lsa
+ * server 400 qaytaradi, kassa tanlovisiz esa so'rovni faqat rad etish mumkin bo'lardi. Pul TASDIQ kuni chiqadi.
+ */
+function ApproveModal({ request, onClose, onDone }: { request: ExpenseRequest; onClose: () => void; onDone: () => void }) {
+  const options = useCashboxOptions()
+  const [picked, setPicked] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const requestBoxActive = !!options?.items.some((o) => o.id === request.cashboxId)
+  // Tanlanmagan bo'lsa: so'rovdagi kassa (faol bo'lsa), aks holda tasdiqlovchining standart kassasi.
+  const cashboxId = picked ?? (requestBoxActive ? request.cashboxId ?? '' : options?.defaultId ?? options?.items[0]?.id ?? '')
+  const submit = async () => {
+    if (busy) return
+    setBusy(true)
+    setError('')
+    try {
+      await approveExpense(request.id, undefined, cashboxId || undefined)
+      toast.success('Tasdiqlandi — kassadan chiqdi')
+      onDone()
+    } catch (e) {
+      setError(apiErrorMessage(e, "Tasdiqlab bo'lmadi"))
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      size="sm"
+      title="Chiqimni tasdiqlash"
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose} disabled={busy}>Bekor</Button>
+          <Button onClick={() => void submit()} disabled={busy || !options}>{busy ? 'Saqlanmoqda...' : 'Tasdiqlash'}</Button>
+        </>
+      }
+    >
+      <p className="mb-3 text-sm text-slate-600">
+        <span className="font-semibold text-red-600">{formatMoney(request.amount)}</span> — {financeCategoryLabel(request.category)}
+        {request.teacherName || request.staffName ? ` · ${request.teacherName ?? request.staffName}` : ''} · kiritdi: {request.createdBy}
+      </p>
+      <label className="mb-1 block text-xs font-semibold text-slate-500">Qaysi kassadan</label>
+      <select
+        value={cashboxId}
+        onChange={(e) => setPicked(e.target.value)}
+        className="h-10 w-full rounded-lg border border-slate-200 bg-white px-2 text-sm text-slate-700"
+      >
+        {(options?.items ?? []).map((o) => (
+          <option key={o.id} value={o.id}>{cashboxOptionLabel(o)}</option>
+        ))}
+      </select>
+      {request.cashboxName && !requestBoxActive && options && (
+        <p className="mt-1 text-xs text-amber-600">So'rovdagi kassa («{request.cashboxName}») arxivlangan — boshqa kassani tanlang.</p>
+      )}
+      <p className="mt-2 text-xs text-slate-400">Pul tasdiqlangan kuni kassadan chiqadi (so'rov sanasi izohda qoladi).</p>
+      {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
+    </Modal>
   )
 }
 

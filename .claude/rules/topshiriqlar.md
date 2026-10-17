@@ -184,3 +184,28 @@ bazaviy qism — **`WorkTaskFlow.Approval.cs`** (panel ham, bot ham AYNAN shu me
   qatorlarida «Tasdiq kutmoqda» · «Tasdiqlangan» · «Qaytarilgan».
 - Telegram matnlari — `WorkTaskTelegram` (`ApprovalRequestText`, `ApproveKeyboard`, `ApprovedText`,
   `ReturnedText`). Xodimga operatsion xabar — to'g'ridan-to'g'ri `TelegramService` (ota-ona navbati emas).
+
+## 9. LIDGA AVTOMATIK TOPSHIRIQ (SPEC-backlog-2026-10-17 F4 L1, TZ 3.3)
+
+Migratsiya `LeadAutoTasks` (`WorkTask.LeadId`, `CenterMeta.LeadAutoTaskEnabled/AssigneeIds/Cursor/BoardId`). Qoida —
+`LeadAutoTask` (Application, `LeadAutoTaskTests`). Sozlama — «Doska sozlamalari» oynasi → «Lidga avtomatik topshiriq»
+(`GET/PUT work-tasks/lead-auto`, yozish `tasks.settings`, audit `CenterMeta`). Standart — O'CHIQ.
+
+- **Qachon:** lid TASHQI kanaldan ma'lumot qoldirdi (lid formasi, landing, daraja testi, Instagram, Meta reklama
+  formasi) — chaqiruv `LeadNotifier.NotifyNewLeadAsync` ICHIDA, Telegram tekshiruvidan OLDIN (bot sozlanmagan markazda
+  ham; yangi tashqi kanal qo'shilsa ham unutilmaydi). Takroriy murojaat / yangi test natijasida — lidda ochiq topshiriq
+  qolmagan bo'lsa «Takroriy murojaat — qo'ng'iroq: …».
+- ⚠️ **QO'LDA kiritilgan lidga YO'Q** (`LeadsController.Create` → `autoTask: false`): kiritgan xodim lid bilan allaqachon
+  ishlayapti.
+- **Kimga:** lidning mas'uli (panel akkaunti bo'lsa; navbat surilmaydi) — aks holda sozlamadagi xodimlar NAVBAT bilan
+  (`LeadAutoTask.Pick`, `LeadAutoTaskCursor`; ro'yxat o'zgarsa navbat boshidan). O'chirilgan xodim navbatdan tushadi; hech
+  kim qolmasa topshiriq mas'ulsiz (doskada ko'rinadi). ⚠️ Lidning O'Z mas'uli (`AssigneeUserId`) o'zgartirilMAYDI — KPI
+  "biriktirilmagan lid" qoidasi tegilmasin.
+- **Bir lid — bitta OCHIQ topshiriq** (`LeadId` + yopilmagan + arxivlanmagan); aylantirilgan/yo'qotilgan lidga yo'q.
+- Topshiriq: «Lidga qo'ng'iroq: <ism>», tavsifda telefon/manba/qiziqish, muddat — BUGUN, muhimlik «Yuqori», tasdiq talab
+  qilinmaydi (`CreatedById = ""` — tizim; kartada muallif «Tizim (avtomatik)»). Doska — sozlamadagisi (faol bo'lsa) →
+  birinchi faol doska → yangi «Umumiy» (`WorkTaskFlow.AddDefaultBoardIfNoneAsync`, panel seed'i bilan bitta nusxa).
+- Xabar: mas'ulga qo'ng'iroqcha (`UserNotification`, tur `tasks`) + Telegram (`WorkTaskTelegram.NewTaskText` + «✅ Bajardim»).
+- ⚠️ Hech qachon istisno chiqarmaydi (lid qabulini buzmasin); saqlash yiqilsa O'Z qatorlari kontekstdan chiqariladi.
+- Kartada «📞 Lid» chipi, topshiriq oynasida lid sahifasiga havola (lid o'chirilgan bo'lsa — «Lid o'chirilgan»).
+- KPI «vazifasiz sdelka = 0» (`ChecklistAutoCheck.LeadsHaveTasksAsync`) endi `WorkTask.LeadId` ni ham bog'lanish deb sanaydi.

@@ -11,12 +11,13 @@ import { Input, Time24Input } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
 import { stageColorKeys, stageColors } from '@/config/stageColors'
 import { cn, apiErrorMessage } from '@/lib/utils'
+import { LeadAutoTaskSection } from './LeadAutoTaskSection'
 
 /**
  * DOSKA VA USTUN SOZLAMALARI — `tasks.settings` ruxsati bilan.
  *
- * <p>Bir oynada uch narsa: doskalar (loyihalar), tanlangan doskaning ustunlari (Kanban
- * bosqichlari) va kunlik Telegram eslatmasi vaqti. Uchalasi ham "sozlash" ishi bo'lgani uchun
+ * <p>Bir oynada to'rt narsa: doskalar (loyihalar), tanlangan doskaning ustunlari (Kanban
+ * bosqichlari), kunlik Telegram eslatmasi vaqti va lidga avtomatik topshiriq. Uchalasi ham "sozlash" ishi bo'lgani uchun
  * alohida sahifa ochish shart emas — doska ustidan chiqmasdan tuzatiladi.</p>
  */
 export function BoardSettingsModal({
@@ -214,6 +215,9 @@ export function BoardSettingsModal({
             </Button>
           </div>
         </section>
+
+        {/* ---------- Lidga avtomatik topshiriq ---------- */}
+        {open && <LeadAutoTaskSection boards={boards} />}
       </div>
     </Modal>
   )

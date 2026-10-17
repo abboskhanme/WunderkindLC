@@ -177,6 +177,10 @@ jadvalda controller ko'rsatilmagan).
 - **`expenseApproval`** (2026-10-17, SPEC-backlog F3) — chegaradan katta chiqimni TASDIQLASH: superadmin yoki ANIQ berilgan
   xodim (`IsSuperAdminOrGranted`), oddiy admin ham, yalang `finance` ham yetmaydi; sahifasiz alohida kalit — rol matritsasida
   `finance` ga yig'ilib (ixchamlanib) yo'qolmasin. `ExpenseRequestsController` (`billing.md`).
+  ⚠️ Bu kalitni **FAQAT superadmin beradi va oladi** (`StaffRoles.ChangesSuperAdminOnly`, 403): rol yaratish/tahrir, individual
+  ruxsat, rol bilan xodim qo'shish yoki rolini almashtirish — aks holda admin o'zi yaratgan akkauntga kalitni berib, o'z
+  chiqimlarini o'zi tasdiqlardi. Tasdiqlovchiga Moliya sahifasi uchun `finance.main` (ko'rish) ham kerak — «Chiqimlar tasdig'i»
+  Moliya ichidagi tab.
 - **`retentionBonus`** (aktivlashtirishdagi «Bonus hisoblansin» ptichkasi) —
   `useSuperOrGranted` / `AdminPermAttribute.IsSuperAdminOrGranted`: oddiy `admin` roli ham
   KO'RMAYDI, faqat superadmin va ANIQ ruxsat berilgan xodim. Sahifa kalitlari bu yerda

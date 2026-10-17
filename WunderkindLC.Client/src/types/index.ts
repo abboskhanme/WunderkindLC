@@ -1262,6 +1262,10 @@ export interface SchoolSettings {
 export type FinanceDirection = 'income' | 'expense'
 
 export interface FinanceTransaction {
+  /** Xodim maoshi to'lovi (Maosh reestri, F3) — bo'lsa o'qituvchi emas, panel akkaunti. */
+  staffUserId?: string | null
+  /** Maosh to'lovi turi: avans / yakuniy. */
+  salaryPayKind?: 'advance' | 'final' | null
   id: string
   /** Sana (ISO) */
   date: string

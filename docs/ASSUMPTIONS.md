@@ -607,3 +607,8 @@
 - [2026-10-17] Pending expense storage → a separate `ExpenseRequest` table, not a status on `FinanceTransaction` → 25+ readers of transactions (P&L, cash, salary, KPI, AI) never see unapproved money; approval writes the ordinary transaction through the same fields.
 - [2026-10-17] Approval threshold default 0 (off) → nothing changes at deploy; the superadmin sets it on «Chiqimlar tasdig'i».
 - [2026-10-17] Staff payroll (owner: fixed + KPI) → KPI staff: confirmed `KpiMonthResult.Salary`, unconfirmed month shows the KPI base; others: versioned `StaffSalary`; payments are ordinary salary expenses with `StaffUserId` + advance/final kind → KPI still only "says the amount".
+- [2026-10-17] Lid avto-topshirig'i qaysi lidlarga? → faqat TASHQI kanal (forma, landing, daraja testi, Instagram, reklama); qo'lda kiritilganga yo'q → TZ: "lid ma'lumot qoldirganda"; kiritgan xodim lid bilan allaqachon ishlayapti
+- [2026-10-17] Avto-topshiriq lidning mas'ulini ham o'zgartiradimi? → yo'q, faqat topshiriq mas'uli → KPI "biriktirilmagan lid" hisobiga tegmaslik; mas'ul bosqich surilganda odatdagidek qo'yiladi
+- [2026-10-17] Avto-topshiriq muddati / muhimligi? → bugun, «Yuqori», tasdiqsiz → yangi lidga tez qo'ng'iroq; tizim yaratgan topshiriqda tasdiqlovchi yo'q
+- [2026-10-17] Tasdiqlangan chiqim sanasi? → tasdiq kuni (so'rov sanasi izohda) → pul aynan shu kuni kassadan chiqadi; o'tgan kun hisoboti orqaga o'zgarmasin
+- [2026-10-17] expenseApproval kalitini kim beradi? → faqat superadmin → admin o'zi yaratgan akkaunt bilan o'z chiqimini tasdiqlay olmasin

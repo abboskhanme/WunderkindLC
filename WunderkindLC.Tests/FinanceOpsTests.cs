@@ -1,3 +1,4 @@
+using WunderkindLC.Application.Dtos;
 using WunderkindLC.Application.Services;
 using WunderkindLC.Domain;
 using Xunit;
@@ -39,9 +40,69 @@ public class FinanceOpsTests
             Date = "2026-10-17", Category = "salary", Amount = 3_000_000m, StaffUserId = "u5", Month = "2026-10",
             SalaryPayKind = "advance", CreatedBy = "Kassir", CreatedById = "u1", Method = "cash",
         };
-        var tx = ExpenseApproval.ToTransaction(r, "main");
+        var tx = ExpenseApproval.ToTransaction(r, "main", "2026-10-17");
         Assert.Equal(("expense", "salary", 3_000_000m, "u5", "advance", "main", "u1", r.Id),
             (tx.Direction, tx.Category, tx.Amount, tx.StaffUserId, tx.SalaryPayKind, tx.CashboxId, tx.CreatedById, tx.ExpenseRequestId));
+    }
+
+    [Fact]
+    public void Tasdiqlangan_chiqim_sanasi_TASDIQ_kuni__sorov_sanasi_izohda_oy_ozgarmaydi()
+    {
+        var r = new ExpenseRequest { Date = "2026-10-10", Category = "rent", Amount = 5_000_000m, Note = "Oktabr ijarasi", Month = "2026-10" };
+        var tx = ExpenseApproval.ToTransaction(r, "main", "2026-10-17");
+        Assert.Equal("2026-10-17", tx.Date);
+        Assert.Equal("2026-10", tx.Month);
+        Assert.Contains("[so'rov sanasi: 2026-10-10]", tx.Note);
+        Assert.StartsWith("Oktabr ijarasi", tx.Note);
+    }
+
+    [Fact]
+    public void Ozining_maoshini_ozi_tasdiqlay_olmaydi()
+    {
+        var r = new ExpenseRequest { CreatedById = "kassir", StaffUserId = "boss2", Status = ExpenseApproval.Pending };
+        Assert.NotNull(ExpenseApproval.DecisionBlock(r, "boss2"));
+        Assert.Null(ExpenseApproval.DecisionBlock(r, "boss1"));
+    }
+
+    // ---------- tahrir tasdiqni chetlab o'tmaydi ----------
+
+    private static FinanceTransactionPayload Edit(string direction, decimal amount, string category = "rent") =>
+        new("2026-10-17", direction, category, amount, null, null, null);
+
+    [Theory]
+    [InlineData("expense", 900_000, "expense", 50_000_000, false, true)]   // summani chegaradan oshirish — rad
+    [InlineData("income", 50_000_000, "expense", 50_000_000, false, true)] // kirimni katta chiqimga aylantirish — rad
+    [InlineData("expense", 50_000_000, "expense", 40_000_000, false, false)] // kamaytirish — mumkin
+    [InlineData("expense", 50_000_000, "expense", 50_000_000, false, false)] // summa o'zgarmadi — mumkin
+    [InlineData("expense", 900_000, "expense", 950_000, false, false)]     // chegaradan past — mumkin
+    [InlineData("expense", 900_000, "expense", 50_000_000, true, false)]   // superadmin — mumkin
+    public void Tahrir_chiqim_tasdigini_chetlab_otmaydi(string oldDir, decimal oldAmount, string newDir, decimal newAmount,
+                                                        bool isSuper, bool blocked)
+    {
+        var err = FinanceTxEdit.ApprovalEditError(oldDir, oldAmount, Edit(newDir, newAmount), 1_000_000m, isSuper);
+        Assert.Equal(blocked, err is not null);
+    }
+
+    [Fact]
+    public void Tahrir_chegara_ochiq_bolsa_hech_narsani_tosmaydi() =>
+        Assert.Null(FinanceTxEdit.ApprovalEditError("expense", 1m, Edit("expense", 99_000_000m), 0m, false));
+
+    [Theory]
+    [InlineData("Expense")]
+    [InlineData("out")]
+    [InlineData("")]
+    public void Yonalish_faqat_income_yoki_expense(string direction)
+    {
+        var tx = new FinanceTransaction { Direction = "expense", Category = "rent", Amount = 100m };
+        Assert.Equal(FinanceTxEdit.DirectionMessage, FinanceTxEdit.EditError(tx, Edit(direction, 100m), "2026-10-17"));
+    }
+
+    [Fact]
+    public void Xodim_maoshi_qatoriga_oqituvchi_tanlanmaydi()
+    {
+        var tx = new FinanceTransaction { Direction = "expense", Category = "salary", Amount = 100m, StaffUserId = "u5" };
+        var p = Edit("expense", 100m, "salary") with { TeacherId = "t1" };
+        Assert.NotNull(FinanceTxEdit.EditError(tx, p, "2026-10-17"));
     }
 
     [Theory]

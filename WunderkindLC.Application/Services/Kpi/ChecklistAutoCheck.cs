@@ -128,8 +128,8 @@ public static class ChecklistAutoCheck
     /// «Vazifasiz sdelka = 0»: xodimning har bir OCHIQ lidiga ochiq topshiriq biriktirilganmi.
     /// </summary>
     /// <remarks>
-    /// ⚠️ <b>Loyihada <c>Lead</c> ↔ <c>WorkTask</c> uchun ALOHIDA ustun YO'Q</b> — bog'lanish
-    /// topshiriqning <c>Tags</c> ro'yxatiga lid Id'sini qo'yish orqali ifodalanadi.
+    /// ⚠️ Bog'lanish: topshiriqning <c>Tags</c> ro'yxatidagi lid Id'si YOKI (2026-10-17 dan) <c>WorkTask.LeadId</c>
+    /// (lid avto-topshirig'i — <c>LeadAutoTask</c>).
     ///
     /// ⚠️ Shuning uchun: agar xodimning ochiq topshiriqlaridan BIRONTASI ham lidga
     /// bog'lanmagan bo'lsa, bu "bog'lanish umuman ishlatilmayapti" degani va band
@@ -150,7 +150,8 @@ public static class ChecklistAutoCheck
         if (openLeadIds.Count == 0) return true;
 
         var leadSet = openLeadIds.ToHashSet(StringComparer.Ordinal);
-        var linked = openTasks.SelectMany(t => t.Tags)
+        // Bog'lanish ikki ko'rinishda: eski — lid Id'si Tags ichida; 2026-10-17 dan — WorkTask.LeadId (lid avto-topshirig'i).
+        var linked = openTasks.SelectMany(t => t.LeadId is null ? t.Tags : t.Tags.Append(t.LeadId))
                               .Where(leadSet.Contains)
                               .ToHashSet(StringComparer.Ordinal);
 

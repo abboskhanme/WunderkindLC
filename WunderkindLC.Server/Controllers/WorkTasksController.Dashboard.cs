@@ -172,6 +172,47 @@ public partial class WorkTasksController
         return NoContent();
     }
 
+    // ---------- Lidga avtomatik topshiriq (SPEC-backlog F4 L1) ----------
+
+    [HttpGet("lead-auto")]
+    public async Task<ActionResult<LeadAutoTaskSettingsDto>> GetLeadAuto()
+    {
+        var meta = await db.CenterMeta.AsNoTracking().FirstOrDefaultAsync();
+        return new LeadAutoTaskSettingsDto(
+            meta?.LeadAutoTaskEnabled ?? false, meta?.LeadAutoTaskAssigneeIds ?? [], meta?.LeadAutoTaskBoardId);
+    }
+
+    /// <summary>Navbatdagi xodimlar — faqat panel akkauntlari (xodim/admin/superadmin), takrorsiz, ≤ 50 ta. Yoqilganda
+    /// kamida bitta xodim SHART (aks holda topshiriqlar mas'ulsiz tug'ilardi). Doska — faol doska yoki bo'sh.</summary>
+    [HttpPut("lead-auto")]
+    [AdminPerm("tasks.settings")]
+    public async Task<ActionResult> SetLeadAuto(LeadAutoTaskSettingsDto req)
+    {
+        var meta = await db.CenterMeta.FirstOrDefaultAsync();
+        if (meta is null) return NotFound(new { message = "Markaz sozlamalari topilmadi" });
+        var wanted = (req.AssigneeIds ?? []).Where(x => !string.IsNullOrWhiteSpace(x)).Select(x => x.Trim())
+            .Distinct().ToList();
+        if (wanted.Count > 50) return BadRequest(new { message = "Ko'pi bilan 50 ta xodim" });
+        var valid = (await db.Users
+                .Where(u => wanted.Contains(u.Id) && (u.Role == Roles.Staff || u.Role == Roles.Admin || u.Role == Roles.SuperAdmin))
+                .Select(u => u.Id).ToListAsync())
+            .ToHashSet();
+        var pool = wanted.Where(valid.Contains).ToList();
+        if (req.Enabled && pool.Count == 0)
+            return BadRequest(new { message = "Kamida bitta xodimni tanlang — topshiriq kimga biriktirilishi kerak" });
+        string? boardId = string.IsNullOrWhiteSpace(req.BoardId) ? null : req.BoardId.Trim();
+        if (boardId is not null && !await db.WorkTaskBoards.AnyAsync(b => b.Id == boardId && !b.IsArchived))
+            return BadRequest(new { message = "Doska topilmadi yoki arxivlangan" });
+
+        var poolChanged = !pool.SequenceEqual(meta.LeadAutoTaskAssigneeIds);
+        meta.LeadAutoTaskEnabled = req.Enabled;
+        if (poolChanged) { meta.LeadAutoTaskAssigneeIds = pool; meta.LeadAutoTaskCursor = 0; }
+        meta.LeadAutoTaskBoardId = boardId;
+        LogSettings("Topshiriqlar — lidga avtomatik topshiriq");
+        await db.SaveChangesAsync();
+        return NoContent();
+    }
+
     /// <summary>
     /// Sozlama o'zgarishi auditi — <c>SettingsController.LogSettings</c> bilan AYNAN bir xil naqsh
     /// (tur <c>CenterMeta</c> → "Sozlamalar" bo'limi): qaysi maydonlar o'zgargani yoziladi.

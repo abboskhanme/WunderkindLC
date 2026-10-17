@@ -1614,6 +1614,20 @@ namespace WunderkindLC.Infrastructure.Migrations
                     b.Property<int>("LateGraceMinutes")
                         .HasColumnType("integer");
 
+                    b.Property<List<string>>("LeadAutoTaskAssigneeIds")
+                        .IsRequired()
+                        .HasColumnType("text[]");
+
+                    b.Property<string>("LeadAutoTaskBoardId")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<int>("LeadAutoTaskCursor")
+                        .HasColumnType("integer");
+
+                    b.Property<bool>("LeadAutoTaskEnabled")
+                        .HasColumnType("boolean");
+
                     b.Property<string>("LocalSmsDefaultAgentId")
                         .HasColumnType("text");
 
@@ -3431,6 +3445,10 @@ namespace WunderkindLC.Infrastructure.Migrations
                     b.HasIndex("CashboxId");
 
                     b.HasIndex("Date");
+
+                    b.HasIndex("ExpenseRequestId")
+                        .IsUnique()
+                        .HasFilter("\"ExpenseRequestId\" IS NOT NULL");
 
                     b.HasIndex("SplitFromId");
 
@@ -9565,6 +9583,10 @@ namespace WunderkindLC.Infrastructure.Migrations
                     b.Property<DateTime?>("LastReturnedAt")
                         .HasColumnType("timestamp without time zone");
 
+                    b.Property<string>("LeadId")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
                     b.Property<int>("Order")
                         .HasColumnType("integer");
 
@@ -9601,6 +9623,8 @@ namespace WunderkindLC.Infrastructure.Migrations
                     b.HasIndex("AssigneeId");
 
                     b.HasIndex("DueDate");
+
+                    b.HasIndex("LeadId");
 
                     b.HasIndex("BoardId", "ColumnId");
 

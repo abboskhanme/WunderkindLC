@@ -19,23 +19,12 @@ public partial class WorkTasksController
     /// Idempotent: bir marta ishlaydi, keyin darrov qaytadi.</summary>
     private async Task EnsureSeedAsync()
     {
-        if (await db.WorkTaskBoards.AnyAsync()) return;
-        var board = new WorkTaskBoard { Title = "Umumiy", Color = "violet", Order = 0, CreatedById = Uid };
-        db.WorkTaskBoards.Add(board);
-        db.WorkTaskColumns.AddRange(DefaultColumns(board.Id));
+        if (await WorkTaskFlow.AddDefaultBoardIfNoneAsync(db, Uid) is null) return;
         await db.SaveChangesAsync();
     }
 
-    /// <summary>Yangi doskaning standart ustunlari. Birinchisi va yopiluvchisi TIZIM ustuni —
-    /// o'chirilmaydi (topshiriqning "uyi" va "bajarildi" nuqtasi doim qolsin).
-    /// <para>⚠️ «Tekshiruvda» 2026-10 dan EKILMAYDI (CRM Phase 5): tekshiruv endi TASDIQLASH bosqichi
-    /// (<see cref="WorkTaskApproval"/>), ustun emas. Mavjud doskalar tegilmaydi.</para></summary>
-    private static List<WorkTaskColumn> DefaultColumns(string boardId) =>
-    [
-        new() { BoardId = boardId, Title = "Rejada",     Color = "slate",   Order = 0, IsSystem = true },
-        new() { BoardId = boardId, Title = "Jarayonda",  Color = "blue",    Order = 1 },
-        new() { BoardId = boardId, Title = "Bajarildi",  Color = "emerald", Order = 2, IsDone = true, IsSystem = true },
-    ];
+    /// <summary>Yangi doskaning standart ustunlari — <see cref="WorkTaskFlow.DefaultColumns"/> (yagona nusxa).</summary>
+    private static List<WorkTaskColumn> DefaultColumns(string boardId) => WorkTaskFlow.DefaultColumns(boardId);
 
     // ---------- Kichik yordamchilar ----------
 
@@ -164,6 +153,9 @@ public partial class WorkTasksController
             .Select(u => new { u.Id, u.FullName, u.AvatarUrl }).ToListAsync();
         var names = users.ToDictionary(u => u.Id, u => u.FullName);
         var avatars = users.ToDictionary(u => u.Id, u => u.AvatarUrl);
+        var leadIds = tasks.Select(t => t.LeadId).OfType<string>().Distinct().ToList();
+        var leadNames = leadIds.Count == 0 ? new Dictionary<string, string>()
+            : await db.Leads.Where(l => leadIds.Contains(l.Id)).ToDictionaryAsync(l => l.Id, l => l.FullName);
 
         var today = Today;
         return tasks.Select(t =>
@@ -174,14 +166,18 @@ public partial class WorkTasksController
             return new WorkTaskDto(
                 t.Id, t.BoardId, t.ColumnId, t.Title, t.Description,
                 t.AssigneeId, names.GetValueOrDefault(t.AssigneeId, ""), avatars.GetValueOrDefault(t.AssigneeId),
-                t.CreatedById, names.GetValueOrDefault(t.CreatedById, ""),
+                t.CreatedById,
+                // Lid avto-topshirig'ini tizim yaratadi (CreatedById bo'sh) — muallif o'rniga yorliq.
+                t.CreatedById.Length == 0 && t.LeadId is not null ? "Tizim (avtomatik)" : names.GetValueOrDefault(t.CreatedById, ""),
                 t.Priority, t.DueDate, t.DueTime, t.Order, t.Tags,
                 isDone, overdue,
                 stepsTotal.GetValueOrDefault(t.Id, 0), stepsDone.GetValueOrDefault(t.Id, 0),
                 comments.GetValueOrDefault(t.Id, 0),
                 Iso(t.CreatedAt)!, Iso(t.UpdatedAt)!, Iso(t.CompletedAt), t.Repeat, t.IsArchived,
                 t.ApprovalRequired, Iso(t.ApprovedAt), names.GetValueOrDefault(t.ApprovedById, ""), t.ReturnCount,
-                WorkTaskApproval.State(isDone, overdue, t.ApprovalRequired, t.ApprovedAt));
+                WorkTaskApproval.State(isDone, overdue, t.ApprovalRequired, t.ApprovedAt),
+                // Lid o'chirilgan bo'lsa ham id qoladi, nomi esa bo'sh — klient havolani "lid o'chirilgan" deb ko'rsatadi.
+                t.LeadId, t.LeadId is null ? null : leadNames.GetValueOrDefault(t.LeadId));
         }).ToList();
     }
 

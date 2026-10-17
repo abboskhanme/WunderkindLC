@@ -112,10 +112,12 @@ salary calc) and teacher rows (SalaryLedger) — accrued, advances, final, remai
 ### F4 — Leads, teacher portal, staff
 
 - **L1** `WorkTask.LeadId` (migration), `CenterMeta.LeadAutoTask*` settings; on a new lead → task «Lidga qo'ng'iroq»
-  due today, round-robin assignee, one open task per lead.
+  due today, round-robin assignee, one open task per lead. Done: external channels only (manual leads excluded), hooked in
+  `LeadNotifier.NotifyNewLeadAsync`; bell + Telegram; settings in «Doska sozlamalari» (`topshiriqlar.md` §9).
 - **T1** Teacher portal group cards: month attendance % + debtors per group.
 - **S1** Staff list: last login column + 30-day activity (audit actions, tasks closed, leads handled).
-- **B1** Kassa: walk-in (non-student) book sale.
+- **B1** Kassa: walk-in (non-student) book sale. → NOT built: the kassa book sale already writes the cash income and the
+  book-sales record (`BookFinance`, books.md §7), which is what TZ 3.2 asks; a non-student buyer is out of scope.
 
 ### F5 — Menu and executive dashboard
 

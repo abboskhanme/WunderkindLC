@@ -32,6 +32,9 @@ public static class ExpenseApproval
         r.Status != Pending ? "Bu so'rov allaqachon ko'rib chiqilgan"
         : !string.IsNullOrEmpty(r.CreatedById) && r.CreatedById == userId
             ? "O'zingiz kiritgan chiqimni o'zingiz tasdiqlay olmaysiz — boshqa mas'ul tasdiqlaydi"
+        // O'z maoshini o'zi tasdiqlamaydi (2026-10-17, F3 revyu).
+        : !string.IsNullOrEmpty(r.StaffUserId) && r.StaffUserId == userId
+            ? "O'zingizga beriladigan maoshni o'zingiz tasdiqlay olmaysiz — boshqa mas'ul tasdiqlaydi"
             : null;
 
     /// <summary>Maosh to'lovi turi: <c>advance</c> | <c>final</c> | bo'sh. Boshqa qiymat — null bilan rad.</summary>
@@ -48,15 +51,21 @@ public static class ExpenseApproval
         _ => "",
     };
 
-    /// <summary>Tasdiqlangan so'rovdan tranzaksiya — maydonlar AYNAN so'rovdagidek; kiritgan odam — so'rov egasi.</summary>
-    public static FinanceTransaction ToTransaction(ExpenseRequest r, string? cashboxId) => new()
+    /// <summary>Tasdiqlangan so'rovdan tranzaksiya — maydonlar so'rovdagidek; kiritgan odam — so'rov egasi.
+    /// <para>⚠️ SANA — TASDIQ kuni (<paramref name="approvalDate"/>), so'rov sanasi EMAS (2026-10-17, F3 revyu): pul
+    /// kassadan aynan shu kuni chiqadi. So'rov sanasi qo'yilsa o'tgan kunning kunlik hisoboti orqaga o'zgarar, oradagi
+    /// kassa boshlang'ich qoldig'i sanasidan oldin qolsa esa chiqim qoldiqdan jimgina tushib qolardi. So'rov sanasi
+    /// izohda qoladi; maosh OYI (<c>Month</c>) o'zgarmaydi.</para></summary>
+    public static FinanceTransaction ToTransaction(ExpenseRequest r, string? cashboxId, string approvalDate) => new()
     {
-        Date = r.Date,
+        Date = approvalDate,
         Direction = "expense",
         Category = r.Category,
         TypeId = r.TypeId,
         Amount = r.Amount,
-        Note = r.Note,
+        Note = r.Date == approvalDate || string.IsNullOrWhiteSpace(r.Date)
+            ? r.Note
+            : $"{r.Note}{(string.IsNullOrWhiteSpace(r.Note) ? "" : " ")}[so'rov sanasi: {r.Date}]",
         Comment = r.Comment,
         TeacherId = r.TeacherId,
         StaffUserId = r.StaffUserId,

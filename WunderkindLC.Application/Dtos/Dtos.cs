@@ -4096,7 +4096,7 @@ public record WorkTaskDto(
     bool IsDone, bool IsOverdue, int StepsTotal, int StepsDone, int CommentCount,
     string CreatedAt, string UpdatedAt, string? CompletedAt, string Repeat, bool IsArchived,
     bool ApprovalRequired = false, string? ApprovedAt = null, string ApprovedByName = "", int ReturnCount = 0,
-    string State = "open");
+    string State = "open", string? LeadId = null, string? LeadName = null);
 
 /// <summary>Topshiriq ichidagi qadam (checklist bandi).</summary>
 public record WorkTaskStepDto(string Id, string Title, bool Done, string? DoneAt, int Order);
@@ -4127,6 +4127,11 @@ public record WorkTaskStepInput(string? Title, bool? Done);
 public record WorkTaskCommentInput(string Text);
 /// <summary>Kunlik eslatma sozlamalari (CenterMeta.WorkTaskReminder*).</summary>
 public record WorkTaskSettingsDto(bool Enabled, int Hour, int Minute);
+
+/// <summary>Lidga avtomatik topshiriq sozlamasi (CenterMeta.LeadAutoTask*, SPEC-backlog F4 L1).
+/// <paramref name="AssigneeIds"/> — navbat bilan oladigan xodimlar (tartib = navbat); <paramref name="BoardId"/> —
+/// <c>null</c>/bo'sh = birinchi faol doska.</summary>
+public record LeadAutoTaskSettingsDto(bool Enabled, List<string> AssigneeIds, string? BoardId);
 
 /// <summary>Nazorat panelidagi bitta xodim qatori. <paramref name="Rate"/> — bajarilish foizi
 /// (bajarilgan / jami, 0-100); <paramref name="DoneOnTime"/> — muddatida yopilganlar.</summary>

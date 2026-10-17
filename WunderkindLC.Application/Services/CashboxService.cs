@@ -160,10 +160,11 @@ public static class CashboxService
                 + own.Where(r => Counts(r.Date, od)).Sum(r => r.Direction == "income" ? r.Amount : -r.Amount)
                 + inT.Where(t => Counts(t.Date, od)).Sum(t => t.Amount)
                 - outT.Where(t => Counts(t.Date, od)).Sum(t => t.Amount),
-                own.Where(r => r.Direction == "income" && InPeriod(r.Date)).Sum(r => r.Amount),
-                own.Where(r => r.Direction != "income" && InPeriod(r.Date)).Sum(r => r.Amount),
-                inT.Where(t => InPeriod(t.Date)).Sum(t => t.Amount),
-                outT.Where(t => InPeriod(t.Date)).Sum(t => t.Amount));
+                // Davr raqamlari ham boshlang'ich sana qoidasi bilan — kartadagi «Davrda» ko'chirma bilan bir xil bo'lsin.
+                own.Where(r => r.Direction == "income" && InPeriod(r.Date) && Counts(r.Date, od)).Sum(r => r.Amount),
+                own.Where(r => r.Direction != "income" && InPeriod(r.Date) && Counts(r.Date, od)).Sum(r => r.Amount),
+                inT.Where(t => InPeriod(t.Date) && Counts(t.Date, od)).Sum(t => t.Amount),
+                outT.Where(t => InPeriod(t.Date) && Counts(t.Date, od)).Sum(t => t.Amount));
         });
     }
 

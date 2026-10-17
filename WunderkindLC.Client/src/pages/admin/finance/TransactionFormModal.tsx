@@ -131,6 +131,9 @@ export function TransactionFormModal({ open, onClose, onSubmit, initial, preset,
   const isRefundEdit = !!initial && initial.direction === 'expense' && initial.category === 'refund'
 
   const isSalaryExpense = isSalaryCat(form.direction, form.category)
+  // XODIM maoshi qatori (Maosh reestridan berilgan) — o'qituvchi tanlanmaydi: server ikkalasini birga rad etadi, aks
+  // holda to'lov o'qituvchi varaqasida ham, reestrdagi xodim qatorida ham sanalardi (F3 revyu).
+  const isStaffSalaryEdit = isSalaryExpense && !!initial?.staffUserId
   const isTuitionIncome = form.direction === 'income' && form.category === 'tuition'
   const showTuition = isTuitionIncome && !initial
   // "Qaysi oy uchun" — maoshda foydalanuvchi TANLAYDI (pul berilgan sanadan mustaqil).
@@ -495,7 +498,7 @@ export function TransactionFormModal({ open, onClose, onSubmit, initial, preset,
     if (inFlightRef.current) return
     const amount = form.amount
     if (amount === null || amount <= 0 || !form.date) return
-    if (isSalaryExpense && !form.teacherId) return
+    if (isSalaryExpense && !isStaffSalaryEdit && !form.teacherId) return
     if (showTuition && !form.studentId) return
     inFlightRef.current = true
     setSubmitting(true)
@@ -511,7 +514,7 @@ export function TransactionFormModal({ open, onClose, onSubmit, initial, preset,
       typeId: isRefundEdit ? undefined : form.typeId ?? fallbackType?.id,
       note: form.note?.trim() || undefined,
       // teacherId faqat oylik maosh chiqimida; studentId faqat o'quvchi to'lovida saqlanadi
-      teacherId: isSalaryExpense ? form.teacherId : undefined,
+      teacherId: isSalaryExpense && !isStaffSalaryEdit ? form.teacherId : undefined,
       studentId: isTuitionIncome ? form.studentId : undefined,
       // GURUH: yangi to'lovda tanlangan guruh (bo'sh — guruhsiz eski xatti-harakat); tahrirda
       // yuborilmaydi — server mavjud tegni saqlaydi.
@@ -538,7 +541,7 @@ export function TransactionFormModal({ open, onClose, onSubmit, initial, preset,
 
   const saveDisabled =
     submitting ||
-    (form.amount ?? 0) <= 0 || (isSalaryExpense && !form.teacherId) || (showTuition && !form.studentId)
+    (form.amount ?? 0) <= 0 || (isSalaryExpense && !isStaffSalaryEdit && !form.teacherId) || (showTuition && !form.studentId)
   // Yo'nalish oldindan berilgan (Kassalar → Chiqim) — panel faqat shu yo'nalish uchun.
   const lockedDirection = !initial && !!preset
 
@@ -625,7 +628,12 @@ export function TransactionFormModal({ open, onClose, onSubmit, initial, preset,
         )}
 
         {/* Oylik maosh: o'qituvchi tanlash + shu oy holati */}
-        {isSalaryExpense && (
+        {isStaffSalaryEdit && (
+          <p className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600">
+            Bu XODIM maoshi to'lovi («Maosh reestri»dan berilgan) — o'qituvchi tanlanmaydi.
+          </p>
+        )}
+        {isSalaryExpense && !isStaffSalaryEdit && (
           <>
             <DrawerField label="O'qituvchini tanlang" required>
               <DrawerSelect

@@ -68,12 +68,17 @@ public static class LeadNotifier
     /// </param>
     /// <param name="logger">Ixtiyoriy — nosozlik sababi logga tushsin ("nega bu lid kartasi
     /// yangilanmayapti?"). ⚠️ Logga telefon/izoh matni YOZILMAYDI, faqat id'lar.</param>
+    /// <param name="autoTask">Lidga avtomatik «qo'ng'iroq» topshirig'i (<see cref="LeadAutoTask"/>, sozlama yoqilgan
+    /// bo'lsa). ⚠️ QO'LDA kiritilgan lidda <c>false</c> — uni kiritgan xodim lid bilan allaqachon ishlayapti. Bu yerda
+    /// (karta tug'iladigan YAGONA joyda) chaqiriladi — yangi tashqi kanal qo'shilsa ham unutilmasin; Telegram
+    /// tekshiruvidan OLDIN, ya'ni bot sozlanmagan markazda ham ishlaydi.</param>
     public static async Task NotifyNewLeadAsync(
         IAppDbContext db, TelegramService telegram, Lead lead,
         LevelTestSubmission? submission = null, string? testTitle = null,
         bool isNewLead = true, string? createdBy = null, CancellationToken ct = default,
-        ILogger? logger = null)
+        ILogger? logger = null, bool autoTask = true)
     {
+        if (autoTask) await LeadAutoTask.EnsureAsync(db, telegram, lead, repeat: !isNewLead, ct, logger);
         try
         {
             if (!telegram.IsConfigured) return;

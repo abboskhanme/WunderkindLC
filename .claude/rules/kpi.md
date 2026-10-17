@@ -210,8 +210,8 @@ va shablonni qayta yozish kerak bo'lmaydi.
 bilan avtomatlashtirish xodimni **noto'g'ri jarimalab** qo'yardi — bu tekshiruvlar
 samaradorlik koeffitsienti orqali pulga bevosita ta'sir qiladi.
 
-⚠️ **`leads.without_task_zero` — ATAYIN "fail-open"**: sxemada `Lead` ↔ `WorkTask` bog'lovchi
-ustun YO'Q (yagona imkoniyat — lid Id'si `WorkTask.Tags` ichida). Agar xodimning ochiq
+⚠️ **`leads.without_task_zero` — ATAYIN "fail-open"**: bog'lanish — lid Id'si `WorkTask.Tags` ichida YOKI (2026-10-17 dan)
+`WorkTask.LeadId` (lid avto-topshirig'i, `topshiriqlar.md` §9). Agar xodimning ochiq
 topshiriqlaridan birortasi ham uning ochiq lidlariga ishora qilmasa, bog'lanish
 "ishlatilmayapti" deb hisoblanadi va band O'TADI. Aks holda tekshiruv HAR KUNI HAMMAGA
 "bajarilmadi" berib, bonusni jimgina kesib turardi.

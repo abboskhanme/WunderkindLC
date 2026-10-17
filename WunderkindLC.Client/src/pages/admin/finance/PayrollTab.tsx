@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react'
-import { ChevronLeft, ChevronRight, HandCoins, Pencil, RefreshCw, Users, Wallet } from 'lucide-react'
-import { getPayroll, setStaffSalary, type Payroll, type PayrollRow } from '@/api/services/financeOps'
+import { useEffect, useRef, useState } from 'react'
+import { ChevronLeft, ChevronRight, Hourglass, HandCoins, Pencil, Plus, RefreshCw, Users, Wallet } from 'lucide-react'
+import { getPayroll, getPayrollPeople, setStaffSalary, type Payroll, type PayrollPerson, type PayrollRow } from '@/api/services/financeOps'
 import { createTransaction, isPendingExpense } from '@/api/services/finance'
 import { Card } from '@/components/ui/Card'
 import { StatCard } from '@/components/ui/StatCard'
@@ -48,6 +48,7 @@ export function PayrollTab() {
   const [tick, setTick] = useState(0)
   const [paying, setPaying] = useState<PayrollRow | null>(null)
   const [editing, setEditing] = useState<PayrollRow | null>(null)
+  const [picking, setPicking] = useState(false)
 
   useEffect(() => {
     let active = true
@@ -93,7 +94,14 @@ export function PayrollTab() {
                   <td className={cn('num font-mono font-semibold tabular-nums', r.remaining > 0 ? 'text-rose-600' : 'text-slate-500')}>
                     {money(Math.max(0, r.remaining))}
                   </td>
-                  <td><Badge tone={STATUS[r.status].tone}>{STATUS[r.status].label}</Badge></td>
+                  <td>
+                    <Badge tone={STATUS[r.status].tone}>{STATUS[r.status].label}</Badge>
+                    {(r.pending ?? 0) > 0 && (
+                      <div className="mt-0.5 inline-flex items-center gap-1 text-xs font-medium text-amber-600" title="Chegaradan katta to'lov — mas'ul tasdiqlagach «berilgan»ga tushadi">
+                        <Hourglass className="h-3 w-3" /> Tasdiq kutmoqda: {formatMoney(r.pending ?? 0)}
+                      </div>
+                    )}
+                  </td>
                   <td className="text-right">
                     <div className="inline-flex gap-1">
                       {staff && r.source !== 'kpi' && r.source !== 'kpi-pending' && (
@@ -129,6 +137,9 @@ export function PayrollTab() {
         <Button variant="secondary" onClick={() => setTick((n) => n + 1)} disabled={loading}>
           <RefreshCw className={cn('h-4 w-4', loading && 'animate-spin')} /> Yangilash
         </Button>
+        <Button variant="secondary" onClick={() => setPicking(true)}>
+          <Plus className="h-4 w-4" /> Xodim oyligi
+        </Button>
       </div>
 
       {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{error}</p>}
@@ -155,6 +166,20 @@ export function PayrollTab() {
       {paying && (
         <PayModal row={paying} month={month} onClose={() => setPaying(null)} onDone={() => { setPaying(null); setTick((n) => n + 1) }} />
       )}
+      {picking && (
+        <PersonPickModal
+          onClose={() => setPicking(false)}
+          onPick={(p) => {
+            setPicking(false)
+            const row = data?.staff.find((r) => r.id === p.id)
+            setEditing(row ?? {
+              kind: 'staff', id: p.id, name: p.fullName, role: p.position || p.role, source: 'none',
+              accrued: 0, advance: 0, final: 0, other: 0, paid: 0, remaining: 0, status: 'none',
+              fixedAmount: null, fixedFrom: null,
+            })
+          }}
+        />
+      )}
       {editing && (
         <SalaryModal row={editing} month={month} onClose={() => setEditing(null)} onDone={() => { setEditing(null); setTick((n) => n + 1) }} />
       )}
@@ -165,7 +190,10 @@ export function PayrollTab() {
 /** Maosh to'lovi — avans yoki yakuniy; odatdagi maosh chiqimi (`POST finance/transactions`). */
 function PayModal({ row, month, onClose, onDone }: { row: PayrollRow; month: string; onClose: () => void; onDone: () => void }) {
   const [amount, setAmount] = useState<number | null>(row.remaining > 0 ? row.remaining : null)
-  const [kind, setKind] = useState<'advance' | 'final'>(row.paid > 0 || row.remaining < row.accrued ? 'final' : 'advance')
+  // Tur tanlanmaguncha summaga qarab: qoldiqni TO'LIQ yopsa — «yakuniy», kamroq bo'lsa — «avans».
+  const [kindPicked, setKind] = useState<'advance' | 'final' | null>(null)
+  const kind: 'advance' | 'final' = kindPicked ?? (row.remaining > 0 && (amount ?? 0) >= row.remaining ? 'final' : 'advance')
+  const inFlight = useRef(false)
   const [date, setDate] = useState(todayIso())
   const [note, setNote] = useState('')
   const [cashbox, setCashbox] = useState<string | null>(null)
@@ -176,7 +204,8 @@ function PayModal({ row, month, onClose, onDone }: { row: PayrollRow; month: str
   const cashboxId = cashbox ?? cashboxes?.defaultId ?? ''
 
   const submit = async () => {
-    if (!amount || amount <= 0 || busy) return
+    if (!amount || amount <= 0 || inFlight.current) return
+    inFlight.current = true
     setBusy(true)
     setError('')
     try {
@@ -195,6 +224,7 @@ function PayModal({ row, month, onClose, onDone }: { row: PayrollRow; month: str
     } catch (e) {
       setError(apiErrorMessage(e, "To'lov qilib bo'lmadi"))
     } finally {
+      inFlight.current = false
       setBusy(false)
     }
   }
@@ -217,6 +247,11 @@ function PayModal({ row, month, onClose, onDone }: { row: PayrollRow; month: str
         <p className="text-sm text-slate-500">
           {formatMonth(month)}: hisoblangan {formatMoney(row.accrued)}, berilgan {formatMoney(row.paid)}.
         </p>
+        {(row.pending ?? 0) > 0 && (
+          <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-700">
+            Tasdiq kutayotgan to'lov bor: {formatMoney(row.pending ?? 0)}. Uni qayta kiritmang — mas'ul tasdiqlagach hisobga tushadi.
+          </p>
+        )}
         <MoneyInput label="Summa" value={amount} onChange={setAmount} />
         <label className="block text-sm">
           <span className="mb-1 block font-medium text-slate-700">To'lov turi</span>
@@ -287,9 +322,49 @@ function SalaryModal({ row, month, onClose, onDone }: { row: PayrollRow; month: 
           <input type="month" value={from} onChange={(e) => e.target.value && setFrom(e.target.value)}
             className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 font-mono text-sm outline-none focus:border-brand-400" />
         </label>
-        <p className="text-xs text-slate-500">O'tgan oylar o'zgarmaydi. KPI profili bor xodimning okladi KPI bo'limida kiritiladi.</p>
+        <p className="text-xs text-slate-500">
+          Tanlangan oydan boshlab amal qiladi (oldingi oylar o'zgarmaydi; o'tgan oydan boshlashni faqat superadmin qila oladi).
+          KPI profili bor xodimning okladi KPI bo'limida kiritiladi.
+        </p>
         {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{error}</p>}
       </div>
+    </Modal>
+  )
+}
+
+/** «Xodim oyligi» — reestrda hali qatori yo'q akkaunt (masalan admin/superadmin) uchun oylik kiritish. */
+function PersonPickModal({ onClose, onPick }: { onClose: () => void; onPick: (p: PayrollPerson) => void }) {
+  const [people, setPeople] = useState<PayrollPerson[] | null>(null)
+  const [error, setError] = useState('')
+  const [q, setQ] = useState('')
+  useEffect(() => {
+    let active = true
+    getPayrollPeople()
+      .then((p) => { if (active) setPeople(p) })
+      .catch((e) => { if (active) setError(apiErrorMessage(e, "Ro'yxatni yuklab bo'lmadi")) })
+    return () => { active = false }
+  }, [])
+  const shown = (people ?? []).filter((p) => p.fullName.toLowerCase().includes(q.trim().toLowerCase()))
+  return (
+    <Modal open onClose={onClose} size="sm" title="Kimning oyligi" footer={<Button variant="secondary" onClick={onClose}>Yopish</Button>}>
+      <input
+        value={q}
+        onChange={(e) => setQ(e.target.value)}
+        placeholder="Qidirish..."
+        className="mb-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-brand-400"
+      />
+      {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{error}</p>}
+      {!people && !error ? <Loader /> : (
+        <div className="max-h-72 divide-y divide-slate-100 overflow-y-auto rounded-xl border border-slate-100">
+          {shown.map((p) => (
+            <button key={p.id} type="button" onClick={() => onPick(p)} className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left hover:bg-slate-50">
+              <span className="truncate text-sm text-slate-700">{p.fullName}</span>
+              <span className="shrink-0 text-xs text-slate-400">{p.position || p.role}</span>
+            </button>
+          ))}
+          {shown.length === 0 && <p className="px-3 py-4 text-center text-sm text-slate-400">Topilmadi</p>}
+        </div>
+      )}
     </Modal>
   )
 }

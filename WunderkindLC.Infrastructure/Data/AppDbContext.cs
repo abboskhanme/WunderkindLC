@@ -1132,6 +1132,7 @@ public partial class AppDbContext(DbContextOptions<AppDbContext> options)
         ConfigureCrmWorkspace(b);
         ConfigureCrmAccounts(b);
         ConfigureCrmFinanceOps(b);
+        ConfigureCrmLeadTasks(b);
     }
 
     partial void ConfigureCrmMessaging(ModelBuilder b);   // Phase 2
@@ -1140,6 +1141,7 @@ public partial class AppDbContext(DbContextOptions<AppDbContext> options)
     partial void ConfigureCrmWorkspace(ModelBuilder b);   // Phase 5
     partial void ConfigureCrmAccounts(ModelBuilder b);    // Phase 6
     partial void ConfigureCrmFinanceOps(ModelBuilder b);  // Owner backlog 2026-10-17 (F3)
+    partial void ConfigureCrmLeadTasks(ModelBuilder b);   // Owner backlog 2026-10-17 (F4 L1)
 
     // ==================== Saqlashdan oldingi normalizatsiya ====================
 

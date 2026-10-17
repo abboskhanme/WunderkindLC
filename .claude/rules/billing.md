@@ -1059,6 +1059,24 @@ to'lov turi — avans / yakuniy.
   hali ko'rilmagan so'rovni qaytarib oladi. Hammasi bitta qulf ostida (`finance:expreq:{id}`), auditda, kirituvchiga va
   tasdiqlovchilarga qo'ng'iroqcha.
 - Vozvrat (superadmin) va kitob qaytarish (avtomatik) bu yo'ldan O'TMAYDI.
+- ⚠️ **Revyu tuzatishlari (2026-10-17):**
+  - **TAHRIR tasdiqni chetlab o'tmaydi** (`FinanceTxEdit.ApprovalEditError`): superadmin bo'lmagan xodim «Amallar»da qatorni
+    chegaradan katta chiqimga aylantira olmaydi — summani oshirib ham, kirimni chiqimga o'girib ham (400). Kamaytirish va
+    boshqa maydonlar — mumkin.
+  - `Direction` FAQAT `income` | `expense` (Create va tahrir — 400): "Expense" kabi qiymat tasdiqdan o'tib, kassada chiqim,
+    P&L'da esa hech narsa bo'lardi.
+  - Shu xodimning 10 daqiqa ichidagi AYNAN shunday KUTILAYOTGAN so'rovi bo'lsa yangisi yaratilmaydi (takroriy bosish); o'qituvchi
+    profilidagi «Maosh berish» endi so'rov kaliti + sinxron qulf bilan.
+  - Tasdiqlangan tranzaksiya sanasi — **TASDIQ kuni** (so'rov sanasi izohda, maosh oyi o'zgarmaydi); tasdiqlovchi KASSANI
+    tanlaydi (so'rovdagisi arxivlangan bo'lsa ham tasdiqlash mumkin). O'z MAOSHINI o'zi tasdiqlay olmaydi (`DecisionBlock`).
+  - `FinanceTransactions.ExpenseRequestId` UNIKAL (filtrli indeks) — bitta so'rov, bitta tranzaksiya.
+  - Xodim maoshi qatoriga o'qituvchi qo'yilmaydi (400) — to'lov ikki joyda sanalmasin; forma xodim qatorida o'qituvchi so'ramaydi.
+  - Boshlang'ich qoldiq sanasi kelajakda bo'lmaydi; kartadagi «Davrda» raqamlari ham shu sana qoidasi bilan (ko'chirma bilan bir
+    xil); yillik hisobot (P&L / pul oqimi) «Boshlang'ich balans»i kassa boshlang'ich qoldiqlarini o'sha qoida bilan qo'shadi
+    (sanasi yil ICHIDA bo'lgan boshlang'ich summa kirmaydi — qabul qilingan farq).
+  - Reestr: o'qituvchining «berildi»si VARAQADAN (`SalaryLedger`, oyi yo'q eski to'lov sanasi bilan); qatorda «Tasdiq kutmoqda: X»;
+    oy boshidan oldin arxivlangan, to'lovsiz o'qituvchi uchun varaqa qurilmaydi; «Xodim oyligi» — istalgan panel akkaunti
+    (`GET payroll/people`). Oylikni superadmin bo'lmagan xodim O'ZIGA, superadminga va O'TGAN oydan belgilay olmaydi.
 - Klient: Moliya → «Chiqimlar tasdig'i» (`?tab=approvals`); `createTransaction` 202 da `PendingExpense` qaytaradi
   (`isPendingExpense`) — chek ochilmaydi, «Tasdiq kutilmoqda» toast'i.
 

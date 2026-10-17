@@ -10,7 +10,7 @@ namespace WunderkindLC.Application.Services;
 public record PayrollRowDto(
     string Kind, string Id, string Name, string Role, string Source,
     decimal Accrued, decimal Advance, decimal Final, decimal Other, decimal Paid, decimal Remaining, string Status,
-    decimal? FixedAmount, string? FixedFrom);
+    decimal? FixedAmount, string? FixedFrom, decimal Pending = 0);
 
 public record PayrollDto(
     string Month, decimal Accrued, decimal Paid, decimal Remaining, decimal Advance, decimal Final,
@@ -55,19 +55,35 @@ public static class PayrollRegister
             return (a, f, o);
         }
 
+        // TASDIQ KUTAYOTGAN maosh so'rovlari (chegaradan katta to'lov) — qatorda «tasdiq kutmoqda»: aks holda qator
+        // «to'lanmagan» ko'rinib, ikkinchi so'rov yaratishga undardi.
+        var pending = await db.ExpenseRequests.AsNoTracking()
+            .Where(r => r.Status == ExpenseApproval.Pending && r.Category == "salary" && r.Month == month)
+            .Select(r => new { r.TeacherId, r.StaffUserId, r.Amount })
+            .ToListAsync(ct);
+
         // ---- o'qituvchilar ----
         var teachers = await db.Teachers.AsNoTracking().OrderBy(t => t.FullName).ToListAsync(ct);
         var teacherRows = new List<PayrollRowDto>();
+        var monthStart = month + "-01";
         foreach (var te in teachers)
         {
-            var ledger = await SalaryLedger.BuildAsync(db, te, month + "-01", month + "-28");
+            // Oy boshidan OLDIN arxivlangan va shu oyga to'lovi yo'q o'qituvchi — varaqasi qurilmaydi (har biri ~10 so'rov).
+            if (te.IsArchived && !string.IsNullOrEmpty(te.ArchivedAt) && string.CompareOrdinal(te.ArchivedAt, monthStart) < 0
+                && !pays.Any(p => p.TeacherId == te.Id) && !pending.Any(r => r.TeacherId == te.Id))
+                continue;
+            var ledger = await SalaryLedger.BuildAsync(db, te, monthStart, month + "-28");
             var m = ledger.Months.FirstOrDefault(x => x.Month == month);
             var accrued = m?.Expected ?? 0m;
-            var (adv, fin, oth) = Split(pays.Where(p => p.TeacherId == te.Id).Select(p => (p.SalaryPayKind, p.Amount)));
-            var paid = adv + fin + oth;
-            if (te.IsArchived && accrued <= 0 && paid <= 0) continue;
+            var (adv, fin, _) = Split(pays.Where(p => p.TeacherId == te.Id).Select(p => (p.SalaryPayKind, p.Amount)));
+            // «Berildi» — VARAQADAN (SalaryLedger: oyi yo'q eski to'lov SANASI bo'yicha ham shu oyga tushadi), aks holda
+            // reestr profil bilan farq qilib, qayta to'lashga undardi. Avans/yakuniy — turi belgilangan to'lovlar.
+            var paid = m?.Paid ?? adv + fin;
+            var oth = Math.Max(0m, paid - adv - fin);
+            var pend = pending.Where(r => r.TeacherId == te.Id).Sum(r => r.Amount);
+            if (te.IsArchived && accrued <= 0 && paid <= 0 && pend <= 0) continue;
             teacherRows.Add(new PayrollRowDto("teacher", te.Id, te.FullName, "O'qituvchi", "ledger",
-                accrued, adv, fin, oth, paid, accrued - paid, StatusOf(accrued, paid), null, null));
+                accrued, adv, fin, oth, paid, accrued - paid, StatusOf(accrued, paid), null, null, pend));
         }
 
         // ---- xodimlar ----
@@ -88,7 +104,8 @@ public static class PayrollRegister
         {
             var profile = profiles.FirstOrDefault(p => p.UserId == u.Id);
             // Admin/superadmin — faqat maoshi kiritilgan yoki to'lov olgan bo'lsa (markaz egasi ro'yxatni to'ldirmasin).
-            if (u.Role != Roles.Staff && profile is null && !withSalary.Contains(u.Id) && !paidStaffIds.Contains(u.Id)) continue;
+            if (u.Role != Roles.Staff && profile is null && !withSalary.Contains(u.Id) && !paidStaffIds.Contains(u.Id)
+                && !pending.Any(r => r.StaffUserId == u.Id)) continue;
 
             var fixedRow = SalaryFor(salaries, u.Id, month);
             string source;
@@ -108,7 +125,7 @@ public static class PayrollRegister
             staffRows.Add(new PayrollRowDto("staff", u.Id, u.FullName,
                 string.IsNullOrWhiteSpace(u.Position) ? RoleLabel(u.Role) : u.Position!, source,
                 accrued, adv, fin, oth, paid, accrued - paid, StatusOf(accrued, paid),
-                fixedRow?.Amount, fixedRow?.EffectiveFrom));
+                fixedRow?.Amount, fixedRow?.EffectiveFrom, pending.Where(r => r.StaffUserId == u.Id).Sum(r => r.Amount)));
         }
 
         var all = teacherRows.Concat(staffRows).ToList();

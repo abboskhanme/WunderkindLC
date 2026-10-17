@@ -56,8 +56,12 @@ export async function saveExpenseApprovalThreshold(threshold: number): Promise<E
   return data
 }
 
-export async function approveExpense(id: string, note?: string): Promise<ExpenseRequest> {
-  const { data } = await api.post<ExpenseRequest>(`/admin/finance/expense-requests/${encodeURIComponent(id)}/approve`, { note })
+/** Tasdiqlash. `cashboxId` — tasdiqlovchi tanlagan kassa (so'rovdagisi arxivlangan bo'lsa shart); bo'sh — so'rovdagisi. */
+export async function approveExpense(id: string, note?: string, cashboxId?: string): Promise<ExpenseRequest> {
+  const { data } = await api.post<ExpenseRequest>(`/admin/finance/expense-requests/${encodeURIComponent(id)}/approve`, {
+    note,
+    cashboxId: cashboxId || undefined,
+  })
   return data
 }
 
@@ -91,6 +95,8 @@ export interface PayrollRow {
   status: 'paid' | 'partial' | 'unpaid' | 'none'
   fixedAmount: number | null
   fixedFrom: string | null
+  /** Shu oy uchun TASDIQ KUTAYOTGAN maosh so'rovlari summasi (chegaradan katta to'lov). */
+  pending?: number
 }
 
 export interface Payroll {
@@ -106,6 +112,19 @@ export interface Payroll {
 
 export async function getPayroll(month: string): Promise<Payroll> {
   const { data } = await api.get<Payroll>('/admin/finance/payroll', { params: { month } })
+  return data
+}
+
+export interface PayrollPerson {
+  id: string
+  fullName: string
+  role: string
+  position: string
+}
+
+/** Oylik belgilash mumkin bo'lgan panel akkauntlari (reestrda hali qatori yo'q admin/superadmin ham). */
+export async function getPayrollPeople(): Promise<PayrollPerson[]> {
+  const { data } = await api.get<PayrollPerson[]>('/admin/finance/payroll/people')
   return data
 }
 

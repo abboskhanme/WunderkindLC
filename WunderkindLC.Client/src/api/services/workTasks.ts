@@ -78,6 +78,10 @@ export interface WorkTask {
   returnCount?: number
   /** open | overdue | awaiting_approval | approved | done (server `WorkTaskApproval.State`). */
   state?: WorkTaskState
+  /** Lid avto-topshirig'i: qaysi lid haqida (null — lid topshirig'i emas). */
+  leadId?: string | null
+  /** Lid nomi (lid o'chirilgan bo'lsa null). */
+  leadName?: string | null
 }
 
 /** Topshiriq holati — server `WorkTaskApproval.State` bilan bir xil (CRM Phase 5). */
@@ -341,4 +345,22 @@ export async function getWorkTaskSettings(): Promise<WorkTaskSettings> {
 
 export async function setWorkTaskSettings(s: WorkTaskSettings): Promise<void> {
   await api.put('/admin/work-tasks/settings', s)
+}
+
+/** Lidga avtomatik topshiriq (SPEC-backlog F4 L1): tashqi kanaldan kelgan lidga «qo'ng'iroq» topshirig'i navbat bilan. */
+export interface LeadAutoTaskSettings {
+  enabled: boolean
+  /** Navbat bilan oladigan xodimlar (tartib = navbat). */
+  assigneeIds: string[]
+  /** null — birinchi faol doska. */
+  boardId: string | null
+}
+
+export async function getLeadAutoTaskSettings(): Promise<LeadAutoTaskSettings> {
+  const { data } = await api.get<LeadAutoTaskSettings>('/admin/work-tasks/lead-auto')
+  return data
+}
+
+export async function setLeadAutoTaskSettings(s: LeadAutoTaskSettings): Promise<void> {
+  await api.put('/admin/work-tasks/lead-auto', s)
 }

@@ -52,6 +52,9 @@ public static class FinanceTxEdit
     /// <summary>Umumiy tahrir RAD etiladimi — sabab matni yoki <c>null</c>.</summary>
     public static string? EditError(FinanceTransaction tx, FinanceTransactionPayload p, string today)
     {
+        // Yo'nalish FAQAT ikki qiymat (2026-10-17, F3 revyu): "Expense" kabi qiymat tasdiq chegarasidan o'tib ketar,
+        // kassa uni chiqim, P&L esa umuman ko'rmasdi.
+        if (p.Direction is not ("income" or "expense")) return DirectionMessage;
         if (IsStudentPayment(tx)) return StudentPaymentMessage;
         if (IsRefund(tx))
         {
@@ -68,7 +71,28 @@ public static class FinanceTxEdit
             return "O'quvchi to'lovi «Yangi moliyaviy amal» → o'quvchi to'lovi (yoki o'quvchi profili) orqali kiritiladi";
         if (!string.IsNullOrWhiteSpace(p.Month) && !PaymentFields.IsMonth(p.Month.Trim()))
             return "Oy noto'g'ri (kutilgan ko'rinish: yyyy-MM)";
+        // XODIM maoshi qatori o'qituvchiga aylantirilmaydi — ikkalasi birga bo'lsa to'lov o'qituvchi varaqasida HAM,
+        // reestrdagi xodim qatorida HAM sanalardi.
+        if (tx.StaffUserId is not null && !string.IsNullOrWhiteSpace(p.TeacherId))
+            return "Bu xodim maoshi to'lovi — o'qituvchi tanlanmaydi";
         return null;
+    }
+
+    public const string DirectionMessage = "Yo'nalish noto'g'ri — «income» (kirim) yoki «expense» (chiqim)";
+
+    /// <summary>
+    /// TAHRIR CHIQIM TASDIG'INI CHETLAB O'TMASIN (2026-10-17, F3 revyu): superadmin bo'lmagan xodim qatorni chegaradan
+    /// KATTA chiqimga aylantira olmaydi — summani oshirib ham (900 ming → 50 mln), kirimni chiqimga o'girib ham. Allaqachon
+    /// shunday (yoki kattaroq) chiqim bo'lgan qatorni kamaytirish yoki boshqa maydonlarini tuzatish — mumkin.
+    /// </summary>
+    public static string? ApprovalEditError(string oldDirection, decimal oldAmount, FinanceTransactionPayload p,
+                                            decimal threshold, bool isSuperAdmin)
+    {
+        if (!ExpenseApproval.NeedsApproval(threshold, p.Amount, p.Direction, isSuperAdmin)) return null;
+        if (oldDirection == "expense" && p.Amount <= oldAmount) return null;
+        return $"Chegaradan ({AuditService.Money(threshold)} so'm) katta chiqim faqat tasdiq orqali o'tadi — tahrirda "
+               + "summani oshirib (yoki kirimni chiqimga aylantirib) bo'lmaydi. Yangi chiqim kiriting (u tasdiqqa yuboriladi) "
+               + "yoki superadmin tahrirlaydi";
     }
 
     /// <summary>
@@ -120,6 +144,8 @@ public static class FinanceTxEdit
         tx.Note = p.Note;
         tx.StudentId = string.IsNullOrWhiteSpace(p.StudentId) ? (sameKind ? tx.StudentId : null) : p.StudentId;
         tx.TeacherId = string.IsNullOrWhiteSpace(p.TeacherId) ? (sameKind ? tx.TeacherId : null) : p.TeacherId;
+        // Xodim maoshi bog'lanishi faqat maosh CHIQIMIDA ma'noli (FinanceController.Create qoidasi).
+        if (tx.StaffUserId is not null && !(tx.Direction == "expense" && tx.Category == "salary")) tx.StaffUserId = null;
         // Oy/guruh teglarini SAQLAB QOLAMIZ: forma ularni yubormasa eski qiymat qoladi.
         if (!string.IsNullOrWhiteSpace(p.Month)) tx.Month = p.Month.Trim();
         if (!string.IsNullOrWhiteSpace(p.GroupId)) tx.GroupId = p.GroupId;

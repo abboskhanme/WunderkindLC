@@ -78,7 +78,7 @@ public class ExpenseRequestsController(AppDbContext db, AuditService audit) : Co
         return new ExpenseApprovalSettingsDto(meta.ExpenseApprovalThreshold, CanApprove, true);
     }
 
-    /// <summary>Tasdiqlash — shu paytda chiqim tranzaksiyasi yoziladi (sana — kiritilgan sana, kiritgan — so'rov egasi).</summary>
+    /// <summary>Tasdiqlash — shu paytda chiqim tranzaksiyasi yoziladi (sana — TASDIQ kuni, kiritgan — so'rov egasi).</summary>
     [HttpPost("{id}/approve")]
     [AdminPerm("finance.main", "expenseApproval")]
     public async Task<ActionResult<ExpenseRequestDto>> Approve(string id, ExpenseDecisionRequest? body, CancellationToken ct)
@@ -95,7 +95,7 @@ public class ExpenseRequestsController(AppDbContext db, AuditService audit) : Co
         var cashbox = await CashboxService.ResolveAsync(db, string.IsNullOrWhiteSpace(body?.CashboxId) ? r.CashboxId : body!.CashboxId, r.CreatedById);
         if (cashbox.Error is not null) return BadRequest(new { message = cashbox.Error });
 
-        var tx = ExpenseApproval.ToTransaction(r, cashbox.CashboxId);
+        var tx = ExpenseApproval.ToTransaction(r, cashbox.CashboxId, AppClock.Today.ToString("yyyy-MM-dd"));
         db.FinanceTransactions.Add(tx);
         r.Status = ExpenseApproval.Approved;
         r.DecidedAt = AppClock.Iso();

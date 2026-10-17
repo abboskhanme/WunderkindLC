@@ -377,3 +377,10 @@ uchun "Boshqa" ga o'tib ketardi — `LeadOrigins`), audit yo'q edi.
   nusxa" qilmasin: `LeadIntake.FindByPhoneAsync` ENG ESKI lidni qaytaradi, ya'ni tiklangan eski yozuv
   yangisini telefon bo'yicha qidiruvda to'sib qo'yardi.
 - Bosqichi o'chirilgan bo'lsa — birinchi ustunga. Tiklash auditga yoziladi (`Lead`).
+
+## LIDGA AVTOMATIK «QO'NG'IROQ» TOPSHIRIG'I (2026-10-17, SPEC-backlog F4 L1)
+
+Tashqi kanaldan (forma, landing, daraja testi, Instagram, reklama formasi) kelgan lidga sozlama yoqilgan bo'lsa xodimlarga
+navbat bilan topshiriq beriladi — `LeadNotifier.NotifyNewLeadAsync` ichida (`LeadAutoTask`). Qo'lda kiritilgan lidga
+(`autoTask: false`) YO'Q. Batafsil: `.claude/rules/topshiriqlar.md` §9. ⚠️ Yangi lid yaratish yo'li qo'shsangiz va u
+`NotifyNewLeadAsync` ni chaqirsa — topshiriq o'zi keladi; xodim kiritadigan yo'l bo'lsa `autoTask: false` bering.

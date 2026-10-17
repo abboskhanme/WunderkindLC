@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { BadgeCheck, Clock, ListChecks, MessageSquare, Plus, Send, Trash2, Undo2 } from 'lucide-react'
+import { BadgeCheck, Clock, ListChecks, MessageSquare, Phone, Plus, Send, Trash2, Undo2 } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import {
   addComment, addStep, approveTask, createTask, deleteStep, getTask, returnTask, updateStep, updateTask,
   type WorkTask, type WorkTaskAssignee, type WorkTaskBoard, type WorkTaskDetail,
@@ -192,6 +193,20 @@ function TaskModalInner({
             disabled={!canWrite}
             autoFocus={!taskId}
           />
+
+          {/* Lid avto-topshirig'i — lid sahifasiga havola (qo'ng'iroq natijasi o'sha yerga yoziladi). */}
+          {detail?.task.leadId && (
+            <div className="flex items-center gap-2 rounded-xl border border-sky-100 bg-sky-50 px-3 py-2 text-sm text-sky-800">
+              <Phone className="h-4 w-4 shrink-0" />
+              {detail.task.leadName ? (
+                <Link to={`/admin/leads/${detail.task.leadId}`} className="font-semibold underline-offset-2 hover:underline">
+                  Lid: {detail.task.leadName}
+                </Link>
+              ) : (
+                <span>Lid o'chirilgan</span>
+              )}
+            </div>
+          )}
 
           <Textarea
             label="Tavsif"

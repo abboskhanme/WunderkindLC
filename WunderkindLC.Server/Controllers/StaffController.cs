@@ -107,6 +107,8 @@ public class StaffController(AppDbContext db, AuditService audit) : ControllerBa
             Description = (req.Description ?? "").Trim(),
             DefaultPermissions = StaffRoles.Normalize(req.Permissions),
         };
+        if (!User.IsInRole(Roles.SuperAdmin) && StaffRoles.ChangesSuperAdminOnly([], role.DefaultPermissions))
+            return StatusCode(StatusCodes.Status403Forbidden, new { message = StaffRoles.SuperAdminOnlyMessage });
         db.StaffRoleTemplates.Add(role);
         audit.Record("Staff", role.Id, "create",
             $"Rol qo'shildi: {role.Name}" +
@@ -133,6 +135,8 @@ public class StaffController(AppDbContext db, AuditService audit) : ControllerBa
         role.Name = name;
         role.Description = (req.Description ?? "").Trim();
         if (req.Permissions is not null) role.DefaultPermissions = StaffRoles.Normalize(req.Permissions);
+        if (!User.IsInRole(Roles.SuperAdmin) && StaffRoles.ChangesSuperAdminOnly(oldPerms, role.DefaultPermissions))
+            return StatusCode(StatusCodes.Status403Forbidden, new { message = StaffRoles.SuperAdminOnlyMessage });
 
         var added = role.DefaultPermissions.Except(oldPerms).Order().ToList();
         var removed = oldPerms.Except(role.DefaultPermissions).Order().ToList();
@@ -219,6 +223,9 @@ public class StaffController(AppDbContext db, AuditService audit) : ControllerBa
             }
         }
         user.Permissions = permissions;
+        // Faqat-superadmin kalitli rol bilan (yoki shu kalit bilan) akkaunt yaratish — o'sha kalitni berish demak.
+        if (!User.IsInRole(Roles.SuperAdmin) && StaffRoles.ChangesSuperAdminOnly([], permissions))
+            return StatusCode(StatusCodes.Status403Forbidden, new { message = StaffRoles.SuperAdminOnlyMessage });
 
         if (!string.IsNullOrWhiteSpace(req.NewPassword))
         {
@@ -279,6 +286,9 @@ public class StaffController(AppDbContext db, AuditService audit) : ControllerBa
                     : null;
             }
         }
+
+        if (!User.IsInRole(Roles.SuperAdmin) && StaffRoles.ChangesSuperAdminOnly(beforePerms, user.Permissions))
+            return StatusCode(StatusCodes.Status403Forbidden, new { message = StaffRoles.SuperAdminOnlyMessage });
 
         user.FullName = req.FullName.Trim();
         user.Position = (req.Position ?? "").Trim();
@@ -394,6 +404,8 @@ public class StaffController(AppDbContext db, AuditService audit) : ControllerBa
             .Select(p => p.Trim())
             .Distinct()
             .ToList();
+        if (!User.IsInRole(Roles.SuperAdmin) && StaffRoles.ChangesSuperAdminOnly(oldPerms, user.Permissions))
+            return StatusCode(StatusCodes.Status403Forbidden, new { message = StaffRoles.SuperAdminOnlyMessage });
         // NIMA qo'shilgani/olib tashlangani ko'rinsin — "ruxsat kim tomonidan kengaytirilgan"
         // savoli tarixdan javob topsin (ro'yxatning o'zi uzun bo'lishi mumkin).
         var added = user.Permissions.Except(oldPerms).Order().ToList();
