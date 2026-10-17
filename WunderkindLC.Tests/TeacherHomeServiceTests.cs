@@ -242,6 +242,26 @@ public class TeacherHomeServiceTests
     }
 
     [Fact]
+    public async Task Overview_guruh_kartasida_qarzdorlar_SONI_va_davomat__faqat_oz_guruhida()
+    {
+        using var db = TestDb.Sqlite();
+        var s = SeedDb(db);
+        // Aziza (faol) shu guruh bo'yicha to'lamagan — qarzdor; sinovdagi Bobur sanalmaydi.
+        db.Context.MonthlyCharges.Add(new MonthlyCharge
+        {
+            StudentId = s.A.Id, GroupId = s.Mine.Id, Month = AppClock.Today.ToString("yyyy-MM"), Amount = 300_000m,
+        });
+        db.Context.SaveChanges();
+
+        var dto = await TeacherHomeService.OverviewAsync(db.Context, s.Me.Id, AppClock.Today, canSchedule: false);
+
+        var card = Assert.Single(dto.Groups);
+        Assert.Equal(1, card.DebtorCount);
+        Assert.Equal(dto.DebtorCount, card.DebtorCount);   // jami va guruh kesimi bitta hisobdan
+        Assert.Null(card.AttendancePct);                   // shu oy davomati olingan dars yo'q
+    }
+
+    [Fact]
     public async Task Overview_jadval_ruxsatisiz_bugungi_darslarni_bermaydi()
     {
         using var db = TestDb.Sqlite();

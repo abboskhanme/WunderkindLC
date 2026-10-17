@@ -56,6 +56,19 @@ public partial class RatingController(AppDbContext db, DataCache cache, AuditSer
         return RatingEngine.Centre(r, q, page, pageSize);
     }
 
+    /// <summary>«Guruhlar kesimi» (SPEC-backlog F4 A2): har guruh va maktab sinfi bo'yicha o'rtacha bal, test %, ball %,
+    /// uy vazifasi va davomat — keshlangan davr reytingi + yagona davomat ta'rifidan (`RatingSections`).</summary>
+    [HttpGet("sections")]
+    [AdminPerm("classes.rating", ReadRequiresPerm = true)]
+    public async Task<ActionResult<RatingSectionsDto>> Sections([FromQuery] string? period, [FromQuery] string? key)
+    {
+        var (p, error) = RatingPeriods.Resolve(period, key, AppClock.Today);
+        if (p is null) return BadRequest(new { message = error });
+        string[] deps = [.. RatingEngine.CacheDeps, nameof(LessonNote), nameof(AbsenceReason)];
+        return await cache.GetOrCreateAsync($"rating:sections:{p.Kind}:{p.Key}:{p.To}", deps, RatingEngine.CacheTtl,
+            c => RatingSections.BuildAsync(c, RatingEngine.Cached(cache), p));
+    }
+
     /// <summary>One group's table (group page «Reyting» → «Umumiy reyting» and the report's «Guruhlar» tab).</summary>
     [HttpGet("groups/{groupId}")]
     [AdminPerm("classes.rating", "classes.list", ReadRequiresPerm = true)]

@@ -29,6 +29,8 @@ import { JournalCellModal } from '@/pages/admin/journal/JournalCellModal'
 import { localIsoDate } from '@/lib/localDate'
 import { TeacherGroupTestsPanel } from '@/pages/teacher/tests/TeacherGroupTestsPanel'
 import { TeacherGroupStudentsTab } from './TeacherGroupStudentsTab'
+import { GroupRatingSection } from '@/components/rating/GroupRatingSection'
+import { getTeacherGroupRating } from '@/api/services/rating'
 import { ballGrade } from '@/lib/studentBall'
 import { attendanceMark, attendanceTally } from '@/lib/attendance'
 import { autoPresent } from '@/pages/admin/classes/detail/shared'
@@ -844,7 +846,13 @@ export function TeacherGroupDetailPage() {
             </Card>
           )}
 
-          {groupView === "reyting" && <RatingsTab groupId={id} months={journal?.months ?? []} defaultMonth={journal?.month} />}
+          {groupView === "reyting" && (
+            <div className="space-y-4">
+              {/* SPEC-backlog F4 A4: admin bilan bir xil umumiy reyting (testlar + ball), faqat o'z guruhida. */}
+              <GroupRatingSection groupId={id} linkStudents={false} load={getTeacherGroupRating} hideOnNotFound />
+              <RatingsTab groupId={id} months={journal?.months ?? []} defaultMonth={journal?.month} />
+            </div>
+          )}
 
           {/* Imtihonlar — shu guruh testlari (yaratish/tahrirlash/ball qo'yish) */}
           {groupView === "imtihonlar" && (

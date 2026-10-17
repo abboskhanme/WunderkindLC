@@ -1,5 +1,6 @@
 import type { Staff, Credentials, StaffRoleTemplate } from '@/types'
 import { api, USE_MOCK } from '../client'
+import type { StaffActivity } from '@/lib/staffActivity'
 
 export interface StaffPayload {
   fullName: string
@@ -51,6 +52,13 @@ export async function deleteStaffRole(id: string): Promise<void> {
 export async function getStaffRoleTemplates(): Promise<StaffRoleTemplate[]> {
   if (USE_MOCK) return []
   const { data } = await api.get<StaffRoleTemplate[]>('/admin/staff/role-templates')
+  return data
+}
+
+/** Xodimlar faolligi (oxirgi kirish + oxirgi `days` kundagi amallar) — `staff` yoki `teachers.list` ruxsati bilan. */
+export async function getStaffActivity(days = 30): Promise<StaffActivity[]> {
+  if (USE_MOCK) return []
+  const { data } = await api.get<StaffActivity[]>('/admin/staff/activity', { params: { days } })
   return data
 }
 

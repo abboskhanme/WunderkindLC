@@ -387,6 +387,10 @@ export interface TeacherGroupCard {
   isSubstitute: boolean
   /** "yyyy-MM-dd" yoki "" (yaqin 3 haftada dars yo'q / jadval ruxsati yo'q) */
   nextLessonDate: string
+  /** Joriy oy davomati % (faqat o'z guruhida; dars o'tilmagan bo'lsa null). */
+  attendancePct?: number | null
+  /** Qarzdor o'quvchilar SONI (faqat o'z guruhida; summa berilmaydi). */
+  debtorCount?: number | null
 }
 
 export interface TeacherOverview {

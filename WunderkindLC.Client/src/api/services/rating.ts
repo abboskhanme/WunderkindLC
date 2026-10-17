@@ -175,6 +175,12 @@ export async function getRatingGroup(groupId: string, p: RatingQuery) {
   return data
 }
 
+/** O'qituvchi portali: o'z guruhining umumiy reytingi (admin jadvali bilan bir xil, SPEC-backlog F4 A4). */
+export async function getTeacherGroupRating(groupId: string, p: RatingQuery) {
+  const { data } = await api.get<RatingGroupTable>(`/teacher/groups/${encodeURIComponent(groupId)}/combined-rating`, { params: q(p) })
+  return data
+}
+
 export async function getStudentRatingBlock(studentId: string, p: RatingQuery) {
   const { data } = await api.get<StudentRatingBlock>(`/admin/rating/students/${studentId}`, { params: q(p) })
   return data
@@ -234,5 +240,35 @@ export async function getRatingTopBottom(p: { month?: string; scope?: RatingTopB
   if (p.month) params.month = p.month
   if (p.scope) params.scope = p.scope
   const { data } = await api.get<TopBottom>('/admin/rating/top-bottom', { params })
+  return data
+}
+
+/* ---------- «Guruhlar kesimi» (SPEC-backlog F4 A2) ---------- */
+
+export interface RatingSectionRow {
+  /** Guruh id yoki maktab sinfi ("7", "12" = bitirgan, "none" = ko'rsatilmagan). */
+  key: string
+  label: string
+  course: string | null
+  teacher: string | null
+  /** Shu davrda reytingga kirgan o'quvchilar. */
+  students: number
+  avgScore: number | null
+  avgTest: number | null
+  avgBall: number | null
+  avgHomework: number | null
+  attendancePct: number | null
+  lessonsHeld: number
+}
+
+export interface RatingSections {
+  period: RatingPeriod
+  groups: RatingSectionRow[]
+  grades: RatingSectionRow[]
+  homeworkWeight: number
+}
+
+export async function getRatingSections(p: RatingQuery): Promise<RatingSections> {
+  const { data } = await api.get<RatingSections>('/admin/rating/sections', { params: q(p) })
   return data
 }

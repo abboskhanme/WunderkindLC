@@ -85,14 +85,16 @@ per reason (`AbsenceReason`, excused flag), per school grade, students with ≥ 
 Uses the single attendance definition (`AttendanceRules`, journal.md) — never a private copy.
 
 **A2 Group / grade averages** — Reyting report new tab «Guruhlar kesimi»: per group avg test %, avg ball %, attendance %,
-rating avg; per school grade the same. From `RatingEngine` results (cached) + A1 attendance.
+rating avg; per school grade the same. From `RatingEngine` results (cached) + A1 attendance. Done (`RatingSections`,
+`GET rating/sections`).
 
 **A3 Homework in rating** (migration `RatingHomework`: `CenterMeta.RatingHomeworkWeight` int, default 0 → existing
 ranks unchanged until the owner sets a weight). H = (done + 0.5 × partly) ÷ marked lessons × 100; unmarked skipped.
 Weights tests / ball / homework; a missing component's weight is redistributed (existing rule for T/B extended).
 Settings modal gets the third slider. rating.md §1 updated.
 
-**A4 Teacher** sees the combined rating (`StudentRatingBlock` data) for own groups only.
+**A4 Teacher** sees the combined rating (`StudentRatingBlock` data) for own groups only. Done: group page «Reyting» tab shows
+the same group table (`GET api/teacher/groups/{id}/combined-rating`, owner only).
 
 ### F3 — Cashboxes, expense approval, payroll (migrations)
 
@@ -114,8 +116,9 @@ salary calc) and teacher rows (SalaryLedger) — accrued, advances, final, remai
 - **L1** `WorkTask.LeadId` (migration), `CenterMeta.LeadAutoTask*` settings; on a new lead → task «Lidga qo'ng'iroq»
   due today, round-robin assignee, one open task per lead. Done: external channels only (manual leads excluded), hooked in
   `LeadNotifier.NotifyNewLeadAsync`; bell + Telegram; settings in «Doska sozlamalari» (`topshiriqlar.md` §9).
-- **T1** Teacher portal group cards: month attendance % + debtors per group.
-- **S1** Staff list: last login column + 30-day activity (audit actions, tasks closed, leads handled).
+- **T1** Teacher portal group cards: month attendance % + debtors per group. Done (`teacher-portal.md` §3).
+- **S1** Staff list: last login column + 30-day activity (audit actions, tasks closed, leads handled). Done (+ attendance
+  lessons; last seen includes token refresh — `staff-roles.md` §5).
 - **B1** Kassa: walk-in (non-student) book sale. → NOT built: the kassa book sale already writes the cash income and the
   book-sales record (`BookFinance`, books.md §7), which is what TZ 3.2 asks; a non-student buyer is out of scope.
 

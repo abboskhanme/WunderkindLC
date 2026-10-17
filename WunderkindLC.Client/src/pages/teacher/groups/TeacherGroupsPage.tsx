@@ -123,6 +123,17 @@ function GroupCard({ g, today, canJournal }: { g: TeacherGroupCard; today: strin
           {g.trial > 0 && <Pill cls="bg-violet-50 text-violet-700">{g.trial} sinovda</Pill>}
           {g.frozen > 0 && <Pill cls="bg-sky-50 text-sky-700">{g.frozen} muzlatilgan</Pill>}
         </div>
+        {/* F4 T1: joriy oy davomati va qarzdorlar soni (faqat o'z guruhida). */}
+        {(g.attendancePct != null || (g.debtorCount ?? 0) > 0) && (
+          <div className="col-span-2 flex flex-wrap gap-1.5">
+            {g.attendancePct != null && (
+              <Pill cls={g.attendancePct < 75 ? 'bg-amber-50 text-amber-700' : 'bg-panel3 text-ink'}>
+                Davomat (shu oy): {g.attendancePct}%
+              </Pill>
+            )}
+            {(g.debtorCount ?? 0) > 0 && <Pill cls="bg-rose-50 text-rose-700">{g.debtorCount} qarzdor</Pill>}
+          </div>
+        )}
         {g.nextLessonDate && (
           <p
             className={cn(

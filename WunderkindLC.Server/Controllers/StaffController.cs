@@ -384,6 +384,19 @@ public class StaffController(AppDbContext db, AuditService audit) : ControllerBa
 
     /// <summary>Xodimning admin bo'lim ruxsatlari (Rollar) — "Xodimlar" ruxsati (tahrir amali)
     /// kerak; superadmin/admin har doim, xodim faqat shu ruxsat berilgan bo'lsa.</summary>
+    /// <summary>XODIMLAR FAOLLIGI (SPEC-backlog F4 S1, TZ 3.1): oxirgi kirish, oxirgi ko'rinish va oxirgi <c>days</c> kundagi
+    /// amallar soni — xodimlar VA o'qituvchilar. ⚠️ O'qish ham ruxsat bilan (login vaqtlari — ichki nazorat ma'lumoti):
+    /// `staff` yoki `teachers.list`; javob shunga qarab qirqiladi (faqat ko'rinadigan qatorlar).</summary>
+    [HttpGet("activity")]
+    [AdminPerm("staff", "teachers.list", ReadRequiresPerm = true)]
+    public async Task<ActionResult<IEnumerable<StaffActivityDto>>> Activity([FromQuery] int days = StaffActivity.DefaultDays)
+    {
+        var rows = await StaffActivity.BuildAsync(db, days);
+        var seeStaff = AdminPermAttribute.HasSectionAccess(User, "staff");
+        var seeTeachers = AdminPermAttribute.HasSectionAccess(User, "teachers.list");
+        return rows.Where(r => r.Kind == "teacher" ? seeTeachers : seeStaff).ToList();
+    }
+
     [HttpPut("{id}/permissions")]
     public async Task<ActionResult<StaffDto>> SetPermissions(string id, SetStaffPermissionsRequest req)
     {

@@ -14,9 +14,10 @@ import { usePerm } from '@/lib/permissions'
 import { tabFromUrl } from '@/lib/tabParam'
 import { apiErrorMessage, cn } from '@/lib/utils'
 import { TopBottomTab } from './TopBottomTab'
+import { RatingSectionsTab } from './RatingSectionsTab'
 
-type Tab = 'markaz' | 'guruhlar' | 'topbottom'
-const TABS = ['markaz', 'guruhlar', 'topbottom'] as const
+type Tab = 'markaz' | 'guruhlar' | 'kesim' | 'topbottom'
+const TABS = ['markaz', 'guruhlar', 'kesim', 'topbottom'] as const
 const PAGE_SIZE = 50
 
 /**
@@ -53,6 +54,9 @@ export function RatingReportPage() {
         <button type="button" className={cn('tab', tab === 'guruhlar' && 'active')} onClick={() => setTab('guruhlar')}>
           Guruhlar
         </button>
+        <button type="button" className={cn('tab', tab === 'kesim' && 'active')} onClick={() => setTab('kesim')}>
+          Guruhlar kesimi
+        </button>
         <button type="button" className={cn('tab', tab === 'topbottom' && 'active')} onClick={() => setTab('topbottom')}>
           TOP/BOTTOM
         </button>
@@ -62,6 +66,8 @@ export function RatingReportPage() {
         <CentreTab key={reloadTick} />
       ) : tab === 'guruhlar' ? (
         <GroupsTab key={reloadTick} />
+      ) : tab === 'kesim' ? (
+        <RatingSectionsTab key={reloadTick} />
       ) : (
         <TopBottomTab key={reloadTick} />
       )}

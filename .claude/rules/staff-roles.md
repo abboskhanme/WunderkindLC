@@ -59,6 +59,10 @@ Foiz bazasi va "Umumiy" rejim — `billing.md`.
   ruxsati bilan yuklanadi. Kirish: `XodimlarEntry` (ikkalasi ham yo'q bo'lsa o'qituvchilar
   bo'limining ochiq sahifasiga).
 - Per-xodim ruxsat MATRITSASI ATAYIN yo'q — huquq roldan.
+- **«Oxirgi kirish» va «Faollik (30 kun)» ustunlari** (SPEC-backlog F4 S1, TZ 3.1): `GET api/admin/staff/activity?days=`
+  (`StaffActivity`; RRP `staff` | `teachers.list`, javob ko'rinadigan qatorlarga qirqiladi). Oxirgi ko'rinish = oxirgi login
+  va oxirgi token yangilanishining kechrog'i; faollik — tarixdagi amallar (`AuditLog.ActorId`), yopilgan topshiriqlar, ishlangan
+  lidlar (takrorsiz) va davomati olingan darslar. 7 kundan ko'p kirmagan — sariq. Ikkilamchi ma'lumot: xato ro'yxatni buzmaydi.
 - Menyuda «Xodimlar» `/admin/teachers` sahifalarida ham faol (`NavChild.alsoMatch`).
 - Eski manzillar: `boshqaruv/staff` → xodimlar, `boshqaruv/roles` → rollar.
 

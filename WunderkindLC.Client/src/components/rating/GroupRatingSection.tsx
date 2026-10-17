@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Trophy } from 'lucide-react'
-import { getRatingGroup, type RatingGroupTable } from '@/api/services/rating'
+import { getRatingGroup, type RatingGroupTable, type RatingQuery } from '@/api/services/rating'
 import { defaultRatingPeriod, fmtScore, scoreFormulaText, weightsLabel, type RatingPeriodValue } from '@/lib/ratingPeriods'
 import { apiErrorMessage, cn } from '@/lib/utils'
 import { RatingPeriodSwitch } from './RatingPeriodSwitch'
@@ -14,30 +14,42 @@ const medal = (rank: number | null) =>
  * Guruh sahifasining «Reyting» tabida (tepada) va «Hisobotlar → Reyting → Guruhlar» da.
  * O'rinsiz qatorlar — shu davrda testi ham, bali ham yo'q a'zolar (pastda, «—» bilan).
  */
-export function GroupRatingSection({ groupId, title = 'Umumiy reyting (testlar + ball)', linkStudents = true }: {
+export function GroupRatingSection({ groupId, title = 'Umumiy reyting (testlar + ball)', linkStudents = true, load = getRatingGroup, hideOnNotFound = false }: {
   groupId: string
   title?: string
   /** O'quvchi ismi profilga havola bo'lsinmi. */
   linkStudents?: boolean
+  /** Ma'lumot manbai — admin (standart) yoki o'qituvchi portali (`getTeacherGroupRating`, faqat o'z guruhi). */
+  load?: (groupId: string, p: RatingQuery) => Promise<RatingGroupTable>
+  /** 404 bo'lsa (o'qituvchi — o'rinbosar: guruh unga tegishli emas) blok umuman chizilmaydi. */
+  hideOnNotFound?: boolean
 }) {
   const [period, setPeriod] = useState<RatingPeriodValue>(() => defaultRatingPeriod(new Date()))
-  const [res, setRes] = useState<{ key: string; data: RatingGroupTable | null; error: string | null } | null>(null)
+  const [res, setRes] = useState<{ key: string; data: RatingGroupTable | null; error: string | null; hidden?: boolean } | null>(null)
   const key = `${groupId}|${period.kind}:${period.key}`
 
   useEffect(() => {
     let alive = true
     const k = `${groupId}|${period.kind}:${period.key}`
-    getRatingGroup(groupId, { period: period.kind, key: period.key })
+    load(groupId, { period: period.kind, key: period.key })
       .then((data) => alive && setRes({ key: k, data, error: null }))
-      .catch((e) => alive && setRes((prev) => ({ key: k, data: prev?.data ?? null, error: apiErrorMessage(e, "Guruh reytingini yuklab bo'lmadi") })))
+      .catch((e) => {
+        if (!alive) return
+        if (hideOnNotFound && (e as { response?: { status?: number } })?.response?.status === 404) {
+          setRes({ key: k, data: null, error: null, hidden: true })
+          return
+        }
+        setRes((prev) => ({ key: k, data: prev?.data ?? null, error: apiErrorMessage(e, "Guruh reytingini yuklab bo'lmadi") }))
+      })
     return () => {
       alive = false
     }
-  }, [groupId, period.kind, period.key])
+  }, [groupId, period.kind, period.key, load, hideOnNotFound])
 
   const data = res?.data?.group.id === groupId ? res.data : null
   const loading = res?.key !== key
   const error = res?.key === key ? res.error : null
+  if (res?.hidden) return null
 
   return (
     <div className="rounded-xl border border-[#dbe0e6] bg-white shadow-[0_1px_2px_rgba(0,0,0,0.05)]">

@@ -26,7 +26,10 @@ public record TeacherLessonDto(
 public record TeacherGroupCardDto(
     string Id, string Name, string CourseId, string CourseName, List<int> Days,
     string StartTime, string EndTime, string Room, string StartDate,
-    int Active, int Trial, int Frozen, bool IsSubstitute, string NextLessonDate);
+    int Active, int Trial, int Frozen, bool IsSubstitute, string NextLessonDate,
+    // SPEC-backlog F4 T1 — faqat O'Z guruhida (o'rinbosarlikda null): joriy oy davomati % (yagona ta'rif —
+    // MembershipAttendance; dars o'tilmagan bo'lsa null) va qarzdorlar SONI (summa emas — guruh balansi bo'yicha).
+    int? AttendancePct = null, int? DebtorCount = null);
 
 /// <summary>Bosh sahifa: guruhlar + bugungi darslar + jamlanma.
 /// <c>CanSchedule=false</c> bo'lsa (ruxsat "Dars jadvali" berilmagan) <c>TodayLessons</c> bo'sh.</summary>

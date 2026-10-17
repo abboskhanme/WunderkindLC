@@ -107,6 +107,14 @@ guruh va markaz TOP 10 (+ o'z qatori TOP dan tashqarida bo'lsa). Begona o'quvchi
 
 `GET top-bottom?month=&scope=` (oylik TOP/BOTTOM ko'rinishi, `classes.rating`, RRP) — §8 (U4d).
 
+`GET sections?period=&key=` (`classes.rating`, RRP; SPEC-backlog F4 A2) — «Guruhlar kesimi» tabi: har guruh va har maktab
+sinfi bo'yicha o'rtacha reyting bali, test %, ball %, uy vazifasi va davomat (`RatingSections`). Raqamlar keshlangan davr
+reytingidan, davomat — `MembershipAttendance` (davr kunlari); sinf qatorida o'quvchi bir marta (markaz bali, joriy sinf),
+bali yo'q guruh ro'yxatga tushmaydi. Kesh `rating:sections:{kind}:{key}:{to}` (+ LessonNote, AbsenceReason).
+
+O'qituvchi portali: `GET api/teacher/groups/{id}/combined-rating` — o'z guruhining umumiy reytingi (`teacher-portal.md` §3),
+guruh sahifasi «Reyting» tabida tepada (`GroupRatingSection`, `load` = o'qituvchi API'si, o'rinbosarda yashirin).
+
 ## 6. SOZLAMALAR — `CenterMeta`
 
 `RatingTestWeight` (0..100, standart 60; **0 ham to'g'ri qiymat** — "faqat ball", shuning uchun migratsiyada mavjud

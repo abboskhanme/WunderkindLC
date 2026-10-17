@@ -351,6 +351,22 @@ public static class TeacherHomeService
             }
         }
 
+        // T1: o'z guruhlari bo'yicha joriy oy davomati (YAGONA ta'rif) va qarzdorlar soni — guruh kartasida.
+        var ownedList = owned.ToList();
+        var month = today.ToString("yyyy-MM");
+        var attendance = ownedList.Count == 0
+            ? new Dictionary<(string StudentId, string GroupId), MembershipAttendance.Stat>()
+            : await MembershipAttendance.ComputeAsync(db, ownedList, month);
+        var debt = await DebtByGroupAsync(db, owned);
+        int? GroupPct(string gid)
+        {
+            if (!owned.Contains(gid)) return null;
+            var visible = members[gid].Select(m => m.Student.Id).ToHashSet(StringComparer.Ordinal);
+            var sum = attendance.Where(kv => kv.Key.GroupId == gid && visible.Contains(kv.Key.StudentId))
+                .Aggregate(MembershipAttendance.Stat.Empty, (acc, kv) => acc.Plus(kv.Value));
+            return sum.Percent;
+        }
+
         var cards = groups
             .Select(g =>
             {
@@ -363,7 +379,8 @@ public static class TeacherHomeService
                     list.Count(m => m.Membership.Status == "active"),
                     list.Count(m => m.Membership.Status == "trial"),
                     list.Count(m => m.Membership.Status == "frozen"),
-                    !owned.Contains(g.Id), next.GetValueOrDefault(g.Id, ""));
+                    !owned.Contains(g.Id), next.GetValueOrDefault(g.Id, ""),
+                    GroupPct(g.Id), owned.Contains(g.Id) ? debt.ByGroup.GetValueOrDefault(g.Id) : null);
             })
             .OrderBy(c => c.IsSubstitute)
             .ThenBy(c => c.Name, StringComparer.OrdinalIgnoreCase)
@@ -377,9 +394,8 @@ public static class TeacherHomeService
             .Distinct()
             .Count();
 
-        var debt = await DebtSummaryAsync(db, owned);
         return new TeacherOverviewDto(today.ToString("yyyy-MM-dd"), cards, todayLessons, studentCount, canSchedule,
-            debt.DebtorCount, debt.DebtTotal);
+            debt.Summary.DebtorCount, debt.Summary.DebtTotal);
     }
 
     /// <summary>
@@ -387,9 +403,16 @@ public static class TeacherHomeService
     /// qarz (har guruh qarzi alohida qo'shiladi). ⚠️ To'lov darvozasi bu yerda QO'LLANMAYDI — u aynan
     /// qarzdorlarni jurnaldan yashiradi, sanoqdan tushirib yuborsak "qarzdor yo'q" chiqardi.
     /// </summary>
-    public static async Task<TeacherDebtSummaryDto> DebtSummaryAsync(IAppDbContext db, IReadOnlyCollection<string> ownedGroupIds)
+    public static async Task<TeacherDebtSummaryDto> DebtSummaryAsync(IAppDbContext db, IReadOnlyCollection<string> ownedGroupIds) =>
+        (await DebtByGroupAsync(db, ownedGroupIds)).Summary;
+
+    /// <summary><see cref="DebtSummaryAsync"/> + har guruhdagi qarzdorlar SONI (guruh kartasi, F4 T1). Bitta hisob —
+    /// jami ham, guruh kesimi ham shu yerdan (ikki joyda ayri sanalmasin).</summary>
+    public static async Task<(TeacherDebtSummaryDto Summary, Dictionary<string, int> ByGroup)> DebtByGroupAsync(
+        IAppDbContext db, IReadOnlyCollection<string> ownedGroupIds)
     {
-        if (ownedGroupIds.Count == 0) return new TeacherDebtSummaryDto(0, 0m);
+        var byGroup = new Dictionary<string, int>(StringComparer.Ordinal);
+        if (ownedGroupIds.Count == 0) return (new TeacherDebtSummaryDto(0, 0m), byGroup);
         var ids = ownedGroupIds.ToList();
         // Arxivdagi o'quvchi qarzdor sifatida SANALMAYDI (eski arxivlashlarda tirik a'zolik qolgan —
         // `VisibleMembersAsync` dagi izoh); o'qituvchi uni "yopishi" kerak bo'lgan qarz emas.
@@ -405,14 +428,17 @@ public static class TeacherHomeService
         foreach (var grp in memberships.GroupBy(m => m.GroupId, StringComparer.Ordinal))
         {
             var balances = await GroupBalanceService.DetailedForGroupAsync(db, grp.Key, grp.Select(m => m.StudentId).ToList());
+            var inGroup = 0;
             foreach (var (sid, info) in balances)
             {
                 if (info.Balance >= 0) continue;
                 debtors.Add(sid);
                 total += -info.Balance;
+                inGroup++;
             }
+            byGroup[grp.Key] = inGroup;
         }
-        return new TeacherDebtSummaryDto(debtors.Count, decimal.Round(total, 0));
+        return (new TeacherDebtSummaryDto(debtors.Count, decimal.Round(total, 0)), byGroup);
     }
 
     /// <summary>O'qituvchining o'z (o'rinbosarliksiz) guruhlari bo'yicha qarzdorlik.</summary>

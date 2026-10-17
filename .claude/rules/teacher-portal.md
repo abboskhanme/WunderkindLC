@@ -49,6 +49,11 @@ shundan quriladi; bo'limni bir joyga qo'shing, uchalasida paydo bo'ladi. Ruxsati
 | `GET api/teacher/schedule?from&to` | `schedule` (aks holda 403) | oraliqdagi darslar, ≤ 62 kun |
 | `GET api/teacher/students?month` | `journal` (aks holda 403) | barcha a'zoliklar + oylik davomat |
 | `GET api/teacher/debt-summary` | — | o'z guruhlaridagi qarzdorlar SONI + JAMI qarz (yig'indi) |
+| `GET api/teacher/groups/{classId}/combined-rating?period&key` | `journal` + guruh EGASI (o'rinbosar — 404) | guruhning UMUMIY reytingi — admin jadvali bilan bir xil (`RatingEngine.GroupTable`, SPEC-backlog F4 A4) |
+
+⚠️ **Guruh kartasi (F4 T1, 2026-10-17):** `overview` dagi har O'Z guruh kartasida joriy oy davomati % (`AttendancePct` —
+`MembershipAttendance`, ko'rinadigan a'zolar bo'yicha; dars o'tilmagan bo'lsa null) va qarzdorlar SONI (`DebtorCount` —
+`DebtByGroupAsync`, jami `DebtorCount` bilan BITTA hisob). O'rinbosarlik kartasida ikkalasi null. Summa berilmaydi.
 
 ⚠️ `overview` "Dars jadvali" ruxsatisiz ham ochiladi, lekin `todayLessons` BO'SH (`canSchedule=false`).
 

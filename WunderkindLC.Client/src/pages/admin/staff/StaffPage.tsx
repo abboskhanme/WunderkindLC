@@ -4,6 +4,7 @@ import { Plus, Eye, Pencil, Trash2, Users, ShieldCheck, ShieldOff, Search, Exter
 import type { Staff, Credentials, StaffRoleTemplate, Subject, Teacher } from '@/types'
 import {
   getStaff,
+  getStaffActivity,
   getStaffRoleTemplates,
   createStaff,
   updateStaff,
@@ -35,6 +36,8 @@ import { CredentialsBox } from '@/components/ui/CredentialsBox'
 import { ReasonPromptModal } from '@/components/ui/ReasonPromptModal'
 import { TeacherFormModal } from '@/pages/admin/teachers/TeacherFormModal'
 import { formatPhone } from '@/lib/numberFormat'
+import { todayIso } from '@/lib/month'
+import { activityKey, activitySummary, isStale, lastSeenLabel, type StaffActivity } from '@/lib/staffActivity'
 
 // Avatar uchun ism harflari (faqat ko'rinish uchun)
 const initialsOf = (name: string) =>
@@ -93,6 +96,8 @@ export function StaffPage() {
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [tick, setTick] = useState(0)
+  // F4 S1: oxirgi kirish va 30 kunlik faollik (ikkilamchi ma'lumot — xato bo'lsa ustunlar «—» bilan qoladi).
+  const [activity, setActivity] = useState<Map<string, StaffActivity>>(new Map())
 
   const [filter, setFilter] = useState<Filter>('all')
   const [query, setQuery] = useState('')
@@ -135,6 +140,20 @@ export function StaffPage() {
       alive = false
     }
   }, [tick, canSeeStaff, canSeeTeachers])
+
+  useEffect(() => {
+    if (!canSeeStaff && !canSeeTeachers) return
+    let alive = true
+    getStaffActivity(30)
+      .then((list) => alive && setActivity(new Map(list.map((a) => [activityKey(a.kind, a.id), a]))))
+      .catch(() => {
+        /* ikkilamchi o'qish (faollik ustunlari): xato ro'yxatni buzmasin — ustunlar «—» bo'lib qoladi */
+      })
+    return () => {
+      alive = false
+    }
+  }, [tick, canSeeStaff, canSeeTeachers])
+  const today = todayIso()
 
   const rows = useMemo<Row[]>(() => {
     const list: Row[] = [
@@ -405,6 +424,10 @@ export function StaffPage() {
                   <th className="px-4 py-2.5 font-medium">Xodim</th>
                   <th className="px-4 py-2.5 font-medium">Rol</th>
                   <th className="px-4 py-2.5 font-medium">Telefon</th>
+                  <th className="px-4 py-2.5 font-medium">Oxirgi kirish</th>
+                  <th className="px-4 py-2.5 font-medium" title="Oxirgi 30 kun: tarixdagi amallar · yopilgan topshiriqlar · ishlangan lidlar · davomati olingan darslar">
+                    Faollik (30 kun)
+                  </th>
                   <th className="px-4 py-2.5 text-right font-medium">Amallar</th>
                 </tr>
               </thead>
@@ -430,6 +453,20 @@ export function StaffPage() {
                       </td>
                       <td className="px-4 py-2.5">{roleBadge(r)}</td>
                       <td className="px-4 py-2.5 font-mono text-xs text-slate-500">{r.phone ? formatPhone(r.phone) : '—'}</td>
+                      {(() => {
+                        const a = activity.get(activityKey(r.kind, r.id))
+                        return (
+                          <>
+                            <td
+                              className={cn('whitespace-nowrap px-4 py-2.5 text-xs', a && isStale(a.lastSeenAt, today) ? 'text-amber-600' : 'text-slate-600')}
+                              title={a ? `Oxirgi login: ${a.lastLoginAt ? a.lastLoginAt.replace('T', ' ').slice(0, 16) : '—'}` : undefined}
+                            >
+                              {a ? lastSeenLabel(a.lastSeenAt, today) : '—'}
+                            </td>
+                            <td className="whitespace-nowrap px-4 py-2.5 text-xs text-slate-500">{a ? activitySummary(a) : '—'}</td>
+                          </>
+                        )
+                      })()}
                       <td className="px-4 py-2.5">
                         <div className="flex items-center justify-end gap-0.5">
                           {r.kind === 'teacher' ? (
