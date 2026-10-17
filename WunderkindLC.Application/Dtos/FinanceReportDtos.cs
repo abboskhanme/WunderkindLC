@@ -15,7 +15,11 @@ public record DebtTotalsDto(
     decimal Charged, decimal Discount, decimal Net, decimal Paid, decimal Debt,
     decimal CollectionPct, int Debtors);
 
-/// <summary>Qarz yoshi guruhi: <c>notdue</c> · <c>0-6</c> · <c>7-29</c> · <c>30-59</c> · <c>60+</c> kun.</summary>
+/// <summary>Hisobi YO'Q oyga tushgan to'lovlar (sinovdagi avans, guruhga teglanmagan eski to'lov) — qarzni yopmaydi,
+/// shuning uchun hisobotda alohida aytiladi (jimgina yo'qolmasin).</summary>
+public record UnmatchedPaymentsDto(int Count, decimal Amount);
+
+/// <summary>Qarz yoshi guruhi: <c>notdue</c> (muddat kuni ham shu) · <c>0-6</c> (1–6 kun) · <c>7-29</c> · <c>30-59</c> · <c>60+</c>.</summary>
 public record DebtAgeBucketDto(string Key, string Label, int Rows, int Students, decimal Debt);
 
 /// <summary>Matritsa qatori — bitta (o'quvchi, guruh).</summary>
@@ -38,14 +42,16 @@ public record DebtReportDto(
     string From, string To, IReadOnlyList<string> Months, int DueDay, bool IncludeArchived,
     DebtTotalsDto Total, DebtTotalsDto Active, DebtTotalsDto Archived,
     IReadOnlyList<DebtAgeBucketDto> Buckets,
-    IReadOnlyList<DebtRowDto> Rows);
+    IReadOnlyList<DebtRowDto> Rows,
+    UnmatchedPaymentsDto Unmatched);
 
 /// <summary>Guruhdagi tarif: shu narxda nechta o'quvchi (to'liq oy) va nechtasi qisman oy bilan.</summary>
 public record TariffPriceDto(decimal Price, int Students, int Partial);
 
 /// <param name="TeacherName">Shu OYNING egasi (o'qituvchi tarixi bo'yicha, maosh bilan bir xil).</param>
 /// <param name="Planned">Hisoblangan to'liq summa (chegirmasiz).</param>
-/// <param name="Collected">Shu oy uchun guruhga teglangan to'lovlar (vozvrat ayrilgan).</param>
+/// <param name="Collected">Shu oy hisobini yopgan to'lovlar (guruhga teglangan, vozvrat ayrilgan, sofdan oshmaydi) —
+/// Planned − Discount − Collected = Debt.</param>
 /// <param name="Weak">Yig'ilish &lt; <c>TariffReport.WeakPct</c> — to'lov intizomi sust.</param>
 public record TariffGroupDto(
     string GroupId, string GroupName, string CourseName, string TeacherId, string TeacherName, bool IsArchived,
@@ -76,4 +82,5 @@ public record InvoiceRowDto(
 public record InvoiceListDto(
     string From, string To, int DueDay, int TotalCount, int Page, int PageSize,
     DebtTotalsDto Totals, int PaidCount, int PartialCount, int UnpaidCount, int OverdueCount,
-    IReadOnlyList<InvoiceRowDto> Items);
+    IReadOnlyList<InvoiceRowDto> Items,
+    UnmatchedPaymentsDto Unmatched);

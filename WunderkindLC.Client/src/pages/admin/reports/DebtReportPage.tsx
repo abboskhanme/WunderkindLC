@@ -188,10 +188,10 @@ export function DebtReportPage() {
 
       {error && <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{error}</p>}
 
-      {loading || !data || !t ? (
-        <Loader label="Yuklanmoqda..." />
+      {!data || !t ? (
+        error ? null : <Loader label="Yuklanmoqda..." />
       ) : (
-        <div className="space-y-4">
+        <div className={cn('space-y-4', loading && 'opacity-60')}>
           {/* ==================== KO'RSATKICHLAR ==================== */}
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
             <StatCard label="Hisoblangan" value={formatMoney(t.charged)} icon={Wallet}
@@ -199,7 +199,8 @@ export function DebtReportPage() {
             <StatCard label="To'langan" value={formatMoney(t.paid)} icon={Wallet}
               iconBg="bg-sky-50" iconColor="text-sky-600" hint="Shu oylar hisobini yopgan pul" />
             <StatCard label="Qoldiq qarz" value={formatMoney(t.debt)} icon={AlertTriangle}
-              iconBg="bg-rose-50" iconColor="text-rose-600" hint={`${t.debtors} ta qarzdor o'quvchi`} />
+              iconBg="bg-rose-50" iconColor="text-rose-600"
+              hint={`${t.debtors} ta qarzdor · muddati kelmagani: ${formatMoney(data.buckets.find((b) => b.key === 'notdue')?.debt ?? 0)}`} />
             <StatCard label="Yig'ilish foizi" value={pctLabel(t.collectionPct)} icon={Percent}
               iconBg="bg-amber-50" iconColor="text-amber-600" hint="To'langan ÷ sof hisoblangan" />
             <StatCard label="Arxivdagi qarz" value={formatMoney(data.archived.debt)} icon={Archive}
@@ -220,9 +221,15 @@ export function DebtReportPage() {
             ))}
           </div>
           <p className="text-xs text-slate-400">
-            Qarz yoshi — eng eski to'lanmagan oyning to'lov muddatidan (har oyning {data.dueDay}-sanasi) beri o'tgan kunlar.
-            Kartani bosib shu guruhni ajrating.
+            Qarz yoshi — eng eski to'lanmagan oyning to'lov muddatidan (har oyning {data.dueDay}-sanasi) beri o'tgan kunlar;
+            qatorning butun qarzi shu eng eski oy bo'yicha guruhlanadi. Kartani bosib shu guruhni ajrating.
           </p>
+          {data.unmatched.count > 0 && (
+            <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">
+              Hisobi yozilmagan oylarga {data.unmatched.count} ta to'lov ({formatMoney(data.unmatched.amount)}) tushgan
+              (masalan sinovdagi avans) — ular bu yerdagi qarzni yopmaydi, balansda avans bo'lib turibdi.
+            </p>
+          )}
 
           {/* ==================== MATRITSA ==================== */}
           <Card title="Qarzlar matritsasi" sub={`${rows.length} ta qator · ${formatMonth(data.from)} — ${formatMonth(data.to)}`} tight>

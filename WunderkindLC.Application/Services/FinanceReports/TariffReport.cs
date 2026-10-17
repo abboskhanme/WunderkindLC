@@ -31,13 +31,15 @@ public static class TariffReport
         var m = PaymentFields.IsMonth(month) ? month! : today.ToString("yyyy-MM");
         var cells = await DebtLedger.LoadAsync(db, m, m, ct);
 
-        var studentIds = cells.Select(c => c.StudentId).Distinct().ToHashSet(StringComparer.Ordinal);
-        var students = (await db.Students.AsNoTracking().ToListAsync(ct))
-            .Where(s => studentIds.Contains(s.Id))
+        var studentIds = cells.Select(c => c.StudentId).Distinct().ToList();
+        // Narx uchun faqat sinf maydonlari kerak (PricingBook.Resolve) — butun jadval yuklanmaydi.
+        var students = (await db.Students.AsNoTracking()
+                .Where(s => studentIds.Contains(s.Id))
+                .Select(s => new Student { Id = s.Id, SchoolGrade = s.SchoolGrade, SchoolGradeYear = s.SchoolGradeYear })
+                .ToListAsync(ct))
             .ToDictionary(s => s.Id, StringComparer.Ordinal);
-        var groupIds = cells.Select(c => c.GroupId).Where(g => g != DebtLedger.NoGroup).ToHashSet(StringComparer.Ordinal);
-        var groups = (await db.Classes.AsNoTracking().ToListAsync(ct))
-            .Where(g => groupIds.Contains(g.Id)).ToList();
+        var groupIds = cells.Select(c => c.GroupId).Where(g => g != DebtLedger.NoGroup).Distinct().ToList();
+        var groups = await db.Classes.AsNoTracking().Where(g => groupIds.Contains(g.Id)).ToListAsync(ct);
         var groupById = groups.ToDictionary(g => g.Id, StringComparer.Ordinal);
         var memberships = (await db.StudentGroups.AsNoTracking()
                 .Where(sg => groupIds.Contains(sg.GroupId)).ToListAsync(ct))
@@ -78,7 +80,6 @@ public static class TariffReport
             }
 
             var totals = DebtLedger.Totals(gcells);
-            var collected = gcells.Sum(c => c.Paid);
             rows.Add(new TariffGroupDto(
                 gid,
                 group?.Name ?? "Guruhsiz",
@@ -89,7 +90,8 @@ public static class TariffReport
                 charged.Select(c => c.StudentId).Distinct().Count(),
                 prices.OrderByDescending(p => p.Value.Full + p.Value.Partial).ThenByDescending(p => p.Key)
                     .Select(p => new TariffPriceDto(p.Key, p.Value.Full + p.Value.Partial, p.Value.Partial)).ToList(),
-                totals.Charged, totals.Discount, totals.Net, Math.Max(0m, collected), totals.Debt,
+                // «Yig'ilgan» — shu oy hisobini yopgan pul (sofdan oshmaydi): Reja − Chegirma − Yig'ilgan = Qarz.
+                totals.Charged, totals.Discount, totals.Net, totals.Paid, totals.Debt,
                 totals.CollectionPct, totals.Debtors,
                 totals.Net > 0 && totals.CollectionPct < WeakPct));
         }

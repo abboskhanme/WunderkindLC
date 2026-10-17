@@ -306,7 +306,8 @@ public record MonthSalaryDto(
     /// <summary>FOIZ QO'LLANGAN baza (foizli guruhlar bo'yicha): <paramref name="ChargedBase"/> bo'lsa
     /// hisoblangan TO'LIQ oylik, aks holda yig'ilgan pul. Ekranda "baza × foiz = maosh" shundan.</summary>
     decimal SalaryBase = 0, bool ChargedBase = false,
-    /// <summary>«HOZIR CHIQADIGAN» oylik — o'sha foiz va ushlanmalar, lekin baza HAQIQATAN TUSHGAN pul.
+    /// <summary>«HOZIR CHIQADIGAN» oylik — o'sha foiz va ushlanmalar, lekin baza HAQIQATAN TUSHGAN pul + markaz qoplagan
+    /// chegirma (2026-10-17, TZ 1.6 — chegirma qarzdordan kelmaydi).
     /// <paramref name="ChargedBase"/> oylarida <paramref name="Expected"/> dan kichik bo'lishi mumkin:
     /// farq — qarzdorlar to'lasa qo'shiladigan qism (foydalanuvchi qarori, 2026-10-07: rasmiy oylik
     /// hisoblangandan, o'qituvchiga esa "hozir tushgan puldan" ham ko'rsatiladi). Aks holda = Expected.</summary>

@@ -46,6 +46,12 @@ export interface DebtRow {
   bucket: DebtBucketKey
 }
 
+/** Hisobi YO'Q oyga tushgan to'lovlar (sinovdagi avans, teglanmagan eski to'lov) — qarzni yopmaydi. */
+export interface UnmatchedPayments {
+  count: number
+  amount: number
+}
+
 export interface DebtReport {
   from: string
   to: string
@@ -57,6 +63,7 @@ export interface DebtReport {
   archived: DebtTotals
   buckets: DebtAgeBucket[]
   rows: DebtRow[]
+  unmatched: UnmatchedPayments
 }
 
 export interface DebtReportQuery {
@@ -162,6 +169,7 @@ export interface InvoiceList {
   unpaidCount: number
   overdueCount: number
   items: InvoiceRow[]
+  unmatched: UnmatchedPayments
 }
 
 export interface InvoiceQuery {

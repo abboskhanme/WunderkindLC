@@ -48,6 +48,11 @@ paths:
   oyning TUSHGAN pulidan hozir qancha chiqadi" ko'rsatiladi: guruh bo'yicha yig'ilgan pul × foiz
   (qat'iy guruhda — qat'iy ulush) − o'rinbosar ushlanmasi + o'rinbosar haqi, `Expected` dan
   OSHMAYDI. Farqi = "qarzdorlar to'lasa yana +". Yig'ilgan bazali (eski) oylarda = `Expected`.
+  ⚠️ 2026-10-17 (TZ 1.6): baza = tushgan pul **+ MARKAZ QOPLAGAN chegirma** (hisoblangan − sof, guruh bo'yicha;
+  legacy foizda oy jami bo'yicha). Chegirma hech qachon "qarzdordan" kelmaydi — ilgari uning ulushi ham
+  «qarzdorlar to'lasa yana +X» bo'lib ko'rinardi. Yorliq: «Hozir chiqadigan (tushgan pul + markaz qoplagan chegirma)».
+  Per-guruh tarmoqda u guruh ulushidan (`contribution`) oshmaydi (bir guruhning ortiqcha to'lovi boshqasining qarzini
+  yopmaydi). Test: `StaffRolesAndSalaryBaseTests.HOZIR_CHIQADIGAN__markaz_qoplagan_chegirma_…`.
   Hech narsa to'lamaydi va hech qayerga yozilmaydi — o'qituvchini qarzdorlarni yopishga undash
   uchun (o'qituvchi kabineti → Maosh, admin o'qituvchi sahifasi).
 - **Umumiy foiz:** o'qituvchi qo'shishda `Teacher.SalaryPercent` (Boshqaruv → Xodimlar, rol

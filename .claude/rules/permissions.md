@@ -150,7 +150,7 @@ turmaydi.
 | `classes` | `.list` `.rooms` `.testResults` `.rating` | `ClassesController` · `JournalController` · `RoomsController` · `TestResultsController` · `RatingController` (`.rating`, RRP — `rating.md`; 2026-10-12 dan SINF darajasida ham — "pastki chegara": metodsiz yangi amal ham yopiq, metod atributlari baribir USTUN) |
 | `messages` | `.broadcast` `.support` | `MessagesController` · `AutoMessagesController` · `BotSupportController` (`.chat` 2026-10 da guruh chati bilan birga olib tashlandi) |
 | `app` | `.aiCheck` `.support` `.locations` `.parents` `.teachers` | `AiCheckController` · `SupportController` · `LocationsController` · `ParentsController` · `AppTeachersController` |
-| `finance` | `.main` `.bonus` `.discounts` | `FinanceController` · `RetentionBonusController` · `DiscountReportController` |
+| `finance` | `.main` `.bonus` `.discounts` `.debts` `.tariffs` `.invoices` | `FinanceController` · `RetentionBonusController` · `DiscountReportController` · `FinanceReportsController` (metod darajasida, RRP — SPEC-backlog-2026-10-17 F1) |
 | `tasks` | `.board` `.dashboard` `.settings` | `WorkTasksController` (metod darajasida) |
 | `kpi` | `.today` `.month` `.tickets` `.close` `.rules` | `KpiController` (metod darajasida) |
 | `settings` | `.school` `.landing` `.reasons` `.channels` `.backup` `.azure-speech` `.gemini` `.check` `.turnstile` `.cameras` `.posthog` `.archive` | `SettingsController` (metod darajasida) · `LandingCmsController` · `ActionReasonsController` · `LeadSourcesController` · `ArchiveController` |

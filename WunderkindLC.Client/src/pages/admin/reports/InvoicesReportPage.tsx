@@ -136,7 +136,7 @@ export function InvoicesReportPage() {
       {error && <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{error}</p>}
 
       {!data || !t ? (
-        <Loader label="Yuklanmoqda..." />
+        error ? null : <Loader label="Yuklanmoqda..." />
       ) : (
         <div className={cn('space-y-4', loading && 'opacity-60')}>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -150,6 +150,12 @@ export function InvoicesReportPage() {
               iconBg="bg-rose-50" iconColor="text-rose-600" hint={`${data.overdueCount} ta faktura muddati o'tgan`} />
           </div>
 
+          {data.unmatched.count > 0 && (
+            <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">
+              Hisobi yozilmagan oylarga {data.unmatched.count} ta to'lov ({formatMoney(data.unmatched.amount)}) tushgan
+              (masalan sinovdagi avans) — ular hech bir fakturani yopmaydi.
+            </p>
+          )}
           <Card title="Fakturalar" sub={`${formatMonth(data.from)} — ${formatMonth(data.to)} · to'lov muddati har oyning ${data.dueDay}-sanasi`} tight>
             {data.items.length === 0 ? (
               <p className="py-10 text-center text-sm text-slate-400">Filtrga mos faktura yo'q</p>
@@ -202,9 +208,9 @@ export function InvoicesReportPage() {
                 <div className="flex items-center justify-between border-t border-slate-100 px-4 py-3 text-sm text-slate-500">
                   <span>{data.totalCount} tadan {(data.page - 1) * data.pageSize + 1}–{Math.min(data.page * data.pageSize, data.totalCount)}</span>
                   <div className="flex items-center gap-2">
-                    <Button variant="secondary" disabled={data.page <= 1 || loading} onClick={() => setPage((p) => p - 1)}>Oldingi</Button>
+                    <Button variant="secondary" disabled={data.page <= 1 || loading} onClick={() => setPage(data.page - 1)}>Oldingi</Button>
                     <span className="tabular-nums">{data.page} / {pages}</span>
-                    <Button variant="secondary" disabled={data.page >= pages || loading} onClick={() => setPage((p) => p + 1)}>Keyingi</Button>
+                    <Button variant="secondary" disabled={data.page >= pages || loading} onClick={() => setPage(data.page + 1)}>Keyingi</Button>
                   </div>
                 </div>
               </>

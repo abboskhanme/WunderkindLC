@@ -99,14 +99,14 @@ export function TariffReportPage() {
 
       {error && <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{error}</p>}
 
-      {loading || !data || !t ? (
-        <Loader label="Yuklanmoqda..." />
+      {!data || !t ? (
+        error ? null : <Loader label="Yuklanmoqda..." />
       ) : (
-        <div className="space-y-4">
+        <div className={cn('space-y-4', loading && 'opacity-60')}>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <StatCard label="Rejadagi tushum" value={formatMoney(t.charged)} icon={Wallet}
               hint={`Chegirma: ${formatMoney(t.discount)} · sof: ${formatMoney(t.net)}`} />
-            <StatCard label="Yig'ilgan" value={formatMoney(data.groups.reduce((s, g) => s + g.collected, 0))} icon={Wallet}
+            <StatCard label="Yig'ilgan" value={formatMoney(t.paid)} icon={Wallet}
               iconBg="bg-sky-50" iconColor="text-sky-600" hint={formatMonth(data.month)} />
             <StatCard label="Qoldiq qarz" value={formatMoney(t.debt)} icon={AlertTriangle}
               iconBg="bg-rose-50" iconColor="text-rose-600" hint={`${t.debtors} ta qarzdor o'quvchi`} />

@@ -28,13 +28,16 @@ public static class DebtReport
     {
         var current = today.ToString("yyyy-MM");
         var defFrom = today.AddMonths(-(DefaultMonths - 1)).ToString("yyyy-MM");
-        var (from, to) = DebtLedger.ClampRange(q.From, q.To, defFrom, current);
+        // Avval oxiri joriy oyga qirqiladi, keyin 24 oylik chegara — aks holda kelajakka cho'zilgan davr qisqarib qolardi.
+        var toIn = PaymentFields.IsMonth(q.To) && string.CompareOrdinal(q.To, current) > 0 ? current : q.To;
+        var (from, to) = DebtLedger.ClampRange(q.From, toIn, defFrom, current);
         if (string.CompareOrdinal(to, current) > 0) to = current;
         if (string.CompareOrdinal(from, to) > 0) from = to;
         var months = TuitionService.MonthRange(from, to).ToList();
         var dueDay = await DebtLedger.DueDayAsync(db, ct);
 
-        var cells = (await DebtLedger.LoadAsync(db, from, to, ct)).Where(c => c.HasCharge).ToList();
+        var all = await DebtLedger.LoadAsync(db, from, to, ct);
+        var cells = all.Where(c => c.HasCharge).ToList();
 
         var ctx = await NamesAsync(db, cells.Select(c => c.StudentId).Distinct().ToList(), ct);
 
@@ -94,7 +97,7 @@ public static class DebtReport
         return new DebtReportDto(
             from, to, months, dueDay, q.IncludeArchived,
             DebtLedger.Totals(inScope), DebtLedger.Totals(activeCells), DebtLedger.Totals(archivedCells),
-            buckets, rows);
+            buckets, rows, DebtLedger.Unmatched(all));
     }
 
     internal sealed record StudentInfo(string Name, string Phone, bool IsArchived);
@@ -108,11 +111,11 @@ public static class DebtReport
     internal static async Task<NameContext> NamesAsync(
         IAppDbContext db, IReadOnlyCollection<string> studentIds, CancellationToken ct)
     {
-        var ids = studentIds.ToHashSet(StringComparer.Ordinal);
+        var ids = studentIds.Distinct().ToList();
         var students = (await db.Students.AsNoTracking()
+                .Where(s => ids.Contains(s.Id))
                 .Select(s => new { s.Id, s.FullName, s.Phone, s.ParentPhone, s.FatherPhone, s.MotherPhone, s.IsArchived })
                 .ToListAsync(ct))
-            .Where(s => ids.Contains(s.Id))
             .ToDictionary(s => s.Id, s => new StudentInfo(
                 s.FullName,
                 FirstPhone(s.ParentPhone, s.FatherPhone, s.MotherPhone, s.Phone),
@@ -132,9 +135,9 @@ public static class DebtReport
                 g.IsArchived), StringComparer.Ordinal);
 
         var memberships = (await db.StudentGroups.AsNoTracking()
+                .Where(m => ids.Contains(m.StudentId))
                 .Select(m => new { m.StudentId, m.GroupId, m.Status, m.IsActive, m.JoinedAt })
                 .ToListAsync(ct))
-            .Where(m => ids.Contains(m.StudentId))
             .GroupBy(m => (m.StudentId, m.GroupId))
             // Bir (o'quvchi, guruh) da bir nechta qator bo'lsa — tirigi, bo'lmasa eng oxirgisi.
             .ToDictionary(g => g.Key, g =>

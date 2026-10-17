@@ -200,7 +200,7 @@ export function TeacherSalaryPage() {
                 {cur?.chargedBase && cur.collectedExpected != null && cur.collectedExpected < cur.expected && (
                   <div className="mt-3 space-y-1.5 rounded-lg border border-amber-200 bg-amber-50 px-3.5 py-2.5 text-[12px] text-amber-800">
                     <div className="flex items-center justify-between gap-2">
-                      <span>Hozir chiqadigan (tushgan puldan)</span>
+                      <span>Hozir chiqadigan (tushgan pul + markaz qoplagan chegirma)</span>
                       <span className="font-mono font-bold">{formatMoney(cur.collectedExpected)}</span>
                     </div>
                     <div className="flex items-center justify-between gap-2">

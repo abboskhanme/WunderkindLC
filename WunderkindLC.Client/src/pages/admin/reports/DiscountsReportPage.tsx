@@ -135,7 +135,7 @@ export function DiscountsReportPage() {
   const [error, setError] = useState('')
   /** Qayta yuklash so'rovi — «Yangilash» tugmasi shuni oshiradi (effekt ichida setState yo'q). */
   const [tick, setTick] = useState(0)
-  const [tab, setTab] = useState<Tab>('months')
+  const [tab, setTab] = useState<Tab>('teachers')
   const [search, setSearch] = useState('')
   const [sort, setSort] = useState<StudentSort>('discount')
   const [desc, setDesc] = useState(true)

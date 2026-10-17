@@ -132,12 +132,32 @@ public class FinanceReportsTests
     }
 
     [Fact]
+    public async Task Hisobi_yoq_oyga_tushgan_tolov_jimgina_yoqolmaydi()
+    {
+        using var db = TestDb.Sqlite();
+        var ctx = db.Context;
+        Seed(ctx);
+        Student(ctx, "s1", "Ali");
+        Charge(ctx, "s1", "2026-10", 1_000_000m);
+        Pay(ctx, "s1", "2026-09", 300_000m);   // sentabrda hisob yo'q (masalan sinovdagi avans)
+        await ctx.SaveChangesAsync();
+
+        var r = await DebtReport.BuildAsync(ctx, new DebtReport.Query("2026-09", "2026-10"), Today);
+        Assert.Equal(1_000_000m, r.Total.Debt);
+        Assert.Equal((1, 300_000m), (r.Unmatched.Count, r.Unmatched.Amount));
+
+        var inv = await InvoiceReport.BuildAsync(ctx, new InvoiceReport.Query("2026-09", "2026-10"), Today);
+        Assert.Equal(300_000m, inv.Unmatched.Amount);
+    }
+
+    [Fact]
     public void Qarz_yoshi_guruhlari_va_muddat()
     {
         Assert.Equal(new DateOnly(2026, 2, 10), DebtLedger.DueDate("2026-02", 10));
         Assert.Equal(new DateOnly(2026, 2, 28), DebtLedger.DueDate("2026-02", 31));
         Assert.Equal("notdue", DebtLedger.Bucket(-3));
-        Assert.Equal("0-6", DebtLedger.Bucket(0));
+        Assert.Equal("notdue", DebtLedger.Bucket(0));   // muddat kunining o'zi — hali kechikish emas
+        Assert.Equal("0-6", DebtLedger.Bucket(1));
         Assert.Equal("7-29", DebtLedger.Bucket(7));
         Assert.Equal("30-59", DebtLedger.Bucket(30));
         Assert.Equal("60+", DebtLedger.Bucket(60));

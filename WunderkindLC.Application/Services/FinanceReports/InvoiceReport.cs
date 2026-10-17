@@ -27,7 +27,8 @@ public static class InvoiceReport
         var current = today.ToString("yyyy-MM");
         var (from, to) = DebtLedger.ClampRange(q.From, q.To, current, current);
         var dueDay = await DebtLedger.DueDayAsync(db, ct);
-        var cells = (await DebtLedger.LoadAsync(db, from, to, ct)).Where(c => c.HasCharge).ToList();
+        var loaded = await DebtLedger.LoadAsync(db, from, to, ct);
+        var cells = loaded.Where(c => c.HasCharge).ToList();
         var ctx = await DebtReport.NamesAsync(db, cells.Select(c => c.StudentId).Distinct().ToList(), ct);
 
         var all = cells.Select(c =>
@@ -77,6 +78,7 @@ public static class InvoiceReport
             filtered.Count(r => r.Status == "partial"),
             filtered.Count(r => r.Status == "unpaid"),
             filtered.Count(r => r.OverdueDays > 0),
-            filtered.Skip((page - 1) * size).Take(size).ToList());
+            filtered.Skip((page - 1) * size).Take(size).ToList(),
+            DebtLedger.Unmatched(loaded));
     }
 }

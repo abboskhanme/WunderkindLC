@@ -32,10 +32,14 @@ public sealed record LedgerCell(
 /// QARZ HISOBINING YAGONA ASOSI — markaz bo'yicha moliya hisobotlari (qarzdorlik, tariflar, hisob-fakturalar)
 /// uchun (o'quvchi, guruh, oy) kataklari.
 ///
-/// <para><b>QOIDA — kassadagi to'lov oynasi (<see cref="StudentGroupLedger"/>) bilan AYNAN bir xil:</b>
+/// <para><b>QOIDA — kassadagi to'lov oynasi (<see cref="StudentGroupLedger"/>) qoidasi:</b>
 /// har oy MUSTAQIL; to'lov <c>FinanceTransaction.Month</c> + <c>GroupId</c> bo'yicha o'z katagiga tushadi,
-/// vozvrat (<c>expense + refund</c>) ayriladi; keyingi oyga to'langan avans o'tgan oy qarzini YOPMAYDI.
-/// Kassir va to'lov eslatmasi aynan shu manzarani ko'radi — hisobot ular bilan ayrilmasin.</para>
+/// vozvrat (<c>expense + refund</c>) ayriladi; keyingi oyga to'langan avans o'tgan oy qarzini YOPMAYDI.</para>
+///
+/// <para>⚠️ To'lov oynasidan FARQLARI (ataylab, hujjatlangan): (1) oyna SINOVDAGI a'zolik uchun oy ko'rsatmaydi —
+/// bu yerda sinovga qaytarilgan a'zolikning qolgan hisobi ham qarz (qatorda «Sinov» belgisi); (2) hisobi YO'Q oyga
+/// tushgan to'lov (sinovdagi avans, guruhga teglanmagan eski to'lov) hech bir qarzni yopmaydi — u
+/// <see cref="Unmatched"/> bilan alohida aytiladi.</para>
 ///
 /// <para>⚠️ Markaz bo'yicha <c>Student.Balance</c> (umumiy balans) bilan farq qilishi MUMKIN: o'quvchi kelgusi
 /// oyni oldindan to'lab, eski oyni to'lamagan bo'lsa — balans musbat, bu yerda esa eski oy qarz. Bu ATAYIN
@@ -102,9 +106,10 @@ public static class DebtLedger
     }
 
     /// <summary>Qarz yoshi guruhi (TZ 1.1: 7 / 30 / 60+ kun).</summary>
+    /// <remarks>Muddat kunining O'ZI hali kechikish emas (faktura ham shunday — <c>OverdueDays &gt; 0</c>).</remarks>
     public static string Bucket(int ageDays) => ageDays switch
     {
-        < 0 => "notdue",
+        <= 0 => "notdue",
         < 7 => "0-6",
         < 30 => "7-29",
         < 60 => "30-59",
@@ -114,11 +119,18 @@ public static class DebtLedger
     public static readonly IReadOnlyList<(string Key, string Label)> Buckets =
     [
         ("notdue", "Muddati kelmagan"),
-        ("0-6", "0–6 kun"),
+        ("0-6", "1–6 kun"),
         ("7-29", "7–29 kun"),
         ("30-59", "30–59 kun"),
         ("60+", "60+ kun"),
     ];
+
+    /// <summary>Hisobi yo'q kataklarga tushgan to'lovlar (soni va summasi).</summary>
+    public static UnmatchedPaymentsDto Unmatched(IEnumerable<LedgerCell> cells)
+    {
+        var list = cells.Where(c => !c.HasCharge && c.Paid > 0).ToList();
+        return new UnmatchedPaymentsDto(list.Count, list.Sum(c => c.Paid));
+    }
 
     /// <summary>Kataklar yig'indisi. <c>Debtors</c> — qarzi bor DISTINCT o'quvchilar.</summary>
     public static DebtTotalsDto Totals(IEnumerable<LedgerCell> cells)

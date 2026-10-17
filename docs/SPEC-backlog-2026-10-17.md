@@ -56,14 +56,17 @@ New report pages, all pure reports → `config/reports.ts` with `inNav: true` an
 
 **R1 Debts** (`from`,`to` months, `includeArchived`, `groupId`, `teacherId`, `age` = all|7|30|60):
 - KPIs: charged (gross), discount, net, paid, debt, collection % (= paid ÷ net), debtors count, split active/archived.
-- Aging buckets by the OLDEST unpaid (group, month): not due, 0–6, 7–29, 30–59, 60+ days — count + sum.
+- Aging buckets by the OLDEST unpaid (group, month): not due (the due day itself included), 1–6, 7–29, 30–59, 60+
+  days — count + sum. Payments that landed in a month with no charge (trial advance, untagged legacy money) are
+  reported as `unmatched` — they close no debt.
 - Matrix: rows = student × group (grouped by group, group subtotal), columns = months, cell = remaining debt of that
   (group, month); row total, oldest month, age days. Advances (overpay of a later month) never close an earlier month.
 - Legacy charges without a group (`GroupId == null`) get their own «Guruhsiz» block (never silently dropped).
 
 **R2 Tariffs** (`month`, `teacherId`):
-- Per group: teacher (current), course, price distribution `[{price, count}]` from gross amounts, planned (gross sum),
-  discount, net, collected (tuition paid FOR that month in that group), debt, collection %, red when < 60 %.
+- Per group: teacher (the month's OWNER by teaching history — `GroupOwnership.OwnerAtMonth`, the salary rule), course,
+  price distribution `[{price, count, partial}]`, planned (gross sum), discount, net, collected (tuition that closed that
+  month's charge, capped at net — planned − discount − collected = debt), debt, collection %, red when < 60 %.
 - Teacher summary: groups, students, planned, collected, debt, % — sorted worst first.
 
 **R3 Invoices** (`from`,`to`, `status` = all|paid|partial|unpaid, `overdue` bool, `q`, `groupId`, `page`,`pageSize`):

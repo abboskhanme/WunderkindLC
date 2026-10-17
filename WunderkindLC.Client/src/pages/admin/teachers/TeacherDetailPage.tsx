@@ -1355,7 +1355,7 @@ export function TeacherDetailPage() {
                           // Hisoblangan bazada: tushgan pul bo'yicha hozir chiqadigan qism (o'qituvchi ham ko'radi).
                           : selMonthData.chargedBase && selMonthData.collectedExpected != null
                               && selMonthData.collectedExpected < selMonthData.expected
-                            ? `tushgan puldan hozir ${formatMoney(selMonthData.collectedExpected)}`
+                            ? `tushgan pul + markaz qoplagan chegirmadan hozir ${formatMoney(selMonthData.collectedExpected)}`
                             : undefined
                       }
                       hintClass="text-amber-600"
