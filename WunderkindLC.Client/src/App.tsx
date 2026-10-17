@@ -62,6 +62,7 @@ const RoomsPage = lazy(() => import('@/pages/admin/rooms/RoomsPage').then((m) =>
 const RoomUtilizationPage = lazy(() => import('@/pages/admin/rooms/RoomUtilizationPage').then((m) => ({ default: m.RoomUtilizationPage })))
 const TeacherReportsPage = lazy(() => import('@/pages/admin/teacher-reports/TeacherReportsPage').then((m) => ({ default: m.TeacherReportsPage })))
 const ContractsPage = lazy(() => import('@/pages/admin/contracts/ContractsPage').then((m) => ({ default: m.ContractsPage })))
+const ExecutiveDashboardPage = lazy(() => import('@/pages/admin/analytics/ExecutiveDashboardPage').then((m) => ({ default: m.ExecutiveDashboardPage })))
 const BranchesPage = lazy(() => import('@/pages/admin/branches/BranchesPage').then((m) => ({ default: m.BranchesPage })))
 const TasksBoardPage = lazy(() => import('@/pages/admin/tasks/TasksBoardPage').then((m) => ({ default: m.TasksBoardPage })))
 const TasksListPage = lazy(() => import('@/pages/admin/tasks/TasksListPage').then((m) => ({ default: m.TasksListPage })))
@@ -453,6 +454,8 @@ export default function App() {
             <Route path="boshqaruv/roles" element={<Navigate to="/admin/boshqaruv/rollar" replace />} />
             <Route element={<ProtectedRoute role="superadmin" />}>
               <Route path="boshqaruv/branches" element={<BranchesPage />} />
+              {/* Rahbariyat analitikasi (SPEC-backlog F5 D1) — yuqori paneldagi «Analitika». */}
+              <Route path="analitika" element={<ExecutiveDashboardPage />} />
             </Route>
           </Route>
         </Route>

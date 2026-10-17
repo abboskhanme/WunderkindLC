@@ -125,7 +125,7 @@ salary calc) and teacher rows (SalaryLedger) — accrued, advances, final, remai
 ### F5 — Menu and executive dashboard
 
 - **N1** Kassa → Moliya; Kitoblar sotuvi → O'quv bo'limi; O'qituvchilar kabineti → Xodimlar; Instagram marketing → its
-  own main group; Future reports → main «Hisobotlar». Tests in `config/__tests__` updated.
+  own main group; Future reports → main «Hisobotlar». Tests in `config/__tests__` updated. Done (`navBacklogF5.test.ts`).
 - **D1** `/admin/analitika` (superadmin): month revenue (tuition / total income), cashbox balances, active debt sum +
   debtors, student flow (new / left, 6-month trend), lead conversion (lead → student) — each tile links to its report.
-  Top-bar «Analitika» button.
+  Top-bar «Analitika» button. Done (`ExecutiveDashboard`, reports.md §8).

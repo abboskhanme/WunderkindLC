@@ -15,13 +15,14 @@ import {
   IconChartPie,
   IconSettings,
   IconSparkles,
+  IconBrandInstagram,
 } from '@tabler/icons-react'
 import type { Role } from '@/types'
 import { navReports, reportPerms } from './reports'
 
 /**
- * edutizimdagi "Hisobotlar" guruhida O'Z joyi bor hisobotlar — ular "Future → Hisobotlar" ga
- * TUSHMAYDI (Future faqat edutizimda YO'Q narsalar uchun).
+ * edutizimdagi "Hisobotlar" guruhida O'Z joyi bor hisobotlar — guruh boshida QO'LDA yozilgan tartibda.
+ * (2026-10-17 dan "Future → Hisobotlar" YO'Q: qolgan katalog hisobotlari asosiy guruh OXIRIGA qo'shiladi.)
  */
 export const edutizimReportRoutes = new Set([
   '/admin/crm-stats',
@@ -30,9 +31,9 @@ export const edutizimReportRoutes = new Set([
 ])
 
 /**
- * Edutizimda YO'Q, lekin markaz KUNDALIK ishlatadigan hisobotlar (2026-10-07 uchrashuvi talablari) —
- * ular ham asosiy "Hisobotlar" guruhida turadi va "Future → Hisobotlar" ga TUSHMAYDI
- * (foydalanuvchi: "ishlatilishini hisobga olgan holda Future menyusidan olib chiqish kerak").
+ * Edutizimda YO'Q, lekin markaz KUNDALIK ishlatadigan hisobotlar (2026-10-07 uchrashuvi talablari) — asosiy
+ * "Hisobotlar" guruhida QO'LDA yozilgan qismda turadi; katalogning qolgani (`navReports`) ulardan KEYIN avtomatik
+ * qo'shiladi (bir band ikki marta chiqmasin — shu to'plam bilan filtrlanadi).
  */
 export const mainReportRoutes = new Set([
   ...edutizimReportRoutes,
@@ -168,6 +169,8 @@ export const navByRole: Record<Role, NavItem[]> = {
         // CRM Phase 4 (U4a, 2026-10-12): oyiga 1–2 marta natija kiritiladi va ota-onalarga yuboriladi — kundalik
         // ish, Future'dan chiqarildi.
         { label: 'Testlar natijalari', to: '/admin/test-results', perm: 'classes.testResults' },
+        // Egasining TZ'si (2026-10-17, SPEC-backlog F5 N1): kitob savdosi va ombor — Future'dan chiqarildi.
+        { label: 'Kitoblar sotuvi', to: '/admin/books', perm: 'books' },
       ],
     },
     {
@@ -185,8 +188,9 @@ export const navByRole: Record<Role, NavItem[]> = {
           to: '#moliya-amallar',
           children: [
             // edutizimdagi "Kassalar" — kassa QOLDIQLARI/kesimi. Bizdagi eng yaqin sahifa —
-            // Moliya → "Kassirlar" tabi. To'lov QABUL QILISH oynamiz ("Kassa") edutizimda alohida
-            // band emas (u yerda Kirim paneli), shuning uchun u "Future" da.
+            // Moliya → "Kassirlar" tabi. To'lov QABUL QILISH oynasi ("Kassa") 2026-10-17 dan (egasining TZ'si,
+            // SPEC-backlog F5 N1) shu yerda — Future'dan chiqarildi.
+            { label: "Kassa (to'lov qabul qilish)", to: '/admin/kassa', perm: 'kassa' },
             { label: 'Kassalar', to: '/admin/finance?tab=cashiers', perm: 'finance.main' },
             { label: 'Bonus', to: '/admin/finance?tab=bonuses', perm: 'finance.main' },
             { label: 'Jarima', to: '/admin/moliya/jarima', perm: 'finance.main' },
@@ -246,6 +250,8 @@ export const navByRole: Record<Role, NavItem[]> = {
           // O'qituvchilar ro'yxati, kartasi, davomati, o'rinbosarlar — shu bo'limniki.
           alsoMatch: ['/admin/teachers'],
         },
+        // O'qituvchilar kabineti (akkauntlar, kirish) — egasining TZ'si (2026-10-17, F5 N1): Future → Ilova dan chiqarildi.
+        { label: "O'qituvchilar kabineti", to: '/admin/app/teachers', perm: 'app.teachers' },
         // Faqat ROLLAR ro'yxati va ularning ruxsatlari.
         { label: 'Rollar', to: '/admin/boshqaruv/rollar', perm: 'staff' },
         // Topshiriqlar (Kanban + tasdiqlash) — CRM Phase 5 da Future'dan QAYTARILDI: topshiriq bergan
@@ -267,10 +273,29 @@ export const navByRole: Record<Role, NavItem[]> = {
       ],
     },
     {
+      // Egasining TZ'si (2026-10-17, SPEC-backlog F5 N1): Instagram marketing — o'z ASOSIY guruhi (Future'dan chiqarildi).
+      label: 'Instagram marketing',
+      to: '#marketing',
+      icon: IconBrandInstagram,
+      children: [
+        { label: 'Boshqaruv paneli', to: '/admin/marketing', end: true, perm: 'marketing.dashboard' },
+        { label: 'Inbox', to: '/admin/marketing/inbox', perm: 'marketing.inbox' },
+        { label: 'Javob qoidalari', to: '/admin/marketing/rules', perm: 'marketing.rules' },
+        { label: 'FAQ tugmalari', to: '/admin/marketing/faq', perm: 'marketing.rules' },
+        { label: 'Bilim bazasi', to: '/admin/marketing/knowledge', perm: 'marketing.knowledge' },
+        { label: 'Reklama lidlari', to: '/admin/marketing/reklama-lidlari', perm: 'marketing.leadads' },
+        { label: 'Reklama statistikasi', to: '/admin/marketing/reklama-statistikasi', perm: 'marketing.adsstats' },
+        { label: 'Kontent', to: '/admin/marketing/kontent', perm: 'marketing.content' },
+        { label: 'Sozlamalar', to: '/admin/marketing/settings', perm: 'marketing.settings' },
+      ],
+    },
+    {
       label: 'Hisobotlar',
       to: '#hisobotlar',
       icon: IconChartPie,
       children: [
+        // Hisobotlar hub'i — 2026-10-17 dan (egasining TZ'si, F5 N1) ASOSIY guruhda (ilgari Future → Hisobotlar).
+        { label: 'Barcha hisobotlar', to: '/admin/hisobotlar', end: true, permAny: reportPerms },
         { label: 'Sotuv voronkasi', to: '/admin/crm-stats', perm: 'leads.stats' },
         { label: 'Kirim chiqim', to: '/admin/moliya/kirim-chiqim', perm: 'finance.main' },
         { label: 'Xonalar analitikasi', to: '/admin/rooms/utilization', perm: 'classes.rooms' },
@@ -285,6 +310,11 @@ export const navByRole: Record<Role, NavItem[]> = {
         { label: 'Qarzdorlik tahlili', to: '/admin/hisobotlar/qarzdorlik', perm: 'finance.debts' },
         { label: 'Guruhlar va tariflar', to: '/admin/hisobotlar/tariflar', perm: 'finance.tariffs' },
         { label: 'Hisob-fakturalar', to: '/admin/hisobotlar/hisob-fakturalar', perm: 'finance.invoices' },
+        // Qolgan menyu hisobotlari — `config/reports.ts` katalogidan (`navReports`), ya'ni katalogga qo'shilgan hisobot
+        // menyuda o'zi paydo bo'ladi. 2026-10-17 gacha ular "Future → Hisobotlar" da edi.
+        ...navReports
+          .filter((r) => !mainReportRoutes.has(r.to))
+          .map((r) => ({ label: r.label, to: r.to, perm: r.perm })),
       ],
     },
     {
@@ -310,7 +340,6 @@ export const navByRole: Record<Role, NavItem[]> = {
           to: '#future-students',
           children: [
             { label: 'Arxiv (barcha turdagi)', to: '/admin/archive', perm: 'settings.archive' },
-            { label: "Kassa (to'lov qabul qilish)", to: '/admin/kassa', perm: 'kassa' },
             { label: 'Izohlarga javoblar', to: '/admin/students/izohlar', perm: 'students.notes' },
             { label: 'Ushlab turish bonusi', to: '/admin/students/bonus', perm: 'finance.bonus' },
             { label: 'Yuz bilan kirish', to: '/admin/students/yuz', perm: 'students.face' },
@@ -324,7 +353,6 @@ export const navByRole: Record<Role, NavItem[]> = {
             { label: "O'quv dasturi", to: '/admin/curricula', perm: 'schedule.curricula' },
             { label: 'Baholash mezonlari', to: '/admin/grading', perm: 'schedule.grading' },
             { label: 'Formalar', to: '/admin/forms', permAny: ['leads.forms', 'schedule.levelTests'] },
-            { label: 'Kitoblar sotuvi', to: '/admin/books', perm: 'books' },
           ],
         },
         {
@@ -341,35 +369,6 @@ export const navByRole: Record<Role, NavItem[]> = {
             { label: 'AI check', to: '/admin/ai-check', perm: 'app.aiCheck' },
             { label: 'Ota-onalar (kabinet akkauntlari)', to: '/admin/parents', perm: 'app.parents' },
             { label: 'Support', to: '/admin/support', perm: 'app.support' },
-            { label: "O'qituvchilar (kabinet)", to: '/admin/app/teachers', perm: 'app.teachers' },
-          ],
-        },
-        {
-          label: 'Instagram marketing',
-          to: '#future-marketing',
-          children: [
-            { label: 'Boshqaruv paneli', to: '/admin/marketing', end: true, perm: 'marketing.dashboard' },
-            { label: 'Inbox', to: '/admin/marketing/inbox', perm: 'marketing.inbox' },
-            { label: 'Javob qoidalari', to: '/admin/marketing/rules', perm: 'marketing.rules' },
-            { label: 'FAQ tugmalari', to: '/admin/marketing/faq', perm: 'marketing.rules' },
-            { label: 'Bilim bazasi', to: '/admin/marketing/knowledge', perm: 'marketing.knowledge' },
-            { label: 'Reklama lidlari', to: '/admin/marketing/reklama-lidlari', perm: 'marketing.leadads' },
-            { label: 'Reklama statistikasi', to: '/admin/marketing/reklama-statistikasi', perm: 'marketing.adsstats' },
-            { label: 'Kontent', to: '/admin/marketing/kontent', perm: 'marketing.content' },
-            { label: 'Sozlamalar', to: '/admin/marketing/settings', perm: 'marketing.settings' },
-          ],
-        },
-        {
-          // Hisobotlar hub'i va edutizimda yo'q hisobotlar — `config/reports.ts` katalogidan
-          // (`navReports`), ya'ni katalogga qo'shilgan hisobot menyuda o'zi paydo bo'ladi.
-          label: 'Hisobotlar',
-          to: '#future-reports',
-          permAny: reportPerms,
-          children: [
-            { label: 'Barcha hisobotlar', to: '/admin/hisobotlar', end: true, permAny: reportPerms },
-            ...navReports
-              .filter((r) => !mainReportRoutes.has(r.to))
-              .map((r) => ({ label: r.label, to: r.to, perm: r.perm })),
           ],
         },
         {

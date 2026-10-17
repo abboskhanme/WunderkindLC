@@ -9,7 +9,7 @@ import {
   visibleReportGroups,
 } from '../reports'
 import { permLabel } from '../constants'
-import { navByRole, activeNavTo, edutizimReportRoutes, edutizimDuplicateRoutes, mainReportRoutes } from '../navigation'
+import { navByRole, activeNavTo, edutizimReportRoutes, edutizimDuplicateRoutes } from '../navigation'
 
 /**
  * HISOBOTLAR KATALOGI — `config/reports.ts` yagona manba bo'lgani uchun undagi xato
@@ -73,13 +73,15 @@ describe('hisobotlar katalogi', () => {
     }
   })
 
-  it("Future → Hisobotlar hub'dan boshlanadi va edutizim hisobotlarini takrorlamaydi", () => {
-    const future = navByRole.admin.find((i) => i.label === 'Future')!
-    const reports = future.children!.find((c) => c.label === 'Hisobotlar')!
+  it("asosiy «Hisobotlar» hub'dan boshlanadi va menyu hisobotlarining HAMMASI shu guruhda (Future'da emas)", () => {
+    // 2026-10-17 (egasining TZ'si, SPEC-backlog F5 N1): "Future → Hisobotlar" olib tashlandi.
+    const reports = navByRole.admin.find((i) => i.label === 'Hisobotlar')!
     const routes = reports.children!.map((c) => c.to)
     expect(routes[0]).toBe('/admin/hisobotlar') // "Barcha hisobotlar" — birinchi
-    for (const to of edutizimReportRoutes) expect(routes).not.toContain(to)
-    for (const to of mainReportRoutes) expect(routes).not.toContain(to)
+    for (const r of navReports) expect(routes, r.to).toContain(r.to)
+    for (const to of edutizimReportRoutes) expect(routes).toContain(to)
+    const future = navByRole.admin.find((i) => i.label === 'Future')!
+    expect(future.children!.some((c) => c.label === 'Hisobotlar')).toBe(false)
   })
 
   it("ishlatiladigan yangi bandlar Future'da QOLMAGAN (asosiy guruhga chiqarilgan)", () => {
@@ -115,6 +117,8 @@ describe('edutizim menyusi', () => {
       'Nazorat',
       'Boshqaruv',
       'Sotuv va marketing',
+      // Egasining TZ'si (2026-10-17, F5 N1): Instagram marketing — o'z asosiy guruhi.
+      'Instagram marketing',
       'Hisobotlar',
       'Sozlamalar',
       'Future',
@@ -203,13 +207,14 @@ describe('activeNavTo — qaysi menyu bandi faol', () => {
     // edutizimning "Hisobotlar" guruhidagi sahifalar
     ['/admin/rooms/utilization', 'Hisobotlar'],
     ['/admin/crm-stats', 'Hisobotlar'],
-    // edutizimda yo'q hisobotlar — "Future" ichida. Eng ANIQ moslik g'olib:
-    // `/admin/subjects/analitika` ESKI "O'quv bo'limi"ni (u yerda `/admin/subjects`) ochmaydi.
-    ['/admin/subjects/analitika', 'Future'],
-    ['/admin/forms/statistika', 'Future'],
-    ['/admin/marketing/analytics', 'Future'],
-    ['/admin/settings/history', 'Future'],
-    ['/admin/hisobotlar', 'Future'],
+    // edutizimda yo'q hisobotlar — 2026-10-17 dan ham asosiy "Hisobotlar" da (F5 N1). Eng ANIQ moslik g'olib:
+    // `/admin/subjects/analitika` ESKI "O'quv bo'limi"ni (u yerda `/admin/subjects`) ochmaydi,
+    // `/admin/marketing/analytics` esa «Instagram marketing» ni (u yerda `/admin/marketing`).
+    ['/admin/subjects/analitika', 'Hisobotlar'],
+    ['/admin/forms/statistika', 'Hisobotlar'],
+    ['/admin/marketing/analytics', 'Hisobotlar'],
+    ['/admin/settings/history', 'Hisobotlar'],
+    ['/admin/hisobotlar', 'Hisobotlar'],
   ])('%s → «%s»', (path, label) => {
     expect(activeNavTo(admin, path)).toBe(find(label))
   })
@@ -223,7 +228,10 @@ describe('activeNavTo — qaysi menyu bandi faol', () => {
     ['/admin/boshqaruv/xodimlar', 'Boshqaruv'],
     ['/admin/boshqaruv/rollar', 'Boshqaruv'],
     ['/admin/teachers/attendance', 'Boshqaruv'],
-    ['/admin/marketing/inbox', 'Future'],
+    ['/admin/marketing/inbox', 'Instagram marketing'],
+    ['/admin/kassa', 'Moliya'],
+    ['/admin/books', "O'quv bo'limi"],
+    ['/admin/app/teachers', 'Boshqaruv'],
     // Uchrashuv talablari bo'yicha qurilgan va KUNDALIK ishlatiladigan bandlar — Future'dan chiqarilgan.
     ['/admin/students/qabul', "O'quvchilar"],
     ['/admin/boshqaruv/vacancies', 'Boshqaruv'],

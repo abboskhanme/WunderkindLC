@@ -12,6 +12,10 @@ Ro'yxat FAQAT shu faylda. Undan IKKALASI quriladi:
 | Yon menyudagi "Hisobotlar" guruhi (`navigation.ts`) | `navReports` (`inNav: true` bo'lganlar) |
 | `/admin/hisobotlar` hub sahifasi (`ReportsPage`) | `visibleReportGroups(...)` — HAMMASI |
 
+⚠️ **2026-10-17 (egasining TZ'si, SPEC-backlog F5 N1):** «Future → Hisobotlar» OLIB TASHLANDI — hub («Barcha hisobotlar»)
+asosiy «Hisobotlar» guruhining BOSHIDA, `mainReportRoutes` dagi qo'lda yozilgan bandlardan KEYIN katalogning qolgan
+`inNav` hisobotlari avtomatik qo'shiladi (`navigation.ts`, `navBacklogF5.test.ts`).
+
 ⚠️ Menyuga bandni QO'LDA yozmang. Katalogga qo'shilgan hisobot menyuda paydo bo'lmasa —
 foydalanuvchi uchun u "yo'qolgan" bo'lib ko'rinadi, va teskarisi. `reports.test.ts` menyu
 katalog bilan bir xilligini qulflaydi.
@@ -121,3 +125,12 @@ guruh tarixi → "O'zgarishlar tarixi").
 3. `perm` — `adminPermissions` katalogidagi HAQIQIY kalit (test tekshiradi).
 4. `inNav: true` qo'ysangiz — bandni eski menyu guruhidan O'CHIRING.
 5. Sahifa ichidagi tab bo'lsa — `?tab=` va `tabFromUrl`.
+
+## 8. RAHBARIYAT ANALITIKASI — `/admin/analitika` (SPEC-backlog F5 D1, TZ 3.4)
+
+Yuqori paneldagi «Analitika» tugmasi — FAQAT superadmin (`ExecutiveAnalyticsController`, `[Authorize(Roles = superadmin)]`,
+ruxsat kaliti YO'Q; marshrut `ProtectedRoute role="superadmin"`). Katalogga (`config/reports.ts`) KIRMAYDI — u hisobot emas,
+hisobotlarga olib boradigan bosh ekran. Raqamlar YANGI formula emas (`ExecutiveDashboard`): o'quv tushumi = tuition − vozvrat
+(sana bo'yicha), kassalar — `CashboxService.BalancesAsync`, faol qarz — arxivlanmagan o'quvchilarning umumiy `Balance`i,
+oqim — `DashboardSummary.FirstPaymentStudentsInMonth` / `LeftStudentsInMonth` (bosh sahifa bilan bir xil), lidlar — shu oyda
+kelgan va hozir aylanganlar. Har plitka o'z hisobotiga havola. Kesh 5 daqiqa (`analytics:executive:{oy}`).

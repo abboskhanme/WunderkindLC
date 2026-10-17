@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import {
   IconArrowBackUp,
   IconBuilding,
+  IconChartBar,
   IconCirclePlus,
   IconLogout,
   IconMenu2,
@@ -166,6 +167,18 @@ export function Topbar({ onMenuClick, collapsed = false }: TopbarProps) {
         >
           <IconSearch className="h-5 w-5" />
         </button>
+
+        {/* Rahbariyat analitikasi (SPEC-backlog F5 D1, TZ 3.4) — faqat superadmin. */}
+        {user.role === 'superadmin' && (
+          <Link
+            to="/admin/analitika"
+            className="flex h-8 items-center gap-1.5 rounded-lg px-2 text-sm font-semibold text-brand-600 transition-colors hover:bg-brand-50"
+            title="Analitika — rahbariyat ko'rsatkichlari"
+          >
+            <IconChartBar className="h-5 w-5" />
+            <span className="hidden md:inline">Analitika</span>
+          </Link>
+        )}
 
         {/* Tezkor bo'limlar — edutizimdagi "+" menyusi */}
         <div className="relative" ref={quickRef}>
