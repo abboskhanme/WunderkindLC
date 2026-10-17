@@ -15,11 +15,12 @@ public sealed record RatingCentreGroupDto(string Id, string Name, int? Rank, dou
 
 public sealed record RatingCentreItemDto(
     int Rank, string StudentId, string FullName, double Score, double? TestAvg, int TestCount, int Ball,
-    List<RatingCentreGroupDto> Groups);
+    List<RatingCentreGroupDto> Groups, double? HomeworkAvg = null);
 
 /// <summary><paramref name="Total"/> — ranked students matching the search (before paging).</summary>
 public sealed record RatingCentreDto(
-    RatingPeriodDto Period, int TestWeight, int Total, int Page, int PageSize, List<RatingCentreItemDto> Items);
+    RatingPeriodDto Period, int TestWeight, int Total, int Page, int PageSize, List<RatingCentreItemDto> Items,
+    int HomeworkWeight = 0);
 
 // ---------- GET api/admin/rating/groups/{groupId} ----------
 
@@ -28,10 +29,11 @@ public sealed record RatingGroupHeaderDto(string Id, string Name, string CourseN
 /// <summary>Rank/score null — the student is in the group but has no test score and no ball in the period.</summary>
 public sealed record RatingGroupItemDto(
     int? Rank, string StudentId, string FullName, double? Score, double? TestAvg, int TestCount, int Ball,
-    double? BallNorm);
+    double? BallNorm, double? HomeworkAvg = null);
 
 public sealed record RatingGroupDto(
-    RatingPeriodDto Period, int TestWeight, RatingGroupHeaderDto Group, int Ranked, List<RatingGroupItemDto> Items);
+    RatingPeriodDto Period, int TestWeight, RatingGroupHeaderDto Group, int Ranked, List<RatingGroupItemDto> Items,
+    int HomeworkWeight = 0);
 
 // ---------- GET api/admin/rating/students/{id} · GET api/student/rating/summary ----------
 
@@ -41,10 +43,13 @@ public sealed record RatingCentrePlaceDto(int? Rank, int Total, double? Score, i
 /// <summary><paramref name="Total"/> — ranked students of the group in the period.</summary>
 public sealed record RatingBlockGroupDto(
     string GroupId, string GroupName, string CourseName, int? Rank, int Total, double? Score, double? TestAvg,
-    int TestCount, int Ball, double? BallNorm);
+    int TestCount, int Ball, double? BallNorm, double? HomeworkAvg = null);
 
 /// <summary>The student's centre-level components: T over all tests, total ball and the configured weight.</summary>
-public sealed record RatingComponentsDto(double? TestAvg, int TestCount, int Ball, int TestWeight);
+/// <paramref name="HomeworkAvg"/>/<paramref name="HomeworkWeight"/> — homework points over all groups and its weight
+/// (0 = not part of the score — SPEC-backlog A3).
+public sealed record RatingComponentsDto(
+    double? TestAvg, int TestCount, int Ball, int TestWeight, double? HomeworkAvg = null, int HomeworkWeight = 0);
 
 public sealed record RatingHistoryPointDto(string Month, int? CentreRank, int CentreTotal, double? Score, double? TestAvg);
 
@@ -90,4 +95,6 @@ public sealed record StudentRatingSummaryDto : StudentRatingBlockDto
 
 // ---------- GET/PUT api/admin/rating/settings ----------
 
-public sealed record RatingSettingsDto(int TestWeight, int TopBottomCount, string TopBottomScope);
+/// <param name="HomeworkWeight">Homework share, % (0..100, test + homework ≤ 100; the ball gets the rest). In a PUT
+/// <c>null</c> = unchanged (a cached old client must not silently reset it to 0).</param>
+public sealed record RatingSettingsDto(int TestWeight, int TopBottomCount, string TopBottomScope, int? HomeworkWeight = null);

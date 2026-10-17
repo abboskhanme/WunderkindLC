@@ -72,11 +72,13 @@ public static class MembershipAttendance
     /// Per (student, group) stats for every LIVE membership (<c>IsActive</c>) of <paramref name="groupIds"/> (null = the
     /// whole centre) plus the <paramref name="unboundedPairs"/>. Two live memberships of the same pair (bad legacy data)
     /// count once — the one an active/newer state wins (<c>RatingService</c> order). <paramref name="month"/> ("yyyy-MM")
-    /// narrows lessons and marks to that month.
+    /// narrows lessons and marks to that month; <paramref name="fromDay"/>/<paramref name="toDay"/> ("yyyy-MM-dd",
+    /// inclusive) to a day range — the period attendance report (SPEC-backlog-2026-10-17 A1).
     /// </summary>
     public static async Task<Dictionary<(string StudentId, string GroupId), Stat>> ComputeAsync(
         IAppDbContext db, IReadOnlyCollection<string>? groupIds = null, string? month = null,
-        IReadOnlyCollection<(string StudentId, string GroupId)>? unboundedPairs = null, CancellationToken ct = default)
+        IReadOnlyCollection<(string StudentId, string GroupId)>? unboundedPairs = null,
+        string? fromDay = null, string? toDay = null, CancellationToken ct = default)
     {
         var gids = groupIds?.Distinct().ToList();
         var reasons = await db.AbsenceReasons.AsNoTracking()
@@ -114,6 +116,8 @@ public static class MembershipAttendance
                                            && n.Date == e.Date && n.Period == e.Period));
         if (gids is not null) entries = entries.Where(e => allGroups.Contains(e.ClassId));
         if (month is not null) entries = entries.Where(e => e.Date.StartsWith(month));
+        if (fromDay is not null) entries = entries.Where(e => string.Compare(e.Date, fromDay) >= 0);
+        if (toDay is not null) entries = entries.Where(e => string.Compare(e.Date, toDay) <= 0);
         var reasonCells = await entries.Where(e => e.ReasonId != null)
             .Select(e => new { e.StudentId, e.ClassId, e.SubjectId, e.Date, e.Period, e.ReasonId }).Distinct()
             .GroupBy(x => new { x.StudentId, x.ClassId, x.ReasonId })
@@ -141,6 +145,8 @@ public static class MembershipAttendance
         // ---- 2) attendance-TAKEN lessons per (group, day) — the base of the implicit «keldi» ----
         var tq = taken.AsNoTracking().Where(n => allGroups.Contains(n.ClassId));
         if (month is not null) tq = tq.Where(n => n.Date.StartsWith(month));
+        if (fromDay is not null) tq = tq.Where(n => string.Compare(n.Date, fromDay) >= 0);
+        if (toDay is not null) tq = tq.Where(n => string.Compare(n.Date, toDay) <= 0);
         var takenDays = (await tq.Select(n => new { n.ClassId, n.SubjectId, n.Date, n.Period }).Distinct()
                 .GroupBy(x => new { x.ClassId, x.Date })
                 .Select(g => new { g.Key.ClassId, g.Key.Date, N = g.Count() })
@@ -171,6 +177,8 @@ public static class MembershipAttendance
                                   || string.Compare(e.Date, sg.LeftAt!.Substring(0, 10)) <= 0)))
                 select new { sg.Id, e.SubjectId, e.Date, e.Period };
             if (month is not null) cq = cq.Where(x => x.Date.StartsWith(month));
+            if (fromDay is not null) cq = cq.Where(x => string.Compare(x.Date, fromDay) >= 0);
+            if (toDay is not null) cq = cq.Where(x => string.Compare(x.Date, toDay) <= 0);
             // Distinct CELLS (a duplicate journal row of one lesson must not make the implicit count negative-ish).
             foreach (var r in await cq.Distinct().GroupBy(x => x.Id).Select(g => new { Id = g.Key, N = g.Count() }).ToListAsync(ct))
                 classifiedByMember[r.Id] = r.N;
@@ -187,6 +195,8 @@ public static class MembershipAttendance
                             && taken.Any(n => n.ClassId == e.ClassId && n.SubjectId == e.SubjectId
                                               && n.Date == e.Date && n.Period == e.Period));
             if (month is not null) xq = xq.Where(e => e.Date.StartsWith(month));
+            if (fromDay is not null) xq = xq.Where(e => string.Compare(e.Date, fromDay) >= 0);
+            if (toDay is not null) xq = xq.Where(e => string.Compare(e.Date, toDay) <= 0);
             foreach (var r in await xq.Select(e => new { e.StudentId, e.ClassId, e.SubjectId, e.Date, e.Period }).Distinct()
                          .GroupBy(x => new { x.StudentId, x.ClassId })
                          .Select(g => new { g.Key.StudentId, g.Key.ClassId, N = g.Count() }).ToListAsync(ct))

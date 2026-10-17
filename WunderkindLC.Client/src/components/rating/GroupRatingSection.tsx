@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Trophy } from 'lucide-react'
 import { getRatingGroup, type RatingGroupTable } from '@/api/services/rating'
-import { defaultRatingPeriod, fmtScore, scoreFormulaText, type RatingPeriodValue } from '@/lib/ratingPeriods'
+import { defaultRatingPeriod, fmtScore, scoreFormulaText, weightsLabel, type RatingPeriodValue } from '@/lib/ratingPeriods'
 import { apiErrorMessage, cn } from '@/lib/utils'
 import { RatingPeriodSwitch } from './RatingPeriodSwitch'
 
@@ -48,7 +48,7 @@ export function GroupRatingSection({ groupId, title = 'Umumiy reyting (testlar +
           </div>
           {data && (
             <div className="mt-0.5 text-xs text-slate-500">
-              {data.period.label} · testlar {data.testWeight}% + ball {100 - data.testWeight}% · o'rin olganlar: {data.ranked}
+              {data.period.label} · {weightsLabel(data.testWeight, data.homeworkWeight)} · o'rin olganlar: {data.ranked}
             </div>
           )}
         </div>
@@ -70,6 +70,7 @@ export function GroupRatingSection({ groupId, title = 'Umumiy reyting (testlar +
                   <th className="px-2 py-2 font-semibold">F.I.Sh</th>
                   <th className="px-2 py-2 text-right font-semibold">Testlar</th>
                   <th className="px-2 py-2 text-right font-semibold">Ball</th>
+                  {(data.homeworkWeight ?? 0) > 0 && <th className="px-2 py-2 text-right font-semibold">Uy vazifasi</th>}
                   <th className="px-4 py-2 text-right font-semibold">Reyting bali</th>
                 </tr>
               </thead>
@@ -103,9 +104,14 @@ export function GroupRatingSection({ groupId, title = 'Umumiy reyting (testlar +
                       {r.ball}
                       {r.ballNorm != null && <span className="text-xs text-slate-400"> · {fmtScore(r.ballNorm)}</span>}
                     </td>
+                    {(data.homeworkWeight ?? 0) > 0 && (
+                      <td className="whitespace-nowrap px-2 py-2 text-right">
+                        {r.homeworkAvg != null ? `${fmtScore(r.homeworkAvg)}%` : <span className="text-slate-400">—</span>}
+                      </td>
+                    )}
                     <td
                       className="whitespace-nowrap px-4 py-2 text-right font-bold text-indigo-600"
-                      title={scoreFormulaText(r.testAvg, r.ballNorm, data.testWeight)}
+                      title={scoreFormulaText(r.testAvg, r.ballNorm, data.testWeight, r.homeworkAvg ?? null, data.homeworkWeight ?? 0)}
                     >
                       {fmtScore(r.score)}
                     </td>

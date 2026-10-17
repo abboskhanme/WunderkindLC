@@ -106,9 +106,10 @@ export const reportGroups: ReportGroup[] = [
       },
       {
         label: "O'quvchilar davomati",
-        to: '/admin/students/davomat',
+        // «Davr tahlili» tabi (SPEC-backlog-2026-10-17 A1) — tavsif aynan shu tabni anglatadi.
+        to: '/admin/students/davomat?tab=davr',
         perm: 'students.attendance',
-        description: 'Kim qancha dars qoldirdi — davr va guruh kesimida',
+        description: 'Kim qancha dars qoldirdi — davr (92 kungacha), guruh, sabab va sinf kesimida',
       },
       {
         label: 'Ushlab turish bonusi',

@@ -130,16 +130,37 @@ export function fmtSolved(solved: number, questions: number): string {
   return `${fmtScore(solved)}/${fmtScore(questions)}`
 }
 
+/** Ulushlar (server `RatingFormula.Weights` bilan bir xil): uy vazifasi testlar bilan birga 100 dan oshmaydi. */
+export function ratingWeights(testWeight: number, homeworkWeight = 0): { test: number; homework: number; ball: number } {
+  const test = Math.max(0, Math.min(100, testWeight))
+  const homework = Math.max(0, Math.min(100 - test, homeworkWeight))
+  return { test, homework, ball: 100 - test - homework }
+}
+
+/** Sarlavhadagi qisqa yozuv: «testlar 60% + ball 40%» (uy vazifasi ulushi bo'lsa — u ham). */
+export function weightsLabel(testWeight: number, homeworkWeight = 0): string {
+  const w = ratingWeights(testWeight, homeworkWeight)
+  return w.homework > 0
+    ? `testlar ${w.test}% + ball ${w.ball}% + uy vazifasi ${w.homework}%`
+    : `testlar ${w.test}% + ball ${w.ball}%`
+}
+
 /**
  * Reyting bali izohi: «Testlar 88% × 60% + Ball 79 × 40%». Komponentlardan biri yo'q bo'lsa —
- * faqat borini (server ham shunday hisoblaydi: faqat test → test, faqat ball → ball).
+ * faqat borini (server ham shunday hisoblaydi: faqat test → test, faqat ball → ball). Uy vazifasi ulushi
+ * bo'lsa (SPEC-backlog A3) — «+ Uy vazifasi 75% × 20%»; yo'q komponentning ulushi qolganlariga o'tadi.
  */
-export function scoreFormulaText(testAvg: number | null, ballNorm: number | null, testWeight: number): string {
-  const w = Math.max(0, Math.min(100, testWeight))
+export function scoreFormulaText(
+  testAvg: number | null, ballNorm: number | null, testWeight: number,
+  homeworkAvg: number | null = null, homeworkWeight = 0,
+): string {
+  const w = ratingWeights(testWeight, homeworkWeight)
+  const hw = w.homework > 0 && homeworkAvg != null ? ` + Uy vazifasi ${fmtScore(homeworkAvg)}% × ${w.homework}%` : ''
   if (testAvg != null && ballNorm != null)
-    return `Testlar ${fmtScore(testAvg)}% × ${w}% + Ball ${fmtScore(ballNorm)} × ${100 - w}%`
-  if (testAvg != null) return `Faqat testlar: ${fmtScore(testAvg)}%`
-  if (ballNorm != null) return `Faqat ball: ${fmtScore(ballNorm)}`
+    return `Testlar ${fmtScore(testAvg)}% × ${w.test}% + Ball ${fmtScore(ballNorm)} × ${w.ball}%${hw}`
+  if (testAvg != null) return hw ? `Testlar ${fmtScore(testAvg)}%${hw}` : `Faqat testlar: ${fmtScore(testAvg)}%`
+  if (ballNorm != null) return hw ? `Ball ${fmtScore(ballNorm)}${hw}` : `Faqat ball: ${fmtScore(ballNorm)}`
+  if (hw) return `Faqat uy vazifasi: ${fmtScore(homeworkAvg ?? 0)}%`
   return "Bu davrda test ham, ball ham yo'q"
 }
 

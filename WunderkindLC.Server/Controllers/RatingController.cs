@@ -33,11 +33,13 @@ public partial class RatingController(AppDbContext db, DataCache cache, AuditSer
     private static readonly Dictionary<string, string> SettingsLabels = new()
     {
         [nameof(CenterMeta.RatingTestWeight)] = "Testlar ulushi, %",
+        [nameof(CenterMeta.RatingHomeworkWeight)] = "Uy vazifasi ulushi, %",
         [nameof(CenterMeta.RatingTopBottomCount)] = "TOP/BOTTOM soni",
         [nameof(CenterMeta.RatingTopBottomScope)] = "TOP/BOTTOM qamrovi",
     };
 
     public const string WeightMessage = "Testlar ulushi 0 dan 100 gacha butun son bo'lsin";
+    public const string HomeworkWeightMessage = "Uy vazifasi ulushi 0 dan 100 gacha bo'lsin, testlar bilan birga 100 dan oshmasin";
     public const string CountMessage = "TOP/BOTTOM soni 1 dan 10 gacha bo'lsin";
     public const string ScopeMessage = "Qamrov «group» yoki «centre» bo'lsin";
 
@@ -95,8 +97,8 @@ public partial class RatingController(AppDbContext db, DataCache cache, AuditSer
     {
         var meta = await db.CenterMeta.AsNoTracking().FirstOrDefaultAsync();
         return meta is null
-            ? new RatingSettingsDto(RatingFormula.DefaultTestWeight, 5, "group")
-            : new RatingSettingsDto(meta.RatingTestWeight, meta.RatingTopBottomCount, meta.RatingTopBottomScope);
+            ? new RatingSettingsDto(RatingFormula.DefaultTestWeight, 5, "group", 0)
+            : new RatingSettingsDto(meta.RatingTestWeight, meta.RatingTopBottomCount, meta.RatingTopBottomScope, meta.RatingHomeworkWeight);
     }
 
     /// <summary>Saves the settings — audited with values («Testlar ulushi, %: 60 → 70»): the weight changes
@@ -112,11 +114,15 @@ public partial class RatingController(AppDbContext db, DataCache cache, AuditSer
 
         var meta = await db.CenterMeta.FirstOrDefaultAsync();
         if (meta is null) { meta = new CenterMeta(); db.CenterMeta.Add(meta); }
+        var homework = req.HomeworkWeight ?? meta.RatingHomeworkWeight;
+        if (homework is < 0 or > 100 || req.TestWeight + homework > 100)
+            return BadRequest(new { message = HomeworkWeightMessage });
         meta.RatingTestWeight = req.TestWeight;
+        meta.RatingHomeworkWeight = homework;
         meta.RatingTopBottomCount = req.TopBottomCount;
         meta.RatingTopBottomScope = scope;
         SettingsAudit.Record<CenterMeta>(audit, db.ChangeTracker, "Reyting sozlamalari", withValues: true, labels: SettingsLabels);
         await db.SaveChangesAsync();
-        return new RatingSettingsDto(meta.RatingTestWeight, meta.RatingTopBottomCount, meta.RatingTopBottomScope);
+        return new RatingSettingsDto(meta.RatingTestWeight, meta.RatingTopBottomCount, meta.RatingTopBottomScope, meta.RatingHomeworkWeight);
     }
 }

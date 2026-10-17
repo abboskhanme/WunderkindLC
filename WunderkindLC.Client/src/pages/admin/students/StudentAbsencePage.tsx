@@ -18,10 +18,16 @@ import { Loader } from '@/components/ui/Loader'
 import { PhoneCallModal, type CallOption } from '@/components/PhoneCallModal'
 import { TelegramSendModal, type TelegramRecipient } from '@/components/messaging/TelegramSendModal'
 import { AttendanceRedList } from './AttendanceRedList'
+import { AttendancePeriodView } from './AttendancePeriodView'
 import { tabFromUrl } from '@/lib/tabParam'
 
 import { DateInput } from '@/components/ui/DateInput'
-const ABSENCE_TABS = ['kunlik', 'qizil'] as const
+const ABSENCE_TABS = ['kunlik', 'davr', 'qizil'] as const
+const ABSENCE_TAB_LABELS: Record<(typeof ABSENCE_TABS)[number], string> = {
+  kunlik: 'Kunlik',
+  davr: 'Davr tahlili',
+  qizil: "Qizil ro'yxat",
+}
 type AbsenceTab = (typeof ABSENCE_TABS)[number]
 
 type ChipFilter = 'absent' | 'late' | 'all'
@@ -52,8 +58,9 @@ function dedupeCallOptions(options: CallOption[]): CallOption[] {
 }
 
 /**
- * «O'quvchilar davomati» — ikki tab: «Kunlik» (shu kun kelmagan/kechikkanlar) va «Qizil ro'yxat» (ketma-ket sababsiz
- * qoldirganlar, CRM Phase 3). Boshlang'ich tab `?tab=qizil` bilan ham ochiladi (`lib/tabParam.ts`).
+ * «O'quvchilar davomati» — uch tab: «Kunlik» (shu kun kelmagan/kechikkanlar), «Davr tahlili» (≤ 92 kun, guruhlar,
+ * sabablar, sinflar — SPEC-backlog-2026-10-17 A1) va «Qizil ro'yxat» (ketma-ket sababsiz qoldirganlar, CRM Phase 3).
+ * Boshlang'ich tab `?tab=davr` / `?tab=qizil` bilan ham ochiladi (`lib/tabParam.ts`).
  */
 export function StudentAbsencePage() {
   const [tab, setTab] = useState<AbsenceTab>(() => tabFromUrl(ABSENCE_TABS, 'kunlik'))
@@ -70,12 +77,14 @@ export function StudentAbsencePage() {
               tab === k ? 'bg-brand-600 text-white' : 'text-slate-600 hover:bg-slate-50',
             )}
           >
-            {k === 'kunlik' ? 'Kunlik' : "Qizil ro'yxat"}
+            {ABSENCE_TAB_LABELS[k]}
           </button>
         ))}
       </div>
       {tab === 'kunlik' ? (
         <DailyAbsenceView />
+      ) : tab === 'davr' ? (
+        <AttendancePeriodView />
       ) : (
         <>
           <PageHeader

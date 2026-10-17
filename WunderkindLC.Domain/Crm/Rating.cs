@@ -11,6 +11,11 @@ public partial class CenterMeta
     /// <para>⚠️ The migration must fill existing rows with 60, not 0 — 0 is a VALID value ("ball only").</para></summary>
     public int RatingTestWeight { get; set; } = 60;
 
+    /// <summary>Share of HOMEWORK (journal «Uyga vazifa»: done = 1, partly = ½, not done = 0; unmarked skipped) in the
+    /// rating score, percent (0..100, owner decision 2026-10-17). The ball gets 100 − test − homework. Default 0 — the
+    /// rating stays exactly as before until the owner sets a weight (SPEC-backlog-2026-10-17 A3).</summary>
+    public int RatingHomeworkWeight { get; set; }
+
     /// <summary>Monthly TOP/BOTTOM list size N (1..10, default 5); the real k = min(N, ⌊n/2⌋) — U4d.</summary>
     public int RatingTopBottomCount { get; set; } = 5;
 

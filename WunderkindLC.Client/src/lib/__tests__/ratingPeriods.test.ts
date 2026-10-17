@@ -83,3 +83,20 @@ describe('reyting davrlari', () => {
     expect(testKindLabel('')).toBe('')
   })
 })
+
+import { ratingWeights, scoreFormulaText as formula, weightsLabel } from '@/lib/ratingPeriods'
+
+describe('uy vazifasi ulushi (SPEC-backlog A3)', () => {
+  it('ulushlar server bilan bir xil: uy vazifasi testlar bilan birga 100 dan oshmaydi', () => {
+    expect(ratingWeights(50, 20)).toEqual({ test: 50, homework: 20, ball: 30 })
+    expect(ratingWeights(90, 30)).toEqual({ test: 90, homework: 10, ball: 0 })
+    expect(weightsLabel(60)).toBe('testlar 60% + ball 40%')
+    expect(weightsLabel(50, 20)).toBe('testlar 50% + ball 30% + uy vazifasi 20%')
+  })
+
+  it("ulush 0 bo'lsa izoh avvalgidek, aks holda uy vazifasi qo'shiladi", () => {
+    expect(formula(88, 79, 60, 75, 0)).toBe('Testlar 88% × 60% + Ball 79 × 40%')
+    expect(formula(88, 79, 50, 75, 20)).toBe('Testlar 88% × 50% + Ball 79 × 30% + Uy vazifasi 75% × 20%')
+    expect(formula(null, null, 50, 75, 20)).toBe('Faqat uy vazifasi: 75%')
+  })
+})

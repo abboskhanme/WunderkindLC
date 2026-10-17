@@ -1,18 +1,22 @@
 namespace WunderkindLC.Application.Services.Rating;
 
 /// <summary>One (student, group) pair of a period: Σ of the student's test percents in that group (each test
-/// already clamped to 0..100), how many tests, and the journal BALL in the group over the period.</summary>
-public sealed record RatingInput(string StudentId, string GroupId, double PercentSum, int TestCount, int Ball);
+/// already clamped to 0..100), how many tests, and the journal BALL in the group over the period.
+/// <paramref name="HwSum"/>/<paramref name="HwCount"/> — homework (journal «Uyga vazifa»): Σ of per-lesson points
+/// (done 100, partly 50, not done 0) and the number of MARKED lessons (unmarked are skipped) — SPEC-backlog A3.</summary>
+public sealed record RatingInput(
+    string StudentId, string GroupId, double PercentSum, int TestCount, int Ball, double HwSum = 0, int HwCount = 0);
 
 /// <summary>Group-level result. <paramref name="Score"/>/<paramref name="Rank"/> are null when the student is
 /// unranked in this group (neither a test average nor a normalised ball).</summary>
 public sealed record GroupScoreRow(
     string StudentId, string GroupId, double? TestAvg, int TestCount, int Ball, double? BallNorm,
-    double? Score, int? Rank);
+    double? Score, int? Rank, double? HomeworkAvg = null);
 
 /// <summary>Centre-level result: mean of the student's group scores; T and ball are the totals over all groups
 /// (T = mean over ALL the student's tests, each test equal weight).</summary>
-public sealed record CentreScoreRow(string StudentId, double? Score, int? Rank, double? TestAvg, int TestCount, int Ball);
+public sealed record CentreScoreRow(
+    string StudentId, double? Score, int? Rank, double? TestAvg, int TestCount, int Ball, double? HomeworkAvg = null);
 
 public sealed record RatingTable(IReadOnlyList<GroupScoreRow> Groups, IReadOnlyList<CentreScoreRow> Centre);
 
@@ -24,6 +28,10 @@ public sealed record RatingTable(IReadOnlyList<GroupScoreRow> Groups, IReadOnlyL
 ///   <item><b>B(s,g)</b> = Ball ÷ (best Ball in g) × 100; ABSENT when the group's best is 0.</item>
 ///   <item><b>GroupScore</b> = w·T + (1−w)·B (w = test weight ÷ 100); only T → T; only B → B; none → unranked.
 ///   One decimal.</item>
+///   <item><b>Homework</b> (owner decision 2026-10-17, SPEC-backlog A3): H = mean homework points (done 100, partly 50,
+///   not done 0; unmarked skipped), weight wh. With wh &gt; 0 the ball weight is 100 − wt − wh and
+///   score = (wh·H + (100 − wh)·base) ÷ 100, base = T and B blended by wt : wb (only one of them → that one). A missing
+///   component's weight goes to the others. <b>wh = 0 → exactly the old formula</b> (H never takes part).</item>
 ///   <item><b>Group rank</b> — competition ranking ("1, 2, 2, 4") by GroupScore among the group's ranked students.</item>
 ///   <item><b>CentreScore</b> = mean of the student's (rounded) group scores; centre rank — competition ranking.</item>
 ///   <item>Display order on ties: higher T, then name.</item>
@@ -50,10 +58,20 @@ public static class RatingFormula
     /// <summary>Weight clamped to 0..100.</summary>
     public static int ClampWeight(int w) => Math.Clamp(w, 0, 100);
 
-    public static RatingTable Compute(
-        IEnumerable<RatingInput> inputs, int testWeightPercent, IReadOnlyDictionary<string, string> names)
+    /// <summary>Effective (test, homework, ball) weights: each clamped to 0..100, homework cut so the sum stays ≤ 100.</summary>
+    public static (int Test, int Homework, int Ball) Weights(int testWeightPercent, int homeworkWeightPercent)
     {
-        var w = ClampWeight(testWeightPercent) / 100.0;
+        var wt = ClampWeight(testWeightPercent);
+        var wh = Math.Min(ClampWeight(homeworkWeightPercent), 100 - wt);
+        return (wt, wh, 100 - wt - wh);
+    }
+
+    public static RatingTable Compute(
+        IEnumerable<RatingInput> inputs, int testWeightPercent, IReadOnlyDictionary<string, string> names,
+        int homeworkWeightPercent = 0)
+    {
+        var (wt, wh, wb) = Weights(testWeightPercent, homeworkWeightPercent);
+        var w = wt / 100.0;
         var rows = inputs.Where(i => names.ContainsKey(i.StudentId)).ToList();
         string NameOf(string id) => names.GetValueOrDefault(id, "");
 
@@ -62,7 +80,8 @@ public static class RatingFormula
         {
             // The same (student, group) may arrive twice from a careless caller — merge it.
             var merged = g.GroupBy(r => r.StudentId, StringComparer.Ordinal)
-                .Select(x => new RatingInput(x.Key, g.Key, x.Sum(r => r.PercentSum), x.Sum(r => r.TestCount), x.Sum(r => r.Ball)))
+                .Select(x => new RatingInput(x.Key, g.Key, x.Sum(r => r.PercentSum), x.Sum(r => r.TestCount), x.Sum(r => r.Ball),
+                    x.Sum(r => r.HwSum), x.Sum(r => r.HwCount)))
                 .ToList();
             var best = merged.Count == 0 ? 0 : merged.Max(r => r.Ball);
 
@@ -70,18 +89,26 @@ public static class RatingFormula
             {
                 double? t = r.TestCount > 0 ? r.PercentSum / r.TestCount : null;
                 double? b = best > 0 ? Math.Max(0, r.Ball) * 100.0 / best : null;
-                double? score = (t, b) switch
+                double? hw = r.HwCount > 0 ? r.HwSum / r.HwCount : null;
+                double? baseScore = (t, b) switch
                 {
-                    ({ } tv, { } bv) => w * tv + (1 - w) * bv,
+                    // wh = 0 — the OLD expression verbatim (no rounding drift in existing ranks).
+                    ({ } tv, { } bv) when wh == 0 => w * tv + (1 - w) * bv,
+                    ({ } tv, { } bv) => wt + wb == 0 ? (tv + bv) / 2 : (wt * tv + wb * bv) / (wt + wb),
                     ({ } tv, null) => tv,
                     (null, { } bv) => bv,
                     _ => null,
                 };
+                double? h = wh > 0 ? hw : null;   // weight 0 — homework never takes part
+                double? score = h is null ? baseScore
+                    : baseScore is null ? h
+                    : (wh * h.Value + (100 - wh) * baseScore.Value) / 100.0;
                 return new GroupScoreRow(
                     r.StudentId, g.Key,
                     t is null ? null : Round1(t.Value), r.TestCount, r.Ball,
                     b is null ? null : Round1(b.Value),
-                    score is null ? null : Round1(score.Value), null);
+                    score is null ? null : Round1(score.Value), null,
+                    hw is null ? null : Round1(hw.Value));
             }).ToList();
 
             groupRows.AddRange(RankRows(scored, s => s.Score, s => s.TestAvg, s => NameOf(s.StudentId),
@@ -97,9 +124,11 @@ public static class RatingFormula
                 var inputsOf = inputsByStudent[s.Key].ToList();
                 var tests = inputsOf.Sum(r => r.TestCount);
                 double? t = tests > 0 ? Round1(inputsOf.Sum(r => r.PercentSum) / tests) : null;
+                var hwCount = inputsOf.Sum(r => r.HwCount);
                 return new CentreScoreRow(
                     s.Key, scores.Count > 0 ? Round1(scores.Average()) : null, null, t, tests,
-                    s.Sum(r => Math.Max(0, r.Ball)));
+                    s.Sum(r => Math.Max(0, r.Ball)),
+                    hwCount > 0 ? Round1(inputsOf.Sum(r => r.HwSum) / hwCount) : null);
             })
             .ToList();
         var rankedCentre = RankRows(centre, c => c.Score, c => c.TestAvg, c => NameOf(c.StudentId),

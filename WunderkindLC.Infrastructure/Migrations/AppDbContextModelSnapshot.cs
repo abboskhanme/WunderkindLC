@@ -1660,6 +1660,9 @@ namespace WunderkindLC.Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<int>("RatingHomeworkWeight")
+                        .HasColumnType("integer");
+
                     b.Property<int>("RatingTestWeight")
                         .HasColumnType("integer");
 

@@ -108,10 +108,10 @@ function Tiles({ data, variant }: { data: BlockData; variant: 'admin' | 'cabinet
   const delta = rankDelta(centre.rank, centre.prevRank)
   const formula =
     groups.length === 1
-      ? scoreFormulaText(groups[0].testAvg, groups[0].ballNorm, components.testWeight)
+      ? scoreFormulaText(groups[0].testAvg, groups[0].ballNorm, components.testWeight, groups[0].homeworkAvg ?? null, components.homeworkWeight ?? 0)
       : groups
           .filter((g) => g.score != null)
-          .map((g) => `${g.groupName}: ${fmtScore(g.score)} (${scoreFormulaText(g.testAvg, g.ballNorm, components.testWeight)})`)
+          .map((g) => `${g.groupName}: ${fmtScore(g.score)} (${scoreFormulaText(g.testAvg, g.ballNorm, components.testWeight, g.homeworkAvg ?? null, components.homeworkWeight ?? 0)})`)
           .join('\n') || scoreFormulaText(null, null, components.testWeight)
 
   // Cabinet (phone): two compact tiles side by side, the score tile full width under them.

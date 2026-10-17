@@ -37,11 +37,15 @@ export interface RatingCentreItem {
   testCount: number
   ball: number
   groups: RatingCentreGroup[]
+  /** Uy vazifasi bali (0–100; bajarildi 100, qisman 50, bajarilmadi 0) — belgilangan bo'lsa. */
+  homeworkAvg?: number | null
 }
 
 export interface RatingCentre {
   period: RatingPeriod
   testWeight: number
+  /** Uy vazifasi ulushi, % (0 — reytingga kirmaydi). */
+  homeworkWeight?: number
   total: number
   page: number
   pageSize: number
@@ -60,11 +64,13 @@ export interface RatingGroupItem {
   testCount: number
   ball: number
   ballNorm: number | null
+  homeworkAvg?: number | null
 }
 
 export interface RatingGroupTable {
   period: RatingPeriod
   testWeight: number
+  homeworkWeight?: number
   group: { id: string; name: string; courseName: string; teacherName: string }
   ranked: number
   items: RatingGroupItem[]
@@ -83,6 +89,7 @@ export interface RatingBlockGroup {
   testCount: number
   ball: number
   ballNorm: number | null
+  homeworkAvg?: number | null
 }
 
 export interface RatingHistoryPoint {
@@ -112,7 +119,14 @@ export interface StudentRatingBlock {
   period: RatingPeriod
   centre: { rank: number | null; total: number; score: number | null; prevRank: number | null }
   groups: RatingBlockGroup[]
-  components: { testAvg: number | null; testCount: number; ball: number; testWeight: number }
+  components: {
+    testAvg: number | null
+    testCount: number
+    ball: number
+    testWeight: number
+    homeworkAvg?: number | null
+    homeworkWeight?: number
+  }
   history: RatingHistoryPoint[]
   tests: RatingTestRow[]
   attendance: { held: number; attended: number; percent: number | null }
@@ -136,6 +150,8 @@ export type RatingTopBottomScope = 'group' | 'centre'
 
 export interface RatingSettings {
   testWeight: number
+  /** Uy vazifasi ulushi, % (testlar bilan birga ≤ 100; ball — qolgani). */
+  homeworkWeight: number
   topBottomCount: number
   topBottomScope: RatingTopBottomScope
 }

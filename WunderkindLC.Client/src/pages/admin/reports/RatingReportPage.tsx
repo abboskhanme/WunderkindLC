@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/Button'
 import { RatingPeriodSwitch } from '@/components/rating/RatingPeriodSwitch'
 import { GroupRatingSection } from '@/components/rating/GroupRatingSection'
 import { RatingSettingsModal } from '@/components/rating/RatingSettingsModal'
-import { defaultRatingPeriod, fmtScore, type RatingPeriodValue } from '@/lib/ratingPeriods'
+import { defaultRatingPeriod, fmtScore, type RatingPeriodValue, weightsLabel } from '@/lib/ratingPeriods'
 import { usePerm } from '@/lib/permissions'
 import { tabFromUrl } from '@/lib/tabParam'
 import { apiErrorMessage, cn } from '@/lib/utils'
@@ -130,7 +130,7 @@ function CentreTab() {
 
       {data && (
         <div className="px-4 pt-3 text-xs text-slate-500">
-          {data.period.label} · testlar {data.testWeight}% + ball {100 - data.testWeight}% · o'rin olganlar: {data.total}
+          {data.period.label} · {weightsLabel(data.testWeight, data.homeworkWeight)} · o'rin olganlar: {data.total}
         </div>
       )}
       {error && <div className="mx-4 mt-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</div>}
@@ -152,6 +152,7 @@ function CentreTab() {
                     <th className="px-2 py-2 font-semibold">Guruhlar</th>
                     <th className="px-2 py-2 text-right font-semibold">Testlar</th>
                     <th className="px-2 py-2 text-right font-semibold">Ball</th>
+                    {(data.homeworkWeight ?? 0) > 0 && <th className="px-2 py-2 text-right font-semibold">Uy vazifasi</th>}
                     <th className="px-4 py-2 text-right font-semibold">Reyting bali</th>
                   </tr>
                 </thead>
@@ -193,6 +194,11 @@ function CentreTab() {
                         )}
                       </td>
                       <td className="whitespace-nowrap px-2 py-2 text-right">{r.ball}</td>
+                      {(data.homeworkWeight ?? 0) > 0 && (
+                        <td className="whitespace-nowrap px-2 py-2 text-right">
+                          {r.homeworkAvg != null ? `${fmtScore(r.homeworkAvg)}%` : <span className="text-slate-400">—</span>}
+                        </td>
+                      )}
                       <td className="whitespace-nowrap px-4 py-2 text-right font-bold text-indigo-600">{fmtScore(r.score)}</td>
                     </tr>
                   ))}

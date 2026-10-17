@@ -18,7 +18,8 @@ public sealed record RatingResult(
     IReadOnlyList<GroupScoreRow> Groups,
     IReadOnlyList<CentreScoreRow> Centre,
     IReadOnlyDictionary<string, string> StudentNames,
-    IReadOnlyDictionary<string, RatingGroupInfo> GroupInfo)
+    IReadOnlyDictionary<string, RatingGroupInfo> GroupInfo,
+    int HomeworkWeight = 0)
 {
     public IReadOnlyDictionary<string, CentreScoreRow> CentreByStudent { get; } =
         Centre.ToDictionary(c => c.StudentId, StringComparer.Ordinal);
@@ -83,10 +84,23 @@ public static class RatingEngine
             await db.CenterMeta.AsNoTracking().Select(m => (int?)m.RatingTestWeight).FirstOrDefaultAsync(ct)
             ?? RatingFormula.DefaultTestWeight);
 
+    /// <summary>Test and homework weights in ONE query (the engine's query budget is fixed — <c>RatingEngineTests</c>);
+    /// homework (default 0 — SPEC-backlog A3) is cut so test + homework ≤ 100.</summary>
+    public static async Task<(int Test, int Homework)> WeightsAsync(IAppDbContext db, CancellationToken ct = default)
+    {
+        var row = await db.CenterMeta.AsNoTracking()
+            .Select(m => new { m.RatingTestWeight, m.RatingHomeworkWeight }).FirstOrDefaultAsync(ct);
+        var w = RatingFormula.Weights(row?.RatingTestWeight ?? RatingFormula.DefaultTestWeight, row?.RatingHomeworkWeight ?? 0);
+        return (w.Test, w.Homework);
+    }
+
+    /// <summary>Homework points of one marked lesson: done (1) 100, partly (3) 50, not done (2) 0; anything else — not marked.</summary>
+    public static double? HomeworkPoints(int mark) => mark switch { 1 => 100, 3 => 50, 2 => 0, _ => null };
+
     /// <summary>Computes the whole rating of <paramref name="p"/> (all groups, the centre).</summary>
     public static async Task<RatingResult> ComputeAsync(IAppDbContext db, RatingPeriod p, CancellationToken ct = default)
     {
-        var weight = await TestWeightAsync(db, ct);
+        var (weight, homeworkWeight) = await WeightsAsync(db, ct);
 
         // Scores of the period's tests (one query, joined — no id list). Max ≤ 0 tests are ignored by Percent().
         var scores = await (from s in db.TestScores.AsNoTracking()
@@ -102,30 +116,47 @@ public static class RatingEngine
             .Select(s => new { s.Id, s.FullName })
             .ToDictionaryAsync(s => s.Id, s => s.FullName, StringComparer.Ordinal, ct);
 
-        var inputs = new Dictionary<(string StudentId, string GroupId), (double Sum, int Count, int Ball)>();
+        // Homework marks per (student, group) — GROUP BY in SQL; one journal cell counts once (duplicate rows).
+        var homework = await db.JournalEntries.AsNoTracking()
+            .Where(e => e.Homework > 0 && string.Compare(e.Date, p.From) >= 0 && string.Compare(e.Date, p.To) <= 0)
+            .Select(e => new { e.StudentId, e.ClassId, e.SubjectId, e.Date, e.Period, e.Homework })
+            .Distinct()
+            .GroupBy(x => new { x.StudentId, x.ClassId, x.Homework })
+            .Select(g => new { g.Key.StudentId, g.Key.ClassId, g.Key.Homework, N = g.Count() })
+            .ToListAsync(ct);
+
+        var inputs = new Dictionary<(string StudentId, string GroupId), (double Sum, int Count, int Ball, double HwSum, int HwCount)>();
         foreach (var s in scores)
         {
             var pct = RatingFormula.Percent(s.Score, s.MaxScore);
             if (pct is null) continue;
             var key = (s.StudentId, s.GroupId);
             var cur = inputs.GetValueOrDefault(key);
-            inputs[key] = (cur.Sum + pct.Value, cur.Count + 1, cur.Ball);
+            inputs[key] = cur with { Sum = cur.Sum + pct.Value, Count = cur.Count + 1 };
         }
         foreach (var (key, stat) in balls)
         {
             var cur = inputs.GetValueOrDefault(key);
-            inputs[key] = (cur.Sum, cur.Count, stat.Ball);
+            inputs[key] = cur with { Ball = stat.Ball };
+        }
+        foreach (var h in homework)
+        {
+            if (HomeworkPoints(h.Homework) is not { } pts) continue;
+            var key = (h.StudentId, h.ClassId);
+            var cur = inputs.GetValueOrDefault(key);
+            inputs[key] = cur with { HwSum = cur.HwSum + pts * h.N, HwCount = cur.HwCount + h.N };
         }
 
         var table = RatingFormula.Compute(
-            inputs.Select(kv => new RatingInput(kv.Key.StudentId, kv.Key.GroupId, kv.Value.Sum, kv.Value.Count, kv.Value.Ball)),
-            weight, names);
+            inputs.Select(kv => new RatingInput(
+                kv.Key.StudentId, kv.Key.GroupId, kv.Value.Sum, kv.Value.Count, kv.Value.Ball, kv.Value.HwSum, kv.Value.HwCount)),
+            weight, names, homeworkWeight);
 
         var used = table.Groups.Select(g => g.StudentId).ToHashSet(StringComparer.Ordinal);
         var studentNames = names.Where(kv => used.Contains(kv.Key))
             .ToDictionary(kv => kv.Key, kv => kv.Value, StringComparer.Ordinal);
 
-        return new RatingResult(p, weight, table.Groups, table.Centre, studentNames, await GroupInfoAsync(db, ct));
+        return new RatingResult(p, weight, table.Groups, table.Centre, studentNames, await GroupInfoAsync(db, ct), homeworkWeight);
     }
 
     /// <summary>All groups with course and teacher names (three small queries).</summary>
@@ -169,9 +200,10 @@ public static class RatingEngine
                 r.RowsByStudent[c.StudentId]
                     .OrderBy(g => g.Rank is null).ThenBy(g => GroupName(r, g.GroupId), StringComparer.OrdinalIgnoreCase)
                     .Select(g => new RatingCentreGroupDto(g.GroupId, GroupName(r, g.GroupId), g.Rank, g.Score))
-                    .ToList()))
+                    .ToList(),
+                c.HomeworkAvg))
             .ToList();
-        return new RatingCentreDto(RatingPeriodDto.Of(r.Period), r.TestWeight, ranked.Count, p, size, items);
+        return new RatingCentreDto(RatingPeriodDto.Of(r.Period), r.TestWeight, ranked.Count, p, size, items, r.HomeworkWeight);
     }
 
     /// <summary>
@@ -184,7 +216,7 @@ public static class RatingEngine
     {
         var rows = r.RowsByGroup[group.Id].ToList();
         var items = rows.Select(g => new RatingGroupItemDto(
-                g.Rank, g.StudentId, r.NameOf(g.StudentId), g.Score, g.TestAvg, g.TestCount, g.Ball, g.BallNorm))
+                g.Rank, g.StudentId, r.NameOf(g.StudentId), g.Score, g.TestAvg, g.TestCount, g.Ball, g.BallNorm, g.HomeworkAvg))
             .ToList();
         var have = rows.Select(g => g.StudentId).ToHashSet(StringComparer.Ordinal);
         items.AddRange(members
@@ -194,7 +226,7 @@ public static class RatingEngine
         return new RatingGroupDto(
             RatingPeriodDto.Of(r.Period), r.TestWeight,
             new RatingGroupHeaderDto(group.Id, group.Name, group.CourseName, group.TeacherName),
-            r.RankedInGroup.GetValueOrDefault(group.Id), items);
+            r.RankedInGroup.GetValueOrDefault(group.Id), items, r.HomeworkWeight);
     }
 
     /// <summary>
@@ -233,7 +265,7 @@ public static class RatingEngine
                 var row = myRows.GetValueOrDefault(gid);
                 return new RatingBlockGroupDto(
                     gid, info?.Name ?? "", info?.CourseName ?? "", row?.Rank, r.RankedInGroup.GetValueOrDefault(gid),
-                    row?.Score, row?.TestAvg, row?.TestCount ?? 0, row?.Ball ?? 0, row?.BallNorm);
+                    row?.Score, row?.TestAvg, row?.TestCount ?? 0, row?.Ball ?? 0, row?.BallNorm, row?.HomeworkAvg);
             })
             .OrderBy(g => g.Rank is null)
             .ThenBy(g => g.GroupName, StringComparer.OrdinalIgnoreCase)
@@ -256,7 +288,8 @@ public static class RatingEngine
             Period = RatingPeriodDto.Of(period),
             Centre = centre,
             Groups = groups,
-            Components = new RatingComponentsDto(me?.TestAvg, me?.TestCount ?? 0, me?.Ball ?? 0, r.TestWeight),
+            Components = new RatingComponentsDto(
+                me?.TestAvg, me?.TestCount ?? 0, me?.Ball ?? 0, r.TestWeight, me?.HomeworkAvg, r.HomeworkWeight),
             History = history,
             Tests = await TestsAsync(db, studentId, period, r, ct),
             Attendance = await AttendanceAsync(db, studentId, period),

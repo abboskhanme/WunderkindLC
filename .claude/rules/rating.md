@@ -18,6 +18,22 @@ GuruhBali           = w·T + (1−w)·B   (w = RatingTestWeight ÷ 100, standart
 MarkazBali          = o'quvchining guruh ballari O'RTACHASI
 ```
 
+**UY VAZIFASI (egasining qarori 2026-10-17, SPEC-backlog A3, migratsiya `RatingHomeworkWeight`):**
+
+```
+H(o'quvchi, guruh)  = belgilangan darslardagi uy vazifasi bali O'RTACHASI: bajarildi 100 · qisman 50 · bajarilmadi 0;
+                      BELGILANMAGANI hisobga OLINMAYDI (JournalEntry.Homework: 1 / 3 / 2; 0 — belgilanmagan)
+ulushlar            = test wt · uy vazifasi wh · ball wb = 100 − wt − wh   (wh testlar bilan birga 100 dan oshmaydi)
+wh = 0              → GuruhBali AYNAN eski formula (H umuman qatnashmaydi — deploy paytida o'rinlar o'zgarmaydi)
+wh > 0              → GuruhBali = (wh·H + (100 − wh)·asos) ÷ 100,  asos = T va B wt : wb nisbatida (bittasi bo'lsa — o'sha);
+                      H yo'q → asos;  faqat H → H.   Yo'q komponentning ulushi qolganlariga o'tadi.
+```
+- Sozlama `CenterMeta.RatingHomeworkWeight` (standart **0**), «Reyting sozlamalari» oynasida; PUT'da `homeworkWeight`
+  yuborilmasa — TEGILMAYDI (eski kesh qilingan klient uni 0 ga tushirib yubormasin). Tarixga qiymati bilan yoziladi.
+- `H` jadvallarda (markaz, guruh, o'quvchi bloki) faqat `wh > 0` da ustun bo'lib chiqadi; javobda `homeworkAvg` doim bor.
+- Yuklash — SQL GROUP BY (har katak bir marta), dvigatelning so'rovlar soni o'zgarmadi (vaznlar BITTA so'rovda —
+  `RatingEngine.WeightsAsync`). MCP faqat-o'qish roliga ustun ham berilgan (`McpToolRegistry`).
+
 - **O'rin — musobaqa usuli** ("1, 2, 2, 4"): teng bal — bir xil o'rin. Teng bo'lsa ko'rsatish tartibi:
   yuqori T, keyin ism.
 - **Ball guruhning eng yaxshisiga nisbatan** ATAYIN: o'qituvchilar har xil hajmda baho qo'yadi (har dars vs
@@ -95,8 +111,9 @@ guruh va markaz TOP 10 (+ o'z qatori TOP dan tashqarida bo'lsa). Begona o'quvchi
 
 `RatingTestWeight` (0..100, standart 60; **0 ham to'g'ri qiymat** — "faqat ball", shuning uchun migratsiyada mavjud
 qator 60 bilan to'ldiriladi, modelda `HasDefaultValue` ATAYIN yo'q: EF 0 ni "berilmagan" deb o'tkazib yuborardi),
-`RatingTopBottomCount` (1..10, standart 5), `RatingTopBottomScope` (`group` | `centre`). Saqlash tarixga QIYMATLARI
-bilan yoziladi (`SettingsAudit`, «Reyting sozlamalari», «Testlar ulushi, %: 60 → 70»).
+`RatingTopBottomCount` (1..10, standart 5), `RatingTopBottomScope` (`group` | `centre`), `RatingHomeworkWeight`
+(0..100, standart 0, test + uy vazifasi ≤ 100 — §1). Saqlash tarixga QIYMATLARI bilan yoziladi (`SettingsAudit`,
+«Reyting sozlamalari», «Testlar ulushi, %: 60 → 70», «Uy vazifasi ulushi, %: 0 → 20»).
 
 ## 7. UI — `components/rating/*`
 

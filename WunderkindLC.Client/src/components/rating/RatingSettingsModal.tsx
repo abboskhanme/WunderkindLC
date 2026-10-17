@@ -14,6 +14,7 @@ import { Loader } from '@/components/ui/Loader'
 /** Forma: son maydonlari BO'SH bo'la oladi (`null`) — number-inputs.md. */
 interface Form {
   testWeight: number | null
+  homeworkWeight: number | null
   topBottomCount: number | null
   topBottomScope: RatingTopBottomScope
 }
@@ -35,7 +36,10 @@ export function RatingSettingsModal({ onClose, onSaved }: { onClose: () => void;
 
   useEffect(() => {
     getRatingSettings()
-      .then((s) => setForm({ testWeight: s.testWeight, topBottomCount: s.topBottomCount, topBottomScope: s.topBottomScope }))
+      .then((s) => setForm({
+        testWeight: s.testWeight, homeworkWeight: s.homeworkWeight ?? 0,
+        topBottomCount: s.topBottomCount, topBottomScope: s.topBottomScope,
+      }))
       .catch((err) => setError(apiErrorMessage(err, "Sozlamalarni yuklab bo'lmadi")))
   }, [])
 
@@ -43,6 +47,11 @@ export function RatingSettingsModal({ onClose, onSaved }: { onClose: () => void;
     if (!form) return
     if (form.testWeight === null || form.testWeight < 0 || form.testWeight > 100) {
       setError('Testlar ulushini kiriting (0–100)')
+      return
+    }
+    const homeworkWeight = form.homeworkWeight ?? 0
+    if (homeworkWeight < 0 || form.testWeight + homeworkWeight > 100) {
+      setError("Testlar va uy vazifasi ulushlari birga 100% dan oshmasin")
       return
     }
     if (form.topBottomCount === null || form.topBottomCount < 1 || form.topBottomCount > 10) {
@@ -54,6 +63,7 @@ export function RatingSettingsModal({ onClose, onSaved }: { onClose: () => void;
     try {
       const saved = await saveRatingSettings({
         testWeight: form.testWeight,
+        homeworkWeight,
         topBottomCount: form.topBottomCount,
         topBottomScope: form.topBottomScope,
       })
@@ -96,9 +106,21 @@ export function RatingSettingsModal({ onClose, onSaved }: { onClose: () => void;
             value={form.testWeight}
             onChange={(v) => setForm({ ...form, testWeight: v === null ? null : Math.min(v, 100) })}
           />
+          <NumberInput
+            label="Uy vazifasi ulushi, %"
+            value={form.homeworkWeight}
+            onChange={(v) => setForm({ ...form, homeworkWeight: v === null ? null : Math.min(v, 100) })}
+          />
           <p className="text-xs text-slate-500">
-            Ball ulushi: <b>{form.testWeight === null ? '—' : `${100 - form.testWeight}%`}</b>. Reyting bali = testlar
-            o'rtacha foizi × ulush + ball (guruhdagi eng yaxshi ballga nisbatan, 0–100) × qolgan ulush.
+            Ball ulushi:{' '}
+            <b>
+              {form.testWeight === null
+                ? '—'
+                : `${Math.max(0, 100 - form.testWeight - (form.homeworkWeight ?? 0))}%`}
+            </b>
+            . Reyting bali = testlar o'rtacha foizi × ulush + ball (guruhdagi eng yaxshi ballga nisbatan, 0–100) × ulush
+            + uy vazifasi (bajarildi 100, qisman 50, bajarilmadi 0; belgilanmagani hisobga olinmaydi) × ulush. Uy vazifasi
+            ulushi 0 bo'lsa — reyting avvalgidek.
           </p>
 
           <NumberInput

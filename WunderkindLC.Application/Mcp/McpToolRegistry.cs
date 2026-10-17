@@ -94,7 +94,7 @@ public static class McpReadOnlyGrants
             // weight and the composite score would silently differ from the panel's).
             nameof(CenterMeta.AttendanceDisciplineEnabled), nameof(CenterMeta.AttendanceDeadlineMinutes),
             nameof(CenterMeta.AttendanceFineEnabled), nameof(CenterMeta.AttendanceFineAmount),
-            nameof(CenterMeta.RatingTestWeight),
+            nameof(CenterMeta.RatingTestWeight), nameof(CenterMeta.RatingHomeworkWeight),
             // attendance_notices (U3b policy shown with the queue) and rating_top_bottom (TopBottomService.SettingsAsync
             // projects N and the scope — without them the query would not translate on the reduced model).
             nameof(CenterMeta.AbsentNoticeDelayMinutes), nameof(CenterMeta.AbsentNoticeApproval),

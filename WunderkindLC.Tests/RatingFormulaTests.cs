@@ -31,6 +31,47 @@ public class RatingFormulaTests
         Assert.Equal((70.0, 50.0, 62.0, 2), (Row(t, "b", "g").TestAvg, Row(t, "b", "g").BallNorm, Row(t, "b", "g").Score, Row(t, "b", "g").Rank));
     }
 
+    // ---------- Homework (owner decision 2026-10-17, SPEC-backlog A3) ----------
+
+    private static RatingInput Hw(string s, string g, double[] percents, int ball, params double[] hw) =>
+        new(s, g, percents.Sum(), percents.Length, ball, hw.Sum(), hw.Length);
+
+    [Fact]
+    public void Homework_weight_0__score_is_EXACTLY_the_old_formula()
+    {
+        var inputs = new[]
+        {
+            Hw("a", "g", new[] { 80.0, 100.0 }, 50, 100, 0, 0),   // poor homework must not change anything
+            Hw("b", "g", new[] { 70.0 }, 25, 100, 100),
+        };
+        var t = RatingFormula.Compute(inputs, 60, Names, homeworkWeightPercent: 0);
+        Assert.Equal(94.0, Row(t, "a", "g").Score);
+        Assert.Equal(62.0, Row(t, "b", "g").Score);
+        Assert.Equal(33.3, Row(t, "a", "g").HomeworkAvg);   // shown, but not weighted
+    }
+
+    [Fact]
+    public void Homework_weighted__ball_gets_the_rest()
+    {
+        // wt 50, wh 20 → wb 30. a: T 90, B 100, H 50 → base = (50·90 + 30·100)/80 = 93.75 → 0.2·50 + 0.8·93.75 = 85
+        var t = RatingFormula.Compute(new[]
+        {
+            Hw("a", "g", new[] { 80.0, 100.0 }, 50, 100, 0),
+            Hw("b", "g", new[] { 70.0 }, 25),                 // no homework marked → T/B only, (50·70 + 30·50)/80 = 62.5
+        }, 50, Names, homeworkWeightPercent: 20);
+        Assert.Equal(85.0, Row(t, "a", "g").Score);
+        Assert.Equal(62.5, Row(t, "b", "g").Score);
+        Assert.Equal((50, 20, 30), RatingFormula.Weights(50, 20));
+    }
+
+    [Fact]
+    public void Homework_only__ranks_by_homework_and_weights_are_capped()
+    {
+        var t = RatingFormula.Compute(new[] { Hw("a", "g", Array.Empty<double>(), 0, 100, 50) }, 60, Names, homeworkWeightPercent: 30);
+        Assert.Equal(75.0, Row(t, "a", "g").Score);
+        Assert.Equal((90, 10, 0), RatingFormula.Weights(90, 30));   // test + homework never above 100
+    }
+
     [Fact]
     public void Weight_is_configurable()
     {
