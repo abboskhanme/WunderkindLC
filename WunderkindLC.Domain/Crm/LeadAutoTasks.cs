@@ -19,7 +19,8 @@ public partial class CenterMeta
     /// <summary>Who takes turns (AppUser.Id, in rotation order). Empty while enabled — the task is created unassigned.</summary>
     public List<string> LeadAutoTaskAssigneeIds { get; set; } = new();
 
-    /// <summary>Round-robin position: index (mod pool size) of the next assignee.</summary>
+    /// <summary>NOT USED (2026-10-17 review S1): the rotation is derived from the latest auto-task's assignee instead of a
+    /// stored cursor. Kept only because the column shipped in migration <c>LeadAutoTasks</c>.</summary>
     public int LeadAutoTaskCursor { get; set; }
 
     /// <summary>Board for the tasks (<c>null</c> or archived/missing = the first active board).</summary>

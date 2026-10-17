@@ -293,4 +293,36 @@ public class ChecklistAutoCheckTests
 
         Assert.True(await RunOne(db, ChecklistAutoCheck.LeadsWithoutTaskZero));
     }
+
+    [Fact]
+    public async Task Faqat_AVTO_topshiriq_boglanishi_bandni_YIQITMAYDI__fail_open_saqlanadi()
+    {
+        // Revyu S2 (2026-10-17): lid avto-topshirig'i (LeadId) xodim ixtiyorisiz paydo bo'ladi — eski topshiriqsiz lidlar
+        // tufayli band har kuni yiqilib, bonusni kesmasin.
+        using var db = TestDb.Sqlite();
+        db.Context.Leads.Add(OpenLead("L1"));
+        db.Context.Leads.Add(OpenLead("L2"));   // eski, topshiriqsiz
+        var auto = Task(Day);
+        auto.LeadId = "L1";
+        db.Context.WorkTasks.Add(auto);
+        await db.Context.SaveChangesAsync();
+
+        Assert.True(await RunOne(db, ChecklistAutoCheck.LeadsWithoutTaskZero));
+    }
+
+    [Fact]
+    public async Task Boglanish_ishlatilsa_AVTO_topshiriq_ham_isbot()
+    {
+        using var db = TestDb.Sqlite();
+        db.Context.Leads.Add(OpenLead("L1"));
+        db.Context.Leads.Add(OpenLead("L2"));
+        var manual = Task(Day);
+        manual.Tags = new List<string> { "L1" };
+        var auto = Task(Day);
+        auto.LeadId = "L2";
+        db.Context.WorkTasks.AddRange(manual, auto);
+        await db.Context.SaveChangesAsync();
+
+        Assert.True(await RunOne(db, ChecklistAutoCheck.LeadsWithoutTaskZero));
+    }
 }

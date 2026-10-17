@@ -196,6 +196,9 @@ public sealed class MetaLeadgenService(
 
         // ── 4) TELEGRAM SIGNALI ──
         // Xatosi JIM yutiladi (`LeadNotifier` siyosati) — xabarnoma lidni buzmasin.
+        // Lid avto-topshirig'i Telegram bayrog'iga BOG'LIQ EMAS (bayroq o'chiq bo'lsa karta yo'q, topshiriq bor).
+        if (row.LeadId.Length > 0 && !meta.InstagramNotifyTelegram)
+            await LeadAutoTask.EnsureByIdAsync(db, telegram, row.LeadId, repeat: !row.IsNewLead, ct);
         if (row.LeadId.Length > 0 && meta.InstagramNotifyTelegram)
         {
             var lead = await db.Leads.FirstOrDefaultAsync(l => l.Id == row.LeadId, ct);

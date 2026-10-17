@@ -382,8 +382,6 @@ public class StaffController(AppDbContext db, AuditService audit) : ControllerBa
         return new CredentialsDto(user.Email, pwd, user.Role);
     }
 
-    /// <summary>Xodimning admin bo'lim ruxsatlari (Rollar) — "Xodimlar" ruxsati (tahrir amali)
-    /// kerak; superadmin/admin har doim, xodim faqat shu ruxsat berilgan bo'lsa.</summary>
     /// <summary>XODIMLAR FAOLLIGI (SPEC-backlog F4 S1, TZ 3.1): oxirgi kirish, oxirgi ko'rinish va oxirgi <c>days</c> kundagi
     /// amallar soni — xodimlar VA o'qituvchilar. ⚠️ O'qish ham ruxsat bilan (login vaqtlari — ichki nazorat ma'lumoti):
     /// `staff` yoki `teachers.list`; javob shunga qarab qirqiladi (faqat ko'rinadigan qatorlar).</summary>
@@ -391,12 +389,17 @@ public class StaffController(AppDbContext db, AuditService audit) : ControllerBa
     [AdminPerm("staff", "teachers.list", ReadRequiresPerm = true)]
     public async Task<ActionResult<IEnumerable<StaffActivityDto>>> Activity([FromQuery] int days = StaffActivity.DefaultDays)
     {
-        var rows = await StaffActivity.BuildAsync(db, days);
+        // Admin/superadmin login vaqtlari — faqat admin/superadmin yoki "Xodimlar"ga TO'LIQ ruxsatli chaqiruvchiga (revyu N3).
+        var seeAdmins = User.IsInRole(Roles.Admin) || User.IsInRole(Roles.SuperAdmin)
+                        || AdminPermAttribute.HasFullAccess(User, "staff");
+        var rows = await StaffActivity.BuildAsync(db, days, includeAdmins: seeAdmins);
         var seeStaff = AdminPermAttribute.HasSectionAccess(User, "staff");
         var seeTeachers = AdminPermAttribute.HasSectionAccess(User, "teachers.list");
         return rows.Where(r => r.Kind == "teacher" ? seeTeachers : seeStaff).ToList();
     }
 
+    /// <summary>Xodimning admin bo'lim ruxsatlari (Rollar) — "Xodimlar" ruxsati (tahrir amali)
+    /// kerak; superadmin/admin har doim, xodim faqat shu ruxsat berilgan bo'lsa.</summary>
     [HttpPut("{id}/permissions")]
     public async Task<ActionResult<StaffDto>> SetPermissions(string id, SetStaffPermissionsRequest req)
     {

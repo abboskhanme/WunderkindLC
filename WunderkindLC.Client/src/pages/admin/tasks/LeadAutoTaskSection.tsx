@@ -85,7 +85,7 @@ export function LeadAutoTaskSection({ boards }: { boards: WorkTaskBoard[] }) {
 
           <div>
             <div className="mb-1 text-xs font-semibold text-slate-500">
-              Navbat bilan oladigan xodimlar ({pool.length} ta tanlangan)
+              Navbat bilan oladigan xodimlar ({pool.filter((id) => staff.some((u) => u.userId === id)).length} ta tanlangan)
             </div>
             <div className="max-h-52 divide-y divide-slate-100 overflow-y-auto rounded-xl border border-slate-100">
               {staff.map((u) => {

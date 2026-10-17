@@ -89,7 +89,7 @@ function SectionTable({ title, rows, showHomework, groups }: { title: string; ro
                   {showHomework && <td className="px-4 py-2 text-right tabular-nums">{pct(r.avgHomework)}</td>}
                   <td
                     className={cn('px-4 py-2 text-right tabular-nums', r.attendancePct != null && r.attendancePct < 75 && 'text-amber-600')}
-                    title={r.lessonsHeld ? `${r.lessonsHeld} ta dars-o'quvchi belgisi` : undefined}
+                    title={r.attendanceMarks ? `${r.attendanceMarks} ta davomat belgisi (o'quvchi × dars)` : undefined}
                   >
                     {r.attendancePct == null ? '—' : `${r.attendancePct}%`}
                   </td>

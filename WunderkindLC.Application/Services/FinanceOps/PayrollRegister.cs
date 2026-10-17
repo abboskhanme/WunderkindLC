@@ -75,10 +75,10 @@ public static class PayrollRegister
             var ledger = await SalaryLedger.BuildAsync(db, te, monthStart, month + "-28");
             var m = ledger.Months.FirstOrDefault(x => x.Month == month);
             var accrued = m?.Expected ?? 0m;
-            var (adv, fin, _) = Split(pays.Where(p => p.TeacherId == te.Id).Select(p => (p.SalaryPayKind, p.Amount)));
+            var (adv, fin, typeless) = Split(pays.Where(p => p.TeacherId == te.Id).Select(p => (p.SalaryPayKind, p.Amount)));
             // «Berildi» — VARAQADAN (SalaryLedger: oyi yo'q eski to'lov SANASI bo'yicha ham shu oyga tushadi), aks holda
             // reestr profil bilan farq qilib, qayta to'lashga undardi. Avans/yakuniy — turi belgilangan to'lovlar.
-            var paid = m?.Paid ?? adv + fin;
+            var paid = m?.Paid ?? adv + fin + typeless;
             var oth = Math.Max(0m, paid - adv - fin);
             var pend = pending.Where(r => r.TeacherId == te.Id).Sum(r => r.Amount);
             if (te.IsArchived && accrued <= 0 && paid <= 0 && pend <= 0) continue;

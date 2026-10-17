@@ -168,6 +168,31 @@ public static class CashboxService
         });
     }
 
+    /// <summary>
+    /// YILLIK hisobot (P&amp;L / pul oqimi) «Boshlang'ich balans»i — <paramref name="from"/> ("yyyy-MM-dd", yil boshi) gacha
+    /// to'plangan sof. Kassa boshlang'ich qoldig'i FAQAT sanasi <paramref name="from"/> dan kech bo'lmasa (yoki sanasiz)
+    /// qo'shiladi va o'sha holda uning sanasidan oldingi harakatlar SANALMAYDI (ular boshlang'ich summaning ichida —
+    /// <see cref="Counts"/>). Sanasi yil ICHIDA bo'lgan kassada esa boshlang'ich summa qo'shilmaydi va undan oldingi
+    /// BUTUN tarix qoladi — aks holda o'tgan yilning yakuniy qoldig'i bu yilning boshlang'ichiga teng chiqmasdi
+    /// (2026-10-17 revyu, S3). Kassasiz eski yozuvlar — hammasi.
+    /// </summary>
+    public static decimal YearCarry(
+        IEnumerable<(string Id, decimal OpeningBalance, string? OpeningDate)> boxes,
+        IEnumerable<(string Date, string Direction, decimal Amount, string? CashboxId)> earlier,
+        string from)
+    {
+        var applied = boxes
+            .Where(b => string.IsNullOrEmpty(b.OpeningDate) || string.CompareOrdinal(b.OpeningDate, from) <= 0)
+            .ToDictionary(b => b.Id, b => b, StringComparer.Ordinal);
+        var carry = applied.Values.Sum(b => b.OpeningBalance);
+        foreach (var t in earlier)
+        {
+            var counts = t.CashboxId is null || !applied.TryGetValue(t.CashboxId, out var box) || Counts(t.Date, box.OpeningDate);
+            if (counts) carry += t.Direction == "expense" ? -t.Amount : t.Amount;
+        }
+        return carry;
+    }
+
     /// <summary>Bitta kassaning HOZIRGI qoldig'i (butun tarix, ko'chirishlar bilan). Kassa yo'q/bo'sh — 0.</summary>
     public static async Task<decimal> TotalAsync(IAppDbContext db, string cashboxId, CancellationToken ct = default)
     {

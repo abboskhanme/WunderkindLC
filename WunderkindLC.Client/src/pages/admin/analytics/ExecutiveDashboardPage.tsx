@@ -74,7 +74,7 @@ export function ExecutiveDashboardPage() {
                 hint={`Kirim ${formatMoney(data.thisMonth.income)} · chiqim ${formatMoney(data.thisMonth.expense)}`} />
             </Tile>
             <Tile to="/admin/hisobotlar/qarzdorlik">
-              <StatCard label="Faol qarz" value={formatMoney(data.debtTotal)} icon={Wallet}
+              <StatCard label="Faol qarz (hozir)" value={formatMoney(data.debtTotal)} icon={Wallet}
                 iconBg="bg-rose-50" iconColor="text-rose-600" hint={`${data.debtors} ta qarzdor o'quvchi`} />
             </Tile>
             <Tile to="/admin/crm-stats">
@@ -85,7 +85,7 @@ export function ExecutiveDashboardPage() {
           </div>
 
           <div className="grid gap-4 lg:grid-cols-3">
-            <Panel title="Kassalar qoldig'i" to="/admin/finance?tab=cashiers" className="lg:col-span-1">
+            <Panel title="Kassalar qoldig'i (hozir)" to="/admin/finance?tab=cashiers" className="lg:col-span-1">
               <div className="mb-3 flex items-center gap-2">
                 <Landmark className="h-5 w-5 text-brand-600" />
                 <span className="text-xl font-bold tabular-nums text-slate-800">{formatMoney(data.cashTotal)}</span>
@@ -105,7 +105,7 @@ export function ExecutiveDashboardPage() {
             </Panel>
 
             <Panel title="O'quvchilar oqimi (6 oy)" to="/admin/hisobotlar/ketish-sabablari" className="lg:col-span-2"
-              sub={`Faol o'quvchilar: ${data.activeStudents}. Yangi — birinchi to'lovni qilganlar; ketgan — aktivdan ketganlar.`}>
+              sub={`Faol o'quvchilar (hozir): ${data.activeStudents}. Yangi — birinchi to'lovni qilganlar; ketgan — aktivdan ketganlar.`}>
               <ResponsiveContainer width="100%" height={240}>
                 <BarChart data={data.trend.map((t) => ({ name: short(t.month), new: t.newPaying, left: t.leftActive }))} barGap={2}>
                   <CartesianGrid vertical={false} stroke="#eef2f7" />

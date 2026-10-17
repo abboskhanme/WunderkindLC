@@ -150,12 +150,15 @@ public static class ChecklistAutoCheck
         if (openLeadIds.Count == 0) return true;
 
         var leadSet = openLeadIds.ToHashSet(StringComparer.Ordinal);
-        // Bog'lanish ikki ko'rinishda: eski — lid Id'si Tags ichida; 2026-10-17 dan — WorkTask.LeadId (lid avto-topshirig'i).
-        var linked = openTasks.SelectMany(t => t.LeadId is null ? t.Tags : t.Tags.Append(t.LeadId))
-                              .Where(leadSet.Contains)
-                              .ToHashSet(StringComparer.Ordinal);
+        // "Bog'lanish ishlatilyaptimi" — FAQAT xodimning O'ZI qo'ygan bog'lanishdan (lid Id'si Tags ichida). Lid
+        // avto-topshirig'i (WorkTask.LeadId) bu qarorga KIRMAYDI: u xodim ixtiyorisiz paydo bo'ladi va bitta avto-topshiriq
+        // eski (topshiriqsiz) lidlar tufayli bandni HAR KUNI yiqitib, bonusni kesardi (2026-10-17 revyu, S2).
+        var tagLinked = openTasks.SelectMany(t => t.Tags).Where(leadSet.Contains).ToHashSet(StringComparer.Ordinal);
+        if (tagLinked.Count == 0) return true;   // bog'lanish ishlatilmayapti — hukm chiqarmaymiz
 
-        if (linked.Count == 0) return true;   // bog'lanish ishlatilmayapti — hukm chiqarmaymiz
+        // Ishlatilayotgan bo'lsa — avto-topshiriq ham bog'lanishning ISBOTI (LeadId).
+        var linked = openTasks.Select(t => t.LeadId).OfType<string>().Where(leadSet.Contains)
+            .Concat(tagLinked).ToHashSet(StringComparer.Ordinal);
         return leadSet.All(linked.Contains);
     }
 

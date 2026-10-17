@@ -208,20 +208,24 @@ public partial class FinanceController(AppDbContext db, AuditService audit, Auto
         var threshold = await db.CenterMeta.AsNoTracking().Select(m => m.ExpenseApprovalThreshold).FirstOrDefaultAsync();
         if (ExpenseApproval.NeedsApproval(threshold, p.Amount, p.Direction, User.IsInRole(Roles.SuperAdmin)))
         {
-            // Takroriy bosish / so'rov kalitisiz eski forma: shu xodimning 10 daqiqa ichidagi AYNAN shunday KUTILAYOTGAN
-            // so'rovi bo'lsa — yangisi yaratilmaydi (ikkalasi tasdiqlansa maosh ikki marta chiqardi).
-            var me = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
-            var since = AppClock.Now.AddMinutes(-10).ToString("yyyy-MM-ddTHH:mm:ss");
-            var reqMonth = string.IsNullOrWhiteSpace(p.Month) ? null : p.Month.Trim();
-            var samePending = await db.ExpenseRequests.AsNoTracking()
-                .Where(r => r.Status == ExpenseApproval.Pending && r.CreatedById == me && r.Amount == p.Amount
-                            && r.Category == p.Category && r.TeacherId == p.TeacherId && r.StaffUserId == staffUserId
-                            && r.Month == reqMonth && string.Compare(r.CreatedAt, since) >= 0)
-                .Select(r => r.Id).FirstOrDefaultAsync();
-            if (samePending is not null)
+            // So'rov KALITISIZ eski forma (ikki marta bosish / qayta urinish): shu xodimning 10 daqiqa ichidagi AYNAN shunday
+            // (summa, toifa, tur, sana, oy, kassa, oluvchi, to'lov turi, izoh) KUTILAYOTGAN so'rovi bo'lsa — yangisi
+            // yaratilmaydi. Kalit bilan kelgan so'rovni yuqoridagi `PaymentIdempotency` ushlaydi — bu yerda tekshirilmaydi:
+            // bir xil summadagi ikki BOSHQA chiqim (masalan ikki filial ijarasi) yutilib ketmasin (revyu S5).
+            if (string.IsNullOrWhiteSpace(p.RequestId))
             {
-                PaymentIdempotency.Remember(reqKey, samePending, DateTime.UtcNow);
-                return PendingResult(samePending);
+                var me = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+                var since = AppClock.Now.AddMinutes(-10).ToString("yyyy-MM-ddTHH:mm:ss");
+                var reqMonth = string.IsNullOrWhiteSpace(p.Month) ? null : p.Month.Trim();
+                var reqType = string.IsNullOrWhiteSpace(p.TypeId) ? null : p.TypeId;
+                var samePending = await db.ExpenseRequests.AsNoTracking()
+                    .Where(r => r.Status == ExpenseApproval.Pending && r.CreatedById == me && r.Amount == p.Amount
+                                && r.Category == p.Category && r.TypeId == reqType && r.Date == p.Date
+                                && r.TeacherId == p.TeacherId && r.StaffUserId == staffUserId && r.Month == reqMonth
+                                && r.CashboxId == cashbox.CashboxId && r.SalaryPayKind == payKind && r.Note == p.Note
+                                && string.Compare(r.CreatedAt, since) >= 0)
+                    .Select(r => r.Id).FirstOrDefaultAsync();
+                if (samePending is not null) return PendingResult(samePending);
             }
             var req = new ExpenseRequest
             {
@@ -1028,21 +1032,17 @@ public partial class FinanceController(AppDbContext db, AuditService audit, Auto
             .ToListAsync();
 
         // Shu yil BOSHIGACHA bo'lgan sof — "Boshlang'ich balans" qatori nolga tushib qolmasin.
-        // ⚠️ KASSA BOSHLANG'ICH QOLDIG'I (F3 K1) kassalar qoldig'i qoidasi bilan (`CashboxService.Counts`): yil boshidan
-        // OLDIN (yoki sanasiz) kiritilgan boshlang'ich summa qo'shiladi, uning sanasidan oldingi harakatlar esa SANALMAYDI
-        // (ular boshlang'ich summaning ICHIDA). Sanasi yil ichida bo'lgan boshlang'ich summa carry'ga kirmaydi.
+        // ⚠️ KASSA BOSHLANG'ICH QOLDIG'I (F3 K1) — qoida `CashboxService.YearCarry` da (sof, testlangan).
         var openings = await db.Cashboxes.AsNoTracking()
             .Select(b => new { b.Id, b.OpeningBalance, b.OpeningDate }).ToListAsync();
-        var openingDate = openings.ToDictionary(b => b.Id, b => b.OpeningDate);
         var earlier = await db.FinanceTransactions.AsNoTracking()
             .Where(t => t.Date.CompareTo(from) < 0)
             .Select(t => new { t.Direction, t.Amount, t.Date, t.CashboxId })
             .ToListAsync();
-        var carry = openings.Where(b => b.OpeningBalance != 0m
-                                        && (string.IsNullOrEmpty(b.OpeningDate) || string.CompareOrdinal(b.OpeningDate, from) <= 0))
-                        .Sum(b => b.OpeningBalance)
-                    + earlier.Where(t => t.CashboxId is null || CashboxService.Counts(t.Date, openingDate.GetValueOrDefault(t.CashboxId)))
-                        .Sum(t => t.Direction == "expense" ? -t.Amount : t.Amount);
+        var carry = CashboxService.YearCarry(
+            openings.Select(b => (b.Id, b.OpeningBalance, b.OpeningDate)),
+            earlier.Select(t => (t.Date ?? "", t.Direction ?? "income", t.Amount, t.CashboxId)),
+            from);
 
         return FinanceYearReport.Build(
             rows.Select(t => new FinanceYearReport.Row(t.Date ?? "", t.Direction ?? "income", t.Category ?? "other", t.Amount)),

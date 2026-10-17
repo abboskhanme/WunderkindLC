@@ -275,7 +275,8 @@ function ApproveModal({ request, onClose, onDone }: { request: ExpenseRequest; o
       footer={
         <>
           <Button variant="secondary" onClick={onClose} disabled={busy}>Bekor</Button>
-          <Button onClick={() => void submit()} disabled={busy || !options}>{busy ? 'Saqlanmoqda...' : 'Tasdiqlash'}</Button>
+          {/* Kassalar ro'yxati yuklanmasa ham tasdiqlash mumkin — so'rovdagi kassa ishlatiladi, server sababni aytadi. */}
+          <Button onClick={() => void submit()} disabled={busy}>{busy ? 'Saqlanmoqda...' : 'Tasdiqlash'}</Button>
         </>
       }
     >
@@ -284,9 +285,11 @@ function ApproveModal({ request, onClose, onDone }: { request: ExpenseRequest; o
         {request.teacherName || request.staffName ? ` · ${request.teacherName ?? request.staffName}` : ''} · kiritdi: {request.createdBy}
       </p>
       <label className="mb-1 block text-xs font-semibold text-slate-500">Qaysi kassadan</label>
+      {!options && <p className="mb-1 text-xs text-slate-400">Kassalar ro'yxati yuklanmadi — so'rovdagi kassa ishlatiladi.</p>}
       <select
         value={cashboxId}
         onChange={(e) => setPicked(e.target.value)}
+        disabled={!options}
         className="h-10 w-full rounded-lg border border-slate-200 bg-white px-2 text-sm text-slate-700"
       >
         {(options?.items ?? []).map((o) => (

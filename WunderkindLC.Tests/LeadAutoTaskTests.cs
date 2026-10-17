@@ -100,7 +100,20 @@ public class LeadAutoTaskTests
         });
         Assert.Equal(3, await t.Context.UserNotifications.CountAsync());
         Assert.Equal(3, await t.Context.WorkTaskEvents.CountAsync(e => e.Kind == "created"));
-        Assert.Equal(1, (await t.Context.CenterMeta.AsNoTracking().SingleAsync()).LeadAutoTaskCursor);
+    }
+
+    [Fact]
+    public async Task Navbat_oxirgi_avto_topshiriqdan_aniqlanadi__CenterMeta_ozgartirilmaydi()
+    {
+        // Revyu S1: navbat saqlanmaydi — oxirgi avto-topshiriq olgan xodimdan keyingisi. Lid egasiga berilgan topshiriq ham
+        // hisobga kiradi (egasi «b» → keyingi egasiz lid «a» ga).
+        using var t = await SetupAsync(pool: ["a", "b"]);
+        var tracked = await t.Context.CenterMeta.SingleAsync();
+        var owned = await LeadAutoTask.EnsureAsync(t.Context, null, await LeadAsync(t, "Ali", l => l.AssigneeUserId = "b"), repeat: false);
+        var next = await LeadAutoTask.EnsureAsync(t.Context, null, await LeadAsync(t, "Vali"), repeat: false);
+
+        Assert.Equal(("b", "a"), (owned!.AssigneeId, next!.AssigneeId));
+        Assert.Equal(EntityState.Unchanged, t.Context.Entry(tracked).State);   // CenterMeta'ga yozilmaydi — kesh tegilmaydi
     }
 
     [Fact]
@@ -126,7 +139,6 @@ public class LeadAutoTaskTests
         var lead = await LeadAsync(t, "Ali", l => l.AssigneeUserId = "b");
         var task = await LeadAutoTask.EnsureAsync(t.Context, null, lead, repeat: false);
         Assert.Equal("b", task!.AssigneeId);
-        Assert.Equal(0, (await t.Context.CenterMeta.AsNoTracking().SingleAsync()).LeadAutoTaskCursor);
     }
 
     [Fact]

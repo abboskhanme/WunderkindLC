@@ -258,7 +258,8 @@ export interface RatingSectionRow {
   avgBall: number | null
   avgHomework: number | null
   attendancePct: number | null
-  lessonsHeld: number
+  /** Davomat belgilari soni (o'quvchi × dars) — darslar soni EMAS. */
+  attendanceMarks: number
 }
 
 export interface RatingSections {

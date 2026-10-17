@@ -197,8 +197,10 @@ Migratsiya `LeadAutoTasks` (`WorkTask.LeadId`, `CenterMeta.LeadAutoTaskEnabled/A
   qolmagan bo'lsa «Takroriy murojaat — qo'ng'iroq: …».
 - ⚠️ **QO'LDA kiritilgan lidga YO'Q** (`LeadsController.Create` → `autoTask: false`): kiritgan xodim lid bilan allaqachon
   ishlayapti.
-- **Kimga:** lidning mas'uli (panel akkaunti bo'lsa; navbat surilmaydi) — aks holda sozlamadagi xodimlar NAVBAT bilan
-  (`LeadAutoTask.Pick`, `LeadAutoTaskCursor`; ro'yxat o'zgarsa navbat boshidan). O'chirilgan xodim navbatdan tushadi; hech
+- **Kimga:** lidning mas'uli (panel akkaunti bo'lsa) — aks holda sozlamadagi xodimlar NAVBAT bilan (`LeadAutoTask.Pick`).
+  ⚠️ Navbat SAQLANMAYDI: keyingi xodim = OXIRGI avto-topshiriq olgan xodimdan keyingisi (qulf ichida o'qiladi — bir vaqtda
+  kelgan ikki lid bir xodimga tushmaydi). `CenterMeta.LeadAutoTaskCursor` ustuni ISHLATILMAYDI (revyu S1: CenterMeta'ga har
+  lidda yozish reyting/brend keshlarini bekor qilardi). O'chirilgan xodim navbatdan tushadi; hech
   kim qolmasa topshiriq mas'ulsiz (doskada ko'rinadi). ⚠️ Lidning O'Z mas'uli (`AssigneeUserId`) o'zgartirilMAYDI — KPI
   "biriktirilmagan lid" qoidasi tegilmasin.
 - **Bir lid — bitta OCHIQ topshiriq** (`LeadId` + yopilmagan + arxivlanmagan); aylantirilgan/yo'qotilgan lidga yo'q.
@@ -209,3 +211,5 @@ Migratsiya `LeadAutoTasks` (`WorkTask.LeadId`, `CenterMeta.LeadAutoTaskEnabled/A
 - ⚠️ Hech qachon istisno chiqarmaydi (lid qabulini buzmasin); saqlash yiqilsa O'Z qatorlari kontekstdan chiqariladi.
 - Kartada «📞 Lid» chipi, topshiriq oynasida lid sahifasiga havola (lid o'chirilgan bo'lsa — «Lid o'chirilgan»).
 - KPI «vazifasiz sdelka = 0» (`ChecklistAutoCheck.LeadsHaveTasksAsync`) endi `WorkTask.LeadId` ni ham bog'lanish deb sanaydi.
+- Instagram/Meta lidlarida «Instagram Telegram signali» O'CHIQ bo'lsa karta ketmaydi, lekin topshiriq BARIBIR yaratiladi
+  (`LeadAutoTask.EnsureByIdAsync`, revyu S4). Inbox'dagi «Lidga aylantirish» (operator o'zi) — `autoTask: false`.

@@ -5,10 +5,11 @@ using WunderkindLC.Domain;
 namespace WunderkindLC.Application.Services.Rating;
 
 /// <summary>Bitta kesim qatori (guruh yoki maktab sinfi). O'rtachalar 0..100, 1 kasr; ma'lumot bo'lmasa <c>null</c>.
-/// <paramref name="Students"/> — shu davrda ballga ega (reytingga kirgan) o'quvchilar.</summary>
+/// <paramref name="Students"/> — shu davrda ballga ega (reytingga kirgan) o'quvchilar. <paramref name="AttendanceMarks"/> —
+/// davomat belgilari soni (o'quvchi × dars), darslar soni EMAS.</summary>
 public sealed record RatingSectionRowDto(
     string Key, string Label, string? Course, string? Teacher, int Students,
-    double? AvgScore, double? AvgTest, double? AvgBall, double? AvgHomework, int? AttendancePct, int LessonsHeld);
+    double? AvgScore, double? AvgTest, double? AvgBall, double? AvgHomework, int? AttendancePct, int AttendanceMarks);
 
 public sealed record RatingSectionsDto(
     RatingPeriodDto Period, List<RatingSectionRowDto> Groups, List<RatingSectionRowDto> Grades, int HomeworkWeight);
@@ -87,7 +88,12 @@ public static class RatingSections
     public static async Task<RatingSectionsDto> BuildAsync(IAppDbContext db, RatingLoader load, RatingPeriod p, CancellationToken ct = default)
     {
         var r = await load(p);
-        var attendance = await MembershipAttendance.ComputeAsync(db, null, fromDay: p.From, toDay: p.To, ct: ct);
+        var allAttendance = await MembershipAttendance.ComputeAsync(db, null, fromDay: p.From, toDay: p.To, ct: ct);
+        // Arxivdagi o'quvchi reytingda yo'q (rating.md §1) — davomatda ham sanalmaydi (eski arxivlashlarda tirik a'zolik qolgan).
+        var archived = (await db.Students.AsNoTracking().Where(s => s.IsArchived).Select(s => s.Id).ToListAsync(ct))
+            .ToHashSet(StringComparer.Ordinal);
+        var attendance = allAttendance.Where(kv => !archived.Contains(kv.Key.StudentId))
+            .ToDictionary(kv => kv.Key, kv => kv.Value);
         var ids = r.Centre.Select(c => c.StudentId).ToList();
         var today = AppClock.Today;
         var gradeOf = (await db.Students.AsNoTracking().Where(s => ids.Contains(s.Id))

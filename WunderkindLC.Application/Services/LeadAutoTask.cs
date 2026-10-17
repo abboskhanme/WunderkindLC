@@ -25,15 +25,15 @@ namespace WunderkindLC.Application.Services;
 /// </summary>
 public static class LeadAutoTask
 {
-    /// <summary>Navbat (cursor) poygasi uchun jarayon qulfi — bir vaqtda kelgan ikki lid bir xodimga tushmasin.</summary>
+    /// <summary>Jarayon qulfi — bir vaqtda kelgan ikki lid bitta "oxirgi avto-topshiriq"ni ko'rib, bir xodimga tushmasin.</summary>
     public const string LockKey = "lead-auto-task";
 
     /// <summary>Topshiriq muhimligi — «Yuqori» (yangi lidga tez qo'ng'iroq qilinishi kerak).</summary>
     public const int Priority = 2;
 
     /// <summary>
-    /// Mas'ulni tanlaydi. <paramref name="leadAssignee"/> panel akkaunti bo'lsa — o'sha (navbat SURILMAYDI); aks holda
-    /// <paramref name="pool"/> dan <paramref name="cursor"/> o'rnidagi xodim, navbat bittaga suriladi. Hovuz bo'sh —
+    /// Mas'ulni tanlaydi. <paramref name="leadAssignee"/> panel akkaunti bo'lsa — o'sha; aks holda <paramref name="pool"/> ning
+    /// tirik a'zolaridan <paramref name="cursor"/> o'rnidagi xodim (cursor — oxirgi avto-topshiriq olgan xodimdan keyingisi). Hovuz bo'sh —
     /// <c>null</c> (topshiriq mas'ulsiz yaratiladi, doskada ko'rinadi).
     /// </summary>
     public static (string? AssigneeId, int NextCursor) Pick(
@@ -83,15 +83,20 @@ public static class LeadAutoTask
         WorkTaskBoard? newBoard = null;
         List<WorkTaskColumn>? newColumns = null;
         UserNotification? bell = null;
-        CenterMeta? meta = null;
-        var oldCursor = 0;
         try
         {
-            meta = await db.CenterMeta.FirstOrDefaultAsync(ct);
-            if (meta is null || !meta.LeadAutoTaskEnabled) return null;
             if (lead.ConvertedStudentId != null || lead.LostAt != null) return null;
+            if (!await db.CenterMeta.AsNoTracking().AnyAsync(m => m.LeadAutoTaskEnabled, ct)) return null;
 
             using var _ = await PaymentIdempotency.LockAsync(LockKey);
+
+            // ⚠️ Sozlama va NAVBAT qulf ICHIDA va kuzatuvsiz (AsNoTracking) o'qiladi: aks holda bir vaqtda kelgan ikki lid
+            // bitta eski navbat qiymatini ko'rib, ikkalasi bir xodimga tushardi (chaqiruvchi kontekstda CenterMeta allaqachon
+            // kuzatilayotgan bo'lsa ham — identity resolution eski obyektni qaytarardi).
+            var meta = await db.CenterMeta.AsNoTracking()
+                .Select(m => new { m.LeadAutoTaskEnabled, m.LeadAutoTaskAssigneeIds, m.LeadAutoTaskBoardId })
+                .FirstOrDefaultAsync(ct);
+            if (meta is null || !meta.LeadAutoTaskEnabled) return null;
 
             if (await db.WorkTasks.AnyAsync(t => t.LeadId == lead.Id && t.CompletedAt == null && !t.IsArchived, ct))
                 return null;
@@ -118,9 +123,16 @@ public static class LeadAutoTask
                     .Where(u => candidates.Contains(u.Id) && PanelRoles.Contains(u.Role))
                     .Select(u => u.Id).ToListAsync(ct))
                 .ToHashSet(StringComparer.Ordinal);
-            oldCursor = meta.LeadAutoTaskCursor;
-            var (assignee, next) = Pick(meta.LeadAutoTaskAssigneeIds, lead.AssigneeUserId, meta.LeadAutoTaskCursor, valid);
-            meta.LeadAutoTaskCursor = next;
+            // NAVBAT SAQLANMAYDI — oxirgi avto-topshiriq KIMGA tushganidan aniqlanadi (qulf ichida, topshiriq saqlangandan
+            // keyin keyingi so'rov uni ko'radi). Ilgari CenterMeta.LeadAutoTaskCursor yozilardi: kuzatilayotgan eski
+            // obyekt ikki lidni bir xodimga berardi va har lid CenterMeta'ga bog'liq barcha keshlarni bekor qilardi (revyu S1).
+            var live = meta.LeadAutoTaskAssigneeIds.Where(valid.Contains).ToList();
+            var lastAuto = live.Count == 0 ? null : await db.WorkTasks.AsNoTracking()
+                .Where(t => t.LeadId != null && t.CreatedById == "" && live.Contains(t.AssigneeId))
+                .OrderByDescending(t => t.CreatedAt).ThenByDescending(t => t.Id)
+                .Select(t => t.AssigneeId).FirstOrDefaultAsync(ct);
+            var cursor = lastAuto is null ? 0 : live.IndexOf(lastAuto) + 1;
+            var (assignee, _) = Pick(meta.LeadAutoTaskAssigneeIds, lead.AssigneeUserId, cursor, valid);
 
             var order = newColumns is not null ? 0
                 : await db.WorkTasks.Where(t => t.ColumnId == column.Id).Select(t => (int?)t.Order).MinAsync(ct) ?? 0;
@@ -165,18 +177,30 @@ public static class LeadAutoTask
         catch (Exception ex)
         {
             logger?.LogWarning(ex, "Lid avto-topshirig'ini yaratib bo'lmadi (lid {LeadId})", lead.Id);
-            // O'z qatorlarimiz kontekstdan chiqariladi (Added → Remove = Detached), navbat qiymati qaytariladi.
+            // O'z qatorlarimiz kontekstdan chiqariladi (Added → Remove = Detached).
             if (bell is not null) db.UserNotifications.Remove(bell);
             if (ev is not null) db.WorkTaskEvents.Remove(ev);
             if (task is not null) db.WorkTasks.Remove(task);
             if (newColumns is not null) foreach (var c in newColumns) db.WorkTaskColumns.Remove(c);
             if (newBoard is not null) db.WorkTaskBoards.Remove(newBoard);
-            if (meta is not null) meta.LeadAutoTaskCursor = oldCursor;
             return null;
         }
 
         if (telegram is not null && !string.IsNullOrWhiteSpace(task.AssigneeId)) await NotifyTelegramAsync(db, telegram, task, ct, logger);
         return task;
+    }
+
+    /// <summary>
+    /// <see cref="EnsureAsync"/> lid id'si bo'yicha — Telegram kartasi O'CHIRILGAN kanallar uchun (Instagram/Meta:
+    /// <c>CenterMeta.InstagramNotifyTelegram = false</c> bo'lsa <see cref="LeadNotifier.NotifyNewLeadAsync"/> umuman
+    /// chaqirilmaydi, topshiriq esa baribir kerak — 2026-10-17 revyu, S4).
+    /// </summary>
+    public static async Task EnsureByIdAsync(
+        IAppDbContext db, TelegramService? telegram, string leadId, bool repeat,
+        CancellationToken ct = default, ILogger? logger = null)
+    {
+        var lead = await db.Leads.FirstOrDefaultAsync(l => l.Id == leadId, ct);
+        if (lead is not null) await EnsureAsync(db, telegram, lead, repeat, ct, logger);
     }
 
     /// <summary>Mas'ulga "🆕 Sizga yangi topshiriq" + «✅ Bajardim» — panel bilan AYNAN bir xil matn

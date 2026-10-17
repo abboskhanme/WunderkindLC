@@ -204,9 +204,8 @@ public partial class WorkTasksController
         if (boardId is not null && !await db.WorkTaskBoards.AnyAsync(b => b.Id == boardId && !b.IsArchived))
             return BadRequest(new { message = "Doska topilmadi yoki arxivlangan" });
 
-        var poolChanged = !pool.SequenceEqual(meta.LeadAutoTaskAssigneeIds);
         meta.LeadAutoTaskEnabled = req.Enabled;
-        if (poolChanged) { meta.LeadAutoTaskAssigneeIds = pool; meta.LeadAutoTaskCursor = 0; }
+        if (!pool.SequenceEqual(meta.LeadAutoTaskAssigneeIds)) meta.LeadAutoTaskAssigneeIds = pool;
         meta.LeadAutoTaskBoardId = boardId;
         LogSettings("Topshiriqlar — lidga avtomatik topshiriq");
         await db.SaveChangesAsync();

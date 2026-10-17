@@ -201,4 +201,37 @@ public class FinanceOpsTests
         Assert.Contains("[AdminPerm(\"finance.main\", ReadRequiresPerm = true)]\n[Route", pay);
         Assert.Contains("[HttpGet(\"{id}/statement\")]\n    [AdminPerm(\"finance.main\", ReadRequiresPerm = true)]", Src("CashboxesController.cs"));
     }
+
+    // ---------- yillik hisobot «Boshlang'ich balans» (revyu S3) ----------
+
+    [Fact]
+    public void Yil_carry__boshlangich_sanasi_yil_ICHIDA_bolsa_otgan_tarix_SAQLANADI()
+    {
+        // Kassa 2025 da ishlagan, boshlang'ich qoldiq 2026-10-01 dan kiritilgan → 2026 boshlang'ich balansi = 2025 yakuni.
+        var carry = CashboxService.YearCarry(
+            [("main", 5_000_000m, "2026-10-01")],
+            [("2025-03-01", "income", 1_000_000m, "main"), ("2025-05-01", "expense", 300_000m, "main")],
+            "2026-01-01");
+        Assert.Equal(700_000m, carry);
+    }
+
+    [Fact]
+    public void Yil_carry__boshlangich_yil_boshidan_OLDIN__summa_qoshiladi_undan_oldingi_harakatlar_ichida()
+    {
+        var carry = CashboxService.YearCarry(
+            [("main", 5_000_000m, "2025-06-01"), ("bank", 0m, null)],
+            [
+                ("2025-03-01", "income", 1_000_000m, "main"),   // boshlang'ich ichida — sanalmaydi
+                ("2025-07-01", "expense", 200_000m, "main"),    // keyin — sanaladi
+                ("2025-08-01", "income", 50_000m, "bank"),
+                ("2024-12-01", "income", 10_000m, null),        // kassasiz eski yozuv — sanaladi
+            ],
+            "2026-01-01");
+        Assert.Equal(5_000_000m - 200_000m + 50_000m + 10_000m, carry);
+    }
+
+    [Fact]
+    public void Yil_carry__boshlangichsiz_avvalgidek_butun_tarix() =>
+        Assert.Equal(800m, CashboxService.YearCarry(
+            [("main", 0m, null)], [("2025-01-01", "income", 1_000m, "main"), ("2025-02-01", "expense", 200m, null)], "2026-01-01"));
 }

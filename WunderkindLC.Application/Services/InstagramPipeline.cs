@@ -430,6 +430,9 @@ public sealed class InstagramPipeline(IServiceProvider services, ILogger<Instagr
                 // Keyin AI xulosasi qo'shilsa karta JOYIDA tahrirlanadi (`SyncCardAsync`).
                 // ⚠️ YANGI lidning kartasi hali YO'Q — `SyncCardAsync` unga hech narsa yubormasdi,
                 // shuning uchun yangi lid HAR DOIM e'lon qilinadi (bayroqdan qat'i nazar).
+                // Lid avto-topshirig'i Telegram bayrog'iga BOG'LIQ EMAS (bayroq o'chiq bo'lsa karta yo'q, topshiriq bor).
+                if ((firstPhoneLink || pIsNew) && !meta.InstagramNotifyTelegram)
+                    await LeadAutoTask.EnsureByIdAsync(db, telegram, pid, repeat: !pIsNew, ct, logger);
                 if ((firstPhoneLink || pIsNew) && meta.InstagramNotifyTelegram)
                 {
                     var phoneLead = await db.Leads.FirstOrDefaultAsync(l => l.Id == pid, ct);
@@ -782,6 +785,9 @@ public sealed class InstagramPipeline(IServiceProvider services, ILogger<Instagr
         if (cardLeadId.Length > 0)
         {
             // YANGI lid (`cardIsNewLead`) — kartasi yo'q, ya'ni har doim e'lon qilinadi (§3.1 bilan bir xil).
+            // Lid avto-topshirig'i Telegram bayrog'iga BOG'LIQ EMAS (bayroq o'chiq bo'lsa karta yo'q, topshiriq bor).
+            if ((firstLink || cardIsNewLead) && !meta.InstagramNotifyTelegram)
+                await LeadAutoTask.EnsureByIdAsync(db, telegram, cardLeadId, repeat: !cardIsNewLead, ct, logger);
             if ((firstLink || cardIsNewLead) && meta.InstagramNotifyTelegram)
             {
                 var lead = await db.Leads.FirstOrDefaultAsync(l => l.Id == cardLeadId, ct);

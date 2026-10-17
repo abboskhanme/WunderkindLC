@@ -89,7 +89,7 @@ public class BacklogF4Tests
         Assert.Equal(new[] { "g3", "g1" }, groups.Select(g => g.Key));   // bal bo'yicha kamayish; g2 (balsiz) yo'q
         var g1 = groups.Single(g => g.Key == "g1");
         Assert.Equal((2, 72.0, 70.0, 75.0), (g1.Students, g1.AvgScore!.Value, g1.AvgTest!.Value, g1.AvgBall!.Value));
-        Assert.Equal(20, g1.LessonsHeld);
+        Assert.Equal(20, g1.AttendanceMarks);
         Assert.Equal(70, g1.AttendancePct);                               // (9 + 5) / 20
         Assert.Null(groups.Single(g => g.Key == "g3").AttendancePct);
     }

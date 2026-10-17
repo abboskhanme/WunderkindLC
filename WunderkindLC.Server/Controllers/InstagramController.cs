@@ -1018,9 +1018,11 @@ public partial class InstagramController(
         {
             var fresh = await db.Leads.FirstOrDefaultAsync(l => l.Id == leadId, ct);
             if (fresh is not null)
+                // autoTask: false — operator suhbatni O'ZI lidga aylantirdi (u mijoz bilan allaqachon gaplashyapti),
+                // qo'lda kiritilgan lid qoidasi (LeadAutoTask).
                 await LeadNotifier.NotifyNewLeadAsync(
                     db, telegram, fresh, isNewLead: isNew,
-                    createdBy: InstagramLeadBridge.ActorName, ct: ct, logger: logger);
+                    createdBy: InstagramLeadBridge.ActorName, ct: ct, logger: logger, autoTask: false);
         }
         else
         {
@@ -1758,6 +1760,9 @@ public partial class InstagramController(
         // «Qayta olish» lidni CRM'ga qo'shar, lekin guruhga hech narsa yubormasdi: token
         // tuzatilgandan keyin tiklangan PULLIK lidlardan menejer xabar topmasdi.
         // SaveChanges'dan KEYIN (karta bazadagi yozilgan holatdan quriladi), xatosi jim yutiladi.
+        // Lid avto-topshirig'i Telegram bayrog'iga BOG'LIQ EMAS (bayroq o'chiq bo'lsa karta yo'q, topshiriq bor).
+        if (!meta.InstagramNotifyTelegram)
+            await LeadAutoTask.EnsureByIdAsync(db, telegram, leadId, repeat: !isNew, ct, logger);
         if (meta.InstagramNotifyTelegram)
         {
             var lead = await db.Leads.FirstOrDefaultAsync(l => l.Id == leadId, ct);

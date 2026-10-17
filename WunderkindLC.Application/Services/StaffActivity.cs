@@ -31,7 +31,10 @@ public static class StaffActivity
         : string.IsNullOrEmpty(b) ? a
         : string.CompareOrdinal(a, b) >= 0 ? a : b;
 
-    public static async Task<List<StaffActivityDto>> BuildAsync(IAppDbContext db, int days, CancellationToken ct = default)
+    /// <param name="includeAdmins">admin/superadmin akkauntlari qatorlari ham bo'lsinmi — faqat admin/superadmin yoki
+    /// "Xodimlar" bo'limiga TO'LIQ ruxsatli chaqiruvchiga (Xodimlar ro'yxatidagi login ko'rinishi qoidasi bilan bir xil).</param>
+    public static async Task<List<StaffActivityDto>> BuildAsync(IAppDbContext db, int days, CancellationToken ct = default,
+                                                                bool includeAdmins = true)
     {
         days = Math.Clamp(days, 1, MaxDays);
         var sinceLocal = AppClock.Now.AddDays(-days);
@@ -88,7 +91,7 @@ public static class StaffActivity
             lessons.GetValueOrDefault(userId));
 
         var byUser = users.ToDictionary(u => u.Id);
-        var result = users.Where(u => u.Role != Roles.Teacher)
+        var result = users.Where(u => u.Role == Roles.Staff || (includeAdmins && u.Role != Roles.Teacher))
             .Select(u => Row("staff", u.Id, u.Id, u.LastLoginAt))
             .ToList();
         foreach (var t in teachers)
