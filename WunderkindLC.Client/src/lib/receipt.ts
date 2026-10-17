@@ -3,12 +3,13 @@
  * Bir xil HTML ham jonli ko'rib chiqish (preview), ham print uchun ishlatiladi —
  * shuning uchun preview va chop etilgan chek doim mos keladi.
  *
- * Format: 80mm termal chek. ⚠️ 80mm printer qog'ozning hammasiga emas, faqat ~72mm (576 nuqta) ga
- * bosadi: ilgari matn 80mm ga yoyilib, o'ng chetdagi harflar kesilib qolardi (2026-10-17). Shuning
- * uchun chek eni RECEIPT_WIDTH (72mm), chapga tekislangan.
+ * Format: 58mm yoki 80mm termal chek (`CheckSettings.paperWidth`). ⚠️ Printer qog'ozning hammasiga
+ * emas, faqat bosish maydoniga bosadi: 58mm → ~48mm (384 nuqta), 80mm → ~72mm (576 nuqta). Ilgari chek
+ * qog'ozning butun eniga yoyilib, o'ng chetdagi harflar kesilib qolardi (2026-10-17). Endi chek eni =
+ * bosish maydoni (`receiptWidth`), chapga tekislangan.
  */
 import { paymentMethodLabel } from '@/config/constants'
-import type { CheckSettings } from '@/config/checkSettings'
+import type { CheckSettings, PaperWidth } from '@/config/checkSettings'
 
 /** Chek ma'lumotlari (backend /admin/finance/receipt/{id} bilan mos). */
 export interface ReceiptData {
@@ -98,25 +99,32 @@ export function receiptHtml(d: ReceiptData, s: CheckSettings): string {
   `
 }
 
-/** Chekning bosiladigan eni — 80mm termal printerning bosish maydoni. */
-export const RECEIPT_WIDTH = '72mm'
+/** Qog'oz eni → printerning bosish maydoni (mm). */
+const PRINT_AREA_MM: Record<PaperWidth, number> = { 58: 48, 80: 72 }
+
+/** Chekning eni (CSS qiymati) — preview ham, print ham AYNAN shu enda chiziladi. */
+export function receiptWidth(s: Pick<CheckSettings, 'paperWidth'>): string {
+  return `${PRINT_AREA_MM[s.paperWidth] ?? PRINT_AREA_MM[58]}mm`
+}
 
 /**
- * Chek uchun termal CSS (preview konteyneri va print iframe — ikkalasida ham).
- * Eni va ichki chetlari ikkalasida BIR XIL — qatorlar preview'da qayerda bo'linsa, qog'ozda ham o'sha yerda.
+ * Chek uchun termal CSS (preview konteyneri va print iframe — ikkalasida ham). Eni bu yerda YO'Q —
+ * u sozlamaga bog'liq (`receiptWidth`) va chaqiruvchi beradi. Ichki chetlar ikkalasida bir xil:
+ * qatorlar preview'da qayerda bo'linsa, qog'ozda ham o'sha yerda.
  */
 export const receiptCss = `
-  .receipt { width: ${RECEIPT_WIDTH}; box-sizing: border-box; margin: 0 auto; background: #fff; color: #000;
+  .receipt { box-sizing: border-box; margin: 0 auto; background: #fff; color: #000;
     font-family: 'Courier New', ui-monospace, monospace; font-size: 12px; line-height: 1.45;
-    padding: 10px 2mm; }
+    padding: 10px 1.5mm; }
   .receipt .hdr { text-align: center; }
   .receipt .logo { max-width: 96px; max-height: 96px; object-fit: contain; margin: 0 auto 4px; display: block; }
   .receipt .name { font-size: 16px; font-weight: 700; letter-spacing: .5px; }
   .receipt .sub { font-size: 11px; font-weight: 600; margin-top: 2px; }
   .receipt .sep { border-top: 1px dashed #000; margin: 7px 0; }
-  .receipt .r { display: flex; justify-content: space-between; gap: 8px; margin: 2px 0; }
-  .receipt .r .k { color: #000; white-space: nowrap; }
-  .receipt .r .v { text-align: right; font-weight: 600; word-break: break-word; }
+  .receipt .r { margin: 2px 0; text-align: right; }
+  .receipt .r::after { content: ''; display: block; clear: both; }
+  .receipt .r .k { float: left; margin-right: 8px; color: #000; white-space: nowrap; text-align: left; }
+  .receipt .r .v { font-weight: 600; word-break: break-word; }
   .receipt .total { display: flex; justify-content: space-between; font-size: 14px; font-weight: 700; }
   .receipt .qr { text-align: center; margin: 6px 0; }
   .receipt .qr img { width: 110px; height: 110px; }
@@ -128,10 +136,10 @@ export const receiptCss = `
 export function printReceipt(d: ReceiptData, s: CheckSettings): void {
   const html = `<!doctype html><html><head><meta charset="utf-8" />
     <style>
-      @page { size: 80mm auto; margin: 0; }
+      @page { size: ${s.paperWidth === 80 ? 80 : 58}mm auto; margin: 0; }
       html, body { margin: 0; padding: 0; background: #fff; }
       ${receiptCss}
-      .receipt { width: 100%; max-width: ${RECEIPT_WIDTH}; margin: 0; }
+      .receipt { width: ${receiptWidth(s)}; margin: 0; }
     </style></head>
     <body><div class="receipt">${receiptHtml(d, s)}</div></body></html>`
 

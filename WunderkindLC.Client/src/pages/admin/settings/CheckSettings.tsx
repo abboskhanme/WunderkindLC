@@ -18,8 +18,9 @@ import {
   checkTrialFieldKeys,
   type CheckSettings as CheckSettingsModel,
   type CheckFieldFlags,
+  type PaperWidth,
 } from '@/config/checkSettings'
-import { receiptHtml, receiptCss, type ReceiptData } from '@/lib/receipt'
+import { receiptHtml, receiptCss, receiptWidth, type ReceiptData } from '@/lib/receipt'
 import { useAuth } from '@/context/auth-context'
 
 type Tab = 'payment' | 'trial'
@@ -184,6 +185,32 @@ export function CheckSettings() {
         <div className="space-y-5">
           <div>
             <h4 className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-400">
+              Qog'oz eni (ikkala chekka umumiy)
+            </h4>
+            <div className="inline-flex rounded-lg border border-slate-200 p-0.5">
+              {([58, 80] as PaperWidth[]).map((w) => (
+                <button
+                  key={w}
+                  type="button"
+                  onClick={() => setS({ ...s, paperWidth: w })}
+                  className={cn(
+                    'rounded-md px-3.5 py-1.5 text-sm font-medium transition-colors',
+                    s.paperWidth === w ? 'bg-brand-600 text-white' : 'text-slate-600 hover:bg-slate-100',
+                  )}
+                >
+                  {w} mm
+                </button>
+              ))}
+            </div>
+            <p className="mt-2 text-xs text-slate-400">
+              Chek qog'ozini o'lchang: 5,8 sm — 58 mm, 8 sm — 80 mm. Bilmasangiz 58 mm qoldiring: 80 mm
+              qog'ozda ham to'liq chiqadi, faqat torroq bo'ladi. Chop etish oynasida «Masshtab» (Scale)
+              standart (100%) bo'lsin.
+            </p>
+          </div>
+
+          <div>
+            <h4 className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-400">
               Sarlavha (ikkala chekka umumiy)
             </h4>
             <div className="space-y-2">
@@ -274,6 +301,7 @@ export function CheckSettings() {
             <style>{receiptCss}</style>
             <div
               className="receipt shadow-md"
+              style={{ width: receiptWidth(s) }}
               dangerouslySetInnerHTML={{
                 __html: receiptHtml(preview, resolveCheckSettings(s, isTrial)),
               }}

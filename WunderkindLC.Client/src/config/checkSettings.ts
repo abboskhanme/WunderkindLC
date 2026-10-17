@@ -22,7 +22,15 @@ export interface CheckVariant {
   footerText: string
 }
 
+/** Termal printer qog'ozining eni (mm). */
+export type PaperWidth = 58 | 80
+
 export interface CheckSettings {
+  /**
+   * Qog'oz eni (umumiy). Standart — 58: tor chek 80mm qog'ozda ham to'liq chiqadi (faqat torroq),
+   * keng chek esa 58mm qog'ozda o'ng chetidan kesiladi — shuning uchun xavfsiz tomon tanlangan.
+   */
+  paperWidth: PaperWidth
   /** Sarlavhada markaz logotipi (ikkala chekka umumiy) */
   showLogo: boolean
   /** Sarlavhada markaz nomi (umumiy) */
@@ -41,6 +49,7 @@ export interface CheckSettings {
 }
 
 export const defaultCheckSettings: CheckSettings = {
+  paperWidth: 58,
   showLogo: true,
   showName: true,
   showContact: true,
@@ -80,6 +89,8 @@ export function parseCheckSettings(json: string | null | undefined): CheckSettin
     return {
       ...defaultCheckSettings,
       ...p,
+      // Saqlangan JSON'da yo'q (2026-10-17 gacha) yoki noma'lum qiymat — standart 58.
+      paperWidth: p.paperWidth === 80 ? 80 : 58,
       fields: { ...defaultCheckSettings.fields, ...(p.fields ?? {}) },
       trial: {
         fields: { ...defaultCheckSettings.trial.fields, ...(p.trial?.fields ?? {}) },

@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/Button'
 import { Loader } from '@/components/ui/Loader'
 import { getReceipt } from '@/api/services/finance'
 import { getTrialReceipt } from '@/api/services/leads'
-import { receiptHtml, receiptCss, printReceipt, type ReceiptData } from '@/lib/receipt'
+import { receiptHtml, receiptCss, receiptWidth, printReceipt, type ReceiptData } from '@/lib/receipt'
 import { parseCheckSettings, resolveCheckSettings, type CheckSettings } from '@/config/checkSettings'
 
 interface Props {
@@ -75,6 +75,7 @@ export function ReceiptModal({ txId, trialId, autoPrint, onClose }: Props) {
           <style>{receiptCss}</style>
           <div
             className="receipt shadow-md"
+            style={{ width: receiptWidth(settings) }}
             dangerouslySetInnerHTML={{ __html: receiptHtml(data, settings) }}
           />
         </div>
