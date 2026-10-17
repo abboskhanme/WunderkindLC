@@ -194,6 +194,8 @@ export interface DiscountReportSummary {
   sharePct: number
   /** Joriy oyda beriladigan chegirma summasi. */
   currentMonthDiscount: number
+  /** O'quvchidan tushgan — shu oylar hisobini yopgan to'lovlar (chegirmani markaz qoplaydi). */
+  periodPaid: number
 }
 
 export interface DiscountReportMonth {
@@ -202,6 +204,8 @@ export interface DiscountReportMonth {
   discount: number
   /** Shu oyda chegirma olgan o'quvchilar soni. */
   students: number
+  /** O'quvchidan tushgan (shu oy hisobini yopgan to'lovlar). */
+  paid: number
 }
 
 export interface DiscountReportTeacher {
@@ -211,6 +215,8 @@ export interface DiscountReportTeacher {
   discount: number
   students: number
   groups: number
+  /** O'quvchidan tushgan (o'qituvchi guruhlari bo'yicha). */
+  paid: number
 }
 
 export interface DiscountReportGroup {

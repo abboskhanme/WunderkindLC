@@ -91,17 +91,21 @@ public record StudentDiscountCancelDto(string? Reason);
 /// <param name="StudentCount">Chegirmasi bor (arxivlanmagan) o'quvchilar soni.</param>
 /// <param name="TotalStudents">Arxivlanmagan o'quvchilar soni — ulush uchun maxraj.</param>
 /// <param name="PeriodCharged">Davrdagi BARCHA hisoblar yig'indisi (chegirmalilar emas).</param>
+/// <param name="PeriodPaid">O'QUVCHIDAN TUSHGAN — shu oylar hisobini yopgan to'lovlar (TZ 1.6; `DebtLedger`).
+/// Chegirmani esa markaz qoplaydi: o'qituvchi maoshi to'liq summadan (`billing.md` «FOIZ BAZASI»).</param>
 public record DiscountReportSummaryDto(
     int ActiveCount, int StudentCount, int TotalStudents, decimal StudentSharePct,
     decimal PeriodCharged, decimal PeriodDiscount, decimal SharePct,
-    decimal CurrentMonthDiscount);
+    decimal CurrentMonthDiscount, decimal PeriodPaid = 0m);
 
 /// <summary>Oy kesimi. Chegirmasiz oy ham 0 bilan qaytadi — grafik uzilmasin.</summary>
-public record DiscountReportMonthDto(string Month, decimal Charged, decimal Discount, int Students);
+/// <param name="Paid">O'quvchidan tushgan (shu oy hisobini yopgan to'lovlar).</param>
+public record DiscountReportMonthDto(string Month, decimal Charged, decimal Discount, int Students, decimal Paid = 0m);
 
 /// <summary>O'qituvchi kesimi (hisob QAYSI guruhda yozilganiga qarab).</summary>
 public record DiscountReportTeacherDto(
-    string TeacherId, string TeacherName, decimal Charged, decimal Discount, int Students, int Groups);
+    string TeacherId, string TeacherName, decimal Charged, decimal Discount, int Students, int Groups,
+    decimal Paid = 0m);
 
 /// <summary>Guruh kesimi.</summary>
 public record DiscountReportGroupDto(

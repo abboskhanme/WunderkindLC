@@ -207,6 +207,11 @@ export const adminPermissions: AdminPermSection[] = [
       // meros tufayli u holda BARCHA `students` ruxsatli xodim chegirma SUMMALARINI ko'rardi
       // («Bonus hisoboti» bilan bir xil sabab, `.claude/rules/permissions.md` §9).
       { key: 'finance.discounts', label: 'Chegirmalar hisoboti' },
+      // Moliya hisobotlari (SPEC-backlog-2026-10-17 F1) — har biri ALOHIDA sahifa, shuning uchun o'z kaliti
+      // (`permissions.md` §10): javobda summalar va ota-ona telefonlari bor, Moliyani to'liq ochmasdan beriladi.
+      { key: 'finance.debts', label: 'Qarzdorlik tahlili' },
+      { key: 'finance.tariffs', label: 'Guruhlar va tariflar' },
+      { key: 'finance.invoices', label: 'Hisob-fakturalar' },
     ],
   },
   {

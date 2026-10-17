@@ -218,6 +218,25 @@ public class StaffRolesAndSalaryBaseTests
     }
 
     [Fact]
+    public async Task HOZIR_CHIQADIGAN__markaz_qoplagan_chegirma_qarzdorlar_tolasa_qismiga_KIRMAYDI()
+    {
+        // TZ 1.6 (2026-10-17): chegirmani markaz qoplaydi — u hech qachon "qarzdordan" kelmaydi. Ilgari 200 000 lik
+        // chegirmaning ulushi ham «Qarzdorlar to'lasa yana +X» bo'lib ko'rinardi.
+        using var db = TestDb.Sqlite();
+        var ctx = db.Context;
+        var (t, g, s) = Setup(ctx, Cutover);
+        Charge(ctx, s, g, Cutover, 600_000m, discount: 200_000m);   // sof 400 000
+        Pay(ctx, s, g, Cutover, 200_000m);                          // qarz 200 000
+        await ctx.SaveChangesAsync();
+
+        var m = (await SalaryLedger.BuildAsync(ctx, t, Cutover, Cutover)).Months.Single(x => x.Month == Cutover);
+
+        Assert.Equal(300_000m, m.Expected);            // to'liq summadan — chegirma maoshni kamaytirmaydi
+        Assert.Equal(200_000m, m.CollectedExpected);   // (200 000 tushgan + 200 000 chegirma) × 50%
+        Assert.Equal(100_000m, m.Expected - m.CollectedExpected);   // = qarz 200 000 × 50%
+    }
+
+    [Fact]
     public async Task Yigilgan_bazali_oyda_HOZIR_CHIQADIGAN_rasmiy_oylikning_ozi()
     {
         using var db = TestDb.Sqlite();

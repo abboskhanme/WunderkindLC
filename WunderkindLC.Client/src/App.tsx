@@ -41,6 +41,9 @@ const CrmStatsPage = lazy(() => import('@/pages/admin/leads/CrmStatsPage').then(
 const LostLeadsReportPage = lazy(() => import('@/pages/admin/leads/LostLeadsReportPage').then((m) => ({ default: m.LostLeadsReportPage })))
 const ReportsPage = lazy(() => import('@/pages/admin/reports/ReportsPage').then((m) => ({ default: m.ReportsPage })))
 const DiscountsReportPage = lazy(() => import('@/pages/admin/reports/DiscountsReportPage').then((m) => ({ default: m.DiscountsReportPage })))
+const DebtReportPage = lazy(() => import('@/pages/admin/reports/DebtReportPage').then((m) => ({ default: m.DebtReportPage })))
+const TariffReportPage = lazy(() => import('@/pages/admin/reports/TariffReportPage').then((m) => ({ default: m.TariffReportPage })))
+const InvoicesReportPage = lazy(() => import('@/pages/admin/reports/InvoicesReportPage').then((m) => ({ default: m.InvoicesReportPage })))
 const SchoolGradesReportPage = lazy(() => import('@/pages/admin/reports/SchoolGradesReportPage').then((m) => ({ default: m.SchoolGradesReportPage })))
 const RatingReportPage = lazy(() => import('@/pages/admin/reports/RatingReportPage').then((m) => ({ default: m.RatingReportPage })))
 const RetentionLossPage = lazy(() => import('@/pages/admin/reports/RetentionLossPage').then((m) => ({ default: m.RetentionLossPage })))
@@ -292,6 +295,9 @@ export default function App() {
                 "Hisobotlar" bo'limining O'Z marshruti ostida. Chegirma BERISH avvalgidek
                 o'quvchi profilida qoladi. */}
             <Route path="hisobotlar/chegirmalar" element={<RequirePerm perm="finance.discounts"><DiscountsReportPage /></RequirePerm>} />
+            <Route path="hisobotlar/qarzdorlik" element={<RequirePerm perm="finance.debts"><DebtReportPage /></RequirePerm>} />
+            <Route path="hisobotlar/tariflar" element={<RequirePerm perm="finance.tariffs"><TariffReportPage /></RequirePerm>} />
+            <Route path="hisobotlar/hisob-fakturalar" element={<RequirePerm perm="finance.invoices"><InvoicesReportPage /></RequirePerm>} />
             <Route path="hisobotlar/sinflar" element={<RequirePerm perm="students.list"><SchoolGradesReportPage /></RequirePerm>} />
             {/* Yo'qotilgan lidlar — SOF hisobot, CRM statistikasi kaliti bilan (serverda ham `leads.stats`). */}
             <Route path="hisobotlar/yoqotilgan-lidlar" element={<RequirePerm perm="leads.stats"><LostLeadsReportPage /></RequirePerm>} />

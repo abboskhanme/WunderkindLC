@@ -88,10 +88,11 @@ const money = (n: number) => (n ? formatMoney(n) : '—')
 /** `charged` ichida `discount` qancha ulush egallaydi. */
 const share = (discount: number, charged: number) => (charged > 0 ? (discount / charged) * 100 : 0)
 
-type Tab = 'teachers' | 'groups' | 'students' | 'reasons' | 'active'
+type Tab = 'months' | 'teachers' | 'groups' | 'students' | 'reasons' | 'active'
 type StudentSort = 'name' | 'charged' | 'discount' | 'months' | 'active'
 
 const TABS: Array<[Tab, string]> = [
+  ['months', "Kim qopladi (oylar)"],
   ['teachers', "O'qituvchilar kesimi"],
   ['groups', 'Guruhlar kesimi'],
   ['students', "O'quvchilar"],
@@ -134,7 +135,7 @@ export function DiscountsReportPage() {
   const [error, setError] = useState('')
   /** Qayta yuklash so'rovi — «Yangilash» tugmasi shuni oshiradi (effekt ichida setState yo'q). */
   const [tick, setTick] = useState(0)
-  const [tab, setTab] = useState<Tab>('teachers')
+  const [tab, setTab] = useState<Tab>('months')
   const [search, setSearch] = useState('')
   const [sort, setSort] = useState<StudentSort>('discount')
   const [desc, setDesc] = useState(true)
@@ -379,6 +380,47 @@ export function DiscountsReportPage() {
                 ))}
               </div>
 
+              {/* ---------- OYLAR: o'quvchidan tushgan va markaz qoplagan (TZ 1.6) ---------- */}
+              {tab === 'months' && (
+                <Card
+                  title="Kim qopladi — oylar kesimida"
+                  sub="O'quvchidan tushgan pul va markaz qoplagan chegirma alohida. O'qituvchi maoshi to'liq (chegirmasiz) summadan hisoblanadi — chegirma uning ulushini kamaytirmaydi."
+                  tight
+                >
+                  <div className="table-wrap">
+                    <table className="table">
+                      <thead>
+                        <tr>
+                          <th>Oy</th>
+                          <th className="num">Hisoblangan (to'liq)</th>
+                          <th className="num">O'quvchidan tushgan</th>
+                          <th className="num">Markaz qoplagan chegirma</th>
+                          <th className="num">Qoldiq qarz</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {data.months.map((m) => (
+                          <tr key={m.month}>
+                            <td className="font-medium text-slate-700">{monthLabel(m.month)}</td>
+                            <td className="num text-slate-500">{money(m.charged)}</td>
+                            <td className="num font-semibold text-indigo-600">{money(m.paid)}</td>
+                            <td className="num font-semibold text-sky-600">{money(m.discount)}</td>
+                            <td className="num">{money(Math.max(0, m.charged - m.discount - m.paid))}</td>
+                          </tr>
+                        ))}
+                        <tr className="bg-slate-50 font-semibold">
+                          <td>Jami</td>
+                          <td className="num">{money(s.periodCharged)}</td>
+                          <td className="num text-indigo-600">{money(s.periodPaid)}</td>
+                          <td className="num text-sky-600">{money(s.periodDiscount)}</td>
+                          <td className="num">{money(Math.max(0, s.periodCharged - s.periodDiscount - s.periodPaid))}</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </Card>
+              )}
+
               {/* ---------- O'QITUVCHILAR ---------- */}
               {tab === 'teachers' && (
                 <Card
@@ -397,7 +439,8 @@ export function DiscountsReportPage() {
                             <th className="num">Guruhlar</th>
                             <th className="num">O'quvchilar</th>
                             <th className="num">Hisoblangan</th>
-                            <th className="num">Chegirma</th>
+                            <th className="num">O'quvchidan tushgan</th>
+                            <th className="num">Markaz qoplagan</th>
                             <th className="num">Ulushi</th>
                           </tr>
                         </thead>
@@ -412,6 +455,7 @@ export function DiscountsReportPage() {
                                 <td className="num">{t.groups || '—'}</td>
                                 <td className="num">{t.students || '—'}</td>
                                 <td className="num text-slate-500">{money(t.charged)}</td>
+                                <td className="num font-semibold text-indigo-600">{money(t.paid)}</td>
                                 <td className="num font-semibold text-sky-600">{money(t.discount)}</td>
                                 <td className="num">{pctLabel(share(t.discount, t.charged))}</td>
                               </tr>

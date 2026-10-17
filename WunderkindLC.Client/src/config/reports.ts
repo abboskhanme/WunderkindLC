@@ -280,6 +280,28 @@ export const reportGroups: ReportGroup[] = [
         description: "Kimga qancha chegirma berilgan — o'quvchi, guruh va o'qituvchi kesimida",
         inNav: true,
       },
+      {
+        // SOF hisobotlar (SPEC-backlog-2026-10-17 F1) — yozuvchi amal yo'q, shuning uchun menyuda ham.
+        label: 'Qarzdorlik tahlili',
+        to: '/admin/hisobotlar/qarzdorlik',
+        perm: 'finance.debts',
+        description: "Kim, qaysi oy uchun va qancha vaqtdan beri qarzdor — oylar matritsasi, 7/30/60+ kun",
+        inNav: true,
+      },
+      {
+        label: 'Guruhlar va tariflar',
+        to: '/admin/hisobotlar/tariflar',
+        perm: 'finance.tariffs',
+        description: "Har guruhda qaysi narxda nechta o'quvchi, reja va amaldagi tushum, to'lov intizomi sust guruhlar",
+        inNav: true,
+      },
+      {
+        label: 'Hisob-fakturalar',
+        to: '/admin/hisobotlar/hisob-fakturalar',
+        perm: 'finance.invoices',
+        description: "Har oylik hisob: summa, chegirma, to'langan, qoldiq, muddati o'tganlar",
+        inNav: true,
+      },
     ],
   },
   {

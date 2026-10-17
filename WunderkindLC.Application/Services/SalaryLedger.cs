@@ -525,7 +525,11 @@ public static class SalaryLedger
                     contribution = decimal.Round(salaryBase * pct / 100m, 2);
                     // "Hammasi to'lansa" — hisoblangan bazada maoshning O'ZI (pul kelishiga bog'liq emas).
                     potential = UsesChargedBase(month, bases.ChargedFrom) ? contribution : decimal.Round(chg * pct / 100m, 2);
-                    collectedContribution = decimal.Round(col * pct / 100m, 2);
+                    // «Hozir chiqadigan»: tushgan pul + MARKAZ QOPLAGAN chegirma (hisoblangan bazada chegirma maoshni
+                    // kamaytirmaydi — u hech qachon "qarzdordan" kelmaydi). Ilgari faqat tushgan pul olinardi va
+                    // chegirma ulushi «Qarzdorlar to'lasa yana +X» bo'lib ko'rinardi (TZ 1.6, 2026-10-17).
+                    var centreCovered = UsesChargedBase(month, bases.ChargedFrom) ? Math.Max(0m, salaryBase - chg) : 0m;
+                    collectedContribution = Math.Min(contribution, decimal.Round((col + centreCovered) * pct / 100m, 2));
                     groupPeriodCollected[g.Id] += col;
                     monthCollected += col;
                     monthSalaryBase += salaryBase;
@@ -686,7 +690,9 @@ public static class SalaryLedger
             {
                 var baseCollected = anyConfigured
                     ? decimal.Round(grossCollectedSum, 2)
-                    : Math.Max(0m, decimal.Round(TotalCollected(month) * teacher.SalaryPercent / 100m, 2) - monthSubstituteDeduction);
+                    : Math.Max(0m, decimal.Round(
+                        (TotalCollected(month) + Math.Max(0m, TotalSalaryBase(month) - TotalCharged(month)))
+                        * teacher.SalaryPercent / 100m, 2) - monthSubstituteDeduction);
                 var dedCollected = journalLinked && plannedTotal > 0 ? decimal.Round(collectedGroupDeduction, 2) : 0m;
                 collectedExpected = Math.Min(expected, Math.Max(0m, baseCollected + monthSubstituteFee - dedCollected - fineApplied - manualApplied));
             }

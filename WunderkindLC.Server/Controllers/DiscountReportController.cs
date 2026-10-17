@@ -96,6 +96,13 @@ public class DiscountReportController(AppDbContext db) : ControllerBase
                 g => g.Key,
                 g => g.OrderByDescending(d => d.CreatedAt, StringComparer.Ordinal).ToList());
 
+        // ---------- (3.5) O'QUVCHIDAN TUSHGAN (TZ 1.6) — kassadagi to'lov oynasi qoidasi bilan (`DebtLedger`):
+        // shu oy hisobini yopgan to'lov (sofdan oshmaydi, vozvrat ayrilgan). Chegirmani markaz qoplaydi —
+        // ikkalasi yonma-yon ko'rinsin: "o'quvchi qancha to'ladi, markaz qancha ko'tardi".
+        var paidCells = (await DebtLedger.LoadAsync(db, fromMonth, toMonth)).Where(c => c.HasCharge).ToList();
+        var paidByMonth = paidCells.GroupBy(c => c.Month).ToDictionary(g => g.Key, g => g.Sum(c => c.Applied));
+        var paidByGroup = paidCells.GroupBy(c => c.GroupId).ToDictionary(g => g.Key, g => g.Sum(c => c.Applied));
+
         // ---------- (4) Jamlanma ----------
         var periodCharged = charges.Sum(c => c.Amount);
         var periodDiscount = charges.Sum(c => c.Discount);
@@ -108,14 +115,16 @@ public class DiscountReportController(AppDbContext db) : ControllerBase
             PeriodCharged: periodCharged,
             PeriodDiscount: periodDiscount,
             SharePct: Share(periodDiscount, periodCharged),
-            CurrentMonthDiscount: charges.Where(c => c.Month == current).Sum(c => c.Discount));
+            CurrentMonthDiscount: charges.Where(c => c.Month == current).Sum(c => c.Discount),
+            PeriodPaid: paidCells.Sum(c => c.Applied));
 
         // ---------- (5) Oy kesimi — davrdagi HAR oy (chegirmasizi ham 0 bilan) ----------
         var byMonthRaw = charges.GroupBy(c => c.Month).ToDictionary(g => g.Key, g => g.ToList());
         var months = TuitionService.MonthRange(fromMonth, toMonth)
             .Select(m => byMonthRaw.TryGetValue(m, out var rows)
                 ? new DiscountReportMonthDto(m, rows.Sum(r => r.Amount), rows.Sum(r => r.Discount),
-                    rows.Where(r => r.Discount != 0m).Select(r => r.StudentId).Distinct().Count())
+                    rows.Where(r => r.Discount != 0m).Select(r => r.StudentId).Distinct().Count(),
+                    paidByMonth.GetValueOrDefault(m))
                 : new DiscountReportMonthDto(m, 0m, 0m, 0))
             .ToList();
 
@@ -128,7 +137,9 @@ public class DiscountReportController(AppDbContext db) : ControllerBase
                 g.Key.Item1, g.Key.Item2,
                 g.Sum(c => c.Amount), g.Sum(c => c.Discount),
                 g.Where(c => c.Discount != 0m).Select(c => c.StudentId).Distinct().Count(),
-                g.Where(c => c.GroupId is not null).Select(c => c.GroupId!).Distinct().Count()))
+                g.Where(c => c.GroupId is not null).Select(c => c.GroupId!).Distinct().Count(),
+                g.Select(c => c.GroupId ?? DebtLedger.NoGroup).Distinct()
+                    .Sum(gid => paidByGroup.GetValueOrDefault(gid))))
             .OrderByDescending(t => t.Discount)
             .ToList();
 

@@ -42,6 +42,10 @@ export const mainReportRoutes = new Set([
   '/admin/hisobotlar/reyting',
   // Taklif va shikoyatlar — egasining qarori (2026-10-15): Nazorat'dan asosiy "Hisobotlar"ga ko'chirildi.
   '/admin/boshqaruv/feedback',
+  // Moliya hisobotlari — egasining TZ'si (2026-10-17): qarzdorlik, tariflar, hisob-fakturalar.
+  '/admin/hisobotlar/qarzdorlik',
+  '/admin/hisobotlar/tariflar',
+  '/admin/hisobotlar/hisob-fakturalar',
 ])
 
 /**
@@ -274,6 +278,10 @@ export const navByRole: Record<Role, NavItem[]> = {
         { label: 'Reyting', to: '/admin/hisobotlar/reyting', perm: 'classes.rating' },
         // Ota-ona/o'quvchi/o'qituvchi kabinetidan yuborilgan taklif va shikoyatlar (2026-10-15, Nazorat'dan ko'chirildi).
         { label: 'Taklif va shikoyatlar', to: '/admin/boshqaruv/feedback', perm: 'feedback' },
+        // Moliya hisobotlari — egasining TZ'si (2026-10-17, `docs/SPEC-backlog-2026-10-17.md` F1).
+        { label: 'Qarzdorlik tahlili', to: '/admin/hisobotlar/qarzdorlik', perm: 'finance.debts' },
+        { label: 'Guruhlar va tariflar', to: '/admin/hisobotlar/tariflar', perm: 'finance.tariffs' },
+        { label: 'Hisob-fakturalar', to: '/admin/hisobotlar/hisob-fakturalar', perm: 'finance.invoices' },
       ],
     },
     {
