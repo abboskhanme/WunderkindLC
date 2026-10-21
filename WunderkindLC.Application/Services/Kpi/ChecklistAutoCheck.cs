@@ -1,5 +1,6 @@
 using System.Globalization;
 using WunderkindLC.Application.Abstractions;
+using WunderkindLC.Domain;
 using Microsoft.EntityFrameworkCore;
 
 namespace WunderkindLC.Application.Services.Kpi;
@@ -29,9 +30,13 @@ public static class ChecklistAutoCheck
      *  KALITLAR
      * ========================================================================================= */
 
-    // (Topshiriq bandlari — "auto:tasks.overdue_zero", "auto:tasks.due_done", "auto:leads.without_task_zero" —
-    //  2026-10-21 dan QO'LDA: ularning manbai Kanban «Topshiriqlar» (WorkTask) edi, u olib tashlandi. Seed kalitlari
-    //  o'zgarmadi — qo'llanmagan kalit sinf izohidagi qoida bo'yicha jimgina qo'lda belgilanadigan bandga aylanadi.)
+    /// <summary>Kechikkan topshiriq YO'Q (kun boshida) — HR topshiriqlari (<c>HrTask</c>, 2026-10-21 gacha Kanban).</summary>
+    public const string TasksOverdueZero = "auto:tasks.overdue_zero";
+    /// <summary>Shu kunga muddati belgilangan HR topshiriqlarining HAMMASI yopilgan.</summary>
+    public const string TasksDueDone = "auto:tasks.due_done";
+    // ("auto:leads.without_task_zero" — 2026-10-21 dan QO'LDA: lid ↔ topshiriq bog'lanishi Kanban «Topshiriqlar»
+    //  (WorkTask.Tags/LeadId) da edi, HR topshiriqlarida lid tushunchasi yo'q. Seed kaliti o'zgarmadi — qo'llanmagan
+    //  kalit sinf izohidagi qoida bo'yicha jimgina qo'lda belgilanadigan bandga aylanadi.)
     // (Qo'ng'iroq bandlari — "auto:calls.missed_returned", "auto:calls.answer_speed" — 2026-10 dan QO'LDA:
     //  ularning manbai Local Call agent-ilovasi edi, u olib tashlandi. Seed kalitlari o'zgarmadi —
     //  qo'llanmagan kalit sinf izohidagi qoida bo'yicha jimgina qo'lda belgilanadigan bandga aylanadi.)
@@ -44,7 +49,7 @@ public static class ChecklistAutoCheck
     /// </summary>
     public static IReadOnlySet<string> Supported { get; } = new HashSet<string>(StringComparer.Ordinal)
     {
-        JournalYesterdayFilled,
+        TasksOverdueZero, TasksDueDone, JournalYesterdayFilled,
     };
 
 
@@ -79,6 +84,31 @@ public static class ChecklistAutoCheck
             return result;
 
         var prevIso = day.AddDays(-1).ToString("yyyy-MM-dd");
+
+        /* ---------- HR topshiriqlari (bitta so'rov, ikkala kalit uchun) ---------- */
+        if (wanted.Contains(TasksOverdueZero) || wanted.Contains(TasksDueDone))
+        {
+            // Kun chegaralari HR modulining O'Z vaqt mintaqasida (hr_settings) — "bugun" u bilan bir xil bo'lsin.
+            var zone = HrValues.Zone(await db.HrSettings.AsNoTracking().Select(x => x.Timezone).FirstOrDefaultAsync(ct));
+            var dayStart = HrValues.DayStart(day, zone);
+            var nextDayStart = HrValues.DayStart(day.AddDays(1), zone);
+            // Xodimning OCHIQ (open/returned) topshiriqlari muddati shu kun oxirigacha. HR qatori yo'q xodimda
+            // topshiriq ham yo'q → ikkala band O'TADI (shubha xodim foydasiga).
+            var openDue = await (from t in db.HrTasks.AsNoTracking()
+                                 join e in db.HrEmployees.AsNoTracking() on t.EmployeeId equals e.Id
+                                 where e.UserId == userId
+                                       && (t.Status == HrTaskStatuses.Open || t.Status == HrTaskStatuses.Returned)
+                                       && t.DueAt < nextDayStart
+                                 select t.DueAt).ToListAsync(ct);
+
+            // Kechikkan = muddati shu KUNDAN OLDIN va hamon ochiq. Shu kunga qo'yilgani hali kechikmagan
+            // (kun tugamagan) — aks holda ertalab belgilangan cheklist har doim "bajarilmadi" bo'lardi.
+            if (wanted.Contains(TasksOverdueZero))
+                result[TasksOverdueZero] = !openDue.Any(d => d < dayStart);
+            // Shu kunga muddati qo'yilganlarning hammasi yopilgan. Bironta ham bo'lmasa: bajariladigan ish yo'q edi → o'tadi.
+            if (wanted.Contains(TasksDueDone))
+                result[TasksDueDone] = !openDue.Any(d => d >= dayStart);
+        }
 
         /* ---------- Jurnal ---------- */
         if (wanted.Contains(JournalYesterdayFilled))

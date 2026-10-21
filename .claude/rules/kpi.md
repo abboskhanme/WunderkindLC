@@ -197,10 +197,14 @@ chunki raqamning ma'nosi shu ta'riflarga bog'liq.
 
 ## 11. Cheklistni AVTOMATIK belgilash — `ChecklistAutoCheck`
 
-Hozir **1** kalit qo'llangan (`Supported`): `journal.yesterday_filled`. Qolganlari QO'LDA
-(`calls.missed_returned` va `calls.answer_speed` 2026-10 dan qo'lda — §11.1; `tasks.overdue_zero`,
-`tasks.due_done`, `leads.without_task_zero` 2026-10-21 dan qo'lda — manbai Kanban «Topshiriqlar» edi, u olib
-tashlandi. Seed kalitlari o'zgarmadi — HR topshiriqlariga ulash kerak bo'lsa ALOHIDA ish).
+Hozir **3** kalit qo'llangan (`Supported`): `tasks.overdue_zero` · `tasks.due_done` · `journal.yesterday_filled`.
+Qolganlari QO'LDA (`calls.missed_returned` va `calls.answer_speed` 2026-10 dan qo'lda — §11.1; `leads.without_task_zero`
+2026-10-21 dan qo'lda — lid ↔ topshiriq bog'lanishi Kanban «Topshiriqlar» da edi, u olib tashlandi).
+
+⚠️ **Topshiriq bandlari 2026-10-21 dan HR topshiriqlaridan** (`HrTask`, `.claude/rules/hr-tasks.md`; ilgari Kanban
+`WorkTask`): xodim = `HrEmployee.UserId`, ochiq = `open`/`returned`, kun chegaralari HR sozlamasidagi vaqt mintaqasida.
+Kechikkan = muddati shu kundan OLDIN va hamon ochiq; «bugungilari bajarildi» = shu kunga muddatli ochiq topshiriq yo'q.
+HR qatori/topshirig'i yo'q xodimda ikkalasi ham O'TADI (shubha xodim foydasiga). Qulf: `ChecklistAutoCheckTests`.
 
 ⚠️ **`Supported` da yo'q kalit JIM e'tiborsiz qoldiriladi** va band oddiy qo'lda belgilanadi.
 Shuning uchun seed to'liq yozilgan (66 band) — avtomatlashtirish bosqichma-bosqich qo'shiladi
