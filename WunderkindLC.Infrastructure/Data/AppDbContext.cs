@@ -1133,6 +1133,7 @@ public partial class AppDbContext(DbContextOptions<AppDbContext> options)
         ConfigureCrmAccounts(b);
         ConfigureCrmFinanceOps(b);
         ConfigureCrmLeadTasks(b);
+        ConfigureHrTasks(b);
     }
 
     partial void ConfigureCrmMessaging(ModelBuilder b);   // Phase 2
@@ -1142,6 +1143,7 @@ public partial class AppDbContext(DbContextOptions<AppDbContext> options)
     partial void ConfigureCrmAccounts(ModelBuilder b);    // Phase 6
     partial void ConfigureCrmFinanceOps(ModelBuilder b);  // Owner backlog 2026-10-17 (F3)
     partial void ConfigureCrmLeadTasks(ModelBuilder b);   // Owner backlog 2026-10-17 (F4 L1)
+    partial void ConfigureHrTasks(ModelBuilder b);        // HR topshiriqlari (docs/SPEC-hr-tasks.md)
 
     // ==================== Saqlashdan oldingi normalizatsiya ====================
 

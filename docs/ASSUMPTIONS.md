@@ -612,3 +612,12 @@
 - [2026-10-17] Avto-topshiriq muddati / muhimligi? → bugun, «Yuqori», tasdiqsiz → yangi lidga tez qo'ng'iroq; tizim yaratgan topshiriqda tasdiqlovchi yo'q
 - [2026-10-17] Tasdiqlangan chiqim sanasi? → tasdiq kuni (so'rov sanasi izohda) → pul aynan shu kuni kassadan chiqadi; o'tgan kun hisoboti orqaga o'zgarmasin
 - [2026-10-17] expenseApproval kalitini kim beradi? → faqat superadmin → admin o'zi yaratgan akkaunt bilan o'z chiqimini tasdiqlay olmasin
+- [2026-10-21] HR tasks: LC has no global snake_case naming → HR tables/columns/keys named explicitly in `AppDbContext.HrTasks.cs` (LMS names, incl. `fk_hr_employees_users_user_id`) → schema identical to LMS, so the old-HR/LMS import SQL and docs apply unchanged; the rest of the LC model stays PascalCase.
+- [2026-10-21] HR tasks: invite → `inviteCode = ""` + bot link (409 when already linked) → LC has no admin-issued one-time link code; a chat links itself when the employee logs in inside the bot's Panel (Mini App).
+- [2026-10-21] HR tasks Telegram messages → one «📋 Topshiriqlarim» web_app button (panel `admin/hr/mening-topshiriqlarim`, teacher `teacher/topshiriqlar`, digest `admin/hr/topshiriqlar`) → LMS sends plain text; in LC the Mini App IS the web panel, so the button takes the employee straight to the task.
+- [2026-10-21] HR tasks chats → `TelegramRegistrations` by `UserId` (staff/admin) or by the user's teacher card `TeacherId`, blocked rows skipped → LC stores teacher links on the card (TelegramMiniAppLink), not the account.
+- [2026-10-21] HR tasks permission tokens → any `hrTasks` token opens the panel (PermissionRules.HasSection), `canManage` = bare key → LC has no `:view` tokens; mirrors LMS `hrTasks` vs `hrTasks:view`.
+- [2026-10-21] HR tasks: people sync roles → teacher (active card), staff, admin; superadmin and platformowner skipped; new rows `branch = center` → LC has no cashier role; this system is the learning centre.
+- [2026-10-21] HR tasks audit → only the staff ACCOUNT the HR panel creates gets one `Staff` audit row → LMS writes none; LC audit.md §3.5 requires every account creation to leave a trace.
+- [2026-10-21] HR tasks backup → `hr*` business tables in the daily JSON backup, `hrTaskReminders`/`hrJobRuns` in `ExcludedTables` → admin-core.md §4 "new table → backup or excluded with a reason".
+- [2026-10-21] StaffActivity "closed tasks" → counts HR tasks the employee completed (done, CompletedAt in window) → the Kanban count it replaced is removed with the Kanban.

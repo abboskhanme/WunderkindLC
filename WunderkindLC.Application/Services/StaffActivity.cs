@@ -15,7 +15,7 @@ public record StaffActivityDto(
 /// XODIMLAR FAOLLIGI (TZ 3.1: "xodimlar profiliga oxirgi kirgan vaqti, faolligi statistikasi"). Faqat O'QIYDI.
 ///
 /// <para>Manbalar (davr — oxirgi <c>days</c> kun): «O'zgarishlar tarixi» qatorlari (<c>AuditLog.ActorId</c>), yopilgan
-/// topshiriqlar (<c>WorkTask.CompletedById</c>), ishlangan lidlar (<c>LeadEvent.ActorUserId</c>, TAKRORSIZ lidlar) va
+/// topshiriqlar (<c>WorkTask.CompletedById</c>; Topshiriqlar (HR) — xodimning o'zi BAJARGAN <c>HrTask</c>lari), ishlangan lidlar (<c>LeadEvent.ActorUserId</c>, TAKRORSIZ lidlar) va
 /// o'qituvchida davomati olingan darslar (<c>LessonNote.AttendanceTakenAt</c>, o'tgan guruh egasi bo'yicha emas —
 /// davomatni olgan odam). <b>Oxirgi ko'rinish</b> — oxirgi login va oxirgi token yangilanishining kechrog'i: sessiya
 /// uzoq yashaydi, faqat login vaqti haftalab eskirib ko'rinardi.</para>
@@ -70,6 +70,16 @@ public static class StaffActivity
                 .Select(g => new { g.Key, N = g.Count() })
                 .ToListAsync(ct))
             .ToDictionary(x => x.Key, x => x.N);
+        // Topshiriqlar (HR, docs/SPEC-hr-tasks.md): the employee's own tasks completed in the window — by the
+        // HR row's account. CompletedAt is an instant (UTC) — compared with the same local window as an instant.
+        var sinceInstant = new DateTimeOffset(AppClock.ToUtc(sinceLocal), TimeSpan.Zero);
+        var hrDone = (await (from t in db.HrTasks.AsNoTracking()
+                             join e in db.HrEmployees.AsNoTracking() on t.EmployeeId equals e.Id
+                             where t.Status == HrTaskStatuses.Done && t.CompletedAt != null && t.CompletedAt >= sinceInstant
+                             select e.UserId)
+                .ToListAsync(ct))
+            .GroupBy(u => u)
+            .ToDictionary(g => g.Key, g => g.Count());
         var leads = (await db.LeadEvents.AsNoTracking()
                 .Where(e => e.ActorUserId != null && string.Compare(e.CreatedAt, since) >= 0)
                 .Select(e => new { e.ActorUserId, e.LeadId })
@@ -87,7 +97,8 @@ public static class StaffActivity
 
         StaffActivityDto Row(string kind, string id, string userId, string? lastLogin) => new(
             kind, id, lastLogin, Later(lastLogin, lastRefresh.GetValueOrDefault(userId)),
-            audits.GetValueOrDefault(userId), tasks.GetValueOrDefault(userId), leads.GetValueOrDefault(userId),
+            audits.GetValueOrDefault(userId), tasks.GetValueOrDefault(userId) + hrDone.GetValueOrDefault(userId),
+            leads.GetValueOrDefault(userId),
             lessons.GetValueOrDefault(userId));
 
         var byUser = users.ToDictionary(u => u.Id);

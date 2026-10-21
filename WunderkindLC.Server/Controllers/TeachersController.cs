@@ -259,6 +259,11 @@ public class TeachersController(AppDbContext db, AuditService audit, IConfigurat
         if (teacher is null) return NotFound();
         // O'qituvchi guruhda MAJBURIY — faol guruhga biriktirilgan bo'lsa o'chirib bo'lmaydi (yetim TeacherId oldini olish).
         if (await ActiveGroupsGuardAsync(id, "o'chirib") is { } blocked) return blocked;
+        // `hr_employees.user_id` is RESTRICT (Topshiriqlar history) — a readable 409, not a 500. Every teacher has
+        // an HR row (auto-sync); only one WITH history blocks the delete (StaffController.HrEmployeeDeleteMessage).
+        if (teacher.UserId is not null
+            && !await WunderkindLC.Application.HrTasks.HrTasksService.ReleaseUnusedEmployeeAsync(db, teacher.UserId))
+            return Conflict(new { message = StaffController.HrEmployeeDeleteMessage });
         var reason = string.IsNullOrWhiteSpace(reasonId) ? "" : (await db.ActionReasons.Where(r => r.Id == reasonId).Select(r => r.Label).FirstOrDefaultAsync() ?? "");
         // Biriktirilgan tizim akkauntini ham o'chiramiz.
         if (teacher.UserId is not null)

@@ -402,6 +402,17 @@ builder.Services.AddHostedService<CareerBotService>();
 // (Mini App). Token bo'sh bo'lsa bot jim kutadi.
 builder.Services.AddSingleton<TeacherTelegramService>();
 builder.Services.AddHostedService<TeacherBotService>();
+// TOPSHIRIQLAR (HR) — WunderkindLMS'dan 1:1 ko'chirilgan modul (docs/SPEC-hr-tasks.md, .claude/rules/hr-tasks.md).
+// Telegram va fayllar portlar orqasida (testlar soxtasini qo'yadi). Rejalashtiruvchi har 5 daqiqada uyg'onadi
+// (nusxa yaratish, ertalabki ro'yxat, muddat eslatmasi, kechki yakun); hr_job_runs har ishni kuniga BIR marta
+// bajartiradi. IMPORT REJIMIDA ishga tushmaydi — ko'chirish paytida xodimlarga xabar ketmasin.
+builder.Services.AddScoped<WunderkindLC.Application.HrTasks.HrTasksService>();
+builder.Services.AddSingleton<WunderkindLC.Application.HrTasks.IHrTelegramSender,
+                              WunderkindLC.Application.HrTasks.TelegramHrSender>();
+builder.Services.AddSingleton<WunderkindLC.Application.HrTasks.IHrFileStore,
+                              WunderkindLC.Application.HrTasks.LocalHrFileStore>();
+if (!WunderkindLC.Application.Services.ImportMode.Enabled)
+    builder.Services.AddHostedService<WunderkindLC.Application.HrTasks.HrTasksScheduler>();
 // MARKETING — INSTAGRAM AI AGENTI.
 // `InstagramApi` — Graph API mijozi: typed HttpClient (`AddHttpClient<T>`), ya'ni ulanishlar
 // pulda boshqariladi va socket tugab qolmaydi (`CameraGateway` bilan bir xil naqsh).
@@ -863,6 +874,18 @@ try
 catch (Exception ex)
 {
     app.Logger.LogWarning(ex, "[seed] majburiy moliya turlari seed qilinmadi (migratsiya qo'llanmagan bo'lsa normal)");
+}
+
+// TOPSHIRIQLAR (HR): yagona `hr_settings` qatori eski standartlar bilan (19:00 yakun Du–Sh, 07:30 ertalabki
+// ro'yxat, 120/60/30 daqiqa eslatma) — FAQAT yo'q bo'lsa. TRY-CATCH: jadval yo'q bo'lsa logga yozib o'tadi.
+try
+{
+    if (await WunderkindLC.Application.HrTasks.HrTasksSeeder.SeedAsync(db))
+        app.Logger.LogInformation("[seed] Topshiriqlar (HR): standart sozlamalar qo'shildi");
+}
+catch (Exception ex)
+{
+    app.Logger.LogWarning(ex, "[seed] Topshiriqlar (HR) sozlamalari qo'shilmadi (migratsiya qo'llanmagan bo'lsa normal)");
 }
 
 // KPI: rol QOIDALARI (Excel konstantalari) va kunlik CHEKLIST shablonlari.

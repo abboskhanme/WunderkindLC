@@ -80,6 +80,8 @@ public static class BackupService
         "studentCredentials",
         // Davomat seriyalari (U3d) — jurnaldan qayta hisoblanadi (hosila ma'lumot).
         "absenceStreakAlerts",
+        // Topshiriqlar (HR): yuborilgan eslatmalar va kunlik ishlar jurnali — texnik (takror yubormaslik belgilari).
+        "hrTaskReminders", "hrJobRuns",
     };
 
     /// <summary>Biznes jadvallarini JSON (UTF-8 baytlar) ko'rinishida yig'adi (siqilmagan — testlar va
@@ -280,6 +282,16 @@ public static class BackupService
         await Add("checklistTemplates", db.ChecklistTemplates);
         await Add("checklistTemplateItems", db.ChecklistTemplateItems);
         await Add("checklistEntries", db.ChecklistEntries);
+        // ---- Topshiriqlar (HR, docs/SPEC-hr-tasks.md) — fayllarning O'ZI uploads/hr da (tungi tar zaxirasida) ----
+        await Add("hrPositions", db.HrPositions);
+        await Add("hrEmployees", db.HrEmployees);
+        await Add("hrEmployeeManagers", db.HrEmployeeManagers);
+        await Add("hrTaskTemplates", db.HrTaskTemplates);
+        await Add("hrTasks", db.HrTasks);
+        await Add("hrTaskProofs", db.HrTaskProofs);
+        await Add("hrTaskProgress", db.HrTaskProgress);
+        await Add("hrTaskAttachments", db.HrTaskAttachments);
+        await Add("hrSettings", db.HrSettings);
         // ---- Instagram (biznes qismi; tokenlar `SecretScrub` bilan tushadi) ----
         await Add("igAccounts", db.IgAccounts);
         await Add("igAutoRules", db.IgAutoRules);
