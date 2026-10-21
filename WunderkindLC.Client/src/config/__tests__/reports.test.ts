@@ -109,6 +109,8 @@ function leafRoutes(items: { to: string; children?: { to: string; children?: unk
 describe('edutizim menyusi', () => {
   it("guruhlar edutizimdagi TARTIBDA, eng pastda 'Future'", () => {
     expect(navByRole.admin.map((i) => i.label)).toEqual([
+      // HR topshiriqlari (docs/SPEC-hr-tasks.md, LMS'dan 1:1): har xodimning o'z topshiriqlari — yuqori band.
+      'Mening topshiriqlarim',
       'Lidlar',
       'Guruh',
       "O'quvchilar",
@@ -116,6 +118,8 @@ describe('edutizim menyusi', () => {
       'Moliya',
       'Nazorat',
       'Boshqaruv',
+      // HR topshiriqlari paneli — LMS'dagi «HR → TOPSHIRIQLAR» (LC'da «HR» bo'limi yo'q).
+      'Topshiriqlar',
       'Sotuv va marketing',
       // Egasining TZ'si (2026-10-17, F5 N1): Instagram marketing — o'z asosiy guruhi.
       'Instagram marketing',

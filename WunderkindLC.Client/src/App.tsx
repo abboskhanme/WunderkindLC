@@ -186,6 +186,15 @@ const CertificatesPage = lazy(() => import('@/pages/student/Certificates').then(
 const StudentContractsScreen = lazy(() => import('@/pages/student/Contracts').then((m) => ({ default: m.StudentContractsScreen })))
 const StudentTestResultsScreen = lazy(() => import('@/pages/student/TestResults').then((m) => ({ default: m.StudentTestResultsScreen })))
 const StudentScheduleScreen = lazy(() => import('@/pages/student/Schedule').then((m) => ({ default: m.StudentScheduleScreen })))
+// HR topshiriqlari (docs/SPEC-hr-tasks.md) — LMS'dagi panel va "Mening topshiriqlarim" 1:1.
+const HrDashboardPage = lazy(() => import('@/pages/admin/hr-tasks/HrDashboardPage').then((m) => ({ default: m.HrDashboardPage })))
+const HrTasksPage = lazy(() => import('@/pages/admin/hr-tasks/HrTasksPage').then((m) => ({ default: m.HrTasksPage })))
+const HrTaskCreatePage = lazy(() => import('@/pages/admin/hr-tasks/HrTaskCreatePage').then((m) => ({ default: m.HrTaskCreatePage })))
+const HrTemplatesPage = lazy(() => import('@/pages/admin/hr-tasks/HrTemplatesPage').then((m) => ({ default: m.HrTemplatesPage })))
+const HrEmployeesPage = lazy(() => import('@/pages/admin/hr-tasks/HrEmployeesPage').then((m) => ({ default: m.HrEmployeesPage })))
+const HrReportsPage = lazy(() => import('@/pages/admin/hr-tasks/HrReportsPage').then((m) => ({ default: m.HrReportsPage })))
+const HrSettingsPage = lazy(() => import('@/pages/admin/hr-tasks/HrSettingsPage').then((m) => ({ default: m.HrSettingsPage })))
+const HrMyTasksPage = lazy(() => import('@/pages/admin/hr-tasks/HrMyTasksPage').then((m) => ({ default: m.HrMyTasksPage })))
 
 // Lazy sahifa chunk'i yuklanayotganda ko'rsatiladigan zaxira ekran.
 // ⚠️ Bu TASHQI boundary faqat LAYOUTSIZ marshrutlar (login, ommaviy sahifalar) uchun:
@@ -452,6 +461,17 @@ export default function App() {
             <Route path="boshqaruv/feedback" element={<RequirePerm perm="feedback"><FeedbackPage /></RequirePerm>} />
             {/* Rollar endi "Xodimlar va rollar" sahifasiga birlashtirildi */}
             <Route path="boshqaruv/roles" element={<Navigate to="/admin/boshqaruv/rollar" replace />} />
+            {/* HR → TOPSHIRIQLAR (docs/SPEC-hr-tasks.md) — LMS'dagi panel 1:1. Kalit `hrTasks` faqat panelni OCHADI;
+                kimning topshiriqlari ko'rinishini (direktor / rahbar shoxi) server hal qiladi, doiradan tashqari — 404. */}
+            <Route path="hr/topshiriqlar" element={<RequirePerm perm="hrTasks"><HrDashboardPage /></RequirePerm>} />
+            <Route path="hr/topshiriqlar/royxat" element={<RequirePerm perm="hrTasks"><HrTasksPage /></RequirePerm>} />
+            <Route path="hr/topshiriqlar/royxat/yangi" element={<RequirePerm perm="hrTasks"><HrTaskCreatePage /></RequirePerm>} />
+            <Route path="hr/topshiriqlar/takroriy" element={<RequirePerm perm="hrTasks"><HrTemplatesPage /></RequirePerm>} />
+            <Route path="hr/topshiriqlar/xodimlar" element={<RequirePerm perm="hrTasks"><HrEmployeesPage /></RequirePerm>} />
+            <Route path="hr/topshiriqlar/hisobotlar" element={<RequirePerm perm="hrTasks"><HrReportsPage /></RequirePerm>} />
+            <Route path="hr/topshiriqlar/sozlamalar" element={<RequirePerm perm="hrTasks"><HrSettingsPage /></RequirePerm>} />
+            {/* O'z topshiriqlari — HR qatori bor HAR xodim (kalitsiz); qatori yo'q bo'lsa server 403 `hr_not_employee`. */}
+            <Route path="hr/mening-topshiriqlarim" element={<HrMyTasksPage />} />
             <Route element={<ProtectedRoute role="superadmin" />}>
               <Route path="boshqaruv/branches" element={<BranchesPage />} />
               {/* Rahbariyat analitikasi (SPEC-backlog F5 D1) — yuqori paneldagi «Analitika». */}
@@ -466,6 +486,8 @@ export default function App() {
           <Route path="/kassa" element={<RequirePerm perm="kassa"><KassaMobileLayout /></RequirePerm>}>
             <Route index element={<KassaPage />} />
             <Route path="payments" element={<KassaMyPaymentsPage />} />
+            {/* HR topshiriqlari — kassir ham HR xodimi (LMS: kassirning qisqa menyusida ham bor). */}
+            <Route path="topshiriqlar" element={<HrMyTasksPage defaultTab="day" />} />
           </Route>
         </Route>
 
@@ -487,6 +509,8 @@ export default function App() {
             <Route path="support" element={<TeacherSupportPage />} />
             <Route path="salary" element={<TeacherOwnSalaryPage />} />
             <Route path="rating" element={<TeacherRatingPage />} />
+            {/* HR topshiriqlari — o'qituvchi ham HR xodimi; portal Telegram ichida ochiladi, shuning uchun KUN ko'rinishi. */}
+            <Route path="topshiriqlar" element={<HrMyTasksPage defaultTab="day" />} />
             <Route path="tests" element={<RequirePerm perm="journal"><TeacherTestsPage /></RequirePerm>} />
             <Route path="account" element={<TeacherAccountPage />} />
             <Route path="profile" element={<TeacherProfilePage />} />

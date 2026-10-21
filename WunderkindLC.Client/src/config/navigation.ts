@@ -1,6 +1,6 @@
 import { SETTINGS_GROUPS, groupPermAny } from './settingsGroups'
 import type { ComponentType } from 'react'
-import { LayoutDashboard, NotebookText } from 'lucide-react'
+import { LayoutDashboard, ListChecks, NotebookText } from 'lucide-react'
 // Admin menyusi — edutizim bilan BIR XIL ikonkalar (Tabler outline, edutizim ham shularni ishlatadi).
 import {
   IconClipboardCheck,
@@ -120,6 +120,10 @@ export const navByRole: Record<Role, NavItem[]> = {
   // sahifa ochilmaydi, yon tomonda ro'yxat chiqadi. '#' bilan boshlangan kalit hech qaysi
   // manzilga mos kelmaydi, ya'ni `activeNavTo` faqat BOLALAR bo'yicha qaror qiladi.
   admin: [
+    // HR topshiriqlari (docs/SPEC-hr-tasks.md, LMS'dan 1:1): har xodimning O'Z topshiriqlari — bo'lim emas,
+    // alohida yuqori band (LMS: "Bosh sahifa" ostida). Ruxsat kaliti YO'Q: HR qatori bor har xodim ko'radi,
+    // qatori yo'q bo'lsa server 403 `hr_not_employee` beradi va sahifa buni tushuntiradi.
+    { label: 'Mening topshiriqlarim', to: '/admin/hr/mening-topshiriqlarim', icon: ListChecks, roles: ['staff', 'admin', 'superadmin'] },
     {
       label: 'Lidlar',
       to: '#lidlar',
@@ -265,6 +269,22 @@ export const navByRole: Record<Role, NavItem[]> = {
       ],
     },
     {
+      // HR TOPSHIRIQLARI paneli (docs/SPEC-hr-tasks.md) — LMS'dagi «HR → TOPSHIRIQLAR» bilan bir xil bandlar.
+      // LC'da «HR» bo'limi yo'q, shuning uchun o'z yuqori guruhi («Boshqaruv» dan keyin). Har band `hrTasks`:
+      // KIMNING topshiriqlari ko'rinishini (direktor — hammasi, rahbar — o'z shoxi) server hal qiladi.
+      label: 'Topshiriqlar',
+      to: '#topshiriqlar',
+      icon: ListChecks,
+      children: [
+        { label: 'Boshqaruv paneli', to: '/admin/hr/topshiriqlar', end: true, perm: 'hrTasks' },
+        { label: 'Topshiriqlar', to: '/admin/hr/topshiriqlar/royxat', perm: 'hrTasks' },
+        { label: 'Takroriy topshiriqlar', to: '/admin/hr/topshiriqlar/takroriy', perm: 'hrTasks' },
+        { label: 'Xodimlar', to: '/admin/hr/topshiriqlar/xodimlar', perm: 'hrTasks' },
+        { label: 'Hisobotlar', to: '/admin/hr/topshiriqlar/hisobotlar', perm: 'hrTasks' },
+        { label: 'Sozlamalar', to: '/admin/hr/topshiriqlar/sozlamalar', perm: 'hrTasks' },
+      ],
+    },
+    {
       label: 'Sotuv va marketing',
       to: '#sotuv',
       icon: IconSpeakerphone,
@@ -400,6 +420,8 @@ export const navByRole: Record<Role, NavItem[]> = {
     { label: 'Jurnal', to: '/teacher/journal', icon: NotebookText, perm: 'journal' },
     // Asosiy navigatsiyada "Test" (test natijalarini kiritish).
     { label: 'Test', to: '/teacher/tests', icon: IconClipboardCheck, perm: 'journal' },
+    // HR topshiriqlari — o'qituvchi ham HR xodimi (portal menyusi: `lib/teacherPortal.ts` → TEACHER_NAV).
+    { label: 'Mening topshiriqlarim', to: '/teacher/topshiriqlar', icon: ListChecks },
   ],
   student: [{ label: 'Bosh sahifa', to: '/student', icon: LayoutDashboard }],
   parent: [{ label: 'Bosh sahifa', to: '/parent', icon: LayoutDashboard }],
