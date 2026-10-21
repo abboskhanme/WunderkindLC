@@ -45,7 +45,7 @@ LMS repo: `/Users/abboskhan/Documents/Projects/WunderkindLMS` (branch `master`).
 | "Bugun" | `AppClock` (Asia/Tashkent) | LC `AppClock` |
 | Ruxsat | kalit `hrTasks` | xuddi shu kalit — server katalogi + klient `adminPermissions` (`constants.ts`) + `PermissionCatalogTests` |
 | Fayllar | `uploads/hr/{folder}/yyyy/MM/<guid>.ext` | o'sha (`/uploads` LC'da login talab qiladi — `UploadsGuard`) |
-| Rejalashtiruvchi | `HrTasksScheduler` (5 daq), `hr_job_runs` | o'sha; ImportMode'da ishga tushmaydi (LC naqshi) |
+| Rejalashtiruvchi | `HrTasksScheduler` (5 daq), `hr_job_runs` | o'sha; IMPORT_MODE'ga bog'lanmagan (u faqat oylik hisob va ota-ona eslatmalarini to'xtatadi; prod oylab IMPORT_MODE=1 da) |
 | Testlar | Testcontainers PG + HTTP (WebApplicationFactory) | LC: **SQLite `TestDb`** + servis/controller darajasida. Qoidalar testlari 1:1; API testlari xatti-harakat bo'yicha (scope 404, ruxsat, oqimlar) servis orqali |
 | Panel UI | LMS UI kit | LC UI kit (`components/ui/*`: Button, Card, Modal, Input, PhoneInput, CredentialsBox, RightDrawer, DateInput, Toaster) |
 | Menyu | «HR» bo'limi → TOPSHIRIQLAR guruhi + yuqori «Mening topshiriqlarim» | LC'da «HR» bo'limi yo'q → **yuqori darajadagi «Topshiriqlar» bo'limi** (Boshqaruv'dan keyin) shu 6 band bilan + yuqori «Mening topshiriqlarim» (staff/admin/superadmin) + o'qituvchi portalida «Mening topshiriqlarim» |

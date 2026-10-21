@@ -18,7 +18,7 @@ Migratsiya: `HrTasks` (11 ta `hr_*` jadval; Kanban jadvallarini ham shu migratsi
 | Servis | `Application/HrTasks/HrTasksService*.cs` (`.People` · `.Tasks` · `.Jobs` · `.Sync`) |
 | Telegram/fayl portlari | `HrTasksPorts.cs` (`IHrTelegramSender`, `IHrFileStore`) |
 | Telegram matnlari (eski `texts.py`/`digest.py`, AYNAN) | `HrTasksTexts.cs` |
-| Rejalashtiruvchi (har 5 daq) | `HrTasksScheduler.cs` (ImportMode'da ishga tushmaydi) |
+| Rejalashtiruvchi (har 5 daq) | `HrTasksScheduler.cs` (IMPORT_MODE'ga BOG'LANMAGAN — u faqat oylik hisob va ota-ona eslatmalarini to'xtatadi) |
 | Panel API | `Server/Controllers/HrTasksController.cs` — `api/admin/hr/...` |
 | Xodim API («Mening topshiriqlarim») | `Server/Controllers/HrMeController.cs` — `api/hr/me/...` |
 | Testlar | `WunderkindLC.Tests/HrTasks/*` |

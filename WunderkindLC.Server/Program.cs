@@ -403,14 +403,15 @@ builder.Services.AddHostedService<TeacherBotService>();
 // TOPSHIRIQLAR (HR) — WunderkindLMS'dan 1:1 ko'chirilgan modul (docs/SPEC-hr-tasks.md, .claude/rules/hr-tasks.md).
 // Telegram va fayllar portlar orqasida (testlar soxtasini qo'yadi). Rejalashtiruvchi har 5 daqiqada uyg'onadi
 // (nusxa yaratish, ertalabki ro'yxat, muddat eslatmasi, kechki yakun); hr_job_runs har ishni kuniga BIR marta
-// bajartiradi. IMPORT REJIMIDA ishga tushmaydi — ko'chirish paytida xodimlarga xabar ketmasin.
+// bajartiradi. ⚠️ IMPORT REJIMIGA BOG'LANMAGAN (ATAYIN): u faqat oylik hisob va ota-onalarga eslatmalarni
+// to'xtatadi (`ImportMode` hujjati); HR topshiriqlari ko'chirilayotgan o'quvchi/moliya ma'lumotiga tegmaydi, prod esa
+// oylab IMPORT_MODE=1 da turishi mumkin — bog'lansa xodimlar HR ro'yxatiga tushmas va modul ishlamay qolardi.
 builder.Services.AddScoped<WunderkindLC.Application.HrTasks.HrTasksService>();
 builder.Services.AddSingleton<WunderkindLC.Application.HrTasks.IHrTelegramSender,
                               WunderkindLC.Application.HrTasks.TelegramHrSender>();
 builder.Services.AddSingleton<WunderkindLC.Application.HrTasks.IHrFileStore,
                               WunderkindLC.Application.HrTasks.LocalHrFileStore>();
-if (!WunderkindLC.Application.Services.ImportMode.Enabled)
-    builder.Services.AddHostedService<WunderkindLC.Application.HrTasks.HrTasksScheduler>();
+builder.Services.AddHostedService<WunderkindLC.Application.HrTasks.HrTasksScheduler>();
 // MARKETING — INSTAGRAM AI AGENTI.
 // `InstagramApi` — Graph API mijozi: typed HttpClient (`AddHttpClient<T>`), ya'ni ulanishlar
 // pulda boshqariladi va socket tugab qolmaydi (`CameraGateway` bilan bir xil naqsh).

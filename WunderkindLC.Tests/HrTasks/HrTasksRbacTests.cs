@@ -76,9 +76,10 @@ public class HrTasksRbacTests
         // archive = the teacher left → HR row inactive; restore → active again
         Assert.Contains("HrTasksService.SetAccountActiveAsync(db, teacher.UserId, false,", teachers);
         Assert.Contains("HrTasksService.SetAccountActiveAsync(db, teacher.UserId, true,", teachers);
-        // the scheduler does not run in import mode
+        // the scheduler runs in import mode too — ImportMode stops only tuition accrual and parent reminders
         var program = Source("WunderkindLC.Server", "Program.cs");
-        Assert.Matches(new Regex(@"if \(!WunderkindLC\.Application\.Services\.ImportMode\.Enabled\)\s*\n\s*builder\.Services\.AddHostedService<WunderkindLC\.Application\.HrTasks\.HrTasksScheduler>\(\);"), program);
+        Assert.Contains("\nbuilder.Services.AddHostedService<WunderkindLC.Application.HrTasks.HrTasksScheduler>();", program);
+        Assert.DoesNotMatch(new Regex(@"ImportMode\.Enabled\)\s*\n\s*builder\.Services\.AddHostedService<WunderkindLC\.Application\.HrTasks\.HrTasksScheduler>"), program);
     }
 
     [Fact]
