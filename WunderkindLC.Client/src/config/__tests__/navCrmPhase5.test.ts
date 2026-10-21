@@ -1,47 +1,34 @@
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
-import { activeNavTo, navByRole, type NavChild, type NavItem } from '../navigation'
+import { adminPermissions } from '../constants'
+import { navByRole, type NavChild, type NavItem } from '../navigation'
 
 /**
- * CRM Phase 5 menyu o'zgarishi: «Topshiriqlar» Future → Boshqaruv dan ASOSIY «Boshqaruv» guruhiga
- * qaytdi («Rollar» dan keyin). Eski manzillar (`boshqaruv/staff-tasks`, `topshiriqlar/kunlik`) redirect
- * bo'lib ishlayveradi.
+ * Kanban «Topshiriqlar» (CRM Phase 5 da «Boshqaruv» ga qaytgan doska/ro'yxat/kalendar/nazorat) 2026-10-21 da
+ * TAG-TUGI BILAN olib tashlandi — o'rniga HR topshiriqlari (`docs/SPEC-hr-tasks.md`). Menyuda ham, ruxsat
+ * katalogida ham qolmasin; eski manzillar (xatcho'plar) HR topshiriqlariga redirect bo'ladi.
  */
 const admin = navByRole.admin
 
-function group(items: NavItem[], label: string): NavItem {
-  const g = items.find((i) => i.label === label)
-  expect(g, label).toBeTruthy()
-  return g!
+function flatTos(items: (NavItem | NavChild)[] | undefined): string[] {
+  return (items ?? []).flatMap((c) => [c.to, ...flatTos(c.children)])
 }
 
-function flatTos(children: NavChild[] | undefined): string[] {
-  return (children ?? []).flatMap((c) => [c.to, ...flatTos(c.children)])
-}
-
-describe('CRM Phase 5 — Topshiriqlar menyuda', () => {
-  it("asosiy «Boshqaruv» guruhida, «Rollar» dan keyin", () => {
-    const boshqaruv = group(admin, 'Boshqaruv')
-    const labels = (boshqaruv.children ?? []).map((c) => c.label)
-    const i = labels.indexOf('Topshiriqlar')
-    expect(i).toBeGreaterThan(-1)
-    expect(labels[i - 1]).toBe('Rollar')
-    expect(boshqaruv.children![i]).toMatchObject({ to: '/admin/topshiriqlar', perm: 'tasks' })
+describe('Kanban «Topshiriqlar» olib tashlangan', () => {
+  it('menyuda eski /admin/topshiriqlar bandi YO\'Q', () => {
+    expect(flatTos(admin).filter((to) => to.startsWith('/admin/topshiriqlar'))).toEqual([])
   })
 
-  it('Future guruhida endi YO\'Q', () => {
-    expect(flatTos(group(admin, 'Future').children)).not.toContain('/admin/topshiriqlar')
+  it('ruxsat katalogida `tasks` bo\'limi YO\'Q', () => {
+    const keys = adminPermissions.flatMap((p) => [p.key, ...(p.pages ?? []).map((pg) => pg.key)])
+    expect(keys.filter((k) => k === 'tasks' || k.startsWith('tasks.'))).toEqual([])
   })
 
-  it("topshiriqlar sahifalarida «Boshqaruv» bandi faol", () => {
-    for (const p of ['/admin/topshiriqlar', '/admin/topshiriqlar/royxat', '/admin/topshiriqlar/nazorat'])
-      expect(activeNavTo(admin, p)).toBe('#boshqaruv')   // guruh ochiladi, Future emas
-  })
-
-  it('eski manzillar redirect bo\'lib qolgan', () => {
+  it('eski manzillar HR topshiriqlariga redirect bo\'ladi', () => {
     const app = readFileSync(fileURLToPath(new URL('../../App.tsx', import.meta.url)), 'utf8')
-    expect(app).toContain('path="boshqaruv/staff-tasks" element={<Navigate to="/admin/topshiriqlar" replace />}')
-    expect(app).toContain('path="topshiriqlar/kunlik" element={<Navigate to="/admin/topshiriqlar" replace />}')
+    expect(app).toContain('path="topshiriqlar/*" element={<Navigate to="/admin/hr/topshiriqlar" replace />}')
+    expect(app).toContain('path="boshqaruv/staff-tasks" element={<Navigate to="/admin/hr/topshiriqlar" replace />}')
+    expect(app).not.toContain('pages/admin/tasks/')
   })
 })

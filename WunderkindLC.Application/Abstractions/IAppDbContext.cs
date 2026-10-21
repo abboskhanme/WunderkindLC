@@ -80,13 +80,6 @@ public partial interface IAppDbContext
     DbSet<BotUser> BotUsers { get; }
     DbSet<TelegramGroup> TelegramGroups { get; }
 
-    // Topshiriqlar moduli (Kanban)
-    DbSet<WorkTaskBoard> WorkTaskBoards { get; }
-    DbSet<WorkTaskColumn> WorkTaskColumns { get; }
-    DbSet<WorkTask> WorkTasks { get; }
-    DbSet<WorkTaskItem> WorkTaskItems { get; }
-    DbSet<WorkTaskComment> WorkTaskComments { get; }
-    DbSet<WorkTaskEvent> WorkTaskEvents { get; }
     DbSet<BotSupportMessage> BotSupportMessages { get; }
     DbSet<UserSettings> UserSettings { get; }
     DbSet<DeviceToken> DeviceTokens { get; }

@@ -127,7 +127,7 @@ Guruh eksporti avvaldan yozilardi (`Group`).
 |---|---|---|
 | Shartnomalar | **Tuzish (yuklab olish)** va **Telegram orqali yuborish** | umuman yozilmasdi — har shartnoma uchun bitta qator (fayl MANZILISIZ), yuborilmagani ham |
 | O'quvchilar | **Taklif/shikoyat** hal qilindi / qayta ochildi (`Feedback`) | yozilmasdi; qayta ochish yo'li umuman yo'q edi |
-| Sozlamalar | **Topshiriqlar kunlik eslatmasi** (`CenterMeta`) | `SettingsController` dan tashqarida — yozilmasdi |
+| Sozlamalar | **Topshiriqlar kunlik eslatmasi** (`CenterMeta`) | `SettingsController` dan tashqarida — yozilmasdi (sozlama 2026-10-21: Kanban «Topshiriqlar» olib tashlandi (o'rniga HR topshiriqlari)) |
 | Kitoblar sotuvi | Olib ketilmagan buyurtmani **bekor qilish** | yangi amal (books.md §2.6) |
 
 2026-10-07 auditida to'ldirilganlar (hisobotni o'zgartiradigan KATALOGLAR va sozlamalar):
@@ -141,7 +141,7 @@ Guruh eksporti avvaldan yozilardi (`Group`).
 | `CenterMeta` | ushlab turish bonusi, AI tekshiruv, landing sozlamalari (`SettingsAudit`) | settings |
 | `StudentAiAccess` | o'quvchiga AI limit/premium/blok (`studentId` bilan — profil tarixida ham) | students |
 | `CertificateTemplate` | sertifikat andozasi qo'shish/o'chirish (HTML matn yozilmaydi) | settings |
-| `Staff` (delete) | o'chirishda bo'shatilgan havolalar (lid, kassa, topshiriq, KPI, Telegram; CTI 2026-10 gacha) shu qatorda | staff |
+| `Staff` (delete) | o'chirishda bo'shatilgan havolalar (lid, kassa, KPI, Telegram; CTI 2026-10 gacha, Kanban topshiriq 2026-10-21 gacha) shu qatorda | staff |
 
 `StudentBall` xaritada qoldi, lekin hozir uni YOZADIGAN endpoint yo'q (eski qatorlar uchun).
 

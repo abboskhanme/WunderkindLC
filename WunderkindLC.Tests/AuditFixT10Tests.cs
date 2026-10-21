@@ -265,7 +265,7 @@ public class AuditFixT10Tests
         using var doc = JsonDocument.Parse(bytes);
         var root = doc.RootElement;
 
-        foreach (var t in new[] { "books", "contracts", "calls", "contactRequests", "workTasks", "jobApplications",
+        foreach (var t in new[] { "books", "contracts", "calls", "contactRequests", "jobApplications",
                                   "kpiProfiles", "studentDiscounts", "retentionBonusAwards", "transactionTypes" })
             Assert.True(root.TryGetProperty(t, out _), $"'{t}' zaxirada yo'q");
         Assert.True(root.TryGetProperty("excluded", out var excluded));
@@ -321,18 +321,15 @@ public class AuditFixT10Tests
         ctx.Leads.AddRange(openLead, convertedLead, lostLead);
         var box = new Cashbox { Name = "Kassa 1", ResponsibleUserId = uid, ResponsibleName = "Operator" };
         ctx.Cashboxes.Add(box);
-        var openTask = new WorkTask { Title = "Qo'ng'iroq", AssigneeId = uid };
-        var doneTask = new WorkTask { Title = "Bajarilgan", AssigneeId = uid, CompletedAt = AppClock.Now };
-        ctx.WorkTasks.AddRange(openTask, doneTask);
         var staffLink = new TelegramRegistration { UserId = uid, ChatId = 1 };
         var parentLink = new TelegramRegistration { UserId = uid, StudentId = "s1", ChatId = 2 };
         ctx.TelegramRegistrations.AddRange(staffLink, parentLink);
         await ctx.SaveChangesAsync();
 
-        var r = await StaffRelease.ReleaseAsync(ctx, uid, "Operator", actorId: "admin-1");
+        var r = await StaffRelease.ReleaseAsync(ctx, uid);
         await ctx.SaveChangesAsync();
 
-        Assert.Equal(new StaffRelease.Result(1, 1, 1, 1, 2), r);
+        Assert.Equal(new StaffRelease.Result(1, 1, 1, 2), r);
         Assert.Contains("1 ta ochiq lid", r.Summary());
 
         await using var read = db.NewContext();
@@ -344,9 +341,6 @@ public class AuditFixT10Tests
         var savedBox = await read.Cashboxes.SingleAsync();
         Assert.Null(savedBox.ResponsibleUserId);
         Assert.Null(savedBox.ResponsibleName);
-        Assert.Equal("", (await read.WorkTasks.SingleAsync(t => t.Id == openTask.Id)).AssigneeId);
-        Assert.Equal(uid, (await read.WorkTasks.SingleAsync(t => t.Id == doneTask.Id)).AssigneeId);
-        Assert.Equal(1, await read.WorkTaskEvents.CountAsync(e => e.TaskId == openTask.Id));
         // Xodim bog'lanishi o'chdi; ota-ona bog'lanishi qoldi (faqat xodim qismi uzildi).
         Assert.False(await read.TelegramRegistrations.AnyAsync(x => x.Id == staffLink.Id));
         var parent = await read.TelegramRegistrations.SingleAsync(x => x.Id == parentLink.Id);

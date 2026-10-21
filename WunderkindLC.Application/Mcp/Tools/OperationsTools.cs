@@ -9,8 +9,8 @@ using WunderkindLC.Domain;
 namespace WunderkindLC.Application.Mcp.Tools;
 
 /// <summary>
-/// Operations: the "Bog'lanish kerak" follow-up queue and its report, work tasks (Kanban), Telegram
-/// announcements, automatic message rules and the change history (audit).
+/// Operations: the "Bog'lanish kerak" follow-up queue and its report, Telegram announcements, automatic
+/// message rules and the change history (audit). (The Kanban work tasks tool went with the module, 2026-10-21.)
 ///
 /// <para>Definitions follow the panel:
 /// <list type="bullet">
@@ -19,9 +19,6 @@ namespace WunderkindLC.Application.Mcp.Tools;
 ///     empty/unknown <c>StageId</c> sits in its status' SYSTEM column (stage id = status key);</item>
 ///   <item>contact report — <see cref="ContactReport.BuildAsync"/>, the same function as <c>GET contacts/stats</c>;
 ///     superadmin only in the panel (hard role check) → <see cref="McpAreas.ContactReport"/>;</item>
-///   <item>tasks — <c>WorkTasksController.List</c>/<c>MapAsync</c> (.claude/rules/topshiriqlar.md §2–3): done =
-///     the task's column has <c>IsDone</c>; overdue = not done and due date before today; archived tasks and
-///     (without a board filter) tasks on archived boards are hidden like the dashboard does;</item>
 ///   <item>audit — <c>AuditController.ApplyFilters</c> (.claude/rules/audit.md §2–5): section ↔ entity types via
 ///     <see cref="AuditSections"/>, unknown types fall into <c>other</c>; the before/after snapshots are never read.</item>
 /// </list></para>
@@ -32,7 +29,6 @@ public sealed class OperationsTools(McpToolContext t)
     public static readonly Type[] Reads =
     [
         typeof(ContactRequest), typeof(ContactAttempt), typeof(ContactStage), typeof(Student),
-        typeof(WorkTask), typeof(WorkTaskBoard), typeof(WorkTaskColumn), typeof(WorkTaskItem), typeof(AppUser),
         typeof(Broadcast), typeof(AutoMessageRule), typeof(AuditLog),
         // messages_history counts (MessagingReports.CountsAsync) — delivery rows, never the chat id column.
         typeof(MessageDelivery),
@@ -41,16 +37,8 @@ public sealed class OperationsTools(McpToolContext t)
     /// <summary>Longest announcement text returned (the rest is cut, <c>truncated = true</c>).</summary>
     public const int MaxBroadcastText = 500;
 
-    /// <summary>Longest task description returned.</summary>
-    public const int MaxTaskDescription = 300;
-
     /// <summary>The four audit actions (.claude/rules/audit.md §1).</summary>
     private static readonly string[] AuditActions = ["create", "update", "delete", "complete-and-transfer"];
-
-    /// <summary>Task priorities — the client's PRIORITIES catalog (pages/admin/tasks/model.ts), server keeps 0..3.</summary>
-    private static readonly string[] PriorityLabels = ["Past", "O'rta", "Yuqori", "Shoshilinch"];
-
-    private static string PriorityLabel(int p) => PriorityLabels[Math.Clamp(p, 0, PriorityLabels.Length - 1)];
 
     private static string TodayIso => McpToolContext.Iso(McpToolContext.Today);
 
@@ -258,160 +246,6 @@ public sealed class OperationsTools(McpToolContext t)
             note = "«attempts» — barcha bog'lanish urinishlari; «reached» — faqat odam bilan haqiqatan gaplashilganlari. "
                 + "Sabablar kesimi talab OCHILGAN sana bo'yicha.",
         }, m.Daily.Count);
-    }
-
-    // =====================================================================================
-    //  tasks_list
-    // =====================================================================================
-
-    [McpServerTool(Name = "tasks_list", Title = "Topshiriqlar ro'yxati",
-        ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
-    [Description("Xodimlarga berilgan topshiriqlar (Kanban): doska, mas'ul xodim, topshiriq bergan xodim, holat (sukut — ochiq | "
-        + "done — bajarilgan | overdue — muddati o'tgan | today — bugun muddati | awaiting — bajarildi, TASDIQ KUTMOQDA | "
-        + "approved — tasdiqlangan | all), muddat oralig'i va nom/tavsif bo'yicha qidirish. «Bajarilgan» — topshiriq yopiluvchi "
-        + "ustunda turibdi. Boshqa xodimga berilgan topshiriq bajarilgach topshiriq bergan (yoki admin) TASDIQLAYDI yoki sabab "
-        + "bilan QAYTARADI. Har qatorda doska, ustun, mas'ul, muhimlik, muddat, kechikkanmi, bajarilgan vaqti, kim yaratgani, "
-        + "qadamlar (cheklist) bajarilishi va tasdiq holati (state: open — ochiq, overdue — kechikkan, awaiting_approval — tasdiq "
-        + "kutmoqda, approved — tasdiqlangan, done — bajarildi (tasdiq talab qilinmaydi); kim/qachon tasdiqlagan, necha marta "
-        + "qaytarilgan). Arxivlangan topshiriqlar va (doska tanlanmasa) arxivlangan "
-        + "doskalar sukut bo'yicha kirmaydi. Sahifalangan (ko'pi bilan 200 qator). "
-        + "List work tasks with board, assignee, state, due-date and text filters.")]
-    public async Task<string> TasksList(
-        [Description("Doska id")] string? boardId = null,
-        [Description("Mas'ul xodim id; biriktirilmaganlar uchun «none»")] string? assigneeId = null,
-        [Description("open (sukut) | done | overdue | today | awaiting (tasdiq kutmoqda) | approved (tasdiqlangan) | all")] string? state = null,
-        [Description("Muddat — dan, YYYY-MM-DD")] string? dueFrom = null,
-        [Description("Muddat — gacha (shu kun ham kiradi), YYYY-MM-DD")] string? dueTo = null,
-        [Description("Topshiriq nomi yoki tavsifi bo'lagi")] string? search = null,
-        [Description("Arxivlangan topshiriq va doskalarni ham qo'shish: true")] bool? includeArchived = null,
-        [Description("Topshiriq bergan (yaratgan) xodim id")] string? createdById = null,
-        [Description("Sahifa (1 dan)")] int? page = null,
-        [Description("Sahifa hajmi (1..200, sukut 50)")] int? pageSize = null,
-        CancellationToken ct = default)
-    {
-        t.Require(McpAreas.Tasks);
-        var st = (state ?? "open").Trim().ToLowerInvariant();
-        if (st is not ("open" or "done" or "overdue" or "today" or "awaiting" or "approved" or "all"))
-            throw new McpException("«state»: open | done | overdue | today | awaiting | approved | all.");
-        string? fromIso = string.IsNullOrWhiteSpace(dueFrom) ? null : McpToolContext.Iso(McpToolContext.Date(dueFrom, default, "dueFrom"));
-        string? toIso = string.IsNullOrWhiteSpace(dueTo) ? null : McpToolContext.Iso(McpToolContext.Date(dueTo, default, "dueTo"));
-        var db = t.Db;
-        var today = TodayIso;
-
-        // Columns are few; "done" is a property of the column (WorkTaskColumn.IsDone).
-        var doneCols = await db.WorkTaskColumns.Where(c => c.IsDone).Select(c => c.Id).ToListAsync(ct);
-
-        var q = db.WorkTasks.AsQueryable();
-        if (includeArchived != true)
-        {
-            q = q.Where(x => !x.IsArchived);
-            // Without a board filter, tasks of archived boards are hidden (dashboard, reminders).
-            if (string.IsNullOrWhiteSpace(boardId))
-                q = q.Where(x => !db.WorkTaskBoards.Any(b => b.Id == x.BoardId && b.IsArchived));
-        }
-        if (!string.IsNullOrWhiteSpace(boardId))
-        {
-            var bid = boardId.Trim();
-            q = q.Where(x => x.BoardId == bid);
-        }
-        if (!string.IsNullOrWhiteSpace(assigneeId))
-        {
-            var aid = assigneeId.Trim();
-            q = aid.Equals("none", StringComparison.OrdinalIgnoreCase)
-                ? q.Where(x => x.AssigneeId == "")
-                : q.Where(x => x.AssigneeId == aid);
-        }
-        if (fromIso is not null) q = q.Where(x => x.DueDate != null && x.DueDate.CompareTo(fromIso) >= 0);
-        if (toIso is not null) q = q.Where(x => x.DueDate != null && x.DueDate.CompareTo(toIso) <= 0);
-        if (!string.IsNullOrWhiteSpace(search))
-        {
-            var term = search.Trim().ToLower();
-            q = q.Where(x => x.Title.ToLower().Contains(term) || x.Description.ToLower().Contains(term));
-        }
-        q = st switch
-        {
-            "open" => q.Where(x => !doneCols.Contains(x.ColumnId)),
-            "done" => q.Where(x => doneCols.Contains(x.ColumnId)),
-            "overdue" => q.Where(x => !doneCols.Contains(x.ColumnId) && x.DueDate != null && x.DueDate != ""
-                                      && x.DueDate.CompareTo(today) < 0),
-            "today" => q.Where(x => !doneCols.Contains(x.ColumnId) && x.DueDate == today),
-            // Approval step (CRM Phase 5, WorkTaskApproval.State): done + required + not yet approved / approved.
-            "awaiting" => q.Where(x => doneCols.Contains(x.ColumnId) && x.ApprovalRequired && x.ApprovedAt == null),
-            "approved" => q.Where(x => doneCols.Contains(x.ColumnId) && x.ApprovalRequired && x.ApprovedAt != null),
-            _ => q,
-        };
-        if (!string.IsNullOrWhiteSpace(createdById))
-        {
-            var cid = createdById.Trim();
-            q = q.Where(x => x.CreatedById == cid);
-        }
-
-        var total = await q.CountAsync(ct);
-        var p = McpToolContext.Page(page);
-        var size = McpToolContext.PageSize(pageSize);
-        var ordered = st is "done" or "awaiting" or "approved"
-            ? q.OrderByDescending(x => x.CompletedAt).ThenByDescending(x => x.CreatedAt).ThenBy(x => x.Id)
-            : q.OrderBy(x => x.DueDate == null || x.DueDate == "").ThenBy(x => x.DueDate)
-                .ThenByDescending(x => x.Priority).ThenByDescending(x => x.CreatedAt).ThenBy(x => x.Id);
-        var rows = await ordered.Skip((p - 1) * size).Take(size)
-            .Select(x => new
-            {
-                x.Id, x.BoardId, x.ColumnId, x.Title, x.Description, x.AssigneeId, x.CreatedById, x.Priority,
-                x.DueDate, x.DueTime, x.CreatedAt, x.CompletedAt, x.Repeat, x.IsArchived,
-                x.ApprovalRequired, x.ApprovedAt, x.ApprovedById, x.ReturnCount, x.LastReturnedAt,
-            }).ToListAsync(ct);
-
-        var ids = rows.Select(r => r.Id).ToList();
-        var boardIds = rows.Select(r => r.BoardId).Distinct().ToList();
-        var colIds = rows.Select(r => r.ColumnId).Distinct().ToList();
-        var boards = await db.WorkTaskBoards.Where(b => boardIds.Contains(b.Id))
-            .Select(b => new { b.Id, b.Title, b.IsArchived }).ToDictionaryAsync(b => b.Id, ct);
-        var cols = await db.WorkTaskColumns.Where(c => colIds.Contains(c.Id))
-            .Select(c => new { c.Id, c.Title, c.IsDone }).ToDictionaryAsync(c => c.Id, ct);
-        var steps = await db.WorkTaskItems.Where(i => ids.Contains(i.TaskId))
-            .GroupBy(i => i.TaskId)
-            .Select(g => new { TaskId = g.Key, Total = g.Count(), Done = g.Sum(i => i.Done ? 1 : 0) })
-            .ToDictionaryAsync(g => g.TaskId, ct);
-        var names = await t.UserNamesAsync(rows.SelectMany(r => new[] { r.AssigneeId, r.CreatedById, r.ApprovedById }), ct);
-
-        var items = rows.Select(r =>
-        {
-            var col = cols.GetValueOrDefault(r.ColumnId);
-            var board = boards.GetValueOrDefault(r.BoardId);
-            var isDone = col?.IsDone ?? false;
-            var overdue = !isDone && !string.IsNullOrWhiteSpace(r.DueDate) && string.CompareOrdinal(r.DueDate, today) < 0;
-            var taskState = WorkTaskApproval.State(isDone, overdue, r.ApprovalRequired, r.ApprovedAt);
-            var step = steps.GetValueOrDefault(r.Id);
-            return new
-            {
-                r.Id, r.Title,
-                description = r.Description.Length > MaxTaskDescription ? r.Description[..MaxTaskDescription] : r.Description,
-                board = new { id = r.BoardId, title = board?.Title ?? "", isArchived = board?.IsArchived ?? false },
-                column = new { id = r.ColumnId, title = col?.Title ?? "", isDone },
-                assignee = r.AssigneeId.Length == 0 ? null : new { id = r.AssigneeId, name = names.GetValueOrDefault(r.AssigneeId, "") },
-                r.Priority,
-                priorityLabel = PriorityLabel(r.Priority),
-                r.DueDate, r.DueTime,
-                isOverdue = overdue,
-                completedAt = r.CompletedAt?.ToString("yyyy-MM-ddTHH:mm:ss"),
-                createdBy = names.GetValueOrDefault(r.CreatedById, ""),
-                createdAt = r.CreatedAt.ToString("yyyy-MM-ddTHH:mm:ss"),
-                checklist = new { done = step?.Done ?? 0, total = step?.Total ?? 0 },
-                r.Repeat, r.IsArchived,
-                state = taskState,
-                stateLabel = WorkTaskApproval.StateLabels.GetValueOrDefault(taskState, taskState),
-                approval = new
-                {
-                    required = r.ApprovalRequired,
-                    approvedAt = r.ApprovedAt?.ToString("yyyy-MM-ddTHH:mm:ss"),
-                    approvedBy = string.IsNullOrEmpty(r.ApprovedById) ? null : names.GetValueOrDefault(r.ApprovedById, ""),
-                    returnCount = r.ReturnCount,
-                    lastReturnedAt = r.LastReturnedAt?.ToString("yyyy-MM-ddTHH:mm:ss"),
-                },
-            };
-        }).ToList();
-
-        return t.Json(new { total, page = p, pageSize = size, items }, items.Count);
     }
 
     // =====================================================================================

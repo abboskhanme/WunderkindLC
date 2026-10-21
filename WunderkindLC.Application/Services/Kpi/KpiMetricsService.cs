@@ -42,7 +42,6 @@ public static class KpiMetricsService
     private const string LinkAttendance = "/admin/students/davomat";
     private const string LinkFinance = "/admin/finance";
     private const string LinkClasses = "/admin/classes";
-    private const string LinkTasks = "/admin/topshiriqlar";
     /// <summary>Qo'ng'iroqlar isboti — Local Call bo'limi (yagona telefoniya, <see cref="KpiCallSource"/>).</summary>
     private const string LinkTickets = "/admin/boshqaruv/kpi/tiketlar";
     private const string LinkToday = "/admin/boshqaruv/kpi/bugun";
@@ -286,10 +285,7 @@ public static class KpiMetricsService
     /// <summary>Samaradorlik va tiketlar (ikkala rol uchun bir xil manba).</summary>
     /// <param name="ChecklistDone">Cheklistda "bajarildi" belgilari.</param>
     /// <param name="ChecklistTotal">"bajarildi" + "bajarilmadi" (⚠️ "na" MAXRAJGA kirmaydi).</param>
-    /// <param name="TasksOnTime">Muddatida yopilgan topshiriqlar.</param>
-    /// <param name="TasksDue">Muddati kelgan topshiriqlar.</param>
-    private sealed record EffortFacts(
-        int ChecklistDone, int ChecklistTotal, int TasksOnTime, int TasksDue, int Tickets);
+    private sealed record EffortFacts(int ChecklistDone, int ChecklistTotal, int Tickets);
 
     /// <summary>Chiquvchi adminning oylik xom raqamlari (markaz bo'yicha).</summary>
     private sealed record CenterFacts(
@@ -485,18 +481,14 @@ public static class KpiMetricsService
      * ====================================================================================== */
 
     /// <remarks>
-    /// ⚠️ <b>SAMARADORLIK QAYERDAN.</b> Spetsifikatsiya ikki xil manba nomlaydi: §8 jadvali —
-    /// topshiriqlar (<c>WorkTask</c>), <c>KpiRuleSetJson.Efficiency</c> va <c>KpiConst.CheckNa</c>
-    /// izohlari esa KUNLIK CHEKLIST. Tanlov CHEKLIST foydasiga: <c>KpiConst.CheckNa</c> da
-    /// «"na" MAXRAJGA ham kirmaydi» deb yozilgani aynan samaradorlik maxraji haqidagi qoida,
-    /// ya'ni hisob cheklist ustiga qurilgan. Topshiriqlar ham o'lchanadi va ALOHIDA qator
-    /// bo'lib chiqadi (yashirilmaydi).
+    /// ⚠️ <b>SAMARADORLIK QAYERDAN.</b> KUNLIK CHEKLIST: <c>KpiConst.CheckNa</c> da «"na" MAXRAJGA ham
+    /// kirmaydi» deb yozilgani aynan samaradorlik maxraji haqidagi qoida. (Kanban «Topshiriqlar» — ilgari
+    /// zaxira manba — 2026-10-21 da olib tashlandi.)
     ///
     /// ⚠️ Cheklist belgilari UMUMAN bo'lmasa (modul endi yoqilgan, xodim hali belgilamagan)
-    /// topshiriqlar ishlatiladi; ular ham bo'lmasa samaradorlik <b>1.0</b> bo'ladi va DTO'da
-    /// OCHIQ ogohlantirish yoziladi. Nol qoldirsak, o'lchov hali yo'qligi uchun HAR BIR xodim
-    /// eng past pog'onaga (0.75) tushib, oyligini yo'qotardi — o'lchanmagan narsa uchun jazo
-    /// bo'lardi.
+    /// samaradorlik <b>1.0</b> bo'ladi va DTO'da OCHIQ ogohlantirish yoziladi. Nol qoldirsak, o'lchov
+    /// hali yo'qligi uchun HAR BIR xodim eng past pog'onaga (0.75) tushib, oyligini yo'qotardi —
+    /// o'lchanmagan narsa uchun jazo bo'lardi.
     /// </remarks>
     private static async Task<Dictionary<string, EffortFacts>> LoadEffortAsync(
         IAppDbContext db, MonthWindow win, List<string> userIds, CancellationToken ct)
@@ -508,13 +500,6 @@ public static class KpiMetricsService
             .Select(e => new { e.UserId, e.State })
             .ToListAsync(ct);
 
-        var tasks = await db.WorkTasks.AsNoTracking()
-            .Where(t => userIds.Contains(t.AssigneeId) && !t.IsArchived && t.DueDate != null
-                        && string.Compare(t.DueDate, win.FirstIso) >= 0
-                        && string.Compare(t.DueDate, win.LastIso) <= 0)
-            .Select(t => new { t.AssigneeId, t.DueDate, t.CompletedAt })
-            .ToListAsync(ct);
-
         var tickets = await db.KpiTickets.AsNoTracking()
             .Where(t => userIds.Contains(t.UserId) && t.Status == KpiConst.TicketConfirmed
                         && string.Compare(t.Date, win.FirstIso) >= 0
@@ -522,7 +507,6 @@ public static class KpiMetricsService
             .Select(t => t.UserId)
             .ToListAsync(ct);
 
-        var todayIso = AppClock.Today.ToString("yyyy-MM-dd");
         var result = new Dictionary<string, EffortFacts>(StringComparer.Ordinal);
         foreach (var uid in userIds)
         {
@@ -530,15 +514,7 @@ public static class KpiMetricsService
             var done = mine.Count(c => c.State == KpiConst.CheckDone);
             var failed = mine.Count(c => c.State == KpiConst.CheckFailed);
 
-            // Muddati HALI kelmagan topshiriq maxrajga kirmaydi — aks holda oy o'rtasida
-            // kelasi haftaning vazifalari "bajarilmagan" bo'lib sanalardi.
-            var due = tasks.Where(t => t.AssigneeId == uid
-                                       && string.CompareOrdinal(t.DueDate!, todayIso) <= 0).ToList();
-            var onTime = due.Count(t => t.CompletedAt is DateTime c
-                                        && string.CompareOrdinal(c.ToString("yyyy-MM-dd"), t.DueDate!) <= 0);
-
-            result[uid] = new EffortFacts(done, done + failed, onTime, due.Count,
-                tickets.Count(t => t == uid));
+            result[uid] = new EffortFacts(done, done + failed, tickets.Count(t => t == uid));
         }
         return result;
     }
@@ -966,7 +942,7 @@ public static class KpiMetricsService
         var guarantee = GuaranteeActive(profile, month);
 
         var effort = ctx.Effort.GetValueOrDefault(userId)
-                     ?? new EffortFacts(0, 0, 0, 0, 0);
+                     ?? new EffortFacts(0, 0, 0);
         var (efficiency, effSource, effWarning) = Efficiency(effort);
 
         var inputs = new List<KpiInputDto>();
@@ -989,9 +965,6 @@ public static class KpiMetricsService
         inputs.Add(new KpiInputDto("checklistDone", "Cheklist: bajarilgan bandlar", effort.ChecklistDone,
             $"Kunlik cheklist belgilari, oy ichida ({effort.ChecklistDone}/{effort.ChecklistTotal}); "
             + "«tegishli emas» maxrajga kirmaydi", LinkToday, Auto: true));
-        inputs.Add(new KpiInputDto("tasksOnTime", "Topshiriq: muddatida bajarilgan", effort.TasksOnTime,
-            $"Topshiriqlar: muddati oy ichida va bugungacha kelgan ({effort.TasksOnTime}/{effort.TasksDue})",
-            LinkTasks, Auto: true));
         inputs.Add(new KpiInputDto("tickets", "Tasdiqlangan tiketlar", effort.Tickets,
             "Sifat nazorati: holati «tasdiqlangan» tiketlar, sanasi oy ichida", LinkTickets, Auto: true));
 
@@ -1181,7 +1154,7 @@ public static class KpiMetricsService
         return string.CompareOrdinal(month, until) <= 0;
     }
 
-    /// <summary>Samaradorlik: cheklist → topshiriqlar → 1.0 (ogohlantirish bilan).</summary>
+    /// <summary>Samaradorlik: cheklist → 1.0 (ogohlantirish bilan).</summary>
     private static (double Value, string Source, string? Warning) Efficiency(EffortFacts e)
     {
         if (e.ChecklistTotal > 0)
@@ -1189,14 +1162,9 @@ public static class KpiMetricsService
                 $"Kunlik cheklist: {e.ChecklistDone}/{e.ChecklistTotal} band bajarilgan "
                 + "(«tegishli emas» maxrajga kirmaydi)", null);
 
-        if (e.TasksDue > 0)
-            return ((double)e.TasksOnTime / e.TasksDue,
-                $"Cheklist belgilari yo'q — topshiriqlardan olindi: {e.TasksOnTime}/{e.TasksDue} muddatida",
-                "Bu oyda cheklist belgilanmagan — samaradorlik topshiriqlar bo'yicha hisoblandi.");
-
         return (1.0,
-            "O'lchanmadi: bu oyda cheklist belgisi ham, muddati kelgan topshiriq ham yo'q",
-            "Samaradorlik O'LCHANMADI (cheklist ham, topshiriq ham yo'q) — koeffitsient 1.0 deb olindi.");
+            "O'lchanmadi: bu oyda cheklist belgisi yo'q",
+            "Samaradorlik O'LCHANMADI (cheklist belgilanmagan) — koeffitsient 1.0 deb olindi.");
     }
 
     /* =========================================================================================
@@ -1421,10 +1389,6 @@ public static class KpiMetricsService
     private static async Task<List<KpiSignalDto>> SignalsAsync(
         IAppDbContext db, string userId, string role, string dayIso, string month, CancellationToken ct)
     {
-        var overdue = await db.WorkTasks.AsNoTracking()
-            .CountAsync(t => t.AssigneeId == userId && !t.IsArchived && t.CompletedAt == null
-                             && t.DueDate != null && string.Compare(t.DueDate, dayIso) < 0, ct);
-
         var win = Window(month);
         var tickets = await db.KpiTickets.AsNoTracking()
             .CountAsync(t => t.UserId == userId && t.Status == KpiConst.TicketConfirmed
@@ -1436,7 +1400,6 @@ public static class KpiMetricsService
 
         var signals = new List<KpiSignalDto>
         {
-            new("overdueTasks", "Kechikkan topshiriq", overdue, overdue == 0 ? "ok" : "bad", LinkTasks),
             new("ticketsMonth", "Shu oydagi tiket", tickets, tickets == 0 ? "ok" : tickets < 5 ? "warn" : "bad",
                 LinkTickets),
             new("ticketsProposed", "Ko'rib chiqilmagan tiket", proposed, proposed == 0 ? "ok" : "warn", LinkTickets),

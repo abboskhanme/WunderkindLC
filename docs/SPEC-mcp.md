@@ -269,7 +269,7 @@ how leadership connects from Claude / ChatGPT.
 | TestTools | `rating_center` | Markaz reytingi (TOP o'quvchilar) | Students |
 | OperationsTools | `contact_queue` | Bog'lanish kerak navbati | Contacts |
 | OperationsTools | `contact_report` | Bog'lanish hisoboti | ContactReport |
-| OperationsTools | `tasks_list` | Topshiriqlar ro'yxati | Tasks |
+| ~~OperationsTools~~ | ~~`tasks_list`~~ | 2026-10-21: Kanban «Topshiriqlar» bilan birga olib tashlandi | — |
 | OperationsTools | `messages_history` | Telegram e'lonlari tarixi | Messages |
 | OperationsTools | `auto_message_rules` | Avto-xabar qoidalari | Messages |
 | OperationsTools | `audit_log` | O'zgarishlar tarixi | Audit |
@@ -314,8 +314,8 @@ CRM upgrade additions (2026-10-12, `docs/SPEC-crm-upgrade.md` U2m–U6m):
 - **Rating (U4m)** — `RatingTools` slice `RatingEngine` exactly like `RatingController` (period month / quarter /
   year; MCP cache 5 min with the panel's key). `rating_group` / `rating_center` stay as the legacy ball-only views.
 - **Workspace (U5m)** — `schedule_week` = `DatedSchedule.LoadAsync` + `Build` (≤ 7 days, floors), `schedule_conflicts`
-  = `RoomConflictService.AllPairsAsync`, `schedule_day` / `rooms_list` show the floor, `tasks_list` returns the
-  approval state (`WorkTaskApproval.State`), `state=awaiting|approved`, `createdById`.
+  = `RoomConflictService.AllPairsAsync`, `schedule_day` / `rooms_list` show the floor. (`tasks_list` — the
+  Kanban task approval state — was removed with the Kanban module, 2026-10-21.)
 - **Accounts (U6m)** — nothing reveals a password: `StudentCredential` is on `McpReadOnlyGrants.Forbidden`, no tool
   source names it (test), and the self-test checks forbidden tables with `has_any_column_privilege` (a column-level
   grant of a single "harmless" column switches MCP off).

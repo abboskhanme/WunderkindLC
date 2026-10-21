@@ -19,7 +19,7 @@ import {
  *
  *  ⚠️ Komponentlar ATAYIN alohida faylda (`shared.tsx`): bitta fayl ham komponent, ham
  *  konstanta eksport qilsa Vite'ning "fast refresh" qoidasi buziladi
- *  (`react-refresh/only-export-components`) — `pages/admin/tasks` bilan bir xil bo'linish.
+ *  (`react-refresh/only-export-components`).
  */
 
 // ---------- Rollar ----------
@@ -529,7 +529,7 @@ export const TIER_TABLES: KpiTierTableMeta[] = [
   {
     key: 'efficiency',
     label: 'Samaradorlik',
-    sub: 'Topshiriqlarni muddatida bajarish ulushi → koeffitsient',
+    sub: 'Kunlik cheklist bandlarini bajarish ulushi → koeffitsient',
     scope: 'all',
   },
   {

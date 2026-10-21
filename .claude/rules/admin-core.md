@@ -78,7 +78,7 @@ Audit: `AbsenceReason` — nima qo'shildi/o'chdi/qayta nomlandi ("Sozlamalar" bo
   marta tozalangan bo'lsa ham zaxira ularni yana o'sha qoida bilan yig'adi (`messaging.md` «Bot suhbati tarixida»).
 - ⚠️ **O'quvchi parollari seyfi (`studentCredentials`) zaxiraga KIRMAYDI** — shifrlangan bo'lsa ham
   (`ExcludedTables`; `auth-sessions.md` §6.5).
-- Biznes jadvallari to'liq (kitob, shartnoma, qo'ng'iroq, bog'lanish, topshiriq, vakansiya, KPI,
+- Biznes jadvallari to'liq (kitob, shartnoma, qo'ng'iroq, bog'lanish, vakansiya, KPI,
   chegirma, bonus ...). Texnik jurnallar/keshlar va biometrik/sessiya jadvallari ATAYIN kirmaydi va
   ro'yxati faylning o'zida — `excluded` (ilgari "BARCHA ma'lumotlar" deb yozilib, ko'p jadval yo'q edi).
   2026-10-12: `messageDeliveries` (Telegram outbox jurnali — katta, 180 kun) KIRMAYDI; `messageAttachments`

@@ -38,7 +38,6 @@ public static class HomeLayoutRules
         ("cashboxes", true),
         ("schedule", true),
         ("lessonsMonitor", false),
-        ("myTasks", false),
         ("absentNotices", false),
         ("redList", false),
         ("contactsToday", false),

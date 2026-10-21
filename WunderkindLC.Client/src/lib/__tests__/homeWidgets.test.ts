@@ -55,12 +55,14 @@ describe('normallashtirish (server bilan bir xil)', () => {
       version: 1,
       cardsVisible: false,
       cards: [{ key: 'debtors', visible: false }, { key: 'hack', visible: true }, { key: 'debtors', visible: true }],
-      blocks: [{ key: 'myTasks', visible: true }, { key: 'zzz', visible: true }],
+      blocks: [{ key: 'redList', visible: true }, { key: 'zzz', visible: true }, { key: 'myTasks', visible: true }],
     })
     expect(l.cardsVisible).toBe(false)
     expect(l.cards[0]).toEqual({ key: 'debtors', visible: false })
     expect(l.cards).toHaveLength(12)
-    expect(l.blocks.map((b) => b.key).slice(0, 2)).toEqual(['myTasks', 'cashboxes'])
+    expect(l.blocks.map((b) => b.key).slice(0, 2)).toEqual(['redList', 'cashboxes'])
+    // Kanban «Mening topshiriqlarim» vidjeti 2026-10-21 da olib tashlandi — eski sozlamadagi kaliti tashlanadi.
+    expect(l.blocks.map((b) => b.key)).not.toContain('myTasks')
     expect(l.blocks.find((b) => b.key === 'cashboxes')!.visible).toBe(true)
   })
 
@@ -82,9 +84,9 @@ describe('ruxsat filtri', () => {
     expect(visibleBlocks(layout, admin).map((b) => b.key)).not.toContain('cashboxes')
     // CRM U3b: «Davomat xabarlari» va «Qizil ro'yxat» qurildi — endi ko'rinadi.
     expect(visibleBlocks(layout, all).map((b) => b.key)).toEqual(
-      ['cashboxes', 'schedule', 'lessonsMonitor', 'myTasks', 'absentNotices', 'redList', 'contactsToday', 'aiAnalysis'],
+      ['cashboxes', 'schedule', 'lessonsMonitor', 'absentNotices', 'redList', 'contactsToday', 'aiAnalysis'],
     )
-    expect(visibleBlocks(layout, staff(['tasks.board', 'contacts'])).map((b) => b.key)).toEqual(['myTasks', 'contactsToday'])
+    expect(visibleBlocks(layout, staff(['classes.notAttended', 'contacts'])).map((b) => b.key)).toEqual(['lessonsMonitor', 'contactsToday'])
     // Kalitsiz xodim — bu ikki blok oynada ham, sahifada ham yo'q.
     expect(allowedBlocks(layout, staff(['contacts'])).map((b) => b.key)).not.toContain('absentNotices')
     expect(allowedBlocks(layout, staff(['contacts'])).map((b) => b.key)).not.toContain('redList')
@@ -111,6 +113,6 @@ describe('tartiblash', () => {
     const swapped = swapItems(d.blocks, 'schedule', 'cashboxes')
     expect(swapped.map((b) => b.key).slice(0, 2)).toEqual(['schedule', 'cashboxes'])
     expect(swapItems(d.blocks, 'schedule', 'yoq')).toBe(d.blocks)
-    expect(toggleItem(d.blocks, 'myTasks').find((b) => b.key === 'myTasks')!.visible).toBe(true)
+    expect(toggleItem(d.blocks, 'redList').find((b) => b.key === 'redList')!.visible).toBe(true)
   })
 })

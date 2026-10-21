@@ -541,73 +541,8 @@ public class TelegramBotService(
             else if (data == BookShopBotService.CbList)
                 await bookShop.ShowCatalogAsync(db, chatId, ct);
         }
-        else if (data.StartsWith(WorkTaskTelegram.CallbackDone, StringComparison.Ordinal))
-        {
-            await HandleWorkTaskDoneAsync(chatId, data[WorkTaskTelegram.CallbackDone.Length..], ct);
-        }
-        else if (data.StartsWith(WorkTaskTelegram.CallbackApprove, StringComparison.Ordinal))
-        {
-            // «✅ Tasdiqlash» — topshiriq bergan xodim/admin bajarilganini tasdiqlaydi (CRM Phase 5;
-            // darvoza, qulf va javob — WorkTaskFlow.ApproveFromChatAsync).
-            using var scope = sp.CreateScope();
-            var db = scope.ServiceProvider.GetRequiredService<IAppDbContext>();
-            await WorkTaskFlow.ApproveFromChatAsync(db, telegram, chatId, data[WorkTaskTelegram.CallbackApprove.Length..], ct);
-        }
-    }
-
-    /// <summary>
-    /// "Topshiriqlar" modulidagi topshiriqni MAS'ULNING O'ZI bot orqali "bajarildi" qiladi:
-    /// topshiriq doskaning birinchi YOPILUVCHI ustuniga ko'chadi, tarixga yozuv tushadi va
-    /// takroriy bo'lsa keyingi nusxasi tug'iladi (panel bilan AYNAN bir xil —
-    /// <see cref="WorkTaskFlow"/>).
-    ///
-    /// <para>Xavfsizlik: faqat topshiriq MAS'ULI (o'z chatidan) belgilay oladi.</para>
-    /// </summary>
-    private async Task HandleWorkTaskDoneAsync(long chatId, string taskId, CancellationToken ct)
-    {
-        using var scope = sp.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<IAppDbContext>();
-
-        // POYGA: "Bajardim" ikki marta tez bosilsa (yoki panelda shu payt ko'chirilsa) ikkala
-        // so'rov ham "ochiq" ni ko'rib, takroriy nusxa IKKI marta tug'ilardi — panel bilan BIR qulf.
-        using var gate = await PaymentIdempotency.LockAsync(WorkTaskFlow.LockKey(taskId));
-
-        var t = await db.WorkTasks.FirstOrDefaultAsync(x => x.Id == taskId, ct);
-        if (t is null) return;
-
-        var owns = await db.TelegramRegistrations.AnyAsync(
-            r => r.ChatId == chatId && r.UserId == t.AssigneeId, ct);
-        if (!owns) return;
-
-        // ⚠️ "Allaqachon bajarilgan" — HAR QANDAY yopiluvchi ustun bo'yicha. Ilgari faqat BIRINCHI
-        // yopiluvchi ustun tekshirilardi: ikkinchi "bajarildi" ustunidagi topshiriq qayta "yopilib",
-        // takroriy nusxa yana tug'ilardi (nusxa tug'ilishining o'zi ham endi idempotent).
-        var inDoneColumn = await db.WorkTaskColumns.AnyAsync(c => c.Id == t.ColumnId && c.IsDone, ct);
-        if (inDoneColumn)
-        {
-            await telegram.SendMessageAsync(chatId, $"✅ «{t.Title}» allaqachon bajarilgan.", null, ct);
-            return;
-        }
-
-        var doneCol = await db.WorkTaskColumns
-            .Where(c => c.BoardId == t.BoardId && c.IsDone)
-            .OrderBy(c => c.Order).FirstOrDefaultAsync(ct);
-        if (doneCol is null) return;
-
-        t.ColumnId = doneCol.Id;
-        t.CompletedAt = AppClock.Now;
-        t.CompletedById = t.AssigneeId;
-        t.UpdatedAt = AppClock.Now;
-        db.WorkTaskEvents.Add(new WorkTaskEvent
-        {
-            TaskId = t.Id, ActorId = t.AssigneeId, Kind = "moved",
-            Text = "Telegram bot orqali bajarildi deb belgilandi",
-        });
-        await WorkTaskFlow.SpawnRepeatAsync(db, t, ct);
-        await WorkTaskFlow.OnCompletedAsync(db, t, t.AssigneeId, telegram, ct);   // tasdiqlash so'rovi (CRM Phase 5)
-        await db.SaveChangesAsync(ct);
-
-        await telegram.SendMessageAsync(chatId, $"✅ Bajarildi: «{t.Title}»", null, ct);
+        // (Kanban «Topshiriqlar» tugmalari — `wtdone:` / `wtok:` — 2026-10-21 da modul bilan birga olib tashlandi;
+        // eski xabarlardagi tugma bosilsa hech narsa qilinmaydi.)
     }
 
     /// <summary>

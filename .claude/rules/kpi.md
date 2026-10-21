@@ -185,7 +185,7 @@ chunki raqamning ma'nosi shu ta'riflarga bog'liq.
 |---|---|---|
 | **"To'lanmagan hisob"** (45 kunlik qarz sharti) | O'QUVCHI darajasida **FIFO**: barcha o'quv to'lovlari (vozvrat manfiy) bitta havzaga yig'ilib, eng eski oydan boshlab yopiladi; birinchi to'liq yopilmagan oy — "eng eski to'lanmagan". `StudentLedger` bilan bir xil | To'lovlarning KO'PIDA `GroupId` YO'Q (u faqat bitta guruhli o'quvchiga avto-teglanadi). Qat'iy `(o'quvchi, guruh, oy)` mosligi deyarli hamma hisobni "to'lanmagan" deb belgilab, faol o'quvchi sonini nolga tushirar va Bonus A ni yo'q qilardi |
 | **A'zolik holati** (faol o'quvchi 1-sharti) | `CourseAnalytics.WasActiveAt` — SANALARDAN tiklanadi, `Status` dan EMAS | `Status` JORIY holat: bugun muzlatilgan a'zolik o'tgan oyda faol bo'lgan bo'lishi mumkin (`.claude/rules/course-analytics.md` §2). `PastPeriods` ham shu yo'l bilan hisobga olinadi |
-| **Samaradorlik** manbai | Avval **cheklist** (`na` maxrajga KIRMAYDI), bo'lmasa **`WorkTask`**, ikkalasi ham bo'lmasa **1.0 + ochiq `Warning`** | Nol qaytarilsa har bir xodim o'lchanmagan narsa uchun eng past pog'onaga (0.75) tushib qolardi. Ikkala xom raqam alohida `KpiInputDto` bo'lib qaytadi — hech narsa yashirilmaydi |
+| **Samaradorlik** manbai | **Cheklist** (`na` maxrajga KIRMAYDI), bo'lmasa **1.0 + ochiq `Warning`** (2026-10-21 gacha oraliq zaxira — Kanban `WorkTask` — edi; modul olib tashlandi, «Topshiriq: muddatida bajarilgan» qatori va «Kechikkan topshiriq» signali ham) | Nol qaytarilsa har bir xodim o'lchanmagan narsa uchun eng past pog'onaga (0.75) tushib qolardi. Xom raqam alohida `KpiInputDto` bo'lib qaytadi — hech narsa yashirilmaydi |
 | **Shartnoma** hodisasi | `Lead.ClosedByUserId` + `ClosedAt` (faqat `LeadsController.Convert` yozadi) | `LeadStage` da "yutuq" bayrog'i YO'Q; o'quvchiga aylantirish — yagona ishonchli hodisa |
 | **"Ketdi" (2026-10-07, audit SAL-3)** | `DashboardSummary.LeftEvents` — bosh sahifa va «Ketish sabablari» bilan AYNAN bir xil; faqat **AKTIVDAN** ketganlar (`EverActive`) | Ilgari `LeftAt` qo'yilgan HAR a'zolik sanalardi: sertifikat bilan TUGATGANLAR va faqat SINOVda bo'lganlar ham "ketdi" bo'lib, har biriga "sababsiz ketish" jarimasi yozilardi |
 | **Ketish sababi** | `MembershipReasons.Resolve` («Ketish sabablari» bilan bir xil): tuzilgan yozuv → audit matni → o'quvchi ARXIV sababi (arxiv kuni ketish kuniga teng yoki keyin); `ActionReason.OutOfControl` — avval id, bo'lmasa nom bo'yicha | Arxivlash o'quvchini guruhlardan chiqaradi — bu ketish, sababi arxiv sababi (jarima EMAS). Sabab topilmasa — HAM `leftControlled`, HAM `unknownReasonLeft` ga kiradi (jarima aynan shuning uchun) |
@@ -197,9 +197,10 @@ chunki raqamning ma'nosi shu ta'riflarga bog'liq.
 
 ## 11. Cheklistni AVTOMATIK belgilash — `ChecklistAutoCheck`
 
-Hozir **4** kalit qo'llangan (`Supported`): `tasks.overdue_zero` · `tasks.due_done` ·
-`journal.yesterday_filled` · `leads.without_task_zero`. Qolgan **18** tasi QO'LDA
-(`calls.missed_returned` va `calls.answer_speed` 2026-10 dan qo'lda — §11.1).
+Hozir **1** kalit qo'llangan (`Supported`): `journal.yesterday_filled`. Qolganlari QO'LDA
+(`calls.missed_returned` va `calls.answer_speed` 2026-10 dan qo'lda — §11.1; `tasks.overdue_zero`,
+`tasks.due_done`, `leads.without_task_zero` 2026-10-21 dan qo'lda — manbai Kanban «Topshiriqlar» edi, u olib
+tashlandi. Seed kalitlari o'zgarmadi — HR topshiriqlariga ulash kerak bo'lsa ALOHIDA ish).
 
 ⚠️ **`Supported` da yo'q kalit JIM e'tiborsiz qoldiriladi** va band oddiy qo'lda belgilanadi.
 Shuning uchun seed to'liq yozilgan (66 band) — avtomatlashtirish bosqichma-bosqich qo'shiladi
@@ -210,13 +211,8 @@ va shablonni qayta yozish kerak bo'lmaydi.
 bilan avtomatlashtirish xodimni **noto'g'ri jarimalab** qo'yardi — bu tekshiruvlar
 samaradorlik koeffitsienti orqali pulga bevosita ta'sir qiladi.
 
-⚠️ **`leads.without_task_zero` — ATAYIN "fail-open"**: bog'lanish — lid Id'si `WorkTask.Tags` ichida YOKI (2026-10-17 dan)
-`WorkTask.LeadId` (lid avto-topshirig'i, `topshiriqlar.md` §9). ⚠️ "Ishlatilyaptimi" qarori FAQAT `Tags` dan (xodimning o'zi
-qo'ygan bog'lanish): avto-topshiriq xodim ixtiyorisiz paydo bo'ladi va bandni har kuni yiqitib bonusni kesardi; `LeadId` faqat
-bog'lanish ISHLATILAYOTGANDA isbot sifatida qo'shiladi. Agar xodimning ochiq
-topshiriqlaridan birortasi ham uning ochiq lidlariga ishora qilmasa, bog'lanish
-"ishlatilmayapti" deb hisoblanadi va band O'TADI. Aks holda tekshiruv HAR KUNI HAMMAGA
-"bajarilmadi" berib, bonusni jimgina kesib turardi.
+(Tarix: `leads.without_task_zero` 2026-10-21 gacha `WorkTask.Tags`/`LeadId` bog'lanishi bilan ATAYIN "fail-open" edi —
+bog'lanish ishlatilmasa band o'tardi. Kanban bilan birga avtomatik tekshiruv ham ketdi.)
 
 ## 11.1. QO'NG'IROQ KO'RSATKICHLARI — 2026-10 da OLIB TASHLANDI
 

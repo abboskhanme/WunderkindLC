@@ -319,15 +319,14 @@ public class StaffController(AppDbContext db, AuditService audit) : ControllerBa
         if (user is null || user.Role != Roles.Staff) return NotFound();
         var reason = string.IsNullOrWhiteSpace(reasonId) ? "" : (await db.ActionReasons.Where(r => r.Id == reasonId).Select(r => r.Label).FirstOrDefaultAsync() ?? "");
         var actor = User.FindFirst(System.Security.Claims.ClaimTypes.Name)?.Value ?? "Admin";
-        var actorId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? "";
         // Arxiv suratiga PAROL XESHI ham, ochiq dastlabki parol ham TUSHMAYDI (surat kunlik Telegram
         // zaxirasiga ham kiradi). Tiklangan akkaunt parolsiz bo'ladi — admin yangisini yaratadi.
         ArchiveService.Snapshot(db, "staff", user.Id, user.FullName, user.Email ?? "",
             (object?)SecretScrub.ToScrubbedNode(user) ?? new { user.Id, user.FullName },
             reason.Length > 0 ? reason : null, actor);
-        // Jonli havolalar (KPI profili, ochiq lidlar, kassa, topshiriqlar, Telegram) — o'sha
+        // Jonli havolalar (KPI profili, ochiq lidlar, kassa, Telegram) — o'sha
         // tranzaksiyada bo'shatiladi; nima bo'shatilgani shu BITTA audit qatorida yoziladi.
-        var released = await StaffRelease.ReleaseAsync(db, user.Id, user.FullName, actorId);
+        var released = await StaffRelease.ReleaseAsync(db, user.Id);
         audit.Record("Staff", user.Id, "delete",
             $"Xodim o'chirildi: {user.FullName}" + (reason.Length > 0 ? $" — sabab: {reason}" : "")
             + (released.Any ? $" — {released.Summary()}" : ""));

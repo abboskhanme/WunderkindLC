@@ -60,7 +60,6 @@ public static partial class McpAreas
     public static readonly McpArea LeadStats = new("CRM statistika", ["leads.stats"]);
 
     public static readonly McpArea Messages = new("Xabarlar", ["messages.broadcast"]);
-    public static readonly McpArea Tasks = new("Topshiriqlar", ["tasks.board", "tasks.dashboard"]);
     public static readonly McpArea Kpi = new("KPI", ["kpi.today", "kpi.month"]);
     public static readonly McpArea Audit = new("O'zgarishlar tarixi", ["audit"]);
     public static readonly McpArea Contracts = new("Shartnomalar", ["contracts"]);

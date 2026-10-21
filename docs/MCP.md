@@ -101,7 +101,7 @@ ko'chirishdan oldin o'zingiz tekshiring.
 | Lidlar | "Oxirgi 30 kun voronkasi", "Yo'qotilgan lidlar sabablari" | Lidlar / CRM statistika |
 | Testlar va reyting | "Oktabrdagi oylik testlar va o'rtacha foizlari", "Unit 5 testida kim nechta savol yechdi?", "Alining oraliq testlari", "Oktabr reytingi TOP-20 (testlar + ball)", "Alining 3 oylik reytingi", "Sentabr TOP/BOTTOM ro'yxati (ota-onalarga ketadigan)" | Testlar natijalari / Reyting (guruh reytingi — Guruhlar ham, o'quvchi reytingi — O'quvchilar ham; TOP/BOTTOM — Reyting) |
 | O'qituvchilar va jadval | "O'qituvchilar ro'yxati", "Shu haftaning jadvali", "Jadvalda to'qnashuvlar bormi?", "Bo'sh xonalar" | O'qituvchilar / Dars jadvali |
-| Boshqa | "Bog'lanish navbati", "Tasdiq kutayotgan topshiriqlar", "O'zgarishlar tarixi" | Bog'lanish kerak / Topshiriqlar / O'zgarishlar tarixi |
+| Boshqa | "Bog'lanish navbati", "O'zgarishlar tarixi" | Bog'lanish kerak / O'zgarishlar tarixi |
 
 Ruxsat yo'q bo'limni so'rasangiz, AI "Ruxsat yo'q" javobini oladi — bu jurnalda ham ko'rinadi.
 

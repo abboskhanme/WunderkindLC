@@ -612,3 +612,11 @@
 - [2026-10-17] Avto-topshiriq muddati / muhimligi? → bugun, «Yuqori», tasdiqsiz → yangi lidga tez qo'ng'iroq; tizim yaratgan topshiriqda tasdiqlovchi yo'q
 - [2026-10-17] Tasdiqlangan chiqim sanasi? → tasdiq kuni (so'rov sanasi izohda) → pul aynan shu kuni kassadan chiqadi; o'tgan kun hisoboti orqaga o'zgarmasin
 - [2026-10-17] expenseApproval kalitini kim beradi? → faqat superadmin → admin o'zi yaratgan akkaunt bilan o'z chiqimini tasdiqlay olmasin
+- [2026-10-21] Kanban «Topshiriqlar» removal — what happens to the lead auto-task (owner TZ F4 L1, built on WorkTask)? → removed with it (no port to HR tasks) → user: "LC'dagi bori umuman kerak emas, tag-tugi bilan olib tashlayver"; it can come back on top of HR tasks as separate work.
+- [2026-10-21] KPI checklist auto-keys `tasks.overdue_zero`, `tasks.due_done`, `leads.without_task_zero` → unsupported (manual), seed keys unchanged; efficiency = checklist, else 1.0 + warning (the WorkTask fallback, «Topshiriq: muddatida» input and «Kechikkan topshiriq» signal are gone) → their only source was WorkTask; a wrong auto "failed" cuts bonus (same rule as the 2026-10 call keys).
+- [2026-10-21] Home widget «Mening topshiriqlarim» (`myTasks`, Kanban) → removed from server and client catalogs; saved layouts drop the key on normalize → the widget read only WorkTask; LMS has no such widget.
+- [2026-10-21] Staff activity «yopilgan topshiriqlar» → DTO field `TasksClosed` kept, fed 0 until HR tasks fill it → the client column stays stable; the HR port owns the new source.
+- [2026-10-21] Old Kanban URLs (`/admin/topshiriqlar/*`, `/admin/boshqaruv/staff-tasks`) → redirect to `/admin/hr/topshiriqlar` → bookmarks do not 404.
+- [2026-10-21] MCP `tasks_list` tool + `McpAreas.Tasks` → removed → read-only tool over dropped tables.
+- [2026-10-21] Stored `tasks`/`tasks.*` strings in `AppUser.Permissions` / role templates → left as is (no data migration) → nothing reads them; `PermissionRules` matches exact keys only.
+- [2026-10-21] Telegram buttons `wtdone:`/`wtok:` in already-sent messages → no-op (callback ignored) → the module is gone; no reply avoids confusing users.

@@ -44,7 +44,7 @@ export function OnboardingPage() {
   const [q, setQ] = useState('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  /** Qayta yuklash so'rovi — effekt ichida to'g'ridan-to'g'ri setState o'rniga (topshiriqlar.md §6). */
+  /** Qayta yuklash so'rovi — effekt ichida to'g'ridan-to'g'ri setState o'rniga. */
   const [tick, setTick] = useState(0)
 
   const [openId, setOpenId] = useState<string | null>(null)

@@ -9,7 +9,6 @@ namespace WunderkindLC.Tests;
 
 /// <summary>
 /// T11 audit tuzatishlari (OPERATSIYALAR): NVR klipi (ffmpeg argumentlari, parolni tozalash),
-/// takroriy topshiriq, arxivlangan doska,
 /// botdan naqd kitob buyurtmasi (olib ketishda to'lov) va shartnoma raqami navbati.
 /// </summary>
 public class AuditFixT11Tests
@@ -68,91 +67,8 @@ public class AuditFixT11Tests
 
     // (OPS-3 — o'chirilgan CTI agent testlari 2026-10 da Local Call / Local SMS bilan birga olib tashlandi.)
 
-    // =============================================================================================
-    //  OPS-7 / OPS-8 — topshiriqlar
-    // =============================================================================================
-
-    private static async Task<(WorkTaskBoard Board, WorkTaskColumn Open, WorkTaskColumn Done)> BoardAsync(
-        AppDbContext ctx, bool archived = false)
-    {
-        var board = new WorkTaskBoard { Title = "Umumiy", IsArchived = archived };
-        var open = new WorkTaskColumn { BoardId = board.Id, Title = "Rejada", Order = 0, IsSystem = true };
-        var done = new WorkTaskColumn { BoardId = board.Id, Title = "Bajarildi", Order = 3, IsDone = true, IsSystem = true };
-        ctx.WorkTaskBoards.Add(board);
-        ctx.WorkTaskColumns.AddRange(open, done);
-        await ctx.SaveChangesAsync();
-        return (board, open, done);
-    }
-
-    [Fact]
-    public async Task Takroriy_topshiriq_yopish_qayta_ochish_yopish_BITTA_nusxa_tugdiradi()
-    {
-        using var db = TestDb.Sqlite();
-        var ctx = db.Context;
-        var (board, open, _) = await BoardAsync(ctx);
-        var t = new WorkTask
-        {
-            BoardId = board.Id, ColumnId = open.Id, Title = "Kassani topshirish",
-            Repeat = "daily", DueDate = "2026-10-07", AssigneeId = "u1",
-        };
-        ctx.WorkTasks.Add(t);
-        await ctx.SaveChangesAsync();
-
-        Assert.True(await WorkTaskFlow.SpawnRepeatAsync(ctx, t));
-        Assert.False(await WorkTaskFlow.SpawnRepeatAsync(ctx, t));   // saqlanmagan nusxa ham hisobga olinadi
-        await ctx.SaveChangesAsync();
-        Assert.False(await WorkTaskFlow.SpawnRepeatAsync(ctx, t));   // "Bajardim" ikki marta / qayta yopish
-        await ctx.SaveChangesAsync();
-
-        var copies = await ctx.WorkTasks.Where(x => x.RepeatOfId == t.Id).ToListAsync();
-        var copy = Assert.Single(copies);
-        Assert.Equal("2026-10-08", copy.DueDate);
-
-        // Nusxa yopilsa — zanjir davom etadi (keyingi kun), ildiz bilan bir xil RepeatOfId.
-        Assert.True(await WorkTaskFlow.SpawnRepeatAsync(ctx, copy));
-        await ctx.SaveChangesAsync();
-        Assert.Equal(new[] { "2026-10-08", "2026-10-09" },
-            (await ctx.WorkTasks.Where(x => x.RepeatOfId == t.Id).Select(x => x.DueDate!).ToListAsync()).Order().ToList());
-    }
-
-    [Fact]
-    public async Task Ustun_bajarildi_deb_belgilansa_CompletedAt_moslanadi__olinsa_qayta_ochiladi()
-    {
-        using var db = TestDb.Sqlite();
-        var ctx = db.Context;
-        var (board, open, _) = await BoardAsync(ctx);
-        var t = new WorkTask { BoardId = board.Id, ColumnId = open.Id, Title = "Hisobot", Repeat = "weekly", DueDate = "2026-10-07" };
-        ctx.WorkTasks.Add(t);
-        await ctx.SaveChangesAsync();
-
-        Assert.True(await WorkTaskFlow.SyncCompletionAsync(ctx, t, columnIsDone: true, "admin"));
-        await ctx.SaveChangesAsync();
-        Assert.NotNull(t.CompletedAt);
-        Assert.Equal("admin", t.CompletedById);
-        Assert.Equal(1, await ctx.WorkTasks.CountAsync(x => x.RepeatOfId == t.Id));     // takroriysi tug'ildi
-
-        Assert.False(await WorkTaskFlow.SyncCompletionAsync(ctx, t, columnIsDone: true, "admin")); // o'zgarish yo'q
-        Assert.True(await WorkTaskFlow.SyncCompletionAsync(ctx, t, columnIsDone: false, "admin"));
-        Assert.Null(t.CompletedAt);
-    }
-
-    [Fact]
-    public async Task Arxivlangan_doska_topshiriqlari_ESLATMAGA_tushmaydi()
-    {
-        using var db = TestDb.Sqlite();
-        var ctx = db.Context;
-        var live = await BoardAsync(ctx);
-        var archived = await BoardAsync(ctx, archived: true);
-        ctx.WorkTasks.AddRange(
-            new WorkTask { BoardId = live.Board.Id, ColumnId = live.Open.Id, Title = "Tirik", AssigneeId = "u1", DueDate = "2026-10-01" },
-            new WorkTask { BoardId = archived.Board.Id, ColumnId = archived.Open.Id, Title = "Arxivda", AssigneeId = "u1", DueDate = "2026-10-01" },
-            new WorkTask { BoardId = live.Board.Id, ColumnId = live.Done.Id, Title = "Bajarilgan", AssigneeId = "u1", DueDate = "2026-10-01" });
-        await ctx.SaveChangesAsync();
-
-        var due = await WorkTaskFlow.DueForReminderAsync(ctx, "2026-10-07");
-
-        Assert.Equal("Tirik", Assert.Single(due).Title);
-    }
+    // (OPS-7 / OPS-8 — takroriy topshiriq va arxivlangan doska testlari 2026-10-21 da Kanban «Topshiriqlar»
+    // moduli bilan birga olib tashlandi.)
 
     // =============================================================================================
     //  OPS-6 — botdan NAQD kitob buyurtmasi: tasdiqlash = zaxira, pul olib ketishda
