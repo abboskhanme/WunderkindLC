@@ -259,11 +259,10 @@ public class TeachersController(AppDbContext db, AuditService audit, IConfigurat
         if (teacher is null) return NotFound();
         // O'qituvchi guruhda MAJBURIY — faol guruhga biriktirilgan bo'lsa o'chirib bo'lmaydi (yetim TeacherId oldini olish).
         if (await ActiveGroupsGuardAsync(id, "o'chirib") is { } blocked) return blocked;
-        // `hr_employees.user_id` is RESTRICT (Topshiriqlar history) — a readable 409, not a 500. Every teacher has
-        // an HR row (auto-sync); only one WITH history blocks the delete (StaffController.HrEmployeeDeleteMessage).
-        if (teacher.UserId is not null
-            && !await WunderkindLC.Application.HrTasks.HrTasksService.ReleaseUnusedEmployeeAsync(db, teacher.UserId))
-            return Conflict(new { message = StaffController.HrEmployeeDeleteMessage });
+        // Topshiriqlar (HR): every teacher with an account has an HR row (auto-sync). Without history it goes; with
+        // history it stays as a FORMER employee (inactive, open tasks cancelled) — never blocks the delete.
+        var hr = teacher.UserId is null ? WunderkindLC.Application.HrTasks.HrRelease.None
+            : await WunderkindLC.Application.HrTasks.HrTasksService.ReleaseEmployeeAsync(db, teacher.UserId, DateTimeOffset.UtcNow);
         var reason = string.IsNullOrWhiteSpace(reasonId) ? "" : (await db.ActionReasons.Where(r => r.Id == reasonId).Select(r => r.Label).FirstOrDefaultAsync() ?? "");
         // Biriktirilgan tizim akkauntini ham o'chiramiz.
         if (teacher.UserId is not null)
@@ -274,7 +273,8 @@ public class TeachersController(AppDbContext db, AuditService audit, IConfigurat
         var actor = User.FindFirst(System.Security.Claims.ClaimTypes.Name)?.Value ?? "Admin";
         ArchiveService.Snapshot(db, "teacher", teacher.Id, teacher.FullName, teacher.Phone ?? "", teacher, reason.Length > 0 ? reason : null, actor);
         audit.Record(AuditService.EntityTeacherSalary, teacher.Id, "delete",
-            $"O'qituvchi o'chirildi: {teacher.FullName}" + (reason.Length > 0 ? $" — sabab: {reason}" : ""),
+            $"O'qituvchi o'chirildi: {teacher.FullName}" + (reason.Length > 0 ? $" — sabab: {reason}" : "")
+                + (hr.KeptHistory ? $" — {hr.Summary()}" : ""),
             before: AuditService.TeacherSnapshot(teacher), teacherId: teacher.Id);
         db.Teachers.Remove(teacher);
         await db.SaveChangesAsync();
@@ -327,11 +327,16 @@ public class TeachersController(AppDbContext db, AuditService audit, IConfigurat
 
         var cancelledSubs = await SubstituteTeacherService.CancelFutureForTeacherAsync(
             db, teacher.Id, audit, $"o'qituvchi {teacher.FullName} arxivlandi");
+        // Topshiriqlar (HR): archive = the teacher left — the HR row goes inactive and its open tasks are
+        // cancelled (no generated tasks, morning lists or reminders for someone who is gone).
+        var cancelledHrTasks = teacher.UserId is null ? 0
+            : await WunderkindLC.Application.HrTasks.HrTasksService.SetAccountActiveAsync(db, teacher.UserId, false, DateTimeOffset.UtcNow);
 
         audit.Record(AuditService.EntityTeacherSalary, teacher.Id, "update",
             $"O'qituvchi arxivga ko'chirildi ({teacher.FullName})"
                 + (string.IsNullOrWhiteSpace(teacher.ArchiveReason) ? "" : $": \"{teacher.ArchiveReason}\"")
-                + (cancelledSubs > 0 ? $" — {cancelledSubs} ta o'rinbosarlik tayinlovining kelajakdagi kunlari bekor qilindi" : ""),
+                + (cancelledSubs > 0 ? $" — {cancelledSubs} ta o'rinbosarlik tayinlovining kelajakdagi kunlari bekor qilindi" : "")
+                + (cancelledHrTasks > 0 ? $" — {cancelledHrTasks} ta ochiq topshiriq bekor qilindi" : ""),
             teacherId: teacher.Id);
 
         await db.SaveChangesAsync();
@@ -411,6 +416,9 @@ public class TeachersController(AppDbContext db, AuditService audit, IConfigurat
         // Arxivdan OLDINGI sessiyalar (30 kunlik sirpanuvchi refresh) qayta TIRILMASIN (R2-6) — yangi parol
         // berilsa ham, berilmasa ham (eski arxivlashda sessiyalar bekor qilinmagan bo'lishi mumkin).
         if (teacher.UserId is not null) await RefreshTokenService.RevokeAllForUserAsync(db, teacher.UserId);
+        // Topshiriqlar (HR): back at work → the HR row is active again (cancelled tasks stay cancelled).
+        if (teacher.UserId is not null)
+            await WunderkindLC.Application.HrTasks.HrTasksService.SetAccountActiveAsync(db, teacher.UserId, true, DateTimeOffset.UtcNow);
 
         audit.Record(AuditService.EntityTeacherSalary, teacher.Id, "update",
             $"O'qituvchi arxivdan qaytarildi ({teacher.FullName})"

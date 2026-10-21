@@ -70,8 +70,12 @@ public class HrTasksRbacTests
     [Fact]
     public void Akkaunt_ochirish_HR_tarixini_tekshiradi()
     {
-        Assert.Contains("HrTasksService.ReleaseUnusedEmployeeAsync(db, id)", Controller("StaffController.cs"));
-        Assert.Contains("HrTasksService.ReleaseUnusedEmployeeAsync(db, teacher.UserId)", Controller("TeachersController.cs"));
+        Assert.Contains("HrTasksService.ReleaseEmployeeAsync(db, id,", Controller("StaffController.cs"));
+        var teachers = Controller("TeachersController.cs");
+        Assert.Contains("HrTasksService.ReleaseEmployeeAsync(db, teacher.UserId,", teachers);
+        // archive = the teacher left → HR row inactive; restore → active again
+        Assert.Contains("HrTasksService.SetAccountActiveAsync(db, teacher.UserId, false,", teachers);
+        Assert.Contains("HrTasksService.SetAccountActiveAsync(db, teacher.UserId, true,", teachers);
         // the scheduler does not run in import mode
         var program = Source("WunderkindLC.Server", "Program.cs");
         Assert.Matches(new Regex(@"if \(!WunderkindLC\.Application\.Services\.ImportMode\.Enabled\)\s*\n\s*builder\.Services\.AddHostedService<WunderkindLC\.Application\.HrTasks\.HrTasksScheduler>\(\);"), program);
@@ -130,8 +134,33 @@ public class HrTasksRbacTests
         Assert.Contains(task.GetIndexes(), i => i.GetDatabaseName() == "ix_hr_tasks_template_id");
         var employee = db.Context.Model.FindEntityType(typeof(HrEmployee))!;
         Assert.Equal("hr_role", employee.FindProperty(nameof(HrEmployee.HrRole))!.GetColumnName());
-        Assert.Contains(employee.GetForeignKeys(), fk => fk.GetConstraintName() == "fk_hr_employees_users_user_id");
+        // LC: NO foreign key to Users — a deleted account leaves a FORMER employee row (hr-tasks.md §4)
+        Assert.DoesNotContain(employee.GetForeignKeys(), fk => fk.PrincipalEntityType.ClrType == typeof(AppUser));
+        Assert.Contains(employee.GetIndexes(), ix => ix.IsUnique && ix.GetDatabaseName() == "uq_hr_employee_user");
         // the rest of the LC model keeps its PascalCase
         Assert.Equal("FullName", db.Context.Model.FindEntityType(typeof(AppUser))!.FindProperty(nameof(AppUser.FullName))!.GetColumnName());
+    }
+
+    [Fact]
+    public void Yozish_TOLIQ_kalit_talab_qiladi_va_akkaunt_yaratish_Xodimlar_ruxsati_bilan()
+    {
+        var src = Controller("HrTasksController.cs");
+        // every write goes through Run/RunNoContent, both start with EnsureCanWrite (LMS: writes need the bare key)
+        Assert.Equal(2, Regex.Matches(src, @"try\s*\{\s*EnsureCanWrite\(\);").Count);
+        Assert.Contains("PermissionRules.HasFullSection(actor.Permissions, HrTaskAccess.PermissionKey)", src);
+        // a login-capable account only with the Xodimlar section's full right
+        Assert.Contains("AdminPermAttribute.HasFullAccess(User, \"staff\")", src);
+    }
+
+    [Fact]
+    public void Yuklamalar_uploads_tanigan_turlar_bilan_va_Program_shu_xaritani_ishlatadi()
+    {
+        Assert.True(HrFileTypes.IsServable(".jpg"));
+        Assert.True(HrFileTypes.IsServable(".heic"));
+        Assert.True(HrFileTypes.IsServable(".opus"));
+        Assert.True(HrFileTypes.IsServable(".bin"));
+        Assert.False(HrFileTypes.IsServable(".pages"));
+        Assert.Contains("ContentTypeProvider = WunderkindLC.Application.HrTasks.HrFileTypes.Provider",
+            Source("WunderkindLC.Server", "Program.cs"));
     }
 }

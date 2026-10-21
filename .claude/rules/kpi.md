@@ -206,6 +206,10 @@ Qolganlari QO'LDA (`calls.missed_returned` va `calls.answer_speed` 2026-10 dan q
 Kechikkan = muddati shu kundan OLDIN va hamon ochiq; «bugungilari bajarildi» = shu kunga muddatli ochiq topshiriq yo'q.
 HR qatori/topshirig'i yo'q xodimda ikkalasi ham O'TADI (shubha xodim foydasiga). Qulf: `ChecklistAutoCheckTests`.
 
+⚠️ **`ChecklistAutoCheck.RunAsync` ni hozircha HECH QAYSI endpoint chaqirmaydi** (2026-10-21 revyuda aniqlandi; `main` da
+ham shunday edi) — ya'ni bu kalitlar funksiya darajasida tayyor, lekin «Bugun» cheklistida bandlar hamon QO'LDA
+belgilanadi. Ulash (cheklist ochilganda maslahat sifatida) — ALOHIDA ish.
+
 ⚠️ **`Supported` da yo'q kalit JIM e'tiborsiz qoldiriladi** va band oddiy qo'lda belgilanadi.
 Shuning uchun seed to'liq yozilgan (66 band) — avtomatlashtirish bosqichma-bosqich qo'shiladi
 va shablonni qayta yozish kerak bo'lmaydi.

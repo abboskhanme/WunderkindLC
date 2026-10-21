@@ -106,3 +106,27 @@ public sealed class LocalHrFileStore(IWebHostEnvironment env) : IHrFileStore
         return ext.Length is >= 2 and <= 10 && ext[1..].All(char.IsAsciiLetterOrDigit) ? ext : ".bin";
     }
 }
+
+/// <summary>
+/// What <c>/uploads</c> serves: the framework's extension map + a few safe types phones and voice notes produce
+/// (iPhone HEIC/HEIF photos, Opus voice, 7z). <c>Program.cs</c> serves <c>/uploads</c> with THIS provider and HR
+/// uploads refuse anything it cannot map — otherwise the file is accepted as proof but opens as 404.
+/// </summary>
+public static class HrFileTypes
+{
+    public static readonly Microsoft.AspNetCore.StaticFiles.FileExtensionContentTypeProvider Provider = Create();
+
+    private static Microsoft.AspNetCore.StaticFiles.FileExtensionContentTypeProvider Create()
+    {
+        var provider = new Microsoft.AspNetCore.StaticFiles.FileExtensionContentTypeProvider();
+        provider.Mappings[".heic"] = "image/heic";
+        provider.Mappings[".heif"] = "image/heif";
+        provider.Mappings[".opus"] = "audio/ogg";
+        provider.Mappings[".7z"] = "application/x-7z-compressed";
+        return provider;
+    }
+
+    /// <summary><paramref name="extension"/> as stored (<c>.jpg</c>) — can <c>/uploads</c> serve it?</summary>
+    public static bool IsServable(string extension) => Provider.TryGetContentType("f" + extension, out _);
+}
+

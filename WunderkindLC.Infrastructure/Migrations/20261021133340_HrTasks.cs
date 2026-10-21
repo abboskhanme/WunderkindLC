@@ -12,6 +12,15 @@ namespace WunderkindLC.Infrastructure.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
+            // Kanban «Topshiriqlar» removed: its permission tokens (`tasks`, `tasks:*`, `tasks.*`) go from accounts and
+            // role templates — nothing reads them, and a leftover section breaks `isKassaOnly` (a cashier with
+            // ["kassa","tasks.board"] would no longer land on /kassa). `hrTasks` is not touched (exact prefix match).
+            foreach (var (table, column) in new[] { ("Users", "Permissions"), ("StaffRoleTemplates", "DefaultPermissions") })
+                migrationBuilder.Sql($@"
+UPDATE ""{table}"" SET ""{column}"" = ARRAY(
+    SELECT p FROM unnest(""{column}"") AS p WHERE p <> 'tasks' AND p NOT LIKE 'tasks:%' AND p NOT LIKE 'tasks.%')
+ WHERE EXISTS (SELECT 1 FROM unnest(""{column}"") AS p WHERE p = 'tasks' OR p LIKE 'tasks:%' OR p LIKE 'tasks.%');");
+
             migrationBuilder.DropTable(
                 name: "WorkTaskBoards");
 
@@ -142,12 +151,6 @@ namespace WunderkindLC.Infrastructure.Migrations
                         principalTable: "hr_positions",
                         principalColumn: "id",
                         onDelete: ReferentialAction.SetNull);
-                    table.ForeignKey(
-                        name: "fk_hr_employees_users_user_id",
-                        column: x => x.user_id,
-                        principalTable: "Users",
-                        principalColumn: "Id",
-                        onDelete: ReferentialAction.Restrict);
                 });
 
             migrationBuilder.CreateTable(

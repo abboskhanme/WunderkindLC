@@ -407,6 +407,10 @@ public sealed partial class HrTasksService
         };
     }
 
+    /// <summary>LC: the stored extension must be one <c>/uploads</c> serves (<see cref="HrFileTypes"/>).</summary>
+    private static bool IsServable(HrUpload upload) =>
+        HrFileTypes.IsServable(LocalHrFileStore.SafeExtension(ExtensionOf(upload)));
+
     /// <summary>Only browser-executable types are refused (by MIME and by extension) — everything else is a valid file.</summary>
     private static bool IsBlocked(HrUpload upload) =>
         HrLimits.BlockedContentTypes.Contains((upload.ContentType ?? "").Split(';')[0].Trim())
@@ -420,6 +424,7 @@ public sealed partial class HrTasksService
         if (upload.Content.Length > HrLimits.MaxAttachmentBytes) throw HrErrors.AttachmentTooLarge(HrLimits.MaxAttachmentBytes);
         if (upload.Content.Length == 0) throw HrErrors.Validation("Fayl bo'sh");
         if (IsBlocked(upload)) throw HrErrors.UnsupportedAttachmentType();
+        if (!IsServable(upload)) throw HrErrors.UnservableFileType(attachment: true);
         // no ffprobe on our server — the client reports the recorded length (MediaRecorder knows it)
         if (durationSeconds is < 0) throw HrErrors.Validation("Ovoz davomiyligi manfiy bo'lishi mumkin emas");
         if (k == HrAttachmentKinds.Voice && durationSeconds > HrLimits.MaxVoiceSeconds)
@@ -767,6 +772,7 @@ public sealed partial class HrTasksService
         var task = await OwnTaskAsync(me, taskId, ct);
         if (task.IsFinal) throw HrErrors.TaskNotEditable("proof");
         if (IsBlocked(upload)) throw HrErrors.UnsupportedProofType();
+        if (!IsServable(upload)) throw HrErrors.UnservableFileType(attachment: false);
         if (upload.Content.Length > HrLimits.MaxProofBytes) throw HrErrors.ProofTooLarge(HrLimits.MaxProofBytes);
         if (upload.Content.Length == 0) throw HrErrors.Validation("Fayl bo'sh");
         var current = await db.HrTaskProofs.CountAsync(p => p.TaskId == task.Id, ct);

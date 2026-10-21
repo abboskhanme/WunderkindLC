@@ -345,7 +345,7 @@ public sealed partial class HrTasksService(
     /// <summary>userId → its teacher card ids (a teacher's chat is linked to the card, not the account).</summary>
     private async Task<Dictionary<string, string>> TeacherOwnersAsync(IReadOnlyCollection<string> userIds, CancellationToken ct) =>
         (await db.Teachers.AsNoTracking()
-            .Where(t => t.UserId != null && userIds.Contains(t.UserId))
+            .Where(t => t.UserId != null && !t.IsArchived && userIds.Contains(t.UserId))
             .Select(t => new { t.Id, t.UserId })
             .ToListAsync(ct))
         .ToDictionary(t => t.Id, t => t.UserId!);

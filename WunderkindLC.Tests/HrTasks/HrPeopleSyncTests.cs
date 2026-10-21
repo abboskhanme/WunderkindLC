@@ -9,7 +9,7 @@ namespace WunderkindLC.Tests.HrTasks;
 /// Every LC employee is an HR employee (LMS client, 2026-09-28, ported 1:1): teachers and staff land in the HR
 /// list so they can get tasks and be placed in the subordination tree. Each test owns its SQLite database (the
 /// sync reads the WHOLE users table). Ported from WunderkindLMS SchoolLms.Tests/HrTasks/HrPeopleSyncTests.cs —
-/// the delete endpoints are checked through <see cref="HrTasksService.ReleaseUnusedEmployeeAsync"/>, the call
+/// the delete endpoints are checked through <see cref="HrTasksService.ReleaseEmployeeAsync"/>, the call
 /// both delete actions make (wiring: <see cref="HrTasksRbacTests"/>).
 /// </summary>
 public class HrPeopleSyncTests
@@ -80,7 +80,9 @@ public class HrPeopleSyncTests
 
         // what TeachersController.Delete / StaffController.Delete do before removing the account
         await using var db = kit.NewContext();
-        Assert.True(await HrTasksService.ReleaseUnusedEmployeeAsync(db, userId));
+        var release = await HrTasksService.ReleaseEmployeeAsync(db, userId, DateTimeOffset.UtcNow);
+        Assert.True(release.HadRow);
+        Assert.False(release.KeptHistory);
         db.Users.Remove(await db.Users.SingleAsync(u => u.Id == userId));
         await db.SaveChangesAsync();
 
@@ -90,12 +92,15 @@ public class HrPeopleSyncTests
     }
 
     [Fact]
-    public async Task Topshirigi_yoki_qoidasi_bor_HR_xodimi_ochirilmaydi_409()
+    public async Task Tarixi_bor_HR_xodimi_akkaunt_ochirilganda_SOBIQ_xodim_bolib_qoladi()
     {
+        // LC: deleting the account IS offboarding (staff-roles.md §6) — LMS's 409 would block it forever.
         using var kit = new HrTasksKit();
         var (_, withTask) = await SeedTeacherWithHrRowAsync(kit);
         var employee = await kit.Db.HrEmployees.SingleAsync(e => e.UserId == withTask);
-        await kit.TaskAsync(employee.Id, DateTimeOffset.UtcNow);
+        var open = await kit.TaskAsync(employee.Id, DateTimeOffset.UtcNow.AddDays(1));
+        var done = await kit.TaskAsync(employee.Id, DateTimeOffset.UtcNow.AddDays(-1), HrTaskStatuses.Done,
+            completedAt: DateTimeOffset.UtcNow.AddDays(-1), comment: "ok");
 
         var (_, withRule) = await SeedTeacherWithHrRowAsync(kit);
         var ruled = await kit.Db.HrEmployees.SingleAsync(e => e.UserId == withRule);
@@ -106,13 +111,58 @@ public class HrPeopleSyncTests
         });
         await kit.Db.SaveChangesAsync();
 
-        await using var db = kit.NewContext();
-        Assert.False(await HrTasksService.ReleaseUnusedEmployeeAsync(db, withTask));
-        Assert.False(await HrTasksService.ReleaseUnusedEmployeeAsync(db, withRule));
-        Assert.True(await HrTasksService.ReleaseUnusedEmployeeAsync(db, Guid.NewGuid().ToString())); // no HR row — nothing blocks
-        // the RESTRICT foreign key is the last line: removing the account anyway fails loudly
-        db.Users.Remove(await db.Users.SingleAsync(u => u.Id == withTask));
-        await Assert.ThrowsAsync<DbUpdateException>(() => db.SaveChangesAsync());
+        await using (var db = kit.NewContext())
+        {
+            var release = await HrTasksService.ReleaseEmployeeAsync(db, withTask, DateTimeOffset.UtcNow);
+            Assert.Equal(new HrRelease(true, true, 1), release);
+            Assert.Contains("1 ta ochiq topshiriq bekor qilindi", release.Summary());
+            Assert.True((await HrTasksService.ReleaseEmployeeAsync(db, withRule, DateTimeOffset.UtcNow)).KeptHistory);
+            Assert.Equal(HrRelease.None, await HrTasksService.ReleaseEmployeeAsync(db, Guid.NewGuid().ToString(), DateTimeOffset.UtcNow));
+            // the account row goes in the same save (no FK to Users any more)
+            db.Users.Remove(await db.Users.SingleAsync(u => u.Id == withTask));
+            await db.SaveChangesAsync();
+        }
+
+        await using var read = kit.NewContext();
+        var former = await read.HrEmployees.SingleAsync(e => e.Id == employee.Id);
+        Assert.False(former.IsActive);
+        Assert.Equal(HrTasksService.FormerUserPrefix + withTask, former.UserId);
+        Assert.Equal(HrTaskStatuses.Cancelled, (await read.HrTasks.SingleAsync(t => t.Id == open.Id)).Status);
+        Assert.Equal(HrTaskStatuses.Done, (await read.HrTasks.SingleAsync(t => t.Id == done.Id)).Status);
+        Assert.False(await read.Users.AnyAsync(u => u.Id == withTask));
+        // the people sync never revives or duplicates a former employee
+        await kit.Service().SyncLmsPeopleAsync();
+        await using var after = kit.NewContext();
+        Assert.Equal(1, await after.HrEmployees.CountAsync(e => e.Id == employee.Id && !e.IsActive));
+        Assert.False(await after.HrEmployees.AnyAsync(e => e.UserId == withTask));
+    }
+
+    [Fact]
+    public async Task Oqituvchi_arxivlansa_HR_qatori_nofaol_qaytarilsa_faol()
+    {
+        using var kit = new HrTasksKit();
+        var (_, userId) = await SeedTeacherWithHrRowAsync(kit);
+        var employee = await kit.Db.HrEmployees.SingleAsync(e => e.UserId == userId);
+        var open = await kit.TaskAsync(employee.Id, DateTimeOffset.UtcNow.AddDays(1));
+
+        await using (var db = kit.NewContext())
+        {
+            Assert.Equal(1, await HrTasksService.SetAccountActiveAsync(db, userId, false, DateTimeOffset.UtcNow));
+            await db.SaveChangesAsync();
+        }
+        await using (var read = kit.NewContext())
+        {
+            Assert.False((await read.HrEmployees.SingleAsync(e => e.Id == employee.Id)).IsActive);
+            Assert.Equal(HrTaskStatuses.Cancelled, (await read.HrTasks.SingleAsync(t => t.Id == open.Id)).Status);
+        }
+        await using (var db = kit.NewContext())
+        {
+            Assert.Equal(0, await HrTasksService.SetAccountActiveAsync(db, userId, true, DateTimeOffset.UtcNow));
+            await db.SaveChangesAsync();
+        }
+        await using var final = kit.NewContext();
+        Assert.True((await final.HrEmployees.SingleAsync(e => e.Id == employee.Id)).IsActive);
+        Assert.Equal(0, await HrTasksService.SetAccountActiveAsync(final, Guid.NewGuid().ToString(), false, DateTimeOffset.UtcNow));
     }
 
     [Fact]

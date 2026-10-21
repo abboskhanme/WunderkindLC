@@ -13,7 +13,7 @@ using WunderkindLC.Infrastructure.Data;
 namespace WunderkindLC.Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20261021123425_HrTasks")]
+    [Migration("20261021133340_HrTasks")]
     partial class HrTasks
     {
         /// <inheritdoc />
@@ -10277,13 +10277,6 @@ namespace WunderkindLC.Infrastructure.Migrations
                         .HasForeignKey("PositionId")
                         .OnDelete(DeleteBehavior.SetNull)
                         .HasConstraintName("fk_hr_employees_hr_positions_position_id");
-
-                    b.HasOne("WunderkindLC.Domain.AppUser", null)
-                        .WithMany()
-                        .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired()
-                        .HasConstraintName("fk_hr_employees_users_user_id");
                 });
 
             modelBuilder.Entity("WunderkindLC.Domain.HrEmployeeManager", b =>

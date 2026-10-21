@@ -1344,6 +1344,8 @@ app.UseStaticFiles(new StaticFileOptions
 {
     FileProvider = Guarded(new PhysicalFileProvider(uploadsDir)),
     RequestPath = "/uploads",
+    // Framework MIME map + HEIC/HEIF/Opus/7z (HR proofs from phones) — still ServeUnknownFileTypes = false.
+    ContentTypeProvider = WunderkindLC.Application.HrTasks.HrFileTypes.Provider,
     OnPrepareResponse = ctx =>
     {
         ctx.Context.Response.Headers.CacheControl = "private,max-age=3600";

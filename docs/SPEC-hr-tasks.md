@@ -21,7 +21,7 @@ LMS repo: `/Users/abboskhan/Documents/Projects/WunderkindLMS` (branch `master`).
 | EF model | `SchoolLms.Infrastructure/Data/HrTasksModel.cs`, migratsiyalar `*_HrTasks.cs`, `*_HrEmployeePhoneOptional.cs` |
 | Servis | `SchoolLms.Application/HrTasks/*.cs` (Service + .People/.Tasks/.Jobs/.Sync, Dtos, Ports, Scheduler, Seeder, Texts) |
 | API | `SchoolLms.Server/Controllers/HrTasksController.cs` (panel), `HrMeController.cs` (xodim) |
-| Integratsiya | `StaffController`/`TeachersController` → `HrTasksService.ReleaseUnusedEmployeeAsync` (o'chirishda) |
+| Integratsiya | `StaffController`/`TeachersController` → `HrTasksService.ReleaseUnusedEmployeeAsync` (o'chirishda; LC'da `ReleaseEmployeeAsync` — sobiq xodim, 409 emas) |
 | Testlar | `SchoolLms.Tests/HrTasks/*.cs` |
 | Klient | `schoollms.client/src/{types/hrTasks.ts, api/services/hrTasks.ts, components/hr-tasks/*, pages/admin/hr-tasks/*}` + `App.tsx`/`config/navigation.ts`/`config/constants.ts` qatorlari |
 | Mini App (o'qituvchi) | `schoollms.client/src/pages/miniapp/ui-tg/src/screens/hr/*` |
@@ -55,6 +55,8 @@ LMS repo: `/Users/abboskhan/Documents/Projects/WunderkindLMS` (branch `master`).
 | KPI / so'rovnomalar | LMS KPI HR topshiriqlarini o'qiydi | LC'da YO'Q (LC KPI boshqa modul) — ko'chirilmaydi |
 | Xodim faolligi | — | `StaffActivity` dagi "yopilgan topshiriqlar" endi HR `done` topshiriqlaridan (Kanban o'rniga) |
 | Audit | LMS HR auditga yozmaydi | o'sha (1:1) |
+| Akkaunt o'chirish (revyu) | tarixi bor HR xodimi — 409 | LC'da o'chirish = ishdan bo'shatish → HR qatori SOBIQ XODIM bo'lib qoladi (`user_id = "deleted:…"`, Users'ga FK yo'q); o'qituvchi arxivlansa — HR qatori nofaol |
+| Yozish huquqi (revyu) | har yozish — yalang `hrTasks` | o'sha; LC qisman tokenlari (`hrTasks:create`) faqat o'qiydi |
 
 ## Kanban'ni olib tashlash — nima ketadi
 

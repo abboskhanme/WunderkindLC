@@ -82,10 +82,10 @@ internal static class HrTasksModel
             e.Property(x => x.Branch).HasMaxLength(16);
             e.Property(x => x.IsActive).HasDefaultValue(true).ValueGeneratedNever();
 
-            // 1:1 with our users. RESTRICT: an HR row carries task history — deleting the
-            // account must not silently erase it (the HR row is deactivated instead;
-            // HrTasksService.ReleaseUnusedEmployeeAsync removes a row WITHOUT history first).
-            e.HasOne<AppUser>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Restrict);
+            // 1:1 with our users — WITHOUT a foreign key (LC deviation from LMS's RESTRICT FK): in LC deleting an
+            // account is offboarding, and the HR row must outlive it with its task history.
+            // HrTasksService.ReleaseEmployeeAsync (called by every account delete) removes a row without history
+            // and turns one with history into a former employee (`user_id = "deleted:<id>"`, unique stays).
             e.HasIndex(x => x.UserId).IsUnique().HasDatabaseName("uq_hr_employee_user");
             e.HasIndex(x => x.Phone).IsUnique().HasDatabaseName("uq_hr_employee_phone");
 

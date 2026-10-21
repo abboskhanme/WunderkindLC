@@ -158,13 +158,15 @@ turmaydi.
 ⚠️ 2026-10: `calls` bo'limi (`calls.local` — Local Call), `messages.chat` va `settings.apk` kalitlari
 modullar bilan birga OLIB TASHLANDI (`constants.ts` katalogidan ham; `PermissionCatalogTests` izchil).
 ⚠️ 2026-10-21: Kanban «Topshiriqlar» olib tashlandi (o'rniga HR topshiriqlari): `tasks` bo'limi (`.board` `.dashboard` `.settings`) katalogdan chiqdi; xodimlar
-`Permissions` ida qolgan eski `tasks*` satrlari zararsiz (hech qaysi darvoza ularni o'qimaydi).
+`Permissions` idagi eski `tasks`/`tasks:*`/`tasks.*` satrlari `HrTasks` migratsiyasida olib tashlanadi (`Users` va
+`StaffRoleTemplates`) — ular hech nimani ochmasdi, lekin ortiqcha bo'lim `isKassaOnly` ni buzardi. Yangi bo'lim —
+`hrTasks` («Topshiriqlar», `.claude/rules/hr-tasks.md`): har qanday token o'qiydi, YOZISH faqat yalang kalit bilan.
 Eski rollarda/xodimlarda qolgan bu kalitlar zararsiz — hech qanday endpoint ularni so'ramaydi.
 O'qituvchi portal ruxsatlaridan `messages` (chat) ham olib tashlandi (`TeacherPermissions.All` =
 journal · schedule · salary).
 
 Sahifasiz bo'limlar (bittasi = bitta sahifa): `contacts` · `teacherReports` · `contracts` ·
-`books` · `kassa` · `audit` · `staff` · `feedback` · `cameras` · `ai` · `retentionBonus`.
+`books` · `kassa` · `audit` · `staff` · `feedback` · `cameras` · `ai` · `retentionBonus` · `hrTasks`.
 
 ⚠️ `vacancies` 2026-10 dan IKKI sahifali (`onboarding.md` §7): `CareerController` darvozasi bo'limdan
 `vacancies.list` ga TORAYTIRILDI — aks holda faqat «Moslashuv» berilgan xodim yuqoriga o'qish

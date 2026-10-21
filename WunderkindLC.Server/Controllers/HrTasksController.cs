@@ -18,8 +18,8 @@ namespace WunderkindLC.Server.Controllers;
 ///
 /// <para>
 /// Access: admin / superadmin, and staff whose role carries <c>hrTasks</c> — LC's
-/// <c>ReadRequiresPerm</c> (any <c>hrTasks</c> token reads; writes need the bare key or
-/// <c>hrTasks:create|edit|delete</c>), LMS's <c>GatedRead</c>. WHICH rows is the scope (the service):
+/// <c>ReadRequiresPerm</c> (any <c>hrTasks</c> token reads; every write needs the bare key —
+/// <see cref="EnsureCanWrite"/>, as LMS), LMS's <c>GatedRead</c>. WHICH rows is the scope (the service):
 /// directors see the whole organisation, managers self + their subtree, and anything outside answers
 /// 404. Positions writes and settings are for directors only (403 <c>forbidden</c>). Every response is
 /// <c>no-store</c>. Errors are <c>{ code, message }</c> with the old codes (<c>hr_*</c>).
@@ -52,10 +52,26 @@ public sealed class HrTasksController(HrTasksService service, AppDbContext db, A
     internal static ObjectResult Fail(HrTasksException ex) =>
         new(new { code = ex.Code, message = ex.Message }) { StatusCode = ex.StatusCode };
 
+    /// <summary>
+    /// Writes need the FULL key (LMS: every write required <c>hrTasks</c>). LC's role matrix also stores partial
+    /// tokens (<c>hrTasks:view</c> / <c>hrTasks:create</c>); <c>[AdminPerm]</c> maps POST to <c>create</c>, so
+    /// without this a "Ko'rish + Qo'shish" role could also deactivate employees, cancel/return tasks and toggle
+    /// templates. Reads (GET, incl. exports) stay open to any <c>hrTasks</c> token.
+    /// </summary>
+    private void EnsureCanWrite()
+    {
+        if (HttpMethods.IsGet(Request.Method) || HttpMethods.IsHead(Request.Method)) return;
+        var actor = Actor;
+        if (actor.IsAdmin || PermissionRules.HasFullSection(actor.Permissions, HrTaskAccess.PermissionKey)) return;
+        throw new HrTasksException(403, "forbidden",
+            "Bu amal uchun «Topshiriqlar» bo'limiga to'liq ruxsat kerak (Boshqaruv → Rollar)");
+    }
+
     private async Task<ActionResult> Run<T>(Func<HrPanel, Task<T>> action, int status = StatusCodes.Status200OK)
     {
         try
         {
+            EnsureCanWrite();
             var panel = await service.PanelAsync(Actor, Ct);
             var result = await action(panel);
             return status == StatusCodes.Status200OK ? Ok(result) : StatusCode(status, result);
@@ -67,6 +83,7 @@ public sealed class HrTasksController(HrTasksService service, AppDbContext db, A
     {
         try
         {
+            EnsureCanWrite();
             await action(await service.PanelAsync(Actor, Ct));
             return NoContent();
         }
@@ -135,6 +152,12 @@ public sealed class HrTasksController(HrTasksService service, AppDbContext db, A
     /// </summary>
     private (AppUser User, string Password) NewStaffUser(string fullName, string login, string displayPhone)
     {
+        // A login-capable account = the Xodimlar section's job (staff-roles.md §2): an `hrTasks` holder (a subtree
+        // manager too) must not mint accounts with a plaintext password. LC UI never calls this branch — people come
+        // from Boshqaruv → Xodimlar and the people sync; picking an existing user (`userId`) needs no extra right.
+        if (!AdminPermAttribute.HasFullAccess(User, "staff"))
+            throw new HrTasksException(403, "hr_panel_access_forbidden",
+                "Yangi akkaunt Boshqaruv → Xodimlar bo'limida yaratiladi (buning uchun «Xodimlar» bo'limiga to'liq ruxsat kerak)");
         var user = AccountFactory.CreateAccountFor(db, Roles.Staff, fullName, out var password);
         user.Email = login;
         user.Phone = PhoneUtil.Normalize(displayPhone);

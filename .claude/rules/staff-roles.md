@@ -63,7 +63,7 @@ Foiz bazasi va "Umumiy" rejim — `billing.md`.
   (`StaffActivity`; RRP `staff` | `teachers.list`, javob ko'rinadigan qatorlarga qirqiladi). Oxirgi ko'rinish = oxirgi login
   va oxirgi token yangilanishining kechrog'i; faollik — tarixdagi amallar (`AuditLog.ActorId`), yopilgan topshiriqlar, ishlangan
   lidlar (takrorsiz) va davomati olingan darslar. ⚠️ 2026-10-21: Kanban «Topshiriqlar» olib tashlandi (o'rniga HR topshiriqlari) — «yopilgan topshiriqlar» (`TasksClosed`)
-  HR topshiriqlari ulanguncha 0. 7 kundan ko'p kirmagan — sariq. Ikkilamchi ma'lumot: xato ro'yxatni buzmaydi.
+  endi xodimning O'ZI bajargan HR topshiriqlari (`done`, davr ichida). 7 kundan ko'p kirmagan — sariq. Ikkilamchi ma'lumot: xato ro'yxatni buzmaydi.
 - Menyuda «Xodimlar» `/admin/teachers` sahifalarida ham faol (`NavChild.alsoMatch`).
 - Eski manzillar: `boshqaruv/staff` → xodimlar, `boshqaruv/roles` → rollar.
 

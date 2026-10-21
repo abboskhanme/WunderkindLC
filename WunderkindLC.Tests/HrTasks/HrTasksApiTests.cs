@@ -316,9 +316,11 @@ public class HrTasksApiTests
         Assert.Equal(409, task.StatusCode);
         Assert.Equal("hr_employee_inactive", task.Code);
 
-        // deleting the account of an HR employee with history is refused readably (StaffController → 409)
+        // LC: deleting the account still goes through — the row stays as a FORMER employee with its history
         await using var db = kit.NewContext();
-        Assert.False(await HrTasksService.ReleaseUnusedEmployeeAsync(db, e.User.Id));
+        var release = await HrTasksService.ReleaseEmployeeAsync(db, e.User.Id, DateTimeOffset.UtcNow);
+        Assert.True(release.KeptHistory);
+        Assert.Equal(0, release.CancelledTasks); // already cancelled by the deactivation
     }
 
     // =====================================================================

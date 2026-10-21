@@ -10274,13 +10274,6 @@ namespace WunderkindLC.Infrastructure.Migrations
                         .HasForeignKey("PositionId")
                         .OnDelete(DeleteBehavior.SetNull)
                         .HasConstraintName("fk_hr_employees_hr_positions_position_id");
-
-                    b.HasOne("WunderkindLC.Domain.AppUser", null)
-                        .WithMany()
-                        .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired()
-                        .HasConstraintName("fk_hr_employees_users_user_id");
                 });
 
             modelBuilder.Entity("WunderkindLC.Domain.HrEmployeeManager", b =>

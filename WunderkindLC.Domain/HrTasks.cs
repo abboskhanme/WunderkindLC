@@ -91,6 +91,13 @@ public static class HrErrors
     public static HrTasksException AttachmentTooLarge(long maxBytes) =>
         new(413, "hr_attachment_too_large", $"Biriktirilgan fayl hajmi {maxBytes / (1024 * 1024)} MB dan oshmasligi kerak");
     /// <summary>415 at the HTTP edge (old router.py AttachmentTypeNotAccepted).</summary>
+    /// <summary>
+    /// LC: a type <c>/uploads</c> cannot serve (<c>ServeUnknownFileTypes = false</c>) — accepted, it would open as
+    /// 404 for the manager. Same codes as the blocked-type errors (422 proof / 415 attachment).
+    /// </summary>
+    public static HrTasksException UnservableFileType(bool attachment) =>
+        new(attachment ? 415 : 422, attachment ? "hr_unsupported_attachment_type" : "hr_unsupported_proof_type",
+            "Bu turdagi faylni ochib bo'lmaydi — rasm (JPG/PNG/HEIC), PDF, Word/Excel hujjat, arxiv (ZIP), ovoz yoki video yuboring.");
     public static HrTasksException UnsupportedAttachmentType() =>
         new(415, "hr_unsupported_attachment_type",
             "Bu turdagi faylni topshiriqqa biriktirib bo'lmaydi (HTML, SVG yoki skript). "

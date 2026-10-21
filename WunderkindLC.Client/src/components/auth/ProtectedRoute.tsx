@@ -22,6 +22,8 @@ export function ProtectedRoute({ role }: { role?: Role }) {
   // FAQAT kassa ruxsatiga ega xodim — admin paneli (bosh sahifa va boshqa bo'limlar) unga
   // ko'rsatilmaydi: u telefondagi kassa portalida ishlaydi.
   if (isKassaOnly(user) && location.pathname.startsWith('/admin')) {
+    // Telegram «📋 Topshiriqlarim» tugmasi hammaga bitta manzil beradi — kassir o'z portalidagi sahifaga tushsin.
+    if (location.pathname.startsWith('/admin/hr/mening-topshiriqlarim')) return <Navigate to="/kassa/topshiriqlar" replace />
     return <Navigate to="/kassa" replace />
   }
 

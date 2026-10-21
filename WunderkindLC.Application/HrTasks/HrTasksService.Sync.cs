@@ -152,21 +152,72 @@ public sealed partial class HrTasksService
         return name.Length > HrLimits.EmployeeNameMax ? name[..HrLimits.EmployeeNameMax] : name;
     }
 
+    /// <summary>Prefix of <see cref="HrEmployee.UserId"/> on a FORMER employee's row (its account was deleted).</summary>
+    public const string FormerUserPrefix = "deleted:";
+
     /// <summary>
-    /// Deleting a teacher/staff ACCOUNT: an HR row with no history (no task, no recurring rule
-    /// aimed at it) must not block it — since every employee has a row, it would block every
-    /// delete. The row is staged for removal (manager links cascade) and <c>true</c> returned;
-    /// with history <c>false</c> — the caller answers 409 and the row stays.
+    /// Deleting a teacher/staff ACCOUNT. In LC deleting the account IS offboarding (staff-roles.md §6) — there is
+    /// no other way to let someone go — so, unlike LMS (409), the delete always goes through:
+    /// <list type="bullet">
+    ///   <item>an HR row WITHOUT history (no task, no recurring rule aimed at it) is staged for removal
+    ///   (manager links cascade);</item>
+    ///   <item>a row WITH history stays as a FORMER employee: inactive, open tasks cancelled (old §15.7, as
+    ///   «ishdan bo'shatish»), and its account link replaced by <see cref="FormerUserPrefix"/> + id, so the
+    ///   account row can go while every task, proof and report keeps its employee.</item>
+    /// </list>
+    /// Stages changes only — the caller saves them with the account delete (one transaction).
     /// </summary>
-    public static async Task<bool> ReleaseUnusedEmployeeAsync(
-        Abstractions.IAppDbContext db, string userId, CancellationToken ct = default)
+    public static async Task<HrRelease> ReleaseEmployeeAsync(
+        Abstractions.IAppDbContext db, string userId, DateTimeOffset now, CancellationToken ct = default)
     {
         var employee = await db.HrEmployees.FirstOrDefaultAsync(e => e.UserId == userId, ct);
-        if (employee is null) return true;
+        if (employee is null) return HrRelease.None;
         var id = employee.Id;
-        if (await db.HrTasks.AnyAsync(t => t.EmployeeId == id, ct)) return false;
-        if (await db.HrTaskTemplates.AnyAsync(t => t.TargetEmployeeId == id, ct)) return false;
-        db.HrEmployees.Remove(employee);
-        return true;
+        if (!await db.HrTasks.AnyAsync(t => t.EmployeeId == id, ct)
+            && !await db.HrTaskTemplates.AnyAsync(t => t.TargetEmployeeId == id, ct))
+        {
+            db.HrEmployees.Remove(employee);
+            return new HrRelease(true, false, 0);
+        }
+        var cancelled = await CancelOpenTasksAsync(db, id, now, ct);
+        employee.IsActive = false;
+        employee.UserId = FormerUserPrefix + userId;
+        employee.UpdatedAt = now;
+        return new HrRelease(true, true, cancelled);
     }
+
+    /// <summary>
+    /// A teacher card archived (the teacher left) / restored: the HR row follows — archived → inactive with its
+    /// open tasks cancelled (no templates, morning lists or reminders for someone who is gone); restored →
+    /// active again. Stages changes only. Returns the number of cancelled tasks.
+    /// </summary>
+    public static async Task<int> SetAccountActiveAsync(
+        Abstractions.IAppDbContext db, string userId, bool active, DateTimeOffset now, CancellationToken ct = default)
+    {
+        var employee = await db.HrEmployees.FirstOrDefaultAsync(e => e.UserId == userId, ct);
+        if (employee is null || employee.IsActive == active) return 0;
+        employee.IsActive = active;
+        employee.UpdatedAt = now;
+        return active ? 0 : await CancelOpenTasksAsync(db, employee.Id, now, ct);
+    }
+
+    private static async Task<int> CancelOpenTasksAsync(
+        Abstractions.IAppDbContext db, string employeeId, DateTimeOffset now, CancellationToken ct)
+    {
+        var open = await db.HrTasks
+            .Where(t => t.EmployeeId == employeeId && (t.Status == HrTaskStatuses.Open || t.Status == HrTaskStatuses.Returned))
+            .ToListAsync(ct);
+        return open.Count(t => t.Cancel(now));
+    }
+}
+
+/// <summary>What deleting an account did to its HR row (for the account's audit line).</summary>
+public sealed record HrRelease(bool HadRow, bool KeptHistory, int CancelledTasks)
+{
+    public static readonly HrRelease None = new(false, false, 0);
+
+    /// <summary>Uzbek fragment for the audit summary; empty when there was nothing to keep.</summary>
+    public string Summary() => KeptHistory
+        ? "Topshiriqlar tarixi saqlandi (sobiq xodim)" + (CancelledTasks > 0 ? $", {CancelledTasks} ta ochiq topshiriq bekor qilindi" : "")
+        : "";
 }
