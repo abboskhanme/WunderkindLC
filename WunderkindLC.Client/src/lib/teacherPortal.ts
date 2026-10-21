@@ -12,6 +12,7 @@ import {
   GraduationCap,
   LayoutDashboard,
   LifeBuoy,
+  ListChecks,
   MessageSquareText,
   Trophy,
   UserRound,
@@ -50,6 +51,8 @@ export const TEACHER_NAV: TeacherNavItem[] = [
   { to: '/teacher/students', label: "O'quvchilarim", hint: 'Barcha guruhlar, oylik davomat', icon: GraduationCap, perm: 'journal', section: 'main' },
   { to: '/teacher/attendance', label: 'Davomat', hint: 'Dars bo\'yicha tezkor davomat', icon: ClipboardCheck, perm: 'journal', section: 'main' },
   { to: '/teacher/schedule', label: 'Dars jadvali', short: 'Jadval', hint: 'Haftalik jadval, ko\'chirilgan darslar', icon: CalendarDays, perm: 'schedule', section: 'main' },
+  // HR topshiriqlari (docs/SPEC-hr-tasks.md): rahbar bergan topshiriqlar — LMS'da o'qituvchi Mini App'idagi tab.
+  { to: '/teacher/topshiriqlar', label: 'Mening topshiriqlarim', short: 'Topshiriqlar', hint: 'Rahbar bergan topshiriqlar: tasdiqlash va bajarish', icon: ListChecks, section: 'main' },
   { to: '/teacher/salary', label: 'Maosh', hint: 'Oylik hisob, berilgan va qoldiq', icon: Wallet, perm: 'salary', section: 'work' },
   { to: '/teacher/tests', label: 'Testlar', hint: 'Test natijalari (ball kiritish)', icon: FileCheck2, perm: 'journal', section: 'work' },
   { to: '/teacher/rating', label: 'Reyting', hint: "O'quvchilar ball bo'yicha", icon: Trophy, section: 'work' },

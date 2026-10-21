@@ -1,6 +1,6 @@
 import { Suspense } from 'react'
 import { NavLink, Outlet } from 'react-router-dom'
-import { Wallet, ReceiptText, LogOut } from 'lucide-react'
+import { Wallet, ReceiptText, ListChecks, LogOut } from 'lucide-react'
 import { useAuth } from '@/context/auth-context'
 import { Loader } from '@/components/ui/Loader'
 import { cn } from '@/lib/utils'
@@ -8,12 +8,15 @@ import { cn } from '@/lib/utils'
 const TABS = [
   { to: '/kassa', label: "To'lov", icon: Wallet, end: true },
   { to: '/kassa/payments', label: "To'lovlarim", icon: ReceiptText },
+  // HR topshiriqlari (docs/SPEC-hr-tasks.md) — kassir ham HR xodimi (LMS: kassirning qisqa menyusida ham bor).
+  { to: '/kassa/topshiriqlar', label: 'Topshiriqlar', icon: ListChecks },
 ]
 
 /**
  * KASSA portali — TELEFON uchun qobiq (kassirning yagona ish o'rni). Admin paneli (yon menyu,
  * bosh sahifa, boshqa bo'limlar) YO'Q: kassir faqat to'lov qabul qiladi va o'z to'lovlarini ko'radi.
- * Pastda 2 tab: "To'lov" (o'quvchini topib to'lov kiritish) va "To'lovlarim" (o'zi kiritganlari).
+ * Pastda 3 tab: "To'lov" (o'quvchini topib to'lov kiritish), "To'lovlarim" (o'zi kiritganlari) va
+ * "Topshiriqlar" (rahbar bergan HR topshiriqlari — `/admin/hr/mening-topshiriqlarim` bilan bir xil sahifa).
  *
  * Admin/superadmin ham bu manzilga kira oladi (masalan telefonidan); ular uchun bundan tashqari
  * admin panelidagi "Kassa" bo'limi ham bor.
@@ -52,7 +55,7 @@ export function KassaMobileLayout() {
         </div>
       </main>
 
-      {/* Pastki navigatsiya — 2 tab (telefonda barmoq bilan qulay) */}
+      {/* Pastki navigatsiya — 3 tab (telefonda barmoq bilan qulay) */}
       <nav className="shrink-0 border-t border-slate-200 bg-white pb-[env(safe-area-inset-bottom)]">
         <div className="mx-auto flex h-[60px] max-w-3xl">
           {TABS.map((tab) => {
