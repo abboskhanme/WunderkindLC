@@ -37,6 +37,9 @@ public class StaffController(AppDbContext db, AuditService audit) : ControllerBa
 {
     private const int MinPasswordLength = 8;
     private const string WeakPasswordMessage = "Parol kamida 8 belgidan iborat bo'lsin";
+    /// <summary>Shown when the account has an HR (Topshiriqlar) row WITH history — its tasks must stay (WunderkindLMS text).</summary>
+    internal const string HrEmployeeDeleteMessage =
+        "Bu foydalanuvchi HR xodimlari ro'yxatida — topshiriqlar tarixi saqlanishi uchun akkauntni o'chirib bo'lmaydi (HR bo'limida ishdan bo'shating).";
 
     /// <summary>Admin paneliga kiradigan akkaunt rollari — ro'yxat va rol almashtirish shular ustida ishlaydi.
     /// O'qituvchi/o'quvchi/ota-ona bu yerga umuman tushmaydi.</summary>
@@ -317,6 +320,10 @@ public class StaffController(AppDbContext db, AuditService audit) : ControllerBa
     {
         var user = await db.Users.FindAsync(id);
         if (user is null || user.Role != Roles.Staff) return NotFound();
+        // `hr_employees.user_id` is RESTRICT (task history) — a readable 409, not a 500. Every employee has an
+        // HR row (auto-sync); a row WITHOUT history is staged for removal here, one WITH history blocks.
+        if (!await WunderkindLC.Application.HrTasks.HrTasksService.ReleaseUnusedEmployeeAsync(db, id))
+            return Conflict(new { message = HrEmployeeDeleteMessage });
         var reason = string.IsNullOrWhiteSpace(reasonId) ? "" : (await db.ActionReasons.Where(r => r.Id == reasonId).Select(r => r.Label).FirstOrDefaultAsync() ?? "");
         var actor = User.FindFirst(System.Security.Claims.ClaimTypes.Name)?.Value ?? "Admin";
         // Arxiv suratiga PAROL XESHI ham, ochiq dastlabki parol ham TUSHMAYDI (surat kunlik Telegram

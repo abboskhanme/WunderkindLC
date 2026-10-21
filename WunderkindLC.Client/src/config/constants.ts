@@ -260,6 +260,11 @@ export const adminPermissions: AdminPermSection[] = [
     ],
   },
   { key: 'staff', label: 'Xodimlar' },
+  // TOPSHIRIQLAR (HR) — boshliq o'z xodimlariga topshiriq beradi (WunderkindLMS'dan 1:1,
+  // docs/SPEC-hr-tasks.md). Kalit faqat PANELNI ochadi; QAYSI xodimlar ko'rinishini server hal
+  // qiladi: admin/superadmin va HR'da «direktor» — hammasi, «menejer» — o'zi + bo'ysunuvchilari.
+  // Serverda `ReadRequiresPerm = true`. «Mening topshiriqlarim» uchun kalit KERAK EMAS.
+  { key: 'hrTasks', label: 'Topshiriqlar' },
   { key: 'feedback', label: 'Taklif va shikoyatlar' },
   { key: 'cameras', label: 'Kameralar' },
   // Vakansiyalar — ishga qabul moduli (Wunderkind Career boti + `/vakansiya` Mini App).
