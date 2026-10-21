@@ -9,7 +9,7 @@ import { TodayLessonsMonitor } from '@/components/dashboard/TodayLessonsMonitor'
 import { CashboxBalanceStrip } from '@/components/dashboard/home/CashboxBalanceStrip'
 import { DatedFilterRow } from '@/components/dashboard/home/DatedFilterRow'
 import { DatedScheduleBoard } from '@/components/dashboard/home/DatedScheduleBoard'
-import { AbsentNoticesBlock, ContactsTodayBlock, MyTasksBlock, RedListBlock } from '@/components/dashboard/home/HomeBlocks'
+import { AbsentNoticesBlock, ContactsTodayBlock, RedListBlock } from '@/components/dashboard/home/HomeBlocks'
 import { HomeButton } from '@/components/dashboard/home/HomeControls'
 import { HomeStatCards } from '@/components/dashboard/home/HomeStatCards'
 import { HomeWidgetsDrawer } from '@/components/dashboard/home/HomeWidgetsDrawer'
@@ -206,8 +206,6 @@ export function AdminDashboard({ scheduleOnly = false }: {
         return scheduleBlock
       case 'lessonsMonitor':
         return <TodayLessonsMonitor key={key} compact />
-      case 'myTasks':
-        return <MyTasksBlock key={key} />
       case 'absentNotices':
         return <AbsentNoticesBlock key={key} />
       case 'redList':

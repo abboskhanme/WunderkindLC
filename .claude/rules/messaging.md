@@ -67,7 +67,7 @@ Migratsiya (integrator): `CrmMessaging` + `docs/migrations/Phase2.sql`.
 Har ota-ona/o'quvchiga ketadigan Telegram xabar — `MessageDelivery` QATORI (`TelegramOutbox.EnqueueAsync` /
 `Build`, chaqiruvchining `SaveChanges`i ichida) va uni `MessageDeliveryWorker` yuboradi. To'g'ridan-to'g'ri
 `telegram.SendMessageAsync` FAQAT: bot interaktiv javoblari (login, kod, support, kitob do'koni), shartnomalar,
-lid kartalari va XODIM/O'QITUVCHI operativ xabarlari (davomat eslatmasi, topshiriqlar). Yangi ota-ona xabari
+lid kartalari va XODIM/O'QITUVCHI operativ xabarlari (davomat eslatmasi, HR topshiriqlari). Yangi ota-ona xabari
 qo'shsangiz — `AutoMessageService.DispatchStudentAsync` yoki `TelegramOutbox` dan boshqa yo'l YO'Q.
 
 Nega: yuborishdan OLDIN aniq sanoq, oluvchi bo'yicha jurnal, «Qabul qildim», bloklaganlarni hisoblash, restartga
@@ -176,7 +176,7 @@ Birinchi bosish (xabar yuborilgan chatning O'ZI) → `AckAt`, tugma olib tashlan
 Begona chat ham, topilmagan id ham — BIR XIL «Xabar topilmadi yoki eskirgan» (2026-10-12, review L2: boshqacha matn
 begona id MAVJUDLIGINI tasdiqlardi; natija `WrongChat`/`NotFound` faqat ichki). "Ko'rdi" alohida holat
 EMAS (botga o'qildi belgisi kelmaydi). ⚠️ `mack:` umumiy bo'sh `answerCallbackQuery` dan OLDIN ushlanadi
-(`MessagingRbacTests` qulflaydi). Phase 5 `wtok:` qo'shadi — `mack:`/`wtdone:` bilan to'qnashmaydi.
+(`MessagingRbacTests` qulflaydi). (Kanban `wtdone:`/`wtok:` tugmalari — 2026-10-21: Kanban «Topshiriqlar» olib tashlandi (o'rniga HR topshiriqlari).)
 
 ### Biriktirma (`MessageAttachments`, `MessageAttachmentStore`)
 

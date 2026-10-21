@@ -58,7 +58,7 @@ public static class BackupService
     /// Qo'ng'iroqlar jurnali va lid tarixi esa ikkilamchi.</para></summary>
     public static readonly IReadOnlyList<string> HeavyTables = new[]
     {
-        "courseItemAttempts", "leadTelegramMessages", "workTaskEvents", "contactAttempts",
+        "courseItemAttempts", "leadTelegramMessages", "contactAttempts",
         "chatMessages", "userNotifications", "kpiMonthSnapshots", "levelTestSubmissions",
         "calls", "ctiCallRecords", "leadEvents",
     };
@@ -254,13 +254,6 @@ public static class BackupService
         await Add("bookStockMoves", db.BookStockMoves);
         await Add("contractTemplates", db.ContractTemplates);
         await Add("contracts", db.Contracts);
-        // ---- Topshiriqlar ----
-        await Add("workTaskBoards", db.WorkTaskBoards);
-        await Add("workTaskColumns", db.WorkTaskColumns);
-        await Add("workTasks", db.WorkTasks);
-        await Add("workTaskItems", db.WorkTaskItems);
-        await Add("workTaskComments", db.WorkTaskComments);
-        await Add("workTaskEvents", db.WorkTaskEvents);
         // ---- Vakansiyalar / moslashuv ----
         await Add("vacancies", db.Vacancies);
         await Add("jobApplications", db.JobApplications);

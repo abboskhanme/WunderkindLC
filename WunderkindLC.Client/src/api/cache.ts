@@ -256,9 +256,6 @@ const CROSS_INVALIDATION: Record<string, string[]> = {
   '/admin/career': ['/public', '/admin/onboarding'],
   // Moslashuv cheklisti — boshqa bo'lim ro'yxatlariga ta'sir qilmaydi.
   '/admin/onboarding': [],
-  // Topshiriqlar (Kanban) — doska/ustun/topshiriq/izoh hammasi shu miqyosda; boshqa bo'lim
-  // ro'yxatlariga ta'sir qilmaydi, shuning uchun bog'liq miqyos yo'q.
-  '/admin/work-tasks': [],
   // Sof fayl yuklash — hech qanday ro'yxatni o'zgartirmaydi (manzil javobda qaytadi).
   '/admin/uploads': [],
 }

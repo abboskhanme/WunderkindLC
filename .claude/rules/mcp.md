@@ -105,7 +105,7 @@ To'liq ro'yxat — `docs/SPEC-mcp.md` §9. Har biri panel funksiyasini CHAQIRADI
 `MembershipAttendance`, panel bilan bir xil; `rating_group` da `held`/`attended` ham); `rating_top_bottom` — `TopBottomService.BuildAsync` (oylik avto-xabar yuboradigan AYNAN o'sha ro'yxat; sukut — O'TGAN oy) |
 | Davomat xabarlari (`attendance_notices`) | `AbsentNoticeQueries.ListAsync` (Nazorat → «Davomat xabarlari»); kalit `students.notices` (panelda `ReadRequiresPerm` — `students.attendance` OCHMAYDI); yetkazish — faqat SANOQ (`TelegramOutbox.SummaryBySourceAsync`), chat id ustuni tanlanmaydi; to'xtatish/tasdiqlash — faqat panelda |
 | Testlar (`TestTools`) | turi/savollar soni/yuborilgan vaqt; foiz — panel formulasi (`TestEntryRules.Percent`, `TestResultService.AvgPercent`: har natija foizi 0..100, o'rtacha shulardan) — `overview`/`DetailAsync` bilan bir xil |
-| Jadval/topshiriqlar | `DatedSchedule` (≤ 7 kun, qavat), `RoomConflictService.AllPairsAsync`, `WorkTaskApproval.State`; «davomat olingan» (`attendanceTaken`) — `AttendanceTakenAt` (U3a), `Conducted` EMAS |
+| Jadval | `DatedSchedule` (≤ 7 kun, qavat), `RoomConflictService.AllPairsAsync`; «davomat olingan» (`attendanceTaken`) — `AttendanceTakenAt` (U3a), `Conducted` EMAS. (`tasks_list` — 2026-10-21: Kanban «Topshiriqlar» olib tashlandi (o'rniga HR topshiriqlari)) |
 
 ⚠️ Bir test hostida BIR NECHTA vosita chaqirilsa `AssertReadsOnlyDeclared` hammasining SQL'ini ko'radi — har vosita uchun
 alohida host oching (aks holda boshqa vositaning jadvali "e'lon qilinmagan" bo'lib chiqadi).

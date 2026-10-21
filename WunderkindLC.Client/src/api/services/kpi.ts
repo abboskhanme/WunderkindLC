@@ -182,7 +182,7 @@ export interface KpiChecklistBlockDto {
   items: KpiChecklistItemDto[]
 }
 
-/** Signal chipi: kechikkan topshiriq, javobsiz DM, qaytarilmagan qo'ng'iroq. */
+/** Signal chipi: tiketlar, vazifasiz eski lidlar va h.k. */
 export interface KpiSignalDto {
   key: string
   label: string

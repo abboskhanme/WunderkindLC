@@ -8,7 +8,7 @@ using Xunit;
 namespace WunderkindLC.Tests.Mcp;
 
 /// <summary>
-/// MCP: `contact_queue`, `contact_report`, `tasks_list`, `messages_history`, `auto_message_rules`, `audit_log` —
+/// MCP: `contact_queue`, `contact_report`, `messages_history`, `auto_message_rules`, `audit_log` —
 /// natija, filtrlar, sahifalash, ruxsat va maxfiylik.
 /// </summary>
 public class McpOperationsToolsTests
@@ -67,27 +67,6 @@ public class McpOperationsToolsTests
             new ContactAttempt { RequestId = "r6", StudentId = "s3", Type = ContactAttemptTypes.Contact, Result = "answered", NextStatus = ContactStatuses.Done, Response = "To'lovni qildi", ActorName = "Nodira Menejer", Date = D(-1), CreatedAt = D(-1) + "T12:00:00" },
             new ContactAttempt { RequestId = "r7", StudentId = "s4", Type = ContactAttemptTypes.Contact, Result = "wrong_number", NextStatus = ContactStatuses.Failed, ActorName = "Olim Operator", Date = D(0), CreatedAt = D(0) + "T09:00:00" },
             new ContactAttempt { RequestId = "r7", StudentId = "s4", Type = ContactAttemptTypes.Contact, Result = "answered", NextStatus = ContactStatuses.Callback, Response = "eski", ActorName = "Olim Operator", Date = D(-30), CreatedAt = D(-30) + "T09:00:00" });
-
-        // ---------------------------------------------------------------- Topshiriqlar
-        db.WorkTaskBoards.AddRange(
-            new WorkTaskBoard { Id = "b1", Title = "Umumiy", Order = 0 },
-            new WorkTaskBoard { Id = "b2", Title = "Marketing", Order = 1, IsArchived = true });
-        db.WorkTaskColumns.AddRange(
-            new WorkTaskColumn { Id = "c1", BoardId = "b1", Title = "Yangi", Order = 0, IsSystem = true },
-            new WorkTaskColumn { Id = "c2", BoardId = "b1", Title = "Bajarildi", Order = 1, IsDone = true, IsSystem = true },
-            new WorkTaskColumn { Id = "c3", BoardId = "b2", Title = "Yangi", Order = 0 },
-            new WorkTaskColumn { Id = "c4", BoardId = "b2", Title = "Tayyor", Order = 1, IsDone = true });
-        db.WorkTasks.AddRange(
-            new WorkTask { Id = "t1", BoardId = "b1", ColumnId = "c1", Title = "Hisobotni tayyorlash", Description = "Oylik hisobot", AssigneeId = "u1", CreatedById = "u2", Priority = 2, DueDate = D(-2), CreatedAt = At(-5, 9) },
-            new WorkTask { Id = "t2", BoardId = "b1", ColumnId = "c1", Title = "Ota-onalar majlisi", AssigneeId = "u2", CreatedById = "u2", Priority = 3, DueDate = D(0), DueTime = "18:00", CreatedAt = At(-4, 9) },
-            new WorkTask { Id = "t3", BoardId = "b1", ColumnId = "c1", Title = "Xonani tozalash", AssigneeId = "", CreatedById = "u1", Priority = 0, CreatedAt = At(-3, 9) },
-            new WorkTask { Id = "t4", BoardId = "b1", ColumnId = "c2", Title = "Kassa hisobi", AssigneeId = "u1", CreatedById = "u2", Priority = 1, DueDate = D(-5), CreatedAt = At(-6, 9), CompletedAt = At(-4, 15), CompletedById = "u1" },
-            new WorkTask { Id = "t5", BoardId = "b2", ColumnId = "c3", Title = "Instagram post", AssigneeId = "u1", CreatedById = "u2", DueDate = D(1), CreatedAt = At(-2, 9) },
-            new WorkTask { Id = "t6", BoardId = "b1", ColumnId = "c1", Title = "Eski topshiriq", AssigneeId = "u1", CreatedById = "u2", DueDate = D(3), IsArchived = true, CreatedAt = At(-9, 9) });
-        db.WorkTaskItems.AddRange(
-            new WorkTaskItem { TaskId = "t1", Title = "Ma'lumot yig'ish", Done = true, Order = 0 },
-            new WorkTaskItem { TaskId = "t1", Title = "Jadval", Order = 1 },
-            new WorkTaskItem { TaskId = "t1", Title = "Yuborish", Order = 2 });
 
         // ---------------------------------------------------------------- E'lonlar va avto-xabarlar
         db.Broadcasts.AddRange(
@@ -214,7 +193,7 @@ public class McpOperationsToolsTests
     [Theory]
     [InlineData("students.list")]
     [InlineData("aiAccess")]
-    [InlineData("tasks.board")]
+    [InlineData("kpi.today")]
     public async Task Navbat_ruxsatisiz_RAD_etiladi(string perm)
     {
         using var host = new McpTestHost();
@@ -285,98 +264,6 @@ public class McpOperationsToolsTests
 
         await Assert.ThrowsAsync<McpAccessDeniedException>(() => host.Tool<OperationsTools>(user).ContactReportTool());
         Assert.Empty(host.Sql);
-    }
-
-    // ================================================================== tasks_list
-
-    [Fact]
-    public async Task Topshiriqlar_sukut_boyicha_OCHIQLAR_arxivsiz_muddat_tartibida()
-    {
-        using var host = new McpTestHost();
-        Seed(host);
-
-        var raw = await host.Tool<OperationsTools>(McpTestHost.Staff("tasks.dashboard")).TasksList();
-        var json = McpTestHost.Parse(raw);
-
-        // t4 bajarilgan, t5 arxivlangan doskada, t6 arxivlangan — kirmaydi; muddatsiz (t3) oxirida.
-        Assert.Equal(new[] { "t1", "t2", "t3" }, Ids(json));
-        Assert.Equal(3, json.GetProperty("total").GetInt32());
-
-        var t1 = Item(json, "t1");
-        Assert.Equal("Umumiy", t1.GetProperty("board").GetProperty("title").GetString());
-        Assert.Equal("Yangi", t1.GetProperty("column").GetProperty("title").GetString());
-        Assert.False(t1.GetProperty("column").GetProperty("isDone").GetBoolean());
-        Assert.Equal("Olim Operator", t1.GetProperty("assignee").GetProperty("name").GetString());
-        Assert.Equal("Nodira Menejer", t1.GetProperty("createdBy").GetString());
-        Assert.Equal("Yuqori", t1.GetProperty("priorityLabel").GetString());
-        Assert.True(t1.GetProperty("isOverdue").GetBoolean());
-        Assert.Equal(1, t1.GetProperty("checklist").GetProperty("done").GetInt32());
-        Assert.Equal(3, t1.GetProperty("checklist").GetProperty("total").GetInt32());
-        Assert.False(Item(json, "t2").GetProperty("isOverdue").GetBoolean());
-        Assert.Equal(JsonValueKind.Null, Item(json, "t3").GetProperty("assignee").ValueKind);
-
-        foreach (var secret in new[] { "olim.login", "nodira.login", "XESH", "ochiq-parol" }) Assert.DoesNotContain(secret, raw);
-        host.AssertReadsOnlyDeclared(typeof(OperationsTools));
-        host.AssertNoSecretColumns();
-    }
-
-    [Fact]
-    public async Task Topshiriqlar_bajarilgani_yopiluvchi_ustundan_va_bajarilgan_vaqti_bilan()
-    {
-        using var host = new McpTestHost();
-        Seed(host);
-
-        var json = McpTestHost.Parse(await host.Tool<OperationsTools>(McpTestHost.Admin()).TasksList(state: "done"));
-        var t4 = Item(json, "t4");
-
-        Assert.Equal(new[] { "t4" }, Ids(json));
-        Assert.True(t4.GetProperty("column").GetProperty("isDone").GetBoolean());
-        Assert.False(t4.GetProperty("isOverdue").GetBoolean());      // muddati o'tgan, lekin bajarilgan
-        Assert.StartsWith(D(-4), t4.GetProperty("completedAt").GetString());
-    }
-
-    [Theory]
-    [InlineData(null, null, "overdue", null, null, null, null, new[] { "t1" })]
-    [InlineData(null, null, "today", null, null, null, null, new[] { "t2" })]
-    [InlineData(null, null, "all", null, null, null, null, new[] { "t4", "t1", "t2", "t3" })]
-    [InlineData("b2", null, null, null, null, null, null, new[] { "t5" })]                    // arxiv doska ANIQ tanlansa ko'rinadi
-    [InlineData(null, "u1", null, null, null, null, null, new[] { "t1" })]
-    [InlineData(null, "none", null, null, null, null, null, new[] { "t3" })]
-    [InlineData(null, null, null, "-3", "0", null, null, new[] { "t1", "t2" })]
-    [InlineData(null, null, null, null, null, "hisobot", null, new[] { "t1" })]
-    [InlineData(null, null, "all", null, null, null, true, new[] { "t4", "t1", "t2", "t5", "t6", "t3" })]
-    public async Task Topshiriqlar_filtrlari(
-        string? boardId, string? assigneeId, string? state, string? dueFromOffset, string? dueToOffset,
-        string? search, bool? includeArchived, string[] expected)
-    {
-        using var host = new McpTestHost();
-        Seed(host);
-        string? Off(string? o) => o is null ? null : D(int.Parse(o));
-
-        var json = McpTestHost.Parse(await host.Tool<OperationsTools>(McpTestHost.Staff("tasks.board"))
-            .TasksList(boardId, assigneeId, state, Off(dueFromOffset), Off(dueToOffset), search, includeArchived));
-
-        Assert.Equal(expected, Ids(json));
-        Assert.Equal(expected.Length, json.GetProperty("total").GetInt32());
-    }
-
-    [Fact]
-    public async Task Topshiriqlar_sahifalash_va_ruxsat()
-    {
-        using var host = new McpTestHost();
-        Seed(host);
-
-        var p2 = McpTestHost.Parse(await host.Tool<OperationsTools>(McpTestHost.SuperAdmin()).TasksList(page: 2, pageSize: 2));
-        Assert.Equal(new[] { "t3" }, Ids(p2));
-        Assert.Equal(3, p2.GetProperty("total").GetInt32());
-
-        await Assert.ThrowsAsync<McpException>(() => host.Tool<OperationsTools>(McpTestHost.SuperAdmin()).TasksList(state: "yopiq"));
-        await Assert.ThrowsAsync<McpException>(() => host.Tool<OperationsTools>(McpTestHost.SuperAdmin()).TasksList(dueFrom: "01.10.2026"));
-
-        using var denied = new McpTestHost();
-        Seed(denied);
-        await Assert.ThrowsAsync<McpAccessDeniedException>(() => denied.Tool<OperationsTools>(McpTestHost.Staff("contacts")).TasksList());
-        Assert.Empty(denied.Sql);
     }
 
     // ================================================================== messages_history

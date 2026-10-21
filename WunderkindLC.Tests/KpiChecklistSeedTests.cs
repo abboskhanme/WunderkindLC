@@ -43,6 +43,10 @@ public class KpiChecklistSeedTests
         // 2026-10: Local Call (manba) olib tashlandi — qo'ng'iroq bandlari QO'LDA (kpi.md §11.1).
         "auto:calls.missed_returned",
         "auto:calls.answer_speed",
+        // 2026-10-21: Kanban «Topshiriqlar» (manba) olib tashlandi — topshiriq bandlari QO'LDA (kpi.md §11).
+        "auto:tasks.overdue_zero",
+        "auto:tasks.due_done",
+        "auto:leads.without_task_zero",
     };
 
     /* =========================================================================================

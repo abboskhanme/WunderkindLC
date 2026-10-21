@@ -10,8 +10,8 @@ namespace WunderkindLC.Tests.Mcp;
 
 /// <summary>
 /// MCP — CRM upgrade Phase 5 (U5m): `schedule_week` (sanalar bo'yicha jadval, qavatlar), `schedule_conflicts`,
-/// `schedule_day`/`rooms_list` dagi qavat va `tasks_list` dagi tasdiq holati. Panelning o'z funksiyalari
-/// (DatedSchedule, RoomConflictService, WorkTaskApproval) bilan bir xil natija.
+/// `schedule_day`/`rooms_list` dagi qavat. Panelning o'z funksiyalari (DatedSchedule, RoomConflictService) bilan bir
+/// xil natija. (`tasks_list` 2026-10-21 da Kanban «Topshiriqlar» bilan birga olib tashlandi.)
 /// </summary>
 public class McpWorkspaceToolsTests
 {
@@ -189,74 +189,5 @@ public class McpWorkspaceToolsTests
         Assert.Equal(1, McpTestHost.Parse(await Tool().ScheduleConflictPairs(groupId: "g3")).GetProperty("total").GetInt32());
         await Assert.ThrowsAsync<McpException>(() => Tool().ScheduleConflictPairs("both"));
         host.AssertReadsOnlyDeclared(typeof(ScheduleTools));
-    }
-
-    // ================================================================== tasks_list — tasdiq holati
-
-    private static void SeedTasks(McpTestHost host)
-    {
-        var db = host.Rw;
-        db.Users.AddRange(
-            new AppUser { Id = "u1", FullName = "Olim Operator", Role = Roles.Staff, Email = "olim", PasswordHash = "H" },
-            new AppUser { Id = "u2", FullName = "Nodira Menejer", Role = Roles.Admin, Email = "nodira", PasswordHash = "H" });
-        db.WorkTaskBoards.Add(new WorkTaskBoard { Id = "b1", Title = "Umumiy" });
-        db.WorkTaskColumns.AddRange(
-            new WorkTaskColumn { Id = "c1", BoardId = "b1", Title = "Rejada", Order = 0 },
-            new WorkTaskColumn { Id = "c2", BoardId = "b1", Title = "Bajarildi", Order = 1, IsDone = true });
-        var now = AppClock.Now;
-        db.WorkTasks.AddRange(
-            new WorkTask { Id = "w1", BoardId = "b1", ColumnId = "c2", Title = "Hisobot", AssigneeId = "u1", CreatedById = "u2", ApprovalRequired = true, CompletedAt = now.AddHours(-3), CreatedAt = now.AddDays(-2) },
-            new WorkTask { Id = "w2", BoardId = "b1", ColumnId = "c2", Title = "Majlis", AssigneeId = "u1", CreatedById = "u2", ApprovalRequired = true, ApprovedAt = now.AddHours(-1), ApprovedById = "u2", CompletedAt = now.AddHours(-2), CreatedAt = now.AddDays(-2) },
-            new WorkTask { Id = "w3", BoardId = "b1", ColumnId = "c2", Title = "O'zimniki", AssigneeId = "u2", CreatedById = "u2", CompletedAt = now.AddHours(-1), CreatedAt = now.AddDays(-2) },
-            new WorkTask { Id = "w4", BoardId = "b1", ColumnId = "c1", Title = "Qaytarilgan", AssigneeId = "u1", CreatedById = "u2", ApprovalRequired = true, ReturnCount = 1, LastReturnedAt = now.AddHours(-5), CreatedAt = now.AddDays(-3) },
-            new WorkTask { Id = "w5", BoardId = "b1", ColumnId = "c1", Title = "Boshqasiniki", AssigneeId = "u2", CreatedById = "u1", CreatedAt = now.AddDays(-1) });
-        db.SaveChanges();
-    }
-
-    private static List<string?> TaskIds(JsonElement json) =>
-        json.GetProperty("items").EnumerateArray().Select(i => i.GetProperty("id").GetString()).ToList();
-
-    [Fact]
-    public async Task Topshiriqlar_tasdiq_holati_bilan()
-    {
-        using var host = new McpTestHost();
-        SeedTasks(host);
-
-        var raw = await host.Tool<OperationsTools>(McpTestHost.Staff("tasks.board")).TasksList(state: "all");
-        var json = McpTestHost.Parse(raw);
-        var byId = json.GetProperty("items").EnumerateArray().ToDictionary(i => i.GetProperty("id").GetString()!);
-
-        Assert.Equal("awaiting_approval", byId["w1"].GetProperty("state").GetString());
-        Assert.Equal("Tasdiq kutmoqda", byId["w1"].GetProperty("stateLabel").GetString());
-        Assert.Equal("approved", byId["w2"].GetProperty("state").GetString());
-        Assert.Equal("Nodira Menejer", byId["w2"].GetProperty("approval").GetProperty("approvedBy").GetString());
-        Assert.Equal("done", byId["w3"].GetProperty("state").GetString());
-        Assert.False(byId["w3"].GetProperty("approval").GetProperty("required").GetBoolean());
-        Assert.Equal("open", byId["w4"].GetProperty("state").GetString());
-        Assert.Equal(1, byId["w4"].GetProperty("approval").GetProperty("returnCount").GetInt32());
-        Assert.Equal(JsonValueKind.String, byId["w4"].GetProperty("approval").GetProperty("lastReturnedAt").ValueKind);
-
-        Assert.DoesNotContain("nodira\"", raw);   // login (Email) chiqmaydi
-        host.AssertReadsOnlyDeclared(typeof(OperationsTools));
-        host.AssertNoSecretColumns();
-    }
-
-    [Theory]
-    [InlineData("awaiting", null, new[] { "w1" })]
-    [InlineData("approved", null, new[] { "w2" })]
-    [InlineData("done", null, new[] { "w1", "w2", "w3" })]
-    [InlineData("open", null, new[] { "w4", "w5" })]
-    [InlineData("all", "u1", new[] { "w5" })]
-    [InlineData("awaiting", "u2", new[] { "w1" })]
-    public async Task Topshiriqlar_tasdiq_va_bergan_xodim_filtrlari(string state, string? createdById, string[] expected)
-    {
-        using var host = new McpTestHost();
-        SeedTasks(host);
-
-        var json = McpTestHost.Parse(await host.Tool<OperationsTools>(McpTestHost.Admin())
-            .TasksList(state: state, createdById: createdById));
-
-        Assert.Equal(expected.OrderBy(x => x), TaskIds(json).OrderBy(x => x));
-        Assert.Equal(expected.Length, json.GetProperty("total").GetInt32());
     }
 }

@@ -29,6 +29,8 @@ internal static class ServerSource
 
     public static string Controller(string file) => Read("WunderkindLC.Server", "Controllers", file);
 
+    public static bool Exists(params string[] relative) => File.Exists(Path.Combine([RepoRoot, .. relative]));
+
     /// <summary>Source of one action: from its HTTP attribute to the next HTTP attribute (or end).</summary>
     public static string Action(string src, string httpAttribute)
     {
@@ -54,7 +56,7 @@ internal static class ServerSource
 /// </summary>
 public class CrmWorkspaceRbacTests
 {
-    private static readonly string[] StaffWithoutTimetable = ["classes.list", "tasks.dashboard"];
+    private static readonly string[] StaffWithoutTimetable = ["classes.list", "kpi.today"];
 
     [Fact]
     public void Jadval_dated_va_conflicts_schedule_timetable_ostida()
@@ -73,24 +75,6 @@ public class CrmWorkspaceRbacTests
         // Kalitsiz xodim: GET odatda ochiq (bo'limlararo o'qish), lekin bo'lim/sahifa yo'q — HasSection false.
         Assert.False(PermissionRules.HasSection(StaffWithoutTimetable, "schedule.timetable"));
         Assert.True(PermissionRules.HasSection(["schedule"], "schedule.timetable"));
-    }
-
-    [Fact]
-    public void Topshiriq_tasdiqlash_va_qaytarish_tasks_board_va_bergan_xodim()
-    {
-        var src = ServerSource.Controller("WorkTasksController.Approval.cs");
-        foreach (var http in new[] { "[HttpPut(\"{id}/approve\")]", "[HttpPut(\"{id}/return\")]" })
-        {
-            Assert.Contains("[AdminPerm(\"tasks.board\")]", ServerSource.Attributes(src, http));
-            var body = ServerSource.Action(src, http);
-            Assert.Contains("WorkTaskApproval.IsApprover(t, Uid, IsAdminCaller)", body);
-            Assert.Contains("Status403Forbidden", body);
-            Assert.Contains("LockKey(id)", body);
-        }
-        Assert.DoesNotContain("AllowAnonymous", src);
-        // Staff with only the dashboard page cannot write tasks → AdminPerm answers 403.
-        Assert.False(PermissionRules.CanWrite(["tasks.dashboard"], "tasks.board", "PUT"));
-        Assert.True(PermissionRules.CanWrite(["tasks"], "tasks.board", "PUT"));
     }
 
     [Fact]
@@ -155,25 +139,15 @@ public class CrmWorkspaceRbacTests
     }
 
     [Fact]
-    public void Bot_tasdiqlash_tarmogi_va_bajardim_tasdiq_sorovi()
+    public void Kanban_topshiriqlar_moduli_olib_tashlangan__bot_tugmalari_ham()
     {
+        // 2026-10-21: «lcda allaqachon bori umuman kerakmas — tag-tugi bilan olib tashlansin» (o'rniga HR topshiriqlari).
+        foreach (var f in new[] { "WorkTasksController.cs", "WorkTasksController.Approval.cs",
+                                  "WorkTasksController.Dashboard.cs", "WorkTasksController.Helpers.cs" })
+            Assert.False(ServerSource.Exists("WunderkindLC.Server", "Controllers", f), $"{f} qaytib qolgan");
         var bot = ServerSource.Read("WunderkindLC.Application", "Services", "TelegramBotService.cs");
-        var done = bot.IndexOf("data.StartsWith(WorkTaskTelegram.CallbackDone", StringComparison.Ordinal);
-        var ok = bot.IndexOf("data.StartsWith(WorkTaskTelegram.CallbackApprove", StringComparison.Ordinal);
-        Assert.True(done > 0 && ok > done, "wtok: tarmog'i wtdone: dan keyin turishi kerak");
-        Assert.Contains("WorkTaskFlow.ApproveFromChatAsync(db, telegram, chatId", bot);
-        Assert.Contains("WorkTaskFlow.OnCompletedAsync(db, t, t.AssigneeId, telegram, ct)", bot);
-        Assert.Equal("wtok:", WorkTaskTelegram.CallbackApprove);
-    }
-
-    [Fact]
-    public void Panel_kochirishi_tasdiqlashni_bot_bilan_bir_joydan_chaqiradi()
-    {
-        var helpers = ServerSource.Controller("WorkTasksController.Helpers.cs");
-        Assert.Contains("WorkTaskFlow.OnCompletedAsync(db, t, Uid, telegram)", helpers);
-        Assert.Contains("WorkTaskFlow.OnReopened(t)", helpers);
-        // Yangi doskalarga «Tekshiruvda» endi ekilmaydi (tasdiqlash bosqichi bor).
-        var seed = helpers[helpers.IndexOf("DefaultColumns(string boardId) =>", StringComparison.Ordinal)..];
-        Assert.DoesNotContain("Tekshiruvda\"", seed[..seed.IndexOf("];", StringComparison.Ordinal)]);
+        Assert.DoesNotContain("WorkTask", bot);
+        Assert.DoesNotContain("\"wtdone:", bot);
+        Assert.DoesNotContain("\"wtok:", bot);
     }
 }

@@ -371,8 +371,6 @@ if (!WunderkindLC.Application.Services.ImportMode.Enabled)
 }
 // Kunlik avtomatik backup — markaz ma'lumotlarini JSON qilib Telegram orqali adminga (jadval CenterMeta'da).
 builder.Services.AddHostedService<WunderkindLC.Application.Services.BackupSchedulerService>();
-// "Topshiriqlar" (Kanban) kunlik eslatmasi — bugungi va kechikkan topshiriqlar mas'uliga botda.
-builder.Services.AddHostedService<WunderkindLC.Application.Services.WorkTaskReminderService>();
 // Kunlik markaz AI tahlili (ertalab ~8:00 Toshkent; Gemini kaliti + AiDailyAnalysisEnabled bo'lsa).
 builder.Services.AddHostedService<WunderkindLC.Application.Services.CenterAiSchedulerService>();
 // KPI: oy BOSHIDAGI surat (faol o'quvchilar soni, qarz qoldig'i) — 1-kuni yarim tundan keyin.

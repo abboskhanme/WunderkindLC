@@ -62,7 +62,8 @@ Foiz bazasi va "Umumiy" rejim — `billing.md`.
 - **«Oxirgi kirish» va «Faollik (30 kun)» ustunlari** (SPEC-backlog F4 S1, TZ 3.1): `GET api/admin/staff/activity?days=`
   (`StaffActivity`; RRP `staff` | `teachers.list`, javob ko'rinadigan qatorlarga qirqiladi). Oxirgi ko'rinish = oxirgi login
   va oxirgi token yangilanishining kechrog'i; faollik — tarixdagi amallar (`AuditLog.ActorId`), yopilgan topshiriqlar, ishlangan
-  lidlar (takrorsiz) va davomati olingan darslar. 7 kundan ko'p kirmagan — sariq. Ikkilamchi ma'lumot: xato ro'yxatni buzmaydi.
+  lidlar (takrorsiz) va davomati olingan darslar. ⚠️ 2026-10-21: Kanban «Topshiriqlar» olib tashlandi (o'rniga HR topshiriqlari) — «yopilgan topshiriqlar» (`TasksClosed`)
+  HR topshiriqlari ulanguncha 0. 7 kundan ko'p kirmagan — sariq. Ikkilamchi ma'lumot: xato ro'yxatni buzmaydi.
 - Menyuda «Xodimlar» `/admin/teachers` sahifalarida ham faol (`NavChild.alsoMatch`).
 - Eski manzillar: `boshqaruv/staff` → xodimlar, `boshqaruv/roles` → rollar.
 
@@ -70,17 +71,17 @@ Foiz bazasi va "Umumiy" rejim — `billing.md`.
 
 Akkaunt o'chirilganda (`DELETE api/admin/staff/{id}`) o'sha tranzaksiyada: KPI profili nofaol,
 OCHIQ lidlar (aylantirilmagan/yopilmagan/yo'qotilmagan) biriktirilmagan holatga, kassa mas'ulsiz
-(ism snapshot'i ham tozalanadi), bajarilmagan topshiriqlar mas'ulsiz (topshiriq tarixiga yozuv),
-Telegram xodim bog'lanishi uziladi (`StaffRelease.Result(KpiProfiles, OpenLeads, Cashboxes, OpenTasks,
-TelegramLinks)`). Nima bo'shatilgani — o'sha BITTA audit
-qatorida. Sabab: ilgari KPI'da "arvoh" qator qolar, o'chirilgan odamga topshiriq eslatmasi ketaverardi.
+(ism snapshot'i ham tozalanadi), Telegram xodim bog'lanishi uziladi
+(`StaffRelease.Result(KpiProfiles, OpenLeads, Cashboxes, TelegramLinks)`). Nima bo'shatilgani — o'sha BITTA audit
+qatorida. Sabab: ilgari KPI'da "arvoh" qator qolar, o'chirilgan odamga xabarlar ketaverardi.
+⚠️ 2026-10-21: Kanban «Topshiriqlar» olib tashlandi (o'rniga HR topshiriqlari) — Kanban topshiriqlarini mas'ulsiz qoldirish (`OpenTasks`) ham ketdi.
 
 ⚠️ 2026-10: CTI agent (Local Call) qismi modul bilan birga OLIB TASHLANDI — xodim o'chirilganda eski
 `CtiAgents` qatorlariga tegilmaydi (agent ilovasi endi serverga ulana olmaydi: `/ws` va `api/cti/*` yo'q),
 javobda `warning` ham yo'q (`DELETE` → 204).
 
 ⚠️ TARIX tegilmaydi: yopilgan/yo'qotilgan lidlarning `AssigneeUserId` i (yo'qotish hisoboti, KPI),
-bajarilgan topshiriqlar, `ClosedByUserId`.
+`ClosedByUserId`.
 
 ⚠️ Arxiv suratiga `PasswordHash` va ochiq `InitialPassword` TUSHMAYDI (`SecretScrub`) — surat kunlik
 Telegram zaxirasiga ham kiradi. Arxivdan tiklangan akkaunt PAROLSIZ bo'ladi: admin yangisini yaratadi.

@@ -18,7 +18,6 @@ export type HomeBlockKey =
   | 'cashboxes'
   | 'schedule'
   | 'lessonsMonitor'
-  | 'myTasks'
   | 'absentNotices'
   | 'redList'
   | 'contactsToday'
@@ -42,7 +41,6 @@ export const HOME_BLOCKS: HomeBlockDef[] = [
   { key: 'cashboxes', label: 'Kassalar balansi', description: "Har kassaning qoldig'i va jami", defaultVisible: true, superadminOnly: true, available: true },
   { key: 'schedule', label: 'Dars jadvali', description: '«Kun» / «Hafta» — haqiqiy sanadagi darslar', defaultVisible: true, perm: 'schedule.timetable', available: true },
   { key: 'lessonsMonitor', label: 'Darslar monitoringi', description: "Bugungi darslar: davomat va baho qo'yildimi", defaultVisible: false, perm: 'classes.notAttended', available: true },
-  { key: 'myTasks', label: 'Mening topshiriqlarim', description: 'Ochiq topshiriqlarim va tasdig\'imni kutayotganlar', defaultVisible: false, perm: 'tasks.board', available: true },
   { key: 'absentNotices', label: 'Davomat xabarlari', description: 'Bugungi «kelmadi» xabarlari: rejalashtirilgan, tasdiq kutayotgan, to\'xtatilgan', defaultVisible: false, perm: 'students.notices', available: true },
   { key: 'redList', label: "Qizil ro'yxat", description: 'Ketma-ket sababsiz dars qoldirganlar (top 10)', defaultVisible: false, perm: 'students.attendance', available: true },
   { key: 'contactsToday', label: "Bog'lanish kerak — bugun", description: "Bugun qo'ng'iroq qilinishi kerak bo'lganlar", defaultVisible: false, perm: 'contacts', available: true },

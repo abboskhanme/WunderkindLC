@@ -4,7 +4,6 @@ import { IconAlertTriangle, IconBell, IconChecklist, IconPhoneCall } from '@tabl
 import { getAbsentNoticeSummary } from '@/api/services/attendanceNotices'
 import { getContactMeta } from '@/api/services/contacts'
 import { getRedList } from '@/api/services/absences'
-import { getTasks, type WorkTask } from '@/api/services/workTasks'
 import { useAsync } from '@/hooks/useAsync'
 import { usePerm } from '@/lib/permissions'
 import { cn } from '@/lib/utils'
@@ -41,60 +40,6 @@ function BlockCard({
       </div>
       {children}
     </section>
-  )
-}
-
-/**
- * «Mening topshiriqlarim» — menga berilgan OCHIQ topshiriqlar soni (kechikkanlari bilan) va men
- * tasdiqlashim kerak bo'lganlar soni + eng muhim 5 tasi.
- */
-export function MyTasksBlock() {
-  const mine = useAsync(() => getTasks({ assigneeId: 'me', status: 'open' }), [])
-  const toApprove = useAsync(() => getTasks({ createdById: 'me', status: 'awaiting' }), [])
-
-  const open = mine.data ?? []
-  const overdue = open.filter((t) => t.isOverdue).length
-  const top = [...open]
-    .sort((a, b) => Number(b.isOverdue) - Number(a.isOverdue) || b.priority - a.priority || (a.dueDate ?? '9999').localeCompare(b.dueDate ?? '9999'))
-    .slice(0, 5)
-  const error = mine.error ?? toApprove.error
-
-  return (
-    <BlockCard title="Mening topshiriqlarim" icon={IconChecklist} to="/admin/topshiriqlar/royxat" linkLabel="Barchasi">
-      {error ? (
-        <p className="text-[12px] text-red-600">Topshiriqlarni yuklab bo'lmadi: {error}</p>
-      ) : (
-        <>
-          <div className="mb-2 flex flex-wrap gap-2 text-[12px] font-semibold">
-            <span className="rounded-full bg-sky-50 px-2.5 py-1 text-sky-700">Ochiq: {mine.loading ? '…' : open.length}</span>
-            {overdue > 0 && <span className="rounded-full bg-rose-50 px-2.5 py-1 text-rose-700">Kechikkan: {overdue}</span>}
-            <span className="rounded-full bg-amber-50 px-2.5 py-1 text-amber-700">
-              Tasdig'imni kutmoqda: {toApprove.loading ? '…' : (toApprove.data?.length ?? 0)}
-            </span>
-          </div>
-          {top.length === 0 && !mine.loading ? (
-            <p className="text-[12px] text-[#6B7280]">Ochiq topshiriq yo'q.</p>
-          ) : (
-            <ul className="space-y-1">
-              {top.map((t) => (
-                <TaskLine key={t.id} task={t} />
-              ))}
-            </ul>
-          )}
-        </>
-      )}
-    </BlockCard>
-  )
-}
-
-function TaskLine({ task }: { task: WorkTask }) {
-  return (
-    <li className="flex items-center justify-between gap-2 rounded-lg border border-[#F0F2F2] px-2 py-1.5 text-[13px]">
-      <span className="min-w-0 truncate text-black">{task.title}</span>
-      <span className={cn('shrink-0 text-[11px]', task.isOverdue ? 'font-semibold text-rose-600' : 'text-[#6B7280]')}>
-        {task.dueDate ? `${task.dueDate.slice(8, 10)}.${task.dueDate.slice(5, 7)}` : 'muddatsiz'}
-      </span>
-    </li>
   )
 }
 

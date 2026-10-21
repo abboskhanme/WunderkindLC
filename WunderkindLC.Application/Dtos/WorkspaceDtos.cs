@@ -49,5 +49,3 @@ public record HomeLayoutDto(int Version, bool CardsVisible, List<HomeLayoutItemD
 /// <summary><c>GET api/admin/home/layout</c> — <c>Layout = null</c>: the user never customised the page.</summary>
 public record HomeLayoutResponseDto(HomeLayoutDto? Layout);
 
-/// <summary><c>PUT api/admin/work-tasks/{id}/return</c> — why the task goes back to work (1..500 chars).</summary>
-public record WorkTaskReturnInput(string? Reason);

@@ -378,9 +378,9 @@ uchun "Boshqa" ga o'tib ketardi — `LeadOrigins`), audit yo'q edi.
   yangisini telefon bo'yicha qidiruvda to'sib qo'yardi.
 - Bosqichi o'chirilgan bo'lsa — birinchi ustunga. Tiklash auditga yoziladi (`Lead`).
 
-## LIDGA AVTOMATIK «QO'NG'IROQ» TOPSHIRIG'I (2026-10-17, SPEC-backlog F4 L1)
+## LIDGA AVTOMATIK «QO'NG'IROQ» TOPSHIRIG'I — OLIB TASHLANDI (2026-10-21)
 
-Tashqi kanaldan (forma, landing, daraja testi, Instagram, reklama formasi) kelgan lidga sozlama yoqilgan bo'lsa xodimlarga
-navbat bilan topshiriq beriladi — `LeadNotifier.NotifyNewLeadAsync` ichida (`LeadAutoTask`). Qo'lda kiritilgan lidga
-(`autoTask: false`) YO'Q. Batafsil: `.claude/rules/topshiriqlar.md` §9. ⚠️ Yangi lid yaratish yo'li qo'shsangiz va u
-`NotifyNewLeadAsync` ni chaqirsa — topshiriq o'zi keladi; xodim kiritadigan yo'l bo'lsa `autoTask: false` bering.
+2026-10-17 da qo'shilgan (SPEC-backlog F4 L1) lid avto-topshirig'i Kanban «Topshiriqlar» moduli bilan birga
+TAG-TUGI BILAN olib tashlandi (foydalanuvchi: "lcda allaqachon bori umuman kerakmas"): `LeadAutoTask`,
+`NotifyNewLeadAsync` dagi `autoTask` parametri, `CenterMeta.LeadAutoTask*` sozlamalari, Instagram/Meta yo'llaridagi
+chaqiruvlar. Lid kartasi (Telegram) o'zgarmagan. Kerak bo'lsa HR topshiriqlari ustiga ALOHIDA ish sifatida qaytariladi.

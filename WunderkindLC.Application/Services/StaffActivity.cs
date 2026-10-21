@@ -15,7 +15,7 @@ public record StaffActivityDto(
 /// XODIMLAR FAOLLIGI (TZ 3.1: "xodimlar profiliga oxirgi kirgan vaqti, faolligi statistikasi"). Faqat O'QIYDI.
 ///
 /// <para>Manbalar (davr — oxirgi <c>days</c> kun): «O'zgarishlar tarixi» qatorlari (<c>AuditLog.ActorId</c>), yopilgan
-/// topshiriqlar (<c>WorkTask.CompletedById</c>), ishlangan lidlar (<c>LeadEvent.ActorUserId</c>, TAKRORSIZ lidlar) va
+/// topshiriqlar (2026-10-21 dan Kanban yo'q — HR topshiriqlari ulanguncha 0), ishlangan lidlar (<c>LeadEvent.ActorUserId</c>, TAKRORSIZ lidlar) va
 /// o'qituvchida davomati olingan darslar (<c>LessonNote.AttendanceTakenAt</c>, o'tgan guruh egasi bo'yicha emas —
 /// davomatni olgan odam). <b>Oxirgi ko'rinish</b> — oxirgi login va oxirgi token yangilanishining kechrog'i: sessiya
 /// uzoq yashaydi, faqat login vaqti haftalab eskirib ko'rinardi.</para>
@@ -64,12 +64,9 @@ public static class StaffActivity
                 .Select(g => new { g.Key, N = g.Count() })
                 .ToListAsync(ct))
             .ToDictionary(x => x.Key, x => x.N);
-        var tasks = (await db.WorkTasks.AsNoTracking()
-                .Where(t => t.CompletedAt != null && t.CompletedAt >= sinceLocal && t.CompletedById != "")
-                .GroupBy(t => t.CompletedById)
-                .Select(g => new { g.Key, N = g.Count() })
-                .ToListAsync(ct))
-            .ToDictionary(x => x.Key, x => x.N);
+        // Yopilgan topshiriqlar (AppUser.Id → soni). Kanban «Topshiriqlar» 2026-10-21 da olib tashlandi;
+        // HR topshiriqlari (docs/SPEC-hr-tasks.md) shu lug'atni to'ldiradi.
+        var tasks = new Dictionary<string, int>();
         var leads = (await db.LeadEvents.AsNoTracking()
                 .Where(e => e.ActorUserId != null && string.Compare(e.CreatedAt, since) >= 0)
                 .Select(e => new { e.ActorUserId, e.LeadId })

@@ -67,23 +67,6 @@ export const roomTabs: CardTabItem[] = [
 ]
 
 /**
- * TOPSHIRIQLAR bo'limi: **Doska · Ro'yxat · Kalendar · Nazorat paneli**.
- *
- * Dastlabki uchtasi AYNI ma'lumotning uch ko'rinishi (ruxsati ham bitta — `tasks.board`),
- * nazorat paneli esa alohida beriladi (`tasks.dashboard`): bo'lim boshlig'iga xodimlar kesimi
- * kerak, oddiy adminga esa faqat o'z doskasi.
- */
-export function taskTabs(canSee: (perm: string) => boolean): CardTabItem[] {
-  return [
-    // `end` — ichki sahifalar ochilganda «Doska» ham faol bo'lib qolmasin
-    { label: 'Doska', to: '/admin/topshiriqlar', end: true, hidden: !canSee('tasks.board') },
-    { label: "Ro'yxat", to: '/admin/topshiriqlar/royxat', hidden: !canSee('tasks.board') },
-    { label: 'Kalendar', to: '/admin/topshiriqlar/kalendar', hidden: !canSee('tasks.board') },
-    { label: 'Nazorat paneli', to: '/admin/topshiriqlar/nazorat', hidden: !canSee('tasks.dashboard') },
-  ]
-}
-
-/**
  * KPI bo'limi: **Bugun · Oy · Tiketlar · Yopish · Qoidalar**.
  *
  * ⚠️ Har card — ALOHIDA beriladigan sahifa (`kpi.today`, `kpi.month`, `kpi.tickets`,

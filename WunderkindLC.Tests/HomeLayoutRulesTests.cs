@@ -19,7 +19,7 @@ public class HomeLayoutRulesTests
         Assert.All(d.Cards, c => Assert.True(c.Visible));
         Assert.Equal("orders", d.Cards[0].Key);
         Assert.Equal(["cashboxes", "schedule"], d.Blocks.Where(b => b.Visible).Select(b => b.Key));
-        Assert.Equal(8, d.Blocks.Count);
+        Assert.Equal(7, d.Blocks.Count);
     }
 
     [Fact]
@@ -27,7 +27,7 @@ public class HomeLayoutRulesTests
     {
         var input = new HomeLayoutDto(1, false,
             [I("debtors", false), I("hack"), I("debtors"), I("orders")],
-            [I("schedule", false), I("myTasks"), I("zzz")]);
+            [I("schedule", false), I("redList"), I("zzz"), I("myTasks")]);
         var (layout, error) = HomeLayoutRules.Normalize(input);
         Assert.Null(error);
         Assert.False(layout!.CardsVisible);
@@ -35,9 +35,11 @@ public class HomeLayoutRulesTests
         Assert.False(layout.Cards[0].Visible);                       // birinchi uchragani saqlanadi
         Assert.Equal(12, layout.Cards.Count);                        // qolganlari oxiriga, ko'rinadigan
         Assert.DoesNotContain(layout.Cards, c => c.Key == "hack");
-        Assert.Equal(["schedule", "myTasks", "cashboxes"], layout.Blocks.Take(3).Select(b => b.Key));
+        Assert.Equal(["schedule", "redList", "cashboxes"], layout.Blocks.Take(3).Select(b => b.Key));
+        Assert.DoesNotContain(layout.Blocks, b => b.Key == "myTasks");   // Kanban vidjeti 2026-10-21 da olib tashlandi
         Assert.True(layout.Blocks.Single(b => b.Key == "cashboxes").Visible);       // standart ko'rinish
-        Assert.False(layout.Blocks.Single(b => b.Key == "redList").Visible);
+        Assert.True(layout.Blocks.Single(b => b.Key == "redList").Visible);
+        Assert.False(layout.Blocks.Single(b => b.Key == "contactsToday").Visible);
     }
 
     [Fact]
@@ -58,12 +60,12 @@ public class HomeLayoutRulesTests
         Assert.Null(await HomeLayoutRules.GetAsync(db.Context, "u1"));
 
         var (saved, error) = await HomeLayoutRules.SaveAsync(db.Context, "u1",
-            new HomeLayoutDto(1, true, [I("groups")], [I("myTasks")]));
+            new HomeLayoutDto(1, true, [I("groups")], [I("redList")]));
         Assert.Null(error);
         Assert.Equal("groups", saved!.Cards[0].Key);
 
         var back = await HomeLayoutRules.GetAsync(db.Context, "u1");
-        Assert.Equal("myTasks", back!.Blocks[0].Key);
+        Assert.Equal("redList", back!.Blocks[0].Key);
         Assert.Null(await HomeLayoutRules.GetAsync(db.Context, "u2"));   // boshqa foydalanuvchiga tegmaydi
 
         var (_, bad) = await HomeLayoutRules.SaveAsync(db.Context, "u1", new HomeLayoutDto(9, true, [], []));

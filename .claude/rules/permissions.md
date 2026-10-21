@@ -151,13 +151,14 @@ turmaydi.
 | `messages` | `.broadcast` `.support` | `MessagesController` · `AutoMessagesController` · `BotSupportController` (`.chat` 2026-10 da guruh chati bilan birga olib tashlandi) |
 | `app` | `.aiCheck` `.support` `.locations` `.parents` `.teachers` | `AiCheckController` · `SupportController` · `LocationsController` · `ParentsController` · `AppTeachersController` |
 | `finance` | `.main` `.bonus` `.discounts` `.debts` `.tariffs` `.invoices` | `FinanceController` · `RetentionBonusController` · `DiscountReportController` · `FinanceReportsController` (metod darajasida, RRP — SPEC-backlog-2026-10-17 F1) |
-| `tasks` | `.board` `.dashboard` `.settings` | `WorkTasksController` (metod darajasida) |
 | `kpi` | `.today` `.month` `.tickets` `.close` `.rules` | `KpiController` (metod darajasida) |
 | `settings` | `.school` `.landing` `.reasons` `.channels` `.backup` `.azure-speech` `.gemini` `.check` `.turnstile` `.cameras` `.posthog` `.archive` | `SettingsController` (metod darajasida) · `LandingCmsController` · `ActionReasonsController` · `LeadSourcesController` · `ArchiveController` |
 | `vacancies` | `.list` `.onboarding` | `CareerController` (`vacancies.list`, RRP) · `OnboardingController` (`vacancies.onboarding`, RRP) |
 
 ⚠️ 2026-10: `calls` bo'limi (`calls.local` — Local Call), `messages.chat` va `settings.apk` kalitlari
 modullar bilan birga OLIB TASHLANDI (`constants.ts` katalogidan ham; `PermissionCatalogTests` izchil).
+⚠️ 2026-10-21: Kanban «Topshiriqlar» olib tashlandi (o'rniga HR topshiriqlari): `tasks` bo'limi (`.board` `.dashboard` `.settings`) katalogdan chiqdi; xodimlar
+`Permissions` ida qolgan eski `tasks*` satrlari zararsiz (hech qaysi darvoza ularni o'qimaydi).
 Eski rollarda/xodimlarda qolgan bu kalitlar zararsiz — hech qanday endpoint ularni so'ramaydi.
 O'qituvchi portal ruxsatlaridan `messages` (chat) ham olib tashlandi (`TeacherPermissions.All` =
 journal · schedule · salary).

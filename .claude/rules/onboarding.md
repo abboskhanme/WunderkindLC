@@ -133,12 +133,12 @@ pages/admin/onboarding/
 ```
 
 Modallar `key` bilan qayta yaratiladi — boshlang'ich qiymatlar `useState` initializer'ida, effekt
-ichida to'g'ridan-to'g'ri setState yo'q; ro'yxatni qayta yuklash `tick` orqali (`topshiriqlar.md` §6).
+ichida to'g'ridan-to'g'ri setState yo'q; ro'yxatni qayta yuklash `tick` orqali.
 Kesh: `/admin/career` mutatsiyasi `/admin/onboarding` ni ham tozalaydi (avtomatik boshlash).
 
 ## 10. Nima ATAYIN qilinmagan
 
-- Xodimga Telegram eslatmasi (kunlik "bugungi qadamlar") — hozircha yo'q; kerak bo'lsa
-  `WorkTaskReminderService` naqshida alohida ish.
+- Xodimga Telegram eslatmasi (kunlik "bugungi qadamlar") — hozircha yo'q; kerak bo'lsa alohida ish (kunlik
+  fon ishi — `JobRunMarker` naqshi, `messaging.md` «KUNLIK FON ISHLARI»).
 - Moslashuv tugaganda o'qituvchi/xodim akkauntini avtomatik yaratish — yo'q: akkaunt odatdagi
   yo'l bilan (O'qituvchilar / Xodimlar) yaratiladi va shu yerda faqat BOG'LANADI.

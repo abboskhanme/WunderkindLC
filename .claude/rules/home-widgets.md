@@ -41,11 +41,12 @@ Kartochkalar hammasi (`HOME_CARDS` tartibida), `cardsVisible = true`; bloklardan
 | `cashboxes` | FAQAT superadmin (rol, kalit emas) | `CashboxBalanceStrip` |
 | `schedule` | `schedule.timetable` | sanali jadval (`DatedScheduleBoard`, `schedule.md` §8) |
 | `lessonsMonitor` | `classes.notAttended` | `TodayLessonsMonitor compact` |
-| `myTasks` | `tasks.board` | `MyTasksBlock` — ochiq (`assigneeId=me`) + tasdig'imni kutayotgan (`createdById=me&status=awaiting`), top 5 |
 | `absentNotices` | `students.notices` | `AbsentNoticesBlock` — bugungi «kelmadi» navbati: tasdiq kutmoqda · to'xtatilgan · rejalashtirilgan · yuborildi (`GET attendance-notices/summary`) + Nazorat → «Davomat xabarlari» havolasi (CRM U3b, `journal.md`) |
 | `redList` | `students.attendance` | `RedListBlock` — `GET student-attendance/red-list?min=3`, eng uzun seriyalar top 10 (5+ qizil, 3+ sariq), o'quvchiga havola faqat `students.list` bo'lsa + «Barchasi» → `/admin/students/davomat?tab=qizil` |
 | `contactsToday` | `contacts` | `ContactsTodayBlock` — `contacts/meta` `due.todo` |
 | `aiAnalysis` | `ai` | `CenterAiAnalysisCard` |
+
+⚠️ `myTasks` («Mening topshiriqlarim», Kanban) — 2026-10-21: Kanban «Topshiriqlar» olib tashlandi (o'rniga HR topshiriqlari); eski sozlamadagi kaliti normallashtirishda tashlanadi.
 
 ⚠️ Vidjet sozlamasi MA'LUMOT OCHMAYDI: har blok o'z endpointidan o'qiydi va server darvozasi o'z joyida.
 Ruxsatsiz karta/blok oynada ko'rinmaydi, lekin sozlamada o'z joyida qoladi (ruxsat berilsa o'sha tartibda chiqadi).

@@ -329,8 +329,7 @@ public class LeadsController(
         AddEvent(lead.Id, "created", $"Lid yaratildi ({lead.FullName})", toStage: lead.Stage);
         await db.SaveChangesAsync();
         // Botda ro'yxatdan o'tgan admin/xodimlarga yangi lid xabarnomasi (kim kiritgani bilan).
-        // ⚠️ autoTask: false — qo'lda kiritilgan lid bilan uni kiritgan xodim allaqachon ishlayapti (LeadAutoTask).
-        await LeadNotifier.NotifyNewLeadAsync(db, telegram, lead, createdBy: Actor(), logger: logger, autoTask: false);
+        await LeadNotifier.NotifyNewLeadAsync(db, telegram, lead, createdBy: Actor(), logger: logger);
         return lead;
     }
 

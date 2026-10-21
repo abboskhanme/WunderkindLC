@@ -97,7 +97,7 @@ it("Vidjetlar oynasi: ▲/▼, yashirish va saqlash", async () => {
     )
   })
   expect(document.body.textContent).toContain('Kartochkalar')
-  expect(document.body.textContent).toContain('Mening topshiriqlarim')
+  expect(document.body.textContent).toContain('Darslar monitoringi')
   // CRM U3b: Phase 3 bloklari qurildi — to'liq ruxsatda oynada ko'rinadi.
   expect(document.body.textContent).toContain("Qizil ro'yxat")
   expect(document.body.textContent).toContain('Davomat xabarlari')

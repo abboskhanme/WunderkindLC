@@ -45,7 +45,7 @@ data, only the page is missing) · `—` out of scope (rule 3).
 
 | edutizim | Ours | Status |
 |---|---|---|
-| **Topshiriqlar** | `/admin/topshiriqlar` | 🟡 |
+| **Topshiriqlar** | `/admin/hr/topshiriqlar` (HR topshiriqlari, 2026-10-21; eski Kanban `/admin/topshiriqlar` olib tashlandi) | 🟡 |
 | **Lidlar** → Buyurtmalar ro'yxati | `/admin/leads` (table; `?view=kanban`; lead page `/admin/leads/:id`) | ✅ |
 | Lidlar → Birinchi darsga yozilganlar | `/admin/leads/birinchi-dars` | ✅ |
 | **Guruh** → Guruh | `/admin/classes` | ✅ |

@@ -29,17 +29,14 @@ public static class ChecklistAutoCheck
      *  KALITLAR
      * ========================================================================================= */
 
-    /// <summary>Kechikkan topshiriq YO'Q (kun oxirida).</summary>
-    public const string TasksOverdueZero = "auto:tasks.overdue_zero";
-    /// <summary>Shu kunga muddati belgilangan topshiriqlarning HAMMASI yopilgan.</summary>
-    public const string TasksDueDone = "auto:tasks.due_done";
+    // (Topshiriq bandlari — "auto:tasks.overdue_zero", "auto:tasks.due_done", "auto:leads.without_task_zero" —
+    //  2026-10-21 dan QO'LDA: ularning manbai Kanban «Topshiriqlar» (WorkTask) edi, u olib tashlandi. Seed kalitlari
+    //  o'zgarmadi — qo'llanmagan kalit sinf izohidagi qoida bo'yicha jimgina qo'lda belgilanadigan bandga aylanadi.)
     // (Qo'ng'iroq bandlari — "auto:calls.missed_returned", "auto:calls.answer_speed" — 2026-10 dan QO'LDA:
     //  ularning manbai Local Call agent-ilovasi edi, u olib tashlandi. Seed kalitlari o'zgarmadi —
     //  qo'llanmagan kalit sinf izohidagi qoida bo'yicha jimgina qo'lda belgilanadigan bandga aylanadi.)
     /// <summary>Kecha darsi bo'lgan HAR guruhning jurnali to'ldirilgan.</summary>
     public const string JournalYesterdayFilled = "auto:journal.yesterday_filled";
-    /// <summary>Ochiq lidlarning hammasida ochiq topshiriq bor ("vazifasiz sdelka = 0").</summary>
-    public const string LeadsWithoutTaskZero = "auto:leads.without_task_zero";
 
     /// <summary>
     /// HAQIQATDA qo'llangan kalitlar. Ro'yxatda YO'Q kalit — band qo'lda belgilanadi
@@ -47,7 +44,7 @@ public static class ChecklistAutoCheck
     /// </summary>
     public static IReadOnlySet<string> Supported { get; } = new HashSet<string>(StringComparer.Ordinal)
     {
-        TasksOverdueZero, TasksDueDone, JournalYesterdayFilled, LeadsWithoutTaskZero,
+        JournalYesterdayFilled,
     };
 
 
@@ -81,37 +78,7 @@ public static class ChecklistAutoCheck
         if (!DateOnly.TryParse(date, CultureInfo.InvariantCulture, DateTimeStyles.None, out var day))
             return result;
 
-        var iso = day.ToString("yyyy-MM-dd");
         var prevIso = day.AddDays(-1).ToString("yyyy-MM-dd");
-
-        /* ---------- Topshiriqlar (bitta so'rov, ikkala kalit uchun) ---------- */
-        if (wanted.Contains(TasksOverdueZero) || wanted.Contains(TasksDueDone)
-                                              || wanted.Contains(LeadsWithoutTaskZero))
-        {
-            var openTasks = await db.WorkTasks
-                .Where(t => t.AssigneeId == userId && !t.IsArchived && t.CompletedAt == null)
-                .ToListAsync(ct);
-
-            if (wanted.Contains(TasksOverdueZero))
-            {
-                // Kechikkan = muddati BUGUNDAN OLDIN va hamon yopilmagan. Bugunga qo'yilgani
-                // hali kechikmagan (kun tugamagan) — aks holda ertalab belgilangan cheklist
-                // har doim "bajarilmadi" bo'lardi.
-                result[TasksOverdueZero] = !openTasks.Any(
-                    t => !string.IsNullOrEmpty(t.DueDate)
-                         && string.CompareOrdinal(t.DueDate!, iso) < 0);
-            }
-
-            if (wanted.Contains(TasksDueDone))
-            {
-                // Shu kunga muddati qo'yilgan topshiriqlar — hammasi yopilgan bo'lishi kerak.
-                // Bironta ham bo'lmasa: bajariladigan ish yo'q edi → o'tadi.
-                result[TasksDueDone] = !openTasks.Any(t => t.DueDate == iso);
-            }
-
-            if (wanted.Contains(LeadsWithoutTaskZero))
-                result[LeadsWithoutTaskZero] = await LeadsHaveTasksAsync(db, userId, openTasks, ct);
-        }
 
         /* ---------- Jurnal ---------- */
         if (wanted.Contains(JournalYesterdayFilled))
@@ -123,44 +90,6 @@ public static class ChecklistAutoCheck
     /* =========================================================================================
      *  TEKSHIRUVLAR
      * ========================================================================================= */
-
-    /// <summary>
-    /// «Vazifasiz sdelka = 0»: xodimning har bir OCHIQ lidiga ochiq topshiriq biriktirilganmi.
-    /// </summary>
-    /// <remarks>
-    /// ⚠️ Bog'lanish: topshiriqning <c>Tags</c> ro'yxatidagi lid Id'si YOKI (2026-10-17 dan) <c>WorkTask.LeadId</c>
-    /// (lid avto-topshirig'i — <c>LeadAutoTask</c>).
-    ///
-    /// ⚠️ Shuning uchun: agar xodimning ochiq topshiriqlaridan BIRONTASI ham lidga
-    /// bog'lanmagan bo'lsa, bu "bog'lanish umuman ishlatilmayapti" degani va band
-    /// <b>O'TADI</b> (fail-open). Aks holda bog'lanishni hech kim yozmagani uchun HAR KUNI
-    /// hamma xodimda "bajarilmadi" chiqar va samaradorlik foizi (ya'ni oylik bonus) sabab
-    /// yo'q joyda pasayardi. Bog'lanishdan FOYDALANAYOTGAN xodim uchun esa tekshiruv haqiqiy
-    /// ishlaydi: bittasi bog'langan bo'lsa, qolgan ochiq lidlar ham bog'langan bo'lishi kerak.
-    /// </remarks>
-    private static async Task<bool> LeadsHaveTasksAsync(
-        IAppDbContext db, string userId, List<Domain.WorkTask> openTasks, CancellationToken ct)
-    {
-        var openLeadIds = await db.Leads
-            // YO'QOTILGAN lid ochiq emas (`LeadLoss`) — unga topshiriq bog'lash talab qilinmaydi.
-            .Where(l => l.AssigneeUserId == userId && l.ConvertedStudentId == null && l.ClosedAt == null
-                        && l.LostAt == null)
-            .Select(l => l.Id)
-            .ToListAsync(ct);
-        if (openLeadIds.Count == 0) return true;
-
-        var leadSet = openLeadIds.ToHashSet(StringComparer.Ordinal);
-        // "Bog'lanish ishlatilyaptimi" — FAQAT xodimning O'ZI qo'ygan bog'lanishdan (lid Id'si Tags ichida). Lid
-        // avto-topshirig'i (WorkTask.LeadId) bu qarorga KIRMAYDI: u xodim ixtiyorisiz paydo bo'ladi va bitta avto-topshiriq
-        // eski (topshiriqsiz) lidlar tufayli bandni HAR KUNI yiqitib, bonusni kesardi (2026-10-17 revyu, S2).
-        var tagLinked = openTasks.SelectMany(t => t.Tags).Where(leadSet.Contains).ToHashSet(StringComparer.Ordinal);
-        if (tagLinked.Count == 0) return true;   // bog'lanish ishlatilmayapti — hukm chiqarmaymiz
-
-        // Ishlatilayotgan bo'lsa — avto-topshiriq ham bog'lanishning ISBOTI (LeadId).
-        var linked = openTasks.Select(t => t.LeadId).OfType<string>().Where(leadSet.Contains)
-            .Concat(tagLinked).ToHashSet(StringComparer.Ordinal);
-        return leadSet.All(linked.Contains);
-    }
 
     /// <summary>
     /// «Kechagi barcha guruhlar davomadi tekshirildi»: kecha DARSI BO'LGAN har bir guruhda
