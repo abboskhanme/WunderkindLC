@@ -313,6 +313,8 @@ export async function addGroupMember(
  * `date` — chiqish sanasi (bo'sh = bugun): AKTIV a'zolikda shu sanagacha qatnashgan darslar
  * hisoblanadi, keyingi oylar hisobi bekor qilinadi (server `RemoveMember`).
  * `note` — ixtiyoriy erkin izoh, o'quvchi profilidagi izohlarga yoziladi (server `LeaveNotes`).
+ * `archiveIfLast` — boshqa guruhi qolmasa o'quvchi shu bilan BIRGA arxivga o'tadi; javobdagi `archived`
+ * haqiqatan arxivlanganini aytadi (boshqa guruhi bo'lsa — `false`).
  */
 export async function removeGroupMember(
   id: string,
@@ -320,16 +322,19 @@ export async function removeGroupMember(
   reasonId?: string,
   date?: string,
   note?: string,
-): Promise<void> {
+  archiveIfLast?: boolean,
+): Promise<{ archived: boolean }> {
   if (USE_MOCK) {
     await delay(150)
-    return
+    return { archived: false }
   }
   const params: Record<string, string> = {}
   if (reasonId) params.reasonId = reasonId
   if (date) params.date = date
   if (note) params.note = note
-  await api.delete(`/admin/classes/${id}/members/${studentId}`, { params })
+  if (archiveIfLast) params.archiveIfLast = 'true'
+  const { data } = await api.delete<{ archived?: boolean } | ''>(`/admin/classes/${id}/members/${studentId}`, { params })
+  return { archived: typeof data === 'object' && data !== null && data.archived === true }
 }
 
 /**

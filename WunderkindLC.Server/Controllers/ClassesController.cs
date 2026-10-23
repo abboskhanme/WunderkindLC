@@ -48,6 +48,20 @@ public partial class ClassesController(AppDbContext db, AuditService audit, ILog
             User.Claims.Where(c => c.Type == AdminPermAttribute.ClaimType).Select(c => c.Value),
             "classes.list", "DELETE"));
 
+    /// <summary>
+    /// «Guruhdan chiqarish» oynasidagi «arxivga ham o'tkazish» — «Arxivga ko'chirish» bilan AYNAN bir xil
+    /// darvoza: <c>StudentsController.Archive</c> sinf darajasidagi <c>[AdminPerm("students.list")]</c>, POST →
+    /// <c>create</c> (klientda <c>can('students.list','create')</c>). Guruhlar ruxsatining o'zi YETMAYDI.
+    /// </summary>
+    private bool MayArchiveStudents =>
+        User.IsInRole(Roles.Admin) || User.IsInRole(Roles.SuperAdmin) ||
+        (User.IsInRole(Roles.Staff) && PermissionRules.CanWrite(
+            User.Claims.Where(c => c.Type == AdminPermAttribute.ClaimType).Select(c => c.Value),
+            "students.list", "POST"));
+
+    internal const string ArchiveForbiddenMessage =
+        "O'quvchini arxivga o'tkazish uchun «O'quvchilar» bo'limida «Qo'shish» ruxsati kerak";
+
     private ObjectResult CloseForbidden() =>
         StatusCode(403, new { message = "Guruhni yopish/arxivlash uchun «Guruhlar» bo'limida «O'chirish» ruxsati kerak" });
 
@@ -1028,12 +1042,20 @@ public partial class ClassesController(AppDbContext db, AuditService audit, ILog
     /// </summary>
     /// <param name="date">Chiqish sanasi ("yyyy-MM-dd"); bo'sh — bugun. Kelajak sana bo'lmaydi.</param>
     /// <param name="note">Ixtiyoriy erkin izoh — o'quvchi profilidagi izohlarga yoziladi (<see cref="LeaveNotes"/>).</param>
+    /// <param name="archiveIfLast">«Boshqa guruhi qolmasa — arxivga ham o'tkazish» (2026-10-23, mijoz: "guruhdan
+    /// chiqarilganlar arxivga tushmayapti"). O'quvchining BOSHQA tirik a'zoligi qolmasa u shu chiqarish bilan
+    /// BIRGA arxivlanadi (<see cref="StudentArchiveFlow"/>, arxiv sababi = chiqarish sababi), qolsa — faqat
+    /// chiqariladi (javobda <c>archived = false</c>). Ruxsat — «Arxivga ko'chirish» bilan bir xil.</param>
     [HttpDelete("{id}/members/{studentId}")]
     public async Task<IActionResult> RemoveMember(string id, string studentId, [FromQuery] string? reasonId = null,
-                                                  [FromQuery] string? date = null, [FromQuery] string? note = null)
+                                                  [FromQuery] string? date = null, [FromQuery] string? note = null,
+                                                  [FromQuery] bool archiveIfLast = false)
     {
         var (noteText, noteError) = LeaveNotes.Clean(note);
         if (noteError is not null) return BadRequest(new { message = noteError });
+        // Darvoza HECH NARSA o'zgarmasdan OLDIN — aks holda o'quvchi chiqarilib, arxivlash 403 bilan yiqilardi.
+        if (archiveIfLast && !MayArchiveStudents)
+            return StatusCode(403, new { message = ArchiveForbiddenMessage });
 
         var sg = await db.StudentGroups
             .FirstOrDefaultAsync(x => x.GroupId == id && x.StudentId == studentId && x.IsActive);
@@ -1061,17 +1083,36 @@ public partial class ClassesController(AppDbContext db, AuditService audit, ILog
             restored = (await MembershipBilling.LeaveGroupAsync(db, student, cls, sg, leftAt)).Restored;
             await ReleasePrimaryGroupNameAsync(student, cls);
             await RecordRemovalAsync();
+            var archivedActive = await ArchiveIfLastAsync();
             await db.SaveChangesAsync();
-            return NoContent();
+            return Ok(new { archived = archivedActive });
         }
 
         // Sinov/muzlatilgan — hisob yo'q yoki allaqachon yopilgan: faqat chiqish.
+        // Arxivlash so'ralsa — o'quvchi qulfi (arxivlash pul amallari bilan bir navbatda, `Archive` bilan bir xil).
+        using var archiveGate = archiveIfLast && student is not null
+            ? await PaymentIdempotency.LockAsync("student:" + studentId)
+            : (IDisposable?)null;
+        if (archiveGate is not null) await StudentBalanceSync.ReloadAsync(db, student!);
         sg.IsActive = false;
         sg.LeftAt = leftAt;
         if (student is not null && cls is not null) await ReleasePrimaryGroupNameAsync(student, cls);
         await RecordRemovalAsync();
+        var archived = await ArchiveIfLastAsync();
         await db.SaveChangesAsync();
-        return NoContent();
+        return Ok(new { archived });
+
+        // «Boshqa guruhi qolmasa — arxivga ham o'tkazish». Shu a'zolik (hali saqlanmagan) hisobga olinmaydi.
+        async Task<bool> ArchiveIfLastAsync()
+        {
+            if (!archiveIfLast || student is null || student.IsArchived) return false;
+            var hasOther = await db.StudentGroups.AnyAsync(x =>
+                x.StudentId == studentId && x.IsActive && x.GroupId != id);
+            if (hasOther) return false;
+            await StudentArchiveFlow.ArchiveAsync(db, audit, student, AppClock.Today.ToString("yyyy-MM-dd"),
+                reasonId, await ReasonLabelAsync(reasonId), "oxirgi guruhidan chiqarilganda");
+            return true;
+        }
 
         async Task RecordRemovalAsync()
         {

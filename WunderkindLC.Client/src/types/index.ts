@@ -585,6 +585,10 @@ export interface StudentListExtras {
   movementDate?: string
   /** O'sha ro'yxatda — chiqib ketgan guruh nomi. */
   movementGroup?: string
+  /** O'sha ro'yxatda (ketganlar) — ketish sababi («Ketish sabablari» bilan bir xil). */
+  movementReason?: string
+  /** O'sha ro'yxatda (ketganlar) — chiqarishda yozilgan izoh. */
+  movementNote?: string
   /** CRM upgrade U6b: botni bloklamagan Telegram chatlari soni (0 — «Ulanmagan»). */
   telegramLinked?: number
   /** U6b: shu chatlarning qarindoshliklari (father · mother · parent · student · other). */

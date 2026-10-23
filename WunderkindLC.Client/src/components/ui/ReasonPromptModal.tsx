@@ -34,6 +34,12 @@ interface Props {
    */
   showNote?: boolean
   /**
+   * «Boshqa guruhi qolmasa — arxivga ham o'tkazish» ptichkasi — FAQAT guruhdan chiqarishda va o'quvchini
+   * arxivlash huquqi bo'lsa (`can('students.list','create')`). Standart BELGILANGAN (mijoz: "guruhdan
+   * chiqarilganlar arxivga tushishi kerak"). Ko'rsatilmasa `onConfirm` ga `archive` uzatilmaydi.
+   */
+  showArchive?: boolean
+  /**
    * Tasdiqlash. Promise qaytarsa — tugma u tugaguncha qulf, keyin (masalan xatodan so'ng) qayta
    * yoqiladi. `void` qaytarsa — oyna yopilguncha qulf (eski xatti-harakat).
    */
@@ -42,6 +48,7 @@ interface Props {
     date?: string,
     retentionBonus?: boolean,
     note?: string,
+    archive?: boolean,
   ) => void | Promise<unknown>
   onClose: () => void
 }
@@ -52,7 +59,7 @@ interface Props {
  */
 export function ReasonPromptModal({
   open, category, title, message, confirmLabel, tone = 'red', showDate, defaultDate,
-  showRetentionBonus, showNote, onConfirm, onClose,
+  showRetentionBonus, showNote, showArchive, onConfirm, onClose,
 }: Props) {
   const [reasons, setReasons] = useState<ActionReason[]>([])
   const [selected, setSelected] = useState<string | undefined>(undefined)
@@ -60,6 +67,8 @@ export function ReasonPromptModal({
   /** Ushlab turish bonusi hisoblansinmi — standart holatda BELGILANGAN. */
   const [retentionBonus, setRetentionBonus] = useState(false)
   const [note, setNote] = useState('')
+  /** Boshqa guruhi qolmasa arxivga ham o'tkazilsinmi — standart BELGILANGAN. */
+  const [archive, setArchive] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   /** SINXRON qulf — `submitting` keyingi renderda yangilanadi, tez ikkinchi bosish o'tib ketmasin. */
   const inFlightRef = useRef(false)
@@ -71,6 +80,7 @@ export function ReasonPromptModal({
     setSubmitting(false)
     setRetentionBonus(false)
     setNote('')
+    setArchive(true)
     setDate(defaultDate ?? localIsoDate(new Date()))
     getActionReasons()
       .then((all) => setReasons(all.filter((r) => r.category === category)))
@@ -105,6 +115,7 @@ export function ReasonPromptModal({
                 showDate ? date : undefined,
                 showRetentionBonus ? retentionBonus : undefined,
                 showNote ? note.trim() || undefined : undefined,
+                showArchive ? archive : undefined,
               )
               if (r instanceof Promise)
                 void r.finally(() => {
@@ -193,6 +204,24 @@ export function ReasonPromptModal({
             />
             <span className="mt-1 block text-xs text-slate-400">
               O'quvchi profilidagi izohlarga yoziladi.
+            </span>
+          </label>
+        )}
+
+        {showArchive && (
+          <label className="flex cursor-pointer items-start gap-2">
+            <input
+              type="checkbox"
+              className="mt-1 h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+              checked={archive}
+              onChange={(e) => setArchive(e.target.checked)}
+            />
+            <span className="text-sm text-slate-700">
+              Boshqa guruhi qolmasa — arxivga ham o'tkazish
+              <span className="block text-xs text-slate-400">
+                Arxiv sababi — yuqoridagi sabab. Arxivda o'quvchi faol ro'yxatdan chiqadi va kabinetga kirishi
+                yopiladi; kerak bo'lsa arxivdan qaytariladi.
+              </span>
             </span>
           </label>
         )}

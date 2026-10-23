@@ -217,6 +217,28 @@ Qaror: **arxiv = o'quvchi ketdi.** Qoida — `StudentArchiving` (Application, te
   a'zolik (yoki guruhsiz oylik) ochilib, "arxiv = ketdi" buzilardi. Qaytarish — tiklash yoki AddMember.
 - `PastPeriods` ga qator QO'SHILMAYDI (§3: chiqishda joriy davr `ActivatedAt` + `LeftAt` bilan o'qiladi).
 
+### 10.1. GURUHDAN CHIQARISH → ARXIV (2026-10-23, mijoz: "58 ta chiqardim — arxiv 0")
+
+Chiqarish o'quvchini O'ZI arxivlamaydi (boshqa guruhi bo'lishi mumkin). Ikki yo'l qo'shildi, ikkalasi ham
+«Arxivga ko'chirish» bilan BITTA yadroda — `StudentArchiveFlow.ArchiveAsync` (Server; a'zoliklarni yopish,
+login blok, sessiyalar, audit). Ruxsat — yakka arxivlash bilan bir xil (`students.list` POST → `create`).
+
+- **«Guruhdan chiqarish» oynasi** → «Boshqa guruhi qolmasa — arxivga ham o'tkazish» (standart BELGILANGAN,
+  `can('students.list','create')` bo'lsa): `DELETE classes/{id}/members/{sid}?archiveIfLast=true`. Boshqa TIRIK
+  a'zoligi qolmasa o'quvchi o'sha so'rovda arxivlanadi (arxiv sababi = chiqarish sababi, izoh — faqat chiqarish
+  izohi, takrorlanmaydi), qolsa — faqat chiqariladi. Javob `{ archived }`. Ruxsat a'zolikka tegishdan OLDIN
+  tekshiriladi (403 — yarim bajarilgan amal yo'q).
+- **ESKI chiqarilganlar** — «Ketgan o'quvchilar» sahifasidagi «Guruhsiz qolganlarni arxivlash»
+  (`GET/POST students/archive-leavers`, `LeaverArchive`): arxivda emas, hech bir a'zoligi tirik emas, oxirgi
+  chiqishi `completed` EMAS (sertifikat bilan tugatgan ketgan emas). Ro'yxatda sabab va izoh, standart hammasi
+  belgilangan; server nomzodlikni har o'quvchi QULFI ichida qayta tekshiradi, har biri alohida saqlanadi.
+- ⚠️ `StudentArchiving.LeaveAllGroupsAsync` tirik a'zoliklarni XOTIRADA ham filtrlaydi (`IsActive`): shu
+  so'rovda yopilgan (hali saqlanmagan) a'zolik SQL'da tirik ko'rinadi — u ikkinchi marta "chiqarilib", chiqish
+  sanasi arxiv sanasiga almashardi va audit/sabab takrorlanardi.
+- «Ketgan o'quvchilar» ro'yxatida **Sabab** va **Izoh** ustunlari (`LeaveDetails`: sabab —
+  `MembershipReasons.Resolve`, «Ketish sabablari» bilan bir xil; izoh — `LeaveNotes.PickNote`, chiqarishda
+  yozilgan profil izohi). Testlar: `LeaverArchiveTests`.
+
 ⚠️ `ClassesController.Unarchive` (guruh) dagi `ArchivedWithClass` tarmog'i (2026-09-10 dan oldingi
 ma'lumot) — §11: u bilan qaytgan o'quvchilarning tirik a'zoliklari arxiv sanasidan MUZLATILADI
 (`GroupUnarchive`), ya'ni bu yerda ham arxiv oylari orqaga hisoblanmaydi.

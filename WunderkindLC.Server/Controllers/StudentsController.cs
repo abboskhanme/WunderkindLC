@@ -474,16 +474,85 @@ public partial class StudentsController(
         var groupIds = rows.Values.Select(r => r.GroupId).Where(g => g.Length > 0).Distinct().ToList();
         var groupNames = await db.Classes.AsNoTracking().Where(g => groupIds.Contains(g.Id))
             .ToDictionaryAsync(g => g.Id, g => g.Name);
+        // KETGANLARDA — sabab va chiqarishda yozilgan izoh («Ketish sabablari» bilan bir xil manba).
+        var details = kind == DashboardSummary.FirstPayment
+            ? new Dictionary<LeaveDetails.Exit, LeaveDetails.Info>()
+            : await LeaveDetails.LoadAsync(db, rows
+                .Where(kv => kv.Value.GroupId.Length > 0)
+                .Select(kv => new LeaveDetails.Exit(kv.Key, kv.Value.GroupId, kv.Value.Date)).ToList());
         foreach (var s in students)
         {
             var r = rows[s.Id];
             s.MovementDate = r.Date;
             s.MovementGroup = groupNames.GetValueOrDefault(r.GroupId, "");
+            if (details.TryGetValue(new LeaveDetails.Exit(s.Id, r.GroupId, r.Date), out var d))
+            {
+                s.MovementReason = d.Reason;
+                s.MovementNote = d.Note;
+            }
         }
         return students
             .OrderByDescending(s => s.MovementDate, StringComparer.Ordinal)
             .ThenBy(s => s.FullName)
             .ToList();
+    }
+
+    /// <summary>
+    /// «GURUHSIZ QOLGANLARNI ARXIVLASH» — nomzodlar (<see cref="LeaverArchive"/>): hech bir guruhda qolmagan,
+    /// oxirgi a'zoligi chiqarish bilan tugagan (sertifikat bilan tugatgan EMAS), hali arxivda emas. Har birida
+    /// oxirgi chiqishning sababi va izohi. HECH NARSA YOZMAYDI. Ruxsat — sinf darajasidagi <c>students.list</c>.
+    /// </summary>
+    [HttpGet("archive-leavers")]
+    public async Task<ActionResult<List<ArchiveLeaverDto>>> ArchiveLeaversPreview() =>
+        (await LeaverArchive.LoadAsync(db)).Select(x => x.Row).ToList();
+
+    /// <summary>
+    /// Belgilangan nomzodlarni ARXIVGA o'tkazish — «Arxivga ko'chirish» bilan AYNAN bir xil yadro
+    /// (<see cref="StudentArchiveFlow"/>), arxiv sababi = oxirgi chiqish sababi. Nomzodlik SERVERDA qayta
+    /// tekshiriladi (shu orada guruhga qaytgan yoki arxivlangan o'quvchi tegilmaydi — <c>skipped</c>); har
+    /// o'quvchi o'z qulfi ostida ALOHIDA saqlanadi (bittasining xatosi qolganini to'xtatmaydi).
+    /// Ruxsat — sinf darajasidagi <c>students.list</c> (POST → <c>create</c>), yakka arxivlash bilan bir xil.
+    /// </summary>
+    [HttpPost("archive-leavers")]
+    public async Task<ActionResult<ArchiveLeaversResultDto>> ArchiveLeavers(ArchiveLeaversRequest req)
+    {
+        var ids = (req.StudentIds ?? []).Where(x => !string.IsNullOrWhiteSpace(x)).Distinct().ToList();
+        if (ids.Count == 0) return BadRequest(new { message = "O'quvchi tanlanmagan" });
+        if (ids.Count > LeaverArchive.MaxBatch)
+            return BadRequest(new { message = $"Bir martada ko'pi bilan {LeaverArchive.MaxBatch} ta o'quvchi" });
+
+        var today = AppClock.Today.ToString("yyyy-MM-dd");
+        int archived = 0, skipped = 0;
+        var skippedNames = new List<string>();
+        var errors = new List<string>();
+        foreach (var sid in ids)
+        {
+            using var gate = await PaymentIdempotency.LockAsync("student:" + sid);
+            // Nomzodlik qulf ICHIDA qayta quriladi (shu orada guruhga qo'shilgan bo'lishi mumkin).
+            var candidate = (await LeaverArchive.LoadAsync(db, new[] { sid })).FirstOrDefault();
+            var student = await db.Students.FindAsync(sid);
+            if (student is null || candidate.Row is null)
+            {
+                skipped++;
+                if (student is not null) skippedNames.Add(student.FullName);
+                continue;
+            }
+            try
+            {
+                await StudentBalanceSync.ReloadAsync(db, student);
+                await StudentArchiveFlow.ArchiveAsync(db, audit, student, today,
+                    candidate.ReasonId, candidate.Row.Reason, "guruhsiz qolganlar ro'yxatidan");
+                await db.SaveChangesAsync();
+                archived++;
+            }
+            catch (Exception ex)
+            {
+                // Yarim o'zgarishlar keyingi o'quvchining saqlashi bilan bazaga tushmasin (bulk qoidasi).
+                db.ChangeTracker.Clear();
+                errors.Add($"{student.FullName}: {ex.Message}");
+            }
+        }
+        return new ArchiveLeaversResultDto(archived, skipped, skippedNames.ToArray(), errors.ToArray());
     }
 
     /// <summary>
@@ -1312,42 +1381,20 @@ public partial class StudentsController(
 
         // Sabab: ReasonId bo'lsa undan Label, aks holda Reason suz
         string? reasonId = null;
+        string reasonLabel;
         if (!string.IsNullOrWhiteSpace(req.ReasonId))
         {
             var reason = await db.ActionReasons.FindAsync(req.ReasonId);
             reasonId = reason?.Id;
-            student.ArchiveReason = reason?.Label ?? (req.Reason ?? "").Trim();
+            reasonLabel = reason?.Label ?? (req.Reason ?? "").Trim();
         }
         else
         {
-            student.ArchiveReason = (req.Reason ?? "").Trim();
+            reasonLabel = (req.Reason ?? "").Trim();
         }
 
-        // ARXIV = KETDI: a'zoliklar arxiv sanasida yopiladi (o'quvchi qulfi ostida — pul o'zgaradi).
-        var leave = await StudentArchiving.LeaveAllGroupsAsync(db, audit, student, today,
-            reasonId, student.ArchiveReason, "o'quvchi arxivlandi");
-
-        student.IsArchived = true;
-        student.ArchivedAt = today;
-
-        // Login bloklash — PasswordHash bo'shaltiriladi (login imkonsiz bo'ladi).
-        if (student.UserId is not null)
-        {
-            var user = await db.Users.FindAsync(student.UserId);
-            if (user is not null)
-            {
-                user.BlockLogin();
-                // Ochiq sessiyalar ham yopiladi: aks holda tiklangandan keyin arxivdan OLDINGI
-                // refresh tokenlar yana ishlab ketardi (`auth-sessions.md`).
-                await RefreshTokenService.RevokeAllForUserAsync(db, user.Id);
-            }
-        }
-
-        audit.Record(AuditService.EntityStudentDiscount, student.Id, "update",
-            $"O'quvchi arxivga ko'chirildi ({student.FullName})"
-                + (leave.Closed > 0 ? $" — {leave.Closed} ta guruhdan chiqarildi: {string.Join(", ", leave.GroupNames)}" : "")
-                + (string.IsNullOrWhiteSpace(student.ArchiveReason) ? "" : $": \"{student.ArchiveReason}\""),
-            studentId: student.Id);
+        // Yadro BITTA (`StudentArchiveFlow`): a'zoliklar yopiladi, login bloklanadi, audit.
+        var leave = await StudentArchiveFlow.ArchiveAsync(db, audit, student, today, reasonId, reasonLabel);
         // Erkin izoh — profil izohlariga (`LeaveNotes`), arxiv sababi (`ArchiveReason`) o'zgarmaydi.
         if (noteText is not null)
             LeaveNotes.Add(db, student.Id, LeaveNotes.ArchiveText(noteText), ActorId ?? "", Actor);

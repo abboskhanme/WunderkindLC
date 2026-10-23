@@ -19,7 +19,8 @@ import { Button } from '@/components/ui/Button'
 import { Loader } from '@/components/ui/Loader'
 import { ReasonPromptModal } from '@/components/ui/ReasonPromptModal'
 import { formatDate, formatMoney, cn, apiErrorMessage } from '@/lib/utils'
-import { useSuperOrGranted } from '@/lib/permissions'
+import { usePerm, useSuperOrGranted } from '@/lib/permissions'
+import { toast } from '@/lib/toast'
 import { localIsoDate } from '@/lib/localDate'
 import { useAuth } from '@/context/auth-context'
 import { StudentFormModal } from '../students/StudentFormModal'
@@ -40,6 +41,8 @@ export function ClassMembersModal({ group, onClose }: Props) {
   /** «Aktiv muzlatish» FAQAT superadmin uchun — `usePerm().can()` bu yerda yaramaydi:
    *  u oddiy admin uchun ham true qaytaradi, amal esa admin'ga yopiq (server ham rad etadi). */
   const { user } = useAuth()
+  /** «Arxivga ham o'tkazish» — «Arxivga ko'chirish» bilan bir xil ruxsat (server `MayArchiveStudents`). */
+  const canArchive = usePerm().can('students.list', 'create')
   const isSuperAdmin = user?.role === 'superadmin'
   const [members, setMembers] = useState<GroupMember[]>([])
   const [students, setStudents] = useState<Student[]>([])
@@ -228,6 +231,7 @@ Kerak bo'lsa "Parolni tiklash" orqali yangi parol bering.`)
     date?: string,
     _retentionBonus?: boolean,
     note?: string,
+    archive?: boolean,
   ) => {
     if (!group || !reasonAction || busy) return
     const { kind, m } = reasonAction
@@ -236,8 +240,10 @@ Kerak bo'lsa "Parolni tiklash" orqali yangi parol bering.`)
       // «Aktiv muzlatish» — AYNAN o'sha endpoint, farq faqat bayroqda.
       if (kind === 'freeze' || kind === 'yearFreeze')
         await freezeMember(group.id, m.studentId, date ?? localIsoDate(new Date()), reasonId, kind === 'yearFreeze')
-      else if (kind === 'remove') await removeGroupMember(group.id, m.studentId, reasonId, date, note)
-      else await returnMemberToTrial(group.id, m.studentId, reasonId)
+      else if (kind === 'remove') {
+        const res = await removeGroupMember(group.id, m.studentId, reasonId, date, note, archive)
+        if (res.archived) toast.success("O'quvchi arxivga o'tkazildi", m.fullName)
+      } else await returnMemberToTrial(group.id, m.studentId, reasonId)
       const fresh = await getGroupMembers(group.id)
       setMembers(fresh)
       setReasonAction(null)
@@ -688,6 +694,7 @@ Kerak bo'lsa "Parolni tiklash" orqali yangi parol bering.`)
         showDate={reasonAction?.kind === 'freeze' || reasonAction?.kind === 'yearFreeze'
           || (reasonAction?.kind === 'remove' && reasonAction.m.status === 'active')}
         showNote={reasonAction?.kind === 'remove'}
+        showArchive={reasonAction?.kind === 'remove' && canArchive}
         onConfirm={confirmReasonAction}
         onClose={() => setReasonAction(null)}
       />

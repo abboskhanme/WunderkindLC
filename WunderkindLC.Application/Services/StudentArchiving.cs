@@ -77,9 +77,14 @@ public static class StudentArchiving
         string? reasonId, string? reasonLabel, string note, bool purgeInactiveAfter = false,
         CancellationToken ct = default)
     {
-        var live = await db.StudentGroups
-            .Where(sg => sg.StudentId == s.Id && sg.IsActive)
-            .ToListAsync(ct);
+        // ⚠️ `.Where(m => m.IsActive)` XOTIRADA ham: SQL bazadagi holatni ko'radi, EF esa kuzatilayotgan
+        // nusxani qaytaradi — shu so'rovda (hali saqlanmagan) yopilgan a'zolik (RemoveMember → «arxivga ham
+        // o'tkazish») ikkinchi marta "chiqarilib", hisobi va audit qatori takrorlanardi.
+        var live = (await db.StudentGroups
+                .Where(sg => sg.StudentId == s.Id && sg.IsActive)
+                .ToListAsync(ct))
+            .Where(m => m.IsActive)
+            .ToList();
         if (live.Count == 0)
         {
             // A'zoligi UMUMAN yo'q (eski, guruhsiz) o'quvchida guruh = faqat yorliq: u ham bo'shatiladi.

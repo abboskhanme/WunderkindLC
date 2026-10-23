@@ -465,6 +465,12 @@ public partial class Student
     /// <summary>O'sha ro'yxatda — chiqib KETGAN guruh nomi (arxivlangan guruh ham). To'lov ro'yxatida bo'sh.</summary>
     [System.ComponentModel.DataAnnotations.Schema.NotMapped]
     public string MovementGroup { get; set; } = string.Empty;
+    /// <summary>O'sha ro'yxatda (ketganlar) — ketish SABABI (<c>LeaveDetails</c>, «Ketish sabablari» bilan bir xil). Bo'sh — ko'rsatilmagan.</summary>
+    [System.ComponentModel.DataAnnotations.Schema.NotMapped]
+    public string MovementReason { get; set; } = string.Empty;
+    /// <summary>O'sha ro'yxatda (ketganlar) — chiqarish oynasida yozilgan IZOH (profil izohidan, prefiksiz).</summary>
+    [System.ComponentModel.DataAnnotations.Schema.NotMapped]
+    public string MovementNote { get; set; } = string.Empty;
     /// <summary>
     /// O'quvchi arxivga ko'chirilganmi (boshqa maktabga ketgan, o'qishdan chiqarilgan, ...).
     /// Arxivlangan o'quvchi faol ro'yxatdan yashirinadi, oylik to'lov hisoblanmaydi, login bloklanadi,

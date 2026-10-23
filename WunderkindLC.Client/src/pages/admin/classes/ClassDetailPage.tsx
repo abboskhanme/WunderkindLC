@@ -2,6 +2,7 @@
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { useAuth } from '@/context/auth-context'
 import { usePerm, useSuperOrGranted } from '@/lib/permissions'
+import { toast } from '@/lib/toast'
 import {
   ArrowLeft, Users, BookOpen, User, Archive,
   CalendarDays, Clock, MapPin, Wallet, Snowflake, CheckCircle2,
@@ -576,6 +577,7 @@ export function ClassDetailPage() {
     date?: string,
     retentionBonus?: boolean,
     note?: string,
+    archive?: boolean,
   ) => {
     if (!rosterTarget || !rosterReason || rosterBusy) return
     setRosterBusy(true)
@@ -585,8 +587,10 @@ export function ClassDetailPage() {
         await freezeMember(id, rosterTarget.studentId, date ?? rosterDate, reasonId, rosterReason === 'yearFreeze')
       // Bonus ptichkasi faqat aktivlashtirish oynasida bo'ladi — boshqa oqimlarda `undefined`.
       else if (rosterReason === 'activate') await activateMember(id, rosterTarget.studentId, date ?? rosterDate, retentionBonus)
-      else if (rosterReason === 'remove') await removeGroupMember(id, rosterTarget.studentId, reasonId, date, note)
-      else await returnMemberToTrial(id, rosterTarget.studentId, reasonId)
+      else if (rosterReason === 'remove') {
+        const res = await removeGroupMember(id, rosterTarget.studentId, reasonId, date, note, archive)
+        if (res.archived) toast.success("O'quvchi arxivga o'tkazildi", rosterTarget.fullName)
+      } else await returnMemberToTrial(id, rosterTarget.studentId, reasonId)
       setRosterReason(null)
       setRosterTarget(null)
       reloadMembers()
@@ -1893,6 +1897,7 @@ export function ClassDetailPage() {
           || (rosterReason === 'remove' && rosterTarget?.status === 'active')}
         showRetentionBonus={rosterReason === 'activate' && canSetBonus}
         showNote={rosterReason === 'remove'}
+        showArchive={rosterReason === 'remove' && can('students.list', 'create')}
         defaultDate={rosterDate}
         onConfirm={confirmRosterReason}
         onClose={() => setRosterReason(null)}

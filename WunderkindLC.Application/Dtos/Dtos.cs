@@ -1231,6 +1231,22 @@ public record StudentDto(
 /// <c>Note</c> — ixtiyoriy erkin izoh, o'quvchi profilidagi izohlarga yoziladi (<c>LeaveNotes</c>).</summary>
 public record ArchiveStudentRequest(string? Reason = null, string? ReasonId = null, string? Note = null);
 
+/// <summary>
+/// «Guruhsiz qolganlarni arxivlash» oynasidagi bitta o'quvchi (<c>GET students/archive-leavers</c>): hech bir
+/// guruhda qolmagan, oxirgi a'zoligi chiqarish bilan tugagan (sertifikat bilan TUGATGAN emas), hali arxivda emas.
+/// Sabab va izoh — o'sha oxirgi chiqishniki (<see cref="Services.LeaveDetails"/>).
+/// </summary>
+public record ArchiveLeaverDto(
+    string StudentId, string FullName, string Phone, decimal Balance,
+    string GroupName, string LeftAt, string Reason, string Note);
+
+/// <summary>Ommaviy arxivlash natijasi — tushib qolgan o'quvchi jimgina yo'qolmasin.</summary>
+/// <param name="Skipped">Endi nomzod emas (arxivda, yana guruhga qo'shilgan yoki topilmadi).</param>
+public record ArchiveLeaversResultDto(int Archived, int Skipped, string[] SkippedNames, string[] Errors);
+
+/// <summary>Ommaviy arxivlash so'rovi — faqat BELGILANGAN o'quvchilar (server nomzodlikni qayta tekshiradi).</summary>
+public record ArchiveLeaversRequest(List<string> StudentIds);
+
 /// <summary>O'quvchi rasmini (profil surati) o'rnatish/o'chirish. <c>PhotoUrl</c> — serverga
 /// yuklangan fayl manzili ("/uploads/..."); bo'sh yoki null bo'lsa rasm O'CHIRILADI.
 /// Ma'lumot <see cref="Student.BirthCertificateUrl"/> ustunida saqlanadi (nomi eski — butun

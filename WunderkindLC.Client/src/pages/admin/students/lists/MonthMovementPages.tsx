@@ -1,10 +1,13 @@
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { getMonthMovement, type MonthMovementKind } from '@/api/services/students'
 import { FilterInput } from '@/components/ui/list/FilterGrid'
 import { cn } from '@/lib/utils'
 import { currentMonth } from '@/lib/month'
 import { groupsText } from '@/lib/studentGroups'
+import { usePerm } from '@/lib/permissions'
+import { Button } from '@/components/ui/Button'
+import { ArchiveLeaversModal } from './ArchiveLeaversModal'
 import {
   StudentListBoard,
   balanceColumn,
@@ -99,11 +102,35 @@ const currentGroupColumn: StudentColumn = {
     ),
 }
 
+/** Ketish sababi va chiqarishda yozilgan izoh (mijoz: "izohlar ko'rinmayapti"). */
+const reasonColumn: StudentColumn = {
+  key: 'reason',
+  header: 'Sabab',
+  render: (s) => s.movementReason || <span className="text-[#9ca3af]">—</span>,
+}
+const noteColumn: StudentColumn = {
+  key: 'note',
+  header: 'Izoh',
+  render: (s) =>
+    s.movementNote ? (
+      <span className="line-clamp-3 max-w-[280px] whitespace-pre-line text-[#333]" title={s.movementNote}>
+        {s.movementNote}
+      </span>
+    ) : (
+      <span className="text-[#9ca3af]">—</span>
+    ),
+}
+
 export function LeftStudentsPage() {
   const { sp, set } = usePatchParams()
   const month = monthParam(sp)
   const type = sp.get('type') === 'new' ? 'new' : 'active'
   const kind: MonthMovementKind = type === 'new' ? 'leftNew' : 'leftActive'
+  // «Guruhsiz qolganlarni arxivlash» — «Arxivga ko'chirish» bilan bir xil ruxsat.
+  const canArchive = usePerm().can('students.list', 'create')
+  const [archiveOpen, setArchiveOpen] = useState(false)
+  /** Arxivlangandan keyin ro'yxat qayta yuklansin ("Hozirgi holati" ustuni yangilanadi). */
+  const [reloadKey, setReloadKey] = useState(0)
 
   return (
     <div>
@@ -111,11 +138,17 @@ export function LeftStudentsPage() {
         title="Ketgan o'quvchilar"
         hint={
           "Tanlangan oyda kursdan butunlay ketganlar — bosh sahifadagi kartochka bilan bir xil qoida. " +
-          "Guruh almashtirish va sertifikat bilan tugatish bu yerga kirmaydi."
+          "Guruh almashtirish va sertifikat bilan tugatish bu yerga kirmaydi. Sabab va izoh — chiqarish " +
+          "oynasida yozilgani."
         }
         month={month}
         onMonth={(m) => set({ month: m })}
       >
+        {canArchive && (
+          <Button variant="secondary" onClick={() => setArchiveOpen(true)}>
+            Guruhsiz qolganlarni arxivlash
+          </Button>
+        )}
         <div className="flex gap-1.5">
           {(
             [
@@ -142,7 +175,7 @@ export function LeftStudentsPage() {
 
       {/* `key` — oy/tur almashganda ro'yxat qaytadan yuklanadi (StudentListBoard bir marta yuklaydi). */}
       <StudentListBoard
-        key={`${kind}:${month}`}
+        key={`${kind}:${month}:${reloadKey}`}
         load={() => getMonthMovement(kind, month || undefined)}
         columns={[
           nameColumn,
@@ -154,10 +187,16 @@ export function LeftStudentsPage() {
             render: (s) => s.movementGroup || <span className="text-[#9ca3af]">—</span>,
           },
           dateColumn('leftAt', 'Ketgan sana', (s) => s.movementDate),
+          reasonColumn,
+          noteColumn,
           currentGroupColumn,
           moderatorColumn,
         ]}
       />
+
+      {archiveOpen && (
+        <ArchiveLeaversModal onClose={() => setArchiveOpen(false)} onDone={() => setReloadKey((k) => k + 1)} />
+      )}
     </div>
   )
 }

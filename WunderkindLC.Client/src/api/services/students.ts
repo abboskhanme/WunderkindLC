@@ -323,6 +323,46 @@ export async function archiveStudent(
   return data ?? { closedMemberships: 0, restored: 0, groups: [] }
 }
 
+/** «Guruhsiz qolganlarni arxivlash» oynasidagi nomzod (server `LeaverArchive`). */
+export interface ArchiveLeaver {
+  studentId: string
+  fullName: string
+  phone: string
+  balance: number
+  groupName: string
+  leftAt: string
+  reason: string
+  note: string
+}
+
+export interface ArchiveLeaversResult {
+  archived: number
+  /** Endi nomzod emas (shu orada guruhga qo'shilgan yoki arxivlangan). */
+  skipped: number
+  skippedNames: string[]
+  errors: string[]
+}
+
+/** Hech bir guruhda qolmagan, guruhdan chiqarilgan, lekin arxivlanmagan o'quvchilar (hech narsa yozmaydi). */
+export async function getArchiveLeavers(): Promise<ArchiveLeaver[]> {
+  if (USE_MOCK) {
+    await delay(150)
+    return []
+  }
+  const { data } = await api.get<ArchiveLeaver[]>('/admin/students/archive-leavers')
+  return data ?? []
+}
+
+/** Belgilanganlarni arxivga o'tkazish — arxiv sababi = oxirgi chiqish sababi (server nomzodlikni qayta tekshiradi). */
+export async function archiveLeavers(studentIds: string[]): Promise<ArchiveLeaversResult> {
+  if (USE_MOCK) {
+    await delay(150)
+    return { archived: studentIds.length, skipped: 0, skippedNames: [], errors: [] }
+  }
+  const { data } = await api.post<ArchiveLeaversResult>('/admin/students/archive-leavers', { studentIds })
+  return data
+}
+
 /**
  * Arxivdan qaytarish. Ixtiyoriy yangi parol bilan (parol bo'sh = login bloklangicha qoladi).
  * ⚠️ Guruhlar TIKLANMAYDI — `message` foydalanuvchiga aytiladi ("guruhga qo'shing").

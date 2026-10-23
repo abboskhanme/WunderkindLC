@@ -59,6 +59,7 @@ import { cn, formatDate, formatDateTime, formatMoney, apiErrorMessage, gradeBadg
 import { formatPhone } from '@/lib/numberFormat'
 import { schoolGradeLabel } from '@/lib/schoolGrades'
 import { usePerm, useSuperOrGranted } from '@/lib/permissions'
+import { toast } from '@/lib/toast'
 import { readBackState } from '@/lib/nav'
 import { useAuth } from '@/context/auth-context'
 import { Card } from '@/components/ui/Card'
@@ -688,6 +689,7 @@ export function StudentDetailPage() {
     date?: string,
     retentionBonus?: boolean,
     note?: string,
+    archive?: boolean,
   ) => {
     if (!id || !groupModal || !groupReasonAction || groupBusy) return
     setGroupBusy(true)
@@ -702,7 +704,8 @@ export function StudentDetailPage() {
         // Bonus ptichkasi faqat aktivlashtirish oynasida ko'rinadi — qolgan oqimlarda `undefined`.
         await activateMember(groupModal.groupId, id, date ?? groupActionDate, retentionBonus)
       } else if (groupReasonAction === 'remove') {
-        await removeGroupMember(groupModal.groupId, id, reasonId, date, note)
+        const res = await removeGroupMember(groupModal.groupId, id, reasonId, date, note, archive)
+        if (res.archived) toast.success("O'quvchi arxivga o'tkazildi")
       } else {
         await returnMemberToTrial(groupModal.groupId, id, reasonId)
       }
@@ -2064,6 +2067,7 @@ export function StudentDetailPage() {
           || (groupReasonAction === 'remove' && groupModal?.status === 'active')}
         showRetentionBonus={groupReasonAction === 'activate' && canSetBonus}
         showNote={groupReasonAction === 'remove'}
+        showArchive={groupReasonAction === 'remove' && can('students.list', 'create')}
         defaultDate={groupActionDate}
         onConfirm={confirmGroupReason}
         onClose={() => setGroupReasonAction(null)}
