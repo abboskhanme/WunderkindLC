@@ -330,7 +330,7 @@ export function LeadDetailPage() {
         ? [{ label: 'Tiklash (faol ishga qaytarish)', icon: RotateCcw, onClick: () => void doRestore() }]
         : [{ label: "Yo'qotilgan deb belgilash", icon: UserX, danger: true, onClick: () => setLosing(true) }]
       : []),
-    // Aylantirilgan lid O'CHIRILMAYDI (server 400): KPI "shartnoma", sotuv tushumi va qabul cheklisti unga tayanadi.
+    // Aylantirilgan lid O'CHIRILMAYDI (server 400): KPI "shartnoma" va sotuv tushumi unga tayanadi.
     ...(canDelete && !lead.convertedStudentId
       ? [{ label: "Lidni o'chirish", icon: Trash2, danger: true, onClick: () => setDeleting(true) }]
       : []),

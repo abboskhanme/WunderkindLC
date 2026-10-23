@@ -35,7 +35,7 @@ export async function updateLevelTest(id: string, payload: LevelTestPayload): Pr
 
 /**
  * Testni o'chirish. ⚠️ Topshiruv yoki taklif havolasi bor test O'CHIRILMAYDI (server 400 — sababi
- * bilan): o'rniga `setLevelTestActive(id, false)` (lidlar kanali va qabul cheklisti saqlanadi).
+ * bilan): o'rniga `setLevelTestActive(id, false)` (lidlar kanali va test statistikasi saqlanadi).
  */
 export async function deleteLevelTest(id: string): Promise<void> {
   await api.delete(`/admin/level-tests/${id}`)

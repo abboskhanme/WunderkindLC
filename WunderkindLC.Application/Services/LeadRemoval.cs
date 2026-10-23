@@ -10,8 +10,7 @@ namespace WunderkindLC.Application.Services;
 ///
 /// <list type="bullet">
 ///   <item><b>Aylantirilgan lid O'CHIRILMAYDI</b> (CRM-5) — u KPI "shartnoma" (<c>ClosedByUserId</c>),
-///     sotuv tushumi (lid → o'quvchi → to'lov) va qabul cheklistining «Daraja testi» bandi uchun
-///     YAGONA bog'lanish.</item>
+///     va sotuv tushumi (lid → o'quvchi → to'lov) uchun YAGONA bog'lanish.</item>
 ///   <item><b>Tarix arxivlanadi</b> (CRM-4): hodisalar va sinov darslari o'chirilishdan OLDIN alohida
 ///     <see cref="HistoryArchiveType"/> arxiv yozuviga suratga olinadi — JSON xossalari
 ///     <c>"Events"</c> (<see cref="LeadEvent"/> ro'yxati) va <c>"Trials"</c> (<see cref="TrialLesson"/>
@@ -28,8 +27,7 @@ public static class LeadRemoval
 
     /// <summary>Aylantirilgan lidni o'chirishga urinilganda javob.</summary>
     public const string ConvertedLockedMessage =
-        "O'quvchiga aylantirilgan lidni o'chirib bo'lmaydi — u KPI (shartnoma), sotuv hisoboti va " +
-        "qabul cheklisti uchun kerak.";
+        "O'quvchiga aylantirilgan lidni o'chirib bo'lmaydi — u KPI (shartnoma) va sotuv hisoboti uchun kerak.";
 
     /// <summary>
     /// Lidni o'chirishga tayyorlaydi (arxiv suratlari + bog'liq yozuvlar). Rad etilsa — sabab matni

@@ -151,8 +151,6 @@ export const navByRole: Record<Role, NavItem[]> = {
       // Tartib edutizimdagidek: yangi → aktiv → arxiv → ro'yxat → ota-ona → obuna → manzillar.
       children: [
         { label: "Yangi o'quvchilar", to: '/admin/students/yangi', perm: 'students.list' },
-        // Resepshn: yangi o'quvchini qabul qilish cheklisti (uchrashuv talabi, Future'dan chiqarildi).
-        { label: 'Qabul cheklisti', to: '/admin/students/qabul', perm: 'students.list' },
         // CRM Phase 3 (2026-10-12): ketma-ket kelmaslik avtomatik talab ochadi — kundalik ish, Future'dan chiqarildi.
         { label: "Bog'lanish kerak", to: '/admin/students/boglanish', perm: 'contacts' },
         { label: "Aktiv o'quvchilar", to: '/admin/students/aktiv', perm: 'students.list' },

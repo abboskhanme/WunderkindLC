@@ -98,8 +98,7 @@ public class LevelTestsController(AppDbContext db, DataCache dataCache, IConfigu
     ///
     /// <para>⚠️ Topshiruv/taklif bor bo'lsa 400 (sonlari bilan) va «o'chirib qo'yish» taklif qilinadi
     /// (CRM-7): topshiruvlar o'chsa lidlar KANALI "Daraja testi" dan "Boshqa" ga o'tib ketardi
-    /// (`LeadOrigins`), qabul cheklistining «Daraja testi» bandi belgisini yo'qotardi
-    /// (`StudentIntake`) va test statistikasi tarixi yo'qolardi. Ommaviy havolani to'xtatish uchun
+    /// (`LeadOrigins`) va test statistikasi tarixi yo'qolardi. Ommaviy havolani to'xtatish uchun
     /// test o'chirib qo'yiladi (<c>PATCH {id}/active</c>) — tarix joyida qoladi.</para>
     /// </summary>
     [HttpDelete("{id}")]
@@ -113,7 +112,7 @@ public class LevelTestsController(AppDbContext db, DataCache dataCache, IConfigu
             return BadRequest(new
             {
                 message = $"Bu testni {subs} kishi topshirgan" + (invites > 0 ? $", {invites} ta taklif havolasi yuborilgan" : "")
-                          + " — o'chirib bo'lmaydi (lidlar kanali va qabul cheklisti shu natijalarga tayanadi). "
+                          + " — o'chirib bo'lmaydi (lidlar kanali va test statistikasi shu natijalarga tayanadi). "
                           + "Havolani to'xtatish uchun testni «O'chirib qo'yish» tugmasi bilan nofaol qiling.",
                 submissions = subs,
                 invites,

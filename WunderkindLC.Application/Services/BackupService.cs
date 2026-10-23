@@ -150,7 +150,6 @@ public static class BackupService
         await Add("substituteTeacherAssignments", db.SubstituteTeacherAssignments);
         await Add("membershipReasonLogs", db.MembershipReasonLogs);
         await Add("studentNotes", db.StudentNotes);
-        await Add("studentIntakeMarks", db.StudentIntakeMarks);
         await Add("rooms", db.Rooms);
         await Add("branches", db.Branches);
         await Add("districts", db.Districts);

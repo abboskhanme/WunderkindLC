@@ -520,7 +520,7 @@ Batafsil: `.claude/rules/audit.md`.
 ## 9. AVTOMATIK TALAB — ketma-ket kelmaslik (CRM Phase 3, U3d — 2026-10-12)
 
 SPEC: `docs/SPEC-crm-upgrade.md` P3.5. Menyuda «Bog'lanish kerak» endi ASOSIY «O'quvchilar» guruhida
-(«Qabul cheklisti» dan keyin), Future'dan olib tashlandi (`navCrmPhase3.test.ts`).
+(«Yangi o'quvchilar» dan keyin), Future'dan olib tashlandi (`navCrmPhase3.test.ts`).
 
 - **Seriya** — `AbsenceStreaks` (sof, `AbsenceStreakTests`): bitta (o'quvchi, guruh) bo'yicha eng oxirgi darsdan
   ORQAGA: sababsiz yo'qlik sanaladi, belgilanmagan / o'tilmagan / a'zolikdan tashqari dars o'tkazib yuboriladi,

@@ -87,7 +87,7 @@ describe('hisobotlar katalogi', () => {
   it("ishlatiladigan yangi bandlar Future'da QOLMAGAN (asosiy guruhga chiqarilgan)", () => {
     const future = navByRole.admin.find((i) => i.label === 'Future')!
     const inFuture = leafRoutes(future.children as never)
-    for (const to of ['/admin/students/qabul', '/admin/boshqaruv/vacancies', '/admin/boshqaruv/moslashuv',
+    for (const to of ['/admin/boshqaruv/vacancies', '/admin/boshqaruv/moslashuv',
       '/admin/hisobotlar/yoqotilgan-lidlar', '/admin/hisobotlar/ketish-sabablari']) {
       expect(inFuture, to).not.toContain(to)
     }
@@ -237,7 +237,6 @@ describe('activeNavTo — qaysi menyu bandi faol', () => {
     ['/admin/books', "O'quv bo'limi"],
     ['/admin/app/teachers', 'Boshqaruv'],
     // Uchrashuv talablari bo'yicha qurilgan va KUNDALIK ishlatiladigan bandlar — Future'dan chiqarilgan.
-    ['/admin/students/qabul', "O'quvchilar"],
     ['/admin/boshqaruv/vacancies', 'Boshqaruv'],
     ['/admin/boshqaruv/moslashuv', 'Boshqaruv'],
     ['/admin/hisobotlar/yoqotilgan-lidlar', 'Hisobotlar'],

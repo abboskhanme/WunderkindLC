@@ -112,7 +112,7 @@ Sabablar moved into the edutizim-shaped Sozlamalar (2026-09-27, `config/settings
 
 **Promoted out of Future (2026-10-07, user: "these will be used — take them out of Future"):**
 the meeting follow-up features sit in the main groups although edutizim lacks them —
-O'quvchilar → Qabul cheklisti · Boshqaruv → Vakansiyalar, Moslashuv (onboarding) ·
+Boshqaruv → Vakansiyalar, Moslashuv (onboarding) ·
 Hisobotlar → Yo'qotilgan lidlar, Ketish sabablari (`mainReportRoutes` keeps them out of
 Future → Hisobotlar). Locked by `reports.test.ts`.
 

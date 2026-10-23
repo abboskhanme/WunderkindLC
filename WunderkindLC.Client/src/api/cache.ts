@@ -118,13 +118,12 @@ const CROSS_INVALIDATION: Record<string, string[]> = {
   /* ─────────── PUL ─────────── */
   // Tranzaksiya/to'lov/qaytarish/hisoblash: o'quvchi BALANSI ro'yxatlarda va guruh
   // a'zolari qatorida chiqadi, kitob qarzi va retention-bonus ham shu pul oqimidan.
-  // Qabul cheklisti («to'lov qabul qilingan») va kassa balansi ham shu puldan.
+  // Kassa balansi ham shu puldan.
   '/admin/finance': ['/admin/students', '/admin/kassa', '/admin/classes', '/admin/teachers',
-    '/admin/books', '/admin/retention-bonus', '/student/finance', '/admin/student-intake',
-    '/admin/cashboxes'],
+    '/admin/books', '/admin/retention-bonus', '/student/finance', '/admin/cashboxes'],
   // Kassa — o'sha pul, boshqa eshik (`POST /admin/kassa/students/{id}/payments`).
   '/admin/kassa': ['/admin/finance', '/admin/students', '/admin/classes', '/admin/books',
-    '/admin/retention-bonus', '/student/finance', '/admin/student-intake', '/admin/cashboxes'],
+    '/admin/retention-bonus', '/student/finance', '/admin/cashboxes'],
   // Kitob sotuvi tasdiqlansa moliya tranzaksiyasi va o'quvchi qarzi o'zgaradi; pul kassaga tushadi.
   '/admin/books': ['/admin/finance', '/admin/kassa', '/admin/students', '/admin/cashboxes'],
   // Bonus o'qituvchi maoshidan to'lanadi.
@@ -136,16 +135,14 @@ const CROSS_INVALIDATION: Record<string, string[]> = {
   // yozuvi, navbatdagi snapshot, portal ko'rinishi (login blok, sertifikat) — hammasi.
   '/admin/students': ['/admin/classes', '/admin/finance', '/admin/kassa', '/admin/journal',
     '/admin/student-attendance', '/admin/contacts', '/admin/archive', '/admin/grading',
-    '/admin/course-analytics', '/admin/test-results', '/admin/parents', '/student',
-    '/admin/student-intake'],
+    '/admin/course-analytics', '/admin/test-results', '/admin/parents', '/student'],
   // A'zolik amallari (qo'shish/chiqarish/muzlatish/ko'chirish/yopish) IKKI tomonni ham
   // o'zgartiradi va `billing.md` bo'yicha oylik hisobni qayta yozadi; jadval, xona bandligi
   // va o'qituvchi maoshi ham guruhdan kelib chiqadi.
   '/admin/classes': ['/admin/students', '/admin/finance', '/admin/kassa', '/admin/journal',
     '/admin/student-attendance', '/admin/grading', '/admin/course-analytics', '/admin/schedule',
     '/admin/rooms', '/admin/teachers', '/admin/archive', '/admin/curriculum',
-    '/admin/retention-bonus', '/admin/retention-loss', '/student', '/teacher',
-    '/admin/student-intake'],
+    '/admin/retention-bonus', '/admin/retention-loss', '/student', '/teacher'],
   // Umumiy arxiv uchta ro'yxatga qaytaradi.
   '/admin/archive': ['/admin/students', '/admin/teachers', '/admin/classes'],
   '/admin/parents': ['/admin/students'],
@@ -195,10 +192,10 @@ const CROSS_INVALIDATION: Record<string, string[]> = {
 
   /* ─────────── LID · MARKETING ─────────── */
   // `POST /admin/leads/{id}/convert` lidni O'QUVCHIGA aylantiradi — o'quvchi + guruh a'zoligi
-  // (jurnal ro'yxati, qabul cheklisti, kurs analitikasi) ham o'zgaradi; lid o'chirilsa Instagram
+  // (jurnal ro'yxati, kurs analitikasi) ham o'zgaradi; lid o'chirilsa Instagram
   // suhbati/reklama lidining lid bog'lanishi tozalanadi.
   '/admin/leads': ['/admin/students', '/admin/classes', '/admin/lead-forms', '/admin/lead-sources',
-    '/admin/lead-stages', '/admin/level-tests', '/admin/student-intake', '/admin/journal',
+    '/admin/lead-stages', '/admin/level-tests', '/admin/journal',
     '/admin/course-analytics', '/admin/instagram'],
   // Bosqich/manba nomlari lid qatorlariga denormalizatsiya qilingan.
   '/admin/lead-stages': ['/admin/leads', '/admin/lead-forms'],
@@ -245,7 +242,7 @@ const CROSS_INVALIDATION: Record<string, string[]> = {
     '/admin/contacts', '/admin/lead-forms', '/admin/level-tests'],
 
   /* ─────────── HUJJAT · MA'LUMOTNOMA · SAYT ─────────── */
-  '/admin/contracts': ['/admin/students', '/student/contracts', '/admin/student-intake'],
+  '/admin/contracts': ['/admin/students', '/student/contracts'],
   '/admin/cameras': [],
   // Sabablar katalogi o'chirish/muzlatish/chiqarish oqimlarining ochiladigan ro'yxati.
   '/admin/action-reasons': ['/admin/classes', '/admin/students', '/admin/finance',

@@ -98,7 +98,6 @@ import { StudentCredentialsCard } from './profile/StudentCredentialsCard'
 import { canStudentCreds } from '@/lib/studentCreds'
 import { TelegramDeliveriesSection } from './profile/TelegramDeliveriesSection'
 import { AchievementsSection } from './profile/AchievementsSection'
-import { IntakeChecklistCard } from '@/components/students/IntakeChecklistCard'
 import { TelegramSendModal } from '@/components/messaging/TelegramSendModal'
 import { PhoneCallModal, type CallOption } from '@/components/PhoneCallModal'
 import { ReasonPromptModal } from '@/components/ui/ReasonPromptModal'
@@ -939,16 +938,6 @@ export function StudentDetailPage() {
               ]}
             />
 
-            {/* QABUL CHEKLISTI — 5 ta band va "qayerda tuzatiladi" tugmalari; to'liq bo'lsa bitta
-                qatorga yig'iladi. Tahrir/to'lov (`reloadKey`) yoki a'zolik o'zgarsa qayta so'raladi. */}
-            <IntakeChecklistCard
-              key={data.id}
-              studentId={data.id}
-              refreshKey={`${reloadKey}:${groups.filter((g) => g.isActive).map((g) => `${g.groupId}-${g.status}`).join(',')}`}
-              onEditProfile={can('students.list', 'edit') ? openEdit : undefined}
-              onAddGroup={openAddGroup}
-              onPay={openPayment}
-            />
 
             {/* Shaxsiy ma'lumotlar — ALOHIDA karta, bitta ustunli ro'yxat (yorliq chapda, qiymat
                 o'ngda). Ilgari profil kartasi bilan bitta ramka ichida 2 ustunga siqilgan edi: uzun

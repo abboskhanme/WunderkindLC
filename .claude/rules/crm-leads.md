@@ -157,8 +157,8 @@ ikki manbadan ko'chirilgan (ularning fayllari tegilmagan — o'zgarsa bu yerni h
   birga OLIB TASHLANDI; lidning Telegram manzili yo'q. Quyidagi qator TARIX.)
 - **`lead_new` avto-SMS** endi Instagram va Meta reklama lidlarida ham ketadi (YANGI + telefonli) —
   `InstagramLeadBridge`/`MetaLeadBridge` ichida (CRM-9). Takroriy murojaatga — yo'q.
-- **Aylantirilgan lid O'CHIRILMAYDI** (400): KPI "shartnoma", sotuv tushumi va qabul cheklisti
-  («Daraja testi») unga tayanadi. UI'da "Lidni o'chirish" yashirin.
+- **Aylantirilgan lid O'CHIRILMAYDI** (400): KPI "shartnoma" va sotuv tushumi unga tayanadi. UI'da
+  "Lidni o'chirish" yashirin.
 - **O'chirishda** (`LeadRemoval`): hodisalar + sinovlar alohida **`lead_history`** arxiv yozuviga
   (`{ "Events": [...], "Trials": [...] }`) olinadi — "Arxiv"dan tiklanganda tarix ham qaytadi
   (`ArchiveController.Restore`); `IgConversation.LeadId` / `IgAdLead.LeadId` TOZALANADI (aks holda

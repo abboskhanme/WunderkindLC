@@ -8930,45 +8930,6 @@ namespace WunderkindLC.Infrastructure.Migrations
                     b.ToTable("StudentGroups");
                 });
 
-            modelBuilder.Entity("WunderkindLC.Domain.StudentIntakeMark", b =>
-                {
-                    b.Property<string>("Id")
-                        .HasColumnType("text");
-
-                    b.Property<string>("Item")
-                        .IsRequired()
-                        .HasMaxLength(32)
-                        .HasColumnType("character varying(32)");
-
-                    b.Property<string>("MarkedAt")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<string>("MarkedById")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<string>("MarkedByName")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<string>("Note")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<string>("StudentId")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("character varying(200)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("StudentId", "Item")
-                        .IsUnique();
-
-                    b.ToTable("StudentIntakeMarks");
-                });
-
             modelBuilder.Entity("WunderkindLC.Domain.StudentNote", b =>
                 {
                     b.Property<string>("Id")

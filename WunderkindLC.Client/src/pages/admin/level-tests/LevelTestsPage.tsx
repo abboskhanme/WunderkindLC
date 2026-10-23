@@ -83,7 +83,7 @@ export function LevelTestsPage() {
   }
 
   // Faqat HECH KIM topshirmagan test o'chiriladi — topshiruv/taklifi bor testni server rad etadi
-  // (lidlar kanali va qabul cheklisti shu natijalarga tayanadi). Undaylarni «O'chirib qo'yish».
+  // (lidlar kanali va test statistikasi shu natijalarga tayanadi). Undaylarni «O'chirib qo'yish».
   const handleDelete = async (t: LevelTestListItem) => {
     if (!confirm(`"${t.title}" testini o'chirasizmi?`)) return
     try {

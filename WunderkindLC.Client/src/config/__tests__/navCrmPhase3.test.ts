@@ -11,12 +11,12 @@ interface Node {
 const flatten = (items: readonly Node[]): Node[] => items.flatMap((i) => [i, ...flatten(i.children ?? [])])
 
 describe("CRM Phase 3 — «Bog'lanish kerak» menyuda", () => {
-  it("asosiy «O'quvchilar» guruhida, «Qabul cheklisti» dan keyin", () => {
+  it("asosiy «O'quvchilar» guruhida, «Yangi o'quvchilar» dan keyin", () => {
     const group = admin.find((i) => i.to === '#oquvchilar')
     const labels = (group?.children ?? []).map((c) => c.label)
     const at = labels.indexOf("Bog'lanish kerak")
     expect(at).toBeGreaterThan(-1)
-    expect(labels[at - 1]).toBe('Qabul cheklisti')
+    expect(labels[at - 1]).toBe("Yangi o'quvchilar")
     expect(group?.children?.[at]?.to).toBe('/admin/students/boglanish')
     expect(group?.children?.[at]?.perm).toBe('contacts')
   })

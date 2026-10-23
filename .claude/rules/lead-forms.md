@@ -455,8 +455,8 @@ yoziladi): havola ariza qabul qilmaydi, arizalar va lidlar joyida. Ro'yxatda ari
 "o'chirish" tugmasi ko'rinmaydi, faqat yoqish/o'chirib qo'yish.
 
 **Daraja testi ham xuddi shunday** (`LevelTestsController`): topshiruvi YOKI taklif havolasi bor
-test o'chirilmaydi (400 + sonlar) — topshiruv o'chsa qabul cheklistining «Daraja testi» bandi
-belgisini yo'qotardi (`StudentIntake`). `PATCH api/admin/level-tests/{id}/active` bilan o'chirib
+test o'chirilmaydi (400 + sonlar) — topshiruv o'chsa lidlar kanali ("Daraja testi") va test statistikasi
+tarixi yo'qolardi. `PATCH api/admin/level-tests/{id}/active` bilan o'chirib
 qo'yiladi. Test yaratish/tahrir/yoqish-o'chirish/o'chirish endi AUDITGA yoziladi (tur `LevelTest`
 → "Lidlar" bo'limi).
 
