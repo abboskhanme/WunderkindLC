@@ -158,6 +158,7 @@ public static class PaymentIntakeHttp
             return c.Conflict(new { message = res.Error, duplicate = res.Duplicate });
         if (res.Error is not null)
             return c.BadRequest(new { message = res.Error });
-        return c.Ok(new { id = res.TxId, idempotent = res.Idempotent });
+        // `parts` — to'lov qaysi oylarga qancha taqsimlangani (`PaymentMonthSplit`); `id` — oila ildizi (chek).
+        return c.Ok(new { id = res.TxId, idempotent = res.Idempotent, parts = res.Parts });
     }
 }

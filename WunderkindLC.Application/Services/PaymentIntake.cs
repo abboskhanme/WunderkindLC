@@ -108,48 +108,80 @@ public static class PaymentIntake
         // IDEMPOTENTLIK: oxirgi ~6 soniyada AYNAN shu to'lov (o'quvchi, guruh, oy, summa) yozilgan bo'lsa —
         // dublikat qo'shmaymiz (admin double-click / tarmoq retry). Balansni ikki marta oshirmaslik uchun
         // EnsureCharge/balans o'zgarishidan OLDIN tekshiramiz (FinanceController.Create bilan bir xil mantiq).
+        // ⚠️ Oylarga TAQSIMLANGAN to'lovda (pastda) ildiz qatorning summasi faqat birinchi oy ulushi — shuning
+        // uchun summa butun OILA bo'yicha solishtiriladi (ildiz oyi = tanlangan oy).
         var dupCutoff = DateTime.UtcNow.AddSeconds(-6);
-        var recentDup = await db.FinanceTransactions
+        var recentRoots = await db.FinanceTransactions
             .Where(t => t.StudentId == student.Id && t.Direction == "income" && t.Category == "tuition"
-                && t.Amount == req.Amount && t.Month == month && t.GroupId == groupId
+                && t.Month == month && t.GroupId == groupId && t.SplitFromId == null
                 && t.CreatedAt >= dupCutoff)
             .OrderByDescending(t => t.CreatedAt)
-            .FirstOrDefaultAsync();
-        if (recentDup is not null)
+            .Select(t => new { t.Id, t.Amount })
+            .ToListAsync();
+        foreach (var root in recentRoots)
         {
-            PaymentIdempotency.Remember(reqKey, recentDup.Id, DateTime.UtcNow);
-            return PaymentIntakeResult.Saved(recentDup.Id, idempotent: true);
+            var parts = await db.FinanceTransactions
+                .Where(t => t.SplitFromId == root.Id).Select(t => t.Amount).ToListAsync();
+            if (root.Amount + parts.Sum() != req.Amount) continue;
+            PaymentIdempotency.Remember(reqKey, root.Id, DateTime.UtcNow);
+            return PaymentIntakeResult.Saved(root.Id, idempotent: true);
+        }
+
+        // To'lov qaysi guruh (kurs) uchun ekani — taqsimot, audit izohi va avto-xabar ({guruh}/{kurs}) uchun.
+        var payGroup = groupId is null ? null : await db.Classes.FirstOrDefaultAsync(c => c.Id == groupId);
+
+        // OYLARGA TAQSIMLASH (2026-10-23, `PaymentMonthSplit`): summa tanlangan oyning qoldig'idan KATTA bo'lsa
+        // ortig'i keyingi oylarga — to'lov oynasi ko'rsatadigan AYNAN o'sha per-guruh hisob bo'yicha. Ilgari
+        // butun to'lov tanlangan (eng eski qarzdor) oyga teglanib, keyingi oy "to'lanmagan" bo'lib qolardi va
+        // o'qituvchi maoshida «Hozir chiqadigan» uni ko'rmasdi. Guruhsiz va sinovdagi to'lov — bitta qism.
+        var split = new List<PaymentMonthSplit.Part> { new(month, req.Amount) };
+        if (payGroup is not null)
+        {
+            var membership = await db.StudentGroups.AsNoTracking()
+                .FirstOrDefaultAsync(sg => sg.StudentId == student.Id && sg.GroupId == payGroup.Id);
+            if (membership is not null)
+            {
+                var ledger = await StudentGroupLedger.BuildAsync(db, student, payGroup, membership);
+                split = PaymentMonthSplit.Allocate(
+                    ledger.Months.Select(m => (m.Month, m.Remaining)).ToList(), month, req.Amount);
+            }
         }
 
         // AVANS: to'lov tushadigan (guruh, oy) hisobi hali yo'q bo'lsa — shu zahoti ochamiz
         // (kelajak oyga oldindan to'lov; balans hisob miqdorida kamayadi, to'lov esa oshiradi).
         // ⚠️ SINOVDAGI guruhga (yoki accrual yozmaydigan oyga) hisob OCHILMAYDI — pul guruh+oy tegi bilan
         // AVANS bo'lib turadi va aktivlashtirilganda odatdagidek hisobga o'tadi (`EnsureChargeAsync`).
-        await TuitionService.EnsureChargeAsync(db, student, groupId, month);
+        // Taqsimlangan to'lovda HAR qism oyi uchun — o'sha oy to'g'ridan-to'g'ri tanlangandagi qoida bilan.
+        foreach (var part in split)
+            await TuitionService.EnsureChargeAsync(db, student, groupId, part.Month);
 
         student.Balance += req.Amount;
 
-        // To'lov qaysi guruh (kurs) uchun ekani — audit izohi va avto-xabar ({guruh}/{kurs}) uchun.
-        var payGroup = groupId is null ? null : await db.Classes.FirstOrDefaultAsync(c => c.Id == groupId);
         var groupName = payGroup?.Name;
         var teacherName = string.IsNullOrEmpty(payGroup?.TeacherId) ? null
             : await db.Teachers.Where(t => t.Id == payGroup!.TeacherId).Select(t => t.FullName).FirstOrDefaultAsync();
         var courseName = string.IsNullOrEmpty(payGroup?.CourseId) ? null
             : await db.Subjects.Where(su => su.Id == payGroup!.CourseId).Select(su => su.Name).FirstOrDefaultAsync();
 
-        // To'lovni moliyaviy kirim (o'quvchi to'lovi) sifatida qayd etamiz.
-        var tx = new FinanceTransaction
+        // To'lovni moliyaviy kirim (o'quvchi to'lovi) sifatida qayd etamiz. Taqsimlangan to'lovda — BO'LINGAN
+        // TO'LOV OILASI (`PaymentSplits`): ildiz qator (tanlangan oy) + har keyingi oy uchun bog'langan qator,
+        // hammasi bitta kvitansiya/kassir/kassa/usul bilan va BITTA SaveChanges'da. Jismonan bu bitta to'lov:
+        // bekor qilish oilani birga bekor qiladi, chek esa oila jami summasini ko'rsatadi.
+        var splitNote = split.Count > 1
+            ? $" [{AuditService.Money(req.Amount)} so'm oylarga taqsimlandi: {PaymentMonthSplit.Describe(split)}]"
+            : "";
+        FinanceTransaction NewTx(PaymentMonthSplit.Part part, string? splitFromId) => new()
         {
             Date = paidDate,
             Direction = "income",
             Category = "tuition",
-            Amount = req.Amount,
+            Amount = part.Amount,
             StudentId = student.Id,
             GroupId = groupId,
-            Month = month,
-            Note = $"O'quvchi to'lovi ({month})"
+            Month = part.Month,
+            Note = $"O'quvchi to'lovi ({part.Month})"
                 + (groupName is null ? "" : $" [{groupName}]")
-                + $" — {student.FullName}",
+                + $" — {student.FullName}" + splitNote,
             Comment = string.IsNullOrWhiteSpace(req.Comment) ? null : req.Comment.Trim(),
             Method = string.IsNullOrWhiteSpace(req.Method) ? null : req.Method.Trim().ToLowerInvariant(),
             // Naqd to'lovda qog'oz kvitansiya raqami ("KV" + raqam), kartada esa to'lov vaqti ("HH:mm").
@@ -159,11 +191,16 @@ public static class PaymentIntake
             CreatedBy = createdBy,     // mas'ul (chek uchun)
             CreatedById = createdById,  // kim kiritgani (kassir hisoboti)
             CashboxId = cashbox.CashboxId,
+            SplitFromId = splitFromId,
         };
+        var tx = NewTx(split[0], null);
         db.FinanceTransactions.Add(tx);
+        foreach (var part in split.Skip(1))
+            db.FinanceTransactions.Add(NewTx(part, tx.Id));
 
         audit.Record(AuditService.EntityFinanceTransaction, tx.Id, "create",
-            $"To'lov qabul qilindi: +{AuditService.Money(req.Amount)} so'm ({month} uchun)"
+            $"To'lov qabul qilindi: +{AuditService.Money(req.Amount)} so'm "
+                + (split.Count > 1 ? $"(oylarga taqsimlandi — {PaymentMonthSplit.Describe(split)})" : $"({month} uchun)")
                 + (groupName is null ? "" : $" — {groupName}")
                 + (teacherName is null ? "" : $" · {teacherName}")
                 // Kassir "Baribir saqlash"ni bosgan bo'lsa — izda qolsin (band raqam bilan yozildi).
@@ -187,14 +224,17 @@ public static class PaymentIntake
             {
                 ["{summa}"] = MessageTokenizer.MoneyPlain(req.Amount),
                 ["{sana}"] = $"{paidDate[8..10]}.{paidDate[5..7]}.{paidDate[..4]}",
-                ["{oy}"] = int.TryParse(month.Substring(5, 2), out var payMm) ? MessageTokenizer.MonthNameUz(payMm) : "",
+                // Oylarga taqsimlangan to'lovda — hamma oylar ("sentabr, oktabr").
+                ["{oy}"] = string.Join(", ", split.Select(p =>
+                    int.TryParse(p.Month.Substring(5, 2), out var payMm) ? MessageTokenizer.MonthNameUz(payMm) : "")
+                    .Where(n => n.Length > 0).Distinct()),
                 ["{kurs}"] = courseName ?? groupName ?? "",
                 ["{guruh}"] = groupName ?? student.ClassName,
             },
             group: payGroup);
 
-        // Chek (kvitansiya) uchun yaratilgan tranzaksiya id'si.
-        return PaymentIntakeResult.Saved(tx.Id);
+        // Chek (kvitansiya) uchun yaratilgan tranzaksiya id'si (taqsimlangan to'lovda — oila ildizi) va taqsimot.
+        return PaymentIntakeResult.Saved(tx.Id) with { Parts = split };
     }
 
     /// <summary>
@@ -246,6 +286,10 @@ public sealed record PaymentIntakeResult
 
     /// <summary>Shu zahoti takrorlangan so'rov (double-click) — yangi yozuv YARATILMADI.</summary>
     public bool Idempotent { get; init; }
+
+    /// <summary>To'lov qaysi oylarga qancha yozilgani (<see cref="PaymentMonthSplit"/>; odatda bitta qism).
+    /// Idempotent javobda — <c>null</c>.</summary>
+    public IReadOnlyList<PaymentMonthSplit.Part>? Parts { get; init; }
 
     /// <summary>Foydalanuvchiga ko'rsatiladigan xato matni (bo'sh bo'lsa — muvaffaqiyat).</summary>
     public string? Error { get; init; }

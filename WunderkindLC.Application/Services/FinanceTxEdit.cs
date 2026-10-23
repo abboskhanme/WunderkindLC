@@ -157,7 +157,9 @@ public static class FinanceTxEdit
 
 /// <summary>
 /// BO'LINGAN TO'LOV OILASI (<see cref="FinanceTransaction.SplitFromId"/>): guruh almashtirishda ortiqcha qism
-/// yangi guruhga ko'chirilib to'lov ikkiga bo'linadi (<see cref="TuitionService.CarryGroupAdvanceAsync"/>).
+/// yangi guruhga ko'chirilib to'lov ikkiga bo'linadi (<see cref="TuitionService.CarryGroupAdvanceAsync"/>), to'lov
+/// qabul qilinganda summasi tanlangan oy qoldig'idan oshsa keyingi oylarga taqsimlanadi (<see cref="PaymentMonthSplit"/>)
+/// yoki superadmin noto'g'ri oyga yozilgan to'lovni tuzatadi (<see cref="PaymentMonthRepair"/>).
 /// Jismonan bu BITTA to'lov (bitta kvitansiya, bitta kassir, bitta kassa).
 ///
 /// <para><b>Qaror:</b> BEKOR QILISH — butun oila birga bekor qilinadi (kaskad): to'lov xato kiritilgan

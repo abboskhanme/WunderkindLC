@@ -55,6 +55,7 @@ import { RetentionBonusTab } from './RetentionBonusTab'
 import { useAuth } from '@/context/auth-context'
 import { CashboxesPanel } from './CashboxesPanel'
 import { ActivationChargeRepairModal } from './ActivationChargeRepairModal'
+import { PaymentMonthRepairModal } from './PaymentMonthRepairModal'
 import { usePerm } from '@/lib/permissions'
 import { tabFromUrl } from '@/lib/tabParam'
 import { ExpenseApprovalsTab } from './ExpenseApprovalsTab'
@@ -168,6 +169,7 @@ export function FinancePage() {
   const [formOpen, setFormOpen] = useState(false)
   /** «Qo'shilgan oy hisobini tuzatish» (FAQAT superadmin) oynasi. */
   const [repairOpen, setRepairOpen] = useState(false)
+  const [monthRepairOpen, setMonthRepairOpen] = useState(false)
   const [editing, setEditing] = useState<FinanceTransaction | null>(null)
   const [audit, setAudit] = useState<{ filters: AuditFilters; title: string } | null>(null)
   const [detailTeacher, setDetailTeacher] = useState<SalaryReportRow | null>(null)
@@ -546,6 +548,11 @@ export function FinancePage() {
             {isSuper && (
               <Button variant="secondary" onClick={() => setRepairOpen(true)}>
                 <Wrench className="h-4 w-4" /> Qo'shilgan oy hisobini tuzatish
+              </Button>
+            )}
+            {isSuper && (
+              <Button variant="secondary" onClick={() => setMonthRepairOpen(true)}>
+                <Wrench className="h-4 w-4" /> To'lov oyini tuzatish
               </Button>
             )}
             {can('finance.main', 'create') && (
@@ -1453,6 +1460,7 @@ export function FinancePage() {
       )}
 
       {repairOpen && <ActivationChargeRepairModal onClose={() => setRepairOpen(false)} onApplied={load} />}
+      {monthRepairOpen && <PaymentMonthRepairModal onClose={() => setMonthRepairOpen(false)} onApplied={load} />}
 
       <TransactionFormModal
         open={formOpen}

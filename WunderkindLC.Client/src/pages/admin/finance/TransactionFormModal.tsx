@@ -31,6 +31,7 @@ import { balanceTextCls, formatMoney, cn, apiErrorMessage } from '@/lib/utils'
 import { newRequestId } from '@/lib/requestId'
 import { cashboxOptionLabel, showCashboxPicker, useCashboxOptions } from '@/hooks/useCashboxOptions'
 import { todayIso } from '@/lib/month'
+import { splitPayment } from '@/lib/paymentSplit'
 
 interface Props {
   open: boolean
@@ -873,7 +874,23 @@ export function TransactionFormModal({ open, onClose, onSubmit, initial, preset,
           </>
         )}
 
-        <DrawerField label="Qiymat (so'm)" required>
+        <DrawerField
+          label="Qiymat (so'm)"
+          required
+          hint={
+            // Summa tanlangan oy qoldig'idan oshsa server ortig'ini keyingi oylarga yozadi (`PaymentMonthSplit`).
+            showTuition && classId && form.month && (form.amount ?? 0) > 0
+              ? (() => {
+                  const split = splitPayment(ledgerMonths, form.month, form.amount ?? 0)
+                  return split.length > 1 ? (
+                    <span className="text-brand-700">
+                      Taqsimlanadi: {split.map((p) => `${formatMonth(p.month)} — ${formatMoney(p.amount)}`).join(' · ')}
+                    </span>
+                  ) : undefined
+                })()
+              : undefined
+          }
+        >
           <MoneyInput
             as={DrawerInput}
             required
