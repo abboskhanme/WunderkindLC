@@ -130,10 +130,16 @@ public class AuditFixFx2Tests
         Assert.NotNull(charge);
         Assert.Equal(expected, charge!.Amount);
         Assert.Equal($"{month}-25", charge.Date);     // `ChargeActivationProrateAsync` qatori bilan bir xil
-        Assert.Equal(Fee - expected, await Balance(ctx, s));
-        // Keyingi oy odatdagidek to'liq (accrual), aktivlashtirish oyi qayta yozilmaydi.
+        // To'liq oylik qisman oyga kiritilgan — ORTIG'I keyingi oyga taqsimlanadi (`PaymentMonthSplit`, 2026-10-23):
+        // ilgari u aktivlashtirish oyida avans bo'lib qolar va keyingi oy per-guruh hisobda "to'lanmagan" ko'rinardi.
+        var txs = await ctx.FinanceTransactions.AsNoTracking().ToListAsync();
+        Assert.Equal(expected, txs.Single(t => t.SplitFromId == null && t.Month == month).Amount);
+        Assert.Equal(Fee - expected, txs.Single(t => t.SplitFromId != null && t.Month == M(0)).Amount);
+        Assert.Equal(Fee - expected - Fee, await Balance(ctx, s)); // keyingi oy hisobi avans qoidasi bilan ochildi
+        // Aktivlashtirish oyi ham, keyingi oy ham qayta yozilmaydi.
         Assert.Equal(0, (await TuitionService.AccrueMonth(ctx, month)).Count);
-        Assert.Equal(1, (await TuitionService.AccrueMonth(ctx, M(0))).Count);
+        Assert.Equal(0, (await TuitionService.AccrueMonth(ctx, M(0))).Count);
+        Assert.Equal(Fee, (await ChargeOf(ctx, s, g.Id, M(0)))!.Amount);
     }
 
     [Fact]

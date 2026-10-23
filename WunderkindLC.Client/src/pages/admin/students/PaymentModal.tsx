@@ -27,6 +27,7 @@ import { StudentBookSale } from '@/components/payments/StudentBookSale'
 import { usePerm } from '@/lib/permissions'
 import { cashboxOptionLabel, showCashboxPicker, useCashboxOptions } from '@/hooks/useCashboxOptions'
 import { currentMonth as localCurrentMonth, shiftMonth, todayIso } from '@/lib/month'
+import { splitPayment } from '@/lib/paymentSplit'
 
 interface Props {
   student: Student | null
@@ -370,6 +371,9 @@ export function PaymentModal({
   }
 
   const selected = rows.find((r) => r.month === month)
+  // Summa tanlangan oy qoldig'idan oshsa server ortig'ini keyingi oylarga yozadi (`PaymentMonthSplit`) — kassir
+  // buni oldindan ko'rsin. Faqat guruh bo'yicha hisobda (guruhsiz/sinov to'lovi bo'linmaydi).
+  const split = groupId && !trialSelected && (amount ?? 0) > 0 ? splitPayment(rows, month, amount ?? 0) : []
   const newBalance = student ? student.balance + balanceAdj + (amount ?? 0) : 0
   const monthOptions = rows.length > 0 ? rows.map((r) => r.month) : trialSelected ? trialMonths() : [currentMonth()]
   const isOpen = open ?? !!student
@@ -621,6 +625,11 @@ export function PaymentModal({
                         <span className={cn('font-mono font-semibold', newBalance < 0 ? 'text-red-600' : 'text-emerald-600')}>
                           {formatMoney(newBalance)}
                         </span>
+                        {split.length > 1 && (
+                          <span className="mt-1 block text-brand-700">
+                            Taqsimlanadi: {split.map((p) => `${formatMonth(p.month)} — ${formatMoney(p.amount)}`).join(' · ')}
+                          </span>
+                        )}
                       </>
                     ) : undefined
                   }

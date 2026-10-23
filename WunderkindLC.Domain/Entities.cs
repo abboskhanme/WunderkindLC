@@ -1875,7 +1875,8 @@ public class FinanceTransaction
     public string? BookOrderId { get; set; }
 
     /// <summary>BO'LINGAN TO'LOV: guruh almashtirishda ortiqcha qism yangi guruhga ko'chirilib, to'lov ikkiga
-    /// bo'linsa (`TuitionService.CarryGroupAdvanceAsync`) — yangi qator qaysi ASL to'lovdan ajralgani (oilaning
+    /// bo'linsa (`TuitionService.CarryGroupAdvanceAsync`) yoki to'lov keyingi oylarga taqsimlansa (`PaymentMonthSplit`,
+    /// `PaymentMonthRepair`) — yangi qator qaysi ASL to'lovdan ajralgani (oilaning
     /// ILDIZI: ko'p marta bo'linsa ham hammasi birinchi to'lovga bog'lanadi). Bekor qilish butun oilani birga
     /// bekor qiladi, vozvrat esa har qatordan alohida (`PaymentSplits`). null — bo'linmagan oddiy yozuv.</summary>
     public string? SplitFromId { get; set; }

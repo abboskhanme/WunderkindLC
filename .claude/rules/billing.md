@@ -880,6 +880,39 @@ maydonlarini oladi. **Qaror:** bekor qilish — butun oila birga (jismonan bitta
 qatordan ALOHIDA (har qism o'z guruhi/oyiga tegishli), asl qatordan oshiqcha so'ralsa xabar ko'chirilgan
 qatorni ko'rsatadi. Kvitansiya nazorati tahrirda oilani dublikat hisoblamaydi. Klient bekor qilish
 oynasida "ko'chirilgan qismi ham birga bekor qilinadi" deb ogohlantiradi.
+**Chek** (`GET finance/receipt/{id}`) o'quvchi to'lovida OILA JAMI summasini ko'rsatadi (jismonan bitta to'lov).
+
+### TO'LOV OYLARGA TAQSIMLANADI (`PaymentMonthSplit`, 2026-10-23)
+
+Shikoyat (o'qituvchi): "58 tasi to'lagan, lekin «Qarzdorlar to'lasa yana» to'laganlardan ko'p". Sabab: to'lov oynasi
+eng eski QARZDOR oyni oldindan tanlaydi (masalan 30-sentabrda qo'shilgan o'quvchining 1 darslik 20 000 li sentabri),
+kassir 225 000 kiritib oyni qoldirsa butun to'lov SENTABRGA teglanardi. Umumiy balans 0, lekin per-guruh hisobda
+(to'lov oynasi, guruhdagi "1 oy qarz", to'lov eslatmasi) oktabr to'lanmagan, maoshdagi «Hozir chiqadigan» esa oktabr
+pulini ko'rmay «Qarzdorlar to'lasa yana» ga qo'shardi (prod'da oktabrda ~100 ta to'lov, ~27 mln). Rasmiy maosh
+(`Expected`, hisoblangan baza) bunga bog'liq emas edi — faqat ko'rsatkich yolg'on edi.
+
+- **Qabul (`PaymentIntake.AddAsync`, YAGONA yo'l — admin, Kassa, Moliya formasi):** summa tanlangan oyning QOLDIG'IDAN
+  katta bo'lsa ortig'i keyingi oylarga — AYNAN to'lov oynasidagi per-guruh hisob (`StudentGroupLedger`) qatorlari bo'yicha,
+  har oy o'z qoldig'icha, oxirgi qatordan ortgani o'sha qatorda (avans). Yoziladi: bo'lingan oila (ildiz — tanlangan oy,
+  bolalari `SplitFromId` bilan, bitta kvitansiya/kassir/kassa/usul, BITTA SaveChanges), har qism oyiga `EnsureChargeAsync`
+  (to'g'ridan-to'g'ri tanlangandagi avans qoidasi), bitta audit qatori «… (oylarga taqsimlandi — 2026-09: 20 000, 2026-10:
+  205 000)», bitta avto-xabar ({summa} = jami, {oy} = "sentabr, oktabr"). Javob: `{ id (ildiz), idempotent, parts }`.
+- ⚠️ BO'LINMAYDI: summa qoldiqqa sig'sa; guruhsiz (eski ClassName) va sinovdagi to'lov; tanlangan oy ro'yxatda yo'q yoki
+  qoldig'i 0 (to'langan oy ATAYIN tanlangan — oyna "avans" deb aytadi). Orqaga (tanlangan oydan oldingi qarzga) hech
+  narsa ketmaydi — kassir oyni o'zi tanlagan.
+- 6 soniyalik takror tekshiruvi oila JAMI summasi bo'yicha (ildiz oyi = tanlangan oy).
+- Klient: `PaymentModal` va Moliya formasi summa ostida «Taqsimlanadi: Sen 2026 — 20 000 so'm · Okt 2026 — 205 000 so'm»
+  (`lib/paymentSplit.ts` — serverdagi qoidaning AYNAN nusxasi, `paymentSplit.test.ts` ikkisini qulflaydi).
+- **Bazada qolganlar — Moliya → «To'lov oyini tuzatish»** (FAQAT superadmin, HARD rol; `PaymentMonthRepair`,
+  `GET/POST api/admin/billing-repair/payment-months`, «Qo'shilgan oy hisobini tuzatish» naqshi): (o'quvchi, guruh) bo'yicha
+  oyma-oy SOF hisob vs teglangan pul (to'lov − vozvrat); ortiqcha to'langan oyning ORTIG'I keyingi (joriy oygacha) kam
+  to'langan oylarga, eng eskisidan. To'lov to'liq sig'sa — faqat `Month` almashadi, sig'masa — oilaga bo'linadi. Oyna:
+  `CenterMeta.SalaryChargedBaseFrom` dan (maosh hisoblangan bazada — teg ko'chishi maoshni o'zgartirmaydi) va ko'pi bilan
+  oxirgi 3 oy (sozlama bo'sh — o'tgan + joriy oy). Orqaga, kelajakka, oynadan eski oyga ko'chmaydi; vozvrati bor to'lov
+  ko'chirilmaydi (qatorda izoh). GET hech narsa yozmaydi; POST — faqat belgilanganlar, reja har o'quvchi QULFI ichida
+  QAYTA quriladi, har biri alohida saqlanadi. Pul, balans, kassa, hisoblar O'ZGARMAYDI; avto-xabar yo'q; audit —
+  `FinanceTransaction`, «To'lov oyi tuzatildi (guruh): 205 000 so'm 2026-09 → 2026-10 …».
+- Testlar: `PaymentMonthSplitTests`, `AuditFixFx2Tests` (qisman aktivlashtirish oyiga to'liq oylik — ortig'i keyingi oyga).
 
 ### TAHRIR — ikki yo'l, ikki xil qoida (`FinanceTxEdit`)
 

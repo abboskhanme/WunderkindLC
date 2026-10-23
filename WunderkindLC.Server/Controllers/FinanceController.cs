@@ -113,10 +113,16 @@ public partial class FinanceController(AppDbContext db, AuditService audit, Auto
                 teacherName = (await db.Teachers.FindAsync(grp.TeacherId))?.FullName ?? "";
         }
 
+        // BO'LINGAN TO'LOV (oylarga taqsimlangan yoki guruh almashtirishda bo'lingan) — jismonan BITTA to'lov,
+        // chek oila JAMI summasini ko'rsatadi (`PaymentSplits`). Bo'linmagan yozuvda — o'z summasi.
+        var amount = tx.Amount;
+        if (FinanceTxEdit.IsStudentPayment(tx))
+            amount = (await PaymentSplits.FamilyAsync(db, tx)).Sum(f => f.Amount);
+
         var dt = (tx.CreatedAt == default ? AppClock.Now : AppClock.ToLocal(tx.CreatedAt)).ToString("yyyy-MM-dd HH:mm");
         return new ReceiptDto(
             ReceiptNumber(tx.Id), dt, studentName, teacherName, tx.CreatedBy ?? "", groupName,
-            tx.Method ?? "", string.IsNullOrWhiteSpace(tx.Comment) ? tx.Note : tx.Comment, tx.Amount,
+            tx.Method ?? "", string.IsNullOrWhiteSpace(tx.Comment) ? tx.Note : tx.Comment, amount,
             meta?.Name ?? "", meta?.Phone ?? "", meta?.Address ?? "", meta?.LogoUrl ?? "",
             meta?.CheckSettings ?? "",
             KvNo: tx.ReceiptNo);
@@ -741,7 +747,8 @@ public partial class FinanceController(AppDbContext db, AuditService audit, Auto
             .Where(r => r.Direction == "expense" && r.Category == "refund" && r.RefundOfId == id)
             .SumAsync(r => (decimal?)r.Amount) ?? 0m;
         var refundable = tx.Amount - already;
-        // BO'LINGAN to'lov: guruh almashtirishda bir qismi yangi guruhga ALOHIDA qator bo'lib ko'chgan bo'lsa,
+        // BO'LINGAN to'lov: bir qismi ALOHIDA qator bo'lsa (guruh almashtirishda yangi guruhga ko'chgan yoki to'lov
+        // qabul qilinganda keyingi oyga taqsimlangan — `PaymentMonthSplit`),
         // o'sha qism shu qatordan qaytarilmaydi — o'z qatoridan (o'z guruhi/oyi bilan). Xabar uni ko'rsatadi.
         var splitChildren = await PaymentSplits.ChildrenAsync(db, tx.Id);
         var splitHint = "";
@@ -752,8 +759,8 @@ public partial class FinanceController(AppDbContext db, AuditService audit, Auto
                 .Where(c => childGroupIds.Contains(c.Id))
                 .ToDictionaryAsync(c => c.Id, c => c.Name);
             splitHint = " — qolgan " + string.Join(", ", splitChildren.Select(c =>
-                    $"{AuditService.Money(c.Amount)} so'm «{(c.GroupId is null ? "guruhsiz" : childGroups.GetValueOrDefault(c.GroupId, "?"))}» guruhiga"))
-                + " ko'chirilgan (alohida qator): uni «To'lovlar» ro'yxatidagi o'sha qatordan qaytaring";
+                    $"{AuditService.Money(c.Amount)} so'm «{(c.GroupId is null ? "guruhsiz" : childGroups.GetValueOrDefault(c.GroupId, "?"))}» guruhi, {c.Month} oyi uchun"))
+                + " alohida qatorda: uni «To'lovlar» ro'yxatidagi o'sha qatordan qaytaring";
         }
         if (refundable <= 0)
             return BadRequest(new { message = "Bu to'lov to'liq qaytarilgan" + splitHint });
@@ -879,7 +886,7 @@ public partial class FinanceController(AppDbContext db, AuditService audit, Auto
             return BadRequest(new
             {
                 message = family.Count > 1
-                    ? $"Bu to'lov (va undan guruh almashtirishda bo'lingan qism) bo'yicha {refundCount} ta vozvrat qilingan — avval vozvrat(lar)ni bekor qiling"
+                    ? $"Bu to'lov (va undan bo'lingan qism — boshqa oy yoki guruh qatori) bo'yicha {refundCount} ta vozvrat qilingan — avval vozvrat(lar)ni bekor qiling"
                     : $"Bu to'lovdan {refundCount} ta vozvrat qilingan — avval vozvrat(lar)ni bekor qiling",
             });
 
@@ -909,7 +916,7 @@ public partial class FinanceController(AppDbContext db, AuditService audit, Auto
         {
             var memberBefore = AuditService.Snapshot(member);
             var dropped = await VoidOne(member);
-            var part = member.Id == tx.Id ? "" : " [shu to'lovdan guruh almashtirishda bo'lingan qism — birga bekor qilindi]";
+            var part = member.Id == tx.Id ? "" : $" [shu to'lovning bo'lingan qismi ({member.Month}) — birga bekor qilindi]";
             audit.Record(AuditService.EntityFinanceTransaction, member.Id, "delete",
                 $"Bekor qilindi: {dir} {member.Category} — {AuditService.Money(member.Amount)} so'm"
                     + (sName is null ? "" : $" ({sName})")
