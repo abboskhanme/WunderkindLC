@@ -59,6 +59,13 @@ paths:
   (balans bo'yicha) uni ko'rmasdi — ikki raqam zid chiqardi. Guruhdan CHIQQAN o'quvchining to'lanmagan qisman oyi ham
   kiradi. Qarzdorlar SONI shu manbadan: `MonthSalaryDto.UnpaidStudents` / `UnpaidStudentsLeft` (o'qituvchi kabineti
   «{oy} uchun N ta o'quvchi to'lamagan (K tasi guruhdan chiqqan)»). Test: `StaffRolesAndSalaryBaseTests.HOZIR_CHIQADIGAN__*`.
+  ⚠️ **SENTABR EDUTIZIMDA YOPILGAN** (egasining qarori, 2026-10-26): import a'zoliklari (`ActivatedAt = 2026-09-01`,
+  `RecordedAt ≤ 2026-09-20`) uchun sentabrga **0 so'mlik QULFLI hisob qatori** — Id `edutizim-sep-<a'zolik id>`
+  (to'g'ridan-to'g'ri SQL, audit `Membership` «Sentabr edutizimda yopilgan …»). Sabab: hisob qatori yo'q aktivlashtirish
+  oyini to'lov oynasi (`StudentGroupLedger`) "to'lanmagan" (to'liq oylik) deb ko'rsatar, kassir oktabr pulini sentabrga
+  yozar va (10-08 dan) `EnsureRecentActivationChargeAsync` sentabrga HAQIQIY hisob ochardi — sentabr esa eski tizimda
+  yopilgan. Balans/maosh o'zgarmaydi (summa 0); ushlab turish bonusi to'liq summasi 0 qatorni hisob YO'Q deb oladi
+  (`RetentionBonusService.BuildMoney`, `SeptemberMarkerTests`). Bekor qilish: `DELETE … WHERE "Id" LIKE 'edutizim-sep-%'`.
   ⚠️ O'qituvchi kabineti → Maosh guruhlarning UMUMIY summasini (baza × foiz, "shu oy uchun hisoblangan/yig'ilgan",
   qarzdorlar jami summasi) KO'RSATMAYDI — faqat o'z maoshi (egasining qarori, 2026-10-26).
   Hech narsa to'lamaydi va hech qayerga yozilmaydi — o'qituvchini qarzdorlarni yopishga undash

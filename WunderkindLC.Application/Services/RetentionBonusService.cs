@@ -412,13 +412,16 @@ public static class RetentionBonusService
             {
                 var cell = Cell(c.StudentId, g.CourseKey, month);
                 cell.Charged += effective;
-                cell.HasCharge = true;   // qator BOR — summasi 0 bo'lsa ham (100% chegirma)
+                // qator BOR — sof summasi 0 bo'lsa ham (100% chegirma). ⚠️ Lekin TO'LIQ summasi 0 bo'lgan qator
+                // (2026-10-26: «sentabr edutizimda yopilgan» belgisi `edutizim-sep-*`, qo'lda 0 ga tahrir) — hisob
+                // YO'Q kabi: sanoqqa kirmaydi va siklni uzmaydi (belgidan oldingi xulq o'zgarmasin).
+                if (c.Amount > 0) cell.HasCharge = true;
             }
             else
             {
                 untaggedCharge[(c.StudentId, month)] =
                     untaggedCharge.GetValueOrDefault((c.StudentId, month)) + effective;
-                untaggedChargeRow.Add((c.StudentId, month));
+                if (c.Amount > 0) untaggedChargeRow.Add((c.StudentId, month));
             }
         }
 
