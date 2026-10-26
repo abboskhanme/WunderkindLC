@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import {
   AlertTriangle, ArrowLeft, Award, CalendarClock, ChevronDown, Hourglass, Wallet,
 } from 'lucide-react'
-import { getTeacherSalary, getMyRetentionBonuses, getTeacherDebtSummary, type TeacherDebtSummary } from '@/api/services/teacher'
+import { getTeacherSalary, getMyRetentionBonuses } from '@/api/services/teacher'
 import type { TeacherRetentionSummary } from '@/api/services/retentionBonus'
 import type { SalaryLedger } from '@/types'
 import { formatMoney } from '@/lib/utils'
@@ -30,18 +30,6 @@ function monthLabel(m: string): string {
   return m
 }
 
-/**
- * Foizli maosh ulushi yorlig'i. Har guruh alohida foizga sozlangan bo'lishi mumkin
- * (bir guruhi 40%, keyingisi 60%) — bunday holda bitta raqam yozib bo'lmaydi.
- */
-function percentLabel(l: SalaryLedger): string {
-  const groups = (l.groups ?? []).filter((g) => g.mode === 'percent')
-  const rates = [...new Set(groups.map((g) => g.percent))]
-  if (rates.length === 1) return `${rates[0]}%`
-  if (rates.length > 1) return 'guruh foizlari'
-  return `${l.salaryPercent ?? 0}%`
-}
-
 function statusChip(status: string): { label: string; cls: string } {
   switch (status) {
     case 'paid':
@@ -58,8 +46,6 @@ export function TeacherSalaryPage() {
   const [ledger, setLedger] = useState<SalaryLedger | null>(null)
   /** Ushlab turish bonuslari — maoshdan ALOHIDA (Expected/Remaining ga qo'shilmagan). */
   const [bonuses, setBonuses] = useState<TeacherRetentionSummary | null>(null)
-  /** O'z guruhlaridagi qarzdorlar (ikkilamchi — yuklanmasa "qarzdorlar to'lasa" qatori qisqa chiqadi). */
-  const [debt, setDebt] = useState<TeacherDebtSummary | null>(null)
   const [loading, setLoading] = useState(true)
   /** Ushlanma sababi ochilgan oy ("YYYY-MM") */
   const [expanded, setExpanded] = useState<string | null>(null)
@@ -75,13 +61,6 @@ export function TeacherSalaryPage() {
       })
       .finally(() => {
         if (alive) setLoading(false)
-      })
-    getTeacherDebtSummary()
-      .then((d) => {
-        if (alive) setDebt(d)
-      })
-      .catch(() => {
-        /* ikkilamchi ma'lumot — maosh kartasi usiz ham to'liq */
       })
     getMyRetentionBonuses()
       .then((d) => {
@@ -177,23 +156,8 @@ export function TeacherSalaryPage() {
                   </div>
                 </div>
 
-                {/* FOIZLI maoshda: hisob qayerdan chiqqani — baza × foiz. ⚠️ Baza oyga qarab:
-                    hisoblangan to'liq oylik (chargedBase) yoki yig'ilgan pul — boshqasini
-                    ko'rsatsak arifmetika noto'g'ri chiqardi (1 000 000 × 40% = 1 600 000). */}
-                {isPercent && cur && (cur.chargedBase ? (cur.salaryBase ?? 0) : (cur.collected ?? 0)) > 0 && (
-                  <p className="mt-3 rounded-lg bg-slate-50 px-3.5 py-2.5 text-[12px] leading-relaxed text-mute">
-                    {cur.chargedBase ? 'Hisoblangan oylik (chegirmasiz)' : "Yig'ilgan"}:{' '}
-                    <span className="font-mono font-bold text-ink">
-                      {formatMoney(cur.chargedBase ? (cur.salaryBase ?? 0) : (cur.collected ?? 0))}
-                    </span>
-                    {' × '}
-                    <span className="font-bold text-ink">{percentLabel(ledger)}</span>
-                    {' = '}
-                    <span className="font-mono font-bold text-ink">
-                      {formatMoney(cur.baseExpected ?? cur.expected)}
-                    </span>
-                  </p>
-                )}
+                {/* ⚠️ Guruhlarning UMUMIY summasi (baza × foiz) o'qituvchiga KO'RSATILMAYDI — faqat o'z maoshi
+                    (egasining qarori, 2026-10-26). */}
 
                 {/* HOZIR CHIQADIGAN — rasmiy oylik hisoblangan bazadan; tushgan pul bo'yicha esa kamroq bo'lishi
                     mumkin. Farq — qarzdorlar to'lasa qo'shiladi (foydalanuvchi qarori, 2026-10-07). */}
@@ -207,9 +171,12 @@ export function TeacherSalaryPage() {
                       <span>Qarzdorlar to'lasa yana</span>
                       <span className="font-mono font-bold">+{formatMoney(cur.expected - cur.collectedExpected)}</span>
                     </div>
-                    {debt && debt.debtorCount > 0 && (
+                    {/* Sanoq «to'lasa yana» bilan BITTA manbadan (balans bo'yicha) — summa ATAYIN yo'q (faqat o'z maoshi). */}
+                    {(cur.unpaidStudents ?? 0) > 0 && (
                       <p className="text-amber-700">
-                        Guruhlaringizda {debt.debtorCount} ta qarzdor, jami {formatMoney(debt.debtTotal)} — to'lovni eslating.
+                        {monthLabel(curKey).split(' ')[0]} uchun {cur.unpaidStudents} ta o'quvchi to'lamagan
+                        {(cur.unpaidStudentsLeft ?? 0) > 0 ? ` (${cur.unpaidStudentsLeft} tasi guruhdan chiqqan)` : ''}
+                        {' '}— to'lovni eslating.
                       </p>
                     )}
                   </div>
@@ -283,19 +250,6 @@ export function TeacherSalaryPage() {
                         {' · '}Berildi:{' '}
                         <span className="font-mono text-teal-700">{formatMoney(m.paid)}</span>
                       </p>
-                      {/* Foizli maoshda: shu oy bazasi — hisob shundan chiqadi. */}
-                      {isPercent && m.chargedBase && (m.salaryBase ?? 0) > 0 && (
-                        <p className="text-[11px] text-faint">
-                          Shu oy uchun hisoblangan:{' '}
-                          <span className="font-mono text-mute">{formatMoney(m.salaryBase ?? 0)}</span>
-                        </p>
-                      )}
-                      {isPercent && !m.chargedBase && (m.collected ?? 0) > 0 && (
-                        <p className="text-[11px] text-faint">
-                          Shu oy uchun yig'ilgan:{' '}
-                          <span className="font-mono text-mute">{formatMoney(m.collected ?? 0)}</span>
-                        </p>
-                      )}
                       {/* Pul hali to'liq kelmagan bo'lsa (masalan guruh yopilgan oy) — "hammasi
                           to'lansa" qancha bo'lishi. Aks holda o'sha oy 0 bo'lib ko'rinardi. */}
                       {(m.potentialExpected ?? 0) > m.expected && (

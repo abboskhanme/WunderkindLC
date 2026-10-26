@@ -1856,6 +1856,10 @@ export interface MonthSalary {
   manualFineCount?: number
   /** Faol qo'lda jarimalar: summa + sabab. */
   manualFineItems?: { amount: number; reason: string }[] | null
+  /** Shu oy uchun to'lamagan o'quvchilar soni (foizli guruhlar, hisoblangan baza oylari) — `collectedExpected` bilan
+   *  BITTA manbadan (balans bo'yicha FIFO). `unpaidStudentsLeft` — ulardan guruhdan chiqqanlari. */
+  unpaidStudents?: number
+  unpaidStudentsLeft?: number
 }
 
 /** Maosh hisobida bitta guruhning ulushi (davr bo'yicha) */

@@ -442,6 +442,46 @@ public static class SalaryLedger
         var chargedPerGroup = bases.Charged;
         var salaryBasePerGroup = bases.SalaryBase;
 
+        // «HOZIR CHIQADIGAN» uchun TO'LANMAGAN qism (hisoblangan baza oylarida) — o'quvchining HAQIQIY guruh
+        // balansidan, FIFO (`GroupBalanceService.FifoUnpaid`), to'lovning OY TEGIDAN emas. Ilgari shu oyga teglangan
+        // pul olinardi: oktabr puli sentabrga teglansa (balans 0) u «Qarzdorlar to'lasa yana +X» ga tushar, pastdagi
+        // qarzdorlar sanog'i (balans bo'yicha) esa uni ko'rmasdi — ikki raqam bir-biriga zid chiqardi (2026-10-26).
+        // Guruhdan CHIQQAN o'quvchining to'lanmagan qisman oyi ham shu yerda (u ham qarzdor — to'lasa maosh oshadi).
+        var unpaidPerGroup = new Dictionary<(string month, string groupId), decimal>();
+        // (oy, guruh) → shu oyda to'lanmagan o'quvchilar (studentId → a'zoligi hozir tirikmi).
+        var unpaidStudents = new Dictionary<(string month, string groupId), Dictionary<string, bool>>();
+        var chargedMonths = TuitionService.MonthRange(startMonth, toMonth)
+            .Where(m => UsesChargedBase(m, bases.ChargedFrom)).ToHashSet(StringComparer.Ordinal);
+        var percentGroupIds = groups.Where(g => EffMode(g.TeacherSalaryMode, teacher.SalaryMode) == "percent")
+            .Select(g => g.Id).ToList();
+        if (chargedMonths.Count > 0 && percentGroupIds.Count > 0)
+        {
+            var members = await (
+                    from sg in db.StudentGroups.AsNoTracking()
+                    where percentGroupIds.Contains(sg.GroupId)
+                    join st in db.Students.AsNoTracking() on sg.StudentId equals st.Id
+                    select new { sg.GroupId, sg.StudentId, Live = sg.IsActive && !st.IsArchived })
+                .ToListAsync();
+            foreach (var grp in members.GroupBy(m => m.GroupId, StringComparer.Ordinal))
+            {
+                var live = grp.GroupBy(m => m.StudentId, StringComparer.Ordinal)
+                    .ToDictionary(x => x.Key, x => x.Any(m => m.Live), StringComparer.Ordinal);
+                var balances = await GroupBalanceService.DetailedForGroupAsync(db, grp.Key, live.Keys);
+                foreach (var (sid, info) in balances)
+                    foreach (var (month, amount) in info.UnpaidByMonth ?? new Dictionary<string, decimal>())
+                    {
+                        if (amount <= 0 || !chargedMonths.Contains(month)) continue;
+                        unpaidPerGroup[(month, grp.Key)] = unpaidPerGroup.GetValueOrDefault((month, grp.Key)) + amount;
+                        if (!unpaidStudents.TryGetValue((month, grp.Key), out var set))
+                            unpaidStudents[(month, grp.Key)] = set = new Dictionary<string, bool>(StringComparer.Ordinal);
+                        set[sid] = live.GetValueOrDefault(sid);
+                    }
+            }
+            // Hisoblangan (chegirmadan keyin) summadan oshmaydi — taqsimotdagi tiyin farqlari bazani buzmasin.
+            foreach (var key in unpaidPerGroup.Keys.ToList())
+                unpaidPerGroup[key] = decimal.Round(Math.Min(unpaidPerGroup[key], chargedPerGroup.GetValueOrDefault(key, 0m)), 2);
+        }
+
         // ⚠️ C3: oy jamlari o'qituvchining ULUSHI bilan tortiladi — o'qituvchi almashgan guruhning
         // shu oydagi puli ikki o'qituvchi orasida darslar nisbatida bo'linadi.
         decimal Weighted(Dictionary<(string month, string groupId), decimal> map, string month) =>
@@ -449,6 +489,7 @@ public static class SalaryLedger
         decimal TotalCollected(string month) => Weighted(collectedPerGroup, month);
         decimal TotalCharged(string month) => Weighted(chargedPerGroup, month);
         decimal TotalSalaryBase(string month) => Weighted(salaryBasePerGroup, month);
+        decimal TotalUnpaid(string month) => Weighted(unpaidPerGroup, month);
 
         // Kurs nomlari (breakdown uchun).
         var courseIds = groups.Where(g => !string.IsNullOrEmpty(g.CourseId)).Select(g => g.CourseId).Distinct().ToList();
@@ -528,8 +569,12 @@ public static class SalaryLedger
                     // «Hozir chiqadigan»: tushgan pul + MARKAZ QOPLAGAN chegirma (hisoblangan bazada chegirma maoshni
                     // kamaytirmaydi — u hech qachon "qarzdordan" kelmaydi). Ilgari faqat tushgan pul olinardi va
                     // chegirma ulushi «Qarzdorlar to'lasa yana +X» bo'lib ko'rinardi (TZ 1.6, 2026-10-17).
-                    var centreCovered = UsesChargedBase(month, bases.ChargedFrom) ? Math.Max(0m, salaryBase - chg) : 0m;
-                    collectedContribution = Math.Min(contribution, decimal.Round((col + centreCovered) * pct / 100m, 2));
+                    // ⚠️ 2026-10-26: tushgan pul = hisoblangan − TO'LANMAGAN (FIFO, balans bo'yicha — `unpaidPerGroup`),
+                    // ya'ni baza = to'liq oylik − to'lanmagan; chegirma (to'liq − sof) avtomatik "tushgan"ga kiradi.
+                    collectedContribution = UsesChargedBase(month, bases.ChargedFrom)
+                        ? Math.Min(contribution, decimal.Round(
+                            Math.Max(0m, salaryBase - unpaidPerGroup.GetValueOrDefault((month, g.Id), 0m) * share) * pct / 100m, 2))
+                        : Math.Min(contribution, decimal.Round(col * pct / 100m, 2));
                     groupPeriodCollected[g.Id] += col;
                     monthCollected += col;
                     monthSalaryBase += salaryBase;
@@ -691,10 +736,19 @@ public static class SalaryLedger
                 var baseCollected = anyConfigured
                     ? decimal.Round(grossCollectedSum, 2)
                     : Math.Max(0m, decimal.Round(
-                        (TotalCollected(month) + Math.Max(0m, TotalSalaryBase(month) - TotalCharged(month)))
+                        Math.Max(0m, TotalSalaryBase(month) - TotalUnpaid(month))
                         * teacher.SalaryPercent / 100m, 2) - monthSubstituteDeduction);
                 var dedCollected = journalLinked && plannedTotal > 0 ? decimal.Round(collectedGroupDeduction, 2) : 0m;
                 collectedExpected = Math.Min(expected, Math.Max(0m, baseCollected + monthSubstituteFee - dedCollected - fineApplied - manualApplied));
+            }
+
+            // Shu oyda to'lamagan o'quvchilar (foizli guruhlarda, o'qituvchiga ulushi tushgan) — «to'lasa yana +X» bilan
+            // BITTA manbadan. Ikki guruhdagi o'quvchi bir marta; "chiqqan" = hech bir to'lanmagan a'zoligi tirik emas.
+            var monthDebtors = new Dictionary<string, bool>(StringComparer.Ordinal);
+            foreach (var ((m, gid), set) in unpaidStudents)
+            {
+                if (m != month || ShareOf(gid, month) <= 0m) continue;
+                foreach (var (sid, live) in set) monthDebtors[sid] = monthDebtors.GetValueOrDefault(sid) || live;
             }
 
             months.Add(new MonthSalaryDto(
@@ -714,7 +768,9 @@ public static class SalaryLedger
                 decimal.Round(collectedExpected, 2),
                 AttendanceFines: fineApplied, AttendanceFineCount: fineInfo.Count,
                 ManualFines: manualApplied, ManualFineCount: manualInfo.Count,
-                ManualFineItems: manualInfo.Items));
+                ManualFineItems: manualInfo.Items,
+                UnpaidStudents: monthDebtors.Count,
+                UnpaidStudentsLeft: monthDebtors.Count(kv => !kv.Value)));
         }
 
         var totalExpected = months.Sum(m => m.Expected);

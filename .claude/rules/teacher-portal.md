@@ -85,7 +85,8 @@ YIG'INDI: nechta o'quvchi va jami qancha. Har o'quvchining summasi baribir beril
 `GroupBalanceService` (guruh balansi bilan bir xil), faqat faol, sinovda bo'lmagan a'zolar; ikki
 guruhdagi o'quvchi BIR marta sanaladi. To'lov darvozasi bu yerda QO'LLANMAYDI — maqsad aynan
 jurnalda yashiringan qarzdorlarni ham ko'rsatish (uchrashuv talabi: "o'qituvchi qarzdorlikni
-yopishga qiziqsin", maosh sahifasidagi "qarzdorlar to'lasa yana +" bilan birga).
+yopishga qiziqsin"). ⚠️ 2026-10-26 dan MAOSH sahifasi bu endpointni CHAQIRMAYDI: u yerdagi qarzdorlar soni
+«to'lasa yana +» bilan BITTA manbadan (`MonthSalaryDto.UnpaidStudents`, `billing.md`), summasiz.
 (Telefon faqat §3.5 dagi «O'quvchilar» tabida — o'z guruhi o'quvchilari, FAQAT KO'RISH uchun.)
 
 ## 3.5. O'QUVCHINI TAHRIRLASH (guruh sahifasi → «O'quvchilar» tabi, 2026-10-05)

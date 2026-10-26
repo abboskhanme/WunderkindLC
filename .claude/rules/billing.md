@@ -53,6 +53,14 @@ paths:
   «qarzdorlar to'lasa yana +X» bo'lib ko'rinardi. Yorliq: «Hozir chiqadigan (tushgan pul + markaz qoplagan chegirma)».
   Per-guruh tarmoqda u guruh ulushidan (`contribution`) oshmaydi (bir guruhning ortiqcha to'lovi boshqasining qarzini
   yopmaydi). Test: `StaffRolesAndSalaryBaseTests.HOZIR_CHIQADIGAN__markaz_qoplagan_chegirma_…`.
+  ⚠️ 2026-10-26: «to'lanmagan» qism endi to'lovning OY TEGIDAN emas, o'quvchining GURUH BALANSIDAN — FIFO
+  (`GroupBalanceService.FifoUnpaid`: to'lov eng eski oyni yopadi, qarz eng yangi oylarda qoladi). Baza = to'liq oylik −
+  to'lanmagan. Sabab: oktabr puli sentabrga teglansa (balans 0) u «to'lasa yana +X» ga tushar, qarzdorlar sanog'i esa
+  (balans bo'yicha) uni ko'rmasdi — ikki raqam zid chiqardi. Guruhdan CHIQQAN o'quvchining to'lanmagan qisman oyi ham
+  kiradi. Qarzdorlar SONI shu manbadan: `MonthSalaryDto.UnpaidStudents` / `UnpaidStudentsLeft` (o'qituvchi kabineti
+  «{oy} uchun N ta o'quvchi to'lamagan (K tasi guruhdan chiqqan)»). Test: `StaffRolesAndSalaryBaseTests.HOZIR_CHIQADIGAN__*`.
+  ⚠️ O'qituvchi kabineti → Maosh guruhlarning UMUMIY summasini (baza × foiz, "shu oy uchun hisoblangan/yig'ilgan",
+  qarzdorlar jami summasi) KO'RSATMAYDI — faqat o'z maoshi (egasining qarori, 2026-10-26).
   Hech narsa to'lamaydi va hech qayerga yozilmaydi — o'qituvchini qarzdorlarni yopishga undash
   uchun (o'qituvchi kabineti → Maosh, admin o'qituvchi sahifasi).
 - **Umumiy foiz:** o'qituvchi qo'shishda `Teacher.SalaryPercent` (Boshqaruv → Xodimlar, rol

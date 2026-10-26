@@ -188,13 +188,43 @@ public static class GroupBalanceService
             if (month == currentMonth) debtThisMonth[sid] = true;
         }
 
+        // (5) QARZ QAYSI OYGA TUSHADI — FIFO (to'lov ENG ESKI oyni birinchi yopadi). Oy tegi emas, BALANS
+        //     bo'yicha: sentabrga teglangan oktabr puli ham oktabrni yopadi.
+        var owedLists = owedByMonth
+            .Where(kv => kv.Value > 0)
+            .GroupBy(kv => kv.Key.StudentId, StringComparer.Ordinal)
+            .ToDictionary(g => g.Key, g => g.Select(kv => (kv.Key.Month, kv.Value)).ToList(), StringComparer.Ordinal);
+
         return result.ToDictionary(
             kv => kv.Key,
             kv => new GroupBalanceInfo(
                 decimal.Round(kv.Value, 2),
                 debtMonths.GetValueOrDefault(kv.Key, 0),
                 oldestDebt.GetValueOrDefault(kv.Key, ""),
-                debtThisMonth.GetValueOrDefault(kv.Key, false)));
+                debtThisMonth.GetValueOrDefault(kv.Key, false),
+                FifoUnpaid(kv.Value, owedLists.GetValueOrDefault(kv.Key) ?? new())));
+    }
+
+    /// <summary>
+    /// Guruh balansidagi QARZNI oylarga taqsimlaydi: to'lov eng eski oyni birinchi yopadi, ya'ni qarz ENG
+    /// YANGI oylarda qoladi. Natija — oy → shu oyning to'lanmagan qismi (faqat &gt; 0; oy hisobidan oshmaydi).
+    /// <para>NEGA oy tegi emas: kassir to'lovni noto'g'ri oyga teglasa (masalan oktabr puli sentabrga — 2026-10-23
+    /// shikoyati) balans 0, lekin tegga qarab oktabr "to'lanmagan" chiqardi. O'qituvchi maoshidagi «Qarzdorlar
+    /// to'lasa yana +X» va qarzdorlar sanog'i BITTA shu qoidadan — ular endi bir-biriga zid chiqmaydi.</para>
+    /// </summary>
+    public static Dictionary<string, decimal> FifoUnpaid(decimal balance, IEnumerable<(string Month, decimal Owed)> owedByMonth)
+    {
+        var unpaid = new Dictionary<string, decimal>(StringComparer.Ordinal);
+        var debt = -balance;
+        if (debt <= DebtEpsilon) return unpaid;
+        foreach (var (month, owed) in owedByMonth.Where(x => x.Owed > 0).OrderByDescending(x => x.Month, StringComparer.Ordinal))
+        {
+            if (debt <= DebtEpsilon) break;
+            var part = Math.Min(owed, debt);
+            unpaid[month] = unpaid.GetValueOrDefault(month, 0m) + decimal.Round(part, 2);
+            debt -= part;
+        }
+        return unpaid;
     }
 
     /// <summary>Shu guruh bo'yicha balans va to'liq yopilmagan (qarzdor) OYLAR soni.
@@ -205,9 +235,11 @@ public static class GroupBalanceService
     /// <para><c>OldestDebtMonth</c> — qarzi yopilmagan ENG ESKI oy ("yyyy-MM"), qarz yo'q bo'lsa "".
     /// <c>DebtThisMonth</c> — JORIY oyning o'zida qarz bormi. Ikkalasi ham <c>DebtMonths</c> bilan
     /// BIR XIL siklda (qo'shimcha so'rovsiz) hisoblanadi va jurnalning to'lov "darvozasi" uchun kerak
-    /// (<see cref="JournalPolicy.PaymentGate"/>).</para></summary>
+    /// (<see cref="JournalPolicy.PaymentGate"/>).</para>
+    /// <para><c>UnpaidByMonth</c> — qarzning oylar bo'yicha taqsimoti (<see cref="FifoUnpaid"/>), qarz yo'q bo'lsa bo'sh.</para></summary>
     public readonly record struct GroupBalanceInfo(
-        decimal Balance, int DebtMonths, string OldestDebtMonth = "", bool DebtThisMonth = false);
+        decimal Balance, int DebtMonths, string OldestDebtMonth = "", bool DebtThisMonth = false,
+        IReadOnlyDictionary<string, decimal>? UnpaidByMonth = null);
 
     /// <summary>A'zolik shu oyda hisob-kitobga kiradimi — <b>YAGONA TA'RIF</b>ga delegat qiladi.
     /// <para>⚠️ Ilgari bu yerda mantiq QAYTA YOZILGAN edi (belgi-ma-belgi bir xil nusxa).

@@ -275,4 +275,85 @@ public class StaffRolesAndSalaryBaseTests
         Assert.Equal(1, debt.DebtorCount);
         Assert.Equal(600_000m, debt.DebtTotal);
     }
+
+    [Fact]
+    public async Task HOZIR_CHIQADIGAN__otgan_oyga_teglangan_ortiqcha_pul_joriy_oyni_YOPADI__balans_bo_yicha()
+    {
+        // 2026-10-26 shikoyati: oktabr puli sentabrga teglansa (balans 0) u «Qarzdorlar to'lasa yana +X» ga tushardi,
+        // qarzdorlar sanog'ida esa o'quvchi yo'q edi. Endi to'lanmagan qism BALANS bo'yicha (FIFO).
+        using var db = TestDb.Sqlite();
+        var ctx = db.Context;
+        var (t, g, s) = Setup(ctx, Cutover);
+        Charge(ctx, s, g, Cutover, 600_000m);
+        Charge(ctx, s, g, After, 600_000m);
+        Pay(ctx, s, g, Cutover, 1_200_000m);   // ikki oy puli — hammasi sentabrga teglangan
+        await ctx.SaveChangesAsync();
+
+        var m = (await SalaryLedger.BuildAsync(ctx, t, Cutover, After)).Months.Single(x => x.Month == After);
+
+        Assert.Equal(300_000m, m.Expected);
+        Assert.Equal(m.Expected, m.CollectedExpected);   // "qarzdorlar to'lasa yana" — 0
+        Assert.Equal(0, m.UnpaidStudents);
+    }
+
+    [Fact]
+    public async Task HOZIR_CHIQADIGAN__qarz_ENG_YANGI_oyda_qoladi_va_qarzdor_sanaladi()
+    {
+        using var db = TestDb.Sqlite();
+        var ctx = db.Context;
+        var (t, g, s) = Setup(ctx, Cutover);
+        Charge(ctx, s, g, Cutover, 600_000m);
+        Charge(ctx, s, g, After, 600_000m);
+        Pay(ctx, s, g, After, 600_000m);       // oktabrga teglangan, lekin sentabr ham to'lanmagan edi
+        await ctx.SaveChangesAsync();
+
+        var dto = await SalaryLedger.BuildAsync(ctx, t, Cutover, After);
+        var sep = dto.Months.Single(x => x.Month == Cutover);
+        var oct = dto.Months.Single(x => x.Month == After);
+
+        Assert.Equal(sep.Expected, sep.CollectedExpected);      // pul eng eski oyni yopadi
+        Assert.Equal(0m, oct.CollectedExpected);                // qarz oktabrda
+        Assert.Equal(1, oct.UnpaidStudents);
+        Assert.Equal(0, oct.UnpaidStudentsLeft);
+    }
+
+    [Fact]
+    public async Task HOZIR_CHIQADIGAN__guruhdan_CHIQQAN_oquvchining_tolanmagan_oyi_ham_sanaladi()
+    {
+        using var db = TestDb.Sqlite();
+        var ctx = db.Context;
+        var (t, g, s) = Setup(ctx, Cutover);
+        var left = new Student { FullName = "Chiqqan O'quvchi", EnrollmentDate = "2026-01-01" };
+        ctx.Students.Add(left);
+        ctx.StudentGroups.Add(new StudentGroup
+        {
+            StudentId = left.Id, GroupId = g.Id, Status = "active", IsActive = false, LeftAt = $"{After}-10",
+            JoinedAt = "2026-01-01", ActivatedAt = "2026-01-01", RecordedAt = "2026-01-01",
+        });
+        Charge(ctx, s, g, After, 600_000m);
+        Pay(ctx, s, g, After, 600_000m);
+        Charge(ctx, left, g, After, 200_000m);   // qisman oy, to'lanmagan
+        await ctx.SaveChangesAsync();
+
+        var m = (await SalaryLedger.BuildAsync(ctx, t, After, After)).Months.Single(x => x.Month == After);
+
+        Assert.Equal(400_000m, m.Expected);                     // (600 000 + 200 000) × 50%
+        Assert.Equal(100_000m, m.Expected - m.CollectedExpected);   // = 200 000 × 50%
+        Assert.Equal(1, m.UnpaidStudents);
+        Assert.Equal(1, m.UnpaidStudentsLeft);
+    }
+
+    [Fact]
+    public void FifoUnpaid__qarz_eng_yangi_oylarga__oy_hisobidan_oshmaydi()
+    {
+        var owed = new[] { ("2026-09", 600_000m), ("2026-10", 600_000m), ("2026-08", 600_000m) };
+
+        var r = GroupBalanceService.FifoUnpaid(-900_000m, owed);
+
+        Assert.Equal(600_000m, r["2026-10"]);
+        Assert.Equal(300_000m, r["2026-09"]);
+        Assert.False(r.ContainsKey("2026-08"));
+        Assert.Empty(GroupBalanceService.FifoUnpaid(0m, owed));
+        Assert.Empty(GroupBalanceService.FifoUnpaid(50_000m, owed));
+    }
 }

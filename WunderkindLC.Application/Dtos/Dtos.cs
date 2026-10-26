@@ -335,7 +335,11 @@ public record MonthSalaryDto(
     /// <c>Expected</c> dan ayrilgan (qoldiqdan oshmaydi). <paramref name="ManualFineCount"/> — nechta jarima.</summary>
     decimal ManualFines = 0, int ManualFineCount = 0,
     /// <summary>Shu oyning FAOL qo'lda jarimalari (summa + sabab) — o'qituvchi ham, admin ham "nega ushlandi" ni ko'radi.</summary>
-    List<ManualFineItemDto>? ManualFineItems = null);
+    List<ManualFineItemDto>? ManualFineItems = null,
+    /// <summary>Shu oy uchun to'lamagan o'quvchilar soni (foizli guruhlarda, hisoblangan baza oylarida) —
+    /// <paramref name="CollectedExpected"/> bilan BITTA manbadan (balans bo'yicha FIFO, `GroupBalanceService.FifoUnpaid`).
+    /// <paramref name="UnpaidStudentsLeft"/> — ulardan guruhdan chiqqan (yoki arxivlangan)lari.</summary>
+    int UnpaidStudents = 0, int UnpaidStudentsLeft = 0);
 
 public record ManualFineItemDto(decimal Amount, string Reason);
 /// <summary>
