@@ -135,16 +135,24 @@ Sahifa `/admin/students/boglanish` → "Navbat" tabi. Lidlar taxtasi bilan BIR X
 ⚠️ Ustunlarni boshqarish FAQAT "Bosqich" rejimida. Muddat ustunlari — ma'lumot emas, sanadan
 HISOBLANADIGAN natija; ularni tahrirlash mumkin bo'lgan narsa emas.
 
+⚠️ **"Bosqich" rejimida taxta navbat BO'SH bo'lsa ham chiziladi** (2026-10-27, mijoz: "ustun qo'shish ishlamayapti"):
+ilgari bo'sh navbatda «Navbat bo'sh» kartasi taxtani yashirar — ustun saqlanardi (server 200), lekin ko'rinmasdi.
+«Navbat bo'sh» endi faqat "Muddat" rejimida yoki filtr hech narsa topmaganda.
+
 ⚠️ **RANG HAR IKKI REJIMDA ham SHOSHILINCHLIKNI bildiradi**, ustunni emas — shuning uchun
 "Bosqich" rejimida "Qayta qo'ng'iroq" ustunidagi KECHIKKAN karta ham qizil bo'lib ko'zga
 tashlanadi. Aks holda bosqich rejimiga o'tgan operator muddati o'tganlarni ko'rmay qolardi.
 
-⚠️ "Bosqich" rejimi tanlanganda QAMROV avtomatik "Hammasi" ga o'tadi (saqlangan tanlov bilan
-sahifa ochilganda ham) — aks holda yakuniy ikki ustun DOIM bo'sh turardi.
+⚠️ **TAXTADA FAQAT OCHIQ TALABLAR (2026-10-27, egasining talabi):** «Hal bo'ldi» / «Bog'lanib bo'lmadi» bo'lgan karta
+taxtadan chiqadi (tarixi profilda, raqamlari «Hisobot» tabida). "Ochiqlar / Hammasi" qamrovi OLIB TASHLANDI (ilgari
+"Bosqich" rejimi o'zi "Hammasi" ga o'tib, yopilganlar taxtada qolib ketardi). Yakuniy bosqich ustunlari (done/failed)
+taxtada BO'SH qoladi — ular sudrab yopish uchun nishon; kerak bo'lmasa o'chiriladi (§3.66).
 
-⚠️ "Muddat" rejimida yakuniy talabning ustuni YO'Q (`bucketOf` bo'sh qaytaradi). "Hammasi"
-qamrovida ular ro'yxatga tushadi, lekin taxtada chizilmaydi — shuning uchun pastdagi sanoq
-`boardItems` dan hisoblanadi, aks holda "talab yo'qolgan"dek tuyulardi.
+⚠️ **TUR — RANG va FILTR (2026-10-27):** qarzdor (`debt`, sariq) va darsga kelmagan (`absence`, binafsha) kartaning
+CHAP CHIZIG'I tur rangida + yorliq («Qarzdor» / «Darsga kelmadi»). Tur — sabab id'si `meta.kinds` dagi avtomatik sabab
+bilan mos (sabab o'chirilgan eski kartada — matni) — `lib/contactDue.ts` `requestKind`. Shoshilinchlik (muddati o'tgan —
+qizil FON va muddat belgisi) bundan alohida. Filtrlar qatorida «Hammasi · Qarzdorlar · Darsga kelmaganlar (· Boshqa)»
+sonlari bilan (klientda).
 
 ### ⚠️ SUDRASH HOLATNI JIMGINA O'ZGARTIRMAYDI
 
@@ -177,16 +185,18 @@ chegarasi `MaxOpenRows` = 5000). Ilgari bitta umumiy `Take(500)` bor edi: "Bosqi
 qoldirardi — operator ularni hech qachon ko'rmasdi. Taxta ostidagi ogohlantirish ham endi faqat
 yopilganlar chegaraga yetganda chiqadi.
 
-### ARXIVDAGI o'quvchi — `isArchived` belgisi (2026-10-07)
+### ARXIVDAGI o'quvchi — talab avtomatik YOPILADI (2026-10-27)
 
-O'quvchi arxivlansa uning ochiq talabi AVTOMATIK YOPILMAYDI — qaytarish (win-back) qo'ng'irog'i
-qonuniy ish. Lekin karta endi `isArchived` bilan keladi (`ContactRequestDto.IsArchived`) va
-kartada qora **«Arxivda»** belgisi turadi: operator ketgan o'quvchining oilasiga qo'ng'iroq
-qilayotganini darhol ko'radi (ilgari belgisiz "Bugun qilish kerak" da oddiy talab bo'lib turardi).
+⚠️ Egasining qarori (2026-10-27) eski qoidani (2026-10-07: "arxivda yopilmaydi, win-back qonuniy") ALMASHTIRDI:
+o'quvchi arxivlanganda (`StudentArchiveFlow.ArchiveAsync` — yakka, guruhdan chiqarishda, ommaviy) ochiq talabi
+«Hal bo'ldi — o'quvchi arxivlandi» bo'lib yopiladi (`ContactQueueService.CloseForArchivedAsync` → `CloseBySystem`,
+`note` hodisasi) va servis taxtasidan chiqadi. Davomat, qizil ro'yxat va tarix TEGILMAYDI. O'chirilgan o'quvchining
+talablari `StudentPurge` da o'chadi. Eski arxivdagi ochiq kartalar (deploydan oldingi) `isArchived` «Arxivda» belgisi
+bilan qoladi — admin yopadi.
 
 ### Filtrlar — bittadan boshqasi KLIENTDA
 
-Serverga faqat **QAMROV** (`status` = ochiqlar / hammasi) va kalendar OYI uzatiladi. Qidiruv,
+Serverga faqat kalendar OYI uzatiladi (navbat — doim ochiqlar). Tur, qidiruv,
 sabab, "kim yuborgan" va fokus — kelgan ro'yxat ustida, ya'ni bir zumda ishlaydi va so'rov
 yubormaydi.
 
@@ -251,8 +261,10 @@ o'zi** (`"new"`, `"callback"`, `"done"`, `"failed"`).
 - ⚠️ `StageId` **BO'SH** bo'lishi ODDIY holat: talab o'z holatining tizim ustunida turibdi.
   Shuning uchun eski qatorlarni to'ldirish (backfill) **KERAK EMAS** va ustun o'chirilsa ham
   karta taxtadan **yo'qolmaydi** (klientda `stageKeyOf`, serverda `Stages` sanog'i).
-- Tizim ustuni **o'chirilmaydi** va `BaseStatus` i **o'zgartirilmaydi** (nomi va rangi — bemalol):
-  u o'z holatidagi kartalar uchun doimiy "uy".
+- Tizim ustunining `BaseStatus` i **o'zgartirilmaydi** (nomi va rangi — bemalol). ⚠️ 2026-10-27 dan u O'CHIRILADI —
+  qatori qoladi, `IsHidden = true` (aks holda seed uni qayta tiklardi); «Sozlamalar → Servis» dan qaytariladi
+  (`POST stages/{id}/restore`). Ustuni yashirilgan karta shu holatga bog'langan BIRINCHI ko'rinadigan ustunga tushadi
+  (`ContactService.StageHomeOf` ↔ klient `stageKeyOf`, testlar ikkala tomonda).
 
 ### SUDRASH — ikki xil, farqi PRINSIPIAL
 
@@ -299,11 +311,13 @@ ko'rib chiqilsin.
 
 ### Endpointlar (hammasi `ContactsController` da — ruxsat `contacts` avtomatik meros)
 
-`GET stages` · `POST stages` · `PUT stages/{id}` · `DELETE stages/{id}` ·
-`PATCH stages/reorder` · `POST {id}/stage`.
+`GET stages` (`?all=true` — yashirilganlar ham) · `POST stages` · `PUT stages/{id}` · `DELETE stages/{id}` ·
+`POST stages/{id}/restore` · `PATCH stages/reorder` · `POST {id}/stage` · `GET|PUT settings` («Servis», §9.5).
 
-⚠️ **O'chirish**: tizim ustuni — 400; ichida talab bor ustun — 400 (soni bilan). Lidlardagi
-"jimgina yetim qoldirish va keyingi restartda tuzatish" bu yerda **ATAYIN qilinmadi**.
+⚠️ **O'chirish (2026-10-27, egasining talabi "hamma ustunni o'chira olsin"):** HAR ustun o'chiriladi. Ichidagi
+kartalar YO'QOLMAYDI — `StageId = ""` (asosiy ustunga qaytadi, auditda soni); tizim ustuni yashiriladi. Yagona to'siq —
+OCHIQ bosqichning (new/callback) OXIRGI ko'rinadigan ustuni (`ContactService.StageDeleteError`, 400 sabab bilan):
+aks holda o'sha holatdagi kartalar joysiz qolardi. Yashirilgan ustunga karta ko'chirilmaydi (`{id}/stage`, `attempt`).
 
 ⚠️ **Ustunlar tartibi (chapga/o'ngga)** — optimistik, lekin xatoda ESKI tartib qaytadi va `alert`
 bilan sabab chiqadi; so'rov `setStages` updater'i ICHIDA chaqirilmaydi (StrictMode uni ikki marta
@@ -525,11 +539,16 @@ SPEC: `docs/SPEC-crm-upgrade.md` P3.5. Menyuda «Bog'lanish kerak» endi ASOSIY 
 - **Seriya** — `AbsenceStreaks` (sof, `AbsenceStreakTests`): bitta (o'quvchi, guruh) bo'yicha eng oxirgi darsdan
   ORQAGA: sababsiz yo'qlik sanaladi, belgilanmagan / o'tilmagan / a'zolikdan tashqari dars o'tkazib yuboriladi,
   «keldi», «kech» yoki «sababli» (`AbsenceReason.IsExcused`) yo'qlik to'xtatadi. Turli guruhlar aralashmaydi.
-  Darajalar: 3 va 5. Manba — `AbsenceStreakLoader` (oxirgi 60 kun, `AttendanceRules` bilan; qizil ro'yxat, KPI
-  «Ketma-ket 3 dars kelmaganlar» va fon xizmati — AYNAN shu funksiya).
-- **Fon xizmati** `AbsenceStreakService` (startupdan 2 daq keyin, keyin har 30 daq, 08:00–22:00): 3/5 darajaga
+  Qizil ro'yxat/KPI darajalari (`LevelOf`): 3 va 5. Manba — `AbsenceStreakLoader` (oxirgi 60 kun, `AttendanceRules`
+  bilan; qizil ro'yxat, KPI «Ketma-ket 3 dars kelmaganlar» va fon xizmati — AYNAN shu funksiya).
+- ⚠️ **«Bog'lanish kerak» chegarasi — SOZLAMA (2026-10-27, egasining talabi):** «Sozlamalar → O'quv → Servis»
+  (`CenterMeta.ContactAbsenceAutoEnabled`, `ContactAbsenceLessons` 1..10, standart **3**; o'chiq — hech narsa qilinmaydi).
+  Darajalar `AbsenceStreaks.ContactLevels(n)` = [n, 5] (n ≥ 5 bo'lsa [n]). Qizil ro'yxat va KPI darajasi ATAYIN 3/5 da
+  qoldi (KPI nomi «3 dars»). Seriyada allaqachon ko'tarilgan eng yuqori darajadan PAST daraja qayta ko'tarilmaydi
+  (`ContactLevelsToRaise`) — chegara keyin pasaytirilsa ishlangan seriya qayta talab ochmaydi.
+- **Fon xizmati** `AbsenceStreakService` (startupdan 2 daq keyin, keyin har 30 daq, 08:00–22:00): n/5 darajaga
   yetgan seriyaga `AbsenceStreakAlert` (unikal `(StudentId, GroupId, StreakStart, Level)` — qayta yugurish takror
-  bermaydi). YANGI qator paydo bo'lsa, o'quvchiga yugurish boshiga ko'pi bilan BITTA amal va faqat oxirgi yo'qlik
+  bermaydi; 2026-10-27 gacha yozilgan qatorlarda daraja 3/5). YANGI qator paydo bo'lsa, o'quvchiga yugurish boshiga ko'pi bilan BITTA amal va faqat oxirgi yo'qlik
   ≤ 14 kun oldin bo'lsa (deploydan keyin eski seriyalar to'lqini bo'lmasin):
   - ochiq talab YO'Q → `ContactQueueService.Add` («Ketma-ket darsga kelmadi» — sabab
     `CenterMeta.AbsenceStreakReasonId`, izoh «{guruh}: ketma-ket {n} ta dars sababsiz qoldirildi (dd.MM, …)»,
@@ -547,3 +566,26 @@ SPEC: `docs/SPEC-crm-upgrade.md` P3.5. Menyuda «Bog'lanish kerak» endi ASOSIY 
   standart 180 kun, ko'pi bilan 366): sanoqlar (Darslar · Keldi · Kech · Sababli · Sababsiz · %) va har qoldirilgan
   dars (sana, guruh, sabab) — `StudentJournalBuilder.PeriodCellsAsync` dan, ya'ni sanoqlar ro'yxat bilan bir xil.
 - `AbsenceStreakAlerts` — hosila ma'lumot, zaxiraga KIRMAYDI (`BackupService.ExcludedTables`).
+
+## 9.5. AVTOMATIK TALAB — to'lov qarzdorligi (2026-10-27)
+
+Egasining talabi: oyning to'lov muddatigacha (20-sana) to'lamagan qarzdor avtomatik «Bog'lanish kerak» ga tushadi;
+to'lov qilinib qarz yopilganda talab O'ZI yopiladi. Kod: `DebtContactService` (+ sof `DebtContactRules`), jadval
+`DebtContactAlerts` (migratsiya `AddDebtContactAlerts`), testlar `DebtContactTests`.
+
+- **Qachon:** fon xizmati (startupdan 3 daq keyin, har 30 daq, 08:00–22:00). «Sozlamalar → O'quv → Servis»:
+  `CenterMeta.ContactDebtAutoEnabled` (o'chiq — yangi talab yo'q, lekin to'langanlari YOPILAVERADI) va
+  `ContactDebtDay` (1..28, standart **20**). Oyning shu sanasidan oy oxirigacha — har yangi qarzdorga OYIGA BITTA hodisa (unikal `(StudentId, Month)`); restart,
+  qayta yugurish va operator talabni yopib qo'yishi takror bermaydi. Muddatdan keyin qarzdor bo'lganlar ham tushadi.
+- **Kim qarzdor** — «Xabarlar → Qarzdorlar» tabi bilan BIR XIL ta'rif (`MessagingReports.DebtorsAsync` naqshi):
+  arxivsiz, `Balance < 0`, yopilgan guruhli emas, `DebtMessages.BuildForStudentAsync` kurs bo'yicha qarz topadi.
+- **Talab:** sabab «To'lov qarzdorligi» (`CenterMeta.DebtContactReasonId`, seed `debt-contact-reason-2026-10`),
+  izoh «To'lov qarzdorligi: 450 000 so'm — Ingliz tili: 300 000 so'm; …», muallif «Tizim». Ochiq talab BOR bo'lsa —
+  unga `note` (§4: ikkinchi ochiq talab yo'q).
+- **Avtomatik yopish (har sikl, 20-sanaga bog'liq emas):** FAQAT shu xizmat OCHGAN (`OpenedRequest`) va hali ochiq
+  talab — o'quvchi balansi manfiy emas (yoki arxivlangan/o'chirilgan) bo'lsa → «Hal bo'ldi»: `note` hodisasi
+  `NextStatus = done`, «To'lov qilindi — qarz yopildi…», `ClosedBy = Tizim`. Qisman to'lov — talab ochiq qoladi.
+  Boshqa sabab bilan ochilgan talabga qarz IZOHI qo'shilgan bo'lsa — u yopilmaydi (masalan kelmaslik hamon dolzarb).
+  Operator o'zi yopgan/o'chirgan talab — kuzatish tugaydi (`ResolvedAt`), qayta ochilmaydi.
+- Hisobot: `note` urinish/bog'lanildi sonlariga KIRMAYDI; "Hal bo'ldi" sanog'ida «Tizim» bo'lib ko'rinadi (xodimning yutug'i emas).
+- `DebtContactAlerts` — texnik belgi, zaxiraga KIRMAYDI (talablarning o'zi zaxirada).

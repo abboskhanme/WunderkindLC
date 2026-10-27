@@ -140,6 +140,46 @@ public class ContactQueueService(IAppDbContext db, AuditService audit)
         return new BulkResult(created, skipped.Count, skipped.Take(10).ToList(), notFound);
     }
 
+    /// <summary>
+    /// Ochiq talabni TIZIM yopadi (qarz to'landi, o'quvchi arxivlandi) — «Hal bo'ldi» HODISASI bilan: `note` turi
+    /// (hisobotdagi urinish/bog'lanildi sonlariga kirmaydi), <c>NextStatus = done</c>, matn sabab bilan. Karta taxtadan
+    /// chiqadi, tarix va hisobot qoladi. <b>SaveChanges QILMAYDI.</b>
+    /// </summary>
+    public void CloseBySystem(ContactRequest c, string text, string actorName)
+    {
+        var stamp = AppClock.Iso();
+        db.ContactAttempts.Add(new ContactAttempt
+        {
+            RequestId = c.Id, StudentId = c.StudentId, Type = ContactAttemptTypes.Note,
+            Response = text, NextStatus = ContactStatuses.Done,
+            ActorId = "", ActorName = actorName, CreatedAt = stamp, Date = AppClock.Today.ToString("yyyy-MM-dd"),
+        });
+        c.Status = ContactStatuses.Done;
+        c.StageId = "";   // yangi holatning tizim ustuniga (contacts.md §3.66)
+        c.DueDate = "";
+        c.ClosedAt = stamp;
+        c.ClosedBy = actorName;
+        c.LastResponse = text;
+        c.LastActorName = actorName;
+        c.LastActionAt = stamp;
+        audit.Record(AuditEntity, c.Id, "update", $"Bog'lanish yopildi ({c.StudentName}): {text}", studentId: c.StudentId);
+    }
+
+    public const string ArchivedText = "O'quvchi arxivlandi — talab avtomatik yopildi.";
+
+    /// <summary>
+    /// O'quvchi ARXIVLANGANDA uning ochiq talabi yopiladi (egasining talabi, 2026-10-27: servis taxtasidan chiqsin,
+    /// davomat/qizil ro'yxatda esa qolsin). <b>SaveChanges QILMAYDI</b> — arxivlash tranzaksiyasi bilan birga saqlanadi.
+    /// </summary>
+    public async Task<int> CloseForArchivedAsync(string studentId, string actorName, CancellationToken ct = default)
+    {
+        var open = await db.ContactRequests
+            .Where(c => c.StudentId == studentId && (c.Status == ContactStatuses.New || c.Status == ContactStatuses.Callback))
+            .ToListAsync(ct);
+        foreach (var c in open) CloseBySystem(c, ArchivedText, actorName);
+        return open.Count;
+    }
+
     /// <summary>O'quvchida OCHIQ talab bormi (bo'lsa — o'sha talab).</summary>
     public Task<ContactRequest?> OpenRequestAsync(string studentId) =>
         db.ContactRequests.FirstOrDefaultAsync(

@@ -80,6 +80,8 @@ public static class BackupService
         "studentCredentials",
         // Davomat seriyalari (U3d) — jurnaldan qayta hisoblanadi (hosila ma'lumot).
         "absenceStreakAlerts",
+        // Qarzdorlik → «Bog'lanish kerak» hodisalari — texnik belgi (oyiga bitta talab); talablarning o'zi zaxirada.
+        "debtContactAlerts",
         // Topshiriqlar (HR): yuborilgan eslatmalar va kunlik ishlar jurnali — texnik (takror yubormaslik belgilari).
         "hrTaskReminders", "hrJobRuns",
     };

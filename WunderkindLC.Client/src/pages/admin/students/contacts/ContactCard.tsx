@@ -7,7 +7,7 @@ import {
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import type { ContactRequestItem } from '@/api/services/contacts'
-import { bucketOf } from '@/lib/contactDue'
+import { bucketOf, CONTACT_KINDS, type ContactKind } from '@/lib/contactDue'
 import { avatarColor, initials } from '@/lib/avatar'
 import { DropdownMenu, type DropdownMenuItem } from '@/components/ui/DropdownMenu'
 import { cn, formatDate } from '@/lib/utils'
@@ -81,14 +81,18 @@ export function ContactCardContent({
   today,
   actions,
   dragging,
+  kind = 'other',
 }: {
   r: ContactRequestItem
   today: string
   /** Berilmasa karta "o'lik" bo'ladi (drag overlay). */
   actions?: ContactCardActions
   dragging?: boolean
+  /** Tur (qarzdor / darsga kelmagan) — chap chiziq rangi va belgi (`requestKind`). */
+  kind?: ContactKind
 }) {
   const t = TONES[toneKeyOf(r, today)] ?? TONES.later
+  const k = CONTACT_KINDS[kind]
   const Icon = t.icon
   const open = r.status === 'new' || r.status === 'callback'
   const waited = waitingDays(r.createdAt)
@@ -111,7 +115,7 @@ export function ContactCardContent({
         'flex flex-col gap-2 rounded-lg border border-slate-200 p-3 shadow-[var(--shadow-1)] transition-shadow',
         dragging ? 'rotate-2 cursor-grabbing opacity-70 shadow-[var(--shadow-pop)]' : 'hover:shadow-[var(--shadow-2)]',
       )}
-      style={{ background: t.bg, borderLeftWidth: 3, borderLeftColor: t.accent }}
+      style={{ background: t.bg, borderLeftWidth: k.accent ? 4 : 3, borderLeftColor: k.accent ?? t.accent }}
     >
       {/* Ism + sabab */}
       <div className="flex items-start justify-between gap-2">
@@ -152,6 +156,11 @@ export function ContactCardContent({
 
       {/* Muddat + urinishlar + kutish */}
       <div className="flex flex-wrap items-center gap-1.5">
+        {k.short && (
+          <span className={cn('inline-flex items-center rounded-full px-2 py-0.5 text-[10.5px] font-semibold', k.badge)}>
+            {k.short}
+          </span>
+        )}
         {/* ARXIVDAGI o'quvchi — talab yopilmaydi (qaytarish qo'ng'irog'i qonuniy), lekin operator
             kimga qo'ng'iroq qilayotganini darhol ko'rishi kerak. */}
         {r.isArchived && (
@@ -266,11 +275,13 @@ export function ContactCard({
   today,
   actions,
   onClick,
+  kind,
 }: {
   r: ContactRequestItem
   today: string
   actions: ContactCardActions
   onClick: () => void
+  kind?: ContactKind
 }) {
   const open = r.status === 'new' || r.status === 'callback'
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
@@ -287,7 +298,7 @@ export function ContactCard({
       onClick={onClick}
       className={cn('touch-none', open && actions.canWrite && 'cursor-grab', isDragging && 'opacity-40')}
     >
-      <ContactCardContent r={r} today={today} actions={actions} />
+      <ContactCardContent r={r} today={today} actions={actions} kind={kind} />
     </div>
   )
 }

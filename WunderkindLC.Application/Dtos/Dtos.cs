@@ -3693,7 +3693,7 @@ public record ContactStageMoveRequest(string StageId);
 /// <param name="Count">Shu ustundagi talablar soni (o'chirish mumkinligini ko'rsatish uchun).</param>
 public record ContactStageDto(
     string Id, string Title, string Color, int Order,
-    string BaseStatus, string BaseStatusLabel, bool IsSystem, int Count);
+    string BaseStatus, string BaseStatusLabel, bool IsSystem, int Count, bool IsHidden = false);
 
 /// <summary>Ustun yaratish/tahrirlash.</summary>
 public record ContactStageRequest(string Title, string? Color = null, string? BaseStatus = null);
@@ -3736,7 +3736,17 @@ public record ContactRequestDto(
 public record ContactMetaDto(
     List<ContactStatusDto> Statuses, List<ContactResultDto> Results,
     List<ContactCountDto> Counts, int Overdue,
-    ContactDueCountsDto? Due = null, List<ContactDayPlanDto>? Days = null);
+    ContactDueCountsDto? Due = null, List<ContactDayPlanDto>? Days = null,
+    List<ContactKindDto>? Kinds = null);
+
+/// <summary>
+/// Avtomatik talab TURI (taxtada rang va filtr, 2026-10-27): `debt` — «To'lov qarzdorligi», `absence` — «Ketma-ket darsga
+/// kelmadi». Klient kartani shu sabab id'si (yoki — sabab o'chirilgan eski kartada — matni) bo'yicha ajratadi.
+/// </summary>
+public record ContactKindDto(string Kind, string ReasonId, string Label);
+
+/// <summary>«Sozlamalar → Servis» — kelmaganlar va qarzdorlarni avtomatik «Bog'lanish kerak» ga o'tkazish.</summary>
+public record ContactAutoSettingsDto(bool AbsenceEnabled, int AbsenceLessons, bool DebtEnabled, int DebtDay);
 
 /// <summary>
 /// Navbatning MUDDAT bo'yicha kesimi (<c>ContactService.Due</c>).

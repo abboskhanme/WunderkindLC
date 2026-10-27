@@ -22,8 +22,8 @@ import { ContactStageFormModal } from './ContactStageFormModal'
 import { MonthDayStrip } from '@/components/ui/MonthDayStrip'
 import { currentMonth, todayIso } from '@/lib/month'
 import {
-  bucketOf, isTodo, stageKeyOf, stageColumns, DUE_COLUMNS, STATUS_COLUMNS,
-  type BoardColumn,
+  bucketOf, isTodo, requestKind, stageKeyOf, stageColumns, CONTACT_KINDS, DUE_COLUMNS, STATUS_COLUMNS,
+  type BoardColumn, type ContactKind,
 } from '@/lib/contactDue'
 import { ContactStatsPanel } from './ContactStatsPanel'
 import { Card } from '@/components/ui/Card'
@@ -40,13 +40,6 @@ type Tab = 'navbat' | 'hisobot'
 const CONTACT_TABS = ['navbat', 'hisobot'] as const
 
 type GroupBy = 'due' | 'status'
-
-/**
- * Serverning YOPILGAN talablar chegarasi (`ContactsController`: `Math.Clamp(limit, 1, 500)`).
- * ⚠️ Ochiq talablar chegarasiz HAMMASI keladi — "Bosqich" rejimida eski ochiq talab yopilganlar
- * ortidan taxtadan tushib qolmasin (ilgari bitta umumiy 500 chegara shunday qilardi).
- */
-const MAX_ROWS = 500
 
 /** Ustunlarni toraytiradigan "fokus" tugmalari — sahifadagi eng katta raqamlar. */
 const FOCUS_TILES: {
@@ -132,14 +125,11 @@ export function ContactQueuePage() {
   const [groupBy, setGroupBy] = useState<GroupBy>(() => readPref('contacts:groupBy', ['due', 'status'] as const, 'due'))
 
   /* ---------- Filtrlar ---------- */
-  /**
-   * YAGONA server filtri: ochiqlar (new+callback) yoki hammasi.
-   *
-   * ⚠️ Boshlang'ich qiymat GURUHLASHDAN kelib chiqadi: "Bosqich" rejimida yakuniy ("Hal bo'ldi",
-   * "Bog'lanib bo'lmadi") ustunlari ham bor — ochiqlar bilan ular DOIM bo'sh turardi, ya'ni
-   * saqlangan tanlov bilan sahifa qayta ochilganda taxta yarim ishlagandek ko'rinardi.
-   */
-  const [scope, setScope] = useState<'open' | 'all'>(() => (groupBy === 'status' ? 'all' : 'open'))
+  // ⚠️ TAXTADA FAQAT OCHIQ TALABLAR (2026-10-27, egasining talabi): «Hal bo'ldi» / «Bog'lanib bo'lmadi» bo'lgan karta
+  // taxtadan chiqadi — tarixi o'quvchi profilida, raqamlari «Hisobot» tabida. Ilgari "Ochiqlar / Hammasi" qamrovi bor
+  // edi va "Bosqich" rejimi o'zi "Hammasi" ga o'tardi — yopilganlar taxtada qolib ketardi.
+  /** Tur: hammasi | qarzdorlar | darsga kelmaganlar | boshqa (rang bilan bir xil). */
+  const [kind, setKind] = useState<ContactKind | 'all'>('all')
   const [search, setSearch] = useState('')
   /** Sabab: 'all' | '__none__' (sababsiz) | reasonId. */
   const [reason, setReason] = useState('all')
@@ -155,8 +145,6 @@ export function ContactQueuePage() {
   const pickGroupBy = (g: GroupBy) => {
     setGroupBy(g)
     window.localStorage.setItem('contacts:groupBy', g)
-    // Bosqich rejimida yakuniy ustunlar ham ko'rinsin — aks holda ikkitasi doim bo'sh turardi.
-    if (g === 'status') setScope('all')
   }
 
   /* ---------- Modallar ---------- */
@@ -176,8 +164,8 @@ export function ContactQueuePage() {
     try {
       const [m, list, st] = await Promise.all([
         getContactMeta(month),
-        // Butun navbat BIR so'rovda — qolgan filtrlar klientda (yuqoridagi izoh).
-        getContactRequests({ status: scope === 'all' ? 'all' : undefined, limit: MAX_ROWS }),
+        // Butun OCHIQ navbat BIR so'rovda (server: status bo'sh = new + callback, chegarasiz) — filtrlar klientda.
+        getContactRequests({}),
         // Ustunlar server bermasa (eski backend) taxta ZAXIRA ro'yxat bilan ishlayveradi.
         getContactStages().catch(() => [] as ContactStage[]),
       ])
@@ -190,7 +178,7 @@ export function ContactQueuePage() {
     } finally {
       setLoading(false)
     }
-  }, [scope, month])
+  }, [month])
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- qamrov/oy o'zgarganda qayta yuklash (maqsadli)
@@ -209,11 +197,14 @@ export function ContactQueuePage() {
     [meta.counts],
   )
   const openCount = useMemo(() => countOf('new') + countOf('callback'), [countOf])
-  /** Kelgan YOPILGAN talablar soni — server faqat shularni `MAX_ROWS` bilan qirqadi. */
-  const closedCount = useMemo(
-    () => items.filter((r) => r.status !== 'new' && r.status !== 'callback').length,
-    [items],
-  )
+
+  /** Har talabning turi (qarzdor / darsga kelmagan / boshqa) — rang va tur filtri shundan. */
+  const kindOf = useCallback((r: ContactRequestItem) => requestKind(r, meta.kinds), [meta.kinds])
+  const kindCounts = useMemo(() => {
+    const c: Record<ContactKind, number> = { debt: 0, absence: 0, other: 0 }
+    for (const r of items) c[kindOf(r)]++
+    return c
+  }, [items, kindOf])
 
   /** "Yuborgan" ro'yxati — kelgan ma'lumotdan (alohida so'rov kerak emas). */
   const authors = useMemo(
@@ -226,6 +217,7 @@ export function ContactQueuePage() {
     const q = search.trim().toLowerCase()
     const qDigits = q.replace(/\D/g, '')
     return items.filter((r) => {
+      if (kind !== 'all' && kindOf(r) !== kind) return false
       if (reason === '__none__' ? !!r.reasonId : reason !== 'all' && r.reasonId !== reason) return false
       if (author !== 'all' && r.createdBy !== author) return false
       // Aniq kun — server semantikasi bilan bir xil: faqat o'sha kunga rejalashtirilganlar.
@@ -242,7 +234,7 @@ export function ContactQueuePage() {
       if (text.includes(q)) return true
       return qDigits.length >= 3 && r.phones.some((p) => p.replace(/\D/g, '').includes(qDigits))
     })
-  }, [items, search, reason, author, dueDate, focus, today])
+  }, [items, search, kind, kindOf, reason, author, dueDate, focus, today])
 
   /** Fokus tanlanganda MUDDAT ustunlari ham toraytiriladi (bo'sh ustunlar chalg'itmasin). */
   const columns = useMemo(() => {
@@ -255,23 +247,21 @@ export function ContactQueuePage() {
   }, [groupBy, focus, stages])
 
   /**
-   * Taxtada HAQIQATAN chiziladiganlar.
-   *
-   * ⚠️ "Muddat" rejimida yakuniy (done/failed) talabning ustuni YO'Q (`bucketOf` bo'sh qaytaradi),
-   * "Hammasi" qamrovida esa ular ro'yxatga tushadi. Ularni shu yerda chiqarib tashlamasak,
-   * pastdagi sanoq chizilganidan KO'P ko'rsatib, "talab yo'qolgan"dek tuyulardi.
+   * Taxtada HAQIQATAN chiziladiganlar — ustuni bor kartalar (fokus muddat ustunlarini toraytirganda qolganlari
+   * sanoqqa kirmasin, aks holda pastdagi son chizilganidan KO'P bo'lib "talab yo'qolgan"dek tuyulardi).
    */
   const boardItems = useMemo(() => {
     const keys = new Set(columns.map((c) => c.key))
     return visible.filter((r) =>
-      keys.has(groupBy === 'status' ? stageKeyOf(r, keys) : bucketOf(r.status, r.dueDate, today)))
+      groupBy === 'status' ? stageKeyOf(r, columns) !== '' : keys.has(bucketOf(r.status, r.dueDate, today)))
   }, [visible, columns, groupBy, today])
 
   const filterCount =
-    (search.trim() ? 1 : 0) + (reason !== 'all' ? 1 : 0) + (author !== 'all' ? 1 : 0) +
+    (search.trim() ? 1 : 0) + (kind !== 'all' ? 1 : 0) + (reason !== 'all' ? 1 : 0) + (author !== 'all' ? 1 : 0) +
     (focus ? 1 : 0) + (dueDate ? 1 : 0)
 
   const clearFilters = () => {
+    setKind('all')
     setSearch('')
     setReason('all')
     setAuthor('all')
@@ -356,21 +346,16 @@ export function ContactQueuePage() {
   const removeStage = async (col: BoardColumn) => {
     const stage = col.stage
     if (!stage) return
-    // Server ham tekshiradi, lekin sababni DARHOL aytamiz — bosib ko'rib xato olishdan yaxshi.
-    if (stage.isSystem) {
-      alert("Tizim ustunini o'chirib bo'lmaydi — u shu bosqichdagi kartalar uchun doimiy joy.")
-      return
-    }
-    if (stage.count > 0) {
-      alert(`Bu ustunda ${stage.count} ta talab bor. Avval ularni boshqa ustunga ko'chiring.`)
-      return
-    }
-    if (!confirm(`"${stage.title}" ustunini o'chirasizmi?`)) return
+    // 2026-10-27: HAR ustun o'chiriladi. Kartalar yo'qolmaydi — asosiy ustunga qaytadi; tizim ustuni yashiriladi
+    // («Sozlamalar → Servis» dan qaytariladi). Ochiq bosqichning OXIRGI ustunini server rad etadi — sabab alert'da.
+    const moved = stage.count > 0 ? `\n\nIchidagi ${stage.count} ta karta «${stage.baseStatusLabel}» asosiy ustuniga o'tadi.` : ''
+    const back = stage.isSystem ? "\nKeyin «Sozlamalar → Servis» dan qaytarsa bo'ladi." : ''
+    if (!confirm(`"${stage.title}" ustunini o'chirasizmi?${moved}${back}`)) return
     try {
       await deleteContactStage(stage.id)
-      setStages(await getContactStages())
+      await load()
     } catch (e) {
-      setError(apiErrorMessage(e, "Ustunni o'chirib bo'lmadi"))
+      alert(apiErrorMessage(e, "Ustunni o'chirib bo'lmadi"))
     }
   }
 
@@ -553,12 +538,16 @@ export function ContactQueuePage() {
                 </select>
               )}
 
+              {/* TUR — qarzdorlar / darsga kelmaganlar (kartadagi rang bilan bir xil). "Boshqa" faqat bor bo'lsa. */}
               <Seg
-                value={scope}
-                onChange={(v) => setScope(v)}
+                value={kind}
+                onChange={(v) => setKind(v)}
+                title="Talab turi"
                 options={[
-                  { key: 'open', label: `Ochiqlar${openCount ? ` (${openCount})` : ''}` },
-                  { key: 'all', label: 'Hammasi' },
+                  { key: 'all' as const, label: `Hammasi (${items.length})` },
+                  { key: 'debt' as const, label: `${CONTACT_KINDS.debt.label} (${kindCounts.debt})` },
+                  { key: 'absence' as const, label: `${CONTACT_KINDS.absence.label} (${kindCounts.absence})` },
+                  ...(kindCounts.other > 0 ? [{ key: 'other' as const, label: `${CONTACT_KINDS.other.label} (${kindCounts.other})` }] : []),
                 ]}
               />
 
@@ -640,7 +629,10 @@ export function ContactQueuePage() {
           {/* ====== NAVBAT ====== */}
           {loading ? (
             <Loader label="Yuklanmoqda..." />
-          ) : boardItems.length === 0 ? (
+          ) : boardItems.length === 0 && (groupBy !== 'status' || filterCount > 0) ? (
+            // ⚠️ "Bosqich" rejimida taxta BO'SH bo'lsa ham chiziladi: ustunlar — sozlanadigan narsa. Ilgari bo'sh
+            // navbatda bu karta taxtani yashirardi va «Ustun qo'shish» saqlansa ham yangi ustun KO'RINMASDI
+            // (foydalanuvchi "ustun qo'shish ishlamayapti" deb o'ylardi).
             <Card>
               <div className="py-12 text-center">
                 <span className="mx-auto mb-3 grid h-12 w-12 place-items-center rounded-full bg-emerald-50 text-emerald-500">
@@ -665,6 +657,7 @@ export function ContactQueuePage() {
             <ContactBoard
               columns={columns}
               items={boardItems}
+              kindOf={kindOf}
               groupBy={groupBy}
               today={today}
               actions={actions}
@@ -685,12 +678,6 @@ export function ContactQueuePage() {
             />
           )}
 
-          {/* Chegaraga yetildi — jimgina qirqib qo'ymaymiz (faqat YOPILGANLAR qirqiladi) */}
-          {!loading && closedCount >= MAX_ROWS && (
-            <p className="text-center text-xs text-slate-400">
-              Yopilgan talablardan eng so'nggi {MAX_ROWS} tasi ko'rsatildi — ochiq talablar hammasi ko'rinadi.
-            </p>
-          )}
 
           {!loading && boardItems.length > 0 && (
             <p className="text-center text-xs text-slate-400">

@@ -5,7 +5,7 @@ import {
 } from '@dnd-kit/core'
 import { Plus } from 'lucide-react'
 import type { ContactRequestItem } from '@/api/services/contacts'
-import { bucketOf, isTodo, stageKeyOf, type BoardColumn } from '@/lib/contactDue'
+import { bucketOf, isTodo, stageKeyOf, type BoardColumn, type ContactKind } from '@/lib/contactDue'
 import { ContactColumn, type ContactColumnAdmin } from './ContactColumn'
 import { ContactCardContent, type ContactCardActions } from './ContactCard'
 
@@ -54,7 +54,10 @@ export function ContactBoard({
   onDrop,
   onAddColumn,
   columnAdmin,
+  kindOf,
 }: {
+  /** Karta turi (qarzdor / darsga kelmagan) — rang uchun (`requestKind`). */
+  kindOf?: (r: ContactRequestItem) => ContactKind
   columns: BoardColumn[]
   items: ContactRequestItem[]
   groupBy: 'due' | 'status'
@@ -70,13 +73,11 @@ export function ContactBoard({
   const [activeId, setActiveId] = useState<string | null>(null)
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }))
 
-  const knownIds = useMemo(() => new Set(columns.map((c) => c.key)), [columns])
-
   /** Talab qaysi ustunga tushadi (guruhlash rejimiga qarab). */
   const columnKeyOf = useMemo(
     () => (r: ContactRequestItem) =>
-      groupBy === 'status' ? stageKeyOf(r, knownIds) : bucketOf(r.status, r.dueDate, today),
-    [groupBy, today, knownIds],
+      groupBy === 'status' ? stageKeyOf(r, columns) : bucketOf(r.status, r.dueDate, today),
+    [groupBy, today, columns],
   )
 
   const grouped = useMemo(() => {
@@ -149,6 +150,7 @@ export function ContactBoard({
             today={today}
             actions={actions}
             onCardClick={onCardClick}
+            kindOf={kindOf}
             accepts={acceptsActive(col)}
             urgent={groupBy === 'due' && isTodo(col.key as never)}
             dragging={!!activeId}
@@ -170,7 +172,7 @@ export function ContactBoard({
       </div>
 
       <DragOverlay dropAnimation={null}>
-        {activeItem && <ContactCardContent r={activeItem} today={today} dragging />}
+        {activeItem && <ContactCardContent r={activeItem} today={today} dragging kind={kindOf?.(activeItem)} />}
       </DragOverlay>
     </DndContext>
   )

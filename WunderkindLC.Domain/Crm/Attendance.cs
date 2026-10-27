@@ -115,7 +115,7 @@ public class AbsenceStreakAlert
     public string GroupId { get; set; } = string.Empty;
     /// <summary>First absent date of the streak ("yyyy-MM-dd").</summary>
     public string StreakStart { get; set; } = string.Empty;
-    /// <summary>3 or 5.</summary>
+    /// <summary>Contact level: 2 or 5 (`AbsenceStreaks.ContactLevels`); rows before 2026-10-27 — 3 or 5.</summary>
     public int Level { get; set; }
     /// <summary>The «Bog'lanish kerak» request created for (or noted on) this streak.</summary>
     public string? ContactRequestId { get; set; }

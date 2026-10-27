@@ -304,6 +304,34 @@ public static class ContactService
     public static bool CanAnchorTo(string? baseStatus) => IsValidStatus(baseStatus);
 
     /// <summary>
+    /// Karta QAYSI ustunda ko'rinadi (klientdagi <c>stageKeyOf</c> ning AYNAN nusxasi — `contactDue.test.ts`): o'z ustuni
+    /// ko'rinsa — o'sha; aks holda holatining tizim ustuni (id = holat kaliti); u ham yashirilgan bo'lsa — shu holatga
+    /// bog'langan BIRINCHI ko'rinadigan ustun; hech biri bo'lmasa <c>null</c> (yakuniy holat — taxtada yo'q).
+    /// </summary>
+    /// <param name="visibleStages">Ko'rinadigan ustunlar TARTIB bo'yicha: (Id, BaseStatus).</param>
+    public static string? StageHomeOf(string? stageId, string status, IReadOnlyList<(string Id, string BaseStatus)> visibleStages)
+    {
+        if (!string.IsNullOrEmpty(stageId) && visibleStages.Any(s => s.Id == stageId)) return stageId;
+        if (visibleStages.Any(s => s.Id == status)) return status;
+        foreach (var s in visibleStages)
+            if (s.BaseStatus == status) return s.Id;
+        return null;
+    }
+
+    /// <summary>
+    /// Ustunni O'CHIRISH mumkinmi (2026-10-27, egasining talabi: "hamma ustunni o'chira olsin" — tizim ustuni ham).
+    /// Yagona to'siq: OCHIQ bosqichning (new / callback) OXIRGI ko'rinadigan ustuni — aks holda o'sha holatdagi kartalar
+    /// taxtada joysiz qolardi. Yakuniy bosqich ustunlari (done / failed) har doim o'chadi: taxtada faqat ochiqlar turadi.
+    /// </summary>
+    /// <param name="otherVisibleSameBase">Shu bazaviy holatga bog'langan BOSHQA ko'rinadigan ustunlar soni.</param>
+    /// <returns>Rad sababi (matn) yoki <c>null</c> — o'chirsa bo'ladi.</returns>
+    public static string? StageDeleteError(string baseStatus, int otherVisibleSameBase) =>
+        IsOpen(baseStatus) && otherVisibleSameBase == 0
+            ? $"Bu «{StatusLabel(baseStatus)}» bosqichidagi yagona ustun — undagi kartalar joysiz qolardi. "
+              + "Avval shu bosqichga boshqa ustun qo'shing, keyin buni o'chiring."
+            : null;
+
+    /// <summary>
     /// Ustun shu talabga MOS keladimi — ustunning bazaviy holati talab holati bilan bir xilmi.
     ///
     /// <para>⚠️ Taxtaning asosiy qoidasi: ustun HOLATNI almashtirmaydi, unga bog'lanadi. Mos

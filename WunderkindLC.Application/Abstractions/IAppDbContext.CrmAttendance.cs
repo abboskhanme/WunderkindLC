@@ -9,4 +9,6 @@ public partial interface IAppDbContext
     DbSet<TeacherAttendanceFine> TeacherAttendanceFines { get; }
     DbSet<AbsenceStreakAlert> AbsenceStreakAlerts { get; }
     DbSet<TeacherFine> TeacherFines { get; }
+    /// <summary>Qarzdorlik → «Bog'lanish kerak» hodisalari (oyiga bitta, `contacts.md` §9.5).</summary>
+    DbSet<DebtContactAlert> DebtContactAlerts { get; }
 }

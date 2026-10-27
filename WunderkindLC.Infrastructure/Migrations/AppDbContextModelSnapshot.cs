@@ -1470,6 +1470,22 @@ namespace WunderkindLC.Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<bool>("ContactAbsenceAutoEnabled")
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(true);
+
+                    b.Property<int>("ContactAbsenceLessons")
+                        .HasColumnType("integer")
+                        .HasDefaultValue(3);
+
+                    b.Property<bool>("ContactDebtAutoEnabled")
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(true);
+
+                    b.Property<int>("ContactDebtDay")
+                        .HasColumnType("integer")
+                        .HasDefaultValue(20);
+
                     b.Property<string>("ContactPhone")
                         .IsRequired()
                         .HasColumnType("text");
@@ -1477,6 +1493,10 @@ namespace WunderkindLC.Infrastructure.Migrations
                     b.Property<string>("CurrentYear")
                         .IsRequired()
                         .HasColumnType("text");
+
+                    b.Property<string>("DebtContactReasonId")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
 
                     b.Property<string>("Director")
                         .IsRequired()
@@ -2237,6 +2257,10 @@ namespace WunderkindLC.Infrastructure.Migrations
                         .HasMaxLength(50)
                         .HasColumnType("character varying(50)");
 
+                    b.Property<bool>("IsHidden")
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false);
+
                     b.Property<bool>("IsSystem")
                         .HasColumnType("boolean");
 
@@ -2888,6 +2912,48 @@ namespace WunderkindLC.Infrastructure.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("Curricula");
+                });
+
+            modelBuilder.Entity("WunderkindLC.Domain.DebtContactAlert", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasColumnType("text");
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<string>("ContactRequestId")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<string>("Month")
+                        .IsRequired()
+                        .HasMaxLength(7)
+                        .HasColumnType("character varying(7)");
+
+                    b.Property<bool>("OpenedRequest")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime?>("ResolvedAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<string>("StudentId")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OpenedRequest", "ResolvedAt");
+
+                    b.HasIndex("StudentId", "Month")
+                        .IsUnique();
+
+                    b.ToTable("DebtContactAlerts");
                 });
 
             modelBuilder.Entity("WunderkindLC.Domain.DeviceToken", b =>

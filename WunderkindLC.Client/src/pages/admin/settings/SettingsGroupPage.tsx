@@ -23,6 +23,7 @@ import { ChannelsSettings } from './ChannelsSettings'
 import { AzureSpeechSettings } from './AzureSpeechSettings'
 import { GeminiSettings } from './GeminiSettings'
 import { McpSettings } from './McpSettings'
+import { ContactServiceSettings } from './ContactServiceSettings'
 import { MyMcpConnections } from '@/components/settings/MyMcpConnections'
 import { useAuth } from '@/context/auth-context'
 
@@ -187,6 +188,8 @@ function Panel({ panel }: { panel: SettingsPanelKey }): ReactNode {
       return <GeminiSettings />
     case 'mcp':
       return <McpSettings />
+    case 'servis':
+      return <ContactServiceSettings />
   }
 }
 

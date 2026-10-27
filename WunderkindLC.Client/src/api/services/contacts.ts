@@ -90,6 +90,8 @@ export interface ContactMeta {
   due?: ContactDueCounts
   /** Yaqin 14 kun rejasi: qaysi kuni nechta qayta qo'ng'iroq (faqat ish BOR kunlar). */
   days?: { date: string; count: number }[]
+  /** Avtomatik talab turlari (rang va filtr): qaysi sabab — qarzdor, qaysisi — darsga kelmadi. */
+  kinds?: { kind: 'debt' | 'absence'; reasonId: string; label: string }[]
 }
 
 export interface ContactDailyRow {

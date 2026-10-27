@@ -24,6 +24,7 @@ import {
   IconListDetails,
   IconMessages,
   IconMicrophone,
+  IconPhoneCall,
   IconMoneybag,
   IconPlugConnected,
   IconReceipt,
@@ -40,7 +41,7 @@ import {
 export type SettingsGroupKey = 'umumiy' | 'moliya' | 'oquv' | 'sotuv' | 'ilova'
 
 /** Bo'lim ichida chiziladigan TAYYOR sozlama komponenti (kalit → komponent `SettingsGroupPage` da). */
-export type SettingsPanelKey = 'check' | 'school' | 'account' | 'reasons' | 'channels' | 'azure' | 'gemini' | 'mcp'
+export type SettingsPanelKey = 'check' | 'school' | 'account' | 'reasons' | 'channels' | 'azure' | 'gemini' | 'mcp' | 'servis'
 
 /** Qatordan ochiladigan oyna (mavjud modallar). */
 export type SettingsModalKey =
@@ -199,6 +200,8 @@ export const SETTINGS_GROUPS: SettingsGroup[] = [
         ],
       },
       { key: 'sabablar', label: 'Sabablar', icon: IconListDetails, kind: 'panel', panel: 'reasons', perm: 'settings.reasons' },
+      // «Bog'lanish kerak» (servis) avtomatikasi — kelmaganlar va qarzdorlar (contacts.md §9, §9.5). Ruxsat — navbatniki.
+      { key: 'servis', label: 'Servis', icon: IconPhoneCall, kind: 'panel', panel: 'servis', perm: 'contacts' },
       {
         key: 'jurnal',
         label: 'Jurnal va davomat',

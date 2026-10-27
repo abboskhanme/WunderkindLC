@@ -47,6 +47,10 @@ internal static class StudentArchiveFlow
             }
         }
 
+        // «Bog'lanish kerak» (servis) taxtasidan chiqadi: ochiq talab «Hal bo'ldi — o'quvchi arxivlandi» bilan yopiladi
+        // (egasining talabi, 2026-10-27; contacts.md §3.65). Davomat va qizil ro'yxatga tegilmaydi.
+        await new ContactQueueService(db, audit).CloseForArchivedAsync(student.Id, "Tizim");
+
         audit.Record(AuditService.EntityStudentDiscount, student.Id, "update",
             $"O'quvchi arxivga ko'chirildi ({student.FullName})"
                 + (string.IsNullOrWhiteSpace(context) ? "" : $" — {context}")

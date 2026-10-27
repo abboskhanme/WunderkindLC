@@ -20,10 +20,12 @@ export interface ContactStage {
   baseStatus: string
   /** Bazaviy holat yorlig'i (serverdan — yagona katalog). */
   baseStatusLabel: string
-  /** Tizim ustuni: o'chirilmaydi va bazaviy bosqichi o'zgarmaydi (nomi/rangi tahrirlanadi). */
+  /** Tizim ustuni: bazaviy bosqichi o'zgarmaydi (nomi/rangi tahrirlanadi); o'chirilsa — YASHIRILADI. */
   isSystem: boolean
-  /** Shu ustundagi talablar soni — o'chirish mumkinligini oldindan ko'rsatadi. */
+  /** Shu ustundagi OCHIQ talablar soni (o'chirishda kartalar asosiy ustunga qaytadi). */
   count: number
+  /** O'chirilgan (yashirilgan) tizim ustuni — faqat `getContactStages(true)` da keladi. */
+  isHidden?: boolean
 }
 
 export interface ContactStagePayload {
@@ -33,12 +35,13 @@ export interface ContactStagePayload {
   baseStatus?: string
 }
 
-export async function getContactStages(): Promise<ContactStage[]> {
+/** `all` — yashirilgan (o'chirilgan tizim) ustunlar ham («Sozlamalar → Servis» — qaytarish uchun). */
+export async function getContactStages(all = false): Promise<ContactStage[]> {
   if (USE_MOCK) {
     await delay()
     return []
   }
-  const { data } = await api.get<ContactStage[]>('/admin/contacts/stages')
+  const { data } = await api.get<ContactStage[]>('/admin/contacts/stages', { params: all ? { all: true } : undefined })
   return data
 }
 
@@ -55,8 +58,33 @@ export async function updateContactStage(
   return data
 }
 
+/** O'chirish: ichidagi kartalar asosiy ustunga qaytadi; tizim ustuni yashiriladi (server). */
 export async function deleteContactStage(id: string): Promise<void> {
   await api.delete(`/admin/contacts/stages/${id}`)
+}
+
+/** Yashirilgan tizim ustunini taxtaga qaytarish. */
+export async function restoreContactStage(id: string): Promise<ContactStage> {
+  const { data } = await api.post<ContactStage>(`/admin/contacts/stages/${id}/restore`)
+  return data
+}
+
+/** «Sozlamalar → Servis»: kelmaganlar (necha dars) va qarzdorlar (oyning qaysi sanasidan) avtomatik navbatga. */
+export interface ContactAutoSettings {
+  absenceEnabled: boolean
+  absenceLessons: number
+  debtEnabled: boolean
+  debtDay: number
+}
+
+export async function getContactAutoSettings(): Promise<ContactAutoSettings> {
+  const { data } = await api.get<ContactAutoSettings>('/admin/contacts/settings')
+  return data
+}
+
+export async function saveContactAutoSettings(payload: ContactAutoSettings): Promise<ContactAutoSettings> {
+  const { data } = await api.put<ContactAutoSettings>('/admin/contacts/settings', payload)
+  return data
 }
 
 /** Ustunlar tartibini saqlash (kelgan id'lar tartibida). */

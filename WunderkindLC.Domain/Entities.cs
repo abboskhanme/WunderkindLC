@@ -4216,14 +4216,20 @@ public class ContactStage
     public string BaseStatus { get; set; } = ContactStatuses.Callback;
 
     /// <summary>
-    /// TIZIM ustuni — o'chirib bo'lmaydi va <see cref="BaseStatus"/> i o'zgartirilmaydi
-    /// (nomi va rangi esa tahrirlanadi).
+    /// TIZIM ustuni — <see cref="BaseStatus"/> i o'zgartirilmaydi (nomi va rangi esa tahrirlanadi); o'chirilsa
+    /// qatori QOLADI va <see cref="IsHidden"/> bo'ladi (aks holda startup seed'i uni qayta tiklardi).
     ///
     /// <para>Har bazaviy holat uchun AYNAN bittasi bor: <c>StageId</c> bo'sh yoki o'chirilgan
-    /// ustunga ishora qiladigan talab shu ustunga qaytadi — ya'ni karta HECH QACHON
-    /// taxtadan yo'qolmaydi.</para>
+    /// ustunga ishora qiladigan talab shu ustunga qaytadi (yashirilgan bo'lsa — o'sha bosqichning
+    /// birinchi ko'rinadigan ustuniga) — ya'ni karta HECH QACHON taxtadan yo'qolmaydi.</para>
     /// </summary>
     public bool IsSystem { get; set; }
+
+    /// <summary>
+    /// Foydalanuvchi o'chirgan TIZIM ustuni (2026-10-27, egasining talabi "hamma ustunni o'chira olsin"): taxtada
+    /// yo'q, «Sozlamalar → Servis» dan qaytariladi. Oddiy ustun o'chirilsa — qatori butunlay o'chadi.
+    /// </summary>
+    public bool IsHidden { get; set; }
 }
 
 /// <summary>"Bog'lanish kerak" talabining holat kalitlari (entity default'i uchun — yorliqlar

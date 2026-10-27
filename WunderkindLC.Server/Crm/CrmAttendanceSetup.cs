@@ -16,6 +16,8 @@ public static class CrmAttendanceSetup
             services.AddHostedService<AttendanceDisciplineService>();
             // U3d: consecutive unexcused absences → alerts + automatic «Bog'lanish kerak» (every 30 min, 08–22).
             services.AddHostedService<AbsenceStreakService>();
+            // Debtors after the monthly due day (20th) → «Bog'lanish kerak»; closed automatically once paid (contacts.md §9.5).
+            services.AddHostedService<DebtContactService>();
         }
         return services;
     }
@@ -30,6 +32,9 @@ public static class CrmAttendanceSetup
             var db = scope.ServiceProvider.GetRequiredService<IAppDbContext>();
             if (await AbsenceStreakService.SeedReasonAsync(db))
                 logger.LogInformation("CRM attendance: streak contact reason seeded");
+            // The contact reason «To'lov qarzdorligi» + CenterMeta.DebtContactReasonId (once).
+            if (await DebtContactService.SeedReasonAsync(db))
+                logger.LogInformation("CRM attendance: debt contact reason seeded");
         }
         catch (Exception ex)
         {

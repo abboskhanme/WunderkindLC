@@ -9,6 +9,7 @@ public partial class AppDbContext
     public DbSet<TeacherAttendanceFine> TeacherAttendanceFines => Set<TeacherAttendanceFine>();
     public DbSet<AbsenceStreakAlert> AbsenceStreakAlerts => Set<AbsenceStreakAlert>();
     public DbSet<TeacherFine> TeacherFines => Set<TeacherFine>();
+    public DbSet<DebtContactAlert> DebtContactAlerts => Set<DebtContactAlert>();
 
     partial void ConfigureCrmAttendance(ModelBuilder b)
     {
@@ -62,6 +63,23 @@ public partial class AppDbContext
         a.Property(x => x.StreakStart).HasMaxLength(10);
         a.Property(x => x.ContactRequestId).HasMaxLength(200);
         a.HasIndex(x => new { x.StudentId, x.GroupId, x.StreakStart, x.Level }).IsUnique();
+
+        // ---- Qarzdorlik → «Bog'lanish kerak» (contacts.md §9.5): oyiga bitta hodisa ----
+        b.Entity<CenterMeta>().Property(x => x.DebtContactReasonId).HasMaxLength(200);
+        // «Sozlamalar → Servis». Bazadagi standart — mavjud qator uchun (migratsiya); `ValueGeneratedNever` — EF HAR DOIM
+        // CLR qiymatini yuboradi (aks holda o'chirilgan `false` / `0` "berilmagan" deb o'tkazib yuborilib standartga qaytardi).
+        b.Entity<CenterMeta>().Property(x => x.ContactAbsenceAutoEnabled).HasDefaultValue(true).ValueGeneratedNever();
+        b.Entity<CenterMeta>().Property(x => x.ContactAbsenceLessons).HasDefaultValue(3).ValueGeneratedNever();
+        b.Entity<CenterMeta>().Property(x => x.ContactDebtAutoEnabled).HasDefaultValue(true).ValueGeneratedNever();
+        b.Entity<CenterMeta>().Property(x => x.ContactDebtDay).HasDefaultValue(20).ValueGeneratedNever();
+        var d = b.Entity<DebtContactAlert>();
+        d.Property(x => x.StudentId).HasMaxLength(200);
+        d.Property(x => x.Month).HasMaxLength(7);
+        d.Property(x => x.ContactRequestId).HasMaxLength(200);
+        d.Property(x => x.Amount).HasPrecision(18, 2);
+        d.HasIndex(x => new { x.StudentId, x.Month }).IsUnique();
+        // Avtomatik yopish: "talab ochgan, hali yopilmagan" hodisalar.
+        d.HasIndex(x => new { x.OpenedRequest, x.ResolvedAt });
 
         // ---- U3b: absent-notice queue with manager hold (columns on AttendanceNotifyItem) ----
         var n = b.Entity<AttendanceNotifyItem>();

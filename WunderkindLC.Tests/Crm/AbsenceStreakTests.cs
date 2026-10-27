@@ -249,11 +249,101 @@ public class AbsenceStreakTests
         using var db = TestDb.Sqlite();
         var s = SeedDb(db);
         Lesson(db, s, s.G1, D(8), s.Unexcused);
-        Lesson(db, s, s.G1, D(6), s.Excused);
-        Lesson(db, s, s.G1, D(4), s.Unexcused);
+        Lesson(db, s, s.G1, D(6), s.Unexcused);
+        Lesson(db, s, s.G1, D(4), s.Excused);
         Lesson(db, s, s.G1, D(2), s.Unexcused);
 
         Assert.Equal(new AbsenceStreakService.RunResult(0, 0, 0), await RunAsync(db));
+    }
+
+    // ---- 2026-10-27: «Sozlamalar → Servis» — necha dars (standart 3), yoqish/o'chirish (egasining talabi) ----
+
+    private static void ServiceSettings(TestDb db, bool enabled, int lessons)
+    {
+        var meta = db.Context.CenterMeta.FirstOrDefault();
+        if (meta is null)
+        {
+            meta = new CenterMeta();
+            db.Context.CenterMeta.Add(meta);
+        }
+        meta.ContactAbsenceAutoEnabled = enabled;
+        meta.ContactAbsenceLessons = lessons;
+        db.Context.SaveChanges();
+    }
+
+    [Fact]
+    public void Contact_levels_follow_the_setting_and_never_repeat_a_lower_one()
+    {
+        Assert.Equal([3, 5], AbsenceStreaks.ContactLevels(3));
+        Assert.Equal([1, 5], AbsenceStreaks.ContactLevels(1));
+        Assert.Equal([7], AbsenceStreaks.ContactLevels(7));
+        Assert.Equal([3, 5], AbsenceStreaks.ContactLevels(0));   // buzuq qiymat — standart 3
+        Assert.Empty(AbsenceStreaks.ContactLevelsToRaise(1, 0, 2));
+        Assert.Equal([2], AbsenceStreaks.ContactLevelsToRaise(4, 0, 2));
+        Assert.Equal([2, 5], AbsenceStreaks.ContactLevelsToRaise(6, 0, 2));
+        Assert.Equal([5], AbsenceStreaks.ContactLevelsToRaise(5, 2, 2));
+        // chegara 3 dan 2 ga PASAYTIRILDI: 3-darajada ishlangan seriya 2 bilan qayta ochilmaydi, 5 da hamon izoh/talab
+        Assert.Empty(AbsenceStreaks.ContactLevelsToRaise(4, 3, 2));
+        Assert.Equal([5], AbsenceStreaks.ContactLevelsToRaise(5, 3, 2));
+        // qizil ro'yxat / KPI darajasi sozlamaga bog'liq emas
+        Assert.Equal(0, AbsenceStreaks.LevelOf(2));
+    }
+
+    [Fact]
+    public async Task Default_is_three_lessons_two_are_not_enough()
+    {
+        using var db = TestDb.Sqlite();
+        var s = SeedDb(db);
+        Lesson(db, s, s.G1, D(4), s.Unexcused);
+        Lesson(db, s, s.G1, D(2), s.Unexcused);
+        Assert.Equal(new AbsenceStreakService.RunResult(0, 0, 0), await RunAsync(db));
+    }
+
+    [Fact]
+    public async Task Disabled_setting_creates_nothing()
+    {
+        using var db = TestDb.Sqlite();
+        var s = SeedDb(db);
+        ServiceSettings(db, enabled: false, lessons: 3);
+        foreach (var d in new[] { 6, 4, 2 }) Lesson(db, s, s.G1, D(d), s.Unexcused);
+        Assert.Equal(new AbsenceStreakService.RunResult(0, 0, 0), await RunAsync(db));
+        Assert.Empty(db.Context.ContactRequests.AsNoTracking().ToList());
+    }
+
+    [Fact]
+    public async Task Setting_two_lessons_opens_a_request_with_the_reason_and_note()
+    {
+        using var db = TestDb.Sqlite();
+        var s = SeedDb(db);
+        await AbsenceStreakService.SeedReasonAsync(db.Context);
+        ServiceSettings(db, enabled: true, lessons: 2);
+        Lesson(db, s, s.G1, D(4), s.Unexcused);
+        Lesson(db, s, s.G1, D(2), s.Unexcused);
+
+        Assert.Equal(new AbsenceStreakService.RunResult(1, 1, 0), await RunAsync(db));
+        var req = Assert.Single(db.Context.ContactRequests.AsNoTracking().ToList());
+        Assert.Equal(AbsenceStreakService.ReasonLabel, req.ReasonLabel);
+        Assert.Equal(s.Student.FullName, req.StudentName);
+        Assert.Contains("A1: ketma-ket 2 ta dars", req.Note);
+        Assert.Equal(2, db.Context.AbsenceStreakAlerts.AsNoTracking().Single().Level);
+    }
+
+    [Fact]
+    public async Task Lowering_the_setting_does_not_reopen_a_streak_raised_at_3()
+    {
+        using var db = TestDb.Sqlite();
+        var s = SeedDb(db);
+        ServiceSettings(db, enabled: true, lessons: 2);
+        foreach (var d in new[] { 6, 4, 2 }) Lesson(db, s, s.G1, D(d), s.Unexcused);
+        // deploydan oldingi qator: shu seriya 3-darajada allaqachon ishlangan
+        db.Context.AbsenceStreakAlerts.Add(new AbsenceStreakAlert
+        {
+            StudentId = s.Student.Id, GroupId = s.G1.Id, StreakStart = D(6), Level = 3, CreatedAt = AppClock.Now,
+        });
+        db.Context.SaveChanges();
+
+        Assert.Equal(new AbsenceStreakService.RunResult(0, 0, 0), await RunAsync(db));
+        Assert.Empty(db.Context.ContactRequests.AsNoTracking().ToList());
     }
 
     [Fact]

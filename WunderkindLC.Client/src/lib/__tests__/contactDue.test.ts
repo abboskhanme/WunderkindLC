@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
-  bucketOf, isTodo, stageColumns, stageKeyOf, DUE_COLUMNS, STATUS_COLUMNS,
+  bucketOf, isTodo, requestKind, stageColumns, stageKeyOf, DUE_COLUMNS, STATUS_COLUMNS,
 } from '../contactDue'
 import type { ContactStage } from '@/api/services/contactStages'
 import type { ContactRequestItem } from '@/api/services/contacts'
@@ -140,20 +140,52 @@ describe('stageColumns — serverdan kelgan ustunlar', () => {
   })
 })
 
-describe('stageKeyOf — karta qaysi ustunda', () => {
-  const known = new Set(['new', 'callback', 'done', 'failed', 'custom'])
+describe('stageKeyOf — karta qaysi ustunda (server StageHomeOf nusxasi)', () => {
+  const st = (id: string, baseStatus: string) =>
+    ({ id, title: id, color: 'slate', order: 0, baseStatus, baseStatusLabel: '', isSystem: id === baseStatus, count: 0 }) as ContactStage
+  const all = stageColumns([st('new', 'new'), st('custom', 'callback'), st('callback', 'callback'), st('done', 'done'), st('failed', 'failed')])
 
   it('ustuni belgilangan karta o‘sha ustunda', () => {
-    expect(stageKeyOf(req({ stageId: 'custom' }), known)).toBe('custom')
+    expect(stageKeyOf(req({ stageId: 'custom' }), all)).toBe('custom')
   })
 
   it('ustunsiz karta O‘Z HOLATINING tizim ustuniga tushadi', () => {
-    expect(stageKeyOf(req({ status: 'done' }), known)).toBe('done')
-    expect(stageKeyOf(req({ stageId: '' }), known)).toBe('callback')
+    expect(stageKeyOf(req({ status: 'done' }), all)).toBe('done')
+    expect(stageKeyOf(req({ stageId: '' }), all)).toBe('callback')
   })
 
   it("O'CHIRILGAN ustunga ishora qiladigan karta YO'QOLMAYDI", () => {
     // Xavfsizlik tarmog'i: noma'lum ustun → o'z holatining tizim ustuni.
-    expect(stageKeyOf(req({ status: 'failed', stageId: 'ochirilgan' }), known)).toBe('failed')
+    expect(stageKeyOf(req({ status: 'failed', stageId: 'ochirilgan' }), all)).toBe('failed')
+  })
+
+  it("tizim ustuni o'chirilgan (yashirilgan) bo'lsa — shu holatning BIRINCHI ustuniga", () => {
+    const noCallback = stageColumns([st('new', 'new'), st('custom', 'callback')])
+    expect(stageKeyOf(req({ status: 'callback', stageId: '' }), noCallback)).toBe('custom')
+    // yakuniy holatning ustuni yo'q — taxtada yo'q (faqat ochiqlar)
+    expect(stageKeyOf(req({ status: 'done' }), noCallback)).toBe('')
+  })
+
+  it('zaxira (STATUS_COLUMNS) ro‘yxatida ham ishlaydi', () => {
+    expect(stageKeyOf(req({ status: 'new' }), STATUS_COLUMNS)).toBe('new')
+  })
+})
+
+describe('requestKind — qarzdor / darsga kelmagan (rang va filtr)', () => {
+  const kinds = [
+    { kind: 'debt' as const, reasonId: 'r-debt', label: "To'lov qarzdorligi" },
+    { kind: 'absence' as const, reasonId: 'r-abs', label: 'Ketma-ket darsga kelmadi' },
+  ]
+
+  it('sabab id bo‘yicha', () => {
+    expect(requestKind({ reasonId: 'r-debt', reasonLabel: 'qayta nomlangan' }, kinds)).toBe('debt')
+    expect(requestKind({ reasonId: 'r-abs', reasonLabel: '' }, kinds)).toBe('absence')
+    expect(requestKind({ reasonId: 'boshqa', reasonLabel: "To'lov qarzdorligi" }, kinds)).toBe('other')
+  })
+
+  it('sabab katalogdan o‘chirilgan eski karta — matni bo‘yicha', () => {
+    expect(requestKind({ reasonId: '', reasonLabel: "To'lov qarzdorligi" }, kinds)).toBe('debt')
+    expect(requestKind({ reasonId: '', reasonLabel: 'Boshqa sabab' }, kinds)).toBe('other')
+    expect(requestKind({ reasonId: 'r-debt', reasonLabel: '' }, undefined)).toBe('other')
   })
 })

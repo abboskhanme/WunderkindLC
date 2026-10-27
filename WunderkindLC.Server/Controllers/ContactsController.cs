@@ -131,13 +131,65 @@ public class ContactsController(
             .Select(d => new ContactDayPlanDto(d.Date, d.Count))
             .ToList();
 
+        var reasons = await db.CenterMeta.AsNoTracking()
+            .Select(x => new { x.DebtContactReasonId, x.AbsenceStreakReasonId }).FirstOrDefaultAsync();
+
         return new ContactMetaDto(
             ContactService.Statuses.Select(s => new ContactStatusDto(s.Key, s.Label, s.IsOpen, s.Color)).ToList(),
             ContactService.Results.Select(r => new ContactResultDto(r.Key, r.Label, r.Reached)).ToList(),
             ContactService.Statuses.Select(s => new ContactCountDto(s.Key, counts.GetValueOrDefault(s.Key))).ToList(),
             due[1],
             new ContactDueCountsDto(due[0], due[1], due[2], due[3], due[4], due[5], due[6]),
-            days);
+            days,
+            [
+                new ContactKindDto("debt", reasons?.DebtContactReasonId ?? "", DebtContactService.ReasonLabel),
+                new ContactKindDto("absence", reasons?.AbsenceStreakReasonId ?? "", AbsenceStreakService.ReasonLabel),
+            ]);
+    }
+
+    /* =========================================================================================
+     *  «SOZLAMALAR → SERVIS» — avtomatik talablar (2026-10-27, egasining talabi)
+     * ====================================================================================== */
+
+    [HttpGet("settings")]
+    public async Task<ActionResult<ContactAutoSettingsDto>> AutoSettings()
+    {
+        var m = await db.CenterMeta.AsNoTracking().FirstOrDefaultAsync();
+        return m is null
+            ? new ContactAutoSettingsDto(true, AbsenceStreaks.DefaultContactLessons, true, DebtContactRules.DefaultDueDay)
+            : new ContactAutoSettingsDto(m.ContactAbsenceAutoEnabled, AbsenceStreaks.ClampContactLessons(m.ContactAbsenceLessons),
+                m.ContactDebtAutoEnabled, DebtContactRules.ClampDay(m.ContactDebtDay));
+    }
+
+    /// <summary>Saqlash — oraliqdan tashqari qiymat 400 (sabab bilan); tarixga qiymatlari bilan yoziladi.</summary>
+    [HttpPut("settings")]
+    public async Task<ActionResult<ContactAutoSettingsDto>> SaveAutoSettings(ContactAutoSettingsDto p)
+    {
+        if (p.AbsenceLessons is < AbsenceStreaks.MinContactLessons or > AbsenceStreaks.MaxContactLessons)
+            return BadRequest(new { message = $"Darslar soni {AbsenceStreaks.MinContactLessons}–{AbsenceStreaks.MaxContactLessons} oralig'ida bo'lsin" });
+        if (p.DebtDay is < DebtContactRules.MinDueDay or > DebtContactRules.MaxDueDay)
+            return BadRequest(new { message = $"Sana {DebtContactRules.MinDueDay}–{DebtContactRules.MaxDueDay} oralig'ida bo'lsin (har oyda bor kun)" });
+
+        var m = await db.CenterMeta.FirstOrDefaultAsync();
+        if (m is null)
+        {
+            m = new CenterMeta();
+            db.CenterMeta.Add(m);
+        }
+        m.ContactAbsenceAutoEnabled = p.AbsenceEnabled;
+        m.ContactAbsenceLessons = p.AbsenceLessons;
+        m.ContactDebtAutoEnabled = p.DebtEnabled;
+        m.ContactDebtDay = p.DebtDay;
+        SettingsAudit.Record<CenterMeta>(audit, db.ChangeTracker, "Servis (Bog'lanish kerak avtomatikasi)", withValues: true,
+            labels: new Dictionary<string, string>
+            {
+                [nameof(CenterMeta.ContactAbsenceAutoEnabled)] = "Kelmaganlarni avtomatik qo'shish",
+                [nameof(CenterMeta.ContactAbsenceLessons)] = "Necha dars kelmasa",
+                [nameof(CenterMeta.ContactDebtAutoEnabled)] = "Qarzdorlarni avtomatik qo'shish",
+                [nameof(CenterMeta.ContactDebtDay)] = "Qarzdorlar — oyning sanasidan",
+            });
+        await db.SaveChangesAsync();
+        return new ContactAutoSettingsDto(m.ContactAbsenceAutoEnabled, m.ContactAbsenceLessons, m.ContactDebtAutoEnabled, m.ContactDebtDay);
     }
 
     /* =========================================================================================
@@ -400,7 +452,7 @@ public class ContactsController(
         var wantStage = (req.StageId ?? "").Trim();
         if (wantStage.Length > 0)
         {
-            var target = await db.ContactStages.FirstOrDefaultAsync(x => x.Id == wantStage);
+            var target = await db.ContactStages.FirstOrDefaultAsync(x => x.Id == wantStage && !x.IsHidden);
             if (target is not null && ContactService.StageMatches(target.BaseStatus, c.Status))
                 c.StageId = target.Id;
         }
@@ -711,27 +763,31 @@ public class ContactsController(
      *  ishlaydi. Foydalanuvchi xohlagancha ustun qo'shadi, hisobot esa o'zgarmaydi.
      * ====================================================================================== */
 
-    /// <summary>Ustunlar ro'yxati (tartibi bilan) + har birida nechta talab borligi.</summary>
+    /// <summary>
+    /// Ustunlar ro'yxati (tartibi bilan) + har birida nechta OCHIQ talab borligi. Yashirilgan (o'chirilgan tizim)
+    /// ustunlar faqat <paramref name="all"/> = true da («Sozlamalar → Servis» — qaytarish uchun).
+    /// </summary>
     [HttpGet("stages")]
-    public async Task<ActionResult<IEnumerable<ContactStageDto>>> Stages()
+    public async Task<ActionResult<IEnumerable<ContactStageDto>>> Stages([FromQuery] bool all = false)
     {
         var stages = await db.ContactStages.AsNoTracking().OrderBy(x => x.Order).ToListAsync();
+        var visible = stages.Where(x => !x.IsHidden).ToList();
         var requests = await db.ContactRequests.AsNoTracking()
+            .Where(c => c.Status == ContactStatuses.New || c.Status == ContactStatuses.Callback)
             .Select(c => new { c.StageId, c.Status }).ToListAsync();
 
-        // StageId bo'sh (yoki o'chirilgan ustunga ishora qiladigan) talab o'z holatining TIZIM
-        // ustuniga sanaladi — ekranda ham aynan o'sha yerda ko'rinadi.
-        var known = stages.Select(x => x.Id).ToHashSet();
+        // Karta qayerda ko'rinsa — o'sha ustunga sanaladi (klient `stageKeyOf` bilan bir xil qoida).
+        var homes = visible.Select(x => (x.Id, x.BaseStatus)).ToList();
         var counts = new Dictionary<string, int>();
         foreach (var r in requests)
         {
-            var key = !string.IsNullOrEmpty(r.StageId) && known.Contains(r.StageId) ? r.StageId : r.Status;
-            counts[key] = counts.GetValueOrDefault(key) + 1;
+            var key = ContactService.StageHomeOf(r.StageId, r.Status, homes);
+            if (key is not null) counts[key] = counts.GetValueOrDefault(key) + 1;
         }
 
-        return stages.Select(x => new ContactStageDto(
+        return (all ? stages : visible).Select(x => new ContactStageDto(
             x.Id, x.Title, x.Color, x.Order, x.BaseStatus,
-            ContactService.StatusLabel(x.BaseStatus), x.IsSystem, counts.GetValueOrDefault(x.Id))).ToList();
+            ContactService.StatusLabel(x.BaseStatus), x.IsSystem, counts.GetValueOrDefault(x.Id), x.IsHidden)).ToList();
     }
 
     /// <summary>Yangi ustun (oxiriga qo'shiladi).</summary>
@@ -806,26 +862,45 @@ public class ContactsController(
     }
 
     /// <summary>
-    /// Ustunni o'chirish. TIZIM ustuni o'chirilmaydi; ichida talab bor ustun ham o'chirilmaydi
-    /// (avval ko'chirilsin) — lidlardagidek "jimgina yetim qoldirish" bu yerda qilinmaydi.
+    /// Ustunni o'chirish (2026-10-27: HAR QANDAY ustun, egasining talabi). Ichidagi kartalar YO'QOLMAYDI — o'z holatining
+    /// asosiy ustuniga qaytadi (<see cref="ContactService.StageHomeOf"/>). TIZIM ustuni qatori qoladi va YASHIRILADI
+    /// (aks holda startup seed'i uni qayta tiklardi; «Sozlamalar → Servis» dan qaytariladi). Yagona to'siq — ochiq
+    /// bosqichning oxirgi ko'rinadigan ustuni (<see cref="ContactService.StageDeleteError"/>).
     /// </summary>
     [HttpDelete("stages/{stageId}")]
     public async Task<IActionResult> DeleteStage(string stageId)
     {
-        var stage = await db.ContactStages.FirstOrDefaultAsync(x => x.Id == stageId);
+        var stage = await db.ContactStages.FirstOrDefaultAsync(x => x.Id == stageId && !x.IsHidden);
         if (stage is null) return NotFound(new { message = "Ustun topilmadi" });
-        if (stage.IsSystem)
-            return BadRequest(new { message = "Tizim ustunini o'chirib bo'lmaydi" });
 
-        var count = await db.ContactRequests.CountAsync(c => c.StageId == stage.Id);
-        if (count > 0)
-            return BadRequest(new { message = $"Bu ustunda {count} ta talab bor — avval ularni boshqa ustunga ko'chiring." });
+        var others = await db.ContactStages.CountAsync(x => x.Id != stage.Id && !x.IsHidden && x.BaseStatus == stage.BaseStatus);
+        if (ContactService.StageDeleteError(stage.BaseStatus, others) is { } error)
+            return BadRequest(new { message = error });
 
-        db.ContactStages.Remove(stage);
+        // Kartalar asosiy ustunga qaytadi (StageId bo'sh = holatning uyi).
+        var inside = await db.ContactRequests.Where(c => c.StageId == stage.Id).ToListAsync();
+        foreach (var c in inside) c.StageId = "";
+
+        if (stage.IsSystem) stage.IsHidden = true;
+        else db.ContactStages.Remove(stage);
         audit.Record(AuditEntity, stage.Id, "delete",
-            $"Bog'lanish taxtasi ustuni o'chirildi: {stage.Title}");
+            $"Bog'lanish taxtasi ustuni o'chirildi: {stage.Title}"
+            + (inside.Count > 0 ? $" ({inside.Count} ta karta asosiy ustunga qaytdi)" : ""));
         await db.SaveChangesAsync();
         return NoContent();
+    }
+
+    /// <summary>Yashirilgan (o'chirilgan) TIZIM ustunini taxtaga qaytarish — «Sozlamalar → Servis».</summary>
+    [HttpPost("stages/{stageId}/restore")]
+    public async Task<ActionResult<ContactStageDto>> RestoreStage(string stageId)
+    {
+        var stage = await db.ContactStages.FirstOrDefaultAsync(x => x.Id == stageId && x.IsHidden);
+        if (stage is null) return NotFound(new { message = "Yashirilgan ustun topilmadi" });
+        stage.IsHidden = false;
+        audit.Record(AuditEntity, stage.Id, "update", $"Bog'lanish taxtasi ustuni qaytarildi: {stage.Title}");
+        await db.SaveChangesAsync();
+        return new ContactStageDto(stage.Id, stage.Title, stage.Color, stage.Order,
+            stage.BaseStatus, ContactService.StatusLabel(stage.BaseStatus), stage.IsSystem, 0, false);
     }
 
     /// <summary>Ustunlar tartibini saqlash (kelgan id'lar tartibida).</summary>
@@ -856,7 +931,7 @@ public class ContactsController(
         var c = await db.ContactRequests.FirstOrDefaultAsync(x => x.Id == id);
         if (c is null) return NotFound(new { message = "Talab topilmadi" });
 
-        var stage = await db.ContactStages.FirstOrDefaultAsync(x => x.Id == req.StageId);
+        var stage = await db.ContactStages.FirstOrDefaultAsync(x => x.Id == req.StageId && !x.IsHidden);
         if (stage is null) return NotFound(new { message = "Ustun topilmadi" });
         if (!ContactService.StageMatches(stage.BaseStatus, c.Status))
             return BadRequest(new

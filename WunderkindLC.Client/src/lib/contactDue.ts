@@ -197,13 +197,46 @@ export function stageColumns(stages: ContactStage[]): BoardColumn[] {
 }
 
 /**
- * Talab QAYSI ustunda turibdi ("Bosqich" rejimi).
+ * Talab QAYSI ustunda turibdi ("Bosqich" rejimi) — serverdagi `ContactService.StageHomeOf` ning AYNAN nusxasi.
  *
- * ⚠️ Xavfsizlik tarmog'i: `stageId` bo'sh yoki o'chirilgan ustunga ishora qilsa, talab O'Z
- * HOLATINING tizim ustuniga tushadi (tizim ustunining id'si holat kalitining o'zi). Ya'ni
- * karta HECH QACHON taxtadan yo'qolmaydi — lidlardagi "birinchi ustunga tashlab qo'yish"
- * tarmog'idan aniqroq, chunki bu yerda kartaning o'z holati bor.
+ * ⚠️ Xavfsizlik tarmog'i: `stageId` bo'sh yoki o'chirilgan ustunga ishora qilsa, talab O'Z HOLATINING tizim
+ * ustuniga tushadi (tizim ustunining id'si holat kalitining o'zi); u ham o'chirilgan (yashirilgan) bo'lsa — shu
+ * holatga bog'langan BIRINCHI ustunga. Ochiq holatning oxirgi ustunini server o'chirtirmaydi, ya'ni ochiq karta
+ * HECH QACHON taxtadan yo'qolmaydi. `''` — ustun yo'q (yakuniy holat, taxtada faqat ochiqlar).
  */
-export function stageKeyOf(r: ContactRequestItem, knownIds: Set<string>): string {
-  return r.stageId && knownIds.has(r.stageId) ? r.stageId : r.status
+export function stageKeyOf(r: ContactRequestItem, columns: BoardColumn[]): string {
+  if (r.stageId && columns.some((c) => c.key === r.stageId)) return r.stageId
+  if (columns.some((c) => c.key === r.status)) return r.status
+  return columns.find((c) => c.stage?.baseStatus === r.status)?.key ?? ''
+}
+
+/* ======================================================================================
+ *  TALAB TURI — rang va filtr (2026-10-27, egasining talabi)
+ * ====================================================================================== */
+
+export type ContactKind = 'debt' | 'absence' | 'other'
+
+/**
+ * Kartadagi tur belgisi: yorliq, CHAP CHIZIQ rangi (`accent`) va belgi. ⚠️ Shoshilinchlik (muddati o'tgan — qizil FON va
+ * muddat belgisi) bundan alohida qoladi: tur — "kim", shoshilinchlik — "qachon" (contacts.md §3.65).
+ * `accent` `null` — tur rangi yo'q, chiziq shoshilinchlik rangida qoladi.
+ */
+export const CONTACT_KINDS: Record<ContactKind, { label: string; short: string; accent: string | null; badge: string }> = {
+  debt: { label: 'Qarzdorlar', short: 'Qarzdor', accent: '#f59e0b', badge: 'bg-amber-100 text-amber-800' },
+  absence: { label: 'Darsga kelmaganlar', short: 'Darsga kelmadi', accent: '#8b5cf6', badge: 'bg-violet-100 text-violet-800' },
+  other: { label: 'Boshqa', short: '', accent: null, badge: '' },
+}
+
+/**
+ * Talab qaysi turga kiradi: sabab id'si serverdagi avtomatik sabab bilan mos (meta `kinds`) — yoki, sabab katalogdan
+ * o'chirilgan eski kartada, sabab MATNI mos. Qo'lda ochilgan boshqa sababli talab — `other`.
+ */
+export function requestKind(
+  r: Pick<ContactRequestItem, 'reasonId' | 'reasonLabel'>,
+  kinds: { kind: 'debt' | 'absence'; reasonId: string; label: string }[] | undefined,
+): ContactKind {
+  for (const k of kinds ?? []) {
+    if ((k.reasonId && r.reasonId === k.reasonId) || (!r.reasonId && r.reasonLabel === k.label)) return k.kind
+  }
+  return 'other'
 }

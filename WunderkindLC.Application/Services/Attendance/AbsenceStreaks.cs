@@ -39,8 +39,34 @@ public static class AbsenceStreaks
         return new Streak(dates.Count, dates[0], dates);
     }
 
-    /// <summary>5 — 5+ dars, 3 — 3..4 dars, aks holda 0 (ogohlantirish yo'q).</summary>
+    /// <summary>5 — 5+ dars, 3 — 3..4 dars, aks holda 0 (ogohlantirish yo'q). Qizil ro'yxat, KPI va MCP darajasi.</summary>
     public static int LevelOf(int count) => count >= Level5 ? Level5 : count >= Level3 ? Level3 : 0;
+
+    /// <summary>
+    /// «BOG'LANISH KERAK» chegarasi — SOZLAMA (<see cref="CenterMeta.ContactAbsenceLessons"/>, «Sozlamalar → Servis»;
+    /// egasining talabi, 2026-10-27). ⚠️ Qizil ro'yxat/KPI darajasi (<see cref="LevelOf"/>, 3/5) ATAYIN bog'lanmagan —
+    /// "Ketma-ket 3 dars kelmaganlar" KPI ko'rsatkichi o'z ma'nosida qolsin.
+    /// </summary>
+    public const int DefaultContactLessons = 3;
+    public const int MinContactLessons = 1;
+    public const int MaxContactLessons = 10;
+
+    public static int ClampContactLessons(int n) => n is >= MinContactLessons and <= MaxContactLessons ? n : DefaultContactLessons;
+
+    /// <summary>Darajalar: sozlangan chegarada talab, 5 da (chegara 5 dan kichik bo'lsa) — izoh yoki yangi talab.</summary>
+    public static IReadOnlyList<int> ContactLevels(int start)
+    {
+        var s = ClampContactLessons(start);
+        return s < Level5 ? [s, Level5] : [s];
+    }
+
+    /// <summary>
+    /// Shu seriya uchun YANGI ko'tariladigan bog'lanish darajalari: <paramref name="count"/> ga yetgan va seriyada allaqachon
+    /// yozilgan ENG YUQORI darajadan (<paramref name="maxRaised"/>, 0 = hech biri) baland. Shu sababli chegara keyin
+    /// PASAYTIRILSA (3 → 2) allaqachon ishlangan seriya qayta talab ochmaydi.
+    /// </summary>
+    public static IReadOnlyList<int> ContactLevelsToRaise(int count, int maxRaised, int start) =>
+        ContactLevels(start).Where(l => l <= count && l > maxRaised).ToList();
 
     /// <summary>«Bog'lanish kerak» izohi: «{guruh}: ketma-ket {n} ta dars sababsiz qoldirildi (dd.MM, dd.MM, …)».</summary>
     public static string NoteText(string groupName, Streak s) =>

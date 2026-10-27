@@ -491,6 +491,7 @@ public partial class AppDbContext(DbContextOptions<AppDbContext> options)
         b.Entity<ContactRequest>().Property(c => c.StageId).HasMaxLength(200);
         b.Entity<ContactStage>().Property(x => x.BaseStatus).HasMaxLength(200);
         b.Entity<ContactStage>().Property(x => x.Color).HasMaxLength(50);
+        b.Entity<ContactStage>().Property(x => x.IsHidden).HasDefaultValue(false).ValueGeneratedNever();
         b.Entity<ContactAttempt>().Property(a => a.RequestId).HasMaxLength(200);
         b.Entity<ContactAttempt>().Property(a => a.Date).HasMaxLength(200);
         b.Entity<ContactAttempt>().HasIndex(a => a.RequestId);

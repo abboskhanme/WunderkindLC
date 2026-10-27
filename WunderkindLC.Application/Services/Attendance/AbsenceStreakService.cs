@@ -9,7 +9,7 @@ namespace WunderkindLC.Application.Services;
 
 /// <summary>
 /// KETMA-KET KELMASLIK → «BOG'LANISH KERAK» (SPEC P3.5). Startupdan 2 daqiqa keyin bir marta, so'ng har 30 daqiqada
-/// (08:00–22:00): <see cref="AbsenceStreakLoader"/> seriyalaridan 3 va 5 darajali <see cref="AbsenceStreakAlert"/>
+/// (08:00–22:00): <see cref="AbsenceStreakLoader"/> seriyalaridan sozlangan (n, «Sozlamalar → Servis») va 5 darajali (<see cref="AbsenceStreaks.ContactLevels"/>) <see cref="AbsenceStreakAlert"/>
 /// qatorlari (unikal kalit — qayta yugurish takror bermaydi). YANGI qator paydo bo'lganda o'quvchiga (yugurish
 /// boshiga ko'pi bilan BITTA amal, faqat oxirgi yo'qlik ≤ 14 kun oldin bo'lsa):
 /// <list type="bullet">
@@ -61,29 +61,36 @@ public sealed class AbsenceStreakService(IServiceProvider services, ILogger<Abse
     public static async Task<RunResult> RunOnceAsync(
         IAppDbContext db, AuditService audit, DateOnly today, CancellationToken ct = default)
     {
+        // «Sozlamalar → Servis»: o'chirilgan bo'lsa hech narsa qilinmaydi; chegara — necha dars.
+        // Qator yo'q — standart (yoqilgan, 3 dars), «Servis» sahifasi ko'rsatadigan qiymat bilan bir xil.
+        var settings = await db.CenterMeta.AsNoTracking()
+            .Select(m => new { m.ContactAbsenceAutoEnabled, m.ContactAbsenceLessons, m.AbsenceStreakReasonId }).FirstOrDefaultAsync(ct)
+            ?? new { ContactAbsenceAutoEnabled = true, ContactAbsenceLessons = AbsenceStreaks.DefaultContactLessons, AbsenceStreakReasonId = (string?)null };
+        if (!settings.ContactAbsenceAutoEnabled) return new RunResult(0, 0, 0);
+        var start = AbsenceStreaks.ClampContactLessons(settings.ContactAbsenceLessons);
+
         var rows = (await AbsenceStreakLoader.ComputeAsync(db, today, ct))
-            .Where(r => r.Level >= AbsenceStreaks.Level3)
+            .Where(r => r.Streak.Count >= start)
             .ToList();
         if (rows.Count == 0) return new RunResult(0, 0, 0);
 
         var studentIds = rows.Select(r => r.StudentId).Distinct().ToList();
-        var existing = (await db.AbsenceStreakAlerts.AsNoTracking()
+        // Seriya bo'yicha allaqachon ko'tarilgan ENG YUQORI daraja (eski 3-daraja qatorlari ham) — takror yo'q.
+        var raised = (await db.AbsenceStreakAlerts.AsNoTracking()
                 .Where(a => studentIds.Contains(a.StudentId))
                 .Select(a => new { a.StudentId, a.GroupId, a.StreakStart, a.Level })
                 .ToListAsync(ct))
-            .Select(a => (a.StudentId, a.GroupId, a.StreakStart, a.Level))
-            .ToHashSet();
+            .GroupBy(a => (a.StudentId, a.GroupId, a.StreakStart))
+            .ToDictionary(g => g.Key, g => g.Max(a => a.Level));
 
         // Yangi qatorlar — o'quvchi bo'yicha.
         var fresh = new Dictionary<string, List<(AbsenceStreakLoader.Row Row, AbsenceStreakAlert Alert)>>(StringComparer.Ordinal);
         var now = AppClock.Now;
         foreach (var r in rows)
         {
-            var levels = r.Level >= AbsenceStreaks.Level5
-                ? new[] { AbsenceStreaks.Level3, AbsenceStreaks.Level5 } : new[] { AbsenceStreaks.Level3 };
-            foreach (var level in levels)
+            var maxRaised = raised.GetValueOrDefault((r.StudentId, r.GroupId, r.Streak.StartDate));
+            foreach (var level in AbsenceStreaks.ContactLevelsToRaise(r.Streak.Count, maxRaised, start))
             {
-                if (existing.Contains((r.StudentId, r.GroupId, r.Streak.StartDate, level))) continue;
                 var alert = new AbsenceStreakAlert
                 {
                     StudentId = r.StudentId, GroupId = r.GroupId, StreakStart = r.Streak.StartDate,
@@ -94,18 +101,17 @@ public sealed class AbsenceStreakService(IServiceProvider services, ILogger<Abse
         }
         if (fresh.Count == 0) return new RunResult(0, 0, 0);
 
-        var meta = await db.CenterMeta.AsNoTracking().Select(m => new { m.AbsenceStreakReasonId }).FirstOrDefaultAsync(ct);
         var queue = new ContactQueueService(db, audit);
-        var (reasonId, _) = await queue.ResolveReasonAsync(meta?.AbsenceStreakReasonId);
+        var (reasonId, _) = await queue.ResolveReasonAsync(settings.AbsenceStreakReasonId);
 
         int alerts = 0, requests = 0, notes = 0;
         foreach (var (studentId, items) in fresh)
         {
             foreach (var (_, alert) in items) db.AbsenceStreakAlerts.Add(alert);
 
-            // BITTA amal: eng yuqori daraja, so'ng eng yangi yo'qlik.
+            // BITTA amal: eng uzun seriya, so'ng eng yangi yo'qlik.
             var pick = items.Select(x => x.Row)
-                .OrderByDescending(r => r.Level).ThenByDescending(r => r.Streak.LastDate, StringComparer.Ordinal)
+                .OrderByDescending(r => r.Streak.Count).ThenByDescending(r => r.Streak.LastDate, StringComparer.Ordinal)
                 .First();
             if (AbsenceStreaks.IsFresh(pick.Streak, today))
             {

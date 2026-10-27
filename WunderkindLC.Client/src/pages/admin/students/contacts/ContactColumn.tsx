@@ -1,8 +1,8 @@
 import { useDroppable } from '@dnd-kit/core'
-import { ChevronLeft, ChevronRight, Flame, Lock, Pencil, Trash2 } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Flame, Pencil, Trash2 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import type { ContactRequestItem } from '@/api/services/contacts'
-import type { BoardColumn } from '@/lib/contactDue'
+import type { BoardColumn, ContactKind } from '@/lib/contactDue'
 import { stageColors } from '@/config/stageColors'
 import { cn } from '@/lib/utils'
 import { ContactCard, type ContactCardActions } from './ContactCard'
@@ -34,12 +34,15 @@ export function ContactColumn({
   urgent,
   dragging,
   admin,
+  kindOf,
 }: {
   column: BoardColumn
   items: ContactRequestItem[]
   today: string
   actions: ContactCardActions
   onCardClick: (r: ContactRequestItem) => void
+  /** Karta turi (qarzdor / darsga kelmagan) — rang uchun. */
+  kindOf?: (r: ContactRequestItem) => ContactKind
   /** Hozirgi sudralayotgan karta uchun bu ustun ochiqmi. */
   accepts: boolean
   /** "Bugun qilish kerak" ga kiradigan ustun — sarlavhasida alanga belgisi. */
@@ -79,17 +82,10 @@ export function ContactColumn({
             <HBtn icon={ChevronRight} title="O'ngga" disabled={admin.isLast}
               onClick={() => admin.onMove(column, 1)} />
             <HBtn icon={Pencil} title="Tahrirlash" onClick={() => admin.onEdit(column)} />
-            {system ? (
-              // Tizim ustuni o'chirilmaydi — u o'z holatidagi kartalar uchun "uy".
-              <span
-                title="Tizim ustuni — o'chirib bo'lmaydi"
-                className="p-1 text-slate-300"
-              >
-                <Lock className="h-3.5 w-3.5" />
-              </span>
-            ) : (
-              <HBtn icon={Trash2} title="O'chirish" danger onClick={() => admin.onDelete(column)} />
-            )}
+            {/* 2026-10-27: HAR ustun o'chiriladi (tizim ustuni — yashiriladi, «Sozlamalar → Servis» dan qaytadi).
+                Ochiq bosqichning oxirgi ustunini server rad etadi (kartalar joysiz qolmasin) — sabab alert'da. */}
+            <HBtn icon={Trash2} title={system ? "O'chirish (keyin «Sozlamalar → Servis» dan qaytarsa bo'ladi)" : "O'chirish"}
+              danger onClick={() => admin.onDelete(column)} />
           </div>
         )}
       </div>
@@ -111,6 +107,7 @@ export function ContactColumn({
             today={today}
             actions={actions}
             onClick={() => onCardClick(r)}
+            kind={kindOf?.(r)}
           />
         ))}
         {items.length === 0 && (
