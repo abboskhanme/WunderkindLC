@@ -309,6 +309,15 @@ public sealed partial class HrTasksService
         foreach (var draft in drafts.Values) db.HrTaskAttachments.Remove(draft);
         await db.SaveChangesAsync(ct);
 
+        // LC: a few tasks (every employee gets the same items) → each one in full with its attachments and
+        // «✅ Qabul qildim» (HrTasksService.Notify.cs); many → the LMS summary + the first voice note.
+        if (items.Count <= MaxFullTaskMessages)
+        {
+            foreach (var (employee, batch) in perEmployee)
+                foreach (var task in batch) await NotifyAssignedAsync(employee.UserId, task, tz, null, ct);
+            return new HrBatchResultDto(created.Count, skipped, [.. created.Select(t => t.Id)], null);
+        }
+
         var firstVoice = items.Where(i => !string.IsNullOrWhiteSpace(i.AttachmentId))
             .Select(i => drafts[i.AttachmentId!]).FirstOrDefault(d => d.Kind == HrAttachmentKinds.Voice);
         (byte[], string, string)? voice = null;
@@ -323,13 +332,7 @@ public sealed partial class HrTasksService
             logger.LogWarning(ex, "HR: ovozli izoh fayli o'qilmadi {Path}", firstVoice?.FilePath);
         }
         foreach (var (employee, batch) in perEmployee)
-        {
-            // LC: a few tasks → each one in full with its attachments and «✅ Qabul qildim»; many → the LMS summary.
-            if (batch.Count <= MaxFullTaskMessages)
-                foreach (var task in batch) await NotifyAssignedAsync(employee.UserId, task, tz, null, ct);
-            else
-                await SendToUserAsync(employee.UserId, HrTasksTexts.AssignedMany(batch.Count, [.. batch.Select(t => t.Title)]), ct, voice);
-        }
+            await SendToUserAsync(employee.UserId, HrTasksTexts.AssignedMany(batch.Count, [.. batch.Select(t => t.Title)]), ct, voice);
 
         return new HrBatchResultDto(created.Count, skipped, [.. created.Select(t => t.Id)], null);
     }

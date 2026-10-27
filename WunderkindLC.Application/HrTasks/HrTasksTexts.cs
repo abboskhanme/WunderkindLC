@@ -279,16 +279,9 @@ public static class HrTasksTexts
         return string.Join("\n", lines);
     }
 
-    /// <summary>A single hand-given task (old notifier._assigned_text).</summary>
-    public static string Assigned(string title, DateTimeOffset dueAt, TimeZoneInfo tz) =>
-        "🆕 <b>Sizga yangi topshiriq</b>\n\n"
-        + $"{Escape(title)}\n"
-        + $"⏰ Muddat: {HrValues.Local(dueAt, tz).ToString("dd.MM.yyyy HH:mm", CultureInfo.InvariantCulture)}\n\n"
-        + "Bajargach «Topshiriqlarim» bo'limidan belgilang.";
-
     /// <summary>
-    /// LC: a single task with EVERYTHING the employee needs (egasining talabi, 2026-10-27): title, description, due, who
-    /// gave it. Attachments (photo / file / voice) follow as separate messages; the «✅ Qabul qildim» button is under
+    /// LC: a single task with EVERYTHING the employee needs (egasining talabi, 2026-10-27) — replaces LMS's title-only
+    /// <c>notifier._assigned_text</c>: title, description, due, who gave it. Attachments (photo / file / voice) follow as separate messages; the «✅ Qabul qildim» button is under
     /// this one (<see cref="HrTaskAck"/>).
     /// </summary>
     public static string AssignedFull(string title, string? description, DateTimeOffset dueAt, TimeZoneInfo tz,

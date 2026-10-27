@@ -53,23 +53,28 @@ public static class HrTaskAck
         if (task.IsFinal)
         {
             await Answer(ToastClosed);
-            await Unbutton();
+            await Unbutton(accepted: false);   // a cancelled task — the button just goes away
             return HrAckOutcome.Closed;
         }
 
-        var accepted = task.Accept(now);
-        if (accepted) await db.SaveChangesAsync(ct);
-        await Unbutton();
+        var isNew = task.Accept(now);
+        if (isNew) await db.SaveChangesAsync(ct);
+        await Unbutton(accepted: true);
         await Answer(ToastOk);
-        return accepted ? HrAckOutcome.Accepted : HrAckOutcome.AlreadyAccepted;
+        return isNew ? HrAckOutcome.Accepted : HrAckOutcome.AlreadyAccepted;
 
-        async Task Unbutton()
+        async Task Unbutton(bool accepted)
         {
             if (messageId is not long mid) return;
             try
             {
-                var role = await db.Users.AsNoTracking().Where(u => u.Id == ownerUserId).Select(u => u.Role).FirstOrDefaultAsync(ct);
-                await sender.EditMessageReplyMarkupAsync(chatId, mid, AcceptedKeyboard(HrTasksService.MyTasksUrl(role)), ct);
+                object? markup = null;
+                if (accepted)
+                {
+                    var role = await db.Users.AsNoTracking().Where(u => u.Id == ownerUserId).Select(u => u.Role).FirstOrDefaultAsync(ct);
+                    markup = AcceptedKeyboard(HrTasksService.MyTasksUrl(role));
+                }
+                await sender.EditMessageReplyMarkupAsync(chatId, mid, markup, ct);
             }
             catch (Exception) { /* the acceptance is stored; a button left on screen is harmless */ }
         }

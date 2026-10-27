@@ -66,7 +66,10 @@ public sealed partial class HrTasksService
             if (to.Count == 0)
                 logger.LogWarning("HR sinov: {Lead} lidi uchun topshiriq oluvchi topilmadi (mas'ul, yozgan va direktor yo'q)", trial.LeadId);
             foreach (var employeeId in to)
-                (byEmployee.TryGetValue(employeeId, out var list) ? list : byEmployee[employeeId] = []).Add(trial);
+            {
+                if (!byEmployee.TryGetValue(employeeId, out var list)) byEmployee[employeeId] = list = [];
+                list.Add(trial);
+            }
         }
         if (byEmployee.Count == 0) return 0;
 
@@ -98,9 +101,11 @@ public sealed partial class HrTasksService
                 if (task.Status == HrTaskStatuses.Done) task.Reopen(now);
                 await db.SaveChangesAsync(ct);
                 changed++;
-                var text = HrTasksTexts.TrialAdded(task.Title,
-                    [.. added.Where(t => items.ContainsKey(t.Id)).Select(t => HrTrialRules.ItemText(listed.IndexOf(items[t.Id]) + 1, kind, items[t.Id]))]);
-                await SendToUserAsync(employee.UserId, text, ct);
+                // xabarda faqat YANGILARI — ro'yxatdagi o'z raqami bilan
+                var addedTexts = added.Where(t => items.ContainsKey(t.Id))
+                    .Select(t => HrTrialRules.ItemText(listed.IndexOf(items[t.Id]) + 1, kind, items[t.Id]))
+                    .ToList();
+                await SendToUserAsync(employee.UserId, HrTasksTexts.TrialAdded(task.Title, addedTexts), ct);
                 continue;
             }
 
