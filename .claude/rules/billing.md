@@ -925,6 +925,12 @@ pulini ko'rmay «Qarzdorlar to'lasa yana» ga qo'shardi (prod'da oktabrda ~100 t
   ko'chirilmaydi (qatorda izoh). GET hech narsa yozmaydi; POST — faqat belgilanganlar, reja har o'quvchi QULFI ichida
   QAYTA quriladi, har biri alohida saqlanadi. Pul, balans, kassa, hisoblar O'ZGARMAYDI; avto-xabar yo'q; audit —
   `FinanceTransaction`, «To'lov oyi tuzatildi (guruh): 205 000 so'm 2026-09 → 2026-10 …».
+  ⚠️ **AVANS ISTISNOSI (2026-10-27):** KELGUSI oyga (joriydan keyin, 3 oygacha) yozilgan pul, oynadagi biror oy KAM
+  to'langan bo'lsa, o'sha oyga (eskisidan) QAYTARILADI; avans ochgan QULFSIZ kelgusi hisob "hisob" sanalmaydi va to'lovsiz
+  qolsa bekor qilinadi (`DropOrphanAdvanceChargeAsync`, balans qaytadi — audit matnida «avans hisobi bekor qilindi»).
+  Sabab: to'lov oy qoldig'i kichik paytda bo'linib, keyin oy hisobi oshsa/oldingi to'lov bekor qilinsa oy "to'lanmagan",
+  keyingi oy "oldindan to'langan" bo'lib qolardi (prod, Zinnura guruhlari, 2026-10-26). Oyna ICHIDA orqaga ko'chirish
+  avvalgidek YO'Q (`Reja__ORQAGA_KELAJAKKA_va_OYNADAN_tashqariga_kochmaydi`).
 - Testlar: `PaymentMonthSplitTests`, `AuditFixFx2Tests` (qisman aktivlashtirish oyiga to'liq oylik — ortig'i keyingi oyga).
 
 ### TAHRIR — ikki yo'l, ikki xil qoida (`FinanceTxEdit`)

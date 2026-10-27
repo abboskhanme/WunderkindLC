@@ -217,6 +217,27 @@ public class PaymentMonthSplitTests
             PaymentMonthRepair.Plan(D(("2026-09", 0m), ("2026-10", 225_000m)), [P("t1", "2026-09", 225_000m)],
                 D(("2026-09", 100_000m)), "2026-09", "2026-10").Moves);
 
+    [Fact]
+    public void Reja__AVANS_oyidagi_ortiqcha_TOLANMAGAN_joriy_oyga_qaytadi() =>
+        // G'ayratov holati: noyabr hisobi 0 (qulfli), unga 40 000 yozilgan; oktabr 220 000 dan 180 000 to'langan.
+        Assert.Equal([new PaymentMonthRepair.Move("t2", "2026-11", "2026-10", 40_000m)],
+            PaymentMonthRepair.Plan(D(("2026-10", 220_000m), ("2026-11", 0m)),
+                [P("t1", "2026-10", 180_000m), P("t2", "2026-11", 40_000m)], D(), "2026-09", "2026-10").Moves);
+
+    [Fact]
+    public void Reja__QULFSIZ_avans_hisobi_hisob_sanalmaydi__butun_avans_qaytadi() =>
+        // Isoqaliyeva holati: noyabr hisobini (225 000) avans ochgan; oktabr 225 000 dan 100 000 to'langan.
+        Assert.Equal([new PaymentMonthRepair.Move("t2", "2026-11", "2026-10", 125_000m)],
+            PaymentMonthRepair.Plan(D(("2026-10", 225_000m), ("2026-11", 225_000m)),
+                [P("t1", "2026-10", 100_000m), P("t2", "2026-11", 125_000m)], D(), "2026-09", "2026-10",
+                new HashSet<string> { "2026-11" }).Moves);
+
+    [Fact]
+    public void Reja__joriy_oy_TOLANGAN_bolsa_avans_TEGILMAYDI() =>
+        Assert.Empty(PaymentMonthRepair.Plan(D(("2026-10", 225_000m), ("2026-11", 225_000m)),
+            [P("t1", "2026-10", 225_000m), P("t2", "2026-11", 225_000m)], D(), "2026-09", "2026-10",
+            new HashSet<string> { "2026-11" }).Moves);
+
     [Theory]
     [InlineData("2026-10", "2026-09", "2026-09")]
     [InlineData("2026-10", null, "2026-09")]
@@ -290,6 +311,41 @@ public class PaymentMonthSplitTests
             await ctx.StudentGroups.AsNoTracking().SingleAsync());
         Assert.Equal("paid", ledger.Months.Single(m => m.Month == M(-1)).Status);
         Assert.Equal(20_000m, ledger.Months.Single(m => m.Month == M(0)).Remaining);
+    }
+
+    [Fact]
+    public async Task Tuzatish__AVANS_joriy_oyga_qaytadi__tolovsiz_avans_hisobi_bekor_balans_tiklanadi()
+    {
+        using var db = TestDb.Sqlite();
+        var ctx = db.Context;
+        var (s, g) = Setup(ctx);
+        ctx.MonthlyCharges.Add(new MonthlyCharge { StudentId = s.Id, GroupId = g.Id, Month = M(0), Amount = Fee, Locked = true });
+        ctx.MonthlyCharges.Add(new MonthlyCharge { StudentId = s.Id, GroupId = g.Id, Month = M(1), Amount = Fee });   // avans ochgan
+        var root = new FinanceTransaction
+        {
+            Date = $"{M(0)}-20", Direction = "income", Category = "tuition", Amount = 100_000m, StudentId = s.Id,
+            GroupId = g.Id, Month = M(0), Method = "cash", CashboxId = "main",
+        };
+        ctx.FinanceTransactions.Add(root);
+        ctx.FinanceTransactions.Add(new FinanceTransaction
+        {
+            Date = $"{M(0)}-20", Direction = "income", Category = "tuition", Amount = Fee - 100_000m, StudentId = s.Id,
+            GroupId = g.Id, Month = M(1), Method = "cash", CashboxId = "main", SplitFromId = root.Id,
+        });
+        s.Balance = Fee - 2 * Fee;   // to'langan 300 000 − hisob 600 000
+        await ctx.SaveChangesAsync();
+
+        var c = Assert.Single(await PaymentMonthRepair.FindAsync(ctx));
+        Assert.Equal([new PaymentMonthRepair.MoveView(M(1), M(0), Fee - 100_000m)], c.Moves);
+
+        await PaymentMonthRepair.ApplyOneAsync(ctx, new AuditService(ctx, new NoHttpContext()), s.Id, g.Id);
+        await ctx.SaveChangesAsync();
+
+        Assert.All(await ctx.FinanceTransactions.AsNoTracking().ToListAsync(), t => Assert.Equal(M(0), t.Month));
+        Assert.Equal([M(0)], await ctx.MonthlyCharges.AsNoTracking().Select(x => x.Month).ToListAsync());
+        Assert.Equal(0m, (await ctx.Students.AsNoTracking().SingleAsync()).Balance);
+        Assert.Contains("avans hisobi bekor qilindi", (await ctx.AuditLogs.AsNoTracking().SingleAsync()).Summary);
+        Assert.Empty(await PaymentMonthRepair.FindAsync(ctx));
     }
 
     // ============================ Ruxsat ============================

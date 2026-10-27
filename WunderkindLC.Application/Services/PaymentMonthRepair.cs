@@ -19,6 +19,14 @@ namespace WunderkindLC.Application.Services;
 /// Orqaga, kelajakka va <see cref="FloorMonth"/> dan eski oylarga hech narsa ko'chmaydi. Vozvrati bor to'lov
 /// ko'chirilmaydi (vozvrat bog'lanishi buzilmasin) — nomzodda izoh bilan aytiladi.</para>
 ///
+/// <para><b>ISTISNO — AVANS (2026-10-27):</b> KELGUSI oyga (joriydan keyin) yozilgan pul, shu juftlikda oynadagi
+/// biror oy KAM to'langan bo'lsa, o'sha oyga (eskisidan boshlab) QAYTARILADI. Avans hisobi qulfsiz bo'lsa (uni faqat
+/// avans to'lov ochadi, `TuitionService.EnsureChargeAsync`) — u "hisob" sanalmaydi va butun avans ko'chishi mumkin;
+/// to'lovi qolmagan bunday hisob <see cref="ApplyOneAsync"/> da bekor qilinadi (`DropOrphanAdvanceChargeAsync`, balans
+/// qaytadi). Sabab: to'lov oyning qoldig'i kichik paytda bo'linib, keyin oy hisobi oshsa (yoki oldingi to'lov bekor
+/// qilinsa) oy "to'lanmagan", kelgusi oy esa "oldindan to'langan" bo'lib qolardi — holbuki oila bir oy to'lagan
+/// (prod'da 2 holat, 2026-10-26). Oynadagi oylar orasida orqaga ko'chirish AVVALGIDEK YO'Q.</para>
+///
 /// <para>⚠️ Pul, balans, kassa va hisoblar O'ZGARMAYDI — faqat to'lov "qaysi oy uchun" tegi. Avto-xabar yo'q.
 /// Avval KO'RIB chiqiladi (<see cref="FindAsync"/> hech narsa yozmaydi), yozish — tanlanganlar uchun
 /// <see cref="ApplyOneAsync"/>, har o'quvchi o'z QULFI ostida, reja qulf ichida QAYTA quriladi.</para>
@@ -63,9 +71,12 @@ public static class PaymentMonthRepair
     /// <param name="netCharge">Oy → sof hisob (summa − chegirma, ≥ 0).</param>
     /// <param name="payments">Shu guruhga teglangan o'quv to'lovlari (bekor qilinmaganlar).</param>
     /// <param name="refunds">Oy → shu guruh/oyga teglangan vozvratlar yig'indisi.</param>
+    /// <param name="unlockedFuture">Kelgusi oylar ichida hisobi QULFSIZ (avans ochgan) bo'lganlari — ularning hisobi
+    /// ortiqchani hisoblashda 0 deb olinadi (to'lovsiz qolsa bekor qilinadi).</param>
     public static RepairPlan Plan(
         IReadOnlyDictionary<string, decimal> netCharge, IReadOnlyList<Payment> payments,
-        IReadOnlyDictionary<string, decimal> refunds, string floorMonth, string currentMonth)
+        IReadOnlyDictionary<string, decimal> refunds, string floorMonth, string currentMonth,
+        IReadOnlySet<string>? unlockedFuture = null)
     {
         bool InWindow(string m) => string.CompareOrdinal(m, floorMonth) >= 0 && string.CompareOrdinal(m, currentMonth) <= 0;
         var months = netCharge.Keys.Concat(payments.Select(p => p.Month)).Concat(refunds.Keys)
@@ -111,10 +122,49 @@ public static class PaymentMonthRepair
                 if (available <= 0m || i >= movable.Count) break;
             }
         }
+
+        // AVANS → oynadagi KAM to'langan oyga (eskisidan). Eng KECHKI kelgusi oydan boshlab: qarz eng yangi oylarda
+        // qolsin (balansdagi FIFO bilan bir xil — `GroupBalanceService.FifoUnpaid`).
+        var future = netCharge.Keys.Concat(payments.Select(p => p.Month)).Concat(refunds.Keys)
+            .Where(m => string.CompareOrdinal(m, currentMonth) > 0).Distinct()
+            .OrderByDescending(m => m, StringComparer.Ordinal).ToList();
+        foreach (var from in future)
+        {
+            if (!months.Any(d => need[d] > 0m)) break;
+            var paidF = payments.Where(p => p.Month == from).Sum(p => p.Amount) - refunds.GetValueOrDefault(from, 0m);
+            var chargeF = unlockedFuture?.Contains(from) == true ? 0m : netCharge.GetValueOrDefault(from, 0m);
+            var surplus = paidF - chargeF;
+            if (surplus <= 0m) continue;
+            var movable = payments.Where(p => p.Month == from && !p.HasRefund)
+                .OrderByDescending(p => p.Date, StringComparer.Ordinal).ThenByDescending(p => p.CreatedAt)
+                .Select(p => (p.Id, Left: p.Amount)).ToList();
+            var available = Math.Min(surplus, movable.Sum(p => p.Left));
+            var i = 0;
+            foreach (var to in months)
+            {
+                while (need[to] > 0m && available > 0m && i < movable.Count)
+                {
+                    var take = Math.Min(Math.Min(need[to], available), movable[i].Left);
+                    if (take > 0m)
+                    {
+                        moves.Add(new Move(movable[i].Id, from, to, take));
+                        need[to] -= take;
+                        available -= take;
+                        movable[i] = (movable[i].Id, movable[i].Left - take);
+                    }
+                    if (movable[i].Left <= 0m) i++;
+                }
+                if (available <= 0m || i >= movable.Count) break;
+            }
+        }
         return new RepairPlan(moves, notes);
     }
 
-    private sealed record PairData(Dictionary<string, decimal> Net, List<Payment> Payments, Dictionary<string, decimal> Refunds);
+    private sealed record PairData(Dictionary<string, decimal> Net, List<Payment> Payments, Dictionary<string, decimal> Refunds,
+                                   HashSet<string> UnlockedFuture);
+
+    /// <summary>Kelgusi oylar ham yuklanadi (avans) — to'lov oynasidagi avans oylari bilan bir xil chuqurlik.</summary>
+    private const int AdvanceMonths = 3;
 
     /// <summary>Oynadagi ma'lumot (o'quvchi, guruh) bo'yicha — <paramref name="studentId"/> berilsa faqat o'sha o'quvchi.</summary>
     private static async Task<(Dictionary<(string S, string G), PairData> Pairs, string Floor, string Current)> LoadAsync(
@@ -123,7 +173,9 @@ public static class PaymentMonthRepair
         var current = AppClock.Today.ToString("yyyy-MM");
         var chargedFrom = await db.CenterMeta.AsNoTracking().Select(m => m.SalaryChargedBaseFrom).FirstOrDefaultAsync(ct);
         var floor = FloorMonth(current, chargedFrom);
-        var months = TuitionService.MonthRange(floor, current).ToList();
+        var last = current;
+        for (var i = 0; i < AdvanceMonths; i++) last = TuitionService.NextMonth(last);
+        var months = TuitionService.MonthRange(floor, last).ToList();
 
         var txQ = db.FinanceTransactions.AsNoTracking()
             .Where(t => t.StudentId != null && t.GroupId != null && t.Month != null && months.Contains(t.Month)
@@ -144,13 +196,13 @@ public static class PaymentMonthRepair
         var chargeQ = db.MonthlyCharges.AsNoTracking()
             .Where(c => c.GroupId != null && months.Contains(c.Month));
         if (studentId is not null) chargeQ = chargeQ.Where(c => c.StudentId == studentId);
-        var charges = (await chargeQ.Select(c => new { c.StudentId, c.GroupId, c.Month, c.Amount, c.Discount }).ToListAsync(ct))
+        var charges = (await chargeQ.Select(c => new { c.StudentId, c.GroupId, c.Month, c.Amount, c.Discount, c.Locked }).ToListAsync(ct))
             .Where(c => studentIds.Contains(c.StudentId)).ToList();
 
         var pairs = new Dictionary<(string S, string G), PairData>();
         PairData Pair(string s, string g)
         {
-            if (!pairs.TryGetValue((s, g), out var p)) pairs[(s, g)] = p = new PairData(new(), new(), new());
+            if (!pairs.TryGetValue((s, g), out var p)) pairs[(s, g)] = p = new PairData(new(), new(), new(), new(StringComparer.Ordinal));
             return p;
         }
         foreach (var t in txs)
@@ -165,6 +217,7 @@ public static class PaymentMonthRepair
         {
             if (!pairs.TryGetValue((c.StudentId, c.GroupId!), out var p)) continue; // to'lovi yo'q juftlik — ko'chiradigan narsa yo'q
             p.Net[c.Month] = p.Net.GetValueOrDefault(c.Month, 0m) + Math.Max(0m, c.Amount - c.Discount);
+            if (!c.Locked && string.CompareOrdinal(c.Month, current) > 0) p.UnlockedFuture.Add(c.Month);
         }
         return (pairs, floor, current);
     }
@@ -174,7 +227,8 @@ public static class PaymentMonthRepair
     {
         var (pairs, floor, current) = await LoadAsync(db, null, ct);
         var plans = pairs
-            .Select(kv => (kv.Key.S, kv.Key.G, Plan: Plan(kv.Value.Net, kv.Value.Payments, kv.Value.Refunds, floor, current)))
+            .Select(kv => (kv.Key.S, kv.Key.G,
+                Plan: Plan(kv.Value.Net, kv.Value.Payments, kv.Value.Refunds, floor, current, kv.Value.UnlockedFuture)))
             .Where(x => x.Plan.Moves.Count > 0)
             .ToList();
         if (plans.Count == 0) return [];
@@ -217,7 +271,7 @@ public static class PaymentMonthRepair
     {
         var (pairs, floor, current) = await LoadAsync(db, studentId, ct);
         if (!pairs.TryGetValue((studentId, groupId), out var data)) return 0m;
-        var plan = Plan(data.Net, data.Payments, data.Refunds, floor, current);
+        var plan = Plan(data.Net, data.Payments, data.Refunds, floor, current, data.UnlockedFuture);
         if (plan.Moves.Count == 0) return 0m;
 
         var ids = plan.Moves.Select(m => m.TxId).Distinct().ToList();
@@ -268,11 +322,32 @@ public static class PaymentMonthRepair
             moved += list.Sum(m => m.Amount);
         }
 
+        // Kelgusi oydan (avansdan) ko'chirilgan bo'lsa — to'lovi qolmagan qulfsiz avans hisobi bekor qilinadi, balans qaytadi
+        // (`TuitionService.DropOrphanAdvanceChargeAsync` — to'lovni bekor qilish/ko'chirishdagi bilan bir xil qoida).
+        var dropped = new List<string>();
+        var futureFrom = plan.Moves.Select(m => m.FromMonth).Where(m => string.CompareOrdinal(m, current) > 0)
+            .Distinct().ToList();
+        if (futureFrom.Count > 0 && await db.Students.FirstOrDefaultAsync(s => s.Id == studentId, ct) is { } st)
+        {
+            await StudentBalanceSync.ReloadAsync(db, st);
+            foreach (var fm in futureFrom)
+            {
+                var touched = plan.Moves.Where(m => m.FromMonth == fm).Select(m => m.TxId).Distinct().ToList();
+                var left = touched.Sum(id => txs.TryGetValue(id, out var t) && t.Month == fm ? t.Amount : 0m);
+                var before = st.Balance;
+                if (await TuitionService.DropOrphanAdvanceChargeAsync(db, st, groupId, fm, ignoreTxIds: touched, pendingNet: left))
+                    dropped.Add($"{fm} avans hisobi bekor qilindi (+{AuditService.Money(st.Balance - before)} so'm balansga)");
+            }
+        }
+
         var summary = string.Join("; ", plan.Moves
             .GroupBy(m => (m.FromMonth, m.ToMonth))
-            .Select(x => $"{AuditService.Money(x.Sum(m => m.Amount))} so'm {x.Key.FromMonth} → {x.Key.ToMonth}"));
+            .Select(x => $"{AuditService.Money(x.Sum(m => m.Amount))} so'm {x.Key.FromMonth} → {x.Key.ToMonth}")
+            .Concat(dropped));
         audit.Record(AuditService.EntityFinanceTransaction, plan.Moves[0].TxId, "update",
-            $"To'lov oyi tuzatildi ({group}): {summary} — {student}. Pul va balans o'zgarmadi, faqat «qaysi oy uchun» tegi",
+            dropped.Count == 0
+                ? $"To'lov oyi tuzatildi ({group}): {summary} — {student}. Pul va balans o'zgarmadi, faqat «qaysi oy uchun» tegi"
+                : $"To'lov oyi tuzatildi ({group}): {summary} — {student}. Pul o'zgarmadi; to'lovi qolmagan avans hisobi olib tashlandi",
             studentId: studentId);
         return moved;
     }

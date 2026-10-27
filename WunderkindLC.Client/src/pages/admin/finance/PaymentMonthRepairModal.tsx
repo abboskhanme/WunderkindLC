@@ -102,7 +102,8 @@ export function PaymentMonthRepairModal({ onClose, onApplied }: Props) {
       <div className="space-y-3 text-sm">
         <p className="text-slate-600">
           Oyning qoldig'idan ko'p pul o'sha oyga yozilgan to'lovlar: ortig'i keyingi (joriy oygacha) to'lanmagan oyga
-          ko'chiriladi. Pul, balans va kassa o'zgarmaydi — faqat to'lov qaysi oy uchun ekani. Shundan keyin guruhdagi
+          ko'chiriladi. Kelgusi oyga (avans) yozilgan pul esa — oldingi to'lanmagan oyga; shunda to'lovsiz qolgan avans
+          hisobi olib tashlanadi. Pul va kassa o'zgarmaydi — faqat to'lov qaysi oy uchun ekani. Shundan keyin guruhdagi
           "qarz oy" va o'qituvchi maoshidagi «Hozir chiqadigan» to'g'ri ko'rinadi.
         </p>
         {result && (
