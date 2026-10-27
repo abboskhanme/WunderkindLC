@@ -157,6 +157,9 @@ services:
       Backup__TelegramEnabled: "${BACKUP_TELEGRAM_ENABLED:-}"
       Backup__Hour: "${BACKUP_HOUR:-}"
       Backup__Minute: "${BACKUP_MINUTE:-}"
+      # FILIAL ALMASHTIRGICH (superadmin, tepada): "Yaypan|https://lc.wunderkindedu.uz;Furqat|https://furqat.wunderkindedu.uz".
+      # Barcha filial ilovalarida AYNAN bir xil (infra/branch/new-branch.sh o'zi yozadi). Bo'sh — almashtirgich yo'q.
+      Branches__Links: "${BRANCH_LINKS:-}"
       # Birinchi ishga tushishda (baza bo'sh bo'lsa) shu login/parol bilan super admin yaratiladi.
       Seed__OwnerLogin: "${OWNER_LOGIN:-admin}"
       Seed__OwnerPassword: "${OWNER_PASSWORD}"
@@ -224,6 +227,7 @@ services:
     volumes:
       - ./infra/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - /root/certs:/etc/nginx/certs:ro     # Cloudflare Origin Cert (serverda yaratiladi)
+      - /root/wlc-branches/nginx:/etc/nginx/branches:ro   # filial host → konteyner xaritasi (infra/branch/new-branch.sh)
     depends_on:
       app:
         condition: service_healthy          # app tayyor bo'lmaguncha 502 bermasin

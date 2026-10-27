@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import {
   IconArrowBackUp,
-  IconBuilding,
   IconChartBar,
   IconCirclePlus,
   IconLogout,
@@ -17,6 +16,7 @@ import { can } from '@/lib/permissions'
 import { cn } from '@/lib/utils'
 import { TopbarStudentSearch } from './TopbarStudentSearch'
 import { NotificationBell } from './NotificationBell'
+import { BranchSwitcher } from './BranchSwitcher'
 
 interface TopbarProps {
   /** Mobil drawer'ni ochish/yopish (desktopda yig'ish tugmasi yon menyuning o'zida). */
@@ -146,12 +146,9 @@ export function Topbar({ onMenuClick, collapsed = false }: TopbarProps) {
           <IconArrowBackUp className="h-5 w-5" />
         </button>
 
-        {/* Markaz (edutizimda filial tanlash turadigan joy). Bizda filial almashtirish yo'q —
-            shuning uchun bu TANLOV EMAS, oddiy yorliq (soxta ochiladigan ro'yxat qilinmadi). */}
-        <div className="hidden h-9 w-[200px] shrink-0 items-center gap-2 rounded-lg border border-[#dbe0e6] px-3 text-sm text-[#333] md:flex">
-          <IconBuilding className="h-5 w-5 shrink-0 text-[#667085]" />
-          <span className="truncate">{name}</span>
-        </div>
+        {/* Markaz / filial (edutizimda filial tanlash turadigan joy). Superadmin va 2+ filialda — almashtirgich
+            (har filial alohida ilova va baza), qolganlarga oddiy yorliq. */}
+        <BranchSwitcher name={name} isSuper={user.role === 'superadmin'} />
 
         <div className="hidden min-w-0 flex-1 sm:flex">
           <TopbarStudentSearch />
