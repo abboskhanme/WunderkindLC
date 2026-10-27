@@ -28,6 +28,8 @@ public partial class AppDbContext
     public DbSet<HrTaskReminder> HrTaskReminders => Set<HrTaskReminder>();
     public DbSet<HrSettings> HrSettings => Set<HrSettings>();
     public DbSet<HrJobRun> HrJobRuns => Set<HrJobRun>();
+    /// <summary>LC: avtomatik sinov darsi topshiriqlari (`HrTrialTask`).</summary>
+    public DbSet<HrTrialTask> HrTrialTasks => Set<HrTrialTask>();
 
     partial void ConfigureHrTasks(ModelBuilder b) =>
         HrTasksModel.Apply(b, Database.ProviderName == "Microsoft.EntityFrameworkCore.Sqlite");
@@ -39,7 +41,7 @@ internal static class HrTasksModel
     [
         typeof(HrPosition), typeof(HrEmployee), typeof(HrEmployeeManager), typeof(HrTaskTemplate), typeof(HrTask),
         typeof(HrTaskProof), typeof(HrTaskProgress), typeof(HrTaskAttachment), typeof(HrTaskReminder),
-        typeof(HrSettings), typeof(HrJobRun),
+        typeof(HrSettings), typeof(HrJobRun), typeof(HrTrialTask),
     ];
 
     private static string In(string column, params string[] values) =>
@@ -281,6 +283,21 @@ internal static class HrTasksModel
             e.Property(x => x.Status).HasMaxLength(10).HasDefaultValue(HrJobs.StatusOk).ValueGeneratedNever();
             if (!sqlite) e.Property(x => x.Details).HasColumnType("jsonb");
             e.HasIndex(x => new { x.JobName, x.RunDate }).IsUnique().HasDatabaseName("uq_hr_job_run");
+        });
+
+        // LC qo'shimchasi (LMS'da yo'q): avtomatik sinov darsi topshiriqlari. Unikal kalit — bir kunga BITTA
+        // ro'yxat (rejalashtiruvchi har 5 daqiqada qayta yugursa ham, ikki server bir vaqtda yugursa ham).
+        b.Entity<HrTrialTask>(e =>
+        {
+            e.ToTable("hr_trial_tasks", t =>
+                t.HasCheckConstraint("ck_hr_trial_task_kind", In("kind", HrTrialTaskKinds.All)));
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Kind).HasMaxLength(10);
+            e.Property(x => x.LessonDate).HasColumnType("date");
+            e.Ignore(x => x.TrialIdList);
+            e.HasOne<HrTask>().WithMany().HasForeignKey(x => x.TaskId).OnDelete(DeleteBehavior.Cascade);
+            e.HasIndex(x => new { x.EmployeeId, x.Kind, x.LessonDate }).IsUnique().HasDatabaseName("uq_hr_trial_task");
+            e.HasIndex(x => x.TaskId);
         });
 
         ApplySnakeCaseNames(b);

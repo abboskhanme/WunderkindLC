@@ -286,6 +286,38 @@ public static class HrTasksTexts
         + $"⏰ Muddat: {HrValues.Local(dueAt, tz).ToString("dd.MM.yyyy HH:mm", CultureInfo.InvariantCulture)}\n\n"
         + "Bajargach «Topshiriqlarim» bo'limidan belgilang.";
 
+    /// <summary>
+    /// LC: a single task with EVERYTHING the employee needs (egasining talabi, 2026-10-27): title, description, due, who
+    /// gave it. Attachments (photo / file / voice) follow as separate messages; the «✅ Qabul qildim» button is under
+    /// this one (<see cref="HrTaskAck"/>).
+    /// </summary>
+    public static string AssignedFull(string title, string? description, DateTimeOffset dueAt, TimeZoneInfo tz,
+        string giverName, int attachmentCount)
+    {
+        var sb = new System.Text.StringBuilder("🆕 <b>Sizga yangi topshiriq</b>\n\n");
+        sb.Append("<b>").Append(Escape(title)).Append("</b>\n");
+        if (!string.IsNullOrWhiteSpace(description))
+        {
+            // the whole message must fit Telegram's 4096 — the description is the only long part
+            var desc = description.Trim();
+            const int room = TelegramMaxLen - 700;
+            if (desc.Length > room) desc = desc[..room] + "…";
+            sb.Append('\n').Append(Escape(desc)).Append('\n');
+        }
+        sb.Append("\n⏰ Muddat: ")
+            .Append(HrValues.Local(dueAt, tz).ToString("dd.MM.yyyy HH:mm", CultureInfo.InvariantCulture)).Append('\n');
+        sb.Append("👤 Berdi: ").Append(Escape(giverName)).Append('\n');
+        if (attachmentCount > 0) sb.Append("📎 Biriktirma: ").Append(attachmentCount).Append(" ta (pastda)\n");
+        sb.Append("\nTopshiriqni ko'rganingizni «✅ Qabul qildim» bilan tasdiqlang.");
+        return sb.ToString();
+    }
+
+    /// <summary>LC: a late trial added to today's sinov list (<see cref="HrTrialRules"/>).</summary>
+    public static string TrialAdded(string title, IReadOnlyList<string> itemTexts) =>
+        "➕ <b>Ro'yxatga yangi o'quvchi qo'shildi</b>\n"
+        + $"{Escape(title)}\n\n"
+        + Escape(string.Join("", itemTexts).TrimEnd());
+
     /// <summary>A batch — ONE message per employee (old notifier._batch_text).</summary>
     public static string AssignedMany(int count, IReadOnlyList<string> titles)
     {

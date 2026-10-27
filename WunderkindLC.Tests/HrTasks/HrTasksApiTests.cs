@@ -554,10 +554,13 @@ public class HrTasksApiTests
         var chat = e.Chat!.Value;
 
         var created = await kit.Service().CreateTaskAsync(panel,
-            new HrTaskCreateInput(e.Employee!.Id, "Shartnoma <tayyorlash>", null, "2031-03-10T18:00:00", null, null, null, null));
+            new HrTaskCreateInput(e.Employee!.Id, "Shartnoma <tayyorlash>", "Ota-ona & o'quvchi bilan", "2031-03-10T18:00:00", null, null, null, null));
         var message = Assert.Single(kit.Sender.To(chat));
-        Assert.Equal("🆕 <b>Sizga yangi topshiriq</b>\n\nShartnoma &lt;tayyorlash&gt;\n⏰ Muddat: 10.03.2031 18:00\n\n"
-                     + "Bajargach «Topshiriqlarim» bo'limidan belgilang.", message);
+        // LC (2026-10-27): the FULL task — title, description, due, who gave it — and «✅ Qabul qildim» under it
+        Assert.StartsWith("🆕 <b>Sizga yangi topshiriq</b>\n\n<b>Shartnoma &lt;tayyorlash&gt;</b>\n\nOta-ona &amp; o'quvchi bilan\n", message);
+        Assert.Contains("⏰ Muddat: 10.03.2031 18:00", message);
+        Assert.Contains("👤 Berdi: " + admin.User.FullName, message);
+        Assert.Equal((chat, created.Id), Assert.Single(kit.Sender.TaskButtons));
         // LC: the message opens the staff member's own tasks in the panel
         Assert.Equal(TelegramBotService.PanelUrl + HrTasksService.MyTasksPanelPath, kit.Sender.Messages.Single().Url);
 
@@ -569,15 +572,27 @@ public class HrTasksApiTests
         Assert.Equal(2, kit.Sender.To(chat).Count);
         Assert.StartsWith("↩️ <b>Topshiriq qaytarildi</b>", kit.Sender.To(chat)[1]);
 
-        // a batch → ONE message per employee
+        // LC: a SMALL batch (≤ MaxFullTaskMessages) → each task in full, each with its own «Qabul qildim»
+        await kit.Service().CreateTaskBatchAsync(panel, new HrTaskBatchInput([e.Employee.Id],
+        [
+            new HrTaskBatchItemInput("Bir", "2031-03-11T10:00:00", null, null, null, null, null),
+            new HrTaskBatchItemInput("Ikki", "2031-03-11T10:00:00", null, null, null, null, null),
+        ]));
+        Assert.Equal(4, kit.Sender.To(chat).Count);
+        Assert.Contains("<b>Bir</b>", kit.Sender.To(chat)[2]);
+        Assert.Contains("<b>Ikki</b>", kit.Sender.To(chat)[3]);
+        Assert.Equal(3, kit.Sender.TaskButtons.Count);
+
+        // a LARGE batch → ONE summary message per employee (LMS)
         await kit.Service().CreateTaskBatchAsync(panel, new HrTaskBatchInput([e.Employee.Id],
         [
             new HrTaskBatchItemInput("Bir", "2031-03-11T10:00:00", null, null, null, null, null),
             new HrTaskBatchItemInput("Ikki", "2031-03-11T10:00:00", null, null, null, null, null),
             new HrTaskBatchItemInput("Uch", "2031-03-11T10:00:00", null, null, null, null, null),
+            new HrTaskBatchItemInput("To'rt", "2031-03-11T10:00:00", null, null, null, null, null),
         ]));
-        Assert.Equal(3, kit.Sender.To(chat).Count);
-        Assert.StartsWith("🆕 <b>Sizga 3 ta yangi topshiriq berildi</b>\n\n1. Bir\n2. Ikki\n3. Uch", kit.Sender.To(chat)[2]);
+        Assert.Equal(5, kit.Sender.To(chat).Count);
+        Assert.StartsWith("🆕 <b>Sizga 4 ta yangi topshiriq berildi</b>\n\n1. Bir\n2. Ikki\n3. Uch\n4. To'rt", kit.Sender.To(chat)[4]);
 
         // an unlinked employee — nothing is sent, the request still succeeds
         var unlinked = await kit.PersonAsync();

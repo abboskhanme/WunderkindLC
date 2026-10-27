@@ -91,6 +91,18 @@ yakun yuborilmaydi, 4096 belgida xodim chegarasida bo'linadi. Ommaviy berishda x
 Bot sozlanmagan bo'lsa hech narsa yuborilmaydi; Telegram xatosi so'rovni buzmaydi. Xodim operativ xabari —
 outbox'siz, to'g'ridan-to'g'ri (`messaging.md` §0.5 ruxsat bergan toifa).
 
+**LC: TO'LIQ XABAR + «✅ Qabul qildim» (egasining talabi, 2026-10-27)** — `HrTasksService.Notify.cs`, `HrTaskAck`:
+- Yangi topshiriq botga HAMMA ma'lumoti bilan keladi (`HrTasksTexts.AssignedFull`): sarlavha, tavsif, muddat,
+  «👤 Berdi: <kim>» (tizim yaratgani — «Tizim…»), biriktirmalar soni; keyin har biriktirma alohida xabar: ovoz —
+  `sendVoice`, rasm (jpeg/png/webp/gif) — `sendPhoto`, qolgani — `sendDocument`.
+- Xabar ostida **«✅ Qabul qildim»** (callback `hrack:{taskId}`) + «📋 Topshiriqlarim». Bosish = paneldagi «Tasdiqlash»
+  (`HrTask.Accept` → `AcceptedAt`), tugma «✅ Qabul qilindi · Topshiriqlarim» ga almashadi. ⚠️ Faqat topshiriq EGASINING
+  chati (staff — `UserId`, o'qituvchi — kartasi) qabul qiladi; begona/noma'lum id — BIR XIL «topilmadi» toast'i (id
+  mavjudligi oshkor bo'lmasin, `MessageAckService` naqshi). Bekor qilingan topshiriq qabul qilinmaydi. Ikkinchi bosish
+  birinchi vaqtni saqlaydi. `TelegramBotService` `hrack:` ni umumiy `answerCallbackQuery` va bot darvozasidan OLDIN ushlaydi.
+- Ommaviy berishda xodimga ≤ 3 ta (`MaxFullTaskMessages`) topshiriq — har biri TO'LIQ xabar; ko'proq — LMS'dagi
+  BITTA yig'ma xabar (tugmasiz, panelda qabul qilinadi).
+
 ## 6. LC moslashlari (LMS'dan FARQI)
 
 | Mavzu | LC'da |
@@ -107,6 +119,8 @@ outbox'siz, to'g'ridan-to'g'ri (`messaging.md` §0.5 ruxsat bergan toifa).
 | Audit | LMS yozmaydi; LC'da faqat HR paneli YANGI AKKAUNT yaratganda bitta `Staff` qatori («… (Topshiriqlar → Xodimlar) — ruxsatsiz») |
 | Zaxira | JSON zaxirada `hr*` biznes jadvallari bor; `hrTaskReminders`, `hrJobRuns` — `ExcludedTables` (texnik) |
 | Xodim faolligi | `StaffActivity` «yopilgan topshiriqlar» = xodimning O'ZI bajargan HR topshiriqlari |
+| Bot xabari | LMS — sarlavha + muddat; LC — to'liq topshiriq, biriktirmalar va «✅ Qabul qildim» (§5) |
+| Sinov darsi topshiriqlari | LC qo'shimchasi (§8) — `hr_trial_tasks` |
 | KPI / so'rovnomalar | LMS'ning HR KPI'si va so'rovnomalari ko'chirilmagan. LC KPI cheklistining `tasks.overdue_zero` / `tasks.due_done` kalitlari HR topshiriqlaridan hisoblanadi (`ChecklistAutoCheck`, `kpi.md` §11) |
 
 ## 7. Yangi narsa qo'shsangiz
@@ -119,3 +133,31 @@ outbox'siz, to'g'ridan-to'g'ri (`messaging.md` §0.5 ruxsat bergan toifa).
   ga va `BackupService` ga (yoki `ExcludedTables` ga sababi bilan).
 - Telegram matni — `HrTasksTexts` da, foydalanuvchi matni `Escape()` dan o'tadi (HTML parse_mode).
 - Yangi xodim manbasi (yangi rol) — `SyncLmsPeopleAsync` va `EmployeeUserRoles`.
+- Yangi topshiriq yaratish yo'li — xabarni `NotifyAssignedAsync` orqali yuboring (to'liq matn + «Qabul qildim»).
+
+## 8. SINOV DARSI TOPSHIRIQLARI (LC qo'shimchasi, 2026-10-27)
+
+Egasining talabi: sinov darsiga yozilgan lidlar bilan ishlash avtomatik topshiriq bo'lib administratorga borsin.
+Kod: `HrTrialRules` (sof, `HrTrialTasksTests`), `HrTasksService.Trials.cs`, jadval `hr_trial_tasks`
+(migratsiya `AddHrTrialTasks`). Rejalashtiruvchining HAR siklida (5 daq) yuguradi — `RunTrialTasksAsync`.
+
+| Ro'yxat | Qachon | Kimlar |
+|---|---|---|
+| **«Ertaga (dd.MM) sinov darsiga keladiganlar — N ta»** | sinovdan BIR KUN OLDIN, 09:00 dan | ertangi, natijasi belgilanmagan sinovlar |
+| **«Kecha (dd.MM) sinov darsi bo'lganlar bilan bog'laning — N ta»** | sinovdan KEYINGI KUNI, 09:00 dan | kechagi sinovlar, natijasi bilan (keldi/kelmadi/belgilanmagan) |
+
+- **Kimga:** lid MAS'ULI (`Lead.AssigneeUserId`) → bo'lmasa (yoki u HR xodimi emas) sinovga YOZGAN xodim (oxirgi
+  `LeadEvent` `trial` ning `ActorUserId`) → u ham bo'lmasa HR direktor(lar)i. Faqat FAOL HR xodimi.
+- **BITTA ro'yxat** — bir (xodim, tur, kun) uchun bitta topshiriq (unikal `uq_hr_trial_task`); 09:00 dan keyin yozilgan
+  sinov o'sha ro'yxatga QO'SHILADI (sarlavha/tavsif yangilanadi, xodimga «➕ Ro'yxatga yangi o'quvchi qo'shildi»;
+  bajarilgan ro'yxat qayta ochiladi, bekor qilingani — tegilmaydi).
+- **Har o'quvchi:** ism, telefon (+ ota/ona), vaqt, guruh (ustoz), kurs, daraja (lidda — ustun, bo'lmasa daraja testi),
+  mas'ul; kechagisida — natija. Maktab sinfi YO'Q (lidda maydon yo'q — egasining qarori: sinfsiz).
+- Topshiriq: `Source = director`, `CreatedBy = null` (botda «Berdi: Tizim (sinov darsi)»), `ProofRequired = false`,
+  muddat — o'sha kuni 20:00 (o'tib ketgan bo'lsa hozirdan +2 soat). Botga to'liq xabar + «✅ Qabul qildim».
+- **O'ZI BAJARILADI** (`AutoDoneComment` izohi bilan) — ro'yxatdagi HAR sinov hal bo'lganda: lid o'chirilgan,
+  aylantirilgan, shartnomasi yopilgan yoki RAD ETILGAN (`LostAt`); «ertangi» — natijasi belgilangan yoki boshqa kunga
+  ko'chirilgan; «kechagi» — lid KEYINGI sanaga qayta sinovga yozilgan (yangi sinov o'z sikliga — yana ikkala ro'yxat).
+  Qo'lda «Bajardim» ham mumkin (isbotsiz). Yopish oynasi — oxirgi 45 kun.
+- ⚠️ Kechagi ro'yxat FAQAT ochiq lidlar bilan yaratiladi; 09:00 gacha hech narsa yaratilmaydi (lekin yopish yuguradi);
+  server butun kun o'chiq bo'lsa o'sha kun o'tkazib yuboriladi (orqaga yaratilmaydi).

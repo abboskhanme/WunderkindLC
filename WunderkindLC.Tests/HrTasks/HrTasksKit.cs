@@ -30,6 +30,30 @@ public sealed class FakeHrSender : IHrTelegramSender
         return Task.FromResult(true);
     }
 
+    /// <summary>LC: task messages with the «✅ Qabul qildim» button — also queued in <see cref="Messages"/>.</summary>
+    public ConcurrentQueue<(long Chat, string TaskId)> TaskButtons { get; } = new();
+    public ConcurrentQueue<(long Chat, string Name)> Photos { get; } = new();
+    public ConcurrentQueue<(long Chat, string Name)> Documents { get; } = new();
+
+    public Task<bool> SendTaskAsync(long chatId, string html, string? openUrl, string taskId, CancellationToken ct = default)
+    {
+        Messages.Enqueue((chatId, html, openUrl));
+        TaskButtons.Enqueue((chatId, taskId));
+        return Task.FromResult(true);
+    }
+
+    public Task<bool> SendPhotoAsync(long chatId, byte[] bytes, string fileName, string? caption, CancellationToken ct = default)
+    {
+        Photos.Enqueue((chatId, fileName));
+        return Task.FromResult(true);
+    }
+
+    public Task<bool> SendDocumentAsync(long chatId, byte[] bytes, string fileName, string? caption, CancellationToken ct = default)
+    {
+        Documents.Enqueue((chatId, fileName));
+        return Task.FromResult(true);
+    }
+
     public List<string> To(long chat) => [.. Messages.Where(m => m.Chat == chat).Select(m => m.Text)];
 }
 

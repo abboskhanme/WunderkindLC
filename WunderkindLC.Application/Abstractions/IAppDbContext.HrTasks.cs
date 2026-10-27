@@ -17,4 +17,6 @@ public partial interface IAppDbContext
     DbSet<HrTaskReminder> HrTaskReminders { get; }
     DbSet<HrSettings> HrSettings { get; }
     DbSet<HrJobRun> HrJobRuns { get; }
+    /// <summary>LC: avtomatik sinov darsi topshiriqlari ↔ sinov darslari.</summary>
+    DbSet<HrTrialTask> HrTrialTasks { get; }
 }

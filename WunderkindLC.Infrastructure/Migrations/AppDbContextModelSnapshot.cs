@@ -4473,6 +4473,61 @@ namespace WunderkindLC.Infrastructure.Migrations
                         });
                 });
 
+            modelBuilder.Entity("WunderkindLC.Domain.HrTrialTask", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasColumnType("text")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("EmployeeId")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("employee_id");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)")
+                        .HasColumnName("kind");
+
+                    b.Property<DateOnly>("LessonDate")
+                        .HasColumnType("date")
+                        .HasColumnName("lesson_date");
+
+                    b.Property<string>("TaskId")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("task_id");
+
+                    b.Property<string>("TrialIds")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("trial_ids");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_hr_trial_tasks");
+
+                    b.HasIndex("TaskId")
+                        .HasDatabaseName("ix_hr_trial_tasks_task_id");
+
+                    b.HasIndex("EmployeeId", "Kind", "LessonDate")
+                        .IsUnique()
+                        .HasDatabaseName("uq_hr_trial_task");
+
+                    b.ToTable("hr_trial_tasks", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_hr_trial_task_kind", "kind in ('before','after')");
+                        });
+                });
+
             modelBuilder.Entity("WunderkindLC.Domain.IgAccount", b =>
                 {
                     b.Property<string>("Id")
@@ -10322,6 +10377,16 @@ namespace WunderkindLC.Infrastructure.Migrations
                         .HasForeignKey("TargetPositionId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .HasConstraintName("fk_hr_task_templates_hr_positions_target_position_id");
+                });
+
+            modelBuilder.Entity("WunderkindLC.Domain.HrTrialTask", b =>
+                {
+                    b.HasOne("WunderkindLC.Domain.HrTask", null)
+                        .WithMany()
+                        .HasForeignKey("TaskId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_hr_trial_tasks_hr_tasks_task_id");
                 });
 
             modelBuilder.Entity("WunderkindLC.Domain.LeadTelegramMessage", b =>
