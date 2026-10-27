@@ -266,6 +266,18 @@ export const adminPermissions: AdminPermSection[] = [
   // Serverda `ReadRequiresPerm = true`. «Mening topshiriqlarim» uchun kalit KERAK EMAS.
   { key: 'hrTasks', label: 'Topshiriqlar' },
   { key: 'feedback', label: 'Taklif va shikoyatlar' },
+  // BILIMLAR BAZASI (wiki) — xodimlarning shaxsiy eslatmalari, faqat matn (`.claude/rules/wiki.md`).
+  // «Eslatmalarim» — HAR BIR xodimga RUXSATSIZ (egasining talabi, 2026-10-27), shuning uchun bu yerda kaliti YO'Q.
+  //   .team — xodimlar eslatmalarini O'QISH: rahbariyat — hammaniki (va qulflaydi), HR menejeri — bo'ysunuvchilariniki
+  //           (Topshiriqlar → Xodimlar daraxti, sozlamadagi lavozimlar). Oddiy xodimga bersa ham ro'yxat bo'sh.
+  // Serverda o'qishda ham darvozalangan.
+  {
+    key: 'wiki',
+    label: 'Bilimlar bazasi',
+    pages: [
+      { key: 'wiki.team', label: 'Xodimlar eslatmalari' },
+    ],
+  },
   { key: 'cameras', label: 'Kameralar' },
   // Vakansiyalar — ishga qabul moduli (Wunderkind Career boti + `/vakansiya` Mini App).
   // Ikki sahifa: vakansiyalar/arizalar (CV manzillari — nozik) va yangi xodimning 30 kunlik

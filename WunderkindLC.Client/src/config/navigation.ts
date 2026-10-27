@@ -1,6 +1,6 @@
 import { SETTINGS_GROUPS, groupPermAny } from './settingsGroups'
 import type { ComponentType } from 'react'
-import { LayoutDashboard, ListChecks, NotebookText } from 'lucide-react'
+import { BookOpen, LayoutDashboard, ListChecks, NotebookText } from 'lucide-react'
 // Admin menyusi — edutizim bilan BIR XIL ikonkalar (Tabler outline, edutizim ham shularni ishlatadi).
 import {
   IconClipboardCheck,
@@ -279,6 +279,9 @@ export const navByRole: Record<Role, NavItem[]> = {
         { label: 'Sozlamalar', to: '/admin/hr/topshiriqlar/sozlamalar', perm: 'hrTasks' },
       ],
     },
+    // BILIMLAR BAZASI (wiki) — shaxsiy eslatmalar: «Eslatmalarim» | «Xodimlar». Chapda daraxt, o'ngda muharrir.
+    // Ruxsatsiz: «Eslatmalarim» har bir xodimga ochiq (egasining talabi, 2026-10-27).
+    { label: 'Bilimlar bazasi', to: '/admin/bilimlar', icon: BookOpen },
     {
       label: 'Sotuv va marketing',
       to: '#sotuv',

@@ -120,6 +120,8 @@ describe('edutizim menyusi', () => {
       'Boshqaruv',
       // HR topshiriqlari paneli — LMS'dagi «HR → TOPSHIRIQLAR» (LC'da «HR» bo'limi yo'q).
       'Topshiriqlar',
+      // Bilimlar bazasi (wiki) — xodimlarning shaxsiy eslatmalari (`.claude/rules/wiki.md`).
+      'Bilimlar bazasi',
       'Sotuv va marketing',
       // Egasining TZ'si (2026-10-17, F5 N1): Instagram marketing — o'z asosiy guruhi.
       'Instagram marketing',

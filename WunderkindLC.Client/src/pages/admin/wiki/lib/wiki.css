@@ -1,0 +1,69 @@
+/* =============================================================================================
+   BILIMLAR BAZASI — matn ko'rinishi (egasining talabi: "jiddiy shrift, Apple uslubida").
+   Shrift: Apple qurilmalarida — SF Pro (tizimniki), qolganlarida — Inter (SF'ga eng yaqin, BlockNote bilan
+   O'Z serverimizdan keladi — prod CSP tashqi shriftni bloklaydi). Joylashuv — Apple bilimlar bazasi
+   (support.apple.com) uslubida: keng qatorlar, to'q-kulrang matn (#1d1d1f), salgina siqilgan harf oralig'i.
+   O'lcham — `--wiki-font-size` (A− / A+, `WikiPageView`), sarlavhalar unga NISBATAN o'sadi.
+   ============================================================================================= */
+
+.wiki-font {
+  --wiki-font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --wiki-font-display: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Inter", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-family: var(--wiki-font);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-feature-settings: "cv11", "ss01";
+}
+
+.wiki-doc {
+  --wiki-text: #1d1d1f;
+  --wiki-muted: #6e6e73;
+  font-family: var(--wiki-font);
+  color: var(--wiki-text);
+}
+
+/* Sahifa nomi — hujjatdagi eng katta matn. */
+.wiki-doc .wiki-title {
+  font-family: var(--wiki-font-display);
+  font-size: calc(var(--wiki-font-size, 16px) * 2);
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: -0.022em;
+  color: var(--wiki-text);
+}
+
+/* BlockNote o'z shrift o'zgaruvchisini qo'yadi — bilimlar bazasi shriftiga bog'laymiz. */
+.wiki-editor,
+.wiki-editor .bn-editor {
+  --bn-font-family: var(--wiki-font);
+  font-family: var(--wiki-font);
+  font-size: var(--wiki-font-size, 16px);
+  line-height: 1.6;
+  letter-spacing: -0.003em;
+  color: var(--wiki-text);
+}
+
+/* Bloklar orasida "nafas" — Apple maqolalaridagi kabi. */
+.wiki-editor .bn-block-outer:not(:first-child) > .bn-block > .bn-block-content[data-content-type="paragraph"] {
+  padding-top: 0.2em;
+}
+
+/* Sarlavhalar sahifa nomidan KICHIK (Notion/Apple'dagidek). BlockNote standarti 1-daraja 3em edi —
+   nomdan katta chiqib, ierarxiya teskari ko'rinardi. */
+.wiki-editor [data-content-type="heading"] {
+  --level: 1.6em;
+  font-family: var(--wiki-font-display);
+  font-weight: 650;
+  letter-spacing: -0.015em;
+}
+.wiki-editor [data-content-type="heading"][data-level="2"] { --level: 1.35em; }
+.wiki-editor [data-content-type="heading"][data-level="3"] { --level: 1.15em; }
+
+.wiki-editor [data-content-type="quote"] {
+  color: var(--wiki-muted);
+}
+
+/* Faqat o'qish rejimida kursor va "/" ko'rsatkichi chalg'itmasin. */
+.wiki-editor .bn-editor[contenteditable="false"] {
+  cursor: default;
+}

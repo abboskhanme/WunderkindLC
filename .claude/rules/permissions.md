@@ -153,6 +153,7 @@ turmaydi.
 | `finance` | `.main` `.bonus` `.discounts` `.debts` `.tariffs` `.invoices` | `FinanceController` · `RetentionBonusController` · `DiscountReportController` · `FinanceReportsController` (metod darajasida, RRP — SPEC-backlog-2026-10-17 F1) |
 | `kpi` | `.today` `.month` `.tickets` `.close` `.rules` | `KpiController` (metod darajasida) |
 | `settings` | `.school` `.landing` `.reasons` `.channels` `.backup` `.azure-speech` `.gemini` `.check` `.turnstile` `.cameras` `.posthog` `.archive` | `SettingsController` (metod darajasida) · `LandingCmsController` · `ActionReasonsController` · `LeadSourcesController` · `ArchiveController` |
+| `wiki` | `.team` | `MyNotesController` («Eslatmalarim» — RUXSATSIZ, har bir xodim va o'qituvchi) · `WikiTeamController` (`wiki.team`, RRP) — `wiki.md` |
 | `vacancies` | `.list` `.onboarding` | `CareerController` (`vacancies.list`, RRP) · `OnboardingController` (`vacancies.onboarding`, RRP) |
 
 ⚠️ 2026-10: `calls` bo'limi (`calls.local` — Local Call), `messages.chat` va `settings.apk` kalitlari

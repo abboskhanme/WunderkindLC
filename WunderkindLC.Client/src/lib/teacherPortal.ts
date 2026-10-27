@@ -14,6 +14,7 @@ import {
   LifeBuoy,
   ListChecks,
   MessageSquareText,
+  NotebookPen,
   Trophy,
   UserRound,
   Users,
@@ -55,6 +56,8 @@ export const TEACHER_NAV: TeacherNavItem[] = [
   { to: '/teacher/topshiriqlar', label: 'Mening topshiriqlarim', short: 'Topshiriqlar', hint: 'Rahbar bergan topshiriqlar: tasdiqlash va bajarish', icon: ListChecks, section: 'main' },
   { to: '/teacher/salary', label: 'Maosh', hint: 'Oylik hisob, berilgan va qoldiq', icon: Wallet, perm: 'salary', section: 'work' },
   { to: '/teacher/tests', label: 'Testlar', hint: 'Test natijalari (ball kiritish)', icon: FileCheck2, perm: 'journal', section: 'work' },
+  // Bilimlar bazasi → shaxsiy eslatmalar (`.claude/rules/wiki.md` §9): faqat o'zi yozadi, rahbariyat o'qiydi.
+  { to: '/teacher/eslatmalar', label: 'Eslatmalarim', short: 'Eslatmalar', hint: "Shaxsiy qaydlar va insaytlar (rahbariyat o'qiydi)", icon: NotebookPen, section: 'work' },
   { to: '/teacher/rating', label: 'Reyting', hint: "O'quvchilar ball bo'yicha", icon: Trophy, section: 'work' },
   { to: '/teacher/support', label: 'Support', hint: "Bo'sh vaqt va bron darslari", icon: LifeBuoy, supportOnly: true, section: 'work' },
   { to: '/teacher/feedback', label: 'Taklif va shikoyat', hint: 'Adminga xabar yuborish', icon: MessageSquareText, section: 'account' },

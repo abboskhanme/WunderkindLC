@@ -119,6 +119,9 @@ public partial interface IAppDbContext
     DbSet<OnboardingStep> OnboardingSteps { get; }
     DbSet<EmployeeOnboarding> EmployeeOnboardings { get; }
     DbSet<EmployeeOnboardingTask> EmployeeOnboardingTasks { get; }
+    // Bilimlar bazasi (wiki) — xodimlarning shaxsiy eslatmalari
+    DbSet<WikiPage> WikiPages { get; }
+    DbSet<WikiSettings> WikiSettings { get; }
 
     // LMS (Ta'lim)
 

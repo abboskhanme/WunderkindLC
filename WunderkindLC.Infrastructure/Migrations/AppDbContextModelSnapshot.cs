@@ -10193,6 +10193,105 @@ namespace WunderkindLC.Infrastructure.Migrations
                     b.ToTable("Vacancies");
                 });
 
+            modelBuilder.Entity("WunderkindLC.Domain.WikiPage", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasColumnType("text");
+
+                    b.Property<string>("ContentJson")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("ContentText")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("CreatedAt")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("CreatedBy")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Icon")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<bool>("IsSection")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("Locked")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("LockedAt")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("LockedBy")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int>("Order")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("OwnerUserId")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("ParentId")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("UpdatedAt")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("UpdatedBy")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int>("Version")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OwnerUserId", "ParentId", "Order");
+
+                    b.ToTable("WikiPages");
+                });
+
+            modelBuilder.Entity("WunderkindLC.Domain.WikiSettings", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasColumnType("text");
+
+                    b.Property<List<string>>("ManagerVisiblePositionIds")
+                        .IsRequired()
+                        .HasColumnType("text[]");
+
+                    b.Property<bool>("ManagersSeeTeamNotes")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("UpdatedAt")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("UpdatedBy")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("WikiSettings");
+                });
+
             modelBuilder.Entity("WunderkindLC.Domain.CertificateVerification", b =>
                 {
                     b.HasOne("WunderkindLC.Domain.StudentCertificate", null)
