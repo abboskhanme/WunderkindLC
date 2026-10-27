@@ -13,7 +13,7 @@ import { apiErrorMessage } from '@/lib/utils'
 import { SettingToggle } from './SettingToggle'
 
 /**
- * «Sozlamalar → Servis» — «Bog'lanish kerak» (servis) taxtasining avtomatikasi (egasining talabi, 2026-10-27):
+ * «Sozlamalar → Service» — «Bog'lanish kerak» (servis) taxtasining avtomatikasi (egasining talabi, 2026-10-27):
  * kelmaganlar (necha dars ketma-ket sababsiz) va qarzdorlar (oyning qaysi sanasidan) avtomatik navbatga tushadi.
  * Qarz to'langanda talab o'zi yopiladi — bu sozlamaga bog'liq emas. Pastda — o'chirilgan tizim ustunlarini qaytarish.
  * Server qoidalari: `.claude/rules/contacts.md` §9, §9.5.
@@ -78,7 +78,7 @@ export function ContactServiceSettings() {
 
   return (
     <div className="space-y-3">
-      <Card title={<span className="flex items-center gap-2"><PhoneCall className="h-4 w-4 text-brand-600" /> Servis — avtomatik qo'shish</span>}>
+      <Card title={<span className="flex items-center gap-2"><PhoneCall className="h-4 w-4 text-brand-600" /> Service — avtomatik qo'shish</span>}>
         <p className="mb-4 text-sm text-slate-500">
         «Bog'lanish kerak» taxtasiga o'quvchilar avtomatik tushadi. Qarzdorning talabi qarzi to'liq to'langanda o'zi yopiladi.
         Talab «Hal bo'ldi» qilinsa yoki o'quvchi arxivlansa, karta taxtadan chiqadi.

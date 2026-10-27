@@ -8,6 +8,7 @@ import {
   IconUsers,
   IconSchool,
   IconBook,
+  IconPhoneCall,
   IconWallet,
   IconShieldCheck,
   IconBriefcase,
@@ -151,8 +152,6 @@ export const navByRole: Record<Role, NavItem[]> = {
       // Tartib edutizimdagidek: yangi → aktiv → arxiv → ro'yxat → ota-ona → obuna → manzillar.
       children: [
         { label: "Yangi o'quvchilar", to: '/admin/students/yangi', perm: 'students.list' },
-        // CRM Phase 3 (2026-10-12): ketma-ket kelmaslik avtomatik talab ochadi — kundalik ish, Future'dan chiqarildi.
-        { label: "Bog'lanish kerak", to: '/admin/students/boglanish', perm: 'contacts' },
         { label: "Aktiv o'quvchilar", to: '/admin/students/aktiv', perm: 'students.list' },
         { label: "Arxiv o'quvchilar", to: '/admin/students/arxiv', perm: 'students.list' },
         { label: "O'quvchilar ro'yxati", to: '/admin/students', end: true, perm: 'students.list' },
@@ -175,6 +174,9 @@ export const navByRole: Record<Role, NavItem[]> = {
         { label: 'Kitoblar sotuvi', to: '/admin/books', perm: 'books' },
       ],
     },
+    // «SERVICE» — «Bog'lanish kerak» navbati (qarzdorlar, darsga kelmaganlar) — alohida asosiy band, «O'quv bo'limi»
+    // ostida (egasining talabi, 2026-10-28; ilgari «O'quvchilar» guruhi ichida edi). Manzil o'zgarmadi.
+    { label: 'Service', to: '/admin/students/boglanish', icon: IconPhoneCall, perm: 'contacts' },
     {
       // ⚠️ Bir nechta band BITTA sahifaning TABLARI (`/admin/finance?tab=...`) — Sidebar ularni
       // `?tab=` bilan ham solishtiradi, aks holda to'rttasi birdan faol bo'lib ko'rinardi.

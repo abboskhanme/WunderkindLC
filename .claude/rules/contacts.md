@@ -533,8 +533,9 @@ Batafsil: `.claude/rules/audit.md`.
 
 ## 9. AVTOMATIK TALAB — ketma-ket kelmaslik (CRM Phase 3, U3d — 2026-10-12)
 
-SPEC: `docs/SPEC-crm-upgrade.md` P3.5. Menyuda «Bog'lanish kerak» endi ASOSIY «O'quvchilar» guruhida
-(«Yangi o'quvchilar» dan keyin), Future'dan olib tashlandi (`navCrmPhase3.test.ts`).
+SPEC: `docs/SPEC-crm-upgrade.md` P3.5. ⚠️ 2026-10-28 (egasining talabi): menyuda alohida asosiy band **«Service»**,
+«O'quv bo'limi» ostida (ilgari «O'quvchilar» guruhida edi); sahifa sarlavhasi va sozlama bandi ham «Service». Manzil
+o'zgarmadi — `/admin/students/boglanish` (`navCrmPhase3.test.ts`, `reports.test.ts` menyu tartibi).
 
 - **Seriya** — `AbsenceStreaks` (sof, `AbsenceStreakTests`): bitta (o'quvchi, guruh) bo'yicha eng oxirgi darsdan
   ORQAGA: sababsiz yo'qlik sanaladi, belgilanmagan / o'tilmagan / a'zolikdan tashqari dars o'tkazib yuboriladi,

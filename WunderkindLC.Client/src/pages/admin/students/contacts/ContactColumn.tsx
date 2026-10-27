@@ -82,9 +82,9 @@ export function ContactColumn({
             <HBtn icon={ChevronRight} title="O'ngga" disabled={admin.isLast}
               onClick={() => admin.onMove(column, 1)} />
             <HBtn icon={Pencil} title="Tahrirlash" onClick={() => admin.onEdit(column)} />
-            {/* 2026-10-27: HAR ustun o'chiriladi (tizim ustuni — yashiriladi, «Sozlamalar → Servis» dan qaytadi).
+            {/* 2026-10-27: HAR ustun o'chiriladi (tizim ustuni — yashiriladi, «Sozlamalar → Service» dan qaytadi).
                 Ochiq bosqichning oxirgi ustunini server rad etadi (kartalar joysiz qolmasin) — sabab alert'da. */}
-            <HBtn icon={Trash2} title={system ? "O'chirish (keyin «Sozlamalar → Servis» dan qaytarsa bo'ladi)" : "O'chirish"}
+            <HBtn icon={Trash2} title={system ? "O'chirish (keyin «Sozlamalar → Service» dan qaytarsa bo'ladi)" : "O'chirish"}
               danger onClick={() => admin.onDelete(column)} />
           </div>
         )}

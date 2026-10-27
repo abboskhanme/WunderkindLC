@@ -35,7 +35,7 @@ export interface ContactStagePayload {
   baseStatus?: string
 }
 
-/** `all` — yashirilgan (o'chirilgan tizim) ustunlar ham («Sozlamalar → Servis» — qaytarish uchun). */
+/** `all` — yashirilgan (o'chirilgan tizim) ustunlar ham («Sozlamalar → Service» — qaytarish uchun). */
 export async function getContactStages(all = false): Promise<ContactStage[]> {
   if (USE_MOCK) {
     await delay()
@@ -69,7 +69,7 @@ export async function restoreContactStage(id: string): Promise<ContactStage> {
   return data
 }
 
-/** «Sozlamalar → Servis»: kelmaganlar (necha dars) va qarzdorlar (oyning qaysi sanasidan) avtomatik navbatga. */
+/** «Sozlamalar → Service»: kelmaganlar (necha dars) va qarzdorlar (oyning qaysi sanasidan) avtomatik navbatga. */
 export interface ContactAutoSettings {
   absenceEnabled: boolean
   absenceLessons: number

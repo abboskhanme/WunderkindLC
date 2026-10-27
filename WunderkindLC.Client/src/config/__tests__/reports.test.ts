@@ -115,6 +115,8 @@ describe('edutizim menyusi', () => {
       'Guruh',
       "O'quvchilar",
       "O'quv bo'limi",
+      // «Bog'lanish kerak» navbati — alohida asosiy band (egasining talabi, 2026-10-28).
+      'Service',
       'Moliya',
       'Nazorat',
       'Boshqaruv',

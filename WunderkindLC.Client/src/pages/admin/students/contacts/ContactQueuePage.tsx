@@ -347,9 +347,9 @@ export function ContactQueuePage() {
     const stage = col.stage
     if (!stage) return
     // 2026-10-27: HAR ustun o'chiriladi. Kartalar yo'qolmaydi — asosiy ustunga qaytadi; tizim ustuni yashiriladi
-    // («Sozlamalar → Servis» dan qaytariladi). Ochiq bosqichning OXIRGI ustunini server rad etadi — sabab alert'da.
+    // («Sozlamalar → Service» dan qaytariladi). Ochiq bosqichning OXIRGI ustunini server rad etadi — sabab alert'da.
     const moved = stage.count > 0 ? `\n\nIchidagi ${stage.count} ta karta «${stage.baseStatusLabel}» asosiy ustuniga o'tadi.` : ''
-    const back = stage.isSystem ? "\nKeyin «Sozlamalar → Servis» dan qaytarsa bo'ladi." : ''
+    const back = stage.isSystem ? "\nKeyin «Sozlamalar → Service» dan qaytarsa bo'ladi." : ''
     if (!confirm(`"${stage.title}" ustunini o'chirasizmi?${moved}${back}`)) return
     try {
       await deleteContactStage(stage.id)
@@ -419,7 +419,7 @@ export function ContactQueuePage() {
   return (
     <div>
       <PageHeader
-        title="Bog'lanish kerak"
+        title="Service"
         sub="Kim bilan bog'lanish kerak, nima deyildi va keyingi qadam — kartani sudrang yoki ustiga bosing"
         actions={
           tab === 'navbat' && (

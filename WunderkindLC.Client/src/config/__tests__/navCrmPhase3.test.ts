@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { navByRole } from '@/config/navigation'
 
-/** CRM Phase 3 (SPEC P3.5): «Bog'lanish kerak» — asosiy «O'quvchilar» guruhida, Future'da EMAS. */
+/** «Bog'lanish kerak» navbati — 2026-10-28 dan asosiy menyuda «Service» bandi, «O'quv bo'limi» ostida (egasining talabi). */
 const admin = navByRole.admin
 
 interface Node {
@@ -10,15 +10,18 @@ interface Node {
 }
 const flatten = (items: readonly Node[]): Node[] => items.flatMap((i) => [i, ...flatten(i.children ?? [])])
 
-describe("CRM Phase 3 — «Bog'lanish kerak» menyuda", () => {
-  it("asosiy «O'quvchilar» guruhida, «Yangi o'quvchilar» dan keyin", () => {
-    const group = admin.find((i) => i.to === '#oquvchilar')
-    const labels = (group?.children ?? []).map((c) => c.label)
-    const at = labels.indexOf("Bog'lanish kerak")
+describe("«Service» (Bog'lanish kerak) menyuda", () => {
+  it("asosiy menyuda alohida band, «O'quv bo'limi» dan keyin", () => {
+    const at = admin.findIndex((i) => i.to === '/admin/students/boglanish')
     expect(at).toBeGreaterThan(-1)
-    expect(labels[at - 1]).toBe("Yangi o'quvchilar")
-    expect(group?.children?.[at]?.to).toBe('/admin/students/boglanish')
-    expect(group?.children?.[at]?.perm).toBe('contacts')
+    expect(admin[at].label).toBe('Service')
+    expect(admin[at].perm).toBe('contacts')
+    expect(admin[at - 1].to).toBe('#oquv-bolimi')
+  })
+
+  it("«O'quvchilar» guruhida endi yo'q", () => {
+    const group = admin.find((i) => i.to === '#oquvchilar')
+    expect((group?.children ?? []).some((c) => c.to === '/admin/students/boglanish')).toBe(false)
   })
 
   it('Future ichida qolmagan (bir band ikki joyda turmasin)', () => {

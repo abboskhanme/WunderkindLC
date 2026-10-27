@@ -201,7 +201,7 @@ export const SETTINGS_GROUPS: SettingsGroup[] = [
       },
       { key: 'sabablar', label: 'Sabablar', icon: IconListDetails, kind: 'panel', panel: 'reasons', perm: 'settings.reasons' },
       // «Bog'lanish kerak» (servis) avtomatikasi — kelmaganlar va qarzdorlar (contacts.md §9, §9.5). Ruxsat — navbatniki.
-      { key: 'servis', label: 'Servis', icon: IconPhoneCall, kind: 'panel', panel: 'servis', perm: 'contacts' },
+      { key: 'servis', label: 'Service', icon: IconPhoneCall, kind: 'panel', panel: 'servis', perm: 'contacts' },
       {
         key: 'jurnal',
         label: 'Jurnal va davomat',
