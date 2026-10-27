@@ -13,6 +13,7 @@ import {
 } from '@tabler/icons-react'
 import type { Student } from '@/types'
 import type { StudentNotebook } from '@/api/services/studentNotebook'
+import { Button } from '@/components/ui/Button'
 import { DropdownMenu, type DropdownMenuItem } from '@/components/ui/DropdownMenu'
 import { cn, formatMoney, formatPhoneShort } from '@/lib/utils'
 import { amountDue, initials } from './model'
@@ -181,6 +182,11 @@ export function ProfileCard({
           label="Chegirma"
           value={discountLabel || "Yo'q"}
         />
+        {/* Asosiy kassa amali — ko'rsatkichlar ostida (egasining talabi, 2026-10-28; ilgari «To'lov tarixi» tabida edi).
+            Yuqoridagi $ belgisi bilan BIR XIL amal (`onPay` — PaymentModal). */}
+        <Button onClick={onPay} className="w-full justify-center">
+          <IconWallet className="h-4 w-4" /> To'lov qilish
+        </Button>
       </div>
     </div>
   )

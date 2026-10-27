@@ -41,6 +41,11 @@ interface Props {
    * so'ralmaydi), shuning uchun panel TASHQARIDAN kiritilgan to'lov/chegirmani shu orqali biladi.
    */
   refreshKey?: number
+  /**
+   * «To'lov qilish» tugmasini KO'RSATMASLIK — o'quvchi profilida u chap kartada, «Chegirma» ostida turadi
+   * (`ProfileCard`, egasining talabi 2026-10-28). Boshqa joylarda (`PaymentHistoryModal`) tugma qoladi.
+   */
+  hidePay?: boolean
 }
 
 const statusStyles: Record<MonthStatus, string> = {
@@ -51,7 +56,7 @@ const statusStyles: Record<MonthStatus, string> = {
 
 /** O'quvchining to'lov tarixi — oylar bo'yicha holat, kassa yozuvlari, o'zgarishlar tarixi.
  *  `PaymentHistoryModal` (modal ichida) va `StudentDetailPage`ning "To'lov tarixi" tabida (inline) ishlatiladi. */
-export function PaymentHistoryPanel({ studentId, onPaid, onChargeEdited, variant = 'panel', refreshKey = 0 }: Props) {
+export function PaymentHistoryPanel({ studentId, onPaid, onChargeEdited, variant = 'panel', refreshKey = 0, hidePay = false }: Props) {
   const { user } = useAuth()
   // O'zgarishlar tarixi — alohida `audit` ruxsati (admin/superadmin uchun har doim true).
   const canSeeAudit = usePerm().can('audit', 'view')
@@ -454,9 +459,11 @@ export function PaymentHistoryPanel({ studentId, onPaid, onChargeEdited, variant
               <p className="text-xs text-slate-400">Joriy balans</p>
               <p className={cn('font-mono text-lg font-semibold', balanceCls)}>{balanceText}</p>
             </div>
-            <Button onClick={openPay}>
-              <Wallet className="h-4 w-4" /> To'lov qilish
-            </Button>
+            {!hidePay && (
+              <Button onClick={openPay}>
+                <Wallet className="h-4 w-4" /> To'lov qilish
+              </Button>
+            )}
           </div>
         </div>
 

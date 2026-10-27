@@ -1301,6 +1301,8 @@ export function StudentDetailPage() {
             studentId={data.id}
             onPaid={() => setReloadKey((k) => k + 1)}
             onChargeEdited={reloadDiscounts}
+            // «To'lov qilish» — chap kartada, «Chegirma» ostida (ProfileCard).
+            hidePay
           />
         </Card>
       </>
