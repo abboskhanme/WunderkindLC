@@ -112,6 +112,9 @@ const LocationPage = lazy(() => import('@/pages/admin/locations/LocationPage').t
 const CamerasPage = lazy(() => import('@/pages/admin/cameras/CamerasPage').then((m) => ({ default: m.CamerasPage })))
 const VacanciesPage = lazy(() => import('@/pages/admin/vacancies/VacanciesPage').then((m) => ({ default: m.VacanciesPage })))
 const OnboardingPage = lazy(() => import('@/pages/admin/onboarding/OnboardingPage').then((m) => ({ default: m.OnboardingPage })))
+const WikiEntry = lazy(() => import('@/pages/admin/wiki/WikiEntry').then((m) => ({ default: m.WikiEntry })))
+const NotesPage = lazy(() => import('@/pages/admin/wiki/NotesPage').then((m) => ({ default: m.NotesPage })))
+const LegacyTeamNotesRedirect = lazy(() => import('@/pages/admin/wiki/WikiEntry').then((m) => ({ default: m.LegacyTeamNotesRedirect })))
 const ParentsPage = lazy(() => import('@/pages/admin/parents/ParentsPage').then((m) => ({ default: m.ParentsPage })))
 const TeacherAppPage = lazy(() => import('@/pages/admin/parents/TeacherAppPage').then((m) => ({ default: m.TeacherAppPage })))
 const FinancePage = lazy(() => import('@/pages/admin/finance/FinancePage').then((m) => ({ default: m.FinancePage })))
@@ -439,6 +442,18 @@ export default function App() {
             <Route path="boshqaruv/vacancies" element={<RequirePerm perm="vacancies.list"><VacanciesPage /></RequirePerm>} />
             {/* Moslashuv (30 kunlik onboarding) — vakansiyalar bo'limining ikkinchi sahifasi. */}
             <Route path="boshqaruv/moslashuv" element={<RequirePerm perm="vacancies.onboarding"><OnboardingPage /></RequirePerm>} />
+            {/* Bilimlar bazasi (wiki, `.claude/rules/wiki.md`). Tepada: rahbariyat/menejerda «Eslatmalarim | Xodimlar»,
+                oddiy xodimda — faqat «Eslatmalarim». `bilimlar` — kirish nuqtasi (ochiq birinchi tabga). */}
+            <Route path="bilimlar" element={<WikiEntry />} />
+            {/* «Eslatmalarim» — har bir xodimga ruxsatsiz (server: `MyNotesController.Allowed`). */}
+            <Route path="bilimlar/eslatmalar" element={<NotesPage mode="mine" showTabs />} />
+            <Route path="bilimlar/eslatmalar/:pageId" element={<NotesPage mode="mine" showTabs />} />
+            <Route path="bilimlar/xodimlar" element={<RequirePerm perm="wiki.team"><NotesPage mode="team" showTabs /></RequirePerm>} />
+            <Route path="bilimlar/xodimlar/:userId" element={<RequirePerm perm="wiki.team"><NotesPage mode="team" showTabs /></RequirePerm>} />
+            <Route path="bilimlar/xodimlar/:userId/:pageId" element={<RequirePerm perm="wiki.team"><NotesPage mode="team" showTabs /></RequirePerm>} />
+            {/* Oraliq manzil (bir kun «Eslatmalarim» ichida edi) — «Xodimlar» tabiga. */}
+            <Route path="bilimlar/eslatmalar/xodim/:userId" element={<LegacyTeamNotesRedirect />} />
+            <Route path="bilimlar/eslatmalar/xodim/:userId/:pageId" element={<LegacyTeamNotesRedirect />} />
             <Route path="boshqaruv/cameras" element={<RequirePerm perm="cameras"><CamerasPage /></RequirePerm>} />
             {/* Xodimlar (rol bilan qo'shish) va Rollar — 2026-09-25. Eski `boshqaruv/staff` redirect. */}
             <Route path="boshqaruv/xodimlar" element={<XodimlarEntry />} />
@@ -474,6 +489,9 @@ export default function App() {
             <Route path="payments" element={<KassaMyPaymentsPage />} />
             {/* HR topshiriqlari — kassir ham HR xodimi (LMS: kassirning qisqa menyusida ham bor). */}
             <Route path="topshiriqlar" element={<HrMyTasksPage defaultTab="day" />} />
+            {/* Shaxsiy eslatmalar — o'qituvchiga ruxsatsiz (server: `MyNotesController`), rahbariyat o'qiydi. */}
+            <Route path="eslatmalar" element={<NotesPage mode="mine" basePath="/teacher/eslatmalar" heightClass="h-full p-2.5" />} />
+            <Route path="eslatmalar/:pageId" element={<NotesPage mode="mine" basePath="/teacher/eslatmalar" heightClass="h-full p-2.5" />} />
           </Route>
         </Route>
 

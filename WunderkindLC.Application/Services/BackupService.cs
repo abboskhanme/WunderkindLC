@@ -266,6 +266,9 @@ public static class BackupService
         await Add("onboardingSteps", db.OnboardingSteps);
         await Add("employeeOnboardings", db.EmployeeOnboardings);
         await Add("employeeOnboardingTasks", db.EmployeeOnboardingTasks);
+        // ---- Bilimlar bazasi (wiki) ----
+        await Add("wikiPages", db.WikiPages);
+        await Add("wikiSettings", db.WikiSettings);
         // ---- KPI ----
         await Add("kpiProfiles", db.KpiProfiles);
         await Add("kpiProfileSalaries", db.KpiProfileSalaries);

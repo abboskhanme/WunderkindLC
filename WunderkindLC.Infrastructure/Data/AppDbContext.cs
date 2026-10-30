@@ -202,6 +202,9 @@ public partial class AppDbContext(DbContextOptions<AppDbContext> options)
     public DbSet<OnboardingStep> OnboardingSteps => Set<OnboardingStep>();
     public DbSet<EmployeeOnboarding> EmployeeOnboardings => Set<EmployeeOnboarding>();
     public DbSet<EmployeeOnboardingTask> EmployeeOnboardingTasks => Set<EmployeeOnboardingTask>();
+    // Bilimlar bazasi (wiki) — xodimlarning shaxsiy eslatmalari (WikiEntities.cs)
+    public DbSet<WikiPage> WikiPages => Set<WikiPage>();
+    public DbSet<WikiSettings> WikiSettings => Set<WikiSettings>();
 
     /* ---------- Bog'lanish kerak (follow-up navbati) ---------- */
     public DbSet<ContactStage> ContactStages => Set<ContactStage>();
@@ -884,6 +887,12 @@ public partial class AppDbContext(DbContextOptions<AppDbContext> options)
         b.Entity<EmployeeOnboarding>().HasIndex(o => new { o.Status, o.StartDate });
         b.Entity<EmployeeOnboardingTask>().HasIndex(t => new { t.OnboardingId, t.Order });
         b.Entity<OnboardingStep>().HasIndex(s => s.Order);
+
+        // ---------- Bilimlar bazasi (wiki) ----------
+        b.Entity<WikiPage>().Property(p => p.OwnerUserId).HasMaxLength(200);
+        b.Entity<WikiPage>().Property(p => p.ParentId).HasMaxLength(200);
+        // Daraxt egasi bo'yicha, ota ichida tartib bilan o'qiladi (o'z daraxti va xodimlar ro'yxatidagi sanoq).
+        b.Entity<WikiPage>().HasIndex(p => new { p.OwnerUserId, p.ParentId, p.Order });
 
         // Daraja testi — Slug ommaviy URL kaliti (noyob, indekslanishi uchun uzunlik beriladi).
         b.Entity<LevelTest>().Property(t => t.Slug).HasMaxLength(64);

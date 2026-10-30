@@ -42,6 +42,7 @@ public static class AuditSections
         new("contracts", "Shartnomalar"),
         new("vacancies", "Vakansiyalar"),
         new("staff",     "Xodimlar"),
+        new("wiki",      "Bilimlar bazasi"),
         // CRM upgrade Phase 2 (P2.9): Telegram campaigns, auto-message rules, manual templates.
         new("messages",  "Xabarlar"),
         new("settings",  "Sozlamalar"),
@@ -147,6 +148,9 @@ public static class AuditSections
         ["Onboarding"] = "vacancies",
         ["OnboardingStep"] = "vacancies",
         ["Staff"] = "staff",
+        // BILIMLAR BAZASI (wiki) — faqat SOZLAMA: menejerlar bo'ysunuvchilar eslatmalarini ko'radimi, qaysi
+        // lavozimlar. Shaxsiy eslatmalarning o'zi tarixga YOZILMAYDI — sarlavhalari shaxsiy (`wiki.md` §7).
+        ["WikiSettings"] = "wiki",
         // --- KPI (xodimlar samaradorligi) ---
         // ⚠️ ALOHIDA "kpi" bo'limi ATAYIN OCHILMADI: `All` ro'yxatiga yangi chip qo'shish
         // "O'zgarishlar tarixi" filtrini kengaytiradi, KPI yozuvlari esa mazmunan XODIM
