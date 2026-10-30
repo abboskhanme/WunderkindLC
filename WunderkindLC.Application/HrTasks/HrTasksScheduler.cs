@@ -86,6 +86,17 @@ public sealed class HrTasksScheduler(IServiceScopeFactory scopes, ILogger<HrTask
             }
         }
 
+        // LC: sinov darsi topshiriqlari — har siklda (idempotent: unikal kalit + avtomatik yopish), `hr-tasks.md` §8.
+        try
+        {
+            using var scope = scopes.CreateScope();
+            if (await Service(scope).RunTrialTasksAsync(now, ct) is var trials and > 0) result["trial_tasks"] = trials;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogError(ex, "HR: sinov darsi topshiriqlari yaratilmadi");
+        }
+
         if (at >= settings.CloseOverdueTime
             && await GuardedAsync(HrJobs.CleanDrafts, today, now, s => s.CleanDraftsAsync(now, ct), ct) is { } cleaned)
             result["drafts_cleaned"] = cleaned;

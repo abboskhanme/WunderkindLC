@@ -320,10 +320,15 @@ public class HrTasksRulesTests
     [Fact]
     public void Bildirishnoma_matnlari_eski_shaklda()
     {
+        // LC: one task in full (LMS's title-only text was replaced, hr-tasks.md §5)
         Assert.Equal(
-            "🆕 <b>Sizga yangi topshiriq</b>\n\nHisobot &lt;b&gt;\n⏰ Muddat: 14.09.2026 18:00\n\n"
-            + "Bajargach «Topshiriqlarim» bo'limidan belgilang.",
-            HrTasksTexts.Assigned("Hisobot <b>", HrTasksKit.At(2026, 9, 14, 18), HrTasksKit.Tz));
+            "🆕 <b>Sizga yangi topshiriq</b>\n\n<b>Hisobot &lt;b&gt;</b>\n\nIzoh &amp; reja\n\n⏰ Muddat: 14.09.2026 18:00\n"
+            + "👤 Berdi: Direktor\n📎 Biriktirma: 2 ta (pastda)\n\nTopshiriqni ko'rganingizni «✅ Qabul qildim» bilan tasdiqlang.",
+            HrTasksTexts.AssignedFull("Hisobot <b>", " Izoh & reja ", HrTasksKit.At(2026, 9, 14, 18), HrTasksKit.Tz, "Direktor", 2));
+        var long_ = HrTasksTexts.AssignedFull("T", new string('x', 10_000), HrTasksKit.At(2026, 9, 14, 18), HrTasksKit.Tz, "D", 0);
+        Assert.True(long_.Length <= HrTasksTexts.TelegramMaxLen);
+        Assert.Contains("x…", long_);
+        Assert.DoesNotContain("Biriktirma", long_);
         Assert.Equal(
             "🆕 <b>Sizga 7 ta yangi topshiriq berildi</b>\n\n1. a\n2. b\n3. c\n4. d\n5. e\n…va yana 2 ta\n\n"
             + "Batafsil — «Topshiriqlarim» bo'limida.",

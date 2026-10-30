@@ -252,7 +252,8 @@ public sealed partial class HrTasksService
             input.Kind, input.TargetAmount, input.Unit, input.ProofRequired ?? true, panel.Actor.UserId, tz, now);
         db.HrTasks.Add(task);
         await db.SaveChangesAsync(ct);
-        await SendToUserAsync(employee.UserId, HrTasksTexts.Assigned(task.Title, task.DueAt, tz), ct);
+        // LC: the full task (description, who gave it) + «✅ Qabul qildim» — HrTasksService.Notify.cs
+        await NotifyAssignedAsync(employee.UserId, task, tz, null, ct);
         return await TaskDtoAsync(task, ct);
     }
 
@@ -307,6 +308,15 @@ public sealed partial class HrTasksService
                 }
         foreach (var draft in drafts.Values) db.HrTaskAttachments.Remove(draft);
         await db.SaveChangesAsync(ct);
+
+        // LC: a few tasks (every employee gets the same items) → each one in full with its attachments and
+        // «✅ Qabul qildim» (HrTasksService.Notify.cs); many → the LMS summary + the first voice note.
+        if (items.Count <= MaxFullTaskMessages)
+        {
+            foreach (var (employee, batch) in perEmployee)
+                foreach (var task in batch) await NotifyAssignedAsync(employee.UserId, task, tz, null, ct);
+            return new HrBatchResultDto(created.Count, skipped, [.. created.Select(t => t.Id)], null);
+        }
 
         var firstVoice = items.Where(i => !string.IsNullOrWhiteSpace(i.AttachmentId))
             .Select(i => drafts[i.AttachmentId!]).FirstOrDefault(d => d.Kind == HrAttachmentKinds.Voice);

@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Hosting;
 using WunderkindLC.Application.Abstractions;
+using WunderkindLC.Application.HrTasks;
 using WunderkindLC.Application.Services.Messaging;
 using WunderkindLC.Domain;
 using System.Collections.Concurrent;
@@ -473,6 +474,23 @@ public class TelegramBotService(
                     data[MessageAckService.CallbackPrefix.Length..], ct);
             }
             catch (Exception ex) { logger.LogWarning(ex, "«Qabul qildim» ishlovida xato: chat {Chat}", chatId); }
+            return;
+        }
+
+        // Topshiriq ostidagi «✅ Qabul qildim» (HR, `hr-tasks.md` §5): o'z toast'i bilan javob beradi, egalik
+        // HrTaskAck ichida tekshiriladi (faqat topshiriq egasining chati). Suhbat tarixiga yozilmaydi.
+        if (data.StartsWith(HrTaskAck.CallbackPrefix, StringComparison.Ordinal))
+        {
+            try
+            {
+                long? messageId = cq.TryGetProperty("message", out var msg) && msg.TryGetProperty("message_id", out var mid)
+                    ? mid.GetInt64() : null;
+                using var hrScope = sp.CreateScope();
+                var hrDb = hrScope.ServiceProvider.GetRequiredService<IAppDbContext>();
+                await HrTaskAck.HandleAsync(hrDb, telegram, chatId, cbId, messageId,
+                    data[HrTaskAck.CallbackPrefix.Length..], DateTimeOffset.UtcNow, ct);
+            }
+            catch (Exception ex) { logger.LogWarning(ex, "Topshiriq «Qabul qildim» ishlovida xato: chat {Chat}", chatId); }
             return;
         }
 

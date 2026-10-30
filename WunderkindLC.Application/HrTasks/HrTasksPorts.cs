@@ -23,6 +23,13 @@ public interface IHrTelegramSender
     /// </summary>
     Task<bool> SendHtmlAsync(long chatId, string html, string? openUrl = null, CancellationToken ct = default);
     Task<bool> SendVoiceAsync(long chatId, byte[] bytes, string fileName, string contentType, string caption, CancellationToken ct = default);
+
+    /// <summary>LC: a task message — «✅ Qabul qildim» (<see cref="HrTaskAck"/>) + the «📋 Topshiriqlarim» button.</summary>
+    Task<bool> SendTaskAsync(long chatId, string html, string? openUrl, string taskId, CancellationToken ct = default);
+    /// <summary>LC: a task's image attachment.</summary>
+    Task<bool> SendPhotoAsync(long chatId, byte[] bytes, string fileName, string? caption, CancellationToken ct = default);
+    /// <summary>LC: a task's file attachment.</summary>
+    Task<bool> SendDocumentAsync(long chatId, byte[] bytes, string fileName, string? caption, CancellationToken ct = default);
 }
 
 /// <summary>The production sender: <see cref="TelegramService"/> with <c>parse_mode=HTML</c>.</summary>
@@ -39,6 +46,15 @@ public sealed class TelegramHrSender(TelegramService telegram) : IHrTelegramSend
 
     public Task<bool> SendVoiceAsync(long chatId, byte[] bytes, string fileName, string contentType, string caption, CancellationToken ct = default) =>
         telegram.SendVoiceAsync(chatId, bytes, fileName, contentType, caption, ct);
+
+    public Task<bool> SendTaskAsync(long chatId, string html, string? openUrl, string taskId, CancellationToken ct = default) =>
+        telegram.SendMessageAsync(chatId, html, HrTaskAck.Keyboard(taskId, openUrl), ct, "HTML");
+
+    public async Task<bool> SendPhotoAsync(long chatId, byte[] bytes, string fileName, string? caption, CancellationToken ct = default) =>
+        await telegram.SendPhotoReturningIdAsync(chatId, null, bytes, fileName, caption, null, ct) is not null;
+
+    public Task<bool> SendDocumentAsync(long chatId, byte[] bytes, string fileName, string? caption, CancellationToken ct = default) =>
+        telegram.SendDocumentAsync(chatId, bytes, fileName, caption, ct);
 
     /// <summary>One inline <c>web_app</c> button (a Mini App opens only from such a button — not a plain link).</summary>
     public static object? Keyboard(string? openUrl) => string.IsNullOrWhiteSpace(openUrl)
